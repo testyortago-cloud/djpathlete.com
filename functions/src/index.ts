@@ -1958,6 +1958,50 @@ export const bookkeepingQuarterlyPackCron = onSchedule(
   },
 )
 
+// ─── Bookkeeping Close Nudge (monthly, 3rd at 13:00 UTC ≈ 9am ET) ────────────
+// POSTs to /api/admin/internal/bookkeeping-close-nudge, which lists finished
+// months that still have no close row and emails the coach. The 3rd is the
+// monthly-close anchor: late enough that statements have landed, early enough
+// that the month is still fresh. Gated by
+// system_settings.cron_bookkeeping_close_nudge_enabled (default false, seeded by
+// migration 00198). The route owns logCronStart/logCronEnd under
+// "bookkeepingCloseNudgeCron" — this function must NOT log cron_runs itself
+// (single-owner rule; the receipt-watchdog precedent). Pure fetch-delegator: only
+// internalCronToken + appUrl are used, so only those secrets are declared.
+export const bookkeepingCloseNudgeCron = onSchedule(
+  {
+    schedule: "0 13 3 * *",
+    timeZone: "Etc/UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[bookkeepingCloseNudgeCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/bookkeeping-close-nudge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        console.error("[bookkeepingCloseNudgeCron]", res.status, body)
+        return
+      }
+      console.log("[bookkeepingCloseNudgeCron]", res.status, body)
+    } catch (err) {
+      console.error("[bookkeepingCloseNudgeCron] failed:", err)
+    }
+  },
+)
+
 // ─── Bookkeeping Receipt Watchdog (weekly Tue 07:00 UTC) ─────────────────────
 // AI Bookkeeper Phase 6b. POSTs to /api/admin/internal/bookkeeping-receipt-watchdog,
 // which scans the trailing 365 days for aged expense entries missing receipts /

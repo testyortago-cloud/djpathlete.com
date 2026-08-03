@@ -14,6 +14,7 @@ vi.mock("@/lib/db/bookkeeping", () => ({
 }))
 vi.mock("@/lib/db/system-settings", () => ({ getSetting: vi.fn() }))
 vi.mock("@/lib/bookkeeping/email-close", () => ({ sendBooksClosedEmail: vi.fn() }))
+vi.mock("@/lib/bookkeeping/close-readiness-server", () => ({ gatherCloseReadiness: vi.fn() }))
 
 import { GET, POST } from "@/app/api/admin/bookkeeping/closes/route"
 import { DELETE } from "@/app/api/admin/bookkeeping/closes/[id]/route"
@@ -31,6 +32,8 @@ import {
 } from "@/lib/db/bookkeeping"
 import { getSetting } from "@/lib/db/system-settings"
 import { sendBooksClosedEmail } from "@/lib/bookkeeping/email-close"
+import { gatherCloseReadiness } from "@/lib/bookkeeping/close-readiness-server"
+import { NOT_READY_MESSAGE } from "@/lib/bookkeeping/close-readiness"
 
 const BOOK = "b0000000-0000-4000-8000-000000000001"
 const CLOSE = "c0000000-0000-4000-8000-000000000001"
@@ -55,7 +58,14 @@ beforeEach(() => {
   ;(getCloseById as ReturnType<typeof vi.fn>).mockResolvedValue(closeRow)
   ;(getSetting as ReturnType<typeof vi.fn>).mockImplementation(async (_key: string, fallback: unknown) => fallback)
   ;(sendBooksClosedEmail as ReturnType<typeof vi.fn>).mockResolvedValue({ error: null })
+  ;(gatherCloseReadiness as ReturnType<typeof vi.fn>).mockResolvedValue(readyReadiness)
 })
+
+const readyReadiness = {
+  period: "2019-01", checks: [], blocking: [], warning: [], ready: true,
+  totals: { income_cents: 5000, expense_cents: 3000, net_cents: 2000, entry_count: 3 },
+}
+const notReadyReadiness = { ...readyReadiness, blocking: ["uncategorized"], warning: ["earlier_open"], ready: false }
 
 describe("GET /api/admin/bookkeeping/closes", () => {
   it("403 non-admin", async () => {
@@ -120,6 +130,60 @@ describe("POST /api/admin/bookkeeping/closes", () => {
         metadata: expect.objectContaining({ book_id: BOOK, period: "2019-01", net_cents: 2000 }),
       }),
     )
+  })
+  it("422 when readiness has blockers — nothing is frozen", async () => {
+    ;(gatherCloseReadiness as ReturnType<typeof vi.fn>).mockResolvedValue(notReadyReadiness)
+    const res = await POST(body({ book_id: BOOK, period: "2019-01" }))
+    expect(res.status).toBe(422)
+    const json = await res.json()
+    expect(json.error).toBe(NOT_READY_MESSAGE)
+    // the panel's own payload rides along so the client never re-fetches to explain the refusal
+    expect(json.readiness.blocking).toEqual(["uncategorized"])
+    expect(insertClose).not.toHaveBeenCalled()
+    expect(listEntriesForReports).not.toHaveBeenCalled()
+  })
+  it("override:true closes anyway and records WHICH blockers were bypassed", async () => {
+    ;(gatherCloseReadiness as ReturnType<typeof vi.fn>).mockResolvedValue(notReadyReadiness)
+    const res = await POST(body({ book_id: BOOK, period: "2019-01", override: true }))
+    expect(res.status).toBe(201)
+    expect(insertClose).toHaveBeenCalled()
+    expect(recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "bookkeeping.period_closed",
+        metadata: expect.objectContaining({
+          readiness_overridden: ["uncategorized"],
+          readiness_warnings: ["earlier_open"],
+        }),
+      }),
+    )
+  })
+  it("override:false is not a bypass — it still refuses", async () => {
+    ;(gatherCloseReadiness as ReturnType<typeof vi.fn>).mockResolvedValue(notReadyReadiness)
+    expect((await POST(body({ book_id: BOOK, period: "2019-01", override: false }))).status).toBe(422)
+    expect(insertClose).not.toHaveBeenCalled()
+  })
+  it("warnings alone never block, and are recorded on the audit row", async () => {
+    ;(gatherCloseReadiness as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...readyReadiness,
+      warning: ["statement_coverage"],
+    })
+    const res = await POST(body({ book_id: BOOK, period: "2019-01" }))
+    expect(res.status).toBe(201)
+    expect(recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ readiness_warnings: ["statement_coverage"] }),
+      }),
+    )
+    // a clean close must NOT claim an override happened
+    const call = (recordAudit as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => (c[0] as { action: string }).action === "bookkeeping.period_closed",
+    )
+    expect((call![0] as { metadata: Record<string, unknown> }).metadata).not.toHaveProperty("readiness_overridden")
+  })
+  it("the readiness gate runs AFTER the already-closed check (no wasted gather)", async () => {
+    ;(getClose as ReturnType<typeof vi.fn>).mockResolvedValue(closeRow)
+    expect((await POST(body({ book_id: BOOK, period: "2019-01" }))).status).toBe(409)
+    expect(gatherCloseReadiness).not.toHaveBeenCalled()
   })
   it("empty month closes with a zero snapshot (D-7)", async () => {
     const res = await POST(body({ book_id: BOOK, period: "2019-02" }))

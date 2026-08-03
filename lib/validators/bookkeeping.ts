@@ -155,6 +155,13 @@ export const closePeriodSchema = z.object({
   period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "expected YYYY-MM"),
 })
 
+/** POST /closes body. `override` is the readiness gate's explicit escape hatch:
+ *  absent or false enforces the blockers, true records the bypass on the audit
+ *  row. Never inferred — the coach has to ask for it. */
+export const closeMonthSchema = closePeriodSchema.extend({
+  override: z.boolean().optional(),
+})
+
 export const createAssetSchema = z
   .object({
     book_id: z.string().uuid(),

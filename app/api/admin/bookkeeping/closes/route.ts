@@ -4,7 +4,9 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getBook, getClose, insertClose, listCloses, listEntriesForReports, stampCloseEmailSent } from "@/lib/db/bookkeeping"
 import { isClosablePeriod, monthBounds, snapshotTotals } from "@/lib/bookkeeping/period-close"
-import { closePeriodSchema } from "@/lib/validators/bookkeeping"
+import { NOT_READY_MESSAGE } from "@/lib/bookkeeping/close-readiness"
+import { gatherCloseReadiness } from "@/lib/bookkeeping/close-readiness-server"
+import { closeMonthSchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 import { getSetting } from "@/lib/db/system-settings"
 import { sendBooksClosedEmail } from "@/lib/bookkeeping/email-close"
@@ -26,9 +28,9 @@ export async function POST(request: Request) {
   try {
     const session = await auth()
     if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
-    const parsed = closePeriodSchema.safeParse(await request.json().catch(() => null))
+    const parsed = closeMonthSchema.safeParse(await request.json().catch(() => null))
     if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })
-    const { book_id, period } = parsed.data
+    const { book_id, period, override } = parsed.data
 
     const book = await getBook(book_id)
     if (!book) return NextResponse.json({ error: "book not found" }, { status: 404 })
@@ -41,6 +43,14 @@ export async function POST(request: Request) {
     if (existing) return NextResponse.json({ error: "That month is already closed for this book." }, { status: 409 })
     // (DB plain UNIQUE (book_id, period) is the race backstop.)
 
+    // Readiness gate. Same gather the panel renders, so a 422 here can never
+    // contradict what the coach was just shown. Blockers only — warnings are
+    // informational by design and must never refuse a close.
+    const readiness = await gatherCloseReadiness(book_id, period, new Date().toISOString().slice(0, 10))
+    if (!readiness.ready && !override) {
+      return NextResponse.json({ error: NOT_READY_MESSAGE, readiness }, { status: 422 })
+    }
+
     const { from, to } = monthBounds(period)
     const entries = await listEntriesForReports(from, to, book_id)
     const totals = snapshotTotals(entries)
@@ -49,7 +59,13 @@ export async function POST(request: Request) {
     void recordAudit({
       action: "bookkeeping.period_closed", category: "commerce", outcome: "success",
       target: { type: "bookkeeping_period_close", id: close.id },
-      metadata: { book_id, period, ...totals }, request,
+      metadata: {
+        book_id, period, ...totals,
+        // What the coach knowingly closed over — the whole point of the audit row.
+        readiness_warnings: readiness.warning,
+        ...(readiness.ready ? {} : { readiness_overridden: readiness.blocking }),
+      },
+      request,
     })
 
     // D-15: fire-and-forget AFTER the row persists — email failure never

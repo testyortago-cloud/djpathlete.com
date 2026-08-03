@@ -31,6 +31,7 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
   { name: "bookkeepingRetentionCron", sla_hours: 30 }, // daily 04:00
   { name: "bookkeepingQuarterlyPackCron", sla_hours: 2280 }, // quarterly Jan/Apr/Jul/Oct 1
   { name: "bookkeepingReceiptWatchdogCron", sla_hours: 204 }, // weekly Tue 07:00 (+ slack)
+  { name: "bookkeepingCloseNudgeCron", sla_hours: 800 },      // monthly 3rd 13:00 (31d + slack)
   { name: "bookkeepingIncomeSyncCron", sla_hours: 30 },  // daily 04:30
   { name: "bookkeepingGmailReceiptsCron", sla_hours: 6 }, // hourly :20 — delay-tolerant, a Gmail blip must not page (C-2)
   { name: "bookkeepingPayoutSyncCron", sla_hours: 30 },  // daily 05:15
