@@ -13,6 +13,7 @@ const ALL_FINDERS: Record<FinderKind, true> = {
   vendor: true,
   year_end: true,
   watchdog: true,
+  duplicate: true,
 }
 
 describe("findingFingerprint", () => {
@@ -32,8 +33,11 @@ describe("findingFingerprint", () => {
     // home_office was in the union with no producer and no consumer — a type
     // advertising a capability the UI does not have. If a card gains a dismiss
     // button, add it here AND to the union; the Record above makes the pair
-    // impossible to forget.
+    // impossible to forget. duplicate has a dismiss control (review dialog's
+    // "Not a duplicate" button persists fingerprints through the dismissals
+    // route), so it belongs here and in the union.
     expect(Object.keys(ALL_FINDERS).sort()).toEqual([
+      "duplicate",
       "substantiation_gap",
       "uncategorized",
       "vendor",
