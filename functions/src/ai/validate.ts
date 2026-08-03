@@ -10,7 +10,7 @@ import { stringSimilarity } from "string-similarity-js"
 
 // ─── Equipment normalization ────────────────────────────────────────────────
 
-const CANONICAL_EQUIPMENT = [
+export const CANONICAL_EQUIPMENT = [
   "barbell",
   "dumbbell",
   "kettlebell",
