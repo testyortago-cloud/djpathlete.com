@@ -11,6 +11,7 @@ import type {
 import type { IncomeSourceRows, LedgerEntryDraft } from "@/lib/bookkeeping/types"
 import type { ReportEntry, ReportAccount } from "@/lib/bookkeeping/reports"
 import type { InsightEntry, InsightAccount } from "@/lib/bookkeeping/insight-types"
+import type { DuplicateScanEntry } from "@/lib/bookkeeping/duplicate-scan"
 import {
   PeriodClosedError,
   assertPeriodOpen,
@@ -362,6 +363,16 @@ export async function listPostedForDedupe(bookId: string, from: string, to: stri
       .select("id,occurred_on,amount_cents,direction,memo,source")
       .eq("book_id", bookId).gte("occurred_on", from).lte("occurred_on", to)
       .in("source", ["platform_import", "manual", "statement_import"])
+      .range(f, t) as never)
+}
+
+/** Whole-book slim read for the post-hoc duplicate scan (fetchAllRows: 1000-row cap). */
+export async function listEntriesForDuplicateScan(bookId: string): Promise<DuplicateScanEntry[]> {
+  return fetchAllRows<DuplicateScanEntry>((f, t) =>
+    db().from("bookkeeping_ledger_entries")
+      .select("id,occurred_on,amount_cents,direction,memo,counterparty,source,account_id")
+      .eq("book_id", bookId)
+      .order("occurred_on", { ascending: true }).order("id", { ascending: true })
       .range(f, t) as never)
 }
 
