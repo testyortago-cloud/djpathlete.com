@@ -20,6 +20,7 @@ function entry(over: Partial<DuplicateScanEntry>): DuplicateScanEntry {
     counterparty: null,
     source: "manual",
     account_id: null,
+    document_id: null,
     ...over,
   }
 }

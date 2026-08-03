@@ -370,7 +370,7 @@ export async function listPostedForDedupe(bookId: string, from: string, to: stri
 export async function listEntriesForDuplicateScan(bookId: string): Promise<DuplicateScanEntry[]> {
   return fetchAllRows<DuplicateScanEntry>((f, t) =>
     db().from("bookkeeping_ledger_entries")
-      .select("id,occurred_on,amount_cents,direction,memo,counterparty,source,account_id")
+      .select("id,occurred_on,amount_cents,direction,memo,counterparty,source,account_id,document_id")
       .eq("book_id", bookId)
       .order("occurred_on", { ascending: true }).order("id", { ascending: true })
       .range(f, t) as never)

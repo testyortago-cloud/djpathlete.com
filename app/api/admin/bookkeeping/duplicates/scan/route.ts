@@ -13,7 +13,10 @@ import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation
 import { listDismissedFingerprints, listEntriesForDuplicateScan } from "@/lib/db/bookkeeping"
 import { withTimeout } from "@/lib/with-timeout"
 
-export const maxDuration = 45
+// 60s: a full 40-pair verdict set is ~2-3k output tokens, which Sonnet can
+// take 35-55s to stream — the original 25s AI budget timed out on a real
+// 25-pair scan (2026-08-03) and degraded every large scan to heuristic-only.
+export const maxDuration = 60
 
 const bodySchema = z.object({ book_id: z.string().uuid() })
 
@@ -106,7 +109,7 @@ export async function POST(request: Request) {
           model: MODEL_SONNET,
           maxTokens: 4000,
         }),
-        25_000,
+        50_000,
         "Duplicate scan AI verdict timed out",
       )
 

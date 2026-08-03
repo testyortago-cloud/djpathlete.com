@@ -6,6 +6,7 @@
 // fingerprint through the existing dismissals route. Deleting an entry clears
 // every pair containing it; dismissing clears only that pair.
 import { useCallback, useEffect, useRef, useState } from "react"
+import { FileText } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -37,6 +38,10 @@ const SOURCE_LABELS: Record<string, string> = {
   platform_import: "Platform",
   statement_import: "Statement",
   receipt: "Receipt",
+}
+const DOCUMENT_LINK_LABELS: Record<string, string> = {
+  receipt: "View receipt",
+  statement_import: "View statement",
 }
 
 // Hoisted to module scope (fix, controller-flagged): a component defined
@@ -77,6 +82,19 @@ function EntryCard({
         </p>
       )}
       {accountName && <p className="text-xs text-muted-foreground">{accountName}</p>}
+      {entry.document_id && (
+        // Durable admin route (302 → fresh signature per hit), never a raw
+        // signed URL — a kept-open tab must not rot into GCS ExpiredToken XML.
+        <a
+          href={`/api/admin/bookkeeping/documents/${entry.document_id}/download?redirect=1`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-primary underline underline-offset-2"
+        >
+          <FileText className="size-3" />
+          {DOCUMENT_LINK_LABELS[entry.source] ?? "View document"}
+        </a>
+      )}
       {isConfirming ? (
         <div className="flex gap-2 pt-1">
           <Button size="sm" variant="destructive" disabled={busy} onClick={() => onDelete(entry.id)}>

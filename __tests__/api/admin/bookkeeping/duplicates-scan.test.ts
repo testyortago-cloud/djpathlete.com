@@ -40,6 +40,7 @@ function scanEntry(id: string, over: Record<string, unknown> = {}) {
     counterparty: null,
     source: "statement_import",
     account_id: null,
+    document_id: null,
     ...over,
   }
 }

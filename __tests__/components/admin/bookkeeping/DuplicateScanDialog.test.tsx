@@ -35,6 +35,7 @@ function scanEntry(id: string, over: Record<string, unknown> = {}) {
     counterparty: null,
     source: "statement_import",
     account_id: "acc-1",
+    document_id: null,
     ...over,
   }
 }
@@ -89,6 +90,21 @@ describe("<DuplicateScanDialog>", () => {
     expect(await screen.findByText(/same purchase twice/)).toBeInTheDocument()
     expect(screen.getAllByText("$50.00")).toHaveLength(2)
     expect(screen.getAllByText("Equipment").length).toBeGreaterThan(0)
+  })
+
+  it("links each entry with a document to the durable ?redirect=1 download route", async () => {
+    const DOC_ID = "d0000000-0000-4000-8000-000000000001"
+    mockScan([
+      pair(
+        scanEntry(ID_A, { source: "receipt", document_id: DOC_ID }),
+        scanEntry(ID_B, { occurred_on: "2026-07-02" }), // no document → no link
+      ),
+    ])
+    renderDialog()
+    const link = await screen.findByRole("link", { name: /View receipt/ })
+    expect(link).toHaveAttribute("href", `/api/admin/bookkeeping/documents/${DOC_ID}/download?redirect=1`)
+    expect(link).toHaveAttribute("target", "_blank")
+    expect(screen.getAllByRole("link")).toHaveLength(1)
   })
 
   it("shows the empty state when the scan finds nothing", async () => {

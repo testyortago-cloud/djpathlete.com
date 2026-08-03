@@ -16,6 +16,7 @@ export interface DuplicateScanEntry {
   counterparty: string | null
   source: LedgerSource
   account_id: string | null
+  document_id: string | null
 }
 
 export type MemoSimilarity = "exact" | "similar" | "different" | "missing"
