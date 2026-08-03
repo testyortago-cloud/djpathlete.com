@@ -5,7 +5,7 @@
 // (closed-period 409 surfaces as a toast), "not a duplicate" persists a pair
 // fingerprint through the existing dismissals route. Deleting an entry clears
 // every pair containing it; dismissing clears only that pair.
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -39,6 +39,62 @@ const SOURCE_LABELS: Record<string, string> = {
   receipt: "Receipt",
 }
 
+// Hoisted to module scope (fix, controller-flagged): a component defined
+// INSIDE DuplicateScanDialog would be a new function identity on every
+// render, so React would tear down and remount every EntryCard on any state
+// change (busy, confirming, rescans) — real focus loss for keyboard users
+// right at the confirm-delete step. Minimal prop surface, no closures over
+// dialog state; `confirmKey` is the same `${pair_id}:${entry_id}` identity
+// the dialog used to compute inline.
+function EntryCard({
+  entry,
+  accountName,
+  confirmKey,
+  confirming,
+  busy,
+  onConfirmChange,
+  onDelete,
+}: {
+  entry: DuplicateScanEntry
+  accountName: string | null
+  confirmKey: string
+  confirming: string | null
+  busy: boolean
+  onConfirmChange: (key: string | null) => void
+  onDelete: (entryId: string) => void
+}) {
+  const isConfirming = confirming === confirmKey
+  return (
+    <div className="rounded-md border border-border bg-background p-3 space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-sm font-semibold">{formatCents(entry.amount_cents)}</span>
+        <Badge variant="outline">{SOURCE_LABELS[entry.source] ?? entry.source}</Badge>
+      </div>
+      <p className="text-xs text-muted-foreground">{entry.occurred_on}</p>
+      {(entry.counterparty || entry.memo) && (
+        <p className="text-sm text-foreground break-words">
+          {[entry.counterparty, entry.memo].filter(Boolean).join(" — ")}
+        </p>
+      )}
+      {accountName && <p className="text-xs text-muted-foreground">{accountName}</p>}
+      {isConfirming ? (
+        <div className="flex gap-2 pt-1">
+          <Button size="sm" variant="destructive" disabled={busy} onClick={() => onDelete(entry.id)}>
+            Confirm delete
+          </Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => onConfirmChange(null)}>
+            Keep
+          </Button>
+        </div>
+      ) : (
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => onConfirmChange(confirmKey)}>
+          Delete
+        </Button>
+      )}
+    </div>
+  )
+}
+
 export function DuplicateScanDialog({
   bookId,
   accounts,
@@ -59,8 +115,15 @@ export function DuplicateScanDialog({
   const [scanned, setScanned] = useState(false)
   const [busy, setBusy] = useState(false)
   const [confirming, setConfirming] = useState<string | null>(null) // `${pair_id}:${entry_id}`
+  // Request-id guard against double-fire / stale responses (fix,
+  // controller-flagged): React dev-mode double-invokes effects, and every
+  // scan is a real paid AI call. Mirrors fetchRequestIdRef in BooksClient.tsx
+  // — bump the ref per invocation, bail before applying state (or toasting)
+  // if a newer invocation superseded this one by the time the response lands.
+  const scanRequestIdRef = useRef(0)
 
   const scan = useCallback(async () => {
+    const requestId = ++scanRequestIdRef.current
     setLoading(true)
     setScanned(false)
     setConfirming(null)
@@ -71,6 +134,7 @@ export function DuplicateScanDialog({
         body: JSON.stringify({ book_id: bookId }),
       })
       const data = await res.json().catch(() => ({}))
+      if (requestId !== scanRequestIdRef.current) return // a newer scan superseded this one
       if (!res.ok) {
         toast.error(data.error ?? "Scan failed")
         return
@@ -86,9 +150,10 @@ export function DuplicateScanDialog({
       setTruncated(Boolean(data.truncated))
       setScanned(true)
     } catch {
+      if (requestId !== scanRequestIdRef.current) return
       toast.error("Scan failed")
     } finally {
-      setLoading(false)
+      if (requestId === scanRequestIdRef.current) setLoading(false)
     }
   }, [bookId])
 
@@ -143,40 +208,6 @@ export function DuplicateScanDialog({
     }
   }
 
-  function EntryCard({ pair, entry }: { pair: ScanPair; entry: DuplicateScanEntry }) {
-    const key = `${pair.pair_id}:${entry.id}`
-    const account = accountName(entry.account_id)
-    return (
-      <div className="rounded-md border border-border bg-background p-3 space-y-1">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-sm font-semibold">{formatCents(entry.amount_cents)}</span>
-          <Badge variant="outline">{SOURCE_LABELS[entry.source] ?? entry.source}</Badge>
-        </div>
-        <p className="text-xs text-muted-foreground">{entry.occurred_on}</p>
-        {(entry.counterparty || entry.memo) && (
-          <p className="text-sm text-foreground break-words">
-            {[entry.counterparty, entry.memo].filter(Boolean).join(" — ")}
-          </p>
-        )}
-        {account && <p className="text-xs text-muted-foreground">{account}</p>}
-        {confirming === key ? (
-          <div className="flex gap-2 pt-1">
-            <Button size="sm" variant="destructive" disabled={busy} onClick={() => void deleteEntry(entry.id)}>
-              Confirm delete
-            </Button>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(null)}>
-              Keep
-            </Button>
-          </div>
-        ) : (
-          <Button size="sm" variant="outline" disabled={busy} onClick={() => setConfirming(key)}>
-            Delete
-          </Button>
-        )}
-      </div>
-    )
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
@@ -224,8 +255,24 @@ export function DuplicateScanDialog({
                         )}
                       </div>
                       <div className="grid gap-2 sm:grid-cols-2">
-                        <EntryCard pair={p} entry={p.a} />
-                        <EntryCard pair={p} entry={p.b} />
+                        <EntryCard
+                          entry={p.a}
+                          accountName={accountName(p.a.account_id)}
+                          confirmKey={`${p.pair_id}:${p.a.id}`}
+                          confirming={confirming}
+                          busy={busy}
+                          onConfirmChange={setConfirming}
+                          onDelete={(id) => void deleteEntry(id)}
+                        />
+                        <EntryCard
+                          entry={p.b}
+                          accountName={accountName(p.b.account_id)}
+                          confirmKey={`${p.pair_id}:${p.b.id}`}
+                          confirming={confirming}
+                          busy={busy}
+                          onConfirmChange={setConfirming}
+                          onDelete={(id) => void deleteEntry(id)}
+                        />
                       </div>
                       <Button size="sm" variant="ghost" disabled={busy} onClick={() => void dismissPair(p)}>
                         Not a duplicate
