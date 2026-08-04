@@ -4,7 +4,12 @@ import { getAdminNav, getAllHrefs } from "@/components/admin/admin-nav"
 describe("getAdminNav", () => {
   it("returns the expected top-link count", () => {
     const nav = getAdminNav({ contentStudioEnabled: false })
-    expect(nav.topLinks).toHaveLength(2)
+    expect(nav.topLinks).toHaveLength(3)
+  })
+
+  it("keeps Messages (client chat) distinct from Inbox (lead inquiries)", () => {
+    const nav = getAdminNav({ contentStudioEnabled: false })
+    expect(nav.topLinks.map((l) => l.href)).toEqual(["/admin/dashboard", "/admin/inbox", "/admin/messages"])
   })
 
   it("returns the expected grouped-section count", () => {

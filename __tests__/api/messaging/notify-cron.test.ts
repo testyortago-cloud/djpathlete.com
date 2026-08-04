@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextRequest } from "next/server"
+import type { Conversation, Message } from "@/types/database"
 
 const mocks = vi.hoisted(() => ({
   isCronSkipped: vi.fn(),
@@ -9,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   listUnnotifiedMessages: vi.fn(),
   stampNotified: vi.fn(async () => {}),
   listConversationsForNotify: vi.fn(),
-  sendNewMessageEmail: vi.fn(async () => ({ error: null })),
+  sendNewMessageEmail: vi.fn(async (): Promise<{ error: string | null }> => ({ error: null })),
   getPreferences: vi.fn(),
   getUserById: vi.fn(),
 }))
@@ -35,7 +36,7 @@ const CLIENT = "33333333-3333-4333-8333-333333333333"
 // the clock: the route computes `now` itself.
 const LONG_AGO = new Date(Date.now() - 60 * 60 * 1000).toISOString()
 
-const conversation = (over = {}) => ({
+const conversation = (over: Partial<Conversation> = {}): Conversation => ({
   id: CONV,
   client_user_id: CLIENT,
   created_at: LONG_AGO,
@@ -47,7 +48,7 @@ const conversation = (over = {}) => ({
   ...over,
 })
 
-const message = (over = {}) => ({
+const message = (over: Partial<Message> = {}): Message => ({
   id: "m1",
   conversation_id: CONV,
   sender_user_id: "admin-1",

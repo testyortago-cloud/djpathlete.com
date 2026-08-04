@@ -75,6 +75,8 @@ export function MessagingProvider({
 
   const supabaseRef = useRef<SupabaseClient | null>(null)
   const channelRef = useRef<RealtimeChannel | null>(null)
+  /** The SUBSCRIBED per-conversation channel. Typing must send on this one. */
+  const conversationChannelRef = useRef<RealtimeChannel | null>(null)
   const activeIdRef = useRef<string | null>(null)
   const lastTypingSentRef = useRef(0)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -245,26 +247,30 @@ export function MessagingProvider({
         if (status === "SUBSCRIBED") await channel.track({ online_at: new Date().toISOString() })
       })
 
+    conversationChannelRef.current = channel
+
     return () => {
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
       setTypingFromOther(false)
       setIsOtherOnline(false)
+      conversationChannelRef.current = null
       void channel.unsubscribe()
     }
   }, [activeConversationId, connectionState, viewerId])
 
   const broadcastTyping = useCallback(() => {
-    const supabase = supabaseRef.current
-    const conversationId = activeIdRef.current
-    if (!supabase || !conversationId) return
+    // Send on the ALREADY-SUBSCRIBED channel. Calling supabase.channel() again
+    // mints a second, unsubscribed channel on the same topic every keystroke —
+    // it leaks channels and falls back to an HTTP broadcast rather than riding
+    // the socket the presence channel already holds open.
+    const channel = conversationChannelRef.current
+    if (!channel) return
 
     const now = Date.now()
     if (now - lastTypingSentRef.current < TYPING_THROTTLE_MS) return
     lastTypingSentRef.current = now
 
-    void supabase
-      .channel(`conversation:${conversationId}`, { config: { private: true } })
-      .send({ type: "broadcast", event: "typing", payload: { userId: viewerId } })
+    void channel.send({ type: "broadcast", event: "typing", payload: { userId: viewerId } })
   }, [viewerId])
 
   // ── Actions ───────────────────────────────────────────────────────────────
