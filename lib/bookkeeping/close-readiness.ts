@@ -24,6 +24,10 @@ export interface ReadinessCheck {
   /** How many things tripped it (0 when ok). Drives the UI count badge. */
   count: number
   detail: string
+  /** Periods the fix lives in, when the fix is "go deal with another month"
+   *  (earlier_open). Oldest first — the UI jumps the picker to targets[0]
+   *  rather than re-parsing them back out of `detail`. */
+  targets?: string[]
 }
 
 export interface CloseReadiness {
@@ -157,14 +161,17 @@ export function closeReadiness(input: CloseReadinessInput): CloseReadiness {
       `${plural(statementRows, "entry", "entries")} came from a bank/card statement.`,
       "No statement-imported entries this month — spending without a receipt may be missing.",
     ),
-    check(
-      "earlier_open",
-      "Earlier months closed",
-      "warning",
-      earlierOpen.length,
-      "No earlier months are left open.",
-      `${plural(earlierOpen.length, "earlier month has", "earlier months have")} entries but ${earlierOpen.length === 1 ? "is" : "are"} still open (${earlierOpen.join(", ")}).`,
-    ),
+    {
+      ...check(
+        "earlier_open",
+        "Earlier months closed",
+        "warning",
+        earlierOpen.length,
+        "No earlier months are left open.",
+        `${plural(earlierOpen.length, "earlier month has", "earlier months have")} entries but ${earlierOpen.length === 1 ? "is" : "are"} still open (${earlierOpen.join(", ")}).`,
+      ),
+      targets: earlierOpen,
+    },
   ]
 
   const blocking = checks.filter((c) => c.severity === "blocker" && c.status === "flagged").map((c) => c.key)

@@ -12,20 +12,46 @@ import { AlertTriangle, CheckCircle2, Lock, RefreshCw, Unlock, XCircle } from "l
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { closableMonthOptions, formatPeriodLabel, periodOf } from "@/lib/bookkeeping/period-close"
+import { closableMonthOptions, formatPeriodLabel, monthBounds, periodOf } from "@/lib/bookkeeping/period-close"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { formatOccurredOn } from "@/lib/bookkeeping/format"
-import type { CloseReadiness } from "@/lib/bookkeeping/close-readiness"
+import type { CloseReadiness, ReadinessCheck } from "@/lib/bookkeeping/close-readiness"
 import type { BookkeepingPeriodClose } from "@/types/database"
+
+/** What a "Show me" button on a flagged check asks the page to do. The card
+ *  knows WHICH month is in trouble; only the page owns the ledger filters and
+ *  the dialogs that actually fix it. */
+export interface ReadinessFix {
+  /** ReadinessCheck.key — "uncategorized" | "duplicates" | "substantiation" | "statement_coverage" */
+  key: string
+  period: string
+  /** monthBounds(period) — ready to drop into the ledger date filters. */
+  from: string
+  to: string
+  /** "July 2026" — for the toast the page shows. */
+  label: string
+}
+
+/** The label on each flagged check's action. Absent = nothing useful to show
+ *  (never render a dead button — that is the complaint this whole block fixes). */
+const FIX_LABEL: Record<string, string> = {
+  uncategorized: "Show these entries",
+  duplicates: "Open duplicate scan",
+  substantiation: "Show what's missing",
+  statement_coverage: "Import a statement",
+}
 
 export function CloseMonthCard({
   bookId,
   closes,
   onChanged,
+  onFix,
 }: {
   bookId: string
   closes: BookkeepingPeriodClose[]
   onChanged: () => void
+  /** Omitted → the per-check action buttons are not rendered at all. */
+  onFix?: (fix: ReadinessFix) => void
 }) {
   const router = useRouter()
   // null = "auto": the most recent closable month (usually last month) is
@@ -44,26 +70,46 @@ export function CloseMonthCard({
   // must not let a slow earlier response overwrite the current one.
   const checkSeq = useRef(0)
 
-  const checkReadiness = useCallback(async () => {
-    if (!effectivePeriod) {
-      setReadiness(null)
-      return
-    }
-    const seq = ++checkSeq.current
-    setChecking(true)
-    try {
-      const res = await fetch(
-        `/api/admin/bookkeeping/closes/readiness?book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(effectivePeriod)}`,
-      )
-      const data = await res.json().catch(() => ({}))
-      if (seq !== checkSeq.current) return
-      setReadiness(res.ok ? (data.readiness as CloseReadiness) : null)
-    } catch {
-      if (seq === checkSeq.current) setReadiness(null)
-    } finally {
-      if (seq === checkSeq.current) setChecking(false)
-    }
-  }, [bookId, effectivePeriod])
+  // `announce` = a human pressed Re-check. Re-running the check in place looks
+  // identical to doing nothing when the answer hasn't changed, so the manual
+  // path always says the answer out loud.
+  const checkReadiness = useCallback(
+    async (announce = false) => {
+      if (!effectivePeriod) {
+        setReadiness(null)
+        return
+      }
+      const seq = ++checkSeq.current
+      setChecking(true)
+      try {
+        const res = await fetch(
+          `/api/admin/bookkeeping/closes/readiness?book_id=${encodeURIComponent(bookId)}&period=${encodeURIComponent(effectivePeriod)}`,
+        )
+        const data = await res.json().catch(() => ({}))
+        if (seq !== checkSeq.current) return
+        // ?? null, not a bare cast: a 200 with no `readiness` key would leave
+        // undefined in state, and `!readiness.ready` below then throws and
+        // unmounts the whole card — which reads as "the buttons do nothing".
+        const next = (res.ok ? (data.readiness as CloseReadiness | undefined) : null) ?? null
+        setReadiness(next)
+        if (announce) {
+          if (!next) toast.error("Couldn't re-run the readiness check")
+          else if (next.ready) toast.success(`${formatPeriodLabel(effectivePeriod)} is ready to close.`)
+          else
+            toast.warning(
+              `${formatPeriodLabel(effectivePeriod)} still has ${next.blocking.length} ${next.blocking.length === 1 ? "blocker" : "blockers"}.`,
+            )
+        }
+      } catch {
+        if (seq !== checkSeq.current) return
+        setReadiness(null)
+        if (announce) toast.error("Couldn't re-run the readiness check")
+      } finally {
+        if (seq === checkSeq.current) setChecking(false)
+      }
+    },
+    [bookId, effectivePeriod],
+  )
 
   useEffect(() => {
     void checkReadiness()
@@ -164,8 +210,26 @@ export function CloseMonthCard({
           readiness={readiness}
           checking={checking}
           busy={busy}
-          onRecheck={() => void checkReadiness()}
+          onRecheck={() => void checkReadiness(true)}
           onOverride={() => void closeMonth(true)}
+          onFixCheck={(c) => {
+            // "Close the earlier month first" is this card's own job — it just
+            // moves the picker. Everything else lives out on the page.
+            if (c.key === "earlier_open") {
+              const target = c.targets?.find((p) => options.includes(p))
+              if (target) setSelectedPeriod(target)
+              return
+            }
+            const { from, to } = monthBounds(effectivePeriod)
+            onFix?.({ key: c.key, period: effectivePeriod, from, to, label: formatPeriodLabel(effectivePeriod) })
+          }}
+          fixLabel={(c) => {
+            if (c.key === "earlier_open") {
+              const target = c.targets?.find((p) => options.includes(p))
+              return target ? `Switch to ${formatPeriodLabel(target)}` : null
+            }
+            return onFix ? (FIX_LABEL[c.key] ?? null) : null
+          }}
         />
       )}
 
@@ -214,6 +278,8 @@ function ReadinessPanel({
   busy,
   onRecheck,
   onOverride,
+  onFixCheck,
+  fixLabel,
 }: {
   period: string
   readiness: CloseReadiness | null
@@ -221,6 +287,9 @@ function ReadinessPanel({
   busy: boolean
   onRecheck: () => void
   onOverride: () => void
+  onFixCheck: (check: ReadinessCheck) => void
+  /** null = this check has no action worth offering. */
+  fixLabel: (check: ReadinessCheck) => string | null
 }) {
   if (checking && !readiness) {
     return (
@@ -257,9 +326,15 @@ function ReadinessPanel({
             </span>
           )}
         </p>
-        <Button variant="ghost" size="sm" onClick={onRecheck} disabled={checking}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onRecheck}
+          disabled={checking}
+          title="Re-run these checks against the ledger as it is right now — this doesn't leave the page"
+        >
           <RefreshCw className={`size-3.5 ${checking ? "animate-spin" : ""}`} />
-          Re-check
+          {checking ? "Re-checking…" : "Re-check"}
         </Button>
       </div>
 
@@ -268,6 +343,9 @@ function ReadinessPanel({
           const Icon = c.status === "ok" ? CheckCircle2 : c.severity === "blocker" ? XCircle : AlertTriangle
           const tone =
             c.status === "ok" ? "text-success" : c.severity === "blocker" ? "text-error" : "text-warning"
+          // Only flagged checks get an action — "show me the problem" is
+          // meaningless when there is no problem.
+          const label = c.status === "flagged" ? fixLabel(c) : null
           return (
             <li key={c.key} className="flex items-start gap-2 text-xs">
               <Icon className={`size-3.5 mt-0.5 shrink-0 ${tone}`} aria-hidden />
@@ -276,6 +354,15 @@ function ReadinessPanel({
               </span>
               <span className={c.status === "ok" ? "text-muted-foreground" : ""}>
                 <span className="font-medium">{c.title}</span> — {c.detail}
+                {label && (
+                  <button
+                    type="button"
+                    onClick={() => onFixCheck(c)}
+                    className="ml-1.5 font-medium text-accent underline underline-offset-2 hover:text-primary"
+                  >
+                    {label}
+                  </button>
+                )}
               </span>
             </li>
           )

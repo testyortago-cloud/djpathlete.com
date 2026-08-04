@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Plus, Upload, BookOpen, Banknote, Camera, ShoppingCart, BarChart3, Lightbulb, Package, Tags, FilterX, Mail, ScanSearch, CircleHelp } from "lucide-react"
 import { toast } from "sonner"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -19,7 +20,7 @@ import { SetupBanner, SetupPanel } from "@/components/admin/bookkeeping/SetupPan
 import { TaxStrip } from "@/components/admin/bookkeeping/TaxStrip"
 import { BooksTour } from "@/components/admin/bookkeeping/BooksTour"
 import { startBooksTour } from "@/hooks/use-page-tour"
-import { CloseMonthCard } from "@/components/admin/bookkeeping/CloseMonthCard"
+import { CloseMonthCard, type ReadinessFix } from "@/components/admin/bookkeeping/CloseMonthCard"
 import { formatCents } from "@/lib/bookkeeping/money"
 import { PERIOD_PRESET_LABELS, presetRange, type PeriodPreset } from "@/lib/bookkeeping/period"
 import type {
@@ -78,6 +79,7 @@ export function BooksClient({
   /** Open email-receipt review rows — the header badge that says "go look". */
   emailReceiptsPending?: number
 }) {
+  const router = useRouter()
   const [bookId, setBookId] = useState(initialBookId)
   // Deep-link hydration (5b): useState initializers only — no effect, no reset
   // guard needed (the accountId reset lives in handleBookChange, which is
@@ -104,6 +106,9 @@ export function BooksClient({
   const [dupScanOpen, setDupScanOpen] = useState(false)
   const [setupOpen, setSetupOpen] = useState(false)
   const [closes, setCloses] = useState<BookkeepingPeriodClose[]>([])
+  // Scroll target for the readiness "show me" actions — the filter bar renders
+  // unconditionally, unlike the ledger (which swaps to an empty state).
+  const filtersRef = useRef<HTMLDivElement | null>(null)
 
   const fetchEntries = useCallback(async () => {
     if (!bookId) return
@@ -220,6 +225,41 @@ export function BooksClient({
 
   function goToPage(page: number) {
     setFilters((f) => ({ ...f, page }))
+  }
+
+  /** Point the ledger at one specific problem and scroll it into view. Replaces
+   *  the whole filter set rather than patching it — a leftover search or source
+   *  filter would silently hide the very rows we just promised to show. */
+  function revealInLedger(patch: Partial<Omit<Filters, "page">>, message: string) {
+    setPreset("custom")
+    setFilters({ ...EMPTY_FILTERS, ...patch, page: 1 })
+    toast.info(message)
+    requestAnimationFrame(() => filtersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
+  }
+
+  /** A flagged close-readiness check asked to be shown. Every branch lands the
+   *  user on the thing that clears it — a readiness panel that only names the
+   *  problem makes you go hunt for it yourself. */
+  function handleReadinessFix(fix: ReadinessFix) {
+    switch (fix.key) {
+      case "uncategorized":
+        revealInLedger(
+          { from: fix.from, to: fix.to, accountId: "none" },
+          `Showing ${fix.label} entries with no category — set one on each.`,
+        )
+        break
+      case "duplicates":
+        setDupScanOpen(true)
+        break
+      case "substantiation":
+        // The definitive "which expense is missing what" list is the watchdog
+        // panel on Insights, not a ledger filter.
+        router.push("/admin/books/insights#missing-receipts")
+        break
+      case "statement_coverage":
+        setStatementOpen(true)
+        break
+    }
   }
 
   function openAddEntry() {
@@ -388,6 +428,7 @@ export function BooksClient({
               void fetchCloses()
               void fetchEntries()
             }}
+            onFix={handleReadinessFix}
           />
 
           {/* Toolbar */}
@@ -428,7 +469,7 @@ export function BooksClient({
           <SetupBanner onOpen={() => setSetupOpen(true)} />
 
           {/* Filter bar — labeled controls; the period preset drives from/to */}
-          <div data-tour="filters" className="rounded-lg border border-border bg-card p-3">
+          <div ref={filtersRef} data-tour="filters" className="scroll-mt-24 rounded-lg border border-border bg-card p-3">
             <div className="flex flex-wrap items-end gap-3">
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground">Period</span>

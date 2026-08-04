@@ -1016,8 +1016,10 @@ export function InsightsClient({
                   </p>
                 </div>
 
-                {/* Missing receipts & purposes (Phase 6b watchdog, D-10 — a chore list, no flag) */}
-                <div className="rounded-lg border border-border bg-card p-4 overflow-x-auto">
+                {/* Missing receipts & purposes (Phase 6b watchdog, D-10 — a chore list, no flag).
+                    #missing-receipts is a linked anchor — the close-readiness
+                    "Show what's missing" action lands here. */}
+                <div id="missing-receipts" className="scroll-mt-24 rounded-lg border border-border bg-card p-4 overflow-x-auto">
                   <h2 className="text-sm font-heading text-primary mb-3">Missing receipts &amp; purposes</h2>
                   <p
                     className={`text-sm font-medium mb-3 inline-block rounded-md px-3 py-2 ${
