@@ -2219,3 +2219,47 @@ export const bookkeepingPayoutSyncCron = onSchedule(
     }
   },
 )
+
+
+// ─── Client messaging: delayed unread-message email (every 5 minutes) ────────
+// POSTs to /api/admin/internal/messaging-notify, which emails a recipient only
+// when a message is STILL unread after the delay -- so a live back-and-forth in
+// the widget produces no email at all. Gated by
+// system_settings.cron_messaging_email_enabled (default false, seeded by
+// migration 00199). The route owns logCronStart/logCronEnd under
+// "messagingNotifyCron" -- this function must NOT log cron_runs itself
+// (single-owner rule). Pure fetch-delegator: only internalCronToken + appUrl
+// are used, so only those secrets are declared.
+export const messagingNotifyCron = onSchedule(
+  {
+    schedule: "*/5 * * * *",
+    timeZone: "Etc/UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[messagingNotifyCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/messaging-notify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        console.error("[messagingNotifyCron]", res.status, body)
+        return
+      }
+      console.log("[messagingNotifyCron]", res.status, body)
+    } catch (err) {
+      console.error("[messagingNotifyCron] failed:", err)
+    }
+  },
+)
