@@ -17,6 +17,32 @@ const SOURCE_LABELS: Record<LedgerSource, string> = {
   receipt: "Receipt",
 }
 
+// Long enough to be worth collapsing. Amazon product titles run 100-200 chars
+// and, against TableCell's whitespace-nowrap, stretched the memo column until
+// the whole ledger scrolled sideways (owner report, 2026-08-04).
+const MEMO_CLAMP_CHARS = 90
+
+/** Two-line clamp with a Show more/less toggle. Hoisted to module scope so the
+ *  toggle keeps its state across parent re-renders (row edits, refetches). */
+function ExpandableText({ text, className }: { text: string; className?: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const long = text.length > MEMO_CLAMP_CHARS
+  return (
+    <div className={className}>
+      <span className={!expanded && long ? "line-clamp-2" : "block"}>{text}</span>
+      {long && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-0.5 text-xs font-medium text-accent underline underline-offset-2 hover:text-primary"
+        >
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </div>
+  )
+}
+
 const SOURCE_TONE: Record<LedgerSource, string> = {
   manual: "bg-muted text-muted-foreground",
   platform_import: "bg-accent/10 text-accent",
@@ -105,18 +131,20 @@ export function LedgerTable({
         {rows.map((row) => (
           <TableRow key={row.id}>
             <TableCell>{formatOccurredOn(row.occurred_on)}</TableCell>
-            <TableCell>
+            {/* whitespace-normal overrides TableCell's nowrap so a long memo
+                wraps inside a bounded column instead of widening the table. */}
+            <TableCell className="max-w-[22rem] min-w-[12rem] whitespace-normal align-top">
               {/* Receipt-scanned entries pre-memo-field carry only a
                   business_purpose — surface it instead of a bare dash. */}
               {row.memo ? (
-                <div className="font-medium">{row.memo}</div>
+                <ExpandableText text={row.memo} className="font-medium" />
               ) : row.business_purpose ? (
-                <div className="font-normal italic text-muted-foreground">{row.business_purpose}</div>
+                <ExpandableText text={row.business_purpose} className="font-normal italic text-muted-foreground" />
               ) : (
                 <div className="font-medium">—</div>
               )}
               {row.counterparty ? (
-                <div className="text-xs text-muted-foreground">{row.counterparty}</div>
+                <div className="text-xs text-muted-foreground break-words">{row.counterparty}</div>
               ) : null}
               {row.adjusts_period ? (
                 <span className="mt-0.5 inline-flex items-center rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
