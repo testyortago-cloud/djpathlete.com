@@ -3062,6 +3062,12 @@ export interface MessageWithExtras extends Message {
 
 /** A conversation joined with its client and the viewer's unread count. */
 export interface ConversationWithClient extends Conversation {
-  client: { id: string; name: string | null; email: string; avatar_url: string | null }
+  client: {
+    id: string
+    first_name: string
+    last_name: string
+    email: string
+    avatar_url: string | null
+  }
   unread_count: number
 }

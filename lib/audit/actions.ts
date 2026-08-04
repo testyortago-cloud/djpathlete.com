@@ -268,6 +268,15 @@ export const AUDIT_ACTIONS = [
   { slug: "bookkeeping.payout_synced", category: "commerce", description: "Nightly cron ingested Stripe payouts into the payout mirror" },
   { slug: "bookkeeping.setup_manual_check_set", category: "admin_write", description: "Setup-checklist manual item checked or unchecked" },
   { slug: "bookkeeping.tour_completed", category: "admin_write", description: "Books cross-page tour completed" },
+  // Individual messages are deliberately NOT audited -- the messages table IS
+  // the record, and per-message rows would swamp the trail (same rule already
+  // applied to per-set workout logs and page visits). Only opening a
+  // conversation is an admin action worth a row.
+  {
+    slug: "messaging.conversation_created",
+    category: "admin_write",
+    description: "Coach opened a message thread with a client",
+  },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]
