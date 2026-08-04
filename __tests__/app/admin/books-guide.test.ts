@@ -101,6 +101,15 @@ describe("Accounting how-to guide", () => {
     expect(sectionIds.filter((id) => !navIds.includes(id))).toEqual([])
   })
 
+  it("has an FAQ with real answers and a sticky contents list", () => {
+    const faqBlock = source.slice(source.indexOf("const FAQ"), source.indexOf("function Shot"))
+    const questions = [...faqBlock.matchAll(/^\s*q:\s*["“]/gm)].length
+    expect(questions).toBeGreaterThanOrEqual(8)
+    expect(source).toContain('<Section id="faq"')
+    // lg:sticky is what stops the reader scrolling back to the top to navigate.
+    expect(source).toMatch(/lg:sticky/)
+  })
+
   it("is admin-gated", () => {
     expect(source).toMatch(/session\?\.user\?\.role\s*!==\s*"admin"/)
     expect(source).toContain("redirect(")

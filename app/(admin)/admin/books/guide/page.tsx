@@ -11,6 +11,7 @@ import {
   Camera,
   CheckCircle2,
   FolderTree,
+  HelpCircle,
   Lightbulb,
   ListChecks,
   Lock,
@@ -76,6 +77,129 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "assets", label: "Equipment & assets" },
   { id: "categories", label: "Categories" },
   { id: "routine", label: "A monthly routine" },
+  { id: "faq", label: "FAQ" },
+]
+
+/** Answers to the things that actually cause a support message. */
+const FAQ: { q: string; a: React.ReactNode }[] = [
+  {
+    q: "The close says there are possible duplicates, but the scan finds nothing. Why?",
+    a: (
+      <>
+        The close counts <em>candidate</em> pairs — same amount, same direction, within seven days — and it cannot see
+        the AI&apos;s verdicts, which are worked out fresh on each scan and never stored. So a pair the AI decided was
+        fine still counts. Open the duplicate scan and use <B>Dismiss all</B> on the &ldquo;AI cleared&rdquo; group;
+        that writes the decision down, and the blocker clears.
+      </>
+    ),
+  },
+  {
+    q: "Can I attach a receipt to an entry that is already in the ledger?",
+    a: (
+      <>
+        Yes. Go to <B>Insights → Missing receipts &amp; purposes</B> and press <B>Attach</B> on the row. That adds the
+        document to the existing entry. Do not use <B>Upload receipt</B> for this — that creates a second entry, and
+        you would then have the spend recorded twice.
+      </>
+    ),
+  },
+  {
+    q: "Why can't I change the amount or date on some entries?",
+    a: (
+      <>
+        Entries that came from an import keep their amount, date and direction locked to what the import said, so your
+        ledger cannot drift away from your bank. Category, memo, counterparty and business purpose are all still
+        editable. If an imported amount is genuinely wrong, delete the row and add it by hand.
+      </>
+    ),
+  },
+  {
+    q: "I closed a month by mistake. Can I undo it?",
+    a: (
+      <>
+        Yes — press <B>Reopen</B> next to the month. The totals that were frozen are preserved on the audit trail, and
+        re-closing takes a fresh snapshot. Nothing is lost either way.
+      </>
+    ),
+  },
+  {
+    q: "Does closing a month delete anything?",
+    a: (
+      <>
+        No. It freezes that book&apos;s totals for the month and refuses new entries, edits, deletes and imports into
+        it. Your entries and documents stay exactly where they are. Post corrections as an adjustment entry in an open
+        month, or reopen the month.
+      </>
+    ),
+  },
+  {
+    q: "What happens if I import the same statement twice?",
+    a: (
+      <>
+        Rows that match something already in the ledger are flagged rather than posted again, so a repeat import is
+        safe. An expense you had already entered from a receipt wins over the statement line — the receipt is the
+        better record because it has the document attached.
+      </>
+    ),
+  },
+  {
+    q: "Do I have to categorize everything?",
+    a: (
+      <>
+        To close the month, yes. The net is arithmetically right without categories, but every report and every tax
+        bucket downstream would be wrong. Filter the ledger to <B>Uncategorized</B> and work down the list — it is
+        usually a five-minute job.
+      </>
+    ),
+  },
+  {
+    q: "Where do personal expenses go?",
+    a: (
+      <>
+        In the <B>Household &amp; Personal</B> book. Keeping them out of the business book is the entire point of
+        having three books — a personal cost sitting in the business book quietly inflates your deductions.
+      </>
+    ),
+  },
+  {
+    q: "How long are receipts kept?",
+    a: (
+      <>
+        Seven years from the year of the spend — a 2026 purchase is retained until 31 December 2033. The clock runs
+        from when the money moved, not from when you uploaded the file.
+      </>
+    ),
+  },
+  {
+    q: "Is the tax estimate tax advice?",
+    a: (
+      <>
+        No. It is one flat rate from your accountant applied to your year-to-date net, so you know roughly what to move
+        to savings. It is not a filing, not a calculation of what you owe, and it does not know about your other
+        income. Your CPA files.
+      </>
+    ),
+  },
+  {
+    q: "What is the difference between deleting an entry and “Not a duplicate”?",
+    a: (
+      <>
+        <B>Delete</B> removes a ledger entry permanently — use it when the same spend really was recorded twice.{" "}
+        <B>Not a duplicate</B> keeps both entries and only hides that pair from future scans, which is what you want
+        when two identical charges are genuinely two different transactions.
+      </>
+    ),
+  },
+  {
+    q: "Why do my Amazon rows have no receipt?",
+    a: (
+      <>
+        The Amazon CSV gives you item-level detail but no document. That is why they show up under missing receipts.
+        Attach the emailed Amazon receipt from Insights if you have it, or dismiss the row if the CSV line is
+        substantiation enough for your accountant.
+      </>
+    ),
+  },
 ]
 
 function Shot({ name, alt, caption }: { name: ShotName; alt: string; caption?: string }) {
@@ -172,19 +296,27 @@ export default async function BooksGuidePage() {
         </div>
       </div>
 
-      <nav className="rounded-xl border border-border bg-white p-4">
-        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">On this page</p>
-        <ul className="grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
-          {SECTIONS.map((s) => (
-            <li key={s.id}>
-              <a href={`#${s.id}`} className="text-sm text-foreground underline-offset-2 hover:text-accent hover:underline">
-                {s.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      {/* Two columns from lg up: the contents list sticks so you can jump
+          between sections without scrolling back to the top. Below lg it
+          collapses to a normal block above the content. */}
+      <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-8">
+        <nav className="mb-6 rounded-xl border border-border bg-white p-4 lg:sticky lg:top-4 lg:mb-0 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">On this page</p>
+          <ul className="grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-1">
+            {SECTIONS.map((s) => (
+              <li key={s.id}>
+                <a
+                  href={`#${s.id}`}
+                  className="block py-0.5 text-sm text-foreground underline-offset-2 hover:text-accent hover:underline"
+                >
+                  {s.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
 
+        <div className="space-y-6">
       <Section
         id="books"
         icon={BookOpen}
@@ -491,6 +623,17 @@ export default async function BooksGuidePage() {
         </Step>
       </Section>
 
+      <Section id="faq" icon={HelpCircle} title="FAQ" lede="The questions this system actually raises in practice.">
+        <dl className="divide-y divide-border">
+          {FAQ.map((item) => (
+            <div key={item.q} className="py-3 first:pt-0 last:pb-0">
+              <dt className="font-medium text-primary">{item.q}</dt>
+              <dd className="mt-1 text-foreground">{item.a}</dd>
+            </div>
+          ))}
+        </dl>
+      </Section>
+
       <div className="rounded-xl border border-border bg-white p-6">
         <p className="text-sm text-muted-foreground">
           Prefer to be walked through it in the app? Open Accounting, press the <B>?</B> button on the toolbar and start
@@ -503,6 +646,8 @@ export default async function BooksGuidePage() {
           <ArrowLeft className="size-4" />
           Back to Accounting
         </Link>
+      </div>
+        </div>
       </div>
     </div>
   )
