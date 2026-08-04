@@ -151,6 +151,16 @@ Notes on shape:
   constraint, not a partial or `NULLS NOT DISTINCT` one, because PostgREST's
   `onConflict` only accepts plain unique constraints.
 
+The migration also defines two helpers:
+
+- `public.is_messaging_admin()` — a `STABLE SECURITY DEFINER` function returning
+  whether `auth.uid()` is an admin. `form_reviews` inlines this `EXISTS` clause
+  into every policy; there are eight policies here, and one definition that
+  cannot be edited inconsistently is worth the function.
+- `public.create_message(...)` — inserts the message, its attachments, and the
+  denormalized `conversations.last_message_*` fields in one transaction, so the
+  conversation-list preview cannot disagree with the thread.
+
 ### Realtime plumbing
 
 ```sql
