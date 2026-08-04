@@ -2,6 +2,7 @@ import { requireAdmin } from "@/lib/auth-helpers"
 import { getUserById } from "@/lib/db/users"
 import { AdminLayout } from "@/components/admin/AdminLayout"
 import { SessionExpiryGuard } from "@/components/auth/SessionExpiryGuard"
+import { MessagingMount } from "@/components/messaging/MessagingMount"
 import { isContentStudioEnabled } from "@/lib/content-studio/feature-flag"
 
 export default async function AdminRootLayout({ children }: { children: React.ReactNode }) {
@@ -23,6 +24,9 @@ export default async function AdminRootLayout({ children }: { children: React.Re
       <AdminLayout avatarUrl={avatarUrl} initials={initials} contentStudioEnabled={isContentStudioEnabled()}>
         {children}
       </AdminLayout>
+      {/* Outside AdminLayout so the dock is fixed to the viewport, not the
+          scrolling content column. */}
+      <MessagingMount />
     </>
   )
 }

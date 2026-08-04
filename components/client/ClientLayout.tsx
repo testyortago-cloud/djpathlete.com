@@ -18,6 +18,7 @@ import {
   Ticket,
   Heart,
   LogOut,
+  MessageCircle,
   MoreHorizontal,
 } from "lucide-react"
 import { signOut } from "next-auth/react"
@@ -29,6 +30,7 @@ import { NotificationBell } from "@/components/shared/NotificationBell"
 
 const baseNavItems = [
   { label: "Dashboard", href: "/client/dashboard", icon: LayoutDashboard },
+  { label: "Messages", href: "/client/messages", icon: MessageCircle },
   { label: "Programs", href: "/client/programs", icon: ShoppingBag },
   { label: "Workouts", href: "/client/workouts", icon: Dumbbell },
   { label: "Favorites", href: "/client/favorites", icon: Heart },

@@ -118,7 +118,10 @@ describe("POST /api/messaging/conversations", () => {
     const res = await createConversation(post("/api/messaging/conversations", { client_user_id: CLIENT_ID }))
     expect(res.status).toBe(200)
     expect(mocks.recordAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "messaging.conversation_created", target_id: CONV_ID }),
+      expect.objectContaining({
+        action: "messaging.conversation_created",
+        target: { type: "conversation", id: CONV_ID },
+      }),
     )
   })
 })

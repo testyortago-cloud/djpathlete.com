@@ -13,6 +13,7 @@ import {
   Sparkles,
   Lightbulb,
   Star,
+  MessageCircle,
   MessageSquareQuote,
   Video,
   ClipboardCheck,
@@ -103,6 +104,8 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
     topLinks: [
       { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
       { label: "Inbox", href: "/admin/inbox", icon: Inbox },
+      // Distinct from Inbox, which is lead inquiries. This is client chat.
+      { label: "Messages", href: "/admin/messages", icon: MessageCircle },
     ],
     groupedSections: [
       {

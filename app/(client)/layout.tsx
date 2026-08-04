@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { ClientLayout } from "@/components/client/ClientLayout"
 import { QuestionnaireGate } from "@/components/client/QuestionnaireGate"
 import { SessionExpiryGuard } from "@/components/auth/SessionExpiryGuard"
+import { MessagingMount } from "@/components/messaging/MessagingMount"
 import { WeightUnitProvider } from "@/hooks/use-weight-unit"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
 import { clientPackBalanceEnabled } from "@/lib/packs/flags"
@@ -35,6 +36,9 @@ export default async function ClientRootLayout({ children }: { children: React.R
       <QuestionnaireGate hasCompleted={hasCompletedQuestionnaire}>
         <ClientLayout flags={{ sessions: showSessions }}>{children}</ClientLayout>
       </QuestionnaireGate>
+      {/* Outside ClientLayout so the dock is fixed to the viewport rather than
+          the scrolling main column. */}
+      <MessagingMount />
     </WeightUnitProvider>
   )
 }

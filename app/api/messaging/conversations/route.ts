@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     action: "messaging.conversation_created",
     category: "admin_write",
     outcome: "success",
-    target_id: conversation.id,
+    target: { type: "conversation", id: conversation.id },
     metadata: { client_user_id: parsed.data.client_user_id },
   })
 
