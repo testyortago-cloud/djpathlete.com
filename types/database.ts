@@ -3004,3 +3004,64 @@ export interface ClientBillingPayer {
   created_at: string
   updated_at: string
 }
+
+// ─── Client messaging (00199) ────────────────────────────────────────────────
+
+export type MessageSenderRole = "admin" | "client"
+export type AttachmentKind = "image" | "video"
+
+export interface Conversation {
+  id: string
+  client_user_id: string
+  created_at: string
+  last_message_at: string | null
+  last_message_preview: string | null
+  last_message_sender_role: MessageSenderRole | null
+  client_last_read_at: string | null
+  admin_last_read_at: string | null
+}
+
+export interface MessageAttachment {
+  id: string
+  message_id: string
+  kind: AttachmentKind
+  storage_path: string
+  mime_type: string
+  byte_size: number
+  width: number | null
+  height: number | null
+  duration_seconds: number | null
+  original_filename: string | null
+  created_at: string
+}
+
+export interface MessageReaction {
+  id: string
+  message_id: string
+  user_id: string
+  emoji: string
+  created_at: string
+}
+
+export interface Message {
+  id: string
+  conversation_id: string
+  sender_user_id: string
+  sender_role: MessageSenderRole
+  body: string | null
+  attachment_count: number
+  created_at: string
+  email_notified_at: string | null
+}
+
+/** A message joined with everything one bubble needs to render. */
+export interface MessageWithExtras extends Message {
+  attachments: MessageAttachment[]
+  reactions: MessageReaction[]
+}
+
+/** A conversation joined with its client and the viewer's unread count. */
+export interface ConversationWithClient extends Conversation {
+  client: { id: string; name: string | null; email: string; avatar_url: string | null }
+  unread_count: number
+}
