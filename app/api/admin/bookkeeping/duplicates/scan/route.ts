@@ -122,18 +122,23 @@ export async function POST(request: Request) {
       )
 
       const byPairId = new Map(content.verdicts.map((v) => [v.pair_id, v]))
-      // Cleared pairs drop; model-omitted pairs stay with verdict null — an
-      // omission is "needs human review", never a silent pass.
-      const result: ScanResponsePair[] = pairs.flatMap((p) => {
+      // EVERY pair comes back, cleared ones included — the dialog groups them.
+      // Dropping cleared pairs here (the original behaviour) was a dead end:
+      // the close-readiness blocker counts CANDIDATE pairs, dismissal-filtered
+      // and AI-blind, so a pair the AI cleared still blocks the month while
+      // being unreachable in the only UI that can dismiss it. Model-omitted
+      // pairs keep verdict null — an omission is "needs human review", never a
+      // silent pass.
+      const result: ScanResponsePair[] = pairs.map((p) => {
         const v = byPairId.get(p.pair_id)
-        if (v && !v.is_duplicate) return []
-        return [{ ...p, verdict: v ? { is_duplicate: v.is_duplicate, confidence: v.confidence, reason: v.reason } : null }]
+        return { ...p, verdict: v ? { is_duplicate: v.is_duplicate, confidence: v.confidence, reason: v.reason } : null }
       })
+      const flagged = result.filter((p) => p.verdict?.is_duplicate !== false).length
 
       // Paid verdicts must never be discarded: log update failures are non-fatal.
       await updateGenerationLog(logId, {
         status: "completed",
-        output_summary: { candidate_pairs: pairs.length, flagged: result.length },
+        output_summary: { candidate_pairs: pairs.length, flagged, cleared: result.length - flagged },
         tokens_used,
         cache_creation_tokens: cache_creation_tokens ?? null,
         cache_read_tokens: cache_read_tokens ?? null,

@@ -10,7 +10,20 @@ import { deleteDismissal, insertDismissal } from "@/lib/db/bookkeeping"
 // Upper bound on the fingerprint: the column is unbounded TEXT and the value is
 // echoed into audit_logs.target_label (uncapped). 512 is far above any real
 // "<finder>:<uuid>" or normalized vendor descriptor.
-const dismissalBodySchema = z.object({ book_id: z.string().uuid(), fingerprint: z.string().min(1).max(512) })
+const FINGERPRINT = z.string().min(1).max(512)
+
+// Exactly one of `fingerprint` / `fingerprints`. The batch form exists for the
+// duplicate scan's "dismiss all the AI cleared" — capped at 200, far above a
+// 40-pair scan but low enough to bound the audit writes it fans out into.
+const dismissalBodySchema = z
+  .object({
+    book_id: z.string().uuid(),
+    fingerprint: FINGERPRINT.optional(),
+    fingerprints: z.array(FINGERPRINT).min(1).max(200).optional(),
+  })
+  .refine((b) => Boolean(b.fingerprint) !== Boolean(b.fingerprints), {
+    message: "Provide exactly one of fingerprint or fingerprints",
+  })
 
 async function handle(request: Request, mode: "dismiss" | "undismiss") {
   try {
@@ -23,28 +36,39 @@ async function handle(request: Request, mode: "dismiss" | "undismiss") {
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })
     }
-    const { book_id, fingerprint } = parsed.data
+    const { book_id } = parsed.data
+    const fingerprints = parsed.data.fingerprints ?? [parsed.data.fingerprint as string]
     // insert is an ignoreDuplicates upsert (re-dismissing is a no-op we still
     // want on the trail — the owner asserted the intent). A delete that removed
     // nothing changed no state, so it gets no "restored" row: the audit log is
     // the record of what changed, not of what was clicked.
+    // One audit row PER fingerprint even in the batch form: each dismissal is
+    // its own state change, and a single row listing 10 of them would not be
+    // findable by the target filter on /admin/audit-logs.
     let deleted = 0
-    if (mode === "dismiss") {
-      await insertDismissal({ book_id, fingerprint, dismissed_by: session.user.id })
-    } else {
-      deleted = await deleteDismissal(book_id, fingerprint)
+    for (const fingerprint of fingerprints) {
+      let changed = true
+      if (mode === "dismiss") {
+        await insertDismissal({ book_id, fingerprint, dismissed_by: session.user.id })
+      } else {
+        const n = await deleteDismissal(book_id, fingerprint)
+        deleted += n
+        changed = n > 0
+      }
+      if (changed) {
+        void recordAudit({
+          action: mode === "dismiss" ? "bookkeeping.finding_dismissed" : "bookkeeping.finding_undismissed",
+          category: "commerce",
+          outcome: "success",
+          target: { type: "bookkeeping_finding", id: fingerprint, label: fingerprint },
+          metadata: { book_id, fingerprint },
+          request,
+        })
+      }
     }
-    if (mode === "dismiss" || deleted > 0) {
-      void recordAudit({
-        action: mode === "dismiss" ? "bookkeeping.finding_dismissed" : "bookkeeping.finding_undismissed",
-        category: "commerce",
-        outcome: "success",
-        target: { type: "bookkeeping_finding", id: fingerprint, label: fingerprint },
-        metadata: { book_id, fingerprint },
-        request,
-      })
-    }
-    return NextResponse.json(mode === "dismiss" ? { ok: true } : { ok: true, deleted })
+    return NextResponse.json(
+      mode === "dismiss" ? { ok: true, dismissed: fingerprints.length } : { ok: true, deleted },
+    )
   } catch (error) {
     console.error("bookkeeping finding dismissal:", error)
     return NextResponse.json({ error: "Failed to update the dismissal" }, { status: 500 })

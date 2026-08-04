@@ -102,7 +102,11 @@ describe("POST /api/admin/bookkeeping/duplicates/scan", () => {
     expect(createGenerationLogMock).not.toHaveBeenCalled()
   })
 
-  it("keeps AI-confirmed pairs, drops cleared pairs, keeps model-omitted pairs with verdict null", async () => {
+  // Cleared pairs are RETURNED, not dropped. The close-readiness blocker counts
+  // candidate pairs and is blind to AI verdicts, so dropping them here made the
+  // pairs that hold a month hostage unreachable in the only UI that can dismiss
+  // them (owner report, 2026-08-04).
+  it("returns AI-confirmed, AI-cleared AND model-omitted pairs, each carrying its own verdict", async () => {
     // Three candidate pairs from two amount-groups: (A,B) confirmed, (C,D) cleared,
     // (A2,B2)… use a third group omitted by the model.
     const ID_E = "e0000000-0000-4000-8000-000000000005"
@@ -130,12 +134,21 @@ describe("POST /api/admin/bookkeeping/duplicates/scan", () => {
     const res = await POST(req({ book_id: BOOK_ID }))
     const body = await res.json()
     expect(body.ai).toBe("ok")
-    expect(body.pairs).toHaveLength(2)
+    expect(body.pairs).toHaveLength(3)
     const confirmed = body.pairs.find((p: { pair_id: string }) => p.pair_id === pairId(ID_A, ID_B))
+    const cleared = body.pairs.find((p: { pair_id: string }) => p.pair_id === pairId(ID_C, ID_D))
     const omitted = body.pairs.find((p: { pair_id: string }) => p.pair_id === pairId(ID_E, ID_F))
     expect(confirmed.verdict).toEqual({ is_duplicate: true, confidence: "high", reason: "same memo, day apart, receipt vs statement" })
+    expect(cleared.verdict).toEqual({ is_duplicate: false, confidence: "medium", reason: "recurring subscription" })
     expect(omitted.verdict).toBeNull()
-    expect(updateGenerationLogMock).toHaveBeenCalledWith("log-1", expect.objectContaining({ status: "completed" }))
+    // flagged = needs a human (confirmed + omitted); cleared is counted apart.
+    expect(updateGenerationLogMock).toHaveBeenCalledWith(
+      "log-1",
+      expect.objectContaining({
+        status: "completed",
+        output_summary: { candidate_pairs: 3, flagged: 2, cleared: 1 },
+      }),
+    )
   })
 
   it("passes dismissed fingerprints into candidate generation (dismissed pair never reaches the AI)", async () => {

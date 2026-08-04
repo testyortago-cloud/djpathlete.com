@@ -45,6 +45,13 @@ const DOCUMENT_LINK_LABELS: Record<string, string> = {
   statement_import: "View statement",
 }
 
+/** The AI looked at this pair and said it is NOT a duplicate. Distinct from
+ *  `verdict === null`, which means pending / omitted / AI unavailable — that is
+ *  "needs a human", not "cleared". */
+function isCleared(p: ScanPair): boolean {
+  return p.verdict !== null && !p.verdict.is_duplicate
+}
+
 function sortPairs(ps: ScanPair[]): ScanPair[] {
   return [...ps].sort(
     (p, q) =>
@@ -130,6 +137,74 @@ function EntryCard({
   )
 }
 
+/** Hoisted for the same reason as EntryCard — an inline component identity
+ *  would remount every EntryCard (and drop focus mid confirm-delete) on any
+ *  dialog state change. */
+function PairRow({
+  p,
+  accountName,
+  confirming,
+  actionsLocked,
+  onConfirmChange,
+  onDelete,
+  onDismiss,
+}: {
+  p: ScanPair
+  accountName: (id: string | null) => string | null
+  confirming: string | null
+  actionsLocked: boolean
+  onConfirmChange: (key: string | null) => void
+  onDelete: (id: string) => void
+  onDismiss: (p: ScanPair) => void
+}) {
+  const cleared = isCleared(p)
+  return (
+    <li className="rounded-lg border border-border bg-card p-3 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {p.verdict ? (
+          <>
+            {/* The verdict, not just the confidence: a "high confidence"
+                badge on a pair the AI CLEARED reads as a confirmed duplicate,
+                which is exactly how this list misled before. */}
+            <Badge variant={cleared ? "outline" : "default"}>
+              {cleared ? "AI: not a duplicate" : `Duplicate — ${p.verdict.confidence} confidence`}
+            </Badge>
+            <span className="text-sm text-foreground">{p.verdict.reason}</span>
+            <span className="text-xs text-muted-foreground">(AI-generated)</span>
+          </>
+        ) : (
+          <span className="text-sm text-muted-foreground">
+            Heuristic match — same amount, {p.day_gap === 0 ? "same day" : `${p.day_gap} day${p.day_gap === 1 ? "" : "s"} apart`}
+          </span>
+        )}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <EntryCard
+          entry={p.a}
+          accountName={accountName(p.a.account_id)}
+          confirmKey={`${p.pair_id}:${p.a.id}`}
+          confirming={confirming}
+          busy={actionsLocked}
+          onConfirmChange={onConfirmChange}
+          onDelete={onDelete}
+        />
+        <EntryCard
+          entry={p.b}
+          accountName={accountName(p.b.account_id)}
+          confirmKey={`${p.pair_id}:${p.b.id}`}
+          confirming={confirming}
+          busy={actionsLocked}
+          onConfirmChange={onConfirmChange}
+          onDelete={onDelete}
+        />
+      </div>
+      <Button size="sm" variant="ghost" disabled={actionsLocked} onClick={() => onDismiss(p)}>
+        Not a duplicate
+      </Button>
+    </li>
+  )
+}
+
 export function DuplicateScanDialog({
   bookId,
   accounts,
@@ -155,6 +230,7 @@ export function DuplicateScanDialog({
   const [scanned, setScanned] = useState(false)
   const [busy, setBusy] = useState(false)
   const [confirming, setConfirming] = useState<string | null>(null) // `${pair_id}:${entry_id}`
+  const [showCleared, setShowCleared] = useState(false)
   // Request-id guard against stale-response state clobbering (fix,
   // controller-flagged): prevents a superseded invocation from applying
   // response state after a newer scan starts. (React dev-mode double-fire
@@ -241,6 +317,10 @@ export function DuplicateScanDialog({
   const estimateSeconds = Math.min(55, 6 + pairs.length * 1.5)
   const progressPct = reviewing ? Math.min(95, Math.round((elapsed / estimateSeconds) * 100)) : 0
   const actionsLocked = busy || reviewing
+  // While verdicts are pending every pair is unjudged, so everything sits in
+  // `flagged` and the cleared group simply does not render yet.
+  const clearedPairs = pairs.filter(isCleared)
+  const flaggedPairs = pairs.filter((p) => !isCleared(p))
 
   function accountName(id: string | null): string | null {
     if (!id) return null
@@ -264,6 +344,37 @@ export function DuplicateScanDialog({
     } finally {
       setBusy(false)
       setConfirming(null)
+    }
+  }
+
+  /** Dismiss every pair the AI cleared, in one request. This is the action that
+   *  actually clears the close-readiness blocker: that gate counts candidate
+   *  pairs and cannot see AI verdicts, so "the AI says these are fine" only
+   *  becomes durable once it is written down as a dismissal. */
+  async function dismissCleared(ps: ScanPair[]) {
+    if (ps.length === 0) return
+    setBusy(true)
+    try {
+      const res = await fetch("/api/admin/bookkeeping/insights/dismissals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ book_id: bookId, fingerprints: ps.map((p) => p.fingerprint) }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error ?? "Failed to dismiss")
+        return
+      }
+      const gone = new Set(ps.map((p) => p.pair_id))
+      setPairs((xs) => xs.filter((x) => !gone.has(x.pair_id)))
+      toast.success(`${ps.length} ${ps.length === 1 ? "pair" : "pairs"} marked "not a duplicate"`)
+      // The ledger is unchanged, but the readiness panel is not — it re-reads
+      // dismissals, so tell the page something moved.
+      onEntriesChanged()
+    } catch {
+      toast.error("Failed to dismiss")
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -332,54 +443,75 @@ export function DuplicateScanDialog({
               <>
                 <p className="text-sm text-muted-foreground">
                   {reviewing
-                    ? `${pairs.length} possible ${pairs.length === 1 ? "match" : "matches"} found so far — the AI verdict will trim this list to the real duplicates.`
-                    : `${pairs.length} suspected duplicate ${pairs.length === 1 ? "pair" : "pairs"}. Deleting an entry removes it from the ledger; “Not a duplicate” hides the pair from every future scan.`}
+                    ? `${pairs.length} possible ${pairs.length === 1 ? "match" : "matches"} found so far — the AI verdict will sort the real duplicates from the false alarms.`
+                    : `${flaggedPairs.length} to review${clearedPairs.length > 0 ? ` · ${clearedPairs.length} the AI cleared` : ""}. Deleting an entry removes it from the ledger; “Not a duplicate” hides the pair from every future scan — and is what clears the monthly-close blocker.`}
                 </p>
                 {/* Dimmed while verdicts are pending — an undimmed list under a
                     progress bar reads as "results AND still scanning?" (owner
                     report, 2026-08-03). */}
-                <ul className={`space-y-3 ${reviewing ? "opacity-60" : ""}`}>
-                  {pairs.map((p) => (
-                    <li key={p.pair_id} className="rounded-lg border border-border bg-card p-3 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {p.verdict ? (
-                          <>
-                            <Badge>{p.verdict.confidence} confidence</Badge>
-                            <span className="text-sm text-foreground">{p.verdict.reason}</span>
-                            <span className="text-xs text-muted-foreground">(AI-generated)</span>
-                          </>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">
-                            Heuristic match — same amount, {p.day_gap === 0 ? "same day" : `${p.day_gap} day${p.day_gap === 1 ? "" : "s"} apart`}
-                          </span>
-                        )}
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <EntryCard
-                          entry={p.a}
-                          accountName={accountName(p.a.account_id)}
-                          confirmKey={`${p.pair_id}:${p.a.id}`}
-                          confirming={confirming}
-                          busy={actionsLocked}
-                          onConfirmChange={setConfirming}
-                          onDelete={(id) => void deleteEntry(id)}
-                        />
-                        <EntryCard
-                          entry={p.b}
-                          accountName={accountName(p.b.account_id)}
-                          confirmKey={`${p.pair_id}:${p.b.id}`}
-                          confirming={confirming}
-                          busy={actionsLocked}
-                          onConfirmChange={setConfirming}
-                          onDelete={(id) => void deleteEntry(id)}
-                        />
-                      </div>
-                      <Button size="sm" variant="ghost" disabled={actionsLocked} onClick={() => void dismissPair(p)}>
-                        Not a duplicate
+                {flaggedPairs.length > 0 && (
+                  <ul className={`space-y-3 ${reviewing ? "opacity-60" : ""}`}>
+                    {flaggedPairs.map((p) => (
+                      <PairRow
+                        key={p.pair_id}
+                        p={p}
+                        accountName={accountName}
+                        confirming={confirming}
+                        actionsLocked={actionsLocked}
+                        onConfirmChange={setConfirming}
+                        onDelete={(id) => void deleteEntry(id)}
+                        onDismiss={(x) => void dismissPair(x)}
+                      />
+                    ))}
+                  </ul>
+                )}
+
+                {/* Pairs the AI cleared. Collapsed, but PRESENT — they still
+                    count toward the monthly-close blocker, so hiding them
+                    entirely (what the scan route used to do) left no way to
+                    clear a month. One button writes all of them down. */}
+                {clearedPairs.length > 0 && (
+                  <div className="rounded-lg border border-border bg-surface/50 p-3 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowCleared((s) => !s)}
+                        aria-expanded={showCleared}
+                        className="text-sm font-medium text-foreground underline underline-offset-2"
+                      >
+                        {showCleared ? "Hide" : "Show"} the {clearedPairs.length} the AI cleared
+                      </button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={actionsLocked}
+                        onClick={() => void dismissCleared(clearedPairs)}
+                      >
+                        Dismiss all {clearedPairs.length}
                       </Button>
-                    </li>
-                  ))}
-                </ul>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Same amount and within a week of each other, but the AI judged them separate transactions. They
+                      still count as possible duplicates on the monthly close until you dismiss them.
+                    </p>
+                    {showCleared && (
+                      <ul className="space-y-3">
+                        {clearedPairs.map((p) => (
+                          <PairRow
+                            key={p.pair_id}
+                            p={p}
+                            accountName={accountName}
+                            confirming={confirming}
+                            actionsLocked={actionsLocked}
+                            onConfirmChange={setConfirming}
+                            onDelete={(id) => void deleteEntry(id)}
+                            onDismiss={(x) => void dismissPair(x)}
+                          />
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>

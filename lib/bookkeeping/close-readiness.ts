@@ -143,7 +143,10 @@ export function closeReadiness(input: CloseReadinessInput): CloseReadiness {
       "blocker",
       duplicates,
       "No same-amount, same-week pairs touching this month.",
-      `${plural(duplicates, "possible duplicate", "possible duplicates")} touch this month — run the duplicate scan before freezing the total.`,
+      // Says what CLEARS it, not just what is wrong: this counts candidate
+      // pairs and is blind to AI verdicts, so a pair the scan's AI cleared
+      // still sits here until the dismissal is written down.
+      `${plural(duplicates, "possible duplicate", "possible duplicates")} touch this month — open the duplicate scan and delete one side, or mark each "not a duplicate", to clear this.`,
     ),
     check(
       "substantiation",
