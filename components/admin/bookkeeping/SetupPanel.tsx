@@ -10,7 +10,7 @@
 //     and reverts (+ toast) on failure. Footer offers the cross-page tour.
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Circle, CircleCheck, TriangleAlert, X } from "lucide-react"
+import { BookOpen, Circle, CircleCheck, TriangleAlert, X } from "lucide-react"
 import { toast } from "sonner"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -290,11 +290,22 @@ export function SetupPanel({
           </div>
         )}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-          <Button onClick={onStartTour}>{status?.tourCompletedAt ? "Retake the tour" : "Take the tour"}</Button>
+        <DialogFooter className="sm:justify-between">
+          {/* The written guide is the fallback for anyone who wants to read
+              ahead rather than be walked through the live screens. */}
+          <Link
+            href="/admin/books/guide"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-accent underline underline-offset-2 hover:text-primary"
+          >
+            <BookOpen className="size-4" />
+            Read the full how-to
+          </Link>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+            <Button onClick={onStartTour}>{status?.tourCompletedAt ? "Retake the tour" : "Take the tour"}</Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

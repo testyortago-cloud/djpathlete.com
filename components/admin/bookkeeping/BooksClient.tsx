@@ -342,6 +342,13 @@ export function BooksClient({
               <Tags className="size-4" />
               Categories
             </Link>
+            <Link
+              href="/admin/books/guide"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground shadow-xs transition-colors hover:border-accent hover:text-accent"
+            >
+              <BookOpen className="size-4" />
+              How to use
+            </Link>
           </div>
         </div>
 
