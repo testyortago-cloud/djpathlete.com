@@ -20,6 +20,34 @@ export function captionMs(text) {
   return Math.max(2600, Math.round((words / 2.6) * 1000) + 700)
 }
 
+/**
+ * Measured narration lengths, written by synth-walkthrough-narration.mjs.
+ * Absent until that script has been run once — the reading-pace estimate is the
+ * fallback so the recorder still works with captions-only.
+ */
+let NARRATION = {}
+try {
+  const { createRequire } = await import("node:module")
+  NARRATION = createRequire(import.meta.url)("./walkthrough-narration.json")
+} catch {
+  /* no narration synthesized yet */
+}
+
+/** Silence after a line so the voice does not run straight into the next one. */
+export const BREATH_MS = 450
+
+/**
+ * How long to hold a beat: the real length of its narration when we have it,
+ * otherwise the reading-pace estimate. Keyed by position so re-wording a line
+ * re-synthesizes rather than silently keeping stale audio.
+ */
+export function beatMs(chapterId, index, text) {
+  const measured = NARRATION[`${chapterId}#${index}`]
+  return measured ? measured + BREATH_MS : captionMs(text)
+}
+
+export const hasNarration = () => Object.keys(NARRATION).length > 0
+
 export const CHAPTERS = [
   {
     id: "01-problem",
@@ -117,9 +145,22 @@ export const CHAPTERS = [
       { text: "Costs that don't belong to one line sit in a shared bucket. Turn on allocation and they're split by each line's share of revenue.", scroll: 0.63, toggle: /allocate shared costs/i },
       { text: "The vendor sweep finds recurring charges. These two are both video tools on the same category — flagged as a possible overlap you're paying twice for.", scroll: 0.72 },
       { text: "Missing receipts and purposes is the pre-audit checklist: every entry that would be hard to defend, listed in one place.", scroll: 0.82 },
+      { text: "Every row here has Attach. That puts the receipt onto the entry that already exists — rather than creating a second copy of the same spend." },
       { text: "A rolling tax forecast estimates what to set aside, using your own rate.", scroll: 0.9 },
       { text: "And home-office allocation reads your household rent and utilities, then proposes a business share — a proposal, not a filing.", scroll: 0.97 },
       { text: "Anything you disagree with, dismiss. It stays dismissed even as the numbers underneath keep changing." },
+    ],
+  },
+  {
+    id: "08b-duplicates",
+    title: "Finding duplicates",
+    url: "/admin/books",
+    beats: [
+      { text: "The same spend recorded twice is the classic bookkeeping error — a receipt you photographed, and the same charge arriving later on your bank statement." },
+      { text: "Find duplicates pairs every two entries with the same amount and direction inside a week of each other.", click: /find duplicates/i },
+      { text: "Then AI judges each pair: is this really one transaction recorded twice, or two genuinely separate charges that happen to match?" },
+      { text: "Pairs that look like real duplicates are listed for review. Delete removes one side; Not a duplicate keeps both and hides the pair from every future scan." },
+      { text: "Pairs the AI cleared are grouped below, collapsed, with one button to dismiss all of them — because the monthly close counts them until you do.", esc: true },
     ],
   },
   {
@@ -128,6 +169,11 @@ export const CHAPTERS = [
     url: "/admin/books",
     beats: [
       { text: "When a month is done, close it. That freezes its totals — no edits, no imports, no accidental changes to a number you've already reported." },
+      { text: "But before it freezes anything, it checks whether the number is worth trusting. Red is a blocker: entries with no category, or possible duplicates." },
+      { text: "Amber is a warning — missing receipts, no bank statement imported, earlier months still open. Worth a look, but it won't stop you." },
+      { text: "Every finding links to its own fix. Show these entries filters the ledger to the uncategorised ones; Show what's missing opens Insights." },
+      { text: "Re-check re-runs the checks against the ledger as it is right now, and tells you the new verdict without leaving the page." },
+      { text: "If a blocker is genuinely fine, Close anyway records on the audit trail exactly which blockers you closed over. Nothing is hidden." },
       { text: "Closed months show here with the option to reopen if something genuinely needs correcting." },
       { text: "It's record-keeping, not filing. Your accountant still files — this just means the ground stops moving under them." },
     ],
@@ -160,12 +206,14 @@ export const CHAPTERS = [
       { text: "Most of this runs without you. Income posts nightly. Receipts arrive hourly from your inbox. Payouts and fees sync daily." },
       { text: "A watchdog emails you if a receipt is missing for too long, and the quarterly pack goes to your accountant on schedule." },
       { text: "What's left for you is the judgement: categorise what's ambiguous, write down why, and confirm what the AI proposes." },
+      { text: "And if you forget how any of this works, How to use is a written walkthrough of every screen, with an FAQ.", url: "/admin/books/guide" },
+      { text: "Same screens you've just seen, in the order you'd actually use them.", scroll: 0.35 },
       { text: "That's the AI Bookkeeper." },
     ],
   },
 ]
 
 export const TOTAL_MS = CHAPTERS.reduce(
-  (a, c) => a + c.beats.reduce((b, x) => b + captionMs(x.text), 0),
+  (a, c) => a + c.beats.reduce((b, x, i) => b + beatMs(c.id, i, x.text), 0),
   0,
 )

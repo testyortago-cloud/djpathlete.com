@@ -25,7 +25,7 @@
 import { chromium } from "@playwright/test"
 import fs from "node:fs"
 import path from "node:path"
-import { CHAPTERS, captionMs } from "./walkthrough-script.mjs"
+import { CHAPTERS, beatMs, hasNarration } from "./walkthrough-script.mjs"
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3050"
 const OUT = path.join(process.cwd(), ".playwright-out", "walkthrough")
@@ -67,7 +67,7 @@ async function smoothScrollTo(page, fraction) {
 }
 
 /** Execute one beat's actions, then hold for the caption's reading time. */
-async function runBeat(page, beat) {
+async function runBeat(page, beat, holdMs) {
   if (beat.url) {
     await page.goto(`${BASE}${beat.url}`, { waitUntil: "domcontentloaded" })
     await settle(page)
@@ -94,8 +94,8 @@ async function runBeat(page, beat) {
       await wait(page, 800)
     }
   }
-  // Hold for the caption.
-  await wait(page, captionMs(beat.text))
+  // Hold for exactly as long as this beat's narration runs.
+  await wait(page, holdMs)
 }
 
 async function main() {
@@ -106,6 +106,11 @@ async function main() {
   const timelinePath = path.join(OUT, "timeline.json")
   const timeline = fs.existsSync(timelinePath) ? JSON.parse(fs.readFileSync(timelinePath, "utf8")) : {}
 
+  console.log(
+    hasNarration()
+      ? "timing: measured narration (run synth-walkthrough-narration.mjs to refresh)"
+      : "timing: reading-pace estimate — no narration synthesized yet",
+  )
   const browser = await chromium.launch({ headless: true })
   try {
     for (const ch of list) {
@@ -135,10 +140,12 @@ async function main() {
       const t0 = Date.now()
       const leadInMs = t0 - contextStart
       const beats = []
-      for (const b of ch.beats) {
+      for (const [i, b] of ch.beats.entries()) {
         const startMs = Date.now() - t0
-        await runBeat(page, b)
-        beats.push({ text: b.text, startMs, endMs: Date.now() - t0 })
+        // The audio file for this beat is <chapter>/<NN>.wav — the edit places
+        // it at startMs, so the index must stay in lockstep with the synth.
+        await runBeat(page, b, beatMs(ch.id, i, b.text))
+        beats.push({ text: b.text, startMs, endMs: Date.now() - t0, audio: `${ch.id}/${String(i).padStart(2, "0")}.wav` })
       }
       const durationMs = Date.now() - t0
 

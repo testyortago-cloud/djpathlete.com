@@ -2,411 +2,641 @@
   "01-problem": {
     "id": "01-problem",
     "title": "The problem",
-    "durationMs": 28282,
-    "leadInMs": 4960,
+    "durationMs": 26769,
+    "leadInMs": 0,
     "file": "01-problem.webm",
     "beats": [
       {
         "text": "Every coaching business runs on money it barely tracks. Card receipts in a glovebox, Stripe payouts in one tab, a bank statement nobody opens until April.",
         "startMs": 0,
-        "endMs": 10704
+        "endMs": 10825,
+        "audio": "01-problem/00.wav",
+        "audioMs": 10373
       },
       {
         "text": "This is the AI Bookkeeper. It turns all of that into one ledger you can hand to an accountant — without you doing data entry.",
-        "startMs": 10704,
-        "endMs": 21042
+        "startMs": 10826,
+        "endMs": 19686,
+        "audio": "01-problem/01.wav",
+        "audioMs": 8408
       },
       {
         "text": "Everything you're about to see is real software running on real data. Nothing here is a mockup.",
-        "startMs": 21042,
-        "endMs": 28282
+        "startMs": 19686,
+        "endMs": 26768,
+        "audio": "01-problem/02.wav",
+        "audioMs": 6623
       }
     ],
-    "mediaMs": 33033
+    "mediaMs": 27500,
+    "mediaFrames": 825
   },
   "02-three-books": {
     "id": "02-three-books",
     "title": "The three books",
-    "durationMs": 42990,
-    "leadInMs": 4205,
+    "durationMs": 44307,
+    "leadInMs": 0,
     "file": "02-three-books.webm",
     "beats": [
       {
         "text": "Start with the ledger. Income on the left, expenses in the middle, and what's actually yours on the right.",
         "startMs": 0,
-        "endMs": 8023
+        "endMs": 8214,
+        "audio": "02-three-books/00.wav",
+        "audioMs": 7758
       },
       {
         "text": "There are three separate books. Keeping business and household money apart is the single thing accountants ask for most.",
-        "startMs": 8023,
-        "endMs": 16039
+        "startMs": 8214,
+        "endMs": 16471,
+        "audio": "02-three-books/01.wav",
+        "audioMs": 7793
       },
       {
         "text": "This is the spouse's business — its own books, its own totals, never mixed in.",
-        "startMs": 16039,
-        "endMs": 24317
+        "startMs": 16471,
+        "endMs": 25002,
+        "audio": "02-three-books/02.wav",
+        "audioMs": 6238
       },
       {
         "text": "And the household book. Personal spending lives here, which matters later when we calculate a home-office deduction.",
-        "startMs": 24317,
-        "endMs": 33213
+        "startMs": 25002,
+        "endMs": 35302,
+        "audio": "02-three-books/03.wav",
+        "audioMs": 8218
       },
       {
         "text": "Back to the main business book. Every number you'll see from here is scoped to whichever book is selected.",
-        "startMs": 33213,
-        "endMs": 42990
+        "startMs": 35302,
+        "endMs": 44307,
+        "audio": "02-three-books/04.wav",
+        "audioMs": 6883
       }
     ],
-    "mediaMs": 47033
+    "mediaMs": 45166,
+    "mediaFrames": 1355
   },
   "03-income": {
     "id": "03-income",
     "title": "Income, automatically",
-    "durationMs": 33286,
-    "leadInMs": 4516,
+    "durationMs": 34863,
+    "leadInMs": 0,
     "file": "03-income.webm",
     "beats": [
       {
         "text": "Income is the easy half, because the platform already knows about it — session packs, camps, memberships, shop orders.",
         "startMs": 0,
-        "endMs": 8012
+        "endMs": 10110,
+        "audio": "03-income/00.wav",
+        "audioMs": 9648
       },
       {
         "text": "Import platform income pulls straight from the money-of-record tables and drafts ledger entries for review.",
-        "startMs": 8012,
-        "endMs": 16509
+        "startMs": 10110,
+        "endMs": 18913,
+        "audio": "03-income/01.wav",
+        "audioMs": 6423
       },
       {
         "text": "It matches each payment to the right service line, so revenue is categorised before you ever look at it.",
-        "startMs": 16509,
-        "endMs": 24529
+        "startMs": 18913,
+        "endMs": 26032,
+        "audio": "03-income/02.wav",
+        "audioMs": 6663
       },
       {
         "text": "And a nightly job runs this automatically at 4:30 UTC — so new payments post themselves while you sleep.",
-        "startMs": 24529,
-        "endMs": 33286
+        "startMs": 26032,
+        "endMs": 34863,
+        "audio": "03-income/03.wav",
+        "audioMs": 7618
       }
     ],
-    "mediaMs": 37633
+    "mediaMs": 35733,
+    "mediaFrames": 1072
   },
   "04-statements": {
     "id": "04-statements",
     "title": "Bank statements",
-    "durationMs": 43616,
-    "leadInMs": 4435,
+    "durationMs": 44398,
+    "leadInMs": 0,
     "file": "04-statements.webm",
     "beats": [
       {
         "text": "Expenses are the hard half. This is where most bookkeeping tools ask you to type. This one doesn't.",
         "startMs": 0,
-        "endMs": 7636
+        "endMs": 8410,
+        "audio": "04-statements/00.wav",
+        "audioMs": 7953
       },
       {
         "text": "Upload a bank or card statement — CSV or PDF — and the AI reads every row.",
-        "startMs": 7636,
-        "endMs": 16912
+        "startMs": 8410,
+        "endMs": 17398,
+        "audio": "04-statements/01.wav",
+        "audioMs": 6638
       },
       {
         "text": "It proposes a category for each line, flags internal transfers so they never hit your profit and loss, and catches duplicates.",
-        "startMs": 16912,
-        "endMs": 25692
+        "startMs": 17398,
+        "endMs": 26830,
+        "audio": "04-statements/02.wav",
+        "audioMs": 8933
       },
       {
         "text": "Crucially it never posts anything silently. You review, you uncheck what's wrong, and only then does it commit.",
-        "startMs": 25692,
-        "endMs": 34061
+        "startMs": 26830,
+        "endMs": 36405,
+        "audio": "04-statements/03.wav",
+        "audioMs": 8363
       },
       {
         "text": "Here are the rows that came in from statements — tagged at the source, so you always know where a number came from.",
-        "startMs": 34061,
-        "endMs": 43616
+        "startMs": 36405,
+        "endMs": 44398,
+        "audio": "04-statements/04.wav",
+        "audioMs": 7533
       }
     ],
-    "mediaMs": 47933
+    "mediaMs": 45233,
+    "mediaFrames": 1357
   },
   "05-receipts": {
     "id": "05-receipts",
     "title": "Receipts, four ways",
-    "durationMs": 66024,
-    "leadInMs": 4499,
+    "durationMs": 69422,
+    "leadInMs": 0,
     "file": "05-receipts.webm",
     "beats": [
       {
         "text": "A statement tells you money left. A receipt proves what it bought. The IRS cares about the difference.",
-        "startMs": 0,
-        "endMs": 7638
+        "startMs": 5,
+        "endMs": 8376,
+        "audio": "05-receipts/00.wav",
+        "audioMs": 7918
       },
       {
         "text": "Paid cash? Two taps. Amount, category, done — no photo required.",
-        "startMs": 7638,
-        "endMs": 14464
+        "startMs": 8376,
+        "endMs": 18602,
+        "audio": "05-receipts/01.wav",
+        "audioMs": 7929
       },
       {
         "text": "Got a paper receipt? Photograph it. Vision AI reads the vendor, the date and the total, then drops it into a review queue.",
-        "startMs": 14464,
-        "endMs": 26561
+        "startMs": 18602,
+        "endMs": 31427,
+        "audio": "05-receipts/02.wav",
+        "audioMs": 9723
       },
       {
         "text": "You can shoot up to fifteen at once — a whole shoebox in a single pass.",
-        "startMs": 26561,
-        "endMs": 34178
+        "startMs": 31427,
+        "endMs": 37665,
+        "audio": "05-receipts/03.wav",
+        "audioMs": 5029
       },
       {
         "text": "Amazon is its own special misery, so it gets its own importer that reads the order CSV directly.",
-        "startMs": 34178,
-        "endMs": 43658
+        "startMs": 37665,
+        "endMs": 46887,
+        "audio": "05-receipts/04.wav",
+        "audioMs": 6833
       },
       {
         "text": "And the fourth way needs no app at all.",
-        "startMs": 43658,
-        "endMs": 48562
+        "startMs": 46887,
+        "endMs": 50936,
+        "audio": "05-receipts/05.wav",
+        "audioMs": 2854
       },
       {
         "text": "Label a receipt email in Gmail, and an hourly job collects the attachment, scans it, and queues it here.",
-        "startMs": 48562,
-        "endMs": 59168
+        "startMs": 50936,
+        "endMs": 61632,
+        "audio": "05-receipts/06.wav",
+        "audioMs": 7773
       },
       {
         "text": "It's read-only against your inbox — it never marks mail read, never moves anything, never deletes.",
-        "startMs": 59168,
-        "endMs": 66024
+        "startMs": 61632,
+        "endMs": 69422,
+        "audio": "05-receipts/07.wav",
+        "audioMs": 7328
       }
     ],
-    "mediaMs": 70366
+    "mediaMs": 70300,
+    "mediaFrames": 2109
   },
   "06-categories": {
     "id": "06-categories",
     "title": "Categories & business purpose",
-    "durationMs": 29328,
-    "leadInMs": 4656,
+    "durationMs": 28785,
+    "leadInMs": 0,
     "file": "06-categories.webm",
     "beats": [
       {
         "text": "Categories are your chart of accounts. Each one carries a tax category, so the report at the end is already in your accountant's language.",
         "startMs": 0,
-        "endMs": 9944
+        "endMs": 9849,
+        "audio": "06-categories/00.wav",
+        "audioMs": 9388
       },
       {
         "text": "Some categories demand more. Meals, travel and vehicle require a stated business purpose — because those are the deductions that get challenged.",
-        "startMs": 9944,
-        "endMs": 19834
+        "startMs": 9849,
+        "endMs": 21129,
+        "audio": "06-categories/01.wav",
+        "audioMs": 10098
       },
       {
         "text": "Write down why a lunch was a business lunch at the time, and you'll still have the answer eighteen months later.",
-        "startMs": 19834,
-        "endMs": 29328
+        "startMs": 21131,
+        "endMs": 28785,
+        "audio": "06-categories/02.wav",
+        "audioMs": 6488
       }
     ],
-    "mediaMs": 33833
+    "mediaMs": 29633,
+    "mediaFrames": 889
   },
   "07-payouts": {
     "id": "07-payouts",
     "title": "Stripe payouts & net revenue",
-    "durationMs": 41890,
-    "leadInMs": 4432,
+    "durationMs": 41703,
+    "leadInMs": 0,
     "file": "07-payouts.webm",
     "beats": [
       {
         "text": "Now the part almost every coaching business gets wrong: the difference between what clients paid and what actually landed.",
         "startMs": 0,
-        "endMs": 8029
+        "endMs": 7910,
+        "audio": "07-payouts/00.wav",
+        "audioMs": 7453
       },
       {
         "text": "Stripe takes a fee on every charge. Your gross income and your real income are not the same number.",
-        "startMs": 8029,
-        "endMs": 16761
+        "startMs": 7910,
+        "endMs": 15873,
+        "audio": "07-payouts/01.wav",
+        "audioMs": 6803
       },
       {
         "text": "A daily job pulls every payout and its underlying transactions, so fees are read from Stripe rather than estimated.",
-        "startMs": 16761,
-        "endMs": 24778
+        "startMs": 15873,
+        "endMs": 24002,
+        "audio": "07-payouts/02.wav",
+        "audioMs": 7668
       },
       {
         "text": "Gross stays the headline — that's what your accountant files on. Underneath it, the fees, and the net you actually received.",
-        "startMs": 24778,
-        "endMs": 34260
+        "startMs": 24002,
+        "endMs": 34239,
+        "audio": "07-payouts/03.wav",
+        "audioMs": 9068
       },
       {
         "text": "If a payout hasn't been ingested yet, this line says so plainly instead of quietly showing zero fees.",
-        "startMs": 34260,
-        "endMs": 41890
+        "startMs": 34239,
+        "endMs": 41703,
+        "audio": "07-payouts/04.wav",
+        "audioMs": 7013
       }
     ],
-    "mediaMs": 46200
+    "mediaMs": 42533,
+    "mediaFrames": 1276
   },
   "08-insights": {
     "id": "08-insights",
     "title": "Insights",
-    "durationMs": 104543,
-    "leadInMs": 4596,
+    "durationMs": 117071,
+    "leadInMs": 0,
     "file": "08-insights.webm",
     "beats": [
       {
         "text": "This is where it stops being a ledger and starts being a bookkeeper.",
         "startMs": 0,
-        "endMs": 5711
+        "endMs": 4770,
+        "audio": "08-insights/00.wav",
+        "audioMs": 4319
       },
       {
         "text": "Every finding here is a candidate for your accountant to confirm — never a filed decision. That distinction is deliberate.",
-        "startMs": 5711,
-        "endMs": 14814
+        "startMs": 4770,
+        "endMs": 14107,
+        "audio": "08-insights/01.wav",
+        "audioMs": 8168
       },
       {
         "text": "The deduction watchlist totals what you've spent in each deductible category, with the vendors behind it.",
-        "startMs": 14814,
-        "endMs": 22377
+        "startMs": 14107,
+        "endMs": 21909,
+        "audio": "08-insights/02.wav",
+        "audioMs": 6628
       },
       {
         "text": "Substantiation gaps are the dangerous ones: money spent in a category that legally needs a stated purpose, with no purpose written down.",
-        "startMs": 22377,
-        "endMs": 32257
+        "startMs": 21909,
+        "endMs": 32244,
+        "audio": "08-insights/03.wav",
+        "audioMs": 9173
       },
       {
         "text": "Uncategorized expenses can't be matched to a deduction at all. Until you categorise them, they're invisible money.",
-        "startMs": 32257,
-        "endMs": 40298
+        "startMs": 32244,
+        "endMs": 41574,
+        "audio": "08-insights/04.wav",
+        "audioMs": 8168
       },
       {
         "text": "Profit by service line shows which part of the business actually makes money — camps versus team work versus one-to-one training.",
-        "startMs": 40298,
-        "endMs": 49789
+        "startMs": 41574,
+        "endMs": 50892,
+        "audio": "08-insights/05.wav",
+        "audioMs": 8153
       },
       {
         "text": "Costs that don't belong to one line sit in a shared bucket. Turn on allocation and they're split by each line's share of revenue.",
-        "startMs": 49789,
-        "endMs": 62018
+        "startMs": 50892,
+        "endMs": 61999,
+        "audio": "08-insights/06.wav",
+        "audioMs": 8338
       },
       {
         "text": "The vendor sweep finds recurring charges. These two are both video tools on the same category — flagged as a possible overlap you're paying twice for.",
-        "startMs": 62018,
-        "endMs": 73432
+        "startMs": 61999,
+        "endMs": 73435,
+        "audio": "08-insights/07.wav",
+        "audioMs": 10283
       },
       {
         "text": "Missing receipts and purposes is the pre-audit checklist: every entry that would be hard to defend, listed in one place.",
-        "startMs": 73432,
-        "endMs": 82537
+        "startMs": 73435,
+        "endMs": 82791,
+        "audio": "08-insights/08.wav",
+        "audioMs": 8188
+      },
+      {
+        "text": "Every row here has Attach. That puts the receipt onto the entry that already exists — rather than creating a second copy of the same spend.",
+        "startMs": 82791,
+        "endMs": 92688,
+        "audio": "08-insights/09.wav",
+        "audioMs": 9428
       },
       {
         "text": "A rolling tax forecast estimates what to set aside, using your own rate.",
-        "startMs": 82537,
-        "endMs": 88953
+        "startMs": 92688,
+        "endMs": 99205,
+        "audio": "08-insights/10.wav",
+        "audioMs": 5339
       },
       {
         "text": "And home-office allocation reads your household rent and utilities, then proposes a business share — a proposal, not a filing.",
-        "startMs": 88954,
-        "endMs": 98064
+        "startMs": 99205,
+        "endMs": 109326,
+        "audio": "08-insights/11.wav",
+        "audioMs": 8953
       },
       {
         "text": "Anything you disagree with, dismiss. It stays dismissed even as the numbers underneath keep changing.",
-        "startMs": 98064,
-        "endMs": 104543
+        "startMs": 109326,
+        "endMs": 117071,
+        "audio": "08-insights/12.wav",
+        "audioMs": 7288
       }
     ],
-    "mediaMs": 109066
+    "mediaMs": 117900,
+    "mediaFrames": 3537
   },
   "09-close": {
     "id": "09-close",
     "title": "Monthly close",
-    "durationMs": 24045,
-    "leadInMs": 4347,
+    "durationMs": 75280,
+    "leadInMs": 0,
     "file": "09-close.webm",
     "beats": [
       {
         "text": "When a month is done, close it. That freezes its totals — no edits, no imports, no accidental changes to a number you've already reported.",
         "startMs": 0,
-        "endMs": 10318
+        "endMs": 11372,
+        "audio": "09-close/00.wav",
+        "audioMs": 10908
+      },
+      {
+        "text": "But before it freezes anything, it checks whether the number is worth trusting. Red is a blocker: entries with no category, or possible duplicates.",
+        "startMs": 11372,
+        "endMs": 22620,
+        "audio": "09-close/01.wav",
+        "audioMs": 10793
+      },
+      {
+        "text": "Amber is a warning — missing receipts, no bank statement imported, earlier months still open. Worth a look, but it won't stop you.",
+        "startMs": 22620,
+        "endMs": 33298,
+        "audio": "09-close/02.wav",
+        "audioMs": 10213
+      },
+      {
+        "text": "Every finding links to its own fix. Show these entries filters the ledger to the uncategorised ones; Show what's missing opens Insights.",
+        "startMs": 33298,
+        "endMs": 43355,
+        "audio": "09-close/03.wav",
+        "audioMs": 9593
+      },
+      {
+        "text": "Re-check re-runs the checks against the ledger as it is right now, and tells you the new verdict without leaving the page.",
+        "startMs": 43355,
+        "endMs": 50868,
+        "audio": "09-close/04.wav",
+        "audioMs": 7008
+      },
+      {
+        "text": "If a blocker is genuinely fine, Close anyway records on the audit trail exactly which blockers you closed over. Nothing is hidden.",
+        "startMs": 50868,
+        "endMs": 60585,
+        "audio": "09-close/05.wav",
+        "audioMs": 9263
       },
       {
         "text": "Closed months show here with the option to reopen if something genuinely needs correcting.",
-        "startMs": 10318,
-        "endMs": 16408
+        "startMs": 60585,
+        "endMs": 66496,
+        "audio": "09-close/06.wav",
+        "audioMs": 5448
       },
       {
         "text": "It's record-keeping, not filing. Your accountant still files — this just means the ground stops moving under them.",
-        "startMs": 16408,
-        "endMs": 24045
+        "startMs": 66496,
+        "endMs": 75280,
+        "audio": "09-close/07.wav",
+        "audioMs": 8323
       }
     ],
-    "mediaMs": 28233
+    "mediaMs": 76166,
+    "mediaFrames": 2285
   },
   "10-reports": {
     "id": "10-reports",
     "title": "Reports & the accountant pack",
-    "durationMs": 34619,
-    "leadInMs": 4323,
+    "durationMs": 35825,
+    "leadInMs": 0,
     "file": "10-reports.webm",
     "beats": [
       {
         "text": "At the end of the quarter, everything comes out in the formats an accountant actually wants.",
         "startMs": 0,
-        "endMs": 6859
+        "endMs": 6359,
+        "audio": "10-reports/00.wav",
+        "audioMs": 5893
       },
       {
         "text": "A QuickBooks-ready CSV. A full Excel pack with profit and loss, income by service line, depreciation, and a document index.",
-        "startMs": 6859,
-        "endMs": 15261
+        "startMs": 6359,
+        "endMs": 16862,
+        "audio": "10-reports/01.wav",
+        "audioMs": 10048
       },
       {
         "text": "Or a print view for a PDF. And the pack can be emailed to your accountant automatically, every quarter, without you remembering.",
-        "startMs": 15261,
-        "endMs": 27820
+        "startMs": 16862,
+        "endMs": 29223,
+        "audio": "10-reports/02.wav",
+        "audioMs": 9203
       },
       {
         "text": "Same numbers as the screen, laid out for someone who's never seen this software.",
-        "startMs": 27820,
-        "endMs": 34619
+        "startMs": 29223,
+        "endMs": 35825,
+        "audio": "10-reports/03.wav",
+        "audioMs": 5429
       }
     ],
-    "mediaMs": 38800
+    "mediaMs": 36633,
+    "mediaFrames": 1099
   },
   "11-assets": {
     "id": "11-assets",
     "title": "Assets & depreciation",
-    "durationMs": 16737,
-    "leadInMs": 4387,
+    "durationMs": 19179,
+    "leadInMs": 0,
     "file": "11-assets.webm",
     "beats": [
       {
         "text": "Big purchases aren't expenses — they're assets that depreciate over years. Force plates, camera rigs, a turf build-out.",
         "startMs": 0,
-        "endMs": 7624
+        "endMs": 10137,
+        "audio": "11-assets/00.wav",
+        "audioMs": 9678
       },
       {
         "text": "Record it once with its in-service date and useful life, and the depreciation schedule writes itself into the accountant pack.",
-        "startMs": 7624,
-        "endMs": 16737
+        "startMs": 10137,
+        "endMs": 19179,
+        "audio": "11-assets/01.wav",
+        "audioMs": 7873
       }
     ],
-    "mediaMs": 21000
+    "mediaMs": 20033,
+    "mediaFrames": 601
   },
   "12-wrap": {
     "id": "12-wrap",
     "title": "Automation & wrap",
-    "durationMs": 28195,
-    "leadInMs": 4424,
+    "durationMs": 46241,
+    "leadInMs": 0,
     "file": "12-wrap.webm",
     "beats": [
       {
         "text": "Most of this runs without you. Income posts nightly. Receipts arrive hourly from your inbox. Payouts and fees sync daily.",
         "startMs": 0,
-        "endMs": 8401
+        "endMs": 10697,
+        "audio": "12-wrap/00.wav",
+        "audioMs": 10243
       },
       {
         "text": "A watchdog emails you if a receipt is missing for too long, and the quarterly pack goes to your accountant on schedule.",
-        "startMs": 8401,
-        "endMs": 17578
+        "startMs": 10697,
+        "endMs": 18676,
+        "audio": "12-wrap/01.wav",
+        "audioMs": 7518
       },
       {
         "text": "What's left for you is the judgement: categorise what's ambiguous, write down why, and confirm what the AI proposes.",
-        "startMs": 17578,
-        "endMs": 25591
+        "startMs": 18676,
+        "endMs": 27349,
+        "audio": "12-wrap/02.wav",
+        "audioMs": 8208
+      },
+      {
+        "text": "And if you forget how any of this works, How to use is a written walkthrough of every screen, with an FAQ.",
+        "startMs": 27349,
+        "endMs": 37672,
+        "audio": "12-wrap/03.wav",
+        "audioMs": 7213
+      },
+      {
+        "text": "Same screens you've just seen, in the order you'd actually use them.",
+        "startMs": 37672,
+        "endMs": 43628,
+        "audio": "12-wrap/04.wav",
+        "audioMs": 4779
       },
       {
         "text": "That's the AI Bookkeeper.",
-        "startMs": 25591,
-        "endMs": 28195
+        "startMs": 43628,
+        "endMs": 46241,
+        "audio": "12-wrap/05.wav",
+        "audioMs": 2149
       }
     ],
-    "mediaMs": 32466
+    "mediaMs": 47133,
+    "mediaFrames": 1414
+  },
+  "08b-duplicates": {
+    "id": "08b-duplicates",
+    "title": "Finding duplicates",
+    "durationMs": 48454,
+    "leadInMs": 0,
+    "file": "08b-duplicates.webm",
+    "beats": [
+      {
+        "text": "The same spend recorded twice is the classic bookkeeping error — a receipt you photographed, and the same charge arriving later on your bank statement.",
+        "startMs": 0,
+        "endMs": 9809,
+        "audio": "08b-duplicates/00.wav",
+        "audioMs": 9348
+      },
+      {
+        "text": "Find duplicates pairs every two entries with the same amount and direction inside a week of each other.",
+        "startMs": 9809,
+        "endMs": 18269,
+        "audio": "08b-duplicates/01.wav",
+        "audioMs": 6143
+      },
+      {
+        "text": "Then AI judges each pair: is this really one transaction recorded twice, or two genuinely separate charges that happen to match?",
+        "startMs": 18269,
+        "endMs": 27479,
+        "audio": "08b-duplicates/02.wav",
+        "audioMs": 8753
+      },
+      {
+        "text": "Pairs that look like real duplicates are listed for review. Delete removes one side; Not a duplicate keeps both and hides the pair from every future scan.",
+        "startMs": 27479,
+        "endMs": 38178,
+        "audio": "08b-duplicates/03.wav",
+        "audioMs": 10238
+      },
+      {
+        "text": "Pairs the AI cleared are grouped below, collapsed, with one button to dismiss all of them — because the monthly close counts them until you do.",
+        "startMs": 38178,
+        "endMs": 48454,
+        "audio": "08b-duplicates/04.wav",
+        "audioMs": 9073
+      }
+    ],
+    "mediaMs": 49333,
+    "mediaFrames": 1480
   }
 }
