@@ -25,6 +25,11 @@ export const updateEntrySchema = z.object({
   business_purpose: z.string().max(1000).nullable().optional(),
   counterparty: z.string().max(200).nullable().optional(),
   adjusts_period: z.string().regex(PERIOD_RE, "expected YYYY-MM").nullable().optional(),
+  // Substantiation, not money — deliberately NOT in the route's
+  // LOCKED_IMPORT_FIELDS, because the entries that most often lack a receipt
+  // are exactly the imported ones (Amazon/platform). nullable so a wrongly
+  // attached receipt can be detached again.
+  document_id: z.string().uuid().nullable().optional(),
 })
 
 export const createAccountSchema = z.object({

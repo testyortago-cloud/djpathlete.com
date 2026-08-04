@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
-import { ArrowLeft, BarChart3, CalendarRange, Lightbulb, X } from "lucide-react"
+import { ArrowLeft, BarChart3, CalendarRange, Lightbulb, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -84,6 +84,66 @@ function DismissButton({ onClick, label }: { onClick: () => void; label: string 
     >
       <X className="size-3.5" />
     </button>
+  )
+}
+
+/**
+ * Attach a receipt to an entry that already exists. Until this existed the
+ * "no receipt" rows below could only be DISMISSED, never fixed — the entries
+ * are usually Amazon / platform imports that arrived without a document, and
+ * no other receipt flow can target an existing row (owner report, 2026-08-04).
+ * Own file input per row so the label stays associated with its entry.
+ */
+function AttachReceiptButton({ entryId, label, onAttached }: { entryId: string; label: string; onAttached: () => void }) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function upload(file: File) {
+    setBusy(true)
+    try {
+      const body = new FormData()
+      body.append("file", file)
+      const res = await fetch(`/api/admin/bookkeeping/entries/${entryId}/receipt`, { method: "POST", body })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(data.error ?? "Failed to attach the receipt")
+        return
+      }
+      toast.success("Receipt attached")
+      onAttached()
+    } catch {
+      toast.error("Failed to attach the receipt")
+    } finally {
+      setBusy(false)
+      // Same file twice in a row must still fire onChange.
+      if (inputRef.current) inputRef.current.value = ""
+    }
+  }
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.currentTarget.files?.[0]
+          if (file) void upload(file)
+        }}
+      />
+      <button
+        type="button"
+        disabled={busy}
+        aria-label={label}
+        title={label}
+        onClick={() => inputRef.current?.click()}
+        className="inline-flex items-center gap-1 text-xs font-medium text-accent underline underline-offset-2 hover:text-primary disabled:opacity-50"
+      >
+        <Upload className="size-3" />
+        {busy ? "Attaching…" : "Attach"}
+      </button>
+    </>
   )
 }
 
@@ -1070,16 +1130,25 @@ export function InsightsClient({
                                 </span>
                               </td>
                               <td className="py-1.5">
-                                <DismissButton
-                                  label={`Dismiss missing-receipt row: ${f.counterparty ?? f.occurred_on}`}
-                                  onClick={() =>
-                                    void setDismissed(
-                                      active.book.id,
-                                      findingFingerprint("watchdog", f.entry_id),
-                                      true,
-                                    )
-                                  }
-                                />
+                                <span className="flex items-center justify-end gap-3">
+                                  {f.reasons.includes("no_document") && (
+                                    <AttachReceiptButton
+                                      entryId={f.entry_id}
+                                      label={`Attach a receipt to ${f.counterparty ?? "this entry"} on ${f.occurred_on}`}
+                                      onAttached={() => void fetchInsights()}
+                                    />
+                                  )}
+                                  <DismissButton
+                                    label={`Dismiss missing-receipt row: ${f.counterparty ?? f.occurred_on}`}
+                                    onClick={() =>
+                                      void setDismissed(
+                                        active.book.id,
+                                        findingFingerprint("watchdog", f.entry_id),
+                                        true,
+                                      )
+                                    }
+                                  />
+                                </span>
                               </td>
                             </tr>
                           ))}
