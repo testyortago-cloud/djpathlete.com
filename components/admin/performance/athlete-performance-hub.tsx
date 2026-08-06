@@ -38,6 +38,7 @@ import { TrainingStreakHeatmap } from "@/components/client/profile/training-stre
 import { BadgeShelfCard } from "@/components/client/profile/badge-shelf-card"
 import { OpenGoalsCard } from "@/components/client/profile/open-goals-card"
 import { CoachGoalsManager } from "./coach-goals-manager"
+import { ReportPreview } from "./ReportPreview"
 import { latestTestValueByType, type GoalMetricContext } from "@/lib/goals/progress"
 import type {
   AthleteGoal,
@@ -81,9 +82,14 @@ export function AthletePerformanceHub({
   recentTests,
   coachIntel,
   profile,
+  reportUrl,
+  clientName,
 }: {
   clientUserId: string
   tab: string
+  /** Public test-report URL, or null when the client isn't eligible for one. */
+  reportUrl: string | null
+  clientName: string
   latestReadiness: DailyReadiness | null
   readinessTrend: { date: string; readiness_score: number }[]
   activeInjuries: Injury[]
@@ -288,15 +294,18 @@ export function AthletePerformanceHub({
           <InjuryTimelineList injuries={allInjuries} clientUserId={clientUserId} />
         </TabsContent>
 
-        <TabsContent value="tests" className="mt-6 grid gap-4 md:grid-cols-2">
-          {Object.entries(grouped).map(([key, list]) => (
-            <PerformanceTestCard
-              key={key}
-              latest={list[0]}
-              history={list}
-              clientUserId={clientUserId}
-            />
-          ))}
+        <TabsContent value="tests" className="mt-6 space-y-6">
+          {reportUrl && <ReportPreview reportUrl={reportUrl} clientName={clientName} />}
+          <div className="grid gap-4 md:grid-cols-2">
+            {Object.entries(grouped).map(([key, list]) => (
+              <PerformanceTestCard
+                key={key}
+                latest={list[0]}
+                history={list}
+                clientUserId={clientUserId}
+              />
+            ))}
+          </div>
         </TabsContent>
       </Tabs>
     </div>

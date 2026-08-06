@@ -22,6 +22,8 @@ import { weekOverWeek } from "@/lib/coach-intel/week-over-week"
 import { ACUTE_WINDOW_DAYS, CHRONIC_WINDOW_DAYS } from "@/lib/coach-intel/thresholds"
 import { computeBadges } from "@/lib/badges"
 import { AthletePerformanceHub } from "@/components/admin/performance/athlete-performance-hub"
+import { getUserById } from "@/lib/db/users"
+import { signAthleteProfileToken } from "@/lib/profile-share/token"
 
 function addDays(iso: string, days: number): string {
   const d = new Date(iso + "T00:00:00Z")
@@ -40,6 +42,18 @@ export default async function AdminPerformanceHubPage({
   if (!session?.user?.id || session.user.role !== "admin") redirect("/login")
   const { id } = await params
   const { tab = "overview" } = await searchParams
+
+  // Public test-report link for the preview panel. Mirrors the report's own
+  // gate — an active client — so the preview is never offered for someone whose
+  // report would 404. Relative URL: the iframe is same-origin, and the Copy
+  // button needs an absolute one.
+  const reportClient = await getUserById(id).catch(() => null)
+  const eligible = reportClient?.role === "client" && reportClient?.status === "active"
+  const origin = process.env.NEXT_PUBLIC_APP_URL ?? process.env.NEXTAUTH_URL ?? "https://www.darrenjpaul.com"
+  const reportUrl = eligible ? `${origin}/athlete/${signAthleteProfileToken(id)}` : null
+  const clientName = reportClient
+    ? `${reportClient.first_name ?? ""} ${reportClient.last_name ?? ""}`.trim() || reportClient.email
+    : ""
 
   const today = new Date().toISOString().slice(0, 10)
   const from = addDays(today, -(CHRONIC_WINDOW_DAYS + 7))
@@ -94,6 +108,8 @@ export default async function AdminPerformanceHubPage({
     <AthletePerformanceHub
       clientUserId={id}
       tab={tab}
+      reportUrl={reportUrl}
+      clientName={clientName}
       latestReadiness={latestReadiness}
       readinessTrend={trend}
       activeInjuries={activeInjuries}
