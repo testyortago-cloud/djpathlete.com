@@ -1,0 +1,136 @@
+import { describe, it, expect } from "vitest"
+import {
+  bandFor,
+  buildReportScores,
+  BAND_STRENGTH_MIN,
+  BAND_DEVELOPING_MIN,
+  type ReportTestPoint,
+} from "@/lib/test-report/scoring"
+
+function pt(
+  over: Partial<ReportTestPoint> & Pick<ReportTestPoint, "testType" | "resultValue" | "testDate">,
+): ReportTestPoint {
+  return {
+    resultUnit: "cm",
+    customName: null,
+    bodyWeightKg: null,
+    isPr: false,
+    ...over,
+  } as ReportTestPoint
+}
+
+describe("bandFor", () => {
+  it("places scores in the right band at every boundary", () => {
+    expect(bandFor(BAND_STRENGTH_MIN)).toBe("strength")
+    expect(bandFor(BAND_STRENGTH_MIN - 1)).toBe("developing")
+    expect(bandFor(BAND_DEVELOPING_MIN)).toBe("developing")
+    expect(bandFor(BAND_DEVELOPING_MIN - 1)).toBe("priority")
+    expect(bandFor(0)).toBe("priority")
+    expect(bandFor(100)).toBe("strength")
+  })
+})
+
+describe("buildReportScores", () => {
+  it("returns empty scores for no tests", () => {
+    const s = buildReportScores([])
+    expect(s.athleteScore).toBeNull()
+    expect(s.categories).toEqual([])
+    expect(s.tests).toEqual([])
+    expect(s.strongest).toBeNull()
+    expect(s.focus).toBeNull()
+    expect(s.biggestMover).toBeNull()
+  })
+
+  it("scores a jump against its reference range", () => {
+    // cmj range is 25-65 cm, higher is better. 45 sits exactly halfway → 50.
+    const s = buildReportScores([pt({ testType: "cmj", resultValue: 45, testDate: "2026-06-01" })])
+    expect(s.tests[0].score).toBe(50)
+    expect(s.categories).toHaveLength(1)
+    expect(s.categories[0].category).toBe("Power")
+    expect(s.categories[0].score).toBe(50)
+    expect(s.athleteScore).toBe(50)
+  })
+
+  it("treats a FASTER sprint as an improvement even though the number went down", () => {
+    const s = buildReportScores([
+      pt({ testType: "sprint_10m", resultValue: 2.0, resultUnit: "s", testDate: "2026-01-01" }),
+      pt({ testType: "sprint_10m", resultValue: 1.8, resultUnit: "s", testDate: "2026-03-01" }),
+    ])
+    expect(s.tests[0].deltaPct).toBe(10)
+    expect(s.biggestMover).toEqual({ label: "10m Sprint", deltaPct: 10 })
+  })
+
+  it("treats a SLOWER sprint as a decline", () => {
+    const s = buildReportScores([
+      pt({ testType: "sprint_10m", resultValue: 1.8, resultUnit: "s", testDate: "2026-01-01" }),
+      pt({ testType: "sprint_10m", resultValue: 2.0, resultUnit: "s", testDate: "2026-03-01" }),
+    ])
+    expect(s.tests[0].deltaPct).toBeLessThan(0)
+  })
+
+  it("scores a 1RM relative to body weight, and excludes it when body weight is missing", () => {
+    const withBw = buildReportScores([
+      pt({ testType: "back_squat_1rm", resultValue: 150, resultUnit: "kg", bodyWeightKg: 100, testDate: "2026-06-01" }),
+    ])
+    // back_squat_1rm range is 0.5-2.5 x bodyweight. 1.5x sits halfway → 50.
+    expect(withBw.tests[0].score).toBe(50)
+
+    const withoutBw = buildReportScores([
+      pt({ testType: "back_squat_1rm", resultValue: 150, resultUnit: "kg", testDate: "2026-06-01" }),
+    ])
+    expect(withoutBw.tests[0].score).toBeNull()
+    expect(withoutBw.categories).toEqual([])
+    expect(withoutBw.athleteScore).toBeNull()
+    // Still listed — an unscorable test must not vanish from the report.
+    expect(withoutBw.tests).toHaveLength(1)
+  })
+
+  it("lists a custom test but never scores or judges it", () => {
+    const s = buildReportScores([
+      pt({ testType: "custom", customName: "Sled Push 20m", resultValue: 6.2, resultUnit: "s", testDate: "2026-06-01" }),
+      pt({ testType: "custom", customName: "Sled Push 20m", resultValue: 5.9, resultUnit: "s", testDate: "2026-07-01" }),
+    ])
+    expect(s.tests).toHaveLength(1)
+    expect(s.tests[0].label).toBe("Sled Push 20m")
+    expect(s.tests[0].score).toBeNull()
+    expect(s.tests[0].deltaPct).toBeNull()
+    expect(s.categories).toEqual([])
+    expect(s.biggestMover).toBeNull()
+  })
+
+  it("averages CATEGORIES not tests, so a lopsided history cannot skew the headline", () => {
+    // Six sprints at the bottom of the range (score 0) + one jump at the top (100).
+    // Averaging tests would give ~14. Averaging categories gives 50.
+    const sprints: ReportTestPoint[] = ["2026-01-01", "2026-01-02", "2026-01-03"].flatMap((d) => [
+      pt({ testType: "sprint_10m", resultValue: 2.5, resultUnit: "s", testDate: d }),
+      pt({ testType: "sprint_20m", resultValue: 4.2, resultUnit: "s", testDate: d }),
+    ])
+    const s = buildReportScores([...sprints, pt({ testType: "cmj", resultValue: 65, testDate: "2026-01-01" })])
+    expect(s.categories.map((c) => c.category).sort()).toEqual(["Power", "Speed"])
+    expect(s.athleteScore).toBe(50)
+    expect(s.strongest?.category).toBe("Power")
+    expect(s.focus?.category).toBe("Speed")
+  })
+
+  it("keeps only the latest result per test type and exposes the full series for the sparkline", () => {
+    const s = buildReportScores([
+      pt({ testType: "cmj", resultValue: 40, testDate: "2026-01-01" }),
+      pt({ testType: "cmj", resultValue: 45, testDate: "2026-03-01" }),
+      pt({ testType: "cmj", resultValue: 50, testDate: "2026-05-01", isPr: true }),
+    ])
+    expect(s.tests).toHaveLength(1)
+    expect(s.tests[0].latest).toBe(50)
+    expect(s.tests[0].latestDate).toBe("2026-05-01")
+    expect(s.tests[0].isPr).toBe(true)
+    expect(s.tests[0].points).toEqual([40, 45, 50])
+  })
+
+  it("sorts tests most-recently-tested first and categories strongest first", () => {
+    const s = buildReportScores([
+      pt({ testType: "cmj", resultValue: 30, testDate: "2026-01-01" }),
+      pt({ testType: "sprint_10m", resultValue: 1.6, resultUnit: "s", testDate: "2026-08-01" }),
+    ])
+    expect(s.tests.map((t) => t.testType)).toEqual(["sprint_10m", "cmj"])
+    expect(s.categories[0].category).toBe("Speed")
+  })
+})
