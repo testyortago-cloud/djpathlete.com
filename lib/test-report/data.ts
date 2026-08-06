@@ -7,6 +7,10 @@ import type { PerformanceTest } from "@/types/database"
 
 export interface TestReportData {
   name: { first: string; last: string }
+  /**
+   * Cover image: the coach-uploaded report photo when set, otherwise the
+   * client's avatar. Null means the cover falls back to the branded gradient.
+   */
   avatarUrl: string | null
   sport: string | null
   position: string | null
@@ -77,7 +81,9 @@ export async function getTestReportData(clientUserId: string): Promise<TestRepor
 
   return {
     name: { first: user.first_name, last: user.last_name },
-    avatarUrl: user.avatar_url,
+    // Coach-chosen cover photo wins; the avatar is the fallback. `?? null`
+    // rather than `||` so an empty string is treated as "no photo".
+    avatarUrl: profile?.report_photo_url || user.avatar_url || null,
     sport: profile?.sport ?? null,
     position: profile?.position ?? null,
     age: computeAge(profile?.date_of_birth ?? null),

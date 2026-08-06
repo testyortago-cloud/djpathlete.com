@@ -13,7 +13,16 @@ export async function getProfileByUserId(userId: string) {
   return data as ClientProfile
 }
 
-export async function createProfile(profile: Omit<ClientProfile, "id" | "created_at" | "updated_at">) {
+/**
+ * `report_photo_url` is optional here: it is coach-set from the admin share
+ * dialog long after the profile row is created, and defaults to NULL in the
+ * database (migration 00200). Requiring it would force every caller to write
+ * `report_photo_url: null` for a column they know nothing about.
+ */
+export async function createProfile(
+  profile: Omit<ClientProfile, "id" | "created_at" | "updated_at" | "report_photo_url"> &
+    Partial<Pick<ClientProfile, "report_photo_url">>,
+) {
   const supabase = getClient()
   const { data, error } = await supabase.from("client_profiles").insert(profile).select().single()
   if (error) throw error

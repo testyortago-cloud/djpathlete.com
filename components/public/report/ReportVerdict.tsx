@@ -1,7 +1,7 @@
 import type { ReportScores } from "@/lib/test-report/scoring"
 import type { PublicAssessment } from "@/lib/profile-share/data"
 import { ReportPage } from "./panels/ReportPage"
-import { KpiTile } from "./panels/KpiTile"
+import { MetricCompare } from "./panels/MetricCompare"
 import { RangeBar } from "./panels/RangeBar"
 import { SectionHeading } from "./panels/SectionHeading"
 import { Sparkline } from "@/components/shared/Sparkline"
@@ -36,18 +36,18 @@ export function ReportVerdict({ scores, assessments }: { scores: ReportScores; a
     >
       <div className="space-y-8">
         {headline.length > 0 && (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {headline.map((t) => (
-              <KpiTile
-                key={t.key}
-                value={String(t.latest)}
-                unit={t.unit}
-                label={t.label}
-                caption={t.score !== null ? `${t.score}/100 · ${formatDate(t.latestDate)}` : formatDate(t.latestDate)}
-                isPr={t.isPr}
-              />
-            ))}
-          </div>
+          <section className="space-y-3">
+            <SectionHeading>Where you stand</SectionHeading>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {headline.map((t) => (
+                <MetricCompare key={t.key} test={t} />
+              ))}
+            </div>
+            <p className="text-[10px] leading-snug text-muted-foreground">
+              Elite and Trained are DJP coaching standards for each test — reference points to aim at, not measured
+              averages of other athletes.
+            </p>
+          </section>
         )}
 
         <section className="space-y-3">

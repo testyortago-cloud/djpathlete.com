@@ -840,6 +840,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             profileUrl={athleteProfileUrl}
             clientName={`${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email}
             testCount={performanceTestCount}
+            clientUserId={id}
+            reportPhotoUrl={profile?.report_photo_url ?? null}
           />
         )}
         <Link

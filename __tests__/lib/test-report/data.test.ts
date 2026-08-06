@@ -114,6 +114,25 @@ describe("getTestReportData", () => {
     expect(d!.age).toBeNull()
   })
 
+  it("prefers the coach-uploaded report photo over the avatar, and falls back cleanly", async () => {
+    vi.mocked(getUserById).mockResolvedValue({ ...activeClient, avatar_url: "https://cdn/avatar.jpg" } as never)
+
+    vi.mocked(getProfileByUserId).mockResolvedValue({ report_photo_url: "https://cdn/report.jpg" } as never)
+    expect((await getTestReportData("u1"))!.avatarUrl).toBe("https://cdn/report.jpg")
+
+    // No report photo → the avatar carries the cover.
+    vi.mocked(getProfileByUserId).mockResolvedValue({ report_photo_url: null } as never)
+    expect((await getTestReportData("u1"))!.avatarUrl).toBe("https://cdn/avatar.jpg")
+
+    // An empty string is "no photo", not a valid src that would render broken.
+    vi.mocked(getProfileByUserId).mockResolvedValue({ report_photo_url: "" } as never)
+    expect((await getTestReportData("u1"))!.avatarUrl).toBe("https://cdn/avatar.jpg")
+
+    // Neither → null, so the cover uses the branded gradient.
+    vi.mocked(getUserById).mockResolvedValue({ ...activeClient, avatar_url: null } as never)
+    expect((await getTestReportData("u1"))!.avatarUrl).toBeNull()
+  })
+
   it("counts months tracked between the first and last test", async () => {
     vi.mocked(listByUser).mockResolvedValue([
       { ...rawTest, id: "t0", test_date: "2026-01-15", is_pr: false },

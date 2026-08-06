@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { ReportPhotoUpload } from "./ReportPhotoUpload"
 
 /** Below this, the report has too little data to look like a premium document. */
 const THIN_REPORT_TESTS = 3
@@ -28,11 +29,15 @@ export function AthleteProfileLinkDialog({
   profileUrl,
   clientName,
   testCount,
+  clientUserId,
+  reportPhotoUrl,
 }: {
   qrDataUrl: string
   profileUrl: string
   clientName: string
   testCount: number
+  clientUserId: string
+  reportPhotoUrl: string | null
 }) {
   const [open, setOpen] = useState(false)
   const first = clientName.split(" ")[0] || "this client"
@@ -83,6 +88,7 @@ export function AthleteProfileLinkDialog({
             <Copy className="size-4" />
             Copy link
           </Button>
+          <ReportPhotoUpload clientUserId={clientUserId} currentUrl={reportPhotoUrl} clientName={clientName} />
         </div>
       </DialogContent>
     </Dialog>

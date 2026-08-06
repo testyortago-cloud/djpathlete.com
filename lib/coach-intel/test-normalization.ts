@@ -45,6 +45,48 @@ export function testDirection(testType: TestType): "higher" | "lower" | null {
   return REFERENCE_RANGES[testType]?.direction ?? null
 }
 
+export interface ReferenceTargets {
+  /** Top of the reference range — the standard an elite performer is at. */
+  elite: number
+  /** Midpoint — a well-trained athlete's standard. */
+  trained: number
+  /** True when both figures are multiples of body weight, not absolute values. */
+  relativeToBodyWeight: boolean
+  direction: "higher" | "lower"
+}
+
+/**
+ * The two coaching standards the test report compares an athlete against,
+ * derived from the same REFERENCE_RANGES that drive `normalize`.
+ *
+ * These are DJP's coaching reference points, NOT measured population data — the
+ * app has no norms table, so nothing here may be labelled a percentile or a
+ * "professional average". `elite` is the top of the range in the direction that
+ * counts as better (so for a sprint it is the FASTER end).
+ *
+ * When `relativeToBodyWeight`, the figures are multiples of body weight; passing
+ * a body weight converts them to absolute units. Without one, a bodyweight-
+ * relative test returns null rather than a misleading absolute number.
+ */
+export function referenceTargets(testType: TestType, bodyWeightKg?: number | null): ReferenceTargets | null {
+  const r = REFERENCE_RANGES[testType]
+  if (!r) return null
+  const mid = (r.min + r.max) / 2
+  let elite = r.direction === "higher" ? r.max : r.min
+  let trained = mid
+  if (r.relativeToBodyWeight) {
+    if (!bodyWeightKg || bodyWeightKg <= 0) return null
+    elite *= bodyWeightKg
+    trained *= bodyWeightKg
+  }
+  return {
+    elite: Math.round(elite * 100) / 100,
+    trained: Math.round(trained * 100) / 100,
+    relativeToBodyWeight: r.relativeToBodyWeight ?? false,
+    direction: r.direction,
+  }
+}
+
 export function normalize(testType: TestType, value: number, bodyWeightKg?: number | null): number | null {
   const r = REFERENCE_RANGES[testType]
   if (!r) return null

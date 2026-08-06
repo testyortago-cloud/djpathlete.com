@@ -314,6 +314,8 @@ export interface ClientProfile {
   guardian_name: string | null
   guardian_email: string | null
   parental_consent_at: string | null
+  /** Coach-uploaded cover photo for the public test report (migration 00200). */
+  report_photo_url: string | null
   created_at: string
   updated_at: string
 }
