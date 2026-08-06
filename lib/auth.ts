@@ -4,6 +4,7 @@ import { compare } from "bcryptjs"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { decode as defaultDecode } from "next-auth/jwt"
 import { recordAudit } from "@/lib/audit/record"
+import { sanitizePermissionMap, type PermissionMap } from "@/lib/permissions/registry"
 import type { UserRole } from "@/types/database"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -70,6 +71,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           email: user.email,
           name: `${user.first_name} ${user.last_name}`,
           role: user.role,
+          permissions: sanitizePermissionMap(user.permissions),
         }
       },
     }),
@@ -106,21 +108,26 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (user) {
         token.id = user.id as string
         token.role = user.role as UserRole
+        token.permissions = (user.permissions as PermissionMap | undefined) ?? {}
       }
 
-      // On session update or subsequent requests, refresh from DB
+      // On session update or subsequent requests, refresh from DB.
+      // Permissions ride along here on purpose: revoking a teammate's access
+      // then takes effect on their next request rather than waiting out the
+      // 24-hour token, which is the whole point of being able to revoke.
       if ((trigger === "update" || trigger !== "signIn") && token.id) {
         try {
           const supabase = createServiceRoleClient()
           const { data } = await supabase
             .from("users")
-            .select("role, first_name, last_name, email")
+            .select("role, first_name, last_name, email, permissions")
             .eq("id", token.id)
             .single()
           if (data) {
             token.role = data.role as UserRole
             token.name = `${data.first_name} ${data.last_name}`
             token.email = data.email
+            token.permissions = sanitizePermissionMap(data.permissions)
           }
         } catch {
           // If DB lookup fails, keep existing token values
@@ -133,6 +140,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (session.user) {
         session.user.id = token.id
         session.user.role = token.role
+        session.user.permissions = token.permissions ?? {}
         if (token.name) session.user.name = token.name
         if (token.email) session.user.email = token.email
       }

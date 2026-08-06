@@ -41,6 +41,7 @@ import {
   BookOpen,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { canAccessPath, type PermissionActor } from "@/lib/permissions/registry"
 
 export interface NavItem {
   label: string
@@ -61,7 +62,7 @@ export interface AdminNav {
   standaloneLinks: NavItem[]
 }
 
-export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
+export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: PermissionActor | null }): AdminNav {
   const marketingItems: NavItem[] = opts.contentStudioEnabled
     ? [
         { label: "Blog", href: "/admin/blog", icon: FileText },
@@ -100,7 +101,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
     { label: "Step Up packages", href: "/admin/marketing/step-up", icon: GraduationCap },
   ]
 
-  return {
+  const nav: AdminNav = {
     topLinks: [
       { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
       { label: "Inbox", href: "/admin/inbox", icon: Inbox },
@@ -169,6 +170,27 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean }): AdminNav {
       { label: "Strategy", href: "/admin/strategy", icon: Compass },
       { label: "How-to Guide", href: "/admin/guide", icon: BookOpen },
     ],
+  }
+
+  return opts.actor ? filterNavForActor(nav, opts.actor) : nav
+}
+
+/**
+ * Drop links the actor cannot open, and any section left empty as a result.
+ * Reads the same registry as the gate, so a link that is visible always works
+ * — a nav item that bounces you reads as a bug, not as a permission boundary.
+ */
+export function filterNavForActor(nav: AdminNav, actor: PermissionActor): AdminNav {
+  if (actor.role === "admin") return nav
+
+  const allowed = (item: NavItem) => canAccessPath(actor, item.href, "GET")
+
+  return {
+    topLinks: nav.topLinks.filter(allowed),
+    groupedSections: nav.groupedSections
+      .map((section) => ({ ...section, items: section.items.filter(allowed) }))
+      .filter((section) => section.items.length > 0),
+    standaloneLinks: nav.standaloneLinks.filter(allowed),
   }
 }
 

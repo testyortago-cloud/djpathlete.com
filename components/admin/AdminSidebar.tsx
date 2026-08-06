@@ -8,16 +8,20 @@ import { ChevronDown, Settings, LogOut } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { getAdminNav, getAllHrefs, findActiveHref, type NavItem } from "./admin-nav"
+import type { PermissionActor } from "@/lib/permissions/registry"
 
 interface AdminSidebarProps {
   contentStudioEnabled?: boolean
+  actor?: PermissionActor | null
 }
 
 const STORAGE_KEY = "djp:admin-sidebar:open-sections"
 
-export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps) {
+export function AdminSidebar({ contentStudioEnabled = false, actor }: AdminSidebarProps) {
   const pathname = usePathname()
-  const nav = useMemo(() => getAdminNav({ contentStudioEnabled }), [contentStudioEnabled])
+  const nav = useMemo(() => getAdminNav({ contentStudioEnabled, actor }), [contentStudioEnabled, actor])
+  // Settings is owner-only, so the footer link disappears for staff.
+  const canSeeSettings = !actor || actor.role === "admin"
   const allHrefs = useMemo(() => getAllHrefs(nav), [nav])
   const activeHref = findActiveHref(pathname, allHrefs)
 
@@ -147,19 +151,21 @@ export function AdminSidebar({ contentStudioEnabled = false }: AdminSidebarProps
 
       {/* Bottom section */}
       <div className="px-3 py-3 space-y-0.5 border-t border-white/10">
-        <Link
-          href="/admin/settings"
-          aria-current={activeHref === "/admin/settings" ? "page" : undefined}
-          className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-            activeHref === "/admin/settings"
-              ? "bg-accent text-accent-foreground"
-              : "text-white/70 hover:text-white hover:bg-white/10",
-          )}
-        >
-          <Settings className="size-[18px]" strokeWidth={1.5} />
-          Settings
-        </Link>
+        {canSeeSettings && (
+          <Link
+            href="/admin/settings"
+            aria-current={activeHref === "/admin/settings" ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+              activeHref === "/admin/settings"
+                ? "bg-accent text-accent-foreground"
+                : "text-white/70 hover:text-white hover:bg-white/10",
+            )}
+          >
+            <Settings className="size-[18px]" strokeWidth={1.5} />
+            Settings
+          </Link>
+        )}
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
           className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-white/70 hover:text-white hover:bg-white/10 transition-colors"

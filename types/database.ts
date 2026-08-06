@@ -1,4 +1,11 @@
-export type UserRole = "admin" | "client" | "editor"
+import type { PermissionMap } from "@/lib/permissions/registry"
+
+/**
+ * `staff` = invited teammate with a scoped permission map (see
+ * lib/permissions/registry.ts). Deliberately a distinct role from `admin` so
+ * every existing `role !== "admin"` guard denies them by default.
+ */
+export type UserRole = "admin" | "client" | "editor" | "staff"
 export type UserStatus = "active" | "inactive" | "suspended" | "lead"
 export type ExerciseCategory =
   | "strength"
@@ -118,9 +125,13 @@ export interface User {
   updated_at: string
   marketing_consent_at: string | null
   marketing_consent_source: string | null
+  /** Only meaningful for role='staff'. Validated against lib/permissions/registry.ts. */
+  permissions: PermissionMap
+  /** Preset the member was created from. Display only — `permissions` is authoritative. */
+  staff_role: string | null
 }
 
-export type TeamInviteRole = "editor"
+export type TeamInviteRole = "editor" | "staff"
 
 export interface TeamInvite {
   id: string
@@ -131,6 +142,16 @@ export interface TeamInvite {
   expires_at: string
   used_at: string | null
   created_at: string
+  permissions: PermissionMap
+  staff_role: string | null
+}
+
+/** Which clients a staff member is allowed to see. */
+export interface TeamMemberClient {
+  staff_user_id: string
+  client_id: string
+  assigned_by: string | null
+  assigned_at: string
 }
 
 export type TeamInviteStatus = "pending" | "accepted" | "expired"

@@ -6,6 +6,7 @@ import {
   generateSessionId,
 } from "@/lib/marketing/cookies"
 import { extractTrackingParamsFromUrl, hasAnyTrackingParam } from "@/lib/marketing/attribution"
+import { canAccessPath, staffHomePath, NO_ACCESS_PATH } from "@/lib/permissions/registry"
 
 const SESSION_COOKIES = ["authjs.session-token", "__Secure-authjs.session-token"]
 
@@ -63,6 +64,24 @@ export default auth((req) => {
   const { pathname } = req.nextUrl
   const isLoggedIn = !!req.auth
   const userRole = req.auth?.user?.role
+  const permissions = req.auth?.user?.permissions ?? {}
+
+  // /api/admin/* — the path-aware gate for the 298 admin API routes.
+  //
+  // ONLY `staff` sessions are evaluated here. Anonymous, admin, client and
+  // editor requests fall through untouched, which keeps cron and webhook
+  // traffic to /api/admin/internal/* — authenticated by shared secret, with no
+  // session — working exactly as before, and means this branch introduces zero
+  // behavioural change for every actor that existed before staff did.
+  //
+  // Returns before captureAttribution so we never re-enter our own track
+  // endpoint from an API request.
+  if (pathname.startsWith("/api/")) {
+    if (userRole === "staff" && !canAccessPath({ role: "staff", permissions }, pathname, req.method)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    return NextResponse.next()
+  }
 
   // Resolve the auth-side response first; ALWAYS run captureAttribution on it
   // before returning, so a user clicking an ad like
@@ -73,6 +92,19 @@ export default auth((req) => {
   if (pathname.startsWith("/admin")) {
     if (!isLoggedIn) {
       res = redirectToLogin(req)
+    } else if (userRole === "staff") {
+      // Default-deny: an /admin path in no registry rule is denied, so a new
+      // admin surface is unreachable to staff until it is mapped deliberately.
+      if (canAccessPath({ role: "staff", permissions }, pathname, req.method)) {
+        res = NextResponse.next()
+      } else {
+        const home = staffHomePath(permissions)
+        // Never bounce someone off the page we would bounce them to.
+        res =
+          pathname === home || pathname === NO_ACCESS_PATH
+            ? NextResponse.next()
+            : NextResponse.redirect(new URL(NO_ACCESS_PATH, req.url))
+      }
     } else if (userRole !== "admin") {
       // Editors and clients sent to their own home
       const home = userRole === "editor" ? "/editor" : "/client/dashboard"
@@ -106,8 +138,12 @@ export default auth((req) => {
 export const config = {
   matcher: [
     // Run on every page request that is NOT a static asset / API route.
-    // We deliberately do NOT match /api/* (avoids re-entry into our own track endpoint)
-    // or /_next/* (static files).
+    // We deliberately do NOT match /api/* in general (avoids re-entry into our
+    // own track endpoint) or /_next/* (static files).
     "/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|woff2?)$).*)",
+    // ...with one exception: the admin API, where the permission gate lives.
+    // The handler returns before captureAttribution for any /api/ path, so the
+    // re-entry concern above does not apply here.
+    "/api/admin/:path*",
   ],
 }

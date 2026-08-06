@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requireAdminPanelAccess } from "@/lib/permissions/guard"
 import { getUserById } from "@/lib/db/users"
 import { AdminLayout } from "@/components/admin/AdminLayout"
 import { SessionExpiryGuard } from "@/components/auth/SessionExpiryGuard"
@@ -6,7 +6,9 @@ import { MessagingMount } from "@/components/messaging/MessagingMount"
 import { isContentStudioEnabled } from "@/lib/content-studio/feature-flag"
 
 export default async function AdminRootLayout({ children }: { children: React.ReactNode }) {
-  const session = await requireAdmin()
+  // Admits admins and staff; the per-area decision belongs to the middleware
+  // and each page's own requirePermission() call.
+  const session = await requireAdminPanelAccess()
 
   let avatarUrl: string | null = null
   let initials = "A"
@@ -21,7 +23,12 @@ export default async function AdminRootLayout({ children }: { children: React.Re
   return (
     <>
       <SessionExpiryGuard />
-      <AdminLayout avatarUrl={avatarUrl} initials={initials} contentStudioEnabled={isContentStudioEnabled()}>
+      <AdminLayout
+        avatarUrl={avatarUrl}
+        initials={initials}
+        contentStudioEnabled={isContentStudioEnabled()}
+        actor={{ role: session.user.role, permissions: session.user.permissions ?? {} }}
+      >
         {children}
       </AdminLayout>
       {/* Outside AdminLayout so the dock is fixed to the viewport, not the
