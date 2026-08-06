@@ -10,7 +10,7 @@ import { AssessmentsSection } from "./AssessmentsSection"
 import { AthleteRadarSection } from "./AthleteRadarSection"
 import { ProgramSection } from "./ProgramSection"
 import { BadgesSection } from "./BadgesSection"
-import { ProfilePrintButton } from "./ProfilePrintButton"
+import { ProfilePrintButton } from "@/components/shared/ProfilePrintButton"
 import { FooterCta } from "./FooterCta"
 import { ArenaTabs, type ArenaTab } from "./ArenaTabs"
 

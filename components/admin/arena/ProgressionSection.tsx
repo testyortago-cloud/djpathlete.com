@@ -1,7 +1,7 @@
 import { ArrowDownRight, ArrowUpRight } from "lucide-react"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { SectionHeading } from "./SectionHeading"
-import { Sparkline } from "./Sparkline"
+import { Sparkline } from "@/components/shared/Sparkline"
 import type { TestProgression } from "@/lib/profile-share/progression"
 
 const MONTH_YEAR = new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric", timeZone: "UTC" })
