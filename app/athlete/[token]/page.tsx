@@ -40,9 +40,18 @@ export async function generateMetadata({
  * already in the wild resolves here instead of breaking. The Arena card now
  * lives at /admin/clients/[id]/arena, admin-only.
  */
-export default async function AthleteProfilePage({ params }: { params: Promise<{ token: string }> }) {
+export default async function AthleteProfilePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>
+  searchParams: Promise<{ theme?: string }>
+}) {
   const { token } = await params
   const data = await resolveData(token)
   if (!data) notFound()
-  return <TestReport data={data} />
+  // Light is the default (print-first document); `?theme=dark` renders the
+  // screen-only deck treatment for comparison.
+  const { theme } = await searchParams
+  return <TestReport data={data} theme={theme === "dark" ? "dark" : "light"} />
 }

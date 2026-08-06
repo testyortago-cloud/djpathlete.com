@@ -13,18 +13,31 @@ function formatDate(iso: string | null): string {
 }
 
 /** Page 1 — identity, premise, and the three headline counts. */
-export function ReportCover({ data, categoryCount }: { data: TestReportData; categoryCount: number }) {
+export function ReportCover({
+  data,
+  categoryCount,
+  testTypeCount,
+}: {
+  data: TestReportData
+  categoryCount: number
+  testTypeCount: number
+}) {
   const fullName = `${data.name.first} ${data.name.last}`.trim()
   const subtitle = [data.sport, data.position, data.age ? `Age ${data.age}` : null].filter(Boolean).join(" · ")
+  const initials = `${data.name.first.trim().charAt(0)}${data.name.last.trim().charAt(0)}`.toUpperCase() || "DJP"
 
-  // Zero-valued lines are dropped: "0 personal bests on record" reads as a
-  // failure state on a document meant to open the conversation.
+  // NOT personal bests: `is_pr` is true for every result that beat its priors, so
+  // a steadily improving athlete has one per test — "17 tests logged / 17
+  // personal bests" reads as a bug, not an achievement. Distinct tests measured
+  // says something the first line doesn't.
+  // Zero-valued lines are dropped: a "0" on this page reads as a failure state
+  // on a document meant to open the conversation.
   const lines: { n: number; text: string }[] = [
     {
       n: data.testCount,
       text: `tests logged across ${categoryCount} testing ${categoryCount === 1 ? "category" : "categories"}`,
     },
-    { n: data.prCount, text: "personal bests on record" },
+    { n: testTypeCount, text: `different ${testTypeCount === 1 ? "test" : "tests"} measured and tracked` },
     { n: data.monthsTracked, text: "months of tracked testing history" },
   ].filter((l) => l.n > 0)
 
@@ -73,14 +86,25 @@ export function ReportCover({ data, categoryCount }: { data: TestReportData; cat
               className="object-cover"
             />
           ) : (
-            <div
-              aria-hidden
-              className="absolute inset-0"
-              style={{
-                background:
-                  "radial-gradient(ellipse 70% 50% at 70% 10%, color-mix(in oklab, var(--accent) 22%, transparent), transparent 60%), radial-gradient(ellipse 60% 50% at 10% 90%, color-mix(in oklab, var(--primary) 30%, transparent), transparent 65%)",
-              }}
-            />
+            /* No photo: a deliberate monogram panel. The previous version was a
+               near-transparent gradient, which on a light background read as a
+               failed image load rather than a design choice. */
+            <div className="absolute inset-0 flex items-center justify-center bg-primary">
+              <div
+                aria-hidden
+                className="absolute inset-0"
+                style={{
+                  background:
+                    "radial-gradient(ellipse 70% 50% at 75% 8%, color-mix(in oklab, var(--accent) 55%, transparent), transparent 62%)",
+                }}
+              />
+              <span className="relative font-heading text-6xl font-bold tracking-tight text-primary-foreground/90">
+                {initials}
+              </span>
+              <span className="djp-eyebrow absolute bottom-4 left-0 right-0 text-center text-primary-foreground/60">
+                DJP Athlete
+              </span>
+            </div>
           )}
         </div>
       </div>

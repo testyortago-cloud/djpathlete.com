@@ -3,26 +3,29 @@ import { buildReportScores } from "@/lib/test-report/scoring"
 import { ReportCover } from "./ReportCover"
 import { ReportHeadline } from "./ReportHeadline"
 import { ReportVerdict } from "./ReportVerdict"
-import { ProfilePrintButton } from "@/components/shared/ProfilePrintButton"
+import { ReportShell, type ReportTheme } from "./ReportShell"
+
+export type { ReportTheme }
 
 /**
- * The public athlete test report. `.athlete-arena` supplies the DJP dark
- * document palette (defined once in globals.css and shared with the admin Arena
- * card); `.test-report` adds the paged-print rules; `.print-document` strips app
- * chrome from the printed output.
+ * The public athlete test report.
+ *
+ * LIGHT is the default because this is a print-first document: a full-bleed dark
+ * page is heavy on ink and `print-color-adjust: exact` is only a request, which
+ * "save ink" settings and many home printers ignore. Dark stays available as a
+ * screen-only deck treatment, via `?theme=dark` or the in-page toggle.
  *
  * With no logged tests the report renders ONE honest page rather than three
  * skeletal ones — an empty premium document reads as broken, not premium.
  */
-export function TestReport({ data }: { data: TestReportData }) {
+export function TestReport({ data, theme = "light" }: { data: TestReportData; theme?: ReportTheme }) {
   const scores = buildReportScores(data.tests)
   const fullName = `${data.name.first} ${data.name.last}`.trim()
   const hasTests = data.tests.length > 0
 
   return (
-    <main className="athlete-arena test-report print-document min-h-screen bg-background font-body text-foreground">
-      <ProfilePrintButton />
-      <ReportCover data={data} categoryCount={scores.categories.length} />
+    <ReportShell initialTheme={theme}>
+      <ReportCover data={data} categoryCount={scores.categories.length} testTypeCount={scores.tests.length} />
       {hasTests ? (
         <>
           <ReportHeadline scores={scores} firstName={data.name.first} />
@@ -37,6 +40,6 @@ export function TestReport({ data }: { data: TestReportData }) {
           </p>
         </div>
       )}
-    </main>
+    </ReportShell>
   )
 }

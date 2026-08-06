@@ -33,21 +33,43 @@ beforeEach(() => {
 describe("/athlete/[token]", () => {
   it("renders the test report for a valid token", async () => {
     const token = signAthleteProfileToken("u1")
-    const el = await AthleteProfilePage({ params: Promise.resolve({ token }) })
+    const el = await AthleteProfilePage({ params: Promise.resolve({ token }), searchParams: Promise.resolve({}) })
     expect(el).toBeTruthy()
     expect(getTestReportData).toHaveBeenCalledWith("u1")
   })
 
+  it("defaults to the light theme and honours ?theme=dark", async () => {
+    const token = signAthleteProfileToken("u1")
+    const light = (await AthleteProfilePage({
+      params: Promise.resolve({ token }),
+      searchParams: Promise.resolve({}),
+    })) as { props: { theme: string } }
+    expect(light.props.theme).toBe("light")
+
+    const dark = (await AthleteProfilePage({
+      params: Promise.resolve({ token }),
+      searchParams: Promise.resolve({ theme: "dark" }),
+    })) as { props: { theme: string } }
+    expect(dark.props.theme).toBe("dark")
+
+    // Anything else falls back to light rather than passing junk through.
+    const junk = (await AthleteProfilePage({
+      params: Promise.resolve({ token }),
+      searchParams: Promise.resolve({ theme: "neon" }),
+    })) as { props: { theme: string } }
+    expect(junk.props.theme).toBe("light")
+  })
+
   it("404s on a tampered token without ever hitting the database", async () => {
     const token = `${signAthleteProfileToken("u1")}tampered`
-    await expect(AthleteProfilePage({ params: Promise.resolve({ token }) })).rejects.toThrow("NEXT_NOT_FOUND")
+    await expect(AthleteProfilePage({ params: Promise.resolve({ token }), searchParams: Promise.resolve({}) })).rejects.toThrow("NEXT_NOT_FOUND")
     expect(getTestReportData).not.toHaveBeenCalled()
   })
 
   it("404s when the client is not eligible for a public report", async () => {
     vi.mocked(getTestReportData).mockResolvedValue(null as never)
     const token = signAthleteProfileToken("u1")
-    await expect(AthleteProfilePage({ params: Promise.resolve({ token }) })).rejects.toThrow("NEXT_NOT_FOUND")
+    await expect(AthleteProfilePage({ params: Promise.resolve({ token }), searchParams: Promise.resolve({}) })).rejects.toThrow("NEXT_NOT_FOUND")
   })
 
   it("titles the page as a test report and keeps it out of search engines", async () => {

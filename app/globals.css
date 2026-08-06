@@ -499,6 +499,48 @@
   -webkit-print-color-adjust: exact;
 }
 
+/* ──────────────────────────────────────────────────────────────────────
+   Test report — LIGHT scope (/athlete/<token>)
+   The report is a PRINT-FIRST document: a full-bleed dark page costs a lot of
+   ink, and `print-color-adjust: exact` is only a request — "save ink" settings
+   and many home printers ignore it, which turns a dark design into grey mush.
+   So the client-facing report is light, while the coach-facing Arena card keeps
+   the dark broadcast treatment above.
+
+   Green Azure stays the INK color (numerals, headings, rules); Gray Orange stays
+   the accent. Same token names as `.athlete-arena`, so every component renders
+   in either scope with no component-level change.
+   ────────────────────────────────────────────────────────────────────── */
+
+.report-light {
+  --background: oklch(0.99 0.004 90);
+  --foreground: oklch(0.22 0.02 226);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.02 226);
+  --primary: oklch(0.3 0.04 220);
+  --primary-foreground: oklch(0.99 0.004 90);
+  --muted: oklch(0.96 0.006 90);
+  --muted-foreground: oklch(0.48 0.015 224);
+  --accent: oklch(0.62 0.1 55);
+  --accent-foreground: oklch(0.99 0.004 90);
+  --border: oklch(0.22 0.02 226 / 0.14);
+  --input: oklch(0.22 0.02 226 / 0.14);
+  --ring: oklch(0.62 0.1 55);
+  --surface: oklch(0.97 0.006 85);
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/* `.print-document` below flips to #fff/#000 for app pages; the report already
+   IS light and defines its own ink, so pin it the same way the arena scope is
+   pinned (two classes outrank the single-class rule). */
+@media print {
+  .report-light.print-document {
+    background: var(--background);
+    color: var(--foreground);
+  }
+}
+
 /* The PDF keeps the dark presentation (deck-slide artifact, shared digitally).
    Two classes outrank `.print-document`'s white flip below. */
 @media print {
