@@ -514,6 +514,34 @@
   }
 }
 
+/* ──────────────────────────────────────────────────────────────────────
+   Test report — a PAGED document. Each `.report-page` is one printed page, so
+   Save-PDF produces exactly the pages the browser shows. The named `@page`
+   takes the report edge-to-edge without disturbing the global 1.5cm margin
+   every other printable document relies on; a browser that ignores named
+   pages just falls back to that margin.
+   ────────────────────────────────────────────────────────────────────── */
+@page report {
+  margin: 0;
+}
+
+.test-report .report-page {
+  break-after: page;
+  page: report;
+}
+
+.test-report .report-page:last-child {
+  break-after: auto;
+}
+
+@media print {
+  /* min-h-screen is a viewport unit — meaningless on paper, and it forces a
+     blank overflow page when the printed page box is shorter than the screen. */
+  .test-report .report-page {
+    min-height: auto;
+  }
+}
+
 /* Print: when a `.print-document` is present, print only it and strip app chrome
    (admin sidebar, top bar, docks). Used by the athlete result page. */
 @media print {
