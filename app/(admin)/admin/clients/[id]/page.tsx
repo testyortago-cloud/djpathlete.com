@@ -22,6 +22,7 @@ import {
   Briefcase,
   Zap,
   Ticket,
+  LayoutDashboard,
 } from "lucide-react"
 import { getUserById, getUsers } from "@/lib/db/users"
 import { getBillingPayer } from "@/lib/db/client-billing-payers"
@@ -64,6 +65,7 @@ import {
 } from "@/lib/packs/flags"
 import { PersonalCheckinLinkDialog } from "@/components/admin/packs/PersonalCheckinLinkDialog"
 import { signAthleteProfileToken } from "@/lib/profile-share/token"
+import { listByUser as listPerformanceTests } from "@/lib/db/performance-tests"
 import { AthleteProfileLinkDialog } from "@/components/admin/profile-share/AthleteProfileLinkDialog"
 import { listRecurringForClient } from "@/lib/db/recurring-sessions"
 import { getDefaultPaymentMethod } from "@/lib/db/payment-methods"
@@ -656,7 +658,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     }
   }
 
-  // Public athlete-profile share link + QR (permanent HMAC). Mirrors the public
+  // Public test-report share link + QR (permanent HMAC). Mirrors the public
   // page's only gate — an active client; no client_profiles row required.
   let athleteProfileUrl: string | null = null
   let athleteProfileQr: string | null = null
@@ -671,6 +673,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       athleteProfileQr = null
     }
   }
+
+  // Drives the share dialog's "this report will look thin" warning.
+  const performanceTestCount = (await listPerformanceTests(id).catch(() => [])).length
 
   const showStandingSlots = await recurringSessionsEnabled()
   let standingSlots: RecurringSession[] = []
@@ -834,8 +839,16 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             qrDataUrl={athleteProfileQr}
             profileUrl={athleteProfileUrl}
             clientName={`${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email}
+            testCount={performanceTestCount}
           />
         )}
+        <Link
+          href={`/admin/clients/${id}/arena`}
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface/50 transition-colors"
+        >
+          <LayoutDashboard className="size-4 text-primary" strokeWidth={1.5} />
+          Arena card
+        </Link>
         <Link
           href={`/admin/clients/${id}/assessments`}
           className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2.5 text-sm font-medium text-foreground hover:bg-surface/50 transition-colors"

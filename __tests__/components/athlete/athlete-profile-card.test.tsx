@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import { describe, it, expect, beforeAll, vi } from "vitest"
-import { AthleteProfileCard } from "@/components/public/athlete/AthleteProfileCard"
+import { AthleteProfileCard } from "@/components/admin/arena/AthleteProfileCard"
 import type { AthleteProfileData } from "@/lib/profile-share/data"
 
 // jsdom has no IntersectionObserver; framer-motion's useInView/whileInView need one.

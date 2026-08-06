@@ -1,12 +1,13 @@
 import { ImageResponse } from "next/og"
 import { verifyAthleteProfileToken } from "@/lib/profile-share/token"
-import { getAthleteProfileData } from "@/lib/profile-share/data"
+import { getTestReportData } from "@/lib/test-report/data"
+import { buildReportScores } from "@/lib/test-report/scoring"
 
 export const dynamic = "force-dynamic"
 
 export const size = { width: 1200, height: 630 }
 export const contentType = "image/png"
-export const alt = "DJP Athlete Profile"
+export const alt = "DJP Athlete Test Report"
 
 // OG images render outside the CSS system — inline styles + brand hex are the
 // established exception zone. Default sans (no remote font fetch) keeps
@@ -20,35 +21,27 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
   let data = null
   try {
     const v = verifyAthleteProfileToken(token)
-    if (v.valid) data = await getAthleteProfileData(v.clientUserId)
+    if (v.valid) data = await getTestReportData(v.clientUserId)
   } catch {
     data = null
   }
+  const scores = data ? buildReportScores(data.tests) : null
 
   // `|| fallback` also covers a client whose name fields are blank/whitespace.
   const name = (data ? `${data.name.first} ${data.name.last}`.trim().toUpperCase() : "") || "DJP ATHLETE"
   const initials =
     (data ? `${data.name.first.trim().charAt(0)}${data.name.last.trim().charAt(0)}`.toUpperCase() : "") || "DJP"
   const subtitle = data
-    ? [data.sport, data.position].filter(Boolean).join(" · ") || "Athlete Profile"
+    ? [data.sport, data.position].filter(Boolean).join(" · ") || "Performance Test Report"
     : "Elite Sports Performance Coaching"
-  const specs = data
-    ? [
-        data.heightCm !== null ? `${data.heightCm} CM` : null,
-        data.weightKg !== null
-          ? data.weightUnit === "lbs"
-            ? `${Math.round(data.weightKg * 2.20462)} LBS`
-            : `${data.weightKg} KG`
-          : null,
-        data.age !== null ? `AGE ${data.age}` : null,
-      ].filter(Boolean)
-    : []
+  const specs = data ? [data.age !== null ? `AGE ${data.age}` : null].filter(Boolean) : []
+  // Testing-only stats: the unfurl mirrors what the report itself leads with.
   const stats = data
     ? [
-        { v: String(data.stats.workouts), l: "WORKOUTS" },
-        { v: String(data.stats.prCount), l: "PRS" },
-        { v: `${data.stats.streakDays}D`, l: "STREAK" },
-      ].filter((s) => s.v !== "0" && s.v !== "0D")
+        { v: scores?.athleteScore !== null && scores ? `${scores.athleteScore}` : "0", l: "ATHLETE SCORE" },
+        { v: String(data.testCount), l: "TESTS" },
+        { v: String(data.prCount), l: "PRS" },
+      ].filter((s) => s.v !== "0")
     : []
 
   return new ImageResponse(
@@ -97,7 +90,9 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div style={{ display: "flex", width: 44, height: 2, backgroundColor: ACCENT }} />
-          <div style={{ display: "flex", fontSize: 26, letterSpacing: 6, color: ACCENT }}>DJP ATHLETE PROFILE</div>
+          <div style={{ display: "flex", fontSize: 26, letterSpacing: 6, color: ACCENT }}>
+            DJP ATHLETE TEST REPORT
+          </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ display: "flex", fontSize: 88, fontWeight: 700, lineHeight: 1.02, letterSpacing: -2 }}>

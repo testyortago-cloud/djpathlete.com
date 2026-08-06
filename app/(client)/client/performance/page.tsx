@@ -12,7 +12,7 @@ export default async function ClientPerformancePage() {
   const session = await auth()
   if (!session?.user?.id) redirect("/login?callbackUrl=/client/performance")
   const tests = await listByUser(session.user.id)
-  // The client's own public card — same permanent token family the coach
+  // The client's own public test report — same permanent token family the coach
   // issues from the admin dialog; deactivating the client kills it.
   const cardUrl = `/athlete/${signAthleteProfileToken(session.user.id)}`
 
@@ -24,7 +24,7 @@ export default async function ClientPerformancePage() {
           <Button asChild variant="outline">
             <Link href={cardUrl} target="_blank">
               <ExternalLink className="size-4" />
-              My athlete card
+              My test report
             </Link>
           </Button>
           <LogTestDialog trigger={<Button>+ Log test</Button>} />
