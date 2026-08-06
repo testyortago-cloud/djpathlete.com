@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Printer } from "lucide-react"
+import { Printer, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -15,7 +15,14 @@ import { ReportInjuryForm } from "@/components/client/performance/report-injury-
 import { LogTrainingSessionForm } from "@/components/client/coach-intel/log-training-session-form"
 import { LogTestDialog } from "@/components/client/performance/log-test-dialog"
 
-export function PerformanceActionButtons({ clientUserId }: { clientUserId: string }) {
+export function PerformanceActionButtons({
+  clientUserId,
+  reportUrl,
+}: {
+  clientUserId: string
+  /** Public test-report URL; null when the client isn't eligible for one. */
+  reportUrl?: string | null
+}) {
   const [injuryOpen, setInjuryOpen] = useState(false)
   const [sessionOpen, setSessionOpen] = useState(false)
 
@@ -53,6 +60,18 @@ export function PerformanceActionButtons({ clientUserId }: { clientUserId: strin
         clientUserId={clientUserId}
         trigger={<Button size="sm">+ Log test</Button>}
       />
+
+      {/* The client-facing test report. Lives in the header, not just the Tests
+          tab, so it is reachable from every tab rather than only after the coach
+          knows to look under Tests. */}
+      {reportUrl && (
+        <Button variant="outline" size="sm" asChild>
+          <Link href={reportUrl} target="_blank" rel="noopener noreferrer">
+            <FileText className="size-4" />
+            Test report
+          </Link>
+        </Button>
+      )}
 
       <Button variant="outline" size="sm" asChild>
         <Link href={`/admin/clients/${clientUserId}/performance/print`} target="_blank">

@@ -129,7 +129,7 @@ export function AthletePerformanceHub({
             Performance
           </h1>
         </div>
-        <PerformanceActionButtons clientUserId={clientUserId} />
+        <PerformanceActionButtons clientUserId={clientUserId} reportUrl={reportUrl} />
       </div>
 
       <Tabs defaultValue={tab}>
