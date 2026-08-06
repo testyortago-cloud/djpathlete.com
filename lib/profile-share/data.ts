@@ -116,7 +116,7 @@ const MAX_ASSESSMENT_ITEMS = 8
  * without a logged result are dropped; a battery left with no measured items
  * is dropped whole (an empty panel reads as broken, not premium).
  */
-async function loadPublicAssessments(clientUserId: string): Promise<PublicAssessment[]> {
+export async function loadPublicAssessments(clientUserId: string): Promise<PublicAssessment[]> {
   const all = await getPerformanceAssessmentsByClient(clientUserId)
   const completed = (all ?? [])
     .filter((a: { status: string; is_template: boolean }) => a.status === "completed" && !a.is_template)
