@@ -1,63 +1,68 @@
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { auth } from "@/lib/auth"
 import { getGscProperty } from "@/lib/db/gsc-properties"
 import { getSetting } from "@/lib/db/system-settings"
-import {
-  getGscStats,
-  getRecentTopRows,
-  getClickedRows,
-  type RecentGscRow,
-} from "@/lib/db/gsc-query-daily"
+import { getGscStats, getRecentTopRows, getClickedRows, type RecentGscRow } from "@/lib/db/gsc-query-daily"
 import { Button } from "@/components/ui/button"
 
 export const dynamic = "force-dynamic"
 
 const WARM_UP_TARGET = 28
 
-function GscRowsTable({
-  rows,
-  highlightClicks = false,
-}: {
-  rows: RecentGscRow[]
-  highlightClicks?: boolean
-}) {
+function GscRowsTable({ rows, highlightClicks = false }: { rows: RecentGscRow[]; highlightClicks?: boolean }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="text-left text-xs uppercase text-muted-foreground">
-          <tr>
-            <th className="pb-2 pr-3">Date</th>
-            <th className="pb-2 pr-3">Query</th>
-            <th className="pb-2 pr-3">Page</th>
-            <th className="pb-2 pr-3 text-right">Impr.</th>
-            <th className="pb-2 pr-3 text-right">Clicks</th>
-            <th className="pb-2 text-right">Position</th>
-          </tr>
-        </thead>
+    <DataTableCard>
+      <DataTable>
+        <DataTableHeader>
+          <DataTableHead className="pb-2 pr-3">Date</DataTableHead>
+          <DataTableHead className="pb-2 pr-3">Query</DataTableHead>
+          <DataTableHead className="pb-2 pr-3">Page</DataTableHead>
+          <DataTableHead align="right" className="pb-2 pr-3">
+            Impr.
+          </DataTableHead>
+          <DataTableHead align="right" className="pb-2 pr-3">
+            Clicks
+          </DataTableHead>
+          <DataTableHead align="right" className="pb-2">
+            Position
+          </DataTableHead>
+        </DataTableHeader>
         <tbody className="divide-y divide-border">
           {rows.map((r, i) => (
-            <tr key={i}>
-              <td className="py-2 pr-3 font-mono text-xs">{r.date}</td>
-              <td className="py-2 pr-3">{r.query}</td>
-              <td className="py-2 pr-3 text-xs text-muted-foreground truncate max-w-[200px]">
+            <DataTableRow key={i}>
+              <DataTableCell className="pr-3 font-mono text-xs">{r.date}</DataTableCell>
+              <DataTableCell className="pr-3">{r.query}</DataTableCell>
+              <DataTableCell muted className="pr-3 text-xs truncate max-w-[200px]">
                 {r.page.replace(/^https?:\/\/[^/]+/, "")}
-              </td>
-              <td className="py-2 pr-3 text-right">{r.impressions}</td>
-              <td
+              </DataTableCell>
+              <DataTableCell align="right" className="pr-3">
+                {r.impressions}
+              </DataTableCell>
+              <DataTableCell
                 className={
-                  "py-2 pr-3 text-right" +
-                  (highlightClicks && r.clicks > 0 ? " font-medium text-primary" : "")
+                  "py-2 pr-3 text-right" + (highlightClicks && r.clicks > 0 ? " font-medium text-primary" : "")
                 }
               >
                 {r.clicks}
-              </td>
-              <td className="py-2 text-right font-mono">{Number(r.position).toFixed(1)}</td>
-            </tr>
+              </DataTableCell>
+              <DataTableCell align="right" className="font-mono">
+                {Number(r.position).toFixed(1)}
+              </DataTableCell>
+            </DataTableRow>
           ))}
         </tbody>
-      </table>
-    </div>
+      </DataTable>
+    </DataTableCard>
   )
 }
 
@@ -84,10 +89,7 @@ export default async function GscIntegrationPage({
   }
   const params = await searchParams
 
-  const [property, oauthBroken] = await Promise.all([
-    getGscProperty(),
-    getSetting<boolean>("gsc_oauth_broken", false),
-  ])
+  const [property, oauthBroken] = await Promise.all([getGscProperty(), getSetting<boolean>("gsc_oauth_broken", false)])
 
   // Don't fetch stats unless connected.
   const [stats, recentRows, clickedRows] = property
@@ -111,9 +113,7 @@ export default async function GscIntegrationPage({
     <div className="mx-auto max-w-4xl space-y-6 p-6">
       <header>
         <h1 className="font-heading text-3xl text-primary">Google Search Console</h1>
-        <p className="text-muted-foreground">
-          Connect Search Console so the SEO agent can read query performance.
-        </p>
+        <p className="text-muted-foreground">Connect Search Console so the SEO agent can read query performance.</p>
       </header>
 
       {params.connected && (
@@ -123,8 +123,7 @@ export default async function GscIntegrationPage({
       )}
       {params.error && (
         <div className="rounded-md border border-error/40 bg-error/10 p-4 text-sm">
-          Connection failed: <code>{params.error}</code>. Try again or check that you have
-          site-owner access.
+          Connection failed: <code>{params.error}</code>. Try again or check that you have site-owner access.
         </div>
       )}
       {oauthBroken && (
@@ -144,9 +143,7 @@ export default async function GscIntegrationPage({
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Total impressions</dt>
-                <dd className="text-xl font-medium">
-                  {stats.totalImpressions.toLocaleString()}
-                </dd>
+                <dd className="text-xl font-medium">{stats.totalImpressions.toLocaleString()}</dd>
               </div>
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Total clicks</dt>
@@ -167,9 +164,7 @@ export default async function GscIntegrationPage({
               </div>
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Latest date</dt>
-                <dd className="text-xl font-medium">
-                  {stats.latestDateWithData ?? "—"}
-                </dd>
+                <dd className="text-xl font-medium">{stats.latestDateWithData ?? "—"}</dd>
               </div>
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Last sync</dt>
@@ -178,9 +173,8 @@ export default async function GscIntegrationPage({
             </dl>
 
             <p className="text-xs text-muted-foreground">
-              The SEO agent stays idle until <code>distinctDates ≥ {WARM_UP_TARGET}</code>.
-              GSC has a 2–4 day reporting lag, so the most recent days will lag the
-              calendar.{" "}
+              The SEO agent stays idle until <code>distinctDates ≥ {WARM_UP_TARGET}</code>. GSC has a 2–4 day reporting
+              lag, so the most recent days will lag the calendar.{" "}
               <Link href="/admin/automation" className="text-primary underline">
                 Manage cron toggles
               </Link>
@@ -194,9 +188,7 @@ export default async function GscIntegrationPage({
           </div>
         ) : (
           <Button asChild>
-            <Link href="/api/admin/integrations/gsc/authorize">
-              Connect Google Search Console
-            </Link>
+            <Link href="/api/admin/integrations/gsc/authorize">Connect Google Search Console</Link>
           </Button>
         )}
       </section>
@@ -205,8 +197,8 @@ export default async function GscIntegrationPage({
         <section className="rounded-md border bg-white p-4">
           <h2 className="font-heading text-lg text-primary mb-1">Clicked queries</h2>
           <p className="text-xs text-muted-foreground mb-3">
-            Every query that earned a click. Clicks usually land on low-impression,
-            long-tail terms, so they rarely appear in the impressions-ranked list below.
+            Every query that earned a click. Clicks usually land on low-impression, long-tail terms, so they rarely
+            appear in the impressions-ranked list below.
           </p>
           <GscRowsTable rows={clickedRows} highlightClicks />
         </section>
@@ -223,8 +215,7 @@ export default async function GscIntegrationPage({
 
       {property && recentRows.length === 0 && (
         <section className="rounded-md border bg-surface p-6 text-center text-sm text-muted-foreground">
-          No rows synced yet. The first nightly sync runs at 03:15 UTC. Or trigger a manual
-          run from{" "}
+          No rows synced yet. The first nightly sync runs at 03:15 UTC. Or trigger a manual run from{" "}
           <Link href="/admin/automation" className="text-primary underline">
             /admin/automation
           </Link>

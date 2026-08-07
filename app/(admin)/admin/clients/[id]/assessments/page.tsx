@@ -1,3 +1,12 @@
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft, ClipboardCheck, Activity, Calendar, Target, Video } from "lucide-react"
@@ -131,27 +140,20 @@ export default async function ClientAssessmentsPage({ params }: { params: Promis
           {performanceAssessments.length === 0 ? (
             <p className="text-sm text-muted-foreground">No performance assessments yet.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-surface/50">
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Title</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Date</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">
-                      Notes
-                    </th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
+            <DataTableCard>
+              <DataTable>
+                <DataTableHeader>
+                  <DataTableHead>Title</DataTableHead>
+                  <DataTableHead>Status</DataTableHead>
+                  <DataTableHead className="hidden sm:table-cell">Date</DataTableHead>
+                  <DataTableHead className="hidden md:table-cell">Notes</DataTableHead>
+                  <DataTableHead />
+                </DataTableHeader>
                 <tbody>
                   {performanceAssessments.map((pa) => (
-                    <tr
-                      key={pa.id}
-                      className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
-                    >
-                      <td className="px-4 py-3 font-medium text-foreground">{pa.title}</td>
-                      <td className="px-4 py-3">
+                    <DataTableRow key={pa.id}>
+                      <DataTableCell className="font-medium text-foreground">{pa.title}</DataTableCell>
+                      <DataTableCell>
                         <span
                           className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
                             STATUS_COLORS[pa.status] ?? "bg-muted text-muted-foreground"
@@ -159,14 +161,14 @@ export default async function ClientAssessmentsPage({ params }: { params: Promis
                         >
                           {pa.status.replace(/_/g, " ")}
                         </span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
+                      </DataTableCell>
+                      <DataTableCell muted className="hidden sm:table-cell">
                         {formatDate(pa.created_at)}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground hidden md:table-cell max-w-xs truncate">
+                      </DataTableCell>
+                      <DataTableCell muted className="hidden md:table-cell max-w-xs truncate">
                         {pa.notes ?? "—"}
-                      </td>
-                      <td className="px-4 py-3">
+                      </DataTableCell>
+                      <DataTableCell>
                         <Link
                           href={`/admin/performance-assessments/${pa.id}`}
                           className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
@@ -174,12 +176,12 @@ export default async function ClientAssessmentsPage({ params }: { params: Promis
                           <Video className="size-3.5" />
                           View
                         </Link>
-                      </td>
-                    </tr>
+                      </DataTableCell>
+                    </DataTableRow>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </DataTable>
+            </DataTableCard>
           )}
         </div>
       </div>

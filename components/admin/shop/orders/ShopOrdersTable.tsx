@@ -1,4 +1,12 @@
 "use client"
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
@@ -9,13 +17,7 @@ interface ShopOrdersTableProps {
   orders: ShopOrder[]
 }
 
-type Tab =
-  | "all"
-  | "needs_action"
-  | "in_production"
-  | "shipped"
-  | "digital"
-  | "issues"
+type Tab = "all" | "needs_action" | "in_production" | "shipped" | "digital" | "issues"
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "all", label: "All" },
@@ -149,85 +151,67 @@ export function ShopOrdersTable({ orders }: ShopOrdersTableProps) {
           <p className="text-muted-foreground text-sm">No orders in this category yet.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/30">
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Order
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Customer
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Items
-                </th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Total
-                </th>
-                <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Status
-                </th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Age
-                </th>
-              </tr>
-            </thead>
+        <DataTableCard>
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead>Order</DataTableHead>
+              <DataTableHead>Customer</DataTableHead>
+              <DataTableHead>Items</DataTableHead>
+              <DataTableHead align="right">Total</DataTableHead>
+              <DataTableHead className="text-center">Status</DataTableHead>
+              <DataTableHead align="right">Age</DataTableHead>
+            </DataTableHeader>
             <tbody className="divide-y divide-border">
               {filtered.map((order) => {
                 const badge = statusBadge(order.status)
                 const age = formatDistanceToNow(new Date(order.created_at), { addSuffix: true })
                 return (
-                  <tr key={order.id} className="hover:bg-muted/20 transition-colors">
+                  <DataTableRow key={order.id} className="hover:bg-muted/20">
                     {/* Order number */}
-                    <td className="px-4 py-3">
+                    <DataTableCell>
                       <Link
                         href={`/admin/shop/orders/${order.id}`}
                         className="font-mono text-xs font-medium text-primary hover:underline"
                       >
                         {order.order_number}
                       </Link>
-                    </td>
+                    </DataTableCell>
 
                     {/* Customer */}
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-foreground truncate max-w-[160px]">
-                        {order.customer_name}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate max-w-[160px]">
-                        {order.customer_email}
-                      </p>
-                    </td>
+                    <DataTableCell>
+                      <p className="font-medium text-foreground truncate max-w-[160px]">{order.customer_name}</p>
+                      <p className="text-xs text-muted-foreground truncate max-w-[160px]">{order.customer_email}</p>
+                    </DataTableCell>
 
                     {/* Items summary */}
-                    <td className="px-4 py-3 text-muted-foreground max-w-[200px] truncate">
+                    <DataTableCell muted className="max-w-[200px] truncate">
                       {itemsSummary(order.items)}
-                    </td>
+                    </DataTableCell>
 
                     {/* Total */}
-                    <td className="px-4 py-3 text-right font-medium tabular-nums">
+                    <DataTableCell align="right" className="font-medium tabular-nums">
                       {formatCents(order.total_cents)}
-                    </td>
+                    </DataTableCell>
 
                     {/* Status badge */}
-                    <td className="px-4 py-3 text-center">
+                    <DataTableCell className="text-center">
                       <span
                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge.className}`}
                       >
                         {badge.label}
                       </span>
-                    </td>
+                    </DataTableCell>
 
                     {/* Age */}
-                    <td className="px-4 py-3 text-right text-xs text-muted-foreground whitespace-nowrap">
+                    <DataTableCell align="right" muted className="text-xs whitespace-nowrap">
                       {age}
-                    </td>
-                  </tr>
+                    </DataTableCell>
+                  </DataTableRow>
                 )
               })}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
+        </DataTableCard>
       )}
     </div>
   )

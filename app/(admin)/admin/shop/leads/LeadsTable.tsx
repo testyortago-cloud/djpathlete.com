@@ -1,4 +1,6 @@
 "use client"
+import { DataTable, DataTableCell, DataTableHead, DataTableHeader, DataTableRow } from "@/components/ui/data-table"
+
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import type { ShopLead, ShopProduct } from "@/types/database"
@@ -53,34 +55,32 @@ export function LeadsTable({
           <option value="failed">failed</option>
         </select>
       </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-muted-foreground">
-            <th>Email</th>
-            <th>Product</th>
-            <th>Status</th>
-            <th>Created</th>
-            <th></th>
-          </tr>
-        </thead>
+      <DataTable>
+        <DataTableHeader>
+          <DataTableHead>Email</DataTableHead>
+          <DataTableHead>Product</DataTableHead>
+          <DataTableHead>Status</DataTableHead>
+          <DataTableHead>Created</DataTableHead>
+          <DataTableHead></DataTableHead>
+        </DataTableHeader>
         <tbody>
           {leads.map((l) => (
-            <tr key={l.id} className="border-t">
-              <td>{l.email}</td>
-              <td>{products.find((p) => p.id === l.product_id)?.name ?? l.product_id}</td>
-              <td>{l.resend_sync_status}</td>
-              <td>{new Date(l.created_at).toLocaleString()}</td>
-              <td>
+            <DataTableRow key={l.id}>
+              <DataTableCell>{l.email}</DataTableCell>
+              <DataTableCell>{products.find((p) => p.id === l.product_id)?.name ?? l.product_id}</DataTableCell>
+              <DataTableCell>{l.resend_sync_status}</DataTableCell>
+              <DataTableCell>{new Date(l.created_at).toLocaleString()}</DataTableCell>
+              <DataTableCell>
                 {l.resend_sync_status === "failed" && (
                   <button onClick={() => retry(l.id)} className="rounded border px-2 py-1">
                     Retry
                   </button>
                 )}
-              </td>
-            </tr>
+              </DataTableCell>
+            </DataTableRow>
           ))}
         </tbody>
-      </table>
+      </DataTable>
     </>
   )
 }

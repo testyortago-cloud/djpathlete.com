@@ -1,3 +1,12 @@
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
 import type { Metadata } from "next"
 import Link from "next/link"
 import { ArrowRight, Check, X, Smartphone, UserCheck } from "lucide-react"
@@ -51,7 +60,8 @@ const ROWS: Row[] = [
   {
     criterion: "Adjustment to your fatigue",
     app: "Limited — most apps don't change volume when wellness drops.",
-    coach: "Standard practice — volume is cut, modalities swapped, or recovery sessions inserted when readiness markers fall.",
+    coach:
+      "Standard practice — volume is cut, modalities swapped, or recovery sessions inserted when readiness markers fall.",
     coachPositive: true,
   },
   {
@@ -75,7 +85,8 @@ const ROWS: Row[] = [
   {
     criterion: "Post-injury / return-to-performance",
     app: "Generally not appropriate — apps cannot interpret rehab milestones or detect re-injury risk.",
-    coach: "A core service line at DJP Athlete. Force-platform testing, asymmetry detection, and progression management.",
+    coach:
+      "A core service line at DJP Athlete. Force-platform testing, asymmetry detection, and progression management.",
     coachPositive: true,
   },
   {
@@ -99,7 +110,8 @@ const ROWS: Row[] = [
   {
     criterion: "Best fit",
     app: "Generally healthy adults wanting a structured workout plan, basic strength + conditioning, lifestyle fitness.",
-    coach: "Serious athletes — competitive, return-to-performance, elite youth, high-performing professionals — where the goal is performance development, not workouts.",
+    coach:
+      "Serious athletes — competitive, return-to-performance, elite youth, high-performing professionals — where the goal is performance development, not workouts.",
   },
   {
     criterion: "Who decides if a movement is safe today",
@@ -152,8 +164,8 @@ export default function CoachingVsTrainingAppPage() {
               Sports Performance Coaching vs Training Apps.
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-              An honest comparison. Apps deliver a workout. Coach-supervised coaching delivers an adjusted, individualized
-              plan with weekly video review and direct coach messaging. They are different products.
+              An honest comparison. Apps deliver a workout. Coach-supervised coaching delivers an adjusted,
+              individualized plan with weekly video review and direct coach messaging. They are different products.
             </p>
           </FadeIn>
         </div>
@@ -176,14 +188,14 @@ export default function CoachingVsTrainingAppPage() {
                   <Smartphone className="size-5 text-muted-foreground" aria-hidden />
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest">Training App</p>
                 </div>
-                <h2 className="text-xl font-heading font-semibold text-primary mb-2">
-                  Workouts on demand.
-                </h2>
+                <h2 className="text-xl font-heading font-semibold text-primary mb-2">Workouts on demand.</h2>
                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">
                   Algorithm-driven, template-based, $10–$80/month. Best for general fitness, structured strength, and
                   lifestyle goals where self-direction is enough.
                 </p>
-                <p className="text-xs text-muted-foreground italic">Examples: Future, TrainHeroic, Whoop Coach, Fitbod</p>
+                <p className="text-xs text-muted-foreground italic">
+                  Examples: Future, TrainHeroic, Whoop Coach, Fitbod
+                </p>
               </div>
             </FadeIn>
 
@@ -193,9 +205,7 @@ export default function CoachingVsTrainingAppPage() {
                   <UserCheck className="size-5 text-accent" aria-hidden />
                   <p className="text-xs font-medium text-accent uppercase tracking-widest">Coach-Supervised</p>
                 </div>
-                <h2 className="text-xl font-heading font-semibold text-primary mb-2">
-                  Programs adjusted for you.
-                </h2>
+                <h2 className="text-xl font-heading font-semibold text-primary mb-2">Programs adjusted for you.</h2>
                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">
                   Application-only, individualized, coach-led. Best for performance development, sport-specific
                   preparation, and return-to-performance phases.
@@ -230,32 +240,30 @@ export default function CoachingVsTrainingAppPage() {
           </FadeIn>
 
           <FadeIn delay={0.1}>
-            <div className="hidden md:block overflow-hidden rounded-2xl border border-border bg-white">
-              <table className="w-full">
-                <thead className="bg-primary text-primary-foreground">
-                  <tr>
-                    <th scope="col" className="px-6 py-4 text-left text-sm font-heading font-semibold w-1/4">
-                      Criterion
-                    </th>
-                    <th scope="col" className="px-6 py-4 text-left text-sm font-heading font-semibold">
-                      <span className="inline-flex items-center gap-1.5">
-                        <Smartphone className="size-4" aria-hidden /> Training App
-                      </span>
-                    </th>
-                    <th scope="col" className="px-6 py-4 text-left text-sm font-heading font-semibold">
-                      <span className="inline-flex items-center gap-1.5">
-                        <UserCheck className="size-4" aria-hidden /> Coach-Supervised (DJP Athlete)
-                      </span>
-                    </th>
-                  </tr>
-                </thead>
+            <DataTableCard>
+              <DataTable>
+                <DataTableHeader>
+                  <DataTableHead scope="col" className="px-6 py-4 text-sm font-heading w-1/4">
+                    Criterion
+                  </DataTableHead>
+                  <DataTableHead scope="col" className="px-6 py-4 text-sm font-heading">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Smartphone className="size-4" aria-hidden /> Training App
+                    </span>
+                  </DataTableHead>
+                  <DataTableHead scope="col" className="px-6 py-4 text-sm font-heading">
+                    <span className="inline-flex items-center gap-1.5">
+                      <UserCheck className="size-4" aria-hidden /> Coach-Supervised (DJP Athlete)
+                    </span>
+                  </DataTableHead>
+                </DataTableHeader>
                 <tbody>
                   {ROWS.map((row, i) => (
-                    <tr key={row.criterion} className={i % 2 === 0 ? "bg-white" : "bg-surface/50"}>
-                      <th scope="row" className="px-6 py-4 text-left text-sm font-medium text-foreground align-top">
+                    <DataTableRow key={row.criterion} className={i % 2 === 0 ? "bg-white" : "bg-surface/50"}>
+                      <DataTableHead scope="row" className="px-6 py-4 text-sm text-foreground align-top">
                         {row.criterion}
-                      </th>
-                      <td
+                      </DataTableHead>
+                      <DataTableCell
                         className={`px-6 py-4 text-sm leading-relaxed align-top ${
                           row.appPositive ? "bg-accent/10 text-foreground font-medium" : "text-muted-foreground"
                         }`}
@@ -268,8 +276,8 @@ export default function CoachingVsTrainingAppPage() {
                           )}
                           <span>{row.app}</span>
                         </span>
-                      </td>
-                      <td
+                      </DataTableCell>
+                      <DataTableCell
                         className={`px-6 py-4 text-sm leading-relaxed align-top ${
                           row.coachPositive ? "bg-accent/10 text-foreground font-medium" : "text-muted-foreground"
                         }`}
@@ -282,12 +290,12 @@ export default function CoachingVsTrainingAppPage() {
                           )}
                           <span>{row.coach}</span>
                         </span>
-                      </td>
-                    </tr>
+                      </DataTableCell>
+                    </DataTableRow>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </DataTable>
+            </DataTableCard>
 
             {/* Mobile stacked view */}
             <div className="md:hidden space-y-4">
@@ -307,7 +315,9 @@ export default function CoachingVsTrainingAppPage() {
                         <UserCheck className="size-3.5 text-accent" aria-hidden />
                         <span className="text-xs font-semibold text-primary">Coach-Supervised</span>
                       </div>
-                      <p className={`text-sm leading-relaxed ${row.coachPositive ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                      <p
+                        className={`text-sm leading-relaxed ${row.coachPositive ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                      >
                         {row.coach}
                       </p>
                     </div>

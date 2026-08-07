@@ -1,4 +1,12 @@
 "use client"
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
@@ -762,39 +770,35 @@ function ExerciseCard({
                         Weight = <span className="font-medium text-foreground/80">{loadMeta.clientLabel}</span>
                       </p>
                     )}
-                    <div className="overflow-x-auto">
-                      <table
+                    <DataTableCard>
+                      <DataTable
                         className={cn("w-full mt-1.5", fields.showWeight ? "min-w-[320px]" : "min-w-[180px]")}
                         style={{ borderCollapse: "separate", borderSpacing: "0 4px" }}
                       >
-                        <thead>
-                          <tr className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-                            <th style={{ width: 28 }} className="text-left font-medium">
-                              #
-                            </th>
-                            {fields.showWeight && <th className="text-left font-medium">{unitLabel()}</th>}
-                            {fields.showReps && <th className="text-left font-medium">Reps</th>}
-                            {fields.showRpe && (
-                              <th style={{ width: 56 }} className="text-left font-medium">
-                                RPE
-                                {!exercise.is_bodyweight && (
-                                  <span className="block text-[9px] font-normal text-muted-foreground normal-case tracking-normal leading-tight mt-0.5">
-                                    required
-                                  </span>
-                                )}
-                              </th>
-                            )}
-                            <th style={{ width: 28 }} />
-                          </tr>
-                        </thead>
+                        <DataTableHeader>
+                          <DataTableHead style={{ width: 28 }}>#</DataTableHead>
+                          {fields.showWeight && <DataTableHead>{unitLabel()}</DataTableHead>}
+                          {fields.showReps && <DataTableHead>Reps</DataTableHead>}
+                          {fields.showRpe && (
+                            <DataTableHead style={{ width: 56 }}>
+                              RPE
+                              {!exercise.is_bodyweight && (
+                                <span className="block text-[9px] font-normal text-muted-foreground normal-case tracking-normal leading-tight mt-0.5">
+                                  required
+                                </span>
+                              )}
+                            </DataTableHead>
+                          )}
+                          <DataTableHead style={{ width: 28 }} />
+                        </DataTableHeader>
                         <tbody>
                           {setRows.map((row, idx) => (
-                            <tr key={idx}>
-                              <td className="text-xs font-semibold text-muted-foreground text-center align-middle">
+                            <DataTableRow key={idx}>
+                              <DataTableCell muted className="text-xs font-semibold text-center">
                                 {idx + 1}
-                              </td>
+                              </DataTableCell>
                               {fields.showWeight && (
-                                <td className="pr-1 align-middle">
+                                <DataTableCell className="pr-1">
                                   <input
                                     type="number"
                                     inputMode="decimal"
@@ -806,10 +810,10 @@ function ExerciseCard({
                                     onClick={(e) => e.stopPropagation()}
                                     className="w-16 sm:w-20 h-8 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                                   />
-                                </td>
+                                </DataTableCell>
                               )}
                               {fields.showReps && (
-                                <td className="pr-1 align-middle">
+                                <DataTableCell className="pr-1">
                                   <input
                                     type="number"
                                     inputMode="numeric"
@@ -821,10 +825,10 @@ function ExerciseCard({
                                     onClick={(e) => e.stopPropagation()}
                                     className="w-full h-8 rounded-md border border-input bg-transparent px-2 text-xs shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                                   />
-                                </td>
+                                </DataTableCell>
                               )}
                               {fields.showRpe && (
-                                <td className="pr-1 align-middle">
+                                <DataTableCell className="pr-1">
                                   <Select
                                     value={row.rpe != null ? String(row.rpe) : ""}
                                     onValueChange={(v) => updateSetRow(idx, "rpe", v ? parseInt(v, 10) : null)}
@@ -843,9 +847,9 @@ function ExerciseCard({
                                       ))}
                                     </SelectContent>
                                   </Select>
-                                </td>
+                                </DataTableCell>
                               )}
-                              <td className="align-middle">
+                              <DataTableCell>
                                 <Button
                                   type="button"
                                   variant="ghost"
@@ -857,12 +861,12 @@ function ExerciseCard({
                                 >
                                   <X className="size-3" />
                                 </Button>
-                              </td>
-                            </tr>
+                              </DataTableCell>
+                            </DataTableRow>
                           ))}
                         </tbody>
-                      </table>
-                    </div>
+                      </DataTable>
+                    </DataTableCard>
 
                     {/* Add set button */}
                     {setRows.length < 20 && (

@@ -1,9 +1,14 @@
-import Link from "next/link"
 import {
-  buildPipelineFunnelWithComparison,
-  computeRates,
-  type FunnelDeltaPct,
-} from "@/lib/ads/pipeline"
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
+import Link from "next/link"
+import { buildPipelineFunnelWithComparison, computeRates, type FunnelDeltaPct } from "@/lib/ads/pipeline"
 
 export const metadata = { title: "Google Ads — Pipeline" }
 export const dynamic = "force-dynamic"
@@ -49,9 +54,7 @@ function fmtDelta(pct: number | null, invert = false): { label: string; tone: st
 export default async function PipelinePage({ searchParams }: PageProps) {
   const sp = await searchParams
   const requestedDays = Number(sp.days)
-  const days: DayWindow = DAY_OPTIONS.includes(requestedDays as DayWindow)
-    ? (requestedDays as DayWindow)
-    : 28
+  const days: DayWindow = DAY_OPTIONS.includes(requestedDays as DayWindow) ? (requestedDays as DayWindow) : 28
 
   const rangeEnd = new Date()
   const rangeStart = new Date(rangeEnd.getTime() - days * 86_400_000)
@@ -65,10 +68,9 @@ export default async function PipelinePage({ searchParams }: PageProps) {
         <div>
           <h1 className="text-2xl font-heading text-primary">Pipeline</h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            Visit → newsletter signup → booking → paid customer funnel by campaign and source.
-            Revenue is sum of <code className="font-mono text-xs">payments.amount_cents</code> in
-            the window where status is <code className="font-mono text-xs">succeeded</code>.
-            Untagged actions roll up to{" "}
+            Visit → newsletter signup → booking → paid customer funnel by campaign and source. Revenue is sum of{" "}
+            <code className="font-mono text-xs">payments.amount_cents</code> in the window where status is{" "}
+            <code className="font-mono text-xs">succeeded</code>. Untagged actions roll up to{" "}
             <code className="font-mono text-xs">(direct)</code>.
           </p>
         </div>
@@ -92,21 +94,14 @@ export default async function PipelinePage({ searchParams }: PageProps) {
 
       <RatesRow rates={rates} />
 
-      <BreakdownTable
-        title="By campaign"
-        rows={funnel.byCampaign.slice(0, 20)}
-      />
+      <BreakdownTable title="By campaign" rows={funnel.byCampaign.slice(0, 20)} />
 
-      <BreakdownTable
-        title="By source"
-        rows={funnel.bySource.slice(0, 20)}
-      />
+      <BreakdownTable title="By source" rows={funnel.bySource.slice(0, 20)} />
 
       <p className="text-xs text-muted-foreground">
-        Joining model: action tables (newsletter, bookings, payments) are
-        attributed by gclid → marketing_attribution → utm_*. Actions without
-        a click identifier in the window roll up to (direct). Time range
-        compares against the immediately preceding {days}-day window.
+        Joining model: action tables (newsletter, bookings, payments) are attributed by gclid → marketing_attribution →
+        utm_*. Actions without a click identifier in the window roll up to (direct). Time range compares against the
+        immediately preceding {days}-day window.
       </p>
     </div>
   )
@@ -152,12 +147,14 @@ function Stat({
   )
 }
 
-function RatesRow({ rates }: { rates: { visit_to_signup: number; signup_to_booking: number; booking_to_payment: number } }) {
+function RatesRow({
+  rates,
+}: {
+  rates: { visit_to_signup: number; signup_to_booking: number; booking_to_payment: number }
+}) {
   return (
     <div className="border border-border rounded-xl bg-card p-4">
-      <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mb-3">
-        ─ Conversion rates
-      </p>
+      <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mb-3">─ Conversion rates</p>
       <div className="grid grid-cols-3 gap-4">
         <RateBlock label="Visit → Signup" value={rates.visit_to_signup} />
         <RateBlock label="Signup → Booking" value={rates.signup_to_booking} />
@@ -193,9 +190,7 @@ function BreakdownTable({
   if (rows.length === 0) {
     return (
       <section>
-        <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
-          ─ {title}
-        </h2>
+        <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">─ {title}</h2>
         <div className="border border-dashed border-border rounded-xl p-6 bg-card text-sm text-muted-foreground text-center">
           No data in this window.
         </div>
@@ -204,35 +199,51 @@ function BreakdownTable({
   }
   return (
     <section>
-      <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
-        ─ {title}
-      </h2>
-      <div className="border border-border rounded-xl bg-card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-surface text-xs font-mono uppercase tracking-wider text-muted-foreground">
-            <tr>
-              <th className="text-left p-3">{title.replace("By ", "")}</th>
-              <th className="text-right p-3 w-20">Visits</th>
-              <th className="text-right p-3 w-20">Signups</th>
-              <th className="text-right p-3 w-20">Bookings</th>
-              <th className="text-right p-3 w-20">Payments</th>
-              <th className="text-right p-3 w-24">Revenue</th>
-            </tr>
-          </thead>
+      <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">─ {title}</h2>
+      <DataTableCard>
+        <DataTable>
+          <DataTableHeader>
+            <DataTableHead>{title.replace("By ", "")}</DataTableHead>
+            <DataTableHead align="right" className="w-20">
+              Visits
+            </DataTableHead>
+            <DataTableHead align="right" className="w-20">
+              Signups
+            </DataTableHead>
+            <DataTableHead align="right" className="w-20">
+              Bookings
+            </DataTableHead>
+            <DataTableHead align="right" className="w-20">
+              Payments
+            </DataTableHead>
+            <DataTableHead align="right" className="w-24">
+              Revenue
+            </DataTableHead>
+          </DataTableHeader>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.dimension} className="border-t border-border/60">
-                <td className="p-3 font-medium text-primary">{r.dimension}</td>
-                <td className="p-3 text-right font-mono text-xs">{fmtNumber(r.visits)}</td>
-                <td className="p-3 text-right font-mono text-xs">{fmtNumber(r.signups)}</td>
-                <td className="p-3 text-right font-mono text-xs">{fmtNumber(r.bookings)}</td>
-                <td className="p-3 text-right font-mono text-xs">{fmtNumber(r.payments)}</td>
-                <td className="p-3 text-right font-mono text-xs">{fmtRevenue(r.revenue_cents)}</td>
-              </tr>
+              <DataTableRow key={r.dimension}>
+                <DataTableCell className="font-medium text-primary">{r.dimension}</DataTableCell>
+                <DataTableCell align="right" className="font-mono text-xs">
+                  {fmtNumber(r.visits)}
+                </DataTableCell>
+                <DataTableCell align="right" className="font-mono text-xs">
+                  {fmtNumber(r.signups)}
+                </DataTableCell>
+                <DataTableCell align="right" className="font-mono text-xs">
+                  {fmtNumber(r.bookings)}
+                </DataTableCell>
+                <DataTableCell align="right" className="font-mono text-xs">
+                  {fmtNumber(r.payments)}
+                </DataTableCell>
+                <DataTableCell align="right" className="font-mono text-xs">
+                  {fmtRevenue(r.revenue_cents)}
+                </DataTableCell>
+              </DataTableRow>
             ))}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </DataTableCard>
     </section>
   )
 }

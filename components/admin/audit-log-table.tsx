@@ -1,3 +1,12 @@
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
 import Link from "next/link"
 import type { AuditLogRow } from "@/lib/audit/types"
 import { AuditLogRowView } from "./audit-log-row"
@@ -13,35 +22,30 @@ export function AuditLogTable({ rows, total, page, perPage }: Props) {
   const totalPages = Math.max(1, Math.ceil(total / perPage))
   return (
     <div className="space-y-4">
-      <div className="border-border overflow-x-auto rounded-md border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs uppercase">
-            <tr>
-              <th className="px-3 py-2 text-left">When</th>
-              <th className="px-3 py-2 text-left">Actor</th>
-              <th className="px-3 py-2 text-left">Action</th>
-              <th className="px-3 py-2 text-left">Target</th>
-              <th className="px-3 py-2 text-left">Outcome</th>
-              <th className="px-3 py-2 text-left">IP</th>
-            </tr>
-          </thead>
+      <DataTableCard>
+        <DataTable>
+          <DataTableHeader>
+            <DataTableHead>When</DataTableHead>
+            <DataTableHead>Actor</DataTableHead>
+            <DataTableHead>Action</DataTableHead>
+            <DataTableHead>Target</DataTableHead>
+            <DataTableHead>Outcome</DataTableHead>
+            <DataTableHead>IP</DataTableHead>
+          </DataTableHeader>
           <tbody>
             {rows.length === 0 && (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="text-muted-foreground px-3 py-6 text-center"
-                >
+              <DataTableRow>
+                <DataTableCell muted colSpan={6} className="py-6 text-center">
                   No audit rows match these filters.
-                </td>
-              </tr>
+                </DataTableCell>
+              </DataTableRow>
             )}
             {rows.map((r) => (
               <AuditLogRowView key={r.id} row={r} />
             ))}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </DataTableCard>
       <div className="text-muted-foreground flex items-center justify-between text-xs">
         <span>{total.toLocaleString()} total</span>
         <div className="flex gap-2">

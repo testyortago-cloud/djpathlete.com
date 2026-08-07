@@ -1,4 +1,12 @@
 "use client"
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
 
 import { useState } from "react"
 import { toast } from "sonner"
@@ -64,35 +72,33 @@ export function SignupsTable({ initialSignups, eventId }: SignupsTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full text-sm">
-        <thead className="bg-surface text-left text-muted-foreground">
-          <tr>
-            <th className="px-4 py-3">Athlete</th>
-            <th className="px-4 py-3">Age</th>
-            <th className="px-4 py-3">Parent</th>
-            <th className="px-4 py-3">Email</th>
-            <th className="px-4 py-3">Phone</th>
-            <th className="px-4 py-3">Sport</th>
-            <th className="px-4 py-3">Type</th>
-            <th className="px-4 py-3">Status</th>
-            <th className="px-4 py-3 text-right">Actions</th>
-          </tr>
-        </thead>
+    <DataTableCard>
+      <DataTable>
+        <DataTableHeader>
+          <DataTableHead>Athlete</DataTableHead>
+          <DataTableHead>Age</DataTableHead>
+          <DataTableHead>Parent</DataTableHead>
+          <DataTableHead>Email</DataTableHead>
+          <DataTableHead>Phone</DataTableHead>
+          <DataTableHead>Sport</DataTableHead>
+          <DataTableHead>Type</DataTableHead>
+          <DataTableHead>Status</DataTableHead>
+          <DataTableHead align="right">Actions</DataTableHead>
+        </DataTableHeader>
         <tbody>
           {signups.map((s) => (
-            <tr key={s.id} className="border-t border-border align-top">
-              <td className="px-4 py-3">
+            <DataTableRow key={s.id} className="align-top">
+              <DataTableCell>
                 <div className="font-medium">{s.athlete_name}</div>
                 {s.notes && <div className="mt-1 text-xs text-muted-foreground">{s.notes}</div>}
-              </td>
-              <td className="px-4 py-3">{s.athlete_age}</td>
-              <td className="px-4 py-3">{s.parent_name}</td>
-              <td className="px-4 py-3">{s.parent_email}</td>
-              <td className="px-4 py-3">{s.parent_phone ?? "—"}</td>
-              <td className="px-4 py-3">{s.sport ?? "—"}</td>
-              <td className="px-4 py-3 capitalize">{s.signup_type}</td>
-              <td className="px-4 py-3">
+              </DataTableCell>
+              <DataTableCell>{s.athlete_age}</DataTableCell>
+              <DataTableCell>{s.parent_name}</DataTableCell>
+              <DataTableCell>{s.parent_email}</DataTableCell>
+              <DataTableCell>{s.parent_phone ?? "—"}</DataTableCell>
+              <DataTableCell>{s.sport ?? "—"}</DataTableCell>
+              <DataTableCell className="capitalize">{s.signup_type}</DataTableCell>
+              <DataTableCell>
                 <div className="flex flex-col gap-1">
                   <span
                     className={`inline-block w-fit rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[s.status] ?? ""}`}
@@ -116,8 +122,8 @@ export function SignupsTable({ initialSignups, eventId }: SignupsTableProps) {
                     </a>
                   )}
                 </div>
-              </td>
-              <td className="px-4 py-3 text-right">
+              </DataTableCell>
+              <DataTableCell align="right">
                 <div className="flex justify-end gap-2">
                   {s.status === "pending" && (
                     <Button size="sm" disabled={pending[s.id]} onClick={() => act(s.id, "confirm")}>
@@ -130,11 +136,11 @@ export function SignupsTable({ initialSignups, eventId }: SignupsTableProps) {
                     </Button>
                   )}
                 </div>
-              </td>
-            </tr>
+              </DataTableCell>
+            </DataTableRow>
           ))}
         </tbody>
-      </table>
-    </div>
+      </DataTable>
+    </DataTableCard>
   )
 }

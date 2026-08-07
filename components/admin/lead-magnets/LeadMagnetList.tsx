@@ -1,5 +1,14 @@
 "use client"
 
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Pencil, Trash2, Loader2, ExternalLink, Search } from "lucide-react"
@@ -73,44 +82,51 @@ export function LeadMagnetList({ initialMagnets }: LeadMagnetListProps) {
           <p className="text-sm">{search ? "No matches." : "No lead magnets yet. Create your first one."}</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surface/50">
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Title</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Slug</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Tags</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
-                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
-              </tr>
-            </thead>
+        <DataTableCard>
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead>Title</DataTableHead>
+              <DataTableHead className="hidden md:table-cell">Slug</DataTableHead>
+              <DataTableHead className="hidden lg:table-cell">Tags</DataTableHead>
+              <DataTableHead className="hidden md:table-cell">Status</DataTableHead>
+              <DataTableHead align="right">Actions</DataTableHead>
+            </DataTableHeader>
             <tbody>
               {filtered.map((m) => (
-                <tr key={m.id} className="border-b border-border last:border-0 hover:bg-surface/30 transition-colors">
-                  <td className="px-4 py-3">
+                <DataTableRow key={m.id}>
+                  <DataTableCell>
                     <p className="font-medium text-primary line-clamp-1">{m.title}</p>
                     <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5 md:hidden">{m.slug}</p>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground hidden md:table-cell">{m.slug}</td>
-                  <td className="px-4 py-3 hidden lg:table-cell">
+                  </DataTableCell>
+                  <DataTableCell muted className="text-xs hidden md:table-cell">
+                    {m.slug}
+                  </DataTableCell>
+                  <DataTableCell className="hidden lg:table-cell">
                     <div className="flex flex-wrap gap-1">
                       {m.tags.slice(0, 3).map((tag) => (
-                        <span key={tag} className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface text-muted-foreground border border-border">
+                        <span
+                          key={tag}
+                          className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface text-muted-foreground border border-border"
+                        >
                           {tag}
                         </span>
                       ))}
-                      {m.tags.length > 3 && <span className="text-[10px] text-muted-foreground">+{m.tags.length - 3}</span>}
+                      {m.tags.length > 3 && (
+                        <span className="text-[10px] text-muted-foreground">+{m.tags.length - 3}</span>
+                      )}
                     </div>
-                  </td>
-                  <td className="px-4 py-3 hidden md:table-cell">
-                    <span className={cn(
-                      "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
-                      m.active ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
-                    )}>
+                  </DataTableCell>
+                  <DataTableCell className="hidden md:table-cell">
+                    <span
+                      className={cn(
+                        "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
+                        m.active ? "bg-success/10 text-success" : "bg-muted text-muted-foreground",
+                      )}
+                    >
                       {m.active ? "Active" : "Inactive"}
                     </span>
-                  </td>
-                  <td className="px-4 py-3">
+                  </DataTableCell>
+                  <DataTableCell>
                     <div className="flex items-center justify-end gap-1">
                       <a
                         href={m.asset_url}
@@ -155,12 +171,12 @@ export function LeadMagnetList({ initialMagnets }: LeadMagnetListProps) {
                         </button>
                       )}
                     </div>
-                  </td>
-                </tr>
+                  </DataTableCell>
+                </DataTableRow>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
+        </DataTableCard>
       )}
 
       {(creating || editing) && (

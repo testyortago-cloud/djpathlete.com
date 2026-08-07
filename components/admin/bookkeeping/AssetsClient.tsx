@@ -1,4 +1,5 @@
 "use client"
+import { DataTable, DataTableCell, DataTableHead, DataTableHeader, DataTableRow } from "@/components/ui/data-table"
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
@@ -26,12 +27,18 @@ interface AssetForm {
 }
 
 const EMPTY_FORM: AssetForm = {
-  name: "", basis: "", salvage: "0", in_service_on: "",
-  convention: "full_month", recovery_years: "5", accountant_note: "",
+  name: "",
+  basis: "",
+  salvage: "0",
+  in_service_on: "",
+  convention: "full_month",
+  recovery_years: "5",
+  accountant_note: "",
 }
 
 const CONVENTION_LABELS: Record<DepreciationConvention, string> = {
-  full_month: "Full month", half_year: "Half year",
+  full_month: "Full month",
+  half_year: "Half year",
 }
 
 function toCents(dollars: string): number {
@@ -73,7 +80,11 @@ function assetToForm(a: BookkeepingAsset): AssetForm {
   }
 }
 
-function AssetFormFields({ form, setForm, idPrefix }: {
+function AssetFormFields({
+  form,
+  setForm,
+  idPrefix,
+}: {
   form: AssetForm
   setForm: (f: AssetForm) => void
   idPrefix: string
@@ -83,29 +94,51 @@ function AssetFormFields({ form, setForm, idPrefix }: {
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor={`${idPrefix}-name`}>Asset name</Label>
-          <Input id={`${idPrefix}-name`} value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Squat rack" />
+          <Input
+            id={`${idPrefix}-name`}
+            value={form.name}
+            onChange={(e) => setForm({ ...form, name: e.target.value })}
+            placeholder="e.g. Squat rack"
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor={`${idPrefix}-date`}>In service on</Label>
-          <Input id={`${idPrefix}-date`} type="date" value={form.in_service_on}
-            onChange={(e) => setForm({ ...form, in_service_on: e.target.value })} />
+          <Input
+            id={`${idPrefix}-date`}
+            type="date"
+            value={form.in_service_on}
+            onChange={(e) => setForm({ ...form, in_service_on: e.target.value })}
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor={`${idPrefix}-basis`}>Cost basis ($)</Label>
-          <Input id={`${idPrefix}-basis`} type="number" min="0" step="0.01" value={form.basis}
-            onChange={(e) => setForm({ ...form, basis: e.target.value })} />
+          <Input
+            id={`${idPrefix}-basis`}
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.basis}
+            onChange={(e) => setForm({ ...form, basis: e.target.value })}
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor={`${idPrefix}-salvage`}>Salvage value ($)</Label>
-          <Input id={`${idPrefix}-salvage`} type="number" min="0" step="0.01" value={form.salvage}
-            onChange={(e) => setForm({ ...form, salvage: e.target.value })} />
+          <Input
+            id={`${idPrefix}-salvage`}
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.salvage}
+            onChange={(e) => setForm({ ...form, salvage: e.target.value })}
+          />
         </div>
         <div className="space-y-2">
           <Label>Method</Label>
           {/* Fixed single-option select — straight-line only, accountant-supplied (D-13). */}
           <Select value="straight_line" onValueChange={() => undefined}>
-            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="straight_line">Straight line</SelectItem>
             </SelectContent>
@@ -113,9 +146,13 @@ function AssetFormFields({ form, setForm, idPrefix }: {
         </div>
         <div className="space-y-2">
           <Label>Convention</Label>
-          <Select value={form.convention}
-            onValueChange={(v) => setForm({ ...form, convention: v as DepreciationConvention })}>
-            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+          <Select
+            value={form.convention}
+            onValueChange={(v) => setForm({ ...form, convention: v as DepreciationConvention })}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
               <SelectItem value="full_month">Full month</SelectItem>
               <SelectItem value="half_year">Half year</SelectItem>
@@ -124,14 +161,24 @@ function AssetFormFields({ form, setForm, idPrefix }: {
         </div>
         <div className="space-y-2">
           <Label htmlFor={`${idPrefix}-years`}>Recovery (years, 1–50)</Label>
-          <Input id={`${idPrefix}-years`} type="number" min="1" max="50" step="1" value={form.recovery_years}
-            onChange={(e) => setForm({ ...form, recovery_years: e.target.value })} />
+          <Input
+            id={`${idPrefix}-years`}
+            type="number"
+            min="1"
+            max="50"
+            step="1"
+            value={form.recovery_years}
+            onChange={(e) => setForm({ ...form, recovery_years: e.target.value })}
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor={`${idPrefix}-note`}>Accountant note (optional)</Label>
-          <Input id={`${idPrefix}-note`} value={form.accountant_note}
+          <Input
+            id={`${idPrefix}-note`}
+            value={form.accountant_note}
             onChange={(e) => setForm({ ...form, accountant_note: e.target.value })}
-            placeholder="e.g. 7-yr MACRS on the return; book life per CPA" />
+            placeholder="e.g. 7-yr MACRS on the return; book life per CPA"
+          />
         </div>
       </div>
     </>
@@ -143,34 +190,49 @@ function SchedulePreview({ asset }: { asset: BookkeepingAsset }) {
   const { years, fully_depreciated_in } = depreciationSchedule(asset, 9999)
   return (
     <div className="mt-3 rounded-lg border border-border bg-card p-3">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b text-left">
-            <th className="py-1 pr-4 font-medium">Year</th>
-            <th className="py-1 pr-4 text-right font-medium">Depreciation</th>
-            <th className="py-1 pr-4 text-right font-medium">Accumulated</th>
-            <th className="py-1 pr-4 text-right font-medium">Remaining</th>
-          </tr>
-        </thead>
+      <DataTable>
+        <DataTableHeader>
+          <DataTableHead className="py-1 pr-4">Year</DataTableHead>
+          <DataTableHead align="right" className="py-1 pr-4">
+            Depreciation
+          </DataTableHead>
+          <DataTableHead align="right" className="py-1 pr-4">
+            Accumulated
+          </DataTableHead>
+          <DataTableHead align="right" className="py-1 pr-4">
+            Remaining
+          </DataTableHead>
+        </DataTableHeader>
         <tbody>
           {years.map((y) => (
-            <tr key={y.year} className="border-b">
-              <td className="py-1 pr-4">{y.year}</td>
-              <td className="py-1 pr-4 text-right">{formatCents(y.depreciation_cents)}</td>
-              <td className="py-1 pr-4 text-right">{formatCents(y.accumulated_cents)}</td>
-              <td className="py-1 pr-4 text-right">{formatCents(y.remaining_cents)}</td>
-            </tr>
+            <DataTableRow key={y.year}>
+              <DataTableCell className="py-1 pr-4">{y.year}</DataTableCell>
+              <DataTableCell align="right" className="py-1 pr-4">
+                {formatCents(y.depreciation_cents)}
+              </DataTableCell>
+              <DataTableCell align="right" className="py-1 pr-4">
+                {formatCents(y.accumulated_cents)}
+              </DataTableCell>
+              <DataTableCell align="right" className="py-1 pr-4">
+                {formatCents(y.remaining_cents)}
+              </DataTableCell>
+            </DataTableRow>
           ))}
         </tbody>
-      </table>
+      </DataTable>
       <p className="mt-2 text-xs text-muted-foreground">
-        Fully depreciated in {fully_depreciated_in}. The final year absorbs rounding so the schedule sums exactly to basis − salvage.
+        Fully depreciated in {fully_depreciated_in}. The final year absorbs rounding so the schedule sums exactly to
+        basis − salvage.
       </p>
     </div>
   )
 }
 
-export function AssetsClient({ books, initialBookId, initialAssets }: {
+export function AssetsClient({
+  books,
+  initialBookId,
+  initialAssets,
+}: {
   books: BookkeepingBook[]
   initialBookId: string
   initialAssets: BookkeepingAsset[]
@@ -283,7 +345,9 @@ export function AssetsClient({ books, initialBookId, initialAssets }: {
   }
 
   async function removeAsset(a: BookkeepingAsset) {
-    const confirmed = window.confirm(`Delete "${a.name}"? The audit log keeps a snapshot, but the register row is removed.`)
+    const confirmed = window.confirm(
+      `Delete "${a.name}"? The audit log keeps a snapshot, but the register row is removed.`,
+    )
     if (!confirmed) return
     setBusyId(a.id)
     try {
@@ -304,8 +368,20 @@ export function AssetsClient({ books, initialBookId, initialAssets }: {
         <li key={a.id} className="space-y-3 rounded-lg border border-border bg-card p-3">
           <AssetFormFields form={editForm} setForm={setEditForm} idPrefix={`edit-${a.id}`} />
           <div className="flex gap-2">
-            <Button size="sm" onClick={() => saveEdit(a.id)} disabled={busyId === a.id}>Save</Button>
-            <Button size="sm" variant="outline" onClick={() => { setEditingId(null); setEditForm(null) }} disabled={busyId === a.id}>Cancel</Button>
+            <Button size="sm" onClick={() => saveEdit(a.id)} disabled={busyId === a.id}>
+              Save
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setEditingId(null)
+                setEditForm(null)
+              }}
+              disabled={busyId === a.id}
+            >
+              Cancel
+            </Button>
           </div>
         </li>
       )
@@ -326,7 +402,15 @@ export function AssetsClient({ books, initialBookId, initialAssets }: {
             <Button variant="ghost" size="sm" onClick={() => setPreviewId(previewId === a.id ? null : a.id)}>
               {previewId === a.id ? "Hide schedule" : "Schedule"}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => { setEditingId(a.id); setEditForm(assetToForm(a)) }} disabled={busyId === a.id}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setEditingId(a.id)
+                setEditForm(assetToForm(a))
+              }}
+              disabled={busyId === a.id}
+            >
               Edit
             </Button>
             <Button variant="ghost" size="sm" onClick={() => removeAsset(a)} disabled={busyId === a.id}>
@@ -351,16 +435,26 @@ export function AssetsClient({ books, initialBookId, initialAssets }: {
         </Link>
         <h1 className="text-2xl font-heading text-primary">Equipment &amp; assets</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Depreciation is tracked, not decided — enter the basis, method, and life your accountant supplies. Book depreciation for your CPA, not a filing.
+          Depreciation is tracked, not decided — enter the basis, method, and life your accountant supplies. Book
+          depreciation for your CPA, not a filing.
         </p>
         <div className="mt-2 flex flex-wrap gap-4">
-          <Link href="/admin/books" className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline">
+          <Link
+            href="/admin/books"
+            className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
+          >
             Back to ledger
           </Link>
-          <Link href="/admin/books/reports" className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline">
+          <Link
+            href="/admin/books/reports"
+            className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
+          >
             Reports
           </Link>
-          <Link href="/admin/books/insights" className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline">
+          <Link
+            href="/admin/books/insights"
+            className="text-sm text-muted-foreground hover:text-accent underline-offset-4 hover:underline"
+          >
             Insights
           </Link>
         </div>
@@ -372,7 +466,9 @@ export function AssetsClient({ books, initialBookId, initialAssets }: {
         <Tabs value={bookId} onValueChange={handleBookChange}>
           <TabsList>
             {books.map((book) => (
-              <TabsTrigger key={book.id} value={book.id}>{book.name}</TabsTrigger>
+              <TabsTrigger key={book.id} value={book.id}>
+                {book.name}
+              </TabsTrigger>
             ))}
           </TabsList>
 

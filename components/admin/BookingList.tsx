@@ -1,4 +1,13 @@
 "use client"
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  DataTableToolbar,
+} from "@/components/ui/data-table"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
@@ -97,9 +106,9 @@ export function BookingList({ bookings }: BookingListProps) {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-border overflow-visible">
-      {/* Toolbar */}
-      <div className="p-4 border-b border-border flex flex-col sm:flex-row gap-3">
+    // overflow-visible so the per-row actions menu can escape the card.
+    <DataTableCard className="overflow-visible">
+      <DataTableToolbar>
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
@@ -130,28 +139,23 @@ export function BookingList({ bookings }: BookingListProps) {
             </button>
           ))}
         </div>
-      </div>
+      </DataTableToolbar>
 
       {/* Table */}
       {paginated.length > 0 ? (
-        <div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left">
-                <th className="px-4 py-3 font-medium text-muted-foreground">Contact</th>
-                <th className="px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">Date & Time</th>
-                <th className="px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Duration</th>
-                <th className="px-4 py-3 font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-3 font-medium text-muted-foreground w-12"></th>
-              </tr>
-            </thead>
+        <>
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead>Contact</DataTableHead>
+              <DataTableHead className="hidden sm:table-cell">Date & Time</DataTableHead>
+              <DataTableHead className="hidden md:table-cell">Duration</DataTableHead>
+              <DataTableHead>Status</DataTableHead>
+              <DataTableHead className="w-12"></DataTableHead>
+            </DataTableHeader>
             <tbody>
               {paginated.map((booking) => (
-                <tr
-                  key={booking.id}
-                  className="border-b border-border last:border-0 hover:bg-surface/50 transition-colors"
-                >
-                  <td className="px-4 py-3">
+                <DataTableRow key={booking.id}>
+                  <DataTableCell>
                     <div>
                       <p className="font-medium text-primary">{booking.contact_name}</p>
                       <div className="flex items-center gap-3 mt-0.5">
@@ -172,8 +176,8 @@ export function BookingList({ bookings }: BookingListProps) {
                         {formatDate(booking.booking_date)} at {formatTime(booking.booking_date)}
                       </div>
                     </div>
-                  </td>
-                  <td className="px-4 py-3 hidden sm:table-cell">
+                  </DataTableCell>
+                  <DataTableCell className="hidden sm:table-cell">
                     <div className="flex items-center gap-1.5 text-primary">
                       <Calendar className="size-3.5" />
                       <span>{formatDate(booking.booking_date)}</span>
@@ -187,18 +191,18 @@ export function BookingList({ bookings }: BookingListProps) {
                         </span>
                       )}
                     </div>
-                  </td>
-                  <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">
+                  </DataTableCell>
+                  <DataTableCell muted className="hidden md:table-cell">
                     {booking.duration_minutes} min
-                  </td>
-                  <td className="px-4 py-3">
+                  </DataTableCell>
+                  <DataTableCell>
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[booking.status]}`}
                     >
                       {STATUS_LABELS[booking.status]}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 relative">
+                  </DataTableCell>
+                  <DataTableCell className="relative">
                     <button
                       onClick={() => setOpenMenuId(openMenuId === booking.id ? null : booking.id)}
                       disabled={updatingId === booking.id}
@@ -245,12 +249,12 @@ export function BookingList({ bookings }: BookingListProps) {
                         </div>
                       </>
                     )}
-                  </td>
-                </tr>
+                  </DataTableCell>
+                </DataTableRow>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
+        </>
       ) : (
         <div className="p-8">
           <EmptyState
@@ -308,6 +312,6 @@ export function BookingList({ bookings }: BookingListProps) {
           </div>
         </div>
       )}
-    </div>
+    </DataTableCard>
   )
 }

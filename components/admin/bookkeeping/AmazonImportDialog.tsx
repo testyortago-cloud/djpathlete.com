@@ -1,9 +1,27 @@
 "use client"
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
 
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { subscribeToJob, type JobSnapshot } from "@/lib/firebase/job-subscription"
-import { Upload, Loader2, CheckCircle2, XCircle, FileText, Brain, ListChecks, ShoppingCart, AlertTriangle } from "lucide-react"
+import {
+  Upload,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  FileText,
+  Brain,
+  ListChecks,
+  ShoppingCart,
+  AlertTriangle,
+} from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -459,7 +477,9 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
         )
       }
       if (skipped > 0) {
-        toast.success(`Posted ${inserted} ${inserted === 1 ? "entry" : "entries"} (${skipped} already recorded — skipped).`)
+        toast.success(
+          `Posted ${inserted} ${inserted === 1 ? "entry" : "entries"} (${skipped} already recorded — skipped).`,
+        )
       } else {
         toast.success(`Posted ${inserted} ${inserted === 1 ? "entry" : "entries"}.`)
       }
@@ -604,87 +624,87 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
     const renderRow = (row: DraftRow) => {
       const blocker = row.include ? rowBlocker(row) : null
       return (
-      <tr
-        key={row.source_ref}
-        className={cn("border-b border-border last:border-b-0", row.confidence === "low" && "bg-warning/5")}
-      >
-        <td className="px-2 py-2 align-top">
-          <Checkbox
-            checked={row.include}
-            onCheckedChange={(v) => updateRow(row.source_ref, { include: v === true })}
-            aria-label={`Include ${row.description}`}
-          />
-        </td>
-        <td className="px-2 py-2 align-top">
-          <input
-            type="date"
-            value={row.occurred_on}
-            onChange={(e) => updateRow(row.source_ref, { occurred_on: e.currentTarget.value })}
-            className="border-border w-32 rounded-md border bg-transparent px-1.5 py-1 text-xs"
-            aria-label={`Date for ${row.description}`}
-          />
-        </td>
-        <td className="px-2 py-2 align-top">
-          <input
-            type="text"
-            value={row.description}
-            onChange={(e) => updateRow(row.source_ref, { description: e.currentTarget.value })}
-            className="border-border w-full min-w-40 rounded-md border bg-transparent px-1.5 py-1 text-xs"
-            aria-label={`Description for ${row.description}`}
-          />
-          {row.confidence === "low" && <span className="text-[10px] text-warning">low confidence</span>}
-          {row.is_transfer && (
-            <span className="ml-1.5 text-[10px] text-muted-foreground">excluded — transfer/payment</span>
-          )}
-        </td>
-        <td className="px-2 py-2 align-top">
-          <div className="flex items-center justify-end gap-1">
-            <span className="font-mono text-xs text-error">−$</span>
+        <DataTableRow
+          key={row.source_ref}
+          className={cn("border-b border-border last:border-b-0", row.confidence === "low" && "bg-warning/5")}
+        >
+          <DataTableCell className="align-top">
+            <Checkbox
+              checked={row.include}
+              onCheckedChange={(v) => updateRow(row.source_ref, { include: v === true })}
+              aria-label={`Include ${row.description}`}
+            />
+          </DataTableCell>
+          <DataTableCell className="align-top">
+            <input
+              type="date"
+              value={row.occurred_on}
+              onChange={(e) => updateRow(row.source_ref, { occurred_on: e.currentTarget.value })}
+              className="border-border w-32 rounded-md border bg-transparent px-1.5 py-1 text-xs"
+              aria-label={`Date for ${row.description}`}
+            />
+          </DataTableCell>
+          <DataTableCell className="align-top">
             <input
               type="text"
-              inputMode="decimal"
-              value={row.amountInput}
-              onChange={(e) => updateAmount(row.source_ref, e.currentTarget.value)}
-              className={cn(
-                "w-24 rounded-md border bg-transparent px-1.5 py-1 text-right font-mono text-xs",
-                blocker && blocker !== "needs a date" ? "border-warning" : "border-border",
-              )}
-              aria-label={`Amount for ${row.description}`}
+              value={row.description}
+              onChange={(e) => updateRow(row.source_ref, { description: e.currentTarget.value })}
+              className="border-border w-full min-w-40 rounded-md border bg-transparent px-1.5 py-1 text-xs"
+              aria-label={`Description for ${row.description}`}
             />
-          </div>
-          {blocker && <p className="mt-1 text-right text-[11px] text-warning">{blocker}</p>}
-        </td>
-        <td className="px-2 py-2 align-top">
-          {/* Never disabled: picking the right category is usually what a
+            {row.confidence === "low" && <span className="text-[10px] text-warning">low confidence</span>}
+            {row.is_transfer && (
+              <span className="ml-1.5 text-[10px] text-muted-foreground">excluded — transfer/payment</span>
+            )}
+          </DataTableCell>
+          <DataTableCell className="align-top">
+            <div className="flex items-center justify-end gap-1">
+              <span className="font-mono text-xs text-error">−$</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={row.amountInput}
+                onChange={(e) => updateAmount(row.source_ref, e.currentTarget.value)}
+                className={cn(
+                  "w-24 rounded-md border bg-transparent px-1.5 py-1 text-right font-mono text-xs",
+                  blocker && blocker !== "needs a date" ? "border-warning" : "border-border",
+                )}
+                aria-label={`Amount for ${row.description}`}
+              />
+            </div>
+            {blocker && <p className="mt-1 text-right text-[11px] text-warning">{blocker}</p>}
+          </DataTableCell>
+          <DataTableCell className="align-top">
+            {/* Never disabled: picking the right category is usually what a
               coach does BEFORE ticking a row the AI excluded. */}
-          <select
-            value={row.accountId}
-            onChange={(e) => updateRow(row.source_ref, { accountId: e.currentTarget.value })}
-            className="border-border rounded-md border bg-transparent px-1.5 py-1 text-xs"
-            aria-label={`Category for ${row.description}`}
-          >
-            <option value="">Uncategorized</option>
-            {expenseAccounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-          {rowRequiresBusinessPurpose(row, accounts) && (
-            <input
-              type="text"
-              value={row.businessPurpose}
-              onChange={(e) => updateRow(row.source_ref, { businessPurpose: e.currentTarget.value })}
-              placeholder="Business purpose (required)"
-              aria-label={`Business purpose for ${row.description}`}
-              className={cn(
-                "mt-1 w-full rounded-md border bg-transparent px-1.5 py-1 text-xs",
-                row.include && row.businessPurpose.trim().length === 0 ? "border-warning" : "border-border",
-              )}
-            />
-          )}
-        </td>
-      </tr>
+            <select
+              value={row.accountId}
+              onChange={(e) => updateRow(row.source_ref, { accountId: e.currentTarget.value })}
+              className="border-border rounded-md border bg-transparent px-1.5 py-1 text-xs"
+              aria-label={`Category for ${row.description}`}
+            >
+              <option value="">Uncategorized</option>
+              {expenseAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+            {rowRequiresBusinessPurpose(row, accounts) && (
+              <input
+                type="text"
+                value={row.businessPurpose}
+                onChange={(e) => updateRow(row.source_ref, { businessPurpose: e.currentTarget.value })}
+                placeholder="Business purpose (required)"
+                aria-label={`Business purpose for ${row.description}`}
+                className={cn(
+                  "mt-1 w-full rounded-md border bg-transparent px-1.5 py-1 text-xs",
+                  row.include && row.businessPurpose.trim().length === 0 ? "border-warning" : "border-border",
+                )}
+              />
+            )}
+          </DataTableCell>
+        </DataTableRow>
       )
     }
 
@@ -721,27 +741,24 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
               </div>
             )}
 
-            <div className="overflow-x-auto border border-border rounded-lg max-h-96">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-surface">
-                  <tr className="border-b border-border">
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-8">
-                      <Checkbox
-                        checked={allIncluded}
-                        onCheckedChange={(v) => setRows((list) => list.map((r) => ({ ...r, include: v === true })))}
-                        aria-label={allIncluded ? "Untick every row" : "Tick every row"}
-                      />
-                    </th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Date</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Description</th>
-                    <th className="px-2 py-2 text-right font-medium text-muted-foreground">Amount</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Category</th>
-                  </tr>
-                </thead>
+            <DataTableCard>
+              <DataTable className="text-xs">
+                <DataTableHeader>
+                  <DataTableHead className="w-8">
+                    <Checkbox
+                      checked={allIncluded}
+                      onCheckedChange={(v) => setRows((list) => list.map((r) => ({ ...r, include: v === true })))}
+                      aria-label={allIncluded ? "Untick every row" : "Tick every row"}
+                    />
+                  </DataTableHead>
+                  <DataTableHead>Date</DataTableHead>
+                  <DataTableHead>Description</DataTableHead>
+                  <DataTableHead align="right">Amount</DataTableHead>
+                  <DataTableHead>Category</DataTableHead>
+                </DataTableHeader>
                 <tbody>{rows.map(renderRow)}</tbody>
-              </table>
-            </div>
-
+              </DataTable>
+            </DataTableCard>
           </div>
 
           {postBlockedReason && <p className="text-sm text-muted-foreground">{postBlockedReason}</p>}
@@ -749,8 +766,8 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
           {rejectedClosedCount > 0 && (
             <p className="text-sm font-medium text-warning">
               {rejectedClosedCount} row{rejectedClosedCount === 1 ? "" : "s"}{" "}
-              {rejectedClosedCount === 1 ? "falls" : "fall"} in closed months — post them as adjustment entries in
-              the current open month.
+              {rejectedClosedCount === 1 ? "falls" : "fall"} in closed months — post them as adjustment entries in the
+              current open month.
             </p>
           )}
 
@@ -778,8 +795,8 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
             Import Amazon orders
           </DialogTitle>
           <DialogDescription>
-            Upload an Amazon &ldquo;Order History Reports&rdquo; CSV export and AI will categorize each order line
-            for review before anything posts.
+            Upload an Amazon &ldquo;Order History Reports&rdquo; CSV export and AI will categorize each order line for
+            review before anything posts.
           </DialogDescription>
         </DialogHeader>
 
@@ -804,7 +821,9 @@ export function AmazonImportDialog({ bookId, accounts, open, onOpenChange, onSav
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground shadow-xs file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1 file:text-xs file:font-medium file:text-primary-foreground"
             />
-            <p className="text-xs text-muted-foreground">CSV export from Amazon&apos;s Order History Reports. Max 10 MB.</p>
+            <p className="text-xs text-muted-foreground">
+              CSV export from Amazon&apos;s Order History Reports. Max 10 MB.
+            </p>
           </div>
         </div>
 

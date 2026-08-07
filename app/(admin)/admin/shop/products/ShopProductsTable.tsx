@@ -1,4 +1,12 @@
 "use client"
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
 
 import { useState } from "react"
 import Image from "next/image"
@@ -39,9 +47,7 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(
-          typeof err.error === "string" ? err.error : `Delete failed (${res.status})`,
-        )
+        throw new Error(typeof err.error === "string" ? err.error : `Delete failed (${res.status})`)
       }
       setProducts((prev) => prev.filter((p) => p.id !== deleting.id))
       toast.success(`Deleted "${deleting.name}"`)
@@ -67,7 +73,9 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
         const data = await res.json()
         throw new Error(data.error ?? "Update failed")
       }
-      toast.success(`Product ${field === "is_active" ? (value ? "activated" : "deactivated") : value ? "featured" : "unfeatured"}`)
+      toast.success(
+        `Product ${field === "is_active" ? (value ? "activated" : "deactivated") : value ? "featured" : "unfeatured"}`,
+      )
     } catch (err) {
       // Revert on error
       setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: !value } : p)))
@@ -78,49 +86,34 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
   if (products.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-border p-8 text-center">
-        <p className="text-muted-foreground text-sm">No products yet. Click &ldquo;Sync from Printful&rdquo; to import your catalog.</p>
+        <p className="text-muted-foreground text-sm">
+          No products yet. Click &ldquo;Sync from Printful&rdquo; to import your catalog.
+        </p>
       </div>
     )
   }
 
   return (
     <>
-    <div className="bg-white rounded-xl border border-border overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border bg-muted/30">
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Product
-              </th>
-              <th className="text-left px-3 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Type
-              </th>
-              <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Active
-              </th>
-              <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Featured
-              </th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Last Synced
-              </th>
-              <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Actions
-              </th>
-            </tr>
-          </thead>
+      <DataTableCard>
+        <DataTable>
+          <DataTableHeader>
+            <DataTableHead>Product</DataTableHead>
+            <DataTableHead>Type</DataTableHead>
+            <DataTableHead className="text-center">Active</DataTableHead>
+            <DataTableHead className="text-center">Featured</DataTableHead>
+            <DataTableHead>Last Synced</DataTableHead>
+            <DataTableHead align="right">Actions</DataTableHead>
+          </DataTableHeader>
           <tbody className="divide-y divide-border">
             {products.map((product) => {
               const thumbnailSrc = product.thumbnail_url_override ?? product.thumbnail_url
-              const lastSynced = product.last_synced_at
-                ? new Date(product.last_synced_at).toLocaleDateString()
-                : "—"
+              const lastSynced = product.last_synced_at ? new Date(product.last_synced_at).toLocaleDateString() : "—"
 
               return (
-                <tr key={product.id} className="hover:bg-muted/20 transition-colors">
+                <DataTableRow key={product.id} className="hover:bg-muted/20">
                   {/* Thumbnail + name */}
-                  <td className="px-4 py-3">
+                  <DataTableCell>
                     <div className="flex items-center gap-3">
                       <div className="shrink-0 size-12 rounded-lg overflow-hidden bg-muted border border-border">
                         {thumbnailSrc ? (
@@ -143,10 +136,10 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
                         <p className="text-xs text-muted-foreground truncate max-w-[200px]">/{product.slug}</p>
                       </div>
                     </div>
-                  </td>
+                  </DataTableCell>
 
                   {/* Type badge */}
-                  <td className="px-3 py-2">
+                  <DataTableCell>
                     <span
                       className={cn(
                         "inline-flex rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest",
@@ -157,10 +150,10 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
                     >
                       {product.product_type}
                     </span>
-                  </td>
+                  </DataTableCell>
 
                   {/* Active toggle */}
-                  <td className="px-4 py-3 text-center">
+                  <DataTableCell className="text-center">
                     <div className="flex justify-center">
                       <Switch
                         checked={product.is_active}
@@ -168,10 +161,10 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
                         aria-label={`Toggle active for ${product.name}`}
                       />
                     </div>
-                  </td>
+                  </DataTableCell>
 
                   {/* Featured toggle */}
-                  <td className="px-4 py-3 text-center">
+                  <DataTableCell className="text-center">
                     <div className="flex justify-center">
                       <Switch
                         checked={product.is_featured}
@@ -179,20 +172,15 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
                         aria-label={`Toggle featured for ${product.name}`}
                       />
                     </div>
-                  </td>
+                  </DataTableCell>
 
                   {/* Last synced */}
-                  <td className="px-4 py-3 text-muted-foreground">{lastSynced}</td>
+                  <DataTableCell muted>{lastSynced}</DataTableCell>
 
                   {/* Actions */}
-                  <td className="px-4 py-3">
+                  <DataTableCell>
                     <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => setEditing(product)}
-                        title="Edit product"
-                      >
+                      <Button variant="ghost" size="icon-xs" onClick={() => setEditing(product)} title="Edit product">
                         <Pencil className="size-3.5" />
                       </Button>
                       <Button variant="ghost" size="icon-xs" asChild>
@@ -217,51 +205,50 @@ export function ShopProductsTable({ products: initialProducts }: ShopProductsTab
                         </Button>
                       )}
                     </div>
-                  </td>
-                </tr>
+                  </DataTableCell>
+                </DataTableRow>
               )
             })}
           </tbody>
-        </table>
-      </div>
-    </div>
-    <EditProductDialog
-      product={editing}
-      open={editing !== null}
-      onOpenChange={(open) => {
-        if (!open) setEditing(null)
-      }}
-    />
-    <AlertDialog
-      open={deleting !== null}
-      onOpenChange={(open) => {
-        if (!open && !deletingInFlight) setDeleting(null)
-      }}
-    >
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete product?</AlertDialogTitle>
-          <AlertDialogDescription>
-            {deleting
-              ? `This will permanently delete "${deleting.name}" and its files${deleting.product_type === "affiliate" ? " and click history" : ""}. This cannot be undone.`
-              : ""}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={deletingInFlight}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={(e) => {
-              e.preventDefault()
-              handleDelete()
-            }}
-            disabled={deletingInFlight}
-            className="bg-destructive text-white hover:bg-destructive/90"
-          >
-            {deletingInFlight ? "Deleting…" : "Delete"}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+        </DataTable>
+      </DataTableCard>
+      <EditProductDialog
+        product={editing}
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditing(null)
+        }}
+      />
+      <AlertDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingInFlight) setDeleting(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete product?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleting
+                ? `This will permanently delete "${deleting.name}" and its files${deleting.product_type === "affiliate" ? " and click history" : ""}. This cannot be undone.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingInFlight}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleDelete()
+              }}
+              disabled={deletingInFlight}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {deletingInFlight ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

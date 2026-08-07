@@ -1,4 +1,12 @@
 "use client"
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
 
 import { useState } from "react"
 import Link from "next/link"
@@ -110,92 +118,85 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-surface/50">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Subject</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Sent</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Date</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((nl) => (
-                  <tr
-                    key={nl.id}
-                    className="border-b border-border last:border-0 hover:bg-surface/30 transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="font-medium text-primary line-clamp-1">{nl.subject}</p>
-                        {nl.preview_text && (
-                          <p className="text-xs text-muted-foreground line-clamp-1">{nl.preview_text}</p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span
-                        className={cn(
-                          "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
-                          nl.status === "sent" ? "bg-success/10 text-success" : "bg-warning/10 text-warning",
-                        )}
+        <DataTableCard>
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead>Subject</DataTableHead>
+              <DataTableHead className="hidden md:table-cell">Status</DataTableHead>
+              <DataTableHead className="hidden lg:table-cell">Sent</DataTableHead>
+              <DataTableHead className="hidden lg:table-cell">Date</DataTableHead>
+              <DataTableHead align="right">Actions</DataTableHead>
+            </DataTableHeader>
+            <tbody>
+              {filtered.map((nl) => (
+                <DataTableRow key={nl.id}>
+                  <DataTableCell>
+                    <div>
+                      <p className="font-medium text-primary line-clamp-1">{nl.subject}</p>
+                      {nl.preview_text && (
+                        <p className="text-xs text-muted-foreground line-clamp-1">{nl.preview_text}</p>
+                      )}
+                    </div>
+                  </DataTableCell>
+                  <DataTableCell className="hidden md:table-cell">
+                    <span
+                      className={cn(
+                        "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
+                        nl.status === "sent" ? "bg-success/10 text-success" : "bg-warning/10 text-warning",
+                      )}
+                    >
+                      {nl.status === "sent" ? "Sent" : "Draft"}
+                    </span>
+                  </DataTableCell>
+                  <DataTableCell muted className="text-xs hidden lg:table-cell">
+                    {nl.status === "sent"
+                      ? `${nl.sent_count} delivered${nl.failed_count ? `, ${nl.failed_count} failed` : ""}`
+                      : "—"}
+                  </DataTableCell>
+                  <DataTableCell muted className="text-xs hidden lg:table-cell">
+                    {formatDate(nl.sent_at ?? nl.created_at)}
+                  </DataTableCell>
+                  <DataTableCell>
+                    <div className="flex items-center justify-end gap-1">
+                      <Link
+                        href={`/admin/newsletter/${nl.id}/edit`}
+                        className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                        title={nl.status === "sent" ? "View" : "Edit"}
                       >
-                        {nl.status === "sent" ? "Sent" : "Draft"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground hidden lg:table-cell">
-                      {nl.status === "sent"
-                        ? `${nl.sent_count} delivered${nl.failed_count ? `, ${nl.failed_count} failed` : ""}`
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground hidden lg:table-cell">
-                      {formatDate(nl.sent_at ?? nl.created_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <Link
-                          href={`/admin/newsletter/${nl.id}/edit`}
-                          className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                          title={nl.status === "sent" ? "View" : "Edit"}
-                        >
-                          {nl.status === "sent" ? <Eye className="size-4" /> : <Pencil className="size-4" />}
-                        </Link>
-                        {confirmId === nl.id ? (
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleDelete(nl.id)}
-                              disabled={deletingId === nl.id}
-                              className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
-                            >
-                              {deletingId === nl.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
-                            </button>
-                            <button
-                              onClick={() => setConfirmId(null)}
-                              className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
+                        {nl.status === "sent" ? <Eye className="size-4" /> : <Pencil className="size-4" />}
+                      </Link>
+                      {confirmId === nl.id ? (
+                        <div className="flex items-center gap-1">
                           <button
-                            onClick={() => setConfirmId(nl.id)}
-                            className="p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                            title="Delete"
+                            onClick={() => handleDelete(nl.id)}
+                            disabled={deletingId === nl.id}
+                            className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
                           >
-                            <Trash2 className="size-4" />
+                            {deletingId === nl.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                          <button
+                            onClick={() => setConfirmId(null)}
+                            className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmId(nl.id)}
+                          className="p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      )}
+                    </div>
+                  </DataTableCell>
+                </DataTableRow>
+              ))}
+            </tbody>
+          </DataTable>
+        </DataTableCard>
       )}
     </div>
   )

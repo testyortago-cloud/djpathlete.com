@@ -1,4 +1,12 @@
 "use client"
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
 
 import { useState } from "react"
 import Link from "next/link"
@@ -127,96 +135,56 @@ export function BlogPostList({ posts }: BlogPostListProps) {
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-surface/50">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Title</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">
-                    Category
-                  </th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Date</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((post) => (
-                  <tr
-                    key={post.id}
-                    className="border-b border-border last:border-0 hover:bg-surface/30 transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="font-medium text-primary line-clamp-1">{post.title}</p>
-                        <p className="text-xs text-muted-foreground line-clamp-1 sm:hidden">
-                          {post.category} · {post.status}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 hidden sm:table-cell">
-                      <span className="text-xs text-muted-foreground">{post.category}</span>
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span
-                        className={cn(
-                          "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
-                          post.status === "published" ? "bg-success/10 text-success" : "bg-warning/10 text-warning",
-                        )}
-                      >
-                        {post.status === "published" ? "Published" : "Draft"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground hidden lg:table-cell">
-                      {formatDate(post.published_at ?? post.created_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        {post.status === "draft" &&
-                          (confirmPublishId === post.id ? (
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => handlePublish(post.id)}
-                                disabled={publishingId === post.id}
-                                className="px-2 py-1 rounded-md text-xs font-medium bg-success text-white hover:bg-success/90 transition-colors disabled:opacity-50"
-                              >
-                                {publishingId === post.id ? <Loader2 className="size-3 animate-spin" /> : "Publish"}
-                              </button>
-                              <button
-                                onClick={() => setConfirmPublishId(null)}
-                                className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => setConfirmPublishId(post.id)}
-                              className="p-1.5 rounded-md text-muted-foreground hover:text-success hover:bg-success/10 transition-colors"
-                              title="Publish"
-                            >
-                              <Send className="size-4" />
-                            </button>
-                          ))}
-                        <Link
-                          href={`/admin/blog/${post.id}/edit`}
-                          className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                          title="Edit"
-                        >
-                          <Pencil className="size-4" />
-                        </Link>
-                        {confirmId === post.id ? (
+        <DataTableCard>
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead>Title</DataTableHead>
+              <DataTableHead className="hidden sm:table-cell">Category</DataTableHead>
+              <DataTableHead className="hidden md:table-cell">Status</DataTableHead>
+              <DataTableHead className="hidden lg:table-cell">Date</DataTableHead>
+              <DataTableHead align="right">Actions</DataTableHead>
+            </DataTableHeader>
+            <tbody>
+              {filtered.map((post) => (
+                <DataTableRow key={post.id}>
+                  <DataTableCell>
+                    <div>
+                      <p className="font-medium text-primary line-clamp-1">{post.title}</p>
+                      <p className="text-xs text-muted-foreground line-clamp-1 sm:hidden">
+                        {post.category} · {post.status}
+                      </p>
+                    </div>
+                  </DataTableCell>
+                  <DataTableCell className="hidden sm:table-cell">
+                    <span className="text-xs text-muted-foreground">{post.category}</span>
+                  </DataTableCell>
+                  <DataTableCell className="hidden md:table-cell">
+                    <span
+                      className={cn(
+                        "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
+                        post.status === "published" ? "bg-success/10 text-success" : "bg-warning/10 text-warning",
+                      )}
+                    >
+                      {post.status === "published" ? "Published" : "Draft"}
+                    </span>
+                  </DataTableCell>
+                  <DataTableCell muted className="text-xs hidden lg:table-cell">
+                    {formatDate(post.published_at ?? post.created_at)}
+                  </DataTableCell>
+                  <DataTableCell>
+                    <div className="flex items-center justify-end gap-1">
+                      {post.status === "draft" &&
+                        (confirmPublishId === post.id ? (
                           <div className="flex items-center gap-1">
                             <button
-                              onClick={() => handleDelete(post.id)}
-                              disabled={deletingId === post.id}
-                              className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+                              onClick={() => handlePublish(post.id)}
+                              disabled={publishingId === post.id}
+                              className="px-2 py-1 rounded-md text-xs font-medium bg-success text-white hover:bg-success/90 transition-colors disabled:opacity-50"
                             >
-                              {deletingId === post.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
+                              {publishingId === post.id ? <Loader2 className="size-3 animate-spin" /> : "Publish"}
                             </button>
                             <button
-                              onClick={() => setConfirmId(null)}
+                              onClick={() => setConfirmPublishId(null)}
                               className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
                             >
                               Cancel
@@ -224,21 +192,52 @@ export function BlogPostList({ posts }: BlogPostListProps) {
                           </div>
                         ) : (
                           <button
-                            onClick={() => setConfirmId(post.id)}
-                            className="p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                            title="Delete"
+                            onClick={() => setConfirmPublishId(post.id)}
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-success hover:bg-success/10 transition-colors"
+                            title="Publish"
                           >
-                            <Trash2 className="size-4" />
+                            <Send className="size-4" />
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                        ))}
+                      <Link
+                        href={`/admin/blog/${post.id}/edit`}
+                        className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                        title="Edit"
+                      >
+                        <Pencil className="size-4" />
+                      </Link>
+                      {confirmId === post.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleDelete(post.id)}
+                            disabled={deletingId === post.id}
+                            className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+                          >
+                            {deletingId === post.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
+                          </button>
+                          <button
+                            onClick={() => setConfirmId(null)}
+                            className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmId(post.id)}
+                          className="p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      )}
+                    </div>
+                  </DataTableCell>
+                </DataTableRow>
+              ))}
+            </tbody>
+          </DataTable>
+        </DataTableCard>
       )}
     </div>
   )

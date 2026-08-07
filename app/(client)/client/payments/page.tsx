@@ -1,3 +1,12 @@
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
 import { PageHeader } from "@/components/shared/PageHeader"
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
@@ -85,42 +94,39 @@ export default async function ClientPaymentsPage() {
           ctaHref="/client/programs"
         />
       ) : (
-        <div className="bg-white rounded-xl border border-border overflow-hidden">
+        <DataTableCard className="overflow-hidden">
           {/* Desktop Table */}
           <div className="hidden md:block">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-surface/50">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Description</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Amount</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-                </tr>
-              </thead>
+            <DataTable>
+              <DataTableHeader>
+                <DataTableHead>Date</DataTableHead>
+                <DataTableHead>Description</DataTableHead>
+                <DataTableHead>Amount</DataTableHead>
+                <DataTableHead>Status</DataTableHead>
+              </DataTableHeader>
               <tbody>
                 {payments.map((payment) => (
-                  <tr
-                    key={payment.id}
-                    className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
-                  >
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                  <DataTableRow key={payment.id}>
+                    <DataTableCell muted className="whitespace-nowrap">
                       {formatDate(payment.created_at)}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-foreground">
+                    </DataTableCell>
+                    <DataTableCell className="font-medium text-foreground">
                       {payment.description ?? "Program Purchase"}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-foreground">{formatCents(payment.amount_cents)}</td>
-                    <td className="px-4 py-3">
+                    </DataTableCell>
+                    <DataTableCell className="font-medium text-foreground">
+                      {formatCents(payment.amount_cents)}
+                    </DataTableCell>
+                    <DataTableCell>
                       <span
                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[payment.status] ?? "bg-muted text-muted-foreground"}`}
                       >
                         {payment.status}
                       </span>
-                    </td>
-                  </tr>
+                    </DataTableCell>
+                  </DataTableRow>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
 
           {/* Mobile Cards */}
@@ -142,7 +148,7 @@ export default async function ClientPaymentsPage() {
               </div>
             ))}
           </div>
-        </div>
+        </DataTableCard>
       )}
     </div>
   )

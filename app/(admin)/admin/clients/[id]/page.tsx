@@ -1,3 +1,12 @@
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import {
@@ -251,38 +260,31 @@ function ProgramsSection({
       {assignments.length === 0 ? (
         <p className="text-sm text-muted-foreground">No programs assigned to this client yet.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surface/50">
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Program</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">
-                  Start Date
-                </th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">End Date</th>
-                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
-              </tr>
-            </thead>
+        <DataTableCard>
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead>Program</DataTableHead>
+              <DataTableHead>Status</DataTableHead>
+              <DataTableHead className="hidden sm:table-cell">Start Date</DataTableHead>
+              <DataTableHead className="hidden md:table-cell">End Date</DataTableHead>
+              <DataTableHead align="right">Actions</DataTableHead>
+            </DataTableHeader>
             <tbody>
               {assignments.map((assignment) => (
-                <tr
-                  key={assignment.id}
-                  className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
-                >
-                  <td className="px-4 py-3 font-medium text-foreground">
+                <DataTableRow key={assignment.id}>
+                  <DataTableCell className="font-medium text-foreground">
                     <div className="flex flex-col">
                       <span>{assignment.programs?.name ?? "Unknown Program"}</span>
                       {assignment.status === "active" && packByAssignment.get(assignment.id) && (
                         <span className="mt-0.5 flex items-center gap-1 text-xs font-normal text-accent">
                           <Ticket className="size-3" strokeWidth={1.5} />
-                          {packByAssignment.get(assignment.id)!.remaining} / {packByAssignment.get(assignment.id)!.total}{" "}
-                          sessions · advances on check-in
+                          {packByAssignment.get(assignment.id)!.remaining} /{" "}
+                          {packByAssignment.get(assignment.id)!.total} sessions · advances on check-in
                         </span>
                       )}
                     </div>
-                  </td>
-                  <td className="px-4 py-3">
+                  </DataTableCell>
+                  <DataTableCell>
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
                         STATUS_COLORS[assignment.status] ?? "bg-muted text-muted-foreground"
@@ -290,14 +292,14 @@ function ProgramsSection({
                     >
                       {assignment.status}
                     </span>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
+                  </DataTableCell>
+                  <DataTableCell muted className="hidden sm:table-cell">
                     {formatDate(assignment.start_date)}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                  </DataTableCell>
+                  <DataTableCell muted className="hidden md:table-cell">
                     {assignment.end_date ? formatDate(assignment.end_date) : "Ongoing"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
+                  </DataTableCell>
+                  <DataTableCell align="right">
                     {assignment.status === "active" && (
                       <div className="flex items-center justify-end gap-1">
                         <EditAssignmentButton
@@ -314,12 +316,12 @@ function ProgramsSection({
                         />
                       </div>
                     )}
-                  </td>
-                </tr>
+                  </DataTableCell>
+                </DataTableRow>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
+        </DataTableCard>
       )}
     </div>
   )
@@ -582,26 +584,23 @@ function PaymentsSection({ payments }: { payments: Payment[] }) {
       {payments.length === 0 ? (
         <p className="text-sm text-muted-foreground">No payment records for this client yet.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surface/50">
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Description</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Amount</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-              </tr>
-            </thead>
+        <DataTableCard>
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead>Date</DataTableHead>
+              <DataTableHead>Description</DataTableHead>
+              <DataTableHead>Amount</DataTableHead>
+              <DataTableHead>Status</DataTableHead>
+            </DataTableHeader>
             <tbody>
               {payments.map((payment) => (
-                <tr
-                  key={payment.id}
-                  className="border-b border-border last:border-b-0 hover:bg-surface/30 transition-colors"
-                >
-                  <td className="px-4 py-3 text-muted-foreground">{formatDate(payment.created_at)}</td>
-                  <td className="px-4 py-3 text-foreground">{payment.description ?? "Payment"}</td>
-                  <td className="px-4 py-3 font-medium text-foreground">{formatCurrency(payment.amount_cents)}</td>
-                  <td className="px-4 py-3">
+                <DataTableRow key={payment.id}>
+                  <DataTableCell muted>{formatDate(payment.created_at)}</DataTableCell>
+                  <DataTableCell className="text-foreground">{payment.description ?? "Payment"}</DataTableCell>
+                  <DataTableCell className="font-medium text-foreground">
+                    {formatCurrency(payment.amount_cents)}
+                  </DataTableCell>
+                  <DataTableCell>
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
                         PAYMENT_STATUS_COLORS[payment.status] ?? "bg-muted text-muted-foreground"
@@ -609,12 +608,12 @@ function PaymentsSection({ payments }: { payments: Payment[] }) {
                     >
                       {payment.status}
                     </span>
-                  </td>
-                </tr>
+                  </DataTableCell>
+                </DataTableRow>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
+        </DataTableCard>
       )}
     </div>
   )
@@ -640,7 +639,18 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     notFound()
   }
 
-  const [profile, assignments, payments, progressData, achievements, workoutStreak, packs, favorites, allExercises, leadInquiry] = await Promise.all([
+  const [
+    profile,
+    assignments,
+    payments,
+    progressData,
+    achievements,
+    workoutStreak,
+    packs,
+    favorites,
+    allExercises,
+    leadInquiry,
+  ] = await Promise.all([
     getProfileByUserId(id),
     getAssignments(id),
     getPayments(id),
@@ -718,10 +728,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   if (showCardOnFile) {
     const nameOf = (u: { first_name?: string | null; last_name?: string | null; email: string }) =>
       `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || u.email
-    const [link, allUsers] = await Promise.all([
-      getBillingPayer(id).catch(() => null),
-      getUsers().catch(() => []),
-    ])
+    const [link, allUsers] = await Promise.all([getBillingPayer(id).catch(() => null), getUsers().catch(() => [])])
     payerCandidates = allUsers
       .filter((u) => u.role === "client" && u.id !== id)
       .map((u) => ({ id: u.id, name: nameOf(u) }))

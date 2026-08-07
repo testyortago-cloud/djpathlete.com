@@ -1,4 +1,12 @@
 "use client"
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
 
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
@@ -199,25 +207,29 @@ export function ExerciseImportDialog({ open, onOpenChange }: ExerciseImportDialo
               </span>
             </div>
 
-            <div className="overflow-x-auto border border-border rounded-lg max-h-72">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-surface/50 border-b border-border">
-                    <th className="px-3 py-2 text-left font-medium text-muted-foreground w-8" />
-                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Name</th>
-                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Category</th>
-                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Difficulty</th>
-                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Status</th>
-                  </tr>
-                </thead>
+            <DataTableCard>
+              <DataTable className="text-xs">
+                <DataTableHeader>
+                  <DataTableHead className="w-8" />
+                  <DataTableHead>Name</DataTableHead>
+                  <DataTableHead>Category</DataTableHead>
+                  <DataTableHead>Difficulty</DataTableHead>
+                  <DataTableHead>Status</DataTableHead>
+                </DataTableHeader>
                 <tbody>
                   {previewRows.map((row, i) => (
-                    <tr key={i} className="border-b border-border last:border-b-0">
-                      <td className="px-3 py-2 text-center text-muted-foreground">{i + 1}</td>
-                      <td className="px-3 py-2 font-medium">{row.data.name || "—"}</td>
-                      <td className="px-3 py-2 text-muted-foreground capitalize">{row.data.category || "—"}</td>
-                      <td className="px-3 py-2 text-muted-foreground capitalize">{row.data.difficulty || "—"}</td>
-                      <td className="px-3 py-2">
+                    <DataTableRow key={i}>
+                      <DataTableCell muted className="text-center">
+                        {i + 1}
+                      </DataTableCell>
+                      <DataTableCell className="font-medium">{row.data.name || "—"}</DataTableCell>
+                      <DataTableCell muted className="capitalize">
+                        {row.data.category || "—"}
+                      </DataTableCell>
+                      <DataTableCell muted className="capitalize">
+                        {row.data.difficulty || "—"}
+                      </DataTableCell>
+                      <DataTableCell>
                         {row.valid ? (
                           <CheckCircle2 className="size-4 text-success" />
                         ) : (
@@ -228,12 +240,12 @@ export function ExerciseImportDialog({ open, onOpenChange }: ExerciseImportDialo
                             </span>
                           </span>
                         )}
-                      </td>
-                    </tr>
+                      </DataTableCell>
+                    </DataTableRow>
                   ))}
                 </tbody>
-              </table>
-            </div>
+              </DataTable>
+            </DataTableCard>
           </>
         )}
 

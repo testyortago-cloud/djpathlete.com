@@ -1,5 +1,7 @@
 "use client"
 
+import { DataTable, DataTableCell, DataTableHead, DataTableHeader, DataTableRow } from "@/components/ui/data-table"
+
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { toast } from "sonner"
@@ -31,7 +33,11 @@ interface BookReport {
    *  under a net_ key, so this really can be absent. */
   net_income_cents: number | null
 }
-interface ReportData { from: string; to: string; books: BookReport[] }
+interface ReportData {
+  from: string
+  to: string
+  books: BookReport[]
+}
 
 const QBO_LINE_CAP = 1000
 
@@ -79,7 +85,10 @@ export function ReportsClient({
   }, [fetchReport])
 
   const applyPreset = (value: string) => {
-    if (value === "custom") { setPreset("custom"); return }
+    if (value === "custom") {
+      setPreset("custom")
+      return
+    }
     const p = value as PeriodPreset
     const range = presetRange(p, todayIso())
     setPreset(p)
@@ -88,7 +97,13 @@ export function ReportsClient({
   }
 
   if (books.length === 0) {
-    return <EmptyState icon={BarChart3} heading="No books configured" description="No bookkeeping books exist yet. Seed the business book to get started." />
+    return (
+      <EmptyState
+        icon={BarChart3}
+        heading="No books configured"
+        description="No bookkeeping books exist yet. Seed the business book to get started."
+      />
+    )
   }
 
   const totalEntries = data?.books.reduce((n, b) => n + b.row_count, 0) ?? 0
@@ -108,7 +123,8 @@ export function ReportsClient({
           </Link>
           <h1 className="text-2xl font-heading text-primary">Reports</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Gross figures stay primary; Stripe processing fees from ingested payouts appear as a labeled net line (est.). Estimates for planning; your CPA files.
+            Gross figures stay primary; Stripe processing fees from ingested payouts appear as a labeled net line
+            (est.). Estimates for planning; your CPA files.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -133,7 +149,9 @@ export function ReportsClient({
               className="border-border bg-background rounded-md border px-3 py-2 text-sm"
             >
               {Object.entries(PERIOD_PRESET_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
+                <option key={value} value={value}>
+                  {label}
+                </option>
               ))}
               <option value="custom">Custom range…</option>
             </select>
@@ -143,7 +161,8 @@ export function ReportsClient({
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground">From</span>
                 <input
-                  type="date" value={from}
+                  type="date"
+                  value={from}
                   onChange={(e) => setFrom(e.currentTarget.value)}
                   className="border-border bg-background rounded-md border px-3 py-2 text-sm"
                 />
@@ -151,7 +170,8 @@ export function ReportsClient({
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-muted-foreground">To</span>
                 <input
-                  type="date" value={to}
+                  type="date"
+                  value={to}
                   onChange={(e) => setTo(e.currentTarget.value)}
                   className="border-border bg-background rounded-md border px-3 py-2 text-sm"
                 />
@@ -176,28 +196,32 @@ export function ReportsClient({
           {/* All-books summary */}
           <div className="rounded-lg border border-border bg-card p-4 overflow-x-auto">
             <h2 className="text-sm font-heading text-primary mb-3">Per-book summary</h2>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs text-muted-foreground uppercase tracking-wide">
-                  <th className="py-1 pr-4 font-medium">Book</th>
-                  <th className="py-1 pr-4 font-medium">Income</th>
-                  <th className="py-1 pr-4 font-medium">Expenses</th>
-                  <th className="py-1 pr-4 font-medium">Net</th>
-                  <th className="py-1 pr-4 font-medium">Entries</th>
-                </tr>
-              </thead>
+            <DataTable>
+              <DataTableHeader>
+                <DataTableHead className="py-1 pr-4">Book</DataTableHead>
+                <DataTableHead className="py-1 pr-4">Income</DataTableHead>
+                <DataTableHead className="py-1 pr-4">Expenses</DataTableHead>
+                <DataTableHead className="py-1 pr-4">Net</DataTableHead>
+                <DataTableHead className="py-1 pr-4">Entries</DataTableHead>
+              </DataTableHeader>
               <tbody>
                 {(data?.books ?? []).map(({ book, summary }) => (
-                  <tr key={book.id} className="border-b last:border-0">
-                    <td className="py-1.5 pr-4">{book.name}</td>
-                    <td className="py-1.5 pr-4 text-success">{formatCents(summary.income_cents)}</td>
-                    <td className="py-1.5 pr-4 text-error">{formatCents(summary.expense_cents)}</td>
-                    <td className={`py-1.5 pr-4 ${summary.net_cents >= 0 ? "text-success" : "text-error"}`}>{formatCents(summary.net_cents)}</td>
-                    <td className="py-1.5 pr-4">{summary.entry_count}</td>
-                  </tr>
+                  <DataTableRow key={book.id}>
+                    <DataTableCell className="py-1.5 pr-4">{book.name}</DataTableCell>
+                    <DataTableCell className="py-1.5 pr-4 text-success">
+                      {formatCents(summary.income_cents)}
+                    </DataTableCell>
+                    <DataTableCell className="py-1.5 pr-4 text-error">
+                      {formatCents(summary.expense_cents)}
+                    </DataTableCell>
+                    <DataTableCell className={`py-1.5 pr-4 ${summary.net_cents >= 0 ? "text-success" : "text-error"}`}>
+                      {formatCents(summary.net_cents)}
+                    </DataTableCell>
+                    <DataTableCell className="py-1.5 pr-4">{summary.entry_count}</DataTableCell>
+                  </DataTableRow>
                 ))}
               </tbody>
-            </table>
+            </DataTable>
           </div>
 
           {/* Export row — the accountant pack + email-to-accountant live here */}
@@ -235,7 +259,8 @@ export function ReportsClient({
             ) : null}
             {active && active.row_count > QBO_LINE_CAP ? (
               <p className="text-xs text-warning">
-                QuickBooks caps CSV imports at {QBO_LINE_CAP.toLocaleString()} rows — this period has {active.row_count.toLocaleString()}. Consider exporting a shorter period.
+                QuickBooks caps CSV imports at {QBO_LINE_CAP.toLocaleString()} rows — this period has{" "}
+                {active.row_count.toLocaleString()}. Consider exporting a shorter period.
               </p>
             ) : null}
           </div>
@@ -244,7 +269,9 @@ export function ReportsClient({
           <Tabs value={bookId} onValueChange={setBookId}>
             <TabsList>
               {books.map((book) => (
-                <TabsTrigger key={book.id} value={book.id}>{book.name}</TabsTrigger>
+                <TabsTrigger key={book.id} value={book.id}>
+                  {book.name}
+                </TabsTrigger>
               ))}
             </TabsList>
             <TabsContent value={bookId} className="space-y-6 mt-4">
@@ -258,53 +285,66 @@ export function ReportsClient({
                     {/* Ingested fees with no posted income still render — otherwise the
                         screen would say "no income" while the xlsx for the same window
                         shows a fee total. */}
-                    {active.income_by_service.rows.length === 0
-                      && !(active.book.is_primary && active.book.book_kind === "business" && active.stripe_fees.payout_count !== 0) ? (
+                    {active.income_by_service.rows.length === 0 &&
+                    !(
+                      active.book.is_primary &&
+                      active.book.book_kind === "business" &&
+                      active.stripe_fees.payout_count !== 0
+                    ) ? (
                       <p className="text-sm text-muted-foreground">No income in this period.</p>
                     ) : (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b text-left text-xs text-muted-foreground uppercase tracking-wide">
-                            <th className="py-1 pr-4 font-medium">Service line</th>
-                            <th className="py-1 pr-4 font-medium">Entries</th>
-                            <th className="py-1 pr-4 font-medium">Total</th>
-                          </tr>
-                        </thead>
+                      <DataTable>
+                        <DataTableHeader>
+                          <DataTableHead className="py-1 pr-4">Service line</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Entries</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Total</DataTableHead>
+                        </DataTableHeader>
                         <tbody>
                           {active.income_by_service.rows.map((r) => (
-                            <tr key={r.service_line ?? "uncategorized"} className={`border-b last:border-0 ${r.service_line === null ? "bg-warning/10" : ""}`}>
-                              <td className="py-1.5 pr-4">{r.label}</td>
-                              <td className="py-1.5 pr-4">{r.entry_count}</td>
-                              <td className="py-1.5 pr-4">{formatCents(r.total_cents)}</td>
-                            </tr>
+                            <DataTableRow
+                              key={r.service_line ?? "uncategorized"}
+                              className={`border-b last:border-0 ${r.service_line === null ? "bg-warning/10" : ""}`}
+                            >
+                              <DataTableCell className="py-1.5 pr-4">{r.label}</DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4">{r.entry_count}</DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4">{formatCents(r.total_cents)}</DataTableCell>
+                            </DataTableRow>
                           ))}
-                          <tr>
-                            <td className="py-1.5 pr-4 font-semibold">Total gross income</td>
-                            <td />
-                            <td className="py-1.5 pr-4 font-semibold">{formatCents(active.income_by_service.total_cents)}</td>
-                          </tr>
+                          <DataTableRow>
+                            <DataTableCell className="py-1.5 pr-4 font-semibold">Total gross income</DataTableCell>
+                            <DataTableCell />
+                            <DataTableCell className="py-1.5 pr-4 font-semibold">
+                              {formatCents(active.income_by_service.total_cents)}
+                            </DataTableCell>
+                          </DataTableRow>
                           {active.book.is_primary && active.book.book_kind === "business" ? (
                             <>
-                              <tr>
-                                <td className="py-1.5 pr-4 text-muted-foreground">Stripe processing fees (est., from ingested payouts)</td>
-                                <td />
-                                <td className="py-1.5 pr-4 text-muted-foreground">
+                              <DataTableRow>
+                                <DataTableCell muted className="py-1.5 pr-4">
+                                  Stripe processing fees (est., from ingested payouts)
+                                </DataTableCell>
+                                <DataTableCell />
+                                <DataTableCell muted className="py-1.5 pr-4">
                                   {feeLineDisplay(active.stripe_fees)}
-                                </td>
-                              </tr>
-                              <tr>
-                                <td className="py-1.5 pr-4 font-semibold">Net income after Stripe fees (est.)</td>
-                                <td />
+                                </DataTableCell>
+                              </DataTableRow>
+                              <DataTableRow>
+                                <DataTableCell className="py-1.5 pr-4 font-semibold">
+                                  Net income after Stripe fees (est.)
+                                </DataTableCell>
+                                <DataTableCell />
                                 {/* Never restates gross under a "net" label when no payout
                                     has been ingested — the hedge lives in the number too. */}
-                                <td className={`py-1.5 pr-4 ${active.stripe_fees.payout_count === 0 ? "text-muted-foreground" : "font-semibold"}`}>
+                                <DataTableCell
+                                  className={`py-1.5 pr-4 ${active.stripe_fees.payout_count === 0 ? "text-muted-foreground" : "font-semibold"}`}
+                                >
                                   {netAfterFeesDisplay(active.income_by_service.total_cents, active.stripe_fees)}
-                                </td>
-                              </tr>
+                                </DataTableCell>
+                              </DataTableRow>
                             </>
                           ) : null}
                         </tbody>
-                      </table>
+                      </DataTable>
                     )}
                   </div>
 
@@ -313,29 +353,51 @@ export function ReportsClient({
                     <h2 className="text-sm font-heading text-primary mb-3">Profit &amp; loss by category (gross)</h2>
                     {(["income", "expense"] as const).map((side) => (
                       <div key={side} className="mb-4">
-                        <h3 className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{side === "income" ? "Income" : "Expenses"}</h3>
+                        <h3 className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                          {side === "income" ? "Income" : "Expenses"}
+                        </h3>
                         {active.pnl[side].length === 0 ? (
                           <p className="text-sm text-muted-foreground">None in this period.</p>
                         ) : (
-                          <table className="w-full text-sm">
+                          <DataTable>
                             <tbody>
                               {active.pnl[side].map((r) => (
-                                <tr key={r.account_id ?? "uncategorized"} className={`border-b last:border-0 ${r.account_id === null ? "bg-warning/10" : ""}`}>
-                                  <td className="py-1.5 pr-4">{r.name}</td>
-                                  <td className="py-1.5 pr-4 text-xs text-muted-foreground">{r.tax_category ?? ""}</td>
-                                  <td className="py-1.5 pr-4 text-right">{r.entry_count}</td>
-                                  <td className="py-1.5 pr-4 text-right">{formatCents(r.total_cents)}</td>
-                                </tr>
+                                <DataTableRow
+                                  key={r.account_id ?? "uncategorized"}
+                                  className={`border-b last:border-0 ${r.account_id === null ? "bg-warning/10" : ""}`}
+                                >
+                                  <DataTableCell className="py-1.5 pr-4">{r.name}</DataTableCell>
+                                  <DataTableCell muted className="py-1.5 pr-4 text-xs">
+                                    {r.tax_category ?? ""}
+                                  </DataTableCell>
+                                  <DataTableCell align="right" className="py-1.5 pr-4">
+                                    {r.entry_count}
+                                  </DataTableCell>
+                                  <DataTableCell align="right" className="py-1.5 pr-4">
+                                    {formatCents(r.total_cents)}
+                                  </DataTableCell>
+                                </DataTableRow>
                               ))}
                             </tbody>
-                          </table>
+                          </DataTable>
                         )}
                       </div>
                     ))}
                     <div className="flex flex-wrap gap-6 border-t pt-3">
-                      <p className="text-sm">Income <span className="font-semibold text-success">{formatCents(active.pnl.income_total_cents)}</span></p>
-                      <p className="text-sm">Expenses <span className="font-semibold text-error">{formatCents(active.pnl.expense_total_cents)}</span></p>
-                      <p className="text-sm">Net <span className={`font-semibold ${active.pnl.net_cents >= 0 ? "text-success" : "text-error"}`}>{formatCents(active.pnl.net_cents)}</span></p>
+                      <p className="text-sm">
+                        Income{" "}
+                        <span className="font-semibold text-success">{formatCents(active.pnl.income_total_cents)}</span>
+                      </p>
+                      <p className="text-sm">
+                        Expenses{" "}
+                        <span className="font-semibold text-error">{formatCents(active.pnl.expense_total_cents)}</span>
+                      </p>
+                      <p className="text-sm">
+                        Net{" "}
+                        <span className={`font-semibold ${active.pnl.net_cents >= 0 ? "text-success" : "text-error"}`}>
+                          {formatCents(active.pnl.net_cents)}
+                        </span>
+                      </p>
                     </div>
                   </div>
                 </>

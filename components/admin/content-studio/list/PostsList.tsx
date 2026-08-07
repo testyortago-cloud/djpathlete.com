@@ -1,3 +1,12 @@
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
 import Link from "next/link"
 import { Megaphone } from "lucide-react"
 import type { PipelinePostRow } from "@/lib/db/social-posts"
@@ -17,35 +26,31 @@ export function PostsList({ posts }: PostsListProps) {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-white overflow-hidden">
-      <table className="w-full text-sm">
-        <thead className="bg-surface/40 text-left">
-          <tr className="text-xs uppercase tracking-wide text-muted-foreground">
-            <th className="px-4 py-2">Platform</th>
-            <th className="px-4 py-2">Caption</th>
-            <th className="px-4 py-2">Source video</th>
-            <th className="px-4 py-2">Status</th>
-            <th className="px-4 py-2">Scheduled</th>
-          </tr>
-        </thead>
+    <DataTableCard>
+      <DataTable>
+        <DataTableHeader>
+          <DataTableHead>Platform</DataTableHead>
+          <DataTableHead>Caption</DataTableHead>
+          <DataTableHead>Source video</DataTableHead>
+          <DataTableHead>Status</DataTableHead>
+          <DataTableHead>Scheduled</DataTableHead>
+        </DataTableHeader>
         <tbody>
           {posts.map((p) => (
-            <tr key={p.id} className="border-t border-border hover:bg-surface/30">
-              <td className="px-4 py-2 text-muted-foreground">{p.platform}</td>
-              <td className="px-4 py-2">
+            <DataTableRow key={p.id}>
+              <DataTableCell muted>{p.platform}</DataTableCell>
+              <DataTableCell>
                 <Link href={`/admin/content/post/${p.id}`} className="text-primary hover:underline line-clamp-2">
                   {p.content}
                 </Link>
-              </td>
-              <td className="px-4 py-2 text-muted-foreground">{p.source_video_filename ?? "—"}</td>
-              <td className="px-4 py-2">{p.approval_status}</td>
-              <td className="px-4 py-2 text-muted-foreground">
-                {p.scheduled_at ? new Date(p.scheduled_at).toLocaleString() : "—"}
-              </td>
-            </tr>
+              </DataTableCell>
+              <DataTableCell muted>{p.source_video_filename ?? "—"}</DataTableCell>
+              <DataTableCell>{p.approval_status}</DataTableCell>
+              <DataTableCell muted>{p.scheduled_at ? new Date(p.scheduled_at).toLocaleString() : "—"}</DataTableCell>
+            </DataTableRow>
           ))}
         </tbody>
-      </table>
-    </div>
+      </DataTable>
+    </DataTableCard>
   )
 }

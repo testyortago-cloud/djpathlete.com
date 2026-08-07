@@ -1,3 +1,12 @@
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
 import Link from "next/link"
 import { listAgentMemos } from "@/lib/db/google-ads-agent-memos"
 import { Badge } from "@/components/ui/badge"
@@ -45,7 +54,10 @@ function outcomeBadgeVariant(status: GoogleAdsAgentMemo["outcome_status"]): Badg
 function OutcomeBadge({ memo }: { memo: GoogleAdsAgentMemo }) {
   const label = memo.outcome_status.replace(/_/g, " ")
   return (
-    <Badge variant={outcomeBadgeVariant(memo.outcome_status)} className="text-[10px] font-mono uppercase tracking-wider">
+    <Badge
+      variant={outcomeBadgeVariant(memo.outcome_status)}
+      className="text-[10px] font-mono uppercase tracking-wider"
+    >
       {label}
     </Badge>
   )
@@ -75,10 +87,9 @@ export default async function AgentPage() {
         <div>
           <h1 className="text-2xl font-heading text-primary">AI Ads Agent</h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
-            Senior-marketer agent. Wednesday 13:00 UTC, it reads your full account state
-            (campaigns, recs, conversions, audiences, pipeline) and writes a structured
-            strategist memo. You can also ask ad-hoc questions below — answers are grounded in
-            the same snapshot.
+            Senior-marketer agent. Wednesday 13:00 UTC, it reads your full account state (campaigns, recs, conversions,
+            audiences, pipeline) and writes a structured strategist memo. You can also ask ad-hoc questions below —
+            answers are grounded in the same snapshot.
           </p>
         </div>
         <GenerateMemoButton />
@@ -97,8 +108,8 @@ export default async function AgentPage() {
         </h2>
         {!latest ? (
           <div className="border border-dashed border-border rounded-xl p-6 bg-card text-sm text-muted-foreground text-center">
-            No memos yet. Click <strong>Generate now</strong> above to ask the agent for the
-            first one — runs in ~30 seconds.
+            No memos yet. Click <strong>Generate now</strong> above to ask the agent for the first one — runs in ~30
+            seconds.
           </div>
         ) : (
           <div className="border border-border rounded-xl bg-card p-6 space-y-4">
@@ -145,9 +156,7 @@ export default async function AgentPage() {
                       ) : (
                         <p className="text-sm font-medium text-primary">{a.title}</p>
                       )}
-                      <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                        {a.reasoning.slice(0, 240)}
-                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{a.reasoning.slice(0, 240)}</p>
                     </div>
                   </div>
                 ))}
@@ -162,46 +171,44 @@ export default async function AgentPage() {
           <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
             ─ Memo archive
           </h2>
-          <div className="border border-border rounded-xl bg-card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-surface text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="text-left p-3 w-32">Week of</th>
-                  <th className="text-left p-3">Subject</th>
-                  <th className="text-left p-3 w-40">Outcome</th>
-                  <th className="text-left p-3 w-24">Source</th>
-                  <th className="text-left p-3 w-32">Sent to</th>
-                </tr>
-              </thead>
+          <DataTableCard>
+            <DataTable>
+              <DataTableHeader>
+                <DataTableHead className="w-32">Week of</DataTableHead>
+                <DataTableHead>Subject</DataTableHead>
+                <DataTableHead className="w-40">Outcome</DataTableHead>
+                <DataTableHead className="w-24">Source</DataTableHead>
+                <DataTableHead className="w-32">Sent to</DataTableHead>
+              </DataTableHeader>
               <tbody>
                 {memos.slice(1).map((m) => {
                   const headline = topHeadlineMetric(m.outcome_metrics)
                   return (
-                    <tr key={m.id} className="border-t border-border/60">
-                      <td className="p-3 font-mono text-xs">{fmtWeekOf(m.week_of)}</td>
-                      <td className="p-3">
+                    <DataTableRow key={m.id}>
+                      <DataTableCell className="font-mono text-xs">{fmtWeekOf(m.week_of)}</DataTableCell>
+                      <DataTableCell>
                         <Link href={`/admin/ads/agent/${m.id}`} className="text-primary hover:text-accent">
                           {m.subject}
                         </Link>
-                      </td>
-                      <td className="p-3">
+                      </DataTableCell>
+                      <DataTableCell>
                         <div className="flex items-center gap-2">
                           <OutcomeBadge memo={m} />
                           {headline ? (
                             <span className="text-xs font-mono text-muted-foreground">{headline}</span>
                           ) : null}
                         </div>
-                      </td>
-                      <td className="p-3 text-xs">{m.source}</td>
-                      <td className="p-3 text-xs font-mono text-muted-foreground">
+                      </DataTableCell>
+                      <DataTableCell className="text-xs">{m.source}</DataTableCell>
+                      <DataTableCell muted className="text-xs font-mono">
                         {m.email_recipient ?? "—"}
-                      </td>
-                    </tr>
+                      </DataTableCell>
+                    </DataTableRow>
                   )
                 })}
               </tbody>
-            </table>
-          </div>
+            </DataTable>
+          </DataTableCard>
         </section>
       ) : null}
     </div>

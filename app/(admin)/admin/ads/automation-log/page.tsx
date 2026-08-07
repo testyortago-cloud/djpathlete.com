@@ -1,3 +1,12 @@
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
 import Link from "next/link"
 import { listRecentAutomationLog } from "@/lib/db/google-ads-automation-log"
 
@@ -22,9 +31,7 @@ function summarizeRequest(req: Record<string, unknown> | null): string {
   if (!req) return "—"
   if ("ops" in req && Array.isArray((req as { ops: unknown[] }).ops)) {
     const ops = (req as { ops: Array<{ entity?: string; operation?: string }> }).ops
-    return ops
-      .map((o) => `${o.operation ?? "?"} ${o.entity ?? "?"}`)
-      .join(", ")
+    return ops.map((o) => `${o.operation ?? "?"} ${o.entity ?? "?"}`).join(", ")
   }
   if ("rec_type" in req) {
     return String((req as { rec_type: unknown }).rec_type)
@@ -40,16 +47,16 @@ export default async function AutomationLogPage() {
       <div>
         <h1 className="text-2xl font-heading text-primary">Automation Log</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Audit trail for every Google Ads mutation we attempt. Both successful and failed apply
-          attempts are recorded with the request payload and Google's response. Newest first.
+          Audit trail for every Google Ads mutation we attempt. Both successful and failed apply attempts are recorded
+          with the request payload and Google's response. Newest first.
         </p>
       </div>
 
       {entries.length === 0 ? (
         <div className="border border-dashed border-border rounded-xl p-8 text-center bg-card">
           <p className="text-sm text-muted-foreground">
-            No applies yet. Recommendations apply automatically in auto-pilot mode (negative
-            keywords with confidence ≥ 0.8) or manually via the{" "}
+            No applies yet. Recommendations apply automatically in auto-pilot mode (negative keywords with confidence ≥
+            0.8) or manually via the{" "}
             <Link href="/admin/ads/recommendations" className="underline hover:text-accent">
               recommendations queue
             </Link>
@@ -57,52 +64,45 @@ export default async function AutomationLogPage() {
           </p>
         </div>
       ) : (
-        <div className="border border-border rounded-xl bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-surface text-xs font-mono uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="text-left p-3 w-24">When</th>
-                <th className="text-left p-3 w-24">Result</th>
-                <th className="text-left p-3 w-28">Mode</th>
-                <th className="text-left p-3 w-28">Actor</th>
-                <th className="text-left p-3">Mutation</th>
-                <th className="text-left p-3">Customer</th>
-              </tr>
-            </thead>
+        <DataTableCard>
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead className="w-24">When</DataTableHead>
+              <DataTableHead className="w-24">Result</DataTableHead>
+              <DataTableHead className="w-28">Mode</DataTableHead>
+              <DataTableHead className="w-28">Actor</DataTableHead>
+              <DataTableHead>Mutation</DataTableHead>
+              <DataTableHead>Customer</DataTableHead>
+            </DataTableHeader>
             <tbody>
               {entries.map((e) => (
-                <tr key={e.id} className="border-t border-border/60 align-top">
-                  <td
-                    className="p-3 font-mono text-xs text-muted-foreground"
-                    title={new Date(e.created_at).toLocaleString()}
-                  >
+                <DataTableRow key={e.id} className="align-top">
+                  <DataTableCell muted title={new Date(e.created_at).toLocaleString()} className="font-mono text-xs">
                     {relativeTime(e.created_at)}
-                  </td>
-                  <td className="p-3">
+                  </DataTableCell>
+                  <DataTableCell>
                     <span
                       className={`inline-block px-2 py-0.5 rounded text-xs ${RESULT_TONE[e.result_status] ?? "bg-muted/40 text-muted-foreground"}`}
                     >
                       {e.result_status}
                     </span>
-                  </td>
-                  <td className="p-3 text-xs">{e.mode}</td>
-                  <td className="p-3 text-xs font-mono">
+                  </DataTableCell>
+                  <DataTableCell className="text-xs">{e.mode}</DataTableCell>
+                  <DataTableCell className="text-xs font-mono">
                     {e.actor === "system" ? "system" : `${e.actor.slice(0, 8)}…`}
-                  </td>
-                  <td className="p-3 text-xs">
+                  </DataTableCell>
+                  <DataTableCell className="text-xs">
                     <p>{summarizeRequest(e.api_request)}</p>
                     {e.error_message ? (
-                      <p className="text-error text-[11px] mt-1 leading-snug">
-                        {e.error_message.slice(0, 200)}
-                      </p>
+                      <p className="text-error text-[11px] mt-1 leading-snug">{e.error_message.slice(0, 200)}</p>
                     ) : null}
-                  </td>
-                  <td className="p-3 font-mono text-xs">{e.customer_id}</td>
-                </tr>
+                  </DataTableCell>
+                  <DataTableCell className="font-mono text-xs">{e.customer_id}</DataTableCell>
+                </DataTableRow>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
+        </DataTableCard>
       )}
     </div>
   )

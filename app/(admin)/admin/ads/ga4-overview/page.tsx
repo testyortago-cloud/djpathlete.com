@@ -1,4 +1,13 @@
 import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
+import {
   ga4IsConfigured,
   getGa4ServiceAccountEmail,
   getOverviewMetrics,
@@ -39,8 +48,7 @@ export default async function Ga4OverviewPage() {
       pages = p
       events = e
     } catch (err) {
-      fetchError =
-        err instanceof Error ? err.message : "Failed to fetch GA4 reports."
+      fetchError = err instanceof Error ? err.message : "Failed to fetch GA4 reports."
     }
   }
 
@@ -50,8 +58,8 @@ export default async function Ga4OverviewPage() {
         <h1 className="text-2xl font-heading text-primary">GA4 Overview</h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
           Pulled live from the Google Analytics Data API for property{" "}
-          <code className="font-mono text-xs">{process.env.GA4_PROPERTY_ID ?? "—"}</code>.
-          Last 28 days. Reports are read-only mirrors of GA4 — no data is stored locally.
+          <code className="font-mono text-xs">{process.env.GA4_PROPERTY_ID ?? "—"}</code>. Last 28 days. Reports are
+          read-only mirrors of GA4 — no data is stored locally.
         </p>
       </header>
 
@@ -65,36 +73,25 @@ export default async function Ga4OverviewPage() {
           <p className="text-xs mt-1 font-mono opacity-90">{fetchError}</p>
           <p className="text-xs mt-2 opacity-90">
             Common causes: service account not granted Viewer access to the property, wrong{" "}
-            <code className="font-mono">GA4_PROPERTY_ID</code>, or Data API not enabled in the
-            Cloud project.
+            <code className="font-mono">GA4_PROPERTY_ID</code>, or Data API not enabled in the Cloud project.
           </p>
         </div>
       ) : null}
 
       {overview ? (
         <section>
-          <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
-            ─ Overview
-          </h2>
+          <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">─ Overview</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <Tile label="Sessions" value={overview.sessions} tone="bg-primary/10 text-primary" />
             <Tile label="Total users" value={overview.totalUsers} tone="bg-accent/10 text-accent" />
             <Tile label="New users" value={overview.newUsers} tone="bg-success/10 text-success" />
-            <Tile
-              label="Engaged sessions"
-              value={overview.engagedSessions}
-              tone="bg-primary/10 text-primary"
-            />
+            <Tile label="Engaged sessions" value={overview.engagedSessions} tone="bg-primary/10 text-primary" />
             <Tile
               label="Avg. session"
               value={`${Math.round(overview.averageSessionDurationSec)}s`}
               tone="bg-muted/40 text-muted-foreground"
             />
-            <Tile
-              label="Conversions"
-              value={overview.conversions}
-              tone="bg-warning/15 text-warning"
-            />
+            <Tile label="Conversions" value={overview.conversions} tone="bg-warning/15 text-warning" />
           </div>
         </section>
       ) : null}
@@ -104,124 +101,120 @@ export default async function Ga4OverviewPage() {
           <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
             ─ Traffic by channel
           </h2>
-          <div className="border border-border rounded-xl bg-card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-surface text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="text-left p-3">Channel</th>
-                  <th className="text-right p-3 w-28">Sessions</th>
-                  <th className="text-right p-3 w-28">Users</th>
-                  <th className="text-right p-3 w-28">Conversions</th>
-                </tr>
-              </thead>
+          <DataTableCard>
+            <DataTable>
+              <DataTableHeader>
+                <DataTableHead>Channel</DataTableHead>
+                <DataTableHead align="right" className="w-28">
+                  Sessions
+                </DataTableHead>
+                <DataTableHead align="right" className="w-28">
+                  Users
+                </DataTableHead>
+                <DataTableHead align="right" className="w-28">
+                  Conversions
+                </DataTableHead>
+              </DataTableHeader>
               <tbody>
                 {channels.map((c) => (
-                  <tr key={c.channel} className="border-t border-border/60">
-                    <td className="p-3 font-medium text-primary">{c.channel}</td>
-                    <td className="p-3 text-right font-mono text-xs">
+                  <DataTableRow key={c.channel}>
+                    <DataTableCell className="font-medium text-primary">{c.channel}</DataTableCell>
+                    <DataTableCell align="right" className="font-mono text-xs">
                       {c.sessions.toLocaleString()}
-                    </td>
-                    <td className="p-3 text-right font-mono text-xs">
+                    </DataTableCell>
+                    <DataTableCell align="right" className="font-mono text-xs">
                       {c.totalUsers.toLocaleString()}
-                    </td>
-                    <td className="p-3 text-right font-mono text-xs">
+                    </DataTableCell>
+                    <DataTableCell align="right" className="font-mono text-xs">
                       {c.conversions.toLocaleString()}
-                    </td>
-                  </tr>
+                    </DataTableCell>
+                  </DataTableRow>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </DataTable>
+          </DataTableCard>
         </section>
       ) : null}
 
       {pages.length > 0 ? (
         <section>
-          <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
-            ─ Top pages
-          </h2>
-          <div className="border border-border rounded-xl bg-card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-surface text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="text-left p-3">Path</th>
-                  <th className="text-right p-3 w-24">Views</th>
-                  <th className="text-right p-3 w-24">Users</th>
-                  <th className="text-right p-3 w-28">Avg engagement</th>
-                </tr>
-              </thead>
+          <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">─ Top pages</h2>
+          <DataTableCard>
+            <DataTable>
+              <DataTableHeader>
+                <DataTableHead>Path</DataTableHead>
+                <DataTableHead align="right" className="w-24">
+                  Views
+                </DataTableHead>
+                <DataTableHead align="right" className="w-24">
+                  Users
+                </DataTableHead>
+                <DataTableHead align="right" className="w-28">
+                  Avg engagement
+                </DataTableHead>
+              </DataTableHeader>
               <tbody>
                 {pages.map((p) => (
-                  <tr key={p.path} className="border-t border-border/60 align-top">
-                    <td className="p-3">
+                  <DataTableRow key={p.path} className="align-top">
+                    <DataTableCell>
                       <p className="font-mono text-xs text-primary leading-snug">{p.path}</p>
                       {p.title ? (
-                        <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
-                          {p.title.slice(0, 200)}
-                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{p.title.slice(0, 200)}</p>
                       ) : null}
-                    </td>
-                    <td className="p-3 text-right font-mono text-xs">
+                    </DataTableCell>
+                    <DataTableCell align="right" className="font-mono text-xs">
                       {p.views.toLocaleString()}
-                    </td>
-                    <td className="p-3 text-right font-mono text-xs">
+                    </DataTableCell>
+                    <DataTableCell align="right" className="font-mono text-xs">
                       {p.users.toLocaleString()}
-                    </td>
-                    <td className="p-3 text-right font-mono text-xs">
+                    </DataTableCell>
+                    <DataTableCell align="right" className="font-mono text-xs">
                       {Math.round(p.averageEngagementTimeSec)}s
-                    </td>
-                  </tr>
+                    </DataTableCell>
+                  </DataTableRow>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </DataTable>
+          </DataTableCard>
         </section>
       ) : null}
 
       {events.length > 0 ? (
         <section>
-          <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
-            ─ Top events
-          </h2>
-          <div className="border border-border rounded-xl bg-card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-surface text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="text-left p-3">Event</th>
-                  <th className="text-right p-3 w-28">Count</th>
-                  <th className="text-right p-3 w-28">Users</th>
-                </tr>
-              </thead>
+          <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">─ Top events</h2>
+          <DataTableCard>
+            <DataTable>
+              <DataTableHeader>
+                <DataTableHead>Event</DataTableHead>
+                <DataTableHead align="right" className="w-28">
+                  Count
+                </DataTableHead>
+                <DataTableHead align="right" className="w-28">
+                  Users
+                </DataTableHead>
+              </DataTableHeader>
               <tbody>
                 {events.map((e) => (
-                  <tr key={e.eventName} className="border-t border-border/60">
-                    <td className="p-3 font-mono text-xs text-primary">{e.eventName}</td>
-                    <td className="p-3 text-right font-mono text-xs">
+                  <DataTableRow key={e.eventName}>
+                    <DataTableCell className="font-mono text-xs text-primary">{e.eventName}</DataTableCell>
+                    <DataTableCell align="right" className="font-mono text-xs">
                       {e.count.toLocaleString()}
-                    </td>
-                    <td className="p-3 text-right font-mono text-xs">
+                    </DataTableCell>
+                    <DataTableCell align="right" className="font-mono text-xs">
                       {e.users.toLocaleString()}
-                    </td>
-                  </tr>
+                    </DataTableCell>
+                  </DataTableRow>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </DataTable>
+          </DataTableCard>
         </section>
       ) : null}
     </div>
   )
 }
 
-function Tile({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: number | string
-  tone: string
-}) {
+function Tile({ label, value, tone }: { label: string; value: number | string; tone: string }) {
   const display = typeof value === "number" ? value.toLocaleString() : value
   return (
     <div className={`rounded-xl border border-border p-4 ${tone}`}>
@@ -265,39 +258,33 @@ function WiringCheck({ configured, fetchOk }: { configured: boolean; fetchOk: bo
 
   return (
     <section>
-      <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">
-        ─ Wiring check
-      </h2>
-      <div className="border border-border rounded-xl bg-card overflow-hidden">
-        <table className="w-full text-sm">
+      <h2 className="text-[11px] font-mono uppercase tracking-[0.18em] text-muted-foreground mb-3">─ Wiring check</h2>
+      <DataTableCard>
+        <DataTable>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.label} className="border-t border-border/60 first:border-t-0">
-                <td className="p-3 w-44 align-top">
+              <DataTableRow key={r.label} className="first:border-t-0">
+                <DataTableCell className="w-44 align-top">
                   <p className="font-medium text-primary">{r.label}</p>
-                  {r.hint ? (
-                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{r.hint}</p>
-                  ) : null}
-                </td>
-                <td className="p-3 align-top">
+                  {r.hint ? <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{r.hint}</p> : null}
+                </DataTableCell>
+                <DataTableCell className="align-top">
                   <code className="font-mono text-xs break-all">{r.value ?? "—"}</code>
-                </td>
-                <td className="p-3 w-24 text-right align-top">
+                </DataTableCell>
+                <DataTableCell align="right" className="w-24 align-top">
                   <span
                     className={`inline-block px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider ${
-                      r.ok
-                        ? "bg-success/10 text-success"
-                        : "bg-error/10 text-error"
+                      r.ok ? "bg-success/10 text-success" : "bg-error/10 text-error"
                     }`}
                   >
                     {r.ok ? "OK" : "Check"}
                   </span>
-                </td>
-              </tr>
+                </DataTableCell>
+              </DataTableRow>
             ))}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </DataTableCard>
     </section>
   )
 }
@@ -311,12 +298,11 @@ function SetupChecklist() {
           Google Cloud Console → enable <span className="font-mono">Google Analytics Data API</span>.
         </li>
         <li>
-          IAM &amp; Admin → Service Accounts → create one (no project roles needed). Keys → Add key
-          → JSON → download.
+          IAM &amp; Admin → Service Accounts → create one (no project roles needed). Keys → Add key → JSON → download.
         </li>
         <li>
-          GA4 → Admin → Property access management → add the service-account email as{" "}
-          <strong>Viewer</strong> on property <code className="font-mono">533252977</code>.
+          GA4 → Admin → Property access management → add the service-account email as <strong>Viewer</strong> on
+          property <code className="font-mono">533252977</code>.
         </li>
         <li>
           Set envs:

@@ -1,3 +1,5 @@
+import { DataTable, DataTableCell, DataTableHead, DataTableHeader, DataTableRow } from "@/components/ui/data-table"
+
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Package, Truck, User, MapPin } from "lucide-react"
@@ -39,11 +41,7 @@ function StatusBadge({ status }: { status: ShopOrderStatus }) {
   }
   const { label, className } = MAP[status] ?? { label: status, className: "bg-muted" }
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${className}`}
-    >
-      {label}
-    </span>
+    <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${className}`}>{label}</span>
   )
 }
 
@@ -56,9 +54,7 @@ function Timeline({ order }: { order: ShopOrder }) {
     },
     {
       label: "Payment Received",
-      done: ["paid", "draft", "confirmed", "in_production", "shipped", "refunded"].includes(
-        order.status,
-      ),
+      done: ["paid", "draft", "confirmed", "in_production", "shipped", "refunded"].includes(order.status),
     },
     {
       label: "Sent to Printful",
@@ -78,14 +74,10 @@ function Timeline({ order }: { order: ShopOrder }) {
   if (["canceled", "refunded"].includes(order.status)) {
     return (
       <div className="bg-white rounded-xl border border-border p-4 sm:p-6">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
-          Timeline
-        </h2>
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Timeline</h2>
         <p className="text-sm text-muted-foreground">
           Order {order.status} on {formatDate(order.updated_at)}
-          {order.refund_amount_cents != null && (
-            <> — Refunded {formatCents(order.refund_amount_cents)}</>
-          )}
+          {order.refund_amount_cents != null && <> — Refunded {formatCents(order.refund_amount_cents)}</>}
         </p>
       </div>
     )
@@ -93,29 +85,21 @@ function Timeline({ order }: { order: ShopOrder }) {
 
   return (
     <div className="bg-white rounded-xl border border-border p-4 sm:p-6">
-      <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">
-        Timeline
-      </h2>
+      <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-4">Timeline</h2>
       <ol className="space-y-3">
         {steps.map((step) => (
           <li key={step.label} className="flex items-start gap-3">
             <span
               className={[
                 "mt-0.5 size-4 shrink-0 rounded-full border-2",
-                step.done
-                  ? "bg-primary border-primary"
-                  : "bg-white border-border",
+                step.done ? "bg-primary border-primary" : "bg-white border-border",
               ].join(" ")}
             />
             <div>
-              <p
-                className={`text-sm ${step.done ? "font-medium text-foreground" : "text-muted-foreground"}`}
-              >
+              <p className={`text-sm ${step.done ? "font-medium text-foreground" : "text-muted-foreground"}`}>
                 {step.label}
               </p>
-              {step.date && (
-                <p className="text-xs text-muted-foreground">{formatDate(step.date)}</p>
-              )}
+              {step.date && <p className="text-xs text-muted-foreground">{formatDate(step.date)}</p>}
             </div>
           </li>
         ))}
@@ -124,11 +108,7 @@ function Timeline({ order }: { order: ShopOrder }) {
   )
 }
 
-export default async function OrderDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const order = await getOrderById(id)
   if (!order) notFound()
@@ -151,16 +131,12 @@ export default async function OrderDetailPage({
           Back to Orders
         </Link>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-heading text-primary font-mono">
-            {order.order_number}
-          </h1>
+          <h1 className="text-2xl font-heading text-primary font-mono">{order.order_number}</h1>
           <StatusBadge status={order.status} />
         </div>
         <p className="text-sm text-muted-foreground mt-1">
           Placed {formatDate(order.created_at)}
-          {order.printful_order_id && (
-            <> · Printful #{order.printful_order_id}</>
-          )}
+          {order.printful_order_id && <> · Printful #{order.printful_order_id}</>}
         </p>
       </div>
 
@@ -227,24 +203,31 @@ export default async function OrderDetailPage({
           {hasDigital && (
             <section className="rounded-2xl border border-border p-6">
               <h2 className="mb-4 font-heading text-lg">Digital fulfillment</h2>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-muted-foreground">
-                    <th>File</th><th>Downloads</th><th>Expires</th><th>Last download</th><th>Actions</th>
-                  </tr>
-                </thead>
+              <DataTable>
+                <DataTableHeader>
+                  <DataTableHead>File</DataTableHead>
+                  <DataTableHead>Downloads</DataTableHead>
+                  <DataTableHead>Expires</DataTableHead>
+                  <DataTableHead>Last download</DataTableHead>
+                  <DataTableHead>Actions</DataTableHead>
+                </DataTableHeader>
                 <tbody>
                   {downloads.map((d, i) => (
-                    <tr key={d.id} className="border-t">
-                      <td>{files[i]?.display_name ?? "—"}</td>
-                      <td>{d.download_count}{d.max_downloads != null ? ` / ${d.max_downloads}` : ""}</td>
-                      <td>{d.access_expires_at ?? "Forever"}</td>
-                      <td>{d.last_downloaded_at ?? "—"}</td>
-                      <td><DownloadAdminActions downloadId={d.id} /></td>
-                    </tr>
+                    <DataTableRow key={d.id}>
+                      <DataTableCell>{files[i]?.display_name ?? "—"}</DataTableCell>
+                      <DataTableCell>
+                        {d.download_count}
+                        {d.max_downloads != null ? ` / ${d.max_downloads}` : ""}
+                      </DataTableCell>
+                      <DataTableCell>{d.access_expires_at ?? "Forever"}</DataTableCell>
+                      <DataTableCell>{d.last_downloaded_at ?? "—"}</DataTableCell>
+                      <DataTableCell>
+                        <DownloadAdminActions downloadId={d.id} />
+                      </DataTableCell>
+                    </DataTableRow>
                   ))}
                 </tbody>
-              </table>
+              </DataTable>
             </section>
           )}
 
@@ -294,10 +277,7 @@ export default async function OrderDetailPage({
               <h2 className="text-sm font-semibold text-foreground">Customer</h2>
             </div>
             <p className="font-medium text-foreground">{order.customer_name}</p>
-            <a
-              href={`mailto:${order.customer_email}`}
-              className="text-sm text-primary hover:underline"
-            >
+            <a href={`mailto:${order.customer_email}`} className="text-sm text-primary hover:underline">
               {order.customer_email}
             </a>
           </div>
@@ -322,21 +302,15 @@ export default async function OrderDetailPage({
 
           {/* Payment */}
           <div className="bg-white rounded-xl border border-border p-4 sm:p-6">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-              Payment
-            </h2>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Payment</h2>
             <dl className="space-y-1 text-sm">
               <div className="flex gap-2">
                 <dt className="text-muted-foreground shrink-0">Intent</dt>
-                <dd className="font-mono text-xs truncate">
-                  {order.stripe_payment_intent_id ?? "—"}
-                </dd>
+                <dd className="font-mono text-xs truncate">{order.stripe_payment_intent_id ?? "—"}</dd>
               </div>
               <div className="flex gap-2">
                 <dt className="text-muted-foreground shrink-0">Session</dt>
-                <dd className="font-mono text-xs truncate">
-                  {order.stripe_session_id ?? "—"}
-                </dd>
+                <dd className="font-mono text-xs truncate">{order.stripe_session_id ?? "—"}</dd>
               </div>
             </dl>
           </div>

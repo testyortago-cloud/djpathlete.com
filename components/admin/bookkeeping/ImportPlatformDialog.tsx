@@ -1,9 +1,24 @@
 "use client"
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
 
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { AlertTriangle } from "lucide-react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -159,7 +174,12 @@ export function ImportPlatformDialog({
       // skipped_alt_ref rows are F1's cross-run dedupe (same sale, posted
       // earlier under the OTHER ref form) — also excluded from the plain
       // same-ref "already imported" count and reported as its own toast suffix.
-      const data = (await res.json()) as { inserted: number; batchId: string; rejected_closed?: number; skipped_alt_ref?: number }
+      const data = (await res.json()) as {
+        inserted: number
+        batchId: string
+        rejected_closed?: number
+        skipped_alt_ref?: number
+      }
       const rejectedClosed = data.rejected_closed ?? 0
       const skippedAltRef = data.skipped_alt_ref ?? 0
       const skipped = includedRows.length - data.inserted - rejectedClosed - skippedAltRef
@@ -197,8 +217,8 @@ export function ImportPlatformDialog({
         <DialogHeader>
           <DialogTitle>Import platform income</DialogTitle>
           <DialogDescription>
-            Pulls succeeded payments, shop orders, session packs, and paid event signups into reviewable ledger
-            drafts. Re-running the same range never double-posts.
+            Pulls succeeded payments, shop orders, session packs, and paid event signups into reviewable ledger drafts.
+            Re-running the same range never double-posts.
           </DialogDescription>
         </DialogHeader>
 
@@ -234,39 +254,39 @@ export function ImportPlatformDialog({
             {rows.length === 0 ? (
               <p className="text-sm text-muted-foreground">No platform income found in this date range.</p>
             ) : (
-              <div className="overflow-x-auto border border-border rounded-lg max-h-96">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-surface">
-                    <tr className="border-b border-border">
-                      <th className="px-2 py-2 text-left font-medium text-muted-foreground w-8" />
-                      <th className="px-2 py-2 text-left font-medium text-muted-foreground">Date</th>
-                      <th className="px-2 py-2 text-left font-medium text-muted-foreground">Memo</th>
-                      <th className="px-2 py-2 text-left font-medium text-muted-foreground">Counterparty</th>
-                      <th className="px-2 py-2 text-left font-medium text-muted-foreground">Service line</th>
-                      <th className="px-2 py-2 text-right font-medium text-muted-foreground">Amount</th>
-                      <th className="px-2 py-2 text-left font-medium text-muted-foreground">Account</th>
-                    </tr>
-                  </thead>
+              <DataTableCard>
+                <DataTable className="text-xs">
+                  <DataTableHeader>
+                    <DataTableHead className="w-8" />
+                    <DataTableHead>Date</DataTableHead>
+                    <DataTableHead>Memo</DataTableHead>
+                    <DataTableHead>Counterparty</DataTableHead>
+                    <DataTableHead>Service line</DataTableHead>
+                    <DataTableHead align="right">Amount</DataTableHead>
+                    <DataTableHead>Account</DataTableHead>
+                  </DataTableHeader>
                   <tbody>
                     {rows.map((row) => {
                       const eligible = accounts.filter((a) => a.account_type === row.direction)
                       return (
-                        <tr key={row.source_ref} className="border-b border-border last:border-b-0">
-                          <td className="px-2 py-2">
+                        <DataTableRow key={row.source_ref}>
+                          <DataTableCell>
                             <Checkbox
                               checked={row.include}
                               onCheckedChange={(v) => updateRow(row.source_ref, { include: v === true })}
                               aria-label={`Include ${row.memo}`}
                             />
-                          </td>
-                          <td className="px-2 py-2 whitespace-nowrap">{formatOccurredOn(row.occurred_on)}</td>
-                          <td className="px-2 py-2">{row.memo}</td>
-                          <td className="px-2 py-2 text-muted-foreground">{row.counterparty ?? "—"}</td>
-                          <td className="px-2 py-2 text-muted-foreground">{row.service_line ?? "—"}</td>
-                          <td className="px-2 py-2 text-right font-mono text-success">
+                          </DataTableCell>
+                          <DataTableCell className="whitespace-nowrap">
+                            {formatOccurredOn(row.occurred_on)}
+                          </DataTableCell>
+                          <DataTableCell>{row.memo}</DataTableCell>
+                          <DataTableCell muted>{row.counterparty ?? "—"}</DataTableCell>
+                          <DataTableCell muted>{row.service_line ?? "—"}</DataTableCell>
+                          <DataTableCell align="right" className="font-mono text-success">
                             +{formatCents(row.amount_cents)}
-                          </td>
-                          <td className="px-2 py-2">
+                          </DataTableCell>
+                          <DataTableCell>
                             <select
                               value={row.accountId}
                               onChange={(e) => updateRow(row.source_ref, { accountId: e.currentTarget.value })}
@@ -281,13 +301,13 @@ export function ImportPlatformDialog({
                                 </option>
                               ))}
                             </select>
-                          </td>
-                        </tr>
+                          </DataTableCell>
+                        </DataTableRow>
                       )
                     })}
                   </tbody>
-                </table>
-              </div>
+                </DataTable>
+              </DataTableCard>
             )}
 
             {isNonBusinessBook && (
@@ -297,9 +317,9 @@ export function ImportPlatformDialog({
                   Non-business book selected
                 </div>
                 <p className="text-xs text-warning/90">
-                  You&apos;re importing platform business income into the &ldquo;{bookName}&rdquo; book. Platform
-                  income (Stripe, packs, camps, shop) normally belongs in your primary business book. Post here only
-                  if you&apos;re sure.
+                  You&apos;re importing platform business income into the &ldquo;{bookName}&rdquo; book. Platform income
+                  (Stripe, packs, camps, shop) normally belongs in your primary business book. Post here only if
+                  you&apos;re sure.
                 </p>
                 <div className="flex items-start gap-2 pt-1">
                   <Checkbox
@@ -347,7 +367,9 @@ export function ImportPlatformDialog({
                 onClick={commit}
                 disabled={posting || includedRows.length === 0 || (isNonBusinessBook && !confirmNonBusiness)}
               >
-                {posting ? "Posting…" : `Post ${includedRows.length} ${includedRows.length === 1 ? "entry" : "entries"}`}
+                {posting
+                  ? "Posting…"
+                  : `Post ${includedRows.length} ${includedRows.length === 1 ? "entry" : "entries"}`}
               </Button>
             </>
           )}

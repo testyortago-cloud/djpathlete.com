@@ -1,19 +1,21 @@
 "use client"
 
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { AlertTriangle } from "lucide-react"
 import { unsentFeedback } from "@/lib/team-videos/workflow"
 import type { TeamVideoSubmission, TeamVideoSubmissionStatus } from "@/types/database"
 
-const ALL: TeamVideoSubmissionStatus[] = [
-  "draft",
-  "submitted",
-  "in_review",
-  "revision_requested",
-  "approved",
-  "locked",
-]
+const ALL: TeamVideoSubmissionStatus[] = ["draft", "submitted", "in_review", "revision_requested", "approved", "locked"]
 
 const STATUS_LABEL: Record<TeamVideoSubmissionStatus, string> = {
   draft: "Draft",
@@ -45,8 +47,7 @@ interface Props {
 
 export function TeamVideoTable({ submissions, openNotes = {} }: Props) {
   const [filter, setFilter] = useState<TeamVideoSubmissionStatus | "all">("all")
-  const filtered =
-    filter === "all" ? submissions : submissions.filter((s) => s.status === filter)
+  const filtered = filter === "all" ? submissions : submissions.filter((s) => s.status === filter)
 
   const stuck = useMemo(
     () =>
@@ -72,8 +73,8 @@ export function TeamVideoTable({ submissions, openNotes = {} }: Props) {
                 : `${stuck.length} submissions have notes you haven't sent`}
             </span>{" "}
             <span className="text-muted-foreground">
-              — open {stuck.length === 1 ? "it" : "them"} and hit &quot;Send notes to
-              editor&quot; so a new version can land.
+              — open {stuck.length === 1 ? "it" : "them"} and hit &quot;Send notes to editor&quot; so a new version can
+              land.
             </span>
           </p>
         </div>
@@ -106,47 +107,38 @@ export function TeamVideoTable({ submissions, openNotes = {} }: Props) {
         })}
       </div>
 
-      <div className="rounded-md border">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/50 text-left">
-            <tr>
-              <th className="px-4 py-2 font-medium">Title</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium">Updated</th>
-            </tr>
-          </thead>
+      <DataTableCard>
+        <DataTable>
+          <DataTableHeader>
+            <DataTableHead>Title</DataTableHead>
+            <DataTableHead>Status</DataTableHead>
+            <DataTableHead>Updated</DataTableHead>
+          </DataTableHeader>
           <tbody>
             {filtered.length === 0 && (
-              <tr>
-                <td className="px-4 py-6 text-center text-muted-foreground" colSpan={3}>
+              <DataTableRow>
+                <DataTableCell muted colSpan={3} className="py-6 text-center">
                   No videos in this view.
-                </td>
-              </tr>
+                </DataTableCell>
+              </DataTableRow>
             )}
             {filtered.map((s) => (
-              <tr key={s.id} className="border-b last:border-0 hover:bg-muted/40">
-                <td className="px-4 py-3">
-                  <Link
-                    href={`/admin/team-media/${s.id}`}
-                    className="font-medium hover:underline"
-                  >
+              <DataTableRow key={s.id} className="hover:bg-muted/40">
+                <DataTableCell>
+                  <Link href={`/admin/team-media/${s.id}`} className="font-medium hover:underline">
                     {s.title}
                   </Link>
                   <span
                     className={`ml-2 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${
-                      s.kind === "image_set"
-                        ? "bg-accent/10 text-accent"
-                        : "bg-primary/10 text-primary"
+                      s.kind === "image_set" ? "bg-accent/10 text-accent" : "bg-primary/10 text-primary"
                     }`}
                   >
                     {s.kind === "image_set" ? "Photos" : "Video"}
                   </span>
-                </td>
-                <td className="px-4 py-3">
+                </DataTableCell>
+                <DataTableCell>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span
-                      className={`rounded-full border px-2 py-0.5 text-xs ${STATUS_PILL[s.status]}`}
-                    >
+                    <span className={`rounded-full border px-2 py-0.5 text-xs ${STATUS_PILL[s.status]}`}>
                       {STATUS_LABEL[s.status]}
                     </span>
                     {unsentFeedback({
@@ -161,15 +153,13 @@ export function TeamVideoTable({ submissions, openNotes = {} }: Props) {
                       </span>
                     )}
                   </div>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {new Date(s.updated_at).toLocaleDateString("en-US")}
-                </td>
-              </tr>
+                </DataTableCell>
+                <DataTableCell muted>{new Date(s.updated_at).toLocaleDateString("en-US")}</DataTableCell>
+              </DataTableRow>
             ))}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </DataTableCard>
     </div>
   )
 }

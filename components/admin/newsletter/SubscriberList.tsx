@@ -1,4 +1,13 @@
 "use client"
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableFooter,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
 
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
@@ -319,97 +328,91 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
           <p className="text-sm">{search ? "No subscribers match your search." : "No subscribers yet."}</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-surface/50">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Email</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden md:table-cell">Status</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden lg:table-cell">Source</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground hidden sm:table-cell">
-                    Subscribed
-                  </th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((s) => (
-                  <tr key={s.id} className="border-b border-border last:border-0 hover:bg-surface/30 transition-colors">
-                    <td className="px-4 py-3 font-medium text-primary">{s.email}</td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span
+        <DataTableCard>
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead>Email</DataTableHead>
+              <DataTableHead className="hidden md:table-cell">Status</DataTableHead>
+              <DataTableHead className="hidden lg:table-cell">Source</DataTableHead>
+              <DataTableHead className="hidden sm:table-cell">Subscribed</DataTableHead>
+              <DataTableHead align="right">Actions</DataTableHead>
+            </DataTableHeader>
+            <tbody>
+              {visible.map((s) => (
+                <DataTableRow key={s.id}>
+                  <DataTableCell className="font-medium text-primary">{s.email}</DataTableCell>
+                  <DataTableCell className="hidden md:table-cell">
+                    <span
+                      className={cn(
+                        "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
+                        s.unsubscribed_at ? "bg-warning/10 text-warning" : "bg-success/10 text-success",
+                      )}
+                    >
+                      {s.unsubscribed_at ? "Unsubscribed" : "Active"}
+                    </span>
+                  </DataTableCell>
+                  <DataTableCell muted className="text-xs hidden lg:table-cell capitalize">
+                    {s.source.replace(/_/g, " ")}
+                  </DataTableCell>
+                  <DataTableCell muted className="text-xs hidden sm:table-cell">
+                    {formatDate(s.subscribed_at)}
+                  </DataTableCell>
+                  <DataTableCell>
+                    <div className="flex items-center justify-end gap-1">
+                      {/* Toggle status */}
+                      <button
+                        onClick={() => handleToggleStatus(s)}
+                        disabled={actionLoadingId === s.id}
                         className={cn(
-                          "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
-                          s.unsubscribed_at ? "bg-warning/10 text-warning" : "bg-success/10 text-success",
+                          "p-1.5 rounded-md transition-colors",
+                          s.unsubscribed_at
+                            ? "text-muted-foreground hover:text-success hover:bg-success/10"
+                            : "text-muted-foreground hover:text-warning hover:bg-warning/10",
                         )}
+                        title={s.unsubscribed_at ? "Reactivate" : "Unsubscribe"}
                       >
-                        {s.unsubscribed_at ? "Unsubscribed" : "Active"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground hidden lg:table-cell capitalize">
-                      {s.source.replace(/_/g, " ")}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground hidden sm:table-cell">
-                      {formatDate(s.subscribed_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        {/* Toggle status */}
-                        <button
-                          onClick={() => handleToggleStatus(s)}
-                          disabled={actionLoadingId === s.id}
-                          className={cn(
-                            "p-1.5 rounded-md transition-colors",
-                            s.unsubscribed_at
-                              ? "text-muted-foreground hover:text-success hover:bg-success/10"
-                              : "text-muted-foreground hover:text-warning hover:bg-warning/10",
-                          )}
-                          title={s.unsubscribed_at ? "Reactivate" : "Unsubscribe"}
-                        >
-                          {actionLoadingId === s.id ? (
-                            <Loader2 className="size-4 animate-spin" />
-                          ) : s.unsubscribed_at ? (
-                            <ToggleLeft className="size-4" />
-                          ) : (
-                            <ToggleRight className="size-4" />
-                          )}
-                        </button>
-
-                        {/* Delete */}
-                        {confirmDeleteId === s.id ? (
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleDelete(s.id)}
-                              disabled={actionLoadingId === s.id}
-                              className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
-                            >
-                              {actionLoadingId === s.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
-                            </button>
-                            <button
-                              onClick={() => setConfirmDeleteId(null)}
-                              className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
+                        {actionLoadingId === s.id ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : s.unsubscribed_at ? (
+                          <ToggleLeft className="size-4" />
                         ) : (
-                          <button
-                            onClick={() => setConfirmDeleteId(s.id)}
-                            className="p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                            title="Delete"
-                          >
-                            <Trash2 className="size-4" />
-                          </button>
+                          <ToggleRight className="size-4" />
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="px-4 py-2 border-t border-border bg-surface/30 flex items-center justify-between gap-3">
+                      </button>
+
+                      {/* Delete */}
+                      {confirmDeleteId === s.id ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleDelete(s.id)}
+                            disabled={actionLoadingId === s.id}
+                            className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+                          >
+                            {actionLoadingId === s.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
+                          </button>
+                          <button
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDeleteId(s.id)}
+                          className="p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      )}
+                    </div>
+                  </DataTableCell>
+                </DataTableRow>
+              ))}
+            </tbody>
+          </DataTable>
+          <DataTableFooter className="gap-3">
             <p className="text-xs text-muted-foreground">
               Showing {visible.length} of {filtered.length}
               {filtered.length !== subscribers.length && ` (filtered from ${subscribers.length} total)`}
@@ -422,8 +425,8 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
                 Load more
               </button>
             )}
-          </div>
-        </div>
+          </DataTableFooter>
+        </DataTableCard>
       )}
 
       {/* Import Dialog */}
@@ -465,7 +468,9 @@ export function SubscriberList({ subscribers }: SubscriberListProps) {
             <div className="space-y-3">
               {/* Parsed summary */}
               <div className="p-3 rounded-lg bg-surface border border-border space-y-0.5">
-                <p className="text-sm font-medium text-foreground">{parsedEmails.length} valid email(s) ready to import</p>
+                <p className="text-sm font-medium text-foreground">
+                  {parsedEmails.length} valid email(s) ready to import
+                </p>
                 {duplicateCount > 0 && (
                   <p className="text-xs text-muted-foreground">{duplicateCount} duplicate(s) removed</p>
                 )}

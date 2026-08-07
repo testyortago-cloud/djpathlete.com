@@ -1,15 +1,18 @@
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
+
 import Link from "next/link"
 import { listConversionActions } from "@/lib/db/google-ads-conversion-actions"
-import {
-  getConversionUploadStatusCounts,
-  listRecentConversionUploads,
-} from "@/lib/db/google-ads-conversion-uploads"
+import { getConversionUploadStatusCounts, listRecentConversionUploads } from "@/lib/db/google-ads-conversion-uploads"
 import { listGoogleAdsAccounts } from "@/lib/db/google-ads-accounts"
 import { ConversionActionForm } from "./ConversionActionForm"
-import type {
-  GoogleAdsConversionAction,
-  GoogleAdsConversionTrigger,
-} from "@/types/database"
+import type { GoogleAdsConversionAction, GoogleAdsConversionTrigger } from "@/types/database"
 
 export const metadata = { title: "Google Ads — Conversions" }
 export const dynamic = "force-dynamic"
@@ -60,9 +63,9 @@ export default async function ConversionsPage() {
       <div>
         <h1 className="text-2xl font-heading text-primary">Conversions</h1>
         <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-          Booking webhooks enqueue offline click conversions; Stripe payment success enqueues a
-          RESTATE adjustment that lifts the conversion value to actual revenue. The worker drains
-          the queue every 15 minutes — Smart Bidding learns true LTV instead of a placeholder.
+          Booking webhooks enqueue offline click conversions; Stripe payment success enqueues a RESTATE adjustment that
+          lifts the conversion value to actual revenue. The worker drains the queue every 15 minutes — Smart Bidding
+          learns true LTV instead of a placeholder.
         </p>
       </div>
 
@@ -77,8 +80,8 @@ export default async function ConversionsPage() {
         <div className="border border-warning/40 bg-warning/5 text-warning rounded-lg p-4 text-sm">
           <p className="font-medium">{counts.pending} pending uploads waiting on Developer Token.</p>
           <p className="text-xs mt-1 opacity-90">
-            Set <code className="font-mono">GOOGLE_ADS_DEVELOPER_TOKEN</code> in env (locally + Vercel) and
-            as a Firebase Secret. The worker will drain the queue on its next pass (every 15 min).
+            Set <code className="font-mono">GOOGLE_ADS_DEVELOPER_TOKEN</code> in env (locally + Vercel) and as a
+            Firebase Secret. The worker will drain the queue on its next pass (every 15 min).
           </p>
         </div>
       ) : null}
@@ -96,71 +99,64 @@ export default async function ConversionsPage() {
         </h2>
         {uploads.length === 0 ? (
           <div className="border border-dashed border-border rounded-xl p-6 bg-card text-center text-sm text-muted-foreground">
-            No conversions uploaded yet. Once a booking with a gclid lands and a conversion action
-            is configured, rows show up here. Stripe payments add value adjustments after the
-            click conversion is uploaded.
+            No conversions uploaded yet. Once a booking with a gclid lands and a conversion action is configured, rows
+            show up here. Stripe payments add value adjustments after the click conversion is uploaded.
           </div>
         ) : (
-          <div className="border border-border rounded-xl bg-card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-surface text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="text-left p-3 w-20">When</th>
-                  <th className="text-left p-3 w-20">Type</th>
-                  <th className="text-left p-3 w-24">Status</th>
-                  <th className="text-left p-3 w-24">Value</th>
-                  <th className="text-left p-3">Source</th>
-                  <th className="text-left p-3 w-16">Tries</th>
-                </tr>
-              </thead>
+          <DataTableCard>
+            <DataTable>
+              <DataTableHeader>
+                <DataTableHead className="w-20">When</DataTableHead>
+                <DataTableHead className="w-20">Type</DataTableHead>
+                <DataTableHead className="w-24">Status</DataTableHead>
+                <DataTableHead className="w-24">Value</DataTableHead>
+                <DataTableHead>Source</DataTableHead>
+                <DataTableHead className="w-16">Tries</DataTableHead>
+              </DataTableHeader>
               <tbody>
                 {uploads.map((u) => (
-                  <tr key={u.id} className="border-t border-border/60 align-top">
-                    <td
-                      className="p-3 font-mono text-xs text-muted-foreground"
-                      title={new Date(u.created_at).toLocaleString()}
-                    >
+                  <DataTableRow key={u.id} className="align-top">
+                    <DataTableCell muted title={new Date(u.created_at).toLocaleString()} className="font-mono text-xs">
                       {relativeTime(u.created_at)}
-                    </td>
-                    <td className="p-3 text-xs font-mono">
+                    </DataTableCell>
+                    <DataTableCell className="text-xs font-mono">
                       {TYPE_LABEL[u.upload_type] ?? u.upload_type}
                       {u.adjustment_type ? ` (${u.adjustment_type})` : ""}
-                    </td>
-                    <td className="p-3">
+                    </DataTableCell>
+                    <DataTableCell>
                       <span
                         className={`inline-block px-2 py-0.5 rounded text-xs ${STATUS_TONE[u.status] ?? "bg-muted/40 text-muted-foreground"}`}
                       >
                         {u.status}
                       </span>
-                    </td>
-                    <td className="p-3 font-mono text-xs">
+                    </DataTableCell>
+                    <DataTableCell className="font-mono text-xs">
                       {fmtCurrency(u.value_micros, u.currency)}
-                    </td>
-                    <td className="p-3 text-xs">
+                    </DataTableCell>
+                    <DataTableCell className="text-xs">
                       <span className="font-mono">{u.source_table}</span>{" "}
-                      <span className="font-mono text-muted-foreground">
-                        {u.source_id.slice(0, 8)}…
-                      </span>
+                      <span className="font-mono text-muted-foreground">{u.source_id.slice(0, 8)}…</span>
                       {u.error_message ? (
-                        <p className="text-error text-[11px] mt-1 leading-snug">
-                          {u.error_message.slice(0, 200)}
-                        </p>
+                        <p className="text-error text-[11px] mt-1 leading-snug">{u.error_message.slice(0, 200)}</p>
                       ) : null}
-                    </td>
-                    <td className="p-3 font-mono text-xs">{u.attempts}</td>
-                  </tr>
+                    </DataTableCell>
+                    <DataTableCell className="font-mono text-xs">{u.attempts}</DataTableCell>
+                  </DataTableRow>
                 ))}
               </tbody>
-            </table>
-          </div>
+            </DataTable>
+          </DataTableCard>
         )}
       </section>
 
       <p className="text-xs text-muted-foreground">
         Worker drains pending rows every 15 minutes via the{" "}
-        <code className="font-mono">processGoogleAdsConversions</code> Cloud Function. Manual
-        retry isn't wired in this UI yet — failed rows retry automatically up to 5 attempts. View
-        the audit trail in <Link href="/admin/ads/automation-log" className="underline hover:text-accent">automation log</Link>.
+        <code className="font-mono">processGoogleAdsConversions</code> Cloud Function. Manual retry isn't wired in this
+        UI yet — failed rows retry automatically up to 5 attempts. View the audit trail in{" "}
+        <Link href="/admin/ads/automation-log" className="underline hover:text-accent">
+          automation log
+        </Link>
+        .
       </p>
     </div>
   )

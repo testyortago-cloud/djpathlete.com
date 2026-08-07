@@ -1,3 +1,13 @@
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  DataTableToolbar,
+} from "@/components/ui/data-table"
+
 import Link from "next/link"
 import { Plus, Package } from "lucide-react"
 import { listMarketingProducts } from "@/lib/db/marketing-products"
@@ -18,9 +28,8 @@ export default async function MarketingProductsPage() {
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-heading text-primary">Marketing Products</h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            Always-on programs the ads agent can propose campaigns for. Specific
-            clinic/camp instances live under Events — the agent reads from both. Only
-            rows with status &quot;active&quot; are visible to the agent.
+            Always-on programs the ads agent can propose campaigns for. Specific clinic/camp instances live under Events
+            — the agent reads from both. Only rows with status &quot;active&quot; are visible to the agent.
           </p>
         </div>
         <Link
@@ -35,45 +44,40 @@ export default async function MarketingProductsPage() {
       {products.length === 0 ? (
         <div className="border border-dashed border-border rounded-xl p-10 text-center bg-surface">
           <p className="text-sm text-muted-foreground">
-            No products yet. Click &quot;New product&quot; to seed one — the agent
-            will start considering it on the next memo run.
+            No products yet. Click &quot;New product&quot; to seed one — the agent will start considering it on the next
+            memo run.
           </p>
         </div>
       ) : (
-        <div className="border border-border rounded-xl bg-card overflow-hidden">
-          <div className="p-4 border-b border-border/60 flex items-center gap-3">
+        <DataTableCard>
+          <DataTableToolbar className="items-center gap-3">
             <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
               {products.length} total · {activeCount} active
             </p>
-          </div>
-          <table className="w-full text-sm">
-            <thead className="bg-surface text-xs font-mono uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="text-left p-3">Slug</th>
-                <th className="text-left p-3">Name</th>
-                <th className="text-left p-3">Conversion</th>
-                <th className="text-left p-3">Price</th>
-                <th className="text-left p-3">Status</th>
-                <th className="text-right p-3">Updated</th>
-              </tr>
-            </thead>
+          </DataTableToolbar>
+          <DataTable>
+            <DataTableHeader>
+              <DataTableHead>Slug</DataTableHead>
+              <DataTableHead>Name</DataTableHead>
+              <DataTableHead>Conversion</DataTableHead>
+              <DataTableHead>Price</DataTableHead>
+              <DataTableHead>Status</DataTableHead>
+              <DataTableHead align="right">Updated</DataTableHead>
+            </DataTableHeader>
             <tbody>
               {products.map((p) => (
-                <tr key={p.slug} className="border-t border-border/60 hover:bg-surface/40">
-                  <td className="p-3 font-mono text-xs">
-                    <Link
-                      href={`/admin/marketing/products/${p.slug}`}
-                      className="text-accent hover:underline"
-                    >
+                <DataTableRow key={p.slug} className="hover:bg-surface/40">
+                  <DataTableCell className="font-mono text-xs">
+                    <Link href={`/admin/marketing/products/${p.slug}`} className="text-accent hover:underline">
                       {p.slug}
                     </Link>
-                  </td>
-                  <td className="p-3">{p.name}</td>
-                  <td className="p-3 font-mono text-xs">{p.conversion_type}</td>
-                  <td className="p-3 font-mono text-xs">
+                  </DataTableCell>
+                  <DataTableCell>{p.name}</DataTableCell>
+                  <DataTableCell className="font-mono text-xs">{p.conversion_type}</DataTableCell>
+                  <DataTableCell className="font-mono text-xs">
                     {p.price_cents != null ? `$${(p.price_cents / 100).toFixed(2)}` : "—"}
-                  </td>
-                  <td className="p-3 text-xs">
+                  </DataTableCell>
+                  <DataTableCell className="text-xs">
                     <span
                       className={
                         p.status === "active"
@@ -85,15 +89,15 @@ export default async function MarketingProductsPage() {
                     >
                       {p.status}
                     </span>
-                  </td>
-                  <td className="p-3 text-xs text-muted-foreground text-right">
+                  </DataTableCell>
+                  <DataTableCell align="right" muted className="text-xs">
                     {new Date(p.updated_at).toLocaleDateString()}
-                  </td>
-                </tr>
+                  </DataTableCell>
+                </DataTableRow>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
+        </DataTableCard>
       )}
     </div>
   )

@@ -1,4 +1,5 @@
 "use client"
+import { DataTable, DataTableCell, DataTableHead, DataTableHeader, DataTableRow } from "@/components/ui/data-table"
 
 import { useState, useEffect, useCallback } from "react"
 import {
@@ -384,26 +385,28 @@ export function ClientProgressView({
                             <TableRow key={`${entry.id}-details`}>
                               <TableCell colSpan={6} className="p-0">
                                 <div className="bg-surface/30 px-6 py-3 ml-4 border-l-2 border-primary/20">
-                                  <table className="w-full text-xs">
-                                    <thead>
-                                      <tr className="text-muted-foreground">
-                                        <th className="text-left py-1 pr-4 font-medium">Set</th>
-                                        <th className="text-left py-1 pr-4 font-medium">Weight</th>
-                                        <th className="text-left py-1 pr-4 font-medium">Reps</th>
-                                        <th className="text-left py-1 font-medium">RPE</th>
-                                      </tr>
-                                    </thead>
+                                  <DataTable className="text-xs">
+                                    <DataTableHeader>
+                                      <DataTableHead className="py-1 pr-4">Set</DataTableHead>
+                                      <DataTableHead className="py-1 pr-4">Weight</DataTableHead>
+                                      <DataTableHead className="py-1 pr-4">Reps</DataTableHead>
+                                      <DataTableHead className="py-1">RPE</DataTableHead>
+                                    </DataTableHeader>
                                     <tbody>
                                       {entry.set_details!.map((set) => (
-                                        <tr key={set.set_number} className="text-foreground">
-                                          <td className="py-1 pr-4">{set.set_number}</td>
-                                          <td className="py-1 pr-4">{formatWeight(set.weight_kg ?? null)}</td>
-                                          <td className="py-1 pr-4">{set.reps}</td>
-                                          <td className="py-1">{set.rpe !== null ? set.rpe : "-"}</td>
-                                        </tr>
+                                        <DataTableRow key={set.set_number} className="text-foreground">
+                                          <DataTableCell className="py-1 pr-4">{set.set_number}</DataTableCell>
+                                          <DataTableCell className="py-1 pr-4">
+                                            {formatWeight(set.weight_kg ?? null)}
+                                          </DataTableCell>
+                                          <DataTableCell className="py-1 pr-4">{set.reps}</DataTableCell>
+                                          <DataTableCell className="py-1">
+                                            {set.rpe !== null ? set.rpe : "-"}
+                                          </DataTableCell>
+                                        </DataTableRow>
                                       ))}
                                     </tbody>
-                                  </table>
+                                  </DataTable>
                                 </div>
                               </TableCell>
                             </TableRow>

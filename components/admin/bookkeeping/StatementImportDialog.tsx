@@ -1,4 +1,12 @@
 "use client"
+import {
+  DataTable,
+  DataTableCard,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+} from "@/components/ui/data-table"
 
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
@@ -373,7 +381,9 @@ export function StatementImportDialog({
         addJob({ jobId: data.jobId, kind: "statement_import", label: "Statement import" })
 
         if (data.duplicateUploadHint) {
-          toast.info(`You may have already uploaded this file on ${formatOccurredOn(String(data.duplicateUploadHint).slice(0, 10))}`)
+          toast.info(
+            `You may have already uploaded this file on ${formatOccurredOn(String(data.duplicateUploadHint).slice(0, 10))}`,
+          )
         }
 
         unsubscribeRef.current = subscribeToJob(
@@ -494,7 +504,9 @@ export function StatementImportDialog({
         )
       }
       if (skipped > 0) {
-        toast.success(`Posted ${inserted} ${inserted === 1 ? "entry" : "entries"} (${skipped} already recorded — skipped).`)
+        toast.success(
+          `Posted ${inserted} ${inserted === 1 ? "entry" : "entries"} (${skipped} already recorded — skipped).`,
+        )
       } else {
         toast.success(`Posted ${inserted} ${inserted === 1 ? "entry" : "entries"}.`)
       }
@@ -644,18 +656,18 @@ export function StatementImportDialog({
       const eligible = accounts.filter((a) => a.account_type === row.direction)
       const blocker = row.include ? rowBlocker(row) : null
       return (
-        <tr
+        <DataTableRow
           key={row.source_ref}
           className={cn("border-b border-border last:border-b-0", row.confidence === "low" && "bg-warning/5")}
         >
-          <td className="px-2 py-2 align-top">
+          <DataTableCell className="align-top">
             <Checkbox
               checked={row.include}
               onCheckedChange={(v) => updateRow(row.source_ref, { include: v === true })}
               aria-label={`Include ${row.description}`}
             />
-          </td>
-          <td className="px-2 py-2 align-top">
+          </DataTableCell>
+          <DataTableCell className="align-top">
             <input
               type="date"
               value={row.occurred_on}
@@ -663,8 +675,8 @@ export function StatementImportDialog({
               className="border-border w-32 rounded-md border bg-transparent px-1.5 py-1 text-xs"
               aria-label={`Date for ${row.description}`}
             />
-          </td>
-          <td className="px-2 py-2 align-top">
+          </DataTableCell>
+          <DataTableCell className="align-top">
             <input
               type="text"
               value={row.description}
@@ -673,8 +685,8 @@ export function StatementImportDialog({
               aria-label={`Description for ${row.description}`}
             />
             {row.confidence === "low" && <span className="text-[10px] text-warning">low confidence</span>}
-          </td>
-          <td className="px-2 py-2 align-top">
+          </DataTableCell>
+          <DataTableCell className="align-top">
             <div className="flex items-center justify-end gap-1">
               <span className={cn("font-mono text-xs", row.direction === "income" ? "text-success" : "text-error")}>
                 {row.direction === "income" ? "+$" : "−$"}
@@ -691,8 +703,8 @@ export function StatementImportDialog({
                 aria-label={`Amount for ${row.description}`}
               />
             </div>
-          </td>
-          <td className="px-2 py-2 align-top">
+          </DataTableCell>
+          <DataTableCell className="align-top">
             {/* Never disabled: picking the right category is usually what a
                 coach does BEFORE ticking a row the AI excluded. */}
             <select
@@ -708,12 +720,12 @@ export function StatementImportDialog({
                 </option>
               ))}
             </select>
-          </td>
-          <td className="px-2 py-2 max-w-48 align-top">
+          </DataTableCell>
+          <DataTableCell className="max-w-48 align-top">
             <RowFlagCell row={row} />
             {blocker && <p className="text-[11px] text-warning">{blocker}</p>}
-          </td>
-        </tr>
+          </DataTableCell>
+        </DataTableRow>
       )
     }
 
@@ -786,42 +798,40 @@ export function StatementImportDialog({
               </div>
             )}
 
-            <div className="overflow-x-auto border border-border rounded-lg max-h-96">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-surface">
-                  <tr className="border-b border-border">
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground w-8">
-                      <Checkbox
-                        checked={allIncluded}
-                        onCheckedChange={(v) => setRows((list) => list.map((r) => ({ ...r, include: v === true })))}
-                        aria-label={allIncluded ? "Untick every row" : "Tick every row"}
-                      />
-                    </th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Date</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Description</th>
-                    <th className="px-2 py-2 text-right font-medium text-muted-foreground">Amount</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Account</th>
-                    <th className="px-2 py-2 text-left font-medium text-muted-foreground">Flag</th>
-                  </tr>
-                </thead>
+            <DataTableCard>
+              <DataTable className="text-xs">
+                <DataTableHeader>
+                  <DataTableHead className="w-8">
+                    <Checkbox
+                      checked={allIncluded}
+                      onCheckedChange={(v) => setRows((list) => list.map((r) => ({ ...r, include: v === true })))}
+                      aria-label={allIncluded ? "Untick every row" : "Tick every row"}
+                    />
+                  </DataTableHead>
+                  <DataTableHead>Date</DataTableHead>
+                  <DataTableHead>Description</DataTableHead>
+                  <DataTableHead align="right">Amount</DataTableHead>
+                  <DataTableHead>Account</DataTableHead>
+                  <DataTableHead>Flag</DataTableHead>
+                </DataTableHeader>
                 <tbody>
                   {mainRows.map(renderRow)}
                   {newCandidateRows.length > 0 && (
                     <>
-                      <tr>
-                        <td
+                      <DataTableRow>
+                        <DataTableCell
                           colSpan={6}
-                          className="bg-accent/5 px-2 py-1.5 text-[11px] font-medium text-accent uppercase tracking-wide"
+                          className="bg-accent/5 py-1.5 text-[11px] font-medium text-accent uppercase tracking-wide"
                         >
                           New — opt-in candidate
-                        </td>
-                      </tr>
+                        </DataTableCell>
+                      </DataTableRow>
                       {newCandidateRows.map(renderRow)}
                     </>
                   )}
                 </tbody>
-              </table>
-            </div>
+              </DataTable>
+            </DataTableCard>
 
             {isNonBusinessBook && (
               <div className="rounded-xl border border-warning/40 bg-warning/5 p-3 space-y-2">
@@ -830,8 +840,8 @@ export function StatementImportDialog({
                   Non-business book selected
                 </div>
                 <p className="text-xs text-warning/90">
-                  You&apos;re importing a bank/Venmo statement into the &ldquo;{bookName}&rdquo; book. Statement
-                  imports normally belong in your primary business book. Post here only if you&apos;re sure.
+                  You&apos;re importing a bank/Venmo statement into the &ldquo;{bookName}&rdquo; book. Statement imports
+                  normally belong in your primary business book. Post here only if you&apos;re sure.
                 </p>
                 <div className="flex items-start gap-2 pt-1">
                   <Checkbox
@@ -854,8 +864,8 @@ export function StatementImportDialog({
           {rejectedClosedCount > 0 && (
             <p className="text-sm font-medium text-warning">
               {rejectedClosedCount} row{rejectedClosedCount === 1 ? "" : "s"}{" "}
-              {rejectedClosedCount === 1 ? "falls" : "fall"} in closed months — post them as adjustment entries in
-              the current open month.
+              {rejectedClosedCount === 1 ? "falls" : "fall"} in closed months — post them as adjustment entries in the
+              current open month.
             </p>
           )}
 
@@ -865,10 +875,7 @@ export function StatementImportDialog({
             <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={posting}>
               Cancel
             </Button>
-            <Button
-              onClick={commit}
-              disabled={posting || postBlockedReason !== null}
-            >
+            <Button onClick={commit} disabled={posting || postBlockedReason !== null}>
               {posting ? "Posting…" : `Post ${includedRows.length} ${includedRows.length === 1 ? "entry" : "entries"}`}
             </Button>
           </DialogFooter>

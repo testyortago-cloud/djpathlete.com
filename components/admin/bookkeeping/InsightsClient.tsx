@@ -1,4 +1,5 @@
 "use client"
+import { DataTable, DataTableCell, DataTableHead, DataTableHeader, DataTableRow } from "@/components/ui/data-table"
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
@@ -94,7 +95,15 @@ function DismissButton({ onClick, label }: { onClick: () => void; label: string 
  * no other receipt flow can target an existing row (owner report, 2026-08-04).
  * Own file input per row so the label stays associated with its entry.
  */
-function AttachReceiptButton({ entryId, label, onAttached }: { entryId: string; label: string; onAttached: () => void }) {
+function AttachReceiptButton({
+  entryId,
+  label,
+  onAttached,
+}: {
+  entryId: string
+  label: string
+  onAttached: () => void
+}) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -398,9 +407,7 @@ export function InsightsClient({
   // with no shared costs, which would otherwise render two all-$0.00 columns
   // next to "No shared costs to allocate yet."
   const allocation =
-    allocateShared && active && active.profit.shared_cost_cents > 0
-      ? allocateSharedCosts(active.profit)
-      : null
+    allocateShared && active && active.profit.shared_cost_cents > 0 ? allocateSharedCosts(active.profit) : null
 
   // Dismissal partitions (5b). Card headline chips keep the FULL recompute
   // totals — dismissals collapse rows, they never alter computed numbers — so
@@ -447,31 +454,30 @@ export function InsightsClient({
       {data.home_office.inputs.length === 0 ? (
         <p className="text-sm text-muted-foreground">No matched household rent/utility accounts found.</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left text-xs text-muted-foreground uppercase tracking-wide">
-              <th className="py-1 pr-4 font-medium">Account</th>
-              <th className="py-1 pr-4 font-medium">Total</th>
-              <th className="py-1 pr-4 font-medium">Proposed share</th>
-            </tr>
-          </thead>
+        <DataTable>
+          <DataTableHeader>
+            <DataTableHead className="py-1 pr-4">Account</DataTableHead>
+            <DataTableHead className="py-1 pr-4">Total</DataTableHead>
+            <DataTableHead className="py-1 pr-4">Proposed share</DataTableHead>
+          </DataTableHeader>
           <tbody>
             {data.home_office.inputs.map((input) => (
-              <tr key={input.account_id} className="border-b last:border-0">
-                <td className="py-1.5 pr-4">{input.name}</td>
-                <td className="py-1.5 pr-4">{formatCents(input.total_cents, targetCurrency)}</td>
-                <td className="py-1.5 pr-4">
+              <DataTableRow key={input.account_id}>
+                <DataTableCell className="py-1.5 pr-4">{input.name}</DataTableCell>
+                <DataTableCell className="py-1.5 pr-4">{formatCents(input.total_cents, targetCurrency)}</DataTableCell>
+                <DataTableCell className="py-1.5 pr-4">
                   {input.proposed_cents === null ? "—" : formatCents(input.proposed_cents, targetCurrency)}
-                </td>
-              </tr>
+                </DataTableCell>
+              </DataTableRow>
             ))}
           </tbody>
-        </table>
+        </DataTable>
       )}
 
       <div className="flex flex-wrap gap-6 border-t pt-3 mt-3">
         <p className="text-sm">
-          Input total <span className="font-semibold">{formatCents(data.home_office.input_total_cents, targetCurrency)}</span>
+          Input total{" "}
+          <span className="font-semibold">{formatCents(data.home_office.input_total_cents, targetCurrency)}</span>
         </p>
         <p className="text-sm">
           Proposed total{" "}
@@ -509,13 +515,14 @@ export function InsightsClient({
 
       {data.home_office.excluded_household_expense_cents > 0 ? (
         <p className="text-xs text-muted-foreground mt-2">
-          Other household spending excluded from this proposal: {formatCents(data.home_office.excluded_household_expense_cents, targetCurrency)}
+          Other household spending excluded from this proposal:{" "}
+          {formatCents(data.home_office.excluded_household_expense_cents, targetCurrency)}
         </p>
       ) : null}
 
       <p className="text-xs text-muted-foreground mt-3 border-t pt-3">
-        This is a proposal on the business book&apos;s screen, not an entry — business and household books stay separate. Your CPA sets the
-        method (simplified vs actual) and the final percentage.
+        This is a proposal on the business book&apos;s screen, not an entry — business and household books stay
+        separate. Your CPA sets the method (simplified vs actual) and the final percentage.
       </p>
     </div>
   ) : null
@@ -533,8 +540,8 @@ export function InsightsClient({
           </Link>
           <h1 className="text-2xl font-heading text-primary">Insights</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Every finding on this page is a candidate for your accountant to confirm — never a filed decision. Dollar figures are estimates;
-            your CPA files.
+            Every finding on this page is a candidate for your accountant to confirm — never a filed decision. Dollar
+            figures are estimates; your CPA files.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -690,57 +697,57 @@ export function InsightsClient({
                   {active.deductions.watchlist.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No deductible-candidate categories configured.</p>
                   ) : (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left text-xs text-muted-foreground uppercase tracking-wide">
-                          <th className="py-1 pr-4 font-medium">Category</th>
-                          <th className="py-1 pr-4 font-medium">Total</th>
-                          <th className="py-1 pr-4 font-medium">Entries</th>
-                          <th className="py-1 pr-4 font-medium">Top counterparties</th>
-                          <th className="py-1" />
-                        </tr>
-                      </thead>
+                    <DataTable>
+                      <DataTableHeader>
+                        <DataTableHead className="py-1 pr-4">Category</DataTableHead>
+                        <DataTableHead className="py-1 pr-4">Total</DataTableHead>
+                        <DataTableHead className="py-1 pr-4">Entries</DataTableHead>
+                        <DataTableHead className="py-1 pr-4">Top counterparties</DataTableHead>
+                        <DataTableHead className="py-1" />
+                      </DataTableHeader>
                       <tbody>
                         {watchlistParts.visible.map((w) => (
-                          <tr key={w.account_id} className="border-b last:border-0">
-                            <td className="py-1.5 pr-4">
+                          <DataTableRow key={w.account_id}>
+                            <DataTableCell className="py-1.5 pr-4">
                               {w.name}
                               {w.archived ? (
                                 <span className="ml-2 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
                                   archived
                                 </span>
                               ) : null}
-                            </td>
-                            <td className="py-1.5 pr-4">{formatCents(w.total_cents, active.book.currency)}</td>
-                            <td className="py-1.5 pr-4">{w.entry_count}</td>
-                            <td className="py-1.5 pr-4 text-xs text-muted-foreground">
+                            </DataTableCell>
+                            <DataTableCell className="py-1.5 pr-4">
+                              {formatCents(w.total_cents, active.book.currency)}
+                            </DataTableCell>
+                            <DataTableCell className="py-1.5 pr-4">{w.entry_count}</DataTableCell>
+                            <DataTableCell muted className="py-1.5 pr-4 text-xs">
                               {w.top_counterparties
-                                .map((c) => `${c.counterparty ?? "—"} ${formatCents(c.total_cents, active.book.currency)}`)
+                                .map(
+                                  (c) => `${c.counterparty ?? "—"} ${formatCents(c.total_cents, active.book.currency)}`,
+                                )
                                 .join(" · ")}
-                            </td>
-                            <td className="py-1.5">
+                            </DataTableCell>
+                            <DataTableCell className="py-1.5">
                               <DismissButton
                                 label={`Dismiss watchlist row: ${w.name}`}
                                 onClick={() =>
-                                  void setDismissed(
-                                    active.book.id,
-                                    findingFingerprint("watchlist", w.account_id),
-                                    true,
-                                  )
+                                  void setDismissed(active.book.id, findingFingerprint("watchlist", w.account_id), true)
                                 }
                               />
-                            </td>
-                          </tr>
+                            </DataTableCell>
+                          </DataTableRow>
                         ))}
-                        <tr>
-                          <td className="py-1.5 pr-4 font-semibold">Watchlist total</td>
-                          <td className="py-1.5 pr-4 font-semibold">{formatCents(active.deductions.watchlist_total_cents, active.book.currency)}</td>
-                          <td />
-                          <td />
-                          <td />
-                        </tr>
+                        <DataTableRow>
+                          <DataTableCell className="py-1.5 pr-4 font-semibold">Watchlist total</DataTableCell>
+                          <DataTableCell className="py-1.5 pr-4 font-semibold">
+                            {formatCents(active.deductions.watchlist_total_cents, active.book.currency)}
+                          </DataTableCell>
+                          <DataTableCell />
+                          <DataTableCell />
+                          <DataTableCell />
+                        </DataTableRow>
                       </tbody>
-                    </table>
+                    </DataTable>
                   )}
                   <DismissedReveal
                     count={watchlistParts.hidden.length}
@@ -764,47 +771,54 @@ export function InsightsClient({
                   <h2 className="text-sm font-heading text-primary mb-3">Substantiation gaps</h2>
                   <p
                     className={`text-sm font-medium mb-3 inline-block rounded-md px-3 py-2 ${
-                      active.deductions.substantiation_gaps.length > 0 ? "bg-warning/10 text-warning" : "text-muted-foreground"
+                      active.deductions.substantiation_gaps.length > 0
+                        ? "bg-warning/10 text-warning"
+                        : "text-muted-foreground"
                     }`}
                   >
-                    {active.deductions.substantiation_gaps.length} entries · {formatCents(active.deductions.gap_total_cents, active.book.currency)}
+                    {active.deductions.substantiation_gaps.length} entries ·{" "}
+                    {formatCents(active.deductions.gap_total_cents, active.book.currency)}
                     {dismissedNote(gapParts.hidden.length)}
                   </p>
                   {active.deductions.substantiation_gaps.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Every purpose-required entry has a business purpose.</p>
+                    <p className="text-sm text-muted-foreground">
+                      Every purpose-required entry has a business purpose.
+                    </p>
                   ) : (
                     <>
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b text-left text-xs text-muted-foreground uppercase tracking-wide">
-                            <th className="py-1 pr-4 font-medium">Date</th>
-                            <th className="py-1 pr-4 font-medium">Amount</th>
-                            <th className="py-1 pr-4 font-medium">Counterparty</th>
-                            <th className="py-1 pr-4 font-medium">Account</th>
-                            <th className="py-1 pr-4 font-medium">Memo</th>
-                            <th className="py-1 pr-4 font-medium">Receipt</th>
-                            <th className="py-1" />
-                          </tr>
-                        </thead>
+                      <DataTable>
+                        <DataTableHeader>
+                          <DataTableHead className="py-1 pr-4">Date</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Amount</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Counterparty</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Account</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Memo</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Receipt</DataTableHead>
+                          <DataTableHead className="py-1" />
+                        </DataTableHeader>
                         <tbody>
                           {gapParts.visible.slice(0, VISIBLE_ROW_CAP).map((gap) => (
-                            <tr key={gap.entry_id} className="border-b last:border-0">
-                              <td className="py-1.5 pr-4">{gap.occurred_on}</td>
-                              <td className="py-1.5 pr-4">{formatCents(gap.amount_cents, active.book.currency)}</td>
-                              <td className="py-1.5 pr-4">{gap.counterparty ?? "—"}</td>
-                              <td className="py-1.5 pr-4">
+                            <DataTableRow key={gap.entry_id}>
+                              <DataTableCell className="py-1.5 pr-4">{gap.occurred_on}</DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4">
+                                {formatCents(gap.amount_cents, active.book.currency)}
+                              </DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4">{gap.counterparty ?? "—"}</DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4">
                                 <Link
                                   href={`/admin/books?book_id=${active.book.id}&account_id=${gap.account_id}&from=${from}&to=${to}`}
                                   className="hover:text-accent underline-offset-4 hover:underline"
                                 >
                                   {gap.account_name}
                                 </Link>
-                              </td>
-                              <td className="py-1.5 pr-4 text-muted-foreground">{gap.memo ?? ""}</td>
-                              <td className="py-1.5 pr-4">
+                              </DataTableCell>
+                              <DataTableCell muted className="py-1.5 pr-4">
+                                {gap.memo ?? ""}
+                              </DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4">
                                 <ReceiptDot present={gap.has_document} />
-                              </td>
-                              <td className="py-1.5">
+                              </DataTableCell>
+                              <DataTableCell className="py-1.5">
                                 <DismissButton
                                   label={`Dismiss gap: ${gap.counterparty ?? gap.occurred_on}`}
                                   onClick={() =>
@@ -815,11 +829,11 @@ export function InsightsClient({
                                     )
                                   }
                                 />
-                              </td>
-                            </tr>
+                              </DataTableCell>
+                            </DataTableRow>
                           ))}
                         </tbody>
-                      </table>
+                      </DataTable>
                       {gapParts.visible.length > VISIBLE_ROW_CAP ? (
                         <p className="text-xs text-muted-foreground mt-2">
                           and {gapParts.visible.length - VISIBLE_ROW_CAP} more
@@ -859,41 +873,46 @@ export function InsightsClient({
                   <h2 className="text-sm font-heading text-primary mb-3">Uncategorized expenses</h2>
                   <p
                     className={`text-sm font-medium mb-3 inline-block rounded-md px-3 py-2 ${
-                      active.deductions.uncategorized.entry_count > 0 ? "bg-warning/10 text-warning" : "text-muted-foreground"
+                      active.deductions.uncategorized.entry_count > 0
+                        ? "bg-warning/10 text-warning"
+                        : "text-muted-foreground"
                     }`}
                   >
-                    {active.deductions.uncategorized.entry_count} entries · {formatCents(active.deductions.uncategorized.total_cents, active.book.currency)}
+                    {active.deductions.uncategorized.entry_count} entries ·{" "}
+                    {formatCents(active.deductions.uncategorized.total_cents, active.book.currency)}
                     {dismissedNote(uncatParts.hidden.length)}
                   </p>
                   {active.deductions.uncategorized.entries.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No uncategorized expenses in this period.</p>
                   ) : (
                     <>
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b text-left text-xs text-muted-foreground uppercase tracking-wide">
-                            <th className="py-1 pr-4 font-medium">Date</th>
-                            <th className="py-1 pr-4 font-medium">Amount</th>
-                            <th className="py-1 pr-4 font-medium">Counterparty</th>
-                            <th className="py-1 pr-4 font-medium">Memo</th>
-                            <th className="py-1" />
-                          </tr>
-                        </thead>
+                      <DataTable>
+                        <DataTableHeader>
+                          <DataTableHead className="py-1 pr-4">Date</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Amount</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Counterparty</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Memo</DataTableHead>
+                          <DataTableHead className="py-1" />
+                        </DataTableHeader>
                         <tbody>
                           {uncatParts.visible.slice(0, VISIBLE_ROW_CAP).map((entry) => (
-                            <tr key={entry.entry_id} className="border-b last:border-0">
-                              <td className="py-1.5 pr-4">
+                            <DataTableRow key={entry.entry_id}>
+                              <DataTableCell className="py-1.5 pr-4">
                                 <Link
                                   href={`/admin/books?book_id=${active.book.id}&account_id=none&direction=expense&from=${from}&to=${to}`}
                                   className="hover:text-accent underline-offset-4 hover:underline"
                                 >
                                   {entry.occurred_on}
                                 </Link>
-                              </td>
-                              <td className="py-1.5 pr-4">{formatCents(entry.amount_cents, active.book.currency)}</td>
-                              <td className="py-1.5 pr-4">{entry.counterparty ?? "—"}</td>
-                              <td className="py-1.5 pr-4 text-muted-foreground">{entry.memo ?? ""}</td>
-                              <td className="py-1.5">
+                              </DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4">
+                                {formatCents(entry.amount_cents, active.book.currency)}
+                              </DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4">{entry.counterparty ?? "—"}</DataTableCell>
+                              <DataTableCell muted className="py-1.5 pr-4">
+                                {entry.memo ?? ""}
+                              </DataTableCell>
+                              <DataTableCell className="py-1.5">
                                 <DismissButton
                                   label={`Dismiss uncategorized: ${entry.counterparty ?? entry.occurred_on}`}
                                   onClick={() =>
@@ -904,11 +923,11 @@ export function InsightsClient({
                                     )
                                   }
                                 />
-                              </td>
-                            </tr>
+                              </DataTableCell>
+                            </DataTableRow>
                           ))}
                         </tbody>
-                      </table>
+                      </DataTable>
                       {uncatParts.visible.length > VISIBLE_ROW_CAP ? (
                         <p className="text-xs text-muted-foreground mt-2">
                           and {uncatParts.visible.length - VISIBLE_ROW_CAP} more
@@ -948,48 +967,54 @@ export function InsightsClient({
                   {active.profit.rows.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No income in this period.</p>
                   ) : (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left text-xs text-muted-foreground uppercase tracking-wide">
-                          <th className="py-1 pr-4 font-medium">Service line</th>
-                          <th className="py-1 pr-4 font-medium">Income</th>
-                          <th className="py-1 pr-4 font-medium">Direct costs</th>
-                          <th className="py-1 pr-4 font-medium">Net</th>
-                          {allocation ? (
-                            <>
-                              <th className="py-1 pr-4 font-medium">Allocated share</th>
-                              <th className="py-1 pr-4 font-medium">Net after share</th>
-                            </>
-                          ) : null}
-                        </tr>
-                      </thead>
+                    <DataTable>
+                      <DataTableHeader>
+                        <DataTableHead className="py-1 pr-4">Service line</DataTableHead>
+                        <DataTableHead className="py-1 pr-4">Income</DataTableHead>
+                        <DataTableHead className="py-1 pr-4">Direct costs</DataTableHead>
+                        <DataTableHead className="py-1 pr-4">Net</DataTableHead>
+                        {allocation ? (
+                          <>
+                            <DataTableHead className="py-1 pr-4">Allocated share</DataTableHead>
+                            <DataTableHead className="py-1 pr-4">Net after share</DataTableHead>
+                          </>
+                        ) : null}
+                      </DataTableHeader>
                       <tbody>
                         {active.profit.rows.map((r, i) => {
                           // allocateSharedCosts maps over profit.rows in order, so index pairs.
                           const alloc = allocation ? allocation.rows[i] : null
                           return (
-                            <tr key={r.service_line ?? "uncategorized"} className="border-b last:border-0">
-                              <td className="py-1.5 pr-4">{r.label}</td>
-                              <td className="py-1.5 pr-4 text-success">{formatCents(r.income_cents, active.book.currency)}</td>
-                              <td className="py-1.5 pr-4 text-error">{formatCents(r.direct_cost_cents, active.book.currency)}</td>
-                              <td className={`py-1.5 pr-4 ${r.net_estimate_cents >= 0 ? "text-success" : "text-error"}`}>
+                            <DataTableRow key={r.service_line ?? "uncategorized"}>
+                              <DataTableCell className="py-1.5 pr-4">{r.label}</DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4 text-success">
+                                {formatCents(r.income_cents, active.book.currency)}
+                              </DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4 text-error">
+                                {formatCents(r.direct_cost_cents, active.book.currency)}
+                              </DataTableCell>
+                              <DataTableCell
+                                className={`py-1.5 pr-4 ${r.net_estimate_cents >= 0 ? "text-success" : "text-error"}`}
+                              >
                                 {formatCents(r.net_estimate_cents, active.book.currency)}
-                              </td>
+                              </DataTableCell>
                               {alloc ? (
                                 <>
-                                  <td className="py-1.5 pr-4 text-error">
+                                  <DataTableCell className="py-1.5 pr-4 text-error">
                                     {formatCents(alloc.allocated_shared_cents, active.book.currency)}
-                                  </td>
-                                  <td className={`py-1.5 pr-4 ${alloc.net_after_allocated_cents >= 0 ? "text-success" : "text-error"}`}>
+                                  </DataTableCell>
+                                  <DataTableCell
+                                    className={`py-1.5 pr-4 ${alloc.net_after_allocated_cents >= 0 ? "text-success" : "text-error"}`}
+                                  >
                                     {formatCents(alloc.net_after_allocated_cents, active.book.currency)}
-                                  </td>
+                                  </DataTableCell>
                                 </>
                               ) : null}
-                            </tr>
+                            </DataTableRow>
                           )
                         })}
                       </tbody>
-                    </table>
+                    </DataTable>
                   )}
                   <div className="mt-3 space-y-1 text-sm text-muted-foreground">
                     <p>Shared / overhead {formatCents(active.profit.shared_cost_cents, active.book.currency)}</p>
@@ -1020,18 +1045,16 @@ export function InsightsClient({
                   {active.vendors.recurring.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No recurring charges detected in this period.</p>
                   ) : (
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left text-xs text-muted-foreground uppercase tracking-wide">
-                          <th className="py-1 pr-4 font-medium">Vendor</th>
-                          <th className="py-1 pr-4 font-medium">Account</th>
-                          <th className="py-1" />
-                        </tr>
-                      </thead>
+                    <DataTable>
+                      <DataTableHeader>
+                        <DataTableHead className="py-1 pr-4">Vendor</DataTableHead>
+                        <DataTableHead className="py-1 pr-4">Account</DataTableHead>
+                        <DataTableHead className="py-1" />
+                      </DataTableHeader>
                       <tbody>
                         {vendorParts.visible.map((v) => (
-                          <tr key={v.key} className="border-b last:border-0">
-                            <td className="py-1.5 pr-4">
+                          <DataTableRow key={v.key}>
+                            <DataTableCell className="py-1.5 pr-4">
                               {v.display_name} —{" "}
                               {v.cadence === "monthly"
                                 ? `~${formatCents(v.typical_amount_cents, active.book.currency)}/mo (≈${formatCents(v.annualized_cents, active.book.currency)}/yr)`
@@ -1041,20 +1064,22 @@ export function InsightsClient({
                                   possible overlap
                                 </span>
                               ) : null}
-                            </td>
-                            <td className="py-1.5 pr-4 text-muted-foreground">{v.account_name}</td>
-                            <td className="py-1.5">
+                            </DataTableCell>
+                            <DataTableCell muted className="py-1.5 pr-4">
+                              {v.account_name}
+                            </DataTableCell>
+                            <DataTableCell className="py-1.5">
                               <DismissButton
                                 label={`Dismiss vendor: ${v.display_name}`}
                                 onClick={() =>
                                   void setDismissed(active.book.id, findingFingerprint("vendor", v.key), true)
                                 }
                               />
-                            </td>
-                          </tr>
+                            </DataTableCell>
+                          </DataTableRow>
                         ))}
                       </tbody>
-                    </table>
+                    </DataTable>
                   )}
                   <DismissedReveal
                     count={vendorParts.hidden.length}
@@ -1065,21 +1090,23 @@ export function InsightsClient({
                       <RestoreRow
                         key={v.key}
                         label={`${v.display_name} · ${formatCents(v.annualized_cents, active.book.currency)}/yr`}
-                        onRestore={() =>
-                          void setDismissed(active.book.id, findingFingerprint("vendor", v.key), false)
-                        }
+                        onRestore={() => void setDismissed(active.book.id, findingFingerprint("vendor", v.key), false)}
                       />
                     ))}
                   </DismissedReveal>
                   <p className="text-xs text-muted-foreground mt-2">
-                    {active.vendors.vendor_count} vendors seen · {active.vendors.unattributed_expense_count} entries without a vendor name
+                    {active.vendors.vendor_count} vendors seen · {active.vendors.unattributed_expense_count} entries
+                    without a vendor name
                   </p>
                 </div>
 
                 {/* Missing receipts & purposes (Phase 6b watchdog, D-10 — a chore list, no flag).
                     #missing-receipts is a linked anchor — the close-readiness
                     "Show what's missing" action lands here. */}
-                <div id="missing-receipts" className="scroll-mt-24 rounded-lg border border-border bg-card p-4 overflow-x-auto">
+                <div
+                  id="missing-receipts"
+                  className="scroll-mt-24 rounded-lg border border-border bg-card p-4 overflow-x-auto"
+                >
                   <h2 className="text-sm font-heading text-primary mb-3">Missing receipts &amp; purposes</h2>
                   <p
                     className={`text-sm font-medium mb-3 inline-block rounded-md px-3 py-2 ${
@@ -1099,25 +1126,25 @@ export function InsightsClient({
                     </p>
                   ) : (
                     <>
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b text-left text-xs text-muted-foreground uppercase tracking-wide">
-                            <th className="py-1 pr-4 font-medium">Date</th>
-                            <th className="py-1 pr-4 font-medium">Amount</th>
-                            <th className="py-1 pr-4 font-medium">Counterparty</th>
-                            <th className="py-1 pr-4 font-medium">Category</th>
-                            <th className="py-1 pr-4 font-medium">Missing</th>
-                            <th className="py-1" />
-                          </tr>
-                        </thead>
+                      <DataTable>
+                        <DataTableHeader>
+                          <DataTableHead className="py-1 pr-4">Date</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Amount</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Counterparty</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Category</DataTableHead>
+                          <DataTableHead className="py-1 pr-4">Missing</DataTableHead>
+                          <DataTableHead className="py-1" />
+                        </DataTableHeader>
                         <tbody>
                           {watchdogParts.visible.slice(0, VISIBLE_ROW_CAP).map((f) => (
-                            <tr key={f.entry_id} className="border-b last:border-0">
-                              <td className="py-1.5 pr-4">{f.occurred_on}</td>
-                              <td className="py-1.5 pr-4">{formatCents(f.amount_cents, active.book.currency)}</td>
-                              <td className="py-1.5 pr-4">{f.counterparty ?? "—"}</td>
-                              <td className="py-1.5 pr-4">{f.account_name}</td>
-                              <td className="py-1.5 pr-4">
+                            <DataTableRow key={f.entry_id}>
+                              <DataTableCell className="py-1.5 pr-4">{f.occurred_on}</DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4">
+                                {formatCents(f.amount_cents, active.book.currency)}
+                              </DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4">{f.counterparty ?? "—"}</DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4">{f.account_name}</DataTableCell>
+                              <DataTableCell className="py-1.5 pr-4">
                                 <span className="flex flex-wrap gap-1">
                                   {f.reasons.map((r) => (
                                     <span
@@ -1128,8 +1155,8 @@ export function InsightsClient({
                                     </span>
                                   ))}
                                 </span>
-                              </td>
-                              <td className="py-1.5">
+                              </DataTableCell>
+                              <DataTableCell className="py-1.5">
                                 <span className="flex items-center justify-end gap-3">
                                   {f.reasons.includes("no_document") && (
                                     <AttachReceiptButton
@@ -1149,11 +1176,11 @@ export function InsightsClient({
                                     }
                                   />
                                 </span>
-                              </td>
-                            </tr>
+                              </DataTableCell>
+                            </DataTableRow>
                           ))}
                         </tbody>
-                      </table>
+                      </DataTable>
                       {watchdogParts.visible.length > VISIBLE_ROW_CAP ? (
                         <p className="text-xs text-muted-foreground mt-2">
                           and {watchdogParts.visible.length - VISIBLE_ROW_CAP} more
