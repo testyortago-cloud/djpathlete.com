@@ -221,7 +221,11 @@ git commit -m "feat(test-report): focal points name the category AND the test dr
 
 **Interfaces:**
 - Consumes: `ScoredTest` from Task 1's file (unchanged shape).
-- Produces: `BiggestMover` interface; `ReportScores.biggestMover: BiggestMover | null`. The old shape `{ label, deltaPct }` is **replaced** — consumers now read `mover.test.label`, `mover.test.deltaPct`, `mover.test.previous`, `mover.test.latest`, `mover.test.unit`, `mover.isDecline`.
+- Produces: `BiggestMover` interface; `ReportScores.biggestMover: BiggestMover | null`. The old shape `{ label, deltaPct }` is **replaced** — consumers now read `mover.test.label`, `mover.test.deltaPct`, `mover.test.previous`, `mover.test.latest`, `mover.test.unit`, and `mover.direction: "improved" | "flat" | "declined"`.
+
+**`direction` is three-state on purpose.** A boolean cannot carry three outcomes: when
+every test's change rounds to zero the mover is neither an improvement nor a decline,
+and a page keying off `isDecline` would print "Biggest improvement" above "0%".
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -968,7 +972,11 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
           {biggestMover && (
             <div className="border-l-2 border-accent pl-5">
               <p className="djp-eyebrow text-muted-foreground">
-                {biggestMover.isDecline ? "Biggest change since last test" : "Biggest improvement since last test"}
+                {biggestMover.direction === "declined"
+                  ? "Biggest change since last test"
+                  : biggestMover.direction === "flat"
+                    ? "Since last test"
+                    : "Biggest improvement since last test"}
               </p>
               <p className="mt-2 font-heading text-5xl font-bold leading-none text-[var(--accent-foreground)]">
                 {biggestMover.test.deltaPct > 0 ? "↑" : biggestMover.test.deltaPct < 0 ? "↓" : "="}{" "}
@@ -984,9 +992,11 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
                 </div>
               )}
               <p className="mt-3 max-w-[34ch] text-sm text-muted-foreground">
-                {biggestMover.isDecline
+                {biggestMover.direction === "declined"
                   ? "Nothing improved between your last two tests. Worth checking recovery and testing conditions before reading too much into it."
-                  : "The largest move of any test on file."}
+                  : biggestMover.direction === "flat"
+                    ? "Every test held steady since your last round — no measurable change either way."
+                    : "The largest move of any test on file."}
               </p>
             </div>
           )}
