@@ -665,3 +665,46 @@
 .test-report .score-track[data-tone="accent"] .score-track-dot {
   border-color: var(--accent);
 }
+
+/* Section banding. Darren asked for green/white alternation to break the page up.
+   Tokens only, so both theme scopes get it for free. */
+.test-report .report-band {
+  padding: 1.6rem 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .test-report .report-band {
+    padding: 1.75rem 3rem;
+  }
+}
+
+.test-report .report-band + .report-band {
+  border-top: 1px solid var(--border);
+}
+
+.test-report .report-band-green {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-top-color: transparent;
+}
+
+.test-report .report-band-alt {
+  background: var(--surface);
+}
+
+@media print {
+  /* Chrome's Save-as-PDF has Background graphics OFF by default, so the green fill
+     is not guaranteed to render — and light text on a dropped fill is invisible.
+     On paper the banding rhythm is carried by rules instead, which also saves ink
+     on a document meant to be printed. */
+  .test-report .report-band-green {
+    background: transparent !important;
+    color: var(--foreground) !important;
+    border-top: 2px solid var(--primary) !important;
+  }
+
+  .test-report .report-band-green .djp-eyebrow,
+  .test-report .report-band-green .report-band-quiet {
+    color: var(--muted-foreground) !important;
+  }
+}
