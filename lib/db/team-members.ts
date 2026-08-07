@@ -11,6 +11,8 @@ export interface TeamMember {
   email: string
   first_name: string
   last_name: string
+  /** `staff` reaches the admin panel; `editor` only reaches the /editor portal. */
+  role: "staff" | "editor"
   status: string
   staff_role: string | null
   permissions: PermissionMap
@@ -19,16 +21,25 @@ export interface TeamMember {
   assigned_client_count: number
 }
 
-const MEMBER_COLUMNS = "id, email, first_name, last_name, status, staff_role, permissions, created_at"
+const MEMBER_COLUMNS = "id, email, first_name, last_name, role, status, staff_role, permissions, created_at"
 
-/** Everyone who reaches the admin panel with a scoped permission map. */
+/** Roles that represent a person on the team, as opposed to a client or the owner. */
+const TEAM_ROLES = ["staff", "editor"] as const
+
+/**
+ * Everyone who works for Darren: admin-panel staff AND video editors.
+ *
+ * Editors are included deliberately — they have real access (the /editor
+ * portal), so leaving them out made accepted editor invites vanish from
+ * Members while sitting uselessly in the Invites table.
+ */
 export async function listTeamMembers(): Promise<TeamMember[]> {
   const supabase = getClient()
 
   const { data, error } = await supabase
     .from("users")
     .select(MEMBER_COLUMNS)
-    .eq("role", "staff")
+    .in("role", TEAM_ROLES)
     .order("created_at", { ascending: false })
   if (error) throw error
 
@@ -62,7 +73,7 @@ export async function getTeamMember(id: string): Promise<TeamMember | null> {
     .from("users")
     .select(MEMBER_COLUMNS)
     .eq("id", id)
-    .eq("role", "staff")
+    .in("role", TEAM_ROLES)
     .single()
   if (error || !data) return null
 
@@ -96,9 +107,10 @@ export async function updateMemberPermissions(
   return data as User
 }
 
+/** Applies to editors too — suspending a video editor should lock them out as well. */
 export async function setMemberStatus(id: string, status: "active" | "suspended"): Promise<void> {
   const supabase = getClient()
-  const { error } = await supabase.from("users").update({ status }).eq("id", id).eq("role", "staff")
+  const { error } = await supabase.from("users").update({ status }).eq("id", id).in("role", TEAM_ROLES)
   if (error) throw error
 }
 

@@ -13,8 +13,17 @@ const STATUS_STYLES: Record<TeamInviteStatus, string> = {
   expired: "bg-muted text-muted-foreground border-border",
 }
 
+/**
+ * Accepted invites are dropped: the person now appears under Members, and an
+ * accepted invite has no action left on it, so listing it produced a row with
+ * an empty Actions column that read as broken.
+ */
+function openInvitesOnly(invites: TeamInvite[]): TeamInvite[] {
+  return invites.filter((inv) => inviteStatus(inv) !== "accepted")
+}
+
 export function InviteList({ initialInvites }: { initialInvites: TeamInvite[] }) {
-  const [invites, setInvites] = useState(initialInvites)
+  const [invites, setInvites] = useState(() => openInvitesOnly(initialInvites))
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pending, startTransition] = useTransition()
 
@@ -22,7 +31,7 @@ export function InviteList({ initialInvites }: { initialInvites: TeamInvite[] })
     const res = await fetch("/api/admin/team/invites")
     if (res.ok) {
       const json = await res.json()
-      setInvites(json.invites)
+      setInvites(openInvitesOnly(json.invites))
     }
   }
 
@@ -67,7 +76,7 @@ export function InviteList({ initialInvites }: { initialInvites: TeamInvite[] })
             {invites.length === 0 && (
               <tr>
                 <td className="px-4 py-6 text-center text-muted-foreground" colSpan={5}>
-                  No invites yet. Click &quot;Invite member&quot; to send the first one.
+                  No open invites. Accepted ones move up to Members.
                 </td>
               </tr>
             )}

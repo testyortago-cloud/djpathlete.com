@@ -63,6 +63,7 @@ export function TeamMemberList({
     <>
       <div className="space-y-3">
         {members.map((member) => {
+          const isEditor = member.role === "editor"
           const preset = member.staff_role ? getPreset(member.staff_role) : null
           const suspended = member.status === "suspended"
 
@@ -77,10 +78,16 @@ export function TeamMemberList({
                     <p className="font-medium">
                       {member.first_name} {member.last_name}
                     </p>
-                    {preset && (
-                      <span className="rounded border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent-foreground">
-                        {preset.label}
+                    {isEditor ? (
+                      <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Video Editor
                       </span>
+                    ) : (
+                      preset && (
+                        <span className="rounded border border-accent/30 bg-accent/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent-foreground">
+                          {preset.label}
+                        </span>
+                      )
                     )}
                     {suspended && (
                       <span className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -91,13 +98,19 @@ export function TeamMemberList({
                   <p className="text-sm text-muted-foreground">{member.email}</p>
                 </div>
 
+                {/* An editor has no admin-panel permissions and no client roster,
+                    so those two controls would do nothing for them. */}
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setEditing(member)}>
-                    Edit permissions
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setAssigning(member)}>
-                    Assign clients ({member.assigned_client_count})
-                  </Button>
+                  {!isEditor && (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => setEditing(member)}>
+                        Edit permissions
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setAssigning(member)}>
+                        Assign clients ({member.assigned_client_count})
+                      </Button>
+                    </>
+                  )}
                   <Button size="sm" variant="ghost" disabled={pending} onClick={() => toggleStatus(member)}>
                     {suspended ? "Reactivate" : "Suspend"}
                   </Button>
@@ -105,7 +118,9 @@ export function TeamMemberList({
               </div>
 
               <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">
-                {describePermissions(member.permissions)}
+                {isEditor
+                  ? "Editor portal only — uploads videos and reads your feedback. No admin panel access."
+                  : describePermissions(member.permissions)}
               </p>
             </div>
           )
