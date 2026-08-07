@@ -39,10 +39,13 @@ describe("CUES", () => {
   it("is one sentence per cue — the report has two focal points and no room for paragraphs", () => {
     for (const c of CATEGORY_ORDER) {
       for (const b of BANDS) {
-        const cue = CUES[c][b]
-        // Count sentence-ending punctuation followed by a space and a capital.
-        const breaks = cue.match(/[.!?]\s+[A-Z]/g) ?? []
-        expect(breaks.length, `${c}/${b} runs to ${breaks.length + 1} sentences: ${cue}`).toBe(0)
+        const cue = CUES[c][b].trim()
+        // Counting terminators beats looking for ". Capital": a second sentence
+        // starting with a digit, a lowercase word, or a quote mark is still a
+        // second sentence, and the previous pattern let all three through.
+        const terminators = cue.match(/[.!?]/g) ?? []
+        expect(terminators.length, `${c}/${b} has ${terminators.length} sentence terminators: ${cue}`).toBe(1)
+        expect(/[.!?]$/.test(cue), `${c}/${b} does not end on its terminator: ${cue}`).toBe(true)
         expect(cue.length, `${c}/${b} is ${cue.length} chars`).toBeLessThanOrEqual(150)
       }
     }
