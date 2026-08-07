@@ -30,6 +30,9 @@ test.describe("Team invite flow", () => {
     await page.getByRole("button", { name: /invite member/i }).click()
     const dialog = page.getByRole("dialog")
     await dialog.getByLabel(/email/i).fill(INVITEE_EMAIL)
+    // Explicitly the editor preset: the default is Coach, which grants admin
+    // permissions and would land the invitee in /admin rather than /editor.
+    await dialog.getByLabel(/^role$/i).selectOption("editor")
     await dialog.getByRole("button", { name: /send invite/i }).click()
     await expect(page.getByText(INVITEE_EMAIL)).toBeVisible()
 

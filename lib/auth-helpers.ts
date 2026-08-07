@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
+import { homeForRole } from "@/lib/permissions/registry"
 
 export async function getServerAuth() {
   const session = await auth()
@@ -20,8 +21,7 @@ export async function requireAdmin() {
     redirect("/login")
   }
   if (session.user.role !== "admin") {
-    const home = session.user.role === "editor" ? "/editor" : "/client/dashboard"
-    redirect(home)
+    redirect(homeForRole(session.user.role, session.user.permissions))
   }
   return session
 }

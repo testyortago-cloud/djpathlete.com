@@ -59,6 +59,23 @@ export interface PermissionDef {
   kind: "boolean" | "tiered" | "view_only"
 }
 
+/**
+ * Which door a teammate comes through.
+ *
+ * These are not two separate kinds of person to keep in sync — `editor` is
+ * simply what a teammate is when their permission map grants nothing, so the
+ * admin panel has nothing to show them and the /editor portal is all that is
+ * left. See `roleForPermissions`, which is the only place the choice is made.
+ */
+export type TeamRole = "staff" | "editor"
+
+/** Roles that represent someone who works for the owner, as opposed to a client. */
+export const TEAM_ROLES: readonly TeamRole[] = ["staff", "editor"]
+
+export function isTeamRole(role: string | null | undefined): role is TeamRole {
+  return TEAM_ROLES.includes(role as TeamRole)
+}
+
 /** The actor shape the guards need. Kept minimal so a session, a JWT or a DB row all fit. */
 export interface PermissionActor {
   role: string
@@ -514,6 +531,26 @@ export function hasPermission(
   return required === "view" ? tier === "view" || tier === "manage" : tier === "manage"
 }
 
+/** Does this map grant anything at all? */
+export function grantsAnyPermission(permissions: PermissionMap | null | undefined): boolean {
+  return PERMISSIONS.some((def) => hasPermission(permissions, def.key, "view"))
+}
+
+/**
+ * A teammate's role, derived from their permissions rather than stored as a
+ * second fact that can drift out of step with them.
+ *
+ * Ticking any permission makes someone `staff` and lets them into the admin
+ * panel; clearing every permission makes them an `editor`, which is the
+ * /editor portal and nothing else. Keeping this derivation in one place is
+ * what stops "has no permissions" and "cannot reach the admin panel" from
+ * being two separate switches that disagree — a staff row with an empty map
+ * lands on `/admin/no-access`, which reads as broken rather than as a boundary.
+ */
+export function roleForPermissions(permissions: PermissionMap | null | undefined): TeamRole {
+  return grantsAnyPermission(permissions) ? "staff" : "editor"
+}
+
 /** HTTP methods that only read. Everything else needs `manage` on tiered permissions. */
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"])
 
@@ -595,6 +632,24 @@ export function staffHomePath(permissions: PermissionMap | null | undefined): st
     if (hasPermission(permissions, entry.permission, "view")) return entry.path
   }
   return NO_ACCESS_PATH
+}
+
+/**
+ * Where a signed-in user belongs when there is no specific destination.
+ *
+ * One function so the login form, the admin guard and the permission guard
+ * cannot disagree: sending a staff member to `/client/dashboard` lands them on
+ * a page that is not theirs, and every teammate hits this the first time they
+ * sign in after being given access.
+ */
+export function homeForRole(
+  role: string | null | undefined,
+  permissions?: PermissionMap | null,
+): string {
+  if (role === "admin") return "/admin/dashboard"
+  if (role === "staff") return staffHomePath(permissions)
+  if (role === "editor") return "/editor"
+  return "/client/dashboard"
 }
 
 // ---------------------------------------------------------------------------

@@ -32,14 +32,18 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     )
   }
 
+  let updated
   try {
-    await updateMemberPermissions(id, parsed.data.permissions, parsed.data.staffRole ?? null)
+    updated = await updateMemberPermissions(id, parsed.data.permissions, parsed.data.staffRole ?? null)
   } catch (err) {
     console.error("[team-member-permissions] failed:", err)
     return NextResponse.json({ error: "Failed to update permissions" }, { status: 500 })
   }
 
   // Before/after so the trail can answer "who could see the books in March".
+  // The role rides along because this edit is what moves someone between the
+  // admin panel and the editor portal — the single most consequential thing
+  // this endpoint can do, and not something a permission diff alone shows.
   void recordAudit({
     action: "team.member_permissions_changed",
     category: "admin_write",
@@ -49,8 +53,10 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       before: member.permissions,
       after: parsed.data.permissions,
       staff_role: parsed.data.staffRole ?? null,
+      before_role: member.role,
+      after_role: updated.role,
     },
   })
 
-  return NextResponse.json({ ok: true, permissions: parsed.data.permissions })
+  return NextResponse.json({ ok: true, permissions: parsed.data.permissions, role: updated.role })
 }

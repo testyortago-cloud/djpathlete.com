@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { isTeamRole } from "@/lib/permissions/registry"
 import { getSubmissionById, setCurrentVersion } from "@/lib/db/team-video-submissions"
 import { createVersion, nextVersionNumber } from "@/lib/db/team-video-versions"
 import { buildVersionPath, createUploadUrl } from "@/lib/storage/team-videos"
@@ -20,7 +21,7 @@ export const POST = withAudit(
     const ctx = context as unknown as { params: Promise<{ id: string }> }
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (session.user.role !== "editor" && session.user.role !== "admin") {
+  if (!isTeamRole(session.user.role) && session.user.role !== "admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -29,7 +30,7 @@ export const POST = withAudit(
   if (!submission) return NextResponse.json({ error: "Submission not found" }, { status: 404 })
 
   // Editors can only revise their own submissions
-  if (session.user.role === "editor" && submission.submitted_by !== session.user.id) {
+  if (session.user.role !== "admin" && submission.submitted_by !== session.user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

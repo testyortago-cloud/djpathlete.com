@@ -12,6 +12,10 @@ import {
   staffHomePath,
   tierForMethod,
   describePermissions,
+  homeForRole,
+  isTeamRole,
+  grantsAnyPermission,
+  roleForPermissions,
   isPermissionKey,
   NO_ACCESS_PATH,
   type PermissionMap,
@@ -346,5 +350,118 @@ describe("catalogue integrity", () => {
         permission: rule.permission as PermissionKey,
       })
     }
+  })
+})
+
+describe("roleForPermissions — which door a teammate comes through", () => {
+  it("makes someone with no permissions an editor", () => {
+    expect(roleForPermissions({})).toBe("editor")
+    expect(grantsAnyPermission({})).toBe(false)
+  })
+
+  it("treats a missing map as an editor rather than throwing", () => {
+    expect(roleForPermissions(null)).toBe("editor")
+    expect(roleForPermissions(undefined)).toBe("editor")
+  })
+
+  it("makes a single boolean grant enough to be staff", () => {
+    expect(roleForPermissions({ blog: true })).toBe("staff")
+  })
+
+  it("makes a view-only grant enough to be staff — they still need the panel to look", () => {
+    expect(roleForPermissions({ analytics: "view" })).toBe("staff")
+    expect(roleForPermissions({ payments: "view" })).toBe("staff")
+  })
+
+  it("counts a manage grant", () => {
+    expect(roleForPermissions({ accounting: "manage" })).toBe("staff")
+  })
+
+  it("ignores an explicitly denied permission", () => {
+    // `false` is how the picker records "unticked", and unticking the last box
+    // has to send someone back to the editor portal.
+    expect(roleForPermissions({ blog: false } as PermissionMap)).toBe("editor")
+  })
+
+  it("ignores junk that sanitizing would have dropped", () => {
+    // Otherwise a typo'd key would silently promote someone to the admin panel
+    // with a map that grants nothing, stranding them on /admin/no-access.
+    expect(roleForPermissions({ not_a_permission: true } as unknown as PermissionMap)).toBe("editor")
+    expect(roleForPermissions({ analytics: "manage" } as PermissionMap)).toBe("editor")
+  })
+
+  it("agrees with canAccessPath: an editor-by-permissions reaches no admin path", () => {
+    const permissions: PermissionMap = {}
+    expect(roleForPermissions(permissions)).toBe("editor")
+    expect(canAccessPath({ role: "staff", permissions }, "/admin/clients")).toBe(false)
+  })
+
+  it("agrees with staffHomePath: anyone it calls staff has somewhere to land", () => {
+    for (const preset of PRESETS) {
+      if (roleForPermissions(preset.permissions) !== "staff") continue
+      expect(staffHomePath(preset.permissions), preset.key).not.toBe(NO_ACCESS_PATH)
+    }
+  })
+
+  it("classifies every preset the same way its invitedRole does", () => {
+    // The preset's declared role and the derived one are two statements of the
+    // same fact; if they drift, the invite dialog promises access the server
+    // will not grant. "custom" is exempt: it is an empty starting point that
+    // becomes staff only once something is ticked.
+    for (const preset of PRESETS) {
+      if (preset.key === "custom") continue
+      expect(roleForPermissions(preset.permissions), preset.key).toBe(preset.invitedRole)
+    }
+  })
+})
+
+describe("homeForRole — where a signed-in user belongs", () => {
+  it("sends the owner to the dashboard", () => {
+    expect(homeForRole("admin", {})).toBe("/admin/dashboard")
+  })
+
+  it("sends a client to the client dashboard", () => {
+    expect(homeForRole("client", {})).toBe("/client/dashboard")
+  })
+
+  it("sends an editor to the editor portal", () => {
+    expect(homeForRole("editor", {})).toBe("/editor")
+  })
+
+  it("never sends a staff member to the client dashboard", () => {
+    // The bug this replaces: staff fell through to /client/dashboard, landing
+    // every promoted teammate on a page that is not theirs.
+    for (const preset of PRESETS) {
+      if (roleForPermissions(preset.permissions) !== "staff") continue
+      expect(homeForRole("staff", preset.permissions), preset.key).not.toBe("/client/dashboard")
+    }
+  })
+
+  it("sends a staff member to their first held area", () => {
+    expect(homeForRole("staff", { clients: true })).toBe("/admin/clients")
+    expect(homeForRole("staff", { accounting: "manage" })).toBe("/admin/books")
+  })
+
+  it("sends a staff member holding nothing to the no-access page, not a loop", () => {
+    expect(homeForRole("staff", {})).toBe(NO_ACCESS_PATH)
+  })
+
+  it("treats an unknown or missing role as a client", () => {
+    expect(homeForRole(undefined)).toBe("/client/dashboard")
+    expect(homeForRole("something_new")).toBe("/client/dashboard")
+  })
+})
+
+describe("isTeamRole", () => {
+  it("accepts both team roles", () => {
+    expect(isTeamRole("staff")).toBe(true)
+    expect(isTeamRole("editor")).toBe(true)
+  })
+
+  it("rejects the owner and clients — the owner is not a teammate row", () => {
+    expect(isTeamRole("admin")).toBe(false)
+    expect(isTeamRole("client")).toBe(false)
+    expect(isTeamRole(null)).toBe(false)
+    expect(isTeamRole(undefined)).toBe(false)
   })
 })

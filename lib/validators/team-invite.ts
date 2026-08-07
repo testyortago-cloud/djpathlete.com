@@ -24,13 +24,17 @@ export const permissionMapSchema = z
   })
   .transform((value): PermissionMap => sanitizePermissionMap(value))
 
+/**
+ * No `role` field: which portal an invite opens is derived server-side from the
+ * permissions (see `roleForPermissions`), so the client cannot send a role that
+ * contradicts what it just ticked. A `role` key in the body is stripped.
+ */
 export const sendInviteSchema = z.object({
   email: z
     .string()
     .trim()
     .toLowerCase()
     .email("Enter a valid email address"),
-  role: z.enum(["editor", "staff"]),
   /** Which preset the checkboxes started from. Display only. */
   staffRole: z.enum(PRESET_KEYS).optional(),
   permissions: permissionMapSchema.optional().default({}),

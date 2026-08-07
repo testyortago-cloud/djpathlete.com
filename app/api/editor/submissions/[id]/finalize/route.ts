@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { isTeamRole } from "@/lib/permissions/registry"
 import { getSubmissionById, setSubmissionStatus } from "@/lib/db/team-video-submissions"
 import { finalizeVersion, getCurrentVersion } from "@/lib/db/team-video-versions"
 import { listImagesForVersion } from "@/lib/db/team-submission-images"
@@ -12,7 +13,7 @@ import type { User } from "@/types/database"
 export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  if (session.user.role !== "editor" && session.user.role !== "admin") {
+  if (!isTeamRole(session.user.role) && session.user.role !== "admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -20,7 +21,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
   const submission = await getSubmissionById(id)
   if (!submission) return NextResponse.json({ error: "Submission not found" }, { status: 404 })
 
-  if (session.user.role === "editor" && submission.submitted_by !== session.user.id) {
+  if (session.user.role !== "admin" && submission.submitted_by !== session.user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

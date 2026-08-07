@@ -22,8 +22,11 @@ export default async function EditorVideoPage({ params }: Props) {
   const submission = await getSubmissionById(id)
   if (!submission) notFound()
 
-  // Editors can only view their own; admins can view all
-  if (session.user.role === "editor" && submission.submitted_by !== session.user.id) {
+  // Everyone but the owner sees only their own submissions. Keyed on "is not
+  // the owner" rather than on role `editor`, because an editor who is given an
+  // admin permission becomes `staff` — and a role check would have quietly
+  // turned that promotion into permission to read every other editor's work.
+  if (session.user.role !== "admin" && submission.submitted_by !== session.user.id) {
     notFound()
   }
 

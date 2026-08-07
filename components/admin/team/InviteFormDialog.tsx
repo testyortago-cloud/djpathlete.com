@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { PermissionPicker } from "./PermissionPicker"
+import { AccessOutcomeNote } from "./AccessOutcomeNote"
 import { PRESETS, getPreset, type PermissionMap } from "@/lib/permissions/registry"
 
 interface Props {
@@ -30,7 +31,6 @@ export function InviteFormDialog({ open, onOpenChange, onCreated }: Props) {
   const [emailError, setEmailError] = useState<string | null>(null)
 
   const preset = getPreset(presetKey)
-  const isEditorInvite = preset?.invitedRole === "editor"
 
   /**
    * A preset is a starting template, not a binding — picking one refills the
@@ -62,11 +62,12 @@ export function InviteFormDialog({ open, onOpenChange, onCreated }: Props) {
       const res = await fetch("/api/admin/team/invites", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        // No role is sent: the server derives it from the permissions, so the
+        // two can't contradict each other.
         body: JSON.stringify({
           email: trimmed,
-          role: isEditorInvite ? "editor" : "staff",
           staffRole: presetKey,
-          permissions: isEditorInvite ? {} : permissions,
+          permissions,
         }),
       })
       if (!res.ok) {
@@ -129,21 +130,15 @@ export function InviteFormDialog({ open, onOpenChange, onCreated }: Props) {
             {preset && <p className="text-xs text-muted-foreground">{preset.description}</p>}
           </div>
 
-          {isEditorInvite ? (
-            <p className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-              Video editors get the <span className="font-medium">/editor</span> portal only — they upload
-              videos and read your feedback. They never see the admin panel, so there&apos;s nothing to
-              configure here.
+          <AccessOutcomeNote permissions={permissions} />
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Permissions</p>
+            <p className="text-xs text-muted-foreground">
+              Filled in from the role above. Tick or untick anything before sending.
             </p>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Permissions</p>
-              <p className="text-xs text-muted-foreground">
-                Filled in from the role above. Tick or untick anything before sending.
-              </p>
-              <PermissionPicker value={permissions} onChange={setPermissions} disabled={submitting} />
-            </div>
-          )}
+            <PermissionPicker value={permissions} onChange={setPermissions} disabled={submitting} />
+          </div>
 
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>

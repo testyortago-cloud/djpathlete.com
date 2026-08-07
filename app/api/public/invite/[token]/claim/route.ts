@@ -4,7 +4,7 @@ import { getInviteByToken, inviteStatus, markInviteUsed } from "@/lib/db/team-in
 import { getUserByEmail, createUser } from "@/lib/db/users"
 import { claimInviteSchema } from "@/lib/validators/team-invite"
 import { isPgUniqueViolation } from "@/lib/supabase-errors"
-import { sanitizePermissionMap } from "@/lib/permissions/registry"
+import { roleForPermissions, sanitizePermissionMap } from "@/lib/permissions/registry"
 
 export async function POST(
   request: Request,
@@ -46,6 +46,17 @@ export async function POST(
   }
 
   const password_hash = await hash(parsed.data.password, 12)
+
+  // Re-sanitized on the way out of the invite: the row was written by a
+  // validated route, but the registry may have changed since the invite was
+  // sent, and a permission that no longer exists must not be granted.
+  const permissions = sanitizePermissionMap(invite.permissions)
+  // The role follows what actually survived that sanitizing, not what the
+  // invite said when it was written. An invite whose permissions have since
+  // been retired would otherwise create a staff account with an empty map,
+  // whose every page bounces to /admin/no-access.
+  const role = roleForPermissions(permissions)
+
   let user
   try {
     user = await createUser({
@@ -53,12 +64,9 @@ export async function POST(
       password_hash,
       first_name: parsed.data.firstName,
       last_name: parsed.data.lastName,
-      role: invite.role, // 'editor' | 'staff'
-      // Re-sanitized on the way out of the invite: the row was written by a
-      // validated route, but the registry may have changed since the invite
-      // was sent, and a permission that no longer exists must not be granted.
-      permissions: invite.role === "staff" ? sanitizePermissionMap(invite.permissions) : {},
-      staff_role: invite.role === "staff" ? invite.staff_role : null,
+      role,
+      permissions,
+      staff_role: role === "staff" ? invite.staff_role : null,
     })
   } catch (err) {
     if (isPgUniqueViolation(err)) {

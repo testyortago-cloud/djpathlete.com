@@ -8,6 +8,7 @@ import { Eye, EyeOff, Clock } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
+import { homeForRole, isTeamRole } from "@/lib/permissions/registry"
 
 export function LoginForm() {
   const router = useRouter()
@@ -51,13 +52,10 @@ export function LoginForm() {
     const sessionData = await sessionRes.json()
     const role = sessionData?.user?.role
 
-    // Resolve the role-default home for this user
-    const roleHome =
-      role === "admin"
-        ? "/admin/dashboard"
-        : role === "editor"
-          ? "/editor"
-          : "/client/dashboard"
+    // Resolve the role-default home for this user. Staff land on the first
+    // area they actually hold — sending them to /client/dashboard would drop
+    // them on a page that isn't theirs.
+    const roleHome = homeForRole(role, sessionData?.user?.permissions)
 
     // If there's a safe relative callback URL, honour it (with role guards)
     if (callbackUrl && callbackUrl.startsWith("/") && !callbackUrl.startsWith("//")) {
@@ -66,8 +64,10 @@ export function LoginForm() {
       if (isAdminRoute && role !== "admin") {
         // Non-admin tried to reach an admin route — send to their own home
         router.push(roleHome)
-      } else if (isEditorRoute && role !== "editor" && role !== "admin") {
-        // Non-editor/admin tried to reach an editor route — send to their own home
+      } else if (isEditorRoute && !isTeamRole(role) && role !== "admin") {
+        // Someone off the team tried to reach an editor route — send them home.
+        // Staff count as on the team: an editor given an admin permission
+        // becomes staff and still uses the editor portal.
         router.push(roleHome)
       } else {
         router.push(callbackUrl)

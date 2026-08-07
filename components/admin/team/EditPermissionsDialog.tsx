@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { PermissionPicker } from "./PermissionPicker"
+import { AccessOutcomeNote } from "./AccessOutcomeNote"
 import { PRESETS, getPreset, type PermissionMap } from "@/lib/permissions/registry"
 import type { TeamMember } from "@/lib/db/team-members"
 
@@ -19,11 +20,18 @@ interface Props {
   onSaved: () => void | Promise<void>
 }
 
-const STAFF_PRESETS = PRESETS.filter((p) => p.invitedRole === "staff")
-
+/**
+ * Every member is editable here, video editors included: "Video Editor" is one
+ * of the presets rather than a separate kind of person, so the way to give an
+ * editor admin access is to tick what they should reach, and the way to take it
+ * away is to untick everything.
+ */
 export function EditPermissionsDialog({ member, open, onOpenChange, onSaved }: Props) {
   const [permissions, setPermissions] = useState<PermissionMap>({ ...member.permissions })
-  const [presetKey, setPresetKey] = useState(member.staff_role ?? "custom")
+  // An editor has no stored preset, so fall back to the one that describes them.
+  const [presetKey, setPresetKey] = useState(
+    member.staff_role ?? (member.role === "editor" ? "editor" : "custom"),
+  )
   const [saving, setSaving] = useState(false)
 
   function choosePreset(key: string) {
@@ -74,13 +82,15 @@ export function EditPermissionsDialog({ member, open, onOpenChange, onSaved }: P
               onChange={(e) => choosePreset(e.target.value)}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
-              {STAFF_PRESETS.map((p) => (
+              {PRESETS.map((p) => (
                 <option key={p.key} value={p.key}>
                   {p.label}
                 </option>
               ))}
             </select>
           </div>
+
+          <AccessOutcomeNote permissions={permissions} />
 
           <PermissionPicker value={permissions} onChange={setPermissions} disabled={saving} />
         </div>

@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto"
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { PermissionMap } from "@/lib/permissions/registry"
-import type { TeamInvite, TeamInviteRole } from "@/types/database"
+import { roleForPermissions, sanitizePermissionMap } from "@/lib/permissions/registry"
+import type { TeamInvite } from "@/types/database"
 
 export { inviteStatus } from "@/lib/team-invites/status"
 
@@ -16,29 +17,40 @@ export function generateInviteToken(): string {
   return randomBytes(24).toString("base64url")
 }
 
+/**
+ * The invited role is derived from the permissions, not taken from the caller,
+ * so an invite and a later permissions edit can never disagree about what
+ * "video editor" means. An invite that grants nothing is an editor-portal
+ * invite; ticking anything makes it a staff invite.
+ *
+ * This also closes the case where a "Custom" invite was sent with nothing
+ * ticked: it used to create a staff user whose first sight of the app was
+ * `/admin/no-access`.
+ */
 export async function createInvite(input: {
   email: string
-  role: TeamInviteRole
   invitedBy: string
-  /** Already sanitized by the validator. Ignored for role='editor'. */
+  /** Already sanitized by the validator; re-sanitized here so the DAL is safe on its own. */
   permissions?: PermissionMap
   staffRole?: string | null
 }): Promise<TeamInvite> {
   const supabase = getClient()
   const token = generateInviteToken()
   const expires_at = new Date(Date.now() + INVITE_TTL_MS).toISOString()
+  const permissions = sanitizePermissionMap(input.permissions ?? {})
+  const role = roleForPermissions(permissions)
+
   const { data, error } = await supabase
     .from("team_invites")
     .insert({
       email: input.email.toLowerCase().trim(),
-      role: input.role,
+      role,
       token,
       invited_by: input.invitedBy,
       expires_at,
-      // An editor never reaches the admin panel, so a permission map on that
-      // invite would be misleading rather than merely unused.
-      permissions: input.role === "staff" ? (input.permissions ?? {}) : {},
-      staff_role: input.role === "staff" ? (input.staffRole ?? null) : null,
+      permissions,
+      // A preset label on an editor invite would describe access they don't have.
+      staff_role: role === "staff" ? (input.staffRole ?? null) : null,
     })
     .select()
     .single()

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { isTeamRole } from "@/lib/permissions/registry"
 import { getSubmissionById } from "@/lib/db/team-video-submissions"
 import { getCurrentVersion } from "@/lib/db/team-video-versions"
 import { createComment, getCommentById } from "@/lib/db/team-video-comments"
@@ -21,7 +22,7 @@ export async function POST(
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
-  if (session.user.role !== "editor" && session.user.role !== "admin") {
+  if (!isTeamRole(session.user.role) && session.user.role !== "admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -32,7 +33,7 @@ export async function POST(
   }
   // Editors can only comment on submissions they own. Admin can on any.
   if (
-    session.user.role === "editor" &&
+    session.user.role !== "admin" &&
     submission.submitted_by !== session.user.id
   ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
@@ -58,7 +59,7 @@ export async function POST(
   }
 
   // Editors can't drop annotations — they can only react in text.
-  if (parsed.data.annotation && session.user.role === "editor") {
+  if (parsed.data.annotation && session.user.role !== "admin") {
     return NextResponse.json(
       {
         error: "Editors cannot attach drawings. Comment only, please.",

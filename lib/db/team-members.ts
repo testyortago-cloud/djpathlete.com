@@ -1,5 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase"
-import { sanitizePermissionMap, type PermissionMap } from "@/lib/permissions/registry"
+import { roleForPermissions, sanitizePermissionMap, type PermissionMap } from "@/lib/permissions/registry"
 import type { User } from "@/types/database"
 
 function getClient() {
@@ -90,17 +90,34 @@ export async function getTeamMember(id: string): Promise<TeamMember | null> {
   }
 }
 
+/**
+ * Set a member's access, moving them between the admin panel and the editor
+ * portal as the permissions require.
+ *
+ * The role is derived, never passed in: granting a video editor their first
+ * permission is what makes them staff, and clearing a staff member's last one
+ * is what sends them back to the editor portal. Storing "is an editor"
+ * separately from "has no permissions" is what let the two disagree, which is
+ * how an editor ended up with no way to be given access at all.
+ *
+ * The `.in("role", TEAM_ROLES)` filter is the guard that replaces the old
+ * `.eq("role", "staff")`: it still refuses to touch a client or the owner, so
+ * this endpoint can never promote someone who is not already on the team.
+ */
 export async function updateMemberPermissions(
   id: string,
   permissions: PermissionMap,
   staffRole: string | null,
 ): Promise<User> {
   const supabase = getClient()
+  const sanitized = sanitizePermissionMap(permissions)
+  const role = roleForPermissions(sanitized)
+
   const { data, error } = await supabase
     .from("users")
-    .update({ permissions, staff_role: staffRole })
+    .update({ permissions: sanitized, staff_role: staffRole, role })
     .eq("id", id)
-    .eq("role", "staff") // never let this widen a client's or the owner's access
+    .in("role", TEAM_ROLES)
     .select()
     .single()
   if (error) throw error

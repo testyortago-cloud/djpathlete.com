@@ -35,7 +35,6 @@ export async function POST(request: Request) {
   try {
     invite = await createInvite({
       email: parsed.data.email,
-      role: parsed.data.role,
       invitedBy: session.user.id,
       permissions: parsed.data.permissions,
       staffRole: parsed.data.staffRole ?? null,

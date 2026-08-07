@@ -2,20 +2,37 @@ import { describe, it, expect } from "vitest"
 import { sendInviteSchema, claimInviteSchema } from "@/lib/validators/team-invite"
 
 describe("sendInviteSchema", () => {
-  it("accepts a valid editor invite", () => {
-    const r = sendInviteSchema.safeParse({ email: "kate@example.com", role: "editor" })
+  it("accepts an invite with no permissions — that is an editor invite", () => {
+    const r = sendInviteSchema.safeParse({ email: "kate@example.com" })
     expect(r.success).toBe(true)
+    if (r.success) expect(r.data.permissions).toEqual({})
   })
-  it("rejects unknown roles", () => {
+  it("accepts an invite carrying a permission map", () => {
+    const r = sendInviteSchema.safeParse({
+      email: "kate@example.com",
+      staffRole: "coach",
+      permissions: { clients: true },
+    })
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.permissions).toEqual({ clients: true })
+  })
+  it("ignores a role sent by the client — the server derives it from the permissions", () => {
+    // Accepting a role here is how the body could claim "staff" while granting
+    // nothing, or claim "editor" while granting the books.
     const r = sendInviteSchema.safeParse({ email: "kate@example.com", role: "admin" })
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data).not.toHaveProperty("role")
+  })
+  it("rejects an unknown preset", () => {
+    const r = sendInviteSchema.safeParse({ email: "kate@example.com", staffRole: "owner" })
     expect(r.success).toBe(false)
   })
   it("rejects bad email", () => {
-    const r = sendInviteSchema.safeParse({ email: "not-an-email", role: "editor" })
+    const r = sendInviteSchema.safeParse({ email: "not-an-email" })
     expect(r.success).toBe(false)
   })
   it("normalizes email: trims whitespace and lowercases", () => {
-    const r = sendInviteSchema.safeParse({ email: "  Kate@Example.COM  ", role: "editor" })
+    const r = sendInviteSchema.safeParse({ email: "  Kate@Example.COM  " })
     expect(r.success).toBe(true)
     if (r.success) expect(r.data.email).toBe("kate@example.com")
   })

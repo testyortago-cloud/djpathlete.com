@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth"
 import {
   canAccessPath,
   hasPermission,
+  homeForRole,
   staffHomePath,
   NO_ACCESS_PATH,
   ADMIN_PATH_HEADER,
@@ -83,7 +84,7 @@ export async function requirePermission(permission: PermissionKey, tier: Permiss
   if (role === "admin") return session
 
   if (role !== "staff") {
-    redirect(role === "editor" ? "/editor" : "/client/dashboard")
+    redirect(homeForRole(role, session.user.permissions))
   }
 
   const permissions = session.user.permissions ?? {}

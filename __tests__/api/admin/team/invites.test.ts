@@ -70,9 +70,10 @@ describe("POST /api/admin/team/invites", () => {
     )
 
     expect(res.status).toBe(201)
+    // No `role`: the DAL derives it from the permissions, so a role in the
+    // request body cannot contradict what was actually granted.
     expect(createInvite).toHaveBeenCalledWith({
       email: "coach@example.com",
-      role: "staff",
       invitedBy: "u1",
       staffRole: "coach",
       permissions: { clients: true, accounting: "view" },
@@ -105,7 +106,7 @@ describe("POST /api/admin/team/invites", () => {
     const res = await POST(makeReq({ email: "k@example.com", role: "editor" }))
     expect(res.status).toBe(201)
     expect(createInvite).toHaveBeenCalledWith({
-      email: "k@example.com", role: "editor", invitedBy: "u1",
+      email: "k@example.com", invitedBy: "u1",
       permissions: {}, staffRole: null,
     })
     expect(sendTeamInviteEmail).toHaveBeenCalledWith(
