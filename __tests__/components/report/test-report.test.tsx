@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import { describe, it, expect } from "vitest"
 import { TestReport } from "@/components/public/report/TestReport"
+import { buildReportScores } from "@/lib/test-report/scoring"
 import type { TestReportData } from "@/lib/test-report/data"
 
 const base: TestReportData = {
@@ -25,15 +26,58 @@ const base: TestReportData = {
 }
 
 describe("TestReport", () => {
-  it("renders three pages with the athlete identity and headline scores", () => {
+  it("renders two pages with the athlete identity and the index", () => {
     const { container } = render(<TestReport data={base} />)
-    expect(container.querySelectorAll(".report-page")).toHaveLength(3)
-    // Name appears in the cover h1 AND the "Report for:" footer line.
+    expect(container.querySelectorAll(".report-page")).toHaveLength(2)
     expect(screen.getAllByText(/Marcus Johnson/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Basketball/).length).toBeGreaterThan(0)
-    expect(screen.getByText("The Headline Numbers")).toBeInTheDocument()
-    expect(screen.getByText("The Full Verdict")).toBeInTheDocument()
+    expect(screen.getByText("Athlete Performance Index")).toBeInTheDocument()
+    expect(screen.getByText("Test by test")).toBeInTheDocument()
     expect(screen.getAllByText(/Darren Paul/).length).toBeGreaterThan(0)
+  })
+
+  it("explains how the index is built, because that was the first thing asked about it", () => {
+    render(<TestReport data={base} />)
+    expect(screen.getByText(/50 is Trained, 100 is Elite/)).toBeInTheDocument()
+  })
+
+  it("does NOT repeat the weakest category all over the report", () => {
+    // The regression guard for the whole restructure. The old layout rendered the
+    // weakest category SIX times; the budget is the focal-point card plus at most
+    // one more mention.
+    //
+    // Counts literal occurrences in the rendered text rather than using
+    // getAllByText, which also matches every ANCESTOR whose text contains the
+    // string — that inflates the count unpredictably and would make this guard
+    // meaningless. Counting is the whole point here: a presence assertion would
+    // pass on the very layout this replaces.
+    const { container } = render(<TestReport data={base} />)
+    const occurrences = (needle: string) => (container.textContent ?? "").split(needle).length - 1
+
+    const weakest = buildReportScores(base.tests).focalPoints[0]
+    expect(weakest, "fixture must produce at least one focal point").toBeDefined()
+    const n = occurrences(weakest.category)
+    expect(n, `"${weakest.category}" rendered ${n} times`).toBeLessThanOrEqual(2)
+  })
+
+  it("shows each test once in the rows, and only the hero twice", () => {
+    // The old page 3 drew the top four tests as circles and then ALL of them again
+    // as cards. Now a non-hero test appears exactly once. The biggest mover appears
+    // twice — once as the hero on page 1, once in its own row — and that is the
+    // intended emphasis, not the duplication being fixed.
+    const { container } = render(<TestReport data={base} />)
+    const occurrences = (needle: string) => (container.textContent ?? "").split(needle).length - 1
+
+    // cmj improves 40 -> 50 (+25%) vs sprint_10m 2.3 -> 2.2 (+4%), so the jump is the hero.
+    expect(occurrences("Countermovement Jump")).toBe(2)
+    // 10m Sprint is the sole test in the Speed category, so it is also that
+    // category's focal-point culprit — FocalPointCard names the culprit by
+    // design ("Dragged by 10m Sprint..."). It legitimately appears twice: once
+    // in its own row on page 2, once cited as the culprit in the page-1 focal
+    // point card. That is a different idiom from the row+card duplication this
+    // guard targets (page 2 itself still draws it exactly once, per
+    // report-page-two.test.tsx's "renders every test exactly once").
+    expect(occurrences("10m Sprint")).toBe(2)
   })
 
   it("shows testing content and NONE of the program/exercise content", () => {
@@ -46,60 +90,5 @@ describe("TestReport", () => {
     expect(screen.queryByText(/streak/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/Achievements/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/Total Volume/i)).not.toBeInTheDocument()
-  })
-
-  it("renders a coaching cue drawn from the weakest category", () => {
-    render(<TestReport data={base} />)
-    expect(screen.getByText(/Generated from this athlete/i)).toBeInTheDocument()
-  })
-
-  it("renders the no-tests state instead of three empty pages", () => {
-    const { container } = render(
-      <TestReport data={{ ...base, tests: [], assessments: [], testCount: 0, prCount: 0, monthsTracked: 0, asOf: null }} />,
-    )
-    // Name appears in the cover h1 AND the "Report for:" footer line.
-    expect(screen.getAllByText(/Marcus Johnson/).length).toBeGreaterThan(0)
-    expect(screen.getByText(/No tests logged yet/i)).toBeInTheDocument()
-    expect(container.querySelectorAll(".report-page")).toHaveLength(1)
-    expect(screen.queryByText("The Headline Numbers")).not.toBeInTheDocument()
-  })
-
-  it("drops the category comparison when only one category is scorable", () => {
-    render(
-      <TestReport
-        data={{
-          ...base,
-          tests: [
-            { testType: "cmj", resultValue: 50, resultUnit: "cm", customName: null, bodyWeightKg: 84, testDate: "2026-07-01", isPr: true },
-          ],
-        }}
-      />,
-    )
-    expect(screen.queryByText(/Where you're strong/i)).not.toBeInTheDocument()
-    expect(screen.getByText("The Headline Numbers")).toBeInTheDocument()
-    // One category means strongest === focus: the Focus tile must not duplicate it.
-    expect(screen.queryByText(/Focus —/)).not.toBeInTheDocument()
-    expect(screen.getByText(/Strongest — Power/)).toBeInTheDocument()
-  })
-
-  it("lists an unscorable custom test without inventing a score for it", () => {
-    const { container } = render(
-      <TestReport
-        data={{
-          ...base,
-          tests: [
-            { testType: "custom", resultValue: 6.1, resultUnit: "s", customName: "Sled Push 20m", bodyWeightKg: null, testDate: "2026-07-01", isPr: false },
-          ],
-        }}
-      />,
-    )
-    expect(screen.getAllByText(/Sled Push 20m/).length).toBeGreaterThan(0)
-    // No reference range exists for a custom test, so no range bar is drawn.
-    expect(container.querySelectorAll("[data-testid='range-marker']")).toHaveLength(0)
-  })
-
-  it("renders the range bar for scorable tests", () => {
-    const { container } = render(<TestReport data={base} />)
-    expect(container.querySelectorAll("[data-testid='range-marker']").length).toBeGreaterThan(0)
   })
 })
