@@ -95,6 +95,20 @@ rules rather than fills, legibility is guaranteed regardless of the viewer's pri
 settings, and it saves ink on a document meant to be printed. This is not a
 compromise — it is what the medium requires.
 
+**Amended 2026-08-07 after implementation review — "dark ink" is not one value.**
+This decision originally said `color: var(--foreground)` and reasoned only about the
+light scope. That is wrong. `ReportShell` puts the scope class, `test-report` and
+`print-document` on the **same element**, so the print rule also fires in
+`.athlete-arena`, where `--foreground` is near-white — white on unpainted paper.
+
+The generalisable rule, which applies to every future print or fallback style here:
+**the two scopes define the same token NAMES with OPPOSITE POLARITY.** A token being
+defined in both scopes does not make it safe; that only guarantees it resolves, not
+that it resolves to a usable colour. Anything that must stay legible when its
+background is dropped needs its ink chosen **per scope**:
+`.report-light .report-band-green { color: var(--foreground) }` and
+`.athlete-arena .report-band-green { color: var(--primary-foreground) }`.
+
 ## Out of scope
 
 Tracked as their own specs; this one must not grow to include them.

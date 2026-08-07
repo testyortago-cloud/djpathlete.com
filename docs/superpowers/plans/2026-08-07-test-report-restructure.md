@@ -394,10 +394,13 @@ describe("CUES", () => {
   it("is one sentence per cue — the report has two focal points and no room for paragraphs", () => {
     for (const c of CATEGORY_ORDER) {
       for (const b of BANDS) {
-        const cue = CUES[c][b]
-        // Count sentence-ending punctuation followed by a space and a capital.
-        const breaks = cue.match(/[.!?]\s+[A-Z]/g) ?? []
-        expect(breaks.length, `${c}/${b} runs to ${breaks.length + 1} sentences: ${cue}`).toBe(0)
+        const cue = CUES[c][b].trim()
+        // Counting terminators beats looking for ". Capital": a second sentence
+        // starting with a digit, a lowercase word, or a quote mark is still a
+        // second sentence, and a `[.!?]\s+[A-Z]` pattern lets all three through.
+        const terminators = cue.match(/[.!?]/g) ?? []
+        expect(terminators.length, `${c}/${b} has ${terminators.length} sentence terminators: ${cue}`).toBe(1)
+        expect(/[.!?]$/.test(cue), `${c}/${b} does not end on its terminator: ${cue}`).toBe(true)
         expect(cue.length, `${c}/${b} is ${cue.length} chars`).toBeLessThanOrEqual(150)
       }
     }
@@ -978,7 +981,7 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
                     ? "Since last test"
                     : "Biggest improvement since last test"}
               </p>
-              <p className="mt-2 font-heading text-5xl font-bold leading-none text-[var(--accent-foreground)]">
+              <p className="mt-2 font-heading text-5xl font-bold leading-none text-accent">
                 {biggestMover.test.deltaPct > 0 ? "↑" : biggestMover.test.deltaPct < 0 ? "↓" : "="}{" "}
                 {Math.abs(biggestMover.test.deltaPct)}%
               </p>
@@ -1083,7 +1086,7 @@ export function TestRow({ test, highlight = false }: { test: ScoredTest; highlig
         <p className="font-heading text-sm font-bold">
           {test.label}
           {test.isPr && (
-            <span className="ml-2 rounded-full border border-accent px-1.5 py-0.5 align-[0.15em] font-mono text-[9px] uppercase tracking-wider text-[var(--accent-foreground)]">
+            <span className="ml-2 rounded-full border border-accent px-1.5 py-0.5 align-[0.15em] font-mono text-[9px] uppercase tracking-wider text-accent">
               PR
             </span>
           )}
