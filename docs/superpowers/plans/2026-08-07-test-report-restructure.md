@@ -484,16 +484,49 @@ git commit -m "feat(test-report): cues cut to one sentence, keyed by focal point
 
 ---
 
-### Task 4: `ScoreTrack` — the one score idiom
+### Task 4: Shared formatters + `ScoreTrack` — the one score idiom
 
 **Files:**
+- Create: `lib/test-report/format.ts`
 - Create: `components/public/report/panels/ScoreTrack.tsx`
 - Create: `__tests__/components/report/score-track.test.tsx`
 - Modify: `app/globals.css`
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `<ScoreTrack score={number} tone?: "primary" | "accent" />`. Renders a `div.score-track` with `role="img"` and an aria-label naming the score and both standards.
+- Produces: `num(n: number): string` and `formatDate(iso: string | null): string` from `lib/test-report/format.ts`; `<ScoreTrack score={number} tone?: "primary" | "accent" />` rendering a `div.score-track` with `role="img"` and an aria-label naming the score and both standards.
+
+- [ ] **Step 0: Extract the two formatters both pages need**
+
+Four components in Tasks 6 and 7 need identical `num()` and `formatDate()` helpers.
+Create `lib/test-report/format.ts` once rather than copying them:
+
+```ts
+/** Trims trailing zeros so 45.70 reads 45.7 and 140.00 reads 140. */
+export function num(n: number): string {
+  return String(Math.round(n * 100) / 100)
+}
+
+/**
+ * A test date, the way the report prints it: 4 Aug 2026.
+ *
+ * Forced to UTC. Test dates are calendar dates with no time component, so letting
+ * the viewer's timezone apply would shift a date across midnight and print the day
+ * before for anyone west of UTC.
+ */
+export function formatDate(iso: string | null): string {
+  if (!iso) return ""
+  return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  })
+}
+```
+
+Every component in Tasks 6 and 7 imports from here. **Do not redefine either helper
+in a component file.**
 
 - [ ] **Step 1: Write the failing test**
 
@@ -624,7 +657,7 @@ Expected: PASS, 3 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add components/public/report/panels/ScoreTrack.tsx __tests__/components/report/score-track.test.tsx app/globals.css
+git add lib/test-report/format.ts components/public/report/panels/ScoreTrack.tsx __tests__/components/report/score-track.test.tsx app/globals.css
 git commit -m "feat(test-report): one ScoreTrack idiom whose scale explains the score"
 ```
 
@@ -759,7 +792,7 @@ git commit -m "feat(test-report): section banding that survives Save-as-PDF with
 - Test: covered by Task 8's integration test (this task's own check is the build)
 
 **Interfaces:**
-- Consumes: `ScoreTrack` (Task 4), `report-band*` CSS (Task 5), `ReportScores.focalPoints` / `.biggestMover` / `.strongest` / `.athleteScore` (Tasks 1–2), `cueFor` (Task 3), `TestReportData` from `lib/test-report/data.ts`.
+- Consumes: `ScoreTrack` and `num` / `formatDate` from `lib/test-report/format` (Task 4), `report-band*` CSS (Task 5), `ReportScores.focalPoints` / `.biggestMover` / `.strongest` / `.athleteScore` (Tasks 1–2), `cueFor` (Task 3), `TestReportData` from `lib/test-report/data.ts`. **Never redefine `num` or `formatDate` locally.**
 - Produces: `<ReportPageOne data={TestReportData} scores={ReportScores} />`, and `<FocalPointCard fp={FocalPoint} />`.
 
 - [ ] **Step 1: Make `ReportPage` a banding container**
@@ -800,13 +833,9 @@ Create `components/public/report/panels/FocalPointCard.tsx`:
 ```tsx
 import type { FocalPoint } from "@/lib/test-report/scoring"
 import { cueFor } from "@/lib/test-report/cues"
+import { num } from "@/lib/test-report/format"
 import { BandPill } from "./BandPill"
 import { ScoreTrack } from "./ScoreTrack"
-
-/** Trims trailing zeros so 45.70 reads 45.7 and 140.00 reads 140. */
-function num(n: number): string {
-  return String(Math.round(n * 100) / 100)
-}
 
 /**
  * A category worth training, and the single test dragging it down.
@@ -850,23 +879,10 @@ Create `components/public/report/ReportPageOne.tsx`:
 import Image from "next/image"
 import type { TestReportData } from "@/lib/test-report/data"
 import type { ReportScores } from "@/lib/test-report/scoring"
+import { num, formatDate } from "@/lib/test-report/format"
 import { ReportPage, ReportBand } from "./panels/ReportPage"
 import { ScoreTrack } from "./panels/ScoreTrack"
 import { FocalPointCard } from "./panels/FocalPointCard"
-
-function formatDate(iso: string | null): string {
-  if (!iso) return ""
-  return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  })
-}
-
-function num(n: number): string {
-  return String(Math.round(n * 100) / 100)
-}
 
 /**
  * Page 1 — who, how they're doing overall, what moved, and what to train next.
@@ -978,7 +994,7 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
       </ReportBand>
 
       {focalPoints.length > 0 && (
-        <ReportBand tone="alt">
+        <ReportBand tone="alt" className="flex-1">
           <p className="djp-eyebrow text-muted-foreground">Focal points — where the next block goes</p>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             {focalPoints.map((fp) => (
@@ -988,10 +1004,9 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
         </ReportBand>
       )}
 
-      <ReportBand className="flex-1">
-        {/* Reserved for Spec B — Darren's own words, above the data. Renders nothing
-            until the field exists, so the band is empty rather than fake. */}
-      </ReportBand>
+      {/* Spec B inserts the coach's-note band here. It is deliberately absent rather
+          than empty: a band renders padding and a rule, so an "empty" one is visible
+          dead space, not nothing. The focal-points band above carries flex-1. */}
 
       <ReportBand tone="green">
         <div className="flex flex-wrap items-end justify-between gap-2 text-xs">
@@ -1031,7 +1046,7 @@ git commit -m "feat(test-report): page 1 — masthead, API, hero mover, focal po
 - Create: `components/public/report/panels/TestRow.tsx`
 
 **Interfaces:**
-- Consumes: `ScoreTrack` (Task 4), `ReportBand` (Task 6), `ScoredTest` (Task 1), `PublicAssessment` from `lib/profile-share/data`, `Sparkline` from `components/shared/Sparkline`.
+- Consumes: `ScoreTrack` and `num` / `formatDate` from `lib/test-report/format` (Task 4), `ReportBand` (Task 6), `ScoredTest` (Task 1), `PublicAssessment` from `lib/profile-share/data`, `Sparkline` from `components/shared/Sparkline`. **Never redefine `num` or `formatDate` locally.**
 - Produces: `<ReportPageTwo scores={ReportScores} assessments={PublicAssessment[]} />`, `<TestRow test={ScoredTest} highlight?: boolean />`.
 
 - [ ] **Step 1: Write `TestRow`**
@@ -1040,21 +1055,9 @@ Create `components/public/report/panels/TestRow.tsx`:
 
 ```tsx
 import type { ScoredTest } from "@/lib/test-report/scoring"
+import { num, formatDate } from "@/lib/test-report/format"
 import { ScoreTrack } from "./ScoreTrack"
 import { Sparkline } from "@/components/shared/Sparkline"
-
-function num(n: number): string {
-  return String(Math.round(n * 100) / 100)
-}
-
-function formatDate(iso: string): string {
-  return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  })
-}
 
 /**
  * One test, once. The old page rendered the top four as circles and then ALL of
@@ -1120,17 +1123,9 @@ Create `components/public/report/ReportPageTwo.tsx`:
 ```tsx
 import type { PublicAssessment } from "@/lib/profile-share/data"
 import type { ReportScores } from "@/lib/test-report/scoring"
+import { formatDate } from "@/lib/test-report/format"
 import { ReportPage, ReportBand } from "./panels/ReportPage"
 import { TestRow } from "./panels/TestRow"
-
-function formatDate(iso: string): string {
-  return new Date(`${iso.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  })
-}
 
 function Battery({ a }: { a: PublicAssessment }) {
   return (
