@@ -72,4 +72,40 @@ describe("ReportPageOne", () => {
     expect(screen.getByText("Countermovement Jump")).toBeInTheDocument()
     expect(screen.queryByText(/percentile/i)).not.toBeInTheDocument()
   })
+
+  it("puts the coaching cue on its own line, not run-on with its label", () => {
+    // `.djp-eyebrow` is display:inline-flex in globals.css and beats Tailwind's
+    // `block`, so a label nested inside the cue paragraph shares its line box.
+    // Asserting on separate elements is what catches the regression — the text
+    // content is identical either way, so a text assertion cannot see it.
+    const rich: TestReportData = {
+      ...base,
+      tests: [
+        { testType: "cmj", resultValue: 40, resultUnit: "cm", customName: null, bodyWeightKg: 78, testDate: "2026-01-01", isPr: false },
+        { testType: "cmj", resultValue: 48, resultUnit: "cm", customName: null, bodyWeightKg: 78, testDate: "2026-06-01", isPr: true },
+        { testType: "sit_reach", resultValue: 12, resultUnit: "cm", customName: null, bodyWeightKg: null, testDate: "2026-06-01", isPr: false },
+      ],
+    }
+    const { container } = render(<ReportPageOne data={rich} scores={buildReportScores(rich.tests)} />)
+    const label = [...container.querySelectorAll(".djp-eyebrow")].find((n) => /what moves it/i.test(n.textContent ?? ""))
+    expect(label, "no 'What moves it' label rendered").toBeTruthy()
+    // The label must NOT be a child of the element holding the cue text.
+    //
+    // NOTE: `textContent` was tried here first and rejected — it concatenates
+    // every descendant text node regardless of element boundaries, so
+    // `label.parentElement.textContent` reads "What moves it" + the cue with no
+    // separator whether the two are one run-on <p> OR two sibling <p>s. Proved
+    // unfalsifiable: it failed identically against the broken markup and the
+    // fixed markup. The actual DOM signal of "run-on" is a raw Text node sitting
+    // directly on the label's own parent (the broken markup puts the cue string
+    // straight inside the same <p> as the label span); the fix moves the cue
+    // into its own sibling <p>, leaving no direct text-node child on the parent.
+    const directText = [...label!.parentElement!.childNodes]
+      .filter((n) => n.nodeType === Node.TEXT_NODE)
+      .map((n) => n.textContent ?? "")
+      .join("")
+      .trim()
+    expect(directText, "the label's parent directly holds raw cue text — still one run-on paragraph").toBe("")
+    expect(label!.nextElementSibling, "cue is not a sibling element — it is inline with the label").toBeTruthy()
+  })
 })

@@ -29,10 +29,10 @@ export function FocalPointCard({ fp }: { fp: FocalPoint }) {
         </strong>
         , the lowest score in this category.
       </p>
-      <p className="border-t border-border pt-3 text-sm leading-relaxed">
-        <span className="djp-eyebrow mb-1 block text-muted-foreground">What moves it</span>
-        {cueFor(fp)}
-      </p>
+      <div className="border-t border-border pt-3">
+        <p className="djp-eyebrow text-muted-foreground">What moves it</p>
+        <p className="mt-1.5 text-sm leading-relaxed">{cueFor(fp)}</p>
+      </div>
     </div>
   )
 }
