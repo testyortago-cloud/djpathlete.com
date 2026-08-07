@@ -694,13 +694,22 @@
 
 @media print {
   /* Chrome's Save-as-PDF has Background graphics OFF by default, so the green fill
-     is not guaranteed to render — and light text on a dropped fill is invisible.
-     On paper the banding rhythm is carried by rules instead, which also saves ink
-     on a document meant to be printed. */
+     is not guaranteed to render. On paper the banding rhythm is carried by rules
+     instead, which also saves ink on a document meant to be printed. */
   .test-report .report-band-green {
     background: transparent !important;
-    color: var(--foreground) !important;
     border-top: 2px solid var(--primary) !important;
+  }
+
+  /* Ink MUST be chosen per scope. .report-light and .athlete-arena define the same
+     token names with opposite polarity, so a scope-blind var(--foreground) prints
+     near-white on unpainted paper for anyone who toggled to dark before printing. */
+  .report-light .report-band-green {
+    color: var(--foreground) !important;
+  }
+
+  .athlete-arena .report-band-green {
+    color: var(--primary-foreground) !important;
   }
 
   .test-report .report-band-green .djp-eyebrow,
