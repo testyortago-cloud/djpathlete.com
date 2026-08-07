@@ -495,6 +495,13 @@
   --input: oklch(0.97 0.01 220 / 0.14);
   --ring: oklch(0.73 0.09 62);
   --surface: oklch(0.19 0.032 224);
+  /* :root's --success/--error are tuned for a near-white card (4.26:1 / 3.56:1
+     against this scope's background — under the 4.5:1 AA floor). Redefined here,
+     same hues (145 / 27), lightened until they clear AA against
+     oklch(0.16 0.03 226): --success 5.23:1, --error 5.26:1. Computed via
+     OKLCH → linear sRGB → WCAG relative luminance, not eyeballed. */
+  --success: oklch(0.6 0.16 145);
+  --error: oklch(0.64 0.19 27);
   print-color-adjust: exact;
   -webkit-print-color-adjust: exact;
 }
@@ -722,9 +729,19 @@
     color: var(--primary-foreground) !important;
   }
 
-  /* A collapsed <details> would silently drop earlier assessments from the PDF. */
+  /* A collapsed <details> silently drops earlier assessments from the PDF.
+     Chromium suppresses the internal ::details-content box when the element is
+     not `open`, so overriding `display` on the child does NOT reveal it — the
+     pseudo-element has to be un-suppressed directly. The child `display` rule
+     stays as a fallback for engines that predate ::details-content. */
   .test-report .report-earlier > summary {
     display: none;
+  }
+
+  .test-report .report-earlier::details-content {
+    content-visibility: visible !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 
   .test-report .report-earlier > div {

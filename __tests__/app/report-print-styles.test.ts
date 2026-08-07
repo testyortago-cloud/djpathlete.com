@@ -69,4 +69,23 @@ describe("report banding", () => {
     expect(print).toMatch(/\.report-light\s+\.report-band-green\s+\.djp-eyebrow[^}]*{[^}]*color:\s*var\(--muted-foreground\)/)
     expect(print).toMatch(/\.athlete-arena\s+\.report-band-green\s+\.djp-eyebrow[^}]*{[^}]*color:\s*var\(--primary-foreground\)/)
   })
+
+  it("un-suppresses ::details-content so a collapsed disclosure still prints", () => {
+    // Overriding `display` on the child does NOT reveal a closed <details> in
+    // Chromium — it suppresses the internal ::details-content box instead. This
+    // was verified in a real browser; JSDOM cannot reproduce it, so assert on
+    // the stylesheet.
+    const print = printBlockContaining(".report-earlier")
+    expect(print).toContain("::details-content")
+    expect(print).toMatch(/content-visibility:\s*visible/)
+  })
+
+  it("defines status colours in the dark scope, not just :root", () => {
+    // :root values are tuned for a near-white card. Inherited unchanged into
+    // .athlete-arena they land near 3.5-4.3:1 on the dark ground — under AA for
+    // the 12px delta text in TestRow.
+    const arena = css.slice(css.indexOf(".athlete-arena"), css.indexOf("}", css.indexOf(".athlete-arena")))
+    expect(arena, "--success not redefined for the dark scope").toContain("--success:")
+    expect(arena, "--error not redefined for the dark scope").toContain("--error:")
+  })
 })
