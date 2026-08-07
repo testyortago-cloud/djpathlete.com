@@ -620,3 +620,48 @@
 @page {
   margin: 1.5cm;
 }
+
+/* The one score idiom. Built only from tokens that BOTH .report-light and
+   .athlete-arena define, which is why it needs no per-scope declarations. */
+.test-report .score-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.test-report .score-track-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.test-report .score-track-tick {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: 50%;
+  width: 1px;
+  background: var(--muted-foreground);
+  opacity: 0.55;
+}
+
+.test-report .score-track-dot {
+  position: absolute;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  background: var(--card);
+  border: 2.5px solid var(--primary);
+  transform: translate(-50%, -50%);
+}
+
+.test-report .score-track[data-tone="accent"] .score-track-fill {
+  background: var(--accent);
+}
+
+.test-report .score-track[data-tone="accent"] .score-track-dot {
+  border-color: var(--accent);
+}
