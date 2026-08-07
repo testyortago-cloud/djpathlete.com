@@ -3,10 +3,11 @@ import { auth } from "@/lib/auth"
 import { getAllDocuments, createDocument } from "@/lib/db/legal-documents"
 import type { LegalDocumentType } from "@/types/database"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
@@ -16,7 +17,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

@@ -4,13 +4,14 @@ import { updateEntry, deleteEntry, getEntry, assertAccountInBook } from "@/lib/d
 import { updateEntrySchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const LOCKED_IMPORT_FIELDS = ["direction", "amount_cents", "occurred_on", "adjusts_period"] as const
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const { id } = await ctx.params
     const body = await request.json().catch(() => null)
     const parsed = updateEntrySchema.safeParse(body)
@@ -50,7 +51,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
 export async function DELETE(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const { id } = await ctx.params
     await deleteEntry(id)
     void recordAudit({ action: "bookkeeping.entry_deleted", category: "commerce", outcome: "success",

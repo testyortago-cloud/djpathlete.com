@@ -24,6 +24,8 @@ import {
   Ticket,
   LayoutDashboard,
 } from "lucide-react"
+import { requirePermission } from "@/lib/permissions/guard"
+import { canViewClient } from "@/lib/permissions/client-scope"
 import { getUserById, getUsers } from "@/lib/db/users"
 import { getBillingPayer } from "@/lib/db/client-billing-payers"
 import { getProfileByUserId } from "@/lib/db/client-profiles"
@@ -620,6 +622,16 @@ function PaymentsSection({ payments }: { payments: Payment[] }) {
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const session = await requirePermission("clients")
+
+  // A staff member reaching an unassigned client gets the same 404 as a client
+  // that doesn't exist — confirming "this id is real, you just can't see it"
+  // would leak the roster one guess at a time.
+  const visible = await canViewClient(
+    { id: session.user.id, role: session.user.role, permissions: session.user.permissions ?? {} },
+    id,
+  )
+  if (!visible) notFound()
 
   let user
   try {

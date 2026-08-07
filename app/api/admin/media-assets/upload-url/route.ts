@@ -4,6 +4,7 @@ import { getAdminStorage } from "@/lib/firebase-admin"
 import { createMediaAsset } from "@/lib/db/media-assets"
 import { mediaAssetUploadUrlSchema } from "@/lib/validators/media-asset"
 import { createAiJob } from "@/lib/ai-jobs"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const UPLOAD_URL_EXPIRY_MS = 15 * 60 * 1000
 
@@ -13,7 +14,7 @@ function sanitizeFilename(name: string): string {
 
 export async function POST(request: NextRequest) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

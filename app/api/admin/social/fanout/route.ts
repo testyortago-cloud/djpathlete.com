@@ -8,10 +8,11 @@ import { createAiJob } from "@/lib/ai-jobs"
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST(request: NextRequest) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

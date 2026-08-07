@@ -16,6 +16,7 @@ import { getAdminStorage } from "@/lib/firebase-admin"
 import { createMediaAsset } from "@/lib/db/media-assets"
 import { createSocialPost, deleteSocialPost } from "@/lib/db/social-posts"
 import { attachMedia } from "@/lib/db/social-post-media"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const DEFAULT_COUNT = 5
 const MIN_COUNT = 2
@@ -31,7 +32,7 @@ function isSupportedCarouselPlatform(p: unknown): p is CarouselPlatform {
 
 export async function POST(request: NextRequest) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

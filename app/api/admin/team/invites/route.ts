@@ -5,6 +5,7 @@ import { sendTeamInviteEmail } from "@/lib/email"
 import { isPgUniqueViolation } from "@/lib/supabase-errors"
 import { getBaseUrl } from "@/lib/url"
 import { sendInviteSchema } from "@/lib/validators/team-invite"
+import { recordAudit } from "@/lib/audit/record"
 
 export async function POST(request: Request) {
   const session = await auth()
@@ -36,6 +37,8 @@ export async function POST(request: Request) {
       email: parsed.data.email,
       role: parsed.data.role,
       invitedBy: session.user.id,
+      permissions: parsed.data.permissions,
+      staffRole: parsed.data.staffRole ?? null,
     })
   } catch (err) {
     if (isPgUniqueViolation(err)) {
@@ -60,6 +63,18 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("[invite-email] failed:", err)
   }
+
+  void recordAudit({
+    action: "team.invite_sent",
+    category: "admin_write",
+    outcome: "success",
+    target: { type: "team_invite", id: invite.id, label: invite.email },
+    metadata: {
+      role: invite.role,
+      staff_role: invite.staff_role,
+      permissions: invite.permissions,
+    },
+  })
 
   return NextResponse.json({ invite }, { status: 201 })
 }

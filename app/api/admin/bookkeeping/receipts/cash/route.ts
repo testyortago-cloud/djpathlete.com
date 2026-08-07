@@ -5,11 +5,12 @@ import { getAccount, createEntry } from "@/lib/db/bookkeeping"
 import { businessPurposeMissing } from "@/lib/bookkeeping/receipts"
 import { recordAudit } from "@/lib/audit/record"
 import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
 
     const parsed = receiptCashSchema.safeParse(await request.json().catch(() => null))
     if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })

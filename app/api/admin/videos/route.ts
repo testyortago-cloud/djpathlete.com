@@ -8,12 +8,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import { createVideoUpload, listVideoUploads } from "@/lib/db/video-uploads"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const UPLOAD_URL_EXPIRY_MS = 15 * 60 * 1000 // 15 minutes
 
 export async function GET(request: NextRequest) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const { searchParams } = new URL(request.url)
@@ -29,7 +30,7 @@ function sanitizeFilename(name: string): string {
 
 export async function POST(request: NextRequest) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

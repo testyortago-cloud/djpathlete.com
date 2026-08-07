@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 import {
   GmailNotConnectedError,
   decodeMessage,
@@ -42,7 +43,7 @@ function extractAddress(headerValue: string): string {
 
 export async function POST(request: NextRequest) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

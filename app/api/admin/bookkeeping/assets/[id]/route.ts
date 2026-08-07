@@ -3,11 +3,12 @@ import { auth } from "@/lib/auth"
 import { getAsset, updateAsset, deleteAsset } from "@/lib/db/bookkeeping"
 import { updateAssetSchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const { id } = await ctx.params
     const existing = await getAsset(id)
     if (!existing) return NextResponse.json({ error: "asset not found" }, { status: 404 })
@@ -34,7 +35,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
 export async function DELETE(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const { id } = await ctx.params
     const existing = await getAsset(id)
     if (!existing) return NextResponse.json({ error: "asset not found" }, { status: 404 })

@@ -8,6 +8,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { getRecommendationById } from "@/lib/db/google-ads-recommendations"
 import type { CampaignBlueprintArgs } from "@/lib/ads/agent/decision-schema"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 interface RouteContext {
   params: Promise<{ id: string }>
@@ -51,7 +52,7 @@ function truncate(s: string, max: number): string {
 
 export async function GET(_request: NextRequest, ctx: RouteContext) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const { id } = await ctx.params

@@ -15,12 +15,13 @@ import { getLatestSplitReelForVideo, getMediaAssetStoragePaths } from "@/lib/db/
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const REEL_URL_EXPIRY_MS = 6 * 60 * 60 * 1000 // 6h signed playback, matching captioned-cut
 
 async function getHandler(request: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
   const videoUploadId = new URL(request.url).searchParams.get("videoUploadId")
@@ -94,7 +95,7 @@ async function getHandler(request: Request) {
 
 async function postHandler(request: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
 

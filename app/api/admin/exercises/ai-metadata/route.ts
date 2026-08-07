@@ -3,6 +3,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { callAgent, MODEL_HAIKU } from "@/lib/ai/anthropic"
 import { createGenerationLog } from "@/lib/db/ai-generation-log"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 import {
   MOVEMENT_PATTERNS,
   FORCE_TYPES,
@@ -98,7 +99,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

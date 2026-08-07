@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation"
+import { headers } from "next/headers"
 import { auth } from "@/lib/auth"
 import {
   canAccessPath,
   hasPermission,
   staffHomePath,
   NO_ACCESS_PATH,
+  ADMIN_PATH_HEADER,
+  ADMIN_METHOD_HEADER,
   type PermissionActor,
   type PermissionKey,
   type PermissionTier,
@@ -28,20 +31,36 @@ function pathnameOf(request: { url: string }): string {
 /**
  * The API-route guard. Drop-in replacement for `session.user.role !== "admin"`:
  *
- *     if (!session?.user?.id || !canAccessAdminPath(session.user, request)) {
+ *     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
  *       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
  *     }
  *
  * Returns `true` for `admin` on every path, so adopting it cannot change the
  * owner's behaviour anywhere — that property is asserted in the registry tests.
+ *
+ * For staff it re-derives the permission from the middleware-stamped path
+ * header (see ADMIN_PATH_HEADER). Independent re-evaluation, not a rubber
+ * stamp: if the header is missing, this denies. Pass `request` explicitly when
+ * you have it and want to skip the header entirely.
  */
-export function canAccessAdminPath(
+export async function canAccessAdminPath(
   user: PermissionActor | null | undefined,
-  request: { url: string; method?: string },
-): boolean {
+  request?: { url: string; method?: string },
+): Promise<boolean> {
   if (!user) return false
   if (user.role === "admin") return true
-  return canAccessPath(user, pathnameOf(request), request.method)
+  if (user.role !== "staff") return false
+
+  if (request) return canAccessPath(user, pathnameOf(request), request.method)
+
+  const headerList = await headers()
+  const pathname = headerList.get(ADMIN_PATH_HEADER)
+  // No stamp means the middleware did not run for this request. Denying is the
+  // safe reading — the alternative is granting on the strength of a gate we
+  // cannot confirm fired.
+  if (!pathname) return false
+
+  return canAccessPath(user, pathname, headerList.get(ADMIN_METHOD_HEADER) ?? undefined)
 }
 
 /** Non-redirecting check for server components that render partial UI. */

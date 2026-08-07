@@ -5,13 +5,14 @@ import { createEntrySchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
 import type { LedgerDirection, LedgerSource } from "@/types/database"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const sp = new URL(request.url).searchParams
     const bookId = sp.get("book_id")
     if (!bookId) return NextResponse.json({ error: "book_id required" }, { status: 400 })
@@ -58,7 +59,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const body = await request.json().catch(() => null)
     const parsed = createEntrySchema.safeParse(body)
     if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })

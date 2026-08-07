@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { updateMembershipPlan } from "@/lib/db/membership-plans"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
@@ -14,7 +15,7 @@ const patchSchema = z.object({
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
   const { id } = await ctx.params

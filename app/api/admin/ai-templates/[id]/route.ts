@@ -2,10 +2,11 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { updatePromptTemplate, deletePromptTemplate, getPromptTemplateById } from "@/lib/db/prompt-templates"
 import { promptTemplateUpdateSchema } from "@/lib/validators/prompt-template"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -27,7 +28,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

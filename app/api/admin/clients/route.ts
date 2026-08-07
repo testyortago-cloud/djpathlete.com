@@ -10,6 +10,7 @@ import { sendAccountCreatedEmail, sendVerificationEmail } from "@/lib/email"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { withAudit } from "@/lib/audit/with-audit"
 import type { User } from "@/types/database"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export const POST = withAudit(
   {
@@ -24,7 +25,7 @@ export const POST = withAudit(
     try {
     // Auth check
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 

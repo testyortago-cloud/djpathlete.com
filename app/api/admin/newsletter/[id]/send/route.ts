@@ -5,6 +5,7 @@ import { getAdminFirestore } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { buildNewsletterHtml } from "@/lib/email"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export const POST = withAudit(
   {
@@ -18,7 +19,7 @@ export const POST = withAudit(
   async (_request, { params }) => {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

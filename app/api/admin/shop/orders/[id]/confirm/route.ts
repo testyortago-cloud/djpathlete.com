@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { confirmOrderToPrintful } from "@/lib/shop/fulfillment"
 import { sendOrderConfirmedEmail } from "@/lib/shop/emails"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 // "Confirm" pushes the order to Printful for production. Closest slug in the
 // v1 taxonomy is shop.order_fulfilled (no separate "confirmed" or "submitted"
@@ -34,7 +35,7 @@ export const POST = withAudit(
   async (_req: Request, context) => {
     const { params } = context as unknown as { params: Promise<{ id: string }> }
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

@@ -4,12 +4,13 @@ import { getUserById } from "@/lib/db/users"
 import { createPasswordResetToken } from "@/lib/db/password-reset-tokens"
 import { sendLeadInviteEmail } from "@/lib/email"
 import { getBaseUrl } from "@/lib/url"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const INVITE_TOKEN_HOURS = 24 * 7
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
   }
 

@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { loadClientPacksView } from "@/lib/services/client-packs-view"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /** GET ?clientUserId= — a client's packages, each with its check-in history. */
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

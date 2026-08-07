@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { z } from "zod"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 import {
   getAllPerformanceAssessments,
   createPerformanceAssessment,
@@ -37,7 +38,7 @@ const createSchema = z
 export async function GET() {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -52,7 +53,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { leadMagnetFormSchema } from "@/lib/validators/lead-magnet"
 import { listLeadMagnets, createLeadMagnet } from "@/lib/db/lead-magnets"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   try {
@@ -19,7 +20,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const body = await request.json().catch(() => null)

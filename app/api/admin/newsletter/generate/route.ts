@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { z } from "zod"
 import { getAdminFirestore } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const RATE_LIMIT_MAX = 5
 const RATE_LIMIT_WINDOW_MS = 60_000
@@ -33,7 +34,7 @@ const newsletterGenerateSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
     const userId = session.user.id

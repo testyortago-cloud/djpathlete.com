@@ -3,12 +3,13 @@ import { auth } from "@/lib/auth"
 import { voidCheckinSchema } from "@/lib/validators/session-packs"
 import { voidCheckinAndRestore } from "@/lib/services/session-credits"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /** Void a check-in (coach undo) — restores the credit. */
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

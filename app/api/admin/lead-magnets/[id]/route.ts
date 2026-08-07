@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { leadMagnetFormSchema } from "@/lib/validators/lead-magnet"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 import {
   getLeadMagnetById,
   updateLeadMagnet,
@@ -13,7 +14,7 @@ interface Params {
 
 export async function GET(_request: NextRequest, { params }: Params) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const { id } = await params
@@ -29,7 +30,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const { id } = await params
@@ -55,7 +56,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 export async function DELETE(_request: NextRequest, { params }: Params) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const { id } = await params

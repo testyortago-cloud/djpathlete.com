@@ -1,4 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase"
+import type { PermissionMap } from "@/lib/permissions/registry"
 import type { User } from "@/types/database"
 
 /** Service-role client bypasses RLS — these functions are only called from server-side routes. */
@@ -33,6 +34,8 @@ export async function createUser(user: {
   first_name: string
   last_name: string
   role?: string
+  permissions?: PermissionMap
+  staff_role?: string | null
 }) {
   const supabase = getClient()
   const { data, error } = await supabase.from("users").insert(user).select().single()

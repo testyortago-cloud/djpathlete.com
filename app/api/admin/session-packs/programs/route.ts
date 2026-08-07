@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getPrograms } from "@/lib/db/programs"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /** GET — active programs (id + name) for the "link a program" selector. */
 export async function GET() {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     const programs = await getPrograms()

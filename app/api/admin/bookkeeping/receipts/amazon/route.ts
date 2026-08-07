@@ -9,6 +9,7 @@ import { parseAmazonCsv } from "@/lib/bookkeeping/amazon-parse"
 import { getAdminFirestore, getAdminRtdb } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /**
  * AI Bookkeeper Phase 3, Task 13 — Amazon order-history CSV import route.
@@ -33,7 +34,7 @@ const TOTAL_STEPS = 2
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

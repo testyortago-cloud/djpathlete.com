@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { buildAuthorizationUrl, signState } from "@/lib/gsc/oauth"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(req: NextRequest) {
   const session = await auth()
-  if (!session?.user || session.user.role !== "admin") {
+  if (!session?.user || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import sitemap from "@/app/sitemap"
 import { submitToIndexNow } from "@/lib/indexnow"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /**
  * One-shot bulk IndexNow submission — pings Bing/Yandex with every URL in the
@@ -17,7 +18,7 @@ import { submitToIndexNow } from "@/lib/indexnow"
  */
 export async function POST() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

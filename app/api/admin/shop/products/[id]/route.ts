@@ -12,10 +12,11 @@ import {
 } from "@/lib/db/shop-affiliate-clicks"
 import { buildAffiliateUrl } from "@/lib/shop/amazon"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const { id } = await params
@@ -85,7 +86,7 @@ export const PATCH = withAudit(
   async (request: Request, context) => {
     const { params } = context as unknown as { params: Promise<{ id: string }> }
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
     const { id } = await params
@@ -123,7 +124,7 @@ export const DELETE = withAudit(
   async (_req: Request, context) => {
     const { params } = context as unknown as { params: Promise<{ id: string }> }
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
     const { id } = await params

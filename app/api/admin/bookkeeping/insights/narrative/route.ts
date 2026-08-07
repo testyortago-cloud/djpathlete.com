@@ -18,6 +18,7 @@ import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation
 import { listDismissedFingerprints } from "@/lib/db/bookkeeping"
 import { reportQuerySchema } from "@/lib/validators/bookkeeping"
 import { withTimeout } from "@/lib/with-timeout"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export const maxDuration = 45
 
@@ -38,7 +39,7 @@ const SYSTEM_PROMPT = [
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     const body = await request.json().catch(() => null)

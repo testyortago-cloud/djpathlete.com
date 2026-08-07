@@ -9,6 +9,7 @@ import { auth } from "@/lib/auth"
 import { resolveFaqPage } from "@/lib/faq/pages"
 import { listFaqsForPage } from "@/lib/db/faqs"
 import { buildFaqAiPrompt } from "@/lib/faq/ai-prompt"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const MODEL = "claude-sonnet-4-6"
 
@@ -28,7 +29,7 @@ const EVENT_PAGE_CONTEXT =
 
 export async function POST(request: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

@@ -6,10 +6,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createMarketingProduct } from "@/lib/db/marketing-products"
 import { marketingProductInputSchema } from "@/lib/validators/marketing-products"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST(request: NextRequest) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

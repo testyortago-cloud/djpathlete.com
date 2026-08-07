@@ -6,6 +6,7 @@ import { getMembershipPlanById } from "@/lib/db/membership-plans"
 import { getUserById } from "@/lib/db/users"
 import { getOrCreateStripeCustomer, createMembershipCheckoutSession } from "@/lib/stripe"
 import { resolveBillingUserId } from "@/lib/services/billing-payer"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const bodySchema = z.object({ userId: z.string().uuid(), planId: z.string().uuid() })
 
@@ -13,7 +14,7 @@ const bodySchema = z.object({ userId: z.string().uuid(), planId: z.string().uuid
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     if (!(await sessionMembershipsEnabled())) return NextResponse.json({ error: "Not enabled" }, { status: 403 })

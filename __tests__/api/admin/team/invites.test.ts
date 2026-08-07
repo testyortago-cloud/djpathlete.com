@@ -51,6 +51,47 @@ describe("POST /api/admin/team/invites", () => {
     expect(res.status).toBe(400)
   })
 
+  it("carries a staff invite's permission map through to the invite row", async () => {
+    ;(auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: "u1", role: "admin", name: "Darren Paul" },
+    })
+    ;(createInvite as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "inv2", email: "coach@example.com", token: "tok456",
+      expires_at: new Date(Date.now() + 7 * 86400 * 1000).toISOString(),
+    })
+
+    const res = await POST(
+      makeReq({
+        email: "coach@example.com",
+        role: "staff",
+        staffRole: "coach",
+        permissions: { clients: true, accounting: "view" },
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(createInvite).toHaveBeenCalledWith({
+      email: "coach@example.com",
+      role: "staff",
+      invitedBy: "u1",
+      staffRole: "coach",
+      permissions: { clients: true, accounting: "view" },
+    })
+  })
+
+  it("rejects an unknown or illegal permission instead of quietly dropping it", async () => {
+    ;(auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      user: { id: "u1", role: "admin", name: "Darren Paul" },
+    })
+
+    // `settings` is not grantable at all; `manage` is illegal on analytics.
+    for (const permissions of [{ settings: true }, { analytics: "manage" }, { clients: "manage" }]) {
+      const res = await POST(makeReq({ email: "x@example.com", role: "staff", permissions }))
+      expect(res.status, JSON.stringify(permissions)).toBe(400)
+    }
+    expect(createInvite).not.toHaveBeenCalled()
+  })
+
   it("creates invite + sends email when admin", async () => {
     ;(auth as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       user: { id: "u1", role: "admin", name: "Darren Paul" },
@@ -65,6 +106,7 @@ describe("POST /api/admin/team/invites", () => {
     expect(res.status).toBe(201)
     expect(createInvite).toHaveBeenCalledWith({
       email: "k@example.com", role: "editor", invitedBy: "u1",
+      permissions: {}, staffRole: null,
     })
     expect(sendTeamInviteEmail).toHaveBeenCalledWith(
       expect.objectContaining({

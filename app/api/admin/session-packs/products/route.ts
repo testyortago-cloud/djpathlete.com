@@ -2,12 +2,13 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { packProductSchema } from "@/lib/validators/session-packs"
 import { listAllProducts, createProduct } from "@/lib/db/session-pack-products"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /** GET — the full pack catalogue (active + archived). */
 export async function GET() {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     return NextResponse.json({ products: await listAllProducts() })
@@ -21,7 +22,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

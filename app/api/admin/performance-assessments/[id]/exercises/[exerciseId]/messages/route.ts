@@ -10,6 +10,7 @@ import {
 import { createNotification } from "@/lib/db/notifications"
 import { getUserById } from "@/lib/db/users"
 import { sendPerformanceAssessmentReplyEmail } from "@/lib/email"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const messageSchema = z.object({
   message: z.string().min(1).max(5000),
@@ -18,7 +19,7 @@ const messageSchema = z.object({
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string; exerciseId: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -34,7 +35,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function POST(request: Request, { params }: { params: Promise<{ id: string; exerciseId: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

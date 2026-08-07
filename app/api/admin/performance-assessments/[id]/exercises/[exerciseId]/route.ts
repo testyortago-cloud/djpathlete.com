@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { z } from "zod"
 import { updateAssessmentExercise, deleteAssessmentExercise } from "@/lib/db/performance-assessments"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const updateSchema = z.object({
   video_path: z.string().nullable().optional(),
@@ -14,7 +15,7 @@ const updateSchema = z.object({
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string; exerciseId: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -36,7 +37,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string; exerciseId: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

@@ -7,6 +7,7 @@ import { getCalendarEntryById } from "@/lib/db/content-calendar"
 import { proposePrimaryKeyword } from "@/lib/blog/keyword-proposal"
 import { extractContentAngle } from "@/lib/blog/content-angle"
 import { findInFlightBlogSuggestionJob } from "@/lib/ai-jobs"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const requestSchema = z.object({
   calendarId: z.string().uuid().or(z.string().min(1)),
@@ -24,7 +25,7 @@ interface TopicMetadata {
 export async function POST(request: NextRequest) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
     const userId = session.user.id

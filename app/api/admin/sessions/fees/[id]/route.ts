@@ -3,13 +3,14 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { updateFeeCharge } from "@/lib/db/session-fee-charges"
 import { retryFeeCharge } from "@/lib/services/session-fees"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const schema = z.object({ action: z.enum(["retry", "waive"]) })
 
 /** PATCH — retry a failed fee charge or waive it. */
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
   const { id } = await ctx.params

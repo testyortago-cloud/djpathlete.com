@@ -5,6 +5,7 @@ import { getAdminFirestore } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { AI_CHAT_RATE_LIMIT_MAX, AI_CHAT_RATE_LIMIT_WINDOW_MS, AI_CHAT_MAX_CONVERSATIONS } from "@/lib/admin-ai-config"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 // In-memory per-user rate limiter
 const rateLimitMap = new Map<string, number[]>()
@@ -26,7 +27,7 @@ function checkRateLimit(userId: string): boolean {
 export async function GET() {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
     const userId = session.user.id
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
   try {
     // Auth: admin only
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
     const userId = session.user.id

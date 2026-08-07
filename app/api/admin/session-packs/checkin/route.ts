@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth"
 import { checkInClient } from "@/lib/services/session-credits"
 import { bridgeCheckinToSchedule } from "@/lib/services/session-schedule"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const bodySchema = z.object({ clientUserId: z.string().uuid() })
 
@@ -11,7 +12,7 @@ const bodySchema = z.object({ clientUserId: z.string().uuid() })
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

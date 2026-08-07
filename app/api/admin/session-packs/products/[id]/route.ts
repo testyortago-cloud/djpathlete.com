@@ -2,12 +2,13 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { packProductUpdateSchema } from "@/lib/validators/session-packs"
 import { updateProduct } from "@/lib/db/session-pack-products"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /** PATCH — update a catalogue product (edit fields or activate/deactivate). */
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     const { id } = await ctx.params

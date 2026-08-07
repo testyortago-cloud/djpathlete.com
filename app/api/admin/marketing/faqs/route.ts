@@ -8,11 +8,12 @@ import { faqInputSchema } from "@/lib/validators/faq"
 import { createFaq, listFaqsForPage } from "@/lib/db/faqs"
 import { resolveFaqPage } from "@/lib/faq/pages"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -42,7 +43,7 @@ export const POST = withAudit(
   async (request) => {
     try {
       const session = await auth()
-      if (!session?.user?.id || session.user.role !== "admin") {
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 })
       }
 

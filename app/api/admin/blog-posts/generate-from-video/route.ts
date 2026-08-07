@@ -8,6 +8,7 @@ import { createAiJob } from "@/lib/ai-jobs"
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { createDraftForVideo } from "@/lib/db/blog-posts"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const ALLOWED_TONES = ["professional", "conversational", "motivational"] as const
 const ALLOWED_LENGTHS = ["short", "medium", "long"] as const
@@ -16,7 +17,7 @@ type Length = (typeof ALLOWED_LENGTHS)[number]
 
 export async function POST(request: NextRequest) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

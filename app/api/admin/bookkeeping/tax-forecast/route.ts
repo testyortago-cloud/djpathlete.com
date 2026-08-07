@@ -10,13 +10,14 @@ import { loadInsightsBundle } from "@/lib/bookkeeping/insight-data"
 import { coerceHomeOfficePercent, coerceTaxRatePercent } from "@/lib/bookkeeping/insight-types"
 import { bookYtdTotals, taxForecast } from "@/lib/bookkeeping/tax-forecast"
 import { getSetting } from "@/lib/db/system-settings"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const querySchema = z.object({ book_id: z.string().uuid() })
 
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     const parsed = querySchema.safeParse({ book_id: new URL(request.url).searchParams.get("book_id") })

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { getClientPackageByIdMaybe, deleteClientPackage } from "@/lib/db/client-packages"
 import { stripe } from "@/lib/stripe"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /**
  * DELETE — remove a session pack entirely (test packs, mis-sold packs).
@@ -19,7 +20,7 @@ import { recordAudit } from "@/lib/audit/record"
 export async function DELETE(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     const { id } = await ctx.params

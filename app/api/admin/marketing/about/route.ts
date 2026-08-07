@@ -8,13 +8,14 @@ import { auth } from "@/lib/auth"
 import { aboutPageContentSchema } from "@/lib/validators/about-page"
 import { updateAboutPageContent } from "@/lib/db/about-page"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export const PATCH = withAudit(
   { action: "about_page.update", category: "marketing" },
   async (request) => {
     try {
       const session = await auth()
-      if (!session?.user?.id || session.user.role !== "admin") {
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 })
       }
 

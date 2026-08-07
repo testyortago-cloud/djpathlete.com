@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getGenerationLogs } from "@/lib/db/ai-generation-log"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET() {
   try {
     // Auth check
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 

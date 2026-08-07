@@ -6,13 +6,14 @@ import { auth } from "@/lib/auth"
 import { recordAudit } from "@/lib/audit/record"
 import { getSetting, setSetting } from "@/lib/db/system-settings"
 import { taxRatePercentSchema } from "@/lib/validators/bookkeeping"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const SETTING_KEY = "bookkeeping_tax_rate_percent"
 
 export async function PATCH(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     const parsed = taxRatePercentSchema.safeParse(await request.json().catch(() => null))

@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import { getVideoUploadById, updateVideoUpload } from "@/lib/db/video-uploads"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const UPLOAD_URL_EXPIRY_MS = 10 * 60 * 1000 // 10 minutes
 
@@ -15,7 +16,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

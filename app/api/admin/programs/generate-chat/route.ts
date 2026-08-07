@@ -3,6 +3,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { getAdminFirestore } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
   try {
     // Auth
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
     const userId = session.user.id

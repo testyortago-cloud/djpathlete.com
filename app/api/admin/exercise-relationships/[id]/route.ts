@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { deleteRelationship } from "@/lib/db/exercise-relationships"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -8,7 +9,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-    if (session.user.role !== "admin") {
+    if (!(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

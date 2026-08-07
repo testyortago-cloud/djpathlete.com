@@ -74,7 +74,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: Permi
         { label: "Products", href: "/admin/marketing/products", icon: Package },
         { label: "SEO Console", href: "/admin/integrations/gsc", icon: Search },
         { label: "SEO Memos", href: "/admin/seo-agent/memos", icon: Workflow },
-        { label: "Editor Invites", href: "/admin/team", icon: Users2 },
+        { label: "Team & Permissions", href: "/admin/team", icon: Users2 },
       ]
     : [
         { label: "Blog", href: "/admin/blog", icon: FileText },
@@ -88,7 +88,7 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: Permi
         { label: "Products", href: "/admin/marketing/products", icon: Package },
         { label: "SEO Console", href: "/admin/integrations/gsc", icon: Search },
         { label: "SEO Memos", href: "/admin/seo-agent/memos", icon: Workflow },
-        { label: "Editor Invites", href: "/admin/team", icon: Users2 },
+        { label: "Team & Permissions", href: "/admin/team", icon: Users2 },
       ]
 
   // FAQs + per-page CMS tools live in their own "Edit page" group so the

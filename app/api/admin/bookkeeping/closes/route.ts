@@ -10,11 +10,12 @@ import { closeMonthSchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 import { getSetting } from "@/lib/db/system-settings"
 import { sendBooksClosedEmail } from "@/lib/bookkeeping/email-close"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const bookId = new URL(request.url).searchParams.get("book_id") ?? undefined
     const closes = await listCloses(bookId)
     return NextResponse.json({ closes })
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const parsed = closeMonthSchema.safeParse(await request.json().catch(() => null))
     if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })
     const { book_id, period, override } = parsed.data

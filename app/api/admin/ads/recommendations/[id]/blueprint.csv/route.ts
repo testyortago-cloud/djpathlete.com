@@ -11,6 +11,7 @@ import { getRecommendationById } from "@/lib/db/google-ads-recommendations"
 import { z } from "zod"
 import { renderCampaignBlueprintCsv } from "@/lib/ads/campaign-blueprint-csv"
 import type { CampaignBlueprintArgs } from "@/lib/ads/agent/decision-schema"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 // A lenient "shape only" schema — types must be right, but no length/count
 // constraints. Lets us export CSVs even when the agent overshoots Google
@@ -76,7 +77,7 @@ function sanitiseFilename(name: string): string {
 
 export async function GET(_request: NextRequest, ctx: RouteContext) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const { id } = await ctx.params

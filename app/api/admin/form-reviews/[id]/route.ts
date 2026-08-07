@@ -4,6 +4,7 @@ import { z } from "zod"
 import { getFormReviewById, updateFormReview } from "@/lib/db/form-reviews"
 import { getSignedVideoUrl } from "@/lib/firebase-admin"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const updateSchema = z.object({
   status: z.enum(["pending", "in_progress", "reviewed"]),
@@ -12,7 +13,7 @@ const updateSchema = z.object({
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -39,7 +40,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

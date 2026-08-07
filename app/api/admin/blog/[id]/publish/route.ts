@@ -4,11 +4,12 @@ import { auth } from "@/lib/auth"
 import { getBlogPostById, updateBlogPost } from "@/lib/db/blog-posts"
 import { createAiJob } from "@/lib/ai-jobs"
 import { submitUrlToIndexNow } from "@/lib/indexnow"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

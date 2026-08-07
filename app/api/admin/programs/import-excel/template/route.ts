@@ -2,10 +2,11 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getSetting } from "@/lib/db/system-settings"
 import { generateProgramTemplate } from "@/lib/excel-templates"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
 

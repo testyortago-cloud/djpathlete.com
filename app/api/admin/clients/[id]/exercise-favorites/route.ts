@@ -3,13 +3,13 @@ import { auth } from "@/lib/auth"
 import { adminExerciseFavoriteSchema } from "@/lib/validators/exercise-favorite"
 import { addFavorite, removeFavorite } from "@/lib/db/exercise-favorites"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 async function requireAdmin() {
   const session = await auth()
-  const role = session?.user?.role as string | undefined
-  const adminId = session?.user?.id as string | undefined
-  if (role !== "admin" || !adminId) return null
-  return adminId
+  const actorId = session?.user?.id as string | undefined
+  if (!actorId || !(await canAccessAdminPath(session?.user))) return null
+  return actorId
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {

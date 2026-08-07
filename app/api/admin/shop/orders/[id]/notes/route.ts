@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { z } from "zod"
 import { updateOrder } from "@/lib/db/shop-orders"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const notesSchema = z.object({
   notes: z.string().max(5000),
@@ -9,7 +10,7 @@ const notesSchema = z.object({
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

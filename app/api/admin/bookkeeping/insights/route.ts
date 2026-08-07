@@ -16,11 +16,12 @@ import { yearEndFlags } from "@/lib/bookkeeping/year-end-flags"
 import { listDismissedFingerprints, listEntriesForInsights } from "@/lib/db/bookkeeping"
 import { getSetting } from "@/lib/db/system-settings"
 import { reportQuerySchema } from "@/lib/validators/bookkeeping"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     const sp = new URL(request.url).searchParams

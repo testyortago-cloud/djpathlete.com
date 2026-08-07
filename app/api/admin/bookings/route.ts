@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getBookingById, updateBookingStatus } from "@/lib/db/bookings"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { z } from "zod"
 
 const updateSchema = z.object({
@@ -12,7 +13,7 @@ const updateSchema = z.object({
 
 export async function PATCH(request: Request) {
   const session = await auth()
-  if (!session?.user || (session.user as { role?: string }).role !== "admin") {
+  if (!session?.user || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { getSocialPostById, updateSocialPost } from "@/lib/db/social-posts"
 import { assertSourceVideoPostable } from "@/lib/content-studio/edit-gate"
 import type { SocialApprovalStatus } from "@/types/database"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const ALLOWED_COLUMNS = ["needs_review", "approved", "scheduled", "published", "failed"] as const
 type TargetColumn = (typeof ALLOWED_COLUMNS)[number]
@@ -29,7 +30,7 @@ function columnToStatus(column: Exclude<TargetColumn, "scheduled" | "published">
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

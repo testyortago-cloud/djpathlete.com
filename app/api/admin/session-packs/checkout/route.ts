@@ -8,6 +8,7 @@ import { createPackCheckoutSession } from "@/lib/stripe"
 import { recordAudit } from "@/lib/audit/record"
 import { assignProgram } from "@/lib/services/assign-program"
 import { getAssignmentByUserAndProgram } from "@/lib/db/assignments"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /**
  * Sell a session pack to a client.
@@ -19,7 +20,7 @@ import { getAssignmentByUserAndProgram } from "@/lib/db/assignments"
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

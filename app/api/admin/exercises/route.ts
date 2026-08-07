@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { exerciseFormSchema } from "@/lib/validators/exercise"
 import { createExercise, getExercises } from "@/lib/db/exercises"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(request: Request) {
   try {
@@ -10,7 +11,7 @@ export async function GET(request: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-    if (session.user.role !== "admin") {
+    if (!(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

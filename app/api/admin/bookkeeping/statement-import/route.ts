@@ -15,6 +15,7 @@ import {
 import { getAdminFirestore, getAdminRtdb } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /**
  * AI Bookkeeper Phase 2, Task 10 — statement upload route (money-path entry
@@ -37,7 +38,7 @@ interface RowForJob extends NormalizedStatementRow {
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

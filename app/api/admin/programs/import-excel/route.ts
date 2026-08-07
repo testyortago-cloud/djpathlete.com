@@ -7,6 +7,7 @@ import { getAdminFirestore, getAdminRtdb } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { createGenerationLog } from "@/lib/db/ai-generation-log"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const ALLOWED_TYPES = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -27,7 +28,7 @@ export const POST = withAudit(
     try {
       // Auth check
       const session = await auth()
-      if (!session?.user?.id || session.user.role !== "admin") {
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
         return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
       }
 

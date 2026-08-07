@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth"
 import { getBlogPostById } from "@/lib/db/blog-posts"
 import { getAdminFirestore } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const RefreshBodySchema = z
   .object({
@@ -21,7 +22,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

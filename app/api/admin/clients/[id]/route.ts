@@ -4,6 +4,7 @@ import { updateUser, getUserByEmail, getUserById, deleteUser } from "@/lib/db/us
 import { ghlDeleteContact } from "@/lib/ghl"
 import { withAudit } from "@/lib/audit/with-audit"
 import { z } from "zod"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const editClientSchema = z.object({
   firstName: z.string().min(1, "First name is required").max(50),
@@ -26,7 +27,7 @@ export const PATCH = withAudit(
     const { params } = context as unknown as { params: Promise<{ id: string }> }
     try {
       const session = await auth()
-      if (!session?.user?.id || session.user.role !== "admin") {
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
         return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
       }
 
@@ -83,7 +84,7 @@ export const DELETE = withAudit(
     const { params } = context as unknown as { params: Promise<{ id: string }> }
     try {
       const session = await auth()
-      if (!session?.user?.id || session.user.role !== "admin") {
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
         return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
       }
 

@@ -5,6 +5,7 @@ import { amazonCommitSchema } from "@/lib/validators/bookkeeping"
 import { AMAZON_SOURCE_REF, businessPurposeMissing } from "@/lib/bookkeeping/receipts"
 import { assertAccountsInBook, getAccount, insertAmazonEntries, linkDocumentBatch, type AccountScopeError } from "@/lib/db/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /**
  * AI Bookkeeper Phase 3, Task 13 — Amazon batch commit route.
@@ -18,7 +19,7 @@ import { recordAudit } from "@/lib/audit/record"
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

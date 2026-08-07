@@ -7,12 +7,13 @@ import { getLeadInquiryById, updateLeadInquiryAiFields } from "@/lib/db/lead-inq
 import { recordAudit } from "@/lib/audit/record"
 import { MODEL_SONNET } from "@/lib/ai/anthropic"
 import { SERVICE_LABELS, type ServiceType } from "@/lib/validators/inquiry"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export const maxDuration = 30
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
 

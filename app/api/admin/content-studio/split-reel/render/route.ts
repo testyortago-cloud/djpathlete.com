@@ -10,10 +10,11 @@ import { getBrollSegmentsForVideo } from "@/lib/db/broll-segments"
 import { canRenderSplitReel } from "@/lib/split-reel/render-gate"
 import { createAiJob, findInFlightSplitRender } from "@/lib/ai-jobs"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 async function postHandler(request: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
 

@@ -5,10 +5,11 @@ import { recurringSlotUpdateSchema } from "@/lib/validators/sessions"
 import { updateRecurringSession, deleteRecurringSession, getRecurringSessionById } from "@/lib/db/recurring-sessions"
 import { getAssignmentById } from "@/lib/db/assignments"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 async function guard() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") return { error: "Unauthorized", status: 403 as const }
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return { error: "Unauthorized", status: 403 as const }
   if (!(await recurringSessionsEnabled())) return { error: "Not enabled", status: 403 as const }
   return { session }
 }

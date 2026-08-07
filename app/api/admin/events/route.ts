@@ -3,11 +3,12 @@ import { auth } from "@/lib/auth"
 import { createEventSchema } from "@/lib/validators/events"
 import { createEvent, updateEvent } from "@/lib/db/events"
 import { syncEventToStripe } from "@/lib/stripe"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

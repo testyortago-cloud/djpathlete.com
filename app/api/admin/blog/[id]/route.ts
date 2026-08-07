@@ -6,11 +6,12 @@ import { blogPostFormSchema } from "@/lib/validators/blog-post"
 import { deleteBlogImage } from "@/lib/blog-storage"
 import { submitUrlToIndexNow } from "@/lib/indexnow"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -36,7 +37,7 @@ export const PATCH = withAudit(
     const { params } = context as unknown as { params: Promise<{ id: string }> }
     try {
       const session = await auth()
-      if (!session?.user?.id || session.user.role !== "admin") {
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 })
       }
 
@@ -91,7 +92,7 @@ export const DELETE = withAudit(
     const { params } = context as unknown as { params: Promise<{ id: string }> }
     try {
       const session = await auth()
-      if (!session?.user?.id || session.user.role !== "admin") {
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 })
       }
 

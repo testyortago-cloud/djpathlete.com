@@ -6,7 +6,13 @@ import {
   generateSessionId,
 } from "@/lib/marketing/cookies"
 import { extractTrackingParamsFromUrl, hasAnyTrackingParam } from "@/lib/marketing/attribution"
-import { canAccessPath, staffHomePath, NO_ACCESS_PATH } from "@/lib/permissions/registry"
+import {
+  canAccessPath,
+  staffHomePath,
+  NO_ACCESS_PATH,
+  ADMIN_PATH_HEADER,
+  ADMIN_METHOD_HEADER,
+} from "@/lib/permissions/registry"
 
 const SESSION_COOKIES = ["authjs.session-token", "__Secure-authjs.session-token"]
 
@@ -80,7 +86,14 @@ export default auth((req) => {
     if (userRole === "staff" && !canAccessPath({ role: "staff", permissions }, pathname, req.method)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
-    return NextResponse.next()
+    // Stamp the resolved path so route handlers can re-derive the permission
+    // themselves rather than trusting that this ran. Always overwritten, so a
+    // client cannot forge it; absent (middleware skipped) means the route
+    // guard denies staff, which is the safe direction.
+    const headers = new Headers(req.headers)
+    headers.set(ADMIN_PATH_HEADER, pathname)
+    headers.set(ADMIN_METHOD_HEADER, req.method)
+    return NextResponse.next({ request: { headers } })
   }
 
   // Resolve the auth-side response first; ALWAYS run captureAttribution on it

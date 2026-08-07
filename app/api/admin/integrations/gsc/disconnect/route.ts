@@ -6,6 +6,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getGscProperty, deleteGscProperty } from "@/lib/db/gsc-properties"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export const POST = withAudit(
   {
@@ -15,7 +16,7 @@ export const POST = withAudit(
   },
   async () => {
     const session = await auth()
-    if (!session?.user || session.user.role !== "admin") {
+    if (!session?.user || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
     const row = await getGscProperty()

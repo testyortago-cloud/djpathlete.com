@@ -6,6 +6,7 @@ import { findDocumentBySha256, getBook, listAccounts } from "@/lib/db/bookkeepin
 import { ingestReceiptDocument } from "@/lib/bookkeeping/receipt-ingest"
 import { isPdfMime, isPdfUpload, pdfRejectionReasonForBuffer } from "@/lib/bookkeeping/receipt-pdf"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /**
  * AI Bookkeeper Phase 3, Task 11 — receipt upload route.
@@ -45,7 +46,7 @@ function resolveReceiptMime(file: File): string {
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

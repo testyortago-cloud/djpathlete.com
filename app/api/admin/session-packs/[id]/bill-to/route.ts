@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth"
 import { getClientPackageByIdMaybe } from "@/lib/db/client-packages"
 import { changePackBillTo } from "@/lib/services/pack-payment-link"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const bodySchema = z.object({ billToEmail: z.string().email().nullable() })
 
@@ -17,7 +18,7 @@ const bodySchema = z.object({ billToEmail: z.string().email().nullable() })
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     const { id } = await ctx.params

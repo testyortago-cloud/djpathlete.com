@@ -8,13 +8,14 @@ import { buildAccountantPack } from "@/lib/bookkeeping/accountant-pack"
 import { stripeFeeWindow } from "@/lib/bookkeeping/payout-fees"
 import { sendAccountantPack } from "@/lib/bookkeeping/email-pack"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export const maxDuration = 120
 
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
 
     const enabled = await getSetting<boolean>("bookkeeping_email_pack_enabled", false)
     if (!enabled) return NextResponse.json({ error: "Not found" }, { status: 404 })

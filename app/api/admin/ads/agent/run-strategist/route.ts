@@ -5,10 +5,11 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { buildStrategistMemo } from "@/lib/ads/agent"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   try {

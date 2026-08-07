@@ -4,11 +4,12 @@ import { getAggregatedFeedback, getFeedbackTrends } from "@/lib/db/ai-feedback"
 import { getConversationStats } from "@/lib/db/ai-conversations"
 import { getAccuracyStats, getWeightPredictionAccuracy } from "@/lib/db/ai-outcomes"
 import type { AiFeature } from "@/types/database"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(request: NextRequest) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 

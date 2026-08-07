@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { adminFeedbackSchema } from "@/lib/validators/ai-feedback"
 import { submitFeedback } from "@/lib/db/ai-feedback"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST(request: NextRequest) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 

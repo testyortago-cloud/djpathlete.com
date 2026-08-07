@@ -12,6 +12,7 @@ import { getSetting, setSetting } from "@/lib/db/system-settings"
 import { getPlatformConnection } from "@/lib/db/platform-connections"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const patchSchema = z.union([
   z.object({ key: z.enum(MANUAL_CHECK_KEYS), checked: z.boolean() }),
@@ -21,7 +22,7 @@ const patchSchema = z.union([
 export async function GET() {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const supabase = createServiceRoleClient()
     const [connection, cronRun, forwarders, gmailReceipts, incomeSync, payoutSync, retention, receiptWatchdog, quarterlyPack, taxRatePercent, accountantEmail, statementEntryExists, manualChecks, tourCompletedAt] = await Promise.all([
       getPlatformConnection("gmail").catch(() => null),
@@ -67,7 +68,7 @@ export async function GET() {
 export async function PATCH(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const parsed = patchSchema.safeParse(await request.json().catch(() => null))
     if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })
     if ("tour_completed" in parsed.data) {

@@ -11,10 +11,11 @@ import { auth } from "@/lib/auth"
 import { getPlatformConnection, connectPlatform } from "@/lib/db/platform-connections"
 import { upsertGoogleAdsAccount } from "@/lib/db/google-ads-accounts"
 import { listAccessibleCustomers } from "@/lib/ads/google-ads-client"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

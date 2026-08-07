@@ -8,6 +8,7 @@ import { faqInputSchema } from "@/lib/validators/faq"
 import { deleteFaq, updateFaq } from "@/lib/db/faqs"
 import { resolveFaqPage } from "@/lib/faq/pages"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export const PATCH = withAudit(
   {
@@ -22,7 +23,7 @@ export const PATCH = withAudit(
     const { params } = context as unknown as { params: Promise<{ id: string }> }
     try {
       const session = await auth()
-      if (!session?.user?.id || session.user.role !== "admin") {
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 })
       }
 
@@ -62,7 +63,7 @@ export const DELETE = withAudit(
     const { params } = context as unknown as { params: Promise<{ id: string }> }
     try {
       const session = await auth()
-      if (!session?.user?.id || session.user.role !== "admin") {
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 })
       }
 

@@ -3,12 +3,13 @@ import { auth } from "@/lib/auth"
 import { getActiveAssignmentsForProgram } from "@/lib/db/assignments"
 import { getWeekAccessByAssignment, createWeekAccess, updateWeekAccess } from "@/lib/db/week-access"
 import { weekAccessSchema } from "@/lib/validators/week-access"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /** GET — Fetch all week access records for all active assignments on a program */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 
@@ -32,7 +33,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function PUT(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 
@@ -72,7 +73,7 @@ export async function PUT(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

@@ -277,6 +277,28 @@ export const AUDIT_ACTIONS = [
     category: "admin_write",
     description: "Coach opened a message thread with a client",
   },
+
+  // team / permissions -- who could see what, and when it changed
+  { slug: "team.invite_sent", category: "admin_write", description: "Team invite created and emailed" },
+  { slug: "team.invite_resent", category: "admin_write", description: "Team invite token rotated and re-emailed" },
+  { slug: "team.invite_revoked", category: "admin_write", description: "Team invite expired early" },
+  {
+    slug: "team.member_permissions_changed",
+    category: "admin_write",
+    description: "Staff member's permission map edited (records before and after)",
+  },
+  { slug: "team.member_suspended", category: "admin_write", description: "Staff member suspended or reactivated" },
+  { slug: "team.member_removed", category: "admin_write", description: "Staff member removed" },
+  {
+    slug: "team.client_assignments_changed",
+    category: "admin_write",
+    description: "Which clients a staff member can see was changed",
+  },
+  {
+    slug: "permission.denied",
+    category: "compliance",
+    description: "A staff member was refused a surface they lack permission for",
+  },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]

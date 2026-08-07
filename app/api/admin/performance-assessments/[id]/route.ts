@@ -11,6 +11,7 @@ import {
 import { createNotification } from "@/lib/db/notifications"
 import { getUserById } from "@/lib/db/users"
 import { sendPerformanceAssessmentSharedEmail } from "@/lib/email"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const updateSchema = z.object({
   status: z.enum(["draft", "in_progress", "completed"]).optional(),
@@ -32,7 +33,7 @@ const addExerciseSchema = z
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -49,7 +50,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -98,7 +99,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -135,7 +136,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

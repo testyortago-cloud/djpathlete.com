@@ -5,6 +5,7 @@ import { getAdminFirestore, getAdminRtdb } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { getActiveUserIdsForProgram } from "@/lib/db/assignments"
 import { findInFlightWeekGeneration } from "@/lib/ai-jobs"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const generateWeekSchema = z.object({
   assignment_id: z.string().uuid().optional(),
@@ -38,7 +39,7 @@ const generateWeekSchema = z.object({
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
@@ -73,7 +74,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     // Auth check
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 

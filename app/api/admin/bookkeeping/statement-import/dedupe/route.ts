@@ -4,6 +4,7 @@ import { listPostedForDedupe, listPayoutsForDedupe, listDocuments } from "@/lib/
 import { assignOccurrenceIndexes, computeStatementSourceRef, transferSuspicion } from "@/lib/bookkeeping/statement-parse"
 import { flagStatementDuplicates, type DedupeInputRow } from "@/lib/bookkeeping/statement-dedupe"
 import { statementDedupeSchema } from "@/lib/validators/bookkeeping"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /**
  * AI Bookkeeper Phase 2, Task 11 — statement dedupe route (money-critical).
@@ -30,7 +31,7 @@ function fromUtcDays(days: number): string {
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

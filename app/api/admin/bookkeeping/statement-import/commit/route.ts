@@ -3,13 +3,14 @@ import { auth } from "@/lib/auth"
 import { insertImportedEntries, linkDocumentBatch, assertAccountsInBook } from "@/lib/db/bookkeeping"
 import { statementCommitSchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const STATEMENT_SOURCE_REF = /^statement:[0-9a-f]{40}$/
 
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const body = await request.json().catch(() => null)
     const parsed = statementCommitSchema.safeParse(body)
     if (!parsed.success) return NextResponse.json({ error: "Invalid input", issues: parsed.error.issues }, { status: 400 })

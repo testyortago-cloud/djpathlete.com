@@ -2,10 +2,11 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { listPromptTemplates, createPromptTemplate } from "@/lib/db/prompt-templates"
 import { promptTemplateCreateSchema } from "@/lib/validators/prompt-template"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(req: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

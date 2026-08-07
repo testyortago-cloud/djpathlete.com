@@ -4,11 +4,12 @@ import { reportQuerySchema } from "@/lib/validators/bookkeeping"
 import { loadReportBundle } from "@/lib/bookkeeping/report-data"
 import { incomeByServiceLine, profitAndLossByCategory, perBookSummary } from "@/lib/bookkeeping/reports"
 import { stripeFeeWindow, NO_FEE_DATA } from "@/lib/bookkeeping/payout-fees"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
 
     const sp = new URL(request.url).searchParams
     const parsed = reportQuerySchema.safeParse({ from: sp.get("from"), to: sp.get("to") })

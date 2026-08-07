@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 import {
   deleteConversionAction,
   upsertConversionAction,
@@ -22,7 +23,7 @@ const UpsertSchema = z.object({
 
 export async function POST(request: NextRequest) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const raw = await request.json().catch(() => null)
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const id = request.nextUrl.searchParams.get("id")

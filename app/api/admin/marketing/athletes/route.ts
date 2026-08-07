@@ -8,13 +8,14 @@ import { auth } from "@/lib/auth"
 import { athletesPageContentSchema } from "@/lib/validators/athletes-page"
 import { updateAthletesPageContent } from "@/lib/db/athletes-page"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export const PATCH = withAudit(
   { action: "athletes_page.update", category: "marketing" },
   async (request) => {
     try {
       const session = await auth()
-      if (!session?.user?.id || session.user.role !== "admin") {
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 })
       }
 

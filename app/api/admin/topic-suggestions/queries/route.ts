@@ -3,10 +3,11 @@ import { auth } from "@/lib/auth"
 import { z } from "zod"
 import { getSetting, setSetting } from "@/lib/db/system-settings"
 import { BLOG_SCAN_QUERIES_KEY, DEFAULT_BLOG_SCAN_QUERIES } from "@/lib/blog/scan-queries"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const queries = await getSetting<string[]>(BLOG_SCAN_QUERIES_KEY, DEFAULT_BLOG_SCAN_QUERIES)
@@ -22,7 +23,7 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   const body = await request.json()

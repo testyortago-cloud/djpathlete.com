@@ -6,6 +6,7 @@ import {
   updateExerciseEmbedding,
 } from "@/lib/db/exercise-embeddings"
 import { embedExercise } from "@/lib/ai/embeddings"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /**
  * GET — Returns embedding stats (total exercises vs embedded count)
@@ -13,7 +14,7 @@ import { embedExercise } from "@/lib/ai/embeddings"
 export async function GET() {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 
@@ -32,7 +33,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

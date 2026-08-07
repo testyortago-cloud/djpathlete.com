@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { adminRefundSchema } from "@/lib/validators/shop"
 import { refundShopOrder } from "@/lib/shop/fulfillment"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export const POST = withAudit(
   {
@@ -29,7 +30,7 @@ export const POST = withAudit(
   async (req: Request, context) => {
     const { params } = context as unknown as { params: Promise<{ id: string }> }
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

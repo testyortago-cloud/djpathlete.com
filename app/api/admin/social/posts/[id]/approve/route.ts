@@ -9,13 +9,14 @@ import { auth } from "@/lib/auth"
 import { getSocialPostById, updateSocialPost } from "@/lib/db/social-posts"
 import { listPlatformConnections } from "@/lib/db/platform-connections"
 import { assertSourceVideoPostable } from "@/lib/content-studio/edit-gate"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

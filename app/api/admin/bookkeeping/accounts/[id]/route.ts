@@ -3,11 +3,12 @@ import { auth } from "@/lib/auth"
 import { updateAccount } from "@/lib/db/bookkeeping"
 import { updateAccountSchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const { id } = await ctx.params
     const body = await request.json().catch(() => null)
     const parsed = updateAccountSchema.safeParse(body)

@@ -6,6 +6,7 @@ import { createRecurringSession } from "@/lib/db/recurring-sessions"
 import { ensureUpcomingSessions } from "@/lib/services/session-schedule"
 import { listScheduledInRange } from "@/lib/db/scheduled-sessions"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -14,7 +15,7 @@ function isoDate(d: Date): string {
 /** GET — occurrences in [from,to] (defaults today..+14d). Generates on load. */
 export async function GET(request: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
   if (!(await recurringSessionsEnabled())) return NextResponse.json({ error: "Not enabled" }, { status: 403 })
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
 /** POST — create a standing weekly slot for a client. */
 export async function POST(request: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
   if (!(await recurringSessionsEnabled())) return NextResponse.json({ error: "Not enabled" }, { status: 403 })

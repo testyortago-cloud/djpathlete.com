@@ -4,13 +4,14 @@ import { getSignupById, confirmSignup, cancelSignup } from "@/lib/db/event-signu
 import { getEventById } from "@/lib/db/events"
 import { sendEventSignupConfirmedEmail } from "@/lib/email"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 type Action = "confirm" | "cancel"
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string; signupId: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

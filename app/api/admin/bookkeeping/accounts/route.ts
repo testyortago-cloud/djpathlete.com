@@ -3,10 +3,11 @@ import { auth } from "@/lib/auth"
 import { listAccounts, createAccount } from "@/lib/db/bookkeeping"
 import { createAccountSchema } from "@/lib/validators/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 async function gate() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") return null
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return null
   return session
 }
 

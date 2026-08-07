@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 interface CopySource {
   programId: string
@@ -12,7 +13,7 @@ interface CopySource {
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 

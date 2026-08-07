@@ -6,6 +6,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { recordAudit } from "@/lib/audit/record"
 import { deleteDismissal, insertDismissal } from "@/lib/db/bookkeeping"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 // Upper bound on the fingerprint: the column is unbounded TEXT and the value is
 // echoed into audit_logs.target_label (uncapped). 512 is far above any real
@@ -28,7 +29,7 @@ const dismissalBodySchema = z
 async function handle(request: Request, mode: "dismiss" | "undismiss") {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     const body = await request.json().catch(() => null)

@@ -5,6 +5,7 @@ import { getUserById } from "@/lib/db/users"
 import { resolvePackPaymentLink } from "@/lib/services/pack-payment-link"
 import { sendPackPaymentLinkEmail } from "@/lib/email"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /**
  * POST — email this pack's payment link to whoever is paying.
@@ -17,7 +18,7 @@ import { recordAudit } from "@/lib/audit/record"
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     const { id } = await ctx.params

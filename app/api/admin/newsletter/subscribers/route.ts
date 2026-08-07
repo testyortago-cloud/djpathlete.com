@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { z } from "zod"
 import { importSubscribers } from "@/lib/db/newsletter"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 // Per-request cap. The admin UI chunks large lists into requests of ~2,000, so a
 // list of any size imports across multiple calls without hitting body-size limits.
@@ -12,7 +13,7 @@ const importSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

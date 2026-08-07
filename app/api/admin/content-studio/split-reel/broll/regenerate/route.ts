@@ -11,10 +11,11 @@ import { getBrollSegmentById, regenerateBrollSegment } from "@/lib/db/broll-segm
 import { brollCacheKey } from "@/lib/split-reel/broll-selection"
 import { submitBrollClip, brollWebhookUrl } from "@/lib/split-reel/fal-submit"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 async function postHandler(request: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
 

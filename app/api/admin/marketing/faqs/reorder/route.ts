@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth"
 import { reorderFaqs } from "@/lib/db/faqs"
 import { resolveFaqPage } from "@/lib/faq/pages"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const reorderSchema = z.object({
   page_key: z.string().min(1),
@@ -22,7 +23,7 @@ export const POST = withAudit(
   async (request) => {
     try {
       const session = await auth()
-      if (!session?.user?.id || session.user.role !== "admin") {
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 })
       }
 

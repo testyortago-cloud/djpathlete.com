@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { copyExercisesFromProgram } from "@/lib/db/program-exercises"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const copyFromSchema = z
   .object({
@@ -23,7 +24,7 @@ const copyFromSchema = z
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 

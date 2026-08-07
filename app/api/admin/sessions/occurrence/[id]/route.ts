@@ -11,11 +11,12 @@ import {
 } from "@/lib/services/session-schedule"
 import { recordAudit } from "@/lib/audit/record"
 import type { AuditAction } from "@/lib/audit/actions"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /** PATCH — one action against a concrete occurrence (attended/no_show/cancel/reschedule/reassign). */
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
   if (!(await recurringSessionsEnabled())) return NextResponse.json({ error: "Not enabled" }, { status: 403 })

@@ -5,12 +5,13 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { listRecentVoiceDriftFlags } from "@/lib/db/voice-drift-flags"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 export async function GET() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
   }
 

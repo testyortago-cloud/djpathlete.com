@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getTestimonials, createTestimonial } from "@/lib/db/testimonials"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 async function requireAdminResponse() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   return null

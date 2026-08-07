@@ -4,12 +4,13 @@ import { aiGenerationRequestSchema } from "@/lib/validators/ai-generation"
 import { getAdminFirestore, getAdminRtdb } from "@/lib/firebase-admin"
 import { FieldValue } from "firebase-admin/firestore"
 import { createGenerationLog } from "@/lib/db/ai-generation-log"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST(request: Request) {
   try {
     // Auth check
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 

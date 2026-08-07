@@ -10,6 +10,7 @@ import {
   updateMarketingProduct,
 } from "@/lib/db/marketing-products"
 import { marketingProductPatchSchema } from "@/lib/validators/marketing-products"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 interface RouteContext {
   params: Promise<{ slug: string }>
@@ -17,7 +18,7 @@ interface RouteContext {
 
 export async function PUT(request: NextRequest, ctx: RouteContext) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const { slug } = await ctx.params
@@ -44,7 +45,7 @@ export async function PUT(request: NextRequest, ctx: RouteContext) {
 
 export async function DELETE(_request: NextRequest, ctx: RouteContext) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const { slug } = await ctx.params

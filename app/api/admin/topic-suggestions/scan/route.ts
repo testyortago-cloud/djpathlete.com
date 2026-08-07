@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createAiJob } from "@/lib/ai-jobs"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /**
  * On-demand "run now" override for the weekly trending scan. Enqueues a
@@ -10,7 +11,7 @@ import { createAiJob } from "@/lib/ai-jobs"
  */
 export async function POST() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

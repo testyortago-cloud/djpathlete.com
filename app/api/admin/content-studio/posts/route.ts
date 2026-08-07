@@ -8,6 +8,7 @@ import { isPlatformPostTypeSupported } from "@/lib/content-studio/post-type-supp
 import { isContentStudioMultimediaEnabled } from "@/lib/content-studio/feature-flag"
 import { assertSourceVideoPostable } from "@/lib/content-studio/edit-gate"
 import type { SocialPlatform, PostType } from "@/types/database"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const VALID_PLATFORMS: readonly SocialPlatform[] = [
   "instagram",
@@ -24,7 +25,7 @@ const CAROUSEL_MAX_SLIDES = 10
 
 export async function POST(request: NextRequest) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

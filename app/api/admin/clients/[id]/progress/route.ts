@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getProgress, getProgressByAssignment } from "@/lib/db/progress"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

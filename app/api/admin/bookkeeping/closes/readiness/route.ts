@@ -7,11 +7,12 @@ import { auth } from "@/lib/auth"
 import { getBook } from "@/lib/db/bookkeeping"
 import { gatherCloseReadiness } from "@/lib/bookkeeping/close-readiness-server"
 import { closePeriodSchema } from "@/lib/validators/bookkeeping"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin")
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user)))
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
 
     const params = new URL(request.url).searchParams

@@ -23,6 +23,7 @@ import {
 import { listAccessibleCustomers } from "@/lib/ads/google-ads-client"
 import { getPlatformConnection } from "@/lib/db/platform-connections"
 import { searchGoogleAdsRest } from "@/lib/ads/google-ads-rest"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 interface CustomerRow {
   customer?: {
@@ -49,7 +50,7 @@ interface ClientLinkRow {
 
 export async function GET(request: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

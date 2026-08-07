@@ -22,6 +22,7 @@ import { bootstrapPlugins } from "@/lib/social/bootstrap"
 import { pluginRegistry } from "@/lib/social/registry"
 import { buildPluginInput } from "@/lib/social/publish-runner"
 import { assertSourceVideoPostable } from "@/lib/content-studio/edit-gate"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const SCHEDULABLE_STATUSES = new Set([
   "draft",
@@ -42,7 +43,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

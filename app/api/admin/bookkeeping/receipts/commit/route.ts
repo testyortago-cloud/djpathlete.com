@@ -13,11 +13,12 @@ import {
 } from "@/lib/db/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

@@ -12,6 +12,7 @@ import { findCandidatePairs, type CandidatePair } from "@/lib/bookkeeping/duplic
 import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation-log"
 import { listDismissedFingerprints, listEntriesForDuplicateScan } from "@/lib/db/bookkeeping"
 import { withTimeout } from "@/lib/with-timeout"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 // 60s: a full 40-pair verdict set is ~2-3k output tokens, which Sonnet can
 // take 35-55s to stream — the original 25s AI budget timed out on a real
@@ -56,7 +57,7 @@ const SYSTEM_PROMPT = [
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     const body = await request.json().catch(() => null)

@@ -3,6 +3,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { getDocument, ignoreEmailReceiptDocument } from "@/lib/db/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 // Dismiss an email-ingested receipt from the review queue without posting.
 // posted_count 0 = "reviewed, posted nothing" (the pending filter is
@@ -13,7 +14,7 @@ const ignoreSchema = z.object({ document_id: z.string().uuid() })
 export async function POST(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 

@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 import {
   GmailNotConnectedError,
   getAccessTokenForConnection,
@@ -20,7 +21,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 

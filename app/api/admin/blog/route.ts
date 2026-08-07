@@ -4,11 +4,12 @@ import { getBlogPosts, createBlogPost, isSlugTaken } from "@/lib/db/blog-posts"
 import { blogPostFormSchema } from "@/lib/validators/blog-post"
 import { withAudit } from "@/lib/audit/with-audit"
 import type { BlogPostStatus } from "@/types/database"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -35,7 +36,7 @@ export const POST = withAudit(
   async (request) => {
     try {
       const session = await auth()
-      if (!session?.user?.id || session.user.role !== "admin") {
+      if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 })
       }
 

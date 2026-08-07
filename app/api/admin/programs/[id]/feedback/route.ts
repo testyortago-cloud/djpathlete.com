@@ -5,11 +5,12 @@ import { submitProgramFeedback, getProgramFeedback } from "@/lib/db/ai-program-f
 import { getProgramById } from "@/lib/db/programs"
 import { getGenerationLogById } from "@/lib/db/ai-generation-log"
 import { embedProgramFeedback } from "@/lib/ai/program-feedback"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 

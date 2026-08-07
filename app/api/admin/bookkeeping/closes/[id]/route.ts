@@ -4,11 +4,12 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { deleteClose, getCloseById } from "@/lib/db/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function DELETE(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     const { id } = await ctx.params
     const close = await getCloseById(id)
     if (!close) return NextResponse.json({ error: "close not found" }, { status: 404 })

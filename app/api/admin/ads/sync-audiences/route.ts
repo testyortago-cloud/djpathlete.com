@@ -7,10 +7,11 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { syncCustomerMatchAudiences } from "@/lib/ads/audiences"
 import { syncGa4Audiences } from "@/lib/ads/ga4-audiences"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   try {

@@ -19,6 +19,7 @@ import { deleteStatementFile, safeStatementName, storeStatementFile } from "@/li
 import { receiptRetainUntil } from "@/lib/bookkeeping/receipts"
 import { isPdfUpload, pdfRejectionReasonForBuffer } from "@/lib/bookkeeping/receipt-pdf"
 import { PERIOD_CLOSED_MESSAGE } from "@/lib/bookkeeping/period-close"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const MAX_SIZE = 10 * 1024 * 1024 // 10 MB — same ceiling as receipts/upload
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"]
@@ -46,7 +47,7 @@ function resolveReceiptMime(file: File): string | null {
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
     if (!process.env.FIREBASE_PRIVATE_BUCKET) {

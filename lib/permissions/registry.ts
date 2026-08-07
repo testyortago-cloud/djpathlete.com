@@ -63,6 +63,8 @@ export interface PermissionDef {
 export interface PermissionActor {
   role: string
   permissions?: PermissionMap | null
+  /** Required only for client scoping, which has to look up assignments by user. */
+  id?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -577,6 +579,16 @@ const HOME_PRIORITY: readonly { permission: PermissionKey; path: string }[] = [
 ] as const
 
 export const NO_ACCESS_PATH = "/admin/no-access"
+
+/**
+ * Request header the middleware stamps with the resolved pathname, so a route
+ * handler can re-evaluate the permission rule itself instead of trusting that
+ * the middleware ran. Always overwritten on matched paths, so it cannot be
+ * forged; absent means the middleware did not run, and the route guard then
+ * denies staff rather than assuming they were vetted.
+ */
+export const ADMIN_PATH_HEADER = "x-djp-admin-path"
+export const ADMIN_METHOD_HEADER = "x-djp-admin-method"
 
 export function staffHomePath(permissions: PermissionMap | null | undefined): string {
   for (const entry of HOME_PRIORITY) {

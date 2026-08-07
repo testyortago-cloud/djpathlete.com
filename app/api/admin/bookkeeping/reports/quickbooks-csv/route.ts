@@ -4,6 +4,7 @@ import { quickbooksQuerySchema } from "@/lib/validators/bookkeeping"
 import { getBook, listEntriesForReports, listAccountsForReports } from "@/lib/db/bookkeeping"
 import { buildQuickBooksCsv } from "@/lib/bookkeeping/quickbooks-csv"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "book"
@@ -12,7 +13,7 @@ function slugify(name: string): string {
 export async function GET(request: Request) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
 
     const sp = new URL(request.url).searchParams
     const parsed = quickbooksQuerySchema.safeParse({ from: sp.get("from"), to: sp.get("to"), book_id: sp.get("book_id") })

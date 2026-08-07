@@ -14,13 +14,14 @@ import { getSocialPostById, updateSocialPost } from "@/lib/db/social-posts"
 import { listPlatformConnections } from "@/lib/db/platform-connections"
 import { bootstrapPlugins } from "@/lib/social/bootstrap"
 import { pluginRegistry } from "@/lib/social/registry"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

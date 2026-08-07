@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const BodySchema = z.object({ active: z.boolean() })
 
@@ -17,7 +18,7 @@ interface RouteContext {
 
 export async function POST(request: NextRequest, ctx: RouteContext) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   const { customer_id } = await ctx.params

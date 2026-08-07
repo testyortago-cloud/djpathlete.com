@@ -4,11 +4,12 @@ import { recurringSessionsEnabled } from "@/lib/packs/flags"
 import { adhocSessionSchema } from "@/lib/validators/sessions"
 import { addAdhocSession } from "@/lib/services/session-schedule"
 import { recordAudit } from "@/lib/audit/record"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 /** POST — add a one-off (non-recurring) scheduled session. */
 export async function POST(request: Request) {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
   }
   if (!(await recurringSessionsEnabled())) return NextResponse.json({ error: "Not enabled" }, { status: 403 })

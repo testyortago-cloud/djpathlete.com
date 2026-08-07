@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto"
 import { createServiceRoleClient } from "@/lib/supabase"
+import type { PermissionMap } from "@/lib/permissions/registry"
 import type { TeamInvite, TeamInviteRole } from "@/types/database"
 
 export { inviteStatus } from "@/lib/team-invites/status"
@@ -19,6 +20,9 @@ export async function createInvite(input: {
   email: string
   role: TeamInviteRole
   invitedBy: string
+  /** Already sanitized by the validator. Ignored for role='editor'. */
+  permissions?: PermissionMap
+  staffRole?: string | null
 }): Promise<TeamInvite> {
   const supabase = getClient()
   const token = generateInviteToken()
@@ -31,6 +35,10 @@ export async function createInvite(input: {
       token,
       invited_by: input.invitedBy,
       expires_at,
+      // An editor never reaches the admin panel, so a permission map on that
+      // invite would be misleading rather than merely unused.
+      permissions: input.role === "staff" ? (input.permissions ?? {}) : {},
+      staff_role: input.role === "staff" ? (input.staffRole ?? null) : null,
     })
     .select()
     .single()

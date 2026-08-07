@@ -20,13 +20,14 @@ import {
   type ReelProjectProps,
 } from "@/lib/validators/reel-projects"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const REEL_URL_EXPIRY_MS = 6 * 60 * 60 * 1000 // 6h signed playback, matching split-reel
 
 // Admin + feature flag gate. Returns a denial Response, or null when allowed.
 async function gate(): Promise<NextResponse | null> {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") {
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
   const enabled = await getSetting<boolean>("feature_reel_editor_enabled", false)

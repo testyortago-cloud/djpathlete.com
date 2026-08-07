@@ -1,6 +1,7 @@
 import QRCode from "qrcode"
 import { Users, UserPlus, UserCheck, ClipboardCheck } from "lucide-react"
-import { auth } from "@/lib/auth"
+import { requirePermission } from "@/lib/permissions/guard"
+import { resolveClientScope } from "@/lib/permissions/client-scope"
 import { getUsers } from "@/lib/db/users"
 import { getAssignments } from "@/lib/db/assignments"
 import { getAllProfiles } from "@/lib/db/client-profiles"
@@ -16,11 +17,17 @@ function baseUrl() {
 }
 
 export default async function ClientsPage() {
-  const [session, users, assignments, profiles] = await Promise.all([
-    auth(),
+  const session = await requirePermission("clients")
+
+  const [users, assignments, profiles, scope] = await Promise.all([
     getUsers(),
     getAssignments(),
     getAllProfiles(),
+    resolveClientScope({
+      id: session.user.id,
+      role: session.user.role,
+      permissions: session.user.permissions ?? {},
+    }),
   ])
 
   // Self check-in QR (coach displays it; clients scan to check themselves in).
@@ -39,7 +46,12 @@ export default async function ClientsPage() {
     }
   }
 
-  const clients = (users as User[]).filter((u) => u.role === "client")
+  // Scope first, then compute every stat from the scoped set — a staff member
+  // must not learn the size of the roster they cannot see.
+  const visibleIds = new Set(scope.mode === "assigned" ? scope.clientIds : [])
+  const clients = (users as User[]).filter(
+    (u) => u.role === "client" && (scope.mode === "all" || visibleIds.has(u.id)),
+  )
   const totalClients = clients.length
 
   // New this month
@@ -47,14 +59,18 @@ export default async function ClientsPage() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
   const newThisMonth = clients.filter((u) => new Date(u.created_at) >= monthStart).length
 
-  // Active (on a program)
+  // Active (on a program) — restricted to the clients in view, so the stat
+  // tiles agree with the list below them.
+  const clientIds = new Set(clients.map((c) => c.id))
   const activeUserIds = new Set(
-    (assignments as ProgramAssignment[]).filter((a) => a.status === "active").map((a) => a.user_id),
+    (assignments as ProgramAssignment[])
+      .filter((a) => a.status === "active" && clientIds.has(a.user_id))
+      .map((a) => a.user_id),
   )
   const activeOnProgram = activeUserIds.size
 
   // Profile completion
-  const profilesWithGoals = profiles.filter((p) => p.goals)
+  const profilesWithGoals = profiles.filter((p) => p.goals && clientIds.has(p.user_id))
   const profileCompletion = totalClients > 0 ? Math.round((profilesWithGoals.length / totalClients) * 100) : 0
 
   return (

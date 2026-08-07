@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export interface PreviewExercise {
   week: number
@@ -18,7 +19,7 @@ export interface PreviewExercise {
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || session.user.role !== "admin") {
+    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 })
     }
 

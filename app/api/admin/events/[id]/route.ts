@@ -4,10 +4,11 @@ import { updateEventSchema } from "@/lib/validators/events"
 import { updateEvent, deleteEvent, getEventById, ALLOWED_STATUS_TRANSITIONS } from "@/lib/db/events"
 import { syncEventToStripe, archiveAndCreateNewPrice, stripe } from "@/lib/stripe"
 import { submitUrlToIndexNow } from "@/lib/indexnow"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 async function requireAdmin() {
   const session = await auth()
-  if (!session?.user?.id || session.user.role !== "admin") return null
+  if (!session?.user?.id || !(await canAccessAdminPath(session.user))) return null
   return session
 }
 
