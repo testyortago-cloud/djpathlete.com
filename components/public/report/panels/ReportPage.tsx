@@ -1,32 +1,24 @@
 /**
- * One page of the report. `break-after: page` (see the `.test-report` rules in
- * globals.css) is what makes Save-PDF produce the same pages the browser shows —
- * the whole point of the paged treatment.
+ * One printed page. `break-after: page` (see `.test-report` in globals.css) is what
+ * makes Save-PDF produce the pages the browser shows.
+ *
+ * The page no longer owns a header — bands do. A band carries its own eyebrow, which
+ * is why `panels/SectionHeading` was deleted.
  */
-export function ReportPage({
-  eyebrow,
-  title,
-  pageNumber,
-  footer,
+export function ReportPage({ children }: { children: React.ReactNode }) {
+  return <section className="report-page relative flex min-h-screen flex-col">{children}</section>
+}
+
+/** One banded section. `tone` picks the ground; padding and rules come from CSS. */
+export function ReportBand({
+  tone = "plain",
+  className = "",
   children,
 }: {
-  eyebrow: string
-  title?: string
-  pageNumber?: string
-  footer?: React.ReactNode
+  tone?: "plain" | "green" | "alt"
+  className?: string
   children: React.ReactNode
 }) {
-  return (
-    <section className="report-page relative flex min-h-screen flex-col gap-6 px-6 py-10 md:px-12 md:py-14">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <p className="djp-eyebrow text-primary">{eyebrow}</p>
-          {title && <h2 className="mt-2 font-heading text-3xl font-bold md:text-4xl">{title}</h2>}
-        </div>
-        {pageNumber && <span className="font-mono text-xs text-muted-foreground">{pageNumber}</span>}
-      </header>
-      <div className="flex-1">{children}</div>
-      {footer && <footer className="border-t border-border pt-4 text-xs text-muted-foreground">{footer}</footer>}
-    </section>
-  )
+  const toneClass = tone === "green" ? "report-band-green" : tone === "alt" ? "report-band-alt" : ""
+  return <div className={`report-band ${toneClass} ${className}`.trim()}>{children}</div>
 }
