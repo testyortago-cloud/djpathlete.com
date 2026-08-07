@@ -712,8 +712,13 @@
     color: var(--primary-foreground) !important;
   }
 
-  .test-report .report-band-green .djp-eyebrow,
-  .test-report .report-band-green .report-band-quiet {
+  .report-light .report-band-green .djp-eyebrow,
+  .report-light .report-band-green .report-band-quiet {
     color: var(--muted-foreground) !important;
+  }
+
+  .athlete-arena .report-band-green .djp-eyebrow,
+  .athlete-arena .report-band-green .report-band-quiet {
+    color: var(--primary-foreground) !important;
   }
 }

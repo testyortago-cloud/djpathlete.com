@@ -6,7 +6,8 @@ import { join } from "node:path"
 // needs an explicit assertion or nothing catches its removal.
 const css = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8")
 
-/** Every `@media print { … }` block in the file, brace-matched. */
+/** Every `@media print { … }` block in the file, brace-matched.
+    Assumes no literal `@media print` string appears inside a comment. */
 function printBlocks(): string[] {
   const out: string[] = []
   let i = css.indexOf("@media print")
@@ -35,10 +36,8 @@ function printBlockContaining(selector: string): string {
 function screenBlock(selector: string): string {
   const i = css.indexOf(selector)
   expect(i, `${selector} is not in globals.css`).toBeGreaterThan(-1)
-  // Find the start of the rule block
-  const ruleStart = css.lastIndexOf(".", i)
   const braceStart = css.indexOf("{", i)
-  return css.slice(ruleStart, css.indexOf("}", braceStart))
+  return css.slice(i, css.indexOf("}", braceStart))
 }
 
 describe("report banding", () => {
@@ -66,5 +65,8 @@ describe("report banding", () => {
     expect(print).toMatch(/\.report-light\s+\.report-band-green\s*{[^}]*color:\s*var\(--foreground\)/)
     // Dark scope must use --primary-foreground (dark ink in dark scope)
     expect(print).toMatch(/\.athlete-arena\s+\.report-band-green\s*{[^}]*color:\s*var\(--primary-foreground\)/)
+    // Same for eyebrows/quiet text — light scope gets muted-foreground, dark scope gets dark ink
+    expect(print).toMatch(/\.report-light\s+\.report-band-green\s+\.djp-eyebrow[^}]*{[^}]*color:\s*var\(--muted-foreground\)/)
+    expect(print).toMatch(/\.athlete-arena\s+\.report-band-green\s+\.djp-eyebrow[^}]*{[^}]*color:\s*var\(--primary-foreground\)/)
   })
 })
