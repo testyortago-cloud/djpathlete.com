@@ -80,12 +80,31 @@ export interface CategoryScore {
   testLabels: string[]
 }
 
+/**
+ * A category worth training, plus the specific test dragging its average down.
+ *
+ * The abstract number ("Speed 54") is not actionable on its own — `culprit` is
+ * what turns it into something the athlete can go and do.
+ */
+export interface FocalPoint {
+  category: RadarCategory
+  score: number
+  band: Band
+  culprit: ScoredTest
+}
+
 export interface ReportScores {
   athleteScore: number | null
   /** Strongest first. Categories with no scorable test are absent entirely. */
   categories: CategoryScore[]
   strongest: CategoryScore | null
-  focus: CategoryScore | null
+  /**
+   * The categories to train next, lowest first. NEVER includes the top-ranked
+   * category — labelling an athlete's best quality a "focal point" is wrong, and
+   * it is exactly what a naive "take the last two" produces when there are only
+   * two categories. Empty when fewer than two categories are scorable.
+   */
+  focalPoints: FocalPoint[]
   /** Latest result per test type, most recently tested first. */
   tests: ScoredTest[]
   biggestMover: { label: string; deltaPct: number } | null
@@ -118,6 +137,15 @@ function deltaFor(sorted: ReportTestPoint[]): number | null {
   if (direction === null || prev.resultValue === 0) return null
   const raw = ((latest.resultValue - prev.resultValue) / Math.abs(prev.resultValue)) * 100
   return Math.round(direction === "higher" ? raw : -raw)
+}
+
+/**
+ * The weakest member of a category. Ties resolve to the most recently tested,
+ * because `tests` is already sorted by date descending and `reduce` keeps the
+ * incumbent on a tie — so the result is deterministic between renders.
+ */
+function lowestScoring(members: ScoredTest[]): ScoredTest {
+  return members.reduce((low, t) => ((t.score as number) < (low.score as number) ? t : low))
 }
 
 /**
@@ -156,14 +184,29 @@ export function buildReportScores(points: ReportTestPoint[]): ReportScores {
   tests.sort((a, b) => b.latestDate.localeCompare(a.latestDate))
 
   const categories: CategoryScore[] = []
+  const membersByCategory = new Map<RadarCategory, ScoredTest[]>()
   for (const category of CATEGORY_ORDER) {
     const members = tests.filter((t) => t.score !== null && RADAR_CATEGORIES[category].includes(t.testType))
     if (members.length === 0) continue
+    membersByCategory.set(category, members)
     const score = Math.round(members.reduce((sum, t) => sum + (t.score as number), 0) / members.length)
     categories.push({ category, score, band: bandFor(score), testLabels: members.map((t) => t.label) })
   }
   // Strongest first; CATEGORY_ORDER breaks ties because Array#sort is stable.
   categories.sort((a, b) => b.score - a.score)
+
+  // max(0, …) is load-bearing: `categories.length - 1` is -1 on an empty list, and
+  // a negative count would make the slice below take from the wrong end.
+  const focalCount = Math.max(0, Math.min(2, categories.length - 1))
+  const focalPoints: FocalPoint[] = categories
+    .slice(categories.length - focalCount)
+    .reverse()
+    .map((c) => ({
+      category: c.category,
+      score: c.score,
+      band: c.band,
+      culprit: lowestScoring(membersByCategory.get(c.category) as ScoredTest[]),
+    }))
 
   const athleteScore =
     categories.length > 0 ? Math.round(categories.reduce((sum, c) => sum + c.score, 0) / categories.length) : null
@@ -178,7 +221,7 @@ export function buildReportScores(points: ReportTestPoint[]): ReportScores {
     athleteScore,
     categories,
     strongest: categories[0] ?? null,
-    focus: categories.length > 0 ? categories[categories.length - 1] : null,
+    focalPoints,
     tests,
     biggestMover: biggest ? { label: biggest.label, deltaPct: biggest.deltaPct } : null,
   }

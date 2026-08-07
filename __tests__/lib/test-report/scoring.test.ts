@@ -37,7 +37,7 @@ describe("buildReportScores", () => {
     expect(s.categories).toEqual([])
     expect(s.tests).toEqual([])
     expect(s.strongest).toBeNull()
-    expect(s.focus).toBeNull()
+    expect(s.focalPoints).toEqual([])
     expect(s.biggestMover).toBeNull()
   })
 
@@ -109,7 +109,7 @@ describe("buildReportScores", () => {
     expect(s.categories.map((c) => c.category).sort()).toEqual(["Power", "Speed"])
     expect(s.athleteScore).toBe(50)
     expect(s.strongest?.category).toBe("Power")
-    expect(s.focus?.category).toBe("Speed")
+    expect(s.focalPoints[0]?.category).toBe("Speed")
   })
 
   it("keeps only the latest result per test type and exposes the full series for the sparkline", () => {
@@ -132,5 +132,52 @@ describe("buildReportScores", () => {
     ])
     expect(s.tests.map((t) => t.testType)).toEqual(["sprint_10m", "cmj"])
     expect(s.categories[0].category).toBe("Speed")
+  })
+
+  it("names no focal point when only one category is scorable", () => {
+    // One category means there is nothing to focus RELATIVE to — and the single
+    // category is also the strongest, which must never be a focal point.
+    const s = buildReportScores([pt({ testType: "cmj", resultValue: 45, testDate: "2026-06-01" })])
+    expect(s.categories).toHaveLength(1)
+    expect(s.focalPoints).toEqual([])
+  })
+
+  it("names one focal point when two categories are scorable, never the stronger", () => {
+    const s = buildReportScores([
+      // Power: cmj 65 = top of the 25-65 range = 100.
+      pt({ testType: "cmj", resultValue: 65, testDate: "2026-06-01" }),
+      // Mobility: sit_reach 10 of 0-40 = 25.
+      pt({ testType: "sit_reach", resultValue: 10, testDate: "2026-06-01" }),
+    ])
+    expect(s.focalPoints).toHaveLength(1)
+    expect(s.focalPoints[0].category).toBe("Mobility")
+  })
+
+  it("names the two lowest categories, lowest first, when three or more are scorable", () => {
+    const s = buildReportScores([
+      pt({ testType: "cmj", resultValue: 65, testDate: "2026-06-01" }), // Power 100
+      pt({ testType: "beep_test", resultValue: 11, testDate: "2026-06-01" }), // Endurance 67
+      pt({ testType: "sit_reach", resultValue: 10, testDate: "2026-06-01" }), // Mobility 25
+      pt({ testType: "sprint_10m", resultValue: 2.0, resultUnit: "s", testDate: "2026-06-01" }), // Speed 50
+    ])
+    expect(s.focalPoints.map((f) => f.category)).toEqual(["Mobility", "Speed"])
+    expect(s.focalPoints[0].score).toBeLessThan(s.focalPoints[1].score)
+  })
+
+  it("blames the lowest-scoring test in the category, not just any member", () => {
+    const s = buildReportScores([
+      pt({ testType: "cmj", resultValue: 65, testDate: "2026-06-01" }), // Power 100
+      // Strength: pull_up_max 20 of 0-25 = 80; push_up_max 15 of 10-80 = 7.
+      pt({ testType: "pull_up_max", resultValue: 20, resultUnit: "reps", testDate: "2026-06-01" }),
+      pt({ testType: "push_up_max", resultValue: 15, resultUnit: "reps", testDate: "2026-06-01" }),
+    ])
+    const strength = s.focalPoints.find((f) => f.category === "Strength")
+    expect(strength).toBeDefined()
+    expect(strength!.culprit.label).toBe("Push-up Max")
+    expect(strength!.culprit.score).toBe(7)
+  })
+
+  it("returns no focal points for no tests", () => {
+    expect(buildReportScores([]).focalPoints).toEqual([])
   })
 })
