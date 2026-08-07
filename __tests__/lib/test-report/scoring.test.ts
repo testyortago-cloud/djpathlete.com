@@ -57,7 +57,45 @@ describe("buildReportScores", () => {
       pt({ testType: "sprint_10m", resultValue: 1.8, resultUnit: "s", testDate: "2026-03-01" }),
     ])
     expect(s.tests[0].deltaPct).toBe(10)
-    expect(s.biggestMover).toEqual({ label: "10m Sprint", deltaPct: 10 })
+    expect(s.biggestMover!.test.label).toBe("10m Sprint")
+    expect(s.biggestMover!.test.deltaPct).toBe(10)
+    expect(s.biggestMover!.isDecline).toBe(false)
+  })
+
+  it("picks the biggest IMPROVEMENT even when a decline is larger in magnitude", () => {
+    const s = buildReportScores([
+      // Mobility collapses 20 -> 10 = -50%.
+      pt({ testType: "sit_reach", resultValue: 20, testDate: "2026-01-01" }),
+      pt({ testType: "sit_reach", resultValue: 10, testDate: "2026-06-01" }),
+      // Power improves 40 -> 48 = +20%.
+      pt({ testType: "cmj", resultValue: 40, testDate: "2026-01-01" }),
+      pt({ testType: "cmj", resultValue: 48, testDate: "2026-06-01" }),
+    ])
+    expect(s.biggestMover).not.toBeNull()
+    expect(s.biggestMover!.test.label).toBe("Countermovement Jump")
+    expect(s.biggestMover!.test.deltaPct).toBe(20)
+    expect(s.biggestMover!.isDecline).toBe(false)
+  })
+
+  it("falls back to the largest decline when NOTHING improved, and says so", () => {
+    const s = buildReportScores([
+      pt({ testType: "sit_reach", resultValue: 20, testDate: "2026-01-01" }),
+      pt({ testType: "sit_reach", resultValue: 18, testDate: "2026-06-01" }), // -10%
+      pt({ testType: "cmj", resultValue: 50, testDate: "2026-01-01" }),
+      pt({ testType: "cmj", resultValue: 40, testDate: "2026-06-01" }), // -20%
+    ])
+    expect(s.biggestMover!.test.label).toBe("Countermovement Jump")
+    expect(s.biggestMover!.test.deltaPct).toBe(-20)
+    expect(s.biggestMover!.isDecline).toBe(true)
+  })
+
+  it("carries the previous value so the report can print 'was -> now'", () => {
+    const s = buildReportScores([
+      pt({ testType: "cmj", resultValue: 40, testDate: "2026-01-01" }),
+      pt({ testType: "cmj", resultValue: 48, testDate: "2026-06-01" }),
+    ])
+    expect(s.biggestMover!.test.previous).toBe(40)
+    expect(s.biggestMover!.test.latest).toBe(48)
   })
 
   it("treats a SLOWER sprint as a decline", () => {

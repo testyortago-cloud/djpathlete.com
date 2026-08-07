@@ -93,6 +93,20 @@ export interface FocalPoint {
   culprit: ScoredTest
 }
 
+/**
+ * The hero of page 1.
+ *
+ * Prefers the biggest IMPROVEMENT, so the page normally opens on something the
+ * athlete did well. Falls back to the largest decline only when nothing improved
+ * — a report that can only ever show good news is not worth trusting, and every
+ * decline stays visible in the page-2 rows regardless.
+ */
+export interface BiggestMover {
+  test: ScoredTest & { deltaPct: number; previous: number }
+  /** True only when NO test improved and this is the worst of the declines. */
+  isDecline: boolean
+}
+
 export interface ReportScores {
   athleteScore: number | null
   /** Strongest first. Categories with no scorable test are absent entirely. */
@@ -107,7 +121,7 @@ export interface ReportScores {
   focalPoints: FocalPoint[]
   /** Latest result per test type, most recently tested first. */
   tests: ScoredTest[]
-  biggestMover: { label: string; deltaPct: number } | null
+  biggestMover: BiggestMover | null
 }
 
 function groupKey(t: ReportTestPoint): string {
@@ -211,9 +225,15 @@ export function buildReportScores(points: ReportTestPoint[]): ReportScores {
   const athleteScore =
     categories.length > 0 ? Math.round(categories.reduce((sum, c) => sum + c.score, 0) / categories.length) : null
 
-  const movers = tests.filter((t): t is ScoredTest & { deltaPct: number } => t.deltaPct !== null)
-  const biggest = movers.reduce<(ScoredTest & { deltaPct: number }) | null>(
-    (best, t) => (best === null || Math.abs(t.deltaPct) > Math.abs(best.deltaPct) ? t : best),
+  // deltaPct and previous are both non-null exactly when a test has >= 2 results,
+  // so this predicate narrows both at once rather than asserting one from the other.
+  const movers = tests.filter(
+    (t): t is ScoredTest & { deltaPct: number; previous: number } => t.deltaPct !== null && t.previous !== null,
+  )
+  const improved = movers.filter((t) => t.deltaPct > 0)
+  const pool = improved.length > 0 ? improved : movers
+  const best = pool.reduce<(ScoredTest & { deltaPct: number; previous: number }) | null>(
+    (b, t) => (b === null || Math.abs(t.deltaPct) > Math.abs(b.deltaPct) ? t : b),
     null,
   )
 
@@ -223,6 +243,6 @@ export function buildReportScores(points: ReportTestPoint[]): ReportScores {
     strongest: categories[0] ?? null,
     focalPoints,
     tests,
-    biggestMover: biggest ? { label: biggest.label, deltaPct: biggest.deltaPct } : null,
+    biggestMover: best ? { test: best, isDecline: best.deltaPct < 0 } : null,
   }
 }
