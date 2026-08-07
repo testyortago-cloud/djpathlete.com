@@ -58,6 +58,7 @@ Embeddings use Hugging Face transformers for exercise matching. Token tracking a
 - **Fonts:** Lexend Exa (headings, `font-heading`), Lexend Deca (body, `font-body`), JetBrains Mono (mono, `font-mono`). Applied via CSS `@layer base` rules — no inline `fontFamily` styles.
 - **Components:** shadcn/ui (new-york style) in `components/ui/`. Icons from Lucide.
 - **Custom CSS vars:** `--success`, `--error`, `--warning`, `--surface` defined in globals.css.
+- **Tables — always use `components/ui/data-table.tsx`.** This is the house standard for every list in the app, taken from the Clients list. Never hand-roll a `<table>`: compose `DataTableCard` → optional `DataTableToolbar` → `DataTable` / `DataTableHeader` / `DataTableHead` / `DataTableRow` / `DataTableCell` / `DataTableEmpty` → optional `DataTableFooter`, with `DataTableBadge` (tones: `neutral | success | warning | info | danger`) for status and role pills. The chrome is card `rounded-xl border border-border bg-white shadow-sm`, header `bg-surface/50` with `text-muted-foreground` labels, rows `hover:bg-surface/30`, cells `px-4 py-3`. A page that invents its own variant reads as a different app — that is exactly how `/admin/team` ended up with a grey header bar and square corners. **Exceptions:** `components/emails/*` (HTML email needs inline styles) and `*/print/*` views (own stylesheets).
 
 ## Key Patterns
 

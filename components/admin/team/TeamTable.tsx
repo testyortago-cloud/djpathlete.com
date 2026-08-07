@@ -3,7 +3,17 @@
 import { useMemo, useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
-import { cn } from "@/lib/utils"
+import {
+  DataTable,
+  DataTableBadge,
+  DataTableCard,
+  DataTableCell,
+  DataTableEmpty,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  type DataTableBadgeTone,
+} from "@/components/ui/data-table"
 import { InviteFormDialog } from "./InviteFormDialog"
 import { EditPermissionsDialog } from "./EditPermissionsDialog"
 import { AssignClientsDialog } from "./AssignClientsDialog"
@@ -17,11 +27,11 @@ interface ClientOption {
   email: string
 }
 
-const STATUS_STYLES: Record<TeamRowStatus, string> = {
-  active: "bg-success/10 text-success border-success/30",
-  suspended: "bg-muted text-muted-foreground border-border",
-  pending: "bg-warning/10 text-warning border-warning/30",
-  expired: "bg-muted text-muted-foreground border-border",
+const STATUS_TONES: Record<TeamRowStatus, DataTableBadgeTone> = {
+  active: "success",
+  suspended: "neutral",
+  pending: "warning",
+  expired: "neutral",
 }
 
 const STATUS_LABELS: Record<TeamRowStatus, string> = {
@@ -99,24 +109,21 @@ export function TeamTable({
         <Button onClick={() => setInviteOpen(true)}>Invite member</Button>
       </div>
 
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-muted/50 text-left">
-            <tr>
-              <th className="px-4 py-2 font-medium">Person</th>
-              <th className="px-4 py-2 font-medium">Access</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium">Added</th>
-              <th className="px-4 py-2 text-right font-medium">Actions</th>
-            </tr>
-          </thead>
+      <DataTableCard>
+        <DataTable>
+          <DataTableHeader>
+            <DataTableHead>Person</DataTableHead>
+            <DataTableHead>Access</DataTableHead>
+            <DataTableHead>Status</DataTableHead>
+            <DataTableHead>Added</DataTableHead>
+            <DataTableHead align="right">Actions</DataTableHead>
+          </DataTableHeader>
+
           <tbody>
             {rows.length === 0 && (
-              <tr>
-                <td className="px-4 py-6 text-center text-muted-foreground" colSpan={5}>
-                  No one on the team yet. Send an invite to get started.
-                </td>
-              </tr>
+              <DataTableEmpty colSpan={5}>
+                No one on the team yet. Send an invite to get started.
+              </DataTableEmpty>
             )}
 
             {rows.map((row) => (
@@ -144,8 +151,8 @@ export function TeamTable({
               />
             ))}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </DataTableCard>
 
       <InviteFormDialog open={inviteOpen} onOpenChange={setInviteOpen} onCreated={refresh} />
 
@@ -194,84 +201,73 @@ function TeamRowCells({
   onResend: (id: string) => void
   onRevoke: (id: string) => void
 }) {
-  const dimmed = row.status === "suspended" || row.status === "expired"
-
   return (
-    <tr className={cn("border-b last:border-0 align-top", dimmed && "bg-muted/30")}>
-      <td className="px-4 py-3">
+    <DataTableRow>
+      <DataTableCell>
         {row.name ? (
           <>
-            <div className="font-medium">{row.name}</div>
+            <div className="font-medium text-foreground">{row.name}</div>
             <div className="text-xs text-muted-foreground">{row.email}</div>
           </>
         ) : (
           <>
-            <div className="font-medium">{row.email}</div>
+            <div className="font-medium text-foreground">{row.email}</div>
             <div className="text-xs text-muted-foreground">Hasn&apos;t accepted yet</div>
           </>
         )}
-      </td>
+      </DataTableCell>
 
-      <td className="max-w-xs px-4 py-3">
-        <span
-          className={cn(
-            "inline-block rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-            row.reachesAdminPanel
-              ? "border-accent/30 bg-accent/10 text-accent-foreground"
-              : "border-border bg-muted text-muted-foreground",
-          )}
-        >
+      <DataTableCell className="max-w-xs whitespace-normal">
+        <DataTableBadge tone={row.reachesAdminPanel ? "info" : "neutral"}>
           {row.roleLabel}
-        </span>
+        </DataTableBadge>
         <p className="mt-1 text-xs text-muted-foreground">{row.accessSummary}</p>
-      </td>
+      </DataTableCell>
 
-      <td className="px-4 py-3">
-        <span className={cn("rounded-full border px-2 py-0.5 text-xs", STATUS_STYLES[row.status])}>
-          {STATUS_LABELS[row.status]}
-        </span>
-      </td>
+      <DataTableCell>
+        <DataTableBadge tone={STATUS_TONES[row.status]}>{STATUS_LABELS[row.status]}</DataTableBadge>
+      </DataTableCell>
 
-      <td className="px-4 py-3 text-muted-foreground">
-        {new Date(row.date).toLocaleDateString("en-US")}
-      </td>
+      <DataTableCell muted>{new Date(row.date).toLocaleDateString("en-US")}</DataTableCell>
 
-      <td className="space-x-2 whitespace-nowrap px-4 py-3 text-right">
-        {row.member && (
-          <>
-            <Button size="sm" variant="outline" onClick={() => onEdit(row.member!)}>
-              Edit access
-            </Button>
-            {/* Assignments scope the client list, which an editor never sees. */}
-            {row.reachesAdminPanel && (
-              <Button size="sm" variant="outline" onClick={() => onAssign(row.member!)}>
-                Clients ({row.member.assigned_client_count})
+      <DataTableCell align="right" className="whitespace-nowrap">
+        <div className="flex justify-end gap-2">
+          {row.member && (
+            <>
+              <Button size="sm" variant="outline" onClick={() => onEdit(row.member!)}>
+                Edit access
               </Button>
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={pending}
-              onClick={() => onToggleStatus(row.member!)}
-            >
-              {row.status === "suspended" ? "Reactivate" : "Suspend"}
-            </Button>
-          </>
-        )}
-
-        {row.invite && (
-          <>
-            <Button size="sm" variant="outline" disabled={pending} onClick={() => onResend(row.id)}>
-              Resend
-            </Button>
-            {row.status === "pending" && (
-              <Button size="sm" variant="ghost" disabled={pending} onClick={() => onRevoke(row.id)}>
-                Revoke
+              {/* Assignments scope the client list, which an editor never sees. */}
+              {row.reachesAdminPanel && (
+                <Button size="sm" variant="outline" onClick={() => onAssign(row.member!)}>
+                  Clients ({row.member.assigned_client_count})
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={pending}
+                onClick={() => onToggleStatus(row.member!)}
+              >
+                {row.status === "suspended" ? "Reactivate" : "Suspend"}
               </Button>
-            )}
-          </>
-        )}
-      </td>
-    </tr>
+            </>
+          )}
+
+          {row.invite && (
+            <>
+              <Button size="sm" variant="outline" disabled={pending} onClick={() => onResend(row.id)}>
+                Resend
+              </Button>
+              {row.status === "pending" && (
+                <Button size="sm" variant="ghost" disabled={pending} onClick={() => onRevoke(row.id)}>
+                  Revoke
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      </DataTableCell>
+    </DataTableRow>
   )
 }
