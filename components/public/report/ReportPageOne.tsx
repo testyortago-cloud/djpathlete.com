@@ -41,7 +41,7 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
                 .join(" · ")}
             </p>
           </div>
-          <div className="relative hidden h-[108px] w-[84px] shrink-0 overflow-hidden rounded border border-white/20 bg-white/10 sm:block">
+          <div className="relative hidden h-[108px] w-[84px] shrink-0 overflow-hidden rounded border border-primary-foreground/20 bg-primary-foreground/10 sm:block">
             {data.avatarUrl ? (
               <Image src={data.avatarUrl} alt={fullName} fill sizes="84px" className="object-cover" />
             ) : (
@@ -53,76 +53,81 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
         </div>
       </ReportBand>
 
-      <ReportBand>
-        <div className="grid gap-8 md:grid-cols-2 md:items-start">
-          {athleteScore !== null && (
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-heading text-sm font-bold uppercase tracking-wide">
-                  Athlete Performance Index
-                </span>
-                <span className="rounded-full border border-border px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-muted-foreground">
-                  API
-                </span>
-              </div>
-              <p className="mt-2 font-heading text-6xl font-bold leading-none">
-                {athleteScore}
-                <span className="ml-1 text-xl font-normal text-muted-foreground">/100</span>
-              </p>
-              <div className="mt-4">
-                <ScoreTrack score={athleteScore} />
-              </div>
-              <p className="mt-3 max-w-[32ch] text-sm text-muted-foreground">
-                The average of your category scores. Every test is scored 0–100 against DJP&apos;s coaching
-                standards — 50 is Trained, 100 is Elite.
-              </p>
-              {strongest && (
-                <p className="mt-2 text-sm">
-                  <span className="text-muted-foreground">Strongest:</span>{" "}
-                  <strong className="font-semibold">
-                    {strongest.category} {strongest.score}
-                  </strong>
-                </p>
-              )}
-            </div>
-          )}
-
-          {biggestMover && (
-            <div className="border-l-2 border-accent pl-5">
-              <p className="djp-eyebrow text-muted-foreground">
-                {biggestMover.direction === "declined"
-                  ? "Biggest change since last test"
-                  : biggestMover.direction === "flat"
-                    ? "Since last test"
-                    : "Biggest improvement since last test"}
-              </p>
-              <p className="mt-2 font-heading text-5xl font-bold leading-none text-[var(--accent-foreground)]">
-                {biggestMover.test.deltaPct > 0 ? "↑" : biggestMover.test.deltaPct < 0 ? "↓" : "="}{" "}
-                {Math.abs(biggestMover.test.deltaPct)}%
-              </p>
-              <p className="mt-3 font-heading text-base font-bold">{biggestMover.test.label}</p>
-              <p className="mt-1 font-mono text-xs text-muted-foreground">
-                {num(biggestMover.test.previous)} → {num(biggestMover.test.latest)} {biggestMover.test.unit}
-              </p>
-              {biggestMover.test.score !== null && (
-                <div className="mt-4">
-                  <ScoreTrack score={biggestMover.test.score} tone="accent" />
+      {(athleteScore !== null || biggestMover) && (
+        <ReportBand>
+          <div className="grid gap-8 md:grid-cols-2 md:items-start">
+            {athleteScore !== null && (
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-heading text-sm font-bold uppercase tracking-wide">
+                    Athlete Performance Index
+                  </span>
+                  <span className="rounded-full border border-border px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-muted-foreground">
+                    API
+                  </span>
                 </div>
-              )}
-              <p className="mt-3 max-w-[34ch] text-sm text-muted-foreground">
-                {biggestMover.direction === "declined"
-                  ? "Nothing improved between your last two tests. Worth checking recovery and testing conditions before reading too much into it."
-                  : biggestMover.direction === "flat"
-                    ? "Every test held steady since your last round — no measurable change either way."
-                    : "The largest move of any test on file."}
-              </p>
-            </div>
-          )}
-        </div>
-      </ReportBand>
+                <p className="mt-2 font-heading text-6xl font-bold leading-none">
+                  {athleteScore}
+                  <span className="ml-1 text-xl font-normal text-muted-foreground">/100</span>
+                </p>
+                <div className="mt-4">
+                  <ScoreTrack score={athleteScore} />
+                </div>
+                <p className="mt-3 max-w-[32ch] text-sm text-muted-foreground">
+                  The average of your category scores. Every test is scored 0–100 against DJP&apos;s coaching
+                  standards — 50 is Trained, 100 is Elite.
+                </p>
+                {strongest && (
+                  <p className="mt-2 text-sm">
+                    <span className="text-muted-foreground">Strongest:</span>{" "}
+                    <strong className="font-semibold">
+                      {strongest.category} {strongest.score}
+                    </strong>
+                  </p>
+                )}
+              </div>
+            )}
+
+            {biggestMover && (
+              <div className="border-l-2 border-accent pl-5">
+                <p className="djp-eyebrow text-muted-foreground">
+                  {biggestMover.direction === "declined"
+                    ? "Biggest change since last test"
+                    : biggestMover.direction === "flat"
+                      ? "Since last test"
+                      : "Biggest improvement since last test"}
+                </p>
+                <p
+                  className="mt-2 font-heading text-5xl font-bold leading-none text-accent"
+                  aria-label={`${biggestMover.direction === "declined" ? "Declined" : biggestMover.direction === "flat" ? "No change," : "Improved"} ${Math.abs(biggestMover.test.deltaPct)} percent`}
+                >
+                  {biggestMover.test.deltaPct > 0 ? "↑" : biggestMover.test.deltaPct < 0 ? "↓" : "="}{" "}
+                  {Math.abs(biggestMover.test.deltaPct)}%
+                </p>
+                <p className="mt-3 font-heading text-base font-bold">{biggestMover.test.label}</p>
+                <p className="mt-1 font-mono text-xs text-muted-foreground">
+                  {num(biggestMover.test.previous)} → {num(biggestMover.test.latest)} {biggestMover.test.unit}
+                </p>
+                {biggestMover.test.score !== null && (
+                  <div className="mt-4">
+                    <ScoreTrack score={biggestMover.test.score} tone="accent" />
+                  </div>
+                )}
+                <p className="mt-3 max-w-[34ch] text-sm text-muted-foreground">
+                  {biggestMover.direction === "declined"
+                    ? "Nothing improved between your last two tests. Worth checking recovery and testing conditions before reading too much into it."
+                    : biggestMover.direction === "flat"
+                      ? "Every test held steady since your last round — no measurable change either way."
+                      : "The largest move of any test on file."}
+                </p>
+              </div>
+            )}
+          </div>
+        </ReportBand>
+      )}
 
       {focalPoints.length > 0 && (
-        <ReportBand tone="alt" className="flex-1">
+        <ReportBand tone="alt">
           <p className="djp-eyebrow text-muted-foreground">Focal points — where the next block goes</p>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             {focalPoints.map((fp) => (
@@ -134,7 +139,12 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
 
       {/* Spec B inserts the coach's-note band here. It is deliberately absent rather
           than empty: a band renders padding and a rule, so an "empty" one is visible
-          dead space, not nothing. The focal-points band above carries flex-1. */}
+          dead space, not nothing. */}
+
+      {/* Always rendered, so the footer band anchors to the page edge even when
+          every optional band above it is absent (all-custom-test clients have no
+          scorable categories at all). */}
+      <div className="flex-1" />
 
       <ReportBand tone="green">
         <div className="flex flex-wrap items-end justify-between gap-2 text-xs">
