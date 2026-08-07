@@ -721,4 +721,13 @@
   .athlete-arena .report-band-green .report-band-quiet {
     color: var(--primary-foreground) !important;
   }
+
+  /* A collapsed <details> would silently drop earlier assessments from the PDF. */
+  .test-report .report-earlier > summary {
+    display: none;
+  }
+
+  .test-report .report-earlier > div {
+    display: flex !important;
+  }
 }
