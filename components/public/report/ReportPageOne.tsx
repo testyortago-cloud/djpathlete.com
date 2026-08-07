@@ -137,6 +137,21 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
         </ReportBand>
       )}
 
+      {/* Guarded on data.tests.length, NOT just the scores-derived fields: an
+          all-custom-test client also has a null athleteScore, no biggestMover
+          and no focalPoints, but they DO have logged tests (visible on page 2)
+          — "No tests logged yet" would be false for them. This band is only
+          for the genuinely empty report. */}
+      {data.tests.length === 0 && athleteScore === null && !biggestMover && focalPoints.length === 0 && (
+        <ReportBand>
+          <p className="font-heading text-lg font-bold">No tests logged yet</p>
+          <p className="mt-2 max-w-[48ch] text-sm text-muted-foreground">
+            {data.name.first}&apos;s report fills in as results are recorded — every number on it
+            comes from a logged, dated test. Check back after the next testing session.
+          </p>
+        </ReportBand>
+      )}
+
       {/* Spec B inserts the coach's-note band here. It is deliberately absent rather
           than empty: a band renders padding and a rule, so an "empty" one is visible
           dead space, not nothing. */}

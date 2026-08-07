@@ -91,4 +91,20 @@ describe("TestReport", () => {
     expect(screen.queryByText(/Achievements/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/Total Volume/i)).not.toBeInTheDocument()
   })
+
+  it("renders one honest page, not a blank one, when nothing has been logged", () => {
+    // A coach shares this link before the first testing session. The old layout's
+    // failure mode was empty sheets; the new one's would be a masthead and a
+    // footer with nothing between them — which reads as broken, not as "no data".
+    const { container } = render(<TestReport data={{ ...base, tests: [], assessments: [], testCount: 0 }} />)
+    expect(container.querySelectorAll(".report-page")).toHaveLength(1)
+    expect(screen.getByText(/No tests logged yet/i)).toBeInTheDocument()
+    // "Marcus" is not unique: it's in the masthead h1 ("Marcus Johnson"), the
+    // footer ("Marcus Johnson, Basketball · ..."), AND now the empty-state
+    // copy itself — same reason every other test in this file uses
+    // getAllByText for the name instead of getByText.
+    expect(screen.getAllByText(/Marcus/).length).toBeGreaterThan(0)
+    // Page 2 content must not leak onto page 1.
+    expect(screen.queryByText("Test by test")).not.toBeInTheDocument()
+  })
 })
