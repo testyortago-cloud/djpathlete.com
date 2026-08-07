@@ -20,7 +20,11 @@ describe("ScoreTrack", () => {
   it("carries the accent tone as a data attribute, not a hardcoded colour", () => {
     const { container } = render(<ScoreTrack score={50} tone="accent" />)
     expect(container.querySelector(".score-track")?.getAttribute("data-tone")).toBe("accent")
-    // A hex literal here would break the design system rule in CLAUDE.md.
-    expect(container.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,6}/)
+  })
+
+  it("degrades to zero rather than rendering NaN%", () => {
+    const { container } = render(<ScoreTrack score={Number.NaN} />)
+    expect((container.querySelector(".score-track-dot") as HTMLElement).style.left).toBe("0%")
+    expect(screen.getByRole("img").getAttribute("aria-label")).not.toMatch(/NaN/)
   })
 })

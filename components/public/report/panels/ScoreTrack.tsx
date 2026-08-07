@@ -11,7 +11,7 @@
  * between them drew the same quantity five different ways.
  */
 export function ScoreTrack({ score, tone = "primary" }: { score: number; tone?: "primary" | "accent" }) {
-  const pct = Math.max(0, Math.min(100, Math.round(score)))
+  const pct = Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0
   return (
     <div
       className="score-track"
