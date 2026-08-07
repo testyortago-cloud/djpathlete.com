@@ -1274,7 +1274,9 @@ git commit -m "feat(test-report): page 2 — every test once, earlier assessment
 - Modify: `components/public/report/TestReport.tsx`
 - Delete: `components/public/report/ReportCover.tsx`, `ReportHeadline.tsx`, `ReportVerdict.tsx`, and `panels/{KpiTile,ScoreBar,RangeBar,MetricCompare,CategoryChips,CueBlock,SectionHeading}.tsx`
 - Modify: `__tests__/components/report/test-report.test.tsx`
-- Check: `__tests__/components/report/report-preview.test.tsx`, `__tests__/components/report/report-shell.test.tsx`
+- **Delete: `__tests__/components/report/metric-compare.test.tsx`** — it tests only `MetricCompare`, which this task deletes.
+- **Prune: `__tests__/components/report/panels.test.tsx`** — it covers six panels, five of which die here. **Keep the `describe("BandPill", …)` block and its import; delete the `KpiTile`, `ScoreBar`, `RangeBar`, `CueBlock` and `CategoryChips` blocks and imports.** `BandPill` survives because `FocalPointCard` uses it — deleting this file wholesale would silently drop the only coverage it has.
+- **Leave alone:** `__tests__/components/report/report-preview.test.tsx` imports `components/admin/performance/ReportPreview`, an unrelated admin component — despite the filename it is not part of this feature. `report-shell.test.tsx` covers `ReportShell`, which is unchanged.
 
 **Interfaces:**
 - Consumes: `ReportPageOne` (Task 6), `ReportPageTwo` (Task 7), `buildReportScores` (Tasks 1–2).
