@@ -103,8 +103,11 @@ export interface FocalPoint {
  */
 export interface BiggestMover {
   test: ScoredTest & { deltaPct: number; previous: number }
-  /** True only when NO test improved and this is the worst of the declines. */
-  isDecline: boolean
+  /**
+   * Three states, because a boolean cannot carry three. `flat` happens when every
+   * test's change rounds to zero — the page must not call that an improvement.
+   */
+  direction: "improved" | "flat" | "declined"
 }
 
 export interface ReportScores {
@@ -232,10 +235,13 @@ export function buildReportScores(points: ReportTestPoint[]): ReportScores {
   )
   const improved = movers.filter((t) => t.deltaPct > 0)
   const pool = improved.length > 0 ? improved : movers
+  // Ties resolve to the most recently tested, because `tests` is already sorted by date descending
+  // and `reduce` keeps the incumbent on a strict `>` — so the result is deterministic between renders.
   const best = pool.reduce<(ScoredTest & { deltaPct: number; previous: number }) | null>(
     (b, t) => (b === null || Math.abs(t.deltaPct) > Math.abs(b.deltaPct) ? t : b),
     null,
   )
+  const direction = best === null ? null : best.deltaPct > 0 ? "improved" : best.deltaPct < 0 ? "declined" : "flat"
 
   return {
     athleteScore,
@@ -243,6 +249,6 @@ export function buildReportScores(points: ReportTestPoint[]): ReportScores {
     strongest: categories[0] ?? null,
     focalPoints,
     tests,
-    biggestMover: best ? { test: best, isDecline: best.deltaPct < 0 } : null,
+    biggestMover: best && direction ? { test: best, direction } : null,
   }
 }
