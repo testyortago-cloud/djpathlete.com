@@ -37,16 +37,16 @@ export const TAKE = "client-take.mp4"
  */
 export const SEGMENTS: { from: number; to: number; note: string }[] = [
   { from: 0.35, to: 8.55, note: "dashboard: Welcome back Jordan, Week 3 of 6, install banner" },
-  { from: 9.77, to: 17.97, note: "workouts, Week 3 of 6, recovery slider dragged" },
-  { from: 22.58, to: 26.18, note: "expand hero: sets/reps/weight prescription" },
-  { from: 33.74, to: 39.74, note: "Darren's demo actually playing (black load skipped)" },
-  { from: 42.08, to: 46.38, note: "upload-recording dialog" },
-  { from: 47.57, to: 51.37, note: "typing 42.5kg over the recommended 40" },
-  { from: 53.99, to: 63.99, note: "Save Workout -> NEW PERSONAL RECORD + confetti" },
-  { from: 65.93, to: 68.13, note: "logged green row" },
-  { from: 72, to: 74.6, note: "Reviewed - view feedback" },
-  { from: 77.71, to: 83.71, note: "progress: Key Lifts chart at 42.5kg" },
-  { from: 86.55, to: 91.15, note: "achievements grid" },
+  { from: 9.8, to: 18, note: "workouts, Week 3 of 6, recovery slider dragged" },
+  { from: 22.23, to: 25.83, note: "expand hero: sets/reps/weight prescription" },
+  { from: 33.43, to: 39.43, note: "Darren's demo actually playing (black load skipped)" },
+  { from: 41.68, to: 45.98, note: "upload-recording dialog" },
+  { from: 47.05, to: 50.85, note: "typing 42.5kg over the recommended 40" },
+  { from: 53.03, to: 63.03, note: "Save Workout -> NEW PERSONAL RECORD + confetti" },
+  { from: 64.91, to: 67.11, note: "logged green row" },
+  { from: 70.92, to: 73.52, note: "Reviewed - view feedback" },
+  { from: 76.61, to: 82.61, note: "progress: Key Lifts chart at 42.5kg" },
+  { from: 85.33, to: 89.93, note: "achievements grid" },
 ]
 
 export const secToFrames = (s: number) => Math.round(s * FPS)

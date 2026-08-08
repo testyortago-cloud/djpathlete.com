@@ -56,7 +56,14 @@ let t0 = 0
 async function captureLoop(page) {
   while (capturing) {
     try {
-      const buf = await page.screenshot({ type: "jpeg", quality: 92 })
+      // quality: 100 is load-bearing, not a nicety. The app draws its card
+      // borders in amber-200/emerald-200 — 1px pale lines whose contrast is
+      // almost entirely CHROMA, which is exactly what 4:2:0 subsampling throws
+      // away. Chrome encodes JPEG at 4:4:4 only at quality 100; at q92 a crisp
+      // 2px border smeared to ~2.7px and its saturation collapsed from 80 to 8.
+      // Measured against a lossless PNG of the same screen: q100 is identical
+      // (2.0px, sat 79) and runs at 16fps vs PNG's 9.7fps.
+      const buf = await page.screenshot({ type: "jpeg", quality: 100 })
       const t = Date.now() - t0
       const file = `f${String(frames.length).padStart(5, "0")}.jpg`
       fs.writeFileSync(path.join(FRAMES, file), buf)

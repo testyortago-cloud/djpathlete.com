@@ -75,7 +75,7 @@ function main() {
   const listPath = path.join(TAKE, "concat.txt")
   const lines = []
   for (let i = 0; i < frames.length; i++) {
-    const next = i + 1 < frames.length ? frames[i + 1].t : frames[i].t + 70
+    const next = i + 1 < frames.length ? frames[i + 1].t : frames[i].t + 90
     lines.push(`file 'frames/${frames[i].file}'`)
     lines.push(`duration ${((next - frames[i].t) / 1000).toFixed(4)}`)
   }
@@ -91,7 +91,15 @@ function main() {
       "-y", "-v", "error",
       "-f", "concat", "-safe", "0", "-i", listPath,
       "-vf", "fps=30",
-      "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+      "-c:v", "libx264", "-preset", "medium", "-crf", "10",
+      // 4:2:0, deliberately. I tried yuv444p to protect the app's pale 1px card
+      // borders and it measurably made them WORSE: the full-range `yuvj444p`
+      // intermediate comes back desaturated through Remotion (border red
+      // 254 -> 237, blue 133 -> 148), washing the colour it was meant to save.
+      // Row-averaged against a lossless screenshot, 4:2:0 reproduces the border
+      // faithfully. Do not "upgrade" this without re-measuring the RENDERED
+      // frame — a single-column saturation check is dominated by sub-pixel
+      // jitter and will tell you the opposite.
       "-pix_fmt", "yuv420p",
       // All-intra: Remotion reads frames out of order across threads, and a
       // sparse GOP makes those reads reconstruct — or fail outright.
