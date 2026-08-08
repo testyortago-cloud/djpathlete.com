@@ -18,9 +18,10 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
   const initials =
     `${data.name.first.trim().charAt(0)}${data.name.last.trim().charAt(0)}`.toUpperCase() || "DJP"
   const subtitle = [data.sport, data.position, data.age ? `Age ${data.age}` : null].filter(Boolean).join(" · ")
+  // Both clauses are singular-aware: a first report is "1 test", not "1 tests".
   const history = [
-    data.testCount > 0 ? `${data.testCount} tests` : null,
-    data.monthsTracked > 0 ? `over ${data.monthsTracked} months` : null,
+    data.testCount > 0 ? `${data.testCount} ${data.testCount === 1 ? "test" : "tests"}` : null,
+    data.monthsTracked > 0 ? `over ${data.monthsTracked} ${data.monthsTracked === 1 ? "month" : "months"}` : null,
   ]
     .filter(Boolean)
     .join(" ")
@@ -59,9 +60,14 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
             {athleteScore !== null && (
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-heading text-sm font-bold uppercase tracking-wide">
+                  {/* A real heading, not a styled span. The document had exactly two
+                      headings after `panels/SectionHeading` was deleted, so heading
+                      navigation skipped straight from the athlete's name to page 2.
+                      Blockification inside the flex row means the visual result is
+                      unchanged, and `@layer base` only sets font-family on h1-h4. */}
+                  <h2 className="font-heading text-sm font-bold uppercase tracking-wide">
                     Athlete Performance Index
-                  </span>
+                  </h2>
                   <span className="rounded-full border border-border px-1.5 py-0.5 font-mono text-[10px] tracking-wider text-muted-foreground">
                     API
                   </span>
@@ -97,11 +103,22 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
                       ? "Since last test"
                       : "Biggest improvement since last test"}
                 </p>
-                <p
-                  className="mt-2 font-heading text-5xl font-bold leading-none text-accent"
-                  aria-label={`${biggestMover.direction === "declined" ? "Declined" : biggestMover.direction === "flat" ? "No change," : "Improved"} ${Math.abs(biggestMover.test.deltaPct)} percent`}
-                >
-                  {biggestMover.test.deltaPct > 0 ? "↑" : biggestMover.test.deltaPct < 0 ? "↓" : "="}{" "}
+                {/* The direction is carried by a visually-hidden span, NOT aria-label:
+                    ARIA 1.2 prohibits naming role="paragraph", so assistive tech drops
+                    the label entirely and a screen-reader user on a declined report
+                    hears a bare "14 percent". The arrow glyph is hidden from AT so the
+                    word is not doubled up with "up arrow". */}
+                <p className="mt-2 font-heading text-5xl font-bold leading-none text-accent">
+                  <span className="sr-only">
+                    {biggestMover.direction === "declined"
+                      ? "Declined "
+                      : biggestMover.direction === "flat"
+                        ? "No change, "
+                        : "Improved "}
+                  </span>
+                  <span aria-hidden="true">
+                    {biggestMover.test.deltaPct > 0 ? "↑" : biggestMover.test.deltaPct < 0 ? "↓" : "="}{" "}
+                  </span>
                   {Math.abs(biggestMover.test.deltaPct)}%
                 </p>
                 <p className="mt-3 font-heading text-base font-bold">{biggestMover.test.label}</p>
@@ -128,10 +145,12 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
 
       {focalPoints.length > 0 && (
         <ReportBand tone="alt">
-          <p className="djp-eyebrow text-muted-foreground">Focal points — where the next block goes</p>
+          {/* h2 with the eyebrow's own styling: `.djp-eyebrow` is unlayered, so its
+              mono font/size/tracking still beats `@layer base`'s h2 font-family. */}
+          <h2 className="djp-eyebrow text-muted-foreground">Focal points — where the next block goes</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             {focalPoints.map((fp) => (
-              <FocalPointCard key={fp.category} fp={fp} />
+              <FocalPointCard key={fp.category} fp={fp} isAlsoHero={fp.culprit.key === biggestMover?.test.key} />
             ))}
           </div>
         </ReportBand>

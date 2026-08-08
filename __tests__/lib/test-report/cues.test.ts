@@ -20,7 +20,6 @@ function fp(over: Partial<FocalPoint> = {}): FocalPoint {
       score: 30,
       deltaPct: null,
       previous: null,
-      targets: null,
       points: [2.1],
     },
     ...over,

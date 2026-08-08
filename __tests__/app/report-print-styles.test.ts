@@ -85,8 +85,23 @@ describe("report banding", () => {
     // Light scope overrides to --foreground (dark ink there) because its band goes unpainted.
     expect(print).toMatch(/\.report-light\s+\.report-band-green\s*{[^}]*color:\s*var\(--foreground\)/)
     expect(print).toMatch(/\.report-light\s+\.report-band-green\s+\.djp-eyebrow[^}]*{[^}]*color:\s*var\(--muted-foreground\)/)
+    // The dark scope takes no print override, so its ink has to be right on SCREEN
+    // too: --primary-foreground is dark in .athlete-arena and light in .report-light,
+    // which is correct on the green band in either scope, painted or not.
+    expect(css).toMatch(/\.test-report\s+\.report-band-green\s+\.djp-eyebrow\s*{[^}]*color:\s*var\(--primary-foreground\)/)
   })
 
+  it("re-scopes the eyebrow inside the report, because .djp-eyebrow is UNLAYERED", () => {
+    // Tailwind v4 emits utilities into @layer utilities, and an unlayered
+    // declaration beats every layer regardless of specificity — so
+    // `.djp-eyebrow { color: var(--accent) }` silently voids `text-muted-foreground`
+    // on all five report eyebrows, and measures 1.67:1 on .athlete-arena's green band.
+    // Fixed with report-scoped rules, NOT by editing the app-wide class.
+    expect(css).toMatch(/\.test-report\s+\.djp-eyebrow\.text-muted-foreground\s*{[^}]*color:\s*var\(--muted-foreground\)/)
+    expect(screenBlock(".djp-eyebrow"), ".djp-eyebrow itself is app-wide and out of scope").toMatch(
+      /color:\s*var\(--accent\)/,
+    )
+  })
 
   it("un-suppresses ::details-content so a collapsed disclosure still prints", () => {
     // Overriding `display` on the child does NOT reveal a closed <details> in

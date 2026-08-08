@@ -699,6 +699,22 @@
   background: var(--surface);
 }
 
+/* `.djp-eyebrow` is unlayered, so it outranks Tailwind's @layer utilities and
+   silently voids `text-muted-foreground` on every eyebrow. These report-scoped
+   rules restore the authored intent without touching the app-wide class. */
+.test-report .djp-eyebrow.text-muted-foreground {
+  color: var(--muted-foreground);
+}
+
+/* On the green band the class's `--accent` is 3.59:1 in .report-light and 1.67:1
+   in .athlete-arena, whose --primary is a LIGHT ice-azure. --primary-foreground is
+   the band's own ink in both scopes: 13.1:1 / 13.24:1 at full opacity, 8.94:1 /
+   8.31:1 at the 0.8 the masthead asks for. */
+.test-report .report-band-green .djp-eyebrow {
+  color: var(--primary-foreground);
+  opacity: 0.8;
+}
+
 @media print {
   /* The track is drawn with `background`, which Chrome's Save-as-PDF omits by
      default — the same reason the green bands print as rules. Borders survive,

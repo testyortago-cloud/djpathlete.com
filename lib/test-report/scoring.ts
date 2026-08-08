@@ -1,11 +1,4 @@
-import {
-  normalize,
-  testDirection,
-  referenceTargets,
-  RADAR_CATEGORIES,
-  type RadarCategory,
-  type ReferenceTargets,
-} from "@/lib/coach-intel/test-normalization"
+import { normalize, testDirection, RADAR_CATEGORIES, type RadarCategory } from "@/lib/coach-intel/test-normalization"
 import { TEST_TYPE_LABELS } from "@/lib/validators/performance-test"
 import type { TestType } from "@/types/database"
 
@@ -64,11 +57,6 @@ export interface ScoredTest {
   deltaPct: number | null
   /** The result before `latest`, for the "previous → now" comparison. null on a first test. */
   previous: number | null
-  /**
-   * Coaching standards to compare against. null when the test has no reference
-   * range, or is bodyweight-relative and no body weight was recorded.
-   */
-  targets: ReferenceTargets | null
   /** Chronological values, oldest first. */
   points: number[]
 }
@@ -77,7 +65,6 @@ export interface CategoryScore {
   category: RadarCategory
   score: number
   band: Band
-  testLabels: string[]
 }
 
 /**
@@ -194,7 +181,6 @@ export function buildReportScores(points: ReportTestPoint[]): ReportScores {
       score: latest.testType === "custom" ? null : normalize(latest.testType, latest.resultValue, latest.bodyWeightKg),
       deltaPct: deltaFor(sorted),
       previous: sorted.length > 1 ? sorted[sorted.length - 2].resultValue : null,
-      targets: latest.testType === "custom" ? null : referenceTargets(latest.testType, latest.bodyWeightKg),
       points: sorted.map((t) => t.resultValue),
     })
   }
@@ -207,7 +193,7 @@ export function buildReportScores(points: ReportTestPoint[]): ReportScores {
     if (members.length === 0) continue
     membersByCategory.set(category, members)
     const score = Math.round(members.reduce((sum, t) => sum + (t.score as number), 0) / members.length)
-    categories.push({ category, score, band: bandFor(score), testLabels: members.map((t) => t.label) })
+    categories.push({ category, score, band: bandFor(score) })
   }
   // Strongest first; CATEGORY_ORDER breaks ties because Array#sort is stable.
   categories.sort((a, b) => b.score - a.score)

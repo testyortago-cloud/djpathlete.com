@@ -73,6 +73,39 @@ describe("ReportPageOne", () => {
     expect(screen.queryByText(/percentile/i)).not.toBeInTheDocument()
   })
 
+  it("announces the mover's DIRECTION in text, not via aria-label on a paragraph", () => {
+    // ARIA 1.2 prohibits naming role="paragraph", so an aria-label there is dropped
+    // by assistive tech and flagged by validators — a screen-reader user on a
+    // declined report heard a bare "14 percent", the most consequential fact on
+    // the page missing its sign.
+    const declined: TestReportData = {
+      ...base,
+      tests: [
+        { testType: "cmj", resultValue: 50, resultUnit: "cm", customName: null, bodyWeightKg: 78, testDate: "2026-01-01", isPr: false },
+        { testType: "cmj", resultValue: 40, resultUnit: "cm", customName: null, bodyWeightKg: 78, testDate: "2026-06-01", isPr: false },
+        { testType: "sit_reach", resultValue: 12, resultUnit: "cm", customName: null, bodyWeightKg: null, testDate: "2026-06-01", isPr: false },
+      ],
+    }
+    const scores = buildReportScores(declined.tests)
+    expect(scores.biggestMover?.direction, "fixture must produce a decline").toBe("declined")
+
+    const { container } = render(<ReportPageOne data={declined} scores={scores} />)
+    // No <p> may carry the direction as an aria-label. (ScoreTrack's aria-label is
+    // legitimate — it sits on role="img", which ARIA does allow to be named.)
+    expect(
+      [...container.querySelectorAll("p[aria-label]")],
+      "the direction is back on an aria-label that ARIA tells AT to ignore",
+    ).toHaveLength(0)
+    const hidden = container.querySelector(".sr-only")
+    expect(hidden, "no visually-hidden direction word rendered").toBeTruthy()
+    expect(hidden!.textContent).toMatch(/declined/i)
+  })
+
+  it("says '1 test' on a first report, not '1 tests'", () => {
+    render(<ReportPageOne data={{ ...base, testCount: 1, monthsTracked: 1, tests: [] }} scores={buildReportScores([])} />)
+    expect(screen.getByText(/1 test over 1 month\b/)).toBeInTheDocument()
+  })
+
   it("puts the coaching cue on its own line, not run-on with its label", () => {
     // `.djp-eyebrow` is display:inline-flex in globals.css and beats Tailwind's
     // `block`, so a label nested inside the cue paragraph shares its line box.

@@ -1,6 +1,6 @@
 import type { PublicAssessment } from "@/lib/profile-share/data"
 import type { ReportScores } from "@/lib/test-report/scoring"
-import { formatDate } from "@/lib/test-report/format"
+import { num, formatDate } from "@/lib/test-report/format"
 import { ReportPage, ReportBand } from "./panels/ReportPage"
 import { TestRow } from "./panels/TestRow"
 
@@ -15,8 +15,10 @@ function Battery({ a }: { a: PublicAssessment }) {
         {a.items.map((i) => (
           <div key={i.name} className="flex items-baseline justify-between gap-2 border-b border-border pb-1">
             <dt className="text-xs text-muted-foreground">{i.name}</dt>
+            {/* Through num() like every other figure in the report, so 30.00 reads
+                30. `value` is nullable, and a null stays blank rather than "NaN". */}
             <dd className="font-mono text-xs">
-              {i.value}
+              {typeof i.value === "number" ? num(i.value) : i.value}
               {i.unit ? ` ${i.unit}` : ""}
             </dd>
           </div>
@@ -41,7 +43,13 @@ export function ReportPageTwo({
   assessments: PublicAssessment[]
 }) {
   const { tests, biggestMover } = scores
-  const [latest, ...older] = assessments
+  // Sort by the date the report DISPLAYS, not the array order. lib/db orders by
+  // `created_at` while lib/profile-share surfaces `updated_at`, so a January
+  // assessment edited in August arrives behind a June one — and index 0 is what
+  // renders expanded. Unsorted, the newest battery hides behind a disclosure
+  // labelled "1 earlier assessment", which is a false claim on the page.
+  const sorted = [...assessments].sort((a, b) => b.date.localeCompare(a.date))
+  const [latest, ...older] = sorted
 
   return (
     <ReportPage>

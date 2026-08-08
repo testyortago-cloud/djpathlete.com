@@ -11,6 +11,18 @@ import { Sparkline } from "@/components/shared/Sparkline"
  * history, which the score track cannot show.
  */
 export function TestRow({ test, highlight = false }: { test: ScoredTest; highlight?: boolean }) {
+  // Three-way on the SIGN, not `>= 0`. A test that did not move is not an
+  // improvement: `deltaPct === 0` was rendering "↑ 0%" in success green here while
+  // page 1 correctly called the same number "held steady".
+  const delta = test.deltaPct
+  const deltaTone =
+    delta === null || delta === 0
+      ? "text-muted-foreground"
+      : delta > 0
+        ? "text-[var(--success)]"
+        : "text-[var(--error)]"
+  const deltaText = delta === null ? "—" : `${delta > 0 ? "↑" : delta < 0 ? "↓" : "="} ${Math.abs(delta)}%`
+
   return (
     <div className="grid grid-cols-2 items-center gap-x-4 gap-y-2 border-b border-border py-3 last:border-b-0 md:grid-cols-[13rem_7rem_1fr_5rem_4rem]">
       <div>
@@ -40,17 +52,7 @@ export function TestRow({ test, highlight = false }: { test: ScoredTest; highlig
         )}
       </div>
 
-      <p
-        className={`text-right font-mono text-xs ${
-          test.deltaPct === null
-            ? "text-muted-foreground"
-            : test.deltaPct >= 0
-              ? "text-[var(--success)]"
-              : "text-[var(--error)]"
-        }`}
-      >
-        {test.deltaPct === null ? "—" : `${test.deltaPct >= 0 ? "↑" : "↓"} ${Math.abs(test.deltaPct)}%`}
-      </p>
+      <p className={`text-right font-mono text-xs ${deltaTone}`}>{deltaText}</p>
 
       <div className="justify-self-end text-primary">
         <Sparkline points={test.points} />
