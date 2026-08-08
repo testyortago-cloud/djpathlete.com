@@ -10,6 +10,12 @@
 // SEGMENTS come from the recorder's measured timeline.json, not from eyeballing
 // frames: page-load time varies run to run (one take moved 79s -> 85s), so
 // hand-read boundaries rot on every re-record.
+//
+// The take is TRUE 1080x1920 as of 2026-08-08. It used to be 540x960 upscaled
+// 2x here, which is why the old cut looked soft: Playwright's video recorder
+// captures the layout viewport in CSS pixels, and the phone layout only renders
+// below the 640px `sm` breakpoint. `scripts/record-client-promo.mjs` captures
+// 2x frames instead and documents every route that does NOT work.
 
 export const FPS = 30
 export const TAKE = "client-take.mp4"
@@ -17,23 +23,30 @@ export const TAKE = "client-take.mp4"
 /**
  * Usable stretches of the take, in SOURCE seconds.
  *
- * The gaps are deliberate. The dev server compiles routes on demand, so the take
- * contains loading skeletons (11.7-17.0 Resume->Workouts, 68.5-71.0 Progress,
- * 78.0-80.0 Achievements). The Watch dialog also shows a BLACK player for ~6s
- * while the YouTube iframe loads (29.3-36.0) -- only the confirmed-playing
- * window is used.
+ * GENERATED -- do not hand-edit. `scripts/prepare-client-take.mjs` derives these
+ * from the recorder's measured `timeline.json` and prints the block to paste.
+ *
+ * The gaps are the transitions between beats plus one deliberate exclusion: the
+ * Watch dialog shows a BLACK player for ~6s while the YouTube iframe loads, so
+ * only the confirmed-playing window is used.
+ *
+ * The DURATIONS are load-bearing and sum to 59.5s. CAPTIONS below are timed
+ * against that total, so a segment that changes length silently moves every
+ * later caption onto the wrong footage. prepare-client-take.mjs asserts both the
+ * per-segment durations and the total, and fails rather than shortening a cut.
  */
 export const SEGMENTS: { from: number; to: number; note: string }[] = [
-  { from: 3.5, to: 11.7, note: "dashboard: Welcome back Jordan, Week 3 of 6, install banner" },
-  { from: 17.1, to: 25.3, note: "workouts, Week 3 of 6, recovery slider dragged" },
-  { from: 25.9, to: 29.5, note: "expand hero: sets/reps/weight prescription" },
-  { from: 36.2, to: 42.2, note: "Darren's demo actually playing (black load skipped)" },
-  { from: 44.0, to: 48.3, note: "upload-recording dialog" },
-  { from: 48.7, to: 52.5, note: "typing 42.5kg over the recommended 40" },
-  { from: 52.5, to: 62.5, note: "Save Workout -> NEW PERSONAL RECORD + confetti" },
-  { from: 63.6, to: 68.4, note: "logged green row + Reviewed - view feedback" },
-  { from: 72.2, to: 78.2, note: "progress: Key Lifts chart at 42.5kg" },
-  { from: 80.2, to: 84.8, note: "achievements grid" },
+  { from: 0.35, to: 8.55, note: "dashboard: Welcome back Jordan, Week 3 of 6, install banner" },
+  { from: 9.77, to: 17.97, note: "workouts, Week 3 of 6, recovery slider dragged" },
+  { from: 22.58, to: 26.18, note: "expand hero: sets/reps/weight prescription" },
+  { from: 33.74, to: 39.74, note: "Darren's demo actually playing (black load skipped)" },
+  { from: 42.08, to: 46.38, note: "upload-recording dialog" },
+  { from: 47.57, to: 51.37, note: "typing 42.5kg over the recommended 40" },
+  { from: 53.99, to: 63.99, note: "Save Workout -> NEW PERSONAL RECORD + confetti" },
+  { from: 65.93, to: 68.13, note: "logged green row" },
+  { from: 72, to: 74.6, note: "Reviewed - view feedback" },
+  { from: 77.71, to: 83.71, note: "progress: Key Lifts chart at 42.5kg" },
+  { from: 86.55, to: 91.15, note: "achievements grid" },
 ]
 
 export const secToFrames = (s: number) => Math.round(s * FPS)
