@@ -534,6 +534,12 @@
   --input: oklch(0.22 0.02 226 / 0.14);
   --ring: oklch(0.62 0.1 55);
   --surface: oklch(0.97 0.006 85);
+  /* :root's --success is 4.41:1 on this scope's --background — under the 4.5:1 AA
+     floor for TestRow's 12px delta text. Same hue (145), darkened until it clears:
+     5.00:1 on --background, 5.15:1 on --card. --error is left at :root's value,
+     which already measures 5.28:1 here. Computed via OKLCH -> linear sRGB -> WCAG
+     relative luminance, not eyeballed. */
+  --success: oklch(0.52 0.16 145);
   print-color-adjust: exact;
   -webkit-print-color-adjust: exact;
 }

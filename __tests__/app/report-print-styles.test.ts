@@ -122,4 +122,16 @@ describe("report banding", () => {
     expect(arena, "--error not redefined for the dark scope").toContain("--error:")
   })
 
+  it("also fixes --success in the LIGHT scope, which the dark-scope pass skipped", () => {
+    // :root's --success oklch(0.55 0.16 145) measures 4.41:1 on .report-light's
+    // --background — under AA for TestRow's 12px delta text, on the scope the
+    // report actually defaults to. --error is left alone: it already reads 5.28:1
+    // here. Computed OKLCH -> linear sRGB -> WCAG luminance; the chosen value is
+    // 5.00:1 on --background, 5.15:1 on --card.
+    const light = css.slice(css.indexOf(".report-light {"), css.indexOf("}", css.indexOf(".report-light {")))
+    expect(light, "--success not redefined for the light scope").toMatch(/^\s*--success\s*:/m)
+    expect(light, "--success must be DARKER than :root's 0.55 to gain contrast on a light ground").toMatch(
+      /--success:\s*oklch\(0\.5[0-4]\s/,
+    )
+  })
 })
