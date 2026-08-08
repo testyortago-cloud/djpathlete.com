@@ -315,9 +315,14 @@ spec, not a patch.
 
 - Render from a **real client's tests**, not the fabricated sample in the draft. His
   first instinct will be to check whether the figures are plausible for a real athlete.
-- Migration `00200_client_report_photo.sql` is **still not applied to prod**. Until it
-  is, the coach photo upload silently no-ops and the masthead falls back to the
-  monogram. Apply it or the portrait decision cannot be evaluated.
+- ~~Migration `00200_client_report_photo.sql` is still not applied to prod.~~
+  **Corrected 2026-08-08: it IS applied** — registered in prod as
+  `20260806052421 / client_report_photo`, and `client_profiles.report_photo_url`
+  exists. This was carried as a blocker in the spec and in memory for two sessions
+  on the strength of a note nobody re-checked. The photo upload works; if a masthead
+  shows a monogram it is because no photo has been uploaded for that client, not
+  because the column is missing. **Lesson: verify a stale blocker against the live
+  system before repeating it.**
 - The 2026-08-06 report is committed on `main` but **not pushed**. This work lands on
   top of unpushed commits.
 
