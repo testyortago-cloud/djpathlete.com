@@ -700,33 +700,78 @@
 }
 
 @media print {
+  /* The track is drawn with `background`, which Chrome's Save-as-PDF omits by
+     default — the same reason the green bands print as rules. Borders survive,
+     so the bar is rebuilt from them: the rail and the fill each become an 8px
+     bottom border, and the element collapses to zero height so the two overlay. */
+  .test-report .score-track {
+    background: transparent !important;
+    height: 0 !important;
+    border-bottom: 8px solid var(--border) !important;
+    border-radius: 999px;
+  }
+
+  .test-report .score-track-fill {
+    background: transparent !important;
+    height: 0 !important;
+    top: 0 !important;
+    bottom: auto !important;
+    border-bottom: 8px solid var(--primary) !important;
+    border-radius: 999px;
+  }
+
+  /* Collapsing the track also collapses the PADDING box the absolute children
+     resolve against, so `top: 50%` and the tick's -3px inset both land on the
+     TOP edge of the border rather than the middle of the bar. Both are re-anchored
+     to the 0-8px band the border actually occupies. Measured in Chromium, not read. */
+  .test-report .score-track-tick {
+    background: transparent !important;
+    border-left: 1px solid var(--foreground) !important;
+    top: -3px !important;
+    bottom: auto !important;
+    height: 14px !important;
+  }
+
+  /* `.print-document * { transform: none !important }` above kills the dot's
+     centring translate — its top-left corner lands where its centre belongs,
+     5.5px off on an 8px track, on all 13 tracks. `.test-report .score-track-dot`
+     is (0,2,0) against that rule's (0,1,0), so it wins even against !important. */
+  .test-report .score-track-dot {
+    background: transparent !important;
+    border-color: var(--primary) !important;
+    top: 4px !important;
+    transform: translate(-50%, -50%) !important;
+  }
+
+  .test-report .score-track[data-tone="accent"] .score-track-fill {
+    border-bottom-color: var(--accent) !important;
+  }
+
+  .test-report .score-track[data-tone="accent"] .score-track-dot {
+    border-color: var(--accent) !important;
+  }
+
   /* Chrome's Save-as-PDF has Background graphics OFF by default, so the green fill
      is not guaranteed to render. On paper the banding rhythm is carried by rules
-     instead, which also saves ink on a document meant to be printed. */
-  .test-report .report-band-green {
+     instead, which also saves ink on a document meant to be printed.
+
+     LIGHT SCOPE ONLY, and that scoping is the whole point. .report-light's
+     --primary is dark and its --primary-foreground near-white, so a dropped fill
+     leaves white-on-white — it needs the override. .athlete-arena is the exact
+     inverse: --primary is LIGHT (oklch 0.87) and --primary-foreground DARK
+     (oklch 0.16), so BOTH print paths already work there — 13.24:1 on the painted
+     band, 19.35:1 on bare paper. Forcing it transparent there put
+     --primary-foreground ink on a --background page, and those two tokens are
+     byte-identical: 1.00:1, i.e. the athlete's name printed invisible. */
+  .report-light .report-band-green {
     background: transparent !important;
     border-top: 2px solid var(--primary) !important;
-  }
-
-  /* Ink MUST be chosen per scope. .report-light and .athlete-arena define the same
-     token names with opposite polarity, so a scope-blind var(--foreground) prints
-     near-white on unpainted paper for anyone who toggled to dark before printing. */
-  .report-light .report-band-green {
     color: var(--foreground) !important;
-  }
-
-  .athlete-arena .report-band-green {
-    color: var(--primary-foreground) !important;
   }
 
   .report-light .report-band-green .djp-eyebrow,
   .report-light .report-band-green .report-band-quiet {
     color: var(--muted-foreground) !important;
-  }
-
-  .athlete-arena .report-band-green .djp-eyebrow,
-  .athlete-arena .report-band-green .report-band-quiet {
-    color: var(--primary-foreground) !important;
   }
 
   /* A collapsed <details> silently drops earlier assessments from the PDF.

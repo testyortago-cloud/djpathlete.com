@@ -32,6 +32,12 @@ function printBlockContaining(selector: string): string {
   return hit[0]
 }
 
+/** CSS with `/* … *​/` comments removed — a `not.toMatch` on a selector must not be
+    satisfied (or defeated) by prose in a comment that discusses that selector. */
+function stripComments(s: string): string {
+  return s.replace(/\/\*[\s\S]*?\*\//g, "")
+}
+
 /** A screen-mode rule block — located by first occurrence, used for screen-only checks. */
 function screenBlock(selector: string): string {
   const i = css.indexOf(selector)
@@ -49,11 +55,26 @@ describe("report banding", () => {
     expect(printBlockContaining(".report-band-green")).not.toMatch(/#[0-9a-fA-F]{3,6}/)
   })
 
-  it("green bands do NOT rely on a printed background for legibility", () => {
-    // Chrome's Save-as-PDF defaults to Background graphics OFF. If the green fill
-    // is dropped, light-on-green text becomes white-on-white and vanishes.
+  it("green bands in the LIGHT scope do NOT rely on a printed background", () => {
+    // Chrome's Save-as-PDF defaults to Background graphics OFF. .report-light's
+    // --primary is dark and its --primary-foreground near-white, so a dropped fill
+    // leaves white-on-white and the athlete's name vanishes.
     const printBlock = printBlockContaining(".report-band-green")
-    expect(printBlock).toMatch(/background:\s*transparent/)
+    expect(printBlock).toMatch(/\.report-light\s+\.report-band-green\s*{[^}]*background:\s*transparent/)
+  })
+
+  it("does NOT force the band transparent in the dark scope — that prints the name invisible", () => {
+    // The scoping is the fix, not an accident. In .athlete-arena --primary is LIGHT
+    // (oklch 0.87) and --primary-foreground DARK (oklch 0.16), so BOTH print paths
+    // already work: 13.24:1 on the painted band, 19.35:1 on bare paper. Forcing the
+    // band transparent there puts --primary-foreground ink on a --background page,
+    // and those two tokens are byte-identical — 1.00:1, measured, not estimated.
+    // A scope-blind `.test-report` selector reintroduces exactly that.
+    const printBlock = stripComments(printBlockContaining(".report-band-green"))
+    expect(printBlock, "the dark scope needs no band print override at all").not.toMatch(/\.athlete-arena/)
+    expect(printBlock, "a .test-report selector fires in BOTH scopes").not.toMatch(
+      /\.test-report\s+\.report-band-green/,
+    )
   })
 
   it("picks print ink per theme scope, never scope-blind", () => {
@@ -61,14 +82,11 @@ describe("report banding", () => {
     // polarity. A single `color: var(--foreground)` is dark ink in one scope and
     // near-white in the other — and near-white on unpainted paper is invisible.
     const print = printBlockContaining(".report-band-green")
-    // Light scope must use --foreground (dark ink in light scope)
+    // Light scope overrides to --foreground (dark ink there) because its band goes unpainted.
     expect(print).toMatch(/\.report-light\s+\.report-band-green\s*{[^}]*color:\s*var\(--foreground\)/)
-    // Dark scope must use --primary-foreground (dark ink in dark scope)
-    expect(print).toMatch(/\.athlete-arena\s+\.report-band-green\s*{[^}]*color:\s*var\(--primary-foreground\)/)
-    // Same for eyebrows/quiet text — light scope gets muted-foreground, dark scope gets dark ink
     expect(print).toMatch(/\.report-light\s+\.report-band-green\s+\.djp-eyebrow[^}]*{[^}]*color:\s*var\(--muted-foreground\)/)
-    expect(print).toMatch(/\.athlete-arena\s+\.report-band-green\s+\.djp-eyebrow[^}]*{[^}]*color:\s*var\(--primary-foreground\)/)
   })
+
 
   it("un-suppresses ::details-content so a collapsed disclosure still prints", () => {
     // Overriding `display` on the child does NOT reveal a closed <details> in
@@ -88,4 +106,5 @@ describe("report banding", () => {
     expect(arena, "--success not redefined for the dark scope").toContain("--success:")
     expect(arena, "--error not redefined for the dark scope").toContain("--error:")
   })
+
 })
