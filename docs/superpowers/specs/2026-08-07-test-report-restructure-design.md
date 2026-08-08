@@ -116,7 +116,11 @@ Tracked as their own specs; this one must not grow to include them.
 - **Spec B — Coach commentary.** Darren's own words on the report. This spec
   reserves the slot and renders nothing when empty.
 - **Spec C — Limb vs limb.** `performance_tests` stores one `result_value`; L/R
-  needs a schema change. `RangeBar` accepts `left`/`right` today but nothing feeds it.
+  needs a schema change. **Note for whoever writes Spec C:** an earlier draft of this
+  section promised a head start — that `RangeBar` already accepted `left`/`right`
+  props. **That component was deleted by this branch.** The head start no longer
+  exists; L/R rendering will be built on `ScoreTrack`
+  (`components/public/report/panels/ScoreTrack.tsx`) from scratch.
 - **Spec D — Editable reference ranges.** The 17 ranges in
   `lib/coach-intel/test-normalization.ts` stay hardcoded here.
 
@@ -175,7 +179,12 @@ export interface FocalPoint {
 export interface BiggestMover {
   test: ScoredTest & { deltaPct: number; previous: number }
   /** True only when NO test improved and this is the least-bad result. */
-  isDecline: boolean
+  /**
+   * Three states, not a boolean. Amended during implementation: when every test's
+   * change rounds to zero the mover is neither an improvement nor a decline, and a
+   * page keying off a boolean printed "Biggest improvement" above "0%".
+   */
+  direction: "improved" | "flat" | "declined"
 }
 ```
 
@@ -270,6 +279,37 @@ must fail if the defect returns.
   or nothing catches its removal.
 - E2E print snapshot is **not** added — the existing suite has no print-rendering
   harness, and building one is disproportionate to this change.
+
+## KNOWN ISSUE, NOT FIXED — dark theme + "Background graphics" OFF prints an invisible page
+
+**Severity: high. Pre-existing, deliberately not fixed in this branch, and it must not
+be archived as a footnote.**
+
+`app/globals.css` (the `.athlete-arena.print-document` rule, introduced well before
+this work in `3cbcbe3b`) deliberately keeps the dark presentation in the PDF, so the
+dark page ground is painted rather than flipped to white. When Chrome's **Background
+graphics** setting is off — which is its **default** — that ground is not painted, and
+near-white body text lands on white paper at roughly **1.09:1**. The whole body of the
+report is invisible.
+
+Reachability: the viewer must deliberately toggle to dark before printing. The default
+light path is unaffected and verified legible with backgrounds both on and off.
+
+It was left alone because fixing it correctly means choosing between three real
+options, each with blast radius on the admin Arena card, which shares the scope and is
+separately shared as a PDF:
+
+1. **Force the light scope in print regardless of the toggle.** Simplest and safest for
+   this document — it is print-first and light is already the print default — but it
+   silently overrides a deliberate earlier decision to ship dark PDFs.
+2. **Flip only the token values under `@media print` in the dark scope**, keeping the
+   dark look on screen. Preserves both intents; more CSS to maintain.
+3. **Leave it and document it in the UI** — e.g. the Save-PDF control warns when the
+   dark theme is active.
+
+This is the same failure class as the masthead bug this branch fixed (near-invisible
+ink), at a larger blast radius. Whoever picks it up should treat it as its own small
+spec, not a patch.
 
 ## Before this is shown to Darren
 
