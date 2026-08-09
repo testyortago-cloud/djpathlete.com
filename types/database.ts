@@ -3094,3 +3094,71 @@ export interface ConversationWithClient extends Conversation {
   }
   unread_count: number
 }
+
+// ---------------------------------------------------------------------------
+// Funnel builder (00202)
+// ---------------------------------------------------------------------------
+
+export type FunnelStatus = "draft" | "published" | "archived"
+
+/** A campaign funnel. Public pages live at /go/<slug>[/<step slug>]. */
+export interface Funnel {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  status: FunnelStatus
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * A page within a funnel. `project_data` is the GrapesJS DRAFT — the public
+ * route never reads it, only the row referenced by `published_version_id`.
+ */
+export interface FunnelStep {
+  id: string
+  funnel_id: string
+  slug: string
+  name: string
+  position: number
+  is_entry: boolean
+  seo_title: string | null
+  seo_description: string | null
+  og_image_url: string | null
+  noindex: boolean
+  project_data: unknown | null
+  published_version_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** An immutable published snapshot. Rollback = repointing published_version_id. */
+export interface FunnelStepVersion {
+  id: string
+  step_id: string
+  version: number
+  /** Compiled FunnelNode tree — see lib/funnels/compile/types.ts. */
+  nodes: unknown
+  css: string
+  project_data: unknown | null
+  published_at: string
+  published_by: string | null
+}
+
+export interface FunnelSubmission {
+  id: string
+  funnel_id: string
+  step_id: string
+  form_key: string
+  email: string | null
+  name: string | null
+  phone: string | null
+  payload: Record<string, unknown>
+  attribution_session_id: string | null
+  ip_address: string | null
+  user_agent: string | null
+  lead_user_id: string | null
+  created_at: string
+}

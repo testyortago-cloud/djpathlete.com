@@ -44,14 +44,27 @@ export function scopeCss(css: string, rootId: string = FUNNEL_ROOT_ID): string {
     rule.selectors = rule.selectors.map((selector) => scopeSelector(selector, prefix))
   })
 
-  return root.toString()
+  return escapeForStyleTag(root.toString())
+}
+
+/**
+ * The public route injects this string into a <style> tag. A closing tag hidden
+ * inside a CSS string value (content: "</style><script>...") would end the
+ * element early and escape into markup. `<\/style` is a valid CSS escape and
+ * renders identically.
+ */
+function escapeForStyleTag(css: string): string {
+  return css.replace(/<\/style/gi, "<\\/style")
 }
 
 function isInsideKeyframes(rule: Rule): boolean {
-  let parent = rule.parent
-  while (parent) {
-    if (parent.type === "atrule" && KEYFRAME_AT_RULE.test((parent as AtRule).name)) return true
-    parent = parent.parent
+  // Walked structurally: postcss types the parent chain as
+  // Container | Document | undefined, which does not narrow cleanly.
+  let parent: unknown = rule.parent
+  while (parent && typeof parent === "object") {
+    const node = parent as { type?: string; name?: string; parent?: unknown }
+    if (node.type === "atrule" && KEYFRAME_AT_RULE.test(node.name ?? "")) return true
+    parent = node.parent
   }
   return false
 }

@@ -95,18 +95,29 @@ export const eventIslandSchema = z.object({
 
 export const bookingIslandSchema = z.object({
   label: z.string().min(1).max(60).optional().default("Book a call"),
-  /** Optional pre-selected booking type; null lets the visitor choose. */
-  bookingType: z.string().max(60).nullable().optional(),
+  /**
+   * Where the CTA goes. There is no public booking widget in this app to embed
+   * — enquiries run through /contact — so this island is a routed call-to-action
+   * rather than an inline calendar.
+   */
+  href: z
+    .string()
+    .max(300)
+    .regex(/^(\/|https:\/\/)/, "Must be a site path or an https URL")
+    .optional()
+    .default("/contact"),
 })
 
 export const testimonialsIslandSchema = z.object({
   limit: z.number().int().min(1).max(12).optional().default(3),
-  tag: z.string().max(60).nullable().optional(),
+  /** Mirrors testimonials.is_featured — the table has no free-text tag column. */
+  featuredOnly: z.boolean().optional().default(false),
 })
 
 export const faqIslandSchema = z.object({
+  /** faqs rows are scoped by page_key, so the owner picks which set to show. */
+  pageKey: z.string().min(1).max(60),
   limit: z.number().int().min(1).max(20).optional().default(6),
-  category: z.string().max(60).nullable().optional(),
 })
 
 // ---------------------------------------------------------------------------
@@ -143,7 +154,8 @@ export const ISLANDS: Record<IslandName, IslandDef> = {
   checkout: {
     name: "checkout",
     label: "Buy button",
-    description: "Starts a Stripe Checkout session for a program or session pack.",
+    description:
+      "Routes the visitor into the existing purchase flow for a program or session pack.",
     schema: checkoutIslandSchema,
     defaultProps: { productKind: "program", productId: "", label: "Buy now" },
   },
@@ -157,23 +169,23 @@ export const ISLANDS: Record<IslandName, IslandDef> = {
   booking: {
     name: "booking",
     label: "Book a call",
-    description: "Drops the booking widget so an application funnel can end in a booked call.",
+    description: "A call-to-action that sends an application funnel on to the enquiry flow.",
     schema: bookingIslandSchema,
-    defaultProps: { label: "Book a call", bookingType: null },
+    defaultProps: { label: "Book a call", href: "/contact" },
   },
   testimonials: {
     name: "testimonials",
     label: "Testimonials",
     description: "Pulls live from the testimonials table, so pages stay current without re-editing.",
     schema: testimonialsIslandSchema,
-    defaultProps: { limit: 3, tag: null },
+    defaultProps: { limit: 3, featuredOnly: false },
   },
   faq: {
     name: "faq",
     label: "FAQ",
-    description: "Pulls live from the faqs table.",
+    description: "Pulls live from the faqs table for a chosen page key.",
     schema: faqIslandSchema,
-    defaultProps: { limit: 6, category: null },
+    defaultProps: { pageKey: "", limit: 6 },
   },
 }
 

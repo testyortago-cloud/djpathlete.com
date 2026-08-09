@@ -36,6 +36,7 @@ export type BooleanPermissionKey =
   | "blog"
   | "social"
   | "website"
+  | "funnels"
   | "seo"
   | "leads"
   | "ai_tools"
@@ -156,6 +157,13 @@ export const PERMISSIONS: readonly PermissionDef[] = [
     kind: "boolean",
   },
   {
+    key: "funnels",
+    label: "Funnel Builder",
+    description: "Builds and publishes campaign landing pages, and reads their submissions.",
+    group: "marketing",
+    kind: "boolean",
+  },
+  {
     key: "seo",
     label: "SEO & Strategy",
     description: "Search Console, SEO memos and the strategy briefs.",
@@ -267,6 +275,7 @@ export const PRESETS: readonly PresetDef[] = [
       blog: true,
       social: true,
       website: true,
+      funnels: true,
       seo: true,
       leads: true,
       analytics: "view",
@@ -420,6 +429,11 @@ export const PATH_PERMISSIONS: readonly PathRule[] = [
   { prefix: "/api/admin/marketing", permission: "website" },
   { prefix: "/api/admin/legal", permission: "website" },
   { prefix: "/api/admin/lead-magnets", permission: "website" },
+
+  // Longest-prefix resolution means these must come after /admin/marketing
+  // above only if they were nested under it — they are not, so order is free.
+  { prefix: "/admin/funnels", permission: "funnels" },
+  { prefix: "/api/admin/funnels", permission: "funnels" },
 
   { prefix: "/admin/integrations/gsc", permission: "seo" },
   { prefix: "/admin/seo-agent", permission: "seo" },
@@ -606,6 +620,7 @@ const HOME_PRIORITY: readonly { permission: PermissionKey; path: string }[] = [
   { permission: "blog", path: "/admin/blog" },
   { permission: "social", path: "/admin/social" },
   { permission: "website", path: "/admin/marketing/faqs" },
+  { permission: "funnels", path: "/admin/funnels" },
   { permission: "seo", path: "/admin/integrations/gsc" },
   { permission: "ads", path: "/admin/ads" },
   { permission: "accounting", path: "/admin/books" },

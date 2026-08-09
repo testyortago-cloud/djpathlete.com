@@ -66,6 +66,14 @@ describe("scopeCss", () => {
     expect(scopeCss("")).toBe("")
   })
 
+  it("escapes a closing style tag hidden in a css string value", () => {
+    // The public route injects this into <style dangerouslySetInnerHTML>, so an
+    // unescaped </style> would end the element and let markup through.
+    const out = scopeCss('.a::after { content: "</style><img src=x onerror=alert(1)>" }')
+    expect(out).not.toContain("</style>")
+    expect(out).toContain("<\\/style")
+  })
+
   it("throws on unparseable css so publish fails loudly instead of shipping it", () => {
     // The orchestrator catches this and reports css_parse_failed, which is a
     // fatal compile code — a page with broken styles must not go live silently.
