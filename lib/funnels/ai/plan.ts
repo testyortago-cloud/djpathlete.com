@@ -87,7 +87,7 @@ export function validatePlan(plan: PlanOutput, sectionIds: string[]): ValidatedP
   const deleted = new Set(
     plan.ops
       .filter((op) => op.op === "delete_section" && known.has(op.sectionId))
-      .map((op) => op.sectionId),
+      .map((op) => (op as Extract<EditOp, { op: "delete_section" }>).sectionId),
   )
   const hasStructural = plan.ops.some((op) => op.op === "add_section" || op.op === "delete_section")
 

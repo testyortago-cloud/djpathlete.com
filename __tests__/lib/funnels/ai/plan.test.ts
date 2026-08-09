@@ -158,6 +158,23 @@ describe("validatePlan", () => {
     expect(out.ops).toHaveLength(2)
   })
 
+  it("does not double-count budget when a valid delete and hallucinated delete both appear at capacity", () => {
+    const many = Array.from({ length: 20 }, (_, i) => `sec_${i}`)
+    const out = validatePlan(
+      plan([
+        { op: "delete_section", sectionId: "sec_0" },
+        { op: "delete_section", sectionId: "sec_ghost" },
+        { op: "add_section", afterSectionId: null, kind: "x", brief: "y" },
+        { op: "add_section", afterSectionId: null, kind: "x", brief: "z" },
+      ]),
+      many,
+    )
+    // Only the valid delete credits a slot, so only 1 add survives (the other exceeds budget)
+    const addOps = out.ops.filter((o) => o.op === "add_section")
+    expect(addOps).toHaveLength(1)
+    expect(out.notes.join(" ")).toContain("sec_ghost")
+  })
+
   it("rejects a reorder with duplicate section ids", () => {
     const out = validatePlan(
       plan([{ op: "reorder", order: ["sec_a", "sec_a", "sec_b"] }]),
