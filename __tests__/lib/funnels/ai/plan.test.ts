@@ -94,6 +94,8 @@ describe("validatePlan", () => {
       IDS,
     )
     expect(out.ops.map((o) => o.op)).toEqual(["delete_section"])
+    expect(out.notes).not.toEqual([])
+    expect(out.notes.join(" ")).toContain("sec_b")
   })
 
   it("drops add_section ops that would exceed MAX_SECTIONS", () => {
@@ -127,5 +129,53 @@ describe("validatePlan", () => {
     )
     expect(out.ops).toEqual([])
     expect(out.clarification).toBe("Which headline did you mean?")
+  })
+
+  it("does not credit a hallucinated delete when calculating budget", () => {
+    const many = Array.from({ length: 20 }, (_, i) => `sec_${i}`)
+    const out = validatePlan(
+      plan([
+        { op: "delete_section", sectionId: "sec_ghost" },
+        { op: "add_section", afterSectionId: null, kind: "x", brief: "y" },
+      ]),
+      many,
+    )
+    expect(out.ops).toEqual([])
+    expect(out.notes.join(" ")).toContain("20")
+  })
+
+  it("allows one add when a valid delete happens at capacity", () => {
+    const many = Array.from({ length: 20 }, (_, i) => `sec_${i}`)
+    const out = validatePlan(
+      plan([
+        { op: "delete_section", sectionId: "sec_0" },
+        { op: "add_section", afterSectionId: null, kind: "x", brief: "y" },
+        { op: "add_section", afterSectionId: null, kind: "x", brief: "z" },
+      ]),
+      many,
+    )
+    expect(out.ops.map((o) => o.op)).toEqual(["delete_section", "add_section"])
+    expect(out.ops).toHaveLength(2)
+  })
+
+  it("rejects a reorder with duplicate section ids", () => {
+    const out = validatePlan(
+      plan([{ op: "reorder", order: ["sec_a", "sec_a", "sec_b"] }]),
+      IDS,
+    )
+    expect(out.ops).toEqual([])
+    expect(out.notes.join(" ")).toContain("reorder")
+  })
+
+  it("prioritizes clarification over regenerate_page", () => {
+    const out = validatePlan(
+      plan(
+        [{ op: "regenerate_page", brief: "new page" }],
+        { clarification: "Clarify first" },
+      ),
+      IDS,
+    )
+    expect(out.ops).toEqual([])
+    expect(out.clarification).toBe("Clarify first")
   })
 })

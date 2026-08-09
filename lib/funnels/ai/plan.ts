@@ -85,7 +85,9 @@ export function validatePlan(plan: PlanOutput, sectionIds: string[]): ValidatedP
   }
 
   const deleted = new Set(
-    plan.ops.filter((op) => op.op === "delete_section").map((op) => op.sectionId),
+    plan.ops
+      .filter((op) => op.op === "delete_section" && known.has(op.sectionId))
+      .map((op) => op.sectionId),
   )
   const hasStructural = plan.ops.some((op) => op.op === "add_section" || op.op === "delete_section")
 
@@ -101,7 +103,10 @@ export function validatePlan(plan: PlanOutput, sectionIds: string[]): ValidatedP
         }
         // Editing something the same turn deletes is wasted work and an
         // expensive model call for output nobody will ever see.
-        if (deleted.has(op.sectionId)) continue
+        if (deleted.has(op.sectionId)) {
+          notes.push(`Skipped editing ${op.sectionId} because the same turn deletes it.`)
+          continue
+        }
         kept.push(op)
         continue
       }
