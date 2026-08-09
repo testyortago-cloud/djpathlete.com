@@ -9,7 +9,9 @@ export interface IslandTrait {
   /** Matches the prop name in the island's Zod schema. */
   name: string
   label: string
-  type: "text" | "number" | "checkbox" | "json"
+  type: "text" | "number" | "checkbox" | "json" | "select"
+  /** select only. `id` is the value written into data-djp-props. */
+  options?: { id: string; label: string }[]
 }
 
 /**
@@ -21,12 +23,34 @@ export const ISLAND_TRAITS: Record<IslandName, IslandTrait[]> = {
   form: [
     { name: "formKey", label: "Form key", type: "text" },
     { name: "submitLabel", label: "Button label", type: "text" },
+    // Without this control successMode can never leave its "message" default,
+    // which makes the Redirect URL field below purely decorative.
+    {
+      name: "successMode",
+      label: "After submit",
+      type: "select",
+      options: [
+        { id: "message", label: "Show a message" },
+        { id: "redirect", label: "Redirect to a URL" },
+      ],
+    },
     { name: "successMessage", label: "Success message", type: "text" },
-    { name: "redirectUrl", label: "Redirect URL (optional)", type: "text" },
+    { name: "redirectUrl", label: "Redirect URL (if redirecting)", type: "text" },
     { name: "consentText", label: "Consent text (optional)", type: "text" },
     { name: "fields", label: "Fields (JSON)", type: "json" },
   ],
   checkout: [
+    // Without this the owner could never switch a buy button from a program to
+    // a session pack — same class of bug as the missing successMode control.
+    {
+      name: "productKind",
+      label: "What is being sold",
+      type: "select",
+      options: [
+        { id: "program", label: "Program" },
+        { id: "session_pack", label: "Session pack" },
+      ],
+    },
     { name: "productId", label: "Program / pack ID", type: "text" },
     { name: "label", label: "Button label", type: "text" },
   ],

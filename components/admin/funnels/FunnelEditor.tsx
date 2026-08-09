@@ -15,8 +15,9 @@ import grapesjs, { type Editor } from "grapesjs"
 import { toast } from "sonner"
 import { Eye, Save, Rocket } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { ISLAND_NAMES, ISLANDS, type IslandName } from "@/lib/funnels/islands"
+import { ISLAND_NAMES, type IslandName } from "@/lib/funnels/islands"
 import { ISLAND_TRAITS, islandBlockDefinitions } from "./island-traits"
+import { buildIslandProps, readIslandProps } from "./island-props"
 import "grapesjs/dist/css/grapes.min.css"
 
 interface FunnelEditorProps {
@@ -40,6 +41,11 @@ export function FunnelEditor({ stepId, publicUrl, initialProjectData }: FunnelEd
       fromElement: false,
       // Saving is explicit (the buttons below), so GrapesJS must not also try.
       storageManager: false,
+      // GrapesJS defaults this to a cdnjs Font Awesome URL. Our CSP is
+      // `style-src 'self' 'unsafe-inline'` (next.config.mjs), so that request is
+      // refused and every toolbar icon renders as an empty box. Empty string =
+      // load no icon font; GrapesJS's own inline SVG icons still render.
+      cssIcons: "",
       projectData: (initialProjectData as object | undefined) ?? undefined,
       canvas: {
         // Reuse the app's own compiled stylesheets inside the canvas iframe, so
@@ -158,6 +164,15 @@ export function FunnelEditor({ stepId, publicUrl, initialProjectData }: FunnelEd
   )
 }
 
+/** IslandTrait type -> GrapesJS trait input type. */
+function traitInputType(type: string): string {
+  if (type === "checkbox") return "checkbox"
+  if (type === "number") return "number"
+  if (type === "select") return "select"
+  // `json` is edited as free text and parsed on sync.
+  return "text"
+}
+
 /** Stylesheet URLs the admin app itself is currently using. */
 function appStylesheetHrefs(): string[] {
   if (typeof document === "undefined") return []
@@ -189,7 +204,18 @@ function registerIslandTypes(editor: Editor) {
           traits: traits.map((trait) => ({
             name: trait.name,
             label: trait.label,
-            type: trait.type === "checkbox" ? "checkbox" : trait.type === "number" ? "number" : "text",
+            // changeProp is THE critical flag. GrapesJS defaults it to false,
+            // which binds a trait to the component's HTML *attributes*
+            // (grapes.mjs: `value = this.changeProp ? component.get(name)
+            // : attrs[name]`). Our init() seeds properties and syncProps()
+            // reads properties, so with the default the two halves never meet:
+            // every setting the owner typed was silently discarded and the
+            // inputs rendered blank. Property-bound is the correct side here,
+            // because data-djp-props — not the attribute — is what the
+            // compiler reads.
+            changeProp: true,
+            type: traitInputType(trait.type),
+            ...(trait.options ? { options: trait.options } : {}),
           })),
         },
         init() {
@@ -219,43 +245,14 @@ interface IslandModel {
 }
 
 function readProps(model: IslandModel, name: IslandName): Record<string, unknown> {
-  const raw = model.getAttributes()["data-djp-props"]
-  if (!raw) return { ...ISLANDS[name].defaultProps }
-  try {
-    return JSON.parse(raw) as Record<string, unknown>
-  } catch {
-    return { ...ISLANDS[name].defaultProps }
-  }
+  return readIslandProps(model.getAttributes()["data-djp-props"], name)
 }
 
 /** Trait values -> data-djp-props JSON, which is what the compiler reads. */
 function syncProps(model: IslandModel, name: IslandName) {
-  const props = readProps(model, name)
-
-  for (const trait of ISLAND_TRAITS[name]) {
-    const value = model.get(trait.name)
-    if (value === undefined || value === "") continue
-
-    if (trait.type === "json") {
-      try {
-        props[trait.name] = JSON.parse(String(value))
-      } catch {
-        // Leave the previous value in place; publish will report it if wrong.
-      }
-      continue
-    }
-    if (trait.type === "number") {
-      const parsed = Number(value)
-      if (!Number.isNaN(parsed)) props[trait.name] = parsed
-      continue
-    }
-    if (trait.type === "checkbox") {
-      props[trait.name] = Boolean(value)
-      continue
-    }
-    props[trait.name] = String(value)
-  }
-
+  const props = buildIslandProps(readProps(model, name), name, (traitName) =>
+    model.get(traitName),
+  )
   model.addAttributes({ "data-djp-props": JSON.stringify(props) })
 }
 
