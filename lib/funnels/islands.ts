@@ -36,6 +36,17 @@ export const ISLAND_PROPS_ATTR = "data-djp-props"
 // form
 // ---------------------------------------------------------------------------
 
+/**
+ * A link we are willing to navigate a visitor to: a root-relative site path or
+ * an https URL.
+ *
+ * The `(?!\/\/)` lookahead is the part that matters. A naive `^(\/|https:\/\/)`
+ * accepts `//evil.example`, which is protocol-relative — it reads as a path but
+ * navigates off-site on the page's own scheme. `safeUrl` in the compiler has
+ * always rejected those; these schemas did not, until a test said so.
+ */
+const SAFE_LINK = /^(?!\/\/)(\/|https:\/\/)/
+
 export const FUNNEL_FIELD_TYPES = ["text", "email", "tel", "textarea", "select", "checkbox"] as const
 export type FunnelFieldType = (typeof FUNNEL_FIELD_TYPES)[number]
 
@@ -62,7 +73,18 @@ export const formIslandSchema = z
     submitLabel: z.string().min(1).max(60).optional().default("Submit"),
     successMode: z.enum(["message", "redirect"]).optional().default("message"),
     successMessage: z.string().max(400).optional(),
-    redirectUrl: z.string().max(500).optional(),
+    // FunnelForm assigns this to window.location.href after a successful
+    // submission, so an unvalidated value is an open redirect that fires at the
+    // exact moment a visitor has handed over their email. Same rule as
+    // bookingIslandSchema.href below, which was validated while this was not.
+    // NOTE: this constrains the SCHEME, not the host. Redirecting to an
+    // arbitrary https host is still permitted because legitimate thank-you
+    // pages live off-site; restricting that further is an owner policy call.
+    redirectUrl: z
+      .string()
+      .max(500)
+      .regex(SAFE_LINK, "Must be a site path or an https URL")
+      .optional(),
     /** Emails this lead magnet's asset on success. */
     leadMagnetId: z.string().uuid().nullable().optional(),
     consentText: z.string().max(300).optional(),
@@ -103,7 +125,7 @@ export const bookingIslandSchema = z.object({
   href: z
     .string()
     .max(300)
-    .regex(/^(\/|https:\/\/)/, "Must be a site path or an https URL")
+    .regex(SAFE_LINK, "Must be a site path or an https URL")
     .optional()
     .default("/contact"),
 })

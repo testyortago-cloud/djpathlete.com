@@ -15,6 +15,7 @@ export type FunnelNode =
   | { t: "island"; name: IslandName; props: Record<string, unknown> }
 
 export type CompileErrorCode =
+  | "content_removed"
   | "iframe_host_not_allowed"
   | "island_unknown"
   | "island_props_unparseable"

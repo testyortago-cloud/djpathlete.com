@@ -55,6 +55,24 @@ describe("island traits cover their island's settings", () => {
     }
   })
 
+  it("rejects a redirectUrl that is not a site path or https", () => {
+    // FunnelForm assigns this to window.location.href right after a visitor
+    // submits their email, so an unvalidated value is an open redirect.
+    const base = {
+      formKey: "optin",
+      fields: [{ name: "email", label: "Email", type: "email" }],
+      successMode: "redirect",
+    }
+    for (const bad of ["javascript:alert(1)", "data:text/html,<script>", "//evil.example"]) {
+      const result = parseIslandProps("form", { ...base, redirectUrl: bad })
+      expect(result.ok, `redirectUrl "${bad}" must be rejected`).toBe(false)
+    }
+    for (const good of ["/go/thanks", "https://calendly.com/djp"]) {
+      const result = parseIslandProps("form", { ...base, redirectUrl: good })
+      expect(result.ok, `redirectUrl "${good}" should be allowed`).toBe(true)
+    }
+  })
+
   it("ships placeholder defaults that deliberately fail validation", () => {
     // checkout/event/faq default to an empty required id on purpose: dropping
     // the block and publishing without configuring it must be refused with a

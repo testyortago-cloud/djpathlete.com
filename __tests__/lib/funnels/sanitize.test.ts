@@ -65,6 +65,21 @@ describe("htmlToNodes — rejection rules", () => {
     expect(text(nodes)).not.toContain("alert")
   })
 
+  it("REPORTS what it removed instead of removing it silently", () => {
+    // A generator cannot see the rendered result, so a page that quietly lost
+    // its icons or its form must not look like a clean publish.
+    const { errors } = htmlToNodes("<div><svg><circle/></svg><form><input/></form></div>")
+    const removed = errors.filter((e) => e.code === "content_removed")
+    expect(removed.length).toBeGreaterThanOrEqual(2)
+    expect(removed.map((e) => e.message).join(" ")).toContain("<svg>")
+    expect(removed.map((e) => e.message).join(" ")).toContain("<form>")
+  })
+
+  it("does not report anything for a clean page", () => {
+    const { errors } = htmlToNodes('<section class="hero"><h1>Hi</h1><p>Copy</p></section>')
+    expect(errors).toEqual([])
+  })
+
   it("drops native form controls, which would shadow the form island", () => {
     const { nodes } = htmlToNodes("<div><form><input name='x'><button>go</button></form></div>")
     expect(tags(nodes)).not.toContain("form")

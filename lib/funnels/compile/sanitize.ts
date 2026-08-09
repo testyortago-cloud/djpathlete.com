@@ -178,7 +178,20 @@ function convertNode(node: P5Node, errors: CompileError[]): FunnelNode[] {
   if (node.nodeName === "#comment" || node.nodeName === "#documentType") return []
 
   const tag = (node.tagName ?? node.nodeName).toLowerCase()
-  if (DROPPED_TAGS.has(tag)) return []
+  if (DROPPED_TAGS.has(tag)) {
+    // Report it. Dropping a subtree in silence is survivable when a human is
+    // watching a canvas, but the author may be a generator that cannot see the
+    // result — a page that quietly lost its <svg> icons or a whole <form> must
+    // not look like a clean publish.
+    //
+    // Non-fatal by design: the removal is the correct outcome, the owner just
+    // needs to know it happened.
+    errors.push({
+      code: "content_removed",
+      message: `A <${tag}> element was removed — that tag is not allowed on a published page.`,
+    })
+    return []
+  }
 
   const attrs = attrMap(node)
 

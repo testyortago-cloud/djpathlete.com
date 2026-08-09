@@ -80,7 +80,14 @@ export function FunnelForm({
       }
 
       if (successMode === "redirect" && redirectUrl) {
-        window.location.href = redirectUrl
+        // Re-checked here as well as in the schema: these props arrive from
+        // published JSON, and this line navigates a visitor who has just handed
+        // over their email. Two cheap checks beat one.
+        if (/^(?!\/\/)(\/|https:\/\/)/.test(redirectUrl)) {
+          window.location.href = redirectUrl
+          return
+        }
+        setStatus("done")
         return
       }
       setStatus("done")
