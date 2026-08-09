@@ -19,6 +19,11 @@ const PROP_NAME_MAP: Record<string, string> = {
   playsinline: "playsInline",
   autoplay: "autoPlay",
   crossorigin: "crossOrigin",
+  // The compiler lowercases attribute names, but React special-cases these two
+  // SVG attributes and silently ignores the lowercase spelling — the icon then
+  // renders at the wrong size with only a console warning.
+  viewbox: "viewBox",
+  preserveaspectratio: "preserveAspectRatio",
 }
 
 /** Attributes React expects as booleans, not strings. */

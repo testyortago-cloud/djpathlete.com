@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { htmlToNodes } from "@/lib/funnels/compile/sanitize"
+import { htmlToNodes, SVG_TAGS, FORBIDDEN_SVG_TAGS } from "@/lib/funnels/compile/sanitize"
 import type { FunnelNode } from "@/lib/funnels/compile/types"
 
 /** Depth-first walk, so nesting assertions don't depend on tree shape. */
@@ -67,11 +67,15 @@ describe("htmlToNodes — rejection rules", () => {
 
   it("REPORTS what it removed instead of removing it silently", () => {
     // A generator cannot see the rendered result, so a page that quietly lost
-    // its icons or its form must not look like a clean publish.
-    const { errors } = htmlToNodes("<div><svg><circle/></svg><form><input/></form></div>")
+    // its canvas or its form must not look like a clean publish.
+    //
+    // NOTE: this used to exercise <svg> as the dropped tag; svg is now allowed
+    // (see the "inline SVG" suite below), so <canvas> stands in as a tag that
+    // is still unconditionally removed.
+    const { errors } = htmlToNodes("<div><canvas></canvas><form><input/></form></div>")
     const removed = errors.filter((e) => e.code === "content_removed")
     expect(removed.length).toBeGreaterThanOrEqual(2)
-    expect(removed.map((e) => e.message).join(" ")).toContain("<svg>")
+    expect(removed.map((e) => e.message).join(" ")).toContain("<canvas>")
     expect(removed.map((e) => e.message).join(" ")).toContain("<form>")
   })
 
@@ -218,5 +222,81 @@ describe("htmlToNodes — islands", () => {
     const div = findEl(nodes, "div")
     expect(div?.attrs["data-djp-props"]).toBeUndefined()
     expect(div?.attrs["data-track"]).toBe("ok")
+  })
+})
+
+describe("inline SVG", () => {
+  it("keeps a plain icon with its geometry attributes", () => {
+    const { nodes } = htmlToNodes(
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+        '<path d="M5 13l4 4L19 7"/></svg>',
+    )
+    expect(tags(nodes)).toEqual(["svg", "path"])
+    const svg = findEl(nodes, "svg")
+    // Lowercased by attrMap; NodeRenderer maps it back to viewBox for React.
+    expect(svg?.attrs.viewbox).toBe("0 0 24 24")
+    expect(svg?.attrs["stroke-width"]).toBe("2")
+    expect(findEl(nodes, "path")?.attrs.d).toBe("M5 13l4 4L19 7")
+  })
+
+  it("keeps circle, rect, line, polyline, polygon, ellipse and g", () => {
+    const { nodes } = htmlToNodes(
+      "<svg><g><circle cx='1' cy='2' r='3'/><rect x='0' y='0' width='4' height='4'/>" +
+        "<line x1='0' y1='0' x2='1' y2='1'/><polyline points='0,0 1,1'/>" +
+        "<polygon points='0,0 1,1 2,0'/><ellipse cx='1' cy='1' rx='2' ry='3'/></g></svg>",
+    )
+    expect(tags(nodes)).toEqual([
+      "svg", "g", "circle", "rect", "line", "polyline", "polygon", "ellipse",
+    ])
+  })
+
+  it.each(FORBIDDEN_SVG_TAGS)("drops <%s> inside an svg", (tag) => {
+    const { nodes } = htmlToNodes(`<svg><${tag}></${tag}><path d="M0 0"/></svg>`)
+    expect(tags(nodes)).not.toContain(tag)
+    expect(tags(nodes)).toContain("path")
+  })
+
+  it("strips an href from an svg child so <use> cannot be smuggled back in", () => {
+    const { nodes } = htmlToNodes('<svg><path d="M0 0" href="https://evil.example/x"/></svg>')
+    expect(findEl(nodes, "path")?.attrs.href).toBeUndefined()
+  })
+
+  it("strips event handlers from svg elements", () => {
+    const { nodes } = htmlToNodes('<svg onload="alert(1)"><path d="M0 0" onclick="alert(2)"/></svg>')
+    expect(findEl(nodes, "svg")?.attrs.onload).toBeUndefined()
+    expect(findEl(nodes, "path")?.attrs.onclick).toBeUndefined()
+  })
+
+  it("runs an svg style attribute through safeStyle", () => {
+    const { nodes } = htmlToNodes('<svg style="color:red;background:url(javascript:alert(1))"></svg>')
+    const style = findEl(nodes, "svg")?.attrs.style ?? ""
+    expect(style).toContain("color:red")
+    expect(style).not.toContain("javascript:")
+  })
+
+  it("INVARIANT: no forbidden svg tag is in the allowlist", () => {
+    for (const tag of FORBIDDEN_SVG_TAGS) {
+      expect(SVG_TAGS.has(tag)).toBe(false)
+    }
+  })
+
+  it("warns rather than silently deleting a forbidden svg child", () => {
+    const { nodes, errors } = htmlToNodes('<svg><foreignObject><b>hi</b></foreignObject></svg>')
+    expect(tags(nodes)).toEqual(["svg"])
+    expect(errors.map((e) => e.code)).toContain("content_removed")
+    expect(errors[0].message).toContain("foreignobject")
+  })
+
+  it("does not drop an ordinary <a> outside an svg", () => {
+    const { nodes } = htmlToNodes('<a href="/contact">Contact</a>')
+    expect(tags(nodes)).toEqual(["a"])
+  })
+})
+
+describe("details / summary", () => {
+  it("keeps a no-JS accordion including the open attribute", () => {
+    const { nodes } = htmlToNodes("<details open><summary>Q</summary><p>A</p></details>")
+    expect(tags(nodes)).toEqual(["details", "summary", "p"])
+    expect(findEl(nodes, "details")?.attrs.open).toBe("")
   })
 })
