@@ -1000,8 +1000,13 @@ export function validatePlan(plan: PlanOutput, sectionIds: string[]): ValidatedP
     return { reply: plan.reply, ops: [regenerate], clarification: null, notes }
   }
 
+  // Only deletes that will actually happen may credit a slot back to the
+  // budget below. Counting a hallucinated delete_section here would free a
+  // phantom slot and let a same-turn add push the page past MAX_SECTIONS.
   const deleted = new Set(
-    plan.ops.filter((op) => op.op === "delete_section").map((op) => op.sectionId),
+    plan.ops
+      .filter((op) => op.op === "delete_section" && known.has(op.sectionId))
+      .map((op) => (op as Extract<EditOp, { op: "delete_section" }>).sectionId),
   )
   const hasStructural = plan.ops.some((op) => op.op === "add_section" || op.op === "delete_section")
 
@@ -1016,8 +1021,14 @@ export function validatePlan(plan: PlanOutput, sectionIds: string[]): ValidatedP
           continue
         }
         // Editing something the same turn deletes is wasted work and an
-        // expensive model call for output nobody will ever see.
-        if (deleted.has(op.sectionId)) continue
+        // expensive model call for output nobody will ever see. Say so —
+        // notes is documented as the reason every dropped op was dropped, and
+        // an op that vanishes unexplained is the failure this function exists
+        // to prevent.
+        if (deleted.has(op.sectionId)) {
+          notes.push(`Skipped editing ${op.sectionId} because the same step removes it.`)
+          continue
+        }
         kept.push(op)
         continue
       }
@@ -1090,7 +1101,71 @@ function isPermutation(candidate: string[], target: string[]): boolean {
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `npx vitest run __tests__/lib/funnels/ai/plan.test.ts`
-Expected: PASS — 14 tests.
+Expected: PASS — 13 tests from the block above, plus these 4, which pin the two
+defects a review of this task caught in an earlier draft of this very code and
+two paths a naive implementation would pass vacuously:
+
+```ts
+  it("says WHY it skipped an edit of a section the same plan deletes", () => {
+    const out = validatePlan(
+      plan([
+        { op: "edit_section", sectionId: "sec_b", instruction: "x" },
+        { op: "delete_section", sectionId: "sec_b" },
+      ]),
+      IDS,
+    )
+    // notes is documented as the reason every dropped op was dropped.
+    expect(out.notes.join(" ")).toContain("sec_b")
+  })
+
+  it("does not credit a hallucinated delete against the section budget", () => {
+    // A phantom delete must not free a slot: the delete is dropped later, so
+    // crediting it here would let the add push the page to MAX_SECTIONS + 1.
+    const many = Array.from({ length: 20 }, (_, i) => `sec_${i}`)
+    const out = validatePlan(
+      plan([
+        { op: "delete_section", sectionId: "sec_ghost" },
+        { op: "add_section", afterSectionId: null, kind: "x", brief: "y" },
+      ]),
+      many,
+    )
+    expect(out.ops.map((o) => o.op)).not.toContain("add_section")
+    expect(out.notes.join(" ")).toContain("20")
+  })
+
+  it("lets exactly one add through when a real delete frees one slot at the cap", () => {
+    const many = Array.from({ length: 20 }, (_, i) => `sec_${i}`)
+    const out = validatePlan(
+      plan([
+        { op: "delete_section", sectionId: "sec_0" },
+        { op: "add_section", afterSectionId: null, kind: "a", brief: "a" },
+        { op: "add_section", afterSectionId: null, kind: "b", brief: "b" },
+      ]),
+      many,
+    )
+    expect(out.ops.filter((o) => o.op === "add_section")).toHaveLength(1)
+  })
+
+  it("drops a reorder that repeats an id instead of listing each once", () => {
+    // A naive `length === length && every(includes)` passes every other test
+    // in this file and is wrong here.
+    const out = validatePlan(plan([{ op: "reorder", order: ["sec_a", "sec_a", "sec_b"] }]), IDS)
+    expect(out.ops).toEqual([])
+  })
+
+  it("keeps a clarification that arrives alongside regenerate_page", () => {
+    // Ordering of the two early returns is load-bearing: the regenerate branch
+    // hard-codes clarification: null, so reversing them silences the question.
+    const out = validatePlan(
+      plan([{ op: "regenerate_page", brief: "start over" }], {
+        clarification: "Start over from scratch, or keep the hero?",
+      }),
+      IDS,
+    )
+    expect(out.clarification).toBe("Start over from scratch, or keep the hero?")
+    expect(out.ops).toEqual([])
+  })
+```
 
 - [ ] **Step 5: Commit**
 
