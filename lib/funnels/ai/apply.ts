@@ -74,7 +74,9 @@ export function applyOps(draft: PageDraft, ops: ResolvedOp[], results: OpResults
   }
 
   // Fixed phase order so the outcome never depends on the order the planner
-  // happened to emit ops in: edits, then deletes, then inserts, then reorder.
+  // happened to emit ops in: edits, then adds, then deletes, then reorder.
+  // Adds run before deletes so that an add anchored on a section deleted in the
+  // same call still resolves (the anchor exists during the add, then is removed).
   let sections = draft.sections.map((existing) => {
     const replacement = ops.some((op) => op.op === "edit_section" && op.sectionId === existing.id)
       ? results.sections.get(existing.id)
@@ -82,9 +84,6 @@ export function applyOps(draft: PageDraft, ops: ResolvedOp[], results: OpResults
     // Untouched sections are the SAME OBJECT, not a copy. This is the guarantee.
     return replacement ?? existing
   })
-
-  const removed = new Set(ops.filter((op) => op.op === "delete_section").map((op) => op.sectionId))
-  if (removed.size > 0) sections = sections.filter((s) => !removed.has(s.id))
 
   for (const op of ops) {
     if (op.op !== "add_section") continue
@@ -98,6 +97,9 @@ export function applyOps(draft: PageDraft, ops: ResolvedOp[], results: OpResults
     if (at === -1) sections = [...sections, fresh]
     else sections = [...sections.slice(0, at + 1), fresh, ...sections.slice(at + 1)]
   }
+
+  const removed = new Set(ops.filter((op) => op.op === "delete_section").map((op) => op.sectionId))
+  if (removed.size > 0) sections = sections.filter((s) => !removed.has(s.id))
 
   const reorder = ops.find((op) => op.op === "reorder")
   if (reorder) {

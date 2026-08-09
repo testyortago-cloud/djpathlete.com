@@ -86,18 +86,27 @@ describe("applyOps — the anti-drift guarantee", () => {
 
 describe("applyOps — structural ops", () => {
   it("deletes the named section and nothing else", () => {
-    const after = applyOps(draft("a", "b", "c"), [{ op: "delete_section", sectionId: "b" }], results())
+    const before = draft("a", "b", "c")
+    const after = applyOps(before, [{ op: "delete_section", sectionId: "b" }], results())
     expect(after.sections.map((s) => s.id)).toEqual(["a", "c"])
+    // Verify reference identity: surviving sections are the same objects.
+    const beforeSurviving = before.sections.filter((s) => s.id !== "b")
+    after.sections.forEach((s, i) => expect(s).toBe(beforeSurviving[i]))
   })
 
   it("inserts immediately after the named section", () => {
+    const before = draft("a", "b", "c")
     const fresh = section("new")
     const after = applyOps(
-      draft("a", "b", "c"),
+      before,
       [{ op: "add_section", afterSectionId: "a", kind: "x", brief: "y", newSectionId: "new" }],
       results({ new: fresh }),
     )
     expect(after.sections.map((s) => s.id)).toEqual(["a", "new", "b", "c"])
+    // Verify reference identity: existing sections are the same objects.
+    expect(after.sections[0]).toBe(before.sections[0]) // "a"
+    expect(after.sections[2]).toBe(before.sections[1]) // "b"
+    expect(after.sections[3]).toBe(before.sections[2]) // "c"
   })
 
   it("inserts at the start when afterSectionId is null", () => {
@@ -110,8 +119,12 @@ describe("applyOps — structural ops", () => {
   })
 
   it("reorders to exactly the requested order", () => {
-    const after = applyOps(draft("a", "b", "c"), [{ op: "reorder", order: ["c", "a", "b"] }], results())
+    const before = draft("a", "b", "c")
+    const after = applyOps(before, [{ op: "reorder", order: ["c", "a", "b"] }], results())
     expect(after.sections.map((s) => s.id)).toEqual(["c", "a", "b"])
+    // Verify reference identity: sections are the same objects, just reordered.
+    const byId = new Map(before.sections.map((s) => [s.id, s]))
+    after.sections.forEach((s) => expect(s).toBe(byId.get(s.id)))
   })
 
   it("replaces page CSS on edit_theme and touches no section", () => {
@@ -141,17 +154,17 @@ describe("applyOps — structural ops", () => {
     expect(() => applyOps(draft("a"), [{ op: "regenerate_page", brief: "x" }], results())).toThrow(/replacement/i)
   })
 
-  it("applies edits before deletes before adds, so order is never ambiguous", () => {
+  it("applies adds before deletes, so an add anchored on a deleted section resolves correctly", () => {
     const after = applyOps(
       draft("a", "b", "c"),
       [
-        { op: "add_section", afterSectionId: "c", kind: "k", brief: "b", newSectionId: "new" },
+        { op: "add_section", afterSectionId: "b", kind: "k", brief: "test", newSectionId: "new" },
         { op: "delete_section", sectionId: "b" },
-        { op: "edit_section", sectionId: "a", instruction: "x" },
       ],
-      results({ a: { ...section("a"), html: "<p>edited</p>" }, new: section("new") }),
+      results({ new: section("new") }),
     )
-    expect(after.sections.map((s) => s.id)).toEqual(["a", "c", "new"])
-    expect(after.sections[0].html).toBe("<p>edited</p>")
+    // If adds ran after deletes, "b" would be gone and the add would append to the end.
+    // Because adds run before deletes, "new" inserts after "b", then "b" is removed.
+    expect(after.sections.map((s) => s.id)).toEqual(["a", "new", "c"])
   })
 })
