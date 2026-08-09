@@ -12,7 +12,7 @@
 // deliberate exception the owner asked for — a funnel is a visual artifact, and
 // a row of slugs tells you nothing about which page you are looking for.
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import Link from "next/link"
 import { ExternalLink, Trash2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -33,6 +33,8 @@ export interface PreviewCardProps {
   leadCount?: number
   onDelete?: () => void | Promise<void>
   deleteLabel?: string
+  /** Rendered next to the primary button — e.g. a link to funnel settings. */
+  secondaryAction?: ReactNode
 }
 
 /**
@@ -55,6 +57,7 @@ export function PreviewCard({
   leadCount,
   onDelete,
   deleteLabel = "Delete",
+  secondaryAction,
 }: PreviewCardProps) {
   const [deleting, setDeleting] = useState(false)
 
@@ -127,6 +130,7 @@ export function PreviewCard({
               </a>
             </Button>
           ) : null}
+          {secondaryAction}
           {onDelete ? (
             <Button
               variant="ghost"
