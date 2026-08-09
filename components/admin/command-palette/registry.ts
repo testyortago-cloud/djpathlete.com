@@ -39,6 +39,17 @@ export interface CommandPaletteItem {
 const NAV_KEYWORDS: Record<string, string[]> = {
   "/admin/dashboard": ["home", "overview"],
   "/admin/inbox": ["leads", "new leads", "inquiries", "contact form"],
+  "/admin/funnels": [
+    "landing page",
+    "build a landing page",
+    "funnel builder",
+    "page builder",
+    "campaign page",
+    "opt in page",
+    "sales page",
+    "go high level",
+    "gohighlevel",
+  ],
   "/admin/messages": ["client chat", "message client", "conversation", "dm"],
 
   "/admin/clients": [
