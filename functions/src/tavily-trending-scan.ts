@@ -7,24 +7,32 @@ import { z } from "zod"
 import { callAgent, MODEL_SONNET } from "./ai/anthropic.js"
 import { tavilySearch } from "./lib/tavily.js"
 import { getSupabase } from "./lib/supabase.js"
+import { collectDiverseResults, reassignSequentialRanks, type TavilySearchResult } from "./lib/research-candidates.js"
 
-export interface TavilySearchResult {
-  title: string
-  url: string
-  content: string
-}
+export type { TavilySearchResult }
 
 // Science-leaning query set: each query targets a distinct sport-science
 // surface (academic freshness, methodology, monitoring, power/strength,
-// LTAD, applied/elite practice) and uses precise terminology that ranks
-// well against peer-reviewed and practitioner-research sources.
+// LTAD, applied/elite practice, return-to-play, psychology, nutrition) and
+// uses precise terminology that ranks well against peer-reviewed and
+// practitioner-research sources.
+//
+// The original set had two queries in the same narrow eccentric/force-velocity
+// mechanism niche ("velocity-based training force-velocity profiling..." and
+// "plyometrics rate of force development eccentric overload meta-analysis") —
+// Tavily returned the same handful of frequently-cited/re-published studies
+// for both, which is what produced 3 near-duplicate "RANK 01" topics in one
+// week's brief. The second of those two is dropped here in favor of three
+// categories the old set didn't cover at all.
 export const TRENDING_QUERIES: readonly string[] = [
   "peer-reviewed sport science research athletic performance 2026",
   "velocity-based training force-velocity profiling strength research",
   "athlete monitoring HRV acute chronic workload ratio research",
-  "plyometrics rate of force development eccentric overload meta-analysis",
   "long-term athletic development youth LTAD coaching research",
   "applied sport science elite athlete performance preparation case study",
+  "return to play injury prevention rehabilitation sport science research",
+  "sport psychology mental performance readiness athlete research",
+  "sports nutrition fueling recovery performance research athletes",
 ] as const
 
 // Hard-filter generalist fitness, lifestyle, and clickbait sources at the
@@ -48,7 +56,7 @@ export const EXCLUDED_DOMAINS: readonly string[] = [
 ] as const
 
 const MAX_RESULTS_PER_QUERY = 5
-const MAX_RESULTS_TO_RANK = 20
+const MAX_RESULTS_TO_RANK = 24
 
 // Admin-editable override: read the scan queries from system_settings
 // (key "blog_scan_queries", set via /admin/topic-suggestions). Falls back to the
@@ -100,6 +108,8 @@ export function buildRankingPrompt(results: TavilySearchResult[]): string {
     "",
     "EXCLUDE: generic personal-training tips, gen-pop weight loss, bodybuilding aesthetics, fitness fads, influencer opinion without cited evidence, lifestyle/wellness clickbait, supplement marketing.",
     "",
+    "Do not include two topics that describe the same underlying study or finding — if multiple sources cover it, keep only the single strongest source.",
+    "",
     "Write each title the way a performance coach would — specific and mechanism-aware (e.g., \"Eccentric overload at 105% 1RM accelerates RFD recovery — JSCR findings for return-to-sprint windows\"). Rank 1 = strongest combination of (a) scientific rigor of source, (b) practical applicability for performance coaches, (c) novelty.",
   ].join("\n")
 }
@@ -135,6 +145,7 @@ Reject:
   • Gen-pop weight loss, bodybuilding aesthetics, fitness fads
   • Influencer opinion without cited evidence
   • Lifestyle / wellness clickbait, supplement marketing
+  • Two topics describing the same underlying study or finding — keep only the strongest source
 
 Output JSON: { topics: [{ title, summary, tavily_url, rank }] }.
 
@@ -168,30 +179,21 @@ export async function handleTavilyTrendingScan(jobId: string): Promise<void> {
       ),
     )
 
-    const seenUrls = new Set<string>()
-    const topicsFromTavily: TavilySearchResult[] = []
-    for (const search of searches) {
-      for (const r of search.results) {
-        if (seenUrls.has(r.url)) continue
-        seenUrls.add(r.url)
-        topicsFromTavily.push({ title: r.title, url: r.url, content: r.content })
-        if (topicsFromTavily.length >= MAX_RESULTS_TO_RANK) break
-      }
-      if (topicsFromTavily.length >= MAX_RESULTS_TO_RANK) break
-    }
+    const topicsFromTavily = collectDiverseResults(searches, MAX_RESULTS_TO_RANK)
 
     const userMessage = buildRankingPrompt(topicsFromTavily)
 
     const result = await callAgent(SYSTEM_PROMPT, userMessage, TrendingSchema, {
       model: MODEL_SONNET,
     })
+    const rankedTopics = reassignSequentialRanks(result.content.topics)
 
     const scheduledFor = nextMondayISO(new Date())
     let topicsWritten = 0
 
-    if (result.content.topics.length > 0) {
+    if (rankedTopics.length > 0) {
       const supabase = getSupabase()
-      const rows = result.content.topics.map((t) => ({
+      const rows = rankedTopics.map((t) => ({
         entry_type: "topic_suggestion" as const,
         title: t.title.slice(0, 200),
         scheduled_for: scheduledFor,

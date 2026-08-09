@@ -80,4 +80,20 @@ describe("tavily-trending-scan helpers", () => {
     // And it should be AFTER the input date
     expect(d.getTime()).toBeGreaterThan(new Date("2026-04-22T00:00:00.000Z").getTime())
   })
+
+  it("TRENDING_QUERIES drops the eccentric-overload query that caused the duplicate-topic bug and adds return-to-play, psychology, and nutrition categories", () => {
+    const joined = TRENDING_QUERIES.join(" | ").toLowerCase()
+    expect(joined).not.toContain("plyometrics rate of force development eccentric overload")
+    expect(joined).toMatch(/return to play|injury prevention|rehabilitation/)
+    expect(joined).toMatch(/psychology|mental performance|readiness/)
+    expect(joined).toMatch(/nutrition|fueling/)
+    expect(TRENDING_QUERIES.length).toBe(8)
+  })
+
+  it("buildRankingPrompt instructs the model not to return two topics about the same underlying study", () => {
+    const prompt = buildRankingPrompt([
+      { title: "Sample", url: "https://x.example", content: "x" },
+    ]).toLowerCase()
+    expect(prompt).toMatch(/same underlying study|same finding/)
+  })
 })
