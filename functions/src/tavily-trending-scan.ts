@@ -193,6 +193,25 @@ export async function handleTavilyTrendingScan(jobId: string): Promise<void> {
 
     if (rankedTopics.length > 0) {
       const supabase = getSupabase()
+
+      // A retried or manually re-triggered scan for the same target week must
+      // replace its own prior output, not pile a second full rank-1..N batch
+      // on top of it — that's what produced heavy rank collisions in the UI
+      // (grouped by week, sorted by rank: 5 separate reruns meant 5 different
+      // "rank 1"s, 5 different "rank 2"s, ... all merged into one list).
+      // Scoped to this scan's own rows (source: "tavily") so manually-added
+      // and on-demand-researched topics for the same week are untouched.
+      const { error: deleteErr } = await supabase
+        .from("content_calendar")
+        .delete()
+        .eq("entry_type", "topic_suggestion")
+        .eq("scheduled_for", scheduledFor)
+        .eq("metadata->>source", "tavily")
+      if (deleteErr) {
+        await failJob(`content_calendar delete-prior-batch failed: ${deleteErr.message}`)
+        return
+      }
+
       const rows = rankedTopics.map((t) => ({
         entry_type: "topic_suggestion" as const,
         title: t.title.slice(0, 200),
