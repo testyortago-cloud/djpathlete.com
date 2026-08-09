@@ -8,6 +8,7 @@ import { ChevronDown, Settings, LogOut } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { getAdminNav, getAllHrefs, findActiveHref, type NavItem } from "./admin-nav"
+import { SidebarSearchTrigger } from "./command-palette/SidebarSearchTrigger"
 import type { PermissionActor } from "@/lib/permissions/registry"
 
 interface AdminSidebarProps {
@@ -84,6 +85,11 @@ export function AdminSidebar({ contentStudioEnabled = false, actor }: AdminSideb
           <span className="font-heading font-semibold tracking-[0.2em] text-[11px] uppercase text-white">Athlete</span>
         </Link>
         <p className="text-[10px] text-white/40 mt-1">Admin Dashboard</p>
+      </div>
+
+      {/* Search */}
+      <div className="px-3 pb-2">
+        <SidebarSearchTrigger />
       </div>
 
       {/* Navigation */}

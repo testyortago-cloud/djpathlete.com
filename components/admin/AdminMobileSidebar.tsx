@@ -8,6 +8,7 @@ import { X, Settings, LogOut } from "lucide-react"
 import { signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { getAdminNav, getAllHrefs, findActiveHref, type NavItem } from "./admin-nav"
+import { SidebarSearchTrigger } from "./command-palette/SidebarSearchTrigger"
 import type { PermissionActor } from "@/lib/permissions/registry"
 
 interface AdminMobileSidebarProps {
@@ -50,6 +51,10 @@ export function AdminMobileSidebar({ open, onClose, contentStudioEnabled = false
           <button onClick={onClose} className="text-white/70 hover:text-white" aria-label="Close menu">
             <X className="size-5" />
           </button>
+        </div>
+
+        <div className="px-3 pt-2">
+          <SidebarSearchTrigger onOpen={onClose} />
         </div>
 
         <nav className="flex-1 overflow-y-auto sidebar-scroll px-3 py-2 space-y-4">
