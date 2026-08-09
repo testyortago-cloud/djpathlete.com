@@ -65,6 +65,53 @@ export function FunnelEditor({ stepId, publicUrl, initialProjectData }: FunnelEd
       blockManager: {
         blocks: [...layoutBlocks(), ...islandBlockDefinitions()],
       },
+      // GrapesJS's default panel buttons draw their icons from a Font Awesome
+      // class (`fa fa-th-large` etc). We load no icon font — the default CDN URL
+      // is refused by our CSP — so every one of those buttons rendered as a
+      // blank square, including the one that opens the block palette. The editor
+      // looked empty and unusable because the way IN was invisible.
+      //
+      // Same panel and button ids as the defaults, so this REPLACES them rather
+      // than adding a second row. Text labels need no font and survive any CSP.
+      panels: {
+        defaults: [
+          {
+            id: "options",
+            buttons: [
+              {
+                id: "sw-visibility",
+                command: "core:component-outline",
+                context: "sw-visibility",
+                label: "Outlines",
+                active: true,
+                attributes: { title: "Show element outlines" },
+              },
+              { id: "preview", command: "preview", context: "preview", label: "Preview" },
+              { id: "fullscreen", command: "fullscreen", context: "fullscreen", label: "Fullscreen" },
+              { id: "export-template", command: "export-template", label: "Code" },
+            ],
+          },
+          {
+            id: "views",
+            buttons: [
+              {
+                id: "open-blocks",
+                command: "open-blocks",
+                label: "Blocks",
+                // Open on load: a new page starts empty, and landing on the
+                // Style Manager ("Select an element before using Style Manager")
+                // gives the owner nothing to do.
+                active: true,
+                togglable: false,
+                attributes: { title: "Drag elements onto the page" },
+              },
+              { id: "open-sm", command: "open-sm", label: "Style", togglable: false },
+              { id: "open-tm", command: "open-tm", label: "Settings", togglable: false },
+              { id: "open-layers", command: "open-layers", label: "Layers", togglable: false },
+            ],
+          },
+        ],
+      },
     })
 
     registerIslandTypes(editor)

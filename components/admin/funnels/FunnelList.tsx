@@ -1,24 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Plus, ExternalLink, Pencil } from "lucide-react"
-import {
-  DataTable,
-  DataTableBadge,
-  DataTableCard,
-  DataTableCell,
-  DataTableEmpty,
-  DataTableHead,
-  DataTableHeader,
-  DataTableRow,
-  DataTableToolbar,
-  type DataTableBadgeTone,
-} from "@/components/ui/data-table"
+import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { PreviewCard } from "./PreviewCard"
+import type { DataTableBadgeTone } from "@/components/ui/data-table"
 import type { Funnel, FunnelStatus } from "@/types/database"
 
 const STATUS_TONE: Record<FunnelStatus, DataTableBadgeTone> = {
@@ -29,9 +18,13 @@ const STATUS_TONE: Record<FunnelStatus, DataTableBadgeTone> = {
 
 interface FunnelListProps {
   initialFunnels: Funnel[]
+  /** funnel id -> submission count. */
+  leadCounts: Record<string, number>
+  /** funnel id -> true when its entry page has a published version to preview. */
+  previewable: Record<string, boolean>
 }
 
-export function FunnelList({ initialFunnels }: FunnelListProps) {
+export function FunnelList({ initialFunnels, leadCounts, previewable }: FunnelListProps) {
   const router = useRouter()
   const [funnels, setFunnels] = useState<Funnel[]>(initialFunnels)
   const [query, setQuery] = useState("")
@@ -41,9 +34,7 @@ export function FunnelList({ initialFunnels }: FunnelListProps) {
   const visible = funnels.filter((funnel) => {
     const needle = query.trim().toLowerCase()
     if (needle.length === 0) return true
-    return (
-      funnel.name.toLowerCase().includes(needle) || funnel.slug.toLowerCase().includes(needle)
-    )
+    return funnel.name.toLowerCase().includes(needle) || funnel.slug.toLowerCase().includes(needle)
   })
 
   async function handleCreate() {
@@ -76,9 +67,27 @@ export function FunnelList({ initialFunnels }: FunnelListProps) {
     }
   }
 
+  async function handleDelete(funnel: Funnel) {
+    if (!window.confirm(`Delete "${funnel.name}" and all of its pages? This cannot be undone.`)) {
+      return
+    }
+    try {
+      const response = await fetch(`/api/admin/funnels/${funnel.id}`, { method: "DELETE" })
+      if (!response.ok) {
+        toast.error("Could not delete the funnel.")
+        return
+      }
+      setFunnels((current) => current.filter((f) => f.id !== funnel.id))
+      toast.success("Funnel deleted.")
+      router.refresh()
+    } catch {
+      toast.error("Could not delete the funnel.")
+    }
+  }
+
   return (
-    <DataTableCard>
-      <DataTableToolbar>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -89,68 +98,51 @@ export function FunnelList({ initialFunnels }: FunnelListProps) {
           <Input
             value={name}
             onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") handleCreate()
+            }}
             placeholder="New funnel name"
             className="sm:max-w-xs"
           />
           <Button onClick={handleCreate} disabled={creating}>
             <Plus className="size-4" />
-            {creating ? "Creating…" : "Create"}
+            {creating ? "Creating…" : "Create funnel"}
           </Button>
         </div>
-      </DataTableToolbar>
+      </div>
 
-      <DataTable>
-        <DataTableHeader>
-          <DataTableHead>Name</DataTableHead>
-          <DataTableHead className="hidden md:table-cell">Public URL</DataTableHead>
-          <DataTableHead className="hidden md:table-cell">Status</DataTableHead>
-          <DataTableHead align="right">Actions</DataTableHead>
-        </DataTableHeader>
-        <tbody>
-          {visible.length === 0 ? (
-            <DataTableEmpty colSpan={4}>
-              No funnels yet. Name one above to get started.
-            </DataTableEmpty>
-          ) : (
-            visible.map((funnel) => (
-              <DataTableRow key={funnel.id}>
-                <DataTableCell>
-                  <Link href={`/admin/funnels/${funnel.id}`} className="font-medium text-primary">
-                    {funnel.name}
-                  </Link>
-                </DataTableCell>
-                <DataTableCell muted className="hidden md:table-cell text-xs">
-                  /go/{funnel.slug}
-                </DataTableCell>
-                <DataTableCell className="hidden md:table-cell">
-                  <DataTableBadge tone={STATUS_TONE[funnel.status]}>{funnel.status}</DataTableBadge>
-                </DataTableCell>
-                <DataTableCell align="right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Button asChild variant="ghost" size="sm">
-                      <Link href={`/admin/funnels/${funnel.id}`}>
-                        <Pencil className="size-4" />
-                        Edit
-                      </Link>
-                    </Button>
-                    <Button asChild variant="ghost" size="sm">
-                      <a
-                        href={`/go/${funnel.slug}${funnel.status === "published" ? "" : "?preview=1"}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <ExternalLink className="size-4" />
-                        View
-                      </a>
-                    </Button>
-                  </div>
-                </DataTableCell>
-              </DataTableRow>
-            ))
-          )}
-        </tbody>
-      </DataTable>
-    </DataTableCard>
+      {visible.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border bg-surface/30 px-4 py-16 text-center text-muted-foreground">
+          {funnels.length === 0
+            ? "No funnels yet. Name one above to get started."
+            : "No funnels match that search."}
+        </div>
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {visible.map((funnel) => {
+            const publicUrl = `/go/${funnel.slug}`
+            return (
+              <PreviewCard
+                key={funnel.id}
+                title={funnel.name}
+                subtitle={publicUrl}
+                // Preview the entry page. `?preview=1` lets an admin see a funnel
+                // that is still a draft; without a published version there is
+                // nothing to render and the card says so.
+                previewUrl={previewable[funnel.id] ? `${publicUrl}?preview=1` : null}
+                href={`/admin/funnels/${funnel.id}`}
+                publicUrl={funnel.status === "published" ? publicUrl : null}
+                badgeLabel={funnel.status}
+                badgeTone={STATUS_TONE[funnel.status]}
+                leadCount={leadCounts[funnel.id] ?? 0}
+                onDelete={() => handleDelete(funnel)}
+                deleteLabel={`Delete ${funnel.name}`}
+              />
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 

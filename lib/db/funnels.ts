@@ -354,6 +354,31 @@ export async function createSubmission(
   return data as FunnelSubmission
 }
 
+/**
+ * Submission counts keyed by funnel id, for the funnel cards. One query rather
+ * than one per card. Paginated because `.select()` caps at ~1000 rows and this
+ * is a growth table.
+ */
+export async function getSubmissionCountsByFunnel(): Promise<Record<string, number>> {
+  const supabase = getClient()
+  const counts: Record<string, number> = {}
+  const PAGE = 1000
+
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("funnel_submissions")
+      .select("funnel_id")
+      .range(from, from + PAGE - 1)
+    if (error) throw new Error(`getSubmissionCountsByFunnel: ${error.message}`)
+
+    const rows = (data ?? []) as { funnel_id: string }[]
+    for (const row of rows) counts[row.funnel_id] = (counts[row.funnel_id] ?? 0) + 1
+    if (rows.length < PAGE) break
+  }
+
+  return counts
+}
+
 export async function listSubmissions(
   funnelId: string,
   limit = 200,
