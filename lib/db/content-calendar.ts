@@ -36,6 +36,40 @@ export async function createManualTopicSuggestion(
   return data as ContentCalendarEntry
 }
 
+export interface ResearchedTopic {
+  title: string
+  summary: string
+  tavily_url: string
+  rank: number
+}
+
+/**
+ * Bulk-inserts admin-selected candidates from the on-demand "research a
+ * topic" form. Same metadata shape the weekly Tavily scan writes, so these
+ * render as ordinary topic cards in TopicSuggestionsList.
+ */
+export async function createResearchedTopicSuggestions(
+  topics: ResearchedTopic[],
+  scheduledFor: string,
+): Promise<ContentCalendarEntry[]> {
+  const supabase = getClient()
+  const rows = topics.map((t) => ({
+    entry_type: "topic_suggestion" as const,
+    title: t.title.slice(0, 200),
+    scheduled_for: scheduledFor,
+    status: "planned" as const,
+    metadata: {
+      source: "tavily",
+      rank: t.rank,
+      tavily_url: t.tavily_url,
+      summary: t.summary,
+    },
+  }))
+  const { data, error } = await supabase.from("content_calendar").insert(rows).select()
+  if (error) throw error
+  return data as ContentCalendarEntry[]
+}
+
 export async function getCalendarEntryById(id: string): Promise<ContentCalendarEntry | null> {
   const supabase = getClient()
   const { data, error } = await supabase
