@@ -1331,8 +1331,7 @@ export function TopicResearchForm() {
       const topics = (aiJob.result as { topics?: ResearchCandidate[] } | null)?.topics ?? []
       setSelected(new Set(topics.map((_, i) => i)))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId, aiJob.status])
+  }, [jobId, aiJob.status, aiJob.result])
 
   async function runResearch() {
     const trimmed = topic.trim()
