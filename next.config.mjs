@@ -130,7 +130,12 @@ const nextConfig = {
       // (ReceiptRowEditor). Without it the iframe is CSP-blocked in production
       // and only the "Open in new tab" fallback works — and no test catches it,
       // because jsdom does not enforce CSP.
-      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://www.youtube.com https://www.youtube-nocookie.com https://storage.googleapis.com",
+      // The funnel builder lets the owner drop video embeds onto a canvas. The
+      // host allowlist lives in lib/funnels/compile/sanitize.ts
+      // (ALLOWED_IFRAME_HOSTS) and __tests__/lib/funnels/compile.test.ts asserts
+      // every entry appears here — a host allowed by the compiler but missing
+      // from this directive renders as a blank box in production only.
+      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://www.youtube.com https://youtube.com https://www.youtube-nocookie.com https://youtube-nocookie.com https://player.vimeo.com https://storage.googleapis.com",
       // data:: @remotion/player primes audio playback with a tiny silent
       // data:audio/mp3 URI (the reel-editor preview's Audio/Video layers); without
       // data: the browser blocks it and audio preview is silent.
