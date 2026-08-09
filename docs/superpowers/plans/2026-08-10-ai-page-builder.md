@@ -407,6 +407,14 @@ drift this feature exists to prevent."
 
 **Why:** models reach for inline SVG icons constantly and the compiler currently drops `svg` wholesale, so generated pages look visibly cheaper than GoHighLevel's. This is the riskiest change in the project — the allowlist is deliberately tiny and every exclusion is pinned.
 
+> **Rebased onto `ed8bbfdc`.** That commit made `DROPPED_TAGS` emit a non-fatal
+> `content_removed` warning naming the tag, precisely so an author that cannot
+> see the result learns its `<svg>` icons vanished. Removing `svg` from
+> `DROPPED_TAGS` retires that warning for svg (correct — it is allowed now), so
+> the new SVG-subtree guard below must emit the **same** warning: the invariant
+> "nothing is removed silently" has to survive the widening rather than gain a
+> hole exactly where the new markup lives.
+
 - [ ] **Step 1: Write the failing tests**
 
 Append to `__tests__/lib/funnels/sanitize.test.ts`:
@@ -602,10 +610,21 @@ function filterSvgAttrs(attrs: Record<string, string>): Record<string, string> {
 The SVG subtree drop for non-allowlisted children comes for free: an unknown tag inside `<svg>` falls through to `if (!ALLOWED_TAGS.has(tag)) return children`, which unwraps it. To drop it with its subtree instead, add this guard at the top of `convertNode`, right after the `DROPPED_TAGS` check:
 
 ```ts
-  // Anything an SVG-namespaced parser produced that is not in SVG_TAGS is a
-  // foreign-content element (foreignObject, use, animate, ...) and is removed
-  // with its subtree, not unwrapped.
-  if (FORBIDDEN_SVG_TAG_SET.has(tag)) return []
+  // Anything inside an <svg> that is not in SVG_TAGS is a foreign-content
+  // element (foreignObject, use, animate, ...) and is removed WITH its subtree
+  // rather than unwrapped — unwrapping <foreignObject> would splice raw HTML
+  // into the drawing, which is the thing that made svg unsafe to begin with.
+  //
+  // It warns for the same reason DROPPED_TAGS does (ed8bbfdc): an author that
+  // cannot see the result must not be told a page published cleanly when part
+  // of its markup was thrown away.
+  if (inSvg && !SVG_TAGS.has(tag)) {
+    errors.push({
+      code: "content_removed",
+      message: `A <${tag}> element inside an SVG was removed — only plain shape elements are allowed.`,
+    })
+    return []
+  }
 ```
 
 and define near the allowlists:
@@ -616,20 +635,36 @@ const FORBIDDEN_SVG_TAG_SET: ReadonlySet<string> = new Set(FORBIDDEN_SVG_TAGS)
 
 - [ ] **Step 5: Run the sanitiser tests**
 
+**The `inSvg` flag is load-bearing, not an optimisation.** `a` and `title` are in
+`FORBIDDEN_SVG_TAGS` *and* legitimately allowed in ordinary HTML, so an
+unscoped guard would drop every link on every page. Thread the flag:
+
+```ts
+function convertNode(node: P5Node, errors: CompileError[], inSvg = false): FunnelNode[]
+function convertChildren(children: P5Node[], errors: CompileError[], inSvg = false): FunnelNode[]
+```
+
+`convertChildren` passes `inSvg` straight through; `convertNode` passes
+`inSvg || tag === "svg"` down to its own children. `htmlToNodes` starts the walk
+with `convertChildren(fragment.childNodes ?? [], errors, false)`.
+
+Add one more test to the SVG block asserting the warning fires:
+
+```ts
+  it("warns rather than silently deleting a forbidden svg child", () => {
+    const { nodes, errors } = htmlToNodes('<svg><foreignObject><b>hi</b></foreignObject></svg>')
+    expect(tags(nodes)).toEqual(["svg"])
+    expect(errors.map((e) => e.code)).toContain("content_removed")
+    expect(errors[0].message).toContain("foreignobject")
+  })
+
+  it("does not drop an ordinary <a> outside an svg", () => {
+    const { nodes } = htmlToNodes('<a href="/contact">Contact</a>')
+    expect(tags(nodes)).toEqual(["a"])
+  })
+```
+
 Run: `npx vitest run __tests__/lib/funnels/sanitize.test.ts`
-Expected: PASS. If `<text>`/`<a>` assertions fail because those tags are also in `ALLOWED_TAGS` (`a` is), note that the `FORBIDDEN_SVG_TAG_SET` guard runs *before* the `ALLOWED_TAGS` check, so `<a>` is now dropped everywhere — **that is wrong**. Fix: remove `"a"`, `"text"`, `"tspan"`, `"desc"`, `"metadata"`, `"switch"`, `"title"` from the early-return guard by scoping it. Replace the guard with a parameterised walk instead:
-
-```ts
-function convertNode(node: P5Node, errors: CompileError[], inSvg = false): FunnelNode[] {
-```
-
-and thread `inSvg` through `convertChildren`, setting it `true` once `tag === "svg"`. The early return becomes:
-
-```ts
-  if (inSvg && !SVG_TAGS.has(tag)) return []
-```
-
-`htmlToNodes` calls `convertChildren(fragment.childNodes ?? [], errors, false)`.
 
 - [ ] **Step 6: Re-run and confirm**
 
@@ -5098,7 +5133,11 @@ export interface DraftStep {
   step: FunnelStep
   nodes: FunnelNode[]
   css: string
-  /** Non-empty means the draft cannot publish. Rendered instead of the page. */
+  /**
+   * Everything the owner should know about this draft: fatal compile errors
+   * (which also leave `nodes` empty) and non-fatal `content_removed` warnings
+   * (which do not). Rendered above the page either way.
+   */
   problems: string[]
 }
 
@@ -5136,7 +5175,17 @@ export async function getDraftStep(
     }
   }
 
-  return { funnel, step, nodes: compiled.nodes, css: compiled.css, problems: assembled.errors }
+  // Warnings matter more here than at publish. `content_removed` (ed8bbfdc)
+  // fires when the compiler threw markup away — and the author is a generator
+  // that cannot see its own output, so "your icons were stripped" has to reach
+  // the owner during iteration or it never reaches anyone.
+  return {
+    funnel,
+    step,
+    nodes: compiled.nodes,
+    css: compiled.css,
+    problems: [...assembled.errors, ...compiled.warnings.map((w) => w.message)],
+  }
 }
 ```
 
@@ -5172,7 +5221,7 @@ and in the component:
       <div id={FUNNEL_ROOT_ID}>
         {draft.problems.length > 0 ? (
           <div data-djp-preview-problems role="alert">
-            <p>This page cannot be published yet:</p>
+            <p>{draft.nodes.length === 0 ? "This page cannot be published yet:" : "Note:"}</p>
             <ul>
               {draft.problems.map((problem) => (
                 <li key={problem}>{problem}</li>
