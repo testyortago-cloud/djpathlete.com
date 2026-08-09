@@ -579,6 +579,29 @@ export const tavilyResearch = onDocumentCreated(
   },
 )
 
+// ─── Topic Research Scan ──────────────────────────────────────────────────────
+// Triggered when a new ai_jobs doc is created with type "topic_research_scan".
+// On-demand version of the weekly trending scan, scoped to a single admin-typed
+// topic. Writes candidate topics into the job result for the admin to preview
+// and select — does NOT write to content_calendar directly.
+
+export const topicResearchScan = onDocumentCreated(
+  {
+    document: "ai_jobs/{jobId}",
+    timeoutSeconds: 120,
+    memory: "512MiB",
+    region: "us-central1",
+    secrets: [anthropicApiKey, tavilyApiKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data || data.type !== "topic_research_scan") return
+
+    const { handleTopicResearchScan } = await import("./topic-research-scan.js")
+    await handleTopicResearchScan(event.params.jobId)
+  },
+)
+
 // ─── Tavily Fact Check ────────────────────────────────────────────────────────
 // Triggered when a new ai_jobs doc is created with type "tavily_fact_check"
 

@@ -31,6 +31,7 @@ export type AiJobType =
   | "tavily_research"
   | "tavily_fact_check"
   | "tavily_trending_scan"
+  | "topic_research_scan"
   | "blog_from_video"
   | "newsletter_from_blog"
   | "seo_enhance"
