@@ -1343,7 +1343,25 @@ describe("applyOps — structural ops", () => {
     expect(() => applyOps(draft("a"), [{ op: "regenerate_page", brief: "x" }], results())).toThrow(/replacement/i)
   })
 
-  it("applies edits before deletes before adds, so order is never ambiguous", () => {
+  it("resolves an add anchored on a section the same call deletes", () => {
+    // "Replace the testimonials with a video testimonial" — delete(b) plus
+    // add(after: b). Deleting first would lose the anchor and dump the new
+    // section at the bottom. This fixture is also the ONLY one that
+    // distinguishes phase ordering from emitted order: an implementation that
+    // applied ops in the order the planner emitted them yields ["a","new","c"]
+    // here only by accident of this ordering, so assert both directions below.
+    const after = applyOps(
+      draft("a", "b", "c"),
+      [
+        { op: "delete_section", sectionId: "b" },
+        { op: "add_section", afterSectionId: "b", kind: "k", brief: "b", newSectionId: "new" },
+      ],
+      results({ new: section("new") }),
+    )
+    expect(after.sections.map((s) => s.id)).toEqual(["a", "new", "c"])
+  })
+
+  it("appends an add whose anchor is the last section, with an unrelated delete", () => {
     const after = applyOps(
       draft("a", "b", "c"),
       [
@@ -1355,6 +1373,34 @@ describe("applyOps — structural ops", () => {
     )
     expect(after.sections.map((s) => s.id)).toEqual(["a", "c", "new"])
     expect(after.sections[0].html).toBe("<p>edited</p>")
+  })
+
+  it("PIN: a delete leaves every surviving section reference-identical", () => {
+    const before = draft("a", "b", "c")
+    const after = applyOps(before, [{ op: "delete_section", sectionId: "b" }], results())
+    // Identity, not equality: a clone-everything implementation would pass a
+    // toEqual here while breaking the guarantee the whole design rests on.
+    expect(after.sections[0]).toBe(before.sections[0])
+    expect(after.sections[1]).toBe(before.sections[2])
+  })
+
+  it("PIN: a reorder leaves every section reference-identical", () => {
+    const before = draft("a", "b", "c")
+    const after = applyOps(before, [{ op: "reorder", order: ["c", "a", "b"] }], results())
+    expect(after.sections[0]).toBe(before.sections[2])
+    expect(after.sections[1]).toBe(before.sections[0])
+    expect(after.sections[2]).toBe(before.sections[1])
+  })
+
+  it("PIN: an add leaves every pre-existing section reference-identical", () => {
+    const before = draft("a", "b")
+    const after = applyOps(
+      before,
+      [{ op: "add_section", afterSectionId: "a", kind: "k", brief: "b", newSectionId: "new" }],
+      results({ new: section("new") }),
+    )
+    expect(after.sections[0]).toBe(before.sections[0])
+    expect(after.sections[2]).toBe(before.sections[1])
   })
 })
 ```
@@ -1443,7 +1489,9 @@ export function applyOps(draft: PageDraft, ops: ResolvedOp[], results: OpResults
   }
 
   // Fixed phase order so the outcome never depends on the order the planner
-  // happened to emit ops in: edits, then deletes, then inserts, then reorder.
+  // happened to emit ops in: edits, then inserts, then deletes, then reorder.
+  // (Inserts before deletes is load-bearing — see the comment on the delete
+  // phase below.)
   let sections = draft.sections.map((existing) => {
     const replacement = ops.some((op) => op.op === "edit_section" && op.sectionId === existing.id)
       ? results.sections.get(existing.id)
@@ -1451,9 +1499,6 @@ export function applyOps(draft: PageDraft, ops: ResolvedOp[], results: OpResults
     // Untouched sections are the SAME OBJECT, not a copy. This is the guarantee.
     return replacement ?? existing
   })
-
-  const removed = new Set(ops.filter((op) => op.op === "delete_section").map((op) => op.sectionId))
-  if (removed.size > 0) sections = sections.filter((s) => !removed.has(s.id))
 
   for (const op of ops) {
     if (op.op !== "add_section") continue
@@ -1467,6 +1512,16 @@ export function applyOps(draft: PageDraft, ops: ResolvedOp[], results: OpResults
     if (at === -1) sections = [...sections, fresh]
     else sections = [...sections.slice(0, at + 1), fresh, ...sections.slice(at + 1)]
   }
+
+  // Deletes run AFTER adds, not before. "Replace the testimonials with a video
+  // testimonial" is a natural plan — delete(testimonials) + add(after:
+  // testimonials) — and validatePlan resolves afterSectionId against the
+  // PRE-turn section list, so it lets that pair through. Deleting first would
+  // leave the anchor missing, findIndex would return -1, and the replacement
+  // would silently land at the bottom of the page instead of where the old
+  // section was.
+  const removed = new Set(ops.filter((op) => op.op === "delete_section").map((op) => op.sectionId))
+  if (removed.size > 0) sections = sections.filter((s) => !removed.has(s.id))
 
   const reorder = ops.find((op) => op.op === "reorder")
   if (reorder) {
