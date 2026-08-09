@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { TopicResearchForm } from "@/components/admin/topic-suggestions/TopicResearchForm"
 
 export function BlogTopicControls({ initialQueries }: { initialQueries: string[] }) {
   const router = useRouter()
@@ -115,6 +116,8 @@ export function BlogTopicControls({ initialQueries }: { initialQueries: string[]
 
   return (
     <div className="mb-6 grid gap-4 lg:grid-cols-2">
+      <TopicResearchForm />
+
       {/* Suggest your own topic */}
       <div className="rounded-xl border border-border bg-white p-4">
         <div className="mb-1 flex items-center gap-2">
@@ -144,7 +147,7 @@ export function BlogTopicControls({ initialQueries }: { initialQueries: string[]
       </div>
 
       {/* Weekly auto-scan topics */}
-      <div className="rounded-xl border border-border bg-white p-4">
+      <div className="rounded-xl border border-border bg-white p-4 lg:col-span-2">
         <div className="mb-1 flex items-center gap-2">
           <Search className="size-4 text-primary" />
           <h2 className="text-sm font-semibold text-primary">Weekly auto-scan topics</h2>
