@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Loader2, Search as SearchIcon, ExternalLink } from "lucide-react"
@@ -33,19 +33,23 @@ export function TopicResearchForm() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [adding, setAdding] = useState(false)
   const aiJob = useAiJob(jobId)
+  const autoSelectedJobIdRef = useRef<string | null>(null)
 
   const candidates = ((aiJob.result as { topics?: ResearchCandidate[] } | null)?.topics) ?? []
   const isLoading = submitting || (jobId !== null && (aiJob.status === "pending" || aiJob.status === "processing"))
   const isError = jobId !== null && aiJob.status === "failed"
   const isDone = jobId !== null && aiJob.status === "completed"
 
-  // Default every fresh batch of candidates to checked.
+  // Default every fresh batch of candidates to checked — but only once per
+  // job, so a later re-delivery of the same result (getDoc vs onSnapshot,
+  // or any future write to the job doc) doesn't silently re-check boxes the
+  // admin already unchecked.
   useEffect(() => {
-    if (jobId && aiJob.status === "completed") {
-      const topics = (aiJob.result as { topics?: ResearchCandidate[] } | null)?.topics ?? []
-      setSelected(new Set(topics.map((_, i) => i)))
+    if (jobId && aiJob.status === "completed" && autoSelectedJobIdRef.current !== jobId) {
+      autoSelectedJobIdRef.current = jobId
+      setSelected(new Set(candidates.map((_, i) => i)))
     }
-  }, [jobId, aiJob.status, aiJob.result])
+  }, [jobId, aiJob.status, candidates])
 
   async function runResearch() {
     const trimmed = topic.trim()
@@ -103,7 +107,7 @@ export function TopicResearchForm() {
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? "Failed to add topics")
-      toast.success(`Added ${chosen.length} topic${chosen.length === 1 ? "" : "s"} — find ${chosen.length === 1 ? "it" : "them"} below.`)
+      toast.success(`Added ${chosen.length} topic${chosen.length === 1 ? "" : "s"} — check this week's brief or the Archive section below.`)
       reset()
       router.refresh()
     } catch (e) {

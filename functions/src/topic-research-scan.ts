@@ -135,9 +135,21 @@ export async function handleTopicResearchScan(jobId: string): Promise<void> {
     })
     const rankedTopics = reassignSequentialRanks(result.content.topics)
 
+    const validatedTopics = rankedTopics
+      .filter((t) => {
+        try {
+          new URL(t.tavily_url)
+          return true
+        } catch {
+          return false
+        }
+      })
+      .map((t) => ({ ...t, title: t.title.slice(0, 200) }))
+      .slice(0, 10)
+
     await jobRef.update({
       status: "completed",
-      result: { topics: rankedTopics },
+      result: { topics: validatedTopics },
       updatedAt: FieldValue.serverTimestamp(),
     })
   } catch (error) {

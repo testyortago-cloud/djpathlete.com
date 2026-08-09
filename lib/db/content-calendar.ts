@@ -59,8 +59,7 @@ export async function createResearchedTopicSuggestions(
     scheduled_for: scheduledFor,
     status: "planned" as const,
     metadata: {
-      source: "tavily",
-      rank: t.rank,
+      source: "topic_research",
       tavily_url: t.tavily_url,
       summary: t.summary,
     },
