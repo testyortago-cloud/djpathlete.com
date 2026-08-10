@@ -163,6 +163,33 @@ COMMENT ON COLUMN public.funnel_step_versions.project_data IS
   'SectionDoc snapshot the published html/css was rendered from.';
 ```
 
+### 1b-ii. RLS — must ship in `00203`, before any of this reaches prod
+
+**`00202` creates all four funnel tables with RLS DISABLED**, and
+`funnel_submissions` holds lead names, emails and phones. That is harmless while
+the tables exist only on the dev clone, and unacceptable the moment `00202`
+reaches production — which it must, immediately before the push, or the funnel
+admin code in this branch 500s against tables that do not exist.
+
+Every read and write goes through `lib/db/funnels.ts` / `lib/db/funnel-builder.ts`,
+both of which use `createServiceRoleClient()`. Service role bypasses RLS, so
+**enabling it with no policies closes the hole and breaks nothing.** Verify that
+claim before applying — `grep -rn 'from("funnel' lib app components` must return
+only service-role callers, and no browser-side Supabase client may touch a
+funnel table.
+
+```sql
+ALTER TABLE public.funnels              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.funnel_steps         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.funnel_step_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.funnel_submissions   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.funnel_step_turns    ENABLE ROW LEVEL SECURITY;
+```
+
+**Do NOT bulk-`ALTER` the 12 pre-existing RLS-disabled tables Supabase also
+flags.** They have no policies either, and enabling RLS on them would break
+working features. This block is scoped to funnel tables only.
+
 **Why not `ai_conversation_history`** — its `feature` column carries a closed CHECK (`00039_ai_conversation_history.sql:9-11`: `program_generation | program_chat | admin_chat | ai_coach`), it is keyed `(user_id, session_id)` not `step_id`, and it has nowhere to put the document or the compile verdict. Reuse costs a migration anyway and buys the wrong grain.
 
 **Why not `funnel_step_versions`** — four reasons, all in code: `version` is computed by a non-atomic read-max-then-insert (`lib/db/funnels.ts:223-231`) that races on rapid iteration against `UNIQUE (step_id, version)`; the number is shown to the owner (`FunnelEditor.tsx:183`) and becomes meaningless at v47 by lunchtime; a turn that fails to compile has no version row to write; and `getPublishedStep(..., {includeUnpublished:true})` would start serving un-reviewed AI drafts to anyone with a preview link.
