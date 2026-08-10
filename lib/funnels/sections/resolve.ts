@@ -138,22 +138,35 @@ export interface CatalogueEntry {
 export type Catalogue = Record<ResolvableCtaKind, CatalogueEntry[]>
 
 /**
+ * The already-fetched rows `toCatalogue` assembles into a `Catalogue`.
+ *
+ * ONE NAMED OBJECT, NOT THREE POSITIONAL ARGUMENTS, AND THAT IS THE WHOLE
+ * POINT OF THE PARAMETER. `programs` and `sessionPacks` are BOTH
+ * `{id, name}[]`, so a transposed call is structurally valid: with a
+ * positional signature `toCatalogue(sessionPacks, programs, events)` compiles
+ * clean, ships a catalogue in which every program ref resolves against the
+ * pack list, and is caught by neither tsc nor any type-level assertion —
+ * exactly the hazard this helper was extracted to close. Named properties
+ * make the same mistake a COMPILE ERROR (`Object literal may only specify
+ * known properties` / a missing required key), so it cannot reach a test at
+ * all. Keep it that way; do not "simplify" this back to positional args.
+ */
+export interface CatalogueRows {
+  programs: { id: string; name: string }[]
+  sessionPacks: { id: string; name: string }[]
+  events: { id: string; title: string }[]
+}
+
+/**
  * Pure assembly of the catalogue from already-fetched rows. Split out of
- * `loadCatalogue` purely so the "which list goes under which key" mapping is
- * testable with plain literals, with zero mocks — `program` and
- * `session_pack` are BOTH `{id, name}[]` shapes, so nothing in the type
- * system stops a transposed call (`toCatalogue(sessionPacks, programs,
- * events)`) from compiling clean; only a test that gives each list a
- * distinguishable name can catch that mistake.
+ * `loadCatalogue` so the "which list goes under which key" mapping is
+ * testable with plain literals and zero mocks — see `CatalogueRows` above for
+ * why the parameter is a named object.
  *
  * `Event` uses `.title`, the other two use `.name`; that difference is
  * mapped here, once, and nowhere else.
  */
-export function toCatalogue(
-  programs: { id: string; name: string }[],
-  sessionPacks: { id: string; name: string }[],
-  events: { id: string; title: string }[],
-): Catalogue {
+export function toCatalogue({ programs, sessionPacks, events }: CatalogueRows): Catalogue {
   return {
     program: programs.map((row) => ({ id: row.id, name: row.name })),
     session_pack: sessionPacks.map((row) => ({ id: row.id, name: row.name })),
@@ -162,33 +175,80 @@ export function toCatalogue(
 }
 
 /**
+ * The `from` bound `loadCatalogue` passes to `getPublishedEvents`: the Unix
+ * epoch, i.e. NO lower date bound at all. Named rather than inlined because
+ * `new Date(0)` at a call site reads as an uninitialised placeholder when it
+ * is in fact a deliberate "any date, ever" sentinel — see `loadCatalogue`
+ * below for the failure it exists to prevent. A single shared instance is
+ * safe: `getPublishedEvents` only reads it (`.toISOString()`), and nothing in
+ * this module or that one mutates a `Date` in place.
+ *
+ * DO NOT PIN THIS CONSTANT BY COMPARING A TEST AGAINST IT — that is a
+ * tautology that survives changing it to `new Date()`. The test asserts the
+ * literal `0`.
+ */
+const EVENT_RECOGNITION_FROM = new Date(0)
+
+/**
  * Loads the real catalogue. Deliberately trivial — every ounce of logic lives
  * in `resolveDoc`/`toCatalogue` so it can be tested without mocks.
  *
- * `programs.is_active` / `session_pack_products.is_active` are the right
- * filter for a picker AND the reason a ref pointing at a since-deactivated
- * row correctly stops resolving. EVENTS ARE DELIBERATELY DIFFERENT:
- * `getPublishedEvents()` called with no arguments defaults to
- * `from: new Date()`, i.e. "still running or in the future" — exactly right
- * for a PICKER (an owner adding a new CTA shouldn't be offered a camp that
- * already happened), but wrong for a RESOLVER. A doc holding a past event's
- * REAL row id would stop resolving the moment that event's `end_date`
- * passed: `publishGate.ok` flips to `false` on an otherwise-untouched,
- * previously-publishable page, and the owner is shown a raw UUID they
- * cannot act on plus a picker full of unrelated current events. Passing
- * `{ from: new Date(0) }` asks for every PUBLISHED event regardless of
- * date, so a real id keeps resolving for as long as the row exists and
- * stays published — date-based filtering belongs in whatever UI offers
- * events to pick FROM (Stage 1.9), not in the resolver that must keep
- * recognising ids the page already committed to.
+ * THE CATALOGUE IS TWO DIFFERENT SETS WEARING ONE NAME, AND THIS FUNCTION
+ * SEPARATES THEM ON ONLY ONE AXIS. `resolveDoc` consumes it as a RECOGNITION
+ * SET — "is the id this page already committed to still a real row?" — while
+ * Stage 1.9's picker will consume it as an OFFER SET — "what may an owner
+ * attach a NEW cta to?". Those two want different rows, and conflating them
+ * is the root cause of a whole family of self-inflicted publish blocks, not
+ * just the one fixed here.
+ *
+ * THE DATE AXIS, FIXED HERE. `getPublishedEvents()` with no arguments
+ * defaults to `from: new Date()`, i.e. "still running or in the future" —
+ * exactly right for an OFFER set (an owner adding a new CTA shouldn't be
+ * shown a camp that already happened), and wrong for a RECOGNITION set. A doc
+ * holding a past event's REAL row id stopped resolving the moment that
+ * event's `end_date` passed: rule 1 misses because the row is gone from the
+ * catalogue, the 36-char uuid then matches no name, so `publishGate.ok` flips
+ * to `false` on an otherwise-untouched, previously-publishable page and the
+ * owner is shown a raw UUID they cannot act on plus a picker full of
+ * unrelated current events — not one of which can fix the page. Passing
+ * `EVENT_RECOGNITION_FROM` removes the date bound, so a real id keeps
+ * resolving for as long as its row exists.
+ *
+ * THE AXES THIS DOES **NOT** CLOSE — STAGE 1.7 OWNS BOTH, because both need
+ * `lib/db/events.ts` to grow a lookup this stage may not widen:
+ *
+ *   - `status`. `getPublishedEvents` also filters `status = "published"`, and
+ *     `published -> completed` is an explicitly allowed, UI-exposed
+ *     transition (see the status graph in `lib/db/events.ts`) — marking a
+ *     finished camp `completed` is precisely what an admin does with a past
+ *     event, i.e. the same admin action the date fix was written to survive.
+ *     The instant it happens the row leaves this catalogue and the page
+ *     reproduces the IDENTICAL owner-facing symptom described above. A true
+ *     recognition set is every event ever (`getEvents({})`), with
+ *     `status`/date filtering applied by whatever UI offers events to pick
+ *     FROM. `completed` is not `unpublished`: it means *it happened*, which
+ *     is the normal state of an event a landing page references.
+ *   - a NULL `end_date`. `.gte("end_date", ...)` never matches NULL, so a
+ *     published event with no `end_date` is invisible at ANY `from`, epoch
+ *     included. Reachable: `updateEventSchema` accepts `end_date: null`,
+ *     `updateEvent` writes it through, and the re-derive only rescues
+ *     clinics — so a CAMP can be left with a null `end_date`. This call
+ *     therefore means "every published event THAT HAS an `end_date`", not
+ *     "every published event".
+ *
+ * `programs.is_active` / `session_pack_products.is_active` carry the same
+ * unmade decision one layer over: they are the right filter for an OFFER set,
+ * and today they are also what makes a ref pointing at a since-deactivated
+ * row stop resolving. That answer is defensible — it just has never been
+ * chosen deliberately, and it is the same conflation.
  */
 export async function loadCatalogue(): Promise<Catalogue> {
   const [programs, sessionPacks, events] = await Promise.all([
     getPrograms(),
     listActiveSessionPackProducts(),
-    getPublishedEvents({ from: new Date(0) }),
+    getPublishedEvents({ from: EVENT_RECOGNITION_FROM }),
   ])
-  return toCatalogue(programs, sessionPacks, events)
+  return toCatalogue({ programs, sessionPacks, events })
 }
 
 // ---------------------------------------------------------------------------

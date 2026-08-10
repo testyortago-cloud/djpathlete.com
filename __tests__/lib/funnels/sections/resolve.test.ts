@@ -18,8 +18,16 @@
 //     test that would pass against a function returning its input unchanged
 //     has not earned its name.
 //
-// Zero mocks: `Catalogue` is a plain literal, exactly like the doc fixtures.
-import { describe, it, expect } from "vitest"
+// MOCKS: everything that tests `resolveDoc` / `publishGate` / `toCatalogue` is
+// mock-free — `Catalogue` is a plain literal, exactly like the doc fixtures.
+// The ONE exception is the `loadCatalogue` block at the bottom of this file,
+// which substitutes the three DAL modules because the DAL call IS the thing
+// under test there (which fetcher, with which arguments). It uses `vi.doMock`
+// + a scoped dynamic import so the substitution never reaches the statically
+// imported `resolveDoc` above, and the stubs are hand-written functions, not
+// `vi.fn()` spies. See the comment on that block for why an untestable async
+// wrapper was worth this much.
+import { describe, it, expect, vi, afterEach } from "vitest"
 import {
   ctaWithLabelSchema,
   type CtaWithLabel,
@@ -362,6 +370,38 @@ describe("resolveDoc — name matching", () => {
     expect(result.resolved).toEqual([])
     expect(result.unresolved).toHaveLength(1)
     expect(result.unresolved[0].reason).toBe("no_match")
+  })
+
+  it("a name SHORTER than the floor still resolves by EXACT match — the floor guards rule 3 only, never rule 2", () => {
+    // `MIN_PARTIAL_MATCH_LENGTH`'s own doc comment promises "anything
+    // genuinely that short should be referenced by its EXACT name (rule 2
+    // below), WHICH THIS GUARD DOES NOT TOUCH". That promise is what makes
+    // the floor safe to set at 4, and until this test it was pinned by
+    // nothing: the floor lives INSIDE the `partial` callback, strictly below
+    // the `exact` pass, and hoisting it — a plausible "do the cheap length
+    // test first" refactor — leaves every other test in this file green.
+    //
+    // Not academic. Production carries an ACTIVE session pack literally named
+    // "Sid " — three characters once normalised, one below the floor. Hoist
+    // the check and every page referencing that pack silently stops
+    // resolving, blocked publish, picker of eleven packs.
+    //
+    // The second row is what makes this non-trivial: "sidhinio" contains
+    // "sid", so a one-row catalogue would prove nothing. This can only pass
+    // if the EXACT pass settled it — rule 3 is barred by the floor and could
+    // not have rescued a broken rule 2 anyway.
+    const short = catalogue({
+      session_pack: [
+        { id: PACK_TEN, name: "Sid " },
+        { id: DELETED_ID, name: "Sidhinio" },
+      ],
+    })
+
+    const result = resolveDoc(docOf([ctaSection(packCta("sid"))]), short)
+
+    expect(result.unresolved).toEqual([])
+    expect(result.resolved.map((r) => r.id)).toEqual([PACK_TEN])
+    expect(refAt(result.doc, "cta1", "cta")).toBe(PACK_TEN)
   })
 
   it("resolves a program ref and an event ref with the SAME name against their own catalogues only", () => {
@@ -788,41 +828,144 @@ describe("publishGate", () => {
 
 // ===========================================================================
 // toCatalogue — pure assembly, tested with plain literals (no DB, no mocks).
-// `program` and `session_pack` are both `{id, name}[]`, so nothing in the
-// type system stops `loadCatalogue` from transposing the two DAL calls —
-// only a test with a DISTINGUISHABLE name per list can catch that.
+// `program` and `session_pack` are both `{id, name}[]`, so nothing STRUCTURAL
+// stops the two lists being swapped; `CatalogueRows`' named properties are
+// what make that a compile error at the call site, and this block pins that
+// `toCatalogue`'s own BODY does not transpose them either.
+//
+// Two earlier tests here were deleted rather than ported, because each killed
+// no mutant: "maps Event.title to name" duplicated an assertion below and is
+// tsc-enforced anyway (`events` is typed `{id, title}[]`, so `row.name` will
+// not compile), and "passes through empty lists without throwing" asserted
+// that `[].map(...)` cannot throw. A test that cannot fail is this repo's
+// named dominant defect class; two of them in the block that exists to guard
+// against exactly that was not a good trade.
 // ===========================================================================
 
 describe("toCatalogue", () => {
-  it("puts each fetched list under its own catalogue key — a transposed call is NOT silently correct", () => {
-    const result = toCatalogue(
-      [{ id: "prog-1", name: "Program Row" }],
-      [{ id: "pack-1", name: "Pack Row" }],
-      [{ id: "event-1", title: "Event Row" }],
-    )
-    expect(result.program).toEqual([{ id: "prog-1", name: "Program Row" }])
-    expect(result.session_pack).toEqual([{ id: "pack-1", name: "Pack Row" }])
-    expect(result.event).toEqual([{ id: "event-1", name: "Event Row" }])
-  })
+  it("puts each fetched list under its own catalogue key, mapping Event.title to name", () => {
+    // Each list carries a DISTINGUISHABLE name, which is the only thing that
+    // can catch a transposition inside the body. Asserted as one whole-object
+    // `toEqual` so an extra or missing key fails too.
+    const result = toCatalogue({
+      programs: [{ id: "prog-1", name: "Program Row" }],
+      sessionPacks: [{ id: "pack-1", name: "Pack Row" }],
+      events: [{ id: "event-1", title: "Event Row" }],
+    })
 
-  it("maps Event.title to CatalogueEntry.name — the one field-name difference between the three row shapes", () => {
-    const result = toCatalogue([], [], [{ id: "event-1", title: "Summer Camp" }])
-    expect(result.event).toEqual([{ id: "event-1", name: "Summer Camp" }])
-  })
-
-  it("passes through empty lists without throwing", () => {
-    expect(toCatalogue([], [], [])).toEqual({ program: [], session_pack: [], event: [] })
+    expect(result).toEqual({
+      program: [{ id: "prog-1", name: "Program Row" }],
+      session_pack: [{ id: "pack-1", name: "Pack Row" }],
+      event: [{ id: "event-1", name: "Event Row" }],
+    })
   })
 
   it("preserves list order and handles multiple rows per kind", () => {
-    const result = toCatalogue(
-      [
+    const result = toCatalogue({
+      programs: [
         { id: "p1", name: "First" },
         { id: "p2", name: "Second" },
       ],
-      [],
-      [],
-    )
+      sessionPacks: [],
+      events: [],
+    })
+
     expect(result.program.map((r) => r.id)).toEqual(["p1", "p2"])
+  })
+})
+
+// ===========================================================================
+// loadCatalogue — THE ONLY MOCKED BLOCK IN THIS FILE, deliberately.
+//
+// `loadCatalogue` is the thin async DAL wrapper, and "thin" is exactly why it
+// went untested: there is no pure part left to extract, because the ONLY
+// thing it decides is which fetcher to call with which arguments. That
+// decision is load-bearing — `getPublishedEvents({from: <epoch>})` is what
+// stops a page that references a FINISHED event from silently becoming
+// unpublishable — and deleting the argument restored that production bug
+// while leaving the whole suite and tsc green. An untestable line carrying a
+// live fix is worth three module substitutions.
+//
+// Kept surgical: `vi.doMock` (NOT hoisted `vi.mock`) plus `vi.resetModules()`
+// and a scoped dynamic import, so the substitution applies only to the module
+// instance these two tests import. The `resolveDoc` imported statically at the
+// top of this file is untouched and still runs against the real graph — it
+// never calls the DAL anyway. The stubs are plain async functions rather than
+// `vi.fn()` spies, so what is recorded is visible in the source of the helper
+// rather than behind a mock API.
+// ===========================================================================
+
+interface EventFilters {
+  from?: Date
+}
+
+async function loadCatalogueWithStubbedDal() {
+  const eventCalls: (EventFilters | undefined)[] = []
+
+  vi.resetModules()
+  vi.doMock("@/lib/db/programs", () => ({
+    getPrograms: async () => [{ id: "prog-1", name: "Program Row" }],
+  }))
+  vi.doMock("@/lib/db/session-pack-products", () => ({
+    listActiveProducts: async () => [{ id: "pack-1", name: "Pack Row" }],
+  }))
+  vi.doMock("@/lib/db/events", () => ({
+    getPublishedEvents: async (filters?: EventFilters) => {
+      eventCalls.push(filters)
+      return [{ id: "event-1", title: "Event Row" }]
+    },
+  }))
+
+  const { loadCatalogue } = await import("@/lib/funnels/sections/resolve")
+  return { catalogue: await loadCatalogue(), eventCalls }
+}
+
+describe("loadCatalogue", () => {
+  afterEach(() => {
+    vi.doUnmock("@/lib/db/programs")
+    vi.doUnmock("@/lib/db/session-pack-products")
+    vi.doUnmock("@/lib/db/events")
+    vi.resetModules()
+  })
+
+  it("asks for events from the UNIX EPOCH, not from now — a FINISHED event's real id must keep resolving", async () => {
+    // The bug this kills, in full: `getPublishedEvents()` with no argument
+    // defaults to `from: new Date()` and filters `end_date >= now`. So the
+    // catalogue was a function of the wall clock. The moment an event ended,
+    // its row left the catalogue, rule 1 (`row.id === ref`) missed on a doc
+    // holding that event's REAL id, the 36-char uuid then matched no name,
+    // and an owner who changed NOTHING found their page unpublishable
+    // overnight — with a picker offering only currently-running events, none
+    // of which could fix it.
+    //
+    // Deleting the `{from}` argument is a one-character-per-side edit that
+    // restores all of that and, before this test existed, passed the entire
+    // suite and tsc. THIS IS THE MUTANT THIS TEST KILLS.
+    const { eventCalls } = await loadCatalogueWithStubbedDal()
+
+    expect(eventCalls).toHaveLength(1)
+    const from = eventCalls[0]?.from
+    // Fails on a deleted argument (`eventCalls[0]` is `undefined`) and on a
+    // deleted `from` key alike.
+    expect(from).toBeInstanceOf(Date)
+    // The LITERAL 0, never the module's own constant: asserting against the
+    // constant would be a tautology that survives someone redefining it as
+    // `new Date()`.
+    expect(from?.getTime()).toBe(0)
+  })
+
+  it("puts each DAL's rows under the right catalogue key — a transposed CALL SITE is not silently correct either", async () => {
+    // `toCatalogue`'s named-object parameter already makes a swap a compile
+    // error; this is the belt to that pair of braces, and it also pins that
+    // the session-pack list comes from the aliased
+    // `session-pack-products.listActiveProducts` and not from the
+    // identically-named export in `lib/db/shop-products.ts`.
+    const { catalogue: loaded } = await loadCatalogueWithStubbedDal()
+
+    expect(loaded).toEqual({
+      program: [{ id: "prog-1", name: "Program Row" }],
+      session_pack: [{ id: "pack-1", name: "Pack Row" }],
+      event: [{ id: "event-1", name: "Event Row" }],
+    })
   })
 })
