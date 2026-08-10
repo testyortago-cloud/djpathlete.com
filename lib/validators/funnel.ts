@@ -40,9 +40,19 @@ export const updateStepSchema = z.object({
   project_data: z.unknown().optional(),
 })
 
+/**
+ * Publish-time size caps. Named and exported — not restated as bare literals
+ * anywhere else — so `lib/funnels/sections/doc.ts` (which enforces the same
+ * ceiling at DRAFT time, before publish, so an oversized page is caught
+ * while the owner is still iterating) can never drift from the number this
+ * schema actually enforces.
+ */
+export const FUNNEL_STEP_HTML_MAX_LENGTH = 500_000
+export const FUNNEL_STEP_CSS_MAX_LENGTH = 200_000
+
 export const publishStepSchema = z.object({
-  html: z.string().max(500_000),
-  css: z.string().max(200_000),
+  html: z.string().max(FUNNEL_STEP_HTML_MAX_LENGTH),
+  css: z.string().max(FUNNEL_STEP_CSS_MAX_LENGTH),
   project_data: z.unknown().optional(),
 })
 
