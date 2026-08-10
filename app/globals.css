@@ -847,6 +847,8 @@
   .test-report .test-row {
     padding-top: 0.5rem;
     padding-bottom: 0.5rem;
+    /* A row that straddles a sheet leaves its pill orphaned on the next page. */
+    break-inside: avoid;
   }
 
   .test-report .mover-now {
