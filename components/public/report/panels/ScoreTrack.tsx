@@ -20,7 +20,11 @@ export function ScoreTrack({ score, tone = "primary" }: { score: number; tone?: 
       className="score-track"
       data-tone={tone}
       role="img"
-      aria-label={`Scores ${pct} out of 100 — ${BAND_LABELS[bandFor(pct)]}. Trained is 50, Elite is 100.`}
+      aria-label={
+        Number.isFinite(score)
+          ? `Scores ${pct} out of 100 — ${BAND_LABELS[bandFor(pct)]}. Trained is 50, Elite is 100.`
+          : `Scores 0 out of 100. Trained is 50, Elite is 100.`
+      }
     >
       <span className="score-track-zone-low" style={{ width: `${BAND_DEVELOPING_MIN}%` }} aria-hidden />
       <span className="score-track-zone-high" style={{ left: `${BAND_STRENGTH_MIN}%` }} aria-hidden />

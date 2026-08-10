@@ -837,4 +837,25 @@
   .test-report .report-earlier > div {
     display: flex !important;
   }
+
+  /* A4 fits ~100px less than the screen page since the mover circle replaced
+     the slim track. Tighter bands + smaller circles in print only. */
+  .test-report .report-band {
+    padding: 1.1rem 3rem;
+  }
+
+  .test-report .test-row {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .test-report .mover-now {
+    width: 88px;
+    height: 88px;
+  }
+
+  .test-report .mover-standard {
+    width: 48px;
+    height: 48px;
+  }
 }

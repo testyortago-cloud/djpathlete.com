@@ -27,6 +27,9 @@ describe("ScoreTrack", () => {
     const { container } = render(<ScoreTrack score={Number.NaN} />)
     expect((container.querySelector(".score-track-dot") as HTMLElement).style.left).toBe("0%")
     expect(screen.getByRole("img").getAttribute("aria-label")).not.toMatch(/NaN/)
+    // A non-finite score is a placeholder, not a judgment — it must not read as
+    // "Priority", the same band a genuinely bad score of 0 would carry.
+    expect(screen.getByRole("img").getAttribute("aria-label")).not.toMatch(/Priority/)
   })
 
   it("paints the priority and strength zones from the band constants, not restated numbers", () => {

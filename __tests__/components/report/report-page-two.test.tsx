@@ -46,8 +46,8 @@ const sledPush: ScoredTest = {
   isPr: false,
   score: null,
   deltaPct: null,
-  previous: null,
-  previousDate: null,
+  previous: 10,
+  previousDate: "2026-05-01",
   targets: null,
   points: [10, 12],
 }
@@ -178,6 +178,10 @@ describe("ReportPageTwo", () => {
     expect(container.textContent ?? "").not.toMatch(/Trained \d/)
     expect(container.textContent ?? "").not.toMatch(/Strength|Developing|Priority/)
     expect(screen.getByText("No standard for this test")).toBeInTheDocument()
+    // sledPush has a previousDate but a null deltaPct (an unscorable 2-result custom
+    // test) — TestRow's `delta !== null &&` guard must suppress the "since" line even
+    // though a previousDate exists to date it.
+    expect(container.textContent ?? "").not.toMatch(/since /)
   })
 
   it("never draws a sparkline in a test row — history is the dated delta's job", () => {

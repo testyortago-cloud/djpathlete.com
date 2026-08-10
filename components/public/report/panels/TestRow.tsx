@@ -28,7 +28,7 @@ export function TestRow({ test, highlight = false }: { test: ScoredTest; highlig
   const deltaText = delta === null ? "—" : delta === 0 ? "steady" : `${delta > 0 ? "↑" : "↓"} ${Math.abs(delta)}%`
 
   return (
-    <div className="grid grid-cols-2 items-center gap-x-4 gap-y-2 border-b border-border py-3 last:border-b-0 md:grid-cols-[13rem_7rem_1fr_7rem]">
+    <div className="test-row grid grid-cols-2 items-center gap-x-4 gap-y-2 border-b border-border py-3 last:border-b-0 md:grid-cols-[13rem_7rem_1fr_7rem]">
       <div>
         <p className="font-heading text-sm font-bold">
           {test.label}
@@ -54,11 +54,17 @@ export function TestRow({ test, highlight = false }: { test: ScoredTest; highlig
             <ScoreTrack score={test.score} tone={highlight ? "accent" : "primary"} />
             {test.targets && (
               // NOT uppercase: "cm" and "kg" are units, and "CM" is a different claim.
-              <div className="mt-1.5 flex items-center justify-between gap-2">
-                <p className="font-mono text-[10px] tracking-wide text-muted-foreground">
+              // flex-wrap + a nowrap caption: at print width (~280px) the caption used
+              // to wrap word-by-word into a skinny column beside the pill. Now it either
+              // shares the line with the pill pushed to the far edge (ml-auto), or wraps
+              // whole onto its own line with the pill still right-aligned below it.
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <p className="whitespace-nowrap font-mono text-[10px] tracking-wide text-muted-foreground">
                   Trained {num(test.targets.trained)} {test.unit} · Elite {num(test.targets.elite)} {test.unit}
                 </p>
-                <BandPill band={bandFor(test.score)} />
+                <span className="ml-auto">
+                  <BandPill band={bandFor(test.score)} />
+                </span>
               </div>
             )}
           </>
