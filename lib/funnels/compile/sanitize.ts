@@ -25,66 +25,30 @@ import type { CompileError, FunnelNode } from "./types"
 
 const ALLOWED_TAGS = new Set([
   "a", "article", "aside", "audio", "b", "blockquote", "br", "button", "code",
-  "dd", "details", "div", "dl", "dt", "em", "figcaption", "figure", "footer",
-  "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "i", "iframe", "img",
-  "li", "main", "mark", "nav", "ol", "p", "picture", "pre", "s", "section",
-  "small", "source", "span", "strong", "sub", "summary", "sup", "table",
-  "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u", "ul", "video",
-])
-
-/**
- * Inline SVG, narrowly. Models reach for icon SVG constantly and a page without
- * checkmarks looks visibly cheaper, but SVG is a whole second markup language
- * with its own script surface — so this is a closed list of pure drawing
- * elements. Everything capable of loading, scripting or embedding is in
- * FORBIDDEN_SVG_TAGS below and is asserted absent from this set by a test.
- */
-export const SVG_TAGS: ReadonlySet<string> = new Set([
-  "svg", "g", "path", "circle", "ellipse", "rect", "line", "polyline", "polygon",
-])
-
-/**
- * Named so a test can assert each one is dropped AND that none has been quietly
- * added to SVG_TAGS. `use`/`image` load external content, `foreignObject` reopens
- * full HTML inside SVG, `script`/`handler`/`animate*` execute, `a` navigates,
- * `style` injects an unscoped stylesheet, and filter/mask/pattern/marker all
- * take url() references.
- */
-export const FORBIDDEN_SVG_TAGS = [
-  "foreignobject", "use", "image", "script", "style", "animate",
-  "animatetransform", "animatemotion", "set", "handler", "a", "text", "tspan",
-  "filter", "mask", "pattern", "marker", "switch", "desc", "metadata",
-] as const
-
-/** Attributes permitted on an SVG element. Geometry and presentation only. */
-const SVG_ATTRS = new Set([
-  "viewbox", "preserveaspectratio", "xmlns", "fill", "stroke", "stroke-width",
-  "stroke-linecap", "stroke-linejoin", "stroke-dasharray", "stroke-dashoffset",
-  "fill-rule", "clip-rule", "fill-opacity", "stroke-opacity", "opacity",
-  "transform", "d", "cx", "cy", "r", "rx", "ry", "x", "y", "x1", "y1", "x2",
-  "y2", "points", "width", "height", "class", "id", "style", "role",
+  "dd", "div", "dl", "dt", "em", "figcaption", "figure", "footer", "h1", "h2",
+  "h3", "h4", "h5", "h6", "header", "hr", "i", "iframe", "img", "li", "main",
+  "mark", "nav", "ol", "p", "picture", "pre", "s", "section", "small", "source",
+  "span", "strong", "sub", "sup", "table", "tbody", "td", "tfoot", "th", "thead",
+  "time", "tr", "u", "ul", "video",
 ])
 
 /**
  * Removed with their subtree. `form`/`input` are here because the form island
  * owns capture — a raw form on the canvas would post nowhere and silently lose
- * leads. `svg` now has its own allowlist above (SVG_TAGS) with its own
- * attribute set.
+ * leads. `svg` is excluded because safe SVG needs its own allowlist
+ * (`foreignObject`, event attributes, nested `script`); use an <img> instead.
  */
 const DROPPED_TAGS = new Set([
   "applet", "base", "canvas", "embed", "form", "frame", "frameset", "input",
   "link", "meta", "noscript", "object", "option", "script", "select", "slot",
-  "style", "template", "textarea", "title",
+  "style", "svg", "template", "textarea", "title",
 ])
 
 const ALLOWED_ATTRS = new Set([
   "alt", "class", "controls", "height", "href", "id", "loading", "loop",
-  "muted", "open", "playsinline", "poster", "preload", "rel", "role", "src",
-  "srcset", "style", "target", "title", "width",
+  "muted", "playsinline", "poster", "preload", "rel", "role", "src", "srcset",
+  "style", "target", "title", "width",
 ])
-
-/** Named for the "no forbidden svg tag is in the allowlist" structural test. */
-const FORBIDDEN_SVG_TAG_SET: ReadonlySet<string> = new Set(FORBIDDEN_SVG_TAGS)
 
 /** Hosts permitted in an <iframe src>. Mirrored by the CSP `frame-src` test. */
 export const ALLOWED_IFRAME_HOSTS = [
@@ -196,17 +160,17 @@ function attrMap(node: P5Node): Record<string, string> {
 export function htmlToNodes(html: string): { nodes: FunnelNode[]; errors: CompileError[] } {
   const errors: CompileError[] = []
   const fragment = parseFragment(html) as unknown as P5Node
-  const nodes = convertChildren(fragment.childNodes ?? [], errors, false)
+  const nodes = convertChildren(fragment.childNodes ?? [], errors)
   return { nodes, errors }
 }
 
-function convertChildren(children: P5Node[], errors: CompileError[], inSvg = false): FunnelNode[] {
+function convertChildren(children: P5Node[], errors: CompileError[]): FunnelNode[] {
   const out: FunnelNode[] = []
-  for (const child of children) out.push(...convertNode(child, errors, inSvg))
+  for (const child of children) out.push(...convertNode(child, errors))
   return out
 }
 
-function convertNode(node: P5Node, errors: CompileError[], inSvg = false): FunnelNode[] {
+function convertNode(node: P5Node, errors: CompileError[]): FunnelNode[] {
   if (node.nodeName === "#text") {
     const value = node.value ?? ""
     return value.length > 0 ? [{ t: "text", v: value }] : []
@@ -229,22 +193,6 @@ function convertNode(node: P5Node, errors: CompileError[], inSvg = false): Funne
     return []
   }
 
-  // Anything inside an <svg> that is not in SVG_TAGS is a foreign-content
-  // element (foreignObject, use, animate, ...) and is removed WITH its subtree
-  // rather than unwrapped — unwrapping <foreignObject> would splice raw HTML
-  // into the drawing, which is the thing that made svg unsafe to begin with.
-  //
-  // It warns for the same reason DROPPED_TAGS does (ed8bbfdc): an author that
-  // cannot see the result must not be told a page published cleanly when part
-  // of its markup was thrown away.
-  if (inSvg && !SVG_TAGS.has(tag)) {
-    errors.push({
-      code: "content_removed",
-      message: `A <${tag}> element inside an SVG was removed — only plain shape elements are allowed.`,
-    })
-    return []
-  }
-
   const attrs = attrMap(node)
 
   // Islands short-circuit everything: their placeholder children are discarded.
@@ -252,15 +200,7 @@ function convertNode(node: P5Node, errors: CompileError[], inSvg = false): Funne
     return convertIsland(attrs, errors)
   }
 
-  const children = convertChildren(node.childNodes ?? [], errors, inSvg || tag === "svg")
-
-  // SVG lives in its own allowlist with its own attribute set. A tag inside an
-  // <svg> that is not in SVG_TAGS is dropped WITH its subtree rather than
-  // unwrapped — unwrapping <foreignObject> would splice raw HTML into the
-  // drawing, which is the thing that made svg unsafe in the first place.
-  if (SVG_TAGS.has(tag)) {
-    return [{ t: "el", tag, attrs: filterSvgAttrs(attrs), children }]
-  }
+  const children = convertChildren(node.childNodes ?? [], errors)
 
   // Unknown tag: unwrap, keep the content.
   if (!ALLOWED_TAGS.has(tag)) return children
@@ -279,24 +219,6 @@ function convertNode(node: P5Node, errors: CompileError[], inSvg = false): Funne
   }
 
   return [{ t: "el", tag, attrs: filterAttrs(tag, attrs), children }]
-}
-
-/** Geometry and presentation only. No URL-valued attribute is permitted. */
-function filterSvgAttrs(attrs: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [rawName, rawValue] of Object.entries(attrs)) {
-    const name = rawName.toLowerCase()
-    if (name.startsWith(RESERVED_ATTR_PREFIX)) continue
-    if (name.startsWith("on")) continue
-    if (name === "style") {
-      const safe = safeStyle(rawValue)
-      if (safe) out[name] = safe
-      continue
-    }
-    if (!SVG_ATTRS.has(name) && !name.startsWith("aria-")) continue
-    out[name] = rawValue
-  }
-  return out
 }
 
 function filterAttrs(tag: string, attrs: Record<string, string>): Record<string, string> {
