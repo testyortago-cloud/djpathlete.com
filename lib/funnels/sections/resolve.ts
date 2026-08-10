@@ -275,14 +275,42 @@ function assertNotTruncated(label: string, rows: unknown[]): void {
  *
  * Two ways it can break, and both are closed here rather than detected:
  *
- *   - THE RACE. `loadCatalogues` issues six CONCURRENT queries. A program
- *     activated, or an event published, between the recognition read landing
- *     and the offer read landing appears in offer and not in recognition. Rare,
- *     real, and self-healing next turn — but an assertion would turn it into a
- *     hard error, which is why this repairs instead of asserting.
+ *   - THE RACE, AND THE MECHANISM IS *CREATION*, NOT ACTIVATION. An earlier
+ *     spelling of this comment blamed "a program activated, or an event
+ *     published, between the two reads". That cannot be it, and the reason is
+ *     the whole point of the split: recognition applies NO `is_active` and NO
+ *     `status` filter (`getAllPrograms` / `listAllProducts` / `getEvents({})`),
+ *     so a row that is activated or published mid-flight WAS ALREADY IN
+ *     RECOGNITION — activating it changes nothing about whether recognition
+ *     can see it. The only concurrent write that puts a row in offer and not
+ *     in recognition is a row CREATED (and immediately eligible for the offer
+ *     filter) in the window between the recognition read landing and the offer
+ *     read landing. `loadCatalogues` issues all six queries concurrently, so
+ *     that window is real. Rare, self-healing next turn — but an assertion
+ *     would turn it into a hard error, which is why this repairs instead.
  *   - TRUNCATION. Should a recognition read ever be capped despite
  *     `assertNotTruncated` (a narrower cap, a future filtered reader), every
  *     currently-offerable row still survives in recognition.
+ *
+ * THE UNION DOES NOT CLOSE BOTH DIRECTIONS, AND THE RESIDUAL IS THIS MODULE'S
+ * OWN FAILURE CLASS. `Promise.all` completion order is arbitrary, so `offer`
+ * can land BEFORE `recognition` and therefore be the STALER of the two. A row
+ * DELETED in that window is missing from recognition (correctly — it is gone)
+ * and present in offer (stale), and this union adds it BACK. A CTA already
+ * committed to that id then matches rule 1, comes back `already_id`, lands in
+ * `resolved`, and `publishGate.ok` is `true` for one turn: a dead buy button
+ * that is silently publishable. WITHOUT the union that same turn correctly
+ * reports it unresolved and blocks publish.
+ *
+ * The trade is still worth making and the union stays. The direction it closes
+ * fails LOUDLY AND WRONGLY — a row the picker and the prompt both offer, which
+ * the very next turn reports unresolved, with nothing in the UI able to
+ * explain it. The direction it opens fails silently but is bounded to a single
+ * turn, needs a DELETE to land inside a milliseconds-wide window between two
+ * reads of the same `Promise.all`, and follows a deliberate destructive admin
+ * action on a row a live page is selling. Do not "close" it by asserting
+ * `offer ⊆ recognition` instead of repairing it — that swaps a one-turn
+ * mis-report for a hard error on every builder turn for both directions.
  *
  * Recognition order is preserved and offer-only rows are appended, so nothing
  * that depends on the DAL's ordering shifts. Deduping by id (not by object
@@ -340,6 +368,24 @@ function unionCatalogues(recognition: Catalogue, offer: Catalogue): Catalogue {
  * could fix it. `getAllPrograms()` (added beside `getPrograms()`, purely
  * additive, mirroring `listAllProducts()`) now feeds recognition. All three
  * kinds are split on the same principle; none of them is special.
+ *
+ * *** THIS THROWS, AND EVERY CALLER MUST WRAP IT. *** `assertNotTruncated`
+ * (above) rejects a recognition read that comes back at PostgREST's 1000-row
+ * cap, because a truncated recognition set is indistinguishable from "that row
+ * was deleted". That contract used to be documented only on that private
+ * helper, which is not where a caller looks — so it is restated here, on the
+ * public function, exactly as `resolveDoc` states its own.
+ *
+ * ITS BLAST RADIUS IS ASYMMETRIC, AND WIDER THAN THE FAILURE IT REPLACES. The
+ * silent truncation this guard exists to prevent blocks PUBLISH, on SOME pages
+ * — only the ones that happen to reference a row past the cap. An UNHANDLED
+ * throw from here takes down EVERY BUILDER TURN for every page in the account,
+ * because `loadCatalogues` runs before the model call on every turn, not just
+ * at publish. The guard is therefore a strict improvement only if the caller
+ * catches it: Stage 1.7 (the build route) and the publish route MUST treat a
+ * thrown error as "cannot build / cannot publish this turn", surfacing the
+ * message (it names the table and the fix) rather than letting it become an
+ * unhandled 500.
  */
 export async function loadCatalogues(): Promise<Catalogues> {
   const [allPrograms, offerPrograms, allPacks, offerPacks, allEvents, offerEvents] =

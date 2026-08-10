@@ -12,6 +12,8 @@
 // (compile/sanitize.ts's `content_removed` / `iframe_host_not_allowed`
 // codes exist for exactly this).
 import { describe, it, expect } from "vitest"
+import { z } from "zod"
+import postcss from "postcss"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import type { FunnelNode } from "@/lib/funnels/compile/types"
 import { parseIslandProps } from "@/lib/funnels/islands"
@@ -54,6 +56,21 @@ function findIslands(nodes: FunnelNode[]): Extract<FunnelNode, { t: "island" }>[
 
 function serialize(nodes: FunnelNode[]): string {
   return JSON.stringify(nodes)
+}
+
+/**
+ * The thrown value itself, so a test can assert WHICH error it was.
+ * `expect(fn).toThrow()` with no argument passes on any error at all, which is
+ * how a test that claims a specific guard ends up proving only "something went
+ * wrong somewhere".
+ */
+function captureError(fn: () => unknown): unknown {
+  try {
+    fn()
+  } catch (error) {
+    return error
+  }
+  throw new Error("expected the call to throw, but it returned normally")
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +132,422 @@ describe("THEME_CSS + SECTION_CSS", () => {
     expect(THEME_CSS).toContain(
       'font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);',
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TONE CONTRAST — the one class of stylesheet bug that is INVISIBLE to every
+// other test in this file.
+//
+// A section with `style.tone: "dark"` repaints its background `var(--primary)`
+// and its text `var(--primary-foreground)`. Any per-kind rule that keeps a
+// light-mode colour token, or that repaints a panel back to `var(--surface)`
+// without restoring a paired foreground, produces text that is the same colour
+// as what is behind it. The compiler cannot see it — the markup is valid, the
+// CSS parses, `ok: true, warnings: []` — and neither can a test that asserts
+// "the stylesheet contains a dark-tone rule", which is why this one does not.
+//
+// It builds the REAL rendered markup, parses the REAL stylesheet with the same
+// postcss the compiler's `scopeCss` uses, runs an actual cascade (specificity,
+// then source order) with `Element.matches`, resolves `inherit` and
+// `transparent` up the real ancestor chain, and then asserts a PAIRING, not a
+// numeric contrast ratio. The pairing is what matters: app/globals.css declares
+// these tokens in four scopes with opposite polarity, so any assertion about a
+// token's actual lightness is true in one scope and false in the next, whereas
+// "--primary-foreground belongs on --primary" is invariant.
+//
+// MUTANTS THIS KILLS (each verified red by reverting exactly that rule):
+//   - deleting the `.djp-plan` / `.djp-quote` / `.djp-bullet-item` panel-lift
+//     rules (back to `background: var(--surface)`): plan names, feature rows
+//     and quote bodies resolve to --primary-foreground on --surface;
+//   - deleting the `.djp-plan-price` / `.djp-quote-name` overrides: --primary
+//     on --primary, and --foreground on --primary;
+//   - deleting any one of the nine `--muted-foreground` overrides;
+//   - deleting the accent-tone eyebrow / icon / button rules or the dark-tone
+//     step-counter rule: a shape painted in its own background's token;
+//   - a future rule that introduces a colour form this model does not
+//     understand (it is reported as UNMODELLED rather than skipped).
+// ---------------------------------------------------------------------------
+
+/** Which foreground tokens may legally sit on which background token. */
+const READABLE_ON: Record<string, readonly string[]> = {
+  // A repainted section takes its own paired foreground. `--accent` is also
+  // legal ON `--primary` and vice versa: those are the two BRAND tokens, and
+  // globals.css defines them as contrasting in every scope it declares.
+  "--primary": ["--primary-foreground", "--accent"],
+  "--accent": ["--accent-foreground", "--primary"],
+  // The two neutral surfaces share one foreground family, and brand tokens
+  // read as accents on them (that is what `.djp-hd` and `.djp-plan-price` are).
+  "--background": ["--foreground", "--muted-foreground", "--primary", "--accent"],
+  "--surface": ["--foreground", "--muted-foreground", "--primary", "--accent"],
+}
+
+const INHERIT = "INHERIT"
+const TRANSPARENT = "TRANSPARENT"
+
+/**
+ * A colour VALUE reduced to the token that decides contrast.
+ *
+ * A `color-mix(... N%, transparent)` under 50% is treated as transparent: a
+ * low wash does not change which foreground is legible, so whatever is behind
+ * it still governs. At or above 50% it becomes its own token. Anything this
+ * does not recognise comes back as `UNMODELLED(...)` and fails a test rather
+ * than being quietly skipped.
+ */
+const WASH_RE = /^color-mix\(\s*in\s+[a-z]+\s*,\s*var\((--[a-z-]+)\)\s+(\d+(?:\.\d+)?)%\s*,\s*transparent\s*\)$/i
+
+function colourToken(value: string): string {
+  const raw = value.trim()
+  if (raw === "inherit" || raw.toLowerCase() === "currentcolor") return INHERIT
+  if (raw === "transparent" || raw === "none") return TRANSPARENT
+  const mix = raw.match(WASH_RE)
+  if (mix) return Number(mix[2]) >= 50 ? mix[1] : TRANSPARENT
+  const token = raw.match(/^var\((--[a-z-]+)\s*(?:,[\s\S]*)?\)$/i)
+  if (token) return token[1]
+  return `UNMODELLED(${raw})`
+}
+
+/**
+ * A translucent `color-mix(…, transparent)` is a WASH — it exists to blend
+ * with whatever is behind it (a photograph, the section's own background), so
+ * "same token as the layer behind" is its intended behaviour, not a collision.
+ * An opaque fill is a SHAPE, and a shape in its own background's token is gone.
+ */
+function isWash(value: string): boolean {
+  return WASH_RE.test(value.trim())
+}
+
+/** (a, b, c) folded into one comparable number, per CSS selector specificity. */
+function specificity(selector: string): number {
+  const noPseudoEl = selector.replace(/::[a-z-]+/g, "")
+  const noAttrs = noPseudoEl.replace(/\[[^\]]*\]/g, "")
+  const ids = (noPseudoEl.match(/#[A-Za-z0-9_-]+/g) ?? []).length
+  const classes =
+    (noAttrs.match(/\.[A-Za-z0-9_-]+/g) ?? []).length +
+    (noPseudoEl.match(/\[[^\]]*\]/g) ?? []).length +
+    (noAttrs.match(/:(?!:)[a-z-]+/g) ?? []).length
+  const types = (noAttrs.match(/(?:^|[\s>+~])([a-z][a-z0-9]*)/g) ?? []).length + (selector.match(/::[a-z-]+/g) ?? []).length
+  return ids * 1_000_000 + classes * 1_000 + types
+}
+
+interface StyleRule {
+  base: string
+  pseudo: "before" | null
+  spec: number
+  order: number
+  color?: string
+  bg?: string
+}
+
+/** The stylesheet flattened to one entry per (selector, declaration block). */
+function parseRules(css: string): StyleRule[] {
+  const rules: StyleRule[] = []
+  let order = 0
+  postcss.parse(css).walkRules((rule) => {
+    const decls: { color?: string; bg?: string } = {}
+    rule.walkDecls((decl) => {
+      if (decl.prop === "color") decls.color = decl.value
+      if (decl.prop === "background" || decl.prop === "background-color") decls.bg = decl.value
+    })
+    for (const selector of rule.selectors) {
+      order += 1
+      if (decls.color === undefined && decls.bg === undefined) continue
+      const pseudo = /::before$/.test(selector) ? ("before" as const) : null
+      rules.push({
+        base: selector.replace(/::[a-z-]+$/, ""),
+        pseudo,
+        spec: specificity(selector),
+        order,
+        ...decls,
+      })
+    }
+  })
+  return rules
+}
+
+interface StyledNode {
+  label: string
+  el: Element
+  pseudo: "before" | null
+  parent: StyledNode | null
+}
+
+function winning(rules: StyleRule[], node: StyledNode, prop: "color" | "bg"): string | null {
+  let best: StyleRule | null = null
+  for (const rule of rules) {
+    if (rule[prop] === undefined) continue
+    if (rule.pseudo !== node.pseudo) continue
+    if (!node.el.matches(rule.base)) continue
+    if (best === null || rule.spec > best.spec || (rule.spec === best.spec && rule.order > best.order)) best = rule
+  }
+  return best === null ? null : (best[prop] as string)
+}
+
+function resolvedBackground(rules: StyleRule[], node: StyledNode): string {
+  for (let cur: StyledNode | null = node; cur !== null; cur = cur.parent) {
+    const raw = winning(rules, cur, "bg")
+    if (raw === null) continue
+    const token = colourToken(raw)
+    if (token !== TRANSPARENT && token !== INHERIT) return token
+  }
+  // Nothing painted anything: the page's own background shows through.
+  return "--background"
+}
+
+function resolvedColour(rules: StyleRule[], node: StyledNode): string {
+  for (let cur: StyledNode | null = node; cur !== null; cur = cur.parent) {
+    const raw = winning(rules, cur, "color")
+    if (raw === null) continue
+    const token = colourToken(raw)
+    if (token !== INHERIT) return token
+  }
+  return "--foreground"
+}
+
+/** True when this element owns a text node of its own, i.e. it paints words. */
+function hasOwnText(el: Element): boolean {
+  return Array.from(el.childNodes).some((child) => child.nodeType === 3 && (child.textContent ?? "").trim() !== "")
+}
+
+function describeNode(el: Element, pseudo: "before" | null): string {
+  const cls = el.getAttribute("class") ?? ""
+  return `${el.tagName.toLowerCase()}${cls ? `.${cls.trim().split(/\s+/).join(".")}` : ""}${pseudo ? `::${pseudo}` : ""}`
+}
+
+/** Every node the cascade actually reaches, real elements plus ::before. */
+function styledNodes(root: Element, rules: StyleRule[]): StyledNode[] {
+  const byElement = new Map<Element, StyledNode>()
+  const nodes: StyledNode[] = []
+  const rootNode: StyledNode = { label: describeNode(root, null), el: root, pseudo: null, parent: null }
+  byElement.set(root, rootNode)
+  nodes.push(rootNode)
+  for (const el of Array.from(root.querySelectorAll("*"))) {
+    const parent = el.parentElement === null ? null : (byElement.get(el.parentElement) ?? null)
+    const node: StyledNode = { label: describeNode(el, null), el, pseudo: null, parent }
+    byElement.set(el, node)
+    nodes.push(node)
+  }
+  const pseudoSelectors = new Set(rules.filter((rule) => rule.pseudo === "before").map((rule) => rule.base))
+  for (const node of [...nodes]) {
+    for (const selector of pseudoSelectors) {
+      if (!node.el.matches(selector)) continue
+      nodes.push({ label: describeNode(node.el, "before"), el: node.el, pseudo: "before", parent: node })
+      break
+    }
+  }
+  return nodes
+}
+
+/** Props that populate EVERY optional text field, so no class goes unrendered. */
+const TONE_PROPS_BY_KIND: Record<SectionKind, Record<string, unknown>> = {
+  hero: {
+    eyebrow: "New block",
+    headline: "Get stronger, faster",
+    sub: "An eight-week rotational power program",
+    media: { kind: "image", src: "/hero.jpg", alt: "Athlete training", w: 1200, h: 800 },
+    primaryCta: urlCta,
+    secondaryCta: bookingCta,
+  },
+  bullets: {
+    heading: "Why athletes choose us",
+    intro: "The short version",
+    items: [
+      { title: "Fast results", body: "See progress in weeks", icon: "bolt" },
+      { title: "Safe programming", body: "Every block is screened first", icon: "shield" },
+    ],
+  },
+  steps: {
+    heading: "How it works",
+    intro: "Three steps, no surprises",
+    steps: [
+      { title: "Book a call", body: "A fifteen-minute fit check" },
+      { title: "Get your plan", body: "Built from your own numbers" },
+    ],
+  },
+  testimonial: {
+    source: "quote",
+    quotes: [{ quote: "Best program I have done.", name: "Alex", detail: "Age 16, sprinter" }],
+  },
+  pricing: {
+    heading: "Pick your plan",
+    plans: [
+      {
+        name: "Starter",
+        price: "$99",
+        cadence: "/mo",
+        blurb: "Everything you need to begin",
+        features: ["Weekly check-ins", "Form review"],
+        cta: urlCta,
+      },
+    ],
+    footnote: "Cancel anytime.",
+  },
+  faq: {
+    heading: "Questions",
+    source: "inline",
+    items: [{ q: "Do you offer refunds?", a: "Yes, within 14 days." }],
+  },
+  form: {
+    heading: "Get your free guide",
+    sub: "We email it instantly",
+    formKey: "optin",
+    fields: [{ name: "email", label: "Email", type: "email", required: true }],
+  },
+  cta: { headline: "Spots are limited", sub: "Summer camp starts June 1", cta: urlCta },
+  footer: {
+    businessName: "DJP Athlete",
+    lines: ["Tampa, FL", "hello@darrenjpaul.com"],
+    links: [{ label: "Privacy", target: { kind: "url", href: "/privacy" } }],
+    legal: "© 2026 DJP Athlete. All rights reserved.",
+  },
+}
+
+/**
+ * Every (kind, variant) the registry declares, plus the hero's invalid-media
+ * placeholder, which no other fixture reaches.
+ */
+function toneCases(): Array<{ label: string; section: Section }> {
+  const cases = SECTION_KINDS.flatMap((kind) =>
+    SECTION_REGISTRY[kind].variants.map((variant) => ({
+      label: `${kind}/${variant}`,
+      section: { id: "sx", kind, variant, style: {}, props: TONE_PROPS_BY_KIND[kind] } as Section,
+    })),
+  )
+  cases.push({
+    label: "hero/split (invalid media placeholder)",
+    section: {
+      id: "sx",
+      kind: "hero",
+      variant: "split",
+      style: {},
+      props: { ...TONE_PROPS_BY_KIND.hero, media: { kind: "image", src: "hero.jpg", alt: "Athlete", w: 800, h: 600 } },
+    },
+  })
+  return cases
+}
+
+interface ContrastReading {
+  case: string
+  node: string
+  colour: string
+  background: string
+}
+
+/** Every text-bearing node in every kind/variant, at one tone. */
+function readContrast(tone: "accent" | "dark"): ContrastReading[] {
+  const readings: ContrastReading[] = []
+  for (const { label, section } of toneCases()) {
+    const html = renderSection({ ...section, style: { ...section.style, tone } })
+    const rules = parseRules(fullCss(section.kind))
+    const root = document.createElement("div")
+    root.id = "djp-funnel-root"
+    root.innerHTML = html
+    document.body.appendChild(root)
+    try {
+      for (const node of styledNodes(root, rules)) {
+        // Text-bearing nodes, plus any node a colour rule targets: an element
+        // like <footer class="djp-quote-attribution"> holds no text of its own
+        // but is the inheritance SOURCE for the spans that do.
+        if (node.pseudo === null && !hasOwnText(node.el) && winning(rules, node, "color") === null) continue
+        readings.push({
+          case: label,
+          node: node.label,
+          colour: resolvedColour(rules, node),
+          background: resolvedBackground(rules, node),
+        })
+      }
+    } finally {
+      root.remove()
+    }
+  }
+  return readings
+}
+
+describe("tone contrast: no per-kind colour is left behind by the tone knob", () => {
+  it.each(["accent", "dark"] as const)(
+    "every text node in every kind/variant resolves to a PAIRED colour on tone '%s'",
+    (tone) => {
+      const readings = readContrast(tone)
+      const violations = readings.filter((reading) => {
+        const allowed = READABLE_ON[reading.background]
+        return allowed === undefined || !allowed.includes(reading.colour)
+      })
+      expect(violations, `unpaired colour/background: ${JSON.stringify(violations, null, 2)}`).toEqual([])
+    },
+  )
+
+  it.each(["accent", "dark"] as const)(
+    "no element on tone '%s' paints its own background in the token of the background behind it",
+    (tone) => {
+      const collisions: string[] = []
+      for (const { label, section } of toneCases()) {
+        const html = renderSection({ ...section, style: { ...section.style, tone } })
+        const rules = parseRules(fullCss(section.kind))
+        const root = document.createElement("div")
+        root.id = "djp-funnel-root"
+        root.innerHTML = html
+        document.body.appendChild(root)
+        try {
+          for (const node of styledNodes(root, rules)) {
+            const own = winning(rules, node, "bg")
+            if (own === null || isWash(own)) continue
+            const ownToken = colourToken(own)
+            if (ownToken === TRANSPARENT || ownToken === INHERIT) continue
+            if (node.parent === null) continue
+            const behind = resolvedBackground(rules, node.parent)
+            if (ownToken === behind) collisions.push(`${label}: ${node.label} paints ${ownToken} on ${behind}`)
+          }
+        } finally {
+          root.remove()
+        }
+      }
+      expect(collisions, collisions.join("\n")).toEqual([])
+    },
+  )
+
+  // Without this the two tests above pass vacuously the moment a fixture stops
+  // rendering a class — which is exactly how a "dark tone is covered" claim
+  // gets made about a stylesheet nobody checked.
+  it("actually reaches every element the tone pass exists for", () => {
+    const readings = readContrast("dark")
+    const seen = readings.map((reading) => reading.node).join(" ")
+    for (const cls of [
+      "djp-bullet-text",
+      "djp-step-text",
+      "djp-quote-attribution",
+      "djp-plan-blurb",
+      "djp-plan-cadence",
+      "djp-footnote",
+      "djp-faq-a",
+      "djp-footer-line",
+      "djp-footer-legal",
+      "djp-plan-price",
+      "djp-quote-name",
+      "djp-eyebrow",
+      "djp-media-invalid",
+    ]) {
+      expect(seen, `no fixture rendered .${cls}, so nothing was asserted about it`).toContain(cls)
+    }
+    // ...and the counter badges, which are ::before pseudo-elements.
+    expect(seen).toContain("djp-step-item::before")
+    expect(seen).toContain("djp-bullet-item::before")
+  })
+
+  it("understands every colour value the stylesheet actually uses", () => {
+    // A future `oklch(...)` literal, a hex, or an unrecognised color-mix would
+    // otherwise resolve to a token nothing in READABLE_ON matches — which would
+    // fail loudly here rather than being silently waved through as "different
+    // from the background".
+    const values: string[] = []
+    for (const kind of SECTION_KINDS) {
+      for (const rule of parseRules(fullCss(kind))) {
+        if (rule.color !== undefined) values.push(rule.color)
+        if (rule.bg !== undefined) values.push(rule.bg)
+      }
+    }
+    expect(values.length).toBeGreaterThan(20)
+    const unmodelled = values.map(colourToken).filter((token) => token.startsWith("UNMODELLED"))
+    expect(unmodelled, unmodelled.join(", ")).toEqual([])
   })
 })
 
@@ -590,14 +1023,20 @@ describe("CtaTarget rendering", () => {
   // protocol-relative url reads as a path but navigates off-site on the page's
   // own scheme. So such a doc was schema-VALID, and the only thing between it
   // and a live-looking dead button (safeUrl drops the href with zero warning)
-  // was `renderCtaTarget`'s `SAFE_LINK` gate at render.ts:239. That degrade to a
-  // disabled placeholder is what this test used to pin.
+  // was the `SAFE_LINK` gate in `renderCtaTarget`'s `url` branch. That degrade
+  // to a disabled placeholder is what this test used to pin.
   //
   // AFTER: `href` ASKS `SAFE_LINK` instead of restating it, so "//evil.example"
   // is rejected by the schema itself. No schema-valid document can contain one,
-  // and `renderCtaSection` re-parses props (render.ts:491) before rendering — so
-  // the throw below is the new guarantee, and it is strictly stronger than the
-  // old placeholder: the value never gets far enough to need degrading.
+  // and `renderCtaSection` re-parses props through
+  // `SECTION_REGISTRY.cta.propsSchema` before rendering — so the throw below is
+  // the new guarantee, and it is strictly stronger than the old placeholder:
+  // the value never gets far enough to need degrading.
+  //
+  // (Both references above named a LINE NUMBER until this cleanup, and both had
+  // already rotted — ":239" and ":491" pointed at `renderCtaTarget`'s switch and
+  // at `renderFormSection` respectively. Name the function; functions move with
+  // their names, line numbers do not.)
   //
   // *** DO NOT DELETE render.ts's SAFE_LINK GATE ON THE GROUNDS THAT NOTHING
   // EXERCISES IT. *** It is defence in depth, and it is now UNREACHABLE through
@@ -614,7 +1053,17 @@ describe("CtaTarget rendering", () => {
   // `renderCtaSection` and this goes red rather than silently handing the gate
   // its old job back.
   it("url with a protocol-relative href is unrepresentable — the schema rejects it, so the renderer never sees it", () => {
-    expect(() => compileSection(ctaCta({ kind: "url", href: "//evil.example/steal-me" }))).toThrow()
+    // A bare `.toThrow()` here would be satisfied by ANY error: a typo in the
+    // fixture, a renderer crash, a postcss failure inside `compileSection` —
+    // all of which would leave the claimed property completely unverified
+    // while the test stayed green. The matcher names the LAYER (a Zod
+    // rejection, not a runtime error) and the FIELD (this href, not some other
+    // prop), so only the real guarantee satisfies it.
+    const caught = captureError(() => compileSection(ctaCta({ kind: "url", href: "//evil.example/steal-me" })))
+    expect(caught).toBeInstanceOf(z.ZodError)
+    const issues = (caught as z.ZodError).issues
+    expect(issues.map((issue) => issue.path.join("."))).toContain("cta.target.href")
+    expect(JSON.stringify(issues)).toContain("Must be a site path or an https URL")
   })
 
   it('anchor: <a href="#sectionId">, always resolvable with no context', () => {
@@ -863,7 +1312,13 @@ describe("style knob validation", () => {
       style: { headline: 'x" style="position:fixed;inset:0' } as unknown as Section["style"],
       props: { headline: "Get stronger", primaryCta: urlCta },
     }
-    expect(() => renderSection(section)).toThrow()
+    // Same reasoning as the protocol-relative-href test above: pinned to a Zod
+    // rejection OF THE STYLE KNOB. A bare `.toThrow()` would also pass if
+    // `renderSection` blew up for an unrelated reason, which is precisely the
+    // outcome that would look like "the guard works" while the guard was gone.
+    const caught = captureError(() => renderSection(section))
+    expect(caught).toBeInstanceOf(z.ZodError)
+    expect((caught as z.ZodError).issues.map((issue) => issue.path.join("."))).toContain("headline")
   })
 })
 

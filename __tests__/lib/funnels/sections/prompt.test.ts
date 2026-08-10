@@ -155,6 +155,11 @@ function uuidPathsAcrossRegistry(): string[] {
   })
 }
 
+/** Every four-digit 19xx/20xx number in `text`, as numbers. */
+function yearsIn(text: string): number[] {
+  return [...text.matchAll(/\b(?:19|20)\d{2}\b/g)].map((match) => Number(match[0]))
+}
+
 /**
  * The slice of Block A under one `## ` heading, up to the next `## `.
  *
@@ -278,8 +283,28 @@ describe("Block A is built once, at module load", () => {
     // scope inside the const), so date-shaped and random-shaped text is the
     // whole remaining exposure.
     expect(SECTION_BUILDER_BLOCK_A).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/) // ISO timestamp
-    expect(SECTION_BUILDER_BLOCK_A).not.toMatch(/\b(19|20)\d{2}\b/) // any plausible year
     expect(SECTION_BUILDER_BLOCK_A).not.toMatch(/\b\d{10,}\b/) // epoch ms, Math.random digits
+
+    // Cleanup batch: the year guard used to be a bare
+    // `not.toMatch(/\b(19|20)\d{2}\b/)`, which false-positives on any numeric
+    // BOUND that lands in 1900-2099 — Block A renders `z.string().max(2000)`
+    // as `string(<=2000)`, so the assertion was really "no schema in this
+    // registry may have a four-digit bound", which is not the property and
+    // would have gone red for a reason unrelated to caching.
+    //
+    // The mutant is a year interpolated AT MODULE LOAD, and such a year is
+    // always the year the process runs in. Deriving the forbidden values from
+    // the clock makes the guard exact instead of approximate, and it stays
+    // correct as time passes. +/- 1 covers a run straddling New Year.
+    const thisYear = new Date().getUTCFullYear()
+    const years = yearsIn(SECTION_BUILDER_BLOCK_A)
+    for (const year of [thisYear - 1, thisYear, thisYear + 1]) {
+      expect(years, `Block A contains ${year}, which changes between processes`).not.toContain(year)
+    }
+    // ...and the scan itself discriminates, so a future "simplification" that
+    // makes it unable to fail is visible right here rather than in six months.
+    expect(yearsIn(`Prompt generated ${thisYear}.`)).toContain(thisYear)
+    expect(yearsIn("reply: string(<=2000), href: string(<=300)")).not.toContain(thisYear)
   })
 
   it("stays under the size ceiling the token budget assumes", () => {

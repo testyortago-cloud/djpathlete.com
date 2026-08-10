@@ -80,6 +80,80 @@ const ICON_CSS = Object.entries(ICON_DATA)
 // THEME_CSS — base reset, the four shared style knobs (`data-h`/`data-align`/
 // `data-tone`/`data-pad`, identical across every kind so they only need to be
 // defined once), fonts, buttons, and icon masks.
+//
+// ---------------------------------------------------------------------------
+// THE TONE CONTRAST PASS (the block marked "TONE CONTRAST PASS" below).
+// ---------------------------------------------------------------------------
+//
+// THE RULE THIS FILE OBEYS, STATED ONCE: a colour token and a background token
+// are safe together only if they are a PAIR. `app/globals.css` declares three
+// — `--primary`/`--primary-foreground`, `--accent`/`--accent-foreground`, and
+// the neutral surfaces `--background`/`--surface` with
+// `--foreground`/`--muted-foreground`. Mixing across pairs is not "slightly
+// low contrast", it is UNDEFINED contrast: this app declares those tokens in
+// FOUR scopes with opposite polarity, so "`--muted-foreground` is mid-grey on
+// a light page" is true in one scope and false in the next. Only the PAIRING
+// is invariant, so the pairing is the only thing worth preserving — and the
+// only thing `render.test.ts`'s tone-contrast suite asserts.
+//
+// `[data-tone="accent"]` and `[data-tone="dark"]` repaint the section
+// background with `--accent` / `--primary`. Before this pass exactly TWO
+// elements travelled with them (`.djp-hd` and `.djp-sub`, via
+// `color: inherit`); everything else kept a light-mode colour:
+//
+//   - NINE per-kind classes hardcoded `var(--muted-foreground)`
+//     (`.djp-bullet-text` `.djp-step-text` `.djp-quote-attribution`
+//     `.djp-plan-blurb` `.djp-plan-cadence` `.djp-footnote` `.djp-faq-a`
+//     `.djp-footer-line` `.djp-footer-legal`) — unpaired with either
+//     repainted background.
+//   - FIVE panels repainted themselves BACK to `var(--surface)` INSIDE the
+//     repainted section (`.djp-bullet-item` in `cards`, `.djp-quote`,
+//     `.djp-plan`, `.djp-s-form.djp-v-boxed`, `.djp-cta-inner` in `boxed`)
+//     without restoring a paired foreground. So every unstyled child of one of
+//     them — plan names, feature rows, quote bodies, a boxed form's own
+//     heading — inherited `--primary-foreground` onto a near-white card. THAT
+//     was the invisible text.
+//   - `.djp-plan-price` (`--primary`) and `.djp-quote-name` (`--foreground`)
+//     were saved from the dark background ONLY by their panel's `--surface`
+//     repaint — i.e. by an unrelated layout rule, one edit away from changing.
+//     They are pinned explicitly below rather than left implicit. (A review
+//     round reported these two as the hard failures; they were the two most
+//     nearly-broken, not the two already broken. The stylesheet does not care
+//     which was worse — the pass covers both classes of hazard.)
+//   - FOUR shapes were painted in the token of the background behind them: the
+//     accent eyebrow, the accent list icon and the accent primary button on an
+//     ACCENT section, and the steps counter badge (`--primary`) on a DARK
+//     section. A shape in its own background's token is not low-contrast, it
+//     is gone.
+//
+// THIS IS NOT MITIGATED UPSTREAM. `prompt.ts`'s rule 6 steers the model away
+// from dark tone on text-heavy kinds, but Stage 2's inspector sets
+// `style.tone` directly with no model in the loop — a behavioural mitigation
+// upstream of a rendering bug is not a fix.
+//
+// THREE MOVES, APPLIED TO BOTH REPAINTING TONES:
+//
+//   1. A PANEL INSIDE A REPAINTED SECTION LIFTS; IT DOES NOT SWITCH PAIRS.
+//      Instead of `var(--surface)` — a token from the other pair that drags
+//      its own foreground requirement in with it — a panel becomes a low
+//      percentage wash of the tone's OWN foreground over whatever is behind
+//      it. The section's background still governs contrast, so every child
+//      keeps inheriting the tone's paired foreground and no child needs a rule
+//      of its own. (The image-bg scrim is the same move at full strength: it
+//      sits over a photograph, so it takes the tone's own BACKGROUND token.)
+//   2. EVERY REMAINING HARDCODED FOREGROUND BECOMES `inherit`. Secondary text
+//      keeps its hierarchy through `opacity`, which is pair-agnostic, instead
+//      of through a second colour token, which is not.
+//   3. A SHAPE THAT COLLIDES WITH ITS OWN BACKGROUND MOVES TO THE OTHER BRAND
+//      PAIR — never to a bare foreground token, so the swap survives a scope
+//      flip.
+//
+// It lives HERE, in THEME_CSS beside the knob it belongs to, rather than split
+// across the nine per-kind strings: the contrast contract has to be auditable
+// in one place, and splitting it is how it went missing in the first place. It
+// costs ~2 KB on every page against a 200 000-character publish cap
+// (`FUNNEL_STEP_CSS_MAX_LENGTH`). Flat, `var(--…)` only — constraints 1 and 2
+// at the top of this file apply to it exactly as they do to everything else.
 // ---------------------------------------------------------------------------
 
 export const THEME_CSS = `
@@ -114,6 +188,83 @@ ${ROOT} .djp-s[data-tone="accent"] .djp-hd,
 ${ROOT} .djp-s[data-tone="dark"] .djp-hd { color: inherit; }
 ${ROOT} .djp-s[data-tone="accent"] .djp-sub,
 ${ROOT} .djp-s[data-tone="dark"] .djp-sub { color: inherit; opacity: 0.85; }
+
+/* TONE CONTRAST PASS — see the block comment above THEME_CSS. Move 1:
+   a panel inside a repainted section LIFTS, it does not switch to --surface. */
+${ROOT} .djp-s[data-tone="accent"].djp-s-bullets.djp-v-cards .djp-bullet-item,
+${ROOT} .djp-s[data-tone="accent"] .djp-quote,
+${ROOT} .djp-s[data-tone="accent"] .djp-plan,
+${ROOT} .djp-s[data-tone="accent"].djp-s-cta.djp-v-boxed .djp-cta-inner {
+  background: color-mix(in oklch, var(--accent-foreground) 12%, transparent);
+}
+${ROOT} .djp-s[data-tone="dark"].djp-s-bullets.djp-v-cards .djp-bullet-item,
+${ROOT} .djp-s[data-tone="dark"] .djp-quote,
+${ROOT} .djp-s[data-tone="dark"] .djp-plan,
+${ROOT} .djp-s[data-tone="dark"].djp-s-cta.djp-v-boxed .djp-cta-inner {
+  background: color-mix(in oklch, var(--primary-foreground) 12%, transparent);
+}
+
+/* The boxed FORM is the one panel that is the section itself, so it cannot
+   lift: a wash there composites over the PAGE, not over the tone, and the
+   section's own tone background never gets painted because FORM_CSS ties on
+   specificity and wins on source order. It takes the tone colour outright —
+   .djp-s-form is already max-width 34rem, so the box reads as a box. */
+${ROOT} .djp-s[data-tone="accent"].djp-s-form.djp-v-boxed { background: var(--accent); }
+${ROOT} .djp-s[data-tone="dark"].djp-s-form.djp-v-boxed { background: var(--primary); }
+
+/* Move 1 at full strength: the image-bg scrim sits over a PHOTOGRAPH, so it
+   takes the tone's own BACKGROUND token rather than a wash of its foreground. */
+${ROOT} .djp-s[data-tone="accent"].djp-s-hero.djp-v-image-bg .djp-hero-copy {
+  background: color-mix(in oklch, var(--accent) 78%, transparent);
+}
+${ROOT} .djp-s[data-tone="dark"].djp-s-hero.djp-v-image-bg .djp-hero-copy {
+  background: color-mix(in oklch, var(--primary) 78%, transparent);
+}
+
+/* Move 2: every hardcoded foreground travels with the tone. First the two
+   non-muted ones. */
+${ROOT} .djp-s[data-tone="accent"] .djp-plan-price,
+${ROOT} .djp-s[data-tone="accent"] .djp-quote-name,
+${ROOT} .djp-s[data-tone="dark"] .djp-plan-price,
+${ROOT} .djp-s[data-tone="dark"] .djp-quote-name { color: inherit; }
+
+/* ...then all nine --muted-foreground classes. Opacity, not a second colour
+   token, is what keeps them subordinate. */
+${ROOT} .djp-s[data-tone="accent"] .djp-bullet-text,
+${ROOT} .djp-s[data-tone="accent"] .djp-step-text,
+${ROOT} .djp-s[data-tone="accent"] .djp-quote-attribution,
+${ROOT} .djp-s[data-tone="accent"] .djp-plan-blurb,
+${ROOT} .djp-s[data-tone="accent"] .djp-plan-cadence,
+${ROOT} .djp-s[data-tone="accent"] .djp-footnote,
+${ROOT} .djp-s[data-tone="accent"] .djp-faq-a,
+${ROOT} .djp-s[data-tone="accent"] .djp-footer-line,
+${ROOT} .djp-s[data-tone="accent"] .djp-footer-legal,
+${ROOT} .djp-s[data-tone="dark"] .djp-bullet-text,
+${ROOT} .djp-s[data-tone="dark"] .djp-step-text,
+${ROOT} .djp-s[data-tone="dark"] .djp-quote-attribution,
+${ROOT} .djp-s[data-tone="dark"] .djp-plan-blurb,
+${ROOT} .djp-s[data-tone="dark"] .djp-plan-cadence,
+${ROOT} .djp-s[data-tone="dark"] .djp-footnote,
+${ROOT} .djp-s[data-tone="dark"] .djp-faq-a,
+${ROOT} .djp-s[data-tone="dark"] .djp-footer-line,
+${ROOT} .djp-s[data-tone="dark"] .djp-footer-legal { color: inherit; opacity: 0.85; }
+
+/* Move 3: shapes painted in their own background's token. The second .djp-ic
+   selector is not a duplicate — PRICING_CSS's .djp-plan-features .djp-ic ties
+   on specificity and wins on source order, so the icon inside a plan needs
+   the deeper selector to be reached at all. */
+${ROOT} .djp-s[data-tone="accent"] .djp-eyebrow,
+${ROOT} .djp-s[data-tone="accent"] .djp-ic,
+${ROOT} .djp-s[data-tone="accent"] .djp-plan-features .djp-ic { color: inherit; }
+${ROOT} .djp-s[data-tone="accent"] .djp-btn-primary,
+${ROOT} .djp-s[data-tone="accent"].djp-s-bullets.djp-v-numbered .djp-bullet-item::before {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+${ROOT} .djp-s[data-tone="dark"].djp-s-steps .djp-step-item::before {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
 
 /* headline knob */
 ${ROOT} .djp-hd {

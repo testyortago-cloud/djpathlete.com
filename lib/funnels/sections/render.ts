@@ -199,8 +199,18 @@ function disabledCta(label: string, className: string): string {
 // ---------------------------------------------------------------------------
 // CtaTarget -> a clickable element.
 //
-// `anchor` always produces a safe href by construction (always `#<sectionId>`,
-// and `sectionId` is schema-constrained to safe id characters).
+// `anchor` always produces a safe href, and it is worth being exact about WHY,
+// because the obvious answer is wrong. It is NOT the schema: `ctaTargetSchema`'s
+// anchor member is `sectionId: z.string()` (registry.ts:86) with no pattern at
+// all — `sectionIdSchema` (registry.ts:152) constrains `Section.id`, which is
+// the anchor's TARGET, never the value written here. The two mechanisms that
+// actually make it safe are the literal `#` prefix, which `safeUrl` accepts as
+// a fragment regardless of what follows, and `escapeHtml` on the value, which
+// is what keeps a hostile `sectionId` from breaking out of the attribute.
+// Neither is redundant, and neither may be removed on the belief that the
+// schema covers it — the schema covers nothing here. (A `sectionId` that names
+// no real section is a different problem, and it is caught in a different
+// place: resolve.ts reports it as a `danglingAnchor`.)
 //
 // `url` USED TO NEED THIS GATE AND NO LONGER DOES — the gate stays anyway, and
 // the distinction matters if you are deciding whether to delete it.
@@ -216,8 +226,10 @@ function disabledCta(label: string, className: string): string {
 // now IMPORTS `SAFE_LINK` (lib/funnels/islands.ts) rather than restating it, so
 // a protocol-relative href is no longer writable at all. Every
 // `render*Section` below parses props through the registry schema first, so no
-// schema-valid document can reach the check on line ~239 with an href that
-// fails it.
+// schema-valid document can reach the `SAFE_LINK.test` in `renderCtaTarget`'s
+// `url` branch with an href that fails it. (Named by FUNCTION, not by line
+// number: the three hand-written line refs this comment and render.test.ts
+// carried were all wrong within one stage of being written.)
 //
 // It is kept as DEFENCE IN DEPTH, deliberately: `renderCtaTarget` is one
 // `propsSchema.parse` away from being reachable again, and a divergent link
