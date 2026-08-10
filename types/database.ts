@@ -244,9 +244,9 @@ export type DrawingTool = "pen" | "arrow" | "rectangle" | "pin"
 
 export interface DrawingPath {
   tool: DrawingTool
-  color: string                       // hex like "#FF3B30"
-  width: number                       // stroke width px (2-8)
-  points: Array<[number, number]>     // normalized 0-1 coords
+  color: string // hex like "#FF3B30"
+  width: number // stroke width px (2-8)
+  points: Array<[number, number]> // normalized 0-1 coords
 }
 
 export interface DrawingJson {
@@ -640,7 +640,16 @@ export interface BookkeepingDocument {
 }
 export type NewDocument = Pick<
   BookkeepingDocument,
-  "book_id" | "kind" | "original_filename" | "storage_path" | "mime_type" | "file_size_bytes" | "sha256" | "retain_until" | "uploaded_by" | "row_count"
+  | "book_id"
+  | "kind"
+  | "original_filename"
+  | "storage_path"
+  | "mime_type"
+  | "file_size_bytes"
+  | "sha256"
+  | "retain_until"
+  | "uploaded_by"
+  | "row_count"
 > & { external_ref?: string | null }
 
 // ── AI Bookkeeper Phase 6d: depreciable-asset register ────────────────────
@@ -2263,11 +2272,7 @@ export interface GoogleAdsAgentMemoSections {
   watch_list: string
 }
 
-export type GoogleAdsAgentMemoOutcomeStatus =
-  | "pending"
-  | "measured"
-  | "rolled_back"
-  | "preflight_failed"
+export type GoogleAdsAgentMemoOutcomeStatus = "pending" | "measured" | "rolled_back" | "preflight_failed"
 
 export interface GoogleAdsAgentMemoAction {
   rank: number
@@ -2381,30 +2386,26 @@ export interface GscProperty {
   site_url: string
   refresh_token: string
   access_token: string | null
-  access_token_expires: string | null  // ISO string
+  access_token_expires: string | null // ISO string
   connected_by_user_id: string
   created_at: string
   updated_at: string
 }
 
 export interface GscQueryDailyRow {
-  date: string         // YYYY-MM-DD
+  date: string // YYYY-MM-DD
   query: string
   page: string
   impressions: number
   clicks: number
-  ctr: number          // 0–1
-  position: number     // 1.0–~50.0
-  ingested_at: string  // ISO string
+  ctr: number // 0–1
+  position: number // 1.0–~50.0
+  ingested_at: string // ISO string
 }
 
 // ─── SEO Agent — Phase 4 ───────────────────────────────────────────────────
 
-export type SeoAgentToolName =
-  | "queue_new_post"
-  | "queue_refresh"
-  | "queue_internal_link_sweep"
-  | "flag_for_human"
+export type SeoAgentToolName = "queue_new_post" | "queue_refresh" | "queue_internal_link_sweep" | "flag_for_human"
 
 export interface SeoAgentMemoAction {
   rank: 1 | 2
@@ -2458,7 +2459,7 @@ export interface SeoAgentSignalsSummary {
 
 export interface SeoAgentMemo {
   id: string
-  run_date: string         // YYYY-MM-DD
+  run_date: string // YYYY-MM-DD
   ai_job_id: string
   signals_summary: SeoAgentSignalsSummary
   rationale: string
@@ -2466,7 +2467,7 @@ export interface SeoAgentMemo {
   outcome_status: "pending" | "measured" | "rolled_back"
   outcome_metrics: SeoAgentMemoOutcomeMetric[] | null
   impact_score: number | null
-  created_at: string       // ISO string
+  created_at: string // ISO string
   measured_at: string | null
   // Added 2026-05-15 by strategy-team plan A3 — nullable so prior rows stay valid
   brief_id: string | null
@@ -2598,9 +2599,24 @@ export interface DailyReadiness {
 }
 
 export type BodyRegion =
-  | "head" | "neck" | "shoulder" | "elbow" | "wrist" | "hand"
-  | "chest" | "upper_back" | "lower_back" | "hip" | "glute"
-  | "hamstring" | "quad" | "knee" | "calf" | "ankle" | "foot" | "other"
+  | "head"
+  | "neck"
+  | "shoulder"
+  | "elbow"
+  | "wrist"
+  | "hand"
+  | "chest"
+  | "upper_back"
+  | "lower_back"
+  | "hip"
+  | "glute"
+  | "hamstring"
+  | "quad"
+  | "knee"
+  | "calf"
+  | "ankle"
+  | "foot"
+  | "other"
 
 export type InjurySide = "left" | "right" | "bilateral" | "n_a"
 export type InjurySeverity = "minor" | "moderate" | "severe"
@@ -2632,11 +2648,23 @@ export interface Injury {
 }
 
 export type TestType =
-  | "drop_jump" | "cmj" | "squat_jump" | "broad_jump"
-  | "sprint_10m" | "sprint_20m" | "sprint_40m" | "sprint_5_10_5" | "t_test" | "beep_test"
+  | "drop_jump"
+  | "cmj"
+  | "squat_jump"
+  | "broad_jump"
+  | "sprint_10m"
+  | "sprint_20m"
+  | "sprint_40m"
+  | "sprint_5_10_5"
+  | "t_test"
+  | "beep_test"
   | "sit_reach"
-  | "bench_press_1rm" | "back_squat_1rm" | "deadlift_1rm"
-  | "pull_up_max" | "push_up_max" | "plank_hold"
+  | "bench_press_1rm"
+  | "back_squat_1rm"
+  | "deadlift_1rm"
+  | "pull_up_max"
+  | "push_up_max"
+  | "plank_hold"
   | "custom"
 
 export type BestMethod = "highest" | "lowest" | "mean" | "median"
@@ -2716,12 +2744,7 @@ export interface WorkoutSession {
   updated_at: string
 }
 
-export type RiskFlagType =
-  | "load_spike"
-  | "fatigue"
-  | "overtraining"
-  | "high_strain"
-  | "rpe_creep"
+export type RiskFlagType = "load_spike" | "fatigue" | "overtraining" | "high_strain" | "rpe_creep"
 
 export type RiskFlagSeverity = "low" | "medium" | "high"
 export type RiskFlagStatus = "open" | "acknowledged" | "dismissed"
@@ -3163,6 +3186,11 @@ export interface FunnelStepVersion {
   published_by: string | null
 }
 
+/** Coach-side follow-up state on a captured lead (00204). Never visitor-set. */
+export type FunnelLeadStatus = "new" | "contacted" | "signed_up"
+
+export const FUNNEL_LEAD_STATUSES: readonly FunnelLeadStatus[] = ["new", "contacted", "signed_up"]
+
 export interface FunnelSubmission {
   id: string
   funnel_id: string
@@ -3177,4 +3205,7 @@ export interface FunnelSubmission {
   user_agent: string | null
   lead_user_id: string | null
   created_at: string
+  status: FunnelLeadStatus
+  notes: string | null
+  status_changed_at: string | null
 }

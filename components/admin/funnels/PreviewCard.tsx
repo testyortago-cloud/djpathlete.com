@@ -31,6 +31,8 @@ export interface PreviewCardProps {
   badgeLabel: string
   badgeTone: DataTableBadgeTone
   leadCount?: number
+  /** Where the lead count points. Omitted = render it as plain text. */
+  leadsHref?: string
   onDelete?: () => void | Promise<void>
   deleteLabel?: string
   /** Rendered next to the primary button — e.g. a link to funnel settings. */
@@ -73,6 +75,7 @@ export function PreviewCard({
   badgeLabel,
   badgeTone,
   leadCount,
+  leadsHref,
   onDelete,
   deleteLabel = "Delete",
   secondaryAction,
@@ -112,10 +115,7 @@ export function PreviewCard({
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-      <div
-        ref={frameBoxRef}
-        className="relative h-[200px] overflow-hidden border-b border-border bg-surface/50"
-      >
+      <div ref={frameBoxRef} className="relative h-[200px] overflow-hidden border-b border-border bg-surface/50">
         {previewUrl ? (
           <iframe
             src={previewUrl}
@@ -138,9 +138,7 @@ export function PreviewCard({
             }}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            No preview yet
-          </div>
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">No preview yet</div>
         )}
       </div>
 
@@ -150,18 +148,29 @@ export function PreviewCard({
             <Link href={href} className="block truncate font-medium text-primary hover:underline">
               {title}
             </Link>
-            {subtitle ? (
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p>
-            ) : null}
+            {subtitle ? <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p> : null}
           </div>
           <DataTableBadge tone={badgeTone}>{badgeLabel}</DataTableBadge>
         </div>
 
+        {/* A LINK, not a label. This count was the only lead surface in the
+            app and it went nowhere: it told you leads existed and gave you no
+            way to read one. It now opens the inbox filtered to this page. */}
         {typeof leadCount === "number" ? (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Users className="size-3.5" aria-hidden />
-            {leadCount} {leadCount === 1 ? "lead" : "leads"}
-          </p>
+          leadsHref ? (
+            <Link
+              href={leadsHref}
+              className="flex w-fit items-center gap-1.5 text-xs text-muted-foreground hover:text-primary hover:underline"
+            >
+              <Users className="size-3.5" aria-hidden />
+              {leadCount} {leadCount === 1 ? "lead" : "leads"}
+            </Link>
+          ) : (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Users className="size-3.5" aria-hidden />
+              {leadCount} {leadCount === 1 ? "lead" : "leads"}
+            </p>
+          )
         ) : null}
 
         <div className="mt-auto flex items-center gap-2">

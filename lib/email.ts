@@ -1932,9 +1932,7 @@ function buildEventContextBlock(event: Event) {
     { label: "Event", value: event.title },
     // Camp-aware: date range + daily session times; clinics keep date · start – end.
     { label: "Date", value: formatEventWhen(event, "long") },
-    ...(event.type === "camp" && event.session_schedule
-      ? [{ label: "Schedule", value: event.session_schedule }]
-      : []),
+    ...(event.type === "camp" && event.session_schedule ? [{ label: "Schedule", value: event.session_schedule }] : []),
     { label: "Location", value: location },
   ])
 }
@@ -2346,10 +2344,22 @@ export async function sendPackRenewalEmail(opts: {
 
   const copy =
     opts.threshold === "empty"
-      ? { label: "Sessions Used Up", headline: "Time to top up your sessions", lead: "You've used all the sessions on your current pack." }
+      ? {
+          label: "Sessions Used Up",
+          headline: "Time to top up your sessions",
+          lead: "You've used all the sessions on your current pack.",
+        }
       : opts.threshold === "expiring"
-        ? { label: "Pack Expiring Soon", headline: "Your sessions expire soon", lead: "Your current pack is about to expire — let's get you renewed so you don't lose momentum." }
-        : { label: "Running Low", headline: "You're down to your last sessions", lead: `You've got ${opts.remaining} session${opts.remaining === 1 ? "" : "s"} left on your pack.` }
+        ? {
+            label: "Pack Expiring Soon",
+            headline: "Your sessions expire soon",
+            lead: "Your current pack is about to expire — let's get you renewed so you don't lose momentum.",
+          }
+        : {
+            label: "Running Low",
+            headline: "You're down to your last sessions",
+            lead: `You've got ${opts.remaining} session${opts.remaining === 1 ? "" : "s"} left on your pack.`,
+          }
 
   const html = emailLayout(`
     ${heroBanner(copy.label, copy.headline)}
@@ -2535,5 +2545,95 @@ export async function sendPackPaymentLinkEmail(opts: {
   if (error) {
     console.error("[sendPackPaymentLinkEmail] resend error:", error)
     throw new Error("Failed to send the payment link email")
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Funnel leads
+// ---------------------------------------------------------------------------
+
+export interface NewFunnelLeadEmailInput {
+  name: string | null
+  email: string | null
+  phone: string | null
+  pageName: string
+  /** Everything the visitor typed, keyed by field name. */
+  answers: Record<string, unknown>
+  /** Absolute link into the leads inbox. */
+  leadsUrl: string
+}
+
+/**
+ * Tells the coach a lead just came in.
+ *
+ * WHY IT EXISTS. Funnel submissions were captured to `funnel_submissions` and
+ * nothing anywhere was told. The lead sat in a table nothing read until someone
+ * happened to open a page that did not exist yet — which, for a campaign page
+ * driving paid traffic, is how a lead becomes a lost lead.
+ *
+ * EVERY VISITOR-SUPPLIED VALUE IS ESCAPED. The answers come from a public form
+ * on a public page, so they are attacker-controlled by definition; the fields
+ * are interpolated into HTML and this email is opened by the operator. That is
+ * a deliberate departure from the neighbouring `sendContactFormEmail`, which
+ * interpolates its message raw.
+ *
+ * `replyTo` is the LEAD, so replying in the mail client answers the person
+ * rather than the robot.
+ */
+export async function sendNewFunnelLeadEmail(input: NewFunnelLeadEmailInput) {
+  const displayName = input.name?.trim() || input.email?.trim() || "Someone"
+
+  const answerRows = Object.entries(input.answers)
+    .filter(([, value]) => String(value ?? "").trim().length > 0)
+    .map(([key, value]) => ({
+      label: key.replace(/[_-]+/g, " ").replace(/([a-z0-9])([A-Z])/g, "$1 $2"),
+      value: String(value),
+    }))
+
+  const html = emailLayout(`
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          ${sectionLabel("New Lead")}
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            ${escapeHtml(displayName)}
+          </p>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            Signed up through <strong>${escapeHtml(input.pageName)}</strong>.
+          </p>
+
+          ${infoCard(
+            [
+              { label: "Name", value: escapeHtml(input.name ?? "—") },
+              { label: "Email", value: escapeHtml(input.email ?? "—") },
+              { label: "Phone", value: escapeHtml(input.phone ?? "—") },
+            ].concat(answerRows.map((row) => ({ label: escapeHtml(row.label), value: escapeHtml(row.value) }))),
+          )}
+
+          <p style="margin:32px 0 0;">
+            <a href="${escapeHtml(input.leadsUrl)}" style="display:inline-block; padding:14px 28px; background-color:#0E3F50; color:#ffffff; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:14px; font-weight:600; text-decoration:none; border-radius:2px;">
+              Open the leads inbox
+            </a>
+          </p>
+
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: ADMIN_CC,
+    ...(input.email ? { replyTo: input.email } : {}),
+    subject: `[Lead] ${displayName} — ${input.pageName}`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send new funnel lead email:", error)
+    throw new Error("Failed to send new funnel lead email")
   }
 }

@@ -10,7 +10,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createServiceRoleClient } from "@/lib/supabase"
-import { createSubmission, getPublishedFormConfig } from "@/lib/db/funnels"
+import { createSubmission, getFunnelById, getPublishedFormConfig, getStep } from "@/lib/db/funnels"
+import { sendNewFunnelLeadEmail } from "@/lib/email"
 import { funnelFormFieldSchema, type FunnelFormField } from "@/lib/funnels/islands"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { recordAudit } from "@/lib/audit/record"
@@ -129,7 +130,65 @@ export async function POST(request: Request) {
     metadata: { funnel_id: parsedBody.funnelId, form_key: parsedBody.formKey },
   })
 
+  // ---------------------------------------------------------------------------
+  // Tell the coach. FIRE AND FORGET, AND THAT IS THE WHOLE DESIGN.
+  //
+  // The submission is already written and the visitor's success does not depend
+  // on our mail provider being up. `void` plus a swallowed rejection is what
+  // keeps a Resend outage from turning "we have your details" into "something
+  // went wrong, please try again" for someone who has already handed over their
+  // email — and who, on a second attempt, becomes a duplicate lead.
+  //
+  // The awaited alternative was considered and rejected: an alert is worth less
+  // than the lead it is about.
+  // ---------------------------------------------------------------------------
+  void notifyCoachOfLead({
+    funnelId: parsedBody.funnelId,
+    stepId: parsedBody.stepId,
+    name,
+    email,
+    phone,
+    answers: payload,
+  }).catch((error) => {
+    console.error("[funnels/submit] lead alert failed (the lead was saved):", error)
+  })
+
   return NextResponse.json({ ok: true })
+}
+
+/**
+ * Looks up the page's name and emails the coach.
+ *
+ * The name lookup is inside here rather than on the hot path above so a slow or
+ * failing read costs the ALERT, never the submission — the reason this whole
+ * function is detached in the first place.
+ */
+async function notifyCoachOfLead(input: {
+  funnelId: string
+  stepId: string
+  name: string | null
+  email: string | null
+  phone: string | null
+  answers: Record<string, string>
+}): Promise<void> {
+  const [funnel, step] = await Promise.all([
+    getFunnelById(input.funnelId).catch(() => null),
+    getStep(input.stepId).catch(() => null),
+  ])
+
+  const pageName = [funnel?.name, step?.name].filter(Boolean).join(" · ") || "a landing page"
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.darrenjpaul.com"
+
+  await sendNewFunnelLeadEmail({
+    name: input.name,
+    email: input.email,
+    phone: input.phone,
+    pageName,
+    answers: input.answers,
+    // Deep-linked to this page's leads, filtered, so the click lands on the
+    // one lead the email is about rather than on the whole inbox.
+    leadsUrl: `${base}/admin/funnels/leads?funnelId=${encodeURIComponent(input.funnelId)}`,
+  })
 }
 
 function findByType(
@@ -158,11 +217,7 @@ function buildName(payload: Record<string, string>): string | null {
 async function upsertLead(email: string, name: string | null): Promise<string | null> {
   try {
     const supabase = createServiceRoleClient()
-    const { data: existing } = await supabase
-      .from("users")
-      .select("id")
-      .eq("email", email)
-      .maybeSingle()
+    const { data: existing } = await supabase.from("users").select("id").eq("email", email).maybeSingle()
     if (existing) return (existing as { id: string }).id
 
     const parts = (name ?? "").trim().split(/\s+/).filter(Boolean)

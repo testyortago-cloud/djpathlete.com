@@ -88,9 +88,7 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
       : `Delete the "${step.name}" page? This cannot be undone.`
     if (!window.confirm(message)) return
 
-    const url = deletingFunnel
-      ? `/api/admin/funnels/${funnel.id}`
-      : `/api/admin/funnels/steps/${step.id}`
+    const url = deletingFunnel ? `/api/admin/funnels/${funnel.id}` : `/api/admin/funnels/steps/${step.id}`
 
     try {
       const response = await fetch(url, { method: "DELETE" })
@@ -106,9 +104,7 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
     }
   }
 
-  const multiPageFunnels = funnels.filter(
-    (f) => pages.filter((p) => p.funnel.id === f.id).length > 0,
-  )
+  const multiPageFunnels = funnels.filter((f) => pages.filter((p) => p.funnel.id === f.id).length > 0)
 
   return (
     <div className="space-y-5">
@@ -156,9 +152,7 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
 
       {visible.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface/30 px-4 py-16 text-center text-muted-foreground">
-          {pages.length === 0
-            ? "No landing pages yet. Name one above to get started."
-            : "Nothing matches that search."}
+          {pages.length === 0 ? "No landing pages yet. Name one above to get started." : "Nothing matches that search."}
         </div>
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -186,6 +180,7 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
                 badgeLabel={badge.label}
                 badgeTone={badge.tone}
                 leadCount={step.is_entry ? (leadCounts[funnel.id] ?? 0) : undefined}
+                leadsHref={`/admin/funnels/leads?funnelId=${funnel.id}`}
                 onDelete={() => handleDelete(page)}
                 deleteLabel={step.is_entry ? `Delete ${funnel.name}` : `Delete ${step.name}`}
                 secondaryAction={
@@ -200,11 +195,7 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
                         Entry card only: the entry page IS the funnel, so a
                         per-page toggle on a child step would be a lie. */}
                     {step.is_entry ? (
-                      <FunnelGoLiveButton
-                        funnelId={funnel.id}
-                        status={funnel.status}
-                        canGoLive={published}
-                      />
+                      <FunnelGoLiveButton funnelId={funnel.id} status={funnel.status} canGoLive={published} />
                     ) : null}
                     <Button asChild variant="outline" size="sm" title="Funnel settings & pages">
                       <Link href={`/admin/funnels/${funnel.id}`}>
@@ -222,15 +213,7 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
   )
 }
 
-function FilterChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string
-  active: boolean
-  onClick: () => void
-}) {
+function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
