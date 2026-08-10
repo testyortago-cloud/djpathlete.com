@@ -130,8 +130,12 @@ const sectionIconSchema = z.enum(SECTION_ICONS)
 // Shared style knobs (plan §1a). All optional — a section with `style: {}`
 // renders at every default. Rendered as `data-h` / `data-align` / `data-tone`
 // / `data-pad` attributes (constraint 3, §2 lines 206): NEVER `data-djp-*`,
-// which `filterAttrs` strips from every non-island element before the plain
-// `data-*` passthrough runs (sanitize.ts:216 vs :222).
+// which `filterAttrs` (compile/sanitize.ts) strips from every non-island
+// element: its `RESERVED_ATTR_PREFIX` guard `continue`s BEFORE the plain
+// `data-*` passthrough is reached, so the passthrough never sees them. Named
+// by function and guard rather than by line number on purpose — the two line
+// numbers this comment used to cite (`:216` / `:222`) had already decayed to
+// `:229` / `:234` by the time anyone checked them.
 // ---------------------------------------------------------------------------
 
 export const sectionStyleSchema = z.object({

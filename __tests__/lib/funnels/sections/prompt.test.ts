@@ -469,7 +469,20 @@ describe("the eight op-semantics rules", () => {
     { label: "arrays replace wholesale", tokens: [/items/, /plans/, /features/, /whole/i] },
     { label: "null deletes a key", tokens: [/null/, /delet/i, /undefined/] },
     { label: "after: null inserts at the top", tokens: [/after/, /null/, /top/i] },
-    { label: "dark tone has no cascade rescue", tokens: [/dark/i, /muted-foreground/, /faq/i] },
+    // REWRITTEN WITH RULE 6 ITSELF. The old row pinned the OPPOSITE claim —
+    // "dark strands `var(--muted-foreground)`, keep faq/pricing/testimonial off
+    // it" — which was true of the stylesheet as first written and false the
+    // moment styles.ts's tone pass landed. A concepts row is a claim about the
+    // product, so a stale one does not just go quiet: it fails the correct
+    // rewrite and pressures whoever hits it into restoring the false rule.
+    // These five tokens are what rule 6 now has to keep saying: tone is safe
+    // and PAIRED, it is safe specifically on the text-heavy kinds the old rule
+    // banned, `theme.tone` is a per-section default, and the boxed-form
+    // residual is named rather than left for someone to rediscover.
+    {
+      label: "tone is a paired, safe rhythm knob; page tone is a section default",
+      tokens: [/tone/i, /paired/i, /faq/i, /theme\.tone/, /boxed/i],
+    },
     { label: "update_section needs one of three", tokens: [/update_section/, /props/, /style/, /variant/, /batch/i] },
     { label: "empty set_theme is a no-op", tokens: [/set_theme/, /empty/i] },
   ]

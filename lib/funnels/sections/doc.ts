@@ -14,6 +14,7 @@
 import {
   sectionDocSchema,
   SECTION_KINDS,
+  type Section,
   type SectionDoc,
   type SectionDocTheme,
 } from "@/lib/funnels/sections/registry"
@@ -36,7 +37,10 @@ const ROOT = `#${FUNNEL_ROOT_ID}`
 //   no change needed in styles.ts.
 // - `tone` (page-wide light/dark) and `accent` (which brand colour drives
 //   primary buttons) are exposed as plain `data-page-*` attributes on a page
-//   wrapper `<div>` — deliberately NOT `data-tone`/`data-accent`, which are
+//   wrapper `<div>`. `tone` ALSO resolves into each section's own tone knob
+//   before rendering — see "PAGE TONE IS A SECTION-TONE DEFAULT" below, which
+//   is the load-bearing half; the attribute only paints the page ground.
+//   The names are deliberately NOT `data-tone`/`data-accent`, which are
 //   already the PER-SECTION style-knob attribute names render.ts emits on
 //   every `<section>` (constraint 3, a different value domain entirely:
 //   default/muted/accent/dark vs light/dark). Reusing those names on the page
@@ -55,15 +59,74 @@ const RADIUS_CSS_VALUE: Record<SectionDocTheme["radius"], string> = {
   round: "1.75rem",
 }
 
+// ---------------------------------------------------------------------------
+// PAGE TONE IS A SECTION-TONE DEFAULT, NOT A WRAPPER PAINT JOB.
+//
+// The first cut of this file painted the wrapper `var(--primary)` +
+// `var(--primary-foreground)` and left the sections inside it to INHERIT that
+// foreground. They never did, and could not: styles.ts's
+// `#djp-funnel-root .djp-s { color: var(--foreground) }` is a DIRECT
+// declaration on the `<section>`, and a direct declaration always beats an
+// inherited value — inheritance is what an element falls back to when NO rule
+// matched it, so ancestor specificity never enters the comparison. Every
+// default-tone section on a dark page therefore rendered `--foreground` on
+// `--primary`: a whole unreadable page, not one unreadable element. The two
+// `color: inherit` rescues this file used to add for `.djp-hd` / `.djp-sub`
+// were the same mistake one level down — they resolved `inherit` against the
+// section, which was still `--foreground`.
+//
+// Beating `.djp-s` from here would mean re-deriving styles.ts's entire tone
+// pass (a panel lift, nine muted-foreground overrides, three shape swaps, two
+// counter badges) against a second selector prefix — the same contrast
+// contract written twice, which is exactly how it went missing the first time.
+//
+// So page tone resolves BEFORE the CSS instead: `theme.tone: "dark"` means
+// "every section that did not pick a tone of its own renders as a dark
+// section". `sectionForPage` promotes those sections' `style.tone` to `"dark"`
+// on the way into `renderSection`, and the already-audited
+// `[data-tone="dark"]` half of styles.ts does the rest, unchanged. A section
+// that DID pick a tone (`muted`/`accent`/`dark`) is never touched — an
+// explicit choice outranks a page default, on a dark page exactly as on a
+// light one.
+//
+// The wrapper keeps its own `background` + paired `color` so the page GROUND
+// (above the first section, below the last, and any margin between) is dark
+// too, and so the wrapper is never a bare background with an unpaired text
+// colour. It is no longer load-bearing for anything inside a section.
+//
+// The promotion is a RENDER-time transform. `doc.sections` is not mutated and
+// nothing is written back: the SectionDoc keeps the author's real intent
+// ("this section has no tone"), which is what Stage 2's inspector reads and
+// what a later `set_theme` back to `light` has to be able to undo.
+// ---------------------------------------------------------------------------
+
+function sectionForPage(section: Section, theme: SectionDocTheme): Section {
+  if (theme.tone !== "dark") return section
+  if (section.style.tone !== undefined && section.style.tone !== "default") return section
+  return { ...section, style: { ...section.style, tone: "dark" } }
+}
+
 function themeCss(theme: SectionDocTheme): string {
   return `
 ${ROOT} { --djp-radius: ${RADIUS_CSS_VALUE[theme.radius]}; }
 ${ROOT} .djp-page[data-page-tone="dark"] { background: var(--primary); color: var(--primary-foreground); }
-${ROOT} .djp-page[data-page-tone="dark"] .djp-hd { color: inherit; }
-${ROOT} .djp-page[data-page-tone="dark"] .djp-sub { color: inherit; opacity: 0.85; }
 ${ROOT} .djp-page[data-page-accent="primary"] .djp-btn-primary { background: var(--primary); color: var(--primary-foreground); }
+${ROOT} .djp-page[data-page-accent="primary"] .djp-s[data-tone="dark"] .djp-btn-primary { background: var(--accent); color: var(--accent-foreground); }
 `.trim()
 }
+
+// The last rule above is the page-level half of styles.ts's "move 3": a shape
+// painted in the token of its own background is not low-contrast, it is GONE.
+// `data-page-accent: "primary"` paints the primary button `var(--primary)`,
+// which is the exact token a dark section paints its background — so the
+// page's single most important element disappeared into the band behind it.
+// It has to be fixed HERE and not in styles.ts: this file's rules are appended
+// AFTER styles.ts's, so at equal specificity source order hands the win to
+// whichever selector `themeCss` emits. The override therefore has to outrank
+// its own sibling rule, which it does by adding `.djp-s[data-tone="dark"]`
+// (1,4,0 vs 1,2,0). It swaps to the OTHER brand pair rather than to a bare
+// foreground token, so it survives a scope flip — the same reason styles.ts
+// swaps pairs instead of picking a lightness.
 
 function pageWrapperOpenTag(theme: SectionDocTheme): string {
   return (
@@ -160,7 +223,9 @@ export interface ReassembleResult {
 export function reassemble(doc: SectionDoc, ctx: RenderContext = {}): ReassembleResult {
   sectionDocSchema.parse(doc)
 
-  const sectionsHtml = doc.sections.map((section) => renderSection(section, ctx)).join("\n")
+  const sectionsHtml = doc.sections
+    .map((section) => renderSection(sectionForPage(section, doc.theme), ctx))
+    .join("\n")
   const html = `${pageWrapperOpenTag(doc.theme)}${sectionsHtml}</div>`
 
   const usedKinds = SECTION_KINDS.filter((kind) => doc.sections.some((section) => section.kind === kind))

@@ -406,12 +406,27 @@ const OPS_BLOCK = OP_OPTIONS.map((option) => {
 // that kill the WHOLE BATCH, because `applyOps` is transactional and one
 // invalid op rejects everything alongside it.
 //
-// Rule 6 is not decorative. `theme.tone:"dark"` (doc.ts:61-63) and the
-// per-section `style.tone:"dark"` (styles.ts:112-116) BOTH set a
-// `var(--primary)` background and rescue exactly two elements — `.djp-hd` and
-// `.djp-sub` — with `color: inherit`. Everything else that is muted body copy
-// keeps a hardcoded `color: var(--muted-foreground)`, so it renders muted-grey
-// on brand-dark with no guaranteed contrast.
+// RULE 6 WAS REWRITTEN WHEN THE HAZARD IT DESCRIBED WAS FIXED. It used to
+// tell the model that a dark background rescues only `.djp-hd` / `.djp-sub`
+// and strands every muted line in `var(--muted-foreground)`, and to keep
+// faq/pricing/testimonial/bullets/steps/footer off dark because of it. That
+// was true of the stylesheet as first written; it is not true now. styles.ts's
+// tone pass carries EVERY element with the tone (panels lift instead of
+// switching to `--surface`, the nine muted classes become `inherit` + opacity,
+// colliding shapes swap to the other brand pair) and doc.ts resolves page tone
+// into each section's own tone knob, so a dark page is a dark SECTION on every
+// kind rather than a `--foreground`-on-`--primary` cascade accident.
+//
+// The rule was not simply deleted, because a rule that forbids something
+// already impossible is not harmless redundancy: it sits in a FROZEN, CACHED
+// prefix that is re-read on every single turn, and it teaches the model a
+// constraint the product does not have — the page builder would keep laying
+// out grey-on-white pages to dodge a bug that no longer exists. So the slot
+// now carries what IS true: tone is a rhythm knob, page tone is a per-section
+// default, and there is exactly one residual (a `boxed` form is its own band).
+// Whoever fixes or changes that residual should rewrite this rule and
+// prompt.test.ts's matching REQUIRED_CONCEPTS row in the same commit — the
+// test pins the CLAIM, so a stale claim fights a correct rewrite.
 // ---------------------------------------------------------------------------
 
 /**
@@ -436,12 +451,15 @@ export const BUILDER_RULES: readonly string[] = [
   "`after: null` means INSERT AT THE VERY TOP, on both `add_section` and `move_section`. It is not 'append' and " +
     "it is not an error — it is how you put something above the hero.",
 
-  "Do not assume the CSS cascade handles a dark background. A dark page (`theme.tone: \"dark\"`) and a dark " +
-    "section (`style.tone: \"dark\"`) both paint `var(--primary)` and rescue only the headline and subhead; every " +
-    "other muted line — FAQ answers, quote attributions, pricing blurbs and cadences, pricing footnotes, bullet " +
-    "and step body text, footer lines and legal text — keeps `var(--muted-foreground)` and can end up unreadable " +
-    "grey-on-brand. Use dark for a section that is mostly headline and CTA; keep faq, pricing, testimonial, " +
-    "bullets, steps and footer on a light or muted tone.",
+  "`style.tone` is a RHYTHM knob, not a risk. Every tone carries the whole section with it — headings, subheads, " +
+    "muted body copy, card and quote and plan panels, list icons, step counters and buttons all resolve to a " +
+    "PAIRED colour — so `\"dark\"` and `\"accent\"` are safe on faq, pricing, testimonial, bullets, steps and " +
+    "footer exactly as they are on hero and cta. Alternate tones to mark the turns in the page instead of " +
+    "avoiding them. Two consequences to know: `theme.tone: \"dark\"` is a DEFAULT, so every section that sets no " +
+    "tone of its own renders dark and a section you give `style.tone: \"muted\"` there is a LIGHT band, not a " +
+    "darker one; and a form with `variant: \"boxed\"` is its own band, so on a dark page its box merges with the " +
+    "page and only its narrower width still reads — use `variant: \"band\"`, or `style.tone: \"muted\"` to keep " +
+    "the box.",
 
   "An `update_section` op MUST carry at least one of `props`, `style` or `variant`, and it must be non-empty — " +
     "`{}` counts as absent. An op with none of them is not a tolerated no-op: it REJECTS THE ENTIRE BATCH, " +

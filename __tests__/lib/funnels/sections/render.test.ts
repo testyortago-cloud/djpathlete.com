@@ -18,12 +18,15 @@ import { compileFunnelStep } from "@/lib/funnels/compile"
 import type { FunnelNode } from "@/lib/funnels/compile/types"
 import { parseIslandProps } from "@/lib/funnels/islands"
 import { escapeHtml, renderSection, type RenderContext } from "@/lib/funnels/sections/render"
+import { reassemble } from "@/lib/funnels/sections/doc"
 import { THEME_CSS, SECTION_CSS } from "@/lib/funnels/sections/styles"
 import {
   SECTION_KINDS,
   SECTION_ICONS,
   SECTION_REGISTRY,
   type Section,
+  type SectionDoc,
+  type SectionDocTheme,
   type SectionKind,
 } from "@/lib/funnels/sections/registry"
 
@@ -433,8 +436,15 @@ interface ContrastReading {
   background: string
 }
 
-/** Every text-bearing node in every kind/variant, at one tone. */
-function readContrast(tone: "accent" | "dark"): ContrastReading[] {
+/**
+ * Every text-bearing node in every kind/variant, at one tone.
+ *
+ * Run at ALL FOUR tones, not just the two that repaint with a brand token.
+ * `muted` repaints too — `var(--surface)`, the same token five per-kind panels
+ * paint THEMSELVES — and checking only `accent`/`dark` is precisely how that
+ * collision survived the first tone pass.
+ */
+function readContrast(tone: NonNullable<Section["style"]["tone"]>): ContrastReading[] {
   const readings: ContrastReading[] = []
   for (const { label, section } of toneCases()) {
     const html = renderSection({ ...section, style: { ...section.style, tone } })
@@ -463,8 +473,10 @@ function readContrast(tone: "accent" | "dark"): ContrastReading[] {
   return readings
 }
 
+const ALL_TONES = ["default", "muted", "accent", "dark"] as const
+
 describe("tone contrast: no per-kind colour is left behind by the tone knob", () => {
-  it.each(["accent", "dark"] as const)(
+  it.each(ALL_TONES)(
     "every text node in every kind/variant resolves to a PAIRED colour on tone '%s'",
     (tone) => {
       const readings = readContrast(tone)
@@ -476,7 +488,7 @@ describe("tone contrast: no per-kind colour is left behind by the tone knob", ()
     },
   )
 
-  it.each(["accent", "dark"] as const)(
+  it.each(ALL_TONES)(
     "no element on tone '%s' paints its own background in the token of the background behind it",
     (tone) => {
       const collisions: string[] = []
@@ -541,6 +553,206 @@ describe("tone contrast: no per-kind colour is left behind by the tone knob", ()
     const values: string[] = []
     for (const kind of SECTION_KINDS) {
       for (const rule of parseRules(fullCss(kind))) {
+        if (rule.color !== undefined) values.push(rule.color)
+        if (rule.bg !== undefined) values.push(rule.bg)
+      }
+    }
+    expect(values.length).toBeGreaterThan(20)
+    const unmodelled = values.map(colourToken).filter((token) => token.startsWith("UNMODELLED"))
+    expect(unmodelled, unmodelled.join(", ")).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PAGE-LEVEL TONE CONTRAST — the SAME harness above, one level up, driven by
+// the real `reassemble()` instead of `THEME_CSS + SECTION_CSS[kind]`.
+//
+// WHY THIS EXISTS AS A SEPARATE RUN. Everything above compiles one section
+// with one kind's CSS. `doc.ts` adds two things no per-section run can see:
+//   - a page WRAPPER (`.djp-page[data-page-tone]`) that repaints the ground
+//     underneath every section, and
+//   - a page ACCENT rule (`.djp-page[data-page-accent="primary"] .djp-btn-primary`)
+//     appended AFTER both THEME_CSS and the per-kind CSS, so it outranks them
+//     on source order at equal specificity and outranks THEME_CSS's own
+//     `.djp-btn-primary` outright.
+// Both are cross-FILE interactions, and both shipped broken:
+//
+//   B1 the wrapper painted `var(--primary)` and relied on INHERITANCE to carry
+//      `--primary-foreground` down. It cannot: `${ROOT} .djp-s { color:
+//      var(--foreground) }` is a DIRECT declaration on the section, and a
+//      direct declaration always beats an inherited value no matter how
+//      specific the ancestor's rule was. Every default-tone section on a dark
+//      page painted `--foreground` on `--primary` — a whole unreadable page.
+//   B2 `theme.accent:"primary"` painted `.djp-btn-primary` `var(--primary)`,
+//      the same token a dark section paints its background, so the page's one
+//      primary button vanished into its own section.
+//
+// MUTANTS THIS KILLS (each verified red, with the collected test count
+// unchanged so a non-compiling mutant cannot masquerade as an uncaught one):
+//   - dropping doc.ts's per-section dark-tone promotion (`sectionForPage`):
+//     every default-tone section on a dark page reports `--foreground` and
+//     nine-plus `--muted-foreground` readings on `--primary`;
+//   - dropping doc.ts's `[data-page-accent="primary"] .djp-s[data-tone="dark"]
+//     .djp-btn-primary` override: the button paints `--primary` on `--primary`.
+// ---------------------------------------------------------------------------
+
+/** The four page themes; `radius` cannot affect colour, so one value is enough. */
+const PAGE_THEMES: readonly SectionDocTheme[] = [
+  { tone: "light", accent: "accent", radius: "soft" },
+  { tone: "light", accent: "primary", radius: "soft" },
+  { tone: "dark", accent: "accent", radius: "soft" },
+  { tone: "dark", accent: "primary", radius: "soft" },
+]
+
+const SECTION_TONES = ["default", "muted", "accent", "dark"] as const
+
+/**
+ * One doc holding EVERY (kind, variant) case at one section tone. `toneCases()`
+ * yields 20, under `sectionDocSchema`'s 24-section cap, so a single
+ * `reassemble()` call exercises the whole surface at once — including the
+ * per-kind CSS selection, which is part of what decides the cascade.
+ */
+function pageDoc(theme: SectionDocTheme, tone: (typeof SECTION_TONES)[number]): SectionDoc {
+  return {
+    v: 1,
+    engine: "sections",
+    theme,
+    sections: toneCases().map(({ section }, index) => ({
+      ...section,
+      id: `s${index}`,
+      // "default" means the author set NO tone at all — the case B1 broke.
+      style: tone === "default" ? section.style : { ...section.style, tone },
+    })),
+  }
+}
+
+function themeLabel(theme: SectionDocTheme): string {
+  return `page ${theme.tone}/${theme.accent}`
+}
+
+/** Runs one whole reassembled page through the cascade model above. */
+function withPage<T>(
+  theme: SectionDocTheme,
+  tone: (typeof SECTION_TONES)[number],
+  fn: (nodes: StyledNode[], rules: StyleRule[]) => T,
+): T {
+  const { html, css } = reassemble(pageDoc(theme, tone))
+  const rules = parseRules(css)
+  const root = document.createElement("div")
+  root.id = "djp-funnel-root"
+  root.innerHTML = html
+  document.body.appendChild(root)
+  try {
+    return fn(styledNodes(root, rules), rules)
+  } finally {
+    root.remove()
+  }
+}
+
+/** `hero/split#s0` — enough to point at the exact fixture that failed. */
+function nodeAddress(node: StyledNode): string {
+  const section = node.el.closest(".djp-s")
+  const kindClass = Array.from(section?.classList ?? []).find((cls) => cls.startsWith("djp-s-")) ?? "page"
+  return `${kindClass}#${section?.id ?? "-"} ${node.label}`
+}
+
+function readPageContrast(
+  theme: SectionDocTheme,
+  tone: (typeof SECTION_TONES)[number],
+): ContrastReading[] {
+  return withPage(theme, tone, (nodes, rules) => {
+    const readings: ContrastReading[] = []
+    for (const node of nodes) {
+      if (node.pseudo === null && !hasOwnText(node.el) && winning(rules, node, "color") === null) continue
+      readings.push({
+        case: `${themeLabel(theme)} + section tone ${tone}`,
+        node: nodeAddress(node),
+        colour: resolvedColour(rules, node),
+        background: resolvedBackground(rules, node),
+      })
+    }
+    return readings
+  })
+}
+
+describe("page tone contrast: reassemble()'s page wrapper and page accent", () => {
+  const matrix = PAGE_THEMES.flatMap((theme) =>
+    SECTION_TONES.map((tone) => ({ theme, tone, label: `${themeLabel(theme)} + section tone ${tone}` })),
+  )
+
+  it.each(matrix)("every text node resolves to a PAIRED colour on $label", ({ theme, tone }) => {
+    const readings = readPageContrast(theme, tone)
+    const violations = readings.filter((reading) => {
+      const allowed = READABLE_ON[reading.background]
+      return allowed === undefined || !allowed.includes(reading.colour)
+    })
+    expect(violations, `unpaired colour/background: ${JSON.stringify(violations, null, 2)}`).toEqual([])
+  })
+
+  it.each(matrix)("no SHAPE is painted in the token of the ground behind it on $label", ({ theme, tone }) => {
+    const collisions = withPage(theme, tone, (nodes, rules) => {
+      const found: string[] = []
+      for (const node of nodes) {
+        // A SECTION's own band is not a shape. Page tone exists precisely so a
+        // section that did not choose a tone stops interrupting the page, so a
+        // band matching the page ground is the feature, not a lost element.
+        // Everything INSIDE a section still has to stay distinguishable.
+        if (node.pseudo === null && node.el.classList.contains("djp-s")) continue
+        const own = winning(rules, node, "bg")
+        if (own === null || isWash(own)) continue
+        const ownToken = colourToken(own)
+        if (ownToken === TRANSPARENT || ownToken === INHERIT) continue
+        if (node.parent === null) continue
+        const behind = resolvedBackground(rules, node.parent)
+        if (ownToken === behind) found.push(`${nodeAddress(node)} paints ${ownToken} on ${behind}`)
+      }
+      return found
+    })
+    expect(collisions, collisions.join("\n")).toEqual([])
+  })
+
+  // B2, named on its own: the generic collision test would also catch it, but a
+  // failure there reads as "some shape somewhere", and this pairing is the one
+  // that makes a page's single most important element disappear.
+  it("theme.accent 'primary' keeps the primary button visible on a dark section", () => {
+    for (const pageTone of ["light", "dark"] as const) {
+      withPage({ tone: pageTone, accent: "primary", radius: "soft" }, "dark", (nodes, rules) => {
+        const buttons = nodes.filter((node) => node.pseudo === null && node.el.classList.contains("djp-btn-primary"))
+        expect(buttons.length, "no fixture rendered a .djp-btn-primary").toBeGreaterThan(0)
+        for (const button of buttons) {
+          const own = colourToken(winning(rules, button, "bg") ?? "transparent")
+          const behind = resolvedBackground(rules, button.parent!)
+          expect(own, `${nodeAddress(button)} on a ${pageTone} page`).not.toBe(behind)
+          const allowed = READABLE_ON[own] ?? []
+          expect(allowed, `${nodeAddress(button)} label colour`).toContain(resolvedColour(rules, button))
+        }
+      })
+    }
+  })
+
+  // Anti-vacuity. Without this, every assertion above passes the moment
+  // `pageDoc` stops producing the sections it claims to produce.
+  it("actually reaches the page wrapper, every kind, and the elements B1/B2 broke", () => {
+    const readings = readPageContrast({ tone: "dark", accent: "primary", radius: "soft" }, "default")
+    const seen = readings.map((reading) => reading.node).join(" ")
+    expect(seen).toContain("djp-page")
+    for (const kind of SECTION_KINDS) {
+      expect(seen, `no fixture rendered a ${kind} section`).toContain(`djp-s-${kind}#`)
+    }
+    for (const cls of ["djp-btn-primary", "djp-plan-price", "djp-faq-a", "djp-footer-legal", "djp-bullet-text"]) {
+      expect(seen, `no fixture rendered .${cls}, so nothing was asserted about it`).toContain(cls)
+    }
+    expect(readings.length).toBeGreaterThan(80)
+  })
+
+  // The page CSS is a THIRD string (THEME_CSS + per-kind + doc.ts's own rules);
+  // an unrecognised colour there would resolve to a token nothing in
+  // READABLE_ON matches and be waved through as "different from the background".
+  it("understands every colour value reassemble() actually emits", () => {
+    const values: string[] = []
+    for (const theme of PAGE_THEMES) {
+      const { css } = reassemble(pageDoc(theme, "default"))
+      for (const rule of parseRules(css)) {
         if (rule.color !== undefined) values.push(rule.color)
         if (rule.bg !== undefined) values.push(rule.bg)
       }

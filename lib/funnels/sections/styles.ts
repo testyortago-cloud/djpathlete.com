@@ -204,6 +204,22 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-cta.djp-v-boxed .djp-cta-inner {
   background: color-mix(in oklch, var(--primary-foreground) 12%, transparent);
 }
 
+/* Move 1 for the THIRD repainting tone. The "muted" tone paints the section
+   var(--surface) — the SAME token these five panels paint THEMSELVES — so
+   every card, plan, quote and boxed CTA on a muted section was a shape in its
+   own background's colour: not low-contrast, GONE. It is the accent/dark
+   collision one pair over, and the same lift fixes it, washed with the
+   NEUTRAL pair's foreground because that is the pair a muted section is in.
+   (The first tone pass ran its collision check on "accent" and "dark" only,
+   which is how this survived it; the suite now runs all four tones.) */
+${ROOT} .djp-s[data-tone="muted"].djp-s-bullets.djp-v-cards .djp-bullet-item,
+${ROOT} .djp-s[data-tone="muted"] .djp-quote,
+${ROOT} .djp-s[data-tone="muted"] .djp-plan,
+${ROOT} .djp-s[data-tone="muted"].djp-s-cta.djp-v-boxed .djp-cta-inner,
+${ROOT} .djp-s[data-tone="muted"].djp-s-hero .djp-media-invalid {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
 /* The boxed FORM is the one panel that is the section itself, so it cannot
    lift: a wash there composites over the PAGE, not over the tone, and the
    section's own tone background never gets painted because FORM_CSS ties on

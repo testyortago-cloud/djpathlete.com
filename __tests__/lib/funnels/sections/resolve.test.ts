@@ -1262,11 +1262,22 @@ describe("loadCatalogues", () => {
     // the owner picks it, the id lands in the doc, and the very next turn
     // reports it unresolved with no way out.
     //
-    // Two ways it happens, both closed by unioning offer into recognition:
-    // the six DAL reads are CONCURRENT, so a program activated between the two
-    // landing is in offer and not in recognition; and PostgREST silently caps
-    // an unbounded select, which truncates recognition first because it is the
-    // larger set.
+    // Two ways it happens, both closed by unioning offer into recognition.
+    //
+    // THE RACE IS *CREATION*, NOT ACTIVATION. An earlier spelling here (and in
+    // resolve.ts, corrected there first) blamed "a program activated between
+    // the two reads". It cannot be that: recognition applies NO `is_active`
+    // and NO `status` filter (`getAllPrograms` / `listAllProducts` /
+    // `getEvents({})`), so a row activated or published mid-flight WAS ALREADY
+    // IN RECOGNITION. The only concurrent write that lands a row in offer and
+    // not in recognition is a row CREATED — and immediately offer-eligible —
+    // in the window between the recognition read landing and the offer read
+    // landing, which is real because `loadCatalogues` issues all six queries
+    // concurrently.
+    //
+    // The second way is TRUNCATION: PostgREST silently caps an unbounded
+    // select, and it truncates recognition first because it is the larger set.
+    // That is the shape the fixture below actually models.
     //
     // MUTANT: `recognition: toCatalogue(...)` with no union — the fixture below
     // makes the recognition read return the retired program ONLY, which is what

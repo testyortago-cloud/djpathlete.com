@@ -113,11 +113,23 @@ describe("ctaTargetSchema", () => {
     expect(ctaTargetSchema.safeParse({ kind: "url", href }).success).toBe(accepted)
   })
 
-  it("carries SAFE_LINK itself, not a copy that happens to agree today", () => {
-    // The table above is a behaviour check on six inputs; this is the identity
-    // check. Someone hand-typing a character-identical regex back in passes
-    // every row above and re-opens the divergence the day SAFE_LINK changes —
-    // which is exactly how the first two instances of this bug happened.
+  it("emits exactly one link pattern, and it is character-identical to SAFE_LINK.source", () => {
+    // RENAMED, DELIBERATELY NOT STRENGTHENED. The old name — "carries
+    // SAFE_LINK itself, not a copy that happens to agree today" — claimed an
+    // IDENTITY check this cannot perform: `z.toJSONSchema` serialises the
+    // regex to a string, so a hand-typed but character-identical copy passes
+    // here exactly as it passes the six-row table above. Pinning the object
+    // would mean reaching through Zod's private `def` internals, which is the
+    // very anti-pattern prompt.test.ts's own fix removed, and which breaks on
+    // a Zod bump without the schema having changed at all.
+    //
+    // What it DOES prove is still worth having, and is what the name now says:
+    // the whole `CtaTarget` union contributes exactly ONE link pattern (a
+    // second, divergent one — the `/^(\/|https:\/\/)/` this repo has shipped
+    // three times — shows up as a second set member), and that pattern's text
+    // is SAFE_LINK's. The day SAFE_LINK's source changes, a stale copy fails
+    // here; only a copy that is edited in lockstep slips through, and that is
+    // a divergence risk this test cannot see rather than one it hides.
     const emitted = z.toJSONSchema(ctaTargetSchema, { io: "input", unrepresentable: "any" })
     const patterns = new Set<string>()
     const walk = (node: unknown): void => {
