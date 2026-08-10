@@ -134,4 +134,9 @@ describe("report banding", () => {
       /--success:\s*oklch\(0\.5[0-4]\s/,
     )
   })
+
+  it("gives the band pill a border in print, because its tinted background vanishes", () => {
+    const print = printBlockContaining(".band-pill")
+    expect(print).toMatch(/\.band-pill\s*{[^}]*border:\s*1px solid currentColor/)
+  })
 })

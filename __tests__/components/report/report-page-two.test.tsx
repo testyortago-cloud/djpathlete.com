@@ -143,18 +143,51 @@ describe("ReportPageTwo", () => {
     expect(screen.getByText("2 earlier assessments")).toBeInTheDocument()
   })
 
-  it("never calls a flat test an improvement, the way page 1 already doesn't", () => {
-    // deltaPct === 0 was hitting the `>= 0` arm: "↑ 0%" in success green, while
-    // page 1 rendered the same number as "= 0%" and "held steady". Task 2 replaced
-    // the boolean with a three-state direction for exactly this reason; the fix
-    // landed on one page only.
+  it("renders a flat test as steady, never as an increase", () => {
+    // deltaPct === 0 used to render "= 0%"; the word is calmer and matches page 1's
+    // "held steady". Still never an arrow, never success-green.
     const { container } = render(<ReportPageTwo scores={scores([flat])} assessments={[]} />)
-    const delta = [...container.querySelectorAll("p")].find((p) => /0%/.test(p.textContent ?? ""))
-    expect(delta, "no delta cell rendered").toBeTruthy()
-    expect(delta!.textContent).toContain("=")
-    expect(delta!.textContent, "a flat test must not read as an increase").not.toContain("↑")
+    const delta = [...container.querySelectorAll("p")].find((p) => /steady/i.test(p.textContent ?? ""))
+    expect(delta, "no steady cell rendered").toBeTruthy()
+    expect(delta!.textContent).not.toContain("↑")
+    expect(delta!.textContent).not.toContain("%")
     expect(delta!.className, "a flat test must not be coloured as a success").not.toContain("--success")
     expect(delta!.className).toContain("text-muted-foreground")
+  })
+
+  it("prints the norm in the test's own units under the track", () => {
+    render(<ReportPageTwo scores={scores([cmj])} assessments={[]} />)
+    expect(screen.getByText(/Trained 45 cm · Elite 65 cm/)).toBeInTheDocument()
+  })
+
+  it("pills each scorable row with the band the score actually lands in", () => {
+    // cmj fixture score is 72 — at/above BAND_STRENGTH_MIN, so the pill must say Strength.
+    render(<ReportPageTwo scores={scores([cmj])} assessments={[]} />)
+    expect(screen.getByText("Strength")).toBeInTheDocument()
+  })
+
+  it("dates the delta so the change has a time period", () => {
+    render(<ReportPageTwo scores={scores([cmj])} assessments={[]} />)
+    expect(screen.getByText(/since 1 Mar 2026/)).toBeInTheDocument()
+  })
+
+  it("gives an unscorable custom test no norm caption and no pill", () => {
+    const { container } = render(<ReportPageTwo scores={scores([sledPush])} assessments={[]} />)
+    // The band intro copy legitimately says "Trained"; a NUMERIC target line is
+    // what must not render for a test with no standard.
+    expect(container.textContent ?? "").not.toMatch(/Trained \d/)
+    expect(container.textContent ?? "").not.toMatch(/Strength|Developing|Priority/)
+    expect(screen.getByText("No standard for this test")).toBeInTheDocument()
+  })
+
+  it("suppresses the sparkline for flat and two-point series, keeps it for a moving one", () => {
+    // flat: three identical points — a line, but not a trend. sledPush: two points.
+    const { container: flatC } = render(<ReportPageTwo scores={scores([flat])} assessments={[]} />)
+    expect(flatC.querySelector("svg"), "a flat series must not draw a trend line").toBeNull()
+    const { container: shortC } = render(<ReportPageTwo scores={scores([sledPush])} assessments={[]} />)
+    expect(shortC.querySelector("svg"), "two points are not a trend").toBeNull()
+    const { container: moving } = render(<ReportPageTwo scores={scores([cmj])} assessments={[]} />)
+    expect(moving.querySelector("svg"), "a real trend must still draw").toBeTruthy()
   })
 
   it("opens the NEWEST assessment even when the array order disagrees with the dates", () => {

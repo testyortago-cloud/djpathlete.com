@@ -9,7 +9,7 @@ const TONE: Record<Band, string> = {
 /** STRENGTH / DEVELOPING / PRIORITY status pill from the reference report. */
 export function BandPill({ band }: { band: Band }) {
   return (
-    <span className={`inline-flex rounded px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${TONE[band]}`}>
+    <span className={`band-pill inline-flex rounded px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${TONE[band]}`}>
       {BAND_LABELS[band]}
     </span>
   )

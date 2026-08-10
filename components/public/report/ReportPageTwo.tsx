@@ -57,8 +57,9 @@ export function ReportPageTwo({
         <p className="djp-eyebrow report-band-quiet opacity-80">The full verdict</p>
         <h2 className="mt-2 font-heading text-2xl font-bold uppercase tracking-wide">Test by test</h2>
         <p className="report-band-quiet mt-2 max-w-[52ch] text-sm opacity-80">
-          {tests.length} {tests.length === 1 ? "test" : "tests"}, each measured the same way every time. The bar is
-          the same scale as page 1 — the tick is Trained, the right edge is Elite.
+          {tests.length} {tests.length === 1 ? "test" : "tests"}, each measured the same way every time. Every bar
+          is one scale — the tick is Trained, the right edge is Elite; the red zone is a priority, the green zone
+          a strength.
         </p>
       </ReportBand>
 

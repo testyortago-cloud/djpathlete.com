@@ -790,6 +790,12 @@
     border-color: var(--accent) !important;
   }
 
+  /* The pill's 15% background tint is gone with backgrounds off; a hairline in
+     its own ink keeps it reading as a pill rather than a floating word. */
+  .test-report .band-pill {
+    border: 1px solid currentColor;
+  }
+
   /* Chrome's Save-as-PDF has Background graphics OFF by default, so the green fill
      is not guaranteed to render. On paper the banding rhythm is carried by rules
      instead, which also saves ink on a document meant to be printed.
