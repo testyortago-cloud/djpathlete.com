@@ -1,3 +1,23 @@
+> # ⚠️ SUPERSEDED — 2026-08-10
+>
+> **Decision 1 of this spec is wrong.** It resolves the generator's output
+> format to sectioned HTML+CSS. That question was already closed: a 12-agent
+> design review picked **typed section documents** over free HTML, unanimously
+> (security 9/10 vs 4/10, buildability 8/10 vs 5/10), and the kickoff prompt on
+> disk says "architecture already chosen, challenge it only with evidence".
+>
+> This spec was written from a pasted snapshot of that kickoff taken *before*
+> it was updated. The file was in the repo the whole time and I did not open it.
+>
+> **The governing plan is** `docs/superpowers/plans/2026-08-10-ai-page-builder-sections.md`.
+>
+> What survives here: the Postgres-vs-Firestore reasoning (§4), the
+> draft-preview-through-the-real-compiler argument (§5), the GrapesJS deletion
+> (§6), and the out-of-scope list (§12). What does not: the output format (§2),
+> the sanitiser widening (§8), dropping `project_data` (§4 — the chosen design
+> repurposes it), the no-streaming call (§5 — the review's main UX objection was
+> exactly the single long call), and the cost table (§3 — unmeasured).
+
 # AI page builder — design
 
 **Date:** 2026-08-10
