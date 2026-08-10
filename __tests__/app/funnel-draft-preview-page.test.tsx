@@ -19,12 +19,24 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/db/funnel-builder", () => ({ getDraft: vi.fn() }))
 vi.mock("@/lib/db/funnels", () => ({ getStep: vi.fn(), getFunnelById: vi.fn() }))
+// The catalogue reads, so the REAL `loadCatalogues` / `resolveDoc` /
+// `publishGate` run over them — the point of this page is that it runs the
+// same resolution publish does, and a mocked resolver would assert only that
+// some function was called.
+vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.fn() }))
+vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
+vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
+vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
 
 import Page from "@/app/(funnel)/funnel-preview/[stepId]/page"
 import { metadata } from "@/app/(funnel)/funnel-preview/[stepId]/page"
 import { auth } from "@/lib/auth"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { getFunnelById, getStep } from "@/lib/db/funnels"
+import { getAllPrograms, getPrograms } from "@/lib/db/programs"
+import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
+import { getEvents, getPublishedEvents } from "@/lib/db/events"
+import { getFaqCountsByPage } from "@/lib/db/faqs"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 import type { FunnelNode } from "@/lib/funnels/compile/types"
@@ -36,6 +48,45 @@ const STEP = { id: STEP_ID, funnel_id: "ffffffff-1111-4222-8333-444444444444", s
 const FUNNEL = { id: STEP.funnel_id, slug: "summer-camp", name: "Summer camp", status: "draft" }
 
 const HEADLINE = "Eight weeks. Measurable rotational power."
+
+/** RFC-4122 conformant — the islands' Zod `.uuid()` is strict. */
+const PROGRAM_ID = "11111111-2222-4333-8444-555555555555"
+const PACK_ID = "66666666-7777-4888-8999-aaaaaaaaaaaa"
+const PROGRAM_NAME = "Comeback Code"
+const PACK_NAME = "Ten Session Pack"
+
+/**
+ * A draft whose CTAs are written the way the MODEL writes them — by NAME.
+ *
+ * A turn whose resolution degraded (the catalogue was unreadable that turn)
+ * stores exactly this, so it is not a hypothetical document.
+ */
+function docWithNamedCtas(refs: { program?: string; pack?: string } = {}): SectionDoc {
+  return {
+    v: 1,
+    engine: "sections",
+    theme: { tone: "light", accent: "accent", radius: "soft" },
+    sections: [
+      {
+        id: "hero",
+        kind: "hero",
+        variant: "centered",
+        style: {},
+        props: {
+          headline: HEADLINE,
+          primaryCta: {
+            label: "Start the program",
+            target: { kind: "program", ref: refs.program ?? PROGRAM_NAME },
+          },
+          secondaryCta: {
+            label: "Buy sessions",
+            target: { kind: "session_pack", ref: refs.pack ?? PACK_NAME },
+          },
+        },
+      },
+    ],
+  } as SectionDoc
+}
 
 function doc(): SectionDoc {
   return {
@@ -159,6 +210,14 @@ beforeEach(() => {
   mock(getDraft).mockResolvedValue({ doc: doc(), docInvalid: false, revision: 4 })
   mock(getStep).mockResolvedValue(STEP)
   mock(getFunnelById).mockResolvedValue(FUNNEL)
+
+  mock(getAllPrograms).mockResolvedValue([{ id: PROGRAM_ID, name: PROGRAM_NAME }])
+  mock(getPrograms).mockResolvedValue([{ id: PROGRAM_ID, name: PROGRAM_NAME }])
+  mock(listAllProducts).mockResolvedValue([{ id: PACK_ID, name: PACK_NAME }])
+  mock(listActiveProducts).mockResolvedValue([{ id: PACK_ID, name: PACK_NAME }])
+  mock(getEvents).mockResolvedValue([])
+  mock(getPublishedEvents).mockResolvedValue([])
+  mock(getFaqCountsByPage).mockResolvedValue({ camps: 2 })
 })
 
 describe("/funnel-preview/[stepId] — the gate", () => {
@@ -314,6 +373,66 @@ describe("/funnel-preview/[stepId] — the pages that are not pages", () => {
     const nodes = findNodes(element)
     expect(nodes).toBeTruthy()
     expect(allElements(nodes!).some((el) => el.tag === "dl")).toBe(true)
+  })
+
+  it("previews the RESOLVED document, so the preview cannot disagree with what publish ships", async () => {
+    // MUTANT KILLED: `reassemble(draft.doc, ...)` — reassembling the STORED
+    // draft, which is what shipped. The build route stores the resolved doc,
+    // but a turn whose resolution degraded stores name-refs, and then the same
+    // document previewed one way and published another: a `program` ref
+    // previewed as a disabled button and published as a live checkout island;
+    // a `session_pack` previewed WITHOUT its productId and published WITH it.
+    // The uuid can only appear here if `resolveDoc`'s output reached
+    // `reassemble` — nothing in the stored draft contains it.
+    mock(getDraft).mockResolvedValue({ doc: docWithNamedCtas(), docInvalid: false, revision: 4 })
+
+    const element = await render()
+    const nodes = findNodes(element)
+    expect(nodes).toBeTruthy()
+
+    const rendered = JSON.stringify(nodes)
+    expect(rendered).toContain(PROGRAM_ID)
+    expect(rendered).toContain(PACK_ID)
+    expect(rendered).not.toContain(PACK_NAME)
+  })
+
+  it("banners the PUBLISH GATE's blockers, not only the size caps", async () => {
+    // MUTANT KILLED: sourcing the banner from `rendered.problems` alone —
+    // which is what shipped. Those are only the size caps, which a
+    // schema-valid page can barely reach; the refusal that actually happens to
+    // real pages is a CTA pointing at a row that no longer exists, and that
+    // page previewed with NO BANNER AT ALL on the one screen the owner uses to
+    // decide the page is done. The page is still rendered underneath.
+    mock(getDraft).mockResolvedValue({
+      doc: docWithNamedCtas({ program: "Winter Throwing Intensive" }),
+      docInvalid: false,
+      revision: 4,
+    })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const element = (await render()) as any
+    const [banner, page] = element.props.children
+    expect(banner.props.problems.join(" ")).toContain("Winter Throwing Intensive")
+    expect(page.props.id).toBe(FUNNEL_ROOT_ID)
+  })
+
+  it("still shows the draft when the catalogue cannot be read, and says publishing will refuse it", async () => {
+    // MUTANT KILLED (two): letting `loadCatalogues`' throw escape, which turns
+    // "let me look at my draft" into a 500 for an owner who did nothing wrong;
+    // and swallowing it silently, which would leave the preview claiming a
+    // page is publishable while BOTH publish gates fail closed on the same
+    // throw. The throw is REAL — a recognition read at PostgREST's 1000-row
+    // cap — not a `mockRejectedValue`.
+    mock(getAllPrograms).mockResolvedValue(
+      Array.from({ length: 1000 }, (_, index) => ({ id: `p${index}`, name: `Program ${index}` })),
+    )
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const element = (await render()) as any
+    const [banner, page] = element.props.children
+    expect(banner.props.problems.join(" ")).toMatch(/could not be checked/i)
+    expect(page.props.id).toBe(FUNNEL_ROOT_ID)
+    expect(textOf(findNodes(element)!)).toContain(HEADLINE)
   })
 
   it("wraps nothing around a page that is fine", async () => {

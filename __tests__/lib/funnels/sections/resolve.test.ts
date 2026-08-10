@@ -100,8 +100,14 @@ function lists(overrides: Partial<Catalogue>): Catalogue {
  * The tests that exercise the split itself build asymmetric `Catalogues`
  * literals by hand — see "the recognition / offer split" below.
  */
-function catalogue(overrides: Partial<Catalogue> = {}): Catalogues {
-  return { recognition: lists(overrides), offer: lists(overrides) }
+/**
+ * The FAQ page keys that have rows. One list, not two — a page key has no
+ * status and no dates, so recognition and offer have the same answer.
+ */
+const FAQ_KEYS = ["camps", "training"]
+
+function catalogue(overrides: Partial<Catalogue> = {}, faqPageKeys: string[] = FAQ_KEYS): Catalogues {
+  return { recognition: lists(overrides), offer: lists(overrides), faqPageKeys }
 }
 
 function docOf(sections: Section[]): SectionDoc {
@@ -666,6 +672,7 @@ describe("resolveDoc — the recognition / offer split", () => {
     const cat: Catalogues = {
       recognition: lists({}),
       offer: lists({ event: [] }),
+      faqPageKeys: FAQ_KEYS,
     }
     const doc = docOf([hero({ primaryCta: eventCta(EVENT_CAMP) })])
 
@@ -697,6 +704,7 @@ describe("resolveDoc — the recognition / offer split", () => {
         ],
       }),
       offer: lists({ program: [{ id: PROGRAM_COMEBACK, name: "Comeback Code" }] }),
+      faqPageKeys: FAQ_KEYS,
     }
     const doc = docOf([
       // Positive control in the SAME doc: a name that IS in the offer set
@@ -734,6 +742,7 @@ describe("resolveDoc — the recognition / offer split", () => {
         ],
       }),
       offer: lists({ event: [{ id: EVENT_CAMP, name: "Summer Camp" }] }),
+      faqPageKeys: FAQ_KEYS,
     }
 
     const result = resolveDoc(docOf([hero({ primaryCta: eventCta("Kettlebell Jamboree") })]), cat)
@@ -756,7 +765,11 @@ describe("resolveDoc — the recognition / offer split", () => {
     expect(first.unresolved).toEqual([])
     expect(refAt(first.doc, "hero1", "primaryCta")).toBe(EVENT_CAMP)
 
-    const after: Catalogues = { recognition: before.recognition, offer: { ...before.offer, event: [] } }
+    const after: Catalogues = {
+      recognition: before.recognition,
+      offer: { ...before.offer, event: [] },
+      faqPageKeys: before.faqPageKeys,
+    }
     const second = resolveDoc(first.doc, after)
 
     expect(second.unresolved).toEqual([])
@@ -940,7 +953,111 @@ describe("resolveDoc — dangling anchors", () => {
   })
 })
 
+// ===========================================================================
+// The one model-written string that is NOT a CtaTarget.
+//
+// `faq.pageKey` reaches `listFaqsForPage()` in `FaqIsland.tsx` on the PUBLIC
+// /go route. Its schema bounds length and nothing else, the CTA walk cannot
+// see it, and a key with no rows renders the whole section as NOTHING —
+// `compile.ok: true`, `warnings: []`, and (before this) a green publish gate.
+// Silent absence is the failure this module exists to prevent.
+// ===========================================================================
+
+function liveFaq(pageKey: string, id = "faq1"): Section {
+  return { id, kind: "faq", variant: "stack", style: {}, props: { source: "live", pageKey } }
+}
+
+function inlineFaq(id = "faq2"): Section {
+  return {
+    id,
+    kind: "faq",
+    variant: "stack",
+    style: {},
+    props: { source: "inline", items: [{ q: "How long is it?", a: "Eight weeks." }] },
+  }
+}
+
+describe("resolveDoc — faq pageKey", () => {
+  it("reports a live pageKey no FAQ row uses, with the real keys as candidates", () => {
+    // MUTANT KILLED: no check at all — which is what shipped. `pageKey` is not
+    // a CtaTarget, so every existing assertion in this file passes against a
+    // resolver that never looks at it. The positive control rides in the same
+    // doc: a program ref that DOES resolve, so a gutted implementation
+    // returning empty arrays for everything fails on the second assertion.
+    const doc = docOf([hero({ primaryCta: programCta("Comeback Code") }), liveFaq("kettlebells")])
+
+    const result = resolveDoc(doc, catalogue())
+
+    expect(result.unknownFaqKeys).toEqual([
+      { sectionId: "faq1", field: "pageKey", pageKey: "kettlebells", candidates: FAQ_KEYS },
+    ])
+    expect(result.resolved.map((r) => r.id)).toEqual([PROGRAM_COMEBACK])
+    // A separate channel from `unresolved`, exactly as dangling anchors are.
+    expect(result.unresolved).toEqual([])
+  })
+
+  it("leaves a pageKey that DOES have rows alone", () => {
+    // MUTANT KILLED: a check that reports every live FAQ section (an inverted
+    // `includes`, or one asked against the wrong list — the CTA catalogue has
+    // no page keys in it at all, so `catalogues.offer` in place of
+    // `faqPageKeys` would flag this).
+    const result = resolveDoc(docOf([liveFaq("camps")]), catalogue())
+
+    expect(result.unknownFaqKeys).toEqual([])
+  })
+
+  it("never reports an INLINE faq section, whose Q&As are in the document", () => {
+    // MUTANT KILLED: reading `props.pageKey` without discriminating on
+    // `source`. An inline section has no key, so `undefined` would be reported
+    // as an unknown one and block publish on a page with nothing wrong.
+    const result = resolveDoc(docOf([inlineFaq(), liveFaq("training")]), catalogue())
+
+    expect(result.unknownFaqKeys).toEqual([])
+  })
+
+  it("does not rewrite the document — an unknown key is reported, never substituted", () => {
+    // MUTANT KILLED: "helpfully" swapping in the first real page key. There is
+    // no closest match for a page key the way there is for a CTA name, and
+    // quietly showing some other page's FAQs ships the wrong answers to real
+    // customers. Reference identity is the assertion: nothing was rebuilt.
+    const doc = docOf([liveFaq("kettlebells")])
+
+    const result = resolveDoc(doc, catalogue())
+
+    expect(result.doc).toBe(doc)
+    expect(result.unknownFaqKeys).toHaveLength(1)
+  })
+
+  it("says so plainly when NO page has FAQs yet", () => {
+    // MUTANT KILLED: a candidates list rendered as "the pages with FAQs are: "
+    // with nothing after it, which reads as a bug rather than as an answer.
+    const gate = publishGate(resolveDoc(docOf([liveFaq("camps")]), catalogue({}, [])))
+
+    expect(gate.ok).toBe(false)
+    expect(gate.blockers[0]).toContain("no page has FAQs yet")
+  })
+})
+
 describe("publishGate", () => {
+  it("BLOCKS publish on an unknown faq pageKey — it is not a warning", () => {
+    // MUTANT KILLED: reporting unknown page keys as `warnings` (where dangling
+    // anchors go) instead of `blockers`. The distinction is the owner's
+    // ability to SEE the damage: a dangling anchor leaves a visible button
+    // that scrolls nowhere, an unknown page key leaves nothing at all on a
+    // page the owner has already read and approved.
+    const doc = docOf([liveFaq("kettlebells")])
+
+    const gate = publishGate(resolveDoc(doc, catalogue()))
+
+    expect(gate.ok).toBe(false)
+    expect(gate.warnings).toEqual([])
+    expect(gate.blockers).toHaveLength(1)
+    expect(gate.blockers[0]).toContain("faq1")
+    expect(gate.blockers[0]).toContain("kettlebells")
+    // The fix is one name away, so the message carries the real keys.
+    expect(gate.blockers[0]).toContain("camps, training")
+  })
+
   it("blocks publish on an unresolved ref and names the slot and the ref", () => {
     const doc = docOf([hero({ primaryCta: programCta("Kettlebell Bootcamp") })])
 
@@ -1115,6 +1232,8 @@ interface DalRows {
   offerPacks: Row[]
   allEvents: EventRow[]
   offerEvents: EventRow[]
+  /** What `getFaqCountsByPage` returns: page_key -> row count, unsorted. */
+  faqCounts: Record<string, number>
 }
 
 const DEFAULT_DAL_ROWS: DalRows = {
@@ -1133,6 +1252,8 @@ const DEFAULT_DAL_ROWS: DalRows = {
     { id: "event-completed", title: "Completed Event" },
   ],
   offerEvents: [{ id: "event-published", title: "Published Event" }],
+  // Deliberately NOT in alphabetical order, so "sorted" is observable.
+  faqCounts: { training: 4, camps: 2 },
 }
 
 async function stubDal(overrides: Partial<DalRows> = {}) {
@@ -1159,6 +1280,9 @@ async function stubDal(overrides: Partial<DalRows> = {}) {
       return rows.offerEvents
     },
   }))
+  vi.doMock("@/lib/db/faqs", () => ({
+    getFaqCountsByPage: async () => rows.faqCounts,
+  }))
 
   const { loadCatalogues } = await import("@/lib/funnels/sections/resolve")
   return { loadCatalogues, getEventsCalls, publishedEventsCalls }
@@ -1174,6 +1298,7 @@ describe("loadCatalogues", () => {
     vi.doUnmock("@/lib/db/programs")
     vi.doUnmock("@/lib/db/session-pack-products")
     vi.doUnmock("@/lib/db/events")
+    vi.doUnmock("@/lib/db/faqs")
     vi.resetModules()
   })
 
@@ -1232,6 +1357,18 @@ describe("loadCatalogues", () => {
     const { catalogues } = await loadCataloguesWithStubbedDal()
 
     expect(catalogues.offer.session_pack.map((r) => r.id)).toEqual(["pack-active"])
+  })
+
+  it("reads the FAQ page keys from getFaqCountsByPage, sorted", async () => {
+    // MUTANT: `faqPageKeys: []` (or dropping the read). It fails LOUDLY rather
+    // than silently — every live FAQ section would become an unknown key and
+    // block publish on pages that are fine — which is why it needs its own
+    // test: none of the CTA assertions above can see this field at all.
+    // The stub returns the keys in NON-alphabetical order, so `sort()` is
+    // observable rather than accidental.
+    const { catalogues } = await loadCataloguesWithStubbedDal()
+
+    expect(catalogues.faqPageKeys).toEqual(["camps", "training"])
   })
 
   it("builds the RECOGNITION program list from getAllPrograms — deactivating a program must not break the page selling it", async () => {
@@ -1360,6 +1497,7 @@ describe("loadCatalogues", () => {
         session_pack: [{ id: "pack-active", name: "Active Pack" }],
         event: [{ id: "event-published", name: "Published Event" }],
       },
+      faqPageKeys: ["camps", "training"],
     })
     // This `toEqual` is also what kills the lazy form of the offer-into-
     // recognition merge: a `[...recognition, ...offer]` CONCAT (no dedupe by

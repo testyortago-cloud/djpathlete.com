@@ -12,11 +12,32 @@
 // perfectly plausible wrong answer, which is the worst failure mode this
 // feature has.
 //
-// COMPILED ON READ, BY THE SAME COMPILER PUBLISH USES.
-// `compileFunnelStep(reassemble(doc))` is exactly the pair the publish route
-// runs, so this shows what publish will actually ship rather than a second,
-// drifting rendering of the same document. Both are pure and take single-digit
-// milliseconds, so there is nothing to cache and nothing to invalidate.
+// RESOLVED AND GATED ON READ, THEN COMPILED BY THE SAME COMPILER PUBLISH USES.
+// `loadCatalogues -> resolveDoc -> publishGate -> reassemble(resolution.doc) ->
+// compileFunnelStep` is exactly the sequence the publish path runs, so this
+// shows what publish will actually ship rather than a second, drifting
+// rendering of the same document.
+//
+// THE RESOLVE STEP WAS MISSING FOR A WHOLE STAGE, AND ITS ABSENCE WAS EXACTLY
+// THE FAILURE THIS FILE'S HEADER CLAIMS TO PREVENT. The build route stores the
+// RESOLVED doc, but a turn whose resolution degraded (catalogue unreadable)
+// stores name-refs instead — and this page then reassembled the STORED draft.
+// A `{kind:"program", ref:"Comeback Code"}` previewed as a disabled button and
+// published as a live checkout island; a `session_pack` previewed WITHOUT its
+// productId and published WITH it. Preview and publish disagreeing about the
+// same document is a silent, perfectly plausible wrong answer, which is the
+// worst failure mode this feature has and the reason the route exists.
+//
+// The gate runs here for the second half of the same problem: `reassemble`'s
+// `problems` are only the SIZE CAPS, so a page full of dead buy buttons — the
+// commonest refusal by far — previewed with no banner at all, on the one
+// screen the owner uses to decide a page is done.
+//
+// IT FAILS SOFT, and that is the one place it differs from publish. A
+// catalogue read that throws must not turn "look at my draft" into an error
+// page: the draft still renders, from the unresolved document, with the
+// banner saying publishing will refuse it until the links can be checked —
+// which is true, because both publish gates fail CLOSED on the same throw.
 //
 // WHERE IT LIVES, AND WHY NOT ANYWHERE ELSE:
 //   - NOT under /go/ — `[[...step]]` is an optional catch-all and would
@@ -42,6 +63,7 @@ import { FUNNEL_ROOT_ID, compileFunnelStep } from "@/lib/funnels/compile"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { getFunnelById, getStep } from "@/lib/db/funnels"
 import { reassemble } from "@/lib/funnels/sections/doc"
+import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
 
 /**
  * A draft is by definition not ready to be indexed, and this URL is reachable
@@ -80,12 +102,16 @@ function PreviewNotice({ title, lines }: { title: string; lines: string[] }) {
 /**
  * The page compiles, but publish will refuse it.
  *
- * `reassemble`'s `problems` are the PUBLISH size caps (doc.ts's
- * `checkSizeCaps`), and a document that busts them still compiles perfectly —
- * `compiled.ok` is true and the preview looks finished. This banner is the only
- * thing standing between that and an owner clicking Publish on the one screen
- * they use to decide a page is done. It sits ABOVE the page rather than
- * replacing it: the draft is still worth looking at, it just cannot ship yet.
+ * TWO SOURCES, AND THE SECOND ONE IS THE COMMON CASE. `reassemble`'s
+ * `problems` are the PUBLISH size caps (doc.ts's `checkSizeCaps`), which a
+ * schema-valid page can barely reach; `publishGate`'s blockers are dead buy
+ * buttons and FAQ sections that would render as nothing, which is what
+ * actually refuses real pages. A document that busts either still compiles
+ * perfectly — `compiled.ok` is true and the preview looks finished. This
+ * banner is the only thing standing between that and an owner clicking Publish
+ * on the one screen they use to decide a page is done. It sits ABOVE the page
+ * rather than replacing it: the draft is still worth looking at, it just
+ * cannot ship yet.
  */
 function PreviewBlockedBanner({ problems }: { problems: string[] }) {
   return (
@@ -136,6 +162,26 @@ export default async function FunnelDraftPreviewPage({ params }: PageProps) {
     )
   }
 
+  // THE SAME RESOLUTION PUBLISH RUNS, so the preview cannot disagree with it
+  // about the same document. `loadCatalogues` and `resolveDoc` both throw
+  // (a truncated recognition read; a corrupt document) and BOTH throws are
+  // caught here rather than either 500ing a page whose whole job is "let me
+  // look at my draft" — the unresolved document is still worth rendering, and
+  // the banner says publishing will refuse it, which is exactly what both
+  // publish gates do on the same throw.
+  let docToRender = draft.doc
+  let gateBlockers: string[] = []
+  try {
+    const resolution = resolveDoc(draft.doc, await loadCatalogues())
+    docToRender = resolution.doc
+    gateBlockers = publishGate(resolution).blockers
+  } catch (error) {
+    gateBlockers = [
+      "This page's links could not be checked, so publishing will refuse it until they can be: " +
+        (error as Error).message,
+    ]
+  }
+
   // `reassemble` re-parses the document and throws on a bad one. `getDraft`
   // has already parsed it with the same schema, so this cannot legitimately
   // fire — but an uncaught throw in a server component is a 500 error page for
@@ -143,7 +189,7 @@ export default async function FunnelDraftPreviewPage({ params }: PageProps) {
   // wrong with it" is strictly more useful.
   let rendered
   try {
-    rendered = reassemble(draft.doc, { funnelBasePath: `/go/${funnel.slug}` })
+    rendered = reassemble(docToRender, { funnelBasePath: `/go/${funnel.slug}` })
   } catch (error) {
     return <PreviewNotice title="This page can't be rendered" lines={[(error as Error).message]} />
   }
@@ -184,11 +230,12 @@ export default async function FunnelDraftPreviewPage({ params }: PageProps) {
   // route's own chrome in it — the preview is supposed to look exactly like the
   // published page. The banner is added ONLY when there is something publish
   // would reject; see `PreviewBlockedBanner`.
-  if (rendered.problems.length === 0) return page
+  const problems = [...rendered.problems.map((p) => p.message), ...gateBlockers]
+  if (problems.length === 0) return page
 
   return (
     <>
-      <PreviewBlockedBanner problems={rendered.problems.map((p) => p.message)} />
+      <PreviewBlockedBanner problems={problems} />
       {page}
     </>
   )

@@ -627,18 +627,24 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
   }
 
   // Duplicate-id guard on the OUTPUT — unconditional, unlike the input-side
-  // check above. Exactly one of the two runs for any given batch, and which
-  // one runs is what makes the error message honest:
+  // check above, which only runs for a batch that cannot repair the document.
+  // What matters is not how many of the two ran but that reaching HERE always
+  // makes "after applying ops" a true statement:
   //
-  //   - No `set_page` in the batch: the input check already ran and proved
-  //     `doc.sections` duplicate-free, so any duplicate found HERE was
+  //   - No `set_page` in the batch: BOTH checks run. The input one already
+  //     proved `doc.sections` duplicate-free, so any duplicate found HERE was
   //     introduced BY this batch (e.g. an `add_section` colliding with a
   //     survivor) — "after applying ops" is literally true.
-  //   - A `set_page` in the batch: the input check was skipped so the batch
+  //   - A `set_page` in the batch: the input check was SKIPPED so the batch
   //     could repair a duplicated doc, which makes this the ONLY duplicate
   //     check that ran — and it is enough, because `set_page` replaces
   //     `sections` wholesale, so whatever duplicate survives to here came
   //     out of the batch's own array, not the stored doc.
+  //
+  // (The earlier wording here said "exactly one of the two runs for any given
+  // batch". That was false — the first bullet runs both — and the bullets
+  // directly below it said so. Flagged as a deferred minor by the Stage 1.4
+  // review and corrected here rather than left to mislead a third reader.)
   const outputDuplicateId = findDuplicateSectionId(sections)
   if (outputDuplicateId) {
     return { ok: false, errors: [`Duplicate section id "${outputDuplicateId}" after applying ops.`] }

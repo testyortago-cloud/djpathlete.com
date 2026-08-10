@@ -31,6 +31,7 @@
 import { AlertTriangle, ArrowLeft, Link2Off, Loader2, Rocket, ShieldCheck } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { MESSAGING_DOCK_CLEARANCE_CLASS } from "@/components/messaging/dock-geometry"
 import { PreviewPane } from "./PreviewPane"
 import { ctaKindLabel, describeDanglingAnchor, describeUnresolvedCta } from "./format"
 import type { DanglingAnchor, SectionDoc, UnresolvedCta } from "./types"
@@ -183,7 +184,15 @@ export function PublishReview({
         </section>
       </div>
 
-      <div className="flex items-center justify-end gap-2 border-t border-border bg-white px-4 py-3">
+      {/* CLEARANCE, NOT DECORATION. This row is pinned to the bottom of a
+          100dvh app shell, and the global Messages dock is `fixed` in that same
+          corner — measured in a browser, the dock covered "Publish now"
+          completely and `elementFromPoint` at the button's centre returned the
+          dock. jsdom cannot see that (no layout engine), so the geometry is a
+          value both sides read: see components/messaging/dock-geometry.ts. */}
+      <div
+        className={`flex items-center justify-end gap-2 border-t border-border bg-white px-4 pt-3 ${MESSAGING_DOCK_CLEARANCE_CLASS}`}
+      >
         <Button variant="outline" size="sm" onClick={onCancel} disabled={publishing}>
           Cancel
         </Button>

@@ -406,6 +406,17 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
       if (response.status === 422 && body?.problems?.length) {
         // BACK INTO THE CHAT, BEHIND "Fix it for me". In a chat builder an
         // error the AI can fix must never be a dead-end toast.
+        //
+        // `setServerBlockers` FIRST, exactly as the server-action refusal path
+        // above does it: `reportRefusal` only adds the way OUT, and the comment
+        // on it says in as many words that "callers ALSO set `serverBlockers`,
+        // which is what keeps the gate shut". This branch used not to, so the
+        // route refused and Publish stayed enabled — the owner's next click
+        // spent another round trip to be told the same thing. Not a hole (the
+        // route refuses again), but a comment and the branch beside it
+        // disagreeing is the defect class that produced the missing publish
+        // gate in the first place.
+        setServerBlockers(body.problems ?? [])
         reportRefusal(body.problems ?? [])
         return
       }

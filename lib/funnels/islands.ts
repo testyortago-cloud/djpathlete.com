@@ -111,7 +111,32 @@ export const formIslandSchema = z
       .regex(SAFE_LINK, "Must be a site path or an https URL")
       .refine(isAllowedRedirect, REDIRECT_HOST_ERROR)
       .optional(),
-    /** Emails this lead magnet's asset on success. */
+    /**
+     * Emails this lead magnet's asset on success.
+     *
+     * *** THE ONE UUID FIELD THE PAGE BUILDER'S MODEL CAN LEGALLY WRITE, AND
+     * *** THE ONLY EXCEPTION TO "THE AI NEVER WRITES A UUID".
+     *
+     * Every other row reference in a generated page is a NAME that
+     * `lib/funnels/sections/resolve.ts` turns into a real id on the server,
+     * with an unresolved one blocking publish. This field is not: it takes a
+     * uuid directly, and the rule keeping the model off it is PROMPT TEXT
+     * alone (`prompt.ts`'s "You never write a UUID" block, generated from
+     * `UUID_FIELD_PATHS`, which this field is what populates). A prompt is a
+     * request, not a validator.
+     *
+     * It is LATENT, not live: nothing reads `form.props.leadMagnetId` today
+     * (grep before trusting this sentence). The moment a handler does, it
+     * inherits a possibly-fabricated uuid with no resolver and no gate behind
+     * it — an id that passes `.uuid()`, passes the compiler, passes the
+     * publish gate, and then silently emails nobody anything.
+     *
+     * SO: BEFORE WIRING A CONSUMER, give it what the CTA refs have — a
+     * name-or-id ref resolved against the real lead-magnet rows in
+     * `resolveDoc`, reported through `ResolveResult.unresolved` (or a sibling
+     * list, as `UnknownFaqKey` is), so an id nobody can find blocks publish
+     * instead of failing silently on a live page.
+     */
     leadMagnetId: z.string().uuid().nullable().optional(),
     consentText: z.string().max(300).optional(),
   })

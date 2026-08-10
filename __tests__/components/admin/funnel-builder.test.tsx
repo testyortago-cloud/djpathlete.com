@@ -21,9 +21,17 @@
 // No fake timers anywhere: `shouldAdvanceTime` starves `waitFor`, which is
 // documented in this repo as a trap, and nothing here needs a clock.
 
+import fs from "node:fs"
+import path from "node:path"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 import { FunnelBuilder, type FunnelBuilderProps } from "@/components/admin/funnels/FunnelBuilder"
+import {
+  MESSAGING_DOCK_INSET_PX,
+  SM_BUTTON_HEIGHT_PX,
+  clearsMessagingDock,
+  tailwindBottomPaddingPx,
+} from "@/components/messaging/dock-geometry"
 import type {
   BuildTurnResponse,
   CompileSummary,
@@ -333,6 +341,15 @@ describe("<FunnelBuilder> — the pre-publish review", () => {
 
     await waitFor(() => expect(screen.getByText("The page HTML is too large.")).toBeInTheDocument())
 
+    // MUTANT KILLED: `reportRefusal(...)` on this branch WITHOUT
+    // `setServerBlockers(...)` — which is what shipped. `reportRefusal`'s own
+    // comment says "callers ALSO set `serverBlockers`, which is what keeps the
+    // gate shut", and the server-action refusal path does exactly that; this
+    // branch did not, so the route refused a publish and the button that
+    // triggered it stayed enabled, ready to spend another round trip on the
+    // same refusal.
+    expect(publishButton()).toBeDisabled()
+
     fireEvent.click(screen.getByRole("button", { name: /fix it for me/i }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
 
@@ -408,6 +425,60 @@ describe("<FunnelBuilder> — the pre-publish review", () => {
     await waitFor(() => expect(screen.getByText(/published version 3/i)).toBeInTheDocument())
     expect(screen.getByText("An <iframe> was removed.")).toBeInTheDocument()
     expect(toast.warning).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The publish affordance has to be CLICKABLE, not just enabled
+// ---------------------------------------------------------------------------
+
+describe("<FunnelBuilder> — the publish button and the global Messages dock", () => {
+  it("reserves clearance so Publish now is not under the fixed dock at any breakpoint", () => {
+    // THE BUG THIS PINS WAS FOUND IN A BROWSER, NOT HERE. Measured in Chromium
+    // at 1600x1000: "Publish now" at x1460 y956 124x32, the global Messages
+    // dock at x1457 y940 127x44, and `document.elementFromPoint` at the
+    // button's own centre returning the DOCK. The button rendered, reported
+    // enabled, and satisfied every other test in this file — a human could not
+    // click it. jsdom has no layout engine, so no amount of rendering here can
+    // observe that; the geometry is therefore a VALUE both sides read
+    // (components/messaging/dock-geometry.ts) and this asserts the derivation.
+    //
+    // MUTANT KILLED: dropping `MESSAGING_DOCK_CLEARANCE_CLASS` from the review
+    // footer, i.e. the `py-3` that shipped. The final assertion runs the
+    // predicate against that exact string to prove it discriminates rather
+    // than returning `true` for everything.
+    render(<FunnelBuilder {...baseProps()} />)
+    fireEvent.click(publishButton())
+
+    const footer = screen.getByRole("button", { name: /publish now/i }).closest("div")
+    expect(footer).not.toBeNull()
+    const classes = (footer as HTMLElement).className
+
+    for (const scope of ["base", "lg"] as const) {
+      expect(
+        clearsMessagingDock(tailwindBottomPaddingPx(classes, scope), SM_BUTTON_HEIGHT_PX, scope),
+      ).toBe(true)
+    }
+
+    expect(clearsMessagingDock(tailwindBottomPaddingPx("px-4 py-3", "lg"), SM_BUTTON_HEIGHT_PX, "lg")).toBe(
+      false,
+    )
+  })
+
+  it("keeps the dock's own footprint constants honest against MessagingDock.tsx", () => {
+    // MUTANT KILLED: repositioning the dock (or restyling it) without updating
+    // `MESSAGING_DOCK_INSET_PX`. The clearance above is derived from those two
+    // numbers, so a dock that moved down while they stayed put would swallow
+    // the publish button again with this whole file still green. Reading the
+    // component's source is the only link available: the class string is a
+    // Tailwind literal, and jsdom cannot resolve it to a box.
+    const source = fs.readFileSync(
+      path.join(process.cwd(), "components/messaging/MessagingDock.tsx"),
+      "utf8",
+    )
+    expect(source).toContain(`bottom-${MESSAGING_DOCK_INSET_PX.base / 4} `)
+    expect(source).toContain(`lg:bottom-${MESSAGING_DOCK_INSET_PX.lg / 4}`)
+    expect(source).toContain("fixed")
   })
 })
 

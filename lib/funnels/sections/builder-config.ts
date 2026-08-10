@@ -107,8 +107,42 @@ export const SECTION_BUILDER_SECTION_MAX_TOKENS = 6_000
  * maxTokens for ONE WHOLE-PAGE call — both an iterative edit and, since there
  * is no fan-out, a first draft. Sized for the worst realistic response: a
  * `set_page` carrying all 24 sections.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS 14_000 AND NOT THE 8_000 IT SHIPPED AT: `max_tokens` BUYS
+ * THINKING AND OUTPUT OUT OF THE SAME PURSE ON THIS MODEL.
+ * ---------------------------------------------------------------------------
+ * `callAgent` (lib/ai/anthropic.ts) passes `maxOutputTokens` and
+ * `structuredOutputMode: "jsonTool"` and NO `thinking` configuration, and
+ * `@ai-sdk/anthropic` only sends `thinking` when the caller supplies it. On
+ * `claude-opus-5` — unlike Opus 4.8 and earlier — omitting it runs adaptive
+ * thinking BY DEFAULT, and `max_tokens` caps thinking plus response text
+ * TOGETHER. So the budget an 8-section page needs is not the budget the JSON
+ * needs; it is that plus however much the model thought first.
+ *
+ * MEASURED, NOT ASSUMED: a real first draft against this model returned 8
+ * sections in ~30s at the old 8_000 and parsed clean, so this is HEADROOM at
+ * the top of the range (a `set_page` carrying all 24 sections, where the JSON
+ * alone is several times an 8-section page), NOT a fix for a turn-one dead
+ * end. What truncation looks like if the headroom is ever removed again:
+ * `generateObject` throws a parse error, the one retry asks the same
+ * oversized question and throws the same way, and the owner's first turn on a
+ * brand-new page dead-ends with nothing to click.
+ *
+ * TWO THINGS THAT LOOK LIKE CHEAPER FIXES AND ARE NOT:
+ *   - `providerOptions.anthropic.thinking: { type: "disabled" }` would free
+ *     the whole budget for output. It is FORBIDDEN here: with thinking off,
+ *     Opus 5 occasionally writes a tool call into visible text instead of
+ *     calling the tool, which through `jsonTool` is a silent no-op turn.
+ *   - `temperature` / `top_p` are rejected with a 400 by this model. Do not
+ *     add them. `callAgent` passes neither today; keep it that way.
+ *
+ * Raising it further is bounded by `SECTION_BUILDER_MAX_TOKENS_CEILING`
+ * (16_000) and by that ceiling's reason: `generateObject` is NON-STREAMING,
+ * so a bigger budget is a longer single HTTP request. 14_000 keeps a margin
+ * under the ceiling rather than sitting on it.
  */
-export const SECTION_BUILDER_EDIT_MAX_TOKENS = 8_000
+export const SECTION_BUILDER_EDIT_MAX_TOKENS = 14_000
 
 /**
  * Max ops in one response. Matched to the 1..24 section bound in

@@ -113,6 +113,7 @@
 
 import {
   ctaWithLabelSchema,
+  faqPropsSchema,
   sectionDocSchema,
   type CtaTarget,
   type CtaWithLabel,
@@ -134,6 +135,9 @@ import {
   listAllProducts as listAllSessionPackProducts,
 } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
+// The FAQ page keys that actually have rows. Not a CTA and not a uuid, but the
+// same failure class — see `UnknownFaqKey` below.
+import { getFaqCountsByPage } from "@/lib/db/faqs"
 
 // ---------------------------------------------------------------------------
 // The catalogue
@@ -196,6 +200,21 @@ export interface Catalogues {
   recognition: Catalogue
   /** Currently valid rows only. Answers "what may a NEW cta point at?". */
   offer: Catalogue
+  /**
+   * Every `faqs.page_key` that has at least one row, sorted.
+   *
+   * ONE SET, NOT TWO, AND THAT IS NOT AN OVERSIGHT. The recognition/offer
+   * split above exists because a row can leave the "currently valid" set
+   * while a page still points at it. A page key has no such lifecycle: it is
+   * not a row, it has no status and no dates, and it exists exactly while
+   * some FAQ row carries it. So "is this key real?" and "what may the model
+   * choose?" have the same answer, and one list answers both.
+   *
+   * REQUIRED, never optional. An optional field here would make a caller that
+   * forgot it skip the check silently — which is the exact shape of the bug
+   * this field closes.
+   */
+  faqPageKeys: string[]
 }
 
 /**
@@ -406,7 +425,7 @@ function unionCatalogues(recognition: Catalogue, offer: Catalogue): Catalogue {
  * unhandled 500.
  */
 export async function loadCatalogues(): Promise<Catalogues> {
-  const [allPrograms, offerPrograms, allPacks, offerPacks, allEvents, offerEvents] =
+  const [allPrograms, offerPrograms, allPacks, offerPacks, allEvents, offerEvents, faqCounts] =
     await Promise.all([
       listAllPrograms(),
       listActivePrograms(),
@@ -419,6 +438,11 @@ export async function loadCatalogues(): Promise<Catalogues> {
       // Passing an epoch here would silently widen the picker back to every
       // event that ever ran, which is the mutant the offer-side test kills.
       getPublishedEvents(),
+      // One lightweight `select page_key` — the same read the admin FAQ picker
+      // uses. Counts across EVERY status on purpose: a page key whose rows are
+      // all drafts is still a real key, and the live island filters by status
+      // itself. What must never happen is the model inventing a key.
+      getFaqCountsByPage(),
     ])
 
   // The completeness contract for recognition, checked before either set is
@@ -441,6 +465,9 @@ export async function loadCatalogues(): Promise<Catalogues> {
       offer,
     ),
     offer,
+    // Sorted so the blocker message and the prompt's Block B list the keys in
+    // the same order the owner sees them in /admin/marketing/faqs.
+    faqPageKeys: Object.keys(faqCounts).sort(),
   }
 }
 
@@ -530,6 +557,40 @@ export interface DanglingAnchor {
   target: string
 }
 
+/**
+ * A `faq` section set to `source: "live"` whose `pageKey` matches no FAQ row.
+ *
+ * THE ONE MODEL-WRITTEN STRING THAT REACHES A LOOKUP AND IS NOT A CtaTarget.
+ * `faqIslandSchema` bounds its length and nothing else, the CTA walk cannot
+ * see it (it is not a `CtaWithLabel`), and it flows to
+ * `listFaqsForPage(pageKey)` in `FaqIsland.tsx` ON THE PUBLIC `/go` ROUTE. A
+ * hallucinated or stale key returns zero rows, `FaqIsland` returns `null`, and
+ * the ENTIRE FAQ SECTION renders as nothing — with `compile.ok: true`,
+ * `warnings: []` and, before this, a green publish gate. Silent absence on a
+ * live marketing page is the exact failure this module exists to prevent,
+ * arriving through the one section input that is not a CTA.
+ *
+ * IT IS A BLOCKER, NOT A WARNING, and the line it sits on is the same one
+ * `unresolved` sits on: the owner cannot see the damage. A dangling anchor
+ * (warning) leaves a visible button that scrolls nowhere; an unknown page key
+ * leaves NOTHING, on a page the owner has already read and approved.
+ *
+ * NOT REWRITTEN, ONLY REPORTED. There is no safe substitution: unlike a CTA
+ * ref there is no "closest match" that could be the owner's intent, and
+ * quietly swapping in some other page's FAQs would ship the wrong answers to
+ * real customers.
+ */
+export interface UnknownFaqKey {
+  /** The `faq` section carrying it. */
+  sectionId: string
+  /** Always `"pageKey"` — the field's path within the section's props. */
+  field: string
+  /** The key the model wrote, left in the doc verbatim. */
+  pageKey: string
+  /** Every key that DOES have rows, so the fix is one name away. */
+  candidates: string[]
+}
+
 export interface ResolveResult {
   /**
    * The doc with every resolvable ref substituted. The SAME OBJECT as the
@@ -541,6 +602,8 @@ export interface ResolveResult {
   /** NON-EMPTY MEANS PUBLISH IS BLOCKED. See `publishGate()`. */
   unresolved: UnresolvedCta[]
   danglingAnchors: DanglingAnchor[]
+  /** NON-EMPTY MEANS PUBLISH IS BLOCKED. See `publishGate()`. */
+  unknownFaqKeys: UnknownFaqKey[]
 }
 
 // ---------------------------------------------------------------------------
@@ -866,6 +929,7 @@ export function resolveDoc(doc: SectionDoc, catalogues: Catalogues): ResolveResu
   const resolved: ResolvedCta[] = []
   const unresolved: UnresolvedCta[] = []
   const danglingAnchors: DanglingAnchor[] = []
+  const unknownFaqKeys: UnknownFaqKey[] = []
 
   // Copy-on-write: `nextSections` stays null — and therefore `doc.sections`
   // is returned untouched — until some section actually changes. A plain
@@ -876,6 +940,34 @@ export function resolveDoc(doc: SectionDoc, catalogues: Catalogues): ResolveResu
 
   for (let i = 0; i < doc.sections.length; i++) {
     const section = doc.sections[i]
+
+    // THE NON-CTA CHECK, and the only one. Kept beside the CTA walk rather
+    // than in its own pass because both answer the same question — "does this
+    // model-written string name something this server can actually find?" —
+    // and a reader looking for that answer must find all of it in one place.
+    // `source: "inline"` carries no key and is never reported: those Q&As are
+    // in the document and render whatever the database holds.
+    //
+    // ASKS THE REGISTRY'S OWN SCHEMA for the shape rather than casting
+    // `section.props`: `Section["props"]` is deliberately wide, and a hand
+    // narrowing here is the "restate the validator" trap this repo has three
+    // scars from. `sectionDocSchema.parse(doc)` ran at the top of this
+    // function, so this parse cannot fail — it is a narrowing, not a check.
+    if (section.kind === "faq") {
+      const faqProps = faqPropsSchema.parse(section.props)
+      if (faqProps.source === "live" && !catalogues.faqPageKeys.includes(faqProps.pageKey)) {
+        const pageKey = faqProps.pageKey
+        unknownFaqKeys.push({
+          sectionId: section.id,
+          field: "pageKey",
+          pageKey,
+          // The caller's own array, same convention as `candidates` below:
+          // `resolveDoc` never mutates the catalogue and neither should a
+          // caller.
+          candidates: catalogues.faqPageKeys,
+        })
+      }
+    }
 
     const visit: CtaVisitor = (cta, field) => {
       const target = cta.target
@@ -965,6 +1057,7 @@ export function resolveDoc(doc: SectionDoc, catalogues: Catalogues): ResolveResu
     resolved,
     unresolved,
     danglingAnchors,
+    unknownFaqKeys,
   }
 }
 
@@ -998,6 +1091,17 @@ function describeUnresolved(entry: UnresolvedCta): string {
   return `Section "${entry.sectionId}" (${entry.field}): no ${label} matches "${entry.ref}".`
 }
 
+function describeUnknownFaqKey(entry: UnknownFaqKey): string {
+  const known =
+    entry.candidates.length === 0
+      ? "no page has FAQs yet"
+      : `the pages with FAQs are: ${entry.candidates.join(", ")}`
+  return (
+    `Section "${entry.sectionId}" (${entry.field}): no FAQs are filed under ` +
+    `"${entry.pageKey}", so that section would show nothing at all — ${known}.`
+  )
+}
+
 function describeDanglingAnchor(entry: DanglingAnchor): string {
   return (
     `Section "${entry.sectionId}" (${entry.field}): links to "#${entry.target}", ` +
@@ -1019,9 +1123,16 @@ function describeDanglingAnchor(entry: DanglingAnchor): string {
  * anchor scrolls nowhere, which is bad, but it is not the same severity as a
  * buy button that does nothing, and blocking a publish on it would be a
  * surprise the plan never asked for.
+ *
+ * An unknown FAQ page key IS a blocker, on the other side of that same line:
+ * it renders as nothing at all, so unlike the anchor there is no visible tell
+ * for the owner to notice. See `UnknownFaqKey`.
  */
 export function publishGate(result: ResolveResult): PublishGate {
-  const blockers = result.unresolved.map(describeUnresolved)
+  const blockers = [
+    ...result.unresolved.map(describeUnresolved),
+    ...result.unknownFaqKeys.map(describeUnknownFaqKey),
+  ]
   const warnings = result.danglingAnchors.map(describeDanglingAnchor)
   return { ok: blockers.length === 0, blockers, warnings }
 }

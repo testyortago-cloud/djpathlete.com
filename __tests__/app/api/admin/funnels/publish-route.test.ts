@@ -30,6 +30,9 @@ vi.mock("@/lib/db/funnel-builder", () => ({ getDraft: vi.fn() }))
 vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.fn() }))
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
+// The FAQ page keys `loadCatalogues` reads for the `faq.pageKey` check — the
+// one model-written string that is not a CtaTarget.
+vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
 
 import { POST } from "@/app/api/admin/funnels/steps/[stepId]/publish/route"
 import { auth } from "@/lib/auth"
@@ -39,6 +42,7 @@ import { getDraft } from "@/lib/db/funnel-builder"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
+import { getFaqCountsByPage } from "@/lib/db/faqs"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
@@ -135,6 +139,7 @@ beforeEach(() => {
   mock(listActiveProducts).mockResolvedValue([])
   mock(getEvents).mockResolvedValue([])
   mock(getPublishedEvents).mockResolvedValue([])
+  mock(getFaqCountsByPage).mockResolvedValue({ camps: 3 })
 })
 
 // ---------------------------------------------------------------------------

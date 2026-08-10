@@ -22,6 +22,17 @@ import { describe, it, expect } from "vitest"
 import type { SectionDoc, Section } from "@/lib/funnels/sections/registry"
 import { applyOps, opSchema, SECTION_REWRITE_THRESHOLD, type SectionOp } from "@/lib/funnels/sections/apply"
 
+/**
+ * The rejection's own text, joined.
+ *
+ * `""` on the SUCCESS branch on purpose: every `toContain` against it then
+ * fails rather than quietly passing, so this helper can never turn an
+ * accidental success into a green assertion.
+ */
+function errorsOf(result: ReturnType<typeof applyOps>): string {
+  return result.ok ? "" : result.errors.join(" | ")
+}
+
 const urlCta = { label: "Learn more", target: { kind: "url" as const, href: "/thanks" } }
 const bookingCta = { label: "Book a call", target: { kind: "booking" as const } }
 
@@ -183,41 +194,61 @@ describe("opSchema", () => {
 // applyOps — transactional: any invalid op rejects the WHOLE batch
 // ===========================================================================
 
+// EVERY REJECTION BELOW ASSERTS ITS ERROR TEXT, NOT JUST `ok: false`.
+// MUTANT KILLED (one mutant, twelve tests): `return { ok: false, errors: [] }`
+// on the semantic-error path. `build/route.ts` feeds these exact strings back
+// to the model as "your previous answer was rejected" and asks once more, so
+// an empty array silently degrades the one retry to a no-signal reprompt —
+// the owner sees the model fail twice on a request it could have fixed. The
+// route's own test (`build-route.test.ts`) proves the strings are what the
+// retry carries; these prove there ARE strings, and that each names its op.
 describe("applyOps — rejects the whole batch on any invalid op", () => {
   it("update_section naming a nonexistent id rejects the whole batch", () => {
     const doc = baseDoc({ sections: nineSections() })
     const result = applyOps(doc, [{ op: "update_section", id: "does-not-exist", props: { headline: "x" } }])
     expect(result.ok).toBe(false)
+    expect(errorsOf(result)).toContain('ops[0] update_section: no section with id "does-not-exist".')
   })
 
   it("add_section naming a nonexistent 'after' id rejects the whole batch", () => {
     const doc = baseDoc({ sections: nineSections() })
     const result = applyOps(doc, [{ op: "add_section", after: "does-not-exist", section: newHeroSection("hero2") }])
     expect(result.ok).toBe(false)
+    expect(errorsOf(result)).toContain('ops[0] add_section: no section with id "does-not-exist"')
+    // Ops apply IN ORDER, so "never existed" and "removed earlier in this
+    // batch" are the same observation — the message says so, and that
+    // sentence is the model's only clue for the phase-order case.
+    expect(errorsOf(result)).toContain("ops apply in order")
   })
 
   it("move_section naming a nonexistent 'id' rejects the whole batch", () => {
     const doc = baseDoc({ sections: nineSections() })
     const result = applyOps(doc, [{ op: "move_section", id: "does-not-exist", after: "hero1" }])
     expect(result.ok).toBe(false)
+    expect(errorsOf(result)).toContain('ops[0] move_section: no section with id "does-not-exist".')
   })
 
   it("move_section naming a nonexistent 'after' rejects the whole batch", () => {
     const doc = baseDoc({ sections: nineSections() })
     const result = applyOps(doc, [{ op: "move_section", id: "cta1", after: "does-not-exist" }])
     expect(result.ok).toBe(false)
+    // Names the ANCHOR, not the moved section — the two failures are one
+    // word apart in the message and worlds apart for the model.
+    expect(errorsOf(result)).toContain('ops[0] move_section: no section with id "does-not-exist" to move after.')
   })
 
   it("move_section naming itself as its own anchor rejects the whole batch", () => {
     const doc = baseDoc({ sections: nineSections() })
     const result = applyOps(doc, [{ op: "move_section", id: "cta1", after: "cta1" }])
     expect(result.ok).toBe(false)
+    expect(errorsOf(result)).toContain('ops[0] move_section: cannot move "cta1" after itself.')
   })
 
   it("remove_section naming a nonexistent id rejects the whole batch", () => {
     const doc = baseDoc({ sections: nineSections() })
     const result = applyOps(doc, [{ op: "remove_section", id: "does-not-exist" }])
     expect(result.ok).toBe(false)
+    expect(errorsOf(result)).toContain('ops[0] remove_section: no section with id "does-not-exist".')
   })
 
   it("a batch with one valid op followed by one invalid op applies NEITHER — the valid op's effect is nowhere to find", () => {
@@ -228,6 +259,9 @@ describe("applyOps — rejects the whole batch on any invalid op", () => {
       { op: "remove_section", id: "does-not-exist" },
     ])
     expect(result.ok).toBe(false)
+    // INDEXED, so the model is told WHICH op failed rather than being left to
+    // guess which half of its batch to change.
+    expect(errorsOf(result)).toContain("ops[1] remove_section:")
     // The original doc was never mutated — same object, same content.
     expect(doc.sections[0]).toBe(heroBefore)
     expect((doc.sections[0].props as { headline: string }).headline).toBe("Train like an athlete")
@@ -245,6 +279,7 @@ describe("applyOps — rejects the whole batch on any invalid op", () => {
     // sent — including something that isn't an array at all.
     const result = applyOps(doc, { op: "set_theme", theme: {} })
     expect(result.ok).toBe(false)
+    expect(errorsOf(result)).toContain("ops must be an array.")
   })
 
   it("rejects an invalid input document before even looking at ops", () => {
@@ -265,18 +300,26 @@ describe("applyOps — validates the POST-MERGE section, not just the incoming p
     const doc = baseDoc({ sections: nineSections() })
     const result = applyOps(doc, [{ op: "update_section", id: "p1", props: { plans: [] } }])
     expect(result.ok).toBe(false)
+    // The POST-MERGE section's own schema is what rejected it, so the message
+    // names the section and the field the model has to fix.
+    expect(errorsOf(result)).toContain('ops[0] update_section "p1":')
+    expect(errorsOf(result)).toContain("plans")
   })
 
   it("rejects a hero update that empties headline below its schema minimum length", () => {
     const doc = baseDoc({ sections: nineSections() })
     const result = applyOps(doc, [{ op: "update_section", id: "hero1", props: { headline: "" } }])
     expect(result.ok).toBe(false)
+    expect(errorsOf(result)).toContain('ops[0] update_section "hero1":')
+    expect(errorsOf(result)).toContain("headline")
   })
 
   it("rejects an update_section whose variant isn't in that kind's allowed list", () => {
     const doc = baseDoc({ sections: nineSections() })
     const result = applyOps(doc, [{ op: "update_section", id: "hero1", variant: "not-a-real-variant" }])
     expect(result.ok).toBe(false)
+    expect(errorsOf(result)).toContain('ops[0] update_section "hero1":')
+    expect(errorsOf(result)).toContain("variant")
   })
 })
 
