@@ -16,6 +16,7 @@ import { Plus, Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PreviewCard } from "./PreviewCard"
+import { FunnelGoLiveButton } from "./FunnelGoLiveButton"
 import type { DataTableBadgeTone } from "@/components/ui/data-table"
 import type { Funnel, FunnelStep } from "@/types/database"
 
@@ -188,11 +189,29 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
                 onDelete={() => handleDelete(page)}
                 deleteLabel={step.is_entry ? `Delete ${funnel.name}` : `Delete ${step.name}`}
                 secondaryAction={
-                  <Button asChild variant="outline" size="sm" title="Funnel settings & pages">
-                    <Link href={`/admin/funnels/${funnel.id}`}>
-                      <Settings2 className="size-4" />
-                    </Link>
-                  </Button>
+                  <>
+                    {/* GO LIVE FROM HERE. Publishing a PAGE writes a version;
+                        only the FUNNEL's status makes /go/<slug> reachable, and
+                        that toggle used to live one navigation away on the
+                        funnel detail page — a page that otherwise just repeats
+                        this card. The owner published a page, was told it
+                        succeeded, and got a 404, because the control that
+                        actually makes it public was somewhere he wasn't.
+                        Entry card only: the entry page IS the funnel, so a
+                        per-page toggle on a child step would be a lie. */}
+                    {step.is_entry ? (
+                      <FunnelGoLiveButton
+                        funnelId={funnel.id}
+                        status={funnel.status}
+                        canGoLive={published}
+                      />
+                    ) : null}
+                    <Button asChild variant="outline" size="sm" title="Funnel settings & pages">
+                      <Link href={`/admin/funnels/${funnel.id}`}>
+                        <Settings2 className="size-4" />
+                      </Link>
+                    </Button>
+                  </>
                 }
               />
             )
