@@ -389,12 +389,12 @@ function fieldMarks(field: z.ZodType): string {
 const OP_OPTIONS = (opSchema as unknown as { options: Array<{ shape: Record<string, z.ZodType> }> }).options
 
 const OPS_BLOCK = OP_OPTIONS.map((option) => {
-    const shape = option.shape
-    const name = (shape.op as unknown as { def: { values: string[] } }).def.values[0] as SectionOp["op"]
-    const fields = Object.keys(shape)
-      .filter((key) => key !== "op")
-      .map((key) => `${key}${fieldMarks(shape[key])}`)
-    return `- { op: "${name}", ${fields.join(", ")} }\n  ${OP_GLOSS[name]}`
+  const shape = option.shape
+  const name = (shape.op as unknown as { def: { values: string[] } }).def.values[0] as SectionOp["op"]
+  const fields = Object.keys(shape)
+    .filter((key) => key !== "op")
+    .map((key) => `${key}${fieldMarks(shape[key])}`)
+  return `- { op: "${name}", ${fields.join(", ")} }\n  ${OP_GLOSS[name]}`
 }).join("\n")
 
 // ---------------------------------------------------------------------------
@@ -453,12 +453,12 @@ export const BUILDER_RULES: readonly string[] = [
 
   "`style.tone` is a RHYTHM knob, not a risk. Every tone carries the whole section with it — headings, subheads, " +
     "muted body copy, card and quote and plan panels, list icons, step counters and buttons all resolve to a " +
-    "PAIRED colour — so `\"dark\"` and `\"accent\"` are safe on faq, pricing, testimonial, bullets, steps and " +
+    'PAIRED colour — so `"dark"` and `"accent"` are safe on faq, pricing, testimonial, bullets, steps and ' +
     "footer exactly as they are on hero and cta. Alternate tones to mark the turns in the page instead of " +
-    "avoiding them. Two consequences to know: `theme.tone: \"dark\"` is a DEFAULT, so every section that sets no " +
-    "tone of its own renders dark and a section you give `style.tone: \"muted\"` there is a LIGHT band, not a " +
-    "darker one; and a form with `variant: \"boxed\"` is its own band, so on a dark page its box merges with the " +
-    "page and only its narrower width still reads — use `variant: \"band\"`, or `style.tone: \"muted\"` to keep " +
+    'avoiding them. Two consequences to know: `theme.tone: "dark"` is a DEFAULT, so every section that sets no ' +
+    'tone of its own renders dark and a section you give `style.tone: "muted"` there is a LIGHT band, not a ' +
+    'darker one; and a form with `variant: "boxed"` is its own band, so on a dark page its box merges with the ' +
+    'page and only its narrower width still reads — use `variant: "band"`, or `style.tone: "muted"` to keep ' +
     "the box.",
 
   "An `update_section` op MUST carry at least one of `props`, `style` or `variant`, and it must be non-empty — " +
@@ -470,6 +470,52 @@ export const BUILDER_RULES: readonly string[] = [
 ]
 
 const RULES_BLOCK = BUILDER_RULES.map((rule, index) => `${index + 1}. ${rule}`).join("\n\n")
+
+// ---------------------------------------------------------------------------
+// Page craft.
+//
+// Everything else in Block A is generated from the registry, so it describes
+// what the model MAY write. This block is the only part that says what it
+// SHOULD, and it exists because the pages the builder shipped were structurally
+// valid and commercially useless: the first real waitlist page put its form at
+// the bottom of a four-screen scroll and filled its FAQ section with the
+// site-wide FAQ, so a page selling a strength class opened its objection
+// handling with "What is DJP Athlete and what services do you offer?".
+//
+// Neither was a bug in any module. Both were the model doing something
+// reasonable that nobody had told it not to do. Exported so the rules and the
+// tests that pin them read the same strings.
+// ---------------------------------------------------------------------------
+
+export const LEADGEN_RULES: readonly string[] = [
+  "IF THE PAGE'S JOB IS TO COLLECT DETAILS — a waitlist, an opt-in, a free guide, an enquiry — the `form` " +
+    'section goes FIRST, with `variant: "split"`. That variant puts the pitch on one side and the fields on the ' +
+    "other, so someone who is already sold can act without scrolling. Put the headline and the offer in the " +
+    'form\'s own `heading` and `sub`, add two or three `proofPoints` ("No payment now", "Coached in person", ' +
+    '"12 spots"), and do not also add a hero above it — two headlines in the first screen compete and neither ' +
+    "wins. A sales page or a long-form pitch still opens with a hero; this rule is about capture pages.",
+
+  "ONE OFFER, ONE ACTION. Every CTA on the page points at the SAME place. A page that offers a waitlist and a " +
+    "consultation and a program purchase converts on none of them. If the owner asks for a second action, put it " +
+    "in the footer as a link, not as a competing button.",
+
+  'NEVER USE `faq` WITH `source: "live"` ON A CAMPAIGN PAGE. That pulls the SITE-WIDE FAQ — "What is DJP ' +
+    'Athlete?", "Where are you based?" — which is written for a visitor who has never heard of the business, ' +
+    'not for someone deciding about THIS offer. Write `source: "inline"` items that answer the objections to ' +
+    "this specific thing: what it costs, how much time it takes, whether it suits their level, what happens if " +
+    "they are injured, how to cancel. Live FAQ belongs on an evergreen page, not a campaign.",
+
+  "PROOF GOES NEAR THE TOP. A `proof` section directly under the first screen, or a `testimonial` before the " +
+    "halfway point. Social proof at the bottom is read by people who were already going to convert.",
+
+  "KEEP IT SHORT. Six to nine sections for a capture page. Every section a visitor scrolls past without acting " +
+    "is a chance to leave; length is not thoroughness. If you cannot say why a section earns its place, omit it.",
+
+  "THE FOOTER IS NOT A SITE FOOTER. On a landing page it carries the business name, one contact line and the " +
+    "legal text — nothing that invites someone to navigate away. `links` should be empty or near it.",
+]
+
+const LEADGEN_BLOCK = LEADGEN_RULES.map((rule) => `- ${rule}`).join("\n\n")
 
 // ---------------------------------------------------------------------------
 // Worked examples
@@ -491,8 +537,7 @@ export const WORKED_EXAMPLES: readonly WorkedExample[] = [
   {
     message: "Make the hero headline bigger and swap the sub for 'Eight weeks. Measurable rotational power.'",
     response: {
-      reply:
-        "Bumped the hero headline to the largest size and rewrote the subhead. Nothing else on the page changed.",
+      reply: "Bumped the hero headline to the largest size and rewrote the subhead. Nothing else on the page changed.",
       blocked: false,
       ops: [
         {
@@ -564,7 +609,7 @@ SectionDoc = {
 
 Section = {
   id: ${SECTION_ID_SIGNATURE},
-  kind: one of the nine below,
+  kind: one of the ${SECTION_LIST.length} below,
   variant: constrained per kind,
   style: ${signature(sectionStyleSchema, "  ")},
   props: the kind's own shape
@@ -600,7 +645,7 @@ ${
     : `No field in the document takes a UUID. If one ever appears, omit it.`
 }
 
-## The nine section kinds
+## The ${SECTION_LIST.length} section kinds
 
 ${KINDS_BLOCK}
 
@@ -624,9 +669,13 @@ sections you did not name are guaranteed to come through untouched.
 
 ${OPS_BLOCK}
 
-## Eight rules about how ops are applied
+## ${BUILDER_RULES.length} rules about how ops are applied
 
 ${RULES_BLOCK}
+
+## How to build a page that actually gets leads
+
+${LEADGEN_BLOCK}
 
 ## How to write
 

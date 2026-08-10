@@ -593,9 +593,13 @@ describe("footerPropsSchema", () => {
 // ---------------------------------------------------------------------------
 
 describe("SECTION_REGISTRY", () => {
-  it("has exactly the nine kinds from the plan, no more, no fewer", () => {
+  it("has exactly the kinds the registry declares, no more, no fewer", () => {
     expect(Object.keys(SECTION_REGISTRY).sort()).toEqual([...SECTION_KINDS].sort())
-    expect(SECTION_KINDS.length).toBe(9)
+    // The literal count is still pinned rather than derived: this assertion's
+    // job is to make ADDING a kind a deliberate, reviewed act — a kind that
+    // appears without anyone touching this line is a kind nobody decided on.
+    // It went 9 -> 10 when `proof` was added.
+    expect(SECTION_KINDS.length).toBe(10)
   })
 
   it("does not register a nav kind (landing pages remove exits, not add them)", () => {
@@ -624,6 +628,7 @@ const MINIMAL_VALID_PROPS: Record<SectionKind, Record<string, unknown>> = {
   form: { formKey: "optin", fields: [{ name: "email", label: "Email", type: "email" }] },
   cta: { headline: "Ready?", cta: labeledBookingCta },
   footer: { businessName: "DJP", lines: [], links: [] },
+  proof: { items: [{ value: "12 years", label: "coaching" }, { value: "500+", label: "athletes trained" }] },
 }
 
 describe("SECTION_REGISTRY variant enums actually gate their schema", () => {

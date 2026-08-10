@@ -330,6 +330,21 @@ ${ROOT} .djp-btn {
 ${ROOT} .djp-btn-primary { background: var(--accent); color: var(--accent-foreground); }
 ${ROOT} .djp-btn-secondary { background: transparent; color: inherit; border-color: currentColor; }
 ${ROOT} .djp-btn-disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+/* States. A CTA with no hover reads as text that happens to have a background,
+   and a focus ring is the difference between a keyboard-reachable page and a
+   page that merely does not crash for one. Applied to .djp-btn rather than
+   per-variant so the tone pass's repaints are inherited rather than restated:
+   filter and currentColor are both relative to whatever colour won.
+   (No backticks in a comment inside a template literal — they close it.) */
+${ROOT} .djp-btn:hover { filter: brightness(0.94); }
+${ROOT} .djp-btn:active { transform: translateY(1px); }
+${ROOT} .djp-btn:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+${ROOT} .djp-btn-disabled:hover { filter: none; }
+${ROOT} .djp-footer-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 ${ROOT} .djp-footer-link { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
 /* icons */
@@ -516,6 +531,13 @@ ${ROOT} .djp-s-testimonial .djp-quote-attribution {
   color: var(--muted-foreground);
 }
 ${ROOT} .djp-s-testimonial .djp-quote-name { font-weight: 700; color: var(--foreground); }
+/* .djp-quote-detail has been emitted by render.ts since the authored
+   testimonial variant was written and was never styled — it inherited the
+   attribution row and was indistinguishable from the name beside it. Found by
+   the island/stylesheet agreement test, which walks the classes the markup
+   actually emits rather than the ones the stylesheet happens to define. */
+${ROOT} .djp-s-testimonial .djp-quote-detail { opacity: 0.8; }
+${ROOT} .djp-s-testimonial .djp-quote-detail::before { content: "· "; }
 ${ROOT} .djp-s-testimonial.djp-v-stack .djp-testimonial-grid {
   grid-template-columns: 1fr;
   max-width: 42rem;
@@ -586,13 +608,292 @@ ${ROOT} .djp-s-faq .djp-faq-q {
   font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
 }
 ${ROOT} .djp-s-faq .djp-faq-a { margin: 0; color: var(--muted-foreground); }
+
+/* The LIVE faq island renders <details>, so it needs the one thing the authored
+   <dl> variant does not: the UA disclosure triangle replaced with a control
+   that looks deliberate. Without this the section shipped with a raw black
+   "▶" against a designed page. */
+${ROOT} .djp-s-faq .djp-faq-details > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-right: 0.25rem;
+}
+${ROOT} .djp-s-faq .djp-faq-details > summary::-webkit-details-marker { display: none; }
+${ROOT} .djp-s-faq .djp-faq-details > summary::after {
+  content: "+";
+  flex: none;
+  font-weight: 400;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--accent);
+}
+${ROOT} .djp-s-faq .djp-faq-details[open] > summary::after { content: "\\2212"; }
+${ROOT} .djp-s-faq .djp-faq-details[open] > .djp-faq-a { margin-top: 0.75rem; }
+${ROOT} .djp-s-faq .djp-faq-details > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+${ROOT} .djp-s[data-tone="accent"].djp-s-faq .djp-faq-details > summary::after,
+${ROOT} .djp-s[data-tone="dark"].djp-s-faq .djp-faq-details > summary::after { color: inherit; }
 `.trim()
+
+// ---------------------------------------------------------------------------
+// FORM_CSS
+//
+// This block used to be four rules — max-width, a boxed background, a band
+// override and centring — and NOT ONE of them touched a label, a control, or
+// the submit button. Every other kind in this file carries 15-40 lines of
+// layout; the one section whose only job is to capture a lead carried none, so
+// it rendered at browser defaults on a live campaign page.
+//
+// The theory that allowed it is quoted and buried in `FunnelForm.tsx`: the
+// controls were supposed to inherit from a canvas the owner styled by hand.
+// That canvas no longer exists.
+//
+// TWO THINGS TO PRESERVE WHEN EDITING THIS:
+//
+// 1. THE SUBMIT BUTTON IS NOT STYLED HERE. It carries `djp-btn
+//    djp-btn-primary`, so it is the same button as every other CTA on the page
+//    and it inherits the tone-contrast pass for free — including the rule that
+//    repaints a primary button on an ACCENT section, without which it would be
+//    a shape in its own background's colour. Only its width and margin are set
+//    below. Do not give it its own colours.
+//
+// 2. EVERY COLOUR IS HALF OF A PAIR, and the tone rules below repaint BOTH
+//    halves. A form is the one place in this file where getting that wrong is
+//    invisible in review and fatal in production: `.djp-s-form.djp-v-boxed`
+//    already repaints itself to `--accent` / `--primary` on those two tones, so
+//    a label left at `--foreground` is dark-on-dark and a placeholder left at
+//    `--muted-foreground` disappears — on the page, at the field, where the
+//    lead is typing.
+//
+//    The CONTROLS deliberately keep the neutral `--background`/`--foreground`
+//    pair on every tone. A white input on a coloured band is correct: it is the
+//    affordance that says "type here", and washing it into the band to match
+//    would be the same mistake in the other direction.
+// ---------------------------------------------------------------------------
 
 export const FORM_CSS = `
 ${ROOT} .djp-s-form { max-width: 34rem; }
-${ROOT} .djp-s-form.djp-v-boxed { background: var(--surface); border-radius: var(--djp-radius, 0.6rem); padding: 2.5rem; }
+${ROOT} .djp-s-form.djp-v-boxed {
+  background: var(--surface);
+  border-radius: var(--djp-radius, 0.6rem);
+  padding: 2.5rem;
+}
 ${ROOT} .djp-s-form.djp-v-band { max-width: 100%; }
 ${ROOT} .djp-s-form[data-align="center"] { margin-inline: auto; }
+
+/* the form */
+${ROOT} .djp-form { display: flex; flex-direction: column; gap: 1.15rem; margin-top: 1.5rem; }
+${ROOT} .djp-form .djp-field { display: flex; flex-direction: column; gap: 0.4rem; }
+
+/* A checkbox is a control with a label BESIDE it, not under it. Driven off
+   data-djp-field-type rather than :has(), which would silently fall back to a
+   stacked checkbox wherever :has() is unsupported. */
+${ROOT} .djp-form .djp-field[data-djp-field-type="checkbox"] {
+  flex-direction: row-reverse;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.6rem;
+}
+${ROOT} .djp-form .djp-field[data-djp-field-type="checkbox"] .djp-field-label { font-weight: 400; }
+${ROOT} .djp-form .djp-field[data-djp-field-type="checkbox"] .djp-control {
+  width: 1.15rem;
+  height: 1.15rem;
+  min-height: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+${ROOT} .djp-form .djp-field-label {
+  font-family: var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--foreground);
+}
+${ROOT} .djp-form .djp-req { color: var(--accent); }
+
+${ROOT} .djp-form .djp-control {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 2.9rem;
+  padding: 0.7rem 0.9rem;
+  font-family: var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif);
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--djp-radius, 0.6rem);
+  outline: none;
+  appearance: none;
+}
+${ROOT} .djp-form textarea.djp-control { min-height: 6rem; resize: vertical; }
+${ROOT} .djp-form .djp-control::placeholder { color: var(--muted-foreground); opacity: 1; }
+
+/* A real focus ring. Without this a keyboard user got whatever the UA draws
+   over an unstyled input, which on a restyled input is frequently nothing. */
+${ROOT} .djp-form .djp-control:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 35%, transparent);
+}
+
+/* The select's own arrow, since appearance:none removed it. Inline mask for the
+   same reason the icons above use one: no <svg> in the markup, no data: image. */
+${ROOT} .djp-form select.djp-control {
+  padding-right: 2.4rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 1.1rem;
+}
+
+${ROOT} .djp-form .djp-form-submit { width: 100%; margin-top: 0.35rem; }
+${ROOT} .djp-form .djp-form-submit:disabled { opacity: 0.6; cursor: progress; }
+
+${ROOT} .djp-form .djp-consent {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
+${ROOT} .djp-form .djp-form-error {
+  margin: 0;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.9rem;
+  color: var(--error);
+  background: color-mix(in oklch, var(--error) 10%, transparent);
+  border-radius: var(--djp-radius, 0.6rem);
+}
+
+/* The success panel is the MOST important state on the page — it is what a
+   lead sees the moment they convert — and it was an unstyled <div>. */
+${ROOT} .djp-form-success {
+  margin-top: 1.5rem;
+  padding: 1.25rem 1.4rem;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--success) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--success) 45%, transparent);
+  border-radius: var(--djp-radius, 0.6rem);
+}
+
+/* ---- tone pairs. See the note above: both halves, every tone. ---- */
+${ROOT} .djp-s[data-tone="accent"] .djp-field-label,
+${ROOT} .djp-s[data-tone="accent"] .djp-consent,
+${ROOT} .djp-s[data-tone="accent"] .djp-req,
+${ROOT} .djp-s[data-tone="dark"] .djp-field-label,
+${ROOT} .djp-s[data-tone="dark"] .djp-consent,
+${ROOT} .djp-s[data-tone="dark"] .djp-req { color: inherit; }
+${ROOT} .djp-s[data-tone="accent"] .djp-consent,
+${ROOT} .djp-s[data-tone="dark"] .djp-consent { opacity: 0.85; }
+
+/* The error and success panels take the tone's own pair.
+   --error and --success are readable on a light page and undefined against
+   --accent or --primary, so on a repainted section the panel keeps the tone's
+   foreground and expresses itself as a wash instead of a colour.
+
+   NAMED TOKENS, NOT currentColor. A color-mix over currentColor is correct CSS
+   and unreadable to the tone-contrast analyser in render.test.ts, which
+   resolves colours by TOKEN — it reported these four as UNMODELLED rather than
+   passing them, which is the right behaviour for a check whose whole job is to
+   know what colour something ends up. Writing the token the tone already
+   guarantees keeps the rule checkable. */
+${ROOT} .djp-s[data-tone="accent"] .djp-form-error {
+  color: inherit;
+  background: color-mix(in oklch, var(--accent-foreground) 15%, transparent);
+}
+${ROOT} .djp-s[data-tone="dark"] .djp-form-error {
+  color: inherit;
+  background: color-mix(in oklch, var(--primary-foreground) 15%, transparent);
+}
+
+${ROOT} .djp-s[data-tone="accent"] .djp-form-success {
+  color: inherit;
+  background: color-mix(in oklch, var(--accent-foreground) 12%, transparent);
+  border-color: color-mix(in oklch, var(--accent-foreground) 40%, transparent);
+}
+${ROOT} .djp-s[data-tone="dark"] .djp-form-success {
+  color: inherit;
+  background: color-mix(in oklch, var(--primary-foreground) 12%, transparent);
+  border-color: color-mix(in oklch, var(--primary-foreground) 40%, transparent);
+}
+
+/* NO muted override for the boxed form, deliberately. The boxed form IS the
+   section, and .djp-s-form caps it at 34rem, so the ground behind it is the
+   PAGE, not the band — painting it --surface there is correct and visible. An
+   earlier version of this block gave it --background on the muted tone, which
+   made it --background on --background: a box the width of the page's own
+   colour. render.test.ts's "no element paints its own background in the token
+   of the background behind it" caught it. */
+
+/* ---- split: the form beside the pitch, above the fold ---- */
+${ROOT} .djp-s-form.djp-v-split { max-width: 100%; }
+${ROOT} .djp-s-form.djp-v-split .djp-form-split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2.5rem;
+  align-items: flex-start;
+}
+${ROOT} .djp-s-form.djp-v-split .djp-form-pitch { flex: 1 1 22rem; min-width: 0; }
+/* --surface, NOT --background: on an untoned section the ground behind this
+   card IS --background, and a card in the colour of the thing behind it is not
+   a subtle card, it is no card. Same rule .djp-quote and .djp-plan already
+   follow. The controls inside stay --background, which is what gives the card
+   its interior hierarchy. */
+${ROOT} .djp-s-form.djp-v-split .djp-form-card {
+  flex: 1 1 22rem;
+  min-width: 0;
+  max-width: 30rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--djp-radius, 0.6rem);
+  padding: 1.75rem;
+}
+${ROOT} .djp-s-form.djp-v-split .djp-form-card .djp-form { margin-top: 0; }
+${ROOT} .djp-s-form.djp-v-split .djp-form-proof {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+${ROOT} .djp-s-form.djp-v-split .djp-form-proof li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  font-size: 0.98rem;
+}
+${ROOT} .djp-s-form.djp-v-split .djp-form-proof .djp-ic { color: var(--accent); margin-top: 0.15rem; }
+
+/* The split card is a panel inside a possibly-repainted section, so it obeys
+   Move 1 from the tone pass: it LIFTS off the tone rather than switching to a
+   light background that would strand its own dark controls. Its controls keep
+   the neutral pair regardless — see the note above. */
+${ROOT} .djp-s[data-tone="accent"].djp-s-form.djp-v-split .djp-form-card {
+  background: color-mix(in oklch, var(--accent-foreground) 12%, transparent);
+  border-color: color-mix(in oklch, var(--accent-foreground) 25%, transparent);
+}
+${ROOT} .djp-s[data-tone="dark"].djp-s-form.djp-v-split .djp-form-card {
+  background: color-mix(in oklch, var(--primary-foreground) 12%, transparent);
+  border-color: color-mix(in oklch, var(--primary-foreground) 25%, transparent);
+}
+/* The muted tone paints the section --surface, which is what the card paints
+   itself — so here, and only here, it lifts off the band instead. Neutral pair,
+   because a muted section is in the neutral pair. */
+${ROOT} .djp-s[data-tone="muted"].djp-s-form.djp-v-split .djp-form-card {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+${ROOT} .djp-s[data-tone="accent"].djp-s-form.djp-v-split .djp-form-proof .djp-ic,
+${ROOT} .djp-s[data-tone="dark"].djp-s-form.djp-v-split .djp-form-proof .djp-ic { color: inherit; }
 `.trim()
 
 export const CTA_CSS = `
@@ -619,9 +920,59 @@ ${ROOT} .djp-s-footer .djp-footer-legal { margin: 0; font-size: 0.8rem; color: v
 ${ROOT} .djp-s-footer.djp-v-columns .djp-footer-inner { flex-direction: row; flex-wrap: wrap; justify-content: space-between; }
 `.trim()
 
+export const PROOF_CSS = `
+${ROOT} .djp-s-proof .djp-proof-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2.5rem;
+  margin: 0;
+  padding: 0;
+}
+${ROOT} .djp-s-proof[data-align="center"] .djp-proof-list { justify-content: center; }
+${ROOT} .djp-s-proof .djp-proof-item { flex: 0 1 auto; }
+${ROOT} .djp-s-proof .djp-proof-value {
+  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--primary);
+  margin: 0;
+}
+${ROOT} .djp-s-proof .djp-proof-label {
+  margin: 0.15rem 0 0;
+  font-size: 0.9rem;
+  color: var(--muted-foreground);
+}
+
+/* stats: even columns with dividers, for a strip that carries real weight. */
+${ROOT} .djp-s-proof.djp-v-stats .djp-proof-list { gap: 0; }
+${ROOT} .djp-s-proof.djp-v-stats .djp-proof-item {
+  flex: 1 1 9rem;
+  padding: 0.25rem 1.5rem;
+  border-left: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+${ROOT} .djp-s-proof.djp-v-stats .djp-proof-item:first-child { border-left: 0; padding-left: 0; }
+
+/* Both halves travel with a repainted tone — the value is --primary, which on
+   a dark section IS the background. */
+${ROOT} .djp-s[data-tone="accent"].djp-s-proof .djp-proof-value,
+${ROOT} .djp-s[data-tone="dark"].djp-s-proof .djp-proof-value { color: inherit; }
+${ROOT} .djp-s[data-tone="accent"].djp-s-proof .djp-proof-label,
+${ROOT} .djp-s[data-tone="dark"].djp-s-proof .djp-proof-label { color: inherit; opacity: 0.85; }
+${ROOT} .djp-s[data-tone="accent"].djp-s-proof.djp-v-stats .djp-proof-item {
+  border-left-color: color-mix(in oklch, var(--accent-foreground) 25%, transparent);
+}
+${ROOT} .djp-s[data-tone="dark"].djp-s-proof.djp-v-stats .djp-proof-item {
+  border-left-color: color-mix(in oklch, var(--primary-foreground) 25%, transparent);
+}
+${ROOT} .djp-s[data-tone="accent"].djp-s-proof.djp-v-stats .djp-proof-item:first-child,
+${ROOT} .djp-s[data-tone="dark"].djp-s-proof.djp-v-stats .djp-proof-item:first-child { border-left: 0; }
+`.trim()
+
 /** One CSS string per kind — `doc.ts` pulls only the kinds a doc actually uses. */
 export const SECTION_CSS: Record<SectionKind, string> = {
   hero: HERO_CSS,
+  proof: PROOF_CSS,
   bullets: BULLETS_CSS,
   steps: STEPS_CSS,
   testimonial: TESTIMONIAL_CSS,

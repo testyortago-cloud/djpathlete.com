@@ -6,7 +6,7 @@
 // server-side renderer (a later stage) turns that into {html, css} for the
 // existing, unmodified publish compiler (lib/funnels/compile/, frozen).
 //
-// This file is the ONE place the nine section kinds are defined, mirroring
+// This file is the ONE place the section kinds are defined, mirroring
 // the pattern lib/funnels/islands.ts:9-11 already establishes for islands:
 // the renderer, the AI prompt builder, and the validator all derive their
 // kind lists, variant lists, and prop shapes from here, so those three can
@@ -173,12 +173,18 @@ export const sectionDocThemeSchema = z.object({
 export type SectionDocTheme = z.infer<typeof sectionDocThemeSchema>
 
 // ---------------------------------------------------------------------------
-// Section kinds — the closed set of nine (plan §2 table, lines 190-200).
+// Section kinds — a closed set (plan §2 table, lines 190-200, plus `proof`).
 // Deliberately no `nav`: a landing page's job is to remove exits.
+//
+// ORDER IS NOT ARBITRARY. `prompt.ts` generates Block A by walking this list,
+// so it doubles as the running order the model is shown — `proof` sits second
+// because a credential strip belongs directly under the hero, not at the bottom
+// of the page where it reads as an afterthought.
 // ---------------------------------------------------------------------------
 
 export const SECTION_KINDS = [
   "hero",
+  "proof",
   "bullets",
   "steps",
   "testimonial",
@@ -219,6 +225,38 @@ export const heroPropsSchema = z.object({
 })
 
 export type HeroSectionProps = z.infer<typeof heroPropsSchema>
+
+// ---------------------------------------------------------------------------
+// proof — a credential / stat strip, high on the page.
+//
+// DELIBERATELY TEXT-ONLY, AND THE REASON MATTERS. The obvious shape for this is
+// a logo bar, and a logo bar needs image URLs. An image URL is precisely the
+// field the model would invent: `heroMediaSchema.src` already has no URL-shape
+// constraint at all, and `render.ts` has a hand-written guard in front of it for
+// exactly that reason. A fabricated logo `src` would be dropped by the
+// sanitiser with NO compiler warning — `ok: true, warnings: []` — and ship as a
+// broken image on a live campaign page.
+//
+// "12 years · coaching" and "500+ · athletes trained" carry the same trust
+// signal with nothing to hallucinate. If a real logo bar is ever wanted, it
+// needs an asset picker, not a prompt.
+// ---------------------------------------------------------------------------
+
+const PROOF_VARIANTS = ["strip", "stats"] as const
+
+const proofItemSchema = z.object({
+  /** The number or short claim: "500+", "12 years", "World Champion". */
+  value: z.string().min(1).max(40),
+  /** What it is: "athletes trained", "coaching", "400m". */
+  label: z.string().min(1).max(80),
+})
+
+export const proofPropsSchema = z.object({
+  heading: z.string().max(120).optional(),
+  items: z.array(proofItemSchema).min(2).max(5),
+})
+
+export type ProofSectionProps = z.infer<typeof proofPropsSchema>
 
 // ---------------------------------------------------------------------------
 // bullets
@@ -345,12 +383,22 @@ export type FaqSectionProps = z.infer<typeof faqPropsSchema>
 // (including the redirectUrl host-allowlist hardening from Stage 0).
 // ---------------------------------------------------------------------------
 
-const FORM_VARIANTS = ["boxed", "band"] as const
+// `split` is the lead-capture layout: the pitch on one side, the form itself in
+// a card on the other, as a full-width band. It exists because the page this
+// builder shipped put the form at the bottom of a four-screen scroll, which is
+// where opt-in pages go to die — a waitlist form belongs on the first screen.
+//
+// It needs NO new island and NO second `formKey`: the same form island renders
+// inside a different wrapper. `proofPoints` are the two or three lines of
+// reassurance that sit beside a form ("No payment now", "Coached in person"),
+// and the other two variants ignore them.
+const FORM_VARIANTS = ["boxed", "band", "split"] as const
 
 export const formSectionPropsSchema = z.intersection(
   z.object({
     heading: z.string().max(120).optional(),
     sub: z.string().max(300).optional(),
+    proofPoints: z.array(z.string().min(1).max(80)).max(4).optional(),
   }),
   formIslandSchema,
 )
@@ -420,6 +468,7 @@ function buildSectionSchema<Kind extends SectionKind, Variants extends readonly 
 }
 
 const heroSchema = buildSectionSchema("hero", HERO_VARIANTS, heroPropsSchema)
+const proofSchema = buildSectionSchema("proof", PROOF_VARIANTS, proofPropsSchema)
 const bulletsSchema = buildSectionSchema("bullets", BULLETS_VARIANTS, bulletsPropsSchema)
 const stepsSchema = buildSectionSchema("steps", STEPS_VARIANTS, stepsPropsSchema)
 const testimonialSchema = buildSectionSchema("testimonial", TESTIMONIAL_VARIANTS, testimonialPropsSchema)
@@ -448,6 +497,16 @@ const heroDef: SectionDef<"hero"> = {
   variants: HERO_VARIANTS,
   propsSchema: heroPropsSchema,
   schema: heroSchema,
+}
+
+const proofDef: SectionDef<"proof"> = {
+  kind: "proof",
+  label: "Proof",
+  description:
+    "A credential or stat strip — 2 to 5 short number/label pairs. Text only: no logos, no images. Belongs high on the page, right under the hero.",
+  variants: PROOF_VARIANTS,
+  propsSchema: proofPropsSchema,
+  schema: proofSchema,
 }
 
 const bulletsDef: SectionDef<"bullets"> = {
@@ -524,6 +583,7 @@ const footerDef: SectionDef<"footer"> = {
 
 export const SECTION_REGISTRY: Record<SectionKind, SectionDef> = {
   hero: heroDef,
+  proof: proofDef,
   bullets: bulletsDef,
   steps: stepsDef,
   testimonial: testimonialDef,
@@ -549,6 +609,7 @@ export const SECTION_LIST: readonly SectionDef[] = SECTION_KINDS.map((k) => SECT
  */
 export const sectionSchema = z.discriminatedUnion("kind", [
   heroSchema,
+  proofSchema,
   bulletsSchema,
   stepsSchema,
   testimonialSchema,

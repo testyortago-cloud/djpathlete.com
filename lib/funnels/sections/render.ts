@@ -36,6 +36,7 @@ import {
   type PricingSectionProps,
   type FaqSectionProps,
   type FormSectionProps,
+  type ProofSectionProps,
   type CtaSectionProps,
   type FooterSectionProps,
 } from "@/lib/funnels/sections/registry"
@@ -501,11 +502,59 @@ function renderFaqSection(section: Section, _ctx: RenderContext): string {
 
 function renderFormSection(section: Section, _ctx: RenderContext): string {
   const props = SECTION_REGISTRY.form.propsSchema.parse(section.props) as FormSectionProps
-  const { heading, sub, ...islandProps } = props
+  const { heading, sub, proofPoints, ...islandProps } = props
   const parts: string[] = [sectionOpenTag(section)]
+
+  // `split` — the pitch beside the form, so capture happens on the first
+  // screen. `proofPoints` render ONLY here: on `boxed` and `band` there is no
+  // column for them to sit in, and stacking them above the fields would just
+  // push the first input further down the page, which is the opposite of the
+  // reason this variant exists.
+  if (section.variant === "split") {
+    parts.push(`<div class="djp-form-split">`)
+    parts.push(`<div class="djp-form-pitch">`)
+    if (heading) parts.push(`<h2 class="djp-hd">${escapeHtml(heading)}</h2>`)
+    if (sub) parts.push(`<p class="djp-sub">${escapeHtml(sub)}</p>`)
+    if (proofPoints && proofPoints.length > 0) {
+      parts.push(`<ul class="djp-form-proof">`)
+      for (const point of proofPoints) {
+        parts.push(`<li><span class="djp-ic djp-ic-check" aria-hidden="true"></span>${escapeHtml(point)}</li>`)
+      }
+      parts.push(`</ul>`)
+    }
+    parts.push(`</div>`)
+    parts.push(`<div class="djp-form-card">`)
+    parts.push(renderIsland("form", islandProps))
+    parts.push(`</div>`)
+    parts.push(`</div>`)
+    parts.push(`</section>`)
+    return parts.join("")
+  }
+
   if (heading) parts.push(`<h2 class="djp-hd">${escapeHtml(heading)}</h2>`)
   if (sub) parts.push(`<p class="djp-sub">${escapeHtml(sub)}</p>`)
   parts.push(renderIsland("form", islandProps))
+  parts.push(`</section>`)
+  return parts.join("")
+}
+
+// ---------------------------------------------------------------------------
+// proof — a text-only credential strip. No island, no CTA, no image: see the
+// registry's note on why a logo bar was deliberately not built.
+// ---------------------------------------------------------------------------
+
+function renderProofSection(section: Section, _ctx: RenderContext): string {
+  const props = SECTION_REGISTRY.proof.propsSchema.parse(section.props) as ProofSectionProps
+  const parts: string[] = [sectionOpenTag(section)]
+  if (props.heading) parts.push(`<h2 class="djp-hd">${escapeHtml(props.heading)}</h2>`)
+  parts.push(`<dl class="djp-proof-list">`)
+  for (const item of props.items) {
+    parts.push(`<div class="djp-proof-item">`)
+    parts.push(`<dt class="djp-proof-value">${escapeHtml(item.value)}</dt>`)
+    parts.push(`<dd class="djp-proof-label">${escapeHtml(item.label)}</dd>`)
+    parts.push(`</div>`)
+  }
+  parts.push(`</dl>`)
   parts.push(`</section>`)
   return parts.join("")
 }
@@ -553,6 +602,7 @@ function renderFooterSection(section: Section, ctx: RenderContext): string {
 
 const SECTION_RENDERERS: Record<SectionKind, (section: Section, ctx: RenderContext) => string> = {
   hero: renderHeroSection,
+  proof: renderProofSection,
   bullets: renderBulletsSection,
   steps: renderStepsSection,
   testimonial: renderTestimonialSection,

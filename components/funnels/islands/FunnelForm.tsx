@@ -1,8 +1,31 @@
 "use client"
 
-// The only interactive part of a funnel page. Deliberately unstyled beyond
-// layout: the owner styles the surrounding canvas, and these controls inherit
-// from it, so the form looks like the page rather than like the admin app.
+// The only interactive part of a funnel page — and the one element on it whose
+// entire job is to capture a lead.
+//
+// ---------------------------------------------------------------------------
+// IT USED TO BE DELIBERATELY UNSTYLED. THAT REASONING EXPIRED.
+// ---------------------------------------------------------------------------
+// The comment here read: "deliberately unstyled beyond layout: the owner styles
+// the surrounding canvas, and these controls inherit from it". That was true in
+// the GrapesJS era, when the owner really did style the surrounding elements by
+// hand on a drag canvas. The typed-section builder DELETED that canvas, and
+// `styles.ts` — which grew 15-40 lines for every other section kind — gave
+// `.djp-s-form` four rules, none of which touched a control.
+//
+// So nothing inherited, because there was nothing to inherit FROM, and the form
+// rendered at browser defaults: labels welded to their inputs on one line, an
+// unstyled `<button>` that reads as body text. On a page whose only purpose is
+// to convert.
+//
+// The class hooks below are the fix, and they are CLASSES the section
+// stylesheet already defines rather than new ones: the submit button carries
+// `djp-btn djp-btn-primary`, so it picks up the shared button treatment AND the
+// tone-contrast pass — including the rule that repaints a primary button on an
+// accent section, without which the button would be a shape in its own
+// background's colour. Restating any of that here would be a second definition
+// to keep in step. The `data-djp-*` attributes are kept as-is; they are
+// semantic hooks and nothing about them changed.
 
 import { useRef, useState, type FormEvent } from "react"
 import type { FunnelFormField } from "@/lib/funnels/islands"
@@ -99,19 +122,33 @@ export function FunnelForm({
 
   if (status === "done") {
     return (
-      <div data-djp-form-state="success" role="status">
+      <div className="djp-form-success" data-djp-form-state="success" role="status">
         {successMessage}
       </div>
     )
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate data-djp-form={formKey}>
+    <form className="djp-form" onSubmit={handleSubmit} noValidate data-djp-form={formKey}>
       {fields.map((field) => (
-        <div key={field.name} data-djp-field={field.name}>
-          <label htmlFor={`${formKey}-${field.name}`}>
+        <div
+          key={field.name}
+          className="djp-field"
+          data-djp-field={field.name}
+          // The TYPE, so a checkbox row can lay itself out horizontally without
+          // the stylesheet depending on `:has()`. A layout that works only in
+          // browsers with `:has()` support is a layout that silently degrades to
+          // a stacked checkbox on the ones without it.
+          data-djp-field-type={field.type}
+        >
+          <label className="djp-field-label" htmlFor={`${formKey}-${field.name}`}>
             {field.label}
-            {field.required ? <span aria-hidden> *</span> : null}
+            {field.required ? (
+              <span className="djp-req" aria-hidden>
+                {" "}
+                *
+              </span>
+            ) : null}
           </label>
           {renderControl(field, formKey)}
         </div>
@@ -120,24 +157,31 @@ export function FunnelForm({
       {/* Honeypot. Hidden from people, irresistible to bots. */}
       <div aria-hidden style={{ position: "absolute", left: "-9999px" }}>
         <label htmlFor={`${formKey}-website`}>Website</label>
-        <input
-          id={`${formKey}-website`}
-          name="website"
-          type="text"
-          tabIndex={-1}
-          autoComplete="off"
-        />
+        <input id={`${formKey}-website`} name="website" type="text" tabIndex={-1} autoComplete="off" />
       </div>
 
-      {consentText ? <p data-djp-consent>{consentText}</p> : null}
+      {consentText ? (
+        <p className="djp-consent" data-djp-consent>
+          {consentText}
+        </p>
+      ) : null}
 
       {error ? (
-        <p role="alert" data-djp-form-state="error">
+        <p className="djp-form-error" role="alert" data-djp-form-state="error">
           {error}
         </p>
       ) : null}
 
-      <button type="submit" disabled={status === "submitting"}>
+      {/* `djp-btn djp-btn-primary` are the SHARED button classes every other
+          CTA on the page uses, so this inherits the sizing, the radius and —
+          critically — the tone-contrast rule that repaints a primary button
+          when it lands on an accent section. */}
+      <button
+        type="submit"
+        className="djp-btn djp-btn-primary djp-form-submit"
+        data-djp-submit
+        disabled={status === "submitting"}
+      >
         {status === "submitting" ? "Sending…" : submitLabel}
       </button>
     </form>
@@ -151,6 +195,7 @@ function renderControl(field: FunnelFormField, formKey: string) {
     name: field.name,
     required: field.required ?? false,
     placeholder: field.placeholder,
+    className: "djp-control",
   }
 
   if (field.type === "textarea") return <textarea {...shared} rows={4} />

@@ -343,6 +343,14 @@ function styledNodes(root: Element, rules: StyleRule[]): StyledNode[] {
 
 /** Props that populate EVERY optional text field, so no class goes unrendered. */
 const TONE_PROPS_BY_KIND: Record<SectionKind, Record<string, unknown>> = {
+  proof: {
+    heading: "Coached by someone who has done it",
+    items: [
+      { value: "12 years", label: "coaching" },
+      { value: "500+", label: "athletes trained" },
+      { value: "World Champion", label: "400m" },
+    ],
+  },
   hero: {
     eyebrow: "New block",
     headline: "Get stronger, faster",
@@ -537,6 +545,8 @@ describe("tone contrast: no per-kind colour is left behind by the tone knob", ()
       "djp-quote-name",
       "djp-eyebrow",
       "djp-media-invalid",
+      "djp-proof-value",
+      "djp-proof-label",
     ]) {
       expect(seen, `no fixture rendered .${cls}, so nothing was asserted about it`).toContain(cls)
     }
@@ -1168,6 +1178,7 @@ describe("every kind compiles clean through the real compiler", () => {
 
 const MINIMAL_PROPS_BY_KIND: Record<SectionKind, Record<string, unknown>> = {
   hero: { headline: "Get stronger", primaryCta: urlCta },
+  proof: { items: [{ value: "12", label: "years" }, { value: "500+", label: "athletes" }] },
   bullets: { items: [{ title: "Fast" }, { title: "Safe" }] },
   steps: { steps: [{ title: "Book" }, { title: "Train" }] },
   testimonial: { source: "live" },

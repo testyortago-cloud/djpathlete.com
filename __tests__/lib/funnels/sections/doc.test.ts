@@ -63,6 +63,18 @@ function fullPageSections(): Section[] {
       },
     },
     {
+      id: "pr1",
+      kind: "proof",
+      variant: "strip",
+      style: {},
+      props: {
+        items: [
+          { value: "12 years", label: "coaching" },
+          { value: "500+", label: "athletes trained" },
+        ],
+      },
+    },
+    {
       id: "b1",
       kind: "bullets",
       variant: "cards",

@@ -22,12 +22,16 @@ export async function FaqIsland({ props }: FaqIslandProps) {
   const shown = rows.slice(0, limit)
   if (shown.length === 0) return null
 
+  // Same classes as the authored inline FAQ in `render.ts` — see the note on
+  // TestimonialsIsland. `djp-faq-details` is the one addition: a `<details>`
+  // needs its UA disclosure triangle replaced, and the inline variant is a
+  // `<dl>` with no summary to style.
   return (
-    <div data-djp-island="faq" data-djp-faq-page={pageKey}>
+    <div className="djp-faq-list" data-djp-island="faq" data-djp-faq-page={pageKey}>
       {shown.map((faq) => (
-        <details key={faq.id} data-djp-faq>
-          <summary>{faq.question}</summary>
-          <div>{faq.answer}</div>
+        <details key={faq.id} className="djp-faq-item djp-faq-details" data-djp-faq>
+          <summary className="djp-faq-q">{faq.question}</summary>
+          <div className="djp-faq-a">{faq.answer}</div>
         </details>
       ))}
     </div>
