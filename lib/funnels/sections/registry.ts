@@ -84,6 +84,25 @@ export const ctaTargetSchema = z.discriminatedUnion("kind", [
 export type CtaTarget = z.infer<typeof ctaTargetSchema>
 
 // ---------------------------------------------------------------------------
+// CtaTarget wrapped with authored button copy.
+//
+// `ctaTargetSchema` alone has nowhere for the AI to write button text: `url`
+// /`step`/`anchor` carry no label field at all, and `program`/`session_pack`
+// /`event`/`booking` only reach a label deep inside the ISLAND schema, never
+// threaded through `CtaTarget` or `SectionDoc`. Every CTA site in the table
+// that isn't itself a footer link needs the same fix `footerLinkSchema`
+// already models: wrap the target with an authored `label`. One shared
+// schema, so hero/pricing/cta/footer all use the identical bound.
+// ---------------------------------------------------------------------------
+
+export const ctaWithLabelSchema = z.object({
+  label: z.string().min(1).max(60),
+  target: ctaTargetSchema,
+})
+
+export type CtaWithLabel = z.infer<typeof ctaWithLabelSchema>
+
+// ---------------------------------------------------------------------------
 // Icons — a CLOSED enum, not a free-form string.
 //
 // Constraint 1 from the plan (§2, lines 204): `<svg>` is dropped by the
@@ -182,8 +201,8 @@ export const heroPropsSchema = z.object({
   headline: z.string().min(1).max(160),
   sub: z.string().max(300).optional(),
   media: heroMediaSchema.optional(),
-  primaryCta: ctaTargetSchema,
-  secondaryCta: ctaTargetSchema.optional(),
+  primaryCta: ctaWithLabelSchema,
+  secondaryCta: ctaWithLabelSchema.optional(),
 })
 
 export type HeroSectionProps = z.infer<typeof heroPropsSchema>
@@ -269,7 +288,7 @@ const pricingPlanSchema = z.object({
   cadence: z.string().max(40).optional(),
   blurb: z.string().max(200).optional(),
   features: z.array(z.string().min(1).max(160)).min(1).max(8),
-  cta: ctaTargetSchema,
+  cta: ctaWithLabelSchema,
   highlight: z.boolean().optional(),
 })
 
@@ -334,7 +353,7 @@ const CTA_VARIANTS = ["band", "boxed"] as const
 export const ctaPropsSchema = z.object({
   headline: z.string().min(1).max(160),
   sub: z.string().max(300).optional(),
-  cta: ctaTargetSchema,
+  cta: ctaWithLabelSchema,
 })
 
 export type CtaSectionProps = z.infer<typeof ctaPropsSchema>
@@ -345,15 +364,13 @@ export type CtaSectionProps = z.infer<typeof ctaPropsSchema>
 
 const FOOTER_VARIANTS = ["simple", "columns"] as const
 
-const footerLinkSchema = z.object({
-  label: z.string().min(1).max(60),
-  target: ctaTargetSchema,
-})
-
+// `{label, target}` is exactly `ctaWithLabelSchema` — this is the shape the
+// reviewer told the rest of the CTA sites to mirror, so footer reuses the
+// shared schema rather than keeping its own near-duplicate definition.
 export const footerPropsSchema = z.object({
   businessName: z.string().min(1).max(120),
   lines: z.array(z.string().min(1).max(160)).max(4),
-  links: z.array(footerLinkSchema).max(6),
+  links: z.array(ctaWithLabelSchema).max(6),
   legal: z.string().max(300).optional(),
 })
 

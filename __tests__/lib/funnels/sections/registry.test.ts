@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest"
 import {
   ctaTargetSchema,
+  ctaWithLabelSchema,
   sectionDocSchema,
   sectionSchema,
   parseSection,
@@ -21,12 +22,21 @@ import {
   formSectionPropsSchema,
   ctaPropsSchema,
   footerPropsSchema,
+  type SectionKind,
 } from "@/lib/funnels/sections/registry"
 
 const VALID_UUID = "11111111-1111-4111-8111-111111111111"
 
+// Bare CtaTarget fixtures — used directly by the ctaTargetSchema describe
+// block, and as the `target` of a `ctaWithLabelSchema` everywhere else (a CTA
+// site in a section always carries authored button copy, per CRITICAL 1 of
+// the Stage 1.1 review: an AI page builder with no way to write "Book your
+// assessment" instead of a hardcoded generic label is broken).
 const urlCta = { kind: "url", href: "/thanks" } as const
 const bookingCta = { kind: "booking" } as const
+
+const labeledUrlCta = { label: "Learn more", target: urlCta }
+const labeledBookingCta = { label: "Book a call", target: bookingCta }
 
 function baseSection(overrides: Record<string, unknown>) {
   return {
@@ -61,9 +71,11 @@ describe("ctaTargetSchema", () => {
     expect(result.success).toBe(false)
   })
 
-  it("rejects program/session_pack/event with a UUID instead of a name — the whole point is ref, never id", () => {
-    // This isn't invalid per the schema (ref is just a string), but it proves
-    // the schema has no id-shaped field a model could target instead of ref.
+  it("accepts a UUID-shaped string as ref instead of rejecting it — ref is a free string, not a UUID field a model could target instead", () => {
+    // The schema has no id-shaped field at all: `ref` is `z.string().max(120)`
+    // whether it holds a name or (accidentally) a UUID-looking string.
+    // Whether it resolves to exactly one real row is resolve.ts's job in a
+    // later stage, not this schema's.
     const result = ctaTargetSchema.safeParse({ kind: "program", ref: VALID_UUID })
     expect(result.success).toBe(true)
     if (result.success && result.data.kind === "program") {
@@ -115,19 +127,19 @@ describe("heroPropsSchema", () => {
       headline: "Get stronger, faster",
       sub: "8-week program",
       media: { kind: "image", src: "/hero.jpg", alt: "Athlete training", w: 1200, h: 800 },
-      primaryCta: urlCta,
-      secondaryCta: bookingCta,
+      primaryCta: labeledUrlCta,
+      secondaryCta: labeledBookingCta,
     })
     expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
   })
 
   it("accepts the minimal hero (headline + primaryCta only)", () => {
-    const result = heroPropsSchema.safeParse({ headline: "Get stronger", primaryCta: urlCta })
+    const result = heroPropsSchema.safeParse({ headline: "Get stronger", primaryCta: labeledUrlCta })
     expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
   })
 
   it("rejects a missing headline", () => {
-    const result = heroPropsSchema.safeParse({ primaryCta: urlCta })
+    const result = heroPropsSchema.safeParse({ primaryCta: labeledUrlCta })
     expect(result.success).toBe(false)
   })
 
@@ -136,10 +148,18 @@ describe("heroPropsSchema", () => {
     expect(result.success).toBe(false)
   })
 
-  it("rejects a CtaTarget with a bogus kind inside primaryCta", () => {
+  it("rejects a primaryCta missing its authored label — the AI must be able to write button copy", () => {
     const result = heroPropsSchema.safeParse({
       headline: "Get stronger",
-      primaryCta: { kind: "webhook", href: "https://evil.example" },
+      primaryCta: { target: urlCta },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a CtaTarget with a bogus kind inside primaryCta.target", () => {
+    const result = heroPropsSchema.safeParse({
+      headline: "Get stronger",
+      primaryCta: { label: "Go", target: { kind: "webhook", href: "https://evil.example" } },
     })
     expect(result.success).toBe(false)
   })
@@ -147,9 +167,31 @@ describe("heroPropsSchema", () => {
   it("rejects an incomplete media object (missing w/h)", () => {
     const result = heroPropsSchema.safeParse({
       headline: "Get stronger",
-      primaryCta: urlCta,
+      primaryCta: labeledUrlCta,
       media: { kind: "image", src: "/hero.jpg", alt: "x" },
     })
+    expect(result.success).toBe(false)
+  })
+})
+
+describe("ctaWithLabelSchema", () => {
+  it("accepts a labeled target", () => {
+    const result = ctaWithLabelSchema.safeParse(labeledUrlCta)
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects a missing label", () => {
+    const result = ctaWithLabelSchema.safeParse({ target: urlCta })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects an empty-string label", () => {
+    const result = ctaWithLabelSchema.safeParse({ label: "", target: urlCta })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a missing target", () => {
+    const result = ctaWithLabelSchema.safeParse({ label: "Go" })
     expect(result.success).toBe(false)
   })
 })
@@ -246,9 +288,7 @@ describe("testimonialPropsSchema", () => {
     expect(result.success).toBe(false)
   })
 
-  it("rejects a quote-shaped payload masquerading as live (cross-branch field leakage)", () => {
-    // Zod strips unknown keys by default, so this mainly pins that `quotes`
-    // is simply ignored under source:"live" rather than accidentally required.
+  it("accepts source: live even with a stray quote-branch key present — Zod strips unknown keys, so `quotes` is simply ignored under live rather than validated or required", () => {
     const result = testimonialPropsSchema.safeParse({ source: "live", quotes: [] })
     expect(result.success).toBe(true)
   })
@@ -263,7 +303,7 @@ describe("pricingPropsSchema", () => {
     name: "Starter",
     price: "$99",
     features: ["Weekly check-ins"],
-    cta: urlCta,
+    cta: labeledUrlCta,
   }
 
   it("accepts 1..3 plans", () => {
@@ -299,9 +339,16 @@ describe("pricingPropsSchema", () => {
     expect(result.success).toBe(false)
   })
 
-  it("rejects a plan whose cta has a bogus kind", () => {
+  it("rejects a plan whose cta.target has a bogus kind", () => {
     const result = pricingPropsSchema.safeParse({
-      plans: [{ ...validPlan, cta: { kind: "discount_code", ref: "SAVE10" } }],
+      plans: [{ ...validPlan, cta: { label: "Buy", target: { kind: "discount_code", ref: "SAVE10" } } }],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a plan whose cta is missing its authored label", () => {
+    const result = pricingPropsSchema.safeParse({
+      plans: [{ ...validPlan, cta: { target: urlCta } }],
     })
     expect(result.success).toBe(false)
   })
@@ -403,12 +450,12 @@ describe("formSectionPropsSchema", () => {
 
 describe("ctaPropsSchema", () => {
   it("accepts a valid cta section", () => {
-    const result = ctaPropsSchema.safeParse({ headline: "Ready to start?", cta: bookingCta })
+    const result = ctaPropsSchema.safeParse({ headline: "Ready to start?", cta: labeledBookingCta })
     expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
   })
 
   it("rejects a missing headline", () => {
-    const result = ctaPropsSchema.safeParse({ cta: bookingCta })
+    const result = ctaPropsSchema.safeParse({ cta: labeledBookingCta })
     expect(result.success).toBe(false)
   })
 
@@ -417,8 +464,16 @@ describe("ctaPropsSchema", () => {
     expect(result.success).toBe(false)
   })
 
-  it("rejects a cta with a bogus kind", () => {
-    const result = ctaPropsSchema.safeParse({ headline: "Ready?", cta: { kind: "email_capture" } })
+  it("rejects a cta.target with a bogus kind", () => {
+    const result = ctaPropsSchema.safeParse({
+      headline: "Ready?",
+      cta: { label: "Go", target: { kind: "email_capture" } },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a cta missing its authored label", () => {
+    const result = ctaPropsSchema.safeParse({ headline: "Ready?", cta: { target: bookingCta } })
     expect(result.success).toBe(false)
   })
 })
@@ -473,6 +528,15 @@ describe("footerPropsSchema", () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it("rejects a link missing its authored label", () => {
+    const result = footerPropsSchema.safeParse({
+      businessName: "DJP Athlete",
+      lines: [],
+      links: [{ target: urlCta }],
+    })
+    expect(result.success).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -494,19 +558,56 @@ describe("SECTION_REGISTRY", () => {
     expect(isSectionKind("banner")).toBe(false)
     expect(isSectionKind(42)).toBe(false)
   })
+})
 
-  it("every registry entry's variants list matches what its full schema accepts", () => {
-    for (const kind of SECTION_KINDS) {
-      const def = SECTION_REGISTRY[kind]
-      for (const variant of def.variants) {
-        // Build the smallest valid props per kind is overkill here; instead
-        // assert the variant enum on the schema's shape accepts it by
-        // checking a known-valid section for kinds we already exercised
-        // above would fail ONLY if variant were swapped for a bogus one.
-        expect(typeof variant).toBe("string")
-      }
-      expect(def.variants.length).toBeGreaterThan(0)
+// The smallest props payload that satisfies each kind's real propsSchema —
+// used ONLY to hold props constant while the variant field is what's under
+// test below. If any of these ever stops matching its kind's schema, the
+// "every declared variant is accepted" case for that kind fails immediately,
+// so this table can't silently drift from the schemas it exercises.
+const MINIMAL_VALID_PROPS: Record<SectionKind, Record<string, unknown>> = {
+  hero: { headline: "Get stronger", primaryCta: labeledUrlCta },
+  bullets: { items: [{ title: "Fast" }, { title: "Safe" }] },
+  steps: { steps: [{ title: "Book a call" }, { title: "Start training" }] },
+  testimonial: { source: "live" },
+  pricing: { plans: [{ name: "Starter", price: "$99", features: ["x"], cta: labeledUrlCta }] },
+  faq: { source: "live", pageKey: "home" },
+  form: { formKey: "optin", fields: [{ name: "email", label: "Email", type: "email" }] },
+  cta: { headline: "Ready?", cta: labeledBookingCta },
+  footer: { businessName: "DJP", lines: [], links: [] },
+}
+
+describe("SECTION_REGISTRY variant enums actually gate their schema", () => {
+  // Reviewer flag (IMPORTANT 3, Stage 1.1 fix round 1): the prior version of
+  // this test only checked `typeof variant === "string"` and never called
+  // `.safeParse` — it would have stayed green even if every propsSchema were
+  // swapped for `z.object({}).passthrough()`. These two now actually parse
+  // a full section through `def.schema` for every declared variant, and
+  // prove an undeclared variant is rejected — the invariant the describe
+  // title claims.
+  it.each(SECTION_KINDS)("%s: every declared variant is accepted by the full section schema", (kind) => {
+    const def = SECTION_REGISTRY[kind]
+    const props = MINIMAL_VALID_PROPS[kind]
+    for (const variant of def.variants) {
+      const result = def.schema.safeParse({ id: "s1", kind, variant, style: {}, props })
+      expect(
+        result.success,
+        `kind=${kind} variant=${variant}: ${JSON.stringify(!result.success && result.error.issues)}`,
+      ).toBe(true)
     }
+  })
+
+  it.each(SECTION_KINDS)("%s: a variant outside the declared list is rejected", (kind) => {
+    const def = SECTION_REGISTRY[kind]
+    const props = MINIMAL_VALID_PROPS[kind]
+    const result = def.schema.safeParse({
+      id: "s1",
+      kind,
+      variant: "not-a-real-variant",
+      style: {},
+      props,
+    })
+    expect(result.success).toBe(false)
   })
 })
 
@@ -518,7 +619,7 @@ describe("parseSection", () => {
   it("parses a valid full section for a given kind", () => {
     const result = parseSection(
       "cta",
-      baseSection({ kind: "cta", variant: "band", props: { headline: "Go", cta: bookingCta } }),
+      baseSection({ kind: "cta", variant: "band", props: { headline: "Go", cta: labeledBookingCta } }),
     )
     expect(result.ok, JSON.stringify(!result.ok && result.errors)).toBe(true)
   })
@@ -526,7 +627,7 @@ describe("parseSection", () => {
   it("returns readable errors for an invalid variant", () => {
     const result = parseSection(
       "cta",
-      baseSection({ kind: "cta", variant: "sidebar", props: { headline: "Go", cta: bookingCta } }),
+      baseSection({ kind: "cta", variant: "sidebar", props: { headline: "Go", cta: labeledBookingCta } }),
     )
     expect(result.ok).toBe(false)
     if (!result.ok) {
@@ -537,7 +638,7 @@ describe("parseSection", () => {
   it("rejects a section whose kind literal doesn't match the schema being checked against", () => {
     const result = parseSection(
       "cta",
-      baseSection({ kind: "hero", variant: "centered", props: { headline: "x", primaryCta: urlCta } }),
+      baseSection({ kind: "hero", variant: "centered", props: { headline: "x", primaryCta: labeledUrlCta } }),
     )
     expect(result.ok).toBe(false)
   })
@@ -557,7 +658,7 @@ describe("parseSection", () => {
         id: "Not Safe!",
         kind: "cta",
         variant: "band",
-        props: { headline: "Go", cta: bookingCta },
+        props: { headline: "Go", cta: labeledBookingCta },
       }),
     )
     expect(result.ok).toBe(false)
@@ -590,7 +691,7 @@ describe("sectionDocSchema", () => {
   const heroSection = baseSection({
     kind: "hero",
     variant: "centered",
-    props: { headline: "Get stronger", primaryCta: urlCta },
+    props: { headline: "Get stronger", primaryCta: labeledUrlCta },
   })
 
   it("accepts a minimal valid doc (1 section)", () => {
@@ -619,7 +720,7 @@ describe("sectionDocSchema", () => {
         id: `h${i}`,
         kind: "hero",
         variant: "centered",
-        props: { headline: `Headline ${i}`, primaryCta: urlCta },
+        props: { headline: `Headline ${i}`, primaryCta: labeledUrlCta },
       }),
     )
     const result = sectionDocSchema.safeParse({
