@@ -341,18 +341,20 @@ const buildResultSchema = z.object({
 
 const opSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("set_page"),       sections: z.array(sectionInputSchema).min(1).max(24) }),
-  z.object({ op: z.literal("add_section"),    after: z.string(), section: sectionInputSchema }),
+  z.object({ op: z.literal("add_section"),    after: z.string().nullable(), section: sectionInputSchema }),
   z.object({ op: z.literal("update_section"), id: z.string(),
                                               props: z.record(z.unknown()).optional(),
                                               style: styleSchema.partial().optional(),
                                               variant: z.string().optional() }),
-  z.object({ op: z.literal("move_section"),   id: z.string(), after: z.string() }),
+  z.object({ op: z.literal("move_section"),   id: z.string(), after: z.string().nullable() }),
   z.object({ op: z.literal("remove_section"), id: z.string() }),
   z.object({ op: z.literal("set_theme"),      theme: themeSchema.partial() }),
 ])
 ```
 
-`update_section.props` merges shallowly per top-level key; array slots (`items`, `plans`, `features`) replace wholesale. **State that merge rule in one sentence in the prompt** — it's the only subtlety, and getting it wrong is the classic patch bug.
+`after: null` means **insert at the very top**. Without it there is no op for "put an announcement bar above the hero" or "move the testimonials to the top", and every such request routes to `set_page` — a full-page regeneration, which is exactly the drift §5 exists to prevent. Applies to both `add_section` and `move_section`.
+
+`update_section.props` merges shallowly per top-level key; array slots (`items`, `plans`, `features`) replace wholesale; **a key whose patch value is `null` is DELETED**. The delete sentinel is not optional garnish — a shallow merge can add and replace but never remove, `undefined` is not expressible over JSON, and the optional slots are `.optional()` not `.nullable()`, so without it "remove the second button" also routes to `set_page`. **State all three rules in one sentence each in the prompt** — they are the only subtleties, and getting the merge wrong is the classic patch bug.
 
 ### Prompt layout — ordered by stability, because caching is a strict prefix match
 
