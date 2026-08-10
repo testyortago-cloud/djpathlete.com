@@ -180,14 +180,13 @@ describe("ReportPageTwo", () => {
     expect(screen.getByText("No standard for this test")).toBeInTheDocument()
   })
 
-  it("suppresses the sparkline for flat and two-point series, keeps it for a moving one", () => {
-    // flat: three identical points — a line, but not a trend. sledPush: two points.
-    const { container: flatC } = render(<ReportPageTwo scores={scores([flat])} assessments={[]} />)
-    expect(flatC.querySelector("svg"), "a flat series must not draw a trend line").toBeNull()
-    const { container: shortC } = render(<ReportPageTwo scores={scores([sledPush])} assessments={[]} />)
-    expect(shortC.querySelector("svg"), "two points are not a trend").toBeNull()
-    const { container: moving } = render(<ReportPageTwo scores={scores([cmj])} assessments={[]} />)
-    expect(moving.querySelector("svg"), "a real trend must still draw").toBeTruthy()
+  it("never draws a sparkline in a test row — history is the dated delta's job", () => {
+    // The sparkline was tried and cut on coach feedback (2026-08-10): at row
+    // scale a 3-point series renders as one bare diagonal slash, and the 96px
+    // SVG overflowed its column across the delta text. A MOVING series is the
+    // case that used to draw — it is exactly the case that must not.
+    const { container } = render(<ReportPageTwo scores={scores([cmj, flat, sledPush])} assessments={[]} />)
+    expect(container.querySelector("svg"), "no test row may draw a trend line").toBeNull()
   })
 
   it("opens the NEWEST assessment even when the array order disagrees with the dates", () => {

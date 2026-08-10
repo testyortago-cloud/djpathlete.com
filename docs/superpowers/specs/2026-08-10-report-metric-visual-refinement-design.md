@@ -42,7 +42,7 @@ kind of information than "position on a scale".
 | 2 | Page-2 `TestRow` gains a **real-unit norm caption** ("Trained 45 cm · Elite 65 cm"), a **`BandPill`**, and a **dated delta** ("↑ 4% / since 12 May"). |
 | 3 | Page-1 biggest mover replaces its track + "prev → now" line with a **border-drawn comparison circle** (`MoverCompare`): Now circle with Prev inside, Trained/Elite satellite circles in real units. |
 | 4 | `ScoredTest` gains `previousDate` and `targets` (re-added; `referenceTargets()` already exists). Presentation-only — no migration, no new queries. |
-| 5 | Sparkline renders only for **≥3 points with real movement** (min ≠ max); the zero-delta text becomes "steady". |
+| 5 | ~~Sparkline renders only for ≥3 points with real movement~~ **AMENDED 2026-08-10 (user follow-up: "there is still lines"): the sparkline is removed from test rows entirely** — at row scale a 3-point series draws as one bare diagonal slash and the 96px SVG overflowed its column. History = the dated delta. Zero-delta text becomes "steady". |
 | 6 | All new color derives from existing tokens (`--error`/`--success` tints); zones/pill/circle are **border-drawn in print**. |
 
 ## 3. Component design

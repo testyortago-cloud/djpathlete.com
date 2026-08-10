@@ -3,16 +3,15 @@ import { bandFor } from "@/lib/test-report/scoring"
 import { num, formatDate } from "@/lib/test-report/format"
 import { ScoreTrack } from "./ScoreTrack"
 import { BandPill } from "./BandPill"
-import { Sparkline } from "@/components/shared/Sparkline"
 
 /**
  * One test, once. The old page rendered the top four as circles and then ALL of
  * them again as cards; this is the single row that replaced both.
  *
- * The sparkline is the one deliberate second idiom in the report: a trend encodes
- * history, which the score track cannot show. It only renders when there IS a
- * trend — three or more results that actually moved. A flat line dressed up as
- * signal is exactly what the coach asked to remove.
+ * No sparkline. It was tried as "the one deliberate second idiom" and cut on
+ * coach feedback (2026-08-10): at row scale a 3-point series reads as one bare
+ * diagonal slash — another meaningless line — and the 96px SVG overflowed its
+ * column. History is carried by the dated delta instead.
  */
 export function TestRow({ test, highlight = false }: { test: ScoredTest; highlight?: boolean }) {
   // Three-way on the SIGN, not `>= 0`. A test that did not move is not an
@@ -27,10 +26,9 @@ export function TestRow({ test, highlight = false }: { test: ScoredTest; highlig
         : "text-[var(--error)]"
   // Zero movement is a word, not an arrow — "steady" matches page 1's phrasing.
   const deltaText = delta === null ? "—" : delta === 0 ? "steady" : `${delta > 0 ? "↑" : "↓"} ${Math.abs(delta)}%`
-  const showSparkline = test.points.length >= 3 && Math.min(...test.points) !== Math.max(...test.points)
 
   return (
-    <div className="grid grid-cols-2 items-center gap-x-4 gap-y-2 border-b border-border py-3 last:border-b-0 md:grid-cols-[13rem_7rem_1fr_5rem_4rem]">
+    <div className="grid grid-cols-2 items-center gap-x-4 gap-y-2 border-b border-border py-3 last:border-b-0 md:grid-cols-[13rem_7rem_1fr_7rem]">
       <div>
         <p className="font-heading text-sm font-bold">
           {test.label}
@@ -72,11 +70,11 @@ export function TestRow({ test, highlight = false }: { test: ScoredTest; highlig
       <div className="text-right">
         <p className={`font-mono text-xs ${deltaTone}`}>{deltaText}</p>
         {delta !== null && test.previousDate && (
-          <p className="mt-0.5 font-mono text-[9px] text-muted-foreground">since {formatDate(test.previousDate)}</p>
+          <p className="mt-0.5 whitespace-nowrap font-mono text-[9px] text-muted-foreground">
+            since {formatDate(test.previousDate)}
+          </p>
         )}
       </div>
-
-      <div className="justify-self-end text-primary">{showSparkline && <Sparkline points={test.points} />}</div>
     </div>
   )
 }
