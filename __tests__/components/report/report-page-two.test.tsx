@@ -180,8 +180,9 @@ describe("ReportPageTwo", () => {
     expect(screen.getByText("No standard for this test")).toBeInTheDocument()
     // sledPush has a previousDate but a null deltaPct (an unscorable 2-result custom
     // test) — TestRow's `delta !== null &&` guard must suppress the "since" line even
-    // though a previousDate exists to date it.
-    expect(container.textContent ?? "").not.toMatch(/since /)
+    // though a previousDate exists to date it. `since \d` = the dated delta form;
+    // the intro copy's own "since your last test" must not satisfy this guard.
+    expect(container.textContent ?? "").not.toMatch(/since \d/)
   })
 
   it("never draws a sparkline in a test row — history is the dated delta's job", () => {
