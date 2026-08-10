@@ -172,6 +172,11 @@ describe("opSchema", () => {
     const result = opSchema.safeParse({ op: "update_section", id: "hero1", style: { headline: "huge" } })
     expect(result.success).toBe(false)
   })
+
+  it("accepts `after: null` on add_section and move_section — the top-of-page sentinel (Fix round 1, CRITICAL 1)", () => {
+    expect(opSchema.safeParse({ op: "add_section", after: null, section: newHeroSection("hero2") }).success).toBe(true)
+    expect(opSchema.safeParse({ op: "move_section", id: "cta1", after: null }).success).toBe(true)
+  })
 })
 
 // ===========================================================================
@@ -360,7 +365,7 @@ describe("applyOps — reference identity on every op path", () => {
     })
   })
 
-  it("a mixed batch (update one, move another, remove a third) leaves every remaining UNTARGETED section identical", () => {
+  it("a mixed batch (update one, move another, remove a third) leaves every remaining UNTARGETED section identical, AND actually applies the three targeted changes", () => {
     const doc = baseDoc({ sections: nineSections() })
     const before = doc.sections
     const untouchedIds = ["s1", "t1", "form1", "foot1"]
@@ -375,6 +380,67 @@ describe("applyOps — reference identity on every op path", () => {
       const originalSection = before.find((s) => s.id === id)!
       expect(result.doc.sections.find((s) => s.id === id)).toBe(originalSection)
     }
+    // Positive assertions that the three TARGETED sections actually changed
+    // — without these, this test would pass against an identity function
+    // that leaves the whole doc untouched (it never checks anything DID
+    // happen, only that certain things didn't).
+    expect(result.doc.sections.find((s) => s.id === "hero1")!.style).toEqual({ headline: "xl", tone: "accent" })
+    expect(idsOf(result.doc.sections)).toEqual(["hero1", "s1", "t1", "p1", "b1", "f1", "form1", "foot1"])
+    expect(result.doc.sections.some((s) => s.id === "cta1")).toBe(false)
+  })
+})
+
+// ===========================================================================
+// `after: null` — insert / move to the very top of the page (Fix round 1,
+// CRITICAL 1). Before this fix, add_section/move_section could only target
+// "after an existing section", so "put an announcement bar above the hero"
+// or "lead with the pricing" had no op and would have forced a full
+// set_page rewrite — exactly the drift this file exists to prevent.
+// ===========================================================================
+
+describe("applyOps — after: null inserts/moves to the top of the page", () => {
+  it("add_section({ after: null }) inserts at index 0; every pre-existing section stays reference-identical", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const before = doc.sections
+    const result = applyOps(doc, [{ op: "add_section", after: null, section: newHeroSection("top1") }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(idsOf(result.doc.sections)).toEqual([
+      "top1",
+      "hero1",
+      "b1",
+      "s1",
+      "t1",
+      "p1",
+      "f1",
+      "form1",
+      "cta1",
+      "foot1",
+    ])
+    for (const section of before) {
+      expect(result.doc.sections.find((s) => s.id === section.id)).toBe(section)
+    }
+    expect(result.receipt.changed).toEqual([
+      { id: "top1", kind: "hero", label: "Hero", action: "added", reasons: ["added at the top"] },
+    ])
+  })
+
+  it("move_section({ after: null }) relocates to index 0 as the SAME object; every other section stays reference-identical", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const before = doc.sections
+    const footBefore = before.find((s) => s.id === "foot1")!
+    const result = applyOps(doc, [{ op: "move_section", id: "foot1", after: null }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(idsOf(result.doc.sections)).toEqual(["foot1", "hero1", "b1", "s1", "t1", "p1", "f1", "form1", "cta1"])
+    expect(result.doc.sections[0]).toBe(footBefore)
+    for (const section of before) {
+      if (section.id === "foot1") continue
+      expect(result.doc.sections.find((s) => s.id === section.id)).toBe(section)
+    }
+    expect(result.receipt.changed).toEqual([
+      { id: "foot1", kind: "footer", label: "Footer", action: "moved", reasons: ["moved to the top"] },
+    ])
   })
 })
 
@@ -452,6 +518,64 @@ describe("applyOps — update_section.props merges shallowly per top-level key",
 })
 
 // ===========================================================================
+// An explicit `null` in a props patch means "delete this key" (Fix round 1,
+// CRITICAL 2). A shallow spread can add and replace a key but never remove
+// one, and `undefined` doesn't survive JSON — so before this fix there was
+// no way to express "remove the second button" / "drop the video" /
+// "delete the eyebrow", and each would have forced a full set_page rewrite.
+// ===========================================================================
+
+describe("applyOps — update_section.props: an explicit null deletes an optional key", () => {
+  it("nulling an OPTIONAL prop (hero.secondaryCta) removes the key entirely and succeeds", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1", props: { secondaryCta: null } }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const props = result.doc.sections[0].props as Record<string, unknown>
+    expect("secondaryCta" in props).toBe(false)
+    // Sibling keys are untouched by the deletion.
+    expect(props.headline).toBe("Train like an athlete")
+    expect(props.eyebrow).toBe("New")
+  })
+
+  it("nulling a REQUIRED prop (hero.headline) still fails the post-merge parse and rejects the whole batch", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const heroBefore = doc.sections[0]
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1", props: { headline: null } }])
+    expect(result.ok).toBe(false)
+    // Rejected wholesale, same as any other invalid post-merge section —
+    // the original doc is untouched.
+    expect(doc.sections[0]).toBe(heroBefore)
+  })
+
+  it("the diff receipt reports a deleted key distinctly from a replaced one", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const result = applyOps(doc, [
+      { op: "update_section", id: "hero1", props: { secondaryCta: null, sub: "New subhead" } },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.receipt.changed[0].reasons.sort()).toEqual(["content: secondaryCta removed", "content: sub"].sort())
+  })
+})
+
+// ===========================================================================
+// A no-op update_section (none of props/style/variant given) is rejected
+// rather than silently touching the section for nothing (Fix round 1,
+// IMPORTANT 5).
+// ===========================================================================
+
+describe("applyOps — rejects a no-op update_section", () => {
+  it("update_section with none of props/style/variant is rejected, not a silent touch", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const heroBefore = doc.sections[0]
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1" }])
+    expect(result.ok).toBe(false)
+    expect(doc.sections[0]).toBe(heroBefore)
+  })
+})
+
+// ===========================================================================
 // THE pinned phase-order fixture: add_section anchored to a section a
 // remove_section deletes in the SAME batch. Order in the array is the
 // discriminant.
@@ -510,6 +634,23 @@ describe("applyOps — rejects a batch that would produce duplicate section ids"
     const doc = baseDoc({ sections: nineSections() })
     const dupSections = [newHeroSection("dup"), { ...newHeroSection("dup") }]
     const result = applyOps(doc, [{ op: "set_page", sections: dupSections }])
+    expect(result.ok).toBe(false)
+  })
+
+  it("a doc that ALREADY has a duplicate id is rejected up front, even on an empty ops batch (Fix round 1, minor)", () => {
+    // Previously the duplicate-id guard ran only after applying a
+    // non-empty ops batch, so a pre-existing duplicate sailed through
+    // silently on the empty-ops no-op fast path.
+    const alreadyDuplicated = baseDoc({ sections: [newHeroSection("dup"), { ...newHeroSection("dup") }] })
+    const result = applyOps(alreadyDuplicated, [])
+    expect(result.ok).toBe(false)
+  })
+
+  it("a doc with a pre-existing duplicate id is rejected even when the ops batch itself never touches it", () => {
+    // And a non-empty batch shouldn't be blamed ("... after applying ops")
+    // for a duplicate it didn't introduce.
+    const alreadyDuplicated = baseDoc({ sections: [newHeroSection("dup"), { ...newHeroSection("dup") }] })
+    const result = applyOps(alreadyDuplicated, [{ op: "set_theme", theme: { accent: "primary" } }])
     expect(result.ok).toBe(false)
   })
 })
@@ -601,6 +742,35 @@ describe("applyOps — the diff receipt", () => {
     expect(SECTION_REWRITE_THRESHOLD).toBe(0.6)
   })
 
+  it("EXACTLY at the 60% threshold is NOT flagged — the comparison is strict `>`, not `>=` (Fix round 1, IMPORTANT 3)", () => {
+    // A 9-section update-only fixture can never land exactly on 0.6 (5/9 ≈
+    // 0.556, 6/9 ≈ 0.667) — a mutant flipping `>` to `>=`, or nudging the
+    // constant to e.g. 0.58, would still pass both tests above. 5 updates
+    // plus 1 add gives 6 touched out of 10 considered (9 original + 1 new)
+    // = exactly 0.6, so this is the one fixture that actually pins the
+    // comparison operator, not just the constant.
+    const doc = baseDoc({ sections: nineSections() })
+    // Deliberately NOT typed as `SectionOp[]` — `applyOps`'s second
+    // parameter is `unknown` precisely so callers (and these fixtures)
+    // don't need one, and `newHeroSection`'s return type is the loose
+    // `Section` interface (`props: Record<string, unknown>`), not the
+    // stricter per-kind shape `SectionOp`'s `add_section.section` expects.
+    const ops = [
+      { op: "update_section", id: "hero1", style: { align: "center" } },
+      { op: "update_section", id: "b1", style: { align: "center" } },
+      { op: "update_section", id: "s1", style: { align: "center" } },
+      { op: "update_section", id: "t1", style: { align: "center" } },
+      { op: "update_section", id: "p1", style: { align: "center" } },
+      { op: "add_section", after: "foot1", section: newHeroSection("hero2") },
+    ]
+    const result = applyOps(doc, ops)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.receipt.totalSections).toBe(10)
+    expect(result.receipt.unchangedCount).toBe(4)
+    expect(result.receipt.isRewrite).toBe(false)
+  })
+
   it("set_page always flags as a rewrite (100% of the resulting page is 'replaced')", () => {
     const doc = baseDoc({ sections: nineSections() })
     const result = applyOps(doc, [{ op: "set_page", sections: [newHeroSection("only")] }])
@@ -622,6 +792,16 @@ describe("applyOps — the diff receipt", () => {
     expect(result.receipt.themeChanged).toBe(true)
     expect(result.receipt.unchangedCount).toBe(9)
     expect(result.receipt.isRewrite).toBe(false)
+  })
+
+  it("set_theme with an EMPTY theme patch reports themeChanged: false — nothing actually changed (Fix round 1, minor)", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const result = applyOps(doc, [{ op: "set_theme", theme: {} }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.receipt.themeChanged).toBe(false)
+    expect(result.doc.theme).toEqual(doc.theme)
+    expect(result.doc.sections).toBe(doc.sections)
   })
 
   it("an empty ops array is a successful no-op: same doc reference, empty receipt", () => {

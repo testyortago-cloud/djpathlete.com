@@ -104,9 +104,19 @@ import {
 const sectionIdRefSchema = z.string().min(1)
 const propsPatchSchema = z.record(z.string(), z.unknown())
 
+// `after` is NULLABLE on both `add_section` and `move_section`: `null` means
+// "the very top of the page" (Fix round 1, CRITICAL 1). The plan's own
+// grammar only gave `after` as a required string, with no way to express
+// "before everything" — so "put an announcement bar above the hero" or "lead
+// with the pricing" had no op and had to fall back to `set_page`, a full
+// rewrite of every section. That is exactly the drift §5 exists to make
+// structurally impossible, so it's closed here rather than deferred to
+// whichever stage writes the prompt around it.
+const afterAnchorSchema = sectionIdRefSchema.nullable()
+
 export const opSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("set_page"), sections: z.array(sectionSchema).min(1).max(24) }),
-  z.object({ op: z.literal("add_section"), after: sectionIdRefSchema, section: sectionSchema }),
+  z.object({ op: z.literal("add_section"), after: afterAnchorSchema, section: sectionSchema }),
   z.object({
     op: z.literal("update_section"),
     id: sectionIdRefSchema,
@@ -114,7 +124,7 @@ export const opSchema = z.discriminatedUnion("op", [
     style: sectionStyleSchema.partial().optional(),
     variant: z.string().optional(),
   }),
-  z.object({ op: z.literal("move_section"), id: sectionIdRefSchema, after: sectionIdRefSchema }),
+  z.object({ op: z.literal("move_section"), id: sectionIdRefSchema, after: afterAnchorSchema }),
   z.object({ op: z.literal("remove_section"), id: sectionIdRefSchema }),
   z.object({ op: z.literal("set_theme"), theme: sectionDocThemeSchema.partial() }),
 ])
@@ -173,6 +183,33 @@ function zodIssuesToStrings(error: z.ZodError): string[] {
   })
 }
 
+/**
+ * Shallow-merges a props patch over the current props, treating an explicit
+ * `null` in the patch as "delete this key" rather than "set it to null" —
+ * the only way to express removing an optional field over a wire format
+ * (JSON) with no `undefined`. See the CRITICAL 2 comment at the call site.
+ */
+function applyPropsPatch(current: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...current }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) {
+      delete next[key]
+    } else {
+      next[key] = value
+    }
+  }
+  return next
+}
+
+function findDuplicateSectionId(sections: Section[]): string | null {
+  const seen = new Set<string>()
+  for (const s of sections) {
+    if (seen.has(s.id)) return s.id
+    seen.add(s.id)
+  }
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // applyOps
 // ---------------------------------------------------------------------------
@@ -197,7 +234,24 @@ function zodIssuesToStrings(error: z.ZodError): string[] {
 export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
   const docCheck = sectionDocSchema.safeParse(doc)
   if (!docCheck.success) {
-    return { ok: false, errors: ["Invalid input document: ", ...zodIssuesToStrings(docCheck.error)] }
+    // Each issue is folded INTO its own string (not a bare label as a
+    // separate array element) — the label-as-its-own-element form left a
+    // trailing space and rendered as an empty first bullet wherever
+    // `errors` is displayed one-per-line (Fix round 1, minor).
+    return { ok: false, errors: zodIssuesToStrings(docCheck.error).map((issue) => `Invalid input document: ${issue}`) }
+  }
+  // `sectionDocSchema` validates each section independently, so it can't
+  // notice two of them sharing an id. Checked here, on the INPUT doc,
+  // rather than only at the end on the ops' output (Fix round 1, minor):
+  // the previous version only ran this check after applying a non-empty
+  // ops batch, so (a) a doc that already had a duplicate id sailed through
+  // untouched on an empty-ops call, and (b) a non-empty batch that didn't
+  // itself introduce the duplicate was blamed for one it inherited. Ruling
+  // it out here up front makes the LATER check (after applying ops, further
+  // down) unambiguously about a duplicate THIS batch introduced.
+  const inputDuplicateId = findDuplicateSectionId(doc.sections)
+  if (inputDuplicateId) {
+    return { ok: false, errors: [`Invalid input document: duplicate section id "${inputDuplicateId}".`] }
   }
 
   if (!Array.isArray(rawOps)) {
@@ -279,13 +333,24 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
     }
 
     if (op.op === "add_section") {
-      const anchorIdx = sections.findIndex((s) => s.id === op.after)
-      if (anchorIdx === -1) {
-        errors.push(
-          `ops[${i}] add_section: no section with id "${op.after}" (it may never have existed, or may have ` +
-            `been removed earlier in this same batch — ops apply in order).`,
-        )
-        break
+      // `after: null` means "insert at the very top" — no anchor to look
+      // up. Otherwise the anchor must exist in the CURRENT working state
+      // (see the module header: ops apply sequentially, so an anchor
+      // removed earlier in this same batch is indistinguishable from one
+      // that never existed).
+      let insertAt: number
+      if (op.after === null) {
+        insertAt = 0
+      } else {
+        const anchorIdx = sections.findIndex((s) => s.id === op.after)
+        if (anchorIdx === -1) {
+          errors.push(
+            `ops[${i}] add_section: no section with id "${op.after}" (it may never have existed, or may have ` +
+              `been removed earlier in this same batch — ops apply in order).`,
+          )
+          break
+        }
+        insertAt = anchorIdx + 1
       }
       const newSection = op.section as unknown as Section
       if (sections.some((s) => s.id === newSection.id)) {
@@ -293,7 +358,7 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
         break
       }
       const next = sections.slice()
-      next.splice(anchorIdx + 1, 0, newSection)
+      next.splice(insertAt, 0, newSection)
       sections = next
       touchedIds.add(newSection.id)
       changed.push({
@@ -301,12 +366,23 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
         kind: newSection.kind,
         label: SECTION_REGISTRY[newSection.kind].label,
         action: "added",
-        reasons: [`added after "${op.after}"`],
+        reasons: [op.after === null ? "added at the top" : `added after "${op.after}"`],
       })
       continue
     }
 
     if (op.op === "update_section") {
+      // A patch with none of props/style/variant set is meaningless, but
+      // was previously VALID: it re-ran the section through Zod for
+      // nothing, produced a needlessly-cloned object, marked the section
+      // "touched", and emitted a receipt entry with no reasons — rendering
+      // in chat as "Hero ()". Rejected outright instead (Fix round 1,
+      // IMPORTANT 5): a model that emits this has a real bug worth
+      // surfacing, not something to paper over as a silent no-op.
+      if (op.props === undefined && op.style === undefined && op.variant === undefined) {
+        errors.push(`ops[${i}] update_section "${op.id}": at least one of props, style, or variant must be provided.`)
+        break
+      }
       const idx = sections.findIndex((s) => s.id === op.id)
       if (idx === -1) {
         errors.push(`ops[${i}] update_section: no section with id "${op.id}".`)
@@ -321,7 +397,16 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
       // the old one, producing a Frankenstein array. No special-casing for
       // array-valued keys is needed; a plain shallow spread already has
       // exactly this behavior for every key, array-valued or not.
-      const mergedProps = op.props ? { ...current.props, ...op.props } : current.props
+      //
+      // A shallow spread can ADD and REPLACE a key, but never REMOVE one —
+      // and `undefined` isn't expressible over JSON, so a model that wants
+      // to drop an optional field (e.g. "remove the second button") has no
+      // way to say so without this: `null` is an explicit delete sentinel,
+      // stripped out before merging (Fix round 1, CRITICAL 2). Nulling a
+      // REQUIRED field still fails below, at the post-merge `parseSection`
+      // check — deleting `hero.headline` produces a candidate missing a
+      // required key, which is exactly what that check exists to catch.
+      const mergedProps = op.props ? applyPropsPatch(current.props, op.props) : current.props
       const mergedStyle = op.style ? { ...current.style, ...op.style } : current.style
       const mergedVariant = op.variant ?? current.variant
       const candidate = {
@@ -357,7 +442,9 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
         }
       }
       if (op.props) {
-        for (const key of Object.keys(op.props)) reasons.push(`content: ${key}`)
+        for (const [key, value] of Object.entries(op.props)) {
+          reasons.push(value === null ? `content: ${key} removed` : `content: ${key}`)
+        }
       }
       changed.push({
         id: op.id,
@@ -370,6 +457,8 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
     }
 
     if (op.op === "move_section") {
+      // `op.id === op.after` is always false when `op.after` is `null`
+      // (a string is never `===` null), so this guard still holds as-is.
       if (op.id === op.after) {
         errors.push(`ops[${i}] move_section: cannot move "${op.id}" after itself.`)
         break
@@ -379,7 +468,8 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
         errors.push(`ops[${i}] move_section: no section with id "${op.id}".`)
         break
       }
-      if (!sections.some((s) => s.id === op.after)) {
+      // `after: null` means "move to the very top" — no anchor to resolve.
+      if (op.after !== null && !sections.some((s) => s.id === op.after)) {
         errors.push(`ops[${i}] move_section: no section with id "${op.after}" to move after.`)
         break
       }
@@ -389,8 +479,8 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
       // have shifted by one) rather than doing index arithmetic — simpler
       // to get right, and `moved` itself is never cloned, only relocated:
       // it is the exact same object throughout.
-      const anchorIdx = next.findIndex((s) => s.id === op.after)
-      next.splice(anchorIdx + 1, 0, moved)
+      const insertAt = op.after === null ? 0 : next.findIndex((s) => s.id === op.after) + 1
+      next.splice(insertAt, 0, moved)
       sections = next
       touchedIds.add(op.id)
       changed.push({
@@ -398,7 +488,7 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
         kind: moved.kind,
         label: SECTION_REGISTRY[moved.kind].label,
         action: "moved",
-        reasons: [`moved after "${op.after}"`],
+        reasons: [op.after === null ? "moved to the top" : `moved after "${op.after}"`],
       })
       continue
     }
@@ -429,8 +519,16 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
       // `{...theme, ...op.theme}`. `sections` is left as whatever it
       // already was — untouched by this op, so if nothing else in the
       // batch touched it, it is still the literal `doc.sections` array.
-      theme = { ...theme, ...op.theme }
-      themeChanged = true
+      //
+      // An EMPTY theme patch (`{op:"set_theme", theme:{}}`) is a valid op
+      // shape but genuinely changes nothing, so `themeChanged` is only set
+      // when the patch actually names at least one key — otherwise the
+      // receipt would claim a theme change that didn't happen (Fix round 1,
+      // minor).
+      if (Object.keys(op.theme).length > 0) {
+        theme = { ...theme, ...op.theme }
+        themeChanged = true
+      }
       continue
     }
 
@@ -456,22 +554,33 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
   // Every individual section already passed its own kind's schema via
   // parseSection/sectionSchema above, so the only thing this check can
   // still newly reject is the section COUNT.
+  //
+  // *** `finalCheck.data` IS DELIBERATELY DISCARDED. THIS IS THE SINGLE ***
+  // *** MOST DANGEROUS LINE IN THIS FILE TO "CLEAN UP".                 ***
+  // `candidateDoc` — built above from the local `sections`/`theme` this
+  // function assembled via copy-on-write — is what gets returned, NOT
+  // `finalCheck.data`. Zod's `safeParse` reconstructs its ENTIRE output
+  // tree on every call, including every section this batch never touched.
+  // Returning `finalCheck.data` instead would silently swap every untouched
+  // section for a structurally-equal-but-different object, destroying the
+  // one guarantee this whole file exists to make — and every test would
+  // still pass except the `toBe` reference-identity assertions, so a
+  // reviewer skimming for behavior change would see nothing. This check
+  // exists ONLY to ask "is this doc shape valid" — its parsed value must
+  // never be used for anything else.
   const finalCheck = sectionDocSchema.safeParse(candidateDoc)
   if (!finalCheck.success) {
     return { ok: false, errors: zodIssuesToStrings(finalCheck.error) }
   }
 
-  // Duplicate-id guard. `sectionDocSchema` validates each section
-  // independently, so it has no way to notice two of them sharing an id —
-  // but id-addressed ops (update/move/remove) and CtaTarget anchors both
-  // silently misbehave against an ambiguous document, so this batch is
-  // rejected rather than allowed to produce one.
-  const seenIds = new Set<string>()
-  for (const s of sections) {
-    if (seenIds.has(s.id)) {
-      return { ok: false, errors: [`Duplicate section id "${s.id}" after applying ops.`] }
-    }
-    seenIds.add(s.id)
+  // Duplicate-id guard on the OUTPUT. The input doc was already checked for
+  // this at entry, so reaching here means any duplicate found now was
+  // introduced BY this batch (e.g. `set_page` supplying two sections with
+  // the same id, or `add_section` colliding with a survivor) — the error
+  // message below is therefore accurate, not just plausible.
+  const outputDuplicateId = findDuplicateSectionId(sections)
+  if (outputDuplicateId) {
+    return { ok: false, errors: [`Duplicate section id "${outputDuplicateId}" after applying ops.`] }
   }
 
   const unchangedCount = sections.filter((s) => !touchedIds.has(s.id)).length
