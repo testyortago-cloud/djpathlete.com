@@ -3114,8 +3114,8 @@ export interface Funnel {
 }
 
 /**
- * A page within a funnel. `project_data` is the GrapesJS DRAFT — the public
- * route never reads it, only the row referenced by `published_version_id`.
+ * A page within a funnel. `project_data` is the DRAFT — the public route never
+ * reads it, only the row referenced by `published_version_id`.
  */
 export interface FunnelStep {
   id: string
@@ -3128,6 +3128,13 @@ export interface FunnelStep {
   seo_description: string | null
   og_image_url: string | null
   noindex: boolean
+  /**
+   * The draft `SectionDoc` — see `lib/funnels/sections/registry.ts`. Was
+   * GrapesJS editor state before 00203; steps that predate the AI builder may
+   * still hold it, so read this through `getDraft()` in
+   * `lib/db/funnel-builder.ts`, which tells "never built" apart from "holds
+   * something that is not a SectionDoc" instead of collapsing both to null.
+   */
   project_data: unknown | null
   published_version_id: string | null
   created_at: string
@@ -3142,6 +3149,7 @@ export interface FunnelStepVersion {
   /** Compiled FunnelNode tree — see lib/funnels/compile/types.ts. */
   nodes: unknown
   css: string
+  /** The `SectionDoc` snapshot the published `nodes`/`css` were rendered from. */
   project_data: unknown | null
   published_at: string
   published_by: string | null

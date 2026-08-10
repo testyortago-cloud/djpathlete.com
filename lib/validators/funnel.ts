@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { SECTION_BUILDER_MAX_MESSAGE_LENGTH } from "@/lib/funnels/sections/builder-config"
 
 const slugSchema = z
   .string()
@@ -36,8 +37,38 @@ export const updateStepSchema = z.object({
   seo_description: z.string().max(320).nullable().optional(),
   og_image_url: z.string().url().nullable().optional(),
   noindex: z.boolean().optional(),
-  /** GrapesJS editor state. Opaque to us — only the compiler reads its output. */
+  /**
+   * The DRAFT `SectionDoc` (`lib/funnels/sections/registry.ts`). Was GrapesJS
+   * editor state before 00203. Deliberately still `z.unknown()` here rather
+   * than `sectionDocSchema`: this schema also serves steps that have never
+   * been through the AI builder and still hold legacy GrapesJS state, and the
+   * builder's own write path (`lib/db/funnel-builder.ts`) validates the doc
+   * with the registry schema before it ever reaches the column.
+   */
   project_data: z.unknown().optional(),
+})
+
+/**
+ * Body of `POST /api/admin/funnels/steps/[id]/build` — one owner message plus
+ * the revision the client believes is current.
+ *
+ * `revision` IS REQUIRED AND IS THE OPTIMISTIC LOCK. Two admin tabs on the
+ * same page is a real scenario; without it the second tab's build silently
+ * overwrites the first tab's document. `appendTurn` makes the check part of
+ * the write (`.eq("doc_revision", expectedRevision)`), and the route turns a
+ * `stale_revision` result into a 409 so the client re-syncs rather than
+ * clobbering. A schema that made this optional would let a client opt out of
+ * the lock by omission, which is the same bug wearing a default value.
+ *
+ * The length cap is IMPORTED from `builder-config.ts`, never restated: that
+ * file is the single place the builder's tunables live, and a bound copied to
+ * two places is a bound that drifts. Restating it as `12_000` here would let
+ * someone raise the config constant and still be rejected at the door with no
+ * indication why.
+ */
+export const buildRequestSchema = z.object({
+  message: z.string().trim().min(1).max(SECTION_BUILDER_MAX_MESSAGE_LENGTH),
+  revision: z.number().int().min(0),
 })
 
 /**
@@ -60,3 +91,4 @@ export type CreateFunnelData = z.infer<typeof createFunnelSchema>
 export type UpdateFunnelData = z.infer<typeof updateFunnelSchema>
 export type UpdateStepData = z.infer<typeof updateStepSchema>
 export type PublishStepData = z.infer<typeof publishStepSchema>
+export type BuildRequestData = z.infer<typeof buildRequestSchema>

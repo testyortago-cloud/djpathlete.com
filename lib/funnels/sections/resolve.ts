@@ -41,8 +41,8 @@
 //
 // FOUR DESIGN DECISIONS THE PLAN DOES NOT MAKE, MADE HERE:
 //
-// 1. `resolveDoc` IS PURE AND TAKES THE CATALOGUE AS A PARAMETER. The DB call
-//    lives in `loadCatalogue()`, which is deliberately trivial. Stages 1.1-1.4
+// 1. `resolveDoc` IS PURE AND TAKES THE CATALOGUES AS A PARAMETER. The DB call
+//    lives in `loadCatalogues()`, which is deliberately trivial. Stages 1.1-1.4
 //    are all pure and tested with ZERO mocks; that property is worth more than
 //    the convenience of one fetch-and-resolve entry point.
 //
@@ -91,7 +91,7 @@
 // literally the input `doc` (and `doc.sections` literally `doc.sections`).
 //
 // No model call, no network — `resolveDoc` is a pure function in, pure result
-// out. `loadCatalogue` is the only thing here that touches the database.
+// out. `loadCatalogues` is the only thing here that touches the database.
 
 import {
   ctaWithLabelSchema,
@@ -105,9 +105,14 @@ import { getPrograms } from "@/lib/db/programs"
 // Aliased on import: `listActiveProducts` is ALSO exported by
 // lib/db/shop-products.ts with a different row type. The unaliased name reads
 // as "products" at the call site and is one autocomplete slip away from
-// silently building the catalogue out of the shop.
-import { listActiveProducts as listActiveSessionPackProducts } from "@/lib/db/session-pack-products"
-import { getPublishedEvents } from "@/lib/db/events"
+// silently building the catalogue out of the shop. `listAllProducts` is
+// aliased for the same reason and to keep the two pack calls visibly a PAIR at
+// the call site — "all" vs "active" one line apart is the whole split.
+import {
+  listActiveProducts as listActiveSessionPackProducts,
+  listAllProducts as listAllSessionPackProducts,
+} from "@/lib/db/session-pack-products"
+import { getEvents, getPublishedEvents } from "@/lib/db/events"
 
 // ---------------------------------------------------------------------------
 // The catalogue
@@ -132,10 +137,45 @@ export interface CatalogueEntry {
 }
 
 /**
- * Every row a CTA could point at, one list per resolvable kind. Passed in, so
- * `resolveDoc` stays pure and testable with plain literals.
+ * Rows a CTA could point at, one list per resolvable kind, FOR ONE PURPOSE.
+ * Which purpose is decided by where it sits in `Catalogues` below — this type
+ * deliberately does not know, so `prompt.ts`'s Block B can keep consuming a
+ * single flat list (it renders the OFFER set, and nothing else).
  */
 export type Catalogue = Record<ResolvableCtaKind, CatalogueEntry[]>
+
+/**
+ * THE TWO SETS. ONE NAME WAS ALWAYS TWO DIFFERENT QUESTIONS.
+ *
+ * Until Stage 1.7 there was a single `Catalogue`, used for two incompatible
+ * jobs, and the conflation was a live bug rather than an inelegance:
+ *
+ *   - RECOGNITION — "is the id this page ALREADY COMMITTED TO still a real
+ *     row?". Must see every row that ever existed. The moment a row leaves the
+ *     "currently valid" set, a page that already references it stops
+ *     resolving: rule 1 misses, the 36-char uuid then matches no name, and
+ *     `publishGate.ok` flips to `false` on an OTHERWISE-UNTOUCHED page. The
+ *     owner changed nothing and is shown a raw UUID plus a picker containing
+ *     nothing that can fix it.
+ *
+ *   - OFFER — "what may a NEW cta point at?". Must see only currently valid
+ *     rows. This is what fills `UnresolvedCta.candidates` (the picker) AND
+ *     what `prompt.ts` renders as Block B, the menu of names the model is told
+ *     it may write.
+ *
+ * FOUR THINGS DROP AN EVENT OUT OF `getPublishedEvents`, NOT ONE (all verified
+ * against `lib/db/events.ts`): `end_date` passing; `published -> completed`;
+ * `published -> cancelled`; and `published -> draft` — and that last one's own
+ * comment in `lib/db/events.ts` says it exists to support "un-publish for
+ * major edits", i.e. ROUTINE WORK. Un-publishing an event to fix a typo used
+ * to break every funnel page pointing at it.
+ */
+export interface Catalogues {
+  /** Every row that ever existed. Answers "is this id still a real row?". */
+  recognition: Catalogue
+  /** Currently valid rows only. Answers "what may a NEW cta point at?". */
+  offer: Catalogue
+}
 
 /**
  * The already-fetched rows `toCatalogue` assembles into a `Catalogue`.
@@ -175,80 +215,67 @@ export function toCatalogue({ programs, sessionPacks, events }: CatalogueRows): 
 }
 
 /**
- * The `from` bound `loadCatalogue` passes to `getPublishedEvents`: the Unix
- * epoch, i.e. NO lower date bound at all. Named rather than inlined because
- * `new Date(0)` at a call site reads as an uninitialised placeholder when it
- * is in fact a deliberate "any date, ever" sentinel — see `loadCatalogue`
- * below for the failure it exists to prevent. A single shared instance is
- * safe: `getPublishedEvents` only reads it (`.toISOString()`), and nothing in
- * this module or that one mutates a `Date` in place.
+ * Loads BOTH sets. Deliberately trivial — every ounce of logic lives in
+ * `resolveDoc`/`toCatalogue` so it can be tested without mocks. The only thing
+ * this function decides is WHICH FETCHER FEEDS WHICH SET, and that decision is
+ * the whole of the recognition/offer split, so it is pinned by four separate
+ * mutant-killing tests in `resolve.test.ts`.
  *
- * DO NOT PIN THIS CONSTANT BY COMPARING A TEST AGAINST IT — that is a
- * tautology that survives changing it to `new Date()`. The test asserts the
- * literal `0`.
+ * EVENTS — SPLIT, and this closes the bug outright. `getEvents({})`
+ * (`lib/db/events.ts:15`) filters status only when a status filter is PASSED
+ * and never filters by date, so the recognition set needs no new DAL function
+ * — every event ever, whatever its status, whether or not it has an
+ * `end_date`. `getPublishedEvents()` with no arguments defaults to
+ * `from: new Date()` and `status = 'published'`, which is exactly right for
+ * the offer set: an owner adding a NEW cta should not be shown a camp that
+ * already happened, or one that was cancelled, or one still in draft.
+ *
+ *   Note the offer set inherits `getPublishedEvents`'s NULL-`end_date` blind
+ *   spot: `.gte("end_date", ...)` never matches NULL, so a published event
+ *   with no `end_date` is invisible in the picker at any `from`. Reachable —
+ *   `updateEventSchema` accepts `end_date: null`, `updateEvent` writes it
+ *   through, and the re-derive only rescues clinics, so a CAMP can be left
+ *   with one. That is now a PICKER gap (annoying, visible, fixable by setting
+ *   an end date) rather than a publish block on an untouched page, which is
+ *   the trade this split exists to make.
+ *
+ * SESSION PACKS — SPLIT, same hazard, no new DAL either. `listAllProducts()`
+ * already exists beside `listActiveProducts()`. Deactivating a pack is a
+ * deliberate admin action, but the page that already sells it did not change,
+ * and blocking its publish is not how an owner should learn a product was
+ * retired. Recognition keeps the page resolving; the offer set stops the model
+ * and the picker from attaching anything NEW to a retired pack.
+ *
+ * PROGRAMS — SPLIT NOT YET POSSIBLE, AND THIS IS A KNOWN GAP, NOT A RULING
+ * THAT PROGRAMS ARE DIFFERENT. `programs.is_active` carries the IDENTICAL
+ * hazard to `session_pack_products.is_active` and deserves the identical
+ * treatment, but `lib/db/programs.ts` has no all-programs reader —
+ * `getPrograms()` filters `is_active`, and there is no `getAllPrograms()` to
+ * mirror `listAllProducts()`. Adding one is a nine-line, purely additive
+ * change to a file Stage 1.7 was scoped out of, so both sets are fed from
+ * `getPrograms()` for now and DEACTIVATING A PROGRAM STILL BREAKS EVERY PAGE
+ * SELLING IT. The fix is one function plus one word on the line below; do not
+ * mistake the shared call for a decision that programs want conflation.
  */
-const EVENT_RECOGNITION_FROM = new Date(0)
-
-/**
- * Loads the real catalogue. Deliberately trivial — every ounce of logic lives
- * in `resolveDoc`/`toCatalogue` so it can be tested without mocks.
- *
- * THE CATALOGUE IS TWO DIFFERENT SETS WEARING ONE NAME, AND THIS FUNCTION
- * SEPARATES THEM ON ONLY ONE AXIS. `resolveDoc` consumes it as a RECOGNITION
- * SET — "is the id this page already committed to still a real row?" — while
- * Stage 1.9's picker will consume it as an OFFER SET — "what may an owner
- * attach a NEW cta to?". Those two want different rows, and conflating them
- * is the root cause of a whole family of self-inflicted publish blocks, not
- * just the one fixed here.
- *
- * THE DATE AXIS, FIXED HERE. `getPublishedEvents()` with no arguments
- * defaults to `from: new Date()`, i.e. "still running or in the future" —
- * exactly right for an OFFER set (an owner adding a new CTA shouldn't be
- * shown a camp that already happened), and wrong for a RECOGNITION set. A doc
- * holding a past event's REAL row id stopped resolving the moment that
- * event's `end_date` passed: rule 1 misses because the row is gone from the
- * catalogue, the 36-char uuid then matches no name, so `publishGate.ok` flips
- * to `false` on an otherwise-untouched, previously-publishable page and the
- * owner is shown a raw UUID they cannot act on plus a picker full of
- * unrelated current events — not one of which can fix the page. Passing
- * `EVENT_RECOGNITION_FROM` removes the date bound, so a real id keeps
- * resolving for as long as its row exists.
- *
- * THE AXES THIS DOES **NOT** CLOSE — STAGE 1.7 OWNS BOTH, because both need
- * `lib/db/events.ts` to grow a lookup this stage may not widen:
- *
- *   - `status`. `getPublishedEvents` also filters `status = "published"`, and
- *     `published -> completed` is an explicitly allowed, UI-exposed
- *     transition (see the status graph in `lib/db/events.ts`) — marking a
- *     finished camp `completed` is precisely what an admin does with a past
- *     event, i.e. the same admin action the date fix was written to survive.
- *     The instant it happens the row leaves this catalogue and the page
- *     reproduces the IDENTICAL owner-facing symptom described above. A true
- *     recognition set is every event ever (`getEvents({})`), with
- *     `status`/date filtering applied by whatever UI offers events to pick
- *     FROM. `completed` is not `unpublished`: it means *it happened*, which
- *     is the normal state of an event a landing page references.
- *   - a NULL `end_date`. `.gte("end_date", ...)` never matches NULL, so a
- *     published event with no `end_date` is invisible at ANY `from`, epoch
- *     included. Reachable: `updateEventSchema` accepts `end_date: null`,
- *     `updateEvent` writes it through, and the re-derive only rescues
- *     clinics — so a CAMP can be left with a null `end_date`. This call
- *     therefore means "every published event THAT HAS an `end_date`", not
- *     "every published event".
- *
- * `programs.is_active` / `session_pack_products.is_active` carry the same
- * unmade decision one layer over: they are the right filter for an OFFER set,
- * and today they are also what makes a ref pointing at a since-deactivated
- * row stop resolving. That answer is defensible — it just has never been
- * chosen deliberately, and it is the same conflation.
- */
-export async function loadCatalogue(): Promise<Catalogue> {
-  const [programs, sessionPacks, events] = await Promise.all([
+export async function loadCatalogues(): Promise<Catalogues> {
+  const [programs, allPacks, offerPacks, allEvents, offerEvents] = await Promise.all([
+    // One call, TWO uses — see PROGRAMS above. Not a shortcut, a known gap.
     getPrograms(),
+    listAllSessionPackProducts(),
     listActiveSessionPackProducts(),
-    getPublishedEvents({ from: EVENT_RECOGNITION_FROM }),
+    // `{}` is not a stray argument: `getEvents` filters status only when a
+    // status filter is present, so this is deliberately "every event, ever".
+    getEvents({}),
+    // No argument at all: the `from: new Date()` default IS the offer bound.
+    // Passing an epoch here would silently widen the picker back to every
+    // event that ever ran, which is the mutant the offer-side test kills.
+    getPublishedEvents(),
   ])
-  return toCatalogue({ programs, sessionPacks, events })
+
+  return {
+    recognition: toCatalogue({ programs, sessionPacks: allPacks, events: allEvents }),
+    offer: toCatalogue({ programs, sessionPacks: offerPacks, events: offerEvents }),
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -306,8 +333,11 @@ export interface UnresolvedCta {
   /** "ambiguous" when the name matched >= 2 rows, "no_match" when it matched 0. */
   reason: "no_match" | "ambiguous"
   /**
-   * What to offer in the picker: the rows that TIED for "ambiguous", the
-   * whole catalogue for that kind for "no_match". Always real rows — the UI
+   * What to offer in the picker: the rows that TIED for "ambiguous", the whole
+   * OFFER list for that kind for "no_match". Never the recognition list —
+   * these are the rows a NEW commitment may be made to, so a completed event
+   * or a deactivated pack must not appear here even though either is still
+   * recognised in a doc that already points at it. Always real rows — the UI
    * never has to invent an option.
    */
   candidates: CatalogueEntry[]
@@ -398,7 +428,56 @@ type MatchOutcome =
 const MIN_PARTIAL_MATCH_LENGTH = 4
 
 /**
+ * The two row lists ONE ref is matched against, as a NAMED OBJECT rather than
+ * two positional `CatalogueEntry[]` parameters.
+ *
+ * Same reasoning as `CatalogueRows` above, and here it is sharper: both sides
+ * are `CatalogueEntry[]`, they OVERLAP heavily (usually `offer` is a subset of
+ * `recognition`), and a transposed call would be right for every row that is
+ * in both — so it would pass every test whose fixture does not deliberately
+ * hold a recognition-only row, ship, and only misbehave once a real event
+ * completed in production. Named keys make the swap a compile error instead.
+ */
+interface MatchLists {
+  recognition: CatalogueEntry[]
+  offer: CatalogueEntry[]
+}
+
+/**
  * Id first, then exact normalised name, then unique bidirectional substring.
+ *
+ * THE RULES DO NOT ALL SEARCH THE SAME LIST, AND THE SEAM IS EXACTLY BETWEEN
+ * RULE 1 AND RULE 2.
+ *
+ *   - RULE 1 (id) searches RECOGNITION. A ref that is an id is a commitment
+ *     this page ALREADY MADE — on turn one the model wrote a name, resolution
+ *     substituted a real id, and every turn after that re-resolves that id.
+ *     Judging an existing commitment against "what is currently on sale" is
+ *     what turned an admin un-publishing an event into a publish block on a
+ *     page nobody touched. Recognition is every row that ever existed, so the
+ *     commitment keeps resolving for as long as its row exists — and only
+ *     stops when the row is genuinely DELETED, which is the one case where the
+ *     button really does point at nothing.
+ *
+ *   - RULES 2 AND 3 (exact name, then unique substring) search OFFER. A ref
+ *     that is a NAME is a NEW commitment being made right now, by the model,
+ *     this turn — indistinguishable in kind from the owner picking a row out
+ *     of the picker, and it must be bounded the same way. This is not
+ *     symmetry for its own sake: `prompt.ts`'s Block B renders the OFFER set
+ *     and tells the model those are "the only names a CTA may reference". If
+ *     name matching searched recognition, the resolver would silently accept
+ *     names the prompt never advertised — the menu and the door would
+ *     disagree, and the failure would be a live buy button for a retired
+ *     product rather than an error. Matching the exact list the model was
+ *     shown makes the prompt and the resolver agree BY CONSTRUCTION.
+ *
+ * The consequence, stated plainly because it is a deliberate trade: a model
+ * that re-emits a raw NAME for a row that has since left the offer set gets
+ * `no_match` plus a picker, not a silent resolve. That is loud, actionable,
+ * and cannot reach a published page — whereas the reverse trade (accept the
+ * name, publish a CTA for something not on sale) is silent and reaches
+ * customers. Idempotence is unaffected: after turn one the doc holds an id,
+ * and ids are judged by rule 1 against recognition.
  *
  * The blank-value guards are not in the plan, and are here because
  * `String.prototype.includes("")` is `true` for EVERY string: without them a
@@ -420,7 +499,7 @@ const MIN_PARTIAL_MATCH_LENGTH = 4
  * next reader trusts it. That is precisely how the row-name case was reported
  * as covered when it was not.)
  */
-function matchRef(rows: CatalogueEntry[], ref: string): MatchOutcome {
+function matchRef({ recognition, offer }: MatchLists, ref: string): MatchOutcome {
   // GUARD 1 — A BLANK REF RESOLVES TO NOTHING, BY ANY RULE. This sits ABOVE
   // the id pass, not merely above the name passes, and the placement is the
   // whole point: `"" === ""` would let a row carrying a blank id satisfy
@@ -430,10 +509,16 @@ function matchRef(rows: CatalogueEntry[], ref: string): MatchOutcome {
   const needle = normaliseName(ref)
   if (needle === "") return { status: "no_match" }
 
+  // RULE 1 — against RECOGNITION, so a commitment this page already made
+  // survives the row leaving the offer set. See the seam note above.
   // No blank-id filter is needed on this pass: `ref` is non-blank by the line
   // above, and a non-blank ref cannot equal a blank id.
-  const byId = rows.find((row) => row.id === ref)
+  const byId = recognition.find((row) => row.id === ref)
   if (byId) return { status: "already_id", row: byId }
+
+  // RULES 2 AND 3 — against OFFER, so a NEW name-commitment can only ever be
+  // made to a row the prompt actually advertised.
+  const rows = offer
 
   // GUARD 2 — A ROW WITH NO USABLE ID IS NEVER THE ANSWER, however well its
   // name matches. Substituting "" into the doc is the exact silent-absence
@@ -590,7 +675,7 @@ function transformNode(value: unknown, path: string, visit: CtaVisitor): unknown
  * `resolveDoc` in try/catch and treat a thrown error as "cannot resolve /
  * cannot publish this turn," not let it surface as an unhandled 500.
  */
-export function resolveDoc(doc: SectionDoc, catalogue: Catalogue): ResolveResult {
+export function resolveDoc(doc: SectionDoc, catalogues: Catalogues): ResolveResult {
   sectionDocSchema.parse(doc)
 
   const sectionIds = new Set(doc.sections.map((section) => section.id))
@@ -623,8 +708,14 @@ export function resolveDoc(doc: SectionDoc, catalogue: Catalogue): ResolveResult
       // restated list of the three ref-carrying kinds.
       if (!("ref" in target)) return null
 
-      const rows = catalogue[target.kind]
-      const outcome = matchRef(rows, target.ref)
+      // `offerRows` is BOTH half of the match input and the picker contents —
+      // one variable so the list the model was allowed to choose from and the
+      // list the owner is offered can never drift apart.
+      const offerRows = catalogues.offer[target.kind]
+      const outcome = matchRef(
+        { recognition: catalogues.recognition[target.kind], offer: offerRows },
+        target.ref,
+      )
 
       switch (outcome.status) {
         case "already_id":
@@ -662,9 +753,13 @@ export function resolveDoc(doc: SectionDoc, catalogue: Catalogue): ResolveResult
             ref: target.ref,
             kind: target.kind,
             reason: "no_match",
-            // The caller's own array, not a defensive copy: `resolveDoc`
-            // never mutates the catalogue and neither should its caller.
-            candidates: rows,
+            // THE OFFER SET, never recognition — a picker is where a NEW
+            // commitment is made, so offering "every event that ever ran"
+            // would let an owner attach a live register button to a camp that
+            // finished last summer. The caller's own array, not a defensive
+            // copy: `resolveDoc` never mutates the catalogue and neither
+            // should its caller.
+            candidates: offerRows,
           })
           return null
       }

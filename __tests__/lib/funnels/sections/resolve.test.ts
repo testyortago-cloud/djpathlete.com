@@ -18,15 +18,23 @@
 //     test that would pass against a function returning its input unchanged
 //     has not earned its name.
 //
+//   - THE RECOGNITION / OFFER SPLIT. One list used to answer two incompatible
+//     questions, and the conflation was a live bug: the moment a row left the
+//     "currently valid" set, a page that already referenced it stopped
+//     resolving and `publishGate` blocked an owner who had changed nothing.
+//     Rule 1 (id) now searches recognition, rules 2-3 (name) search offer, and
+//     `candidates` comes from offer. Three mutants, three tests, plus four
+//     more in the `loadCatalogues` block for which fetcher feeds which set.
+//
 // MOCKS: everything that tests `resolveDoc` / `publishGate` / `toCatalogue` is
-// mock-free — `Catalogue` is a plain literal, exactly like the doc fixtures.
-// The ONE exception is the `loadCatalogue` block at the bottom of this file,
+// mock-free — `Catalogues` is a plain literal, exactly like the doc fixtures.
+// The ONE exception is the `loadCatalogues` block at the bottom of this file,
 // which substitutes the three DAL modules because the DAL call IS the thing
-// under test there (which fetcher, with which arguments). It uses `vi.doMock`
-// + a scoped dynamic import so the substitution never reaches the statically
-// imported `resolveDoc` above, and the stubs are hand-written functions, not
-// `vi.fn()` spies. See the comment on that block for why an untestable async
-// wrapper was worth this much.
+// under test there (which fetcher feeds which set, with which arguments). It
+// uses `vi.doMock` + a scoped dynamic import so the substitution never reaches
+// the statically imported `resolveDoc` above, and the stubs are hand-written
+// functions, not `vi.fn()` spies. See the comment on that block for why an
+// untestable async wrapper was worth this much.
 import { describe, it, expect, vi, afterEach } from "vitest"
 import {
   ctaWithLabelSchema,
@@ -34,7 +42,14 @@ import {
   type Section,
   type SectionDoc,
 } from "@/lib/funnels/sections/registry"
-import { resolveDoc, publishGate, toCatalogue, type Catalogue } from "@/lib/funnels/sections/resolve"
+import {
+  resolveDoc,
+  publishGate,
+  toCatalogue,
+  type Catalogue,
+  type Catalogues,
+  type ResolvableCtaKind,
+} from "@/lib/funnels/sections/resolve"
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -49,16 +64,41 @@ const PACK_TEN = "33333333-3333-4333-8333-333333333333"
 const EVENT_CAMP = "44444444-4444-4444-8444-444444444444"
 const DELETED_ID = "99999999-9999-4999-8999-999999999999"
 
-function catalogue(overrides: Partial<Catalogue> = {}): Catalogue {
-  return {
+/** One purpose's worth of rows. Fresh arrays and fresh row objects each call. */
+function lists(overrides: Partial<Catalogue>): Catalogue {
+  const base: Catalogue = {
     program: [
       { id: PROGRAM_COMEBACK, name: "Comeback Code" },
       { id: PROGRAM_ROTATIONAL, name: "Rotational Reboot" },
     ],
     session_pack: [{ id: PACK_TEN, name: "10 Session Pack" }],
     event: [{ id: EVENT_CAMP, name: "Summer Camp" }],
-    ...overrides,
   }
+  for (const kind of Object.keys(overrides) as ResolvableCtaKind[]) {
+    const rows = overrides[kind]
+    if (rows) base[kind] = rows.map((row) => ({ ...row }))
+  }
+  return base
+}
+
+/**
+ * Both sets, EQUAL IN CONTENT BUT NOT THE SAME OBJECTS — which is the whole
+ * reason `lists()` above copies instead of being called once and reused.
+ *
+ * Every test written before the recognition/offer split passes one catalogue
+ * for both purposes, and that is right: those tests are about MATCHING, and
+ * matching against two identical lists is exactly the pre-split behaviour they
+ * were written to pin. But if `recognition` and `offer` were literally the same
+ * arrays, `expect(candidates).toBe(cat.offer.program)` would be satisfied by an
+ * implementation that handed back the RECOGNITION list, and the split's most
+ * important reference-identity claim would be untestable. Distinct instances
+ * make that assertion a real mutant killer even in the symmetric fixtures.
+ *
+ * The tests that exercise the split itself build asymmetric `Catalogues`
+ * literals by hand — see "the recognition / offer split" below.
+ */
+function catalogue(overrides: Partial<Catalogue> = {}): Catalogues {
+  return { recognition: lists(overrides), offer: lists(overrides) }
 }
 
 function docOf(sections: Section[]): SectionDoc {
@@ -459,7 +499,10 @@ describe("resolveDoc — unresolvable refs", () => {
 
     expect(result.unresolved).toHaveLength(1)
     expect(result.unresolved[0].reason).toBe("no_match")
-    expect(result.unresolved[0].candidates).toBe(cat.program)
+    // The OFFER array, by reference. `catalogue()` builds recognition and offer
+    // as distinct instances with equal content, so this fails against an
+    // implementation that hands back the recognition list.
+    expect(result.unresolved[0].candidates).toBe(cat.offer.program)
     expect(result.unresolved[0].candidates.map((c) => c.name)).toEqual(["Comeback Code", "Rotational Reboot"])
   })
 
@@ -590,6 +633,133 @@ describe("resolveDoc — unresolvable refs", () => {
     // of pointing at "".
     expect(refAt(result.doc, "hero1", "primaryCta")).toBe("Comeback Code")
     expect(publishGate(result).ok).toBe(false)
+  })
+})
+
+// ===========================================================================
+// THE RECOGNITION / OFFER SPLIT.
+//
+// One list was doing two incompatible jobs. Recognition answers "is the id
+// this page ALREADY COMMITTED TO still a real row?" and must see every row
+// that ever existed; offering answers "what may a NEW cta point at?" and must
+// see only currently valid rows. `matchRef` puts the seam between rule 1 (id,
+// recognition) and rules 2-3 (name, offer), and `candidates` comes from offer.
+//
+// Three separate mutants, three separate tests, because they are three
+// different failures:
+//   1. rule 1 searching OFFER          -> untouched pages become unpublishable
+//   2. rules 2-3 searching RECOGNITION -> live CTA for a retired product
+//   3. candidates from RECOGNITION     -> picker offers last summer's camp
+// ===========================================================================
+
+describe("resolveDoc — the recognition / offer split", () => {
+  it("resolves an ID against RECOGNITION, so a row that has left the offer set keeps a committed page publishable", () => {
+    // MUTANT 1. The camp finished (or was marked completed, or cancelled, or
+    // un-published to fix a typo — all four drop it out of
+    // `getPublishedEvents`). The doc already holds its REAL id. Judging that
+    // id against the offer set is what used to flip `publishGate.ok` to false
+    // on a page nobody had touched, showing the owner a raw UUID and a picker
+    // of unrelated events, not one of which could fix it.
+    const cat: Catalogues = {
+      recognition: lists({}),
+      offer: lists({ event: [] }),
+    }
+    const doc = docOf([hero({ primaryCta: eventCta(EVENT_CAMP) })])
+
+    const result = resolveDoc(doc, cat)
+
+    expect(result.unresolved).toEqual([])
+    expect(result.resolved).toEqual([
+      { sectionId: "hero1", field: "primaryCta", ref: EVENT_CAMP, id: EVENT_CAMP, name: "Summer Camp" },
+    ])
+    expect(publishGate(result).ok).toBe(true)
+    // Nothing to substitute — the doc already held the id — so it comes back
+    // by reference, which also proves the resolve came from rule 1 and not
+    // from some name pass that happened to land on the same row.
+    expect(result.doc).toBe(doc)
+  })
+
+  it("does NOT resolve a NAME against recognition — a new commitment is bounded by what the prompt advertised", () => {
+    // MUTANT 2. `prompt.ts`'s Block B renders the OFFER set and tells the
+    // model those are "the only names a CTA may reference". A name pass over
+    // the recognition set would silently accept names the prompt never showed
+    // it, and the visible result is a live buy button for a retired product.
+    // The right answer is `no_match` plus a picker: loud, actionable, and it
+    // cannot reach a published page.
+    const cat: Catalogues = {
+      recognition: lists({
+        program: [
+          { id: PROGRAM_COMEBACK, name: "Comeback Code" },
+          { id: PROGRAM_ROTATIONAL, name: "Retired Program" },
+        ],
+      }),
+      offer: lists({ program: [{ id: PROGRAM_COMEBACK, name: "Comeback Code" }] }),
+    }
+    const doc = docOf([
+      // Positive control in the SAME doc: a name that IS in the offer set
+      // still resolves, so this cannot pass against a gutted matcher that
+      // resolves nothing at all.
+      hero({ primaryCta: programCta("Comeback Code"), secondaryCta: programCta("Retired Program") }),
+    ])
+
+    const result = resolveDoc(doc, cat)
+
+    expect(result.resolved.map((r) => [r.field, r.id])).toEqual([["primaryCta", PROGRAM_COMEBACK]])
+    expect(result.unresolved).toHaveLength(1)
+    expect(result.unresolved[0]).toMatchObject({
+      field: "secondaryCta",
+      ref: "Retired Program",
+      kind: "program",
+      reason: "no_match",
+    })
+    // The model's own text survives, so the CTA degrades visibly.
+    expect(refAt(result.doc, "hero1", "secondaryCta")).toBe("Retired Program")
+    expect(publishGate(result).ok).toBe(false)
+  })
+
+  it("fills the picker from the OFFER list, never from recognition", () => {
+    // MUTANT 3. `candidates` is what an owner is asked to choose from, i.e.
+    // where the NEXT commitment is made. Offering the recognition list would
+    // let them attach a live register button to a camp that finished last
+    // summer — the same bad state the split exists to prevent, arriving from
+    // the other direction.
+    const cat: Catalogues = {
+      recognition: lists({
+        event: [
+          { id: EVENT_CAMP, name: "Summer Camp" },
+          { id: DELETED_ID, name: "Last Year's Camp" },
+        ],
+      }),
+      offer: lists({ event: [{ id: EVENT_CAMP, name: "Summer Camp" }] }),
+    }
+
+    const result = resolveDoc(docOf([hero({ primaryCta: eventCta("Kettlebell Jamboree") })]), cat)
+
+    expect(result.unresolved).toHaveLength(1)
+    expect(result.unresolved[0].candidates).toBe(cat.offer.event)
+    // Content too, not just identity: `toBe` alone would survive someone
+    // making `offer` an alias of `recognition` one layer up in `loadCatalogues`.
+    expect(result.unresolved[0].candidates.map((c) => c.name)).toEqual(["Summer Camp"])
+  })
+
+  it("carries a page across the whole lifecycle: name resolves on turn one, id keeps resolving after the row leaves the offer set", () => {
+    // The end-to-end story the split exists for, in one test. Turn one: the
+    // owner asks for a register button, the model writes the NAME, it is in
+    // the offer set, it resolves and the doc now holds the real id. Later the
+    // camp ends. Nothing about the page changed. It must still publish.
+    const before = catalogue()
+    const first = resolveDoc(docOf([hero({ primaryCta: eventCta("Summer Camp") })]), before)
+
+    expect(first.unresolved).toEqual([])
+    expect(refAt(first.doc, "hero1", "primaryCta")).toBe(EVENT_CAMP)
+
+    const after: Catalogues = { recognition: before.recognition, offer: { ...before.offer, event: [] } }
+    const second = resolveDoc(first.doc, after)
+
+    expect(second.unresolved).toEqual([])
+    expect(second.resolved.map((r) => r.id)).toEqual([EVENT_CAMP])
+    expect(publishGate(second).ok).toBe(true)
+    expect(second.doc).toBe(first.doc)
   })
 })
 
@@ -875,52 +1045,81 @@ describe("toCatalogue", () => {
 })
 
 // ===========================================================================
-// loadCatalogue — THE ONLY MOCKED BLOCK IN THIS FILE, deliberately.
+// loadCatalogues — THE ONLY MOCKED BLOCK IN THIS FILE, deliberately.
 //
-// `loadCatalogue` is the thin async DAL wrapper, and "thin" is exactly why it
-// went untested: there is no pure part left to extract, because the ONLY
-// thing it decides is which fetcher to call with which arguments. That
-// decision is load-bearing — `getPublishedEvents({from: <epoch>})` is what
-// stops a page that references a FINISHED event from silently becoming
-// unpublishable — and deleting the argument restored that production bug
-// while leaving the whole suite and tsc green. An untestable line carrying a
-// live fix is worth three module substitutions.
+// `loadCatalogues` is the thin async DAL wrapper, and "thin" is exactly why it
+// needs mocks: there is no pure part left to extract, because the ONLY thing
+// it decides is WHICH FETCHER FEEDS WHICH SET. That decision IS the
+// recognition/offer split — every line of reasoning in resolve.ts about
+// untouched pages going unpublishable cashes out here, in five function
+// references — and each half of it can be broken by a one-word edit that
+// leaves tsc and every other test in this repo green.
 //
 // Kept surgical: `vi.doMock` (NOT hoisted `vi.mock`) plus `vi.resetModules()`
 // and a scoped dynamic import, so the substitution applies only to the module
-// instance these two tests import. The `resolveDoc` imported statically at the
-// top of this file is untouched and still runs against the real graph — it
-// never calls the DAL anyway. The stubs are plain async functions rather than
+// instance these tests import. The `resolveDoc` imported statically at the top
+// of this file is untouched and still runs against the real graph — it never
+// calls the DAL anyway. The stubs are plain async functions rather than
 // `vi.fn()` spies, so what is recorded is visible in the source of the helper
 // rather than behind a mock API.
+//
+// THE FIXTURES ARE MUTATION-DISCRIMINATING BY CONSTRUCTION: every stub returns
+// a list that DIFFERS from its opposite number, so "recognition came from the
+// wrong fetcher" and "offer came from the wrong fetcher" are each visible in
+// the returned ids. A fixture where both fetchers returned the same rows would
+// make all four of these tests unfalsifiable — which is exactly how the
+// previous version of this block, with one event fetcher, could not have
+// caught the status axis at all.
+//
+// NOTE ON WHAT WAS DELETED HERE. The old block pinned
+// `getPublishedEvents({from: new Date(0)})` — the epoch sentinel that was the
+// first, partial attempt at recognition. It is gone, and so is that test:
+// recognition is now `getEvents({})`, which has no date bound AND no status
+// filter, and the epoch call would be strictly worse (it still filtered
+// `status = 'published'` and still missed NULL `end_date`). Keeping a test
+// that asserted the epoch argument would now be pinning a mutant.
 // ===========================================================================
 
 interface EventFilters {
+  type?: string
+  status?: string
   from?: Date
 }
 
-async function loadCatalogueWithStubbedDal() {
-  const eventCalls: (EventFilters | undefined)[] = []
+async function loadCataloguesWithStubbedDal() {
+  const getEventsCalls: (EventFilters | undefined)[] = []
+  const publishedEventsCalls: (EventFilters | undefined)[] = []
 
   vi.resetModules()
   vi.doMock("@/lib/db/programs", () => ({
     getPrograms: async () => [{ id: "prog-1", name: "Program Row" }],
   }))
   vi.doMock("@/lib/db/session-pack-products", () => ({
-    listActiveProducts: async () => [{ id: "pack-1", name: "Pack Row" }],
+    listActiveProducts: async () => [{ id: "pack-active", name: "Active Pack" }],
+    listAllProducts: async () => [
+      { id: "pack-active", name: "Active Pack" },
+      { id: "pack-retired", name: "Retired Pack" },
+    ],
   }))
   vi.doMock("@/lib/db/events", () => ({
+    getEvents: async (filters?: EventFilters) => {
+      getEventsCalls.push(filters)
+      return [
+        { id: "event-published", title: "Published Event" },
+        { id: "event-completed", title: "Completed Event" },
+      ]
+    },
     getPublishedEvents: async (filters?: EventFilters) => {
-      eventCalls.push(filters)
-      return [{ id: "event-1", title: "Event Row" }]
+      publishedEventsCalls.push(filters)
+      return [{ id: "event-published", title: "Published Event" }]
     },
   }))
 
-  const { loadCatalogue } = await import("@/lib/funnels/sections/resolve")
-  return { catalogue: await loadCatalogue(), eventCalls }
+  const { loadCatalogues } = await import("@/lib/funnels/sections/resolve")
+  return { catalogues: await loadCatalogues(), getEventsCalls, publishedEventsCalls }
 }
 
-describe("loadCatalogue", () => {
+describe("loadCatalogues", () => {
   afterEach(() => {
     vi.doUnmock("@/lib/db/programs")
     vi.doUnmock("@/lib/db/session-pack-products")
@@ -928,44 +1127,102 @@ describe("loadCatalogue", () => {
     vi.resetModules()
   })
 
-  it("asks for events from the UNIX EPOCH, not from now — a FINISHED event's real id must keep resolving", async () => {
-    // The bug this kills, in full: `getPublishedEvents()` with no argument
-    // defaults to `from: new Date()` and filters `end_date >= now`. So the
-    // catalogue was a function of the wall clock. The moment an event ended,
-    // its row left the catalogue, rule 1 (`row.id === ref`) missed on a doc
-    // holding that event's REAL id, the 36-char uuid then matched no name,
-    // and an owner who changed NOTHING found their page unpublishable
-    // overnight — with a picker offering only currently-running events, none
-    // of which could fix it.
-    //
-    // Deleting the `{from}` argument is a one-character-per-side edit that
-    // restores all of that and, before this test existed, passed the entire
-    // suite and tsc. THIS IS THE MUTANT THIS TEST KILLS.
-    const { eventCalls } = await loadCatalogueWithStubbedDal()
+  it("builds the RECOGNITION event list from getEvents({}) — every event ever, whatever its status", async () => {
+    // MUTANT: `recognition` fed from `getPublishedEvents(...)`, in any of its
+    // forms. Four separate things drop an event out of that call — `end_date`
+    // passing, `published -> completed`, `published -> cancelled`, and
+    // `published -> draft` (whose own comment in lib/db/events.ts says it
+    // exists for "un-publish for major edits", i.e. routine work). Any one of
+    // them then breaks a page that already points at the event, because the
+    // uuid in the doc stops matching a row and then matches no name either.
+    // The stub returns TWO events from getEvents and ONE from
+    // getPublishedEvents precisely so that substitution is visible here.
+    const { catalogues, getEventsCalls } = await loadCataloguesWithStubbedDal()
 
-    expect(eventCalls).toHaveLength(1)
-    const from = eventCalls[0]?.from
-    // Fails on a deleted argument (`eventCalls[0]` is `undefined`) and on a
-    // deleted `from` key alike.
-    expect(from).toBeInstanceOf(Date)
-    // The LITERAL 0, never the module's own constant: asserting against the
-    // constant would be a tautology that survives someone redefining it as
-    // `new Date()`.
-    expect(from?.getTime()).toBe(0)
+    expect(catalogues.recognition.event.map((r) => r.id)).toEqual(["event-published", "event-completed"])
+    // ...from getEvents, called ONCE, with NO status filter. A second mutant
+    // lives here: `getEvents({status: "published"})` returns the same shape
+    // and would re-introduce three quarters of the bug while the id list above
+    // still looked plausible against a less careful stub.
+    expect(getEventsCalls).toHaveLength(1)
+    expect(getEventsCalls[0]?.status).toBeUndefined()
+    expect(getEventsCalls[0]?.type).toBeUndefined()
   })
 
-  it("puts each DAL's rows under the right catalogue key — a transposed CALL SITE is not silently correct either", async () => {
+  it("builds the OFFER event list from getPublishedEvents() with NO `from` override — the picker must not offer last year's camp", async () => {
+    // MUTANT, and it is a DIFFERENT failure from the one above: `offer` fed
+    // from `getEvents({})` (or from `getPublishedEvents({from: new Date(0)})`,
+    // the old epoch sentinel). Either widens the picker — and Block B of the
+    // prompt, which renders this same list — to every event that ever ran, so
+    // the model can advertise, and an owner can attach, a live register button
+    // to a camp that finished last summer.
+    const { catalogues, publishedEventsCalls } = await loadCataloguesWithStubbedDal()
+
+    expect(catalogues.offer.event.map((r) => r.id)).toEqual(["event-published"])
+    expect(publishedEventsCalls).toHaveLength(1)
+    // No argument at all: `getPublishedEvents`'s own `from = new Date()`
+    // default IS the offer bound. Passing an epoch here is the mutant.
+    expect(publishedEventsCalls[0]?.from).toBeUndefined()
+  })
+
+  it("builds the RECOGNITION pack list from listAllProducts — deactivating a pack must not break the page selling it", async () => {
+    // MUTANT: `recognition` fed from `listActiveProducts`. `is_active` is the
+    // packs' version of the events `status` axis and carries the identical
+    // hazard: a deliberate admin action silently blocking publish on a page
+    // that did not change.
+    const { catalogues } = await loadCataloguesWithStubbedDal()
+
+    expect(catalogues.recognition.session_pack.map((r) => r.id)).toEqual(["pack-active", "pack-retired"])
+  })
+
+  it("builds the OFFER pack list from listActiveProducts — a retired pack must not be offered as a NEW target", async () => {
+    // MUTANT: `offer` fed from `listAllProducts`. Mirror of the events case:
+    // recognition keeps existing pages working, offer stops anything new being
+    // pointed at something that is no longer for sale.
+    const { catalogues } = await loadCataloguesWithStubbedDal()
+
+    expect(catalogues.offer.session_pack.map((r) => r.id)).toEqual(["pack-active"])
+  })
+
+  it("puts each DAL's rows under the right catalogue key in BOTH sets — a transposed CALL SITE is not silently correct either", async () => {
     // `toCatalogue`'s named-object parameter already makes a swap a compile
     // error; this is the belt to that pair of braces, and it also pins that
-    // the session-pack list comes from the aliased
-    // `session-pack-products.listActiveProducts` and not from the
-    // identically-named export in `lib/db/shop-products.ts`.
-    const { catalogue: loaded } = await loadCatalogueWithStubbedDal()
+    // the session-pack lists come from the aliased `session-pack-products`
+    // exports and not from the identically-named `listActiveProducts` in
+    // `lib/db/shop-products.ts`. Whole-object `toEqual` on both sets, so an
+    // extra or missing key fails too.
+    const { catalogues } = await loadCataloguesWithStubbedDal()
 
-    expect(loaded).toEqual({
-      program: [{ id: "prog-1", name: "Program Row" }],
-      session_pack: [{ id: "pack-1", name: "Pack Row" }],
-      event: [{ id: "event-1", name: "Event Row" }],
+    expect(catalogues).toEqual({
+      recognition: {
+        program: [{ id: "prog-1", name: "Program Row" }],
+        session_pack: [
+          { id: "pack-active", name: "Active Pack" },
+          { id: "pack-retired", name: "Retired Pack" },
+        ],
+        event: [
+          { id: "event-published", name: "Published Event" },
+          { id: "event-completed", name: "Completed Event" },
+        ],
+      },
+      offer: {
+        program: [{ id: "prog-1", name: "Program Row" }],
+        session_pack: [{ id: "pack-active", name: "Active Pack" }],
+        event: [{ id: "event-published", name: "Published Event" }],
+      },
     })
+  })
+
+  it("returns recognition and offer as SEPARATE objects, so a caller narrowing one cannot narrow the other", async () => {
+    // Cheap, and it kills a real refactor mutant: `const c = toCatalogue(...);
+    // return {recognition: c, offer: c}` type-checks, satisfies most of the
+    // assertions above whenever the two happen to agree, and quietly undoes
+    // the split. Programs are the live case — both sets are fed from
+    // `getPrograms()` today (see loadCatalogues) — so this pins the CONTAINERS,
+    // which must stay distinct even where the rows currently agree.
+    const { catalogues } = await loadCataloguesWithStubbedDal()
+
+    expect(catalogues.offer).not.toBe(catalogues.recognition)
+    expect(catalogues.offer.program).not.toBe(catalogues.recognition.program)
   })
 })
