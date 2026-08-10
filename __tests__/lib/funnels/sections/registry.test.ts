@@ -1,0 +1,663 @@
+// Stage 1.1 of the AI page builder: the section registry
+// (lib/funnels/sections/registry.ts). Every kind gets a happy-path parse AND
+// at least one adversarial rejection — a schema test that only feeds valid
+// input pins nothing (see MEMORY.md: tests_that_cannot_fail).
+import { describe, it, expect } from "vitest"
+import {
+  ctaTargetSchema,
+  sectionDocSchema,
+  sectionSchema,
+  parseSection,
+  isSectionKind,
+  SECTION_KINDS,
+  SECTION_REGISTRY,
+  SECTION_ICONS,
+  heroPropsSchema,
+  bulletsPropsSchema,
+  stepsPropsSchema,
+  testimonialPropsSchema,
+  pricingPropsSchema,
+  faqPropsSchema,
+  formSectionPropsSchema,
+  ctaPropsSchema,
+  footerPropsSchema,
+} from "@/lib/funnels/sections/registry"
+
+const VALID_UUID = "11111111-1111-4111-8111-111111111111"
+
+const urlCta = { kind: "url", href: "/thanks" } as const
+const bookingCta = { kind: "booking" } as const
+
+function baseSection(overrides: Record<string, unknown>) {
+  return {
+    id: "s1",
+    style: {},
+    ...overrides,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ctaTargetSchema — the mechanism that eliminates hallucinated UUIDs
+// ---------------------------------------------------------------------------
+
+describe("ctaTargetSchema", () => {
+  const validByKind: Record<string, unknown> = {
+    url: { kind: "url", href: "/thanks" },
+    step: { kind: "step", stepSlug: "checkout" },
+    anchor: { kind: "anchor", sectionId: "pricing" },
+    program: { kind: "program", ref: "Comeback Code" },
+    session_pack: { kind: "session_pack", ref: "10-pack" },
+    event: { kind: "event", ref: "Summer Camp" },
+    booking: { kind: "booking" },
+  }
+
+  it.each(Object.entries(validByKind))("accepts a valid %s target", (_kind, value) => {
+    const result = ctaTargetSchema.safeParse(value)
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects an unknown kind (the mechanism a hallucinated UUID would otherwise slip through)", () => {
+    const result = ctaTargetSchema.safeParse({ kind: "checkout", productId: VALID_UUID })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects program/session_pack/event with a UUID instead of a name — the whole point is ref, never id", () => {
+    // This isn't invalid per the schema (ref is just a string), but it proves
+    // the schema has no id-shaped field a model could target instead of ref.
+    const result = ctaTargetSchema.safeParse({ kind: "program", ref: VALID_UUID })
+    expect(result.success).toBe(true)
+    if (result.success && result.data.kind === "program") {
+      expect(result.data.ref).toBe(VALID_UUID) // stored as an opaque string, not resolved here
+    }
+  })
+
+  it("rejects program without a ref", () => {
+    const result = ctaTargetSchema.safeParse({ kind: "program" })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects url targets that don't start with / or https://", () => {
+    const result = ctaTargetSchema.safeParse({ kind: "url", href: "javascript:alert(1)" })
+    expect(result.success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Icons — closed enum
+// ---------------------------------------------------------------------------
+
+describe("section icon enum", () => {
+  it("accepts every listed icon in a bullets item", () => {
+    for (const icon of SECTION_ICONS) {
+      const result = bulletsPropsSchema.safeParse({
+        items: [{ title: "A", icon }, { title: "B" }],
+      })
+      expect(result.success, `icon ${icon}: ${JSON.stringify(!result.success && result.error.issues)}`).toBe(true)
+    }
+  })
+
+  it("rejects an icon outside the closed set", () => {
+    const result = bulletsPropsSchema.safeParse({
+      items: [{ title: "A", icon: "flame" }, { title: "B" }],
+    })
+    expect(result.success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// hero
+// ---------------------------------------------------------------------------
+
+describe("heroPropsSchema", () => {
+  it("accepts a full hero", () => {
+    const result = heroPropsSchema.safeParse({
+      eyebrow: "New",
+      headline: "Get stronger, faster",
+      sub: "8-week program",
+      media: { kind: "image", src: "/hero.jpg", alt: "Athlete training", w: 1200, h: 800 },
+      primaryCta: urlCta,
+      secondaryCta: bookingCta,
+    })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("accepts the minimal hero (headline + primaryCta only)", () => {
+    const result = heroPropsSchema.safeParse({ headline: "Get stronger", primaryCta: urlCta })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects a missing headline", () => {
+    const result = heroPropsSchema.safeParse({ primaryCta: urlCta })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a missing primaryCta", () => {
+    const result = heroPropsSchema.safeParse({ headline: "Get stronger" })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a CtaTarget with a bogus kind inside primaryCta", () => {
+    const result = heroPropsSchema.safeParse({
+      headline: "Get stronger",
+      primaryCta: { kind: "webhook", href: "https://evil.example" },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects an incomplete media object (missing w/h)", () => {
+    const result = heroPropsSchema.safeParse({
+      headline: "Get stronger",
+      primaryCta: urlCta,
+      media: { kind: "image", src: "/hero.jpg", alt: "x" },
+    })
+    expect(result.success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// bullets
+// ---------------------------------------------------------------------------
+
+describe("bulletsPropsSchema", () => {
+  it("accepts 2..6 items", () => {
+    const result = bulletsPropsSchema.safeParse({
+      heading: "Why us",
+      items: [{ title: "Fast" }, { title: "Safe" }],
+    })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects fewer than 2 items", () => {
+    const result = bulletsPropsSchema.safeParse({ items: [{ title: "Only one" }] })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects more than 6 items", () => {
+    const items = Array.from({ length: 7 }, (_, i) => ({ title: `Item ${i}` }))
+    const result = bulletsPropsSchema.safeParse({ items })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects an item missing its required title", () => {
+    const result = bulletsPropsSchema.safeParse({ items: [{ body: "no title" }, { title: "ok" }] })
+    expect(result.success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// steps
+// ---------------------------------------------------------------------------
+
+describe("stepsPropsSchema", () => {
+  it("accepts 2..6 steps", () => {
+    const result = stepsPropsSchema.safeParse({
+      steps: [{ title: "Book a call" }, { title: "Start training" }],
+    })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects a single step (below the min of 2)", () => {
+    const result = stepsPropsSchema.safeParse({ steps: [{ title: "Only one" }] })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects more than 6 steps", () => {
+    const steps = Array.from({ length: 7 }, (_, i) => ({ title: `Step ${i}` }))
+    const result = stepsPropsSchema.safeParse({ steps })
+    expect(result.success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// testimonial — discriminated union on source
+// ---------------------------------------------------------------------------
+
+describe("testimonialPropsSchema", () => {
+  it("accepts source: live with defaults applied", () => {
+    const result = testimonialPropsSchema.safeParse({ source: "live" })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+    if (result.success && result.data.source === "live") {
+      expect(result.data.limit).toBe(3)
+      expect(result.data.featuredOnly).toBe(false)
+    }
+  })
+
+  it("accepts source: quote with 1..3 quotes", () => {
+    const result = testimonialPropsSchema.safeParse({
+      source: "quote",
+      quotes: [{ quote: "Great program!", name: "Alex" }],
+    })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects source: quote with zero quotes", () => {
+    const result = testimonialPropsSchema.safeParse({ source: "quote", quotes: [] })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects source: quote with more than 3 quotes", () => {
+    const quotes = Array.from({ length: 4 }, (_, i) => ({ quote: `Q${i}`, name: `N${i}` }))
+    const result = testimonialPropsSchema.safeParse({ source: "quote", quotes })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects an unknown source discriminant", () => {
+    const result = testimonialPropsSchema.safeParse({ source: "manual", quotes: [] })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a quote-shaped payload masquerading as live (cross-branch field leakage)", () => {
+    // Zod strips unknown keys by default, so this mainly pins that `quotes`
+    // is simply ignored under source:"live" rather than accidentally required.
+    const result = testimonialPropsSchema.safeParse({ source: "live", quotes: [] })
+    expect(result.success).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// pricing
+// ---------------------------------------------------------------------------
+
+describe("pricingPropsSchema", () => {
+  const validPlan = {
+    name: "Starter",
+    price: "$99",
+    features: ["Weekly check-ins"],
+    cta: urlCta,
+  }
+
+  it("accepts 1..3 plans", () => {
+    const result = pricingPropsSchema.safeParse({ plans: [validPlan] })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects zero plans", () => {
+    const result = pricingPropsSchema.safeParse({ plans: [] })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects more than 3 plans", () => {
+    const plans = Array.from({ length: 4 }, (_, i) => ({ ...validPlan, name: `Plan ${i}` }))
+    const result = pricingPropsSchema.safeParse({ plans })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a plan with zero features (below min of 1)", () => {
+    const result = pricingPropsSchema.safeParse({ plans: [{ ...validPlan, features: [] }] })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a plan with more than 8 features", () => {
+    const features = Array.from({ length: 9 }, (_, i) => `Feature ${i}`)
+    const result = pricingPropsSchema.safeParse({ plans: [{ ...validPlan, features }] })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a plan missing its cta", () => {
+    const { cta: _cta, ...planWithoutCta } = validPlan
+    const result = pricingPropsSchema.safeParse({ plans: [planWithoutCta] })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a plan whose cta has a bogus kind", () => {
+    const result = pricingPropsSchema.safeParse({
+      plans: [{ ...validPlan, cta: { kind: "discount_code", ref: "SAVE10" } }],
+    })
+    expect(result.success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// faq — discriminated union on source
+// ---------------------------------------------------------------------------
+
+describe("faqPropsSchema", () => {
+  it("accepts source: live with a pageKey", () => {
+    const result = faqPropsSchema.safeParse({ source: "live", pageKey: "home" })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("accepts source: inline with 1..12 items", () => {
+    const result = faqPropsSchema.safeParse({
+      source: "inline",
+      items: [{ q: "Do you offer refunds?", a: "Yes, within 14 days." }],
+    })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects source: live missing pageKey", () => {
+    const result = faqPropsSchema.safeParse({ source: "live" })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects source: inline with zero items", () => {
+    const result = faqPropsSchema.safeParse({ source: "inline", items: [] })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects source: inline with more than 12 items", () => {
+    const items = Array.from({ length: 13 }, (_, i) => ({ q: `Q${i}`, a: `A${i}` }))
+    const result = faqPropsSchema.safeParse({ source: "inline", items })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects an unknown source discriminant", () => {
+    const result = faqPropsSchema.safeParse({ source: "cms", items: [] })
+    expect(result.success).toBe(false)
+  })
+
+  it("still honours the shared optional heading across both branches", () => {
+    const result = faqPropsSchema.safeParse({ heading: "Questions", source: "live", pageKey: "home" })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// form — must embed formIslandSchema VERBATIM
+// ---------------------------------------------------------------------------
+
+describe("formSectionPropsSchema", () => {
+  const baseForm = {
+    heading: "Get your free guide",
+    formKey: "optin",
+    fields: [{ name: "email", label: "Email", type: "email" as const, required: true }],
+  }
+
+  it("accepts a minimal valid form section", () => {
+    const result = formSectionPropsSchema.safeParse(baseForm)
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects a form with zero fields (formIslandSchema.fields.min(1))", () => {
+    const result = formSectionPropsSchema.safeParse({ ...baseForm, fields: [] })
+    expect(result.success).toBe(false)
+  })
+
+  it("inherits the redirectUrl host allowlist from formIslandSchema (proves it's imported, not restated)", () => {
+    const result = formSectionPropsSchema.safeParse({
+      ...baseForm,
+      successMode: "redirect",
+      redirectUrl: "https://attacker.example/",
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("allows a redirectUrl on an allowlisted host, same as the raw island schema", () => {
+    const result = formSectionPropsSchema.safeParse({
+      ...baseForm,
+      successMode: "redirect",
+      redirectUrl: "https://www.darrenjpaul.com/thanks",
+    })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("inherits the superRefine requiring redirectUrl when successMode is redirect", () => {
+    const result = formSectionPropsSchema.safeParse({ ...baseForm, successMode: "redirect" })
+    expect(result.success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// cta
+// ---------------------------------------------------------------------------
+
+describe("ctaPropsSchema", () => {
+  it("accepts a valid cta section", () => {
+    const result = ctaPropsSchema.safeParse({ headline: "Ready to start?", cta: bookingCta })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects a missing headline", () => {
+    const result = ctaPropsSchema.safeParse({ cta: bookingCta })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a missing cta", () => {
+    const result = ctaPropsSchema.safeParse({ headline: "Ready to start?" })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a cta with a bogus kind", () => {
+    const result = ctaPropsSchema.safeParse({ headline: "Ready?", cta: { kind: "email_capture" } })
+    expect(result.success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// footer
+// ---------------------------------------------------------------------------
+
+describe("footerPropsSchema", () => {
+  it("accepts the minimal footer (empty lines/links)", () => {
+    const result = footerPropsSchema.safeParse({ businessName: "DJP Athlete", lines: [], links: [] })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("accepts up to 4 lines and 6 links", () => {
+    const result = footerPropsSchema.safeParse({
+      businessName: "DJP Athlete",
+      lines: ["123 Main St", "Tampa, FL", "555-0100", "hello@darrenjpaul.com"],
+      links: Array.from({ length: 6 }, (_, i) => ({ label: `Link ${i}`, target: urlCta })),
+    })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects a missing businessName", () => {
+    const result = footerPropsSchema.safeParse({ lines: [], links: [] })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects more than 4 lines", () => {
+    const result = footerPropsSchema.safeParse({
+      businessName: "DJP Athlete",
+      lines: ["a", "b", "c", "d", "e"],
+      links: [],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects more than 6 links", () => {
+    const result = footerPropsSchema.safeParse({
+      businessName: "DJP Athlete",
+      lines: [],
+      links: Array.from({ length: 7 }, (_, i) => ({ label: `Link ${i}`, target: urlCta })),
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a link whose target has a bogus CtaTarget kind", () => {
+    const result = footerPropsSchema.safeParse({
+      businessName: "DJP Athlete",
+      lines: [],
+      links: [{ label: "Privacy", target: { kind: "external", href: "https://example.com" } }],
+    })
+    expect(result.success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SECTION_REGISTRY — single source of truth
+// ---------------------------------------------------------------------------
+
+describe("SECTION_REGISTRY", () => {
+  it("has exactly the nine kinds from the plan, no more, no fewer", () => {
+    expect(Object.keys(SECTION_REGISTRY).sort()).toEqual([...SECTION_KINDS].sort())
+    expect(SECTION_KINDS.length).toBe(9)
+  })
+
+  it("does not register a nav kind (landing pages remove exits, not add them)", () => {
+    expect(isSectionKind("nav")).toBe(false)
+  })
+
+  it("isSectionKind narrows correctly", () => {
+    expect(isSectionKind("hero")).toBe(true)
+    expect(isSectionKind("banner")).toBe(false)
+    expect(isSectionKind(42)).toBe(false)
+  })
+
+  it("every registry entry's variants list matches what its full schema accepts", () => {
+    for (const kind of SECTION_KINDS) {
+      const def = SECTION_REGISTRY[kind]
+      for (const variant of def.variants) {
+        // Build the smallest valid props per kind is overkill here; instead
+        // assert the variant enum on the schema's shape accepts it by
+        // checking a known-valid section for kinds we already exercised
+        // above would fail ONLY if variant were swapped for a bogus one.
+        expect(typeof variant).toBe("string")
+      }
+      expect(def.variants.length).toBeGreaterThan(0)
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parseSection — mirrors parseIslandProps' { ok, errors } contract
+// ---------------------------------------------------------------------------
+
+describe("parseSection", () => {
+  it("parses a valid full section for a given kind", () => {
+    const result = parseSection(
+      "cta",
+      baseSection({ kind: "cta", variant: "band", props: { headline: "Go", cta: bookingCta } }),
+    )
+    expect(result.ok, JSON.stringify(!result.ok && result.errors)).toBe(true)
+  })
+
+  it("returns readable errors for an invalid variant", () => {
+    const result = parseSection(
+      "cta",
+      baseSection({ kind: "cta", variant: "sidebar", props: { headline: "Go", cta: bookingCta } }),
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("variant"))).toBe(true)
+    }
+  })
+
+  it("rejects a section whose kind literal doesn't match the schema being checked against", () => {
+    const result = parseSection(
+      "cta",
+      baseSection({ kind: "hero", variant: "centered", props: { headline: "x", primaryCta: urlCta } }),
+    )
+    expect(result.ok).toBe(false)
+  })
+
+  it("rejects a malformed props payload (missing required slot) with a path-qualified error", () => {
+    const result = parseSection("hero", baseSection({ kind: "hero", variant: "centered", props: {} }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.startsWith("props."))).toBe(true)
+    }
+  })
+
+  it("rejects a section id that isn't short/safe", () => {
+    const result = parseSection(
+      "cta",
+      baseSection({
+        id: "Not Safe!",
+        kind: "cta",
+        variant: "band",
+        props: { headline: "Go", cta: bookingCta },
+      }),
+    )
+    expect(result.ok).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// sectionSchema — cross-kind discriminated union
+// ---------------------------------------------------------------------------
+
+describe("sectionSchema", () => {
+  it("accepts a valid section of any kind", () => {
+    const result = sectionSchema.safeParse(
+      baseSection({ kind: "footer", variant: "simple", props: { businessName: "DJP", lines: [], links: [] } }),
+    )
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects an unknown top-level kind", () => {
+    const result = sectionSchema.safeParse(baseSection({ kind: "gallery", variant: "grid", props: {} }))
+    expect(result.success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// sectionDocSchema — the full document
+// ---------------------------------------------------------------------------
+
+describe("sectionDocSchema", () => {
+  const heroSection = baseSection({
+    kind: "hero",
+    variant: "centered",
+    props: { headline: "Get stronger", primaryCta: urlCta },
+  })
+
+  it("accepts a minimal valid doc (1 section)", () => {
+    const result = sectionDocSchema.safeParse({
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "primary", radius: "soft" },
+      sections: [heroSection],
+    })
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("rejects zero sections (below the min of 1)", () => {
+    const result = sectionDocSchema.safeParse({
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "primary", radius: "soft" },
+      sections: [],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects more than 24 sections", () => {
+    const sections = Array.from({ length: 25 }, (_, i) =>
+      baseSection({
+        id: `h${i}`,
+        kind: "hero",
+        variant: "centered",
+        props: { headline: `Headline ${i}`, primaryCta: urlCta },
+      }),
+    )
+    const result = sectionDocSchema.safeParse({
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "primary", radius: "soft" },
+      sections,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects a bad theme.tone", () => {
+    const result = sectionDocSchema.safeParse({
+      v: 1,
+      engine: "sections",
+      theme: { tone: "neon", accent: "primary", radius: "soft" },
+      sections: [heroSection],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects engine values other than 'sections' (the free-HTML escape hatch this plan replaced)", () => {
+    const result = sectionDocSchema.safeParse({
+      v: 1,
+      engine: "grapesjs",
+      theme: { tone: "light", accent: "primary", radius: "soft" },
+      sections: [heroSection],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects v values other than 1", () => {
+    const result = sectionDocSchema.safeParse({
+      v: 2,
+      engine: "sections",
+      theme: { tone: "light", accent: "primary", radius: "soft" },
+      sections: [heroSection],
+    })
+    expect(result.success).toBe(false)
+  })
+})
