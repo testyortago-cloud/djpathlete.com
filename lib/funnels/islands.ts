@@ -48,16 +48,35 @@ export const ISLAND_PROPS_ATTR = "data-djp-props"
 const SAFE_LINK = /^(?!\/\/)(\/|https:\/\/)/
 
 /**
- * Hosts a redirect is allowed to hand a visitor to under the owner's own
- * brand. `SAFE_LINK` only closes the scheme hole (`javascript:`) and the
- * protocol-relative hole (`//evil.example`) — `https://attacker.example/`
- * still passes it, which is a live open redirect for a lead that just handed
- * over their contact info. Checked with a try/catch because `new URL()`
- * throws on anything that isn't a well-formed absolute URL, and a validator
- * must fail closed with a Zod issue, not an uncaught exception.
+ * Hosts a redirect is allowed to hand a visitor to.
+ *
+ * The allowlist exists at all because `SAFE_LINK` only closes the scheme hole
+ * (`javascript:`) and the protocol-relative hole (`//evil.example`) —
+ * `https://attacker.example/` still passed it, a live open redirect for a
+ * lead that just handed over their contact info (Stage 0 safety item 1,
+ * docs/superpowers/plans/2026-08-10-ai-page-builder-sections.md).
+ *
+ * `calendly.com` / `www.calendly.com` are on it by explicit owner decision,
+ * not oversight: commit ed8bbfdc's message states "legitimate thank-you
+ * pages live off-site (Calendly), so a host allowlist is an owner policy
+ * call, not a silent default." This list is that policy call, made once
+ * both the open-redirect fix and the Calendly workflow were on the table
+ * together. Anyone tightening this list should re-read that commit first.
  */
-const REDIRECT_HOSTS: readonly string[] = ["www.darrenjpaul.com", "darrenjpaul.com"]
+const REDIRECT_HOSTS: readonly string[] = [
+  "www.darrenjpaul.com",
+  "darrenjpaul.com",
+  "calendly.com",
+  "www.calendly.com",
+]
 
+const REDIRECT_HOST_ERROR = `Must be a site path or an https URL on one of: ${REDIRECT_HOSTS.join(", ")}`
+
+/**
+ * Checked with a try/catch because `new URL()` throws on anything that isn't
+ * a well-formed absolute URL, and a validator must fail closed with a Zod
+ * issue, not an uncaught exception.
+ */
 function isAllowedRedirect(value: string): boolean {
   if (value.startsWith("/")) return true
   try {
@@ -98,13 +117,13 @@ export const formIslandSchema = z
     // exact moment a visitor has handed over their email. Same rule as
     // bookingIslandSchema.href below, which was validated while this was not.
     // Constrains BOTH the scheme (SAFE_LINK) and the host (isAllowedRedirect):
-    // a submitted lead can only be sent to a site path or an https URL on the
-    // owner's own domain, never to an arbitrary third-party host.
+    // a submitted lead can only be sent to a site path or an https URL on an
+    // allowlisted host — see REDIRECT_HOSTS above for why Calendly is on it.
     redirectUrl: z
       .string()
       .max(500)
       .regex(SAFE_LINK, "Must be a site path or an https URL")
-      .refine(isAllowedRedirect, "Must be a site path or an https URL on your own domain")
+      .refine(isAllowedRedirect, REDIRECT_HOST_ERROR)
       .optional(),
     /** Emails this lead magnet's asset on success. */
     leadMagnetId: z.string().uuid().nullable().optional(),

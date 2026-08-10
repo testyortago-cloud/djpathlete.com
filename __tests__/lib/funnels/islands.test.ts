@@ -1,8 +1,12 @@
 // Stage 0 safety hardening for lib/funnels/islands.ts:
-//  1. redirectUrl must be scoped to a site path or an https URL on the
-//     owner's own domain — SAFE_LINK alone only closes the scheme hole
-//     (javascript:) and the protocol-relative hole (//evil.example); a
-//     third-party https host still passed until this test.
+//  1. redirectUrl must be scoped to a site path or an https URL on an
+//     allowlisted host — SAFE_LINK alone only closes the scheme hole
+//     (javascript:) and the protocol-relative hole (//evil.example); an
+//     arbitrary third-party https host still passed until this test. The
+//     allowlist is the owner's own domain PLUS calendly.com/www.calendly.com,
+//     which commit ed8bbfdc's message names as a deliberate exception
+//     ("legitimate thank-you pages live off-site (Calendly)") — not every
+//     third-party host, only that one.
 //  2. checkoutIslandSchema.productId must be required only when it is
 //     actually used — CheckoutIsland.tsx discards it entirely for
 //     productKind "session_pack".
@@ -30,12 +34,32 @@ describe("formIslandSchema redirectUrl", () => {
   })
 
   describe("legitimate values that must still be allowed", () => {
-    const good = ["/thanks", "https://www.darrenjpaul.com/x", "https://darrenjpaul.com/y"]
+    const good = [
+      "/thanks",
+      "https://www.darrenjpaul.com/x",
+      "https://darrenjpaul.com/y",
+      // Owner policy exception (ed8bbfdc), not an oversight: a redirect to a
+      // Calendly thank-you/booking page is a named-legitimate workflow.
+      "https://calendly.com/djp",
+      "https://www.calendly.com/djp",
+    ]
 
     it.each(good)("allows %s", (value) => {
       const result = formIslandSchema.safeParse({ ...base, redirectUrl: value })
       expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
     })
+  })
+
+  it("names the allowed hosts in the rejection message, so a Typeform URL gets an actionable error", () => {
+    const result = formIslandSchema.safeParse({
+      ...base,
+      redirectUrl: "https://typeform.com/to/abc123",
+    })
+    expect(result.success).toBe(false)
+    if (result.success) return
+    const messages = result.error.issues.map((issue) => issue.message).join(" | ")
+    expect(messages).toContain("darrenjpaul.com")
+    expect(messages).toContain("calendly.com")
   })
 
   it("fails closed instead of throwing on a malformed absolute-looking value", () => {

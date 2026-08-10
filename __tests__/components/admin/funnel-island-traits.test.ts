@@ -55,15 +55,14 @@ describe("island traits cover their island's settings", () => {
     }
   })
 
-  it("rejects a redirectUrl that is not a site path or an https URL on the owner's own domain", () => {
+  it("rejects a redirectUrl that is not a site path or an https URL on an allowlisted host", () => {
     // FunnelForm assigns this to window.location.href right after a visitor
     // submits their email, so an unvalidated value is an open redirect. A
     // host allowlist closes the remaining hole: after the scheme check,
     // https://<any-host> still validated, which could hand a lead straight
-    // to a third-party page under the owner's own brand — calendly.com was
-    // previously (wrongly) asserted "allowed" here; it is now rejected same
-    // as any other off-domain host. See __tests__/lib/funnels/islands.test.ts
-    // for the exhaustive bypass/legitimate-case coverage.
+    // to an arbitrary third-party page (https://attacker.example/ below).
+    // See __tests__/lib/funnels/islands.test.ts for the exhaustive
+    // bypass/legitimate-case coverage.
     const base = {
       formKey: "optin",
       fields: [{ name: "email", label: "Email", type: "email" }],
@@ -74,12 +73,20 @@ describe("island traits cover their island's settings", () => {
       "data:text/html,<script>",
       "//evil.example",
       "https://attacker.example/",
-      "https://calendly.com/djp",
     ]) {
       const result = parseIslandProps("form", { ...base, redirectUrl: bad })
       expect(result.ok, `redirectUrl "${bad}" must be rejected`).toBe(false)
     }
-    for (const good of ["/go/thanks", "https://www.darrenjpaul.com/x", "https://darrenjpaul.com/y"]) {
+    for (const good of [
+      "/go/thanks",
+      "https://www.darrenjpaul.com/x",
+      "https://darrenjpaul.com/y",
+      // Allowed by explicit owner policy (commit ed8bbfdc's message: "legitimate
+      // thank-you pages live off-site (Calendly), so a host allowlist is an
+      // owner policy call, not a silent default") — not an oversight. Do not
+      // remove this without re-reading that commit.
+      "https://calendly.com/djp",
+    ]) {
       const result = parseIslandProps("form", { ...base, redirectUrl: good })
       expect(result.ok, `redirectUrl "${good}" should be allowed`).toBe(true)
     }
