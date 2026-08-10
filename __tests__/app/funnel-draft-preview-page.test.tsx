@@ -75,6 +75,33 @@ function doc(): SectionDoc {
   }
 }
 
+/**
+ * A document every schema accepts, that compiles perfectly, and that publish
+ * will still refuse — the only such document, because `reassemble`'s
+ * `problems` are the publish SIZE CAPS and nothing else.
+ *
+ * `escapeHtml` turns one `&` into five characters, so a maxed-out FAQ answer
+ * (1000 chars, the registry's own limit) renders as 5000: twelve per section,
+ * eight sections, ~580 KB against `FUNNEL_STEP_HTML_MAX_LENGTH`'s 500 KB. That
+ * is exactly why the cap is measured on RENDERED output and not on the doc.
+ */
+function overCapDoc(): SectionDoc {
+  const q = "&".repeat(200)
+  const a = "&".repeat(1000)
+  return {
+    v: 1,
+    engine: "sections",
+    theme: { tone: "light", accent: "accent", radius: "soft" },
+    sections: Array.from({ length: 8 }, (_, index) => ({
+      id: `faq-${index}`,
+      kind: "faq",
+      variant: "stack",
+      style: {},
+      props: { source: "inline", items: Array.from({ length: 12 }, () => ({ q, a })) },
+    })),
+  } as SectionDoc
+}
+
 const render = () => Page({ params: Promise.resolve({ stepId: STEP_ID }) })
 
 /** Walks a returned element tree for the NodeRenderer's `nodes` prop. */
@@ -263,6 +290,41 @@ describe("/funnel-preview/[stepId] — the pages that are not pages", () => {
   // assert only that a branch exists — the exact shape of test this repo keeps
   // shipping and this feature has already produced six of. The reachable
   // failure is a throw from `reassemble`, and that one is proven below.
+
+  it("says a page is unpublishable when it COMPILES but busts the publish cap", async () => {
+    // MUTANT: reading only `compiled.ok` and ignoring `rendered.problems` —
+    // what shipped before fix round 1. Those problems are the publish size
+    // caps, and an over-cap page compiles perfectly: `compiled.ok` is true,
+    // the preview looks finished, and this is the one screen the owner uses to
+    // decide the page is done. They would click Publish and get a 422 from a
+    // page that previewed clean.
+    mock(getDraft).mockResolvedValue({ doc: overCapDoc(), docInvalid: false, revision: 4 })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const element = (await render()) as any
+    // A clean draft returns the funnel root itself; an unpublishable one is
+    // wrapped, banner first. (The banner's own copy is not assertable here —
+    // a nested component is not invoked by awaiting a server component — so
+    // the claim is made against the problems it was HANDED.)
+    const [banner, page] = element.props.children
+    expect(banner.props.problems.join(" ")).toMatch(/over the 500000-character publish cap/)
+    expect(page.props.id).toBe(FUNNEL_ROOT_ID)
+
+    // Reported, NOT withheld: the draft is still worth looking at, so the page
+    // itself is still rendered underneath the banner.
+    const nodes = findNodes(element)
+    expect(nodes).toBeTruthy()
+    expect(allElements(nodes!).some((el) => el.tag === "dl")).toBe(true)
+  })
+
+  it("wraps nothing around a page that is fine", async () => {
+    // MUTANT: rendering the banner unconditionally, which would tell an owner
+    // every page they build is unpublishable — and would put this route's own
+    // chrome on a preview whose whole job is to look like the published page.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const element = (await render()) as any
+    expect(element.props.id).toBe(FUNNEL_ROOT_ID)
+    expect(element.props.problems).toBeUndefined()
+  })
 
   it("reports a document reassemble refuses rather than 500ing", async () => {
     // MUTANT: no try/catch around `reassemble`. It re-parses the document and

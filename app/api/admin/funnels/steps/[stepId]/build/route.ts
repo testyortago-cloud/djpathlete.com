@@ -75,7 +75,6 @@ import {
   SECTION_BUILDER_MODEL,
   SECTION_BUILDER_RATE_LIMIT_MAX,
   SECTION_BUILDER_RATE_LIMIT_WINDOW_MS,
-  SECTION_BUILDER_SECTION_MAX_TOKENS,
 } from "@/lib/funnels/sections/builder-config"
 
 /**
@@ -94,8 +93,29 @@ export const maxDuration = 300
 
 const rateLimitMap = new Map<string, number[]>()
 
+/**
+ * Map size that triggers a sweep of fully-expired entries.
+ *
+ * The ancestor this shape was copied from never frees anything: an entry is
+ * pruned only when the SAME user comes back, so one array per user id who has
+ * ever pressed the button stays resident for the life of the instance. That is
+ * a slow leak rather than a bug — the keys are admin/staff ids, not visitors —
+ * but "bounded by how many people ever used it" is not bounded. 500 is chosen
+ * to be far past any real admin roster, so the hot path stays one Map lookup
+ * and the O(size) walk effectively never runs in production.
+ */
+const RATE_LIMIT_SWEEP_AT = 500
+
 function checkRateLimit(userId: string): boolean {
   const now = Date.now()
+  if (rateLimitMap.size > RATE_LIMIT_SWEEP_AT) {
+    for (const [key, stamps] of rateLimitMap) {
+      // `every` on an empty array is true, so a drained entry goes too. Only
+      // entries with NOTHING left inside the window are dropped, which is
+      // indistinguishable from never having existed.
+      if (stamps.every((t) => now - t >= SECTION_BUILDER_RATE_LIMIT_WINDOW_MS)) rateLimitMap.delete(key)
+    }
+  }
   const timestamps = (rateLimitMap.get(userId) ?? []).filter(
     (t) => now - t < SECTION_BUILDER_RATE_LIMIT_WINDOW_MS,
   )
@@ -301,6 +321,26 @@ function resolveSafely(doc: SectionDoc, catalogues: Catalogues | null, catalogue
       error: `CTA links were not checked this turn: ${(error as Error).message}`,
     }
   }
+}
+
+/**
+ * What goes in `funnel_step_turns.unresolved`.
+ *
+ * The column is `unknown` (jsonb) and `appendTurn` defaults it to `[]`, so a
+ * turn whose CTA refs were NEVER CHECKED would otherwise persist exactly what a
+ * turn with a clean bill of health persists. `TurnResponse.resolutionError`
+ * makes that distinction in the response and does not outlive the request — so
+ * the stored column would be the same lie this file's header calls out in
+ * `revertToRevision`'s display cache, recreated one layer down, and live the
+ * moment anything derives "publishable" from it.
+ *
+ * A turn that could not check therefore stores a MARKER OBJECT rather than a
+ * list. `Array.isArray(row.unresolved)` is the reader's test, the reason
+ * travels with it, and nothing can mistake it for "all clear".
+ */
+function unresolvedForStorage(resolution: Resolution): unknown {
+  if (resolution.error === null) return resolution.unresolved
+  return { checked: false, reason: resolution.error }
 }
 
 // ---------------------------------------------------------------------------
@@ -661,7 +701,27 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
   // into a user-visible dead end, so both classes take the same path: append
   // the errors to Block C verbatim and ask once more.
   // -------------------------------------------------------------------------
-  const maxTokens = isFirstDraft ? SECTION_BUILDER_SECTION_MAX_TOKENS : SECTION_BUILDER_EDIT_MAX_TOKENS
+  // -------------------------------------------------------------------------
+  // ONE WHOLE-PAGE BUDGET, NOT TWO — AND EXPLICITLY NOT
+  // `SECTION_BUILDER_SECTION_MAX_TOKENS` (6000).
+  //
+  // That 6000 was sized in the plan as a PER-SECTION budget, for a design that
+  // fanned a first draft out into one call per section. This route makes ONE
+  // call per turn (see the header note and the stage report: fan-out was
+  // deliberately not built), so the same number would now have to cover the
+  // ENTIRE first-draft page — and builder-config's own reasoning for the 8000
+  // edit budget is that a `set_page` carrying all 24 sections is the worst
+  // realistic response. A first draft IS that response: Block C tells the model
+  // to answer a blank page with a single `set_page`, and `seedSurvived()` below
+  // rejects it if it does anything else. Under 6000 the model runs out of
+  // output mid-JSON, `generateObject` throws a parse error, the one retry does
+  // exactly the same thing, and the owner's very first turn on a brand-new page
+  // dead-ends.
+  //
+  // So both paths take the same page-sized budget. If the fan-out is ever
+  // built, the per-section number comes back WITH it, not before.
+  // -------------------------------------------------------------------------
+  const maxTokens = SECTION_BUILDER_EDIT_MAX_TOKENS
 
   let tokensUsed = 0
   let cacheCreation = 0
@@ -868,7 +928,9 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
     // and warnings are different severities and flattening them into one list
     // would make the log unable to say which was which.
     compileProblems: { problems: compile.problems, warnings: compile.warnings },
-    unresolved: resolution.unresolved,
+    // Not `resolution.unresolved`: see `unresolvedForStorage`. An empty list
+    // and "could not check" must not look the same in the row.
+    unresolved: unresolvedForStorage(resolution),
     model: SECTION_BUILDER_MODEL,
     tokensInput: tokensUsed,
     cacheReadTokens: cacheRead,

@@ -77,6 +77,31 @@ function PreviewNotice({ title, lines }: { title: string; lines: string[] }) {
   )
 }
 
+/**
+ * The page compiles, but publish will refuse it.
+ *
+ * `reassemble`'s `problems` are the PUBLISH size caps (doc.ts's
+ * `checkSizeCaps`), and a document that busts them still compiles perfectly —
+ * `compiled.ok` is true and the preview looks finished. This banner is the only
+ * thing standing between that and an owner clicking Publish on the one screen
+ * they use to decide a page is done. It sits ABOVE the page rather than
+ * replacing it: the draft is still worth looking at, it just cannot ship yet.
+ */
+function PreviewBlockedBanner({ problems }: { problems: string[] }) {
+  return (
+    <div className="border-b border-warning/40 bg-warning/10 px-6 py-4">
+      <p className="font-heading text-sm text-foreground">This page previews, but publishing will refuse it</p>
+      <ul className="mt-2 space-y-1">
+        {problems.map((problem, index) => (
+          <li key={index} className="font-body text-sm text-muted-foreground">
+            {problem}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export default async function FunnelDraftPreviewPage({ params }: PageProps) {
   const session = await auth()
   const role = session?.user?.role
@@ -134,7 +159,7 @@ export default async function FunnelDraftPreviewPage({ params }: PageProps) {
     )
   }
 
-  return (
+  const page = (
     <div id={FUNNEL_ROOT_ID}>
       {/* Scoped by the compiler — every selector is prefixed with this id. */}
       {compiled.css ? <style dangerouslySetInnerHTML={{ __html: compiled.css }} /> : null}
@@ -153,5 +178,18 @@ export default async function FunnelDraftPreviewPage({ params }: PageProps) {
         }}
       />
     </div>
+  )
+
+  // A clean draft is returned as the bare funnel root, with nothing of this
+  // route's own chrome in it — the preview is supposed to look exactly like the
+  // published page. The banner is added ONLY when there is something publish
+  // would reject; see `PreviewBlockedBanner`.
+  if (rendered.problems.length === 0) return page
+
+  return (
+    <>
+      <PreviewBlockedBanner problems={rendered.problems.map((p) => p.message)} />
+      {page}
+    </>
   )
 }

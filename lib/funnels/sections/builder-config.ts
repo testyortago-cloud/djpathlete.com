@@ -56,16 +56,34 @@ export const SECTION_BUILDER_HISTORY_TURNS = 8
  */
 export const SECTION_BUILDER_MAX_TOKENS_CEILING = 16_000
 
+// ---------------------------------------------------------------------------
+// THE TWO CONSTANTS BELOW ARE UNUSED, AND THAT IS NOT AN OVERSIGHT.
+//
+// Both belong to the plan's FAN-OUT design: a first draft was to be a "plan the
+// page" call followed by one "build the sections" call per section. Stage 1.8
+// built a SINGLE call per turn instead (anti-drift: a per-section call cannot
+// see the sections beside it, and the win the fan-out was for — sections
+// landing as they arrive — needs streaming, which the single-JSON response
+// shape precludes). Nothing calls these today.
+//
+// DO NOT "wire them up" to make the warning go away. Wiring
+// SECTION_BUILDER_SECTION_MAX_TOKENS into the route is the exact defect fix
+// round 1 removed: as a PER-SECTION budget 6000 is generous, as the budget for
+// a whole first-draft page it truncates the response and dead-ends an owner's
+// first turn. They come back only WITH the fan-out, and the budget that bounds
+// a whole-page call is SECTION_BUILDER_EDIT_MAX_TOKENS below.
+// ---------------------------------------------------------------------------
+
 /** maxTokens for the "plan the page" call — prose plus a short outline. */
 export const SECTION_BUILDER_PLAN_MAX_TOKENS = 4_000
 
-/** maxTokens for the "build the sections" call — a full first-draft page. */
+/** maxTokens for ONE section of a fanned-out first draft. NOT a page budget. */
 export const SECTION_BUILDER_SECTION_MAX_TOKENS = 6_000
 
 /**
- * maxTokens for an iterative edit. Higher than the section call because the
- * worst realistic edit is a `set_page` rewriting all 24 sections, which is
- * strictly larger than a first draft.
+ * maxTokens for ONE WHOLE-PAGE call — both an iterative edit and, since there
+ * is no fan-out, a first draft. Sized for the worst realistic response: a
+ * `set_page` carrying all 24 sections.
  */
 export const SECTION_BUILDER_EDIT_MAX_TOKENS = 8_000
 

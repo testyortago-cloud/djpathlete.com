@@ -48,7 +48,7 @@ vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.f
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
 
-import { POST } from "@/app/api/admin/funnels/steps/[stepId]/build/route"
+import { POST, maxDuration } from "@/app/api/admin/funnels/steps/[stepId]/build/route"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { callAgent } from "@/lib/ai/anthropic"
@@ -59,7 +59,12 @@ import { getFaqCountsByPage } from "@/lib/db/faqs"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
-import { SECTION_BUILDER_RATE_LIMIT_MAX } from "@/lib/funnels/sections/builder-config"
+import {
+  SECTION_BUILDER_EDIT_MAX_TOKENS,
+  SECTION_BUILDER_MAX_TOKENS_CEILING,
+  SECTION_BUILDER_RATE_LIMIT_MAX,
+  SECTION_BUILDER_SECTION_MAX_TOKENS,
+} from "@/lib/funnels/sections/builder-config"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
@@ -109,6 +114,31 @@ function fullPageSections() {
       },
     },
   ]
+}
+
+/**
+ * A page every schema in the pipeline accepts and `reassemble` still reports as
+ * unpublishable — the ONLY such document, because `reassemble`'s `problems` are
+ * the publish size caps and nothing else.
+ *
+ * The lever is `escapeHtml`, which turns one `&` into five characters. A
+ * maxed-out FAQ answer (1000 chars, the registry's own limit) therefore renders
+ * as 5000; twelve per section, eight sections, ~580 KB against
+ * `FUNNEL_STEP_HTML_MAX_LENGTH`'s 500 KB. That is not a trick to dodge a check
+ * — it is precisely why the cap is measured on RENDERED output instead of on
+ * the document, and doc.ts says as much: the per-field limits multiplied out
+ * across 24 sections cannot reach the cap on their own.
+ */
+function overCapSections() {
+  const q = "&".repeat(200)
+  const a = "&".repeat(1000)
+  return Array.from({ length: 8 }, (_, index) => ({
+    id: `faq-${index}`,
+    kind: "faq",
+    variant: "stack",
+    style: {},
+    props: { source: "inline", items: Array.from({ length: 12 }, () => ({ q, a })) },
+  }))
 }
 
 function agentResult(content: unknown) {
@@ -519,28 +549,71 @@ describe("POST .../build — resolve, compile, store", () => {
   })
 
   it("saves a page that does not compile — a draft is not a publish", async () => {
-    // MUTANT: refusing to persist unless the page compiles. The owner would be
+    // MUTANT: refusing to persist unless `compile.ok`. The owner would be
     // unable to iterate towards a page that DOES compile, because every turn
     // would be discarded. Publishing is the gate; drafting is not.
+    //
+    // FIX ROUND 1: the first version of this test used a `javascript:` media
+    // src and asserted only a 200 plus a stored doc. That page COMPILES —
+    // render.ts degrades a bad src to a placeholder div and reports nothing —
+    // so `compile.ok` was true, the branch this test is named for never ran,
+    // and its mutant survived. `reassemble`'s `problems` are the publish SIZE
+    // CAPS and nothing else, so an over-cap page is the only document the
+    // registry accepts that comes back non-compiling. Hence `overCapSections`,
+    // and hence the `compile.ok === false` assertion below: without it, the
+    // test passes on the happy path.
     mock(callAgent).mockResolvedValue(
       agentResult({
-        reply: "Added a hero image.",
+        reply: "Built the FAQ out.",
         blocked: false,
-        ops: [
-          {
-            op: "update_section",
-            id: "hero",
-            // `heroMediaSchema.src` has no URL shape constraint, so this passes
-            // Zod and then fails render.ts's `safeUrl` re-check.
-            props: { media: { kind: "image", src: "javascript:alert(1)", alt: "x", w: 10, h: 10 } },
-          },
-        ],
+        ops: [{ op: "set_page", sections: overCapSections() }],
       }),
     )
     const res = await POST(req({ message: "hi", revision: 4 }), ctx)
     expect(res.status).toBe(200)
+
+    const body = await res.json()
+    // The premise. If this is true the test below proves nothing.
+    expect(body.compile.ok).toBe(false)
+    expect(body.compile.problems.join(" ")).toMatch(/over the 500000-character publish cap/)
+
+    // ... and it was saved anyway, with the verdict recorded next to it.
     const stored = mock(appendTurn).mock.calls.map((c) => c[0]).find((i) => i.doc)
     expect(stored).toBeDefined()
+    expect(stored.doc.sections).toHaveLength(8)
+    expect(stored.compileStatus).toBe("failed")
+    expect(stored.compileProblems.problems.join(" ")).toMatch(/publish cap/)
+  })
+
+  it("marks a turn whose CTAs were NEVER CHECKED as unchecked in the row, not as clean", async () => {
+    // MUTANT: `unresolved: resolution.unresolved` at the write site. The
+    // response carries `resolutionError`, but the response dies with the
+    // request — the ROW would store `[]`, which is byte-identical to what a
+    // turn with every CTA resolved stores. That is the same "the stored column
+    // lies" failure this route's header calls out in `revertToRevision`'s
+    // display cache, and it goes live the moment anything reads the column to
+    // decide whether a page can be published.
+    mock(getAllPrograms).mockResolvedValue(Array.from({ length: 1000 }, (_, i) => ({ id: `p${i}`, name: `P${i}` })))
+
+    await POST(req({ message: "hi", revision: 4 }), ctx)
+    const stored = mock(appendTurn).mock.calls.map((c) => c[0]).find((i) => i.doc)
+    expect(stored).toBeDefined()
+    expect(Array.isArray(stored.unresolved)).toBe(false)
+    expect(stored.unresolved).toMatchObject({ checked: false })
+    expect(String(stored.unresolved.reason)).toMatch(/not checked/i)
+  })
+
+  it("stores a plain LIST when resolution did run, so a reader can tell the two apart", async () => {
+    // MUTANT: writing the marker object unconditionally, or writing
+    // `{checked:true, ...}` — either makes every turn look unchecked and the
+    // distinction above worthless.
+    mock(getPrograms).mockResolvedValue([])
+    mock(getAllPrograms).mockResolvedValue([])
+    await POST(req({ message: "hi", revision: 4 }), ctx)
+    const stored = mock(appendTurn).mock.calls.map((c) => c[0]).find((i) => i.doc)
+    expect(Array.isArray(stored.unresolved)).toBe(true)
+    expect(stored.unresolved).toHaveLength(1)
+    expect(stored.unresolved[0].ref).toBe(PROGRAM_NAME)
   })
 })
 
@@ -786,6 +859,39 @@ describe("POST .../build — the prompt", () => {
     expect(options.maxTokens).toBeLessThanOrEqual(16_000)
   })
 
+  it("gives a FIRST DRAFT the whole-page budget, not the plan's per-section one", async () => {
+    // MUTANT: `isFirstDraft ? SECTION_BUILDER_SECTION_MAX_TOKENS : EDIT` — what
+    // shipped before fix round 1. 6000 was sized as a PER-SECTION budget for a
+    // fan-out that was never built; as the budget for a whole first-draft page
+    // it truncates the response, `generateObject` throws a parse error, the one
+    // retry does exactly the same, and the owner's very first turn on a
+    // brand-new page dead-ends. Nothing else in this file can see it: every
+    // other test drives a mocked `callAgent` that cannot run out of tokens.
+    mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 0 })
+    mock(callAgent).mockResolvedValue(
+      agentResult({ reply: "Built it.", blocked: false, ops: [{ op: "set_page", sections: fullPageSections() }] }),
+    )
+    await POST(req({ message: "build me a page", revision: 0 }), ctx)
+    const firstDraftBudget = mock(callAgent).mock.calls[0][3].maxTokens
+
+    // The same turn against an EXISTING page. Comparing the two is what makes
+    // this a claim about the BUDGET rather than a restatement of a constant.
+    mock(callAgent).mockClear()
+    mock(getDraft).mockResolvedValue({ doc: doc(), docInvalid: false, revision: 4 })
+    mock(callAgent).mockResolvedValue(
+      agentResult({ reply: "ok", blocked: false, ops: [{ op: "update_section", id: "hero", props: { sub: "s" } }] }),
+    )
+    await POST(req({ message: "tweak it", revision: 4 }), ctx)
+    const editBudget = mock(callAgent).mock.calls[0][3].maxTokens
+
+    // A first draft is a single `set_page` carrying every section — the same
+    // worst case as the largest edit, so the same budget.
+    expect(firstDraftBudget).toBe(editBudget)
+    expect(firstDraftBudget).toBe(SECTION_BUILDER_EDIT_MAX_TOKENS)
+    expect(firstDraftBudget).not.toBe(SECTION_BUILDER_SECTION_MAX_TOKENS)
+    expect(firstDraftBudget).toBeLessThanOrEqual(SECTION_BUILDER_MAX_TOKENS_CEILING)
+  })
+
   it("offers the funnel's OTHER steps, never this one", async () => {
     // MUTANT: passing every step. A CTA pointing at the page it is on is a
     // no-op link the owner cannot diagnose.
@@ -793,5 +899,21 @@ describe("POST .../build — the prompt", () => {
     const system = mock(callAgent).mock.calls[0][0] as string
     expect(system).toContain('"thanks"')
     expect(system).not.toContain('"apply"')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The platform contract
+// ---------------------------------------------------------------------------
+
+describe("POST .../build — the route's own runtime config", () => {
+  it("pins the serverless timeout at 300s", () => {
+    // MUTANT: dropping the `maxDuration` export. Vercel's default cap is far
+    // below this, and a first draft is a WHOLE PAGE in one non-streaming
+    // `generateObject` response — the ~60s call the no-fan-out decision
+    // explicitly accepts. The platform would kill the request mid-generation,
+    // after the Opus tokens were spent and before any turn was written, and it
+    // would do it only in production where nothing in this suite can see it.
+    expect(maxDuration).toBe(300)
   })
 })
