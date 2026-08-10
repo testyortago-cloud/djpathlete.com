@@ -27,6 +27,7 @@ export function MoverCompare({ mover }: { mover: BiggestMover }) {
   const { test, direction } = mover
   const label =
     `Now ${num(test.latest)} ${test.unit}, ${COMPARE_WORD[direction]} ${num(test.previous)}.` +
+    (test.isPr ? " Personal record." : "") +
     (test.targets ? ` Trained standard ${num(test.targets.trained)}, Elite ${num(test.targets.elite)}.` : "")
   return (
     <div className="flex items-center gap-5" role="img" aria-label={label}>

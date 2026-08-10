@@ -170,6 +170,10 @@ describe("ReportPageOne", () => {
     for (const t of container.querySelectorAll(".score-track")) {
       expect(t.getAttribute("data-tone")).not.toBe("accent")
     }
+    // The PR badge lives inside the aria-hidden .mover-now circle, so a screen
+    // reader only hears it if the composed group label mentions it too.
+    const moverGroup = container.querySelector(".mover-now")?.closest('[role="img"]')
+    expect(moverGroup?.getAttribute("aria-label")).toMatch(/personal record/i)
   })
 
   it("renders the mover circle without satellites when targets are unknowable", () => {
