@@ -39,7 +39,7 @@ import {
   SECTION_BUILDER_MAX_REPLY_LENGTH,
 } from "@/lib/funnels/sections/builder-config"
 import { SECTION_KINDS, SECTION_REGISTRY, type Section, type SectionDoc } from "@/lib/funnels/sections/registry"
-import { ISLAND_NAMES } from "@/lib/funnels/islands"
+import { ISLAND_LIST, SAFE_LINK } from "@/lib/funnels/islands"
 import { applyOps, opSchema } from "@/lib/funnels/sections/apply"
 import { reassemble } from "@/lib/funnels/sections/doc"
 
@@ -110,21 +110,126 @@ function catalogueInput(): BuilderCatalogueInput {
   }
 }
 
-/** Names of every field in a props schema whose value is a UUID. */
-function uuidFieldNames(node: unknown, key: string, out: Set<string>): void {
+/**
+ * Every DOTTED PATH in a props schema whose value is a UUID, in the
+ * `<field>` / `<field>.<sub>` / `<field>[].<sub>` form the prompt renders
+ * under `<kind>.props.`.
+ *
+ * Fix round 1, M1: the first spelling of this collected bare field NAMES, and
+ * `leadMagnetId` on its own is ALSO printed by the per-kind props signature
+ * (`leadMagnetId?: uuid | null`). So the whole `## You never write a UUID`
+ * section could be deleted and the assertion stayed green — the exact
+ * "test that cannot fail" this file's header claims to have avoided. The
+ * dotted path is rendered nowhere but that section.
+ */
+function uuidFieldPaths(node: unknown, path: string, out: string[]): void {
   if (node === null || typeof node !== "object") return
   const record = node as Record<string, unknown>
-  if (record.format === "uuid" && key !== "") out.add(key)
-  for (const [childKey, child] of Object.entries(record)) {
-    if (childKey === "properties") {
-      for (const [name, sub] of Object.entries(child as Record<string, unknown>)) uuidFieldNames(sub, name, out)
-    } else if (Array.isArray(child)) {
-      for (const item of child) uuidFieldNames(item, key, out)
-    } else if (typeof child === "object") {
-      uuidFieldNames(child, key, out)
+  if (record.format === "uuid") {
+    out.push(path)
+    return
+  }
+  const properties = record.properties as Record<string, unknown> | undefined
+  if (properties) {
+    for (const [key, child] of Object.entries(properties)) {
+      uuidFieldPaths(child, path === "" ? key : `${path}.${key}`, out)
     }
   }
+  if (record.items) uuidFieldPaths(record.items, `${path}[]`, out)
+  for (const key of ["oneOf", "anyOf", "allOf"]) {
+    const members = record[key]
+    if (Array.isArray(members)) for (const member of members) uuidFieldPaths(member, path, out)
+  }
 }
+
+/** Every `<kind>.props.<path>` in the registry that takes a UUID. */
+function uuidPathsAcrossRegistry(): string[] {
+  return SECTION_KINDS.flatMap((kind) => {
+    const found: string[] = []
+    uuidFieldPaths(
+      z.toJSONSchema(SECTION_REGISTRY[kind].propsSchema, { io: "input", unrepresentable: "any" }),
+      "",
+      found,
+    )
+    return found.map((field) => `${kind}.props.${field}`)
+  })
+}
+
+/**
+ * The slice of Block A under one `## ` heading, up to the next `## `.
+ *
+ * Fix round 1, M3/M1: a `toContain` against the WHOLE of Block A is satisfied
+ * by any accidental occurrence elsewhere in a 12 KB string — which is how the
+ * island pin survived deleting the island block and the UUID pin survived
+ * deleting the UUID rule. Scoping to the section makes the deletion mutant the
+ * thing the assertion actually tests. Returns "" when the heading is gone, so
+ * every assertion downstream fails rather than being skipped.
+ */
+function blockASection(heading: string): string {
+  const start = SECTION_BUILDER_BLOCK_A.indexOf(`## ${heading}`)
+  if (start === -1) return ""
+  const rest = SECTION_BUILDER_BLOCK_A.slice(start + heading.length + 3)
+  const end = rest.indexOf("\n## ")
+  return end === -1 ? rest : rest.slice(0, end)
+}
+
+/** The slice of Block A describing ONE kind, `### <kind>` to the next heading. */
+function blockAKindEntry(kind: string): string {
+  const start = SECTION_BUILDER_BLOCK_A.search(new RegExp(`^### ${kind}\\b`, "m"))
+  if (start === -1) return ""
+  const rest = SECTION_BUILDER_BLOCK_A.slice(start + kind.length + 4)
+  const end = rest.search(/^#{2,3} /m)
+  return end === -1 ? rest : rest.slice(0, end)
+}
+
+/**
+ * Every regex Block A prints as `matching /.../`. The body allows `\/`, so a
+ * pattern containing escaped slashes (which every link pattern does) is
+ * captured whole instead of being cut at its first inner slash.
+ */
+function printedPatterns(): string[] {
+  return [...SECTION_BUILDER_BLOCK_A.matchAll(/matching \/((?:[^/\\]|\\.)*)\//g)].map((match) => match[1])
+}
+
+/**
+ * The op names `opSchema` accepts, derived through JSON Schema emission.
+ *
+ * Fix round 1, M2: prompt.ts extracts these with a private-internals cast
+ * (`shape.op.def.values[0]`). The first spelling of this test used the SAME
+ * cast, so the day that internal moves BOTH go `undefined` together: the
+ * prompt renders `- { op: "undefined", ... }` and the test asserts that string
+ * is present. Green suite, corrupted cached prefix. This route shares nothing
+ * with the module's.
+ */
+function opNamesViaJsonSchema(): string[] {
+  const json = z.toJSONSchema(opSchema, { io: "input", unrepresentable: "any" }) as {
+    anyOf?: Array<Record<string, unknown>>
+    oneOf?: Array<Record<string, unknown>>
+  }
+  const members = json.anyOf ?? json.oneOf ?? []
+  return members.map((member) => {
+    const op = (member.properties as Record<string, { const?: unknown; enum?: unknown[] }> | undefined)?.op
+    if (typeof op?.const === "string") return op.const
+    if (Array.isArray(op?.enum) && typeof op.enum[0] === "string") return op.enum[0]
+    return ""
+  })
+}
+
+/**
+ * Checked AGAINST `opSchema` below, never trusted on its own. A literal list
+ * is the point: it is the one expectation in this file that does not travel
+ * through any of the module's own machinery, so a seventh op has to be typed
+ * here, glossed in `OP_GLOSS`, and printed in Block A before the suite is
+ * green again.
+ */
+const EXPECTED_OP_NAMES = [
+  "set_page",
+  "add_section",
+  "update_section",
+  "move_section",
+  "remove_section",
+  "set_theme",
+] as const
 
 // ---------------------------------------------------------------------------
 // Block A is frozen
@@ -160,6 +265,23 @@ describe("Block A is built once, at module load", () => {
     expect(pageOne).not.toBe(pageTwo)
   })
 
+  it("interpolates nothing that changes between PROCESSES, not just between turns", () => {
+    // Fix round 1, L2: the two pins above both survive a
+    // `${new Date().toISOString()}` interpolated INSIDE the module-level
+    // template literal. It is evaluated once at import, so Block A is still
+    // one object per process and still a byte-identical prefix of every prompt
+    // that process builds — the cache miss is per COLD START, which no
+    // in-process assertion can see. Every serverless instance would then write
+    // the whole 12 KB prefix instead of reading it, silently, forever.
+    //
+    // Funnel names and step ids are already impossible here (they are not in
+    // scope inside the const), so date-shaped and random-shaped text is the
+    // whole remaining exposure.
+    expect(SECTION_BUILDER_BLOCK_A).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/) // ISO timestamp
+    expect(SECTION_BUILDER_BLOCK_A).not.toMatch(/\b(19|20)\d{2}\b/) // any plausible year
+    expect(SECTION_BUILDER_BLOCK_A).not.toMatch(/\b\d{10,}\b/) // epoch ms, Math.random digits
+  })
+
   it("stays under the size ceiling the token budget assumes", () => {
     // ~4 characters per token for English prose, so 16000 characters is
     // roughly 4000 tokens. The design budgets Block A at ~3000 tokens; it
@@ -186,43 +308,97 @@ describe("every registry entry reaches the prompt", () => {
     expect(SECTION_BUILDER_BLOCK_A).toContain(def.description)
   })
 
-  it.each(SECTION_KINDS)("every variant of %s is offered", (kind) => {
+  it.each(SECTION_KINDS)("every variant of %s is offered UNDER THAT KIND'S OWN ENTRY", (kind) => {
     // A kind whose variants were dropped reads as "pick anything" and the
     // model invents one, which `z.enum` then rejects — killing the batch.
+    //
+    // Fix round 1, L1: this used to search the whole of Block A, and variant
+    // names are shared across kinds — `faq`'s only variant is `"stack"`, which
+    // is also `testimonial`'s, so deleting faq's entire `variant:` line stayed
+    // green. Scoped to the `### <kind>` slice, each kind stands alone.
+    const entry = blockAKindEntry(kind)
+    expect(entry).not.toBe("")
     for (const variant of SECTION_REGISTRY[kind].variants) {
-      expect(SECTION_BUILDER_BLOCK_A).toContain(JSON.stringify(variant))
+      expect(entry).toContain(JSON.stringify(variant))
     }
   })
 
-  it.each(ISLAND_NAMES)("island %s is named", (island) => {
-    expect(SECTION_BUILDER_BLOCK_A).toContain(island)
-  })
+  it.each(ISLAND_LIST.map((island) => [island.name, island] as const))(
+    "island %s is named IN the islands block",
+    (_name, island) => {
+      // Fix round 1, M3: the first spelling was `toContain(name)` over the
+      // whole of Block A, and all six names already occur outside
+      // `ISLANDS_BLOCK` — `checkout` and `testimonials` in the paragraph above
+      // it ("a real checkout, ... live testimonials pulled from the
+      // database"), the rest throughout the kinds and CTA sections. Deleting
+      // `ISLANDS_BLOCK` outright left the suite green. The intro prose lives
+      // inside this same `##` section, so scoping alone is not enough: the
+      // list-item form and the island's own description are what exist
+      // nowhere else. The drift mutant (a seventh island) still fails too.
+      const section = blockASection("What the interactive parts become")
+      expect(section).not.toBe("")
+      expect(section).toContain(`- ${island.name} (`)
+      expect(section).toContain(island.description)
+    },
+  )
 
-  it("describes every op that opSchema accepts", () => {
+  it("describes every op that opSchema accepts, and no phantom op", () => {
     // Derived from the validator, not from a list here: a seventh op added to
     // `opSchema` and forgotten in the prompt is an op the model never uses.
-    const options = (opSchema as unknown as { options: Array<{ shape: Record<string, unknown> }> }).options
-    const names = options.map(
-      (option) => (option.shape.op as unknown as { def: { values: string[] } }).def.values[0],
-    )
-    expect(names.length).toBeGreaterThan(0)
+    //
+    // Fix round 1, M2: `opNamesViaJsonSchema()` does NOT share the module's
+    // `.def.values[0]` private-internals cast, so the two can no longer fail
+    // in lockstep into `op: "undefined"`.
+    const names = opNamesViaJsonSchema()
+    expect(names.every((name) => typeof name === "string" && name.length > 0)).toBe(true)
+    expect(new Set(names).size).toBe(names.length)
+    expect([...names].sort()).toEqual([...EXPECTED_OP_NAMES].sort())
     for (const name of names) {
       expect(SECTION_BUILDER_BLOCK_A).toContain(`op: "${name}"`)
     }
+    // The corruption itself, named: this is the literal string Block A renders
+    // when the module's extraction cast stops resolving.
+    expect(SECTION_BUILDER_BLOCK_A).not.toContain('op: "undefined"')
   })
 
-  it("names every UUID field so the no-ids rule cannot go stale", () => {
+  it("names every UUID field IN the no-ids rule, so that rule cannot go stale", () => {
     // The single most dangerous drift in this file: a new uuid-typed field
     // that the "you never write a UUID" rule does not name is a field the
     // model will happily fabricate — and a fabricated id passes Zod, passes
     // the compiler, and renders as silent nothing (resolve.ts's opening note).
-    const found = new Set<string>()
-    for (const kind of SECTION_KINDS) {
-      uuidFieldNames(z.toJSONSchema(SECTION_REGISTRY[kind].propsSchema, { io: "input", unrepresentable: "any" }), "", found)
+    //
+    // Fix round 1, M1: everything here is asserted against the SECTION SLICE
+    // and against the `<kind>.props.<field>` path form. The previous spelling
+    // asserted the bare field name against all of Block A, which the per-kind
+    // props signature already prints — so deleting the whole rule was green.
+    const section = blockASection("You never write a UUID")
+    expect(section).not.toBe("")
+    const paths = uuidPathsAcrossRegistry()
+    expect(paths.length).toBeGreaterThan(0)
+    for (const path of paths) {
+      expect(section).toContain(path)
     }
-    expect(found.size).toBeGreaterThan(0)
-    for (const field of found) {
-      expect(SECTION_BUILDER_BLOCK_A).toContain(field)
+    // ...and the rule says what to DO with such a field. A section that named
+    // the paths without an instruction would teach the model nothing.
+    expect(section).toMatch(/OMITTED|omit/)
+  })
+
+  it("prints ONE link rule, and it is SAFE_LINK's", () => {
+    // Fix round 1, H1. `registry.ts` used to restate `ctaTargetSchema.href`'s
+    // rule as `/^(\/|https:\/\/)/`, which accepts the protocol-relative
+    // `//evil.example`. Because this prompt is GENERATED from those schemas,
+    // Block A printed that weak pattern for `CtaTarget` and `SAFE_LINK`'s
+    // strong one for `form.props.redirectUrl` thirty lines apart: two
+    // contradictory link rules inside one frozen, cached prefix, paid on every
+    // page forever. `renderCtaTarget` then degrades the href the prompt
+    // endorsed into a disabled placeholder with `ok:true, warnings:[]`.
+    //
+    // Pinned as EQUALITY with `SAFE_LINK.source`, not as "contains the
+    // lookahead": divergence in either direction is the bug.
+    const linkPatterns = printedPatterns().filter((pattern) => pattern.includes("https"))
+    expect(linkPatterns.length).toBeGreaterThanOrEqual(2)
+    for (const pattern of linkPatterns) {
+      expect(pattern).toBe(SAFE_LINK.source)
     }
   })
 

@@ -582,19 +582,39 @@ describe("CtaTarget rendering", () => {
     expect(serialize(result.nodes)).toContain('"href":"/thanks"')
   })
 
-  // IMPORTANT 3 (Stage 1.2 fix round 1): ctaTargetSchema's `^(\/|https:\/\/)`
-  // regex (registry.ts, frozen) matches "//evil.example" because it only
-  // checks for ONE leading slash. safeUrl (compile/sanitize.ts) rejects
-  // protocol-relative URLs outright, so without this guard the href would be
-  // silently dropped — a dead button with zero compiler warning.
-  it("url with a protocol-relative href renders a disabled placeholder, not a dead <a>", () => {
-    const { result } = compileSection(ctaCta({ kind: "url", href: "//evil.example/steal-me" }))
-    expect(result.ok).toBe(true)
-    if (!result.ok) return
-    expect(result.warnings).toEqual([])
-    const json = serialize(result.nodes)
-    expect(json).toContain("djp-btn-disabled")
-    expect(json).not.toContain('"tag":"a"')
+  // THE PREMISE OF THIS TEST CHANGED IN STAGE 1.6 FIX ROUND 1 (H1). Read this
+  // before "simplifying" anything it touches.
+  //
+  // BEFORE: `ctaTargetSchema.href` RESTATED the link rule as `^(\/|https:\/\/)`,
+  // which ACCEPTS "//evil.example" — it only checks for ONE leading slash, and a
+  // protocol-relative url reads as a path but navigates off-site on the page's
+  // own scheme. So such a doc was schema-VALID, and the only thing between it
+  // and a live-looking dead button (safeUrl drops the href with zero warning)
+  // was `renderCtaTarget`'s `SAFE_LINK` gate at render.ts:239. That degrade to a
+  // disabled placeholder is what this test used to pin.
+  //
+  // AFTER: `href` ASKS `SAFE_LINK` instead of restating it, so "//evil.example"
+  // is rejected by the schema itself. No schema-valid document can contain one,
+  // and `renderCtaSection` re-parses props (render.ts:491) before rendering — so
+  // the throw below is the new guarantee, and it is strictly stronger than the
+  // old placeholder: the value never gets far enough to need degrading.
+  //
+  // *** DO NOT DELETE render.ts's SAFE_LINK GATE ON THE GROUNDS THAT NOTHING
+  // EXERCISES IT. *** It is defence in depth, and it is now UNREACHABLE through
+  // the public API BY CONSTRUCTION — `renderCtaTarget` is not exported, and all
+  // nine `render*Section` functions parse props before touching them, so there
+  // is no way to hand the gate an href the schema would reject. (I tried: a
+  // cast past the schema does not help, because the renderer uses the PARSED
+  // props, not the argument.) Its remaining job is to survive a future caller
+  // that skips the parse — which is precisely the shape of the bug that put it
+  // there.
+  //
+  // The assertion below is also the pin for the parse-first property that whole
+  // unreachability argument rests on: drop the `propsSchema.parse` from
+  // `renderCtaSection` and this goes red rather than silently handing the gate
+  // its old job back.
+  it("url with a protocol-relative href is unrepresentable — the schema rejects it, so the renderer never sees it", () => {
+    expect(() => compileSection(ctaCta({ kind: "url", href: "//evil.example/steal-me" }))).toThrow()
   })
 
   it('anchor: <a href="#sectionId">, always resolvable with no context', () => {

@@ -17,7 +17,7 @@
 // the section registry table + CtaTarget).
 
 import { z } from "zod"
-import { formIslandSchema } from "@/lib/funnels/islands"
+import { formIslandSchema, SAFE_LINK } from "@/lib/funnels/islands"
 
 // ---------------------------------------------------------------------------
 // SectionDoc / Section — the data model (plan §1a, lines 58-83, copied
@@ -58,20 +58,29 @@ export interface Section {
 // real tables and substitutes the UUID, or renders a disabled placeholder and
 // blocks publish when the name doesn't resolve to exactly one row.
 //
-// NOTE: the "url" variant's `href` regex is copied as-is from the plan. It
-// does not close the protocol-relative hole (`//evil.example`) the way
-// `SAFE_LINK` in islands.ts does — that hardening is out of scope for this
-// registry (verbatim-copy instruction) and belongs to whichever later stage
-// resolves/renders `kind: "url"` CTAs.
+// NOTE: the "url" variant's `href` ASKS THE VALIDATOR — `SAFE_LINK` from
+// islands.ts — instead of restating it. The plan's own text spelled the regex
+// out as `/^(\/|https:\/\/)/`, which accepts `//evil.example`: protocol-
+// relative, so it reads as a path and navigates off-site on the page's own
+// scheme. That is this repo's third divergent-link-regex bug, and Stage 1.6
+// showed why restating it is worse here than anywhere else: the builder
+// prompt is GENERATED from these schemas, so the weak pattern was printed
+// into a frozen, cached prompt prefix about thirty lines above the strong one
+// (`form.props.redirectUrl`, which already used `SAFE_LINK`) — two
+// contradictory link rules in one cached instruction, teaching the model that
+// `//evil.example` is valid. `renderCtaTarget` (render.ts) then gates on
+// `SAFE_LINK` and degrades it to a disabled placeholder with `ok:true,
+// warnings:[]`: a dead button the prompt told the model to write.
+//
+// The verbatim-copy instruction covers the SHAPE of the union, not a
+// hand-typed copy of a regex that already has one owner. render.ts keeps its
+// own `SAFE_LINK` gate as defence in depth.
 // ---------------------------------------------------------------------------
 
 export const ctaTargetSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("url"),
-    href: z
-      .string()
-      .max(300)
-      .regex(/^(\/|https:\/\/)/),
+    href: z.string().max(300).regex(SAFE_LINK, "Must be a site path or an https URL"),
   }),
   z.object({ kind: z.literal("step"), stepSlug: z.string() }),
   z.object({ kind: z.literal("anchor"), sectionId: z.string() }),

@@ -3,6 +3,8 @@
 // at least one adversarial rejection — a schema test that only feeds valid
 // input pins nothing (see MEMORY.md: tests_that_cannot_fail).
 import { describe, it, expect } from "vitest"
+import { z } from "zod"
+import { SAFE_LINK } from "@/lib/funnels/islands"
 import {
   ctaTargetSchema,
   ctaWithLabelSchema,
@@ -91,6 +93,41 @@ describe("ctaTargetSchema", () => {
   it("rejects url targets that don't start with / or https://", () => {
     const result = ctaTargetSchema.safeParse({ kind: "url", href: "javascript:alert(1)" })
     expect(result.success).toBe(false)
+  })
+
+  // Stage 1.6 fix round 1, H1. `href` used to RESTATE the link rule as
+  // `/^(\/|https:\/\/)/`, which accepts a PROTOCOL-RELATIVE url: one leading
+  // slash is all it checks for, so `//evil.example` reads as a path and
+  // navigates off-site on the page's own scheme. `SAFE_LINK` (islands.ts)
+  // carries the `(?!\/\/)` lookahead that closes it, and `href` now ASKS it.
+  // Third divergent-link-regex bug in this repo.
+  it.each([
+    ["/thanks", true],
+    ["https://calendly.com/djp", true],
+    ["//evil.example/steal-me", false],
+    ["//evil.example", false],
+    ["javascript:alert(1)", false],
+    ["http://insecure.example", false],
+  ])("url href %s parses iff SAFE_LINK accepts it", (href, accepted) => {
+    expect(SAFE_LINK.test(href)).toBe(accepted)
+    expect(ctaTargetSchema.safeParse({ kind: "url", href }).success).toBe(accepted)
+  })
+
+  it("carries SAFE_LINK itself, not a copy that happens to agree today", () => {
+    // The table above is a behaviour check on six inputs; this is the identity
+    // check. Someone hand-typing a character-identical regex back in passes
+    // every row above and re-opens the divergence the day SAFE_LINK changes —
+    // which is exactly how the first two instances of this bug happened.
+    const emitted = z.toJSONSchema(ctaTargetSchema, { io: "input", unrepresentable: "any" })
+    const patterns = new Set<string>()
+    const walk = (node: unknown): void => {
+      if (node === null || typeof node !== "object") return
+      const record = node as Record<string, unknown>
+      if (typeof record.pattern === "string") patterns.add(record.pattern)
+      for (const child of Object.values(record)) walk(child)
+    }
+    walk(emitted)
+    expect([...patterns]).toEqual([SAFE_LINK.source])
   })
 })
 

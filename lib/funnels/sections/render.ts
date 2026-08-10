@@ -200,15 +200,30 @@ function disabledCta(label: string, className: string): string {
 // CtaTarget -> a clickable element.
 //
 // `anchor` always produces a safe href by construction (always `#<sectionId>`,
-// and `sectionId` is schema-constrained to safe id characters). `url` is
-// NOT fully safe by construction: `ctaTargetSchema.href`'s regex
-// (`^(\/|https:\/\/)`, registry.ts, Stage 1.1, frozen) accepts
-// `//evil.example` because it only checks for ONE leading slash, but
-// `safeUrl` (compile/sanitize.ts) treats a protocol-relative URL as unsafe
-// and drops the `href` attribute with zero warning — a live-looking, dead
-// button. `SAFE_LINK` (the same regex `formIslandSchema`/`bookingIslandSchema`
-// already gate on, lib/funnels/islands.ts) closes exactly that gap, so `url`
-// is re-checked against it here before ever reaching the DOM.
+// and `sectionId` is schema-constrained to safe id characters).
+//
+// `url` USED TO NEED THIS GATE AND NO LONGER DOES — the gate stays anyway, and
+// the distinction matters if you are deciding whether to delete it.
+//
+// Through Stage 1.5, `ctaTargetSchema.href` RESTATED the link rule as
+// `^(\/|https:\/\/)`, which accepts `//evil.example` because it only checks for
+// ONE leading slash. `safeUrl` (compile/sanitize.ts) treats a protocol-relative
+// URL as unsafe and drops the `href` attribute with zero warning — a
+// live-looking, dead button — so re-checking here against `SAFE_LINK` was the
+// only thing standing between a schema-VALID doc and that outcome.
+//
+// Stage 1.6 fix round 1 (H1) closed it at the source: `ctaTargetSchema.href`
+// now IMPORTS `SAFE_LINK` (lib/funnels/islands.ts) rather than restating it, so
+// a protocol-relative href is no longer writable at all. Every
+// `render*Section` below parses props through the registry schema first, so no
+// schema-valid document can reach the check on line ~239 with an href that
+// fails it.
+//
+// It is kept as DEFENCE IN DEPTH, deliberately: `renderCtaTarget` is one
+// `propsSchema.parse` away from being reachable again, and a divergent link
+// regex is the bug this repo has now shipped three times. Deleting a gate
+// because "nothing exercises it" is how the fourth one gets written.
+// render.test.ts pins the parse-first property the unreachability rests on.
 //
 // `step` is the same problem in a different shape: without
 // `ctx.funnelBasePath` the only href available is a bare relative slug
