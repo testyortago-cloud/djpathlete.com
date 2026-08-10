@@ -3,26 +3,32 @@ import { createAnthropic } from "@ai-sdk/anthropic"
 import { generateObject, streamText } from "ai"
 import type { ZodSchema } from "zod"
 import type { AgentCallResult } from "@/lib/ai/types"
+// The default model for both entry points below. Imported as well as
+// re-exported: `export { X } from "..."` creates no local binding.
+import { MODEL_SONNET } from "@/lib/ai/models"
 import { AI_CHAT_MAX_TOKENS } from "@/lib/admin-ai-config"
 import pRetry from "p-retry"
 
 export { Anthropic }
 
-export const MODEL_OPUS = "claude-opus-4-6"
-export const MODEL_SONNET = "claude-sonnet-4-6"
-export const MODEL_HAIKU = "claude-haiku-4-5-20251001"
-// ADDITIVE ONLY — added for the AI page builder (lib/funnels/sections/*).
-// The three constants above are DELIBERATELY left pointing where they point:
-// the 4-agent program-generation pipeline, the strategy agents and the
-// bookkeeper are all tuned against `claude-sonnet-4-6`, so repointing
-// MODEL_SONNET (or MODEL_OPUS/MODEL_HAIKU) to change the builder's model
-// would silently change behaviour for every AI feature in the app.
+// ─── Model ids ───────────────────────────────────────────────────────────────
 //
-// UNVERIFIED: whether @ai-sdk/anthropic + `ai` drive this id correctly
-// through `generateObject`'s jsonTool path has NOT been smoke-tested against
-// the live API — that belongs to the stage that first makes a real call.
-// The documented fallback is MODEL_SONNET, which is proven here today.
-export const MODEL_OPUS_5 = "claude-opus-5"
+// MOVED, NOT REPOINTED. The four ids now live in `lib/ai/models.ts`, which
+// imports NOTHING, and are re-exported here so every existing
+// `from "@/lib/ai/anthropic"` import keeps working byte-identically. The values
+// are unchanged: MODEL_OPUS / MODEL_SONNET / MODEL_HAIKU are what the 4-agent
+// program-generation pipeline, the strategy agents and the bookkeeper are all
+// tuned against, and repointing one would silently change behaviour for every
+// AI feature in the app.
+//
+// The reason for the split is one-directional and is about what an IMPORTER
+// pays: this module constructs an Anthropic provider at module scope (below),
+// so reaching it for a single string constant drags the SDK — and that
+// constructor — into the importing bundle. A config leaf, a validator or a
+// client component that only needs an ID should import from `@/lib/ai/models`;
+// anything that actually CALLS a model imports from here, as before.
+export { MODEL_OPUS, MODEL_SONNET, MODEL_HAIKU, MODEL_OPUS_5 } from "@/lib/ai/models"
+
 const DEFAULT_MAX_TOKENS = 32000
 
 // ─── Singleton clients ───────────────────────────────────────────────────────

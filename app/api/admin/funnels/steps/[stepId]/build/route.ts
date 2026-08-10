@@ -214,8 +214,19 @@ interface TurnResponse {
   /**
    * Set when the catalogue could not be read or `resolveDoc` threw, so CTA
    * refs were NOT checked this turn. `unresolved: []` alongside a non-null
-   * value here means "not checked", never "all clear" — the publish route
-   * re-resolves against a live catalogue and is the actual gate.
+   * value here means "not checked", never "all clear".
+   *
+   * The actual gate is `gateSectionDoc` in
+   * `app/api/admin/funnels/steps/[stepId]/publish/route.ts`, which re-resolves
+   * against a live catalogue before it writes a version row. That sentence was
+   * here before the function was — for three stages this field's own doc
+   * comment (and two other files) pointed at a publish route that compiled and
+   * wrote with no gate in it, so a turn that could not check its links led to a
+   * page that nothing ever checked. Note also the OPPOSITE decision on the two
+   * sides: this route degrades when the catalogue is unreadable (it runs on
+   * every turn; throwing would stop all editing), the publish route REFUSES
+   * (one deliberate click; publishing unchecked is what the gate exists to
+   * prevent). Both are documented at their own site.
    */
   resolutionError: string | null
   /** Which path produced this revision. Mirrors `funnel_step_turns.source`. */

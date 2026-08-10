@@ -20,6 +20,22 @@
 // ---------------------------------------------------------------------------
 // *** THE PUBLISH GATE READS `unresolved`, NEVER `compiled.ok`. ***
 // ---------------------------------------------------------------------------
+// ENFORCED AT: `app/api/admin/funnels/steps/[stepId]/publish/route.ts`
+// (`gateSectionDoc`), which is the only place a version row can be written.
+// `components/admin/funnels/builder/publish-actions.ts` runs the same check one
+// layer earlier so the owner sees it before the request, and the builder UI
+// disables the button — those two are convenience, not the gate.
+//
+// THAT LINE NAMES A FILE BECAUSE FOR THREE STAGES THIS BLOCK NAMED NOTHING, AND
+// THE GATE DID NOT EXIST. The paragraph below described exactly the right
+// mechanism, `publishGate()` at the bottom of this file was written and tested,
+// and the publish route called neither — it took `{html, css, project_data}`,
+// compiled, and wrote. A direct POST published dead buy buttons for as long as
+// the endpoint existed, while three separate files told the reader it could
+// not. If you change where the gate lives, change this line in the same commit;
+// a claim that does not name its enforcement site cannot be checked, and an
+// unchecked claim is what stops the next reader looking.
+//
 // Handoff recorded by the Stage 1.2 review: an unresolved CTA renders as a
 // DISABLED PLACEHOLDER (render.ts's `disabledCta`) for every kind EXCEPT
 // `session_pack` — `CheckoutIsland` ignores `productId` for that kind, so
@@ -35,8 +51,10 @@
 // bad attributes silently and a `<span role="button" aria-disabled>` is
 // perfectly valid markup. So "can this page be published?" is answered by
 // `ResolveResult.unresolved` and by nothing else. `publishGate()` below is
-// that one call. A future reader who reaches for `compiled.ok` here will
-// ship dead buy buttons on a green build.
+// that one call, and the publish route named above is the one caller whose
+// refusal actually stops a write. A future reader who reaches for
+// `compiled.ok` there will ship dead buy buttons on a green build — and so
+// will one who deletes the call and leaves this comment standing.
 // ---------------------------------------------------------------------------
 //
 // FOUR DESIGN DECISIONS THE PLAN DOES NOT MAKE, MADE HERE:

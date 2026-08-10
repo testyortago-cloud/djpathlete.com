@@ -5,8 +5,31 @@
 // exactly one place and every call site sees it. Nothing here imports the
 // prompt or the registry — this file is a leaf, so `prompt.ts`, the route
 // (Stage 1.8) and the UI can all read it without an import cycle.
+//
+// ---------------------------------------------------------------------------
+// "THE UI CAN READ IT" WAS FALSE FOR THREE STAGES. IT IS NOW TRUE BY
+// CONSTRUCTION, AND THE ONE IMPORT BELOW IS THE WHOLE OF THE FIX.
+// ---------------------------------------------------------------------------
+// The line above used to read `from "@/lib/ai/anthropic"` — a module that
+// imports `@anthropic-ai/sdk` and `ai` and constructs an Anthropic provider AT
+// MODULE SCOPE. So this "leaf" pulled the entire SDK, and evaluated a provider
+// constructor, into anything that imported it. It was not a theoretical cost:
+//
+//     lib/funnels/sections/doc.ts -> lib/validators/funnel.ts -> HERE -> the SDK
+//
+// which made `reassemble()` un-importable in the browser and forced Stage 1.9
+// to route the owner's publish click through a server action instead. A header
+// that claims client-safety while the import graph says otherwise is the worse
+// half of that: it stops the next reader checking.
+//
+// `@/lib/ai/models` holds the ids and imports NOTHING. Keep it that way, and
+// keep this file's imports to leaves of that kind — the failure mode of getting
+// it wrong is a client bundle that silently gained an SDK and still builds
+// green. (`reassemble` itself stays server-side regardless: `doc.ts` also
+// reaches `parse5` and `postcss` through `lib/funnels/compile`. This import is
+// the one that had a header lie attached to it, not the only one that exists.)
 
-import { MODEL_OPUS_5, MODEL_SONNET } from "@/lib/ai/anthropic"
+import { MODEL_OPUS_5, MODEL_SONNET } from "@/lib/ai/models"
 
 /**
  * The model the page builder runs on.
@@ -17,7 +40,7 @@ import { MODEL_OPUS_5, MODEL_SONNET } from "@/lib/ai/anthropic"
  * pinned `structuredOutputMode: "jsonTool"` path needs a smoke call, which
  * belongs to the stage that first calls the model. If it does not work,
  * switch to `SECTION_BUILDER_FALLBACK_MODEL` below — one line, no other
- * change — rather than repointing the shared constants in lib/ai/anthropic.ts.
+ * change — rather than repointing the shared constants in lib/ai/models.ts.
  */
 export const SECTION_BUILDER_MODEL = MODEL_OPUS_5
 

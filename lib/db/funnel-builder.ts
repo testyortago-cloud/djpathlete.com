@@ -445,10 +445,21 @@ export async function revertToRevision(input: RevertInput): Promise<RevertResult
     // They were computed against the catalogue AS IT WAS at `toRevision`. If a
     // referenced program/pack/event has been deleted since, the restored head
     // turn claims `unresolved: []` and the chat will tell the owner the page is
-    // publishable when it is not. That is survivable TODAY only because the
-    // publish gate is `publishGate(resolveDoc(doc, catalogues))` over the live
-    // document (see resolve.ts's opening block) and never reads this column —
-    // so the lie is cosmetic, confined to the transcript.
+    // publishable when it is not. The lie is cosmetic ONLY because something
+    // else re-derives the verdict from the live document at publish time —
+    // `gateSectionDoc` in
+    // `app/api/admin/funnels/steps/[stepId]/publish/route.ts`, which runs
+    // `publishGate(resolveDoc(doc, await loadCatalogues()))` before it writes
+    // anything and never reads this column.
+    //
+    // WHEN THIS COMMENT WAS FIRST WRITTEN THAT WAS NOT TRUE. It said the same
+    // thing in the present tense — "the publish gate IS
+    // publishGate(resolveDoc(...))" — and the publish route implemented no gate
+    // at all, so what is described here as "cosmetic, confined to the
+    // transcript" was in fact the only check anywhere and it was a stale one.
+    // Hence the file path above: this claim is safe to depend on exactly as
+    // long as that function exists, and naming it is what makes that
+    // checkable rather than assumed.
     //
     // STAGE 1.9 MUST RE-RESOLVE AFTER A REVERT rather than trust these: call
     // `resolveDoc` on the restored doc against a freshly loaded catalogue and
