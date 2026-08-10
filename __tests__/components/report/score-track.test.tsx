@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import { describe, it, expect } from "vitest"
 import { ScoreTrack } from "@/components/public/report/panels/ScoreTrack"
+import { BAND_DEVELOPING_MIN, BAND_STRENGTH_MIN } from "@/lib/test-report/scoring"
 
 describe("ScoreTrack", () => {
   it("positions the marker at the score and explains the scale to screen readers", () => {
@@ -26,5 +27,23 @@ describe("ScoreTrack", () => {
     const { container } = render(<ScoreTrack score={Number.NaN} />)
     expect((container.querySelector(".score-track-dot") as HTMLElement).style.left).toBe("0%")
     expect(screen.getByRole("img").getAttribute("aria-label")).not.toMatch(/NaN/)
+  })
+
+  it("paints the priority and strength zones from the band constants, not restated numbers", () => {
+    const { container } = render(<ScoreTrack score={58} />)
+    const low = container.querySelector(".score-track-zone-low") as HTMLElement
+    const high = container.querySelector(".score-track-zone-high") as HTMLElement
+    expect(low.style.width).toBe(`${BAND_DEVELOPING_MIN}%`)
+    expect(high.style.left).toBe(`${BAND_STRENGTH_MIN}%`)
+  })
+
+  it("tells screen readers which band the score lands in", () => {
+    render(<ScoreTrack score={72} />)
+    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/72 out of 100 — Strength/)
+  })
+
+  it("no longer renders a fill bar — zones and the dot carry the score", () => {
+    const { container } = render(<ScoreTrack score={58} />)
+    expect(container.querySelector(".score-track-fill")).toBeNull()
   })
 })

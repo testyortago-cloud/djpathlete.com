@@ -536,10 +536,12 @@
   --surface: oklch(0.97 0.006 85);
   /* :root's --success is 4.41:1 on this scope's --background — under the 4.5:1 AA
      floor for TestRow's 12px delta text. Same hue (145), darkened until it clears:
-     5.00:1 on --background, 5.15:1 on --card. --error is left at :root's value,
-     which already measures 5.28:1 here. Computed via OKLCH -> linear sRGB -> WCAG
-     relative luminance, not eyeballed. */
+     5.00:1 on --background, 5.15:1 on --card. --error is restated at :root's own
+     value (already 5.28:1 here, no change needed) so the score-track zones — which
+     read tokens directly off this scope — don't fall back to :root. Computed via
+     OKLCH -> linear sRGB -> WCAG relative luminance, not eyeballed. */
   --success: oklch(0.52 0.16 145);
+  --error: oklch(0.55 0.22 27);
   print-color-adjust: exact;
   -webkit-print-color-adjust: exact;
 }
@@ -643,11 +645,25 @@
   background: var(--border);
 }
 
-.test-report .score-track-fill {
+/* Band zones — the cut-points from lib/test-report/scoring made visible. Widths
+   arrive inline from the SAME constants bandFor() uses; the neutral middle is
+   the rail showing through. 22% tint: judgment, quietly. */
+.test-report .score-track-zone-low {
   position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: 999px;
-  background: var(--primary);
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 999px 0 0 999px;
+  background: color-mix(in oklab, var(--error) 22%, transparent);
+}
+
+.test-report .score-track-zone-high {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  border-radius: 0 999px 999px 0;
+  background: color-mix(in oklab, var(--success) 22%, transparent);
 }
 
 .test-report .score-track-tick {
@@ -669,10 +685,6 @@
   background: var(--card);
   border: 2.5px solid var(--primary);
   transform: translate(-50%, -50%);
-}
-
-.test-report .score-track[data-tone="accent"] .score-track-fill {
-  background: var(--accent);
 }
 
 .test-report .score-track[data-tone="accent"] .score-track-dot {
@@ -724,8 +736,8 @@
 @media print {
   /* The track is drawn with `background`, which Chrome's Save-as-PDF omits by
      default — the same reason the green bands print as rules. Borders survive,
-     so the bar is rebuilt from them: the rail and the fill each become an 8px
-     bottom border, and the element collapses to zero height so the two overlay. */
+     so the bar is rebuilt from them: the rail becomes an 8px bottom border, and
+     the element collapses to zero height so the zone borders below overlay it. */
   .test-report .score-track {
     background: transparent !important;
     height: 0 !important;
@@ -733,13 +745,22 @@
     border-radius: 999px;
   }
 
-  .test-report .score-track-fill {
+  /* Zones collapse the same way the rail does: zero height, the color as an 8px
+     bottom border. 45% mix, not the screen's 22% — alpha washes out on paper. */
+  .test-report .score-track-zone-low,
+  .test-report .score-track-zone-high {
     background: transparent !important;
     height: 0 !important;
     top: 0 !important;
     bottom: auto !important;
-    border-bottom: 8px solid var(--primary) !important;
-    border-radius: 999px;
+  }
+
+  .test-report .score-track-zone-low {
+    border-bottom: 8px solid color-mix(in oklab, var(--error) 45%, transparent) !important;
+  }
+
+  .test-report .score-track-zone-high {
+    border-bottom: 8px solid color-mix(in oklab, var(--success) 45%, transparent) !important;
   }
 
   /* Collapsing the track also collapses the PADDING box the absolute children
@@ -763,10 +784,6 @@
     border-color: var(--primary) !important;
     top: 4px !important;
     transform: translate(-50%, -50%) !important;
-  }
-
-  .test-report .score-track[data-tone="accent"] .score-track-fill {
-    border-bottom-color: var(--accent) !important;
   }
 
   .test-report .score-track[data-tone="accent"] .score-track-dot {

@@ -91,9 +91,14 @@ describe("ScoreTrack styles", () => {
     // the same scale as page 1". Verified in Chromium under emulated print media.
     const print = printBlockContaining(".score-track")
     expect(print).toMatch(/\.score-track\s*{[^}]*border-bottom:\s*8px solid var\(--border\)/)
-    expect(print).toMatch(/\.score-track-fill\s*{[^}]*border-bottom:\s*8px solid var\(--primary\)/)
+    expect(print).toMatch(/\.score-track-zone-low\s*{[^}]*border-bottom:\s*8px solid color-mix\(in oklab, var\(--error\)/)
+    expect(print).toMatch(/\.score-track-zone-high\s*{[^}]*border-bottom:\s*8px solid color-mix\(in oklab, var\(--success\)/)
     expect(print).toMatch(/\.score-track-tick\s*{[^}]*border-left:\s*1px solid/)
-    expect(print).toMatch(/\[data-tone="accent"\]\s+\.score-track-fill\s*{[^}]*border-bottom-color:\s*var\(--accent\)/)
+    expect(print).toMatch(/\[data-tone="accent"\]\s+\.score-track-dot\s*{[^}]*border-color:\s*var\(--accent\)/)
+  })
+
+  it("has fully removed the fill bar — a stale rule would repaint it in one medium only", () => {
+    expect(css).not.toMatch(/score-track-fill/)
   })
 
   it("keeps the dot centred in print, against the global transform reset", () => {
