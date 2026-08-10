@@ -47,6 +47,26 @@ export const ISLAND_PROPS_ATTR = "data-djp-props"
  */
 const SAFE_LINK = /^(?!\/\/)(\/|https:\/\/)/
 
+/**
+ * Hosts a redirect is allowed to hand a visitor to under the owner's own
+ * brand. `SAFE_LINK` only closes the scheme hole (`javascript:`) and the
+ * protocol-relative hole (`//evil.example`) — `https://attacker.example/`
+ * still passes it, which is a live open redirect for a lead that just handed
+ * over their contact info. Checked with a try/catch because `new URL()`
+ * throws on anything that isn't a well-formed absolute URL, and a validator
+ * must fail closed with a Zod issue, not an uncaught exception.
+ */
+const REDIRECT_HOSTS: readonly string[] = ["www.darrenjpaul.com", "darrenjpaul.com"]
+
+function isAllowedRedirect(value: string): boolean {
+  if (value.startsWith("/")) return true
+  try {
+    return REDIRECT_HOSTS.includes(new URL(value).hostname)
+  } catch {
+    return false
+  }
+}
+
 export const FUNNEL_FIELD_TYPES = ["text", "email", "tel", "textarea", "select", "checkbox"] as const
 export type FunnelFieldType = (typeof FUNNEL_FIELD_TYPES)[number]
 
@@ -77,13 +97,14 @@ export const formIslandSchema = z
     // submission, so an unvalidated value is an open redirect that fires at the
     // exact moment a visitor has handed over their email. Same rule as
     // bookingIslandSchema.href below, which was validated while this was not.
-    // NOTE: this constrains the SCHEME, not the host. Redirecting to an
-    // arbitrary https host is still permitted because legitimate thank-you
-    // pages live off-site; restricting that further is an owner policy call.
+    // Constrains BOTH the scheme (SAFE_LINK) and the host (isAllowedRedirect):
+    // a submitted lead can only be sent to a site path or an https URL on the
+    // owner's own domain, never to an arbitrary third-party host.
     redirectUrl: z
       .string()
       .max(500)
       .regex(SAFE_LINK, "Must be a site path or an https URL")
+      .refine(isAllowedRedirect, "Must be a site path or an https URL on your own domain")
       .optional(),
     /** Emails this lead magnet's asset on success. */
     leadMagnetId: z.string().uuid().nullable().optional(),
@@ -103,11 +124,26 @@ export const formIslandSchema = z
 // checkout / event / booking / testimonials / faq
 // ---------------------------------------------------------------------------
 
-export const checkoutIslandSchema = z.object({
-  productKind: z.enum(["program", "session_pack"]),
-  productId: z.string().uuid(),
-  label: z.string().min(1).max(60).optional().default("Buy now"),
-})
+export const checkoutIslandSchema = z
+  .object({
+    productKind: z.enum(["program", "session_pack"]),
+    // Required only for productKind "program": CheckoutIsland.tsx links to
+    // `/client/programs/${productId}`. For "session_pack" the component
+    // ignores productId entirely and routes to /client/sessions — requiring a
+    // UUID it then discards is exactly the training signal that teaches a
+    // model to fabricate ids, so it must be optional in that branch.
+    productId: z.string().uuid().optional(),
+    label: z.string().min(1).max(60).optional().default("Buy now"),
+  })
+  .superRefine((value, ctx) => {
+    if (value.productKind === "program" && !value.productId) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["productId"],
+        message: "productId is required when productKind is 'program'",
+      })
+    }
+  })
 
 export const eventIslandSchema = z.object({
   eventId: z.string().uuid(),

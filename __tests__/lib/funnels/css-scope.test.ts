@@ -46,6 +46,17 @@ describe("scopeCss", () => {
     expect(norm(out)).toContain("#djp-funnel-root .a")
   })
 
+  it("does not re-scope a rule nested inside another rule (native CSS nesting)", () => {
+    // `.b` here is a descendant of `.a`, which the walk already scoped to
+    // `#djp-funnel-root .a`. Re-prefixing `.b` too would nest a second,
+    // unmatchable `#djp-funnel-root` inside the first — the unique root id
+    // can never appear nested inside itself. The renderer never emits nested
+    // rules today, but the guard keeps the escape hatch safe if that changes.
+    const out = norm(scopeCss(".a { color: red; .b { color: blue } }"))
+    expect(out).toBe("#djp-funnel-root .a { color: red; .b { color: blue } }")
+    expect(out).not.toContain("#djp-funnel-root .a { color: red; #djp-funnel-root .b")
+  })
+
   it("does not double-prefix a selector that is already scoped", () => {
     const out = norm(scopeCss("#djp-funnel-root .a { color: red }"))
     expect(out).toBe("#djp-funnel-root .a { color: red }")

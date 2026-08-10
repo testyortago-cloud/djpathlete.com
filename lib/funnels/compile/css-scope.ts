@@ -41,6 +41,13 @@ export function scopeCss(css: string, rootId: string = FUNNEL_ROOT_ID): string {
 
   root.walkRules((rule: Rule) => {
     if (isInsideKeyframes(rule)) return
+    // A rule nested inside another rule (native CSS nesting) is already a
+    // descendant of its already-scoped parent selector, so re-prefixing it
+    // here would double-scope it into a selector that can never match (the
+    // unique #<rootId> element can't be nested inside itself). Our flat
+    // renderer never emits nested rules today, but this keeps the escape
+    // hatch safe if that ever changes.
+    if (rule.parent?.type === "rule") return
     rule.selectors = rule.selectors.map((selector) => scopeSelector(selector, prefix))
   })
 
