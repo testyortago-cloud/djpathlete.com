@@ -637,21 +637,60 @@ describe("applyOps — rejects a batch that would produce duplicate section ids"
     expect(result.ok).toBe(false)
   })
 
-  it("a doc that ALREADY has a duplicate id is rejected up front, even on an empty ops batch (Fix round 1, minor)", () => {
-    // Previously the duplicate-id guard ran only after applying a
-    // non-empty ops batch, so a pre-existing duplicate sailed through
-    // silently on the empty-ops no-op fast path.
+  it("an empty ops batch against an already-duplicated doc succeeds unchanged (Fix round 2 supersedes round 1's stricter behavior)", () => {
+    // Round 1 rejected this unconditionally. Round 2 gates the INPUT
+    // duplicate check on the batch containing an id-addressed op
+    // (update_section/move_section/remove_section) — zero ops trivially
+    // contains none, so this is no longer blocked. The doc that comes back
+    // is untouched (same reference, still duplicated) — nothing REPAIRED
+    // it, but nothing was asked to.
     const alreadyDuplicated = baseDoc({ sections: [newHeroSection("dup"), { ...newHeroSection("dup") }] })
     const result = applyOps(alreadyDuplicated, [])
-    expect(result.ok).toBe(false)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.doc).toBe(alreadyDuplicated)
   })
 
-  it("a doc with a pre-existing duplicate id is rejected even when the ops batch itself never touches it", () => {
-    // And a non-empty batch shouldn't be blamed ("... after applying ops")
-    // for a duplicate it didn't introduce.
+  it("a doc with a pre-existing duplicate id is STILL rejected when the ops batch itself never touches it (set_theme-only)", () => {
+    // set_theme isn't id-addressed either, so the INPUT check is skipped
+    // here too — but set_theme never touches `sections`, so the pre-existing
+    // duplicate survives into the OUTPUT, and the unconditional output
+    // check (further down, always runs) still catches it. This is the
+    // "set_theme can't silently paper over a corrupt doc" half of the
+    // round-2 fix — only set_page, which actually REPLACES `sections`, can
+    // repair one.
     const alreadyDuplicated = baseDoc({ sections: [newHeroSection("dup"), { ...newHeroSection("dup") }] })
     const result = applyOps(alreadyDuplicated, [{ op: "set_theme", theme: { accent: "primary" } }])
     expect(result.ok).toBe(false)
+  })
+
+  it("Fix round 2 — a duplicate-id doc repaired by a SOLE set_page (unique ids) SUCCEEDS: the only repair path stays open", () => {
+    // This is the exact regression the round-2 review caught: round 1's
+    // unconditional input check would have rejected this outright, leaving
+    // an owner whose doc somehow got duplicate ids with NO chat instruction
+    // able to fix it — set_page is the one op that can, since it wholesale
+    // -replaces `sections`.
+    const alreadyDuplicated = baseDoc({ sections: [newHeroSection("dup"), { ...newHeroSection("dup") }] })
+    const repaired = [newHeroSection("fixed-a"), newHeroSection("fixed-b")]
+    const result = applyOps(alreadyDuplicated, [{ op: "set_page", sections: repaired }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(idsOf(result.doc.sections)).toEqual(["fixed-a", "fixed-b"])
+  })
+
+  it("Fix round 2 — a duplicate-id doc + any id-addressed op is still rejected, honestly (not blaming the batch)", () => {
+    // update_section/move_section/remove_section all resolve a bare `id`
+    // against `doc.sections` — genuinely ambiguous against a duplicated
+    // doc, so these are NOT exempted the way set_page/set_theme are. The
+    // error must come from the INPUT-side message ("Invalid input
+    // document: ..."), not the output-side "... after applying ops" one —
+    // this batch never got far enough to produce an output.
+    const alreadyDuplicated = baseDoc({ sections: [newHeroSection("dup"), { ...newHeroSection("dup") }] })
+    const result = applyOps(alreadyDuplicated, [{ op: "update_section", id: "dup", style: { align: "center" } }])
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors.join(" ")).toContain("Invalid input document")
+    expect(result.errors.join(" ")).not.toContain("after applying ops")
   })
 })
 

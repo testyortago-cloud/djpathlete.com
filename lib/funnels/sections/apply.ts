@@ -240,20 +240,6 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
     // `errors` is displayed one-per-line (Fix round 1, minor).
     return { ok: false, errors: zodIssuesToStrings(docCheck.error).map((issue) => `Invalid input document: ${issue}`) }
   }
-  // `sectionDocSchema` validates each section independently, so it can't
-  // notice two of them sharing an id. Checked here, on the INPUT doc,
-  // rather than only at the end on the ops' output (Fix round 1, minor):
-  // the previous version only ran this check after applying a non-empty
-  // ops batch, so (a) a doc that already had a duplicate id sailed through
-  // untouched on an empty-ops call, and (b) a non-empty batch that didn't
-  // itself introduce the duplicate was blamed for one it inherited. Ruling
-  // it out here up front makes the LATER check (after applying ops, further
-  // down) unambiguously about a duplicate THIS batch introduced.
-  const inputDuplicateId = findDuplicateSectionId(doc.sections)
-  if (inputDuplicateId) {
-    return { ok: false, errors: [`Invalid input document: duplicate section id "${inputDuplicateId}".`] }
-  }
-
   if (!Array.isArray(rawOps)) {
     return { ok: false, errors: ["ops must be an array."] }
   }
@@ -295,6 +281,30 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
   })
   if (structuralErrors.length > 0) {
     return { ok: false, errors: structuralErrors }
+  }
+
+  // `sectionDocSchema` validates each section independently, so it can't
+  // notice two of them sharing an id. Checked here, on the INPUT doc —
+  // but ONLY when the batch actually contains an ID-ADDRESSED op
+  // (update_section / move_section / remove_section) — Fix round 2. Those
+  // three are the ones that resolve a bare `id` against `doc.sections` and
+  // would silently misbehave (which of the two matching sections did the
+  // caller mean?) against an ambiguous document. `set_page` and `set_theme`
+  // address no ids at all, so the ambiguity never reaches them — and
+  // `set_page` in particular is the ONLY way to REPAIR a document that
+  // somehow already has duplicate ids (it wholesale-replaces `sections`).
+  // Blocking it here as fix round 1 did closed that repair path entirely:
+  // a corrupted doc could never be fixed by any chat instruction again. The
+  // OUTPUT duplicate check further down is unconditional and still catches
+  // anything a `set_page` (or any other op) actually produces.
+  const hasIdAddressedOp = ops.some(
+    (op) => op.op === "update_section" || op.op === "move_section" || op.op === "remove_section",
+  )
+  if (hasIdAddressedOp) {
+    const inputDuplicateId = findDuplicateSectionId(doc.sections)
+    if (inputDuplicateId) {
+      return { ok: false, errors: [`Invalid input document: duplicate section id "${inputDuplicateId}".`] }
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -573,11 +583,17 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
     return { ok: false, errors: zodIssuesToStrings(finalCheck.error) }
   }
 
-  // Duplicate-id guard on the OUTPUT. The input doc was already checked for
-  // this at entry, so reaching here means any duplicate found now was
-  // introduced BY this batch (e.g. `set_page` supplying two sections with
-  // the same id, or `add_section` colliding with a survivor) — the error
-  // message below is therefore accurate, not just plausible.
+  // Duplicate-id guard on the OUTPUT — unconditional, unlike the input-side
+  // check above. When the batch had an id-addressed op, the input doc was
+  // already proven duplicate-free, so any duplicate found now was
+  // introduced BY this batch (e.g. `add_section` colliding with a
+  // survivor). When it didn't (a `set_page`-only or `set_theme`-only
+  // batch), this is the ONLY duplicate check that ran at all — and that's
+  // by design: it's what lets `set_page` supply a fresh, unique-id
+  // `sections` array and REPAIR a doc that came in already duplicated,
+  // while a `set_theme`-only batch (which never touches `sections`) still
+  // surfaces a pre-existing duplicate here rather than silently returning
+  // `ok: true` over a document nothing has actually fixed.
   const outputDuplicateId = findDuplicateSectionId(sections)
   if (outputDuplicateId) {
     return { ok: false, errors: [`Duplicate section id "${outputDuplicateId}" after applying ops.`] }
