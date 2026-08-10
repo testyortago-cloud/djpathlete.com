@@ -243,23 +243,6 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
   if (!Array.isArray(rawOps)) {
     return { ok: false, errors: ["ops must be an array."] }
   }
-  if (rawOps.length === 0) {
-    // A no-op batch is not an error — e.g. a purely conversational reply
-    // with nothing to change. `doc` is returned BY REFERENCE, unmodified:
-    // the strongest possible form of "sections it didn't name are never
-    // rebuilt" is not rebuilding anything at all.
-    return {
-      ok: true,
-      doc,
-      receipt: {
-        changed: [],
-        unchangedCount: doc.sections.length,
-        totalSections: doc.sections.length,
-        themeChanged: false,
-        isRewrite: false,
-      },
-    }
-  }
 
   // ---------------------------------------------------------------------
   // Phase 1 — structural validation against the registry-derived op schema.
@@ -284,26 +267,67 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
   }
 
   // `sectionDocSchema` validates each section independently, so it can't
-  // notice two of them sharing an id. Checked here, on the INPUT doc —
-  // but ONLY when the batch actually contains an ID-ADDRESSED op
-  // (update_section / move_section / remove_section) — Fix round 2. Those
-  // three are the ones that resolve a bare `id` against `doc.sections` and
-  // would silently misbehave (which of the two matching sections did the
-  // caller mean?) against an ambiguous document. `set_page` and `set_theme`
-  // address no ids at all, so the ambiguity never reaches them — and
-  // `set_page` in particular is the ONLY way to REPAIR a document that
-  // somehow already has duplicate ids (it wholesale-replaces `sections`).
-  // Blocking it here as fix round 1 did closed that repair path entirely:
-  // a corrupted doc could never be fixed by any chat instruction again. The
-  // OUTPUT duplicate check further down is unconditional and still catches
-  // anything a `set_page` (or any other op) actually produces.
-  const hasIdAddressedOp = ops.some(
-    (op) => op.op === "update_section" || op.op === "move_section" || op.op === "remove_section",
-  )
-  if (hasIdAddressedOp) {
+  // notice two of them sharing an id. Checked here, on the INPUT doc — but
+  // ONLY when this batch has no way to REPAIR that duplicate.
+  //
+  // The discriminating question is NOT "does this batch address ids?" but
+  // "CAN this batch fix the document?". `set_page` is the only op that
+  // wholesale-replaces `sections`, so it is the only op that can turn a
+  // duplicated doc into a clean one. Fix round 1 ran this check
+  // unconditionally and thereby closed that repair path entirely: a doc
+  // that somehow acquired duplicate ids could never be fixed by any chat
+  // instruction again. Fix round 2 reopened it by exempting batches with no
+  // `update_section`/`move_section`/`remove_section`, which was the wrong
+  // discriminant three ways over (Fix round 3):
+  //
+  //   - it exempted `add_section`, whose `after` resolves a bare id against
+  //     `sections` exactly the way those three do;
+  //   - it exempted `set_theme`, which never touches `sections` at all — so
+  //     an INHERITED duplicate fell through to the output check and came
+  //     back as "... after applying ops", blaming a batch that could not
+  //     possibly have introduced it;
+  //   - it is batch-static, so `[set_page(unique ids), update_section(...)]`
+  //     was rejected even though the `set_page` repairs the array before the
+  //     update ever resolves against it.
+  //
+  // Gating on "contains a `set_page`" is exact instead: a batch that CANNOT
+  // repair is refused up front with honest INPUT-side attribution, and a
+  // batch that CAN is let through to try. Nothing corrupt escapes either
+  // way — the OUTPUT duplicate check further down is unconditional, so a
+  // `set_page` that supplies duplicates of its own is still caught there,
+  // and there the "after applying ops" wording is true.
+  const canRepair = ops.some((op) => op.op === "set_page")
+  if (!canRepair) {
     const inputDuplicateId = findDuplicateSectionId(doc.sections)
     if (inputDuplicateId) {
       return { ok: false, errors: [`Invalid input document: duplicate section id "${inputDuplicateId}".`] }
+    }
+  }
+
+  if (ops.length === 0) {
+    // A no-op batch is not an error — e.g. a purely conversational reply
+    // with nothing to change. `doc` is returned BY REFERENCE, unmodified:
+    // the strongest possible form of "sections it didn't name are never
+    // rebuilt" is not rebuilding anything at all.
+    //
+    // NOTE THE POSITION: this fast path sits BELOW the input duplicate
+    // check, deliberately. An empty batch can never contain a `set_page`,
+    // so it can never repair anything — returning `ok: true` over an
+    // already-duplicated doc would throw that alarm away for nothing, and
+    // would be incoherent besides: the doc is already re-checked against
+    // `sectionDocSchema` above, so an empty batch over a doc with a
+    // malformed SECTION is rejected, and "two sections share an id" is the
+    // same class of corruption.
+    return {
+      ok: true,
+      doc,
+      receipt: {
+        changed: [],
+        unchangedCount: doc.sections.length,
+        totalSections: doc.sections.length,
+        themeChanged: false,
+        isRewrite: false,
+      },
     }
   }
 
@@ -382,14 +406,33 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
     }
 
     if (op.op === "update_section") {
-      // A patch with none of props/style/variant set is meaningless, but
-      // was previously VALID: it re-ran the section through Zod for
-      // nothing, produced a needlessly-cloned object, marked the section
-      // "touched", and emitted a receipt entry with no reasons — rendering
-      // in chat as "Hero ()". Rejected outright instead (Fix round 1,
-      // IMPORTANT 5): a model that emits this has a real bug worth
-      // surfacing, not something to paper over as a silent no-op.
-      if (op.props === undefined && op.style === undefined && op.variant === undefined) {
+      // A patch carrying no EFFECTIVE change is meaningless, but was
+      // previously VALID: it re-ran the section through Zod for nothing,
+      // produced a needlessly-cloned object (breaking reference identity
+      // for a section nothing changed about), marked the section "touched"
+      // — inflating `touchedIds`, which feeds `isRewrite`, so the receipt
+      // could report a rewrite that never happened — and emitted a receipt
+      // entry with no reasons, rendering in chat as "Hero ()". Rejected
+      // outright instead (Fix round 1, IMPORTANT 5): a model that emits
+      // this has a real bug worth surfacing, not something to paper over as
+      // a silent no-op.
+      //
+      // The test is for EMPTINESS, not ABSENCE (Fix round 3, NEW-1). Round
+      // 1 only asked `=== undefined`, so `{props:{}}` / `{style:{}}` — the
+      // very same meaningless op, spelled with an empty object instead of
+      // an omitted key — walked straight past the guard and reproduced
+      // every symptom above. Both spellings now get the same answer, which
+      // is the whole point: two ways of saying "change nothing" cannot have
+      // opposite outcomes. `set_theme` below already tests its own patch
+      // this way (`Object.keys(op.theme).length > 0`).
+      //
+      // `propsPatch`/`stylePatch` are then what the MERGE sites consult, so
+      // an empty patch is never treated as a patch: `{}` is truthy, so a
+      // bare `op.props ? …` would still allocate a fresh props object for a
+      // patch with nothing in it.
+      const propsPatch = op.props !== undefined && Object.keys(op.props).length > 0 ? op.props : undefined
+      const stylePatch = op.style !== undefined && Object.keys(op.style).length > 0 ? op.style : undefined
+      if (propsPatch === undefined && stylePatch === undefined && op.variant === undefined) {
         errors.push(`ops[${i}] update_section "${op.id}": at least one of props, style, or variant must be provided.`)
         break
       }
@@ -416,8 +459,8 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
       // REQUIRED field still fails below, at the post-merge `parseSection`
       // check — deleting `hero.headline` produces a candidate missing a
       // required key, which is exactly what that check exists to catch.
-      const mergedProps = op.props ? applyPropsPatch(current.props, op.props) : current.props
-      const mergedStyle = op.style ? { ...current.style, ...op.style } : current.style
+      const mergedProps = propsPatch ? applyPropsPatch(current.props, propsPatch) : current.props
+      const mergedStyle = stylePatch ? { ...current.style, ...stylePatch } : current.style
       const mergedVariant = op.variant ?? current.variant
       const candidate = {
         id: current.id,
@@ -446,13 +489,13 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
 
       const reasons: string[] = []
       if (op.variant !== undefined) reasons.push("variant")
-      if (op.style) {
-        for (const key of Object.keys(op.style) as (keyof SectionStyleKnobs)[]) {
+      if (stylePatch) {
+        for (const key of Object.keys(stylePatch) as (keyof SectionStyleKnobs)[]) {
           reasons.push(STYLE_CHANGE_LABEL[key])
         }
       }
-      if (op.props) {
-        for (const [key, value] of Object.entries(op.props)) {
+      if (propsPatch) {
+        for (const [key, value] of Object.entries(propsPatch)) {
           reasons.push(value === null ? `content: ${key} removed` : `content: ${key}`)
         }
       }
@@ -584,16 +627,18 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
   }
 
   // Duplicate-id guard on the OUTPUT — unconditional, unlike the input-side
-  // check above. When the batch had an id-addressed op, the input doc was
-  // already proven duplicate-free, so any duplicate found now was
-  // introduced BY this batch (e.g. `add_section` colliding with a
-  // survivor). When it didn't (a `set_page`-only or `set_theme`-only
-  // batch), this is the ONLY duplicate check that ran at all — and that's
-  // by design: it's what lets `set_page` supply a fresh, unique-id
-  // `sections` array and REPAIR a doc that came in already duplicated,
-  // while a `set_theme`-only batch (which never touches `sections`) still
-  // surfaces a pre-existing duplicate here rather than silently returning
-  // `ok: true` over a document nothing has actually fixed.
+  // check above. Exactly one of the two runs for any given batch, and which
+  // one runs is what makes the error message honest:
+  //
+  //   - No `set_page` in the batch: the input check already ran and proved
+  //     `doc.sections` duplicate-free, so any duplicate found HERE was
+  //     introduced BY this batch (e.g. an `add_section` colliding with a
+  //     survivor) — "after applying ops" is literally true.
+  //   - A `set_page` in the batch: the input check was skipped so the batch
+  //     could repair a duplicated doc, which makes this the ONLY duplicate
+  //     check that ran — and it is enough, because `set_page` replaces
+  //     `sections` wholesale, so whatever duplicate survives to here came
+  //     out of the batch's own array, not the stored doc.
   const outputDuplicateId = findDuplicateSectionId(sections)
   if (outputDuplicateId) {
     return { ok: false, errors: [`Duplicate section id "${outputDuplicateId}" after applying ops.`] }

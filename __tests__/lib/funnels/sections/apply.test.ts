@@ -560,18 +560,74 @@ describe("applyOps — update_section.props: an explicit null deletes an optiona
 })
 
 // ===========================================================================
-// A no-op update_section (none of props/style/variant given) is rejected
-// rather than silently touching the section for nothing (Fix round 1,
-// IMPORTANT 5).
+// A no-op update_section carries no EFFECTIVE change, and there are two ways
+// to spell one: omit props/style/variant entirely, or send them EMPTY. Both
+// are rejected. An empty object is truthy, so before the emptiness test
+// `{props:{}}` walked past the absence guard, allocated a new props object,
+// rebuilt the section through Zod — BREAKING REFERENCE IDENTITY for a
+// section nothing changed about — inflated `touchedIds` (which feeds
+// `isRewrite`), and produced a receipt entry with no reasons that renders in
+// chat as "Hero ()".
 // ===========================================================================
 
-describe("applyOps — rejects a no-op update_section", () => {
+describe("applyOps — rejects a no-op update_section, however it is spelled", () => {
   it("update_section with none of props/style/variant is rejected, not a silent touch", () => {
     const doc = baseDoc({ sections: nineSections() })
     const heroBefore = doc.sections[0]
     const result = applyOps(doc, [{ op: "update_section", id: "hero1" }])
     expect(result.ok).toBe(false)
     expect(doc.sections[0]).toBe(heroBefore)
+  })
+
+  it("update_section with an EMPTY props object is rejected — the same meaningless op, differently spelled", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const heroBefore = doc.sections[0]
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1", props: {} }])
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    // The MESSAGE matters: it must be refused by the no-op guard, not
+    // incidentally by a parse failure or a missing-id lookup further down.
+    expect(result.errors.join(" ")).toContain("at least one of props, style, or variant")
+    expect(doc.sections[0]).toBe(heroBefore)
+  })
+
+  it("update_section with an EMPTY style object is rejected", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const heroBefore = doc.sections[0]
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1", style: {} }])
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors.join(" ")).toContain("at least one of props, style, or variant")
+    expect(doc.sections[0]).toBe(heroBefore)
+  })
+
+  it("update_section with BOTH props and style empty is rejected", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const heroBefore = doc.sections[0]
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1", props: {}, style: {} }])
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors.join(" ")).toContain("at least one of props, style, or variant")
+    expect(doc.sections[0]).toBe(heroBefore)
+  })
+
+  it("an EMPTY props object alongside a REAL style patch still applies — emptiness is per-patch, not a veto on the op", () => {
+    // Over-reach guard on the emptiness test itself: an implementation that
+    // rejects whenever `props` is `{}` (rather than only when NOTHING in
+    // the op carries a change) kills a batch with a perfectly good style
+    // patch in it. Also a reference-identity pin — the untouched sections
+    // must still be the same objects — and it pins that the empty props
+    // patch contributes no "content: …" reason to the receipt.
+    const doc = baseDoc({ sections: nineSections() })
+    const before = doc.sections
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1", props: {}, style: { headline: "xl" } }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.doc.sections[0].style).toEqual({ headline: "xl", tone: "accent" })
+    expect(result.receipt.changed[0].reasons).toEqual(["headline size"])
+    for (let i = 1; i < before.length; i++) {
+      expect(result.doc.sections[i]).toBe(before[i])
+    }
   })
 })
 
@@ -637,39 +693,43 @@ describe("applyOps — rejects a batch that would produce duplicate section ids"
     expect(result.ok).toBe(false)
   })
 
-  it("an empty ops batch against an already-duplicated doc succeeds unchanged (Fix round 2 supersedes round 1's stricter behavior)", () => {
-    // Round 1 rejected this unconditionally. Round 2 gates the INPUT
-    // duplicate check on the batch containing an id-addressed op
-    // (update_section/move_section/remove_section) — zero ops trivially
-    // contains none, so this is no longer blocked. The doc that comes back
-    // is untouched (same reference, still duplicated) — nothing REPAIRED
-    // it, but nothing was asked to.
+  it("an empty ops batch against an already-duplicated doc is REJECTED — a corrupt doc must not sail through the no-op path", () => {
+    // The input duplicate check deliberately sits ABOVE the empty-ops fast
+    // path. An empty batch cannot contain a `set_page`, so it cannot repair
+    // anything, so letting it return `ok: true` would discard the alarm for
+    // nothing. It would also be incoherent with the doc-shape check one
+    // line up: an empty batch over a doc with a MALFORMED section is
+    // rejected, and "two sections share an id" is the same class of
+    // corruption.
     const alreadyDuplicated = baseDoc({ sections: [newHeroSection("dup"), { ...newHeroSection("dup") }] })
     const result = applyOps(alreadyDuplicated, [])
-    expect(result.ok).toBe(true)
-    if (!result.ok) return
-    expect(result.doc).toBe(alreadyDuplicated)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors.join(" ")).toContain("Invalid input document")
+    expect(result.errors.join(" ")).not.toContain("after applying ops")
   })
 
-  it("a doc with a pre-existing duplicate id is STILL rejected when the ops batch itself never touches it (set_theme-only)", () => {
-    // set_theme isn't id-addressed either, so the INPUT check is skipped
-    // here too — but set_theme never touches `sections`, so the pre-existing
-    // duplicate survives into the OUTPUT, and the unconditional output
-    // check (further down, always runs) still catches it. This is the
-    // "set_theme can't silently paper over a corrupt doc" half of the
-    // round-2 fix — only set_page, which actually REPLACES `sections`, can
-    // repair one.
+  it("a set_theme-only batch against an already-duplicated doc is rejected as an INPUT problem, never blamed on the batch", () => {
+    // set_theme cannot repair a duplicate (it never touches `sections`), so
+    // the input check runs and the message says so. Asserting the MESSAGE,
+    // not just `ok: false`, is the point of this test: an earlier round let
+    // this fall through to the output-side check, which reported
+    // "... after applying ops" about a batch that provably applied nothing
+    // to `sections` at all. `ok: false` alone was true in both worlds,
+    // which is exactly why that regression went unnoticed.
     const alreadyDuplicated = baseDoc({ sections: [newHeroSection("dup"), { ...newHeroSection("dup") }] })
     const result = applyOps(alreadyDuplicated, [{ op: "set_theme", theme: { accent: "primary" } }])
     expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors.join(" ")).toContain("Invalid input document")
+    expect(result.errors.join(" ")).not.toContain("after applying ops")
   })
 
-  it("Fix round 2 — a duplicate-id doc repaired by a SOLE set_page (unique ids) SUCCEEDS: the only repair path stays open", () => {
-    // This is the exact regression the round-2 review caught: round 1's
-    // unconditional input check would have rejected this outright, leaving
-    // an owner whose doc somehow got duplicate ids with NO chat instruction
-    // able to fix it — set_page is the one op that can, since it wholesale
-    // -replaces `sections`.
+  it("a duplicate-id doc repaired by a SOLE set_page (unique ids) SUCCEEDS — the only repair path stays open", () => {
+    // `set_page` is the one op that wholesale-replaces `sections`, so it is
+    // the one op that can fix a doc that somehow acquired duplicate ids. An
+    // unconditional input check would reject this outright and leave the
+    // owner with NO chat instruction able to repair their page.
     const alreadyDuplicated = baseDoc({ sections: [newHeroSection("dup"), { ...newHeroSection("dup") }] })
     const repaired = [newHeroSection("fixed-a"), newHeroSection("fixed-b")]
     const result = applyOps(alreadyDuplicated, [{ op: "set_page", sections: repaired }])
@@ -678,13 +738,46 @@ describe("applyOps — rejects a batch that would produce duplicate section ids"
     expect(idsOf(result.doc.sections)).toEqual(["fixed-a", "fixed-b"])
   })
 
-  it("Fix round 2 — a duplicate-id doc + any id-addressed op is still rejected, honestly (not blaming the batch)", () => {
-    // update_section/move_section/remove_section all resolve a bare `id`
-    // against `doc.sections` — genuinely ambiguous against a duplicated
-    // doc, so these are NOT exempted the way set_page/set_theme are. The
-    // error must come from the INPUT-side message ("Invalid input
-    // document: ..."), not the output-side "... after applying ops" one —
-    // this batch never got far enough to produce an output.
+  it("a set_page that REPAIRS the doc lets a later id-addressed op in the same batch resolve against the repaired array", () => {
+    // The gate asks "can this batch repair?", not "is this batch
+    // id-addressed?" — so repair-plus-tweak works. A batch-static
+    // id-addressed gate rejects this at the input check even though
+    // `set_page` replaces `sections` before `update_section` ever resolves
+    // an id against it, and the id it resolves is unambiguous by then.
+    const alreadyDuplicated = baseDoc({ sections: [newHeroSection("dup"), { ...newHeroSection("dup") }] })
+    const result = applyOps(alreadyDuplicated, [
+      { op: "set_page", sections: [newHeroSection("fixed-a"), newHeroSection("fixed-b")] },
+      { op: "update_section", id: "fixed-a", style: { headline: "xl" } },
+    ])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(idsOf(result.doc.sections)).toEqual(["fixed-a", "fixed-b"])
+    expect(result.doc.sections[0].style).toEqual({ headline: "xl" })
+  })
+
+  it("an add_section anchored to a duplicated id is rejected from the INPUT path, not blamed on the batch", () => {
+    // `add_section.after` resolves a bare id against `sections` exactly the
+    // way update/move/remove do — "insert after `dup`" has two equally
+    // valid answers against a duplicated doc. A gate that enumerates only
+    // update/move/remove leaves this one to fall through to the output
+    // check and come back as "... after applying ops", blaming a batch that
+    // inherited the duplicate.
+    const alreadyDuplicated = baseDoc({ sections: [newHeroSection("dup"), { ...newHeroSection("dup") }] })
+    const result = applyOps(alreadyDuplicated, [
+      { op: "add_section", after: "dup", section: newHeroSection("hero2") },
+    ])
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors.join(" ")).toContain("Invalid input document")
+    expect(result.errors.join(" ")).not.toContain("after applying ops")
+  })
+
+  it("pins error ATTRIBUTION: a duplicate-id doc + an id-addressed op fails on the INPUT message, not the output one", () => {
+    // Attribution pin, not proof of a fix — this has passed since the input
+    // check first existed. What it discriminates is the over-relaxation
+    // mutant: delete the input check and `update_section` resolves to the
+    // first twin, the surviving duplicate trips the OUTPUT check, and
+    // `not.toContain("after applying ops")` fails.
     const alreadyDuplicated = baseDoc({ sections: [newHeroSection("dup"), { ...newHeroSection("dup") }] })
     const result = applyOps(alreadyDuplicated, [{ op: "update_section", id: "dup", style: { align: "center" } }])
     expect(result.ok).toBe(false)
