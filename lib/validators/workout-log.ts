@@ -92,6 +92,14 @@ export const workoutLogSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => v ?? null),
+  // Client-local YYYY-MM-DD. Without it the server would stamp the session in UTC,
+  // which puts an evening workout on tomorrow's date and skews the streak.
+  session_date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date")
+    .nullable()
+    .optional()
+    .transform((v) => v ?? null),
 })
 
 export type WorkoutLogFormData = z.infer<typeof workoutLogSchema>

@@ -114,6 +114,12 @@ interface ExerciseGroup {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+/** Client-local YYYY-MM-DD (not UTC) so "today" matches the client's calendar. */
+function localToday(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
 function formatRestTime(seconds: number | null): string {
   if (!seconds) return ""
   if (seconds >= 60) {
@@ -232,6 +238,7 @@ function ExerciseCard({
   assignmentId,
   userId,
   displayWeek,
+  dayOfWeek,
   index,
   onLogged,
   hideNotes,
@@ -240,6 +247,7 @@ function ExerciseCard({
   assignmentId: string
   userId: string
   displayWeek: number
+  dayOfWeek: number
   index: number
   onLogged?: () => void
   hideNotes?: boolean
@@ -423,6 +431,12 @@ function ExerciseCard({
           notes: notes || null,
           set_details: setDetails,
           ai_next_weight_kg: aiSuggestedWeight,
+          // Which program day this set belongs to. Without these the server can't
+          // find-or-create the day's workout_session, and the set is stored loose
+          // with a NULL session_id — which is what happened to every log until now.
+          week_number: displayWeek,
+          day_of_week: dayOfWeek,
+          session_date: localToday(),
         }),
       })
 
@@ -1139,6 +1153,7 @@ export function WorkoutDay({
                     assignmentId={assignmentId}
                     userId={userId}
                     displayWeek={displayWeek}
+                    dayOfWeek={day}
                     onLogged={() => handleExerciseLogged(item.exercise.id)}
                     hideNotes={!!sharedNote}
                     programContext={programContext}
@@ -1175,6 +1190,7 @@ export function WorkoutDay({
                   assignmentId={assignmentId}
                   userId={userId}
                   displayWeek={displayWeek}
+                  dayOfWeek={day}
                   onLogged={() => handleExerciseLogged(item.exercise.id)}
                   hideNotes={!!sharedNote}
                   programContext={programContext}

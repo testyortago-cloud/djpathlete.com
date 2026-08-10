@@ -47,12 +47,13 @@ export async function PATCH(request: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
-    const { session_id, session_rpe, volume_load_kg, duration_seconds } = parsed.data
+    const { session_id, session_rpe, volume_load_kg, duration_seconds, session_date } = parsed.data
 
     const ws = await finishSession(session_id, {
       session_rpe,
       volume_load_kg: volume_load_kg ?? null,
       duration_seconds: duration_seconds ?? null,
+      session_date: session_date ?? null,
     })
 
     // Bonus: feed the coach-intel readiness log (training_sessions, sRPE load =

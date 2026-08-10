@@ -64,14 +64,32 @@ export async function setPrs(sessionId: string, prs: number | null): Promise<voi
   if (error) throw error
 }
 
+/**
+ * Complete a session. `session_date` is optional and, when given, re-stamps the row
+ * with the date the workout was actually finished: a row is unique per (user,
+ * assignment, week, day), so a client repeating a week finishes the SAME row and
+ * would otherwise leave its original date behind — invisible to the streak, which
+ * reads `session_date`.
+ */
 export async function finishSession(
   sessionId: string,
-  patch: { session_rpe: number; volume_load_kg: number | null; duration_seconds: number | null },
+  patch: {
+    session_rpe: number
+    volume_load_kg: number | null
+    duration_seconds: number | null
+    session_date?: string | null
+  },
 ): Promise<WorkoutSession> {
   const supabase = getClient()
+  const { session_date, ...rest } = patch
   const { data, error } = await supabase
     .from("workout_sessions")
-    .update({ ...patch, status: "completed", completed_at: new Date().toISOString() })
+    .update({
+      ...rest,
+      ...(session_date ? { session_date } : {}),
+      status: "completed",
+      completed_at: new Date().toISOString(),
+    })
     .eq("id", sessionId)
     .select()
     .single()
@@ -124,12 +142,21 @@ export async function hasCompletedOnDate(userId: string, assignmentId: string, s
   return (data ?? []).length > 0
 }
 
-/** Mark a session completed from an in-person check-in (no metric entry required). */
-export async function completeForCheckin(sessionId: string, note: string): Promise<void> {
+/**
+ * Mark a session completed from an in-person check-in (no metric entry required).
+ * Takes the check-in's date for the same reason `finishSession` does — the row may
+ * have been opened weeks earlier by an ordinary set log.
+ */
+export async function completeForCheckin(sessionId: string, note: string, sessionDate?: string): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase
     .from("workout_sessions")
-    .update({ status: "completed", completed_at: new Date().toISOString(), notes: note })
+    .update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      notes: note,
+      ...(sessionDate ? { session_date: sessionDate } : {}),
+    })
     .eq("id", sessionId)
   if (error) throw error
 }

@@ -61,6 +61,9 @@ export function FinishSessionButton({
           session_id: ensureData.session.id,
           session_rpe: rpe,
           volume_load_kg: volumeLoadKg,
+          // The row may have been opened on an earlier date (a repeated week, or a
+          // set logged days ago) — stamp the date it was actually finished.
+          session_date: localToday(),
         }),
       })
       if (!res.ok) {

@@ -99,7 +99,7 @@ describe("handleAttendanceProgramAdvance", () => {
     expect(ensureSessionMock).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: "c1", assignment_id: "asg-1", week_number: 1, day_of_week: 1, session_date: "2026-07-06" }),
     )
-    expect(completeForCheckinMock).toHaveBeenCalledWith("ws-1", expect.any(String))
+    expect(completeForCheckinMock).toHaveBeenCalledWith("ws-1", expect.any(String), "2026-07-06")
     expect(updateScheduledMock).toHaveBeenCalledWith("occ-1", { workout_session_id: "ws-1" })
     expect(updateAssignmentMock).toHaveBeenCalledWith("asg-1", { current_week: 1 })
   })

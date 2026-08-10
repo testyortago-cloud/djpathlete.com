@@ -73,7 +73,7 @@ export async function advanceProgramForCheckin(input: {
     day_of_week: slot.day_of_week,
     session_date: input.sessionDate,
   })
-  await completeForCheckin(ws.id, CHECKIN_NOTE)
+  await completeForCheckin(ws.id, CHECKIN_NOTE, input.sessionDate)
 
   completed.add(dayKey(slot))
   const week = recomputeWeek(slots, completed)

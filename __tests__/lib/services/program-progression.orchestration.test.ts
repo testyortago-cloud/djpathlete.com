@@ -30,7 +30,7 @@ describe("advanceProgramForCheckin", () => {
 
     expect(r).toEqual({ workoutSessionId: "ws1", programCompleted: false })
     expect(ws.ensureSession).toHaveBeenCalledWith(expect.objectContaining({ week_number: 1, day_of_week: 1 }))
-    expect(ws.completeForCheckin).toHaveBeenCalledWith("ws1", expect.any(String))
+    expect(ws.completeForCheckin).toHaveBeenCalledWith("ws1", expect.any(String), "2026-06-13")
     expect(asg.updateAssignment).toHaveBeenCalledWith("a1", { current_week: 1 })
   })
 

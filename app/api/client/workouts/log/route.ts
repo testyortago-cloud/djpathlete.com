@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       session_id: providedSessionId,
       week_number,
       day_of_week,
+      session_date,
     } = parsed.data
 
     // Payment access guard — block pending assignments before any mutation
@@ -60,7 +61,9 @@ export async function POST(request: Request) {
           assignment_id,
           week_number,
           day_of_week,
-          session_date: new Date().toISOString().slice(0, 10),
+          // Client-local date when the browser sent one; the UTC fallback is only for
+          // callers that don't (it dates an evening workout as tomorrow).
+          session_date: session_date ?? new Date().toISOString().slice(0, 10),
         })
         sessionId = ws.id
       } catch (sessionError) {
