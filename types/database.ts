@@ -3136,6 +3136,14 @@ export interface FunnelStep {
    * something that is not a SectionDoc" instead of collapsing both to null.
    */
   project_data: unknown | null
+  /**
+   * Optimistic-lock counter for the AI builder (00203), starting at 0. Every
+   * accepted turn compare-and-swaps it forward in the same statement that
+   * writes `project_data`, so two admin tabs cannot silently overwrite each
+   * other — see `lib/db/funnel-builder.ts`. Read it via `getDraft()` and hand
+   * it straight back as `appendTurn`'s `expectedRevision`.
+   */
+  doc_revision: number
   published_version_id: string | null
   created_at: string
   updated_at: string

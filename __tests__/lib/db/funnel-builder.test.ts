@@ -21,6 +21,17 @@
 //   3. `getDraft` DISTINGUISHES "never built" FROM "holds something I cannot
 //      read". Collapsing both to `doc: null` is silent data loss: the caller's
 //      natural response to the first destroys the owner's page in the second.
+//
+// THE SELECTED COLUMNS ARE PART OF THE QUERY AND ARE ASSERTED LIKE THE REST.
+// The fake answers with its canned reply whatever `.select()` asked for, so a
+// missing or narrowed column list is invisible in the RESULT and visible only
+// in `rec.columns`. That gap was real and total, not cosmetic: PostgREST
+// returns `data: null` for an `.update()` carrying no representation, so
+// deleting `.select("doc_revision")` from the compare-and-swap makes EVERY
+// successful write report `stale_revision` — a builder that never saves,
+// against a suite that stays green. Recording a field and never asserting it
+// is the same defect class as a stub asserting its own return value; every
+// `columns` value this DAL sets is therefore pinned below.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
@@ -154,6 +165,16 @@ describe("getDraft", () => {
     expect(draft).toEqual({ doc: stored, docInvalid: false, revision: 7 })
     const q = find("funnel_steps", "select")
     expect(q?.filters).toEqual([["id", STEP]])
+    // MUTANT: `.select("project_data")` — drop `doc_revision` from the column
+    // list. The assertion above cannot see it, because the fake replies with
+    // both fields whatever was asked for; against real PostgREST `doc_revision`
+    // would be absent, `revision` would be `undefined ?? 0` FOREVER, and the
+    // compare-and-swap this whole file exists to protect would fail on every
+    // write from revision 1 onwards. The mirror mutant — `.select("doc_revision")`
+    // alone — silently returns a step whose page has vanished, so both columns
+    // are pinned.
+    expect(q?.columns).toContain("doc_revision")
+    expect(q?.columns).toContain("project_data")
   })
 
   it("reports project_data that is NOT a SectionDoc as docInvalid, never as an absent draft", async () => {
@@ -223,6 +244,15 @@ describe("appendTurn — the optimistic lock", () => {
     ])
     // ...and the swap is what moves the counter forward.
     expect(swap?.payload?.doc_revision).toBe(5)
+    // THE SWAP MUST ASK FOR A REPRESENTATION BACK, and this is the mutant with
+    // the worst blast radius in the file. MUTANT: delete `.select("doc_revision")`
+    // from the update chain. PostgREST answers an `.update()` with no
+    // representation as `data: null`, so `swapped` is null, the zero-rows branch
+    // fires on every SUCCESSFUL write, and the builder reports `stale_revision`
+    // forever while the draft it just saved sits in the column. The fake returns
+    // its canned array regardless, so nothing else here — not the filters, not
+    // the payload, not the result shape — can see it.
+    expect(swap?.columns).toBe("doc_revision")
     // A read-then-write implementation would have SELECTed the revision first.
     // There is no such read on the happy path.
     expect(find("funnel_steps", "select")).toBeUndefined()
@@ -242,6 +272,11 @@ describe("appendTurn — the optimistic lock", () => {
 
     expect(result).toEqual({ ok: false, reason: "stale_revision", currentRevision: 9 })
     expect(find("funnel_step_turns", "insert")).toBeUndefined()
+    // MUTANT: drop the column from `readRevision`'s `.select("doc_revision")`.
+    // Real PostgREST would return a row with no such key, `doc_revision ?? 0`
+    // would report 0, and the client would be told to re-sync to a revision
+    // that has not existed since the first turn — an unrecoverable 409 loop.
+    expect(find("funnel_steps", "select")?.columns).toBe("doc_revision")
   })
 
   it("distinguishes a missing step from a stale revision", async () => {
@@ -317,6 +352,11 @@ describe("appendTurn — what it writes", () => {
       created_by: "user-1",
     })
     expect(insert?.doc).toEqual(built)
+    // MUTANT: drop `.select("*")` from the insert chain. `.single()` then
+    // resolves with `data: null`, the cast hands the caller `turn: null` as an
+    // `ok: true` result, and the chat renders an empty turn for a write that
+    // actually landed.
+    expect(find("funnel_step_turns", "insert")?.columns).toBe("*")
   })
 
   it("does NOT touch project_data on a turn that carries no document", async () => {
@@ -382,6 +422,10 @@ describe("listTurns", () => {
     const q = find("funnel_step_turns", "select")
     expect(q?.order).toEqual({ column: "revision", ascending: false })
     expect(q?.filters).toEqual([["step_id", STEP]])
+    // MUTANT: a narrowed column list. `listTurns` returns whole `FunnelStepTurn`
+    // rows straight into the chat and into `revertToRevision`, so anything less
+    // than `*` silently drops `doc` and makes every revert a no-doc refusal.
+    expect(q?.columns).toBe("*")
   })
 
   it("bounds the read — an unbounded select on a per-turn growth table is a latent bug", async () => {
@@ -424,6 +468,11 @@ describe("revertToRevision", () => {
     // the target, or by rewinding `doc_revision` to 2 — either makes undo
     // un-undoable and breaks the optimistic lock for every open tab.
     expect(calls.some((c) => c.op === "delete")).toBe(false)
+    // MUTANT: narrowing `getTurnByRevision`'s `.select("*")`. The revert path
+    // reads `doc`, `compile_status`, `compile_problems` and `unresolved` off
+    // that row; a column list missing `doc` turns every legitimate undo into
+    // `revision_has_no_doc`.
+    expect(find("funnel_step_turns", "select")?.columns).toBe("*")
     const swap = find("funnel_steps", "update")
     expect(swap?.payload?.doc_revision).toBe(7)
     expect(swap?.payload?.project_data).toEqual(old)

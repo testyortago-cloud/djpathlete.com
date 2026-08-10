@@ -23,8 +23,11 @@
 //     "currently valid" set, a page that already referenced it stopped
 //     resolving and `publishGate` blocked an owner who had changed nothing.
 //     Rule 1 (id) now searches recognition, rules 2-3 (name) search offer, and
-//     `candidates` comes from offer. Three mutants, three tests, plus four
-//     more in the `loadCatalogues` block for which fetcher feeds which set.
+//     `candidates` comes from offer. Three mutants, three tests, plus six more
+//     in the `loadCatalogues` block for which fetcher feeds which set (all
+//     three kinds are split — programs were the last, and were a live bug
+//     until fix round 1) and three more for recognition's COMPLETENESS: the
+//     `offer ⊆ recognition` invariant and the PostgREST truncation guard.
 //
 // MOCKS: everything that tests `resolveDoc` / `publishGate` / `toCatalogue` is
 // mock-free — `Catalogues` is a plain literal, exactly like the doc fixtures.
@@ -1051,9 +1054,13 @@ describe("toCatalogue", () => {
 // needs mocks: there is no pure part left to extract, because the ONLY thing
 // it decides is WHICH FETCHER FEEDS WHICH SET. That decision IS the
 // recognition/offer split — every line of reasoning in resolve.ts about
-// untouched pages going unpublishable cashes out here, in five function
+// untouched pages going unpublishable cashes out here, in six function
 // references — and each half of it can be broken by a one-word edit that
 // leaves tsc and every other test in this repo green.
+//
+// It also decides one thing beyond the split: whether recognition is COMPLETE.
+// `assertNotTruncated` and the offer-into-recognition union are here for the
+// same reason the split is, and are pinned the same way.
 //
 // Kept surgical: `vi.doMock` (NOT hoisted `vi.mock`) plus `vi.resetModules()`
 // and a scoped dynamic import, so the substitution applies only to the module
@@ -1086,36 +1093,79 @@ interface EventFilters {
   from?: Date
 }
 
-async function loadCataloguesWithStubbedDal() {
+interface Row {
+  id: string
+  name: string
+}
+interface EventRow {
+  id: string
+  title: string
+}
+
+/**
+ * The rows each of the six fetchers returns. Defaults are the mutation-
+ * discriminating pairs described above; a test overrides one list when it needs
+ * an ASYMMETRY the defaults do not have (a recognition read that is missing a
+ * row the offer read has, or one at the PostgREST cap).
+ */
+interface DalRows {
+  allPrograms: Row[]
+  offerPrograms: Row[]
+  allPacks: Row[]
+  offerPacks: Row[]
+  allEvents: EventRow[]
+  offerEvents: EventRow[]
+}
+
+const DEFAULT_DAL_ROWS: DalRows = {
+  allPrograms: [
+    { id: "prog-active", name: "Active Program" },
+    { id: "prog-retired", name: "Retired Program" },
+  ],
+  offerPrograms: [{ id: "prog-active", name: "Active Program" }],
+  allPacks: [
+    { id: "pack-active", name: "Active Pack" },
+    { id: "pack-retired", name: "Retired Pack" },
+  ],
+  offerPacks: [{ id: "pack-active", name: "Active Pack" }],
+  allEvents: [
+    { id: "event-published", title: "Published Event" },
+    { id: "event-completed", title: "Completed Event" },
+  ],
+  offerEvents: [{ id: "event-published", title: "Published Event" }],
+}
+
+async function stubDal(overrides: Partial<DalRows> = {}) {
+  const rows: DalRows = { ...DEFAULT_DAL_ROWS, ...overrides }
   const getEventsCalls: (EventFilters | undefined)[] = []
   const publishedEventsCalls: (EventFilters | undefined)[] = []
 
   vi.resetModules()
   vi.doMock("@/lib/db/programs", () => ({
-    getPrograms: async () => [{ id: "prog-1", name: "Program Row" }],
+    getPrograms: async () => rows.offerPrograms,
+    getAllPrograms: async () => rows.allPrograms,
   }))
   vi.doMock("@/lib/db/session-pack-products", () => ({
-    listActiveProducts: async () => [{ id: "pack-active", name: "Active Pack" }],
-    listAllProducts: async () => [
-      { id: "pack-active", name: "Active Pack" },
-      { id: "pack-retired", name: "Retired Pack" },
-    ],
+    listActiveProducts: async () => rows.offerPacks,
+    listAllProducts: async () => rows.allPacks,
   }))
   vi.doMock("@/lib/db/events", () => ({
     getEvents: async (filters?: EventFilters) => {
       getEventsCalls.push(filters)
-      return [
-        { id: "event-published", title: "Published Event" },
-        { id: "event-completed", title: "Completed Event" },
-      ]
+      return rows.allEvents
     },
     getPublishedEvents: async (filters?: EventFilters) => {
       publishedEventsCalls.push(filters)
-      return [{ id: "event-published", title: "Published Event" }]
+      return rows.offerEvents
     },
   }))
 
   const { loadCatalogues } = await import("@/lib/funnels/sections/resolve")
+  return { loadCatalogues, getEventsCalls, publishedEventsCalls }
+}
+
+async function loadCataloguesWithStubbedDal(overrides: Partial<DalRows> = {}) {
+  const { loadCatalogues, getEventsCalls, publishedEventsCalls } = await stubDal(overrides)
   return { catalogues: await loadCatalogues(), getEventsCalls, publishedEventsCalls }
 }
 
@@ -1184,6 +1234,92 @@ describe("loadCatalogues", () => {
     expect(catalogues.offer.session_pack.map((r) => r.id)).toEqual(["pack-active"])
   })
 
+  it("builds the RECOGNITION program list from getAllPrograms — deactivating a program must not break the page selling it", async () => {
+    // MUTANT: `recognition` fed from `getPrograms()`, which filters
+    // `is_active`. This was a LIVE bug until fix round 1, and it is the exact
+    // shape the packs and events halves above already close: an owner flips a
+    // program inactive, and a funnel page that has sold it for months — and
+    // that nobody touched — stops resolving its committed uuid, fails its
+    // publish gate, and shows a picker with nothing in it that can help.
+    const { catalogues } = await loadCataloguesWithStubbedDal()
+
+    expect(catalogues.recognition.program.map((r) => r.id)).toEqual(["prog-active", "prog-retired"])
+  })
+
+  it("builds the OFFER program list from getPrograms — a deactivated program must not be offered as a NEW target", async () => {
+    // MUTANT: `offer` fed from `getAllPrograms()`. Mirror of the recognition
+    // half, and the reason the fix is TWO readers rather than swapping one:
+    // widening offer would put a retired program into Block B of the prompt and
+    // into the picker, i.e. a live buy button for something not on sale.
+    const { catalogues } = await loadCataloguesWithStubbedDal()
+
+    expect(catalogues.offer.program.map((r) => r.id)).toEqual(["prog-active"])
+  })
+
+  it("guarantees offer ⊆ recognition even when the recognition read does not contain an offered row", async () => {
+    // THE INVARIANT NOTHING USED TO ENFORCE. A row that is OFFERABLE but not
+    // RECOGNISABLE is an unresolvable CTA reachable straight from the picker:
+    // the owner picks it, the id lands in the doc, and the very next turn
+    // reports it unresolved with no way out.
+    //
+    // Two ways it happens, both closed by unioning offer into recognition:
+    // the six DAL reads are CONCURRENT, so a program activated between the two
+    // landing is in offer and not in recognition; and PostgREST silently caps
+    // an unbounded select, which truncates recognition first because it is the
+    // larger set.
+    //
+    // MUTANT: `recognition: toCatalogue(...)` with no union — the fixture below
+    // makes the recognition read return the retired program ONLY, which is what
+    // a truncated or racing read looks like, and the offered row then vanishes
+    // from recognition.
+    const { catalogues } = await loadCataloguesWithStubbedDal({
+      allPrograms: [{ id: "prog-retired", name: "Retired Program" }],
+      offerPrograms: [{ id: "prog-active", name: "Active Program" }],
+    })
+
+    const recognised = new Set(catalogues.recognition.program.map((r) => r.id))
+    for (const row of catalogues.offer.program) expect(recognised.has(row.id)).toBe(true)
+    // Recognition-first ordering, offer-only rows appended: the DAL's own order
+    // must not shift under callers just because a row was merged in.
+    expect(catalogues.recognition.program.map((r) => r.id)).toEqual(["prog-retired", "prog-active"])
+  })
+
+  it("throws rather than build a recognition set that PostgREST may have truncated", async () => {
+    // MUTANT: delete `assertNotTruncated`. The 1000-row cap is silent — no
+    // error, no warning, just the first 1000 rows — and it lands on the ONE set
+    // that must be complete. A truncated recognition list is indistinguishable
+    // from "that row was deleted", so the symptom is a publish block on an
+    // untouched page that no admin action caused and no UI can explain.
+    // Pagination is judged unwarranted at this data volume (see the comment on
+    // assertNotTruncated); a loud throw on the turn that first crosses the cap
+    // is the enforcement that replaces it.
+    const thousandEvents = Array.from({ length: 1000 }, (_, i) => ({
+      id: `event-${i}`,
+      title: `Event ${i}`,
+    }))
+    const { loadCatalogues } = await stubDal({ allEvents: thousandEvents })
+
+    await expect(loadCatalogues()).rejects.toThrow(/truncated/i)
+  })
+
+  it("does NOT throw for a recognition read one row under the cap", async () => {
+    // The positive half — without it the test above passes against an
+    // implementation that throws on every call, which would take the whole
+    // builder down instead of just the truncated case. `offerEvents: []` keeps
+    // the count independent of the offer-into-recognition union, so this test
+    // fails for its own reason only.
+    const nearlyThousand = Array.from({ length: 999 }, (_, i) => ({
+      id: `event-${i}`,
+      title: `Event ${i}`,
+    }))
+    const { catalogues } = await loadCataloguesWithStubbedDal({
+      allEvents: nearlyThousand,
+      offerEvents: [],
+    })
+
+    expect(catalogues.recognition.event).toHaveLength(999)
+  })
+
   it("puts each DAL's rows under the right catalogue key in BOTH sets — a transposed CALL SITE is not silently correct either", async () => {
     // `toCatalogue`'s named-object parameter already makes a swap a compile
     // error; this is the belt to that pair of braces, and it also pins that
@@ -1195,7 +1331,10 @@ describe("loadCatalogues", () => {
 
     expect(catalogues).toEqual({
       recognition: {
-        program: [{ id: "prog-1", name: "Program Row" }],
+        program: [
+          { id: "prog-active", name: "Active Program" },
+          { id: "prog-retired", name: "Retired Program" },
+        ],
         session_pack: [
           { id: "pack-active", name: "Active Pack" },
           { id: "pack-retired", name: "Retired Pack" },
@@ -1206,20 +1345,24 @@ describe("loadCatalogues", () => {
         ],
       },
       offer: {
-        program: [{ id: "prog-1", name: "Program Row" }],
+        program: [{ id: "prog-active", name: "Active Program" }],
         session_pack: [{ id: "pack-active", name: "Active Pack" }],
         event: [{ id: "event-published", name: "Published Event" }],
       },
     })
+    // This `toEqual` is also what kills the lazy form of the offer-into-
+    // recognition merge: a `[...recognition, ...offer]` CONCAT (no dedupe by
+    // id) would put "Active Program"/"Active Pack"/"Published Event" in each
+    // recognition list twice, so every one of the three lists above fails.
   })
 
   it("returns recognition and offer as SEPARATE objects, so a caller narrowing one cannot narrow the other", async () => {
     // Cheap, and it kills a real refactor mutant: `const c = toCatalogue(...);
     // return {recognition: c, offer: c}` type-checks, satisfies most of the
     // assertions above whenever the two happen to agree, and quietly undoes
-    // the split. Programs are the live case — both sets are fed from
-    // `getPrograms()` today (see loadCatalogues) — so this pins the CONTAINERS,
-    // which must stay distinct even where the rows currently agree.
+    // the split. All three kinds are genuinely split now, so this pins the
+    // CONTAINERS — they must stay distinct on any future kind whose two rows
+    // lists happen to agree, which is when the collapse would be invisible.
     const { catalogues } = await loadCataloguesWithStubbedDal()
 
     expect(catalogues.offer).not.toBe(catalogues.recognition)

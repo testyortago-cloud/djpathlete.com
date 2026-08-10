@@ -440,6 +440,20 @@ export async function revertToRevision(input: RevertInput): Promise<RevertResult
     doc: target.doc as SectionDoc,
     // Carried forward so the chat can still say "this can't be published
     // because ..." for the restored document without recompiling it.
+    //
+    // *** THESE THREE ARE A STALE DISPLAY CACHE, NOT A VERDICT. ***
+    // They were computed against the catalogue AS IT WAS at `toRevision`. If a
+    // referenced program/pack/event has been deleted since, the restored head
+    // turn claims `unresolved: []` and the chat will tell the owner the page is
+    // publishable when it is not. That is survivable TODAY only because the
+    // publish gate is `publishGate(resolveDoc(doc, catalogues))` over the live
+    // document (see resolve.ts's opening block) and never reads this column —
+    // so the lie is cosmetic, confined to the transcript.
+    //
+    // STAGE 1.9 MUST RE-RESOLVE AFTER A REVERT rather than trust these: call
+    // `resolveDoc` on the restored doc against a freshly loaded catalogue and
+    // write THAT `unresolved`. The moment anything starts deriving publishable
+    // from the stored column, this line becomes a live bug.
     compileStatus: target.compile_status,
     compileProblems: target.compile_problems ?? [],
     unresolved: target.unresolved ?? [],

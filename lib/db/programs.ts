@@ -17,6 +17,32 @@ export async function getPrograms() {
   return data as Program[]
 }
 
+/**
+ * EVERY program, active or not. The `is_active`-less twin of `getPrograms()`,
+ * mirroring `listAllProducts()` beside `listActiveProducts()` in
+ * `lib/db/session-pack-products.ts`.
+ *
+ * PURELY ADDITIVE — `getPrograms()` is unchanged and stays the default. This
+ * exists for exactly one question: "is the id a page ALREADY COMMITTED TO
+ * still a real row?", which `getPrograms()` cannot answer. Deactivating a
+ * program is a deliberate admin action, but a funnel page that already sells
+ * it did not change, and `is_active = false` used to make that untouched page
+ * fail its publish gate with a raw UUID the owner could not act on. See the
+ * recognition/offer split in `lib/funnels/sections/resolve.ts`.
+ *
+ * DO NOT reach for this to render a list to a visitor or an admin picker —
+ * it will happily hand back retired products. Recognition only.
+ */
+export async function getAllPrograms() {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("programs")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return data as Program[]
+}
+
 export async function getProgramById(id: string) {
   const supabase = getClient()
   const { data, error } = await supabase.from("programs").select("*").eq("id", id).single()

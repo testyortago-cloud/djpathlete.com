@@ -101,7 +101,10 @@ import {
   type Section,
   type SectionDoc,
 } from "@/lib/funnels/sections/registry"
-import { getPrograms } from "@/lib/db/programs"
+// Aliased for the same reason as the two pack readers below: `getPrograms` and
+// `getAllPrograms` differ by one word and by the entire recognition/offer
+// split, so the call site names the PURPOSE rather than the filter.
+import { getPrograms as listActivePrograms, getAllPrograms as listAllPrograms } from "@/lib/db/programs"
 // Aliased on import: `listActiveProducts` is ALSO exported by
 // lib/db/shop-products.ts with a different row type. The unaliased name reads
 // as "products" at the call site and is one autocomplete slip away from
@@ -215,6 +218,88 @@ export function toCatalogue({ programs, sessionPacks, events }: CatalogueRows): 
 }
 
 /**
+ * PostgREST's default maximum rows for an unbounded `.select()`. Hitting it is
+ * not an error and produces no warning: the response is simply the first 1000
+ * rows, silently.
+ */
+const POSTGREST_ROW_CAP = 1000
+
+/**
+ * THE 1000-ROW CAP LANDS ASYMMETRICALLY, AND IT LANDS ON THE SET THAT MUST BE
+ * COMPLETE.
+ *
+ * `offer` may be incomplete and the damage is cosmetic — a picker missing its
+ * thousand-and-first row. `recognition` may NOT: it answers "is this id still a
+ * real row?", and a truncated answer is indistinguishable from "that row was
+ * deleted". The symptom is precisely the bug the recognition/offer split exists
+ * to fix — an id in a stored doc stops resolving, `publishGate.ok` flips to
+ * false on a page nobody touched, and the picker offers nothing that helps —
+ * except that no admin action caused it and nothing in the UI could ever
+ * explain it.
+ *
+ * PAGINATION IS DELIBERATELY NOT DONE HERE, AND THAT IS A JUDGEMENT, NOT AN
+ * OVERSIGHT. All three recognition reads are shared DAL functions
+ * (`getAllPrograms`, `listAllProducts`, `getEvents`) whose other callers page
+ * or filter for themselves; `lib/db/paginate.ts:fetchAllRows` exists and is
+ * how they would each be fixed. At this business's real volumes — tens of
+ * programs, a handful of packs, a few dozen events a year — paginating three
+ * reads on every builder turn buys nothing but latency. So the cap is handled
+ * the other way round: instead of assuming it will never be hit, this THROWS
+ * the moment a recognition read comes back at the cap, naming the table and
+ * the fix. A loud failure on the turn that first crosses 1000 rows is strictly
+ * better than a silent, undiagnosable publish block that appears months later
+ * on one page in the account.
+ *
+ * `>=` not `>`: PostgREST caps the response, so exactly `POSTGREST_ROW_CAP`
+ * rows is the signature of truncation. A genuine 1000-row table trips this too
+ * — correctly, because at that size the read must be paginated regardless.
+ */
+function assertNotTruncated(label: string, rows: unknown[]): void {
+  if (rows.length < POSTGREST_ROW_CAP) return
+  throw new Error(
+    `loadCatalogues: the recognition read for ${label} returned ${rows.length} rows, at or over ` +
+      `PostgREST's ${POSTGREST_ROW_CAP}-row cap, so it may be TRUNCATED. Recognition must be ` +
+      `complete or a stored CTA id can stop resolving and block publish on an untouched page. ` +
+      `Paginate this read with lib/db/paginate.ts:fetchAllRows before relying on it.`,
+  )
+}
+
+/**
+ * `recognition` ∪ `offer`, per kind, deduped by id and recognition-first.
+ *
+ * MAKES `offer ⊆ recognition` TRUE BY CONSTRUCTION rather than asserting it.
+ * The invariant is the thing rules 1-3 depend on — a row the model may be
+ * SHOWN (offer) but whose id the resolver cannot RECOGNISE is an offerable,
+ * unresolvable CTA: the owner picks it out of the picker and the very next
+ * turn reports it unresolved. Nothing enforced it before.
+ *
+ * Two ways it can break, and both are closed here rather than detected:
+ *
+ *   - THE RACE. `loadCatalogues` issues six CONCURRENT queries. A program
+ *     activated, or an event published, between the recognition read landing
+ *     and the offer read landing appears in offer and not in recognition. Rare,
+ *     real, and self-healing next turn — but an assertion would turn it into a
+ *     hard error, which is why this repairs instead of asserting.
+ *   - TRUNCATION. Should a recognition read ever be capped despite
+ *     `assertNotTruncated` (a narrower cap, a future filtered reader), every
+ *     currently-offerable row still survives in recognition.
+ *
+ * Recognition order is preserved and offer-only rows are appended, so nothing
+ * that depends on the DAL's ordering shifts. Deduping by id (not by object
+ * identity) matters: the two reads return DIFFERENT objects for the same row.
+ */
+function unionCatalogues(recognition: Catalogue, offer: Catalogue): Catalogue {
+  const merged = {} as Catalogue
+  for (const kind of Object.keys(recognition) as ResolvableCtaKind[]) {
+    const rows = recognition[kind]
+    const seen = new Set(rows.map((row) => row.id))
+    const extra = offer[kind].filter((row) => !seen.has(row.id))
+    merged[kind] = extra.length === 0 ? rows : [...rows, ...extra]
+  }
+  return merged
+}
+
+/**
  * Loads BOTH sets. Deliberately trivial — every ounce of logic lives in
  * `resolveDoc`/`toCatalogue` so it can be tested without mocks. The only thing
  * this function decides is WHICH FETCHER FEEDS WHICH SET, and that decision is
@@ -246,35 +331,52 @@ export function toCatalogue({ programs, sessionPacks, events }: CatalogueRows): 
  * retired. Recognition keeps the page resolving; the offer set stops the model
  * and the picker from attaching anything NEW to a retired pack.
  *
- * PROGRAMS — SPLIT NOT YET POSSIBLE, AND THIS IS A KNOWN GAP, NOT A RULING
- * THAT PROGRAMS ARE DIFFERENT. `programs.is_active` carries the IDENTICAL
- * hazard to `session_pack_products.is_active` and deserves the identical
- * treatment, but `lib/db/programs.ts` has no all-programs reader —
- * `getPrograms()` filters `is_active`, and there is no `getAllPrograms()` to
- * mirror `listAllProducts()`. Adding one is a nine-line, purely additive
- * change to a file Stage 1.7 was scoped out of, so both sets are fed from
- * `getPrograms()` for now and DEACTIVATING A PROGRAM STILL BREAKS EVERY PAGE
- * SELLING IT. The fix is one function plus one word on the line below; do not
- * mistake the shared call for a decision that programs want conflation.
+ * PROGRAMS — SPLIT, closing the third and last instance of the same hazard.
+ * `programs.is_active` is the programs' version of the packs' `is_active` and
+ * the events' `status`, and it used to be the one axis left conflated: both
+ * sets were fed from `getPrograms()`, so DEACTIVATING A PROGRAM BROKE EVERY
+ * FUNNEL PAGE SELLING IT — the committed id stopped resolving, publish flipped
+ * to blocked on a page nobody had touched, and the picker offered nothing that
+ * could fix it. `getAllPrograms()` (added beside `getPrograms()`, purely
+ * additive, mirroring `listAllProducts()`) now feeds recognition. All three
+ * kinds are split on the same principle; none of them is special.
  */
 export async function loadCatalogues(): Promise<Catalogues> {
-  const [programs, allPacks, offerPacks, allEvents, offerEvents] = await Promise.all([
-    // One call, TWO uses — see PROGRAMS above. Not a shortcut, a known gap.
-    getPrograms(),
-    listAllSessionPackProducts(),
-    listActiveSessionPackProducts(),
-    // `{}` is not a stray argument: `getEvents` filters status only when a
-    // status filter is present, so this is deliberately "every event, ever".
-    getEvents({}),
-    // No argument at all: the `from: new Date()` default IS the offer bound.
-    // Passing an epoch here would silently widen the picker back to every
-    // event that ever ran, which is the mutant the offer-side test kills.
-    getPublishedEvents(),
-  ])
+  const [allPrograms, offerPrograms, allPacks, offerPacks, allEvents, offerEvents] =
+    await Promise.all([
+      listAllPrograms(),
+      listActivePrograms(),
+      listAllSessionPackProducts(),
+      listActiveSessionPackProducts(),
+      // `{}` is not a stray argument: `getEvents` filters status only when a
+      // status filter is present, so this is deliberately "every event, ever".
+      getEvents({}),
+      // No argument at all: the `from: new Date()` default IS the offer bound.
+      // Passing an epoch here would silently widen the picker back to every
+      // event that ever ran, which is the mutant the offer-side test kills.
+      getPublishedEvents(),
+    ])
+
+  // The completeness contract for recognition, checked before either set is
+  // assembled — see `assertNotTruncated`. Only the three RECOGNITION reads are
+  // checked; an offer list hitting the cap is a picker that shows the first
+  // thousand rows, which is untidy, not a publish block on an untouched page.
+  assertNotTruncated("programs", allPrograms)
+  assertNotTruncated("session packs", allPacks)
+  assertNotTruncated("events", allEvents)
+
+  const offer = toCatalogue({
+    programs: offerPrograms,
+    sessionPacks: offerPacks,
+    events: offerEvents,
+  })
 
   return {
-    recognition: toCatalogue({ programs, sessionPacks: allPacks, events: allEvents }),
-    offer: toCatalogue({ programs, sessionPacks: offerPacks, events: offerEvents }),
+    recognition: unionCatalogues(
+      toCatalogue({ programs: allPrograms, sessionPacks: allPacks, events: allEvents }),
+      offer,
+    ),
+    offer,
   }
 }
 
@@ -478,6 +580,24 @@ interface MatchLists {
  * name, publish a CTA for something not on sale) is silent and reaches
  * customers. Idempotence is unaffected: after turn one the doc holds an id,
  * and ids are judged by rule 1 against recognition.
+ *
+ * AND THE SECOND CONSEQUENCE, WHICH IS A PRODUCT DECISION AND IS RECORDED HERE
+ * SO IT STOPS LOOKING LIKE AN ACCIDENT: **there is no path to make a NEW
+ * commitment to a recognition-only row, at all.** Rules 2-3 search offer, the
+ * picker (`UnresolvedCta.candidates`) is offer, and Block B of the prompt is
+ * offer — every door into the doc reads the same list. So an owner who
+ * deliberately wants to point a button at a COMPLETED camp (an archive page, a
+ * "join the waitlist for next year" page) or a retired program cannot: neither
+ * the model nor the picker will name it, and typing the name yields `no_match`.
+ * Recognition exists ONLY to keep commitments already in a doc resolving.
+ *
+ * That is the intended trade — the alternative is a single list, which is the
+ * bug this split exists to fix — and the escape hatch is a `url` CTA, which
+ * carries no ref and is resolved by nobody. If a real archive/waitlist use case
+ * turns up, the fix is an explicit, deliberate widening (an "include past
+ * events" toggle that swaps the picker's source), NOT relaxing rules 2-3 to
+ * search recognition, which would silently reopen the live-buy-button-for-a-
+ * retired-product hole from the other side.
  *
  * The blank-value guards are not in the plan, and are here because
  * `String.prototype.includes("")` is `true` for EVERY string: without them a

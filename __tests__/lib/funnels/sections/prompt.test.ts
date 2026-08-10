@@ -549,7 +549,7 @@ describe("Block B carries names and never ids", () => {
 
   it.each([UUID_PROGRAM, UUID_PACK, UUID_EVENT])("does not leak the row id %s", (id) => {
     // The catalogue rows carry REAL uuids — the same `{id, name}` shape
-    // `loadCatalogue()` returns — so this fails the moment anyone "helpfully"
+    // `loadCatalogues().offer` returns — so this fails the moment anyone "helpfully"
     // renders the id alongside the name. One id in the prompt is a training
     // signal to emit ids, which is the exact failure CtaTarget exists to
     // prevent (resolve.ts, opening comment).
