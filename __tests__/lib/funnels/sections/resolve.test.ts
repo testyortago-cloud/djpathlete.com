@@ -26,7 +26,7 @@ import {
   type Section,
   type SectionDoc,
 } from "@/lib/funnels/sections/registry"
-import { resolveDoc, publishGate, type Catalogue } from "@/lib/funnels/sections/resolve"
+import { resolveDoc, publishGate, toCatalogue, type Catalogue } from "@/lib/funnels/sections/resolve"
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -154,15 +154,39 @@ describe("resolveDoc — every CTA site in the registry", () => {
     const result = resolveDoc(doc, catalogue())
 
     expect(result.unresolved).toEqual([])
-    expect(result.resolved.map((r) => `${r.sectionId}.${r.field}`)).toEqual([
-      "hero1.primaryCta",
-      "hero1.secondaryCta",
-      "price1.plans[1].cta",
-      "price1.plans[2].cta",
-      "cta1.cta",
-      "foot1.links[0]",
-      "foot1.links[1]",
+
+    const paths = result.resolved.map((r) => `${r.sectionId}.${r.field}`)
+    // Every slot, by exact path — an off-by-one in an array index still fails
+    // here. Compared as a SET because sibling KEYS of one props object
+    // (`primaryCta` vs `secondaryCta`) are emitted in `Object.entries` order,
+    // which a jsonb round-trip of `funnel_steps.project_data` can reorder.
+    // That is documented as non-contractual in resolve.ts; asserting a
+    // sequence across them would pin something the storage layer may change.
+    expect(new Set(paths)).toEqual(
+      new Set([
+        "hero1.primaryCta",
+        "hero1.secondaryCta",
+        "price1.plans[1].cta",
+        "price1.plans[2].cta",
+        "cta1.cta",
+        "foot1.links[0]",
+        "foot1.links[1]",
+      ]),
+    )
+    // CONTRACTUAL, and asserted as a sequence: sections come in document
+    // order...
+    expect(paths.map((p) => p.split(".")[0])).toEqual([
+      "hero1",
+      "hero1",
+      "price1",
+      "price1",
+      "cta1",
+      "foot1",
+      "foot1",
     ])
+    // ...and array slots in ascending index order within their section.
+    expect(paths.filter((p) => p.startsWith("price1."))).toEqual(["price1.plans[1].cta", "price1.plans[2].cta"])
+    expect(paths.filter((p) => p.startsWith("foot1."))).toEqual(["foot1.links[0]", "foot1.links[1]"])
 
     // ...and the doc actually holds the ids now. Without these, every
     // assertion above would still pass against a "report but never
@@ -292,6 +316,54 @@ describe("resolveDoc — name matching", () => {
     expect(refAt(result.doc, "cta1", "cta")).toBe(PACK_TEN)
   })
 
+  it("does NOT resolve a short catalogue name that merely appears as a coincidental substring of a long ref (\"PT\" / \"Optimal Power\")", () => {
+    // "optimal power" contains "pt" as a pure coincidence (o-P-T-imal…), so
+    // an unguarded bidirectional substring match would resolve this WITH
+    // FULL CONFIDENCE to a completely unrelated product — a live buy button
+    // pointing at "PT" when the model wrote "Optimal Power".
+    // `MIN_PARTIAL_MATCH_LENGTH` exists to stop exactly this.
+    const short = catalogue({ session_pack: [{ id: PACK_TEN, name: "PT" }] })
+    const result = resolveDoc(docOf([ctaSection(packCta("Optimal Power"))]), short)
+
+    expect(result.resolved).toEqual([])
+    expect(result.unresolved).toHaveLength(1)
+    expect(result.unresolved[0].reason).toBe("no_match")
+    expect(refAt(result.doc, "cta1", "cta")).toBe("Optimal Power")
+  })
+
+  it("does NOT resolve a short ref that merely appears as a coincidental substring of a long catalogue name (mirror direction)", () => {
+    // Same bug, opposite side short: `name.includes(needle)` is the
+    // identical false positive when the REF is the short string instead of
+    // the catalogue row's name. A length floor on "the shorter of the two"
+    // must catch both directions, not just the one in the brief's example.
+    const long = catalogue({
+      program: [
+        { id: PROGRAM_COMEBACK, name: "Optimal Power" },
+        { id: PROGRAM_ROTATIONAL, name: "Rotational Reboot" },
+      ],
+    })
+    const result = resolveDoc(docOf([hero({ primaryCta: programCta("PT") })]), long)
+
+    expect(result.resolved).toEqual([])
+    expect(result.unresolved).toHaveLength(1)
+    expect(result.unresolved[0].reason).toBe("no_match")
+  })
+
+  it("pins the floor at exactly 4 normalised characters: a 4-char partial ref still resolves...", () => {
+    const result = resolveDoc(docOf([hero({ primaryCta: eventCta("Camp") })]), catalogue())
+
+    expect(result.unresolved).toEqual([])
+    expect(refAt(result.doc, "hero1", "primaryCta")).toBe(EVENT_CAMP)
+  })
+
+  it("...while a 3-char partial ref, one below the floor, does not (boundary pin, not just the constant)", () => {
+    const result = resolveDoc(docOf([hero({ primaryCta: eventCta("Cam") })]), catalogue())
+
+    expect(result.resolved).toEqual([])
+    expect(result.unresolved).toHaveLength(1)
+    expect(result.unresolved[0].reason).toBe("no_match")
+  })
+
   it("resolves a program ref and an event ref with the SAME name against their own catalogues only", () => {
     const shared = catalogue({
       program: [{ id: PROGRAM_COMEBACK, name: "Momentum" }],
@@ -399,6 +471,86 @@ describe("resolveDoc — unresolvable refs", () => {
     expect(result.unresolved[0].candidates).toHaveLength(1)
     expect(refAt(result.doc, "hero1", "primaryCta")).toBe("")
   })
+
+  // -------------------------------------------------------------------------
+  // Blankness is hazardous from THREE sides, and every one of them fails the
+  // same way: not silence, but a CONFIDENT WRONG ANSWER that `publishGate`
+  // waves through as `ok: true`. The test above covers a blank REF against a
+  // normal catalogue. The three below cover the other three combinations —
+  // blank ref vs a blank-ID row (the id pass), a blank-ID row matched by
+  // name, and a blank-NAME row matched by nothing at all.
+  //
+  // Fix round 1 exists because the blank-row-NAME guard shipped with no test
+  // at all: deleting its line survived all 28 tests, and the Stage 1.5 report
+  // claimed it was covered. These pin behaviour, not lines.
+  // -------------------------------------------------------------------------
+
+  it("ignores a catalogue row whose own name is blank instead of tying it against every ref", () => {
+    // `needle.includes("")` is true for EVERY ref, so one unguarded
+    // blank-named row is a universal tie-breaker: the clean "Comeback" match
+    // below turns `ambiguous`, and the orphan ref underneath resolves WRONGLY
+    // and confidently to the blank row. Owner-entered `programs.name` makes a
+    // blank/whitespace name reachable in a way a blank id is not.
+    const withBlank = catalogue({
+      program: [
+        { id: PROGRAM_COMEBACK, name: "Comeback Code" },
+        { id: DELETED_ID, name: "   " },
+      ],
+    })
+
+    const result = resolveDoc(docOf([hero({ primaryCta: programCta("Comeback") })]), withBlank)
+
+    // The blank row neither wins...
+    expect(result.resolved.map((r) => r.id)).toEqual([PROGRAM_COMEBACK])
+    expect(refAt(result.doc, "hero1", "primaryCta")).toBe(PROGRAM_COMEBACK)
+    // ...nor makes a genuine one-row match ambiguous.
+    expect(result.unresolved).toEqual([])
+
+    // And a ref that matches nothing else must come back `no_match` — NOT
+    // resolved to the blank row, which is the wrong-substitution half of the
+    // same hazard.
+    const orphan = resolveDoc(docOf([hero({ primaryCta: programCta("Kettlebell Bootcamp") })]), withBlank)
+    expect(orphan.resolved).toEqual([])
+    expect(orphan.unresolved[0].reason).toBe("no_match")
+  })
+
+  it("never resolves a blank ref by ID either: a row carrying a blank id is not an answer", () => {
+    // `"" === ""`. With the blank-ref guard one line BELOW the id pass, this
+    // comes back `already_id` — reported as RESOLVED with a green publish
+    // gate, doc still holding "". The guard's placement above rule 1 is what
+    // this pins; a guard that only covers the name passes reads identically
+    // and closes two thirds of the hole.
+    const withBlankId = catalogue({
+      program: [
+        { id: "", name: "Ghost Row" },
+        { id: PROGRAM_COMEBACK, name: "Comeback Code" },
+      ],
+    })
+
+    const result = resolveDoc(docOf([hero({ primaryCta: programCta("") })]), withBlankId)
+
+    expect(result.resolved).toEqual([])
+    expect(result.unresolved[0]).toMatchObject({ ref: "", reason: "no_match" })
+    expect(publishGate(result).ok).toBe(false)
+  })
+
+  it("refuses to substitute a blank row id even when that row's name matches EXACTLY", () => {
+    // Writing "" into the doc is the silent-absence bug this module exists to
+    // prevent, arriving through the front door: `resolved` non-empty, publish
+    // gate GREEN, island pointing at nothing. `no_match` + a picker is
+    // strictly better, so a row with no usable id is not a candidate for
+    // substitution however well it matches.
+    const blankId = catalogue({ program: [{ id: "", name: "Comeback Code" }] })
+
+    const result = resolveDoc(docOf([hero({ primaryCta: programCta("Comeback Code") })]), blankId)
+
+    expect(result.resolved).toEqual([])
+    expect(result.unresolved[0]).toMatchObject({ reason: "no_match" })
+    // The model's own text survives, so the island degrades visibly instead
+    // of pointing at "".
+    expect(refAt(result.doc, "hero1", "primaryCta")).toBe("Comeback Code")
+    expect(publishGate(result).ok).toBe(false)
+  })
 })
 
 describe("resolveDoc — idempotence", () => {
@@ -476,8 +628,13 @@ describe("resolveDoc — reference identity", () => {
   it("does not mutate the input doc", () => {
     const doc = docOf([hero({ primaryCta: programCta("Comeback Code") })])
 
-    resolveDoc(doc, catalogue())
+    const result = resolveDoc(doc, catalogue())
 
+    // Positive half FIRST: something actually resolved, so this isn't
+    // trivially satisfied by a stub that returns its input untouched and
+    // never substitutes anything at all.
+    expect(refAt(result.doc, "hero1", "primaryCta")).toBe(PROGRAM_COMEBACK)
+    // Negative half: the CALLER's own doc was never touched.
     expect(refAt(doc, "hero1", "primaryCta")).toBe("Comeback Code")
   })
 
@@ -493,11 +650,39 @@ describe("resolveDoc — reference identity", () => {
     expect(refAt(result.doc, "price1", "plans[1].cta")).toBe(PROGRAM_COMEBACK)
   })
 
-  it("throws on a document that is not a valid SectionDoc rather than reporting a clean result", () => {
-    // A clean `unresolved: []` on a corrupt doc would UNBLOCK publish.
-    const corrupt = { v: 1, engine: "sections", theme: { tone: "light", accent: "accent", radius: "soft" }, sections: [] }
+  it("throws on a SECTION that fails its own kind's schema rather than reporting a clean result", () => {
+    // A genuinely corrupt section, not merely an empty doc (that case is
+    // pinned separately below, because it is a different contract).
+    // `heroPropsSchema.headline` is `min(1)` and required, so this hero is
+    // invalid while still being walkable — which is the point. Two things
+    // depend on the up-front `sectionDocSchema.parse`:
+    //   1. a clean `unresolved: []` on a corrupt doc would UNBLOCK publish;
+    //   2. the CTA walk is DERIVED — it asks `ctaWithLabelSchema.safeParse`
+    //      whether each node is a CTA site, so a schema-invalid CTA node
+    //      would answer "no", be walked past, and end up neither substituted
+    //      NOR reported: a dead button with `publishGate.ok === true`.
+    const corruptSection = {
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "accent", radius: "soft" },
+      sections: [
+        { id: "hero1", kind: "hero", variant: "centered", style: {}, props: { primaryCta: programCta("Comeback Code") } },
+      ],
+    }
 
-    expect(() => resolveDoc(corrupt as SectionDoc, catalogue())).toThrow()
+    expect(() => resolveDoc(corruptSection as unknown as SectionDoc, catalogue())).toThrow()
+  })
+
+  it("throws on a doc with ZERO sections — deliberate, and Stage 1.7 must know it", () => {
+    // Pinned ON PURPOSE, not incidentally: `sectionDocSchema.sections` is
+    // `z.array(sectionSchema).min(1)`, so an empty doc is not a valid
+    // SectionDoc and resolveDoc rejects it exactly like any other schema
+    // violation. CONTRACT, not an oversight: 1.7 must not call resolveDoc on
+    // a page whose doc has not been populated yet — it will throw, and the
+    // route needs a try/catch rather than a special case here.
+    const empty = { v: 1, engine: "sections", theme: { tone: "light", accent: "accent", radius: "soft" }, sections: [] }
+
+    expect(() => resolveDoc(empty as unknown as SectionDoc, catalogue())).toThrow()
   })
 })
 
@@ -525,11 +710,20 @@ describe("resolveDoc — dangling anchors", () => {
   })
 
   it("reports nothing when every anchor names a real section", () => {
-    const doc = docOf([hero({ primaryCta: anchorCta("foot1") }), footer([anchorCta("hero1")])])
+    // A resolvable CTA rides along in the SAME doc as a positive control: a
+    // stub that always returns `{doc: input, resolved: [], unresolved: [],
+    // danglingAnchors: []}` would pass the danglingAnchors assertion below
+    // for free, so without this the test cannot fail against exactly the
+    // gutted implementation the file header warns about.
+    const doc = docOf([
+      hero({ primaryCta: anchorCta("foot1"), secondaryCta: programCta("Comeback Code") }),
+      footer([anchorCta("hero1")]),
+    ])
 
     const result = resolveDoc(doc, catalogue())
 
     expect(result.danglingAnchors).toEqual([])
+    expect(refAt(result.doc, "hero1", "secondaryCta")).toBe(PROGRAM_COMEBACK)
   })
 })
 
@@ -581,8 +775,54 @@ describe("publishGate", () => {
   it("passes a fully resolved page with no dead anchors", () => {
     const doc = docOf([hero({ primaryCta: programCta("Comeback Code"), secondaryCta: anchorCta("foot1") }), footer([])])
 
-    const gate = publishGate(resolveDoc(doc, catalogue()))
+    const result = resolveDoc(doc, catalogue())
+    // Positive proof this isn't a stub that always reports a clean result
+    // regardless of input: the program ref really did resolve to a real
+    // row, which is WHY the gate is clean, not merely a coincidence of it.
+    expect(result.resolved).toEqual([
+      { sectionId: "hero1", field: "primaryCta", ref: "Comeback Code", id: PROGRAM_COMEBACK, name: "Comeback Code" },
+    ])
+    expect(publishGate(result)).toEqual({ ok: true, blockers: [], warnings: [] })
+  })
+})
 
-    expect(gate).toEqual({ ok: true, blockers: [], warnings: [] })
+// ===========================================================================
+// toCatalogue — pure assembly, tested with plain literals (no DB, no mocks).
+// `program` and `session_pack` are both `{id, name}[]`, so nothing in the
+// type system stops `loadCatalogue` from transposing the two DAL calls —
+// only a test with a DISTINGUISHABLE name per list can catch that.
+// ===========================================================================
+
+describe("toCatalogue", () => {
+  it("puts each fetched list under its own catalogue key — a transposed call is NOT silently correct", () => {
+    const result = toCatalogue(
+      [{ id: "prog-1", name: "Program Row" }],
+      [{ id: "pack-1", name: "Pack Row" }],
+      [{ id: "event-1", title: "Event Row" }],
+    )
+    expect(result.program).toEqual([{ id: "prog-1", name: "Program Row" }])
+    expect(result.session_pack).toEqual([{ id: "pack-1", name: "Pack Row" }])
+    expect(result.event).toEqual([{ id: "event-1", name: "Event Row" }])
+  })
+
+  it("maps Event.title to CatalogueEntry.name — the one field-name difference between the three row shapes", () => {
+    const result = toCatalogue([], [], [{ id: "event-1", title: "Summer Camp" }])
+    expect(result.event).toEqual([{ id: "event-1", name: "Summer Camp" }])
+  })
+
+  it("passes through empty lists without throwing", () => {
+    expect(toCatalogue([], [], [])).toEqual({ program: [], session_pack: [], event: [] })
+  })
+
+  it("preserves list order and handles multiple rows per kind", () => {
+    const result = toCatalogue(
+      [
+        { id: "p1", name: "First" },
+        { id: "p2", name: "Second" },
+      ],
+      [],
+      [],
+    )
+    expect(result.program.map((r) => r.id)).toEqual(["p1", "p2"])
   })
 })
