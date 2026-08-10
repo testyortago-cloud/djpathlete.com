@@ -31,6 +31,8 @@ const cmj: ScoredTest = {
   score: 72,
   deltaPct: 8,
   previous: 44,
+  previousDate: "2026-03-01",
+  targets: { elite: 65, trained: 45, relativeToBodyWeight: false, direction: "higher" },
   points: [40, 44, 48],
 }
 
@@ -45,6 +47,8 @@ const sledPush: ScoredTest = {
   score: null,
   deltaPct: null,
   previous: null,
+  previousDate: null,
+  targets: null,
   points: [10, 12],
 }
 
@@ -59,6 +63,8 @@ const sprint: ScoredTest = {
   score: 61,
   deltaPct: -2,
   previous: 5.0,
+  previousDate: "2026-04-01",
+  targets: { elite: 4.5, trained: 5.75, relativeToBodyWeight: false, direction: "lower" },
   points: [5.1, 5.0, 4.9],
 }
 
@@ -95,7 +101,9 @@ const flat: ScoredTest = {
   score: 67,
   deltaPct: 0,
   previous: 11,
-  points: [11, 11],
+  previousDate: "2026-05-01",
+  targets: { elite: 14, trained: 9.5, relativeToBodyWeight: false, direction: "higher" },
+  points: [11, 11, 11],
 }
 
 describe("ReportPageTwo", () => {

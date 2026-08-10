@@ -1,4 +1,11 @@
-import { normalize, testDirection, RADAR_CATEGORIES, type RadarCategory } from "@/lib/coach-intel/test-normalization"
+import {
+  normalize,
+  referenceTargets,
+  testDirection,
+  RADAR_CATEGORIES,
+  type RadarCategory,
+  type ReferenceTargets,
+} from "@/lib/coach-intel/test-normalization"
 import { TEST_TYPE_LABELS } from "@/lib/validators/performance-test"
 import type { TestType } from "@/types/database"
 
@@ -57,6 +64,12 @@ export interface ScoredTest {
   deltaPct: number | null
   /** The result before `latest`, for the "previous → now" comparison. null on a first test. */
   previous: number | null
+  /** Date of the result behind `previous`. null on a first test. */
+  previousDate: string | null
+  /** Elite/Trained standards in the test's own units — the same ranges that drive
+      `score`, so the two cannot disagree. null = custom, a type with no reference
+      range, or a body-weight-relative test with no body weight. */
+  targets: ReferenceTargets | null
   /** Chronological values, oldest first. */
   points: number[]
 }
@@ -181,6 +194,8 @@ export function buildReportScores(points: ReportTestPoint[]): ReportScores {
       score: latest.testType === "custom" ? null : normalize(latest.testType, latest.resultValue, latest.bodyWeightKg),
       deltaPct: deltaFor(sorted),
       previous: sorted.length > 1 ? sorted[sorted.length - 2].resultValue : null,
+      previousDate: sorted.length > 1 ? sorted[sorted.length - 2].testDate : null,
+      targets: latest.testType === "custom" ? null : referenceTargets(latest.testType, latest.bodyWeightKg),
       points: sorted.map((t) => t.resultValue),
     })
   }

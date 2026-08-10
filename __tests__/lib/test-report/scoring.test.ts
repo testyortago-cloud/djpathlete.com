@@ -227,4 +227,40 @@ describe("buildReportScores", () => {
   it("returns no focal points for no tests", () => {
     expect(buildReportScores([]).focalPoints).toEqual([])
   })
+
+  it("carries the previous result's DATE so the delta can be time-anchored", () => {
+    const s = buildReportScores([
+      pt({ testType: "cmj", resultValue: 40, testDate: "2026-01-01" }),
+      pt({ testType: "cmj", resultValue: 48, testDate: "2026-06-01" }),
+    ])
+    expect(s.tests[0].previousDate).toBe("2026-01-01")
+    const first = buildReportScores([pt({ testType: "cmj", resultValue: 40, testDate: "2026-01-01" })])
+    expect(first.tests[0].previousDate).toBeNull()
+  })
+
+  it("exposes Elite/Trained targets in the test's own units", () => {
+    // cmj range 25-65, higher-is-better: trained = midpoint 45, elite = 65.
+    const s = buildReportScores([pt({ testType: "cmj", resultValue: 45, testDate: "2026-06-01" })])
+    expect(s.tests[0].targets).toEqual({ elite: 65, trained: 45, relativeToBodyWeight: false, direction: "higher" })
+  })
+
+  it("converts body-weight-relative targets to absolute units, and refuses without body weight", () => {
+    // back_squat_1rm range 0.5-2.5 x BW: at 100kg, trained 1.5x = 150, elite 2.5x = 250.
+    const withBw = buildReportScores([
+      pt({ testType: "back_squat_1rm", resultValue: 150, resultUnit: "kg", bodyWeightKg: 100, testDate: "2026-06-01" }),
+    ])
+    expect(withBw.tests[0].targets).toMatchObject({ elite: 250, trained: 150, relativeToBodyWeight: true })
+    const withoutBw = buildReportScores([
+      pt({ testType: "back_squat_1rm", resultValue: 150, resultUnit: "kg", testDate: "2026-06-01" }),
+    ])
+    expect(withoutBw.tests[0].targets).toBeNull()
+  })
+
+  it("never gives a custom test targets", () => {
+    const s = buildReportScores([
+      pt({ testType: "custom", customName: "Sled Push", resultValue: 6, resultUnit: "s", testDate: "2026-06-01" }),
+    ])
+    expect(s.tests[0].targets).toBeNull()
+    expect(s.tests[0].previousDate).toBeNull()
+  })
 })
