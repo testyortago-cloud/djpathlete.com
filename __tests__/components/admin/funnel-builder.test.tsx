@@ -361,6 +361,39 @@ describe("<FunnelBuilder> — the pre-publish review", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it("gives the server gate's refusal the same Fix it for me the 422 gets", async () => {
+    // MUTANT KILLED: `setServerBlockers(rendered.blockers)` on its own — the
+    // refusal as an inert bullet list. It is the same class of problem as the
+    // route's 422 (something the AI wrote that the AI can rewrite: a page over
+    // the size cap, a CTA pointing at a deleted program), so one path having a
+    // fix button and the other being a dead end is a coin flip for the owner.
+    const fetchMock = mockFetch({ build: () => ({ status: 200, body: turn({ revision: 6 }) }) })
+    renderForPublish.mockResolvedValue({
+      ok: false,
+      blockers: ['The program "Comeback Code" no longer exists.'],
+      warnings: [],
+    })
+
+    render(<FunnelBuilder {...baseProps()} />)
+    fireEvent.click(publishButton())
+    fireEvent.click(screen.getByRole("button", { name: /publish now/i }))
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /fix it for me/i })).toBeInTheDocument(),
+    )
+    // MUTANT KILLED: routing the refusal into the chat and forgetting to keep
+    // `serverBlockers` — the fix affordance must not double as an unblock.
+    expect(publishButton()).toBeDisabled()
+
+    fireEvent.click(screen.getByRole("button", { name: /fix it for me/i }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    expect(fetchMock.mock.calls[0][0]).toContain("/build")
+    expect(String(bodyOf(fetchMock, 0).message)).toContain(
+      'The program "Comeback Code" no longer exists.',
+    )
+  })
+
   it("reports what the compiler removed in a strip that stays, never a toast", async () => {
     // MUTANT KILLED: `for (const w of warnings) toast.warning(w)` after a
     // successful publish. `toast.warning` must not be called at all.
@@ -538,6 +571,96 @@ describe("<FunnelBuilder> — the empty state", () => {
     fireEvent.click(screen.getByRole("button", { name: "Landing page for a summer camp" }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     expect(bodyOf(fetchMock, 0).message).toBe("Landing page for a summer camp")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The preview across a review round-trip
+// ---------------------------------------------------------------------------
+
+describe("<FunnelBuilder> — the preview across a review round-trip", () => {
+  /** PreviewPane renders `className` on its outer div: iframe -> box -> pane. */
+  function draftFrame(container: HTMLElement): HTMLIFrameElement {
+    const frame = container.querySelector<HTMLIFrameElement>(
+      'iframe[title="Draft preview of this page"]',
+    )
+    expect(frame).not.toBeNull()
+    return frame as HTMLIFrameElement
+  }
+  function paneClasses(frame: HTMLIFrameElement): string {
+    return frame.parentElement?.parentElement?.className ?? ""
+  }
+
+  it("hides the draft preview for the review instead of unmounting it", () => {
+    // MUTANT KILLED: `mode === "review" ? <PublishReview/> : <PreviewPane/>`.
+    // The ternary tears the preview down on the way into the review and mounts
+    // a fresh one on the way out, so the draft document is fetched and
+    // re-compiled twice per round trip and the owner is returned to the top of
+    // the page — the exact defect PreviewPane's double buffer exists to
+    // prevent, reintroduced one level up. The element identity check is what
+    // kills it: a remount is a different node.
+    const { container } = render(<FunnelBuilder {...baseProps()} />)
+    const before = draftFrame(container)
+    expect(paneClasses(before)).toContain("lg:block")
+
+    fireEvent.click(publishButton())
+    expect(screen.getByRole("button", { name: /publish now/i })).toBeInTheDocument()
+
+    expect(draftFrame(container)).toBe(before)
+    // MUTANT KILLED: hiding it with `hidden` while leaving `lg:block` attached,
+    // which loses on precedence at exactly the width the review is open at, so
+    // the review and the preview would fight over the same column.
+    expect(paneClasses(draftFrame(container))).not.toContain("lg:block")
+
+    fireEvent.click(screen.getByRole("button", { name: /back to editing/i }))
+
+    expect(draftFrame(container)).toBe(before)
+    expect(paneClasses(draftFrame(container))).toContain("lg:block")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Message identity
+// ---------------------------------------------------------------------------
+
+describe("<FunnelBuilder> — message keys", () => {
+  it("keeps two turns apart when the route reports the same revision twice", async () => {
+    // MUTANT KILLED: `id: `rev-${data.revision}``. A FAILED turn falls back to
+    // the revision the owner's message already got (build/route.ts:824), so two
+    // builder messages can carry the same number — and React given two children
+    // with the same key warns and reconciles by dropping or duplicating one.
+    // The console assertion is the one that fails on the mutant; the two text
+    // assertions are what say why it matters.
+    const errors: unknown[][] = []
+    const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      errors.push(args)
+    })
+    try {
+      let calls = 0
+      mockFetch({
+        build: () => {
+          calls += 1
+          return {
+            status: 200,
+            body: turn({ revision: 6, reply: calls === 1 ? "First answer." : "Second answer." }),
+          }
+        },
+      })
+
+      render(<FunnelBuilder {...baseProps()} />)
+      typeMessage("shorten the headline")
+      clickSend()
+      await waitFor(() => expect(screen.getByText("First answer.")).toBeInTheDocument())
+
+      typeMessage("now make it louder")
+      clickSend()
+      await waitFor(() => expect(screen.getByText("Second answer.")).toBeInTheDocument())
+
+      expect(screen.getByText("First answer.")).toBeInTheDocument()
+      expect(errors.flat().join(" ")).not.toMatch(/same key/i)
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
 

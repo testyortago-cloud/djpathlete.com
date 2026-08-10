@@ -5,22 +5,26 @@
 // ---------------------------------------------------------------------------
 // WHY THIS EXISTS AT ALL, AND WHY IT IS NOT A `reassemble()` CALL IN THE UI
 // ---------------------------------------------------------------------------
-// The publish route is FROZEN for this stage and takes `{html, css,
-// project_data}`, so somebody has to turn the owner's `SectionDoc` into that
-// pair. The obvious answer — import `reassemble` into the client component —
-// is not available:
+// The publish route takes `{html, css, project_data}`, so somebody has to turn
+// the owner's `SectionDoc` into that pair. The obvious answer — import
+// `reassemble` into the client component — is not available, and the reason
+// that is still true is `parse5` and `postcss`:
 //
 //     lib/funnels/sections/doc.ts
-//       -> lib/validators/funnel.ts        (the size caps)
-//         -> lib/funnels/sections/builder-config.ts
-//           -> lib/ai/anthropic.ts         (@anthropic-ai/sdk, @ai-sdk/anthropic,
-//                                           and a module-scope createAnthropic())
+//       -> lib/funnels/compile.ts          (parse5 + postcss: the sanitiser)
 //
-// so a client-side `reassemble` ships the Anthropic SDK to the browser and
-// evaluates a provider constructor there. `doc.ts` also reaches `parse5` and
-// `postcss` through `lib/funnels/compile`. None of that belongs in an admin
+// A client-side `reassemble` puts an HTML parser and a CSS parser in an admin
 // page bundle. Rendering therefore stays on the server, and this is the
-// smallest possible server surface that keeps the publish route untouched.
+// smallest server surface that does it.
+//
+// A SECOND REASON USED TO APPLY AND NO LONGER DOES, recorded because the chain
+// still looks alarming: `doc.ts -> lib/validators/funnel.ts ->
+// lib/funnels/sections/builder-config.ts` used to end at `lib/ai/anthropic.ts`
+// and its module-scope `createAnthropic()`, so the same import also shipped the
+// Anthropic SDK. As of `9d17612e` the model ids live in `lib/ai/models.ts` (a
+// leaf with zero imports) and `__tests__/lib/funnels/sections/builder-config.test.ts`
+// walks the real graph to keep it that way. The parse5/postcss reason is the
+// load-bearing one now, and it is enough on its own.
 //
 // ---------------------------------------------------------------------------
 // IT IS ALSO THE PUBLISH GATE, RUN AGAINST A LIVE CATALOGUE.
@@ -36,9 +40,23 @@
 // gate (derived from `unresolved`, never from `compile.ok`) is the fast,
 // explanatory one; this is the one that is actually true.
 //
-// A refusal here is not a substitute for a server-side gate ON the publish
-// route — a request that skips this action still reaches that route ungated.
-// That is recorded as a finding for the stage that may edit `app/api/`.
+// THE PUBLISH ROUTE HAS ITS OWN GATE, AND THAT ONE IS THE ENFORCEMENT. This
+// action is a server action, so a request that skips it — a hand-built POST, a
+// legacy client, a future caller — still reaches
+// `app/api/admin/funnels/steps/[stepId]/publish/route.ts` directly. That route
+// gates itself as of `9d17612e`: `gateSectionDoc` runs
+// `publishGate(resolveDoc(doc, await loadCatalogues()))` before `publishStep`,
+// derives the verdict from the `SectionDoc` (never from the compile result,
+// which cannot see an unresolved CTA at all), takes the document from the
+// stored draft when the body omits `project_data` so omission is not an opt-out,
+// and FAILS CLOSED — a catalogue, resolver or draft-read throw is a 422 naming
+// the reason, never a publish and never a 500.
+//
+// So this is the FAST, EXPLANATORY copy of that check, not the only one: it
+// keeps the refusal inside the review the owner is already looking at, with the
+// candidate picker next to it, instead of making them click Publish to find
+// out. If the two ever disagree, the route is right — it is the one holding the
+// write.
 
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"

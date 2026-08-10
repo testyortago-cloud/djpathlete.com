@@ -51,6 +51,24 @@ interface InitialState {
  * gives: compiling first would hand the compiler a document whose CTA refs are
  * still NAMES, and the resolved document is the one the owner should be
  * publishing.
+ *
+ * ---------------------------------------------------------------------------
+ * THE COMPILE HALF BELOW IS A HAND-KEPT TWIN OF `compileDoc` IN
+ * `app/api/admin/funnels/steps/[stepId]/build/route.ts:246`, AND THAT IS A
+ * KNOWN COST, NOT AN OVERSIGHT.
+ * ---------------------------------------------------------------------------
+ * This repo has shipped three bugs from restating a rule instead of importing
+ * it, so the default is to share. It cannot be shared here yet: the route does
+ * not export the helper, and the stage that owns this file may not edit
+ * anything under `app/api/` — so "sharing" it today would mean a THIRD copy in
+ * a new module that only one of the two callers imports, which is strictly
+ * worse than two copies that are visibly twins.
+ *
+ * What must stay in step is the SHAPE OF THE VERDICT, and there is exactly one
+ * rule in it worth guarding: `ok` is `problems.length === 0`, NOT `compiled.ok`.
+ * A page whose `reassemble` hit the size cap compiles perfectly cleanly. If the
+ * twin is edited, edit this one; the fix that deletes this comment is exporting
+ * `compileDoc` from the route and calling it from both sides.
  */
 async function resolveAndCompile(doc: SectionDoc, funnelBasePath: string): Promise<InitialState> {
   let resolvedDoc = doc

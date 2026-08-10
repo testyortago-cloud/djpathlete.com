@@ -106,12 +106,21 @@ export interface FunnelBuilderProps {
   initialResolutionError: string | null
   initialMessages: BuilderMessage[]
   /**
-   * `SECTION_BUILDER_MAX_MESSAGE_LENGTH`, threaded through the server page
-   * rather than imported here. `builder-config.ts` describes itself as a leaf
-   * the UI can read, but it imports `lib/ai/anthropic`, which constructs an
-   * Anthropic provider at module scope — importing it from a client component
-   * would ship the SDK to the browser. The number still has exactly one
-   * definition; only the delivery route changed.
+   * `SECTION_BUILDER_MAX_MESSAGE_LENGTH`, threaded through the server page.
+   *
+   * THE REASON IT HAD TO BE THREADED IS GONE, AND THE THREADING STAYS. It was
+   * threaded because `builder-config.ts` — a module that describes itself as a
+   * leaf the UI can read — imported `lib/ai/anthropic`, which constructs an
+   * Anthropic provider at module scope, so importing the constant here would
+   * have shipped the SDK to the browser. That is CLOSED as of `9d17612e`: the
+   * model ids live in `lib/ai/models.ts`, a leaf with zero imports, and
+   * `__tests__/lib/funnels/sections/builder-config.test.ts` walks the real
+   * import graph so the chain cannot quietly grow the SDK back. A direct import
+   * would be safe today.
+   *
+   * It stays a prop because a component that takes its limits as props is one
+   * a test can drive at any limit, and the number still has exactly one
+   * definition either way — only the delivery route differs.
    */
   maxMessageLength: number
   /** Server action: `SectionDoc` -> `{html, css}` for the publish route. */
@@ -180,7 +189,12 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     setMessages((prev) => [
       ...prev,
       {
-        id: `rev-${data.revision}`,
+        // NOT `rev-${data.revision}`: a turn that fails falls back to the
+        // revision the user's message got (build/route.ts:824), so a revision
+        // can appear on two builder messages and React would then be holding
+        // two children with the same key. `nextLocalId` keeps the revision in
+        // the id for debugging without letting it be the identity.
+        id: nextLocalId(`rev-${data.revision}`),
         role: "builder",
         text: data.reply,
         receipt: data.receipt,
@@ -330,19 +344,50 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
 
   const blockingCount = blockers.length + unresolved.length
 
+  /**
+   * A publish refusal, routed back INTO the chat behind "Fix it for me".
+   *
+   * ONE AFFORDANCE FOR ONE CLASS OF PROBLEM. The publish route's 422 `problems`
+   * and the server action's `blockers` / `problems` are the same kind of thing —
+   * something the AI wrote that the AI can rewrite (a page over the size cap, a
+   * CTA pointing at a program that has since been deleted). They used to get
+   * two different treatments: the 422 went to the chat with a fix button, and
+   * the action's refusal landed in `serverBlockers` as an inert bullet list, so
+   * the owner was told what was wrong and given nothing to do about it.
+   *
+   * Callers ALSO set `serverBlockers`, which is what keeps the gate shut — this
+   * only adds the way out. `applyTurn` clears that list on the next turn that
+   * produces a document.
+   */
+  const reportRefusal = useCallback((problems: string[]) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: nextLocalId("problems"),
+        role: "problems",
+        text: "This page was not published.",
+        problems,
+      },
+    ])
+    setMode("edit")
+    setTab("chat")
+  }, [])
+
   const publish = useCallback(async () => {
     if (!doc || !canPublish) return
     setBusy("publishing")
     try {
       const rendered = await props.renderForPublish(doc)
       if (!rendered.ok) {
-        // The live publish gate refused. Surfaced as blockers in the review the
-        // owner is already looking at, not as a toast over a closed dialog.
+        // The live publish gate refused. Blockers hold the gate shut; the chat
+        // copy carries the fix button. Never a toast over a closed dialog.
         setServerBlockers(rendered.blockers)
+        reportRefusal(rendered.blockers)
         return
       }
       if (rendered.problems.length > 0) {
         setServerBlockers(rendered.problems)
+        reportRefusal(rendered.problems)
         return
       }
 
@@ -361,17 +406,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
       if (response.status === 422 && body?.problems?.length) {
         // BACK INTO THE CHAT, BEHIND "Fix it for me". In a chat builder an
         // error the AI can fix must never be a dead-end toast.
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: nextLocalId("problems"),
-            role: "problems",
-            text: "This page was not published.",
-            problems: body.problems ?? [],
-          },
-        ])
-        setMode("edit")
-        setTab("chat")
+        reportRefusal(body.problems ?? [])
         return
       }
       if (!response.ok || !body?.version) {
@@ -387,7 +422,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     } finally {
       setBusy("idle")
     }
-  }, [canPublish, doc, props])
+  }, [canPublish, doc, props, reportRefusal])
 
   const pickCandidate = useCallback(
     (cta: UnresolvedCta, candidateName: string) => {
@@ -401,6 +436,15 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   // --------------------------------------------------------------------------
   // Render
   // --------------------------------------------------------------------------
+
+  /**
+   * The preview is never unmounted (see the comment at its call site), so its
+   * visibility is a class rather than a branch. `lg:block` must not be attached
+   * while the review is open, or it would win over `hidden` on exactly the
+   * screens where the review is on screen beside the chat.
+   */
+  const previewVisibility =
+    mode === "review" ? "hidden" : `${tab === "preview" ? "block" : "hidden"} lg:block`
 
   const pinned =
     docInvalid || conflict !== null ? (
@@ -601,15 +645,27 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
             onCancel={() => setMode("edit")}
             onPickCandidate={pickCandidate}
           />
-        ) : (
-          <PreviewPane
-            className={`${tab === "preview" ? "block" : "hidden"} min-w-0 flex-1 overflow-hidden bg-surface/50 lg:block`}
-            stepId={props.stepId}
-            device={device}
-            revision={previewRevision}
-            title="Draft preview of this page"
-          />
-        )}
+        ) : null}
+
+        {/* HIDDEN, NEVER UNMOUNTED. Opening the review and coming back out is a
+            round trip an owner makes repeatedly, and a ternary here would tear
+            the preview down and rebuild it each way — a cold reload of the
+            document, landing them back at the top of the page. That is the
+            exact defect the double buffer inside PreviewPane exists to prevent,
+            reintroduced one level up. `display: none` keeps the element (and so
+            its loaded document) alive; only its box goes away, which is why
+            PreviewPane re-measures off a ResizeObserver rather than on mount.
+
+            NOT VERIFIED IN A BROWSER: that the frame's scroll position survives
+            display:none in every engine. The document does; the scroll offset
+            is the engine's to keep. */}
+        <PreviewPane
+          className={`${previewVisibility} min-w-0 flex-1 overflow-hidden bg-surface/50`}
+          stepId={props.stepId}
+          device={device}
+          revision={previewRevision}
+          title="Draft preview of this page"
+        />
       </div>
     </div>
   )
