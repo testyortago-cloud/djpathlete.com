@@ -12,14 +12,7 @@
 
 import { z } from "zod"
 
-export const ISLAND_NAMES = [
-  "form",
-  "checkout",
-  "event",
-  "booking",
-  "testimonials",
-  "faq",
-] as const
+export const ISLAND_NAMES = ["form", "checkout", "event", "booking", "testimonials", "faq"] as const
 
 export type IslandName = (typeof ISLAND_NAMES)[number]
 
@@ -45,7 +38,7 @@ export const ISLAND_PROPS_ATTR = "data-djp-props"
  * navigates off-site on the page's own scheme. `safeUrl` in the compiler has
  * always rejected those; these schemas did not, until a test said so.
  */
-const SAFE_LINK = /^(?!\/\/)(\/|https:\/\/)/
+export const SAFE_LINK = /^(?!\/\/)(\/|https:\/\/)/
 
 /**
  * Hosts a redirect is allowed to hand a visitor to.
@@ -63,12 +56,7 @@ const SAFE_LINK = /^(?!\/\/)(\/|https:\/\/)/
  * both the open-redirect fix and the Calendly workflow were on the table
  * together. Anyone tightening this list should re-read that commit first.
  */
-const REDIRECT_HOSTS: readonly string[] = [
-  "www.darrenjpaul.com",
-  "darrenjpaul.com",
-  "calendly.com",
-  "www.calendly.com",
-]
+const REDIRECT_HOSTS: readonly string[] = ["www.darrenjpaul.com", "darrenjpaul.com", "calendly.com", "www.calendly.com"]
 
 const REDIRECT_HOST_ERROR = `Must be a site path or an https URL on one of: ${REDIRECT_HOSTS.join(", ")}`
 
@@ -91,9 +79,7 @@ export type FunnelFieldType = (typeof FUNNEL_FIELD_TYPES)[number]
 
 export const funnelFormFieldSchema = z.object({
   /** Submitted key. Constrained so it can be a safe object key and form name. */
-  name: z
-    .string()
-    .regex(/^[a-z][a-z0-9_]{0,39}$/, "Field name must be lowercase letters, digits and underscores"),
+  name: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, "Field name must be lowercase letters, digits and underscores"),
   label: z.string().min(1).max(120),
   type: z.enum(FUNNEL_FIELD_TYPES),
   required: z.boolean().optional().default(false),
@@ -177,12 +163,7 @@ export const bookingIslandSchema = z.object({
    * — enquiries run through /contact — so this island is a routed call-to-action
    * rather than an inline calendar.
    */
-  href: z
-    .string()
-    .max(300)
-    .regex(SAFE_LINK, "Must be a site path or an https URL")
-    .optional()
-    .default("/contact"),
+  href: z.string().max(300).regex(SAFE_LINK, "Must be a site path or an https URL").optional().default("/contact"),
 })
 
 export const testimonialsIslandSchema = z.object({
@@ -231,8 +212,7 @@ export const ISLANDS: Record<IslandName, IslandDef> = {
   checkout: {
     name: "checkout",
     label: "Buy button",
-    description:
-      "Routes the visitor into the existing purchase flow for a program or session pack.",
+    description: "Routes the visitor into the existing purchase flow for a program or session pack.",
     schema: checkoutIslandSchema,
     defaultProps: { productKind: "program", productId: "", label: "Buy now" },
   },

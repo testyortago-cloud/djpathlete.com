@@ -22,6 +22,7 @@
 
 import {
   SECTION_REGISTRY,
+  sectionStyleSchema,
   type Section,
   type SectionKind,
   type SectionStyleKnobs,
@@ -38,7 +39,8 @@ import {
   type CtaSectionProps,
   type FooterSectionProps,
 } from "@/lib/funnels/sections/registry"
-import type { IslandName } from "@/lib/funnels/islands"
+import { parseIslandProps, SAFE_LINK, type IslandName } from "@/lib/funnels/islands"
+import { safeUrl } from "@/lib/funnels/compile/sanitize"
 
 // ---------------------------------------------------------------------------
 // Escaping — constraint 4. Every interpolated string, text node OR attribute
@@ -87,6 +89,14 @@ export interface RenderContext {
 // Defaults are resolved and always emitted (never left off when the AI
 // didn't specify a knob) so `styles.ts` only ever has to match against a
 // concrete value, never reason about "attribute absent = default".
+//
+// `section.style` is re-parsed through `sectionStyleSchema` (throws on
+// anything outside the closed enums) rather than trusted raw — like the
+// props re-parse above, this is the one guard that CANNOT drift from the
+// schema it's guarding, and it also makes escaping moot: every value that
+// survives is one of a handful of known-safe short strings, so there is
+// nothing left for an attribute-breakout payload (e.g. a `style.headline` of
+// `x" style="position:fixed;inset:0`) to inject.
 // ---------------------------------------------------------------------------
 
 interface ResolvedStyle {
@@ -97,11 +107,12 @@ interface ResolvedStyle {
 }
 
 function resolveStyle(style: SectionStyleKnobs): ResolvedStyle {
+  const validated = sectionStyleSchema.parse(style)
   return {
-    headline: style.headline ?? "md",
-    align: style.align ?? "left",
-    tone: style.tone ?? "default",
-    pad: style.pad ?? "normal",
+    headline: validated.headline ?? "md",
+    align: validated.align ?? "left",
+    tone: validated.tone ?? "default",
+    pad: validated.pad ?? "normal",
   }
 }
 
@@ -152,10 +163,28 @@ function renderIsland(name: IslandName, props: Record<string, unknown>): string 
   return `<div data-djp-island="${name}" data-djp-props='${json}'></div>`
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-function looksLikeUuid(value: string): boolean {
-  return UUID_RE.test(value)
+/**
+ * Validates `candidate` against the island's REAL schema (`parseIslandProps`,
+ * the same function `convertIsland` calls at publish time) and only ever
+ * emits the island when that validation actually passes — never a hand-rolled
+ * shape check that can silently drift looser than the schema it's meant to
+ * stand in for. A candidate id that is GUID-SHAPED but not RFC 9562
+ * conformant (Zod v4's `.uuid()`: a version nibble outside `1-8`, or a
+ * variant nibble outside `8/9/a/b`) fails here and degrades to a disabled
+ * placeholder instead of reaching an island whose schema would reject it —
+ * `island_props_invalid` is in `FATAL_COMPILE_CODES`, so letting a
+ * plausible-but-invalid id through would take the WHOLE page down, not just
+ * this button.
+ */
+function renderIslandIfValid(
+  name: IslandName,
+  candidate: Record<string, unknown>,
+  label: string,
+  className: string,
+): string {
+  const parsed = parseIslandProps(name, candidate)
+  if (!parsed.ok) return disabledCta(label, className)
+  return renderIsland(name, parsed.props)
 }
 
 function disabledCta(label: string, className: string): string {
@@ -170,62 +199,69 @@ function disabledCta(label: string, className: string): string {
 // ---------------------------------------------------------------------------
 // CtaTarget -> a clickable element.
 //
-// `url` / `anchor` always produce a safe href by construction (the registry's
-// `ctaTargetSchema` pins `url.href` to `/` or `https://`; `anchor` is always
-// `#<sectionId>`). `step` is more subtle: without `ctx.funnelBasePath` the
-// only href we could emit is a bare relative slug ("checkout"), and
-// `safeUrl` (compile/sanitize.ts) REJECTS any href that isn't rooted at `/`,
-// `#`, `https://`, `mailto:` or `tel:` — a bare relative slug is silently
-// dropped as an attribute, leaving an <a> with NO href and zero compiler
-// warning. That is worse than a visibly disabled button, so "step" without
-// context degrades the same way an unresolved program/event ref does.
+// `anchor` always produces a safe href by construction (always `#<sectionId>`,
+// and `sectionId` is schema-constrained to safe id characters). `url` is
+// NOT fully safe by construction: `ctaTargetSchema.href`'s regex
+// (`^(\/|https:\/\/)`, registry.ts, Stage 1.1, frozen) accepts
+// `//evil.example` because it only checks for ONE leading slash, but
+// `safeUrl` (compile/sanitize.ts) treats a protocol-relative URL as unsafe
+// and drops the `href` attribute with zero warning — a live-looking, dead
+// button. `SAFE_LINK` (the same regex `formIslandSchema`/`bookingIslandSchema`
+// already gate on, lib/funnels/islands.ts) closes exactly that gap, so `url`
+// is re-checked against it here before ever reaching the DOM.
 //
-// `program` / `session_pack` / `event` / `booking` render as islands.
-// `ref` (the plan's name-not-UUID mechanism, registry.ts's `ctaTargetSchema`)
-// is only trustworthy as a real id once `lib/funnels/sections/resolve.ts`
-// (Stage 1.5) has substituted it. `eventIslandSchema.eventId` and
-// `checkoutIslandSchema.productId` (productKind: "program" branch) are
-// REQUIRED uuids — emitting an unresolved ref like "Comeback Code" into
-// either would fail that island's own Zod schema, and `island_props_invalid`
-// is a FATAL compile code (compile/types.ts's FATAL_COMPILE_CODES), turning
-// one bad CTA into a blocked publish for the WHOLE page. Gating on
-// `looksLikeUuid` here means an unresolved ref degrades to a disabled
-// placeholder instead — exactly the plan's own "0 or ≥2 matches" behaviour,
-// enforced by construction rather than assumed to have already happened.
-// `session_pack` is the one exception: `productId` is optional there
-// (`CheckoutIsland.tsx` ignores it for that productKind and always routes to
-// /client/sessions per islands.ts's own comment), so an unresolved ref never
-// blocks that button.
+// `step` is the same problem in a different shape: without
+// `ctx.funnelBasePath` the only href available is a bare relative slug
+// ("checkout"), which `safeUrl` rejects outright (it isn't rooted at `/`,
+// `#`, `https://`, `mailto:` or `tel:`) — again a silently dropped attribute,
+// zero compiler warning. `step` degrades to a disabled placeholder whenever
+// `funnelBasePath` is missing OR malformed (doesn't start with `/`) rather
+// than emit a link that might not even be relative to the right directory.
+//
+// `program` / `session_pack` / `event` / `booking` render as islands via
+// `renderIslandIfValid`, which asks `parseIslandProps` — the SAME function
+// the compiler itself calls — rather than a hand-rolled shape check. `ref`
+// (the plan's name-not-UUID mechanism) is only trustworthy as a real id once
+// `lib/funnels/sections/resolve.ts` (Stage 1.5) has substituted it; until
+// then, `renderIslandIfValid` degrades any candidate that doesn't actually
+// pass the island's schema — including a GUID-SHAPED-but-not-RFC-conformant
+// placeholder like `12345678-1234-1234-1234-123456789012`, which a naive
+// regex guard would have waved through. `session_pack` first tries WITH the
+// ref as `productId`, then retries WITHOUT it if that fails: `productId` is
+// optional for that `productKind` (`CheckoutIsland.tsx` ignores it and
+// always routes to /client/sessions, per islands.ts's own comment), so an
+// unresolved ref never needs to fall back to a disabled placeholder there.
 // ---------------------------------------------------------------------------
 
 function renderCtaTarget(target: CtaTarget, label: string, className: string, ctx: RenderContext): string {
   switch (target.kind) {
     case "url":
-      return `<a class="${className}" href="${escapeHtml(target.href)}">${escapeHtml(label)}</a>`
+      return SAFE_LINK.test(target.href)
+        ? `<a class="${className}" href="${escapeHtml(target.href)}">${escapeHtml(label)}</a>`
+        : disabledCta(label, className)
     case "anchor":
       return `<a class="${className}" href="#${escapeHtml(target.sectionId)}">${escapeHtml(label)}</a>`
     case "step": {
-      if (!ctx.funnelBasePath) return disabledCta(label, className)
-      const href = `${ctx.funnelBasePath}/${encodeURIComponent(target.stepSlug)}`
+      const base = ctx.funnelBasePath
+      if (!base || !base.startsWith("/")) return disabledCta(label, className)
+      const href = `${base}/${encodeURIComponent(target.stepSlug)}`
       return `<a class="${className}" href="${escapeHtml(href)}">${escapeHtml(label)}</a>`
     }
     case "booking":
-      return renderIsland("booking", { label })
-    case "event": {
-      if (!looksLikeUuid(target.ref)) return disabledCta(label, className)
-      return renderIsland("event", { eventId: target.ref, label })
+      return renderIslandIfValid("booking", { label }, label, className)
+    case "event":
+      return renderIslandIfValid("event", { eventId: target.ref, label }, label, className)
+    case "program":
+      return renderIslandIfValid("checkout", { productKind: "program", productId: target.ref, label }, label, className)
+    case "session_pack": {
+      const withId = parseIslandProps("checkout", { productKind: "session_pack", productId: target.ref, label })
+      if (withId.ok) return renderIsland("checkout", withId.props)
+      // `ref` didn't validate as a productId (not resolved yet, or never
+      // will be) — CheckoutIsland ignores productId for this productKind
+      // regardless, so omitting it is always safe and this branch cannot
+      // itself fail.
+      return renderIslandIfValid("checkout", { productKind: "session_pack", label }, label, className)
     }
-    case "program": {
-      if (!looksLikeUuid(target.ref)) return disabledCta(label, className)
-      return renderIsland("checkout", { productKind: "program", productId: target.ref, label })
-    }
-    case "session_pack":
-      return renderIsland(
-        "checkout",
-        looksLikeUuid(target.ref)
-          ? { productKind: "session_pack", productId: target.ref, label }
-          : { productKind: "session_pack", label },
-      )
     default: {
       const _exhaustive: never = target
       return _exhaustive
@@ -240,20 +276,45 @@ function renderCtaButton(cta: CtaWithLabel, className: string, ctx: RenderContex
 // ---------------------------------------------------------------------------
 // Hero media.
 //
+// `heroMediaSchema.src` (registry.ts) is only `min(1).max(500)` — it has NO
+// URL-shape constraint at all, so `hero.jpg` (no leading slash), `http://…`
+// (not https), `//cdn.example/x` (protocol-relative) and
+// `data:image/svg+xml,…` all pass Zod and all fail `safeUrl`
+// (compile/sanitize.ts), which would silently drop the `<img>`'s `src`
+// attribute with zero warning — a broken image on a live page. `src` is
+// therefore re-validated here against the EXACT function the compiler will
+// run it through, with `allowDataImage: true` (matching `filterAttrs`'s own
+// `tag === "img"` branch), and degrades to a visible placeholder rather than
+// an `<img>` with no `src`.
+//
 // `kind: "youtube"` treats `media.src` as a bare video id and embeds it via
 // the privacy-enhanced host — the one YouTube host family on the compiler's
-// iframe allowlist (compile/sanitize.ts ALLOWED_IFRAME_HOSTS) alongside
-// Vimeo. This convention (id, not a full URL) must be carried into the
-// Stage 1.6 prompt so the model knows what to write into `media.src`.
+// iframe allowlist (ALLOWED_IFRAME_HOSTS) alongside Vimeo. This convention
+// (id, not a full URL) must be carried into the Stage 1.6 prompt so the
+// model knows what to write into `media.src`. Without a shape guard, a full
+// URL like `https://youtu.be/abc123` would `encodeURIComponent` into an
+// allowlisted-host iframe with a garbage path — it COMPILES clean and
+// renders YouTube's own "video unavailable" frame, which is a broken embed
+// with, again, zero compiler signal.
 // ---------------------------------------------------------------------------
+
+const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{6,20}$/
+
+function invalidMediaPlaceholder(alt: string): string {
+  const text = alt.trim().length > 0 ? alt : "Media unavailable"
+  return `<div class="djp-hero-media djp-media-invalid">${escapeHtml(text)}</div>`
+}
 
 function renderMedia(media: NonNullable<HeroSectionProps["media"]>): string {
   if (media.kind === "image") {
+    const src = safeUrl(media.src, { allowDataImage: true })
+    if (!src) return invalidMediaPlaceholder(media.alt)
     return (
-      `<img class="djp-hero-media" src="${escapeHtml(media.src)}" alt="${escapeHtml(media.alt)}" ` +
+      `<img class="djp-hero-media" src="${escapeHtml(src)}" alt="${escapeHtml(media.alt)}" ` +
       `width="${media.w}" height="${media.h}" loading="lazy" />`
     )
   }
+  if (!YOUTUBE_ID_RE.test(media.src)) return invalidMediaPlaceholder(media.alt)
   const embedSrc = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(media.src)}`
   return `<iframe class="djp-hero-media" src="${escapeHtml(embedSrc)}" title="${escapeHtml(media.alt)}" loading="lazy"></iframe>`
 }

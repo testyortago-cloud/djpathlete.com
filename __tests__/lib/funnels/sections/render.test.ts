@@ -17,7 +17,13 @@ import type { FunnelNode } from "@/lib/funnels/compile/types"
 import { parseIslandProps } from "@/lib/funnels/islands"
 import { escapeHtml, renderSection, type RenderContext } from "@/lib/funnels/sections/render"
 import { THEME_CSS, SECTION_CSS } from "@/lib/funnels/sections/styles"
-import { SECTION_KINDS, type Section, type SectionKind } from "@/lib/funnels/sections/registry"
+import {
+  SECTION_KINDS,
+  SECTION_ICONS,
+  SECTION_REGISTRY,
+  type Section,
+  type SectionKind,
+} from "@/lib/funnels/sections/registry"
 
 const VALID_UUID = "11111111-1111-4111-8111-111111111111"
 const OTHER_UUID = "22222222-2222-4222-8222-222222222222"
@@ -96,11 +102,13 @@ describe("THEME_CSS + SECTION_CSS", () => {
     expect(result.css).toContain("#djp-funnel-root .djp-s-hero")
   })
 
-  it("defines mask-image artwork for all six closed-enum icons", () => {
-    for (const icon of ["check", "star", "bolt", "shield", "clock", "arrow"]) {
-      expect(THEME_CSS).toContain(`.djp-ic-${icon}`)
-      expect(THEME_CSS).toContain(`.djp-ic-${icon} { -webkit-mask-image: url("data:image/svg+xml,`)
-    }
+  // Derived from SECTION_ICONS (the real, closed enum in registry.ts), not a
+  // restated literal list — a 7th icon added to the enum with no artwork in
+  // styles.ts's ICON_DATA fails THIS test immediately instead of shipping an
+  // empty box (IMPORTANT 7/8, Stage 1.2 fix round 1).
+  it.each(SECTION_ICONS)("defines mask-image artwork for icon '%s'", (icon) => {
+    expect(THEME_CSS).toContain(`.djp-ic-${icon}`)
+    expect(THEME_CSS).toContain(`.djp-ic-${icon} { -webkit-mask-image: url("data:image/svg+xml,`)
   })
 
   it("uses the documented font fallback chain, never assuming @theme inline vars resolve", () => {
@@ -235,6 +243,32 @@ describe("every kind compiles clean through the real compiler", () => {
     expect(json).toContain("Fast results")
     expect(json).toContain("djp-ic-bolt")
     expect(json).toContain("djp-ic-shield")
+  })
+
+  // Only bolt/shield/star (via the fixture above) and "check" (hardcoded in
+  // renderPricingSection) were ever exercised through the real compiler
+  // before this fix — a class-name mismatch between render.ts's renderIcon
+  // and styles.ts's selector naming for clock/arrow could have gone
+  // unnoticed indefinitely. Driven from SECTION_ICONS so it stays exhaustive
+  // as the enum grows (IMPORTANT 7/8, Stage 1.2 fix round 1).
+  it("bullets: every closed-enum icon renders and survives the real compiler", () => {
+    const section: Section = {
+      id: "bicons",
+      kind: "bullets",
+      variant: "list",
+      style: {},
+      props: {
+        items: SECTION_ICONS.map((icon, i) => ({ title: `Item ${i}`, icon })),
+      },
+    }
+    const { result } = compileSection(section)
+    expect(result.ok, JSON.stringify(!result.ok && result.errors)).toBe(true)
+    if (!result.ok) return
+    expect(result.warnings).toEqual([])
+    const json = serialize(result.nodes)
+    for (const icon of SECTION_ICONS) {
+      expect(json, `missing djp-ic-${icon}`).toContain(`djp-ic-${icon}`)
+    }
   })
 
   it("steps: numbered how-it-works, no <details>/<summary> anywhere", () => {
@@ -500,41 +534,28 @@ const MINIMAL_PROPS_BY_KIND: Record<SectionKind, Record<string, unknown>> = {
 }
 
 describe("every declared variant compiles clean", () => {
-  it.each(
-    SECTION_KINDS.flatMap((kind) => {
-      const variants: readonly string[] =
-        kind === "hero"
-          ? ["centered", "split", "image-bg"]
-          : kind === "bullets"
-            ? ["cards", "list", "numbered"]
-            : kind === "steps"
-              ? ["numbered", "timeline"]
-              : kind === "testimonial"
-                ? ["stack", "grid"]
-                : kind === "pricing"
-                  ? ["cards", "single"]
-                  : kind === "faq"
-                    ? ["stack"]
-                    : kind === "form"
-                      ? ["boxed", "band"]
-                      : kind === "cta"
-                        ? ["band", "boxed"]
-                        : ["simple", "columns"]
-      return variants.map((variant) => [kind, variant] as const)
-    }),
-  )("%s / %s", (kind, variant) => {
-    const section: Section = {
-      id: "sx",
-      kind,
-      variant,
-      style: {},
-      props: MINIMAL_PROPS_BY_KIND[kind],
-    }
-    const { result } = compileSection(section)
-    expect(result.ok, `${kind}/${variant}: ${JSON.stringify(!result.ok && result.errors)}`).toBe(true)
-    if (!result.ok) return
-    expect(result.warnings, `${kind}/${variant} produced warnings`).toEqual([])
-  })
+  // Derived from SECTION_REGISTRY[kind].variants — the real registry — rather
+  // than a restated literal list. A restated list can silently drift from
+  // the schema it's meant to exercise (the exact "tests_that_cannot_fail"
+  // pattern flagged in Stage 1.1's own review); reading the registry means
+  // this test's coverage can only ever match what the registry actually
+  // declares (IMPORTANT 7/8, Stage 1.2 fix round 1).
+  it.each(SECTION_KINDS.flatMap((kind) => SECTION_REGISTRY[kind].variants.map((variant) => [kind, variant] as const)))(
+    "%s / %s",
+    (kind, variant) => {
+      const section: Section = {
+        id: "sx",
+        kind,
+        variant,
+        style: {},
+        props: MINIMAL_PROPS_BY_KIND[kind],
+      }
+      const { result } = compileSection(section)
+      expect(result.ok, `${kind}/${variant}: ${JSON.stringify(!result.ok && result.errors)}`).toBe(true)
+      if (!result.ok) return
+      expect(result.warnings, `${kind}/${variant} produced warnings`).toEqual([])
+    },
+  )
 })
 
 // ---------------------------------------------------------------------------
@@ -559,6 +580,21 @@ describe("CtaTarget rendering", () => {
     if (!result.ok) return
     expect(result.warnings).toEqual([])
     expect(serialize(result.nodes)).toContain('"href":"/thanks"')
+  })
+
+  // IMPORTANT 3 (Stage 1.2 fix round 1): ctaTargetSchema's `^(\/|https:\/\/)`
+  // regex (registry.ts, frozen) matches "//evil.example" because it only
+  // checks for ONE leading slash. safeUrl (compile/sanitize.ts) rejects
+  // protocol-relative URLs outright, so without this guard the href would be
+  // silently dropped — a dead button with zero compiler warning.
+  it("url with a protocol-relative href renders a disabled placeholder, not a dead <a>", () => {
+    const { result } = compileSection(ctaCta({ kind: "url", href: "//evil.example/steal-me" }))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.warnings).toEqual([])
+    const json = serialize(result.nodes)
+    expect(json).toContain("djp-btn-disabled")
+    expect(json).not.toContain('"tag":"a"')
   })
 
   it('anchor: <a href="#sectionId">, always resolvable with no context', () => {
@@ -590,6 +626,24 @@ describe("CtaTarget rendering", () => {
     if (!result.ok) return
     expect(result.warnings).toEqual([])
     expect(serialize(result.nodes)).toContain('"href":"/go/summer-camp/checkout"')
+  })
+
+  // IMPORTANT 6 (Stage 1.2 fix round 1): the RenderContext comment always
+  // stated "no trailing slash" / an implied leading slash, but nothing
+  // enforced it — a caller passing "go/x" (missing the leading slash) would
+  // reproduce the exact bare-relative silent-drop trap the parameter exists
+  // to prevent.
+  it("step WITH a funnelBasePath missing its leading slash renders a disabled placeholder, not a bare-relative href", () => {
+    const html = renderSection(ctaCta({ kind: "step", stepSlug: "checkout" }), {
+      funnelBasePath: "go/summer-camp",
+    })
+    const result = compileFunnelStep({ html, css: fullCss("cta") })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.warnings).toEqual([])
+    const json = serialize(result.nodes)
+    expect(json).toContain("djp-btn-disabled")
+    expect(json).not.toContain('"tag":"a"')
   })
 
   it("a bare relative href (what step-without-context would be if NOT guarded) is silently dropped by the real compiler — the exact trap this renderer avoids", () => {
@@ -639,6 +693,31 @@ describe("CtaTarget rendering", () => {
     expect(serialize(result.nodes)).toContain("djp-btn-disabled")
   })
 
+  // CRITICAL 1 (Stage 1.2 fix round 1): the original guard was a hand-rolled
+  // GUID-shape regex, looser than Zod v4's `.uuid()` (RFC 9562: version
+  // nibble must be 1-8, variant nibble must be 8/9/a/b). A GUID-shaped but
+  // non-conformant placeholder — exactly what a model is likely to produce —
+  // would have passed the old guard, reached the island, and failed
+  // `checkoutIslandSchema`'s real `.uuid()` check, which is a FATAL
+  // `island_props_invalid` for the whole page. `renderIslandIfValid` now
+  // asks `parseIslandProps` itself, so it cannot drift from the schema it
+  // guards.
+  it.each([
+    ["version nibble '1' is not a valid RFC 9562 variant nibble", "12345678-1234-1234-1234-123456789012"],
+    ["version nibble 'c' is outside 1-8", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+    ["nil-like UUID: version and variant nibbles both '0'", "00000000-0000-0000-0000-000000000001"],
+  ])(
+    "program ref '%s' (%s) is GUID-shaped but RFC-nonconformant — renders a disabled placeholder, not a FATAL island",
+    (_desc, ref) => {
+      const { result } = compileSection(ctaCta({ kind: "program", ref }))
+      expect(result.ok, JSON.stringify(!result.ok && result.errors)).toBe(true)
+      if (!result.ok) return
+      expect(result.warnings).toEqual([])
+      expect(findIslands(result.nodes)).toHaveLength(0)
+      expect(serialize(result.nodes)).toContain("djp-btn-disabled")
+    },
+  )
+
   it("event with an UNRESOLVED ref renders a disabled placeholder (eventId is unconditionally required)", () => {
     const { result } = compileSection(ctaCta({ kind: "event", ref: "Summer Camp" }))
     expect(result.ok).toBe(true)
@@ -669,6 +748,102 @@ describe("CtaTarget rendering", () => {
     expect(island).toBeDefined()
     const parsed = parseIslandProps("checkout", island?.props)
     expect(parsed.ok, JSON.stringify(!parsed.ok && parsed.errors)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Hero media validation (IMPORTANT 4/5, Stage 1.2 fix round 1).
+// `heroMediaSchema.src` has no URL-shape constraint at all — only Zod's
+// `min(1).max(500)`. Every case below passes that schema and would have
+// reached the DOM as a broken `<img>`/`<iframe>` with zero compiler warning
+// before this fix (`safeUrl` silently drops an invalid `src`; an allowlisted
+// host with a garbage path just compiles clean and shows YouTube's own
+// error frame).
+// ---------------------------------------------------------------------------
+
+describe("hero media validation", () => {
+  function heroWithMedia(media: unknown): Section {
+    return {
+      id: "hero1",
+      kind: "hero",
+      variant: "centered",
+      style: {},
+      props: { headline: "Get stronger", primaryCta: urlCta, media },
+    }
+  }
+
+  it.each([
+    ["missing leading slash", "hero.jpg"],
+    ["protocol-relative", "//cdn.example/hero.jpg"],
+    ["insecure http", "http://cdn.example/hero.jpg"],
+    ["disallowed data mime type", "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="],
+  ])("image media.src that is %s (%s) degrades to a visible placeholder, never a src-less <img>", (_desc, src) => {
+    const { result } = compileSection(heroWithMedia({ kind: "image", src, alt: "Athlete", w: 800, h: 600 }))
+    expect(result.ok, JSON.stringify(!result.ok && result.errors)).toBe(true)
+    if (!result.ok) return
+    expect(result.warnings).toEqual([])
+    const json = serialize(result.nodes)
+    expect(json).not.toContain('"tag":"img"')
+    expect(json).toContain("djp-media-invalid")
+    expect(json).toContain("Athlete") // alt text surfaces as visible placeholder content
+  })
+
+  it("a valid image src still renders a real <img>", () => {
+    const { result } = compileSection(
+      heroWithMedia({ kind: "image", src: "/hero.jpg", alt: "Athlete", w: 800, h: 600 }),
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.warnings).toEqual([])
+    const json = serialize(result.nodes)
+    expect(json).toContain('"tag":"img"')
+    expect(json).not.toContain("djp-media-invalid")
+  })
+
+  it("a full YouTube URL in media.src (not a bare id) degrades to a visible placeholder instead of an iframe pointed at a garbage path", () => {
+    const { result } = compileSection(
+      heroWithMedia({
+        kind: "youtube",
+        src: "https://youtu.be/dQw4w9WgXcQ",
+        alt: "Program overview",
+        w: 1280,
+        h: 720,
+      }),
+    )
+    expect(result.ok, JSON.stringify(!result.ok && result.errors)).toBe(true)
+    if (!result.ok) return
+    expect(result.warnings).toEqual([])
+    const json = serialize(result.nodes)
+    expect(json).not.toContain('"tag":"iframe"')
+    expect(json).toContain("djp-media-invalid")
+  })
+
+  it("a bare video id still renders a real <iframe>", () => {
+    const { result } = compileSection(
+      heroWithMedia({ kind: "youtube", src: "dQw4w9WgXcQ", alt: "Program overview", w: 1280, h: 720 }),
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.warnings).toEqual([])
+    expect(serialize(result.nodes)).toContain('"tag":"iframe"')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Style knobs are re-validated, not trusted raw (IMPORTANT 2, Stage 1.2 fix
+// round 1).
+// ---------------------------------------------------------------------------
+
+describe("style knob validation", () => {
+  it("a style value outside its closed enum throws rather than being interpolated unescaped into an attribute", () => {
+    const section: Section = {
+      id: "h1",
+      kind: "hero",
+      variant: "centered",
+      style: { headline: 'x" style="position:fixed;inset:0' } as unknown as Section["style"],
+      props: { headline: "Get stronger", primaryCta: urlCta },
+    }
+    expect(() => renderSection(section)).toThrow()
   })
 })
 
@@ -713,6 +888,32 @@ describe("authored copy is always escaped (constraint 4)", () => {
     const json = serialize(result.nodes)
     // No injected <img> element anywhere in the tree.
     expect(json.match(/"tag":"img"/g)).toBeNull()
+    // Positive assertion (minor, Stage 1.2 fix round 1): the label text
+    // itself must still be present as inert text, not silently dropped —
+    // "no <img> anywhere" alone would also pass if the renderer had simply
+    // eaten the whole label.
+    expect(json).toContain(`"><img src=x onerror=alert(1)>`)
+  })
+
+  it("an island prop (form field label) containing a single quote survives the JSON+HTML round trip intact — the one character JSON.stringify does NOT escape, so single-quoted data-djp-props depends entirely on our own escaping for it (IMPORTANT 9, Stage 1.2 fix round 1)", () => {
+    const section: Section = {
+      id: "form2",
+      kind: "form",
+      variant: "boxed",
+      style: {},
+      props: {
+        formKey: "optin",
+        fields: [{ name: "name", label: "Athlete's name", type: "text" }],
+      },
+    }
+    const { result } = compileSection(section)
+    expect(result.ok, JSON.stringify(!result.ok && result.errors)).toBe(true)
+    if (!result.ok) return
+    expect(result.warnings).toEqual([])
+    const islands = findIslands(result.nodes)
+    const island = islands.find((i) => i.name === "form")
+    const fields = (island?.props as { fields: Array<{ label: string }> }).fields
+    expect(fields[0].label).toBe("Athlete's name")
   })
 
   it("an island prop (form field label) containing a quote and ampersand survives the JSON+HTML round trip intact", () => {

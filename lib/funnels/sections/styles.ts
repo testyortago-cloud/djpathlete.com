@@ -202,8 +202,23 @@ ${ROOT} .djp-s-hero .djp-hero-media {
   aspect-ratio: 16 / 9;
 }
 ${ROOT} .djp-s-hero .djp-hero-ctas { display: flex; gap: 0.9rem; flex-wrap: wrap; margin-top: 0.5rem; }
-${ROOT} .djp-s-hero.djp-v-centered .djp-hero-inner { flex-direction: column; text-align: center; }
-${ROOT} .djp-s-hero.djp-v-centered .djp-hero-ctas { justify-content: center; }
+${ROOT} .djp-s-hero .djp-media-invalid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1.5rem;
+  min-height: 12rem;
+  background: var(--surface);
+  color: var(--muted-foreground);
+  border: 1px dashed var(--muted-foreground);
+}
+${ROOT} .djp-s-hero.djp-v-centered .djp-hero-inner { flex-direction: column; }
+/* "centered" only changes layout direction — text-align is the align knob's
+   job (THEME_CSS's .djp-s[data-align=...]), never forced here, or a hero
+   with variant:"centered" + style.align:"left" could never actually be
+   left-aligned. */
+${ROOT} .djp-s-hero.djp-v-centered[data-align="center"] .djp-hero-ctas { justify-content: center; }
 ${ROOT} .djp-s-hero.djp-v-image-bg { position: relative; overflow: hidden; }
 ${ROOT} .djp-s-hero.djp-v-image-bg .djp-hero-media {
   position: absolute;
