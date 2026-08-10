@@ -66,10 +66,53 @@ export const updateStepSchema = z.object({
  * someone raise the config constant and still be rejected at the door with no
  * indication why.
  */
-export const buildRequestSchema = z.object({
+export const buildMessageRequestSchema = z.object({
+  /**
+   * Optional and defaulted-by-omission so the documented `{message, revision}`
+   * body keeps working verbatim. It exists only so the two members of
+   * `buildRequestSchema` below can never both match one body.
+   */
+  action: z.literal("build").optional(),
   message: z.string().trim().min(1).max(SECTION_BUILDER_MAX_MESSAGE_LENGTH),
   revision: z.number().int().min(0),
 })
+
+/**
+ * THE WAY BACK OUT OF AN UNREPAIRABLE DOCUMENT.
+ *
+ * `getDraft` reports `docInvalid: true` for anything in `project_data` that is
+ * not a valid `SectionDoc` — legacy GrapesJS state, corruption, or a document
+ * that was valid when written and stopped being valid when the registry
+ * tightened. `applyOps` rejects the same documents at its entry parse, BEFORE
+ * it inspects a single op, so no chat instruction of any kind can repair one:
+ * unlike a duplicate section id (which a `set_page` can rewrite away), a
+ * schema-invalid section leaves every turn failing with no route back.
+ *
+ * `funnel_step_turns.doc` holds a FULL document per turn, which is exactly
+ * what that table is for, so the way back is to copy an earlier one forward.
+ * That is `revertToRevision`, which appends a `source: 'revert'` head turn
+ * rather than deleting anything.
+ *
+ * It rides on the build endpoint rather than a route of its own because it is
+ * the same conversation, the same optimistic-lock story and the same response
+ * shape — and because the refusal that tells the owner they need it is
+ * returned by that endpoint, carrying the `resetToRevision` to send back here.
+ *
+ * `toRevision` starts at 1, not 0: revision 0 is the state before any turn
+ * exists, so no turn row can ever carry it.
+ */
+export const buildResetRequestSchema = z.object({
+  action: z.literal("reset"),
+  toRevision: z.number().int().min(1),
+})
+
+/**
+ * Reset FIRST: a body carrying `action: "reset"` fails the message member (no
+ * `message`, and the literal disagrees), and a `{message, revision}` body fails
+ * the reset member, so the union is unambiguous in both directions rather than
+ * order-dependent.
+ */
+export const buildRequestSchema = z.union([buildResetRequestSchema, buildMessageRequestSchema])
 
 /**
  * Publish-time size caps. Named and exported — not restated as bare literals
