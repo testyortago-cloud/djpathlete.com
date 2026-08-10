@@ -195,7 +195,7 @@ Spend goes to `ai_generation_log` with `input_params.feature = "funnel_page_buil
 | `testimonial` | `source:"live"{limit,featuredOnly}` \| `source:"quote"{quotes[1..3]{quote,name,detail?}}` | `stack`, `grid` | `testimonials` (live) |
 | `pricing` | `heading?`, `plans[1..3]{name, price, cadence?, blurb?, features[1..8], cta, highlight?}`, `footnote?` | `cards`, `single` | `checkout`/`event` per CTA |
 | `faq` | `heading?`, `source:"live"{pageKey}` \| `source:"inline"{items[1..12]{q,a}}` | `stack` | `faq` (live) |
-| `form` | `heading?`, `sub?` + **`formIslandSchema` verbatim** (`islands.ts:57-78`) | `boxed`, `band` | `form` |
+| `form` | `heading?`, `sub?` + **`formIslandSchema` verbatim** (import it from `lib/funnels/islands.ts` — do not restate it; the line range in the original analysis is stale after `ed8bbfdc` and Stage 0) | `boxed`, `band` | `form` |
 | `cta` | `headline`, `sub?`, `cta` | `band`, `boxed` | `checkout`/`event`/`booking` |
 | `footer` | `businessName`, `lines[0..4]`, `links[0..6]{label, target}`, `legal?` | `simple`, `columns` | — |
 
