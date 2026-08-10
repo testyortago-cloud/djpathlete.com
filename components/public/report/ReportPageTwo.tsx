@@ -59,7 +59,8 @@ export function ReportPageTwo({
         <p className="report-band-quiet mt-2 max-w-[52ch] text-sm opacity-80">
           {tests.length} {tests.length === 1 ? "test" : "tests"}, each measured the same way every time. Every bar
           is one scale — the tick is Trained, the right edge is Elite; the red zone is a priority, the green zone
-          a strength.
+          a strength. The pill is where you stand against the standard today; the arrow is how you&apos;ve moved
+          since your last test — a rising number can still sit below the standard.
         </p>
       </ReportBand>
 
