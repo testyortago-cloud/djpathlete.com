@@ -54,7 +54,6 @@
     "firebase-admin": "^13.7.0",
     "framer-motion": "^12.4.10",
     "google-ads-api": "^23.0.0",
-    "grapesjs": "^0.23.4",
     "jose": "^6.2.8",
     "konva": "^10.3.0",
     "lucide-react": "^0.542.0",

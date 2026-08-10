@@ -1,9 +1,17 @@
-// components/admin/funnels/island-traits.ts — how each island is edited on the canvas.
+// lib/funnels/island-fields.ts — the editable field metadata for each island.
+//
+// Moved here from `components/admin/funnels/island-traits.ts` when the GrapesJS
+// canvas was deleted (Stage 1.10). It was the one piece of that file with no
+// engine in it: a plain description of which props an owner may set on an
+// island and what kind of input each one wants. GrapesJS consumed it as its
+// "traits"; the section inspector consumes it as form fields. The names
+// `ISLAND_TRAITS` / `IslandTrait` are kept so the invariant test and its
+// history stay legible.
 //
 // Derived from the same registry the compiler validates against, so an island
 // can never offer a setting the schema will reject at publish time.
 
-import { ISLAND_NAMES, ISLANDS, type IslandName } from "@/lib/funnels/islands"
+import { type IslandName } from "@/lib/funnels/islands"
 
 export interface IslandTrait {
   /** Matches the prop name in the island's Zod schema. */
@@ -15,8 +23,8 @@ export interface IslandTrait {
 }
 
 /**
- * `form.fields` is a JSON trait on purpose: it is an array of objects, and a
- * repeater UI for it is a bigger piece of work than the rest of the editor
+ * `form.fields` is a JSON field on purpose: it is an array of objects, and a
+ * repeater UI for it is a bigger piece of work than the rest of the inspector
  * combined. Everything else gets a plain typed input.
  */
 export const ISLAND_TRAITS: Record<IslandName, IslandTrait[]> = {
@@ -71,24 +79,4 @@ export const ISLAND_TRAITS: Record<IslandName, IslandTrait[]> = {
     { name: "pageKey", label: "FAQ page key", type: "text" },
     { name: "limit", label: "How many", type: "number" },
   ],
-}
-
-/** Placeholder markup shown on the canvas — never what the visitor sees. */
-export function islandPlaceholderHtml(name: IslandName): string {
-  const def = ISLANDS[name]
-  const props = JSON.stringify(def.defaultProps).replace(/'/g, "&#39;")
-  return (
-    `<div data-djp-island="${name}" data-djp-props='${props}' ` +
-    `class="djp-island-placeholder">${def.label}</div>`
-  )
-}
-
-export function islandBlockDefinitions() {
-  return ISLAND_NAMES.map((name) => ({
-    id: `djp-island-${name}`,
-    label: ISLANDS[name].label,
-    category: "Interactive",
-    content: islandPlaceholderHtml(name),
-    attributes: { title: ISLANDS[name].description },
-  }))
 }

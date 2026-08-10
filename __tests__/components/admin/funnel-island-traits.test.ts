@@ -1,7 +1,16 @@
+// Covers `lib/funnels/island-fields.ts` (was
+// `components/admin/funnels/island-traits.ts` until Stage 1.10 moved it out of
+// the deleted GrapesJS editor folder).
+//
+// The `readIslandProps` / `buildIslandProps` suites that used to live at the
+// bottom of this file went with `island-props.ts` in that same deletion — that
+// module existed to translate GrapesJS trait widgets into `data-djp-props` and
+// has no reader left. Everything below is about ISLAND_TRAITS itself and the
+// island schemas, neither of which the deletion touched, so it stays.
+
 import { describe, it, expect } from "vitest"
 import { ISLAND_NAMES, ISLANDS, parseIslandProps, type IslandName } from "@/lib/funnels/islands"
-import { ISLAND_TRAITS } from "@/components/admin/funnels/island-traits"
-import { buildIslandProps, readIslandProps } from "@/components/admin/funnels/island-props"
+import { ISLAND_TRAITS } from "@/lib/funnels/island-fields"
 
 describe("island traits cover their island's settings", () => {
   // The regression that motivated this file: `form` shipped a successMode
@@ -109,89 +118,5 @@ describe("island traits cover their island's settings", () => {
         expect(trait.options?.length ?? 0, `${name}.${trait.name}`).toBeGreaterThan(1)
       }
     }
-  })
-})
-
-describe("readIslandProps", () => {
-  it("falls back to defaults when the attribute is missing or corrupt", () => {
-    expect(readIslandProps(undefined, "faq")).toEqual(ISLANDS.faq.defaultProps)
-    expect(readIslandProps("{not json}", "faq")).toEqual(ISLANDS.faq.defaultProps)
-    expect(readIslandProps("[1,2]", "faq")).toEqual(ISLANDS.faq.defaultProps)
-  })
-
-  it("parses real props", () => {
-    expect(readIslandProps('{"pageKey":"camps","limit":3}', "faq")).toEqual({
-      pageKey: "camps",
-      limit: 3,
-    })
-  })
-})
-
-describe("buildIslandProps", () => {
-  const values: Record<string, unknown> = {}
-  const get = (n: string) => values[n]
-
-  it("writes a text trait through to props", () => {
-    const out = buildIslandProps({ label: "Buy now" }, "checkout", (n) =>
-      n === "label" ? "Get started" : undefined,
-    )
-    expect(out.label).toBe("Get started")
-  })
-
-  it("keeps untouched props untouched", () => {
-    const out = buildIslandProps({ label: "Buy now", productId: "abc" }, "checkout", () => undefined)
-    expect(out).toEqual({ label: "Buy now", productId: "abc" })
-  })
-
-  it("removes a prop the owner deliberately cleared", () => {
-    // Previously an empty string was skipped, so clearing a field left the old
-    // value in place and the owner could not undo a setting.
-    const out = buildIslandProps({ label: "Buy now" }, "checkout", (n) =>
-      n === "label" ? "" : undefined,
-    )
-    expect(out).not.toHaveProperty("label")
-  })
-
-  it("coerces a number trait", () => {
-    const out = buildIslandProps({ limit: 6 }, "faq", (n) => (n === "limit" ? "9" : undefined))
-    expect(out.limit).toBe(9)
-  })
-
-  it("coerces a checkbox trait to a boolean", () => {
-    const out = buildIslandProps({ featuredOnly: false }, "testimonials", (n) =>
-      n === "featuredOnly" ? true : undefined,
-    )
-    expect(out.featuredOnly).toBe(true)
-  })
-
-  it("parses a json trait and keeps the old value when it is invalid", () => {
-    const fields = [{ name: "email", label: "Email", type: "email" }]
-    const ok = buildIslandProps({ fields: [] }, "form", (n) =>
-      n === "fields" ? JSON.stringify(fields) : undefined,
-    )
-    expect(ok.fields).toEqual(fields)
-
-    const bad = buildIslandProps({ fields }, "form", (n) => (n === "fields" ? "{oops" : undefined))
-    expect(bad.fields).toEqual(fields)
-  })
-
-  it("produces props the compiler will accept end to end", () => {
-    values.formKey = "optin"
-    values.submitLabel = "Get the guide"
-    values.successMode = "redirect"
-    values.redirectUrl = "/go/thanks"
-    values.fields = JSON.stringify([{ name: "email", label: "Email", type: "email" }])
-
-    const props = buildIslandProps(
-      { ...ISLANDS.form.defaultProps },
-      "form" as IslandName,
-      get,
-    )
-    const result = parseIslandProps("form", props)
-    expect(result.ok).toBe(true)
-    if (!result.ok) return
-    // successMode is now reachable from the UI, so redirect actually applies.
-    expect(result.props.successMode).toBe("redirect")
-    expect(result.props.redirectUrl).toBe("/go/thanks")
   })
 })
