@@ -1,10 +1,11 @@
 import Image from "next/image"
 import type { TestReportData } from "@/lib/test-report/data"
 import type { ReportScores } from "@/lib/test-report/scoring"
-import { num, formatDate } from "@/lib/test-report/format"
+import { formatDate } from "@/lib/test-report/format"
 import { ReportPage, ReportBand } from "./panels/ReportPage"
 import { ScoreTrack } from "./panels/ScoreTrack"
 import { FocalPointCard } from "./panels/FocalPointCard"
+import { MoverCompare } from "./panels/MoverCompare"
 
 /**
  * Page 1 — who, how they're doing overall, what moved, and what to train next.
@@ -122,14 +123,14 @@ export function ReportPageOne({ data, scores }: { data: TestReportData; scores: 
                   {Math.abs(biggestMover.test.deltaPct)}%
                 </p>
                 <p className="mt-3 font-heading text-base font-bold">{biggestMover.test.label}</p>
-                <p className="mt-1 font-mono text-xs text-muted-foreground">
-                  {num(biggestMover.test.previous)} → {num(biggestMover.test.latest)} {biggestMover.test.unit}
-                </p>
-                {biggestMover.test.score !== null && (
-                  <div className="mt-4">
-                    <ScoreTrack score={biggestMover.test.score} tone="accent" />
-                  </div>
+                {biggestMover.test.previousDate && (
+                  <p className="mt-1 font-mono text-xs text-muted-foreground">
+                    {formatDate(biggestMover.test.previousDate)} → {formatDate(biggestMover.test.latestDate)}
+                  </p>
                 )}
+                <div className="mt-4">
+                  <MoverCompare mover={biggestMover} />
+                </div>
                 <p className="mt-3 max-w-[34ch] text-sm text-muted-foreground">
                   {biggestMover.direction === "declined"
                     ? "Nothing improved between your last two tests. Worth checking recovery and testing conditions before reading too much into it."

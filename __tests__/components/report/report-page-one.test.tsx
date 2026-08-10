@@ -141,4 +141,53 @@ describe("ReportPageOne", () => {
     expect(directText, "the label's parent directly holds raw cue text — still one run-on paragraph").toBe("")
     expect(label!.nextElementSibling, "cue is not a sibling element — it is inline with the label").toBeTruthy()
   })
+
+  it("draws the mover as a Now-vs-standards circle group, not a bar", () => {
+    const rich: TestReportData = {
+      ...base,
+      tests: [
+        { testType: "cmj", resultValue: 40, resultUnit: "cm", customName: null, bodyWeightKg: 78, testDate: "2026-01-01", isPr: false },
+        { testType: "cmj", resultValue: 48, resultUnit: "cm", customName: null, bodyWeightKg: 78, testDate: "2026-06-01", isPr: true },
+        { testType: "sit_reach", resultValue: 12, resultUnit: "cm", customName: null, bodyWeightKg: null, testDate: "2026-06-01", isPr: false },
+      ],
+    }
+    const scores = buildReportScores(rich.tests)
+    expect(scores.biggestMover?.test.key, "fixture must make cmj the mover").toBe("cmj")
+
+    const { container } = render(<ReportPageOne data={rich} scores={scores} />)
+    // The circle: now, prev, and both standards in the test's own units.
+    expect(screen.getByText("Now")).toBeInTheDocument()
+    expect(screen.getByText(/Prev 40/)).toBeInTheDocument()
+    expect(screen.getByText("Trained")).toBeInTheDocument()
+    expect(screen.getByText("Elite")).toBeInTheDocument()
+    expect(screen.getByText("45")).toBeInTheDocument() // cmj trained standard
+    expect(screen.getByText("65")).toBeInTheDocument() // cmj elite standard
+    // The time period, on the hero itself.
+    expect(screen.getByText(/1 Jan 2026 → 1 Jun 2026/)).toBeInTheDocument()
+    // The old raw-values line is gone (the circle carries both numbers now)…
+    expect(screen.queryByText(/40 → 48/)).not.toBeInTheDocument()
+    // …and no track in the mover panel: every remaining track is primary-toned.
+    for (const t of container.querySelectorAll(".score-track")) {
+      expect(t.getAttribute("data-tone")).not.toBe("accent")
+    }
+  })
+
+  it("renders the mover circle without satellites when targets are unknowable", () => {
+    // A 1RM with no body weight: delta exists (raw kg), targets do not.
+    const noBw: TestReportData = {
+      ...base,
+      tests: [
+        { testType: "back_squat_1rm", resultValue: 100, resultUnit: "kg", customName: null, bodyWeightKg: null, testDate: "2026-01-01", isPr: false },
+        { testType: "back_squat_1rm", resultValue: 120, resultUnit: "kg", customName: null, bodyWeightKg: null, testDate: "2026-06-01", isPr: false },
+      ],
+    }
+    const scores = buildReportScores(noBw.tests)
+    expect(scores.biggestMover, "fixture must still produce a mover").not.toBeNull()
+    expect(scores.biggestMover!.test.targets).toBeNull()
+
+    render(<ReportPageOne data={noBw} scores={scores} />)
+    expect(screen.getByText("Now")).toBeInTheDocument()
+    expect(screen.queryByText("Trained")).not.toBeInTheDocument()
+    expect(screen.queryByText("Elite")).not.toBeInTheDocument()
+  })
 })
