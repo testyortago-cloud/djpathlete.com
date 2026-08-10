@@ -11,6 +11,18 @@ export { Anthropic }
 export const MODEL_OPUS = "claude-opus-4-6"
 export const MODEL_SONNET = "claude-sonnet-4-6"
 export const MODEL_HAIKU = "claude-haiku-4-5-20251001"
+// ADDITIVE ONLY — added for the AI page builder (lib/funnels/sections/*).
+// The three constants above are DELIBERATELY left pointing where they point:
+// the 4-agent program-generation pipeline, the strategy agents and the
+// bookkeeper are all tuned against `claude-sonnet-4-6`, so repointing
+// MODEL_SONNET (or MODEL_OPUS/MODEL_HAIKU) to change the builder's model
+// would silently change behaviour for every AI feature in the app.
+//
+// UNVERIFIED: whether @ai-sdk/anthropic + `ai` drive this id correctly
+// through `generateObject`'s jsonTool path has NOT been smoke-tested against
+// the live API — that belongs to the stage that first makes a real call.
+// The documented fallback is MODEL_SONNET, which is proven here today.
+export const MODEL_OPUS_5 = "claude-opus-5"
 const DEFAULT_MAX_TOKENS = 32000
 
 // ─── Singleton clients ───────────────────────────────────────────────────────
