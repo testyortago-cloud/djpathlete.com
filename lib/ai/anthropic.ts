@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { createAnthropic } from "@ai-sdk/anthropic"
-import { generateObject, streamText } from "ai"
+import { generateObject, streamObject, streamText } from "ai"
 import type { ZodSchema } from "zod"
 import type { AgentCallResult } from "@/lib/ai/types"
 // The default model for both entry points below. Imported as well as
@@ -199,5 +199,79 @@ export function streamChat(opts: {
       role: m.role as "user" | "assistant",
       content: m.content,
     })),
+  })
+}
+
+// ─── streamAgent: structured output via streamObject ─────────────────────────
+
+/**
+ * `callAgent`'s streaming twin: same schema, same provider options, same cache
+ * handling — but the caller can read the object as it is written instead of
+ * waiting for the whole thing.
+ *
+ * WHY IT EXISTS. A page build is a ~30s call whose only progress signal was a
+ * spinner. `partialObjectStream` yields the response object filling in, which
+ * is enough for a UI to show the page assembling out of the model's own output
+ * rather than out of a timer.
+ *
+ * `structuredOutputMode: "jsonTool"` IS NOT OPTIONAL, for exactly the reasons
+ * spelled out on `callAgent` above: the default ("auto") uses Anthropic
+ * structured outputs, which reject every `minLength`/`maxItems` our Zod schemas
+ * compile to and constrained-decode `z.record(...)` into empty objects. This is
+ * one `providerOptions` line away from being the fourth feature to step in that
+ * trap, so it is pinned here as well rather than inherited from anywhere.
+ *
+ * ---------------------------------------------------------------------------
+ * IT DELIBERATELY DOES NOT RETRY, AND THAT IS NOT AN OVERSIGHT.
+ * ---------------------------------------------------------------------------
+ * `callAgent` wraps `generateObject` in `pRetry` because that call either
+ * returns a whole object or throws, so a transient 429/5xx can be retried with
+ * nobody the wiser. A stream cannot be retried transparently once a consumer
+ * has read from it — by the time the ninth chunk 529s, the caller has already
+ * rendered eight sections, and a silent second attempt would replay them.
+ *
+ * Retrying is therefore the CALLER's decision, because only the caller knows
+ * what it has already shown. `app/api/admin/funnels/steps/[stepId]/build`
+ * already owns a two-attempt loop and resets its progress display on attempt 2.
+ * Do not "fix" this by adding `pRetry` here.
+ *
+ * Errors surface in two places and both must be handled: iterating
+ * `partialObjectStream` can throw, and awaiting `.object` rejects on a refusal,
+ * a truncated response or a schema violation. Attach a handler to `.object`
+ * BEFORE the iteration if the iteration is awaited first, or Node reports an
+ * unhandled rejection for a failure the caller does go on to catch.
+ */
+export function streamAgent<T>(
+  systemPrompt: string,
+  userMessage: string,
+  schema: ZodSchema<T>,
+  options?: {
+    maxTokens?: number
+    model?: string
+    cacheSystemPrompt?: boolean
+  },
+) {
+  const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
+  const modelId = options?.model ?? MODEL_SONNET
+
+  return streamObject({
+    model: provider(modelId),
+    maxOutputTokens: maxTokens,
+    providerOptions: {
+      anthropic: { structuredOutputMode: "jsonTool" },
+    },
+    system: options?.cacheSystemPrompt
+      ? [
+          {
+            role: "system" as const,
+            content: systemPrompt,
+            providerOptions: {
+              anthropic: { cacheControl: { type: "ephemeral" as const } },
+            },
+          },
+        ]
+      : systemPrompt,
+    prompt: userMessage,
+    schema,
   })
 }

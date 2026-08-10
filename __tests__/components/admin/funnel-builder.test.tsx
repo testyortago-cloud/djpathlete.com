@@ -32,6 +32,7 @@ import {
   clearsMessagingDock,
   tailwindBottomPaddingPx,
 } from "@/components/messaging/dock-geometry"
+import { encodeBuildStreamEvent, type BuildStreamEvent } from "@/lib/funnels/sections/build-stream"
 import type {
   BuildTurnResponse,
   CompileSummary,
@@ -88,9 +89,7 @@ const DANGLING: DanglingAnchor = {
 }
 
 const RECEIPT: DiffReceipt = {
-  changed: [
-    { id: "hero1", kind: "hero", label: "Hero", action: "updated", reasons: ["headline size"] },
-  ],
+  changed: [{ id: "hero1", kind: "hero", label: "Hero", action: "updated", reasons: ["headline size"] }],
   unchangedCount: 8,
   totalSections: 9,
   themeChanged: false,
@@ -142,19 +141,109 @@ function baseProps(overrides: Partial<FunnelBuilderProps> = {}): FunnelBuilderPr
   }
 }
 
-/** Routes by URL so a test can answer the build and publish routes differently. */
+// ---------------------------------------------------------------------------
+// The transport.
+//
+// The build route streams; publish and reset do not. These fakes are REAL
+// `Response` objects rather than `{ok, status, json}` literals, because the
+// component now branches on `Content-Type` and reads `response.body` through a
+// stream reader — an object literal cannot exercise either, and one that
+// happened to satisfy the old shape would let a broken reader pass.
+// ---------------------------------------------------------------------------
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  })
+}
+
+/** An SSE body delivered whole — the turn is already over by the time it lands. */
+function sseResponse(events: BuildStreamEvent[]): Response {
+  return new Response(events.map(encodeBuildStreamEvent).join(""), {
+    status: 200,
+    headers: { "content-type": "text/event-stream; charset=utf-8" },
+  })
+}
+
+/**
+ * A stream the test holds OPEN, so it can assert what is on screen partway
+ * through a turn.
+ *
+ * `sseResponse` above cannot do that: its body is complete before the component
+ * reads a byte, so every event is consumed in one pass and the stage is gone by
+ * the first assertion. Anything about the wireframe has to be observed mid-turn
+ * or it is not being observed at all.
+ */
+function controlledStream() {
+  const encoder = new TextEncoder()
+  let controller!: ReadableStreamDefaultController<Uint8Array>
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      controller = c
+    },
+  })
+  return {
+    response: new Response(body, {
+      status: 200,
+      headers: { "content-type": "text/event-stream; charset=utf-8" },
+    }),
+    push(event: BuildStreamEvent) {
+      controller.enqueue(encoder.encode(encodeBuildStreamEvent(event)))
+    },
+    close() {
+      controller.close()
+    },
+  }
+}
+
+/** A `section` event with the fields a test does not care about filled in. */
+function sectionEvent(overrides: Partial<BuildStreamEvent & { section: unknown }>): BuildStreamEvent {
+  return {
+    type: "section",
+    section: { key: "0:0", op: "set_page", kind: "hero", id: null, variant: null, headline: null },
+    ...(overrides as object),
+  } as BuildStreamEvent
+}
+
+/**
+ * Routes by URL so a test can answer the build and publish routes differently.
+ *
+ * Handlers keep their original `{status, body}` contract and this decides how
+ * to deliver it, so the existing call sites did not have to learn about
+ * framing:
+ *
+ *  - publish, and any reset, stay JSON;
+ *  - a NON-200 build stays JSON, because a pre-flight failure never opens a
+ *    stream and must keep its real status;
+ *  - a 200 build becomes a stream ending in `result`.
+ *
+ * `events` overrides all of that for the tests that are specifically about
+ * progress or about a mid-stream failure.
+ */
 function mockFetch(handlers: {
   build?: () => { status: number; body: unknown }
   publish?: () => { status: number; body: unknown }
+  events?: () => BuildStreamEvent[]
+  /** A stream the test drives by hand — see `controlledStream`. */
+  raw?: () => Response
 }) {
-  const fetchMock = vi.fn(async (url: string) => {
-    const which = url.includes("/publish") ? handlers.publish : handlers.build
-    const result = which ? which() : { status: 200, body: turn() }
-    return {
-      ok: result.status >= 200 && result.status < 300,
-      status: result.status,
-      json: async () => result.body,
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes("/publish")) {
+      const result = handlers.publish ? handlers.publish() : { status: 200, body: {} }
+      return jsonResponse(result.status, result.body)
     }
+
+    if (handlers.raw) return handlers.raw()
+    if (handlers.events) return sseResponse(handlers.events())
+
+    const result = handlers.build ? handlers.build() : { status: 200, body: turn() }
+
+    const requestBody = init?.body ? (JSON.parse(init.body as string) as { action?: string }) : {}
+    const isReset = requestBody.action === "reset"
+    if (isReset || result.status !== 200) return jsonResponse(result.status, result.body)
+
+    return sseResponse([{ type: "result", turn: result.body }])
   })
   global.fetch = fetchMock as unknown as typeof fetch
   return fetchMock
@@ -379,9 +468,7 @@ describe("<FunnelBuilder> — the pre-publish review", () => {
     // header button now; there is no review to pass through.
     fireEvent.click(publishButton())
 
-    await waitFor(() =>
-      expect(screen.getByText('The program "Comeback Code" no longer exists.')).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByText('The program "Comeback Code" no longer exists.')).toBeInTheDocument())
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -403,9 +490,7 @@ describe("<FunnelBuilder> — the pre-publish review", () => {
     // header button now; there is no review to pass through.
     fireEvent.click(publishButton())
 
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /fix it for me/i })).toBeInTheDocument(),
-    )
+    await waitFor(() => expect(screen.getByRole("button", { name: /fix it for me/i })).toBeInTheDocument())
     // MUTANT KILLED: routing the refusal into the chat and forgetting to keep
     // `serverBlockers` — the fix affordance must not double as an unblock.
     expect(publishButton()).toBeDisabled()
@@ -414,9 +499,7 @@ describe("<FunnelBuilder> — the pre-publish review", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
 
     expect(fetchMock.mock.calls[0][0]).toContain("/build")
-    expect(String(bodyOf(fetchMock, 0).message)).toContain(
-      'The program "Comeback Code" no longer exists.',
-    )
+    expect(String(bodyOf(fetchMock, 0).message)).toContain('The program "Comeback Code" no longer exists.')
   })
 
   it("reports what the compiler removed in a strip that stays, never a toast", async () => {
@@ -466,14 +549,10 @@ describe("<FunnelBuilder> — the publish button and the global Messages dock", 
     const classes = (footer as HTMLElement).className
 
     for (const scope of ["base", "lg"] as const) {
-      expect(
-        clearsMessagingDock(tailwindBottomPaddingPx(classes, scope), SM_BUTTON_HEIGHT_PX, scope),
-      ).toBe(true)
+      expect(clearsMessagingDock(tailwindBottomPaddingPx(classes, scope), SM_BUTTON_HEIGHT_PX, scope)).toBe(true)
     }
 
-    expect(clearsMessagingDock(tailwindBottomPaddingPx("px-4 py-3", "lg"), SM_BUTTON_HEIGHT_PX, "lg")).toBe(
-      false,
-    )
+    expect(clearsMessagingDock(tailwindBottomPaddingPx("px-4 py-3", "lg"), SM_BUTTON_HEIGHT_PX, "lg")).toBe(false)
   })
 
   it("keeps the dock's own footprint constants honest against MessagingDock.tsx", () => {
@@ -483,10 +562,7 @@ describe("<FunnelBuilder> — the publish button and the global Messages dock", 
     // the publish button again with this whole file still green. Reading the
     // component's source is the only link available: the class string is a
     // Tailwind literal, and jsdom cannot resolve it to a box.
-    const source = fs.readFileSync(
-      path.join(process.cwd(), "components/messaging/MessagingDock.tsx"),
-      "utf8",
-    )
+    const source = fs.readFileSync(path.join(process.cwd(), "components/messaging/MessagingDock.tsx"), "utf8")
     expect(source).toContain(`bottom-${MESSAGING_DOCK_INSET_PX.base / 4} `)
     expect(source).toContain(`lg:bottom-${MESSAGING_DOCK_INSET_PX.lg / 4}`)
     expect(source).toContain("fixed")
@@ -567,9 +643,7 @@ describe("<FunnelBuilder> — the diff receipt", () => {
     clickSend()
 
     await waitFor(() =>
-      expect(
-        screen.getByText(/Changed: Hero \(headline size\)\. Untouched: 8 sections\./),
-      ).toBeInTheDocument(),
+      expect(screen.getByText(/Changed: Hero \(headline size\)\. Untouched: 8 sections\./)).toBeInTheDocument(),
     )
   })
 
@@ -646,9 +720,7 @@ describe("<FunnelBuilder> — the empty state", () => {
 
     render(<FunnelBuilder {...baseProps({ initialDoc: null, initialCompile: null, initialMessages: [] })} />)
 
-    expect(
-      screen.getAllByRole("button", { name: /^(Landing|Opt-in|Sales|Thank-you|Waitlist)/ }),
-    ).toHaveLength(5)
+    expect(screen.getAllByRole("button", { name: /^(Landing|Opt-in|Sales|Thank-you|Waitlist)/ })).toHaveLength(5)
 
     fireEvent.click(screen.getByRole("button", { name: "Landing page for a summer camp" }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
@@ -663,9 +735,7 @@ describe("<FunnelBuilder> — the empty state", () => {
 describe("<FunnelBuilder> — the preview across a review round-trip", () => {
   /** PreviewPane renders `className` on its outer div: iframe -> box -> pane. */
   function draftFrame(container: HTMLElement): HTMLIFrameElement {
-    const frame = container.querySelector<HTMLIFrameElement>(
-      'iframe[title="Draft preview of this page"]',
-    )
+    const frame = container.querySelector<HTMLIFrameElement>('iframe[title="Draft preview of this page"]')
     expect(frame).not.toBeNull()
     return frame as HTMLIFrameElement
   }
@@ -885,5 +955,162 @@ describe("<FunnelBuilder> — a funnel that is still a draft", () => {
     fireEvent.click(publishButton())
 
     expect(screen.queryByText(/this funnel isn't live yet/i)).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The generation stage
+//
+// What the owner watches for the ~30 seconds a turn takes. The claim is that
+// every block on screen came out of the stream, so each test drives the stream
+// by hand and asserts against what it pushed.
+// ---------------------------------------------------------------------------
+
+describe("FunnelBuilder — watching the page get written", () => {
+  it("draws a block per streamed section, captioned with the model's own headline", async () => {
+    // MUTANT: rendering a fixed skeleton, or captioning blocks with the section
+    // KIND instead of the copy. Either would look identical on a happy path and
+    // would be showing the owner something the model never wrote.
+    const stream = controlledStream()
+    const fetchMock = mockFetch({ raw: () => stream.response })
+
+    render(<FunnelBuilder {...baseProps()} />)
+    typeMessage("waitlist page")
+    clickSend()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    stream.push({ type: "phase", phase: "writing" })
+    stream.push(
+      sectionEvent({
+        section: {
+          key: "0:0",
+          op: "set_page",
+          kind: "hero",
+          id: null,
+          variant: null,
+          headline: "Six athletes, one coach",
+        },
+      }),
+    )
+    expect(await screen.findByText("Six athletes, one coach")).toBeInTheDocument()
+
+    stream.push(
+      sectionEvent({
+        section: { key: "0:1", op: "set_page", kind: "form", id: null, variant: null, headline: "Get on the waitlist" },
+      }),
+    )
+    expect(await screen.findByText("Get on the waitlist")).toBeInTheDocument()
+
+    // And it is gone once the turn lands — the stage is transient, the receipt
+    // is what persists.
+    stream.push({ type: "result", turn: turn({ revision: 6 }) })
+    stream.close()
+    await waitFor(() => expect(screen.queryByText("Six athletes, one coach")).not.toBeInTheDocument())
+  })
+
+  it("clears the drawn sections on a retry instead of appending to them", async () => {
+    // MUTANT: ignoring `restart`. Attempt 2 rewrites the same page, so its
+    // sections would pile on top of attempt 1's and the owner would watch a
+    // 2-section page grow into 4 sections that do not exist.
+    const stream = controlledStream()
+    const fetchMock = mockFetch({ raw: () => stream.response })
+
+    render(<FunnelBuilder {...baseProps()} />)
+    typeMessage("waitlist page")
+    clickSend()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    stream.push(
+      sectionEvent({
+        section: { key: "0:0", op: "set_page", kind: "hero", id: null, variant: null, headline: "First attempt hero" },
+      }),
+    )
+    expect(await screen.findByText("First attempt hero")).toBeInTheDocument()
+
+    stream.push({ type: "restart", attempt: 2 })
+    await waitFor(() => expect(screen.queryByText("First attempt hero")).not.toBeInTheDocument())
+    expect(screen.getByText(/second attempt/i)).toBeInTheDocument()
+
+    stream.push(
+      sectionEvent({
+        section: { key: "0:0", op: "set_page", kind: "hero", id: null, variant: null, headline: "Second attempt hero" },
+      }),
+    )
+    expect(await screen.findByText("Second attempt hero")).toBeInTheDocument()
+
+    stream.push({ type: "result", turn: turn({ revision: 6 }) })
+    stream.close()
+  })
+
+  it("marks the running token count as an estimate and drops the tilde when it is exact", async () => {
+    // MUTANT: rendering both the same. The live figure is a count of delta
+    // events, not the provider's number, and presenting it as measured on a
+    // display whose whole point is honesty about the real work is precisely
+    // the wrong trade.
+    const stream = controlledStream()
+    const fetchMock = mockFetch({ raw: () => stream.response })
+
+    render(<FunnelBuilder {...baseProps()} />)
+    typeMessage("hi")
+    clickSend()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    stream.push({ type: "usage", outputTokens: 1840, exact: false })
+    expect(await screen.findByText(/~1,840 tokens/)).toBeInTheDocument()
+
+    stream.push({ type: "usage", outputTokens: 1912, exact: true })
+    expect(await screen.findByText(/^1,912 tokens/)).toBeInTheDocument()
+
+    stream.push({ type: "result", turn: turn({ revision: 6 }) })
+    stream.close()
+  })
+
+  it("routes a mid-stream 409 through the same resync as an HTTP 409", async () => {
+    // MUTANT: treating `fail` as a generic error toast. The compare-and-swap
+    // can be lost AFTER the stream opens, and that failure has to reach the
+    // same handler — otherwise the tab keeps its stale revision and the next
+    // turn races again, which is the exact bug the lock exists to prevent.
+    const fetchMock = mockFetch({
+      events: () => [
+        {
+          type: "fail",
+          status: 409,
+          body: {
+            error: "Someone else changed this page while you were working on it. Reload and try again.",
+            code: "stale_revision",
+            currentRevision: 11,
+          },
+        },
+      ],
+    })
+
+    render(<FunnelBuilder {...baseProps()} />)
+    typeMessage("hi")
+    clickSend()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    expect(await screen.findByText(/someone else changed this page/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /reload the latest version/i })).toBeInTheDocument()
+  })
+
+  it("never reports a stream that ended with no result as success", async () => {
+    // MUTANT: defaulting a terminal-less stream to `{}` or to the last known
+    // turn. A dropped connection would then look exactly like a successful
+    // turn that changed nothing, and the owner's message would vanish from the
+    // composer with no page to show for it.
+    const stream = controlledStream()
+    const fetchMock = mockFetch({ raw: () => stream.response })
+
+    render(<FunnelBuilder {...baseProps()} />)
+    typeMessage("build me a waitlist page")
+    clickSend()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    stream.push({ type: "phase", phase: "writing" })
+    stream.close()
+
+    // The message goes back in the composer — the honest mirror of "we do not
+    // know whether that saved".
+    await waitFor(() => expect(composer()).toHaveValue("build me a waitlist page"))
   })
 })

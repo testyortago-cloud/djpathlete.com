@@ -25,7 +25,7 @@ vi.mock("@/lib/permissions/guard", () => ({ canAccessAdminPath: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 vi.mock("@/lib/ai/anthropic", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/ai/anthropic")>()),
-  callAgent: vi.fn(),
+  streamAgent: vi.fn(),
 }))
 vi.mock("@/lib/db/ai-generation-log", () => ({
   createGenerationLog: vi.fn(),
@@ -51,7 +51,7 @@ vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.f
 import { POST, maxDuration } from "@/app/api/admin/funnels/steps/[stepId]/build/route"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
-import { callAgent } from "@/lib/ai/anthropic"
+import { streamAgent } from "@/lib/ai/anthropic"
 import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation-log"
 import { appendTurn, getDraft, listTurns, revertToRevision } from "@/lib/db/funnel-builder"
 import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
@@ -66,6 +66,7 @@ import {
   SECTION_BUILDER_SECTION_MAX_TOKENS,
 } from "@/lib/funnels/sections/builder-config"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
+import { createBuildStreamDecoder, type BuildStreamEvent } from "@/lib/funnels/sections/build-stream"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
 
@@ -141,8 +142,88 @@ function overCapSections() {
   }))
 }
 
+// ---------------------------------------------------------------------------
+// The streaming harness.
+//
+// `streamAgent` is SYNCHRONOUS and returns a handle: `fullStream` to iterate
+// and `object` to await. The route reads the whole stream and then awaits the
+// object, so a fake has to supply both — and a fresh one per call, because a
+// generator is drained by its first reader and the retry tests call twice.
+// ---------------------------------------------------------------------------
+
+/** Matches what the real provider reports: 200 in + 1000 out = 1200 total. */
+const USAGE = {
+  inputTokens: 200,
+  outputTokens: 1000,
+  inputTokenDetails: { cacheWriteTokens: 3400, cacheReadTokens: 0 },
+}
+
 function agentResult(content: unknown) {
-  return { content, tokens_used: 1200, cache_creation_tokens: 3400, cache_read_tokens: 0 }
+  return {
+    object: Promise.resolve(content),
+    fullStream: (async function* () {
+      // One `object` part carrying the finished response. The route's section
+      // events are derived from these, so a fake that yielded nothing here
+      // would still exercise every downstream branch — which is exactly why
+      // the progress assertions below drive a MULTI-part stream instead.
+      yield { type: "object", object: content }
+      yield { type: "finish", usage: USAGE }
+    })(),
+  }
+}
+
+/**
+ * A model call that fails the way the real one does: the stream ends and the
+ * object rejects. `generateObject` used to throw for a refusal, a truncated
+ * response and a schema violation alike, and `streamObject` surfaces all three
+ * here, so this is the faithful shape for all of them.
+ */
+function agentFailure(message: string) {
+  const object = Promise.reject(new Error(message))
+  // The route claims this rejection immediately; claiming it here too keeps
+  // the test runner from reporting an unhandled rejection for the tests that
+  // never reach the route's own handler.
+  object.catch(() => {})
+  return {
+    object,
+    fullStream: (async function* () {
+      yield { type: "finish", usage: USAGE }
+    })(),
+  }
+}
+
+/**
+ * Every event the route wrote, in order. For assertions about PROGRESS —
+ * what the owner is shown while the model is writing.
+ */
+async function readEvents(res: Response): Promise<BuildStreamEvent[]> {
+  expect(res.headers.get("content-type")).toContain("text/event-stream")
+  return createBuildStreamDecoder()(await res.text())
+}
+
+/**
+ * The turn, however the route chose to deliver it.
+ *
+ * A pre-flight failure is still ordinary JSON with a real status; a build turn
+ * is an SSE body ending in `result`. One helper reads both so the tests below
+ * assert the OUTCOME rather than the transport, which is the whole claim of
+ * this change — the turn contract did not move.
+ *
+ * A stream that ends in `fail`, or in nothing at all, THROWS. Neither is a
+ * turn, and returning undefined would let an assertion about a turn's contents
+ * pass by reading properties off nothing.
+ */
+async function readTurn(res: Response): Promise<any> {
+  if (!(res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+    return res.json()
+  }
+  const events = await readEvents(res)
+  const terminal = events.filter((event) => event.type === "result" || event.type === "fail").pop()
+  if (!terminal) throw new Error("the stream ended with no terminal event")
+  if (terminal.type === "fail") {
+    throw new Error(`the stream ended in fail(${terminal.status}): ${JSON.stringify(terminal.body)}`)
+  }
+  return terminal.turn
 }
 
 const req = (body: unknown) =>
@@ -199,8 +280,12 @@ beforeEach(() => {
   // test whose own setup was wrong. Scoped to this one mock rather than a
   // blanket `resetAllMocks`, which has bitten this repo before by wiping a
   // throwing implementation a later test depended on.
-  mock(callAgent).mockReset()
-  mock(callAgent).mockResolvedValue(
+  mock(streamAgent).mockReset()
+  // `mockImplementation`, never `mockReturnValue`: a shared handle would have
+  // its `fullStream` generator drained by the first read, so the second call in
+  // a retry test would see an empty stream and a resolved object it had already
+  // consumed. Every call builds its own.
+  mock(streamAgent).mockImplementation(() =>
     agentResult({
       reply: "Rewrote the hero headline.",
       blocked: false,
@@ -222,7 +307,7 @@ describe("POST /api/admin/funnels/steps/:stepId/build — auth", () => {
     const res = await POST(req({ message: "hi", revision: 4 }), ctx)
     expect(res.status).toBe(403)
     expect(getDraft).not.toHaveBeenCalled()
-    expect(callAgent).not.toHaveBeenCalled()
+    expect(streamAgent).not.toHaveBeenCalled()
   })
 
   it("403s an anonymous request", async () => {
@@ -247,7 +332,7 @@ describe("POST .../build — request handling", () => {
     expect((await POST(req({}), ctx)).status).toBe(400)
     expect((await POST(req({ message: "hi" }), ctx)).status).toBe(400)
     expect((await POST(req({ message: "", revision: 4 }), ctx)).status).toBe(400)
-    expect(callAgent).not.toHaveBeenCalled()
+    expect(streamAgent).not.toHaveBeenCalled()
   })
 
   it("429s once the per-user window is full, and the limit is the BUILDER's, not the chatbot's", async () => {
@@ -283,10 +368,10 @@ describe("POST .../build — the optimistic lock", () => {
     mock(getDraft).mockResolvedValue({ doc: doc(), docInvalid: false, revision: 9 })
     const res = await POST(req({ message: "hi", revision: 4 }), ctx)
     expect(res.status).toBe(409)
-    const body = await res.json()
+    const body = await readTurn(res)
     expect(body.code).toBe("stale_revision")
     expect(body.currentRevision).toBe(9)
-    expect(callAgent).not.toHaveBeenCalled()
+    expect(streamAgent).not.toHaveBeenCalled()
     expect(appendTurn).not.toHaveBeenCalled()
   })
 
@@ -298,7 +383,7 @@ describe("POST .../build — the optimistic lock", () => {
     mock(appendTurn).mockResolvedValue({ ok: false, reason: "stale_revision", currentRevision: 11 })
     const res = await POST(req({ message: "hi", revision: 4 }), ctx)
     expect(res.status).toBe(409)
-    const body = await res.json()
+    const body = await readTurn(res)
     expect(body.code).toBe("stale_revision")
     expect(body.currentRevision).toBe(11)
   })
@@ -324,12 +409,12 @@ describe("POST .../build — a draft this builder cannot read", () => {
 
     const res = await POST(req({ message: "make the headline bigger", revision: 7 }), ctx)
     expect(res.status).toBe(422)
-    const body = await res.json()
+    const body = await readTurn(res)
     expect(body.code).toBe("doc_invalid")
     expect(body.resetToRevision).toBe(5)
     expect(body.currentRevision).toBe(7)
     // The two claims that make this a refusal rather than a message.
-    expect(callAgent).not.toHaveBeenCalled()
+    expect(streamAgent).not.toHaveBeenCalled()
     expect(appendTurn).not.toHaveBeenCalled()
   })
 
@@ -338,7 +423,7 @@ describe("POST .../build — a draft this builder cannot read", () => {
     // the client would then offer a reset button that always fails.
     mock(getDraft).mockResolvedValue({ doc: null, docInvalid: true, revision: 3 })
     mock(listTurns).mockResolvedValue([{ revision: 1, doc: null }, { revision: 2, doc: { not: "a doc" } }])
-    const body = await (await POST(req({ message: "hi", revision: 3 }), ctx)).json()
+    const body = await readTurn(await POST(req({ message: "hi", revision: 3 }), ctx))
     expect(body.resetToRevision).toBeNull()
   })
 })
@@ -350,7 +435,7 @@ describe("POST .../build — a draft this builder cannot read", () => {
 describe("POST .../build — the one-shot retry", () => {
   it("retries an applyOps SEMANTIC error, not just a Zod error, and feeds the model the actual error", async () => {
     // MUTANT: `catch (parse error) { retry }` only — i.e. retrying when
-    // `callAgent` throws and giving up when `applyOps` returns
+    // `streamAgent` throws and giving up when `applyOps` returns
     // `{ok:false, errors}`. That mutant passes every "the retry works" test
     // written around a thrown error, and turns "no section with id x" — the
     // single most likely thing a model gets wrong — into a user-visible dead
@@ -359,15 +444,15 @@ describe("POST .../build — the one-shot retry", () => {
     // Note what the first response is: `buildResultSchema` ACCEPTS it and
     // `opSchema` accepts every op in it. Nothing throws. The only signal is
     // `applyOps`'s return value.
-    mock(callAgent)
-      .mockResolvedValueOnce(
+    mock(streamAgent)
+      .mockImplementationOnce(() =>
         agentResult({
           reply: "Updated the section.",
           blocked: false,
           ops: [{ op: "update_section", id: "does-not-exist", props: { headline: "x" } }],
         }),
       )
-      .mockResolvedValueOnce(
+      .mockImplementationOnce(() =>
         agentResult({
           reply: "Rewrote the hero headline.",
           blocked: false,
@@ -377,34 +462,34 @@ describe("POST .../build — the one-shot retry", () => {
 
     const res = await POST(req({ message: "change the headline", revision: 4 }), ctx)
     expect(res.status).toBe(200)
-    expect(callAgent).toHaveBeenCalledTimes(2)
+    expect(streamAgent).toHaveBeenCalledTimes(2)
 
     // The correction has to reach the MODEL, verbatim. A retry that resends the
     // identical prompt is a retry in name only — the model has no new
     // information and will make the same mistake.
-    const secondUserMessage = mock(callAgent).mock.calls[1][1] as string
+    const secondUserMessage = mock(streamAgent).mock.calls[1][1] as string
     expect(secondUserMessage).toContain('no section with id "does-not-exist"')
-    expect(secondUserMessage).not.toBe(mock(callAgent).mock.calls[0][1])
+    expect(secondUserMessage).not.toBe(mock(streamAgent).mock.calls[0][1])
 
-    const body = await res.json()
+    const body = await readTurn(res)
     expect(body.doc.sections[0].props.headline).toBe("Second time lucky")
     expect(body.reply).toBe("Rewrote the hero headline.")
   })
 
   it("retries a thrown parse/refusal the same way", async () => {
     // MUTANT: no retry at all. `stop_reason: "refusal"` and a truncated
-    // response both surface through `generateObject` as a throw.
-    mock(callAgent)
-      .mockRejectedValueOnce(new Error("response did not match schema"))
-      .mockResolvedValueOnce(
+    // response both surface through `streamObject` as a rejected `.object`.
+    mock(streamAgent)
+      .mockImplementationOnce(() => agentFailure("response did not match schema"))
+      .mockImplementationOnce(() =>
         agentResult({
           reply: "Done.",
           blocked: false,
           ops: [{ op: "update_section", id: "hero", props: { headline: "Recovered" } }],
         }),
       )
-    const body = await (await POST(req({ message: "hi", revision: 4 }), ctx)).json()
-    expect(callAgent).toHaveBeenCalledTimes(2)
+    const body = await readTurn(await POST(req({ message: "hi", revision: 4 }), ctx))
+    expect(streamAgent).toHaveBeenCalledTimes(2)
     expect(body.doc.sections[0].props.headline).toBe("Recovered")
   })
 
@@ -413,13 +498,13 @@ describe("POST .../build — the one-shot retry", () => {
     // MUTANT 2: an unbounded retry loop, which on a systematically-rejected
     // batch burns the whole 300s budget and N Opus calls.
     // MUTANT 3: writing a document anyway — the draft must be untouched.
-    mock(callAgent).mockRejectedValue(new Error("no object generated: could not parse"))
+    mock(streamAgent).mockImplementation(() => agentFailure("no object generated: could not parse"))
 
     const res = await POST(req({ message: "hi", revision: 4 }), ctx)
     expect(res.status).toBe(200)
-    expect(callAgent).toHaveBeenCalledTimes(2)
+    expect(streamAgent).toHaveBeenCalledTimes(2)
 
-    const body = await res.json()
+    const body = await readTurn(res)
     expect(body.reply).toBe("I couldn't build that — try describing it differently.")
     expect(body.doc.sections[0].props.headline).toBe("Rotational power in eight weeks")
 
@@ -447,7 +532,7 @@ describe("POST .../build — a catalogue that cannot be read", () => {
     const res = await POST(req({ message: "hi", revision: 4 }), ctx)
     expect(res.status).toBe(200)
 
-    const body = await res.json()
+    const body = await readTurn(res)
     expect(body.doc.sections[0].props.headline).toBe("New headline")
     // `unresolved: []` here means NOT CHECKED, and the response has to say so —
     // a silent empty list reads as "every CTA resolved" and would let a UI
@@ -463,7 +548,7 @@ describe("POST .../build — a catalogue that cannot be read", () => {
     // produces CTAs that come back unresolved on every subsequent turn.
     mock(getAllPrograms).mockResolvedValue(Array.from({ length: 1000 }, (_, i) => ({ id: `p${i}`, name: `P${i}` })))
     await POST(req({ message: "hi", revision: 4 }), ctx)
-    const system = mock(callAgent).mock.calls[0][0] as string
+    const system = mock(streamAgent).mock.calls[0][0] as string
     expect(system).toContain("The catalogue — the only names a CTA may reference")
     expect(system).not.toContain(PROGRAM_NAME)
   })
@@ -489,7 +574,7 @@ describe("POST .../build — resolve, compile, store", () => {
     expect(stored).toBeDefined()
     expect(stored.doc.sections[0].props.primaryCta.target.ref).toBe(PROGRAM_ID)
 
-    const body = await res.json()
+    const body = await readTurn(res)
     expect(body.doc.sections[0].props.primaryCta.target.ref).toBe(PROGRAM_ID)
     expect(body.unresolved).toEqual([])
     expect(body.resolutionError).toBeNull()
@@ -500,7 +585,7 @@ describe("POST .../build — resolve, compile, store", () => {
     // attribute. `ok === true` alone cannot see it: a bad href or src is
     // removed silently and the page compiles green with a dead button. Only an
     // EMPTY `warnings` proves the round trip lost nothing.
-    const body = await (await POST(req({ message: "hi", revision: 4 }), ctx)).json()
+    const body = await readTurn(await POST(req({ message: "hi", revision: 4 }), ctx))
     expect(body.compile.ok).toBe(true)
     expect(body.compile.problems).toEqual([])
     expect(body.compile.warnings).toEqual([])
@@ -512,7 +597,7 @@ describe("POST .../build — resolve, compile, store", () => {
     // product that is not on sale.
     mock(getPrograms).mockResolvedValue([])
     mock(getAllPrograms).mockResolvedValue([])
-    const body = await (await POST(req({ message: "hi", revision: 4 }), ctx)).json()
+    const body = await readTurn(await POST(req({ message: "hi", revision: 4 }), ctx))
     expect(body.unresolved).toHaveLength(1)
     expect(body.unresolved[0].ref).toBe(PROGRAM_NAME)
     expect(body.unresolved[0].kind).toBe("program")
@@ -526,7 +611,7 @@ describe("POST .../build — resolve, compile, store", () => {
     // so the compiler reports `ok: true, warnings: []` and the link silently
     // scrolls nowhere. `resolveDoc` is the only thing in the pipeline that
     // holds the whole document at once and can notice.
-    mock(callAgent).mockResolvedValue(
+    mock(streamAgent).mockImplementation(() =>
       agentResult({
         reply: "Pointed the button at the pricing section.",
         blocked: false,
@@ -539,7 +624,7 @@ describe("POST .../build — resolve, compile, store", () => {
         ],
       }),
     )
-    const body = await (await POST(req({ message: "hi", revision: 4 }), ctx)).json()
+    const body = await readTurn(await POST(req({ message: "hi", revision: 4 }), ctx))
     expect(body.danglingAnchors).toEqual([
       { sectionId: "hero", field: "primaryCta", target: "pricing" },
     ])
@@ -562,7 +647,7 @@ describe("POST .../build — resolve, compile, store", () => {
     // registry accepts that comes back non-compiling. Hence `overCapSections`,
     // and hence the `compile.ok === false` assertion below: without it, the
     // test passes on the happy path.
-    mock(callAgent).mockResolvedValue(
+    mock(streamAgent).mockImplementation(() =>
       agentResult({
         reply: "Built the FAQ out.",
         blocked: false,
@@ -572,7 +657,7 @@ describe("POST .../build — resolve, compile, store", () => {
     const res = await POST(req({ message: "hi", revision: 4 }), ctx)
     expect(res.status).toBe(200)
 
-    const body = await res.json()
+    const body = await readTurn(res)
     // The premise. If this is true the test below proves nothing.
     expect(body.compile.ok).toBe(false)
     expect(body.compile.problems.join(" ")).toMatch(/over the 500000-character publish cap/)
@@ -631,13 +716,13 @@ describe("POST .../build — what it writes down", () => {
       order.push(`append:${input.role}`)
       return { ok: true, turn: { revision: input.expectedRevision + 1 }, revision: input.expectedRevision + 1 }
     })
-    mock(callAgent).mockImplementation(async () => {
-      order.push("callAgent")
+    mock(streamAgent).mockImplementation(() => {
+      order.push("streamAgent")
       return agentResult({ reply: "ok", blocked: false, ops: [] })
     })
 
     await POST(req({ message: "make it shorter", revision: 4 }), ctx)
-    expect(order).toEqual(["append:user", "callAgent", "append:assistant"])
+    expect(order).toEqual(["append:user", "streamAgent", "append:assistant"])
 
     const userTurn = mock(appendTurn).mock.calls[0][0]
     expect(userTurn.message).toBe("make it shorter")
@@ -665,11 +750,11 @@ describe("POST .../build — what it writes down", () => {
   it("bills the retried turn for BOTH calls", async () => {
     // MUTANT: `tokensUsed = result.tokens_used` instead of `+=`, which reports
     // only the winning attempt and understates every retried turn.
-    mock(callAgent)
-      .mockResolvedValueOnce(
+    mock(streamAgent)
+      .mockImplementationOnce(() =>
         agentResult({ reply: "x", blocked: false, ops: [{ op: "update_section", id: "nope", props: { a: 1 } }] }),
       )
-      .mockResolvedValueOnce(
+      .mockImplementationOnce(() =>
         agentResult({ reply: "y", blocked: false, ops: [{ op: "update_section", id: "hero", props: { sub: "s" } }] }),
       )
     await POST(req({ message: "hi", revision: 4 }), ctx)
@@ -695,7 +780,7 @@ describe("POST .../build — blocked", () => {
     // to send no ops when it declines, but "the prompt says so" is not an
     // enforcement mechanism — a blocked reply carrying a half-built page would
     // silently overwrite the owner's document.
-    mock(callAgent).mockResolvedValue(
+    mock(streamAgent).mockImplementation(() =>
       agentResult({
         reply: "There is no session pack by that name, so I have not changed anything.",
         blocked: true,
@@ -705,7 +790,7 @@ describe("POST .../build — blocked", () => {
     const res = await POST(req({ message: "sell the gold pack", revision: 4 }), ctx)
     expect(res.status).toBe(200)
 
-    const body = await res.json()
+    const body = await readTurn(res)
     expect(body.blocked).toBe(true)
     expect(body.doc.sections).toHaveLength(1)
 
@@ -727,39 +812,39 @@ describe("POST .../build — the first draft", () => {
     // would leave an empty footer named "New page" on the owner's brand-new
     // page, valid, compiling clean, and visible.
     mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 0 })
-    mock(callAgent)
-      .mockResolvedValueOnce(
+    mock(streamAgent)
+      .mockImplementationOnce(() =>
         agentResult({
           reply: "Added a hero.",
           blocked: false,
           ops: [{ op: "add_section", after: null, section: fullPageSections()[0] }],
         }),
       )
-      .mockResolvedValueOnce(
+      .mockImplementationOnce(() =>
         agentResult({ reply: "Built the page.", blocked: false, ops: [{ op: "set_page", sections: fullPageSections() }] }),
       )
 
     const res = await POST(req({ message: "build me a camp page", revision: 0 }), ctx)
     expect(res.status).toBe(200)
-    expect(callAgent).toHaveBeenCalledTimes(2)
+    expect(streamAgent).toHaveBeenCalledTimes(2)
 
-    const body = await res.json()
+    const body = await readTurn(res)
     expect(body.doc.sections.map((s: { id: string }) => s.id)).toEqual(["hero"])
     expect(body.doc.sections.some((s: { id: string }) => s.id === "draft-placeholder")).toBe(false)
 
     // And the correction reached the model rather than being swallowed.
-    expect(mock(callAgent).mock.calls[1][1]).toContain("set_page")
+    expect(mock(streamAgent).mock.calls[1][1]).toContain("set_page")
   })
 
   it("tells the model there is no page yet rather than showing it a seed", async () => {
     // MUTANT: passing the seed document into Block C. The model would then
     // treat "New page" as the owner's existing content and edit around it.
     mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 0 })
-    mock(callAgent).mockResolvedValue(
+    mock(streamAgent).mockImplementation(() =>
       agentResult({ reply: "Built it.", blocked: false, ops: [{ op: "set_page", sections: fullPageSections() }] }),
     )
     await POST(req({ message: "build me a page", revision: 0 }), ctx)
-    const userMessage = mock(callAgent).mock.calls[0][1] as string
+    const userMessage = mock(streamAgent).mock.calls[0][1] as string
     expect(userMessage).toContain("There is no page yet")
     expect(userMessage).not.toContain("draft-placeholder")
   })
@@ -793,13 +878,13 @@ describe("POST .../build — reset to an earlier revision", () => {
     // instruction that can ever fix it. Without this, that page is dead.
     const res = await POST(req({ action: "reset", toRevision: 5 }), ctx)
     expect(res.status).toBe(200)
-    const body = await res.json()
+    const body = await readTurn(res)
     expect(body.source).toBe("revert")
     expect(body.revision).toBe(8)
     expect(body.doc.sections[0].props.headline).toBe("restored headline")
     expect(body.compile.ok).toBe(true)
     expect(revertToRevision).toHaveBeenCalledWith(expect.objectContaining({ stepId: STEP_ID, toRevision: 5 }))
-    expect(callAgent).not.toHaveBeenCalled()
+    expect(streamAgent).not.toHaveBeenCalled()
   })
 
   it("RE-RESOLVES against the live catalogue instead of trusting the restored row", async () => {
@@ -811,7 +896,7 @@ describe("POST .../build — reset to an earlier revision", () => {
     // page is publishable when it is not.
     mock(getPrograms).mockResolvedValue([])
     mock(getAllPrograms).mockResolvedValue([])
-    const body = await (await POST(req({ action: "reset", toRevision: 5 }), ctx)).json()
+    const body = await readTurn(await POST(req({ action: "reset", toRevision: 5 }), ctx))
     expect(body.unresolved).toHaveLength(1)
     expect(body.unresolved[0].ref).toBe(PROGRAM_NAME)
   })
@@ -823,7 +908,7 @@ describe("POST .../build — reset to an earlier revision", () => {
     mock(revertToRevision).mockResolvedValue({ ok: false, reason: "stale_revision", currentRevision: 12 })
     const stale = await POST(req({ action: "reset", toRevision: 5 }), ctx)
     expect(stale.status).toBe(409)
-    expect((await stale.json()).currentRevision).toBe(12)
+    expect((await readTurn(stale)).currentRevision).toBe(12)
 
     mock(revertToRevision).mockResolvedValue({ ok: false, reason: "revision_has_no_doc" })
     expect((await POST(req({ action: "reset", toRevision: 5 }), ctx)).status).toBe(422)
@@ -850,11 +935,11 @@ describe("POST .../build — the prompt", () => {
     // One UUID in the prompt is a training signal to emit UUIDs, which is the
     // exact failure the whole name-not-id design exists to make impossible.
     await POST(req({ message: "hi", revision: 4 }), ctx)
-    const [system, , , options] = mock(callAgent).mock.calls[0]
+    const [system, , , options] = mock(streamAgent).mock.calls[0]
     expect(system).toContain(PROGRAM_NAME)
     expect(system).not.toContain(PROGRAM_ID)
     expect(options.cacheSystemPrompt).toBe(true)
-    // `callAgent`'s default of 32000 must be overridden — `generateObject` is
+    // `streamAgent`'s default of 32000 must be overridden — `generateObject` is
     // non-streaming, so a huge budget invites SDK HTTP timeouts.
     expect(options.maxTokens).toBeLessThanOrEqual(16_000)
   })
@@ -866,23 +951,23 @@ describe("POST .../build — the prompt", () => {
     // it truncates the response, `generateObject` throws a parse error, the one
     // retry does exactly the same, and the owner's very first turn on a
     // brand-new page dead-ends. Nothing else in this file can see it: every
-    // other test drives a mocked `callAgent` that cannot run out of tokens.
+    // other test drives a mocked `streamAgent` that cannot run out of tokens.
     mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 0 })
-    mock(callAgent).mockResolvedValue(
+    mock(streamAgent).mockImplementation(() =>
       agentResult({ reply: "Built it.", blocked: false, ops: [{ op: "set_page", sections: fullPageSections() }] }),
     )
     await POST(req({ message: "build me a page", revision: 0 }), ctx)
-    const firstDraftBudget = mock(callAgent).mock.calls[0][3].maxTokens
+    const firstDraftBudget = mock(streamAgent).mock.calls[0][3].maxTokens
 
     // The same turn against an EXISTING page. Comparing the two is what makes
     // this a claim about the BUDGET rather than a restatement of a constant.
-    mock(callAgent).mockClear()
+    mock(streamAgent).mockClear()
     mock(getDraft).mockResolvedValue({ doc: doc(), docInvalid: false, revision: 4 })
-    mock(callAgent).mockResolvedValue(
+    mock(streamAgent).mockImplementation(() =>
       agentResult({ reply: "ok", blocked: false, ops: [{ op: "update_section", id: "hero", props: { sub: "s" } }] }),
     )
     await POST(req({ message: "tweak it", revision: 4 }), ctx)
-    const editBudget = mock(callAgent).mock.calls[0][3].maxTokens
+    const editBudget = mock(streamAgent).mock.calls[0][3].maxTokens
 
     // A first draft is a single `set_page` carrying every section — the same
     // worst case as the largest edit, so the same budget.
@@ -896,7 +981,7 @@ describe("POST .../build — the prompt", () => {
     // MUTANT: passing every step. A CTA pointing at the page it is on is a
     // no-op link the owner cannot diagnose.
     await POST(req({ message: "hi", revision: 4 }), ctx)
-    const system = mock(callAgent).mock.calls[0][0] as string
+    const system = mock(streamAgent).mock.calls[0][0] as string
     expect(system).toContain('"thanks"')
     expect(system).not.toContain('"apply"')
   })
@@ -909,11 +994,218 @@ describe("POST .../build — the prompt", () => {
 describe("POST .../build — the route's own runtime config", () => {
   it("pins the serverless timeout at 300s", () => {
     // MUTANT: dropping the `maxDuration` export. Vercel's default cap is far
-    // below this, and a first draft is a WHOLE PAGE in one non-streaming
-    // `generateObject` response — the ~60s call the no-fan-out decision
-    // explicitly accepts. The platform would kill the request mid-generation,
-    // after the Opus tokens were spent and before any turn was written, and it
-    // would do it only in production where nothing in this suite can see it.
+    // below this, and a first draft is a WHOLE PAGE in one response — the ~60s
+    // call the no-fan-out decision explicitly accepts. The platform would kill
+    // the request mid-generation, after the Opus tokens were spent and before
+    // any turn was written, and it would do it only in production where nothing
+    // in this suite can see it.
     expect(maxDuration).toBe(300)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Progress reporting
+//
+// The claim under test is not "there is an animation". It is that what reaches
+// the screen is DERIVED FROM THE MODEL'S OUTPUT — so every test here drives a
+// stream that arrives in pieces and asserts the pieces come back out.
+// ---------------------------------------------------------------------------
+
+/** A model call whose response arrives across several partials, as a real one does. */
+function agentStream(partials: unknown[], final: unknown, deltas = 3) {
+  return {
+    object: Promise.resolve(final),
+    fullStream: (async function* () {
+      for (const partial of partials) {
+        for (let i = 0; i < deltas; i++) yield { type: "text-delta", textDelta: "x" }
+        yield { type: "object", object: partial }
+      }
+      yield { type: "finish", usage: USAGE }
+    })(),
+  }
+}
+
+describe("POST .../build — what the owner is shown while it works", () => {
+  it("emits each section as the model writes it, not all at the end", async () => {
+    // MUTANT: collecting the sections and emitting them once the object
+    // resolves. The display would sit empty for the whole call and then fill in
+    // instantly — the exact spinner behaviour this replaced, wearing a
+    // wireframe. The assertion that kills it is ORDERING: the hero must be on
+    // the wire before the bullets section exists in any partial.
+    const partials = [
+      { ops: [{ op: "set_page", sections: [{ kind: "hero" }] }] },
+      { ops: [{ op: "set_page", sections: [{ kind: "hero", props: { headline: "Join the waitlist" } }] }] },
+      {
+        ops: [
+          {
+            op: "set_page",
+            sections: [
+              { kind: "hero", props: { headline: "Join the waitlist" } },
+              { kind: "bullets", props: { heading: "What the class is" } },
+            ],
+          },
+        ],
+      },
+    ]
+    mock(streamAgent).mockImplementation(() =>
+      agentStream(partials, {
+        reply: "Built the page.",
+        blocked: false,
+        ops: [{ op: "set_page", sections: fullPageSections() }],
+      }),
+    )
+    mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 4 })
+
+    const events = await readEvents(await POST(req({ message: "waitlist page", revision: 4 }), ctx))
+    const sections = events.filter((event) => event.type === "section")
+
+    // The hero appears first, bare; then gains its headline; then the bullets
+    // section appears. Three events for two sections, in that order.
+    expect(sections.map((event) => [event.section.kind, event.section.headline])).toEqual([
+      ["hero", null],
+      ["hero", "Join the waitlist"],
+      ["bullets", "What the class is"],
+    ])
+    // And every one of them was written BEFORE the turn finished.
+    const resultIndex = events.findIndex((event) => event.type === "result")
+    const lastSectionIndex = events.map((event) => event.type).lastIndexOf("section")
+    expect(lastSectionIndex).toBeLessThan(resultIndex)
+  })
+
+  it("walks the phases in order and ends on checking", async () => {
+    // MUTANT: emitting a single phase, or emitting `writing` before any section
+    // exists. `writing` is a claim that the model has started producing the
+    // page; making it on the way in would be a guess.
+    const events = await readEvents(await POST(req({ message: "hi", revision: 4 }), ctx))
+    const phases = events.filter((event) => event.type === "phase").map((event) => event.phase)
+    expect(phases[0]).toBe("reading")
+    expect(phases).toContain("planning")
+    expect(phases).toContain("writing")
+    expect(phases[phases.length - 1]).toBe("checking")
+  })
+
+  it("marks the live token count as an estimate and the final one as exact", async () => {
+    // MUTANT: reporting the delta count as `exact: true`, or never sending the
+    // provider's real figure. The meter would present a number this code made
+    // up as a measurement — on a display whose entire value is that it shows
+    // the real work.
+    mock(streamAgent).mockImplementation(() =>
+      agentStream(
+        [{ ops: [{ op: "update_section", id: "hero", props: { headline: "New" } }] }],
+        { reply: "Done.", blocked: false, ops: [{ op: "update_section", id: "hero", props: { headline: "New" } }] },
+        40,
+      ),
+    )
+
+    const events = await readEvents(await POST(req({ message: "hi", revision: 4 }), ctx))
+    const usage = events.filter((event) => event.type === "usage")
+
+    expect(usage.length).toBeGreaterThan(1)
+    expect(usage.slice(0, -1).every((event) => event.exact === false)).toBe(true)
+
+    const last = usage[usage.length - 1]
+    expect(last.exact).toBe(true)
+    expect(last.outputTokens).toBe(USAGE.outputTokens)
+  })
+
+  it("announces a retry so the stage can clear, instead of doubling the page", async () => {
+    // MUTANT: no `restart` event. Attempt 2 rewrites the same page, so its
+    // sections would append to attempt 1's and the owner would watch a
+    // 2-section page grow to 4 sections that do not exist.
+    mock(streamAgent)
+      .mockImplementationOnce(() => agentFailure("response did not match schema"))
+      .mockImplementationOnce(() =>
+        agentResult({
+          reply: "Recovered.",
+          blocked: false,
+          ops: [{ op: "update_section", id: "hero", props: { headline: "Recovered" } }],
+        }),
+      )
+
+    const events = await readEvents(await POST(req({ message: "hi", revision: 4 }), ctx))
+    const restart = events.find((event) => event.type === "restart")
+    expect(restart).toEqual({ type: "restart", attempt: 2 })
+
+    // And it is emitted BEFORE the second attempt's sections, or clearing on it
+    // would wipe the very sections it was meant to make room for.
+    const restartIndex = events.indexOf(restart!)
+    const sectionIndex = events.findIndex((event) => event.type === "section")
+    expect(restartIndex).toBeLessThan(sectionIndex)
+  })
+})
+
+describe("POST .../build — failures that happen after the stream is open", () => {
+  it("delivers a lost compare-and-swap on the ASSISTANT turn as a fail event carrying the 409 body", async () => {
+    // MUTANT 1: emitting `{type:"error", error:"..."}` with a bare message. The
+    // client routes `fail` through the same handler as a real 409, and that
+    // handler needs `code` and `currentRevision` to resync the revision — a
+    // flattened string silently disables the resync on exactly the race the
+    // compare-and-swap exists to catch.
+    // MUTANT 2: returning a 409 status. Impossible once bytes are on the wire —
+    // the status was decided at the first byte — so a route that "returns" one
+    // here actually returns 200 with no terminal event, and the client would
+    // hang on a turn that never ends.
+    mock(appendTurn).mockImplementation(async (input: { expectedRevision: number; role: string }) => {
+      if (input.role === "user") {
+        return { ok: true, turn: { revision: 5, doc: null, message: "" }, revision: 5 }
+      }
+      return { ok: false, reason: "stale_revision", currentRevision: 11 }
+    })
+
+    const res = await POST(req({ message: "hi", revision: 4 }), ctx)
+    expect(res.status).toBe(200)
+
+    const events = await readEvents(res)
+    const terminal = events[events.length - 1]
+    expect(terminal.type).toBe("fail")
+    expect(terminal).toMatchObject({
+      status: 409,
+      body: { code: "stale_revision", currentRevision: 11 },
+    })
+    expect(events.some((event) => event.type === "result")).toBe(false)
+  })
+
+  it("ends every stream with exactly one terminal event", async () => {
+    // MUTANT: emitting `result` and then falling through to another emit. Two
+    // terminal events mean the client's "last one wins" rule decides the turn,
+    // which is a coin toss dressed as a contract.
+    const events = await readEvents(await POST(req({ message: "hi", revision: 4 }), ctx))
+    const terminals = events.filter((event) => event.type === "result" || event.type === "fail")
+    expect(terminals).toHaveLength(1)
+    expect(events[events.length - 1]).toBe(terminals[0])
+  })
+})
+
+describe("POST .../build — which paths stream", () => {
+  it("streams a build and does NOT stream a reset", async () => {
+    // MUTANT: streaming both. `reset` copies a stored document forward without
+    // calling a model, so a stream would frame a response that was already
+    // complete — pure cost — and the client's reset path reads JSON.
+    mock(revertToRevision).mockResolvedValue({
+      ok: true,
+      revision: 9,
+      turn: { revision: 5, doc: doc("Restored"), message: "Restored step 5." },
+    })
+
+    const build = await POST(req({ message: "hi", revision: 4 }), ctx)
+    expect(build.headers.get("content-type")).toContain("text/event-stream")
+
+    const reset = await POST(req({ action: "reset", toRevision: 5 }), ctx)
+    expect(reset.headers.get("content-type")).toContain("application/json")
+  })
+
+  it("keeps every pre-flight failure a real HTTP status with a JSON body", async () => {
+    // MUTANT: opening the stream first and reporting these as `fail` events.
+    // They would all become 200s, and `handleErrorResponse`'s 409/422 branches
+    // — the restore button, the revision resync — would stop firing.
+    mock(getDraft).mockResolvedValue({ doc: doc(), docInvalid: false, revision: 9 })
+    const stale = await POST(req({ message: "hi", revision: 4 }), ctx)
+    expect(stale.status).toBe(409)
+    expect(stale.headers.get("content-type")).toContain("application/json")
+
+    mock(getDraft).mockResolvedValue({ doc: null, docInvalid: true, revision: 9 })
+    const invalid = await POST(req({ message: "hi", revision: 9 }), ctx)
+    expect(invalid.status).toBe(422)
+    expect(invalid.headers.get("content-type")).toContain("application/json")
   })
 })

@@ -47,6 +47,16 @@ interface ChatPaneProps {
   composerDisabled?: boolean
   /** Pinned above the transcript: the unreadable-document recovery, conflicts. */
   pinned?: ReactNode
+  /**
+   * What to show while a turn is in flight — `GenerationStage`, holding the
+   * live wireframe.
+   *
+   * Passed in rather than built here because the stream state belongs to
+   * whoever owns the fetch, and threading four rapidly-changing values through
+   * this component only to hand them straight back down would make the
+   * transcript re-render on every token. `ChatPane` stays a dumb transcript.
+   */
+  stage?: ReactNode
 }
 
 export function ChatPane({
@@ -59,6 +69,7 @@ export function ChatPane({
   busy,
   composerDisabled,
   pinned,
+  stage,
 }: ChatPaneProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -109,12 +120,17 @@ export function ChatPane({
           <MessageCard key={message.id} message={message} onSend={onSend} busy={busy} />
         ))}
 
-        {busy ? (
-          <p className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
-            <Loader2 className="size-3.5 animate-spin" aria-hidden />
-            Working on it…
-          </p>
-        ) : null}
+        {/* The turn in flight. `stage` is the live wireframe; the bare line
+            below it is the fallback for a caller that has none to give, which
+            is what this whole area used to be. */}
+        {busy
+          ? (stage ?? (
+              <p className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                Working on it…
+              </p>
+            ))
+          : null}
       </div>
 
       <div className="border-t border-border p-3">
@@ -234,9 +250,7 @@ function MessageCard({
         </p>
       ) : null}
 
-      {message.resolutionError ? (
-        <p className="mt-2 text-xs text-[var(--warning)]">{message.resolutionError}</p>
-      ) : null}
+      {message.resolutionError ? <p className="mt-2 text-xs text-[var(--warning)]">{message.resolutionError}</p> : null}
 
       {message.compile && message.compile.warnings.length > 0 ? (
         <p className="mt-2 text-xs text-muted-foreground">

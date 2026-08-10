@@ -41,13 +41,43 @@
 //       refusal or an unparseable response is a 200 with an honest reply and
 //       the draft untouched.
 // ---------------------------------------------------------------------------
+//
+// ---------------------------------------------------------------------------
+// THE BUILD PATH STREAMS. THE RESET PATH DOES NOT.
+// ---------------------------------------------------------------------------
+// A build turn is ~30 seconds and used to be a single blocking JSON response,
+// so the only thing the UI could show for the whole call was a spinner. It now
+// returns `text/event-stream`: the model call reads through
+// `streamOneAttempt`, which reports each section as the model writes it, and
+// the turn ends with a `result` event carrying THE EXACT SAME `TurnResponse`
+// OBJECT the route used to return.
+//
+// That last part is what keeps this a transport change and not a contract
+// change. Every rule the client applies to a turn — `compile === null` moves
+// nothing but the revision, `resolutionError !== null` must not overwrite
+// `unresolved` — is handed the same object it was handed before.
+//
+// `reset` copies a stored document forward without calling a model, so it has
+// nothing to stream and stays plain JSON. The client tells them apart by
+// `Content-Type`, not by which button was pressed.
+//
+// See `streamingResponse` for which failures stay real HTTP statuses (all the
+// ones that can happen before the first byte) and which ride out as a `fail`
+// event (the ones that cannot).
+// ---------------------------------------------------------------------------
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { buildRequestSchema } from "@/lib/validators/funnel"
-import { callAgent } from "@/lib/ai/anthropic"
+import { streamAgent } from "@/lib/ai/anthropic"
+import {
+  BUILD_STREAM_HEARTBEAT,
+  encodeBuildStreamEvent,
+  type BuildStreamEvent,
+} from "@/lib/funnels/sections/build-stream"
+import { changedSections, collectStreamedSections, type StreamedSection } from "@/lib/funnels/sections/stream-progress"
 import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation-log"
 import { appendTurn, getDraft, listTurns, revertToRevision } from "@/lib/db/funnel-builder"
 import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
@@ -60,6 +90,7 @@ import {
   buildSystemPrompt,
   buildTurnMessage,
   type BuilderTurn,
+  type BuildResult,
 } from "@/lib/funnels/sections/prompt"
 import {
   loadCatalogues,
@@ -78,9 +109,9 @@ import {
 } from "@/lib/funnels/sections/builder-config"
 
 /**
- * A first draft is a whole page in one non-streaming response and an iterative
- * turn can be a 24-section `set_page` rewrite. 300s is the ceiling; the model
- * budgets below are what actually bound a call.
+ * A first draft is a whole page in one response and an iterative turn can be a
+ * 24-section `set_page` rewrite. 300s is the ceiling; the model budgets below
+ * are what actually bound a call.
  */
 export const maxDuration = 300
 
@@ -116,9 +147,7 @@ function checkRateLimit(userId: string): boolean {
       if (stamps.every((t) => now - t >= SECTION_BUILDER_RATE_LIMIT_WINDOW_MS)) rateLimitMap.delete(key)
     }
   }
-  const timestamps = (rateLimitMap.get(userId) ?? []).filter(
-    (t) => now - t < SECTION_BUILDER_RATE_LIMIT_WINDOW_MS,
-  )
+  const timestamps = (rateLimitMap.get(userId) ?? []).filter((t) => now - t < SECTION_BUILDER_RATE_LIMIT_WINDOW_MS)
   if (timestamps.length >= SECTION_BUILDER_RATE_LIMIT_MAX) {
     rateLimitMap.set(userId, timestamps)
     return false
@@ -576,6 +605,97 @@ async function lastGoodRevision(stepId: string): Promise<number | null> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// SSE PLUMBING
+//
+// The build path streams; the reset path does not. That split is deliberate
+// and the client branches on `Content-Type` rather than on which button was
+// pressed: `reset` copies a stored document forward without calling a model,
+// so it has nothing to stream and no reason to pay for the framing.
+//
+// WHAT STAYS A REAL HTTP STATUS. Everything that can fail BEFORE the model is
+// reached — auth, permission, rate limit, unknown step, `stale_revision`,
+// `doc_invalid` — keeps its status code and JSON body byte for byte, because
+// those codes are load-bearing in the client (`handleErrorResponse` branches
+// on 409 to resync the revision and on 422 to offer the restore button) and
+// because a pre-flight failure has, by construction, nothing to stream.
+//
+// Once the first byte is written the status is 200 forever, so the failures
+// that can still happen after that point — `appendTurn` losing the
+// compare-and-swap on the assistant turn — ride out as a `fail` event carrying
+// the status and body they would have had. The client hands that straight to
+// the same `handleErrorResponse`. One decision, one place.
+// ---------------------------------------------------------------------------
+
+/** How often to send an SSE comment so proxies don't drop an idle stream. */
+const HEARTBEAT_MS = 15_000
+
+function streamingResponse(run: (emit: (event: BuildStreamEvent) => void) => Promise<void>): Response {
+  const encoder = new TextEncoder()
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let closed = false
+
+      const write = (payload: string) => {
+        if (closed) return
+        try {
+          controller.enqueue(encoder.encode(payload))
+        } catch {
+          // The consumer went away — a closed tab, a navigation, a dropped
+          // connection. THE TURN KEEPS RUNNING ON PURPOSE. The owner's message
+          // is already in the transcript (it is written before anything is
+          // spent), so abandoning the turn here would leave a question with no
+          // answer next to it and a model call paid for and thrown away.
+          // Everything downstream still writes; only the reporting stops.
+          closed = true
+        }
+      }
+
+      const heartbeat = setInterval(() => write(BUILD_STREAM_HEARTBEAT), HEARTBEAT_MS)
+
+      try {
+        await run((event) => write(encodeBuildStreamEvent(event)))
+      } catch (error) {
+        // Nothing below may 500 — and once the stream is open, nothing CAN:
+        // the status was decided at the first byte. An unexpected throw is
+        // reported as the 500 it would have been.
+        console.error("[funnels/build] stream failed:", error)
+        write(
+          encodeBuildStreamEvent({
+            type: "fail",
+            status: 500,
+            body: { error: "Something went wrong. Nothing was changed." },
+          }),
+        )
+      } finally {
+        clearInterval(heartbeat)
+        closed = true
+        try {
+          controller.close()
+        } catch {
+          // Already closed by the consumer disconnecting.
+        }
+      }
+    },
+  })
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      // `no-transform` matters as much as `no-cache`: a proxy that "optimises"
+      // the body would re-chunk the frames this format depends on.
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      // Nginx-family proxies buffer proxied responses by default, which turns
+      // a 30-second stream into a 30-second wait followed by everything at
+      // once — the exact failure this whole change exists to remove.
+      "X-Accel-Buffering": "no",
+    },
+  })
+}
+
 async function handleBuild(args: BuildArgs): Promise<Response> {
   const { stepId, funnelId, stepSlug, draft, message, expectedRevision, userId } = args
 
@@ -668,6 +788,161 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
   })
   const baseTurnMessage = buildTurnMessage({ doc: draft.doc, history, message })
 
+  // Everything above this line can still be an ordinary HTTP failure with a
+  // status the client branches on. Everything below it happens inside an open
+  // 200 — see the SSE note above `streamingResponse`.
+  return streamingResponse((emit) =>
+    runTurn({
+      emit,
+      stepId,
+      userId,
+      draft,
+      isFirstDraft,
+      baseDoc,
+      systemPrompt,
+      baseTurnMessage,
+      context,
+      catalogues,
+      catalogueError,
+      revisionAfterUserTurn,
+    }),
+  )
+}
+
+/**
+ * One model call, read as it is written.
+ *
+ * Returns the SAME validated object `callAgent` used to return, so everything
+ * downstream — `applyOps`, `seedSurvived`, the blocked branch — is untouched
+ * by the fact that it arrived in pieces. The streaming is reporting only; the
+ * document is built from the final validated object exactly as before.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY `fullStream` AND NOT `partialObjectStream`.
+ * ---------------------------------------------------------------------------
+ * They are two views of one stream and only one consumer is allowed. The
+ * partial view carries the objects but nothing else; the full view carries the
+ * partial objects AND the text deltas (the live output meter) AND the finish
+ * event with the provider's real token usage. Taking the partial view would
+ * mean either no meter or a fabricated one.
+ *
+ * `.object` is awaited AFTER the iteration and rejects on a refusal, a
+ * truncated response or a schema violation — the same three failures
+ * `generateObject` used to throw, so the caller's existing catch still catches
+ * exactly what it did before. Its handler is attached BEFORE the loop, because
+ * a rejection with no handler yet attached is an unhandled rejection even when
+ * the caller goes on to await it.
+ */
+async function streamOneAttempt(opts: {
+  emit: (event: BuildStreamEvent) => void
+  systemPrompt: string
+  turnMessage: string
+  maxTokens: number
+  onUsage: (usage: { tokensUsed: number; cacheCreation: number; cacheRead: number }) => void
+}): Promise<BuildResult> {
+  const stream = streamAgent(opts.systemPrompt, opts.turnMessage, buildResultSchema, {
+    model: SECTION_BUILDER_MODEL,
+    maxTokens: opts.maxTokens,
+    cacheSystemPrompt: true,
+  })
+
+  const objectPromise = stream.object
+  // See the note above: claim the rejection now, await the value later.
+  objectPromise.catch(() => {})
+
+  let seen: StreamedSection[] = []
+  let deltas = 0
+  let lastMeterAt = 0
+  let announcedWriting = false
+
+  for await (const part of stream.fullStream) {
+    if (part.type === "text-delta") {
+      deltas += 1
+      // Throttled: a 24-section page is thousands of deltas, and a frame per
+      // delta would spend more bytes on the meter than on the page.
+      const now = Date.now()
+      if (now - lastMeterAt >= 250) {
+        lastMeterAt = now
+        opts.emit({ type: "usage", outputTokens: deltas, exact: false })
+      }
+      continue
+    }
+
+    if (part.type === "object") {
+      const next = collectStreamedSections(part.object)
+      if (!announcedWriting && next.length > 0) {
+        opts.emit({ type: "phase", phase: "writing" })
+        announcedWriting = true
+      }
+      for (const section of changedSections(seen, next)) {
+        opts.emit({ type: "section", section })
+      }
+      seen = next
+      continue
+    }
+
+    if (part.type === "finish") {
+      const usage = part.usage
+      opts.emit({ type: "usage", outputTokens: usage.outputTokens ?? deltas, exact: true })
+      opts.onUsage({
+        tokensUsed: (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+        cacheCreation: usage.inputTokenDetails?.cacheWriteTokens ?? 0,
+        cacheRead: usage.inputTokenDetails?.cacheReadTokens ?? 0,
+      })
+    }
+    // `type: "error"` needs no branch: the same failure comes back out of
+    // `await objectPromise` below, where one catch already handles it.
+  }
+
+  return await objectPromise
+}
+
+interface TurnRunArgs {
+  emit: (event: BuildStreamEvent) => void
+  stepId: string
+  userId: string
+  draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>
+  isFirstDraft: boolean
+  baseDoc: SectionDoc
+  systemPrompt: string
+  baseTurnMessage: string
+  context: PageContext
+  catalogues: Catalogues | null
+  catalogueError: string | null
+  revisionAfterUserTurn: number
+}
+
+/**
+ * One turn, from the model call to the stored document, reporting progress as
+ * it goes.
+ *
+ * Split out of `handleBuild` rather than nested in a closure there: this is
+ * the part that streams, it is two hundred lines long, and burying it inside
+ * the request handler would put the pre-flight checks and the model loop at
+ * the same indentation while only one of them can still choose a status code.
+ *
+ * IT NEVER RETURNS A STATUS. By the time it runs, the response is a 200 with
+ * an open body. Every outcome leaves through `emit`, and exactly one terminal
+ * `result` or `fail` event ends it.
+ */
+async function runTurn(args: TurnRunArgs): Promise<void> {
+  const {
+    emit,
+    stepId,
+    userId,
+    draft,
+    isFirstDraft,
+    baseDoc,
+    systemPrompt,
+    baseTurnMessage,
+    context,
+    catalogues,
+    catalogueError,
+    revisionAfterUserTurn,
+  } = args
+
+  emit({ type: "phase", phase: "reading" })
+
   const startTime = Date.now()
   let logId: string | null = null
   try {
@@ -751,20 +1026,29 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
             .map((line) => `- ${line}`)
             .join("\n")}\n\nFix these and answer again. Send only ops that apply to the document above.`
 
+    if (attempt > 0) {
+      // CLEAR, DO NOT APPEND. Attempt 2 rewrites the same page, so its sections
+      // replace attempt 1's on screen rather than doubling them.
+      emit({ type: "restart", attempt: attempt + 1 })
+    }
+    emit({ type: "phase", phase: "planning" })
+
     let content
     try {
-      const result = await callAgent(systemPrompt, turnMessage, buildResultSchema, {
-        model: SECTION_BUILDER_MODEL,
+      content = await streamOneAttempt({
+        emit,
+        systemPrompt,
+        turnMessage,
         maxTokens,
-        cacheSystemPrompt: true,
+        onUsage: (usage) => {
+          // `+=` across attempts, never `=`: a retry that succeeds still cost
+          // the tokens the rejected attempt burned, and a spend log that
+          // reports only the winning call understates every retried turn.
+          tokensUsed += usage.tokensUsed
+          cacheCreation += usage.cacheCreation
+          cacheRead += usage.cacheRead
+        },
       })
-      content = result.content
-      // `+=` across attempts, never `=`: a retry that succeeds still cost the
-      // tokens the rejected attempt burned, and a spend log that reports only
-      // the winning call understates every retried turn.
-      tokensUsed += result.tokens_used ?? 0
-      cacheCreation += result.cache_creation_tokens ?? 0
-      cacheRead += result.cache_read_tokens ?? 0
     } catch (error) {
       // A model refusal (`stop_reason: "refusal"`) surfaces through
       // `generateObject` as a parse failure, and so does a truncated or
@@ -773,6 +1057,11 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
       lastErrors = [(error as Error).message]
       continue
     }
+
+    // The model has stopped writing. Applying the ops, resolving CTA refs
+    // against the real catalogue and compiling is its own several-second chunk
+    // of the wait, and its own way to fail, so it gets its own phase.
+    emit({ type: "phase", phase: "checking" })
 
     if (content.blocked) {
       // The model declined. That is an answer, not a failure — do not retry it,
@@ -843,7 +1132,8 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
       resolutionError: null,
       source: "ai",
     }
-    return NextResponse.json(response)
+    emit({ type: "result", turn: response })
+    return
   }
 
   // -------------------------------------------------------------------------
@@ -880,7 +1170,7 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
       blocked: true,
       createdBy: userId,
     })
-    if (!blockedTurn.ok) return staleOrNotFound(blockedTurn)
+    if (!blockedTurn.ok) return emitAppendFailure(emit, blockedTurn)
 
     const response: TurnResponse = {
       revision: blockedTurn.revision,
@@ -894,7 +1184,8 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
       resolutionError: null,
       source: "ai",
     }
-    return NextResponse.json(response)
+    emit({ type: "result", turn: response })
+    return
   }
 
   // -------------------------------------------------------------------------
@@ -949,7 +1240,7 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
     latencyMs: Date.now() - startTime,
     createdBy: userId,
   })
-  if (!assistantTurn.ok) return staleOrNotFound(assistantTurn)
+  if (!assistantTurn.ok) return emitAppendFailure(emit, assistantTurn)
 
   const response: TurnResponse = {
     revision: assistantTurn.revision,
@@ -963,20 +1254,40 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
     resolutionError: resolution.error,
     source: "ai",
   }
-  return NextResponse.json(response)
+  emit({ type: "result", turn: response })
 }
 
-/** (e) `appendTurn`'s two failure results, as HTTP. */
-function staleOrNotFound(
+/**
+ * (e) `appendTurn`'s two failure results, once the response is already a 200.
+ *
+ * This REPLACED a `staleOrNotFound` helper that returned the same two bodies as
+ * real HTTP responses. Nothing calls that shape any more — the only two callers
+ * were the blocked and success paths, and both now run inside an open stream —
+ * so it was deleted rather than left behind as a second, unreachable definition
+ * of what a 409 means here. `handleReset` never used it; it inlines its own,
+ * because it can also fail with `revision_has_no_doc`.
+ *
+ * The status and body still have to be EXACTLY what the pre-flight 409 sends:
+ * the client feeds stream failures and HTTP failures into the same
+ * `handleErrorResponse`, so a `stale_revision` missing its `code` or its
+ * `currentRevision` would silently stop the tab resyncing on precisely the race
+ * the compare-and-swap exists to catch.
+ */
+function emitAppendFailure(
+  emit: (event: BuildStreamEvent) => void,
   result: { ok: false; reason: "stale_revision"; currentRevision: number } | { ok: false; reason: "not_found" },
-): Response {
-  if (result.reason === "not_found") return NextResponse.json({ error: "Not found" }, { status: 404 })
-  return NextResponse.json(
-    {
+): void {
+  if (result.reason === "not_found") {
+    emit({ type: "fail", status: 404, body: { error: "Not found" } })
+    return
+  }
+  emit({
+    type: "fail",
+    status: 409,
+    body: {
       error: "Someone else changed this page while you were working on it. Reload and try again.",
       code: "stale_revision",
       currentRevision: result.currentRevision,
     },
-    { status: 409 },
-  )
+  })
 }

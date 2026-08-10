@@ -69,9 +69,13 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ChatPane } from "./builder/ChatPane"
+import { GenerationStage } from "./builder/GenerationStage"
 import { PreviewPane, type PreviewDevice } from "./builder/PreviewPane"
 import { PublishReview } from "./builder/PublishReview"
 import { candidatePickMessage } from "./builder/format"
+import { readTurnStream } from "./builder/stream"
+import type { BuildPhase } from "@/lib/funnels/sections/build-stream"
+import type { StreamedSection } from "@/lib/funnels/sections/stream-progress"
 import type {
   BuildErrorResponse,
   BuildTurnResponse,
@@ -139,6 +143,22 @@ export interface FunnelBuilderProps {
 
 type Busy = "idle" | "building" | "restoring" | "publishing"
 
+/**
+ * What the turn in flight has told us so far. Null when nothing is in flight.
+ *
+ * Held apart from `messages` on purpose: this is the ONLY state that changes
+ * many times a second, and merging it into the transcript would re-render every
+ * message card on every token.
+ */
+interface StreamState {
+  phase: BuildPhase
+  sections: StreamedSection[]
+  tokens: { count: number; exact: boolean } | null
+  attempt: number
+}
+
+const INITIAL_STREAM: StreamState = { phase: "reading", sections: [], tokens: null, attempt: 1 }
+
 interface PublishResult {
   version: number
   warnings: string[]
@@ -166,6 +186,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   const [messages, setMessages] = useState<BuilderMessage[]>(props.initialMessages)
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState<Busy>("idle")
+  const [stream, setStream] = useState<StreamState | null>(null)
 
   const [conflict, setConflict] = useState<number | null>(null)
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null)
@@ -210,8 +231,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         receipt: data.receipt,
         compile: data.compile,
         danglingAnchors: data.compile !== null ? data.danglingAnchors : [],
-        unresolvedCount:
-          data.compile !== null && data.resolutionError === null ? data.unresolved.length : 0,
+        unresolvedCount: data.compile !== null && data.resolutionError === null ? data.unresolved.length : 0,
         resolutionError: data.compile !== null ? data.resolutionError : null,
         blocked: data.blocked,
       },
@@ -254,6 +274,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
       setInput("")
       setBusy("building")
       setMode("edit")
+      setStream(INITIAL_STREAM)
 
       const rollback = () => {
         // The route records the owner's message BEFORE spending anything, so a
@@ -270,21 +291,73 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: trimmed, revision }),
         })
-        const body = (await response.json().catch(() => null)) as
-          | (BuildTurnResponse & BuildErrorResponse)
-          | null
 
-        if (!response.ok || body === null) {
-          rollback()
-          handleErrorResponse(response.status, body)
+        // A JSON body means the route decided the outcome BEFORE it began — a
+        // 409, a 422, a rate limit. Same statuses, same bodies and the same
+        // handler as when every response was JSON. Branching on `Content-Type`
+        // rather than on `response.ok` matters: a `fail` event travels inside a
+        // 200, so `ok` alone can no longer tell the two apart.
+        const isStream = (response.headers.get("content-type") ?? "").includes("text/event-stream")
+        if (!isStream) {
+          const body = (await response.json().catch(() => null)) as (BuildTurnResponse & BuildErrorResponse) | null
+          if (!response.ok || body === null) {
+            rollback()
+            handleErrorResponse(response.status, body)
+            return
+          }
+          applyTurn(body)
           return
         }
-        applyTurn(body)
+
+        const outcome = await readTurnStream(response, (event) => {
+          setStream((current) => {
+            if (!current) return current
+            switch (event.type) {
+              case "phase":
+                return { ...current, phase: event.phase }
+              case "usage":
+                return { ...current, tokens: { count: event.outputTokens, exact: event.exact } }
+              case "restart":
+                // The model's first answer was rejected and it is writing the
+                // page again. CLEAR rather than append — see the event's own
+                // note. The token meter is deliberately kept: those tokens were
+                // really spent, and zeroing it would under-report the turn.
+                return { ...current, attempt: event.attempt, sections: [], phase: "planning" }
+              case "section": {
+                const index = current.sections.findIndex((s) => s.key === event.section.key)
+                if (index === -1) return { ...current, sections: [...current.sections, event.section] }
+                const sections = [...current.sections]
+                sections[index] = event.section
+                return { ...current, sections }
+              }
+              default:
+                return current
+            }
+          })
+        })
+
+        if (outcome.type === "fail") {
+          rollback()
+          handleErrorResponse(outcome.status, outcome.body)
+          return
+        }
+        if (outcome.type === "none") {
+          // The body ended with no terminal event: a dropped connection, a
+          // killed function, a proxy giving up on an idle stream. NOT treated
+          // as success — nothing is known about whether the turn was written,
+          // so the message goes back in the composer and the owner is told
+          // plainly rather than being left with a silently empty turn.
+          rollback()
+          toast.error("The connection dropped before the page came back. Reload to see if it saved.")
+          return
+        }
+        applyTurn(outcome.turn)
       } catch {
         rollback()
         toast.error("Could not reach the page builder. Nothing was changed.")
       } finally {
         setBusy("idle")
+        setStream(null)
       }
     },
     [applyTurn, busy, docInvalid, handleErrorResponse, props.stepId, revision],
@@ -307,9 +380,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "reset", toRevision }),
         })
-        const body = (await response.json().catch(() => null)) as
-          | (BuildTurnResponse & BuildErrorResponse)
-          | null
+        const body = (await response.json().catch(() => null)) as (BuildTurnResponse & BuildErrorResponse) | null
 
         if (!response.ok || body === null) {
           handleErrorResponse(response.status, body)
@@ -349,8 +420,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     return list
   }, [compile, conflict, doc, docInvalid, serverBlockers])
 
-  const canPublish =
-    busy === "idle" && unresolved.length === 0 && blockers.length === 0 && doc !== null
+  const canPublish = busy === "idle" && unresolved.length === 0 && blockers.length === 0 && doc !== null
 
   const blockingCount = blockers.length + unresolved.length
 
@@ -491,8 +561,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
    * while the review is open, or it would win over `hidden` on exactly the
    * screens where the review is on screen beside the chat.
    */
-  const previewVisibility =
-    mode === "review" ? "hidden" : `${tab === "preview" ? "block" : "hidden"} lg:block`
+  const previewVisibility = mode === "review" ? "hidden" : `${tab === "preview" ? "block" : "hidden"} lg:block`
 
   const pinned =
     docInvalid || conflict !== null ? (
@@ -504,8 +573,8 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
               This page can&apos;t be opened
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Its saved content is either from the old drag-and-drop editor or it has been corrupted.
-              Nothing has been lost.
+              Its saved content is either from the old drag-and-drop editor or it has been corrupted. Nothing has been
+              lost.
             </p>
             {resetToRevision === null ? (
               <p className="mt-2 text-xs text-muted-foreground">
@@ -533,9 +602,8 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
               Someone else changed this page
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Nothing you did was lost and nothing was overwritten. The preview now shows their version
-              (step {conflict}), and your next message will build on it. Publishing is paused until you
-              reload.
+              Nothing you did was lost and nothing was overwritten. The preview now shows their version (step {conflict}
+              ), and your next message will build on it. Publishing is paused until you reload.
             </p>
             <Button size="sm" variant="outline" className="mt-3" onClick={() => router.refresh()}>
               <RotateCcw className="size-4" aria-hidden />
@@ -699,6 +767,20 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           busy={busy === "building"}
           composerDisabled={docInvalid}
           pinned={pinned}
+          stage={
+            stream ? (
+              <GenerationStage
+                phase={stream.phase}
+                sections={stream.sections}
+                tokens={stream.tokens}
+                // The document BEING EDITED, so an `update_section` event —
+                // which names a section by id and carries no kind — can still
+                // be drawn in the right shape.
+                doc={doc}
+                attempt={stream.attempt}
+              />
+            ) : null
+          }
         />
 
         {mode === "review" ? (
@@ -776,15 +858,7 @@ function DeviceButton({
   )
 }
 
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
