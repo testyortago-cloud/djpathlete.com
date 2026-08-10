@@ -279,6 +279,13 @@ function ProgramDetail({
 
   const isCurrentWeek = programStarted && selectedWeek === effectiveCurrentWeek
 
+  // A client can log sets on ANY unlocked week that has exercises, so the recovery
+  // check and Finish-session (the one session RPE) have to live on that same set of
+  // weeks. Gating them on `isCurrentWeek` left every client whose `current_week` had
+  // drifted from the week they were actually training with no way to finish at all —
+  // opening on the current week is a default (see the week banner), not a restriction.
+  const canTrainSelectedWeek = !lockedWeeks[selectedWeek] && dayExercises.length > 0
+
   return (
     <div>
       {/* Back button + program name */}
@@ -324,6 +331,7 @@ function ProgramDetail({
             size="icon"
             variant="ghost"
             className="size-8"
+            aria-label="Previous week"
             disabled={selectedWeek <= 1}
             onClick={() => handleWeekChange(selectedWeek - 1)}
           >
@@ -344,6 +352,7 @@ function ProgramDetail({
             size="icon"
             variant="ghost"
             className="size-8"
+            aria-label="Next week"
             disabled={selectedWeek >= program.totalWeeks}
             onClick={() => handleWeekChange(selectedWeek + 1)}
           >
@@ -398,8 +407,8 @@ function ProgramDetail({
           )
         })()}
 
-      {/* Perceived Recovery Status — skippable, once per day, current week only */}
-      {isCurrentWeek && !lockedWeeks[selectedWeek] && dayExercises.length > 0 && (
+      {/* Perceived Recovery Status — skippable, once per day, on any week they can train */}
+      {canTrainSelectedWeek && (
         <SessionPrsPrompt assignmentId={program.assignmentId} weekNumber={selectedWeek} dayOfWeek={selectedDay} />
       )}
 
@@ -505,7 +514,7 @@ function ProgramDetail({
       </div>
 
       {/* Finish session — marks the day's workout complete + captures one session RPE */}
-      {isCurrentWeek && !lockedWeeks[selectedWeek] && dayExercises.length > 0 && (
+      {canTrainSelectedWeek && (
         <FinishSessionButton
           assignmentId={program.assignmentId}
           weekNumber={selectedWeek}
