@@ -379,20 +379,15 @@ export async function getSubmissionCountsByFunnel(): Promise<Record<string, numb
   return counts
 }
 
-export async function listSubmissions(
-  funnelId: string,
-  limit = 200,
-): Promise<FunnelSubmission[]> {
-  const supabase = getClient()
-  const { data, error } = await supabase
-    .from("funnel_submissions")
-    .select("*")
-    .eq("funnel_id", funnelId)
-    .order("created_at", { ascending: false })
-    .limit(limit)
-  if (error) throw new Error(`listSubmissions: ${error.message}`)
-  return (data ?? []) as FunnelSubmission[]
-}
+// `listSubmissions` USED TO LIVE HERE AND IS DELETED. It was written when this
+// subsystem shipped and was imported by no file in the repo — the leads it
+// would have returned were unreadable for the whole of that time. Its job now
+// belongs to `lib/db/funnel-leads.ts`, which joins the page name, paginates
+// past PostgREST's 1000-row cap, and filters.
+//
+// Removed rather than left in place: two list functions over one table, one of
+// them unused and neither obviously canonical, is how the next person writes a
+// third.
 
 /**
  * Finds the published form island config for a step, so the submission route
