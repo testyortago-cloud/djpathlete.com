@@ -90,6 +90,16 @@ export interface FunnelBuilderProps {
   stepName: string
   /** Where "open the live page" goes. */
   publicUrl: string
+  /**
+   * `funnels.status`. Publishing a PAGE and taking the FUNNEL live are two
+   * separate actions, and the public `/go/` route serves only `published`
+   * funnels — so publishing a page inside a draft funnel writes a real version
+   * that still 404s. The owner hit exactly that on production: page published,
+   * success reported, `/go/testing` not found, and nothing here mentioned why.
+   * Carried so the review can say it BEFORE the write instead of leaving him to
+   * infer it from a 404.
+   */
+  funnelStatus: string
   initialDoc: SectionDoc | null
   initialRevision: number
   /**
@@ -345,6 +355,33 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   const blockingCount = blockers.length + unresolved.length
 
   /**
+   * The funnel itself is not live, so publishing this page will not make it
+   * reachable. Not a blocker — the version row is real and correct, and the
+   * owner may well be staging a page before flipping the funnel. It is
+   * something to SAY, which is a different thing.
+   */
+  const funnelIsDraft = props.funnelStatus !== "published"
+
+  /**
+   * Is there anything the review would actually tell him?
+   *
+   * WHY THIS EXISTS: publish used to be unconditionally two clicks — `Publish`
+   * opened the review, `Publish now` committed. On a clean page the review says
+   * "Nothing is blocking this page" and the second click buys nothing, so it
+   * reads as pure friction. It is not friction when there IS something to
+   * report: warnings must be seen BEFORE the write, because the previous editor
+   * showed them after and they faded away over a page that was already live.
+   *
+   * So: silence earns one click, anything worth saying earns the review.
+   */
+  const reviewHasSomethingToSay =
+    blockingCount > 0 ||
+    danglingAnchors.length > 0 ||
+    (compile?.warnings.length ?? 0) > 0 ||
+    resolutionError !== null ||
+    funnelIsDraft
+
+  /**
    * A publish refusal, routed back INTO the chat behind "Fix it for me".
    *
    * ONE AFFORDANCE FOR ONE CLASS OF PROBLEM. The publish route's 422 `problems`
@@ -568,22 +605,47 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           </Button>
         ) : null}
 
-        <Button
-          size="sm"
-          disabled={!canPublish}
-          title={
-            canPublish
-              ? undefined
-              : "Publishing is blocked — open the blockers list to see what needs fixing."
-          }
-          onClick={() => {
-            setMode("review")
-            setTab("preview")
-          }}
-        >
-          <Rocket className="size-4" aria-hidden />
-          Publish
-        </Button>
+        {/* Hidden in review mode. It used to stay on screen NEXT TO
+            "Publish now", so two publish affordances were visible at once and
+            this one was a no-op — its onClick only re-entered the mode it was
+            already in. The preview pane above branches on the same condition. */}
+        {mode === "review" ? null : (
+          <Button
+            size="sm"
+            // `canPublish` already requires `busy === "idle"`, so a publish in
+            // flight disables this button without a second check.
+            disabled={!canPublish}
+            title={
+              !canPublish
+                ? "Publishing is blocked — open the blockers list to see what needs fixing."
+                : reviewHasSomethingToSay
+                  ? "There's something to check before this goes live."
+                  : "Publishes straight away — nothing needs reviewing."
+            }
+            onClick={() => {
+              // Nothing to report: commit on this click. Anything to report:
+              // show it BEFORE the write, never after.
+              if (!reviewHasSomethingToSay) {
+                void publish()
+                return
+              }
+              setMode("review")
+              setTab("preview")
+            }}
+          >
+            <Rocket className="size-4" aria-hidden />
+            {/* ALWAYS "Publish". An earlier attempt swapped this to
+                "Review & publish" when a review was pending, on the theory that
+                a button should announce which of two things it does. The
+                existing tests rejected it, and they were right: the complaint
+                that started this was TOO MANY publish affordances, and a label
+                that mutates between two names is one more thing to read. The
+                button means "publish this page" in both cases; sometimes that
+                routes through a confirmation because there is something to
+                show. The tooltip carries the difference. */}
+            Publish
+          </Button>
+        )}
       </div>
 
       {/* The publish RESULT, as a strip that stays put. A toast would take the
@@ -650,6 +712,9 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
             danglingAnchors={danglingAnchors}
             compileWarnings={compile?.warnings ?? []}
             resolutionError={resolutionError}
+            funnelIsDraft={funnelIsDraft}
+            funnelHref={`/admin/funnels/${props.funnelId}`}
+            publicUrl={props.publicUrl}
             canPublish={canPublish}
             publishing={busy === "publishing"}
             onPublish={publish}

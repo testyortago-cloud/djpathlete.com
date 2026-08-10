@@ -12,7 +12,7 @@
 // deliberate exception the owner asked for — a funnel is a visual artifact, and
 // a row of slugs tells you nothing about which page you are looking for.
 
-import { useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { ExternalLink, Trash2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -40,10 +40,28 @@ export interface PreviewCardProps {
 /**
  * The iframe renders at desktop width and is scaled down, so the thumbnail has
  * the same proportions a visitor sees. Scaling the iframe element itself (rather
- * than loading it narrow) avoids triggering the page's mobile breakpoints.
+ * than loading it narrow) avoids triggering the page's mobile breakpoints — load
+ * it narrow and the thumbnail stops showing what a desktop visitor sees, which
+ * is the whole point of it.
  */
 const PREVIEW_WIDTH = 1280
-const PREVIEW_SCALE = 0.32
+
+/**
+ * Fallback only, for the first paint before the container has been measured and
+ * for environments with no ResizeObserver (jsdom).
+ *
+ * The scale MUST be derived from the container's real width, not fixed. It used
+ * to be a hard-coded 0.32, which renders the iframe at exactly
+ * 1280 * 0.32 = 409.6px no matter how wide the card is. That happens to fill a
+ * card in the funnels LIST grid, which is why it survived — but on the funnel
+ * DETAIL page the card is much wider, so the thumbnail filled the left ~410px
+ * and left a dead strip of background for the rest. A constant can only ever be
+ * right at one container width.
+ */
+const FALLBACK_PREVIEW_SCALE = 0.32
+
+/** The thumbnail's fixed rendered height, in CSS pixels. */
+const PREVIEW_BOX_HEIGHT = 200
 
 export function PreviewCard({
   title,
@@ -61,6 +79,27 @@ export function PreviewCard({
 }: PreviewCardProps) {
   const [deleting, setDeleting] = useState(false)
 
+  // Scale the thumbnail to whatever width the card actually got. The card is
+  // responsive (grid on the list page, full width on the detail page, and both
+  // reflow when the sidebar collapses), so a one-shot measure on mount goes
+  // stale — hence the observer rather than a single read.
+  const frameBoxRef = useRef<HTMLDivElement | null>(null)
+  const [previewScale, setPreviewScale] = useState(FALLBACK_PREVIEW_SCALE)
+
+  useEffect(() => {
+    const box = frameBoxRef.current
+    if (!box || typeof ResizeObserver === "undefined") return
+    const apply = (width: number) => {
+      if (width > 0) setPreviewScale(width / PREVIEW_WIDTH)
+    }
+    apply(box.getBoundingClientRect().width)
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) apply(entry.contentRect.width)
+    })
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [])
+
   async function handleDelete() {
     if (!onDelete || deleting) return
     setDeleting(true)
@@ -73,7 +112,10 @@ export function PreviewCard({
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-      <div className="relative h-[200px] overflow-hidden border-b border-border bg-surface/50">
+      <div
+        ref={frameBoxRef}
+        className="relative h-[200px] overflow-hidden border-b border-border bg-surface/50"
+      >
         {previewUrl ? (
           <iframe
             src={previewUrl}
@@ -88,8 +130,11 @@ export function PreviewCard({
             className="pointer-events-none absolute left-0 top-0 origin-top-left border-0"
             style={{
               width: PREVIEW_WIDTH,
-              height: 200 / PREVIEW_SCALE,
-              transform: `scale(${PREVIEW_SCALE})`,
+              // Height is tied to the SAME scale, so the scaled result always
+              // lands on the container's fixed height rather than under- or
+              // over-shooting it as the width changes.
+              height: PREVIEW_BOX_HEIGHT / previewScale,
+              transform: `scale(${previewScale})`,
             }}
           />
         ) : (

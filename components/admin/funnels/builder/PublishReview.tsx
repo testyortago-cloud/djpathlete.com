@@ -29,6 +29,7 @@
 // never hold a campaign page hostage.
 
 import { AlertTriangle, ArrowLeft, Link2Off, Loader2, Rocket, ShieldCheck } from "lucide-react"
+import Link from "next/link"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { MESSAGING_DOCK_CLEARANCE_CLASS } from "@/components/messaging/dock-geometry"
@@ -48,6 +49,16 @@ interface PublishReviewProps {
   compileWarnings: string[]
   /** "CTA links were not checked this turn: …". A warning, not a blocker. */
   resolutionError: string | null
+  /**
+   * The funnel is not `published`, so the public route will 404 this page even
+   * after a successful publish. A warning, never a blocker: the version row is
+   * real and staging a page before flipping the funnel live is legitimate.
+   */
+  funnelIsDraft: boolean
+  /** Where the funnel's status control lives, for the draft warning. */
+  funnelHref: string
+  /** The public URL this page WOULD have, named in the draft warning. */
+  publicUrl: string
   canPublish: boolean
   publishing: boolean
   onPublish: () => void
@@ -70,6 +81,9 @@ export function PublishReview({
   danglingAnchors,
   compileWarnings,
   resolutionError,
+  funnelIsDraft,
+  funnelHref,
+  publicUrl,
   canPublish,
   publishing,
   onPublish,
@@ -138,6 +152,28 @@ export function PublishReview({
             </p>
           </section>
         )}
+
+        {/* Publishing a PAGE does not take the FUNNEL live. Said here, before
+            the write — the owner published into a draft funnel on production,
+            got "Published version 1", and found a 404 at the public URL with
+            nothing anywhere explaining the gap. */}
+        {funnelIsDraft ? (
+          <section className="rounded-xl border border-[var(--warning)] bg-white p-4 shadow-sm">
+            <h3 className="flex items-center gap-2 font-heading text-sm text-[var(--warning)]">
+              <AlertTriangle className="size-4" aria-hidden />
+              This funnel isn&apos;t live yet
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Publishing saves this page, but it still won&apos;t be reachable at{" "}
+              <span className="font-mono">{publicUrl}</span> — the funnel itself is a draft, and
+              the public route only serves published funnels.{" "}
+              <Link href={funnelHref} className="text-primary underline underline-offset-2">
+                Set it to Published
+              </Link>{" "}
+              to make this page visible.
+            </p>
+          </section>
+        ) : null}
 
         {warningCount > 0 ? (
           <section className="mt-3 rounded-xl border border-border bg-white p-4 shadow-sm">

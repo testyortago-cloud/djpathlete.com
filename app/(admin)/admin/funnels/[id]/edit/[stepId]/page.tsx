@@ -181,6 +181,7 @@ export default async function FunnelEditPage({ params }: PageProps) {
       stepId={step.id}
       stepName={step.name}
       publicUrl={publicUrl}
+      funnelStatus={funnel.status}
       initialDoc={initial.doc}
       initialRevision={draft.revision}
       docInvalid={draft.docInvalid}
