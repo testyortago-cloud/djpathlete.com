@@ -550,15 +550,34 @@ export async function semanticFilterExercises(
   const favoriteIds = options?.favoriteIds
   const hasFavorites = !!favoriteIds && favoriteIds.size > 0
 
-  // Inject any missing preferred-pool exercises into the candidate set BEFORE
-  // scoring — semantic search may have ranked them out, but in preferred mode
-  // we want the AI to see them and the boost to act on them.
-  if (hasPreferred) {
+  // Re-inject pool exercises the embedding search missed, BEFORE scoring.
+  //
+  // Membership in a coach-curated pool is the coach's decision, not the
+  // embedding index's. `match_exercises` can miss a pool exercise for reasons
+  // that have nothing to do with fit: no embedding row at all (SQL-inserted
+  // exercises skip the auto-embed hook), or a similarity under the 0.15
+  // threshold for every slot in this skeleton.
+  //
+  // In STRICT mode that miss is silent data loss — the pool IS the library, so
+  // a dropped exercise leaves the selector with fewer candidates than slots and
+  // it has no option but to assign the same exercise twice. In PREFERRED mode
+  // the exercise is still reachable but the pool boost has nothing to act on.
+  // Both modes want it back; only the id set differs.
+  //
+  // excludeIds is applied here too — a coach-banned or cross-day-excluded
+  // exercise must not sneak back in through the rescue path.
+  const isInPool = isPool ? () => true : hasPreferred ? (id: string) => preferredIds!.has(id) : null
+  if (isInPool) {
     const inFiltered = new Set(filtered.map((e) => e.id))
-    const missingPreferred = exercises.filter((e) => preferredIds!.has(e.id) && !inFiltered.has(e.id))
-    if (missingPreferred.length > 0) {
-      console.log(`[semanticFilter] Injecting ${missingPreferred.length} preferred-pool exercises missed by embeddings`)
-      filtered = [...missingPreferred, ...filtered]
+    const excludeIds = options?.excludeIds
+    const missingPool = exercises.filter(
+      (e) => isInPool(e.id) && !inFiltered.has(e.id) && !excludeIds?.has(e.id),
+    )
+    if (missingPool.length > 0) {
+      console.log(
+        `[semanticFilter] Injecting ${missingPool.length} ${isPool ? "strict" : "preferred"}-pool exercises missed by embeddings`,
+      )
+      filtered = [...missingPool, ...filtered]
     }
   }
 

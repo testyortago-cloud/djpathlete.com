@@ -326,3 +326,73 @@ describe("semanticFilterExercises uses the similarity match_exercises returns", 
     expect(result.map((e) => e.id)).toEqual(["high", "mid", "low"])
   })
 })
+
+describe("a strict pool survives an incomplete embedding index", () => {
+  // Regression: `match_exercises` only returned SOME of the pool (the rest had
+  // no embedding row, or fell under the 0.15 similarity threshold). The
+  // survivors-only filter then handed the selector a library smaller than the
+  // coach's pool, and with fewer candidates than slots it assigned the same
+  // exercise to multiple slots. Membership in a strict pool is the coach's
+  // call, not the embedding index's.
+  const POOL = ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9"]
+
+  async function mockRpcReturning(ids: string[], similarity = 0.6) {
+    const { getSupabase } = await import("../../lib/supabase.js")
+    vi.mocked(getSupabase).mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({
+        data: ids.map((id) => ({ id, similarity })),
+        error: null,
+      }),
+    } as never)
+  }
+
+  it("keeps every pool exercise when embeddings only match a subset", async () => {
+    const lib = POOL.map((id) => ex(id))
+    // Only 5 of the 9 come back from the vector search — the exact shape of the
+    // Matthew C week-3 generation ("only 5 exercises available").
+    await mockRpcReturning(["p1", "p2", "p3", "p4", "p5"])
+
+    const result = await semanticFilterExercises(lib, SKELETON, [], ANALYSIS, { poolActive: true })
+
+    expect(result.map((e) => e.id).sort()).toEqual([...POOL].sort())
+  })
+
+  it("still honours excludeIds when re-injecting missed pool exercises", async () => {
+    const lib = POOL.map((id) => ex(id))
+    await mockRpcReturning(["p1", "p2"])
+
+    const result = await semanticFilterExercises(lib, SKELETON, [], ANALYSIS, {
+      poolActive: true,
+      // p9 was never matched (so it comes back via the rescue path) and p1 was
+      // matched — a ban must beat both.
+      excludeIds: new Set(["p1", "p9"]),
+    })
+
+    const ids = result.map((e) => e.id)
+    expect(ids).not.toContain("p1")
+    expect(ids).not.toContain("p9")
+    expect(ids.sort()).toEqual(["p2", "p3", "p4", "p5", "p6", "p7", "p8"])
+  })
+
+  it("re-injects preferred-pool exercises the search missed, minus excluded ids", async () => {
+    // Preferred mode keeps the full library, so it needs MIN_EXERCISES (30)
+    // matches to stay on the semantic path — below that it falls back to the
+    // heuristic filter and never reaches the injection under test.
+    const big = Array.from({ length: 40 }, (_, i) => ex(`b${i}`))
+    // 35 matched; b35..b39 missed by the vector search.
+    await mockRpcReturning(big.slice(0, 35).map((e) => e.id))
+
+    const result = await semanticFilterExercises(big, SKELETON, [], ANALYSIS, {
+      preferredIds: new Set(["b36", "b37"]),
+      excludeIds: new Set(["b37"]),
+    })
+
+    const ids = result.map((e) => e.id)
+    // b36 was missed by embeddings but is preferred → rescued.
+    expect(ids).toContain("b36")
+    // b37 is preferred AND excluded → the ban wins.
+    expect(ids).not.toContain("b37")
+    // b38 was missed and is not preferred → stays out (no blanket re-injection).
+    expect(ids).not.toContain("b38")
+  })
+})
