@@ -11,6 +11,7 @@ import { getExercisesForAI } from "./program-chat-tools.js"
 import {
   buildPriorContextFromExistingExercises,
   dedupAssignmentsInPlace,
+  countWorkingSlots,
   verifyWeekAgainstExisting,
   verifyWithinWeekDuplicates,
 } from "./dedup-verify.js"
@@ -116,6 +117,14 @@ export interface WeekGenerationResult {
     cache_read: number
   }
   duration_ms: number
+  /**
+   * Coach-facing notices about how this generation was constrained — pool
+   * attrition, slots that had to repeat an exercise, notes stripped for leaking
+   * pipeline internals. Empty on a clean run. Rendered by the generate dialogs;
+   * these were console-only before, which is why a duplicate-laden week looked
+   * identical to a good one.
+   */
+  warnings: string[]
 }
 
 // ─── Local Supabase helpers (not shared — specific to week orchestrator) ────
@@ -574,6 +583,7 @@ export async function generateWeekSync(
       exercises_added: 0,
       token_usage: tokenUsage,
       duration_ms: Date.now() - startTime,
+      warnings: [],
     }
   }
 
@@ -710,6 +720,7 @@ IMPORTANT: Review the full program progression summary above. If the coach's ins
       exercises_added: 0,
       token_usage: tokenUsage,
       duration_ms: Date.now() - startTime,
+      warnings: [],
     }
   }
 
@@ -956,6 +967,40 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     }
   }
 
+  // ── Coach-facing warnings ───────────────────────────────────────────────
+  // Everything below used to be console.log only. A generation that silently
+  // shipped duplicate exercises (because the pool couldn't cover the slots) was
+  // indistinguishable from a clean one until someone read the workout. These
+  // ride back on the job result and render in the generate dialog.
+  const warnings: string[] = []
+
+  // Pool attrition — the coach picked N, the selector got M. After the
+  // embedding-index fix this should only ever be an explicit exclusion (injury
+  // filter, coach ban), never a silent drop; say which so an unexpected gap is
+  // visible rather than inferred from a duplicate-laden week weeks later.
+  if (poolActive && poolIds) {
+    const lost = poolIds.length - filtered.length
+    if (lost > 0) {
+      warnings.push(
+        `Exercise Pool: ${filtered.length} of your ${poolIds.length} selected exercises reached the AI ` +
+          `(${lost} excluded by the injury filter, a coach ban, or because they are no longer in the library).`,
+      )
+    }
+  }
+
+  // Pool vs working slots — pure arithmetic, and the actual cause of the
+  // Matthew C week-3 duplicates. Fewer usable exercises than slots that each
+  // need a DISTINCT exercise means repeats are unavoidable, not a model error.
+  const workingSlots = skeleton.weeks[0] ? countWorkingSlots(skeleton.weeks[0]) : 0
+  if (poolActive && workingSlots > filtered.length) {
+    warnings.push(
+      `Exercise Pool covers ${filtered.length} of ${workingSlots} working slots for ` +
+        `${isSingleDay ? targetDayName : `Week ${newWeekNumber}`} — at least ` +
+        `${workingSlots - filtered.length} slot(s) must repeat an exercise. ` +
+        `Add more exercises to the pool, or switch it to Preferred mode.`,
+    )
+  }
+
   const exerciseLibrary = formatExerciseLibrary(filtered)
 
   const constraintsContext = JSON.stringify({
@@ -1135,6 +1180,22 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     )
   }
 
+  // A duplicate the swapper could NOT resolve is the one that reaches the client.
+  // Name the exercise and the day so the coach can fix it in one click, instead
+  // of discovering it while reading the finished week.
+  if (dedupSwap.unresolved.length > 0) {
+    const byName = new Map<string, number[]>()
+    for (const u of dedupSwap.unresolved) {
+      byName.set(u.exercise_name, [...(byName.get(u.exercise_name) ?? []), u.day_of_week])
+    }
+    const detail = [...byName.entries()]
+      .map(([name, days]) => `${name} (${days.map((d) => dayLabel(d)).join(", ")})`)
+      .join("; ")
+    warnings.push(
+      `${dedupSwap.unresolved.length} slot(s) repeat an exercise — no unused alternative was available: ${detail}.`,
+    )
+  }
+
   // ── Step 4: Save to database ───────────────────────────────────────────
 
   await updateJobProgress(
@@ -1146,7 +1207,24 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
   )
 
   const { slotLookup, slotDetailsLookup } = buildSlotLookups(skeleton.weeks)
-  const exerciseRows = buildExerciseRows(assignment.assignments, slotLookup, slotDetailsLookup, request.program_id)
+  // Notes narrating pipeline internals are stripped before they reach the client
+  // and reported to the coach instead — they explain WHY a week came out the way
+  // it did, which is exactly the signal that used to be missing.
+  const strippedNotes: string[] = []
+  const exerciseRows = buildExerciseRows(
+    assignment.assignments,
+    slotLookup,
+    slotDetailsLookup,
+    request.program_id,
+    (_slotId, sentences) => strippedNotes.push(...sentences),
+  )
+  if (strippedNotes.length > 0) {
+    console.log(`[week-orchestrator] Stripped ${strippedNotes.length} pipeline-internals sentence(s) from client notes`)
+    warnings.push(
+      `The AI explained its own constraints in ${strippedNotes.length} coaching note(s). ` +
+        `Removed before the client sees them: ${strippedNotes.map((s) => `“${s}”`).join(" ")}`,
+    )
+  }
 
   await bulkAddExercisesToProgram(exerciseRows)
 
@@ -1223,10 +1301,15 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     `[week-orchestrator] Cache stats — writes: ${tokenUsage.cache_creation}, reads: ${tokenUsage.cache_read}, hit rate: ${(cacheHitRate * 100).toFixed(1)}%`,
   )
 
+  if (warnings.length > 0) {
+    console.warn(`[week-orchestrator] ${warnings.length} coach-facing warning(s):\n  - ${warnings.join("\n  - ")}`)
+  }
+
   return {
     new_week_number: newWeekNumber,
     exercises_added: assignment.assignments.length,
     token_usage: tokenUsage,
     duration_ms: durationMs,
+    warnings,
   }
 }

@@ -11,8 +11,9 @@ import {
   findUncoveredPatterns,
   remapUncoveredSlotPatterns,
   buildPoolPatternSection,
+  stripPipelineInternals,
 } from "../shared-helpers.js"
-import type { PriorWeekContext } from "../dedup-verify.js"
+import { countWorkingSlots, type PriorWeekContext } from "../dedup-verify.js"
 import type { ProgramWeek, CompressedExercise } from "../types.js"
 
 function ctxWith(rolesToIds: Record<string, string[]>): PriorWeekContext {
@@ -470,5 +471,91 @@ describe("buildExerciseRows persists slot_role", () => {
       slotLookup, slotDetailsLookup, "prog-1",
     )
     expect(rows[0].slot_role).toBe("primary_compound")
+  })
+})
+
+describe("stripPipelineInternals keeps AI self-narration away from the client", () => {
+  // The exact note that shipped to a real client (Matthew C, week 3, slot 5).
+  // The coach found the duplicate by reading this in the workout.
+  const REAL_LEAK =
+    "IMPORTANT: This slot has been assigned the same exercise as Slot 2 due to the limited exercise pool " +
+    "(only 5 exercises available, with no other lunge-pattern quad/adductor exercise in the library). " +
+    "See substitution notes."
+
+  it("removes the leaked sentences and returns them to the caller", () => {
+    const { text, stripped } = stripPipelineInternals(REAL_LEAK)
+    expect(text).toBe("")
+    expect(stripped.length).toBeGreaterThan(0)
+    expect(stripped.join(" ")).toContain("only 5 exercises available")
+  })
+
+  it("keeps the coaching content and drops only the offending sentence", () => {
+    const mixed =
+      "4-second eccentric, 2-second hold at the top. This slot repeats the same exercise as Slot 2 " +
+      "because the exercise pool is limited. Drive through the stance leg and keep the pelvis tall."
+    const { text, stripped } = stripPipelineInternals(mixed)
+
+    expect(text).toContain("4-second eccentric")
+    expect(text).toContain("Drive through the stance leg")
+    expect(text).not.toContain("exercise pool")
+    expect(text).not.toContain("Slot 2")
+    expect(stripped).toHaveLength(1)
+  })
+
+  it("leaves an ordinary coaching note completely untouched", () => {
+    const clean =
+      "Dead hang from the bar, brace the core fully before initiating. Do NOT swing — if you lose tension, stop."
+    expect(stripPipelineInternals(clean)).toEqual({ text: clean, stripped: [] })
+  })
+
+  it("does not fire on a swimming pool or a rep count", () => {
+    const clean = "Perform this in the pool if available. Aim for 5 exercises across the circuit."
+    expect(stripPipelineInternals(clean).stripped).toEqual([])
+  })
+
+  it("buildExerciseRows nulls a note that was ENTIRELY internals, and reports it", () => {
+    const weeks: ProgramWeek[] = [{
+      week_number: 3, phase: "x", intensity_modifier: "moderate",
+      days: [{ day_of_week: 1, label: "L", focus: "f", slots: [{
+        slot_id: "w3d1s1", role: "accessory", movement_pattern: "lunge",
+        target_muscles: ["quads"], sets: 3, reps: "6", rest_seconds: 90,
+        rpe_target: 7, tempo: null, group_tag: null, technique: "straight_set",
+        intensity_pct: null,
+      }] }],
+    }]
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(weeks)
+    const reported: Array<{ slotId: string; sentences: string[] }> = []
+
+    const rows = buildExerciseRows(
+      [{ slot_id: "w3d1s1", exercise_id: "ex-1", notes: REAL_LEAK }],
+      slotLookup, slotDetailsLookup, "prog-1",
+      (slotId, sentences) => reported.push({ slotId, sentences }),
+    )
+
+    // Nothing survives for the client — and it must be null, not "".
+    expect(rows[0].notes).toBeNull()
+    // ...but the coach is told, so the signal isn't simply destroyed.
+    expect(reported).toHaveLength(1)
+    expect(reported[0].slotId).toBe("w3d1s1")
+    expect(reported[0].sentences.join(" ")).toContain("limited exercise pool")
+  })
+})
+
+describe("countWorkingSlots agrees with the dedup rules by construction", () => {
+  it("counts every non-anchor slot and excludes warm-up / cool-down", () => {
+    const week: ProgramWeek = {
+      week_number: 1, phase: "x", intensity_modifier: "moderate",
+      days: [{
+        day_of_week: 1, label: "L", focus: "f",
+        slots: (["warm_up", "primary_compound", "accessory", "isolation", "cool_down"] as const).map((role, i) => ({
+          slot_id: `w1d1s${i + 1}`, role, movement_pattern: "squat",
+          target_muscles: ["quads"], sets: 3, reps: "8", rest_seconds: 60,
+          rpe_target: 7, tempo: null, group_tag: null, technique: "straight_set",
+          intensity_pct: null,
+        })),
+      }],
+    }
+    // 5 slots, 2 anchors → 3 need a distinct exercise.
+    expect(countWorkingSlots(week)).toBe(3)
   })
 })

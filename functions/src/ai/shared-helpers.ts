@@ -519,17 +519,65 @@ const SLOT_REF_RE = /\bw\d{1,2}d\d{1,2}s\d{1,2}\b/gi
 // parenthesized numbers ("(20260713)") survive.
 const ID_FRAGMENT_RE = /\s*\((?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|(?=[0-9]*[a-f])[0-9a-f]{8})\)/gi
 
+// Pipeline internals the selector narrates when it can't satisfy a constraint —
+// pool size, library contents, positional slot numbers, its own substitution
+// bookkeeping. These are TRUE and useful to the coach, but they are written into
+// a field the CLIENT reads in their workout. Real example that shipped to a
+// client (Matthew C, week 3):
+//
+//   "IMPORTANT: This slot has been assigned the same exercise as Slot 2 due to
+//    the limited exercise pool (only 5 exercises available, with no other
+//    lunge-pattern quad/adductor exercise in the library). See substitution notes."
+//
+// Matched sentences are removed from the note and handed back to the caller so
+// the coach still sees them, in the generation warnings.
+//
+// Deliberately narrow: each alternative names an AI-pipeline concept, so a
+// coaching sentence can't trip it. "pool" alone is not enough — an athlete may
+// legitimately train in a swimming pool.
+const PIPELINE_INTERNALS_RE =
+  /(exercise pool|exercise library|in the library|from the library|only \d+ exercises?|limited (?:exercise )?(?:pool|library)|\bslots? \d+|substitution notes?|same exercise as|duplicate of)/i
+
+/** Split on sentence boundaries, keeping the terminator with its sentence. */
+function splitSentences(text: string): string[] {
+  return text.match(/[^.!?]+(?:[.!?]+|$)/g) ?? [text]
+}
+
+/**
+ * Remove any sentence that narrates AI-pipeline internals.
+ * Returns the client-safe text plus the sentences removed (trimmed), so the
+ * caller can surface them to the coach instead of losing them.
+ */
+export function stripPipelineInternals(notes: string): { text: string; stripped: string[] } {
+  if (!PIPELINE_INTERNALS_RE.test(notes)) return { text: notes, stripped: [] }
+
+  const kept: string[] = []
+  const stripped: string[] = []
+  for (const sentence of splitSentences(notes)) {
+    if (PIPELINE_INTERNALS_RE.test(sentence)) stripped.push(sentence.trim())
+    else kept.push(sentence)
+  }
+  return { text: kept.join("").replace(/\s{2,}/g, " ").trim(), stripped }
+}
+
 export function sanitizeSlotRefsInNotes(
   notes: string | null,
   nameBySlotId: Map<string, string>,
+  /** Collects sentences removed for narrating pipeline internals. */
+  onStripped?: (sentences: string[]) => void,
 ): string | null {
   if (!notes) return notes
-  const cleaned = notes
+  const deInternalised = stripPipelineInternals(notes)
+  if (deInternalised.stripped.length > 0) onStripped?.(deInternalised.stripped)
+
+  const cleaned = deInternalised.text
     .replace(SLOT_REF_RE, (ref) => nameBySlotId.get(ref.toLowerCase()) ?? "the paired exercise")
     .replace(ID_FRAGMENT_RE, "")
   if (cleaned === notes) return notes
   // Stripping a fragment can leave doubled spaces or a leading/trailing gap.
-  return cleaned.replace(/ {2,}/g, " ").trim()
+  // An note that was ENTIRELY internals becomes empty — store null, not "".
+  const trimmed = cleaned.replace(/ {2,}/g, " ").trim()
+  return trimmed.length > 0 ? trimmed : null
 }
 
 export function buildExerciseRows(
@@ -537,6 +585,8 @@ export function buildExerciseRows(
   slotLookup: Map<string, SlotLocation>,
   slotDetailsLookup: Map<string, SlotDetails>,
   programId: string,
+  /** Receives note sentences removed for narrating pipeline internals. */
+  onStrippedNote?: (slotId: string, sentences: string[]) => void,
 ): Record<string, unknown>[] {
   const nameBySlotId = new Map<string, string>()
   for (const a of assignments) {
@@ -557,7 +607,9 @@ export function buildExerciseRows(
         reps: details.reps,
         duration_seconds: null,
         rest_seconds: details.rest_seconds,
-        notes: sanitizeSlotRefsInNotes(assigned.notes, nameBySlotId),
+        notes: sanitizeSlotRefsInNotes(assigned.notes, nameBySlotId, (sentences) =>
+          onStrippedNote?.(assigned.slot_id, sentences),
+        ),
         rpe_target: details.rpe_target,
         intensity_pct: null,
         tempo: details.tempo,

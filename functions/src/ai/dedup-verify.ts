@@ -39,6 +39,22 @@ export interface PriorWeekContext {
 const MAX_REPETITION_SCORE = 0.05
 /** Only warm-up/cool-down repeat every week — compounds must rotate too */
 const ANCHOR_ROLES = new Set(["warm_up", "cool_down"])
+
+/**
+ * Slots that must hold a DISTINCT exercise — i.e. everything the dedup rules
+ * apply to. Anchors (warm-up / cool-down) are excluded because they legitimately
+ * recur. Exported so the "is the pool big enough?" check and the dedup pass agree
+ * on what counts by construction, rather than by two hand-kept lists.
+ */
+export function countWorkingSlots(week: ProgramWeek): number {
+  let n = 0
+  for (const day of week.days) {
+    for (const slot of day.slots) {
+      if (!ANCHOR_ROLES.has(slot.role)) n++
+    }
+  }
+  return n
+}
 /** ALL working exercise roles must vary across weeks */
 const VARIETY_ROLES = new Set(["primary_compound", "secondary_compound", "accessory", "isolation"])
 

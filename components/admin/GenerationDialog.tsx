@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { COACH_EMAIL } from "@/lib/constants"
-import { Sparkles, Loader2, CheckCircle2, XCircle, Layers } from "lucide-react"
+import { Sparkles, Loader2, CheckCircle2, XCircle, Layers, AlertTriangle } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -21,6 +21,7 @@ import { useAiJob } from "@/hooks/use-ai-job"
 import { useAiJobsDock } from "@/hooks/use-ai-jobs-dock"
 import { TemplateSelector } from "@/components/admin/TemplateSelector"
 import { NotifyWhenDoneToggle } from "@/components/admin/NotifyWhenDoneToggle"
+import { GenerationWarnings, extractWarnings } from "@/components/admin/GenerationWarnings"
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -36,6 +37,12 @@ interface WeekModeProps {
   /** When set, fill this specific blank week instead of appending a new one */
   targetWeekNumber?: number
   poolExerciseIds?: string[]
+  /**
+   * Median working slots in a built week/day of this program, from the parent.
+   * Drives the pre-flight "your strict pool can't cover this" warning. 0 = unknown
+   * (nothing built yet) and suppresses the check rather than guessing.
+   */
+  typicalWorkingSlots?: number
 }
 
 // ─── Day mode props ────────────────────────────────────────────────────────
@@ -49,6 +56,12 @@ interface DayModeProps {
   dayOfWeek: number
   onGenerated: () => void
   poolExerciseIds?: string[]
+  /**
+   * Median working slots in a built week/day of this program, from the parent.
+   * Drives the pre-flight "your strict pool can't cover this" warning. 0 = unknown
+   * (nothing built yet) and suppresses the check rather than guessing.
+   */
+  typicalWorkingSlots?: number
 }
 
 type GenerationDialogProps = {
@@ -75,6 +88,17 @@ export function GenerationDialog(props: GenerationDialogProps) {
 
   const poolExerciseIds = props.poolExerciseIds ?? []
   const hasPool = poolExerciseIds.length > 0
+
+  // Pre-flight pool coverage. A strict pool is the ENTIRE library for this run,
+  // so when it holds fewer exercises than there are slots needing a distinct one,
+  // repeats are arithmetic — not something the AI can be prompted out of. This is
+  // exactly what produced Matthew C's week 3. Shown before any tokens are spent.
+  const typicalWorkingSlots = props.typicalWorkingSlots ?? 0
+  const poolShortfall =
+    hasPool && usePool && strictPool && typicalWorkingSlots > 0
+      ? typicalWorkingSlots - poolExerciseIds.length
+      : 0
+  const poolIsTooSmall = poolShortfall > 0
 
   // Derive labels based on mode
   const isWeek = mode === "week"
@@ -119,6 +143,16 @@ export function GenerationDialog(props: GenerationDialogProps) {
     const successMsg = isWeek
       ? `Week ${r?.new_week_number ?? weekLabel} ready — ${exerciseCount} exercises added`
       : `${dayName} filled — ${exerciseCount} exercises added`
+
+    // A constrained generation must not auto-dismiss. The whole point of the
+    // warnings panel is that the coach SEES why the week came out as it did —
+    // and the auto-close fires 1.8s after completion, which would flash the
+    // panel and bin it. Warnings hold the dialog open until it's dismissed by
+    // hand; a clean run keeps the old hands-off behaviour.
+    if (extractWarnings(result).length > 0) {
+      toast.warning(`${successMsg} — with notes to review`)
+      return
+    }
 
     const t = setTimeout(() => {
       toast.success(successMsg)
@@ -358,6 +392,21 @@ export function GenerationDialog(props: GenerationDialogProps) {
                     />
                   </div>
                 )}
+                {poolIsTooSmall && (
+                  <div className="ml-6 rounded-lg border border-warning/40 bg-warning/10 p-3">
+                    <div className="flex items-center gap-1.5">
+                      <AlertTriangle className="size-3.5 shrink-0 text-warning" />
+                      <p className="text-xs font-medium text-foreground">
+                        Pool covers {poolExerciseIds.length} of about {typicalWorkingSlots} working slots
+                      </p>
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                      At least {poolShortfall} {poolShortfall === 1 ? "slot" : "slots"} will repeat an exercise —
+                      strict mode has no library to fall back on. Add{" "}
+                      {poolShortfall} more to the pool, or turn Strict off to let the AI fill the gaps.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -397,6 +446,7 @@ export function GenerationDialog(props: GenerationDialogProps) {
             {isComplete && <CheckCircle2 className="size-8 text-success" />}
             {isFailed && <XCircle className="size-8 text-destructive" />}
             <p className="text-sm text-center text-muted-foreground">{getProgressMessage()}</p>
+            {isComplete && <GenerationWarnings warnings={extractWarnings(result)} />}
             {isGenerating && (
               <p className="text-xs text-center text-muted-foreground/70">
                 Usually takes 1–2 minutes. You can keep this tab open or come back later.
@@ -432,7 +482,9 @@ export function GenerationDialog(props: GenerationDialogProps) {
                 ) : (
                   <>
                     <Sparkles className="size-3.5" />
-                    Generate
+                    {/* Naming the consequence makes the click an informed one —
+                        the pool-coverage warning sits directly above. */}
+                    {poolIsTooSmall ? "Generate anyway" : "Generate"}
                   </>
                 )}
               </Button>

@@ -445,6 +445,13 @@ export interface ProgramExercise {
   technique: TrainingTechnique
   suggested_weight_kg: number | null
   requires_video: boolean
+  /**
+   * Which slot in the AI skeleton produced this row — "primary_compound",
+   * "secondary_compound", "accessory", "isolation", "warm_up", "cool_down".
+   * Null for hand-added exercises. Anchors (warm_up / cool_down) are exempt from
+   * the no-repeat rules, so this is what distinguishes a WORKING slot.
+   */
+  slot_role: string | null
   created_at: string
 }
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -313,6 +313,33 @@ export function ProgramBuilder({
       setIsFillingFromRepeat(false)
     }
   }
+
+  // Typical WORKING slots (anchors excluded — warm-ups/cool-downs may repeat) in
+  // a built week and a built day. Used to warn, before any tokens are spent, that
+  // a strict Exercise Pool is too small to fill the week without repeating an
+  // exercise. It's an estimate: the AI architect decides the real slot count, but
+  // this program's own history is the best predictor available up front. Median,
+  // not mean, so one outlier week doesn't skew it.
+  const { typicalWorkingSlotsPerWeek, typicalWorkingSlotsPerDay } = useMemo(() => {
+    const isWorking = (pe: (typeof localExercises)[number]) =>
+      pe.slot_role !== "warm_up" && pe.slot_role !== "cool_down"
+    const median = (counts: number[]) => {
+      const sorted = counts.filter((c) => c > 0).sort((a, b) => a - b)
+      return sorted.length === 0 ? 0 : sorted[Math.floor(sorted.length / 2)]
+    }
+    const perWeek = new Map<number, number>()
+    const perDay = new Map<string, number>()
+    for (const pe of localExercises) {
+      if (!isWorking(pe)) continue
+      perWeek.set(pe.week_number, (perWeek.get(pe.week_number) ?? 0) + 1)
+      const dayKey = `${pe.week_number}:${pe.day_of_week}`
+      perDay.set(dayKey, (perDay.get(dayKey) ?? 0) + 1)
+    }
+    return {
+      typicalWorkingSlotsPerWeek: median([...perWeek.values()]),
+      typicalWorkingSlotsPerDay: median([...perDay.values()]),
+    }
+  }, [localExercises])
 
   // Group exercises for the selected week by day
   const weekExercises = localExercises.filter((pe) => pe.week_number === selectedWeek)
@@ -1174,6 +1201,7 @@ export function ProgramBuilder({
         currentWeekCount={localTotalWeeks}
         targetWeekNumber={selectedWeekIsBlank ? selectedWeek : undefined}
         poolExerciseIds={poolExercises.map((e) => e.id)}
+        typicalWorkingSlots={typicalWorkingSlotsPerWeek}
         onGenerated={(newWeekNumber) => {
           if (!selectedWeekIsBlank) {
             setLocalTotalWeeks(newWeekNumber)
@@ -1193,6 +1221,7 @@ export function ProgramBuilder({
         weekNumber={selectedWeek}
         dayOfWeek={generateDayTarget}
         poolExerciseIds={poolExercises.map((e) => e.id)}
+        typicalWorkingSlots={typicalWorkingSlotsPerDay}
         onGenerated={() => {
           router.refresh()
         }}

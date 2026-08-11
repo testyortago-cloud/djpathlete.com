@@ -40,7 +40,14 @@ export async function getProgramExercises(programId: string) {
   return data
 }
 
-export async function addExerciseToProgram(programExercise: Omit<ProgramExercise, "id" | "created_at">) {
+/**
+ * `slot_role` is optional on insert — it only exists for rows the AI generator
+ * produced from a skeleton slot. An exercise a coach adds by hand has no slot,
+ * and the column defaults to null.
+ */
+export async function addExerciseToProgram(
+  programExercise: Omit<ProgramExercise, "id" | "created_at" | "slot_role"> & { slot_role?: string | null },
+) {
   const supabase = getClient()
   const { data, error } = await supabase.from("program_exercises").insert(programExercise).select().single()
   if (error) throw error
