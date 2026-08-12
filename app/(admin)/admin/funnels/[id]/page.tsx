@@ -4,11 +4,21 @@ import { ArrowLeft } from "lucide-react"
 import { getFunnelById, listSteps } from "@/lib/db/funnels"
 import { FunnelStatusControl } from "@/components/admin/funnels/FunnelStatusControl"
 import { StepList } from "@/components/admin/funnels/StepList"
-
-export const metadata = { title: "Funnel" }
+import { AddStepDialog } from "@/components/admin/funnels/AddStepDialog"
 
 interface PageProps {
   params: Promise<{ id: string }>
+}
+
+// Both kinds reach this page — it is the ⚙ settings destination for a landing
+// page as well as the step list for a funnel — so a static "Funnel" title would
+// be wrong half the time, in the one place the owner cannot see it is wrong:
+// the browser tab.
+export async function generateMetadata({ params }: PageProps) {
+  const { id } = await params
+  const funnel = await getFunnelById(id)
+  if (!funnel) return { title: "Not found" }
+  return { title: funnel.kind === "page" ? `${funnel.name} · Landing page` : `${funnel.name} · Funnel` }
 }
 
 export default async function FunnelDetailPage({ params }: PageProps) {
@@ -45,7 +55,19 @@ export default async function FunnelDetailPage({ params }: PageProps) {
             </a>
           </p>
         </div>
-        <FunnelStatusControl funnelId={funnel.id} status={funnel.status} />
+        <div className="flex items-center gap-2">
+          {/* Funnels only. A landing page is single-page by definition — the
+              way to give it a second step is Convert to funnel, which says so
+              explicitly rather than letting the page drift into being one. */}
+          {funnel.kind === "funnel" ? (
+            <AddStepDialog
+              funnelId={funnel.id}
+              funnelSlug={funnel.slug}
+              takenSlugs={steps.map((step) => step.slug)}
+            />
+          ) : null}
+          <FunnelStatusControl funnelId={funnel.id} status={funnel.status} />
+        </div>
       </div>
 
       <StepList funnel={funnel} initialSteps={steps} />

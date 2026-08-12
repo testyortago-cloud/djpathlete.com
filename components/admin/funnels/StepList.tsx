@@ -58,7 +58,7 @@ export function StepList({ funnel, initialSteps }: StepListProps) {
   if (steps.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-surface/30 px-4 py-16 text-center text-muted-foreground">
-        This funnel has no pages.
+        {funnel.kind === "page" ? "This landing page has no content yet." : "This funnel has no pages."}
       </div>
     )
   }
