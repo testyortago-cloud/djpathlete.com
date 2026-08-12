@@ -1,25 +1,29 @@
 "use client"
 
-// The funnels screen is page-centric, not funnel-centric.
+// One board, two vocabularies.
 //
-// A funnel is a container that usually holds exactly one page, so listing
-// funnels and then listing their pages meant two near-identical screens and an
-// extra click to reach the only thing you actually want: the editor. The funnel
-// still exists — it owns the slug, the publish state and multi-step ordering —
-// but here it is a filter chip, and "Open" goes straight to the canvas.
+// Both screens list one card per PAGE — a funnel that holds exactly one page
+// would otherwise need two near-identical screens and an extra click to reach
+// the only thing you actually want: the editor. What differs between a landing
+// page and a funnel is the words, the create dialog and whether a goal applies;
+// that is a `kind` prop, not a second component. Two copies of this file would
+// drift, and the drift would be invisible until one screen quietly stopped
+// matching the other.
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Plus, Settings2 } from "lucide-react"
+import { Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { slugify } from "@/lib/funnels/slug"
+import { FUNNEL_GOALS } from "@/lib/validators/funnel"
 import { PreviewCard } from "./PreviewCard"
 import { FunnelGoLiveButton } from "./FunnelGoLiveButton"
+import { CreatePageDialog } from "./CreatePageDialog"
+import { CreateFunnelDialog } from "./CreateFunnelDialog"
 import type { DataTableBadgeTone } from "@/components/ui/data-table"
-import type { Funnel, FunnelStep } from "@/types/database"
+import type { Funnel, FunnelStep, FunnelKind } from "@/types/database"
 
 export interface BoardPage {
   step: FunnelStep
@@ -27,18 +31,18 @@ export interface BoardPage {
 }
 
 interface FunnelBoardProps {
+  /** Which screen this is. Drives copy, the create dialog and the goal badge. */
+  kind: FunnelKind
   pages: BoardPage[]
   funnels: Funnel[]
   /** funnel id -> submission count */
   leadCounts: Record<string, number>
 }
 
-export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
+export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardProps) {
   const router = useRouter()
   const [query, setQuery] = useState("")
   const [funnelFilter, setFunnelFilter] = useState<string>("all")
-  const [name, setName] = useState("")
-  const [creating, setCreating] = useState(false)
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -52,34 +56,6 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
       )
     })
   }, [pages, query, funnelFilter])
-
-  async function handleCreateFunnel() {
-    const trimmed = name.trim()
-    if (trimmed.length < 2) {
-      toast.error("Give the page a name first.")
-      return
-    }
-    setCreating(true)
-    try {
-      const response = await fetch("/api/admin/funnels", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmed, slug: slugify(trimmed) }),
-      })
-      const body = (await response.json()) as { funnel?: Funnel; error?: string }
-      if (!response.ok || !body.funnel) {
-        toast.error(body.error ?? "Could not create the page.")
-        return
-      }
-      setName("")
-      toast.success("Landing page created.")
-      router.refresh()
-    } catch {
-      toast.error("Could not create the page.")
-    } finally {
-      setCreating(false)
-    }
-  }
 
   async function handleDelete({ step, funnel }: BoardPage) {
     // Deleting the entry page has no meaning on its own — it IS the funnel.
@@ -113,23 +89,15 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search pages…"
+          placeholder={kind === "page" ? "Search pages…" : "Search funnels…"}
           className="sm:max-w-xs"
         />
         <div className="flex flex-1 gap-2 sm:justify-end">
-          <Input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") handleCreateFunnel()
-            }}
-            placeholder="New landing page name"
-            className="sm:max-w-xs"
-          />
-          <Button onClick={handleCreateFunnel} disabled={creating}>
-            <Plus className="size-4" />
-            {creating ? "Creating…" : "Create page"}
-          </Button>
+          {kind === "page" ? (
+            <CreatePageDialog takenSlugs={funnels.map((f) => f.slug)} />
+          ) : (
+            <CreateFunnelDialog takenSlugs={funnels.map((f) => f.slug)} />
+          )}
         </div>
       </div>
 
@@ -152,9 +120,13 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
       ) : null}
 
       {visible.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-surface/30 px-4 py-16 text-center text-muted-foreground">
-          {pages.length === 0 ? "No landing pages yet. Name one above to get started." : "Nothing matches that search."}
-        </div>
+        pages.length === 0 ? (
+          <EmptyState kind={kind} />
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-surface/30 px-4 py-16 text-center text-muted-foreground">
+            Nothing matches that search.
+          </div>
+        )
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {visible.map((page) => {
@@ -168,6 +140,15 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
                 ? { label: "draft", tone: "neutral" }
                 : { label: "never published", tone: "neutral" }
 
+            // Goals and descriptions belong to the FUNNEL row, so they describe
+            // the entry page only — a child step is a different page with a
+            // different job. And a funnel has no single goal at all: its steps
+            // do, so showing one on the container would invent a fact.
+            const goalLabel =
+              kind === "page" && step.is_entry
+                ? FUNNEL_GOALS.find((option) => option.value === funnel.goal)?.label
+                : undefined
+
             return (
               <PreviewCard
                 key={step.id}
@@ -180,6 +161,8 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
                 publicUrl={live ? path : null}
                 badgeLabel={badge.label}
                 badgeTone={badge.tone}
+                goalLabel={goalLabel}
+                description={step.is_entry ? funnel.description : null}
                 leadCount={step.is_entry ? (leadCounts[funnel.id] ?? 0) : undefined}
                 leadsHref={`/admin/funnels/leads?funnelId=${funnel.id}`}
                 onDelete={() => handleDelete(page)}
@@ -210,6 +193,51 @@ export function FunnelBoard({ pages, funnels, leadCounts }: FunnelBoardProps) {
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * The empty state is the only place a first-time owner is told what this screen
+ * makes. A single grey "nothing here yet" line taught nothing, and it is the
+ * state the screen spends its whole first day in.
+ */
+function EmptyState({ kind }: { kind: FunnelKind }) {
+  const copy =
+    kind === "page"
+      ? {
+          title: "No landing pages yet",
+          body: "A landing page is one focused page at /go/<url>, built to do a single job — capture a lead, sell a program, fill a camp.",
+          steps: [
+            "Name it and pick what it should do",
+            "Describe it — the builder writes the first draft",
+            "Review it, then go live",
+          ],
+        }
+      : {
+          title: "No funnels yet",
+          body: "A funnel is more than one step in order — a landing page, then a booking step, then a thank-you — all sharing one address.",
+          steps: [
+            "Create the funnel and name its first step",
+            "Add the steps that follow it",
+            "Publish each step, then take the funnel live",
+          ],
+        }
+
+  return (
+    <div className="rounded-xl border border-dashed border-border bg-surface/30 px-6 py-14 text-center">
+      <h2 className="font-heading text-lg text-primary">{copy.title}</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{copy.body}</p>
+      <ol className="mx-auto mt-5 max-w-xs space-y-2 text-left text-sm text-muted-foreground">
+        {copy.steps.map((entry, index) => (
+          <li key={entry} className="flex gap-2.5">
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-xs font-medium text-accent">
+              {index + 1}
+            </span>
+            {entry}
+          </li>
+        ))}
+      </ol>
     </div>
   )
 }
