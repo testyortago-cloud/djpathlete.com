@@ -3,13 +3,14 @@ name: Apply Supabase Migrations
 # Applies any migration in supabase/migrations/ that production has not seen,
 # whenever one lands on main. Unattended, by choice.
 #
-# READ scripts/migrations/apply.sh AND scripts/migrations/baseline.sql BEFORE
+# READ scripts/migrations/apply.mjs AND scripts/migrations/baseline.sql BEFORE
 # CHANGING THIS. The migrations directory and Supabase's own ledger cannot be
-# reconciled (152 recorded rows against 209 files, two incompatible naming
-# schemes), so this keys on FILENAME via public.repo_migrations instead. That
-# table must be seeded by baseline.sql before this workflow is allowed to run;
-# apply.sh refuses to do anything if it is missing, because without it every
-# migration looks unapplied and prod would be replayed from 00001.
+# reconciled (152 recorded rows against 209 files, versions like 20260812154832
+# that no filename can produce, and two naming schemes side by side), so this
+# keys on FILENAME via public.repo_migrations. That table was baselined on
+# 2026-08-13 with the 208 filenames already applied; apply.mjs refuses to run if
+# it is missing, because without it every migration looks unapplied and prod
+# would be replayed from 00001.
 #
 # ORDERING CAVEAT, worth knowing and not fixed here: Vercel also builds on push
 # to main, and nothing sequences the two. A push whose code reads a column its
@@ -45,22 +46,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # ubuntu-latest ships a psql, but its major version trails the server.
-      # Pinning to 16 keeps client and server syntax in step.
-      - name: Install PostgreSQL client
-        run: |
-          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client-16
+      # Node 22 for a built-in fetch. No psql, no database password, no
+      # PostgreSQL apt repo — the whole job is one script and one HTTPS call
+      # per migration.
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
 
       - name: Apply pending migrations
         env:
-          # The DIRECT connection string (db.<ref>.supabase.co:5432), not the
-          # transaction pooler — pooled connections cannot run the session-level
-          # statements some DDL needs.
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          # A Personal Access Token from https://supabase.com/dashboard/account/tokens
+          # NOT the database password, and NOT the service-role key.
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
-        run: |
-          chmod +x scripts/migrations/apply.sh
-          ./scripts/migrations/apply.sh
+        run: node scripts/migrations/apply.mjs
