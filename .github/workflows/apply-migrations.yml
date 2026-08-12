@@ -1,0 +1,66 @@
+name: Apply Supabase Migrations
+
+# Applies any migration in supabase/migrations/ that production has not seen,
+# whenever one lands on main. Unattended, by choice.
+#
+# READ scripts/migrations/apply.sh AND scripts/migrations/baseline.sql BEFORE
+# CHANGING THIS. The migrations directory and Supabase's own ledger cannot be
+# reconciled (152 recorded rows against 209 files, two incompatible naming
+# schemes), so this keys on FILENAME via public.repo_migrations instead. That
+# table must be seeded by baseline.sql before this workflow is allowed to run;
+# apply.sh refuses to do anything if it is missing, because without it every
+# migration looks unapplied and prod would be replayed from 00001.
+#
+# ORDERING CAVEAT, worth knowing and not fixed here: Vercel also builds on push
+# to main, and nothing sequences the two. A push whose code reads a column its
+# own migration adds can deploy before the column exists. Keep migrations
+# additive and let code tolerate the old schema for one deploy.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "scripts/migrations/**"
+      - ".github/workflows/apply-migrations.yml"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List pending migrations without applying them"
+        type: boolean
+        default: false
+
+# Never let two runs apply concurrently: they would both read the same pending
+# list and race to insert the same ledger row. Queue instead of cancelling —
+# cancelling mid-apply is exactly the case the in-transaction ledger protects
+# against, and there is no reason to exercise it.
+concurrency:
+  group: apply-supabase-migrations
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # ubuntu-latest ships a psql, but its major version trails the server.
+      # Pinning to 16 keeps client and server syntax in step.
+      - name: Install PostgreSQL client
+        run: |
+          sudo sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/pgdg.gpg
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+
+      - name: Apply pending migrations
+        env:
+          # The DIRECT connection string (db.<ref>.supabase.co:5432), not the
+          # transaction pooler — pooled connections cannot run the session-level
+          # statements some DDL needs.
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: |
+          chmod +x scripts/migrations/apply.sh
+          ./scripts/migrations/apply.sh
