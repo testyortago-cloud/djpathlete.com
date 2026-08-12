@@ -40,8 +40,11 @@ export function StepList({ funnel, initialSteps }: StepListProps) {
         return
       }
       if (deletingFunnel) {
-        toast.success("Landing page deleted.")
-        router.push("/admin/funnels")
+        toast.success(funnel.kind === "page" ? "Landing page deleted." : "Funnel deleted.")
+        // Back to the screen it came FROM. Both kinds reach this page, so a
+        // hard-coded /admin/funnels would strand someone who deleted a landing
+        // page on a list that will never contain it.
+        router.push(funnel.kind === "page" ? "/admin/pages" : "/admin/funnels")
         return
       }
       setSteps((current) => current.filter((s) => s.id !== step.id))

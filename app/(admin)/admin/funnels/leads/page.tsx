@@ -74,7 +74,7 @@ export default async function FunnelLeadsPage({
           <h1 className="text-2xl font-semibold text-primary">Leads</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Everyone who filled in a form on a{" "}
-            <Link href="/admin/funnels" className="underline underline-offset-2 hover:text-primary">
+            <Link href="/admin/pages" className="underline underline-offset-2 hover:text-primary">
               landing page
             </Link>
             . They also appear under Clients as leads — the answers they gave are only here.

@@ -20,12 +20,14 @@ export default async function FunnelDetailPage({ params }: PageProps) {
 
   return (
     <div>
+      {/* Back to the screen this funnel actually lives on. Both kinds reach
+          this page, so one hard-coded destination is wrong half the time. */}
       <Link
-        href="/admin/funnels"
+        href={funnel.kind === "page" ? "/admin/pages" : "/admin/funnels"}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
       >
         <ArrowLeft className="size-4" aria-hidden />
-        All funnels
+        {funnel.kind === "page" ? "All landing pages" : "All funnels"}
       </Link>
 
       <div className="mb-6 flex items-start justify-between gap-4">
