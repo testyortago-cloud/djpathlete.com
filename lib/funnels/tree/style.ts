@@ -58,3 +58,15 @@ export function styleToCss(box: BoxStyle, type?: TypeStyle): string {
   if (out.length === 0) return ""
   return safeStyle(out.join(";")) ?? ""
 }
+
+/**
+ * Attributes for a compiled node, with `style` present only when there is one.
+ *
+ * Exists because `css ? { style: css } : {}` infers
+ * `{ style: string } | { style?: undefined }`, which is not assignable to
+ * `Record<string, string>` — a real type error that only surfaces in
+ * `next build`, not in a green `tsc` over the test suite.
+ */
+export function styleAttrs(css: string, extra: Record<string, string> = {}): Record<string, string> {
+  return css ? { ...extra, style: css } : { ...extra }
+}

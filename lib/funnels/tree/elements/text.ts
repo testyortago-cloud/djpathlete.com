@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { Type } from "lucide-react"
 import type { ElementDef } from "../element-def"
-import { styleToCss } from "../style"
+import { styleToCss, styleAttrs } from "../style"
 import { richTextNodes } from "./rich-text"
 
 const propsSchema = z.object({ html: z.string().max(8000) })
@@ -20,7 +20,7 @@ export const textDef: ElementDef<TextProps> = {
     return {
       t: "el",
       tag: "div",
-      attrs: css ? { style: css } : {},
+      attrs: styleAttrs(css),
       children: richTextNodes(props.html),
     }
   },

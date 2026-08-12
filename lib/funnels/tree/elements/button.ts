@@ -2,7 +2,7 @@ import { z } from "zod"
 import { MousePointerClick } from "lucide-react"
 import { safeUrl } from "@/lib/funnels/compile/sanitize"
 import type { ElementDef } from "../element-def"
-import { styleToCss } from "../style"
+import { styleToCss, styleAttrs } from "../style"
 
 const propsSchema = z.object({
   label: z.string().min(1).max(120),
@@ -27,9 +27,8 @@ export const buttonDef: ElementDef<ButtonProps> = {
     // thing that already knows that. An href it rejects yields a link with no
     // destination rather than a live one.
     const href = safeUrl(props.href)
-    const attrs: Record<string, string> = {}
+    const attrs = styleAttrs(css)
     if (href) attrs.href = href
-    if (css) attrs.style = css
     return {
       t: "el",
       tag: "a",

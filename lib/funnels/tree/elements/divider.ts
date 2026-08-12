@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { Minus } from "lucide-react"
 import type { ElementDef } from "../element-def"
-import { styleToCss } from "../style"
+import { styleToCss, styleAttrs } from "../style"
 
 const propsSchema = z.object({})
 
@@ -18,6 +18,6 @@ export const dividerDef: ElementDef<DividerProps> = {
   fields: [],
   compile: ({ style }) => {
     const css = styleToCss(style)
-    return { t: "el", tag: "hr", attrs: css ? { style: css } : {}, children: [] }
+    return { t: "el", tag: "hr", attrs: styleAttrs(css), children: [] }
   },
 }

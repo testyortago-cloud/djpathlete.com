@@ -25,7 +25,15 @@ import type {
 
 export const CRAFT_ROOT = "ROOT"
 
-/** The resolver names the canvas components register under. */
+/**
+ * The resolver names the canvas components register under.
+ *
+ * ROOT MUST BE A RESOLVER COMPONENT, not a bare tag name. Craft's deserializer
+ * looks every `resolvedName` up in the resolver and destructures the result; a
+ * name it cannot find yields `undefined` and the editor dies on mount with
+ * "Cannot destructure property 'type'". `"div"` seemed harmless and was not.
+ */
+export const CRAFT_ROOT_COMPONENT = "CraftRoot"
 export const CRAFT_SECTION = "CraftSection"
 export const CRAFT_ROW = "CraftRow"
 export const CRAFT_COLUMN = "CraftColumn"
@@ -138,7 +146,7 @@ export function treeToCraft(tree: PageTree): CraftNodes {
     sectionIds.push(sectionId)
   }
 
-  nodes[CRAFT_ROOT] = node("div", { theme: tree.theme }, null, sectionIds, true)
+  nodes[CRAFT_ROOT] = node(CRAFT_ROOT_COMPONENT, { theme: tree.theme }, null, sectionIds, true)
   return nodes
 }
 

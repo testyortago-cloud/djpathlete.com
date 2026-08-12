@@ -2,7 +2,7 @@ import { z } from "zod"
 import { MoveVertical } from "lucide-react"
 import { safeStyle } from "@/lib/funnels/compile/sanitize"
 import type { ElementDef } from "../element-def"
-import { styleToCss } from "../style"
+import { styleToCss, styleAttrs } from "../style"
 
 const propsSchema = z.object({ height: z.string().max(20) })
 
@@ -21,6 +21,6 @@ export const spacerDef: ElementDef<SpacerProps> = {
     const own = safeStyle(`height:${props.height}`) ?? ""
     const box = styleToCss(style)
     const css = [box, own].filter(Boolean).join(";")
-    return { t: "el", tag: "div", attrs: css ? { style: css } : {}, children: [] }
+    return { t: "el", tag: "div", attrs: styleAttrs(css), children: [] }
   },
 }

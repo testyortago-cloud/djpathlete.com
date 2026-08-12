@@ -2,7 +2,7 @@ import { z } from "zod"
 import { ImageIcon } from "lucide-react"
 import { safeUrl } from "@/lib/funnels/compile/sanitize"
 import type { ElementDef } from "../element-def"
-import { styleToCss } from "../style"
+import { styleToCss, styleAttrs } from "../style"
 
 const propsSchema = z.object({
   src: z.string().max(1000),
@@ -26,9 +26,8 @@ export const imageDef: ElementDef<ImageProps> = {
     // `safeUrl` decides, not a regex written here. An src it rejects becomes no
     // src at all rather than a broken or hostile one.
     const src = safeUrl(props.src, { allowDataImage: true })
-    const attrs: Record<string, string> = { alt: props.alt }
+    const attrs = styleAttrs(css, { alt: props.alt })
     if (src) attrs.src = src
-    if (css) attrs.style = css
     return { t: "el", tag: "img", attrs, children: [] }
   },
 }

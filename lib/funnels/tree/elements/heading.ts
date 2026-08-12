@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { Heading1 } from "lucide-react"
 import type { ElementDef } from "../element-def"
-import { styleToCss } from "../style"
+import { styleToCss, styleAttrs } from "../style"
 import { richTextNodes } from "./rich-text"
 
 const propsSchema = z.object({
@@ -31,7 +31,7 @@ export const headingDef: ElementDef<HeadingProps> = {
     return {
       t: "el",
       tag: `h${props.level}`,
-      attrs: css ? { style: css } : {},
+      attrs: styleAttrs(css),
       children: richTextNodes(props.html),
     }
   },

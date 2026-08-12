@@ -27,7 +27,10 @@ const bodySchema = z.object({
 
 export const PUT = withAudit(
   { action: "funnel.updated", category: "admin_write" },
-  async (request, ctx: { params: Promise<{ stepId: string }> }) => {
+  // Params are left to inference: `withAudit`'s Handler types them as
+  // `Promise<Record<string, string>>`, and a narrower annotation here is not
+  // assignable to it.
+  async (request, ctx) => {
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })

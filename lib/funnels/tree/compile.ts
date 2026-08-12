@@ -12,7 +12,7 @@
 // unactionable, and this is the last place that knows which element it was.
 
 import { ELEMENT_REGISTRY } from "./elements"
-import { styleToCss } from "./style"
+import { styleToCss, styleAttrs } from "./style"
 import { segmentsOf, type Column, type ElementNode, type PageTree, type Row, type Section } from "./types"
 import { isElementKind } from "./kinds"
 import type { FunnelNode } from "@/lib/funnels/compile/types"
@@ -24,7 +24,7 @@ export interface CompiledTree {
 }
 
 function el(tag: string, css: string, children: FunnelNode[]): FunnelNode {
-  return { t: "el", tag, attrs: css ? { style: css } : {}, children }
+  return { t: "el", tag, attrs: styleAttrs(css), children }
 }
 
 function compileElement(node: ElementNode, problems: string[]): FunnelNode | null {
