@@ -22,6 +22,7 @@ import { PreviewCard } from "./PreviewCard"
 import { FunnelGoLiveButton } from "./FunnelGoLiveButton"
 import { CreatePageDialog } from "./CreatePageDialog"
 import { CreateFunnelDialog } from "./CreateFunnelDialog"
+import { ConvertToFunnelDialog } from "./ConvertToFunnelDialog"
 import type { DataTableBadgeTone } from "@/components/ui/data-table"
 import type { Funnel, FunnelStep, FunnelKind } from "@/types/database"
 
@@ -180,6 +181,12 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
                         per-page toggle on a child step would be a lie. */}
                     {step.is_entry ? (
                       <FunnelGoLiveButton funnelId={funnel.id} status={funnel.status} canGoLive={published} />
+                    ) : null}
+                    {/* Only on a landing page, and only on the entry card: a
+                        funnel is already a funnel, and a child step is not the
+                        thing that would be converted. */}
+                    {kind === "page" && step.is_entry ? (
+                      <ConvertToFunnelDialog funnelId={funnel.id} funnelName={funnel.name} />
                     ) : null}
                     <Button asChild variant="outline" size="sm" title="Funnel settings & pages">
                       <Link href={`/admin/funnels/${funnel.id}`}>
