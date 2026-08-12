@@ -1,14 +1,25 @@
 // lib/funnels/tree/element-def.ts — the load-bearing contract of this feature.
 //
-// The canvas shows React components. The published page renders FunnelNodes.
-// Written as two independent implementations they drift, and the moment they
-// drift "what you see is what you get" becomes false in the way nobody notices
-// until a customer is looking at the page.
+// `compile` IS THE SINGLE SOURCE OF TRUTH for what an element is. The canvas
+// does not re-implement it: it renders `compile`'s own output through the real
+// published renderer, so for most elements what you see is what you get by
+// CONSTRUCTION rather than by a test that compares two hand-written
+// approximations of each other.
 //
-// So an element is defined ONCE, and `Render` and `compile` are two halves of
-// that one definition. `__tests__/lib/funnels/tree/fidelity.test.tsx` renders
-// both halves of every element and asserts identical markup. That test is the
-// guarantee; this comment is only the explanation.
+// The design first had `Render` and `compile` as twins kept in step by a
+// fidelity test. That was worse: a test comparing two implementations is a test
+// that starts passing the day someone edits both consistently-but-wrongly, and
+// this repo's dominant defect is tests that cannot fail. Deriving the canvas
+// from the compiler deletes the drift instead of watching for it.
+//
+// ONE EXCEPTION, and it is forced. `EventIsland`, `FaqIsland` and
+// `TestimonialsIsland` are async SERVER components that query the database, so
+// they cannot render inside a client-side editor at all. Those elements supply
+// a `canvasFallback` placeholder, and for them WYSIWYG is explicitly not
+// claimed — the `?preview=1` iframe remains the way to see the real thing.
+// `__tests__/lib/funnels/tree/fidelity.test.tsx` asserts that the set of
+// elements opting out is exactly the islands, so a static element cannot
+// quietly acquire a fallback and start drifting.
 
 import type { ReactElement } from "react"
 import type { z } from "zod"
@@ -45,10 +56,15 @@ export interface ElementDef<P = Record<string, unknown>> {
    * setting that publish would reject.
    */
   fields: FieldSpec[]
-  /** What the CANVAS shows. */
-  Render: (args: ElementRenderArgs<P>) => ReactElement
-  /** What gets PUBLISHED. */
+  /** What gets published, and what the canvas renders when there is no fallback. */
   compile: (args: ElementRenderArgs<P>) => FunnelNode
+  /**
+   * Client-safe stand-in, ONLY for elements whose compiled node cannot render
+   * in the browser (islands backed by async server components). Supplying this
+   * for a static element reintroduces exactly the drift this contract removes,
+   * and the fidelity test refuses it.
+   */
+  canvasFallback?: (args: ElementRenderArgs<P>) => ReactElement
 }
 
 /**
