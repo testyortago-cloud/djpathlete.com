@@ -133,34 +133,34 @@
   "04-clients": {
     "id": "04-clients",
     "title": "Scoping to specific clients",
-    "durationMs": 27672,
+    "durationMs": 27043,
     "leadInMs": 0,
     "file": "04-clients.webm",
     "beats": [
       {
         "text": "Ticking Clients doesn't hand someone your whole roster. It's assignment-based.",
         "startMs": 0,
-        "endMs": 6187,
+        "endMs": 6189,
         "audio": "04-clients/00.wav",
         "audioMs": 5728
       },
       {
         "text": "Click the Clients button on their row, and choose exactly who they work with.",
-        "startMs": 6187,
-        "endMs": 13505,
+        "startMs": 6189,
+        "endMs": 13465,
         "audio": "04-clients/01.wav",
         "audioMs": 5004
       },
       {
         "text": "Search, tick, and save. They'll see those clients and no others — the rest of your roster doesn't exist for them.",
-        "startMs": 13505,
-        "endMs": 27672,
+        "startMs": 13465,
+        "endMs": 27043,
         "audio": "04-clients/02.wav",
         "audioMs": 8658
       }
     ],
-    "mediaMs": 29033,
-    "mediaFrames": 871
+    "mediaMs": 25533,
+    "mediaFrames": 766
   },
   "05-changing": {
     "id": "05-changing",

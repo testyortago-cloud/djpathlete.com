@@ -146,6 +146,33 @@ const EDITOR_ALIASES = [
 ]
 
 /**
+ * Demo identities for the CLIENT roster.
+ *
+ * Chapter 4 opens the client-assignment dialog, which lists every client's real
+ * name and real personal email address — about nine of them are legible at once,
+ * for roughly seven seconds, before the search narrows the list. Searching is
+ * not enough on its own: the dialog renders the full roster first.
+ *
+ * Aliased rather than hidden, for the same reason as the team rows: this is a
+ * how-to that may be handed to a new coach.
+ */
+const CLIENT_ALIASES = [
+  ["Aaron", "Whitlock"], ["Bianca", "Ferreira"], ["Caleb", "Nwosu"], ["Dana", "Kirkpatrick"],
+  ["Elena", "Vasquez"], ["Felix", "Boateng"], ["Georgia", "Lindqvist"], ["Hassan", "Rahimi"],
+  ["Imogen", "Clarke"], ["Jonah", "Petrov"], ["Kiara", "Mensah"], ["Lucas", "Almeida"],
+  ["Maya", "Sorensen"], ["Noah", "Kirkland"], ["Olivia", "Bergstrom"], ["Priya", "Chandra"],
+  ["Quinn", "Halloran"], ["Rafael", "Duarte"], ["Sofia", "Marchetti"], ["Tobias", "Lindgren"],
+  ["Uma", "Krishnan"], ["Victor", "Okonjo"], ["Willa", "Thornton"], ["Xander", "Petit"],
+  ["Yara", "Haddad"], ["Zach", "Devlin"], ["Amara", "Sy"], ["Brody", "Callahan"],
+  ["Cira", "Moreau"], ["Devon", "Ashby"], ["Elsie", "Nakamura"], ["Finn", "Gallagher"],
+  ["Greta", "Holm"], ["Hugo", "Ferrand"], ["Iris", "Delacroix"], ["Jasper", "Vance"],
+  ["Kaia", "Lindahl"], ["Leon", "Vitale"], ["Mira", "Sandoval"], ["Nico", "Barranco"],
+  ["Orla", "Byrne"], ["Pavel", "Novak"], ["Rhea", "Kapoor"], ["Silas", "Monroe"],
+  ["Tessa", "Lindqvist"], ["Ulises", "Ramos"], ["Vera", "Ostrowski"], ["Wes", "Turnbull"],
+  ["Xenia", "Popova"], ["Yusuf", "Demir"], ["Zoe", "Fairbanks"], ["Arlo", "Whitfield"],
+]
+
+/**
  * A pending invite that exists BEFORE filming, so chapter 5's resend/revoke has
  * a target without depending on chapter 3 having run. Each chapter records in
  * its own browser context precisely so it can be re-recorded alone; a chapter
@@ -207,13 +234,15 @@ async function restore(supabase) {
   if (!fs.existsSync(BACKUP)) throw new Error(`no backup at ${BACKUP} — nothing to restore`)
   const saved = JSON.parse(fs.readFileSync(BACKUP, "utf8"))
 
-  for (const row of saved.editors ?? []) {
-    const { error } = await supabase
-      .from("users")
-      .update({ email: row.email, first_name: row.first_name, last_name: row.last_name })
-      .eq("id", row.id)
-    if (error) throw error
-    console.log(`  restored ${row.email}`)
+  for (const group of ["editors", "clients"]) {
+    for (const row of saved[group] ?? []) {
+      const { error } = await supabase
+        .from("users")
+        .update({ email: row.email, first_name: row.first_name, last_name: row.last_name })
+        .eq("id", row.id)
+      if (error) throw error
+    }
+    if (saved[group]?.length) console.log(`  restored ${saved[group].length} ${group}`)
   }
 
   await clearDemoRows(supabase)
@@ -225,8 +254,22 @@ async function restore(supabase) {
 // Seed
 // ---------------------------------------------------------------------------
 
+/**
+ * Real identities this script has aliased, so --restore can undo it.
+ *
+ * Each group is captured ONCE and never re-captured: re-running the seed after
+ * a rename would otherwise back the aliases up over the real values, and
+ * --restore would cheerfully restore the fakes.
+ */
+let backup = {}
+function writeBackup() {
+  fs.mkdirSync(path.dirname(BACKUP), { recursive: true })
+  fs.writeFileSync(BACKUP, JSON.stringify(backup, null, 2))
+}
+
 async function seed(supabase) {
   const owner = await ownerId(supabase)
+  backup = fs.existsSync(BACKUP) ? JSON.parse(fs.readFileSync(BACKUP, "utf8")) : {}
 
   // -- Reset any previous seed ----------------------------------------------
   // Before the rename below, so the sequence reads in the order it happens.
@@ -235,10 +278,7 @@ async function seed(supabase) {
   // them visibly separate.
   await clearDemoRows(supabase)
 
-  // -- Neutralize the real rows ---------------------------------------------
-  // Capture the originals ONCE. Re-running the seed after a rename would
-  // otherwise "back up" the demo aliases over the real values and --restore
-  // would cheerfully restore the fakes.
+  // -- Neutralize the real team rows ----------------------------------------
   const { data: realRows, error: realErr } = await supabase
     .from("users")
     .select("id, email, first_name, last_name")
@@ -247,9 +287,9 @@ async function seed(supabase) {
     .order("created_at", { ascending: true })
   if (realErr) throw realErr
 
-  if (realRows.length && !fs.existsSync(BACKUP)) {
-    fs.mkdirSync(path.dirname(BACKUP), { recursive: true })
-    fs.writeFileSync(BACKUP, JSON.stringify({ editors: realRows }, null, 2))
+  if (realRows.length && !backup.editors) {
+    backup.editors = realRows
+    writeBackup()
     console.log(`backed up ${realRows.length} real team row(s) -> ${BACKUP}`)
   }
 
@@ -276,13 +316,40 @@ async function seed(supabase) {
     console.log(`  + ${row.first_name} ${row.last_name} (${row.staff_role}${row.status === "suspended" ? ", suspended" : ""})`)
   }
 
-  // -- Client assignments ---------------------------------------------------
+  // -- Clients: alias, then assign ------------------------------------------
+  // ONE ordered query feeds both steps. Two unordered queries can return rows
+  // in different orders, and then "the first four are assigned" and "alias
+  // number N is safe to search for" stop being the same claim.
   const { data: clients, error: clientErr } = await supabase
     .from("users")
-    .select("id")
+    .select("id, email, first_name, last_name")
     .eq("role", "client")
-    .limit(20)
+    .order("created_at", { ascending: true })
   if (clientErr) throw clientErr
+  if (clients.length > CLIENT_ALIASES.length) {
+    throw new Error(`${clients.length} clients but only ${CLIENT_ALIASES.length} aliases — add more`)
+  }
+
+  const realClients = clients.filter((c) => !c.email.endsWith(`@${DEMO_DOMAIN}`))
+  if (realClients.length && !backup.clients) {
+    backup.clients = realClients
+    writeBackup()
+    console.log(`backed up ${realClients.length} client identities`)
+  }
+
+  for (const [i, c] of clients.entries()) {
+    const [first, last] = CLIENT_ALIASES[i]
+    const { error } = await supabase
+      .from("users")
+      .update({
+        first_name: first,
+        last_name: last,
+        email: `${first}.${last}`.toLowerCase() + `@${DEMO_DOMAIN}`,
+      })
+      .eq("id", c.id)
+    if (error) throw error
+  }
+  console.log(`  aliased ${clients.length} client identities`)
 
   for (const person of inserted) {
     if (!person.assign_clients) continue

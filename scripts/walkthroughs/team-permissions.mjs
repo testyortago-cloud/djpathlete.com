@@ -18,14 +18,16 @@
 const INVITE_EMAIL = "sam.whitfield@djpathlete.demo"
 
 /**
- * A real client, used to demonstrate the assignment search.
+ * The client searched for in chapter 4. This is a SEEDED ALIAS, not a real
+ * client — seed-team-demo.mjs renames the whole roster, because this dialog
+ * lists every client's name and email and the search only narrows it after the
+ * full list has already rendered.
  *
- * MUST be someone the seed has NOT already assigned to Marcus, or the one row
- * the search leaves visible is already ticked and there is nothing to
- * demonstrate — seed-team-demo.mjs gives him the first four clients, and the
- * first pick here was one of them.
+ * Must be an alias the seed has NOT assigned to Marcus (it gives him the first
+ * four), or the one row left visible is already ticked and there is nothing to
+ * demonstrate. This is alias index 4.
  */
-const CLIENT_QUERY = "Arhan"
+const CLIENT_QUERY = "Elena"
 
 export const CHAPTERS = [
   {
