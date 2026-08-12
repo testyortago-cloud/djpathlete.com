@@ -39,8 +39,14 @@ export const POST = withAudit(
     }
 
     try {
-      const funnel = await createFunnel({ ...parsed.data, created_by: session.user.id })
-      return NextResponse.json({ funnel }, { status: 201 })
+      // Split the entry step id back out rather than nesting it inside
+      // `funnel`: every existing caller reads `body.funnel` as a Funnel row, and
+      // widening that shape would be a silent change to all of them.
+      const { entryStepId, ...funnel } = await createFunnel({
+        ...parsed.data,
+        created_by: session.user.id,
+      })
+      return NextResponse.json({ funnel, entryStepId }, { status: 201 })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error"
       if (message.includes("duplicate") || message.includes("unique")) {

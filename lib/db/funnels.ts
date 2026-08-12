@@ -12,6 +12,8 @@ import type {
   FunnelStepVersion,
   FunnelSubmission,
   FunnelStatus,
+  FunnelKind,
+  FunnelGoal,
 } from "@/types/database"
 
 function getClient() {
@@ -22,10 +24,15 @@ function getClient() {
 // Funnels
 // ---------------------------------------------------------------------------
 
-export async function listFunnels(opts: { status?: FunnelStatus } = {}): Promise<Funnel[]> {
+export async function listFunnels(
+  opts: { status?: FunnelStatus; kind?: FunnelKind } = {},
+): Promise<Funnel[]> {
   const supabase = getClient()
   let query = supabase.from("funnels").select("*").order("updated_at", { ascending: false })
   if (opts.status) query = query.eq("status", opts.status)
+  // Deliberately only applied when asked. Callers that want both types — the
+  // leads inbox, the builder's own lookups — must keep getting both.
+  if (opts.kind) query = query.eq("kind", opts.kind)
   const { data, error } = await query
   if (error) throw new Error(`listFunnels: ${error.message}`)
   return (data ?? []) as Funnel[]
@@ -53,14 +60,24 @@ export interface CreateFunnelInput {
   slug: string
   name: string
   description?: string | null
+  kind?: FunnelKind
+  goal?: FunnelGoal | null
   created_by?: string | null
 }
 
 /**
  * Creates a funnel plus its entry step, because a funnel with no page is not a
  * thing the owner can do anything with.
+ *
+ * RETURNS THE ENTRY STEP'S ID, and that is load-bearing rather than
+ * incidental: the create dialog routes straight into the builder for that step,
+ * and without the id it would have to drop the owner back on the list — the
+ * behaviour the richer create flow exists to replace. The step insert used to
+ * discard its result.
  */
-export async function createFunnel(input: CreateFunnelInput): Promise<Funnel> {
+export async function createFunnel(
+  input: CreateFunnelInput,
+): Promise<Funnel & { entryStepId: string }> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("funnels")
@@ -68,6 +85,8 @@ export async function createFunnel(input: CreateFunnelInput): Promise<Funnel> {
       slug: input.slug,
       name: input.name,
       description: input.description ?? null,
+      kind: input.kind ?? "page",
+      goal: input.goal ?? null,
       created_by: input.created_by ?? null,
     })
     .select("*")
@@ -75,21 +94,27 @@ export async function createFunnel(input: CreateFunnelInput): Promise<Funnel> {
   if (error) throw new Error(`createFunnel: ${error.message}`)
 
   const funnel = data as Funnel
-  const { error: stepError } = await supabase.from("funnel_steps").insert({
-    funnel_id: funnel.id,
-    slug: "index",
-    name: "Landing page",
-    position: 0,
-    is_entry: true,
-  })
+  const { data: stepRow, error: stepError } = await supabase
+    .from("funnel_steps")
+    .insert({
+      funnel_id: funnel.id,
+      slug: "index",
+      // A funnel's first page is "Step 1"; a landing page's only page is the
+      // page itself. Same row, and the owner reads the two screens differently.
+      name: input.kind === "funnel" ? "Step 1" : "Landing page",
+      position: 0,
+      is_entry: true,
+    })
+    .select("id")
+    .single()
   if (stepError) throw new Error(`createFunnel(entry step): ${stepError.message}`)
 
-  return funnel
+  return { ...funnel, entryStepId: (stepRow as { id: string }).id }
 }
 
 export async function updateFunnel(
   id: string,
-  input: Partial<Pick<Funnel, "slug" | "name" | "description" | "status">>,
+  input: Partial<Pick<Funnel, "slug" | "name" | "description" | "status" | "kind" | "goal">>,
 ): Promise<Funnel> {
   const supabase = getClient()
   const { data, error } = await supabase

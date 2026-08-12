@@ -3125,12 +3125,30 @@ export interface ConversationWithClient extends Conversation {
 export type FunnelStatus = "draft" | "published" | "archived"
 
 /** A campaign funnel. Public pages live at /go/<slug>[/<step slug>]. */
+/**
+ * `page` = one standalone landing page. `funnel` = an ordered multi-step
+ * sequence. Stored on the row rather than derived from step count: a derived
+ * type would move a live page between admin screens the moment a second step
+ * appeared, with no warning and no undo.
+ */
+export type FunnelKind = "page" | "funnel"
+
+/**
+ * What a landing page is for. Every value but `leads` names a CTA target the
+ * section registry already resolves, so the choice can seed a real call to
+ * action instead of being a label.
+ */
+export type FunnelGoal = "leads" | "booking" | "program" | "session_pack" | "event"
+
 export interface Funnel {
   id: string
   slug: string
   name: string
   description: string | null
   status: FunnelStatus
+  kind: FunnelKind
+  /** Null on rows created before goals existed — they have no honest value. */
+  goal: FunnelGoal | null
   created_by: string | null
   created_at: string
   updated_at: string
