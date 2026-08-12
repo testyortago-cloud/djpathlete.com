@@ -15,6 +15,7 @@ import { toast } from "sonner"
 import { Plus, Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { slugify } from "@/lib/funnels/slug"
 import { PreviewCard } from "./PreviewCard"
 import { FunnelGoLiveButton } from "./FunnelGoLiveButton"
 import type { DataTableBadgeTone } from "@/components/ui/data-table"
@@ -227,13 +228,4 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
       {label}
     </button>
   )
-}
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80)
 }

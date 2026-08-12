@@ -1,19 +1,61 @@
 import { z } from "zod"
 import { SECTION_BUILDER_MAX_MESSAGE_LENGTH } from "@/lib/funnels/sections/builder-config"
+import type { FunnelGoal } from "@/types/database"
+
+/**
+ * EXPORTED so the create dialog can validate as you type with the same pattern
+ * the server enforces. It must never grow a second copy on the client.
+ */
+export const FUNNEL_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const slugSchema = z
   .string()
   .min(2)
   .max(80)
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug must be lowercase with hyphens only")
+  .regex(FUNNEL_SLUG_PATTERN, "Slug must be lowercase with hyphens only")
 
-/** Slugs that would collide with an existing top-level route or a reserved path. */
-const RESERVED_FUNNEL_SLUGS = new Set(["admin", "api", "client", "go", "login", "register"])
+/**
+ * Slugs that would collide with an existing top-level route or a reserved path.
+ * EXPORTED for the same reason as the pattern above: three bugs in this repo
+ * came from restating a validation rule instead of calling the one that
+ * decides, so a guard and its schema must agree by construction.
+ */
+export const RESERVED_FUNNEL_SLUGS: ReadonlySet<string> = new Set([
+  "admin",
+  "api",
+  "client",
+  "go",
+  "login",
+  "register",
+])
+
+/**
+ * What a landing page is for. These are not free labels: every value except
+ * `leads` names a CTA target lib/funnels/sections/registry.ts already resolves,
+ * so the choice can seed a real call to action. `leads` maps to a form section.
+ *
+ * The dialog renders its options from this list, so it can never offer an
+ * option the schema below would refuse.
+ */
+export const FUNNEL_GOALS = [
+  { value: "leads", label: "Capture leads", hint: "A form that lands in your inbox" },
+  { value: "booking", label: "Book a consult", hint: "Sends visitors to your booking flow" },
+  { value: "program", label: "Sell a program", hint: "Links to a training program" },
+  { value: "session_pack", label: "Sell a session pack", hint: "Links to a pack checkout" },
+  { value: "event", label: "Fill an event", hint: "Links to a camp or clinic signup" },
+] as const satisfies readonly { value: FunnelGoal; label: string; hint: string }[]
+
+const goalSchema = z.enum(["leads", "booking", "program", "session_pack", "event"])
+const kindSchema = z.enum(["page", "funnel"])
 
 export const createFunnelSchema = z.object({
   slug: slugSchema.refine((s) => !RESERVED_FUNNEL_SLUGS.has(s), "That slug is reserved"),
   name: z.string().min(2).max(120),
   description: z.string().max(500).nullable().optional(),
+  // Defaulted, not required: the create route predates this field and callers
+  // that never heard of it must keep working.
+  kind: kindSchema.default("page"),
+  goal: goalSchema.nullable().optional(),
 })
 
 export const updateFunnelSchema = z.object({
@@ -21,6 +63,8 @@ export const updateFunnelSchema = z.object({
   name: z.string().min(2).max(120).optional(),
   description: z.string().max(500).nullable().optional(),
   status: z.enum(["draft", "published", "archived"]).optional(),
+  kind: kindSchema.optional(),
+  goal: goalSchema.nullable().optional(),
 })
 
 export const createStepSchema = z.object({
