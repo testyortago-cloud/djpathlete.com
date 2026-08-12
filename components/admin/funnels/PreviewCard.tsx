@@ -30,6 +30,13 @@ export interface PreviewCardProps {
   publicUrl?: string | null
   badgeLabel: string
   badgeTone: DataTableBadgeTone
+  /**
+   * Human label for the page's goal. Omitted on funnels: a container has no
+   * single goal — its steps do — so showing one would invent a fact.
+   */
+  goalLabel?: string
+  /** The owner's own note about what this page is for. */
+  description?: string | null
   leadCount?: number
   /** Where the lead count points. Omitted = render it as plain text. */
   leadsHref?: string
@@ -74,6 +81,8 @@ export function PreviewCard({
   publicUrl,
   badgeLabel,
   badgeTone,
+  goalLabel,
+  description,
   leadCount,
   leadsHref,
   onDelete,
@@ -150,8 +159,19 @@ export function PreviewCard({
             </Link>
             {subtitle ? <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p> : null}
           </div>
-          <DataTableBadge tone={badgeTone}>{badgeLabel}</DataTableBadge>
+          {/* Both badges, never one instead of the other: the goal says what the
+              page is for, the status says whether anyone can reach it. */}
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <DataTableBadge tone={badgeTone}>{badgeLabel}</DataTableBadge>
+            {goalLabel ? <DataTableBadge tone="info">{goalLabel}</DataTableBadge> : null}
+          </div>
         </div>
+
+        {description ? (
+          <p data-testid="card-description" className="line-clamp-2 text-xs text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
 
         {/* A LINK, not a label. This count was the only lead surface in the
             app and it went nowhere: it told you leads existed and gave you no
