@@ -465,3 +465,33 @@ describe("isTeamRole", () => {
     expect(isTeamRole(undefined)).toBe(false)
   })
 })
+
+describe("landing pages path", () => {
+  it("maps /admin/pages to the funnels permission", () => {
+    // MUTANT KILLED: adding the screen and forgetting the registry entry.
+    // Unmapped paths are DENIED by default, so staff holding `funnels` would be
+    // bounced to /admin/no-access with nothing explaining why. Asserting the
+    // resolved permission — not merely that some entry exists — is what makes
+    // this fail for the right reason.
+    expect(resolvePathRequirement("/admin/pages")).toEqual({
+      kind: "permission",
+      permission: "funnels",
+    })
+  })
+
+  it("maps nested landing page routes too", () => {
+    // MUTANT KILLED: an exact-match entry instead of a prefix rule.
+    expect(resolvePathRequirement("/admin/pages/new")).toEqual({
+      kind: "permission",
+      permission: "funnels",
+    })
+  })
+
+  it("still maps /admin/funnels to the same permission", () => {
+    // MUTANT KILLED: moving the funnels rule rather than adding beside it.
+    expect(resolvePathRequirement("/admin/funnels")).toEqual({
+      kind: "permission",
+      permission: "funnels",
+    })
+  })
+})

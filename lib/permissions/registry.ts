@@ -432,6 +432,11 @@ export const PATH_PERMISSIONS: readonly PathRule[] = [
 
   // Longest-prefix resolution means these must come after /admin/marketing
   // above only if they were nested under it — they are not, so order is free.
+  // Landing pages and funnels are separate SCREENS but one permission: they are
+  // the same capability wearing two vocabularies. A path missing from here is
+  // DENIED by default, so adding a screen without adding its prefix bounces
+  // staff who legitimately hold `funnels` to /admin/no-access.
+  { prefix: "/admin/pages", permission: "funnels" },
   { prefix: "/admin/funnels", permission: "funnels" },
   { prefix: "/api/admin/funnels", permission: "funnels" },
 
