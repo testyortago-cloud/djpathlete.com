@@ -30,11 +30,14 @@ CREATE TABLE IF NOT EXISTS public.repo_migrations (
   applied_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- One dollar-quoted string, not four. Adjacent dollar-quoted literals are NOT
+-- concatenated in Postgres the way adjacent single-quoted ones are; $$a$$ $$b$$
+-- is a syntax error.
 COMMENT ON TABLE public.repo_migrations IS
-  $$Filenames from supabase/migrations/ already applied to this database.$$
-  $$ Written by .github/workflows/apply-migrations.yml, in the SAME$$
-  $$ transaction as the migration itself. Distinct from$$
-  $$ supabase_migrations.schema_migrations, which the MCP tooling owns.$$;
+  $$Filenames from supabase/migrations/ already applied to this database.
+Written by .github/workflows/apply-migrations.yml, in the SAME transaction as
+the migration itself. Distinct from supabase_migrations.schema_migrations,
+which the Supabase MCP tooling owns and which cannot be matched to filenames.$$;
 
 INSERT INTO public.repo_migrations (filename) VALUES
   ('00001_create_users.sql'),
