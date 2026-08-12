@@ -51,7 +51,7 @@
 //    its `unresolved: []` means "not checked", never "all clear". The previous
 //    list is KEPT. `resolve.ts` says the same thing about itself in capitals.
 
-import { useCallback, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -119,6 +119,16 @@ export interface FunnelBuilderProps {
   initialCompile: CompileSummary | null
   initialResolutionError: string | null
   initialMessages: BuilderMessage[]
+  /**
+   * First instruction for a page created through the create dialog, composed
+   * server-side from the stored name, goal and description.
+   *
+   * IT IS NEVER TAKEN FROM THE URL. A prompt in the query string survives a
+   * refresh, a share and a back button, and would replay over work the owner
+   * has since done. Rebuilding it from stored columns means the only thing the
+   * URL carries is a nudge (`?start=1`) that the guard below is free to ignore.
+   */
+  initialPrompt?: string | null
   /**
    * `SECTION_BUILDER_MAX_MESSAGE_LENGTH`, threaded through the server page.
    *
@@ -397,6 +407,33 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     },
     [applyTurn, busy, handleErrorResponse, props.stepId],
   )
+
+  // --------------------------------------------------------------------------
+  // The creation hand-off
+  // --------------------------------------------------------------------------
+
+  /**
+   * Fire the creation prompt once, and only into a page that has never been
+   * built or talked to.
+   *
+   * THE REF — NOT THE MESSAGE LIST — IS WHAT MAKES IT ONCE. `send` appends the
+   * owner's message optimistically, so keying the guard off `messages` would
+   * re-enter before that state settled and buy a second paid model turn.
+   *
+   * Guarding on TURNS as well as the document is the other half, and it is not
+   * belt-and-braces: a page whose first build FAILED has a null document beside
+   * a real transcript. Checking the document alone would replay the creation
+   * prompt over whatever the owner has typed since.
+   */
+  const initialPromptFired = useRef(false)
+  useEffect(() => {
+    if (initialPromptFired.current) return
+    if (!props.initialPrompt) return
+    if (props.initialDoc !== null) return
+    if (props.initialMessages.length > 0) return
+    initialPromptFired.current = true
+    void send(props.initialPrompt)
+  }, [props.initialPrompt, props.initialDoc, props.initialMessages, send])
 
   // --------------------------------------------------------------------------
   // The gate

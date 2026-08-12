@@ -28,6 +28,8 @@ import { reassemble } from "@/lib/funnels/sections/doc"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import { loadCatalogues, resolveDoc, type DanglingAnchor, type UnresolvedCta } from "@/lib/funnels/sections/resolve"
 import { SECTION_BUILDER_MAX_MESSAGE_LENGTH } from "@/lib/funnels/sections/builder-config"
+import { FUNNEL_GOALS } from "@/lib/validators/funnel"
+import type { Funnel } from "@/types/database"
 import { FunnelBuilder } from "@/components/admin/funnels/FunnelBuilder"
 import { renderDocForPublish } from "@/components/admin/funnels/builder/publish-actions"
 import type { BuilderMessage, CompileSummary } from "@/components/admin/funnels/builder/types"
@@ -36,6 +38,30 @@ export const metadata = { title: "Edit page" }
 
 interface PageProps {
   params: Promise<{ id: string; stepId: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}
+
+/**
+ * The first instruction for a page that has just been created.
+ *
+ * Rebuilt from stored columns every time rather than carried in the URL: a
+ * prompt in the query string survives a refresh, a share and a back button, and
+ * would replay over work the owner has since done. `?start=1` therefore carries
+ * no content at all — it is a nudge, and the guards below (and inside the
+ * builder) are what actually decide.
+ *
+ * Returns null when the page has no goal, which is every row created before
+ * goals existed. Those pages open the way they always did.
+ */
+function creationPrompt(funnel: Funnel): string | null {
+  const goal = FUNNEL_GOALS.find((option) => option.value === funnel.goal)
+  if (!goal) return null
+  const lines = [
+    `Build a landing page called "${funnel.name}".`,
+    `Its job: ${goal.label.toLowerCase()} — ${goal.hint.toLowerCase()}.`,
+  ]
+  if (funnel.description) lines.push(`What it is for: ${funnel.description}`)
+  return lines.join("\n")
 }
 
 interface InitialState {
@@ -116,8 +142,9 @@ async function resolveAndCompile(doc: SectionDoc, funnelBasePath: string): Promi
   return { doc: resolvedDoc, unresolved, danglingAnchors, compile, resolutionError }
 }
 
-export default async function FunnelEditPage({ params }: PageProps) {
+export default async function FunnelEditPage({ params, searchParams }: PageProps) {
   const { id, stepId } = await params
+  const { start } = await searchParams
 
   const [funnel, step] = await Promise.all([getFunnelById(id), getStep(stepId)])
   if (!funnel || !step || step.funnel_id !== funnel.id) notFound()
@@ -174,6 +201,12 @@ export default async function FunnelEditPage({ params }: PageProps) {
           },
     )
 
+  // `start=1` is a nudge from the create dialog, not the condition. The same
+  // guards run again inside the builder, so a hand-edited URL cannot make an
+  // established page re-run its creation prompt.
+  const initialPrompt =
+    start === "1" && draft.doc === null && turns.length === 0 ? creationPrompt(funnel) : null
+
   return (
     <FunnelBuilder
       funnelId={funnel.id}
@@ -191,6 +224,7 @@ export default async function FunnelEditPage({ params }: PageProps) {
       initialCompile={initial.compile}
       initialResolutionError={initial.resolutionError}
       initialMessages={initialMessages}
+      initialPrompt={initialPrompt}
       maxMessageLength={SECTION_BUILDER_MAX_MESSAGE_LENGTH}
       renderForPublish={renderDocForPublish.bind(null, step.id)}
     />
