@@ -15,18 +15,20 @@
  *
  * Free and offline: System.Speech ships with Windows, no API key, no network.
  *
- * Run: node scripts/synth-walkthrough-narration.mjs [--voice "Microsoft Zira Desktop"] [--rate 0]
+ * Run: node scripts/synth-walkthrough-narration.mjs [--show <id>] [--voice "Microsoft Zira Desktop"] [--rate 0]
  */
 import { execFile, execFileSync } from "node:child_process"
 import { promisify } from "node:util"
 import { createRequire } from "node:module"
 import fs from "node:fs"
 import path from "node:path"
-import { CHAPTERS } from "./walkthrough-script.mjs"
+import { resolveShow, showArg } from "./walkthroughs/registry.mjs"
 
 const execFileP = promisify(execFile)
 
 const argv = process.argv.slice(2)
+const show = await resolveShow(showArg(argv))
+const CHAPTERS = show.CHAPTERS
 const argOf = (flag, fallback) => {
   const i = argv.indexOf(flag)
   return i >= 0 && argv[i + 1] ? argv[i + 1] : fallback
@@ -34,8 +36,11 @@ const argOf = (flag, fallback) => {
 const VOICE = argOf("--voice", "Microsoft David Desktop")
 const RATE = Number(argOf("--rate", "0")) // SAPI scale, -10..10
 
-const OUT = path.join(process.cwd(), ".playwright-out", "walkthrough", "audio")
-const MANIFEST = path.join(process.cwd(), "scripts", "walkthrough-narration.json")
+const OUT = path.join(process.cwd(), ".playwright-out", show.dir, "audio")
+// Per show: the manifest is keyed "<chapterId>#<index>" and every show numbers
+// its chapters from 01, so one shared file would hand a show another's hold
+// times without anything looking wrong.
+const MANIFEST = path.join(process.cwd(), "scripts", "narration", `${show.id}.json`)
 
 function resolveFfprobe() {
   try {

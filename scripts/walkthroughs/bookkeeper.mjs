@@ -1,53 +1,14 @@
 /**
- * The walkthrough narration — single source of truth for BOTH the recorder
- * (how long to dwell on each screen) and the Remotion edit (what caption to
- * draw, and when).
+ * The AI Bookkeeper walkthrough — 13 chapters, ~10m30s narrated.
  *
- * Timing is derived from the words, not guessed: the recorder holds each beat
- * for `ms(text)`, so the footage is exactly as long as the narration needs.
- * That is why the first cut came out at 2.7 minutes — the dwell times were
- * invented instead of derived.
+ * Content only. Timing lives in ./timing.mjs and the output namespace in
+ * ./registry.mjs, so this file is just the script.
  *
  * A beat is either:
  *   { text }            — hold on the current screen while the caption reads
- *   { text, do }        — run `do(page)` first, then hold for the caption
- *   { text, with }      — hold while `with(page)` runs concurrently (scrolling)
+ *   { text, click }     — run the action first, then hold for the caption
+ *   { text, scroll }    — hold while the page scrolls
  */
-
-/** ~2.6 words/sec reading pace, with a floor so short lines still land. */
-export function captionMs(text) {
-  const words = text.trim().split(/\s+/).length
-  return Math.max(2600, Math.round((words / 2.6) * 1000) + 700)
-}
-
-/**
- * Measured narration lengths, written by synth-walkthrough-narration.mjs.
- * Absent until that script has been run once — the reading-pace estimate is the
- * fallback so the recorder still works with captions-only.
- */
-let NARRATION = {}
-try {
-  const { createRequire } = await import("node:module")
-  NARRATION = createRequire(import.meta.url)("./walkthrough-narration.json")
-} catch {
-  /* no narration synthesized yet */
-}
-
-/** Silence after a line so the voice does not run straight into the next one. */
-export const BREATH_MS = 450
-
-/**
- * How long to hold a beat: the real length of its narration when we have it,
- * otherwise the reading-pace estimate. Keyed by position so re-wording a line
- * re-synthesizes rather than silently keeping stale audio.
- */
-export function beatMs(chapterId, index, text) {
-  const measured = NARRATION[`${chapterId}#${index}`]
-  return measured ? measured + BREATH_MS : captionMs(text)
-}
-
-export const hasNarration = () => Object.keys(NARRATION).length > 0
-
 export const CHAPTERS = [
   {
     id: "01-problem",
@@ -212,8 +173,3 @@ export const CHAPTERS = [
     ],
   },
 ]
-
-export const TOTAL_MS = CHAPTERS.reduce(
-  (a, c) => a + c.beats.reduce((b, x, i) => b + beatMs(c.id, i, x.text), 0),
-  0,
-)

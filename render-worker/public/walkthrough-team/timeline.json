@@ -1,0 +1,211 @@
+{
+  "01-where": {
+    "id": "01-where",
+    "title": "Where it lives",
+    "durationMs": 30630,
+    "leadInMs": 0,
+    "file": "01-where.webm",
+    "beats": [
+      {
+        "text": "This is the Team page. Everyone who works with you is in one list — the people who've accepted, the people who haven't yet, and your video editors.",
+        "startMs": 0,
+        "endMs": 10668,
+        "audio": "01-where/00.wav",
+        "audioMs": 10208
+      },
+      {
+        "text": "It lives under Team in the admin sidebar, and only you can open it. No teammate can reach this page, whatever access you give them. That's the one door that never opens.",
+        "startMs": 10668,
+        "endMs": 23275,
+        "audio": "01-where/01.wav",
+        "audioMs": 12153
+      },
+      {
+        "text": "Each row tells you three things: who they are, what they can reach, and whether they're active.",
+        "startMs": 23275,
+        "endMs": 30630,
+        "audio": "01-where/02.wav",
+        "audioMs": 6374
+      }
+    ],
+    "mediaMs": 31266,
+    "mediaFrames": 938
+  },
+  "02-inviting": {
+    "id": "02-inviting",
+    "title": "Inviting someone",
+    "durationMs": 31973,
+    "leadInMs": 0,
+    "file": "02-inviting.webm",
+    "beats": [
+      {
+        "text": "To add someone, click Invite member.",
+        "startMs": 0,
+        "endMs": 5680,
+        "audio": "02-inviting/00.wav",
+        "audioMs": 3244
+      },
+      {
+        "text": "Type their email. They'll get a link to set their own password — you never create one for them — and the link expires after seven days.",
+        "startMs": 5680,
+        "endMs": 19299,
+        "audio": "02-inviting/01.wav",
+        "audioMs": 9488
+      },
+      {
+        "text": "Then pick a role. These are starting templates, not fixed job titles: Coach, Marketing Manager, Bookkeeper, Front Desk, or Video Editor.",
+        "startMs": 19299,
+        "endMs": 31973,
+        "audio": "02-inviting/02.wav",
+        "audioMs": 10698
+      }
+    ],
+    "mediaMs": 33633,
+    "mediaFrames": 1009
+  },
+  "03-permissions": {
+    "id": "03-permissions",
+    "title": "The permission picker",
+    "durationMs": 79515,
+    "leadInMs": 0,
+    "file": "03-permissions.webm",
+    "beats": [
+      {
+        "text": "Whichever role you pick just fills in the tick-boxes below. Everything from here is editable.",
+        "startMs": 0,
+        "endMs": 6859,
+        "audio": "03-permissions/00.wav",
+        "audioMs": 6393
+      },
+      {
+        "text": "Permissions come in four groups — Coaching, Marketing, Money and Tools. Most are a simple yes or no.",
+        "startMs": 6859,
+        "endMs": 16461,
+        "audio": "03-permissions/01.wav",
+        "audioMs": 8323
+      },
+      {
+        "text": "The money ones are different. Payments, Accounting, Shop and Ads each have three settings: none, view, or manage.",
+        "startMs": 16461,
+        "endMs": 26583,
+        "audio": "03-permissions/02.wav",
+        "audioMs": 8728
+      },
+      {
+        "text": "The Bookkeeper role already uses that. Accounting is set to manage, Payments only to view — they keep the books without being able to issue refunds.",
+        "startMs": 26583,
+        "endMs": 37253,
+        "audio": "03-permissions/03.wav",
+        "audioMs": 10208
+      },
+      {
+        "text": "Add view on Ads and they can see what campaigns cost without being able to change a budget.",
+        "startMs": 37253,
+        "endMs": 44670,
+        "audio": "03-permissions/04.wav",
+        "audioMs": 5563
+      },
+      {
+        "text": "Watch this note as you tick. With nothing ticked they only get the editor portal — video uploads and your feedback, no admin panel. Tick anything at all and they get the panel, limited to what's ticked.",
+        "startMs": 44670,
+        "endMs": 59724,
+        "audio": "03-permissions/05.wav",
+        "audioMs": 13792
+      },
+      {
+        "text": "And some things can never be granted. Settings, this Team page, audit logs, automations, platform connections and your dashboard stay yours alone.",
+        "startMs": 59724,
+        "endMs": 72262,
+        "audio": "03-permissions/06.wav",
+        "audioMs": 11268
+      },
+      {
+        "text": "Send the invite, and they appear in the list as pending until they accept.",
+        "startMs": 72262,
+        "endMs": 79515,
+        "audio": "03-permissions/07.wav",
+        "audioMs": 4969
+      }
+    ],
+    "mediaMs": 81200,
+    "mediaFrames": 2436
+  },
+  "04-clients": {
+    "id": "04-clients",
+    "title": "Scoping to specific clients",
+    "durationMs": 27672,
+    "leadInMs": 0,
+    "file": "04-clients.webm",
+    "beats": [
+      {
+        "text": "Ticking Clients doesn't hand someone your whole roster. It's assignment-based.",
+        "startMs": 0,
+        "endMs": 6187,
+        "audio": "04-clients/00.wav",
+        "audioMs": 5728
+      },
+      {
+        "text": "Click the Clients button on their row, and choose exactly who they work with.",
+        "startMs": 6187,
+        "endMs": 13505,
+        "audio": "04-clients/01.wav",
+        "audioMs": 5004
+      },
+      {
+        "text": "Search, tick, and save. They'll see those clients and no others — the rest of your roster doesn't exist for them.",
+        "startMs": 13505,
+        "endMs": 27672,
+        "audio": "04-clients/02.wav",
+        "audioMs": 8658
+      }
+    ],
+    "mediaMs": 29033,
+    "mediaFrames": 871
+  },
+  "05-changing": {
+    "id": "05-changing",
+    "title": "Changing and removing access",
+    "durationMs": 38588,
+    "leadInMs": 0,
+    "file": "05-changing.webm",
+    "beats": [
+      {
+        "text": "Access isn't fixed at invite time. Edit access reopens the same tick-boxes for anyone already on the team.",
+        "startMs": 0,
+        "endMs": 10023,
+        "audio": "05-changing/00.wav",
+        "audioMs": 7793
+      },
+      {
+        "text": "Clear every tick and they drop to the editor portal. Tick one and they're back in the panel. There's no second switch to forget.",
+        "startMs": 10023,
+        "endMs": 19163,
+        "audio": "05-changing/01.wav",
+        "audioMs": 8663
+      },
+      {
+        "text": "Suspend locks someone out immediately without deleting anything — the right move when someone's away, or on their way out.",
+        "startMs": 19163,
+        "endMs": 27905,
+        "audio": "05-changing/02.wav",
+        "audioMs": 7638
+      },
+      {
+        "text": "An invite nobody's accepted yet can be re-sent, or revoked.",
+        "startMs": 27905,
+        "endMs": 33154,
+        "audio": "05-changing/03.wav",
+        "audioMs": 4789
+      },
+      {
+        "text": "And whatever you change, it takes effect the next time they load a page.",
+        "startMs": 33154,
+        "endMs": 38588,
+        "audio": "05-changing/04.wav",
+        "audioMs": 4979
+      }
+    ],
+    "mediaMs": 39400,
+    "mediaFrames": 1182
+  }
+}

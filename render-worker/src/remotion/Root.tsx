@@ -17,10 +17,11 @@ import {
   FPS as CLIENT_FPS,
   TOTAL_FRAMES as CLIENT_FRAMES,
 } from "./client-promo/config.js"
-import { Walkthrough } from "./walkthrough/Walkthrough.js"
+import { TeamPermissionsWalkthrough, Walkthrough } from "./walkthrough/Walkthrough.js"
 import {
+  BOOKKEEPER,
   FPS as WALKTHROUGH_FPS,
-  TOTAL_FRAMES as WALKTHROUGH_FRAMES,
+  TEAM_PERMISSIONS,
 } from "./walkthrough/config.js"
 
 const FPS = 30
@@ -151,7 +152,17 @@ export function RemotionRoot() {
       <Composition
         id="BookkeeperWalkthrough"
         component={Walkthrough}
-        durationInFrames={WALKTHROUGH_FRAMES}
+        durationInFrames={BOOKKEEPER.totalFrames}
+        fps={WALKTHROUGH_FPS}
+        width={1920}
+        height={1080}
+      />
+      {/* Team permissions how-to. Captured natively at 1920x1080, so its take
+          is drawn 1:1 rather than scaled up like the bookkeeper's. */}
+      <Composition
+        id="TeamPermissionsWalkthrough"
+        component={TeamPermissionsWalkthrough}
+        durationInFrames={TEAM_PERMISSIONS.totalFrames}
         fps={WALKTHROUGH_FPS}
         width={1920}
         height={1080}

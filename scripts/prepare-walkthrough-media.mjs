@@ -5,13 +5,14 @@
  * Playwright only ever writes webm; Remotion is happier with h264. Uses the
  * ffmpeg-static binary already vendored for render-worker's face detection.
  *
- * Run: node scripts/prepare-walkthrough-media.mjs
+ * Run: node scripts/prepare-walkthrough-media.mjs [--show <id>]
  */
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 import { createRequire } from "node:module"
 import fs from "node:fs"
 import path from "node:path"
+import { resolveShow, showArg } from "./walkthroughs/registry.mjs"
 
 const execFileP = promisify(execFile)
 
@@ -49,8 +50,9 @@ function wavDurationMs(file) {
   return Math.round((dataBytes / byteRate) * 1000)
 }
 
-const SRC = path.join(process.cwd(), ".playwright-out", "walkthrough")
-const DEST = path.join(process.cwd(), "render-worker", "public", "walkthrough")
+const show = await resolveShow(showArg(process.argv.slice(2)))
+const SRC = path.join(process.cwd(), ".playwright-out", show.dir)
+const DEST = path.join(process.cwd(), "render-worker", "public", show.dir)
 
 async function main() {
   if (!ffmpegPath) throw new Error("ffmpeg-static binary not found")
