@@ -42,7 +42,11 @@ describe("shouldAttemptRenewal", () => {
   })
 
   it("refuses an expired pack — expiry is a reason to stop, not to rebuy", () => {
-    expect(shouldAttemptRenewal(pack({ status: "expired" }), true)).toEqual({
+    // credits_used: 0 is load-bearing. With the base fixture's 10/10 the pack is
+    // also depleted, so this assertion would pass under either guard order and
+    // prove nothing. A pack that is expired WITH credits left is the only case
+    // where "expired" and "not_depleted" disagree.
+    expect(shouldAttemptRenewal(pack({ status: "expired", credits_used: 0 }), true)).toEqual({
       attempt: false, reason: "expired",
     })
   })
