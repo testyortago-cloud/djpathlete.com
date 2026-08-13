@@ -51,3 +51,7 @@ export const CANCEL_WINDOW_HOURS_KEY = "cancel_window_hours"
 export const noShowFeeCents = () => getSetting<number>(NO_SHOW_FEE_CENTS_KEY, 0)
 export const lateCancelFeeCents = () => getSetting<number>(LATE_CANCEL_FEE_CENTS_KEY, 0)
 export const cancelWindowHours = () => getSetting<number>(CANCEL_WINDOW_HOURS_KEY, 12)
+
+// ── Pack auto-renew (DB-backed, default OFF — it moves real money) ────────────
+export const PACK_AUTO_RENEW_KEY = "pack_auto_renew_enabled"
+export const packAutoRenewEnabled = () => getSetting<boolean>(PACK_AUTO_RENEW_KEY, false)
