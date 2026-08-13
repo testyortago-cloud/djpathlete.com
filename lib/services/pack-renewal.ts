@@ -1,7 +1,9 @@
 // Automatic pack renewal. REAL MONEY — every path is guarded so a charge only
 // fires when pack_auto_renew_enabled AND the pack is armed AND depleted AND
 // priced AND the payer has a saved card. The unique (source_package_id) index
-// plus a pack-stable Stripe idempotency key make double-charging impossible.
+// plus a pack-stable Stripe idempotency key make double-charging impossible
+// for the CHARGE call itself — see the "error" branch below for the related
+// hazard of a second, UNPROTECTED payment channel (a fresh Checkout Session).
 //
 // Sibling of lib/services/session-fees.ts — read that first; the shape is
 // deliberately the same so a reader of one can read the other.
@@ -9,7 +11,7 @@ import type { ClientPackage } from "@/types/database"
 import { packAutoRenewEnabled } from "@/lib/packs/flags"
 import { shouldAttemptRenewal, buildRenewalPack } from "@/lib/services/pack-renewal-rules"
 import { createRenewalAttemptIfAbsent, updateRenewalAttempt } from "@/lib/db/pack-renewal-attempts"
-import { createClientPackage } from "@/lib/db/client-packages"
+import { createClientPackage, updateClientPackage } from "@/lib/db/client-packages"
 import { resolveBillingUserId } from "@/lib/services/billing-payer"
 import { getDefaultPaymentMethod } from "@/lib/db/payment-methods"
 import { getUserById, getUsers } from "@/lib/db/users"
@@ -24,20 +26,34 @@ export type RenewalOutcome = { renewed: boolean; reason?: string; newPackageId?:
 
 /** Create the replacement pack as pending and put a payment link in the payer's
  *  inbox. This is the shared fallback for "no card" and "declined" — both land
- *  the client exactly where today's manual flow does. */
+ *  the client exactly where today's manual flow does.
+ *
+ *  ONLY safe to call for a KNOWN-FINAL outcome (no card / a genuine decline).
+ *  Never call this for an "error" (unknown charge outcome) — see the caller. */
 async function fallbackToPaymentLink(
   source: ClientPackage,
   now: Date,
   payer: { email: string; first_name: string | null } | null,
+  trainee: { email: string } | null,
   clientName: string,
 ): Promise<string | undefined> {
   const pending = await createClientPackage(buildRenewalPack(source, { paid: false, now }))
   try {
     const link = await resolvePackPaymentLink(pending)
-    if (link.ok && payer?.email) {
+    // Addressee precedence matches createPackCheckoutSession's own resolution
+    // (explicit bill_to_email override -> household payer -> the client
+    // themself) — see lib/stripe.ts's checkoutOptsFor callers — because
+    // resolvePackPaymentLink pins Stripe's customer_email to source.bill_to_email
+    // (carried forward unchanged by buildRenewalPack). Emailing the link to
+    // anyone else means the inbox that gets it doesn't match the address
+    // Checkout is locked to: the wrong-inbox bug this project already shipped a
+    // fix for once. The trainee is always CC'd (dropped automatically when it
+    // would duplicate `to`) so they can see what was sent on their behalf.
+    const to = source.bill_to_email ?? payer?.email ?? trainee?.email ?? null
+    if (link.ok && to) {
       await sendPackPaymentLinkEmail({
-        to: payer.email,
-        ccClientEmail: null,
+        to,
+        ccClientEmail: trainee?.email ?? null,
         clientName,
         packLabel: `${pending.credits_total}× ${pending.session_type}`,
         amountCents: pending.price_cents,
@@ -90,6 +106,14 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
   })
   if (!attempt) return { renewed: false, reason: "already_attempted" }
 
+  // Stamp the source pack so `renewal_attempted_at` reflects reality as soon as
+  // a real attempt is reserved — read paths (reminders, admin views) can see a
+  // renewal was tried even before it resolves. Best-effort: a failure here must
+  // never block the charge below.
+  await updateClientPackage(pkg.id, { renewal_attempted_at: now.toISOString() }).catch((err) => {
+    console.error("[pack-renewal] failed to stamp renewal_attempted_at:", err)
+  })
+
   const [payer, trainee, card] = await Promise.all([
     getUserById(billingUserId).catch(() => null),
     getUserById(pkg.client_user_id).catch(() => null),
@@ -100,7 +124,7 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
 
   if (!payer?.stripe_customer_id || !card) {
     await updateRenewalAttempt(attempt.id, { status: "skipped", failure_reason: "no_card" })
-    const newPackageId = await fallbackToPaymentLink(pkg, now, payer, clientName)
+    const newPackageId = await fallbackToPaymentLink(pkg, now, payer, trainee, clientName)
     if (newPackageId) await updateRenewalAttempt(attempt.id, { new_package_id: newPackageId })
     await notifyAdmins(
       "Pack renewal needs payment",
@@ -120,8 +144,6 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
 
   if (!result.ok) {
     await updateRenewalAttempt(attempt.id, { status: "failed", failure_reason: result.message })
-    const newPackageId = await fallbackToPaymentLink(pkg, now, payer, clientName)
-    if (newPackageId) await updateRenewalAttempt(attempt.id, { new_package_id: newPackageId })
     void recordAudit({
       action: "pack.auto_renew_failed",
       category: "commerce",
@@ -129,6 +151,33 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
       target: { type: "client_package", id: pkg.id, label: pkg.session_type },
       metadata: { reason: result.reason, amount_cents: pkg.price_cents, client_user_id: pkg.client_user_id },
     })
+
+    if (result.reason === "error") {
+      // UNKNOWN OUTCOME — deliberately does LESS than the "declined" branch
+      // below. chargeSavedCard returns "error" for a network timeout or a
+      // Stripe 5xx, which means we do NOT know whether the PaymentIntent
+      // actually went through — the card may already have been charged.
+      // Minting a fallback pack + Checkout Session here would be unsafe: that
+      // session is a SECOND payment channel that lives OUTSIDE the
+      // pack_renew_${pkg.id} idempotency key (Stripe idempotency only covers
+      // the paymentIntents.create call we already made). If the first charge
+      // silently succeeded, paying that link charges the card again — money
+      // taken twice, still no resolution, and this attempt is now permanently
+      // `failed` (the unique source_package_id index means it can never be
+      // auto-retried). This mirrors the "pending is not safe to retry" hazard
+      // retryFeeCharge documents in session-fees.ts:154-161; here the
+      // equivalent rule is "create nothing new until a human reconciles
+      // against Stripe."
+      await notifyAdmins(
+        "Pack renewal charge status unknown — reconcile before acting",
+        `${clientName}'s renewal charge hit an error (${result.message}) — Stripe's outcome is unknown, the card may already have been charged. Check Stripe (idempotency key pack_renew_${pkg.id}) before charging again or sending a payment link.`,
+      )
+      return { renewed: false, reason: result.reason }
+    }
+
+    // "declined" is a known, final outcome — safe to fall back to today's manual flow.
+    const newPackageId = await fallbackToPaymentLink(pkg, now, payer, trainee, clientName)
+    if (newPackageId) await updateRenewalAttempt(attempt.id, { new_package_id: newPackageId })
     await notifyAdmins(
       "Pack renewal charge failed",
       `${clientName}'s card was declined — a payment link was sent instead.`,
@@ -136,12 +185,55 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
     return { renewed: false, reason: result.reason, newPackageId }
   }
 
-  const created = await createClientPackage(buildRenewalPack(pkg, { paid: true, now }))
-  await updateRenewalAttempt(attempt.id, {
-    status: "succeeded",
-    stripe_payment_intent_id: result.paymentIntentId,
-    new_package_id: created.id,
-  })
+  // The charge just succeeded — everything from here on must not lose that
+  // fact. createClientPackage + updateRenewalAttempt are wrapped together: if
+  // either throws, the client has been charged with no pack and no record of
+  // why, and (since source_package_id is unique) this attempt can never be
+  // auto-retried. That combination — real money, silent hole, no retry path —
+  // is the one outcome worse than a normal decline, so it gets its own recovery
+  // branch instead of propagating.
+  let created: ClientPackage
+  try {
+    created = await createClientPackage(buildRenewalPack(pkg, { paid: true, now }))
+    await updateRenewalAttempt(attempt.id, {
+      status: "succeeded",
+      stripe_payment_intent_id: result.paymentIntentId,
+      new_package_id: created.id,
+    })
+  } catch (err) {
+    console.error("[pack-renewal] post-charge write failed after a successful charge:", err)
+    // No "half-done" status exists in PackRenewalStatus. Landing on `failed` is
+    // deliberate: it stops the reminder/renewal scanners from touching this pack
+    // again, while the PaymentIntent id + failure_reason on the row (and in the
+    // admin alert) make clear this is NOT an ordinary decline — a human must
+    // reconcile the successful charge, not tell the client their card failed.
+    try {
+      await updateRenewalAttempt(attempt.id, {
+        status: "failed",
+        stripe_payment_intent_id: result.paymentIntentId,
+        failure_reason: `post_charge_write_failed: ${err instanceof Error ? err.message : String(err)}`,
+      })
+    } catch (updateErr) {
+      console.error("[pack-renewal] could not even flag the attempt — manual DB check required:", updateErr)
+    }
+    void recordAudit({
+      action: "pack.auto_renew_failed",
+      category: "commerce",
+      outcome: "failure",
+      target: { type: "client_package", id: pkg.id, label: pkg.session_type },
+      metadata: {
+        reason: "post_charge_write_failed",
+        stripe_payment_intent_id: result.paymentIntentId,
+        amount_cents: pkg.price_cents,
+        client_user_id: pkg.client_user_id,
+      },
+    })
+    await notifyAdmins(
+      "Pack renewal charged but did not complete — needs manual fix",
+      `${clientName}'s card was charged (PaymentIntent ${result.paymentIntentId}) but creating the renewed pack failed. Check Stripe payment ${result.paymentIntentId} and create/credit the pack manually.`,
+    )
+    return { renewed: false, reason: "post_charge_write_failed" }
+  }
 
   try {
     await createPayment({
