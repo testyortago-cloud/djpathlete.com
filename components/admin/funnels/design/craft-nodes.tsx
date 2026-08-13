@@ -8,6 +8,8 @@
 import { useEditor, useNode, type UserComponent } from "@craftjs/core"
 import type { ReactNode } from "react"
 import { ELEMENT_REGISTRY } from "@/lib/funnels/tree/elements"
+import { richtextField } from "@/lib/funnels/tree/capability"
+import { InlineText } from "./InlineText"
 import { styleToCss } from "@/lib/funnels/tree/style"
 import { segmentsOf } from "@/lib/funnels/tree/types"
 import type { BoxStyle, ElementKind, RowLayout, TypeStyle } from "@/lib/funnels/tree/types"
@@ -151,14 +153,24 @@ export const CraftElement: UserComponent<{
   style: BoxStyle
   type?: TypeStyle
   elementProps: Record<string, unknown>
-}> = ({ kind, style, type, elementProps }) => {
+  /**
+   * Editing SESSION state, never document state. `craftToTree` reads five named
+   * props and this is not one of them, so it cannot reach a saved page.
+   */
+  editing?: boolean
+}> = ({ kind, style, type, elementProps, editing }) => {
   const {
     connectors: { connect, drag },
     selected,
+    actions: { setProp },
   } = useNode((node) => ({ selected: node.events.selected }))
 
   const def = ELEMENT_REGISTRY[kind]
   const parsed = def?.propsSchema.safeParse(elementProps)
+  // An element is inline-editable exactly when it declares a richtext field.
+  // Nothing is declared twice to say so — see `capability.ts`.
+  const inline = def ? richtextField(def) : null
+  const isEditing = Boolean(editing) && inline !== null
 
   let body: ReactNode
   if (!def) {
@@ -166,6 +178,20 @@ export const CraftElement: UserComponent<{
   } else if (!parsed?.success) {
     // The inspector can still repair it, so this must not be a crash.
     body = <span className="text-xs text-[var(--error)]">This {def.label.toLowerCase()} has settings we cannot read.</span>
+  } else if (isEditing && inline) {
+    body = (
+      <InlineText
+        html={String(elementProps[inline.name] ?? "")}
+        onCommit={(html) => {
+          setProp((props: Record<string, unknown>) => {
+            const next = { ...((props.elementProps ?? {}) as Record<string, unknown>) }
+            next[inline.name] = html
+            props.elementProps = next
+            props.editing = false
+          })
+        }}
+      />
+    )
   } else if (def.canvasFallback) {
     body = def.canvasFallback({ props: parsed.data, style, type })
   } else {
@@ -176,11 +202,29 @@ export const CraftElement: UserComponent<{
 
   return (
     <div
+      // Remount when entering or leaving edit. Craft's `drag()` connector sets
+      // draggable="true" on the node imperatively and does not take it back
+      // when it stops being applied, so reusing the node would leave a block
+      // that is still draggable while its own text is being selected. A fresh
+      // node carries no stale attribute and no stale handler registration.
+      key={isEditing ? "editing" : "idle"}
       ref={(ref) => {
-        if (ref) connect(drag(ref))
+        if (!ref) return
+        // While the caret is in this block the drag connector must be OFF:
+        // Craft drags on mousedown, so dragging across a word to select it
+        // would otherwise pick the whole block up and drop it elsewhere.
+        if (isEditing) connect(ref)
+        else connect(drag(ref))
       }}
       data-craft="element"
       data-kind={kind}
+      onDoubleClick={(event) => {
+        if (!inline) return
+        event.stopPropagation()
+        setProp((props: Record<string, unknown>) => {
+          props.editing = true
+        })
+      }}
       className={selected ? "outline outline-2 outline-primary" : "outline-none"}
     >
       {body}
