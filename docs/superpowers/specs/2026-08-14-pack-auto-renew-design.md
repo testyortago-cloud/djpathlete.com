@@ -282,8 +282,19 @@ deploy.
 | `auto_renew` false | No-op, no attempt row written |
 | Attempt row exists | Stop — never charge twice |
 | No card / no customer | `skipped`, pending pack + payment link emailed |
-| Card declined | `failed`, pending pack + payment link emailed + coach notified |
-| Stripe network error | `failed` with reason; the pack-stable idempotency key means a later sweep cannot double-charge |
+| Card declined (`reason: "declined"`) | `failed`, pending pack + payment link emailed + coach notified |
+| Stripe network error / 5xx (`reason: "error"`) | `failed` with reason, coach notified to reconcile against Stripe. **No replacement pack, no payment link.** |
+
+**Corrected 2026-08-14 after Task 4 review.** The two `chargeSavedCard` failure
+reasons are not interchangeable, and an earlier draft of this table treated them
+as one. A `"declined"` is a known outcome: no money moved, so inviting the client
+to pay by link is safe. An `"error"` — network timeout, Stripe 5xx — means the
+outcome is **unknown and the card may already have been charged**. Minting a
+fresh Checkout Session there would take payment a second time, because a Checkout
+Session is outside the `pack_renew_${id}` idempotency key that protects the
+retry path. `lib/services/session-fees.ts:154-161` already documents this hazard
+for fee retries; it applies identically here. On `"error"` the system records and
+escalates to a human, and does nothing else.
 | Receipt email fails | Swallowed — never affects the money path (matches `notifyPayerCharged`) |
 | Renewal throws entirely | Swallowed at the check-in call site; check-in still succeeds |
 
