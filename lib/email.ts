@@ -2548,6 +2548,78 @@ export async function sendPackPaymentLinkEmail(opts: {
   }
 }
 
+/**
+ * Receipt for a session pack that just auto-renewed against a saved card.
+ *
+ * `to` is the payer whose card was actually charged (household payer, or the
+ * trainee themselves). The trainee is CC'd when they're a different person,
+ * dropped when it would duplicate `to` — same guard as sendPackPaymentLinkEmail.
+ *
+ * Transactional (money already moved), so it does not check the email
+ * notification preference. Non-blocking on failure, like sendFeeChargedToPayerEmail
+ * — a receipt that never sends must never unwind a charge that already succeeded;
+ * the caller in pack-renewal.ts wraps this in its own try/catch for the same reason.
+ *
+ * This is a plain-HTML body for now. Task 8 replaces it with the styled React
+ * template — this sender's job is just to genuinely deliver in the meantime.
+ */
+export async function sendPackRenewedEmail(opts: {
+  to: string
+  ccClientEmail: string | null
+  firstName: string
+  clientName: string
+  packLabel: string
+  amountCents: number
+}) {
+  const amount = `$${(opts.amountCents / 100).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+
+  const html = emailLayout(`
+    ${heroBanner("Pack Renewed", `${opts.clientName}'s sessions just renewed`)}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            Hi ${opts.firstName},
+          </p>
+
+          <p style="margin:0 0 32px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            ${opts.clientName}'s session pack ran out, so we automatically renewed it on your saved card &mdash; no action needed, sessions keep going.
+          </p>
+
+          ${infoCard([
+            { label: "For", value: opts.clientName },
+            { label: "Package", value: opts.packLabel },
+            { label: "Charged", value: amount },
+          ])}
+
+          <p style="margin:28px 0 0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            Want to turn off auto-renewal or update your card? Just reply to this email and we'll sort it out.
+          </p>
+
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const cc = opts.ccClientEmail && opts.ccClientEmail !== opts.to ? opts.ccClientEmail : undefined
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: opts.to,
+    cc,
+    subject: `Your card was charged ${amount} — ${opts.clientName}'s sessions renewed`,
+    html,
+  })
+  if (error) {
+    console.error("[sendPackRenewedEmail] resend error:", error)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Funnel leads
 // ---------------------------------------------------------------------------
