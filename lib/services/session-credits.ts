@@ -116,6 +116,9 @@ export function buildPackageInsert(opts: {
     // Never pre-stamped: a non-null value here would make the UI claim a link
     // was emailed that never was.
     bill_to_emailed_at: null,
+    auto_renew: false,
+    renewed_from_package_id: null,
+    renewal_attempted_at: null,
     created_by: opts.createdBy,
   }
 }

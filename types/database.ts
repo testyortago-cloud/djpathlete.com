@@ -2911,6 +2911,10 @@ export interface ClientPackage {
   /** Overrides the Stripe checkout addressee. Null = household payer, else the trainee. */
   bill_to_email: string | null
   bill_to_emailed_at: string | null
+  /** When true, depleting this pack triggers an auto-charge for a clone of it. */
+  auto_renew: boolean
+  renewed_from_package_id: string | null
+  renewal_attempted_at: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -3043,6 +3047,25 @@ export interface SessionFeeCharge {
   kind: SessionFeeKind
   amount_cents: number
   status: SessionFeeStatus
+  stripe_payment_intent_id: string | null
+  failure_reason: string | null
+  created_at: string
+}
+
+// ─── Pack auto-renew (00207) ─────────────────────────────────────────────────
+
+export type PackRenewalStatus = "pending" | "succeeded" | "failed" | "skipped"
+
+export interface PackRenewalAttempt {
+  id: string
+  source_package_id: string
+  new_package_id: string | null
+  /** The trainee whose pack ran out. */
+  user_id: string
+  /** Whose card was actually charged — the household payer, or the trainee. */
+  billing_user_id: string
+  amount_cents: number
+  status: PackRenewalStatus
   stripe_payment_intent_id: string | null
   failure_reason: string | null
   created_at: string
