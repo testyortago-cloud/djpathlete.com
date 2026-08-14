@@ -7,6 +7,10 @@ import { Button } from "@/components/ui/button"
 
 export function BuySessionsClient({ products }: { products: SessionPackProduct[] }) {
   const [busy, setBusy] = useState<string | null>(null)
+  // Consent checkbox: save my own card and auto-buy a replacement pack on
+  // depletion. Default OFF, per-product (a client may tick it for one
+  // product and not another before hitting Buy).
+  const [autoRenewByProduct, setAutoRenewByProduct] = useState<Record<string, boolean>>({})
 
   if (products.length === 0) {
     return (
@@ -22,7 +26,7 @@ export function BuySessionsClient({ products }: { products: SessionPackProduct[]
       const res = await fetch("/api/client/session-packs/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ productId: p.id }),
+        body: JSON.stringify({ productId: p.id, autoRenew: autoRenewByProduct[p.id] ?? false }),
       })
       const data = await res.json()
       if (!res.ok || !data.url) throw new Error()
@@ -43,6 +47,21 @@ export function BuySessionsClient({ products }: { products: SessionPackProduct[]
             {p.validity_days ? ` · valid ${p.validity_days} days` : ""}
           </p>
           <p className="my-3 text-2xl font-semibold text-primary">${(p.price_cents / 100).toFixed(0)}</p>
+          <label htmlFor={`autoRenew-${p.id}`} className="mb-3 flex items-start gap-2 text-xs text-muted-foreground">
+            <input
+              id={`autoRenew-${p.id}`}
+              type="checkbox"
+              checked={autoRenewByProduct[p.id] ?? false}
+              onChange={(e) =>
+                setAutoRenewByProduct((prev) => ({ ...prev, [p.id]: e.target.checked }))
+              }
+              className="mt-0.5 size-4 rounded border-border"
+            />
+            <span>
+              Save my card and automatically buy another {p.credits}-session pack (${(p.price_cents / 100).toFixed(0)}
+              ) when this one runs out. Cancel any time.
+            </span>
+          </label>
           <Button className="mt-auto" onClick={() => buy(p)} disabled={busy === p.id}>
             {busy === p.id ? "Starting…" : "Buy"}
           </Button>

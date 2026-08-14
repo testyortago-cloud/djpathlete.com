@@ -18,9 +18,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "clientUserId is required" }, { status: 400 })
     }
 
+    // The pack list is the point of this route; the attempts history is
+    // supplementary. Caught independently (still run in parallel) so a
+    // failure fetching it degrades to an empty list rather than taking the
+    // packages payload down with it.
     const [packages, attempts] = await Promise.all([
       loadClientPacksView(clientUserId),
-      listRenewalAttemptsForUser(clientUserId),
+      listRenewalAttemptsForUser(clientUserId).catch((error) => {
+        console.error("List renewal attempts error:", error)
+        return []
+      }),
     ])
     return NextResponse.json({ packages, attempts })
   } catch (error) {

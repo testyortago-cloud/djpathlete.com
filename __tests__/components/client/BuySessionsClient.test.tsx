@@ -24,7 +24,9 @@ describe("BuySessionsClient", () => {
   it("lists products with prices and a buy button", () => {
     render(<BuySessionsClient products={[product as never]} />)
     expect(screen.getByText(/10x 1-on-1/)).toBeInTheDocument()
-    expect(screen.getByText(/\$500/)).toBeInTheDocument()
+    // Scoped to the <p> price element — the consent checkbox label also
+    // mentions the price now ("...($500)"), so an unscoped match is ambiguous.
+    expect(screen.getByText(/\$500/, { selector: "p" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /buy/i })).toBeInTheDocument()
   })
 
