@@ -7,6 +7,11 @@ const resolveBillingUserIdMock = vi.fn()
 vi.mock("stripe", () => ({
   default: class {
     checkout = { sessions: { create: (...a: unknown[]) => createSessionMock(...a) } }
+    // getOrCreateStripeCustomer's best-effort email reconciliation (I4)
+    // touches these when reusing a stored customer id — stub them so that
+    // reconciliation is a silent no-op here rather than a caught-and-logged
+    // TypeError on every test.
+    customers = { create: vi.fn(), retrieve: vi.fn(), update: vi.fn() }
   },
 }))
 vi.mock("@/lib/db/users", () => ({
@@ -37,7 +42,9 @@ beforeEach(() => {
   process.env.NEXTAUTH_URL = "https://www.darrenjpaul.com"
   createSessionMock.mockResolvedValue({ id: "cs_1", url: "https://stripe.test/cs_1" })
   getUserByIdMock.mockImplementation(async (id: string) =>
-    id === PAYER ? { id: PAYER, email: "payer@example.com" } : { id: TRAINEE, email: "trainee@example.com" },
+    id === PAYER
+      ? { id: PAYER, email: "payer@example.com", stripe_customer_id: "cus_payer" }
+      : { id: TRAINEE, email: "trainee@example.com", stripe_customer_id: "cus_trainee" },
   )
 })
 
@@ -45,9 +52,14 @@ describe("createPackCheckoutSession — household billing payer", () => {
   it("addresses checkout to the PAYER when one is set", async () => {
     resolveBillingUserIdMock.mockResolvedValue(PAYER)
     await createPackCheckoutSession(opts)
-    // Stripe locks a provided customer_email, so this IS who the receipt
-    // reaches — the whole point of the fix.
-    expect(createSessionMock.mock.calls[0][0].customer_email).toBe("payer@example.com")
+    // A Stripe Customer, not a bare email, is what pins the addressee now —
+    // Stripe rejects customer + customer_email together, and attaching the
+    // Customer object (vs. a bare pinned email) is also what lets
+    // getOrCreateStripeCustomer keep the receipt email in sync going forward.
+    // Distinguishing cus_payer from cus_trainee is the whole point: this must
+    // fail if the trainee's identity leaks in instead of the payer's.
+    expect(createSessionMock.mock.calls[0][0].customer).toBe("cus_payer")
+    expect(createSessionMock.mock.calls[0][0].customer_email).toBeUndefined()
   })
 
   it("still credits the pack to the TRAINEE, not the payer", async () => {
@@ -62,7 +74,9 @@ describe("createPackCheckoutSession — household billing payer", () => {
   it("falls back to the client's own email when no payer is set", async () => {
     resolveBillingUserIdMock.mockResolvedValue(TRAINEE)
     await createPackCheckoutSession(opts)
-    expect(createSessionMock.mock.calls[0][0].customer_email).toBe("trainee@example.com")
+    // "Own email" now means the trainee's own Stripe customer, for the same
+    // reason as above — not cus_payer, so this still discriminates identity.
+    expect(createSessionMock.mock.calls[0][0].customer).toBe("cus_trainee")
   })
 
   it("leaves customer_email unset when the payer lookup throws, rather than failing the sale", async () => {
@@ -107,6 +121,6 @@ describe("createPackCheckoutSession — explicit bill-to address", () => {
     resolveBillingUserIdMock.mockResolvedValue(PAYER)
     await createPackCheckoutSession({ ...opts, billToEmail: null })
     // The routes pass `?? null`, so null must mean "no override", not "no email".
-    expect(createSessionMock.mock.calls[0][0].customer_email).toBe("payer@example.com")
+    expect(createSessionMock.mock.calls[0][0].customer).toBe("cus_payer")
   })
 })

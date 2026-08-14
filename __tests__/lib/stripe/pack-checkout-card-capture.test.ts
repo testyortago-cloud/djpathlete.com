@@ -1,41 +1,77 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const create = vi.fn()
-const getOrCreateStripeCustomer = vi.fn()
+const customersCreate = vi.fn()
 const resolveBillingUserId = vi.fn()
 const getUserById = vi.fn()
 
 vi.mock("stripe", () => ({
-  default: class { checkout = { sessions: { create } }; customers = { create: vi.fn() } },
+  default: class {
+    checkout = { sessions: { create } }
+    customers = { create: customersCreate, retrieve: vi.fn(), update: vi.fn() }
+  },
 }))
 vi.mock("@/lib/services/billing-payer", () => ({ resolveBillingUserId }))
 vi.mock("@/lib/db/users", () => ({ getUserById, updateUser: vi.fn() }))
 
-describe("createPackCheckoutSession card capture", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    create.mockResolvedValue({ id: "cs_1", url: "https://pay" })
-    resolveBillingUserId.mockResolvedValue("payer-1")
-    getUserById.mockResolvedValue({ id: "payer-1", email: "payer@x.com", stripe_customer_id: "cus_payer" })
-  })
+const TRAINEE = "u1"
+const PAYER = "payer-1"
 
-  it("attaches the PAYER's customer and asks Stripe to save the card", async () => {
+beforeEach(() => {
+  vi.clearAllMocks()
+  create.mockResolvedValue({ id: "cs_1", url: "https://pay" })
+  resolveBillingUserId.mockResolvedValue(PAYER)
+  // I1 fix: id-aware, with DISTINCT stripe_customer_id per identity, so a
+  // test asserting "cus_payer" genuinely fails if the implementation ever
+  // passes the trainee's id instead of the resolved payer's.
+  getUserById.mockImplementation(async (id: string) =>
+    id === PAYER
+      ? { id: PAYER, email: "payer@x.com", stripe_customer_id: "cus_payer" }
+      : { id: TRAINEE, email: "trainee@x.com", stripe_customer_id: "cus_trainee" },
+  )
+})
+
+describe("createPackCheckoutSession card capture", () => {
+  it("attaches the PAYER's customer (never the trainee's) and asks Stripe to save the card when consented", async () => {
     const { createPackCheckoutSession } = await import("@/lib/stripe")
     await createPackCheckoutSession({
-      clientUserId: "u1", name: "10x training", sessionType: "training",
+      clientUserId: TRAINEE, name: "10x training", sessionType: "training",
       credits: 10, priceCents: 75000, validityDays: null, productId: null, autoRenew: true,
     })
     const arg = create.mock.calls[0][0]
+    // Resolution goes through resolveBillingUserId with the TRAINEE id — if
+    // the implementation ever swapped in opts.clientUserId directly for
+    // getOrCreateStripeCustomer, this call wouldn't happen at all.
+    expect(resolveBillingUserId).toHaveBeenCalledWith(TRAINEE)
     expect(arg.customer).toBe("cus_payer")
+    expect(arg.customer).not.toBe("cus_trainee")
     expect(arg.customer_email).toBeUndefined()
     expect(arg.payment_intent_data.setup_future_usage).toBe("off_session")
     expect(arg.metadata.autoRenew).toBe("true")
+    expect(arg.metadata.billingUserId).toBe(PAYER)
+  })
+
+  it("attaches the customer for addressee purposes but does NOT ask Stripe to save the card when autoRenew is unset (I5)", async () => {
+    const { createPackCheckoutSession } = await import("@/lib/stripe")
+    await createPackCheckoutSession({
+      clientUserId: TRAINEE, name: "10x training", sessionType: "training",
+      credits: 10, priceCents: 75000, validityDays: null, productId: null,
+    })
+    const arg = create.mock.calls[0][0]
+    // Attaching `customer` (the addressee fix) is unconditional...
+    expect(arg.customer).toBe("cus_payer")
+    // ...but setup_future_usage — the actual "keep this card reusable"
+    // instruction to Stripe — requires consent. A client who left the
+    // checkbox unchecked must not have their card silently made chargeable
+    // off-session, especially since pack links are shareable.
+    expect(arg.payment_intent_data).toBeUndefined()
+    expect(arg.metadata.autoRenew).toBe("false")
   })
 
   it("keeps customer_email and saves NO card for an account-less payer", async () => {
     const { createPackCheckoutSession } = await import("@/lib/stripe")
     await createPackCheckoutSession({
-      clientUserId: "u1", name: "10x training", sessionType: "training",
+      clientUserId: TRAINEE, name: "10x training", sessionType: "training",
       credits: 10, priceCents: 75000, validityDays: null, productId: null,
       billToEmail: "parent@x.com",
     })
@@ -43,15 +79,34 @@ describe("createPackCheckoutSession card capture", () => {
     expect(arg.customer_email).toBe("parent@x.com")
     expect(arg.customer).toBeUndefined()
     expect(arg.payment_intent_data?.setup_future_usage).toBeUndefined()
+    expect(resolveBillingUserId).not.toHaveBeenCalled()
+    // No identity was ever resolved for an account-less payer — nothing to stamp.
+    expect(arg.metadata.billingUserId).toBe("")
   })
 
   it("never sends customer and customer_email together", async () => {
     const { createPackCheckoutSession } = await import("@/lib/stripe")
     await createPackCheckoutSession({
-      clientUserId: "u1", name: "x", sessionType: "training",
+      clientUserId: TRAINEE, name: "x", sessionType: "training",
       credits: 10, priceCents: 75000, validityDays: null, productId: null,
     })
     const arg = create.mock.calls[0][0]
     expect(Boolean(arg.customer) && Boolean(arg.customer_email)).toBe(false)
+  })
+
+  it("falls back to pinning customer_email when customer creation fails, rather than leaving checkout fully unaddressed (Concern B)", async () => {
+    // Force the "no stored id yet" path so getOrCreateStripeCustomer actually
+    // reaches stripe.customers.create, then make that call fail.
+    getUserById.mockResolvedValue({ id: PAYER, email: "payer@x.com", stripe_customer_id: null })
+    customersCreate.mockRejectedValue(new Error("stripe down"))
+    const { createPackCheckoutSession } = await import("@/lib/stripe")
+    await createPackCheckoutSession({
+      clientUserId: TRAINEE, name: "10x training", sessionType: "training",
+      credits: 10, priceCents: 75000, validityDays: null, productId: null, autoRenew: true,
+    })
+    const arg = create.mock.calls[0][0]
+    expect(arg.customer).toBeUndefined()
+    expect(arg.customer_email).toBe("payer@x.com")
+    expect(arg.payment_intent_data).toBeUndefined()
   })
 })

@@ -97,3 +97,23 @@ describe("buildPackageInsert payment_status", () => {
     expect(buildPackageInsert({ ...base, paymentMethod: "stripe" }).payment_status).toBe("pending")
   })
 })
+
+describe("buildPackageInsert auto_renew (I3)", () => {
+  const base = {
+    clientUserId: "c1",
+    productId: null,
+    sessionType: "1-on-1",
+    credits: 10,
+    priceCents: 50000,
+    validityDays: null,
+    createdBy: "coach-1",
+    now: new Date("2026-07-17T00:00:00Z"),
+    paymentMethod: "stripe" as const,
+  }
+  it("defaults to false when omitted", () => {
+    expect(buildPackageInsert(base).auto_renew).toBe(false)
+  })
+  it("records true from the checkout request — not deferred to the webhook", () => {
+    expect(buildPackageInsert({ ...base, autoRenew: true }).auto_renew).toBe(true)
+  })
+})

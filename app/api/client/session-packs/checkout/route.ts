@@ -62,6 +62,9 @@ export async function POST(request: Request) {
         createdBy: clientUserId,
         now,
         stripeSessionId: checkout.id,
+        // Recorded on the PENDING pack now (not deferred to the webhook) so
+        // checkoutOptsFor can carry it forward on a pre-payment re-mint.
+        autoRenew: parsed.data.autoRenew,
       }),
     )
 

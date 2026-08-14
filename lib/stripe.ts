@@ -144,6 +144,25 @@ export async function getOrCreateStripeCustomer(userId: string, email: string): 
   const user = await getUserById(userId)
 
   if (user.stripe_customer_id) {
+    // Reconcile: a Stripe Customer is created once and never touched again by
+    // default. If the user changes their email in-app afterward, nothing
+    // pushes that change to Stripe — the Customer object (and therefore every
+    // receipt addressed via `customer` instead of a bare customer_email)
+    // silently keeps the OLD email forever. Same wrong-inbox property the
+    // original customer_email fix eliminated, just relocated to a field
+    // nothing was watching. Comparing against our own `user.email` would be
+    // a no-op here (the caller almost always derives `email` from the same
+    // row), so this retrieves Stripe's actual copy and only writes when it's
+    // genuinely stale. Best-effort: a Stripe hiccup must never block the sale.
+    try {
+      const customer = await stripe.customers.retrieve(user.stripe_customer_id)
+      const isLive = customer && !(("deleted" in customer && customer.deleted) as boolean)
+      if (isLive && customer.email !== email) {
+        await stripe.customers.update(user.stripe_customer_id, { email })
+      }
+    } catch (err) {
+      console.error("[getOrCreateStripeCustomer] could not reconcile customer email:", err)
+    }
     return user.stripe_customer_id
   }
 
@@ -454,8 +473,14 @@ export async function createPackCheckoutSession(opts: {
   //                           getDefaultPaymentMethod would then charge for
   //                           unrelated fees. They keep using payment links.
   //   otherwise             → resolve the household payer (or the client) and
-  //                           attach their customer, with setup_future_usage so
-  //                           the card is reusable for auto-renewal.
+  //                           attach their customer. `setup_future_usage` is
+  //                           gated on `opts.autoRenew` too, not just having a
+  //                           customer: a client who leaves the checkbox
+  //                           unchecked has declined card saving, and packs
+  //                           are shareable payment links, so attaching a
+  //                           customer alone (needed for the addressee fix)
+  //                           must not silently opt anyone into having their
+  //                           card promoted to the payer's default.
   //
   // Do not collapse this back into customer_email-for-everyone: that pinning
   // exists because a parent once opened a link and found the athlete's email
@@ -465,15 +490,36 @@ export async function createPackCheckoutSession(opts: {
   // would charge them.
   let customerEmail: string | undefined
   let customerId: string | undefined
+  // Stamped into metadata below so the webhook can save the card against
+  // THIS identity directly instead of re-resolving resolveBillingUserId on
+  // its own — re-resolving is a TOCTOU (the household-payer link can change
+  // between checkout creation and webhook delivery) and resolveBillingUserId
+  // fails OPEN to self on any lookup error, which would silently re-home a
+  // stranger's card under the trainee's user_id.
+  let resolvedBillingUserId: string | undefined
   if (opts.billToEmail) {
     customerEmail = opts.billToEmail
   } else {
+    let billingUserId: string | undefined
+    let payer: { email: string | null } | null = null
     try {
-      const billingUserId = await resolveBillingUserId(opts.clientUserId)
-      const payer = await getUserById(billingUserId)
-      if (payer?.email) customerId = await getOrCreateStripeCustomer(billingUserId, payer.email)
+      billingUserId = await resolveBillingUserId(opts.clientUserId)
+      payer = await getUserById(billingUserId)
+      resolvedBillingUserId = billingUserId
     } catch {
-      // Non-fatal — checkout still works, just without a saved card.
+      // Non-fatal — checkout still works, just without a pinned addressee.
+    }
+    if (billingUserId && payer?.email) {
+      try {
+        customerId = await getOrCreateStripeCustomer(billingUserId, payer.email)
+      } catch {
+        // Customer creation/lookup failed specifically (not the payer lookup
+        // above) — we DO know the payer's email at this point, so fall back
+        // to pinning it directly rather than leaving the checkout page fully
+        // unaddressed, which would re-expose the Stripe Link autofill hazard
+        // this whole mechanism exists to avoid.
+        customerEmail = payer.email
+      }
     }
   }
 
@@ -482,7 +528,7 @@ export async function createPackCheckoutSession(opts: {
     line_items,
     ...(customerId ? { customer: customerId } : {}),
     ...(customerEmail ? { customer_email: customerEmail } : {}),
-    ...(customerId ? { payment_intent_data: { setup_future_usage: "off_session" as const } } : {}),
+    ...(customerId && opts.autoRenew ? { payment_intent_data: { setup_future_usage: "off_session" as const } } : {}),
     metadata: {
       type: "session_pack",
       clientUserId: opts.clientUserId,
@@ -492,6 +538,7 @@ export async function createPackCheckoutSession(opts: {
       sessionType: opts.sessionType,
       priceCents: String(opts.priceCents),
       autoRenew: opts.autoRenew ? "true" : "false",
+      billingUserId: resolvedBillingUserId ?? "",
     },
     success_url: successUrl,
     cancel_url: cancelUrl,

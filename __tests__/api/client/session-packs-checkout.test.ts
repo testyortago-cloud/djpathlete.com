@@ -70,4 +70,19 @@ describe("POST /api/client/session-packs/checkout", () => {
       }),
     )
   })
+
+  // I2 regression guard: nothing else in the suite asserts on autoRenew, so
+  // deleting the forwarding from the route would stay green without these —
+  // exactly the silent-arming failure this wiring exists to prevent.
+  it("forwards autoRenew to createPackCheckoutSession when consented, and records it on the pending pack", async () => {
+    await POST(req({ productId: PRODUCT, autoRenew: true }))
+    expect(checkoutMock).toHaveBeenCalledWith(expect.objectContaining({ autoRenew: true }))
+    expect(createPkgMock).toHaveBeenCalledWith(expect.objectContaining({ auto_renew: true }))
+  })
+
+  it("defaults autoRenew to false when the checkbox is omitted", async () => {
+    await POST(req({ productId: PRODUCT }))
+    expect(checkoutMock).toHaveBeenCalledWith(expect.objectContaining({ autoRenew: false }))
+    expect(createPkgMock).toHaveBeenCalledWith(expect.objectContaining({ auto_renew: false }))
+  })
 })

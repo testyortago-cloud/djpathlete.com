@@ -17,6 +17,12 @@ function checkoutOptsFor(pack: ClientPackage, billToEmail: string | null) {
     validityDays: null,
     productId: pack.product_id,
     billToEmail,
+    // Consent lives on the pack (set at pending-pack creation — see
+    // buildPackageInsert). Carry it forward on every re-mint so an
+    // expired-then-refreshed link, or a bill-to change, doesn't silently
+    // disarm auto-renew by defaulting createPackCheckoutSession's optional
+    // autoRenew back to falsy.
+    autoRenew: pack.auto_renew,
     // The link is paid by the CLIENT (or their payer) — land them on their own
     // packs page, never the coach's admin client page.
     returnUrl: "/client/sessions",

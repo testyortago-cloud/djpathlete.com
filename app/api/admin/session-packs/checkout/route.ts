@@ -123,6 +123,9 @@ export async function POST(request: Request) {
           notes: input.notes ?? null,
           // Persisted so a re-minted link keeps the same addressee.
           billToEmail: input.billToEmail ?? null,
+          // Recorded on the PENDING pack now (not deferred to the webhook) so
+          // checkoutOptsFor can carry it forward on a pre-payment re-mint.
+          autoRenew: input.autoRenew,
         }),
       )
       return NextResponse.json({ url: checkout.url, packageId: pkg.id })

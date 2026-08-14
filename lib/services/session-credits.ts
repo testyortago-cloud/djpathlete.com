@@ -86,6 +86,12 @@ export function buildPackageInsert(opts: {
   notes?: string | null
   /** Addressee for this pack's Stripe link; null = household payer, else the client. */
   billToEmail?: string | null
+  /** Consent captured on the checkout checkbox. Recorded on the PENDING pack
+   *  immediately — not deferred to the webhook — so a link re-mint before
+   *  payment (resolvePackPaymentLink / changePackBillTo, via checkoutOptsFor)
+   *  can read it back and carry the consent forward instead of silently
+   *  dropping it. */
+  autoRenew?: boolean
 }): Omit<ClientPackage, "id" | "created_at" | "updated_at"> {
   const purchasedAt = opts.now.toISOString()
   const paymentStatus: PackPaymentStatus =
@@ -117,7 +123,7 @@ export function buildPackageInsert(opts: {
     // Never pre-stamped: a non-null value here would make the UI claim a link
     // was emailed that never was.
     bill_to_emailed_at: null,
-    auto_renew: false,
+    auto_renew: opts.autoRenew ?? false,
     renewed_from_package_id: null,
     renewal_attempted_at: null,
     created_by: opts.createdBy,

@@ -864,13 +864,16 @@ async function handleSessionPackCheckout(session: Stripe.Checkout.Session) {
   const stripePaymentId = await resolveSessionPaymentIntent(session)
   await activatePaidPackage(pkg, stripePaymentId)
 
-  // Auto-renew consent was captured on the checkout checkbox and round-tripped
-  // through Stripe metadata (createPackCheckoutSession stamps it). Written as
-  // its own call, separate from activatePaidPackage, so that function's call
-  // signature — asserted verbatim by the existing webhook regression tests —
-  // doesn't change. Only writes when true: the pack row already defaults
-  // auto_renew to false at creation (buildPackageInsert), so there is nothing
-  // to disarm here.
+  // Auto-renew consent is now recorded on the pack itself at creation time
+  // (buildPackageInsert, from the checkout request's autoRenew field) so a
+  // pre-payment link re-mint can carry it forward — see checkoutOptsFor in
+  // lib/services/pack-payment-link.ts. This write is therefore a redundant
+  // backstop confirming Stripe metadata and the pack agree, not the primary
+  // mechanism. Written as its own call, separate from activatePaidPackage, so
+  // that function's call signature — asserted verbatim by the existing
+  // webhook regression tests — doesn't change. Only writes when true: the
+  // pack row already defaults auto_renew to false, so there is nothing to
+  // disarm here.
   if (session.metadata?.autoRenew === "true") {
     try {
       await updateClientPackage(pkg.id, { auto_renew: true })
@@ -880,31 +883,57 @@ async function handleSessionPackCheckout(session: Stripe.Checkout.Session) {
   }
 
   // Persist the card the client just used so auto-renewal has something to
-  // charge later. Best-effort: a pack must never fail to be created because
-  // the card could not be stored. Saved against the PAYER (billingUserId),
-  // not the trainee — matches the identity createPackCheckoutSession attached
-  // `customer` to. When checkout used an explicit billToEmail (no Stripe
-  // `customer` was attached — see createPackCheckoutSession), session.customer
-  // is null and this whole block is a no-op, which is correct: we never save
-  // an account-less payer's card against the trainee's user_id.
+  // charge later. Gated on metadata.autoRenew === "true": attaching a Stripe
+  // `customer` (done unconditionally in createPackCheckoutSession, for the
+  // addressee fix) is not consent to SAVE the card. A client who left the
+  // checkbox unchecked declined card-saving — storing it anyway is exactly
+  // the dark pattern this design exists to avoid, and pack links are
+  // shareable, so whoever opens one and pays would get their card attached
+  // and promoted to the payer's default. Best-effort beyond that gate: a
+  // pack must never fail to be created because the card could not be stored.
+  // When checkout used an explicit billToEmail (no Stripe `customer` was
+  // attached — see createPackCheckoutSession), session.customer is null and
+  // this whole block is a no-op, which is correct: we never save an
+  // account-less payer's card against the trainee's user_id.
   const piId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id
   const sessionCustomerId = typeof session.customer === "string" ? session.customer : session.customer?.id
-  if (piId && sessionCustomerId) {
+  if (piId && sessionCustomerId && session.metadata?.autoRenew === "true") {
     try {
       const pi = await stripe.paymentIntents.retrieve(piId)
       const pmId = typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id
       if (pmId) {
-        const pm = await stripe.paymentMethods.retrieve(pmId)
-        const billingUserId = await resolveBillingUserId(pkg.client_user_id)
-        await upsertDefaultPaymentMethod({
-          user_id: billingUserId,
-          stripe_payment_method_id: pmId,
-          brand: pm.card?.brand ?? null,
-          last4: pm.card?.last4 ?? null,
-          exp_month: pm.card?.exp_month ?? null,
-          exp_year: pm.card?.exp_year ?? null,
-          is_default: true,
-        })
+        // Identity: prefer the billingUserId createPackCheckoutSession stamped
+        // into metadata at checkout time. Re-resolving resolveBillingUserId
+        // here instead would be a TOCTOU — the household-payer link could
+        // change in the window between checkout creation and webhook
+        // delivery, and resolveBillingUserId fails OPEN to self on any lookup
+        // error, which would silently re-home a stranger's card. Falls back
+        // to re-resolving only for sessions minted before this field existed.
+        const billingUserId = session.metadata?.billingUserId || (await resolveBillingUserId(pkg.client_user_id))
+        const payer = await getUserById(billingUserId)
+        // Belt-and-suspenders: the Stripe customer actually attached to THIS
+        // session must match what's on file for the resolved identity. A
+        // mismatch means the identity resolution above landed on the wrong
+        // person — skip rather than risk saving one person's card under
+        // another's user_id (upsertDefaultPaymentMethod demotes ALL of the
+        // target user's existing cards, so a wrong write breaks their fee
+        // charging too, not just misattributes one card).
+        if (payer?.stripe_customer_id === sessionCustomerId) {
+          const pm = await stripe.paymentMethods.retrieve(pmId)
+          await upsertDefaultPaymentMethod({
+            user_id: billingUserId,
+            stripe_payment_method_id: pmId,
+            brand: pm.card?.brand ?? null,
+            last4: pm.card?.last4 ?? null,
+            exp_month: pm.card?.exp_month ?? null,
+            exp_year: pm.card?.exp_year ?? null,
+            is_default: true,
+          })
+        } else {
+          console.error(
+            `[webhook] pack card-save skipped: resolved billingUserId ${billingUserId} (stripe_customer_id=${payer?.stripe_customer_id ?? "none"}) does not match session.customer ${sessionCustomerId}`,
+          )
+        }
       }
     } catch (err) {
       console.error("[webhook] could not save pack card:", err)

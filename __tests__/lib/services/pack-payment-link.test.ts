@@ -66,6 +66,22 @@ describe("resolvePackPaymentLink", () => {
     expect(createPackCheckoutSessionMock.mock.calls[0][0].billToEmail).toBeNull()
   })
 
+  // I3: consent lives on the pack (set at pending-pack creation) — a re-mint
+  // must carry it forward. Without this, an expired-then-re-minted link
+  // silently produces autoRenew: "false" in Stripe metadata and the pack
+  // never arms, even though the client already consented.
+  it("carries auto_renew forward from the pack on re-mint", async () => {
+    retrieveMock.mockResolvedValue({ status: "expired" })
+    await resolvePackPaymentLink({ ...pack, auto_renew: true } as ClientPackage)
+    expect(createPackCheckoutSessionMock.mock.calls[0][0].autoRenew).toBe(true)
+  })
+
+  it("carries auto_renew: false forward just as faithfully", async () => {
+    retrieveMock.mockResolvedValue({ status: "expired" })
+    await resolvePackPaymentLink({ ...pack, auto_renew: false } as ClientPackage)
+    expect(createPackCheckoutSessionMock.mock.calls[0][0].autoRenew).toBe(false)
+  })
+
   it("refuses to repoint a completed session", async () => {
     retrieveMock.mockResolvedValue({ status: "complete" })
     const r = await resolvePackPaymentLink(pack)
@@ -164,6 +180,14 @@ describe("changePackBillTo", () => {
     await changePackBillTo(pack, null)
     expect(createPackCheckoutSessionMock.mock.calls[0][0].billToEmail).toBeNull()
     expect(updateClientPackageMock.mock.calls[0][1].bill_to_email).toBeNull()
+  })
+
+  // I3: a bill-to change also re-mints via checkoutOptsFor — must not
+  // silently disarm auto_renew as a side effect of re-addressing the link.
+  it("carries auto_renew forward when the bill-to address changes", async () => {
+    retrieveMock.mockResolvedValue({ status: "expired" })
+    await changePackBillTo({ ...pack, auto_renew: true } as ClientPackage, "dad@example.com")
+    expect(createPackCheckoutSessionMock.mock.calls[0][0].autoRenew).toBe(true)
   })
 
   it("409s for a pack that is not awaiting a card payment", async () => {
