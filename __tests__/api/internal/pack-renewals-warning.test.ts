@@ -105,7 +105,13 @@ beforeEach(() => {
   countStalePendingRenewalAttemptsMock.mockResolvedValue(0)
   packAutoRenewEnabledMock.mockResolvedValue(true)
   packAutoRenewMaxAgeDaysMock.mockResolvedValue(7)
-  getUserByIdMock.mockResolvedValue({ id: "c1", email: "c1@x.com", first_name: "Sam", last_name: "Lee" })
+  getUserByIdMock.mockResolvedValue({
+    id: "c1",
+    email: "c1@x.com",
+    first_name: "Sam",
+    last_name: "Lee",
+    stripe_customer_id: "cus_default",
+  })
   resolveBillingUserIdMock.mockResolvedValue("c1")
   getDefaultPaymentMethodMock.mockResolvedValue(null)
 })
@@ -138,6 +144,24 @@ describe("POST /api/admin/internal/pack-renewals — auto-renew warning pass", (
   it("sends the manual reminder, not the warning, when the armed pack's payer has no card", async () => {
     listActivePackagesMock.mockResolvedValue([pkg({ id: "armed-no-card", auto_renew: true })])
     getDefaultPaymentMethodMock.mockResolvedValue(null)
+
+    await POST(req())
+
+    expect(sendPackAutoRenewWarningEmailMock).not.toHaveBeenCalled()
+    expect(sendPackRenewalEmailMock).toHaveBeenCalledTimes(1)
+    expect(sendPackRenewalEmailMock).toHaveBeenCalledWith(expect.objectContaining({ threshold: "low", to: "c1@x.com" }))
+  })
+
+  // F2: a user_payment_methods row can exist without a stripe_customer_id on
+  // the user (e.g. a partially-migrated account) — attemptPackRenewal treats
+  // that exactly like "no card" (lib/services/pack-renewal.ts checks
+  // `!payer?.stripe_customer_id || !card`). The warning's precondition must
+  // match: warning about a charge the charge path will actually skip would
+  // tell the client one thing and do another.
+  it("sends the manual reminder, not the warning, when a card row exists but the payer has no stripe_customer_id", async () => {
+    listActivePackagesMock.mockResolvedValue([pkg({ id: "armed-card-no-customer", auto_renew: true })])
+    getUserByIdMock.mockResolvedValue({ id: "c1", email: "c1@x.com", first_name: "Sam", last_name: "Lee" }) // no stripe_customer_id
+    getDefaultPaymentMethodMock.mockResolvedValue({ brand: "visa", last4: "4242" })
 
     await POST(req())
 
@@ -197,7 +221,7 @@ describe("POST /api/admin/internal/pack-renewals — auto-renew warning pass", (
     resolveBillingUserIdMock.mockResolvedValue("payer-1")
     getUserByIdMock.mockImplementation(async (id: string) =>
       id === "payer-1"
-        ? { id: "payer-1", email: "parent@x.com", first_name: "Pat", last_name: "Doe" }
+        ? { id: "payer-1", email: "parent@x.com", first_name: "Pat", last_name: "Doe", stripe_customer_id: "cus_parent" }
         : { id: "trainee-1", email: "kid@x.com", first_name: "Kim", last_name: "Doe" },
     )
     getDefaultPaymentMethodMock.mockResolvedValue({ brand: "visa", last4: "4242" })

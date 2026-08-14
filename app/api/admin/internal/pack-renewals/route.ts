@@ -191,7 +191,16 @@ export async function POST(request: NextRequest) {
       }
 
       const resolvable = candidates.filter((c) => contexts.has(c.pkg.id))
-      const classified = classifyPackReminders(resolvable, (pkg) => Boolean(contexts.get(pkg.id)?.card))
+      // Mirrors attemptPackRenewal's own precondition (lib/services/pack-renewal.ts:
+      // `if (!payer?.stripe_customer_id || !card)`) exactly — a card row without a
+      // Stripe customer id is exactly the "no_card" branch there, which reroutes to
+      // a payment link instead of charging. If this only checked `card`, a client
+      // could be warned about a charge that the charge path then silently declines
+      // to attempt, telling them one thing and doing another.
+      const classified = classifyPackReminders(resolvable, (pkg) => {
+        const ctx = contexts.get(pkg.id)
+        return Boolean(ctx?.card && ctx.payer.stripe_customer_id)
+      })
 
       for (const { pkg, action } of classified) {
         try {
@@ -200,7 +209,7 @@ export async function POST(request: NextRequest) {
           const remaining = remainingCredits(pkg)
           const clientName = `${trainee.first_name ?? ""} ${trainee.last_name ?? ""}`.trim() || "your athlete"
 
-          if (action === "warn_auto_renew" && card) {
+          if (action === "warn_auto_renew" && card && payer.stripe_customer_id) {
             const to = pkg.bill_to_email ?? payer.email ?? trainee.email
             await sendPackAutoRenewWarningEmail({
               to,
@@ -215,10 +224,12 @@ export async function POST(request: NextRequest) {
               amountCents: pkg.price_cents,
             })
           } else {
-            // Either classified as remind_manually (no card), or the
-            // defensive fallback for the should-never-happen case where
-            // action is warn_auto_renew but card came back null anyway —
-            // never send the warning without a real card to name.
+            // Either classified as remind_manually (no card, or a card row
+            // with no stripe_customer_id behind it — attemptPackRenewal would
+            // treat that the same as no card), or the defensive fallback for
+            // the should-never-happen case where action is warn_auto_renew
+            // but the context came back short one of those two anyway — never
+            // send the warning without both to name.
             await sendPackRenewalEmail({
               to: trainee.email,
               firstName: trainee.first_name,

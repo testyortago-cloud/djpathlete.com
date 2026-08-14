@@ -155,14 +155,12 @@ describe("POST /api/admin/internal/pack-renewals — auto-renew sweep", () => {
     const json = await res.json()
 
     expect(json.skipped).toBe("disabled")
-    // The reminder block itself (whose `scanned` counter only gets set inside
-    // `!gate.skipped`) never ran. We can no longer assert
-    // listActivePackagesMock was never called at all: the auto-renew WARNING
-    // pass (pack-renewals-warning.test.ts) also legitimately calls it,
-    // independent of this same cron gate — packAutoRenewEnabledMock defaults
-    // to true in this file's beforeEach, so that pass runs here too and finds
-    // nothing (listActivePackagesMock defaults to []).
-    expect(json.scanned).toBe(0)
+    // The warning pass legitimately calls this once (packAutoRenewEnabledMock
+    // defaults to true in this file's beforeEach, so it runs here too, finding
+    // nothing since listActivePackagesMock defaults to []). TWO calls would
+    // mean the reminder loop ignored gate.skipped and ran anyway — that's what
+    // this asserts against, not "the reminder loop never touched it."
+    expect(listActivePackagesMock).toHaveBeenCalledTimes(1)
     expect(attemptPackRenewalMock).toHaveBeenCalledTimes(1)
     expect(json.renewed).toBe(1)
   })
