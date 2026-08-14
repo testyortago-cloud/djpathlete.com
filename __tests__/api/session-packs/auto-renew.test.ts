@@ -40,6 +40,15 @@ function req(body: unknown) {
   })
 }
 
+/** A body that fails at JSON.parse itself, not just schema validation. */
+function malformedReq() {
+  return new Request(`http://localhost/api/session-packs/${PACK}/auto-renew`, {
+    method: "PATCH",
+    body: "{not valid json",
+    headers: { "content-type": "application/json" },
+  })
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   authMock.mockResolvedValue({ user: { id: "u1", role: "client" } })
@@ -110,6 +119,13 @@ describe("client auto-renew route", () => {
     expect(updateClientPackageMock).not.toHaveBeenCalled()
   })
 
+  it("400s on a body that isn't valid JSON at all", async () => {
+    const { PATCH } = await import("@/app/api/client/session-packs/[id]/auto-renew/route")
+    const res = await PATCH(malformedReq(), ctx())
+    expect(res.status).toBe(400)
+    expect(updateClientPackageMock).not.toHaveBeenCalled()
+  })
+
   it("records auto_renew_disabled on disarm", async () => {
     getClientPackageByIdMaybeMock.mockResolvedValue(basePack({ auto_renew: true }))
     updateClientPackageMock.mockResolvedValue(basePack({ auto_renew: false }))
@@ -131,6 +147,14 @@ describe("admin auto-renew route", () => {
     expect(updateClientPackageMock).not.toHaveBeenCalled()
   })
 
+  it("401s when there is no session", async () => {
+    authMock.mockResolvedValue(null)
+    const { PATCH } = await import("@/app/api/admin/session-packs/[id]/auto-renew/route")
+    const res = await PATCH(req({ autoRenew: true }), ctx())
+    expect(res.status).toBe(401)
+    expect(updateClientPackageMock).not.toHaveBeenCalled()
+  })
+
   it("404s when the pack does not exist", async () => {
     authMock.mockResolvedValue({ user: { id: "coach-1", role: "admin" } })
     getClientPackageByIdMaybeMock.mockResolvedValue(null)
@@ -143,6 +167,14 @@ describe("admin auto-renew route", () => {
     authMock.mockResolvedValue({ user: { id: "coach-1", role: "admin" } })
     const { PATCH } = await import("@/app/api/admin/session-packs/[id]/auto-renew/route")
     const res = await PATCH(req({ autoRenew: "yes" }), ctx())
+    expect(res.status).toBe(400)
+    expect(updateClientPackageMock).not.toHaveBeenCalled()
+  })
+
+  it("400s on a body that isn't valid JSON at all", async () => {
+    authMock.mockResolvedValue({ user: { id: "coach-1", role: "admin" } })
+    const { PATCH } = await import("@/app/api/admin/session-packs/[id]/auto-renew/route")
+    const res = await PATCH(malformedReq(), ctx())
     expect(res.status).toBe(400)
     expect(updateClientPackageMock).not.toHaveBeenCalled()
   })

@@ -16,12 +16,19 @@ const bodySchema = z.object({ autoRenew: z.boolean() })
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
-    if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
+    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!(await canAccessAdminPath(session.user))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
     const { id } = await ctx.params
 
-    const parsed = bodySchema.safeParse(await request.json())
+    let json: unknown
+    try {
+      json = await request.json()
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    }
+    const parsed = bodySchema.safeParse(json)
     if (!parsed.success) {
       return NextResponse.json({ error: "autoRenew must be a boolean" }, { status: 400 })
     }
