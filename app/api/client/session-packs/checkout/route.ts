@@ -42,6 +42,9 @@ export async function POST(request: Request) {
       validityDays: product.validity_days,
       productId: product.id,
       stripePriceId: product.stripe_price_id,
+      // Consent checkbox: save the client's own card so a depleted pack can
+      // auto-buy its replacement.
+      autoRenew: parsed.data.autoRenew,
       returnUrl: "/client/sessions",
       cancelUrl: "/client/sessions/buy",
     })

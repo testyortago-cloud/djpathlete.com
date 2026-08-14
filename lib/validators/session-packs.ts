@@ -31,6 +31,8 @@ export const sellPackSchema = z
     notes: z.string().optional(),
     /** Address the Stripe link to someone else (e.g. a parent with no account). */
     billToEmail: z.string().email().optional(),
+    /** Consent checkbox: save the payer's card and auto-buy a replacement pack on depletion. */
+    autoRenew: z.boolean().optional().default(false),
   })
   .refine((d) => !!d.productId || !!d.adhoc, { message: "Provide productId or adhoc pack" })
 
@@ -49,7 +51,11 @@ export const voidCheckinSchema = z.object({
 export const selfCheckinSchema = z.object({ token: z.string().min(1) })
 
 /** Client self-purchase: only the product; identity comes from the session. */
-export const selfCheckoutSchema = z.object({ productId: z.string().uuid() })
+export const selfCheckoutSchema = z.object({
+  productId: z.string().uuid(),
+  /** Consent checkbox: save the client's card and auto-buy a replacement pack on depletion. */
+  autoRenew: z.boolean().optional().default(false),
+})
 
 /** Admin partial update of a catalogue product. */
 export const packProductUpdateSchema = packProductSchema.partial()

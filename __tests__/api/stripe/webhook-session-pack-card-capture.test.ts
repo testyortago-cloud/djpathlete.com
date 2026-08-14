@@ -1,0 +1,150 @@
+import { describe, it, expect, vi, beforeEach } from "vitest"
+
+// Task 6 regression guard: the webhook's session_pack completion handler
+// must save the card against the PAYER (billingUserId), never the trainee,
+// and must never let a card-save failure block pack creation. This is the
+// second half of the highest-risk task in the pack-auto-renew plan — the
+// first half (createPackCheckoutSession addressee branch) is covered by
+// __tests__/lib/stripe/pack-checkout-card-capture.test.ts.
+
+const verifyMock = vi.fn()
+const getPackageByStripeSessionMock = vi.fn()
+const activatePaidPackageMock = vi.fn()
+const updateClientPackageMock = vi.fn()
+const resolveBillingUserIdMock = vi.fn()
+const upsertPmMock = vi.fn()
+const piRetrieveMock = vi.fn()
+const pmRetrieveMock = vi.fn()
+
+vi.mock("@/lib/stripe", () => ({
+  verifyWebhookSignature: (...a: unknown[]) => verifyMock(...a),
+  resolveSessionPaymentIntent: vi.fn(async () => "pi_1"),
+  stripe: {
+    paymentIntents: { retrieve: (...a: unknown[]) => piRetrieveMock(...a) },
+    paymentMethods: { retrieve: (...a: unknown[]) => pmRetrieveMock(...a) },
+  },
+}))
+vi.mock("@/lib/db/client-packages", () => ({
+  getPackageByStripeSession: (...a: unknown[]) => getPackageByStripeSessionMock(...a),
+  getPackageByStripePaymentId: vi.fn(),
+  updateClientPackage: (...a: unknown[]) => updateClientPackageMock(...a),
+}))
+vi.mock("@/lib/services/session-credits", () => ({ activatePaidPackage: (...a: unknown[]) => activatePaidPackageMock(...a) }))
+vi.mock("@/lib/services/billing-payer", () => ({ resolveBillingUserId: (...a: unknown[]) => resolveBillingUserIdMock(...a) }))
+vi.mock("@/lib/db/payment-methods", () => ({ upsertDefaultPaymentMethod: (...a: unknown[]) => upsertPmMock(...a) }))
+vi.mock("@/lib/db/payments", () => ({ createPayment: vi.fn(), getPaymentByStripeId: vi.fn(async () => null), updatePayment: vi.fn() }))
+vi.mock("@/lib/ads/conversions", () => ({ enqueuePaymentValueAdjustmentByEmail: vi.fn() }))
+vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
+vi.mock("@/lib/db/marketing-attribution", () => ({ findAttributionByEmail: vi.fn() }))
+vi.mock("@/lib/db/subscriptions", () => ({
+  createSubscription: vi.fn(), getSubscriptionByStripeId: vi.fn(), updateSubscriptionByStripeId: vi.fn(),
+}))
+vi.mock("@/lib/db/users", () => ({ getUserByEmail: vi.fn(async () => null), getUserById: vi.fn() }))
+vi.mock("@/lib/db/assignments", () => ({ createAssignment: vi.fn(), getAssignmentByUserAndProgram: vi.fn(), updateAssignment: vi.fn() }))
+vi.mock("@/lib/db/week-access", () => ({ updateWeekAccess: vi.fn(), createWeekAccessBulk: vi.fn() }))
+vi.mock("@/lib/db/client-profiles", () => ({ getProfileByUserId: vi.fn() }))
+vi.mock("@/lib/db/programs", () => ({ getProgramById: vi.fn() }))
+vi.mock("@/lib/db/event-signups", () => ({
+  confirmSignup: vi.fn(), cancelSignup: vi.fn(), getSignupById: vi.fn(), getEventSignupByPaymentIntent: vi.fn(),
+}))
+vi.mock("@/lib/db/events", () => ({ getEventById: vi.fn() }))
+vi.mock("@/lib/shop/webhooks", () => ({ handleShopOrderCheckout: vi.fn() }))
+vi.mock("@/lib/email", () => ({
+  sendCoachPurchaseNotification: vi.fn(), sendEventSignupConfirmedEmail: vi.fn(), sendEventSignupOverbookRefundEmail: vi.fn(),
+}))
+vi.mock("@/lib/ghl", () => ({ ghlCreateContact: vi.fn(), ghlTriggerWorkflow: vi.fn() }))
+vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => ({ from: () => ({ update: () => ({ eq: vi.fn() }) }) }) }))
+
+import { POST } from "@/app/api/stripe/webhook/route"
+
+const PKG = {
+  id: "pkg-1",
+  client_user_id: "trainee-1",
+  payment_status: "pending",
+  credits_total: 10,
+  price_cents: 50000,
+}
+
+function packCompletedEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "evt_1",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: "cs_pack_1",
+        metadata: { type: "session_pack" },
+        payment_intent: "pi_1",
+        customer: "cus_payer",
+        amount_total: 50000,
+        currency: "usd",
+        customer_details: { email: null },
+        ...overrides,
+      },
+    },
+  }
+}
+
+function makeReq() {
+  return new Request("http://localhost/api/stripe/webhook", {
+    method: "POST",
+    headers: { "stripe-signature": "test_sig" },
+    body: "{}",
+  })
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  getPackageByStripeSessionMock.mockResolvedValue(PKG)
+  resolveBillingUserIdMock.mockResolvedValue("payer-1")
+  piRetrieveMock.mockResolvedValue({ id: "pi_1", payment_method: "pm_1" })
+  pmRetrieveMock.mockResolvedValue({ id: "pm_1", card: { brand: "visa", last4: "4242", exp_month: 1, exp_year: 2030 } })
+  upsertPmMock.mockResolvedValue(undefined)
+  updateClientPackageMock.mockResolvedValue(undefined)
+})
+
+describe("Stripe webhook — session_pack card capture (Task 6)", () => {
+  it("saves the card against the PAYER (billingUserId), never the trainee", async () => {
+    verifyMock.mockReturnValue(packCompletedEvent({ metadata: { type: "session_pack", autoRenew: "true" } }))
+    const res = await POST(makeReq())
+    expect(res.status).toBe(200)
+    expect(resolveBillingUserIdMock).toHaveBeenCalledWith("trainee-1")
+    expect(upsertPmMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: "payer-1",
+        stripe_payment_method_id: "pm_1",
+        last4: "4242",
+        is_default: true,
+      }),
+    )
+    // Sanity: never asserted the wrong identity by accident.
+    expect(upsertPmMock).not.toHaveBeenCalledWith(expect.objectContaining({ user_id: "trainee-1" }))
+  })
+
+  it("arms auto_renew on the pack when metadata says the checkbox was checked", async () => {
+    verifyMock.mockReturnValue(packCompletedEvent({ metadata: { type: "session_pack", autoRenew: "true" } }))
+    await POST(makeReq())
+    expect(updateClientPackageMock).toHaveBeenCalledWith("pkg-1", { auto_renew: true })
+  })
+
+  it("does not touch auto_renew when the checkbox was left unchecked", async () => {
+    verifyMock.mockReturnValue(packCompletedEvent({ metadata: { type: "session_pack", autoRenew: "false" } }))
+    await POST(makeReq())
+    expect(updateClientPackageMock).not.toHaveBeenCalled()
+  })
+
+  it("saves no card for an account-less billToEmail payer (no Stripe customer attached)", async () => {
+    verifyMock.mockReturnValue(packCompletedEvent({ customer: null }))
+    const res = await POST(makeReq())
+    expect(res.status).toBe(200)
+    expect(upsertPmMock).not.toHaveBeenCalled()
+    expect(resolveBillingUserIdMock).not.toHaveBeenCalled()
+  })
+
+  it("is best-effort: a card-save failure does not fail the pack activation", async () => {
+    verifyMock.mockReturnValue(packCompletedEvent())
+    piRetrieveMock.mockRejectedValue(new Error("stripe down"))
+    const res = await POST(makeReq())
+    expect(res.status).toBe(200)
+    expect(activatePaidPackageMock).toHaveBeenCalled()
+  })
+})

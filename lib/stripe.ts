@@ -410,6 +410,8 @@ export async function createPackCheckoutSession(opts: {
   stripePriceId?: string | null
   /** Explicit addressee (e.g. a parent with no account). Beats the household payer. */
   billToEmail?: string | null
+  /** Consent captured on the checkout checkbox — carried into Stripe metadata so the webhook can arm the pack. */
+  autoRenew?: boolean
   returnUrl?: string
   cancelUrl?: string
 }): Promise<Stripe.Checkout.Session> {
@@ -432,38 +434,55 @@ export async function createPackCheckoutSession(opts: {
         },
       ]
 
-  // Pin checkout to the PAYER's email so the payment page is addressed to
-  // whoever actually pays — without pinning, Stripe Link autofills whichever
-  // account lives in the browser that opens the link (the coach's own
-  // card/email when he previews it).
+  // Pin checkout to the PAYER's email/customer so the payment page is
+  // addressed to whoever actually pays — without pinning, Stripe Link
+  // autofills whichever account lives in the browser that opens the link
+  // (the coach's own card/email when he previews it).
   //
-  // Addressee precedence: explicit per-pack override → household payer → the
-  // client themselves.
+  // Addressee precedence: explicit per-pack override (billToEmail) →
+  // household payer → the client themselves. The pack is still FOR the
+  // trainee — metadata.clientUserId below is unchanged and is what the
+  // webhook credits. Only the addressee (and now, card capture) changes.
   //
-  // `billToEmail` covers the payer who has no account at all (a parent paying
-  // for a junior athlete). The household payer covers one who does:
-  // resolveBillingUserId returns the "Charges paid by" user, else the client.
+  // Addressee + card capture. Stripe rejects `customer` and `customer_email`
+  // together, so this is a branch, not a merge:
   //
-  // The pack is still FOR the trainee — metadata.clientUserId below is
-  // unchanged and is what the webhook credits. Only the addressee changes.
-  // Before any of this, a parent opened the link and found the trainee's email
+  //   explicit billToEmail  → customer_email, NO card saved. The payer has no
+  //                           users row, and saving their card against the
+  //                           trainee's user_id would assert a card belongs to
+  //                           someone who does not own it — which
+  //                           getDefaultPaymentMethod would then charge for
+  //                           unrelated fees. They keep using payment links.
+  //   otherwise             → resolve the household payer (or the client) and
+  //                           attach their customer, with setup_future_usage so
+  //                           the card is reusable for auto-renewal.
+  //
+  // Do not collapse this back into customer_email-for-everyone: that pinning
+  // exists because a parent once opened a link and found the athlete's email
   // locked in (Stripe makes a provided customer_email read-only), so the
-  // receipt landed in the wrong inbox.
-  let customerEmail: string | undefined = opts.billToEmail ?? undefined
-  if (!customerEmail) {
+  // receipt landed in the wrong inbox. Reintroducing it now would be worse —
+  // the saved card would also attach to the wrong person and auto-renewal
+  // would charge them.
+  let customerEmail: string | undefined
+  let customerId: string | undefined
+  if (opts.billToEmail) {
+    customerEmail = opts.billToEmail
+  } else {
     try {
       const billingUserId = await resolveBillingUserId(opts.clientUserId)
       const payer = await getUserById(billingUserId)
-      customerEmail = payer?.email ?? undefined
+      if (payer?.email) customerId = await getOrCreateStripeCustomer(billingUserId, payer.email)
     } catch {
-      // Non-fatal — checkout still works, just without the prefilled email.
+      // Non-fatal — checkout still works, just without a saved card.
     }
   }
 
   return stripe.checkout.sessions.create({
     mode: "payment",
     line_items,
-    customer_email: customerEmail,
+    ...(customerId ? { customer: customerId } : {}),
+    ...(customerEmail ? { customer_email: customerEmail } : {}),
+    ...(customerId ? { payment_intent_data: { setup_future_usage: "off_session" as const } } : {}),
     metadata: {
       type: "session_pack",
       clientUserId: opts.clientUserId,
@@ -472,6 +491,7 @@ export async function createPackCheckoutSession(opts: {
       validityDays: opts.validityDays == null ? "" : String(opts.validityDays),
       sessionType: opts.sessionType,
       priceCents: String(opts.priceCents),
+      autoRenew: opts.autoRenew ? "true" : "false",
     },
     success_url: successUrl,
     cancel_url: cancelUrl,

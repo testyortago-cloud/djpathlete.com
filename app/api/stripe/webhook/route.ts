@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import type Stripe from "stripe"
 import { verifyWebhookSignature, resolveSessionPaymentIntent, retrieveSetupCard, stripe } from "@/lib/stripe"
 import { upsertDefaultPaymentMethod } from "@/lib/db/payment-methods"
+import { resolveBillingUserId } from "@/lib/services/billing-payer"
 import {
   createClientMembership,
   getMembershipBySubscriptionId,
@@ -862,6 +863,53 @@ async function handleSessionPackCheckout(session: Stripe.Checkout.Session) {
 
   const stripePaymentId = await resolveSessionPaymentIntent(session)
   await activatePaidPackage(pkg, stripePaymentId)
+
+  // Auto-renew consent was captured on the checkout checkbox and round-tripped
+  // through Stripe metadata (createPackCheckoutSession stamps it). Written as
+  // its own call, separate from activatePaidPackage, so that function's call
+  // signature — asserted verbatim by the existing webhook regression tests —
+  // doesn't change. Only writes when true: the pack row already defaults
+  // auto_renew to false at creation (buildPackageInsert), so there is nothing
+  // to disarm here.
+  if (session.metadata?.autoRenew === "true") {
+    try {
+      await updateClientPackage(pkg.id, { auto_renew: true })
+    } catch (err) {
+      console.error("[webhook] could not set auto_renew on pack:", err)
+    }
+  }
+
+  // Persist the card the client just used so auto-renewal has something to
+  // charge later. Best-effort: a pack must never fail to be created because
+  // the card could not be stored. Saved against the PAYER (billingUserId),
+  // not the trainee — matches the identity createPackCheckoutSession attached
+  // `customer` to. When checkout used an explicit billToEmail (no Stripe
+  // `customer` was attached — see createPackCheckoutSession), session.customer
+  // is null and this whole block is a no-op, which is correct: we never save
+  // an account-less payer's card against the trainee's user_id.
+  const piId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id
+  const sessionCustomerId = typeof session.customer === "string" ? session.customer : session.customer?.id
+  if (piId && sessionCustomerId) {
+    try {
+      const pi = await stripe.paymentIntents.retrieve(piId)
+      const pmId = typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id
+      if (pmId) {
+        const pm = await stripe.paymentMethods.retrieve(pmId)
+        const billingUserId = await resolveBillingUserId(pkg.client_user_id)
+        await upsertDefaultPaymentMethod({
+          user_id: billingUserId,
+          stripe_payment_method_id: pmId,
+          brand: pm.card?.brand ?? null,
+          last4: pm.card?.last4 ?? null,
+          exp_month: pm.card?.exp_month ?? null,
+          exp_year: pm.card?.exp_year ?? null,
+          is_default: true,
+        })
+      }
+    } catch (err) {
+      console.error("[webhook] could not save pack card:", err)
+    }
+  }
 
   // Record the payment for revenue tracking (idempotent).
   if (stripePaymentId) {

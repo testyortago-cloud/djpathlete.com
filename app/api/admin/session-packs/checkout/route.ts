@@ -98,6 +98,10 @@ export async function POST(request: Request) {
         // Optional: address the link to a payer with no account (a parent).
         // Falls through to the household payer, then the client, when absent.
         billToEmail: input.billToEmail ?? null,
+        // Consent checkbox: save the payer's card so a depleted pack can
+        // auto-buy its replacement. No-op for an account-less billToEmail
+        // payer — createPackCheckoutSession never saves a card there.
+        autoRenew: input.autoRenew,
         // The link is sent to and paid by the CLIENT — land them on their own
         // packs page, never the coach's admin client page.
         returnUrl: input.returnUrl ?? "/client/sessions",
