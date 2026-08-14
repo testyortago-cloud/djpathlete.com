@@ -8,12 +8,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { listActivePackages, listDepletedAutoRenewPackages, updateClientPackage } from "@/lib/db/client-packages"
 import { countStalePendingRenewalAttempts } from "@/lib/db/pack-renewal-attempts"
-import { selectPacksNeedingReminder } from "@/lib/automation/pack-renewal-scanner"
+import { selectPacksNeedingReminder, classifyPackReminders } from "@/lib/automation/pack-renewal-scanner"
 import { remainingCredits } from "@/lib/services/session-credits"
 import { attemptPackRenewal } from "@/lib/services/pack-renewal"
+import { resolveBillingUserId } from "@/lib/services/billing-payer"
+import { getDefaultPaymentMethod } from "@/lib/db/payment-methods"
 import { getUserById, getUsers } from "@/lib/db/users"
 import { createNotification } from "@/lib/db/notifications"
-import { sendPackRenewalEmail } from "@/lib/email"
+import { sendPackRenewalEmail, sendPackAutoRenewWarningEmail } from "@/lib/email"
 import {
   PACK_RENEWALS_CRON_KEY,
   packReminderLowAt,
@@ -41,6 +43,12 @@ export async function POST(request: NextRequest) {
   const now = new Date()
   const gate = await isCronSkipped({ enabledKey: PACK_RENEWALS_CRON_KEY, defaultEnabled: false })
 
+  // Computed once, shared by the reminder loop below, the auto-renew warning
+  // pass, and the auto-renew sweep further down — it's the same first gate
+  // shouldAttemptRenewal checks, so all three need the same answer to the same
+  // question: "will attemptPackRenewal ever actually run for an armed pack?"
+  const autoRenewOn = await packAutoRenewEnabled()
+
   let scanned = 0
   let remindersCount = 0
   let emailed = 0
@@ -59,6 +67,23 @@ export async function POST(request: NextRequest) {
 
     for (const { pkg, threshold } of reminders) {
       try {
+        // Armed + live at `empty`: attemptPackRenewal (the inline check-in
+        // trigger or the sweep below) already resolves this pack's fate on its
+        // own — a receipt, a decline notice, or a no-card payment link — so
+        // this generic "sessions ran out" reminder would be a second,
+        // contradictory email minutes later. Gated on autoRenewOn (not just
+        // pkg.auto_renew): that's the same first gate shouldAttemptRenewal
+        // checks, so if it's off nothing else is ever going to contact this
+        // client and suppressing here would go silent instead.
+        if (threshold === "empty" && pkg.auto_renew && autoRenewOn) continue
+
+        // Armed + live at `low`: owned entirely by the auto-renew warning pass
+        // below (own gate, decoupled from cron_pack_renewals_enabled) — it
+        // knows whether to warn or fall back to this very reminder, which
+        // needs a card lookup this loop deliberately doesn't do. Same "if
+        // live" guard as above.
+        if (threshold === "low" && pkg.auto_renew && autoRenewOn) continue
+
         const client = await getUserById(pkg.client_user_id)
         const remaining = remainingCredits(pkg)
 
@@ -114,6 +139,107 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Auto-renew WARNING pass — gives an armed client advance notice, BEFORE any
+  // money moves, that their LOW pack is about to trigger a real charge (or,
+  // when the payer has no card on file, falls back to today's manual
+  // reminder — the same email the loop above sends everyone else, since no
+  // charge is actually coming for this pack).
+  //
+  // Deliberately its own self-contained block, gated on autoRenewOn ONLY, NOT
+  // on gate.skipped / cron_pack_renewals_enabled above — same reasoning as the
+  // sweep's own comment below: those flags answer "may we email clients about
+  // their balance" (an opt-in the coach can leave off indefinitely) vs. "may
+  // we charge a saved card" (the master switch for real money). Putting this
+  // warning inside the reminder gate would make it dead on arrival exactly
+  // like the crash-recovery sweep almost was — see that comment for the full
+  // story. The reminder loop above already defers every armed+low(+live) pack
+  // to this pass instead of double-handling it.
+  let warned = 0
+  let warningsFailed = 0
+  if (autoRenewOn) {
+    try {
+      const [lowAt, expiryDays] = await Promise.all([packReminderLowAt(), packReminderExpiryDays()])
+      const packs = await listActivePackages()
+      const reminders = selectPacksNeedingReminder(packs, now, lowAt, expiryDays)
+      // Only this pass's own concern: armed packs at `low`. Unarmed packs and
+      // armed packs at other thresholds are the reminder loop's job above (and
+      // must stay that way — sending them here too would double-email when
+      // both gates are on, or wrongly email when cron_pack_renewals_enabled is
+      // off, breaking "unarmed pack behaviour is unchanged").
+      const candidates = reminders.filter((r) => r.threshold === "low" && r.pkg.auto_renew)
+
+      // Resolve the payer + card context per candidate BEFORE classifying —
+      // classifyPackReminders stays pure (card presence is an INPUT, never
+      // something it looks up itself).
+      const contexts = new Map<
+        string,
+        { payer: Awaited<ReturnType<typeof getUserById>>; trainee: Awaited<ReturnType<typeof getUserById>>; card: Awaited<ReturnType<typeof getDefaultPaymentMethod>> }
+      >()
+      for (const { pkg } of candidates) {
+        try {
+          const billingUserId = await resolveBillingUserId(pkg.client_user_id)
+          const [payer, trainee, card] = await Promise.all([
+            getUserById(billingUserId),
+            getUserById(pkg.client_user_id),
+            getDefaultPaymentMethod(billingUserId),
+          ])
+          contexts.set(pkg.id, { payer, trainee, card })
+        } catch (err) {
+          warningsFailed += 1
+          console.error(`[pack-renewals] auto-renew warning context lookup failed for pack ${pkg.id}:`, err)
+        }
+      }
+
+      const resolvable = candidates.filter((c) => contexts.has(c.pkg.id))
+      const classified = classifyPackReminders(resolvable, (pkg) => Boolean(contexts.get(pkg.id)?.card))
+
+      for (const { pkg, action } of classified) {
+        try {
+          const ctx = contexts.get(pkg.id)!
+          const { payer, trainee, card } = ctx
+          const remaining = remainingCredits(pkg)
+          const clientName = `${trainee.first_name ?? ""} ${trainee.last_name ?? ""}`.trim() || "your athlete"
+
+          if (action === "warn_auto_renew" && card) {
+            const to = pkg.bill_to_email ?? payer.email ?? trainee.email
+            await sendPackAutoRenewWarningEmail({
+              to,
+              ccClientEmail: trainee.email && trainee.email !== to ? trainee.email : null,
+              firstName: payer.first_name ?? "there",
+              clientName,
+              remaining,
+              sessionType: pkg.session_type,
+              credits: pkg.credits_total,
+              cardBrand: card.brand ?? "card",
+              cardLast4: card.last4 ?? "····",
+              amountCents: pkg.price_cents,
+            })
+          } else {
+            // Either classified as remind_manually (no card), or the
+            // defensive fallback for the should-never-happen case where
+            // action is warn_auto_renew but card came back null anyway —
+            // never send the warning without a real card to name.
+            await sendPackRenewalEmail({
+              to: trainee.email,
+              firstName: trainee.first_name,
+              threshold: "low",
+              remaining,
+              sessionType: pkg.session_type,
+              clientUserId: pkg.client_user_id,
+            })
+          }
+          await updateClientPackage(pkg.id, { last_reminded_threshold: "low" })
+          warned += 1
+        } catch (err) {
+          warningsFailed += 1
+          console.error(`[pack-renewals] auto-renew warning failed for pack ${pkg.id}:`, err)
+        }
+      }
+    } catch (err) {
+      console.error("[pack-renewals] auto-renew warning pass failed:", err)
+    }
+  }
+
   // Auto-renew sweep — safety net for the inline trigger in checkInClient: a
   // serverless instance can die before its fire-and-forget renewal lands.
   // Both paths race the same unique (source_package_id) index, so the
@@ -130,7 +256,7 @@ export async function POST(request: NextRequest) {
   let renewed = 0
   let renewalsFailed = 0
   try {
-    if (await packAutoRenewEnabled()) {
+    if (autoRenewOn) {
       // I3: only packs that depleted within the last N days — otherwise the
       // first sweep run after this flag flips on charges every pack that
       // quietly depleted while it was off, all at once, regardless of age.
@@ -196,6 +322,8 @@ export async function POST(request: NextRequest) {
       emailed,
       notified,
       errors,
+      warned,
+      warningsFailed,
       renewed,
       renewalsFailed,
       stalePendingRenewals,

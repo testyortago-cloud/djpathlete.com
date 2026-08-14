@@ -2595,6 +2595,71 @@ export async function sendPackRenewedEmail(opts: {
   }
 }
 
+/**
+ * Advance warning for a session pack armed with auto-renew, sent when it hits
+ * the `low` reminder threshold — BEFORE any money moves. Until now the only
+ * signal a payer got was the receipt (sendPackRenewedEmail) AFTER the charge;
+ * this names the exact charge that's coming while there's still time to turn
+ * auto-renew off.
+ *
+ * `to` is the payer whose card WILL be charged. The trainee is CC'd when
+ * they're a different person, dropped when it would duplicate `to` — same
+ * guard as sendPackRenewedEmail / sendPackPaymentLinkEmail.
+ *
+ * Only ever called for an armed pack with a card on file — see
+ * lib/automation/pack-renewal-scanner.ts's classifyPackReminders, which picks
+ * this branch vs. the ordinary sendPackRenewalEmail reminder. Non-blocking on
+ * failure, like sendPackRenewedEmail: a warning that fails to send must never
+ * stop the reminder cron from processing the rest of the batch.
+ *
+ * Renders via the styled React template in
+ * components/emails/PackAutoRenewWarningEmail.tsx — the sibling of
+ * PackRenewedEmail.tsx, built to read side-by-side with it.
+ */
+export async function sendPackAutoRenewWarningEmail(opts: {
+  to: string
+  ccClientEmail: string | null
+  firstName: string
+  clientName: string
+  remaining: number
+  sessionType: string
+  credits: number
+  cardBrand: string
+  cardLast4: string
+  amountCents: number
+}) {
+  const [{ renderPackAutoRenewWarningEmail }, { formatCurrency }] = await Promise.all([
+    import("@/components/emails/PackAutoRenewWarningEmail"),
+    import("@/components/emails/PackRenewedEmail"),
+  ])
+  const baseUrl = getBaseUrl()
+  const amount = formatCurrency(opts.amountCents)
+  const html = await renderPackAutoRenewWarningEmail({
+    firstName: opts.firstName,
+    clientName: opts.clientName,
+    remaining: opts.remaining,
+    sessionType: opts.sessionType,
+    credits: opts.credits,
+    cardBrand: opts.cardBrand,
+    cardLast4: opts.cardLast4,
+    amountCents: opts.amountCents,
+    manageUrl: `${baseUrl}/client/sessions`,
+  })
+
+  const cc = opts.ccClientEmail && opts.ccClientEmail !== opts.to ? opts.ccClientEmail : undefined
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: opts.to,
+    cc,
+    subject: `${opts.remaining} session${opts.remaining === 1 ? "" : "s"} left — your card will renew ${opts.clientName}'s pack automatically`,
+    html,
+  })
+  if (error) {
+    console.error("[sendPackAutoRenewWarningEmail] resend error:", error)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Funnel leads
 // ---------------------------------------------------------------------------
