@@ -8,10 +8,20 @@ vi.mock("stripe", () => ({
   default: class {
     checkout = { sessions: { create: (...a: unknown[]) => createSessionMock(...a) } }
     // getOrCreateStripeCustomer's best-effort email reconciliation (I4)
-    // touches these when reusing a stored customer id — stub them so that
-    // reconciliation is a silent no-op here rather than a caught-and-logged
-    // TypeError on every test.
-    customers = { create: vi.fn(), retrieve: vi.fn(), update: vi.fn() }
+    // touches these when reusing a stored customer id — resolve retrieve to
+    // a live customer whose email already matches so reconciliation is a
+    // silent no-op here (an unresolved vi.fn() would return undefined and
+    // throw inside the reconciliation's `"deleted" in customer` check).
+    customers = {
+      create: vi.fn(),
+      // No `deleted` key at all — that's how a LIVE Stripe customer actually
+      // looks (the field only appears, as true, once the customer is
+      // deleted). Including `deleted: false` here would make the source's
+      // `"deleted" in customer` narrowing treat it as deleted, since `in`
+      // tests key presence, not truthiness.
+      retrieve: vi.fn(async (id: string) => ({ id, email: "payer@example.com" })),
+      update: vi.fn(),
+    }
   },
 }))
 vi.mock("@/lib/db/users", () => ({

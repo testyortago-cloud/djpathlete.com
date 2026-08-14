@@ -35,6 +35,32 @@ describe("shouldAttemptRenewal", () => {
     })
   })
 
+  // NEW-2: auto_renew is now stamped at checkout-CREATION time (before
+  // payment), so an armed-but-never-paid pack that somehow got fully checked
+  // in (credits_used === credits_total, status depleted) must still refuse.
+  // credits_used: 10 / credits_total: 10 (the base fixture) is load-bearing:
+  // it makes the pack genuinely depleted, so without the payment_status gate
+  // this would fall through to `{ attempt: true }` — proving the gate is
+  // actually doing the work, not merely agreeing with a guard that would
+  // have refused anyway.
+  it("refuses an unpaid pack even when armed and depleted, so an abandoned checkout can't trigger a charge", () => {
+    expect(shouldAttemptRenewal(pack({ payment_status: "pending" }), true)).toEqual({
+      attempt: false, reason: "unpaid",
+    })
+  })
+
+  it("refuses a refunded pack", () => {
+    expect(shouldAttemptRenewal(pack({ payment_status: "refunded" }), true)).toEqual({
+      attempt: false, reason: "unpaid",
+    })
+  })
+
+  it("a comp pack (not_required) is not treated as unpaid", () => {
+    expect(shouldAttemptRenewal(pack({ payment_status: "not_required" }), true)).toEqual({
+      attempt: true,
+    })
+  })
+
   it("refuses a zero-price pack so a comp pack never bills anyone", () => {
     expect(shouldAttemptRenewal(pack({ price_cents: 0 }), true)).toEqual({
       attempt: false, reason: "zero_price",

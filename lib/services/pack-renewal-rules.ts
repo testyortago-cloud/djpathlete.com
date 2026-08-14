@@ -2,7 +2,7 @@ import type { ClientPackage } from "@/types/database"
 
 export type RenewalDecision =
   | { attempt: true }
-  | { attempt: false; reason: "disabled" | "not_armed" | "not_depleted" | "zero_price" | "expired" }
+  | { attempt: false; reason: "disabled" | "not_armed" | "unpaid" | "expired" | "not_depleted" | "zero_price" }
 
 /**
  * Pure gate for "should this pack buy itself again". Ordered cheapest-first so
@@ -13,6 +13,17 @@ export type RenewalDecision =
 export function shouldAttemptRenewal(pkg: ClientPackage, flagEnabled: boolean): RenewalDecision {
   if (!flagEnabled) return { attempt: false, reason: "disabled" }
   if (!pkg.auto_renew) return { attempt: false, reason: "not_armed" }
+  // A pack that was never actually paid for (still "pending", or "refunded")
+  // must never ground an auto-renewal charge. auto_renew is now stamped on
+  // the pack at CHECKOUT-CREATION time (buildPackageInsert), before payment
+  // completes — so a link that's minted with the box ticked but never paid
+  // can still reach "depleted" if the coach lets the client check in anyway.
+  // Without this gate that unpaid pack would auto-renew and bill a card for a
+  // replacement of a pack that was never bought. "not_required" (comp packs)
+  // is a legitimate non-charge, not an unpaid state, so it passes.
+  if (pkg.payment_status !== "paid" && pkg.payment_status !== "not_required") {
+    return { attempt: false, reason: "unpaid" }
+  }
   if (pkg.status === "expired") return { attempt: false, reason: "expired" }
 
   // Inlined rather than imported from "@/lib/services/session-credits": a later

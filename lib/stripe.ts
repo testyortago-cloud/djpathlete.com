@@ -143,6 +143,15 @@ export async function archiveAndCreateNewPrice(opts: {
 export async function getOrCreateStripeCustomer(userId: string, email: string): Promise<string> {
   const user = await getUserById(userId)
 
+  // Trust our own fresh DB read over the caller's argument. Some callers
+  // (e.g. app/api/stripe/checkout/route.ts) pass session.user.email straight
+  // from the NextAuth JWT, which can be up to 24h stale under this repo's
+  // session lifetime. Pushing THAT to Stripe below could revert an email
+  // change a more recent save-card or pack checkout had already synced
+  // correctly. `user` is fetched fresh right above regardless of branch, so
+  // it's always at least as current as the caller's value — use it instead.
+  const currentEmail = user.email || email
+
   if (user.stripe_customer_id) {
     // Reconcile: a Stripe Customer is created once and never touched again by
     // default. If the user changes their email in-app afterward, nothing
@@ -150,15 +159,17 @@ export async function getOrCreateStripeCustomer(userId: string, email: string): 
     // receipt addressed via `customer` instead of a bare customer_email)
     // silently keeps the OLD email forever. Same wrong-inbox property the
     // original customer_email fix eliminated, just relocated to a field
-    // nothing was watching. Comparing against our own `user.email` would be
-    // a no-op here (the caller almost always derives `email` from the same
-    // row), so this retrieves Stripe's actual copy and only writes when it's
-    // genuinely stale. Best-effort: a Stripe hiccup must never block the sale.
+    // nothing was watching. This retrieves Stripe's actual copy and only
+    // writes when it's genuinely stale. Best-effort: a Stripe hiccup must
+    // never block the sale.
     try {
       const customer = await stripe.customers.retrieve(user.stripe_customer_id)
-      const isLive = customer && !(("deleted" in customer && customer.deleted) as boolean)
-      if (isLive && customer.email !== email) {
-        await stripe.customers.update(user.stripe_customer_id, { email })
+      // Narrow via `in` rather than an `as boolean` cast — the cast defeats
+      // TypeScript's aliased-condition narrowing, so `customer` stays typed
+      // as Customer | DeletedCustomer and `customer.email` doesn't compile
+      // (DeletedCustomer has no `email`).
+      if (!("deleted" in customer) && customer.email !== currentEmail) {
+        await stripe.customers.update(user.stripe_customer_id, { email: currentEmail })
       }
     } catch (err) {
       console.error("[getOrCreateStripeCustomer] could not reconcile customer email:", err)
@@ -167,7 +178,7 @@ export async function getOrCreateStripeCustomer(userId: string, email: string): 
   }
 
   const customer = await stripe.customers.create({
-    email,
+    email: currentEmail,
     metadata: { userId },
   })
 

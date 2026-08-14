@@ -8,7 +8,24 @@ const getUserById = vi.fn()
 vi.mock("stripe", () => ({
   default: class {
     checkout = { sessions: { create } }
-    customers = { create: customersCreate, retrieve: vi.fn(), update: vi.fn() }
+    // getOrCreateStripeCustomer's email reconciliation (I4) calls retrieve
+    // whenever reusing a stored customer id — resolve it to a live customer
+    // whose email already matches so reconciliation is a silent no-op (an
+    // unresolved vi.fn() would return undefined and throw inside the
+    // reconciliation's `"deleted" in customer` check).
+    customers = {
+      create: customersCreate,
+      // No `deleted` key at all — that's how a LIVE Stripe customer actually
+      // looks (the field only appears, as true, once the customer is
+      // deleted). Including `deleted: false` would make the source's
+      // `"deleted" in customer` narrowing treat it as deleted, since `in`
+      // tests key presence, not truthiness.
+      retrieve: vi.fn(async (id: string) => ({
+        id,
+        email: id === "cus_payer" ? "payer@x.com" : "trainee@x.com",
+      })),
+      update: vi.fn(),
+    }
   },
 }))
 vi.mock("@/lib/services/billing-payer", () => ({ resolveBillingUserId }))
