@@ -6,6 +6,12 @@ vi.mock("@/lib/services/program-progression", () => ({
   handleCheckinProgramAdvance: vi.fn(async () => ({ programCompleted: false })),
   handleVoidProgramRevert: vi.fn(async () => undefined),
 }))
+// checkInClient fires the auto-renewal trigger fire-and-forget when a check-in
+// depletes the pack. Without this mock, that call falls through to the real
+// attemptPackRenewal (unmocked @/lib/supabase, @/lib/stripe, etc.) as a genuine
+// unhandled side effect against whatever the test env's Supabase project is —
+// a pure unit test has no business reaching the network.
+vi.mock("@/lib/services/pack-renewal", () => ({ attemptPackRenewal: vi.fn(async () => ({ renewed: false })) }))
 
 import * as packs from "@/lib/db/client-packages"
 import * as checkins from "@/lib/db/session-checkins"

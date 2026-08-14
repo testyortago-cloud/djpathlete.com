@@ -43,7 +43,13 @@ describe("check-in triggers renewal", () => {
     })
 
     expect(result.ok).toBe(true)
-    expect(attemptPackRenewal).toHaveBeenCalled()
+    // Must be called with the POST-CAS pack (swapped), not the stale pre-CAS
+    // pkg — otherwise shouldAttemptRenewal would see the old credits_used/
+    // status and silently return "not_depleted" every time.
+    expect(attemptPackRenewal).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "p1", credits_used: 3, status: "depleted" }),
+      expect.any(Date),
+    )
   })
 
   it("does not attempt renewal when credits remain", async () => {
@@ -94,5 +100,9 @@ describe("check-in triggers renewal", () => {
     })
 
     expect(result.ok).toBe(true)
+    expect(attemptPackRenewal).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "p1", credits_used: 3, status: "depleted" }),
+      expect.any(Date),
+    )
   })
 })
