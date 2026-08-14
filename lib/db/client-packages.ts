@@ -136,3 +136,24 @@ export async function listActivePackClients() {
   if (error) throw error
   return data as ClientPackageWithUser[]
 }
+
+/** Depleted packs that are armed for auto-renew — the cron safety net's input.
+ *  Left-joins the attempts table so packs already handled are excluded in SQL
+ *  rather than one round-trip per pack. Pins the FK name for the same reason
+ *  as listActivePackClients above: pack_renewal_attempts also has a second FK
+ *  to client_packages (new_package_id), so a bare embed would be ambiguous.
+ *  No pagination guard: PostgREST caps .select() at ~1000 rows, and depleted+
+ *  armed packs won't approach that soon, but if auto-renew volume ever grows
+ *  this needs the same keyset pagination other growth-table scans use. */
+export async function listDepletedAutoRenewPackages() {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("client_packages")
+    .select("*, pack_renewal_attempts!pack_renewal_attempts_source_package_id_fkey(id)")
+    .eq("status", "depleted")
+    .eq("auto_renew", true)
+  if (error) throw error
+  return (data as (ClientPackage & { pack_renewal_attempts: { id: string }[] })[])
+    .filter((p) => (p.pack_renewal_attempts?.length ?? 0) === 0)
+    .map(({ pack_renewal_attempts: _ignored, ...pkg }) => pkg as ClientPackage)
+}

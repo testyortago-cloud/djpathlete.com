@@ -6,9 +6,10 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { isCronSkipped } from "@/lib/db/system-settings"
-import { listActivePackages, updateClientPackage } from "@/lib/db/client-packages"
+import { listActivePackages, listDepletedAutoRenewPackages, updateClientPackage } from "@/lib/db/client-packages"
 import { selectPacksNeedingReminder } from "@/lib/automation/pack-renewal-scanner"
 import { remainingCredits } from "@/lib/services/session-credits"
+import { attemptPackRenewal } from "@/lib/services/pack-renewal"
 import { getUserById, getUsers } from "@/lib/db/users"
 import { createNotification } from "@/lib/db/notifications"
 import { sendPackRenewalEmail } from "@/lib/email"
@@ -77,6 +78,22 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Safety net for the inline trigger in checkInClient: a serverless instance
+  // can die before its fire-and-forget renewal lands. Both paths race the same
+  // unique (source_package_id) index, so the duplicate simply loses.
+  let renewed = 0
+  let renewalsFailed = 0
+  try {
+    const depleted = await listDepletedAutoRenewPackages()
+    for (const pkg of depleted) {
+      const outcome = await attemptPackRenewal(pkg, now)
+      if (outcome.renewed) renewed += 1
+      else if (outcome.reason !== "disabled" && outcome.reason !== "already_attempted") renewalsFailed += 1
+    }
+  } catch (err) {
+    console.error("[pack-renewals] auto-renew sweep failed:", err)
+  }
+
   // Coach summary (in-app for each admin) when there's anything to action.
   if (reminders.length > 0) {
     try {
@@ -97,7 +114,7 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { scanned: packs.length, reminders: reminders.length, emailed, notified, errors },
+    { scanned: packs.length, reminders: reminders.length, emailed, notified, errors, renewed, renewalsFailed },
     { status: 200 },
   )
 }

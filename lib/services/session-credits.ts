@@ -20,6 +20,7 @@ import {
   voidCheckin,
 } from "@/lib/db/session-checkins"
 import { handleCheckinProgramAdvance, handleVoidProgramRevert } from "@/lib/services/program-progression"
+import { attemptPackRenewal } from "@/lib/services/pack-renewal"
 
 // ─── Pure credit math (single source of truth for balance) ───────────────────
 
@@ -205,6 +206,15 @@ export async function checkInClient(input: CheckInInput): Promise<CheckInResult>
       } catch (err) {
         console.error("[checkInClient] program advance failed:", err)
       }
+    }
+
+    // The pack just ran out. Kick off the renewal charge WITHOUT awaiting it:
+    // the check-in has already succeeded, and Stripe latency must never sit in
+    // the door-open path. A renewal failure can never fail a check-in.
+    if (status === "depleted") {
+      void attemptPackRenewal({ ...swapped }, input.now).catch((err) => {
+        console.error("[session-credits] auto-renewal failed:", err)
+      })
     }
 
     return { ok: true, checkin, remaining: remainingCredits(after), packageId: pkg.id, programCompleted }
