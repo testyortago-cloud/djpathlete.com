@@ -68,6 +68,14 @@ export function ClientPackagesPanel({
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<PackWithCheckins | null>(null)
+  // M1: a depleted pack passes the renewal guards (armed + depleted + priced)
+  // the moment it's armed, so the very next sweep run can charge it — not
+  // "when it runs out" the way the toggle's own label reads, since it
+  // already has. Confirmed explicitly rather than just disabling the toggle,
+  // so a coach who genuinely wants to convert a depleted pack into a paid
+  // one right now (e.g. right after saving a card) still can — just not by
+  // accident.
+  const [confirmArmDepleted, setConfirmArmDepleted] = useState<PackWithCheckins | null>(null)
   const [attempts, setAttempts] = useState<PackRenewalAttempt[]>([])
   const [attemptsLoaded, setAttemptsLoaded] = useState(false)
   const packages = initialPacks
@@ -106,7 +114,9 @@ export function ClientPackagesPanel({
       }
       toast.success(
         next
-          ? "Auto-renew turned on — this pack re-buys itself when it runs out"
+          ? pack.status === "depleted"
+            ? "Auto-renew turned on — the card on file will be charged shortly"
+            : "Auto-renew turned on — this pack re-buys itself when it runs out"
           : "Auto-renew turned off",
       )
       router.refresh()
@@ -115,6 +125,19 @@ export function ClientPackagesPanel({
     } finally {
       setBusy(false)
     }
+  }
+
+  // M1: the Switch's own onCheckedChange calls this, never toggleAutoRenew
+  // directly — arming a pack that's already depleted isn't "when it runs
+  // out", it's now (or at the next sweep run), and the toggle's label never
+  // says that. Disarming, and arming a pack that still has credits, need no
+  // confirmation: only "arm + already depleted" is a same-visit charge.
+  function requestToggleAutoRenew(pack: PackWithCheckins, next: boolean) {
+    if (next && pack.status === "depleted") {
+      setConfirmArmDepleted(pack)
+      return
+    }
+    void toggleAutoRenew(pack, next)
   }
 
   async function voidCheckin(checkinId: string) {
@@ -309,7 +332,7 @@ export function ClientPackagesPanel({
                       id={`auto-renew-${p.id}`}
                       size="sm"
                       checked={p.auto_renew}
-                      onCheckedChange={(checked) => toggleAutoRenew(p, checked)}
+                      onCheckedChange={(checked) => requestToggleAutoRenew(p, checked)}
                       disabled={busy}
                     />
                     <label htmlFor={`auto-renew-${p.id}`} className="text-xs text-muted-foreground">
@@ -446,6 +469,32 @@ export function ClientPackagesPanel({
           <p className="text-sm text-muted-foreground">Loading…</p>
         )}
       </div>
+
+      <AlertDialog open={!!confirmArmDepleted} onOpenChange={(open) => !open && setConfirmArmDepleted(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Charge the card on file now?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This pack has already run out. Turning on auto-renew will charge the card on file for a replacement
+              pack the next time the system checks — not at some future depletion. If there&apos;s no card on file,
+              a payment link is sent instead.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                if (confirmArmDepleted) void toggleAutoRenew(confirmArmDepleted, true)
+                setConfirmArmDepleted(null)
+              }}
+              disabled={busy}
+            >
+              Turn on and charge
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>

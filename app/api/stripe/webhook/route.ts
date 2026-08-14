@@ -8,7 +8,7 @@ import {
   getMembershipBySubscriptionId,
   updateMembershipBySubscriptionId,
 } from "@/lib/db/client-memberships"
-import { sessionMembershipsEnabled } from "@/lib/packs/flags"
+import { sessionMembershipsEnabled, cardOnFileEnabled } from "@/lib/packs/flags"
 
 /**
  * Membership lookup that is a no-op when the feature is off. Keeps the four
@@ -895,9 +895,15 @@ async function handleSessionPackCheckout(session: Stripe.Checkout.Session) {
   // attached — see createPackCheckoutSession), session.customer is null and
   // this whole block is a no-op, which is correct: we never save an
   // account-less payer's card against the trainee's user_id.
+  //
+  // I5: also gated on cardOnFileEnabled() — the spec's documented kill
+  // switch for card CAPTURE, distinct from pack_auto_renew_enabled (which
+  // only gates the later charge). Re-checked here rather than trusted from
+  // checkout time because the flag can change in the window between
+  // creating the Checkout Session and this webhook landing.
   const piId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id
   const sessionCustomerId = typeof session.customer === "string" ? session.customer : session.customer?.id
-  if (piId && sessionCustomerId && session.metadata?.autoRenew === "true") {
+  if (piId && sessionCustomerId && session.metadata?.autoRenew === "true" && (await cardOnFileEnabled())) {
     try {
       const pi = await stripe.paymentIntents.retrieve(piId)
       const pmId = typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id

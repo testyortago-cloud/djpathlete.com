@@ -40,6 +40,27 @@ export function shouldAttemptRenewal(pkg: ClientPackage, flagEnabled: boolean): 
 }
 
 /**
+ * M3: carry the source pack's validity WINDOW forward, not its expiry date —
+ * a 90-day pack should renew into another 90-day pack (starting from `now`),
+ * not one that expires immediately (if computed from the OLD purchased_at)
+ * or never (the previous bug: expires_at was hardcoded null).
+ *
+ * Derived from the source row's own purchased_at -> expires_at gap rather
+ * than a session_pack_products.validity_days lookup: product_id can be null
+ * (ad-hoc packs), and even when set, the product's validity_days can have
+ * changed since purchase (price/terms edits) — the pack's OWN recorded
+ * window is the more reliable record of what validity it actually got. It
+ * also needs no IO, so buildRenewalPack stays a pure function.
+ */
+function renewedExpiry(source: ClientPackage, now: Date): string | null {
+  if (!source.expires_at) return null
+  const purchasedMs = Date.parse(source.purchased_at)
+  const expiresMs = Date.parse(source.expires_at)
+  if (!Number.isFinite(purchasedMs) || !Number.isFinite(expiresMs) || expiresMs <= purchasedMs) return null
+  return new Date(now.getTime() + (expiresMs - purchasedMs)).toISOString()
+}
+
+/**
  * The renewal buys a clone of what ran out — same session type, credits and
  * price. Stripe ids are deliberately NOT copied: they identify the old payment,
  * and carrying them over would make getPackageByStripePaymentId return the wrong
@@ -62,7 +83,7 @@ export function buildRenewalPack(
     stripe_session_id: null,
     stripe_payment_id: null,
     purchased_at: opts.now.toISOString(),
-    expires_at: null,
+    expires_at: renewedExpiry(source, opts.now),
     status: "active",
     last_reminded_threshold: null,
     notes: null,

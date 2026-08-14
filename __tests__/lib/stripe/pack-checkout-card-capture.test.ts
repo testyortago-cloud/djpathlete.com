@@ -4,6 +4,7 @@ const create = vi.fn()
 const customersCreate = vi.fn()
 const resolveBillingUserId = vi.fn()
 const getUserById = vi.fn()
+const cardOnFileEnabled = vi.fn()
 
 vi.mock("stripe", () => ({
   default: class {
@@ -30,6 +31,7 @@ vi.mock("stripe", () => ({
 }))
 vi.mock("@/lib/services/billing-payer", () => ({ resolveBillingUserId }))
 vi.mock("@/lib/db/users", () => ({ getUserById, updateUser: vi.fn() }))
+vi.mock("@/lib/packs/flags", () => ({ cardOnFileEnabled: (...a: unknown[]) => cardOnFileEnabled(...a) }))
 
 const TRAINEE = "u1"
 const PAYER = "payer-1"
@@ -38,6 +40,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   create.mockResolvedValue({ id: "cs_1", url: "https://pay" })
   resolveBillingUserId.mockResolvedValue(PAYER)
+  // Matches production default (card_on_file_enabled defaults true) so
+  // existing tests below keep exercising the autoRenew-driven behavior;
+  // the I5 kill-switch test overrides this to false.
+  cardOnFileEnabled.mockResolvedValue(true)
   // I1 fix: id-aware, with DISTINCT stripe_customer_id per identity, so a
   // test asserting "cus_payer" genuinely fails if the implementation ever
   // passes the trainee's id instead of the resolved payer's.
@@ -83,6 +89,23 @@ describe("createPackCheckoutSession card capture", () => {
     // off-session, especially since pack links are shareable.
     expect(arg.payment_intent_data).toBeUndefined()
     expect(arg.metadata.autoRenew).toBe("false")
+  })
+
+  it("does not ask Stripe to save the card when card_on_file_enabled is off, even with consent (I5 kill switch)", async () => {
+    cardOnFileEnabled.mockResolvedValue(false)
+    const { createPackCheckoutSession } = await import("@/lib/stripe")
+    await createPackCheckoutSession({
+      clientUserId: TRAINEE, name: "10x training", sessionType: "training",
+      credits: 10, priceCents: 75000, validityDays: null, productId: null, autoRenew: true,
+    })
+    const arg = create.mock.calls[0][0]
+    // The addressee fix (attaching `customer`) is independent of the card-
+    // capture kill switch — only setup_future_usage is gated on it.
+    expect(arg.customer).toBe("cus_payer")
+    expect(arg.payment_intent_data).toBeUndefined()
+    // metadata.autoRenew still reflects the checkbox itself — the flag
+    // guards CAPTURE, not the recorded consent or later pack arming.
+    expect(arg.metadata.autoRenew).toBe("true")
   })
 
   it("keeps customer_email and saves NO card for an account-less payer", async () => {

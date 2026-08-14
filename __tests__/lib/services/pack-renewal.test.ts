@@ -83,7 +83,17 @@ describe("attemptPackRenewal", () => {
       }),
     )
     expect(createClientPackage).toHaveBeenCalledWith(
-      expect.objectContaining({ payment_status: "paid", credits_used: 0, renewed_from_package_id: "pack-1" }),
+      expect.objectContaining({
+        payment_status: "paid",
+        credits_used: 0,
+        renewed_from_package_id: "pack-1",
+        // I1: the renewal pack's OWN PaymentIntent id, not the source pack's
+        // (buildRenewalPack correctly leaves that null) — without this,
+        // getPackageByStripePaymentId can never find this pack, so a Stripe
+        // refund of this exact charge has nothing to match against and the
+        // credits are never clawed back.
+        stripe_payment_id: "pi_1",
+      }),
     )
     expect(updateRenewalAttempt).toHaveBeenCalledWith(
       "att-1",
@@ -91,11 +101,26 @@ describe("attemptPackRenewal", () => {
     )
     expect(createPayment).toHaveBeenCalledWith(
       expect.objectContaining({
-        user_id: "payer-1", // the payer's ledger, not the trainee's
+        // C1: matches the manual pack-checkout mirror's convention — the
+        // TRAINEE's ledger, even though the payer's card was charged (that's
+        // recorded separately via stripe_customer_id below).
+        user_id: "u1",
         stripe_payment_id: "pi_1",
         stripe_customer_id: "cus_1",
         amount_cents: 75000,
         status: "succeeded",
+        // C1: the double-revenue bug. income-adapter only treats
+        // metadata.type "session_pack" as a mirror row of an existing
+        // client_packages sale — anything else (the old "pack_auto_renewal")
+        // falls through and gets counted a SECOND time as its own income
+        // draft. client_package_id must be the NEW pack (pack-2), which is
+        // what income-adapter's id-pairing branch looks up to consume.
+        metadata: {
+          type: "session_pack",
+          client_package_id: "pack-2",
+          auto_renewal: true,
+          source_package_id: "pack-1",
+        },
       }),
     )
   })
@@ -156,6 +181,42 @@ describe("attemptPackRenewal", () => {
       expect.objectContaining({ status: "failed", failure_reason: "card_declined" }),
     )
     expect(createClientPackage).toHaveBeenCalledWith(expect.objectContaining({ payment_status: "pending" }))
+    expect(sendPackPaymentLinkEmail).toHaveBeenCalled()
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({ user_id: "admin-1" }))
+  })
+
+  // M8: updateRenewalAttempt uses .single(), which throws on ANY write
+  // failure. Before this fix that status-update call sat BEFORE the payment
+  // link and the admin alert, so a transient DB hiccup there would strand
+  // the client with no card, no link, and no attempt row update — the exact
+  // "another way to strand a pending attempt" the finding described.
+  it("still sends the payment link when updateRenewalAttempt fails on the no-card status update (M8)", async () => {
+    getDefaultPaymentMethod.mockResolvedValue(null)
+    getUsers.mockResolvedValue([{ id: "admin-1", role: "admin" }])
+    updateRenewalAttempt.mockImplementation(async (id: string, patch: Record<string, unknown>) => {
+      if (patch.status === "skipped") throw new Error("db down")
+      return { id, ...patch }
+    })
+    const { attemptPackRenewal } = await import("@/lib/services/pack-renewal")
+    const out = await attemptPackRenewal(pack() as never)
+
+    expect(out).toEqual({ renewed: false, reason: "no_card", newPackageId: "pack-2" })
+    expect(sendPackPaymentLinkEmail).toHaveBeenCalled()
+    expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({ user_id: "admin-1" }))
+  })
+
+  it("still sends the payment link and notifies admins when updateRenewalAttempt fails on the decline status update (M8)", async () => {
+    chargeSavedCard.mockResolvedValue({ ok: false, reason: "declined", message: "card_declined" })
+    getUsers.mockResolvedValue([{ id: "admin-1", role: "admin" }])
+    updateRenewalAttempt.mockImplementation(async (id: string, patch: Record<string, unknown>) => {
+      if (patch.status === "failed" || patch.new_package_id != null) throw new Error("db down")
+      return { id, ...patch }
+    })
+    const { attemptPackRenewal } = await import("@/lib/services/pack-renewal")
+    const out = await attemptPackRenewal(pack() as never)
+
+    expect(out.renewed).toBe(false)
+    expect(out.reason).toBe("declined")
     expect(sendPackPaymentLinkEmail).toHaveBeenCalled()
     expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({ user_id: "admin-1" }))
   })

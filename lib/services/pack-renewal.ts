@@ -7,7 +7,7 @@
 //
 // Sibling of lib/services/session-fees.ts — read that first; the shape is
 // deliberately the same so a reader of one can read the other.
-import type { ClientPackage } from "@/types/database"
+import type { ClientPackage, PackRenewalAttempt } from "@/types/database"
 import { packAutoRenewEnabled } from "@/lib/packs/flags"
 import { shouldAttemptRenewal, buildRenewalPack } from "@/lib/services/pack-renewal-rules"
 import { createRenewalAttemptIfAbsent, updateRenewalAttempt } from "@/lib/db/pack-renewal-attempts"
@@ -64,6 +64,20 @@ async function fallbackToPaymentLink(
     console.error("[pack-renewal] payment-link fallback failed:", err)
   }
   return pending.id
+}
+
+/** M8: a DB failure here must never be fatal. This call always sits between
+ *  "we know the outcome" and "we told someone about it" (the payment-link
+ *  email or the admin alert) — updateRenewalAttempt uses `.single()`, which
+ *  throws on any write failure, and an uncaught throw here would stop that
+ *  email/alert from ever firing, stranding the attempt at `pending` with
+ *  nobody notified. */
+async function updateAttemptBestEffort(id: string, patch: Partial<PackRenewalAttempt>): Promise<void> {
+  try {
+    await updateRenewalAttempt(id, patch)
+  } catch (err) {
+    console.error("[pack-renewal] non-fatal: could not update renewal attempt", id, patch, err)
+  }
 }
 
 /** Best-effort in-app alert to every admin that a renewal needs a human. */
@@ -123,9 +137,9 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
     `${trainee?.first_name ?? ""} ${trainee?.last_name ?? ""}`.trim() || "your athlete"
 
   if (!payer?.stripe_customer_id || !card) {
-    await updateRenewalAttempt(attempt.id, { status: "skipped", failure_reason: "no_card" })
+    await updateAttemptBestEffort(attempt.id, { status: "skipped", failure_reason: "no_card" })
     const newPackageId = await fallbackToPaymentLink(pkg, now, payer, trainee, clientName)
-    if (newPackageId) await updateRenewalAttempt(attempt.id, { new_package_id: newPackageId })
+    if (newPackageId) await updateAttemptBestEffort(attempt.id, { new_package_id: newPackageId })
     await notifyAdmins(
       "Pack renewal needs payment",
       `${clientName}'s pack ran out and there's no card on file — a payment link was sent instead.`,
@@ -143,7 +157,7 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
   })
 
   if (!result.ok) {
-    await updateRenewalAttempt(attempt.id, { status: "failed", failure_reason: result.message })
+    await updateAttemptBestEffort(attempt.id, { status: "failed", failure_reason: result.message })
     void recordAudit({
       action: "pack.auto_renew_failed",
       category: "commerce",
@@ -177,7 +191,7 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
 
     // "declined" is a known, final outcome — safe to fall back to today's manual flow.
     const newPackageId = await fallbackToPaymentLink(pkg, now, payer, trainee, clientName)
-    if (newPackageId) await updateRenewalAttempt(attempt.id, { new_package_id: newPackageId })
+    if (newPackageId) await updateAttemptBestEffort(attempt.id, { new_package_id: newPackageId })
     await notifyAdmins(
       "Pack renewal charge failed",
       `${clientName}'s card was declined — a payment link was sent instead.`,
@@ -201,7 +215,18 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
   let createdId: string | null = null
   let created: ClientPackage
   try {
-    created = await createClientPackage(buildRenewalPack(pkg, { paid: true, now }))
+    created = await createClientPackage({
+      ...buildRenewalPack(pkg, { paid: true, now }),
+      // I1: stamp THIS charge's PaymentIntent id onto the new pack. This is
+      // safe (unlike the SOURCE pack's ids, which buildRenewalPack correctly
+      // leaves uncopied — see its doc comment) because it is a brand-new id
+      // that has never labeled any other pack. Without it,
+      // getPackageByStripePaymentId can never find this pack, so
+      // handleSessionPackRefund has nothing to match a Stripe refund
+      // against: the payments row would flip to refunded while this pack
+      // stays paid/active with a full set of credits.
+      stripe_payment_id: result.paymentIntentId,
+    })
     createdId = created.id
     await updateRenewalAttempt(attempt.id, {
       status: "succeeded",
@@ -249,20 +274,33 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
 
   try {
     await createPayment({
-      user_id: billingUserId,
+      // C1: matches the manual pack-checkout mirror's convention (webhook
+      // route.ts's handleSessionPackCheckout — `user_id: pkg.client_user_id`)
+      // — the trainee, not whoever's card was actually charged. Which
+      // Stripe customer paid is still recorded below via stripe_customer_id.
+      user_id: pkg.client_user_id,
       stripe_payment_id: result.paymentIntentId,
       stripe_customer_id: payer.stripe_customer_id,
       amount_cents: pkg.price_cents,
       currency: "usd",
       status: "succeeded",
       description: label,
-      // type distinguishes this from the mirror row a manual pack checkout writes,
-      // so bookkeeping can tell them apart and not double-count.
+      // C1 (was double-booking every renewal as revenue): income-adapter
+      // only recognizes metadata.type "session_pack"/"event_signup" as a
+      // mirror row of an existing client_packages/event_signups sale — any
+      // other type (the old "pack_auto_renewal") falls through to its
+      // generic non-mirror path and becomes a SECOND income draft on top of
+      // the one the renewal's own (paid) client_packages row already
+      // produces. client_package_id must be the NEW pack's id (created.id,
+      // not the depleted source pack) — that's the row income-adapter's
+      // id-pairing branch looks up by `sourceId` to consume and stamp
+      // alt_ref on. auto_renewal: true keeps this distinguishable from a
+      // manual sale for anyone reading the metadata directly.
       metadata: {
-        type: "pack_auto_renewal",
+        type: "session_pack",
+        client_package_id: created.id,
+        auto_renewal: true,
         source_package_id: pkg.id,
-        new_package_id: created.id,
-        trainee_user_id: pkg.client_user_id,
       },
       gclid: null, gbraid: null, wbraid: null, fbclid: null,
     })

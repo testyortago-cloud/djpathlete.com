@@ -2,6 +2,7 @@ import Stripe from "stripe"
 import type { Program, PaymentType, BillingInterval, Event, EventSignup } from "@/types/database"
 import { updateUser, getUserById } from "@/lib/db/users"
 import { resolveBillingUserId } from "@/lib/services/billing-payer"
+import { cardOnFileEnabled } from "@/lib/packs/flags"
 
 export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2026-01-28.clover" })
 
@@ -534,12 +535,21 @@ export async function createPackCheckoutSession(opts: {
     }
   }
 
+  // I5: card_on_file_enabled is the spec's documented kill switch for card
+  // CAPTURE — separate from pack_auto_renew_enabled, which only gates the
+  // later CHARGE. Before this, `opts.autoRenew` alone controlled
+  // setup_future_usage, so there was no way to stop new cards from attaching
+  // without also touching the auto-renew flag. Behaviourally a no-op today
+  // (card_on_file_enabled defaults true in production) — this is insurance
+  // for if cards ever start attaching to the wrong customers.
+  const captureCard = opts.autoRenew && (await cardOnFileEnabled())
+
   return stripe.checkout.sessions.create({
     mode: "payment",
     line_items,
     ...(customerId ? { customer: customerId } : {}),
     ...(customerEmail ? { customer_email: customerEmail } : {}),
-    ...(customerId && opts.autoRenew ? { payment_intent_data: { setup_future_usage: "off_session" as const } } : {}),
+    ...(customerId && captureCard ? { payment_intent_data: { setup_future_usage: "off_session" as const } } : {}),
     metadata: {
       type: "session_pack",
       clientUserId: opts.clientUserId,

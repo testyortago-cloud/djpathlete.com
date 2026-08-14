@@ -45,6 +45,30 @@ export async function getAttemptForPackage(sourcePackageId: string) {
   return data as PackRenewalAttempt | null
 }
 
+/**
+ * I2: count attempts still `pending` older than `beforeIso` — the signature
+ * of a crash between createRenewalAttemptIfAbsent's insert and chargeSavedCard
+ * in attemptPackRenewal. That insert reserves the row BEFORE the charge call,
+ * which is what makes the unique source_package_id index a safe lock — but
+ * it also means a process death in that exact gap leaves the row stuck
+ * `pending` forever: listDepletedAutoRenewPackages excludes any pack that
+ * already has an attempt row, so the pack can never be picked up again, and
+ * nothing else ever revisits a `pending` status. Never auto-retried from
+ * here (Stripe's idempotency key expires at 24h, so a blind retry past that
+ * window risks a genuine double charge) — this only counts, for a human to
+ * reconcile against Stripe.
+ */
+export async function countStalePendingRenewalAttempts(beforeIso: string): Promise<number> {
+  const supabase = getClient()
+  const { count, error } = await supabase
+    .from("pack_renewal_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending")
+    .lt("created_at", beforeIso)
+  if (error) throw error
+  return count ?? 0
+}
+
 export async function listRenewalAttempts(limit = 100) {
   const supabase = getClient()
   const { data, error } = await supabase

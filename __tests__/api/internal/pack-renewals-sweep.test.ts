@@ -17,6 +17,8 @@ const createNotificationMock = vi.fn()
 const sendPackRenewalEmailMock = vi.fn()
 const attemptPackRenewalMock = vi.fn()
 const packAutoRenewEnabledMock = vi.fn()
+const packAutoRenewMaxAgeDaysMock = vi.fn()
+const countStalePendingRenewalAttemptsMock = vi.fn()
 
 vi.mock("@/lib/db/system-settings", () => ({ isCronSkipped: (...a: unknown[]) => isCronSkippedMock(...a) }))
 vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => ({}) }))
@@ -24,6 +26,9 @@ vi.mock("@/lib/db/client-packages", () => ({
   listActivePackages: (...a: unknown[]) => listActivePackagesMock(...a),
   updateClientPackage: (...a: unknown[]) => updateClientPackageMock(...a),
   listDepletedAutoRenewPackages: (...a: unknown[]) => listDepletedAutoRenewPackagesMock(...a),
+}))
+vi.mock("@/lib/db/pack-renewal-attempts", () => ({
+  countStalePendingRenewalAttempts: (...a: unknown[]) => countStalePendingRenewalAttemptsMock(...a),
 }))
 vi.mock("@/lib/db/users", () => ({
   getUserById: (...a: unknown[]) => getUserByIdMock(...a),
@@ -37,6 +42,7 @@ vi.mock("@/lib/packs/flags", () => ({
   packReminderLowAt: async () => 2,
   packReminderExpiryDays: async () => 7,
   packAutoRenewEnabled: (...a: unknown[]) => packAutoRenewEnabledMock(...a),
+  packAutoRenewMaxAgeDays: (...a: unknown[]) => packAutoRenewMaxAgeDaysMock(...a),
 }))
 
 import { POST } from "@/app/api/admin/internal/pack-renewals/route"
@@ -83,7 +89,9 @@ beforeEach(() => {
   listActivePackagesMock.mockResolvedValue([])
   getUsersMock.mockResolvedValue([])
   packAutoRenewEnabledMock.mockResolvedValue(true)
+  packAutoRenewMaxAgeDaysMock.mockResolvedValue(7)
   listDepletedAutoRenewPackagesMock.mockResolvedValue([])
+  countStalePendingRenewalAttemptsMock.mockResolvedValue(0)
 })
 
 describe("POST /api/admin/internal/pack-renewals — auto-renew sweep", () => {
@@ -177,5 +185,95 @@ describe("POST /api/admin/internal/pack-renewals — auto-renew sweep", () => {
     expect(attemptPackRenewalMock).toHaveBeenCalledTimes(2)
     expect(json.renewed).toBe(1)
     expect(json.renewalsFailed).toBe(1)
+  })
+
+  // I3: packs get ARMED at checkout the moment auto-renew ships, independent
+  // of pack_auto_renew_enabled. Anything that depleted while the flag was
+  // off has no attempt row and sits invisible until the first sweep after
+  // the flag flips on — which, without a recency bound, would charge every
+  // such pack in one batch regardless of how long ago it ran out.
+  it("bounds listDepletedAutoRenewPackages by pack_auto_renew_max_age_days, not an unbounded scan", async () => {
+    packAutoRenewMaxAgeDaysMock.mockResolvedValue(7)
+    await POST(req())
+
+    expect(listDepletedAutoRenewPackagesMock).toHaveBeenCalledTimes(1)
+    const sinceIso = listDepletedAutoRenewPackagesMock.mock.calls[0][0]
+    const sinceMs = Date.parse(sinceIso)
+    const nowMs = Date.now()
+    // Within a couple seconds of "7 days ago" — proves the days value from
+    // the setting actually reached the query, not a hardcoded default.
+    const expectedMs = nowMs - 7 * 24 * 60 * 60 * 1000
+    expect(Math.abs(sinceMs - expectedMs)).toBeLessThan(5000)
+  })
+
+  it("uses a different max-age-days value when the admin setting overrides the default", async () => {
+    packAutoRenewMaxAgeDaysMock.mockResolvedValue(1)
+    await POST(req())
+
+    const sinceIso = listDepletedAutoRenewPackagesMock.mock.calls[0][0]
+    const sinceMs = Date.parse(sinceIso)
+    const expectedMs = Date.now() - 1 * 24 * 60 * 60 * 1000
+    expect(Math.abs(sinceMs - expectedMs)).toBeLessThan(5000)
+  })
+
+  // I2: the sweep exists to recover a crash mid-charge, but a crash in the
+  // exact gap between reserving the attempt row and calling chargeSavedCard
+  // strands that row at `pending` forever — listDepletedAutoRenewPackages
+  // permanently excludes any pack that already has an attempt row, so it can
+  // never be picked up again. Auto-retry is unsafe (Stripe idempotency keys
+  // expire at 24h), so this only surfaces the count for a human.
+  describe("stale pending renewal attempts (I2)", () => {
+    it("includes the stale-pending count in the JSON response", async () => {
+      countStalePendingRenewalAttemptsMock.mockResolvedValue(3)
+      const res = await POST(req())
+      const json = await res.json()
+      expect(json.stalePendingRenewals).toBe(3)
+    })
+
+    it("is zero and does not notify admins when nothing is stuck", async () => {
+      countStalePendingRenewalAttemptsMock.mockResolvedValue(0)
+      const res = await POST(req())
+      const json = await res.json()
+      expect(json.stalePendingRenewals).toBe(0)
+      expect(createNotificationMock).not.toHaveBeenCalled()
+    })
+
+    it("notifies every admin when there are stale pending attempts", async () => {
+      countStalePendingRenewalAttemptsMock.mockResolvedValue(2)
+      getUsersMock.mockResolvedValue([
+        { id: "admin-1", role: "admin" },
+        { id: "admin-2", role: "admin" },
+        { id: "coach-client", role: "client" },
+      ])
+      await POST(req())
+
+      expect(createNotificationMock).toHaveBeenCalledTimes(2)
+      expect(createNotificationMock).toHaveBeenCalledWith(
+        expect.objectContaining({ user_id: "admin-1", title: expect.stringContaining("stuck") }),
+      )
+      expect(createNotificationMock).toHaveBeenCalledWith(
+        expect.objectContaining({ user_id: "admin-2" }),
+      )
+    })
+
+    it("runs even when pack_auto_renew_enabled is off — a stuck row can predate the flag flipping", async () => {
+      packAutoRenewEnabledMock.mockResolvedValue(false)
+      countStalePendingRenewalAttemptsMock.mockResolvedValue(1)
+      getUsersMock.mockResolvedValue([{ id: "admin-1", role: "admin" }])
+      const res = await POST(req())
+      const json = await res.json()
+
+      expect(json.stalePendingRenewals).toBe(1)
+      expect(createNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ user_id: "admin-1" }))
+    })
+
+    it("does not fail the whole sweep response when the stale-attempt check itself throws", async () => {
+      countStalePendingRenewalAttemptsMock.mockRejectedValue(new Error("db down"))
+      const res = await POST(req())
+      const json = await res.json()
+
+      expect(res.status).toBe(200)
+      expect(json.stalePendingRenewals).toBe(0)
+    })
   })
 })

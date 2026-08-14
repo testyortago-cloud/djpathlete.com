@@ -358,7 +358,8 @@ export function SellPackDialog({
                   />
                   <span>
                     Save the client&apos;s card and automatically buy another {renewCredits}-session pack ($
-                    {renewPriceDisplay}) when this one runs out. Cancel any time.
+                    {renewPriceDisplay}) when this one runs out. The saved card may also be used for any no-show or
+                    late-cancellation fees. Cancel any time.
                   </span>
                 </label>
                 {billToOther && (

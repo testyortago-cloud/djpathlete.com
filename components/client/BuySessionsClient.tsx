@@ -59,7 +59,8 @@ export function BuySessionsClient({ products }: { products: SessionPackProduct[]
             />
             <span>
               Save my card and automatically buy another {p.credits}-session pack (${(p.price_cents / 100).toFixed(0)}
-              ) when this one runs out. Cancel any time.
+              ) when this one runs out. The saved card may also be used for any no-show or late-cancellation fees.
+              Cancel any time.
             </span>
           </label>
           <Button className="mt-auto" onClick={() => buy(p)} disabled={busy === p.id}>

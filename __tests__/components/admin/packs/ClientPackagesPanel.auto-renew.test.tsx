@@ -99,6 +99,46 @@ describe("<ClientPackagesPanel> — auto-renew", () => {
     expect(patchCalls[0].body).toEqual({ autoRenew: true })
   })
 
+  // M1: arming a DEPLETED pack passes every renewal guard immediately, so the
+  // next sweep run charges it — not "when it runs out" the way the switch's
+  // own label reads, since it already has. Confirmation is required only for
+  // arm+depleted; disarming and arming a pack that still has credits are
+  // unaffected (covered above).
+  it("requires confirmation before PATCHing when arming auto-renew on an already-depleted pack", async () => {
+    render(<ClientPackagesPanel clientUserId={CLIENT} initialPacks={[pack({ id: "pack-9", status: "depleted", auto_renew: false })]} />)
+    fireEvent.click(screen.getByRole("switch"))
+
+    expect(await screen.findByText(/charge the card on file now/i)).toBeInTheDocument()
+    expect(patchCalls).toHaveLength(0)
+  })
+
+  it("PATCHes only after the depleted-pack confirmation is accepted", async () => {
+    render(<ClientPackagesPanel clientUserId={CLIENT} initialPacks={[pack({ id: "pack-9", status: "depleted", auto_renew: false })]} />)
+    fireEvent.click(screen.getByRole("switch"))
+    fireEvent.click(await screen.findByRole("button", { name: /turn on and charge/i }))
+
+    await waitFor(() => expect(patchCalls).toHaveLength(1))
+    expect(patchCalls[0].url).toBe("/api/admin/session-packs/pack-9/auto-renew")
+    expect(patchCalls[0].body).toEqual({ autoRenew: true })
+  })
+
+  it("does not ask for confirmation when disarming an already-depleted pack", async () => {
+    render(<ClientPackagesPanel clientUserId={CLIENT} initialPacks={[pack({ id: "pack-9", status: "depleted", auto_renew: true })]} />)
+    fireEvent.click(screen.getByRole("switch"))
+
+    await waitFor(() => expect(patchCalls).toHaveLength(1))
+    expect(patchCalls[0].body).toEqual({ autoRenew: false })
+    expect(screen.queryByText(/charge the card on file now/i)).not.toBeInTheDocument()
+  })
+
+  it("does not ask for confirmation when arming a pack that still has credits", async () => {
+    render(<ClientPackagesPanel clientUserId={CLIENT} initialPacks={[pack({ id: "pack-9", status: "active", auto_renew: false })]} />)
+    fireEvent.click(screen.getByRole("switch"))
+
+    await waitFor(() => expect(patchCalls).toHaveLength(1))
+    expect(patchCalls[0].body).toEqual({ autoRenew: true })
+  })
+
   it("shows an empty state when there are no renewal attempts yet", async () => {
     render(<ClientPackagesPanel clientUserId={CLIENT} initialPacks={[pack()]} />)
     expect(await screen.findByText(/no renewal attempts yet/i)).toBeInTheDocument()

@@ -79,6 +79,15 @@ describe("<SellPackDialog> — auto-renew consent", () => {
     expect(checkoutBodies[0].autoRenew).toBe(false)
   })
 
+  // I4: the box's own copy only promised "save my card and buy another pack",
+  // but the saved card is also chargeable for no-show/late-cancel fees under
+  // session_fees_enabled (already true in production — only unset fee
+  // amounts stop it today). The consent label must say so.
+  it("discloses that the saved card may also be used for no-show/late-cancellation fees (I4)", async () => {
+    await openDialog()
+    expect(autoRenewCheckbox().closest("label")).toHaveTextContent(/no-show or late-cancellation fees/i)
+  })
+
   it("turns auto-renew off and disables it when billing someone else, since there's no card to save", async () => {
     await openDialog()
     const box = autoRenewCheckbox()

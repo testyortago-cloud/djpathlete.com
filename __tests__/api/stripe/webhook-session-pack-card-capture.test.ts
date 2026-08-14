@@ -18,6 +18,7 @@ const upsertPmMock = vi.fn()
 const piRetrieveMock = vi.fn()
 const pmRetrieveMock = vi.fn()
 const getUserByIdMock = vi.fn()
+const cardOnFileEnabledMock = vi.fn()
 
 vi.mock("@/lib/stripe", () => ({
   verifyWebhookSignature: (...a: unknown[]) => verifyMock(...a),
@@ -43,6 +44,7 @@ vi.mock("@/lib/db/subscriptions", () => ({
   createSubscription: vi.fn(), getSubscriptionByStripeId: vi.fn(), updateSubscriptionByStripeId: vi.fn(),
 }))
 vi.mock("@/lib/db/users", () => ({ getUserByEmail: vi.fn(async () => null), getUserById: (...a: unknown[]) => getUserByIdMock(...a) }))
+vi.mock("@/lib/packs/flags", () => ({ cardOnFileEnabled: (...a: unknown[]) => cardOnFileEnabledMock(...a) }))
 vi.mock("@/lib/db/assignments", () => ({ createAssignment: vi.fn(), getAssignmentByUserAndProgram: vi.fn(), updateAssignment: vi.fn() }))
 vi.mock("@/lib/db/week-access", () => ({ updateWeekAccess: vi.fn(), createWeekAccessBulk: vi.fn() }))
 vi.mock("@/lib/db/client-profiles", () => ({ getProfileByUserId: vi.fn() }))
@@ -98,6 +100,7 @@ function makeReq() {
 beforeEach(() => {
   vi.clearAllMocks()
   getPackageByStripeSessionMock.mockResolvedValue(PKG)
+  cardOnFileEnabledMock.mockResolvedValue(true)
   resolveBillingUserIdMock.mockResolvedValue("payer-1")
   getUserByIdMock.mockResolvedValue({ id: "payer-1", stripe_customer_id: "cus_payer" })
   piRetrieveMock.mockResolvedValue({ id: "pi_1", payment_method: "pm_1" })
@@ -168,6 +171,19 @@ describe("Stripe webhook — session_pack card capture (Task 6)", () => {
     // Consent gating happens before any identity resolution — don't even
     // spend the round-trip.
     expect(resolveBillingUserIdMock).not.toHaveBeenCalled()
+  })
+
+  it("saves no card when card_on_file_enabled is off, even with consent (I5 kill switch)", async () => {
+    cardOnFileEnabledMock.mockResolvedValue(false)
+    verifyMock.mockReturnValue(packCompletedEvent())
+    const res = await POST(makeReq())
+    expect(res.status).toBe(200)
+    expect(upsertPmMock).not.toHaveBeenCalled()
+    // Gated before any identity resolution, same as the consent check.
+    expect(resolveBillingUserIdMock).not.toHaveBeenCalled()
+    // auto_renew arming is a separate concern from card CAPTURE — a pack can
+    // still be armed even if, for whatever reason, capture is switched off.
+    expect(updateClientPackageMock).toHaveBeenCalledWith("pkg-1", { auto_renew: true })
   })
 
   it("saves no card for an account-less billToEmail payer (no Stripe customer attached), even with consent", async () => {

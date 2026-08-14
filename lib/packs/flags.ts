@@ -55,3 +55,15 @@ export const cancelWindowHours = () => getSetting<number>(CANCEL_WINDOW_HOURS_KE
 // ── Pack auto-renew (DB-backed, default OFF — it moves real money) ────────────
 export const PACK_AUTO_RENEW_KEY = "pack_auto_renew_enabled"
 export const packAutoRenewEnabled = () => getSetting<boolean>(PACK_AUTO_RENEW_KEY, false)
+
+// I3: bounds the crash-recovery sweep to packs that depleted recently. Packs
+// get ARMED at checkout the moment auto-renew ships, independent of the
+// pack_auto_renew_enabled flag — so anything that depletes while the flag is
+// off just sits `depleted + auto_renew + no attempt row` with no recency
+// signal. Without this bound, the first sweep run after the flag flips on
+// would charge every such pack at once, including ones that ran out weeks
+// earlier and whose owner may not even remember ticking the box.
+export const PACK_AUTO_RENEW_MAX_AGE_DAYS_KEY = "pack_auto_renew_max_age_days"
+export const PACK_AUTO_RENEW_MAX_AGE_DAYS_DEFAULT = 7
+export const packAutoRenewMaxAgeDays = () =>
+  getSetting<number>(PACK_AUTO_RENEW_MAX_AGE_DAYS_KEY, PACK_AUTO_RENEW_MAX_AGE_DAYS_DEFAULT)

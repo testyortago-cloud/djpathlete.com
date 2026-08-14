@@ -58,6 +58,15 @@ describe("<BuySessionsClient> — auto-renew consent", () => {
     expect(box.closest("label")).toHaveTextContent("10-session pack ($750)")
   })
 
+  // I4: the checkbox's own copy only promised "save my card and buy another
+  // pack" — the saved card is also chargeable for no-show/late-cancel fees
+  // under session_fees_enabled (already true in production; only unset fee
+  // amounts stop it today). The consent label must say so.
+  it("discloses that the saved card may also be used for no-show/late-cancellation fees (I4)", () => {
+    render(<BuySessionsClient products={[product()]} />)
+    expect(autoRenewCheckbox().closest("label")).toHaveTextContent(/no-show or late-cancellation fees/i)
+  })
+
   it("posts autoRenew: true to the checkout route when checked", async () => {
     render(<BuySessionsClient products={[product()]} />)
     fireEvent.click(autoRenewCheckbox())

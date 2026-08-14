@@ -389,6 +389,32 @@ describe("id-first mirror pairing + alt_ref cross-run dedupe (final review 2026-
     expect(drafts[0].source_ref).toBe(`event_signups:${S1}`)
   })
 
+  it("C1: an auto-renewal mirror pairs with the NEW pack it names, not double-booked as its own draft", () => {
+    // Before the fix, pack-renewal.ts wrote metadata.type = "pack_auto_renewal",
+    // which this adapter didn't recognize as a mirror row at all — it fell
+    // through to the generic non-mirror path and became a SECOND income draft
+    // on top of the one the renewal's own (paid) client_packages row already
+    // produces. A $750 renewal was booked as $1,500. The fix routes it through
+    // the same id-pairing branch a manual sale uses: metadata.type =
+    // "session_pack" + client_package_id = the renewal's OWN id (not the
+    // depleted source pack's).
+    const { drafts } = buildIncomeDrafts(src({
+      payments: [
+        pay({
+          id: P1, amount_cents: 75000, created_at: "2026-08-14T10:00:00Z",
+          metadata: { type: "session_pack", client_package_id: C1, auto_renewal: true, source_package_id: "source-pack-id" },
+        }),
+      ],
+      clientPackages: [
+        pack({ id: C1, price_cents: 75000, purchased_at: "2026-08-14T10:00:00Z", credits_total: 10, stripe_session_id: null, stripe_payment_id: null }),
+      ],
+    }))
+    expect(drafts).toHaveLength(1)
+    expect(drafts.reduce((s, d) => s + d.amount_cents, 0)).toBe(75000)
+    expect(drafts[0].source_ref).toBe(`client_packages:${C1}`)
+    expect(drafts[0].alt_ref).toBe(`payments:${P1}`)
+  })
+
   it("orphan session-pack draft: literal memo and payer-chain counterparty (F3.4)", () => {
     const { drafts } = buildIncomeDrafts(src({
       payments: [pay({ id: P1, amount_cents: 45000, created_at: "2026-07-12T10:00:00Z", metadata: { type: "session_pack" }, payer_name: "Riley Cole" })],

@@ -105,4 +105,31 @@ describe("buildRenewalPack", () => {
     expect(next.stripe_session_id).toBeNull()
     expect(next.stripe_payment_id).toBeNull()
   })
+
+  // M3: a 90-day pack renewing into one that never expires (expires_at was
+  // hardcoded null) silently drops the pack's time limit. The renewal must
+  // carry forward the same VALIDITY WINDOW, starting fresh from `now`.
+  it("carries the source's validity window forward as a fresh window from now, not the old expiry date (M3)", () => {
+    const purchased = "2026-01-01T00:00:00Z"
+    const expires = "2026-04-01T00:00:00Z" // exactly 90 days after purchased
+    const now = new Date("2026-08-14T00:00:00Z")
+    const next = buildRenewalPack(
+      pack({ purchased_at: purchased, expires_at: expires }),
+      { paid: true, now },
+    )
+    const durationMs = Date.parse(expires) - Date.parse(purchased)
+    const expected = new Date(now.getTime() + durationMs).toISOString()
+    expect(next.expires_at).toBe(expected)
+    // Sanity: the renewal's new expiry is NOT the old expiry date carried
+    // over verbatim (that would make it expire in the past).
+    expect(next.expires_at).not.toBe(expires)
+  })
+
+  it("leaves expires_at null when the source pack itself never had a validity window", () => {
+    const next = buildRenewalPack(
+      pack({ expires_at: null }),
+      { paid: true, now: new Date("2026-08-14T00:00:00Z") },
+    )
+    expect(next.expires_at).toBeNull()
+  })
 })

@@ -144,14 +144,23 @@ export async function listActivePackClients() {
  *  to client_packages (new_package_id), so a bare embed would be ambiguous.
  *  No pagination guard: PostgREST caps .select() at ~1000 rows, and depleted+
  *  armed packs won't approach that soon, but if auto-renew volume ever grows
- *  this needs the same keyset pagination other growth-table scans use. */
-export async function listDepletedAutoRenewPackages() {
+ *  this needs the same keyset pagination other growth-table scans use.
+ *
+ *  I3: `sinceIso` bounds the scan to packs updated_at >= that timestamp — a
+ *  proxy for "depleted recently", since the CAS bump that flips a pack to
+ *  `depleted` is (via the table's set_updated_at trigger) the last write a
+ *  depleted, never-attempted pack gets. Without this bound, flipping
+ *  pack_auto_renew_enabled on charges every pack that ever quietly depleted
+ *  while the flag was off, in one batch, regardless of how long ago. Callers
+ *  pass `new Date(now - maxAgeDays).toISOString()`. */
+export async function listDepletedAutoRenewPackages(sinceIso: string) {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("client_packages")
     .select("*, pack_renewal_attempts!pack_renewal_attempts_source_package_id_fkey(id)")
     .eq("status", "depleted")
     .eq("auto_renew", true)
+    .gte("updated_at", sinceIso)
   if (error) throw error
   return (data as (ClientPackage & { pack_renewal_attempts: { id: string }[] })[])
     .filter((p) => (p.pack_renewal_attempts?.length ?? 0) === 0)

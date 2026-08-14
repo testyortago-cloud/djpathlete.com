@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { listActivePackages, listDepletedAutoRenewPackages, updateClientPackage } from "@/lib/db/client-packages"
+import { countStalePendingRenewalAttempts } from "@/lib/db/pack-renewal-attempts"
 import { selectPacksNeedingReminder } from "@/lib/automation/pack-renewal-scanner"
 import { remainingCredits } from "@/lib/services/session-credits"
 import { attemptPackRenewal } from "@/lib/services/pack-renewal"
@@ -18,10 +19,16 @@ import {
   packReminderLowAt,
   packReminderExpiryDays,
   packAutoRenewEnabled,
+  packAutoRenewMaxAgeDays,
 } from "@/lib/packs/flags"
 
 export const runtime = "nodejs"
 export const maxDuration = 300
+
+// I2: how long a renewal attempt may sit `pending` before it's treated as
+// stuck (a crashed process, not an in-flight charge — a real Stripe call
+// resolves in seconds, not an hour).
+const STALE_PENDING_RENEWAL_MS = 60 * 60 * 1000
 
 export async function POST(request: NextRequest) {
   const expected = process.env.INTERNAL_CRON_TOKEN
@@ -124,7 +131,14 @@ export async function POST(request: NextRequest) {
   let renewalsFailed = 0
   try {
     if (await packAutoRenewEnabled()) {
-      const depleted = await listDepletedAutoRenewPackages()
+      // I3: only packs that depleted within the last N days — otherwise the
+      // first sweep run after this flag flips on charges every pack that
+      // quietly depleted while it was off, all at once, regardless of age.
+      // See listDepletedAutoRenewPackages's doc comment for why updated_at
+      // is a safe proxy for "depleted at".
+      const maxAgeDays = await packAutoRenewMaxAgeDays()
+      const since = new Date(now.getTime() - maxAgeDays * 24 * 60 * 60 * 1000).toISOString()
+      const depleted = await listDepletedAutoRenewPackages(since)
       for (const pkg of depleted) {
         try {
           const outcome = await attemptPackRenewal(pkg, now)
@@ -143,6 +157,37 @@ export async function POST(request: NextRequest) {
     console.error("[pack-renewals] auto-renew sweep failed:", err)
   }
 
+  // I2: the crash-recovery sweep above can't recover the one crash it exists
+  // for — a process dying between createRenewalAttemptIfAbsent's insert and
+  // the chargeSavedCard call strands the attempt at `pending` forever, and
+  // listDepletedAutoRenewPackages permanently excludes any pack that already
+  // has an attempt row. Auto-retrying is unsafe (Stripe's idempotency key
+  // expires at 24h), so this only surfaces the count — in the response for
+  // monitoring, and as an admin alert so a human reconciles against Stripe.
+  // Runs unconditionally (not gated on pack_auto_renew_enabled): a stuck row
+  // from before the flag was turned off is still a client who may have been
+  // charged with no pack to show for it.
+  let stalePendingRenewals = 0
+  try {
+    const staleCutoff = new Date(now.getTime() - STALE_PENDING_RENEWAL_MS).toISOString()
+    stalePendingRenewals = await countStalePendingRenewalAttempts(staleCutoff)
+    if (stalePendingRenewals > 0) {
+      const admins = (await getUsers()).filter((u) => u.role === "admin")
+      for (const admin of admins) {
+        await createNotification({
+          user_id: admin.id,
+          title: "Pack renewal attempts stuck pending",
+          message: `${stalePendingRenewals} pack renewal attempt${stalePendingRenewals === 1 ? "" : "s"} have been pending for over an hour — the charging process likely died mid-attempt. Check Stripe (by idempotency key pack_renew_<sourcePackageId>) before retrying anything.`,
+          type: "warning",
+          is_read: false,
+          link: "/admin/clients",
+        })
+      }
+    }
+  } catch (err) {
+    console.error("[pack-renewals] stale-pending-attempt check failed:", err)
+  }
+
   return NextResponse.json(
     {
       skipped: gate.skipped ? gate.reason : undefined,
@@ -153,6 +198,7 @@ export async function POST(request: NextRequest) {
       errors,
       renewed,
       renewalsFailed,
+      stalePendingRenewals,
     },
     { status: 200 },
   )
