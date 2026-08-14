@@ -185,8 +185,39 @@ Both routes hit the same unique index, so the race is safe by construction.
 `createPackCheckoutSession` gains:
 
 - `customer: <stripe customer id>` (replacing `customer_email`)
-- `payment_intent_data: { setup_future_usage: "off_session" }`
+- `payment_intent_data: { setup_future_usage: "off_session" }` — **only when the
+  consent box is ticked**
 - `metadata.autoRenew: "true" | "false"` from the checkbox
+
+**Corrected 2026-08-14 after Task 6 review — card capture is gated on consent.**
+An earlier draft said an unticked box should still save the card, "useful for
+no-show fees later". That was wrong. The box reads *"Save my card and
+automatically buy another pack when this one runs out"* — a client who unticks it
+has declined card saving, and storing it anyway puts a card in front of
+`session-fees.ts`, which will charge it for no-shows and late cancellations. That
+is the exact non-consensual charge this whole design was shaped to avoid; writing
+it into the design while arguing against it elsewhere was an inconsistency, not a
+trade-off.
+
+It is worse than a principle violation, because pack payment links are
+**shareable** (copy-link, email-link). Under unconditional capture, whoever opens
+a link and pays gets their card attached to the payer's Stripe customer and
+promoted to `is_default` — so an aunt paying once for a nephew's pack silently
+becomes the card of record for that family's future fees.
+
+Both `setup_future_usage` and the webhook's `upsertDefaultPaymentMethod` are
+therefore gated on `metadata.autoRenew === "true"`. Consequence, accepted: a
+client who declines auto-renew has no card on file, so no-show fees cannot be
+charged for them. That is the correct default — it is what "declined" means, and
+it is no worse than today, where nobody has a card at all.
+
+**Also corrected: `getOrCreateStripeCustomer` must re-sync the customer's email.**
+Attaching a `customer` instead of `customer_email` moves the checkout addressee
+from the payer's *current* database email to whatever email the Stripe Customer
+was created with — so a client who later changes their email in-app would receive
+receipts at the old address. Same person, wrong inbox: a quieter version of the
+bug the `customer_email` pinning was introduced to fix. The helper now updates the
+stored customer's email when it differs, best-effort.
 
 `handleSessionPackCheckout` (webhook) then reads the PaymentIntent's
 `payment_method`, calls `upsertDefaultPaymentMethod`, and sets `auto_renew` on
