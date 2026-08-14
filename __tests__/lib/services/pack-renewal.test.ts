@@ -52,10 +52,20 @@ describe("attemptPackRenewal", () => {
     })
     getDefaultPaymentMethod.mockResolvedValue({ stripe_payment_method_id: "pm_1" })
     createClientPackage.mockResolvedValue({ id: "pack-2" })
+    // Explicit default (not just vi.clearAllMocks(), same reasoning as
+    // sendPackRenewedEmail below): a later test replaces this with
+    // mockImplementation to make ONE specific call fail, and without
+    // resetting it here that replacement implementation survives into every
+    // test that runs after it.
+    updateRenewalAttempt.mockResolvedValue({ id: "att-1" })
     updateClientPackage.mockResolvedValue({ id: "pack-1" })
     createPayment.mockResolvedValue({ id: "pay-1" })
     getUsers.mockResolvedValue([])
     resolvePackPaymentLink.mockResolvedValue({ ok: true, url: "https://pay", refreshed: false })
+    // Explicit default (not just vi.clearAllMocks(), which clears call history
+    // but NOT a configured mockRejectedValue) — otherwise the rejection set by
+    // the "receipt email rejects" test below leaks into every test after it.
+    sendPackRenewedEmail.mockResolvedValue(undefined)
   })
 
   it("charges the saved card and creates a paid clone", async () => {
@@ -171,15 +181,24 @@ describe("attemptPackRenewal", () => {
     )
   })
 
-  it("addresses the fallback payment-link email to bill_to_email over the payer, when set", async () => {
+  it("addresses the fallback payment-link email to bill_to_email over the payer, and CCs the trainee", async () => {
     getDefaultPaymentMethod.mockResolvedValue(null) // no card -> fallback path
+    // id-aware, so the CC assertion below proves the TRAINEE's email is used,
+    // not a value that only looks right because payer and trainee share a mock.
+    getUserById.mockImplementation(async (id: string) =>
+      id === "payer-1"
+        ? { id: "payer-1", email: "payer@x.com", first_name: "Pat", stripe_customer_id: "cus_payer" }
+        : { id: "u1", email: "trainee@x.com", first_name: "Sam", last_name: "R", stripe_customer_id: "cus_trainee" },
+    )
     const { attemptPackRenewal } = await import("@/lib/services/pack-renewal")
     await attemptPackRenewal(pack({ bill_to_email: "mom@example.com" }) as never)
 
-    expect(sendPackPaymentLinkEmail).toHaveBeenCalledWith(expect.objectContaining({ to: "mom@example.com" }))
+    expect(sendPackPaymentLinkEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "mom@example.com", ccClientEmail: "trainee@x.com" }),
+    )
   })
 
-  it("flags the attempt with the PaymentIntent id instead of losing a successful charge when the post-charge write fails", async () => {
+  it("flags the attempt without claiming a pack exists when createClientPackage itself fails", async () => {
     chargeSavedCard.mockResolvedValue({ ok: true, paymentIntentId: "pi_1" })
     createClientPackage.mockRejectedValueOnce(new Error("db down"))
     getUsers.mockResolvedValue([{ id: "admin-1", role: "admin" }])
@@ -189,11 +208,38 @@ describe("attemptPackRenewal", () => {
     expect(out).toEqual({ renewed: false, reason: "post_charge_write_failed" })
     expect(updateRenewalAttempt).toHaveBeenCalledWith(
       "att-1",
-      expect.objectContaining({ status: "failed", stripe_payment_intent_id: "pi_1" }),
+      expect.objectContaining({ status: "failed", stripe_payment_intent_id: "pi_1", new_package_id: null }),
     )
-    expect(createNotification).toHaveBeenCalledWith(
-      expect.objectContaining({ user_id: "admin-1", message: expect.stringContaining("pi_1") }),
+    const message = createNotification.mock.calls.find((c) => c[0].user_id === "admin-1")?.[0].message
+    expect(message).toContain("Create and credit the pack manually")
+    // No pack was created — the message must NOT claim one exists (that would
+    // send an admin looking for a pack-2 that was never made).
+    expect(message).not.toContain("WAS created")
+    expect(sendPackRenewedEmail).not.toHaveBeenCalled()
+  })
+
+  it("names the pack id and warns against a duplicate when the pack WAS created but the attempt record update fails", async () => {
+    chargeSavedCard.mockResolvedValue({ ok: true, paymentIntentId: "pi_1" })
+    getUsers.mockResolvedValue([{ id: "admin-1", role: "admin" }])
+    // createClientPackage succeeds (default mock: { id: "pack-2" }); only the
+    // SUCCEEDED-status attempt update fails — the "failed"-status recovery
+    // update in the catch block must still go through so we can assert on it.
+    updateRenewalAttempt.mockImplementation(async (id: string, patch: Record<string, unknown>) => {
+      if (patch.status === "succeeded") throw new Error("attempt update db down")
+      return { id, ...patch }
+    })
+    const { attemptPackRenewal } = await import("@/lib/services/pack-renewal")
+    const out = await attemptPackRenewal(pack() as never)
+
+    expect(out).toEqual({ renewed: false, reason: "post_charge_write_failed" })
+    expect(updateRenewalAttempt).toHaveBeenCalledWith(
+      "att-1",
+      expect.objectContaining({ status: "failed", stripe_payment_intent_id: "pi_1", new_package_id: "pack-2" }),
     )
+    const message = createNotification.mock.calls.find((c) => c[0].user_id === "admin-1")?.[0].message
+    expect(message).toContain("pack-2")
+    expect(message).toContain("WAS created")
+    expect(message).toContain("Do NOT create another pack")
     expect(sendPackRenewedEmail).not.toHaveBeenCalled()
   })
 

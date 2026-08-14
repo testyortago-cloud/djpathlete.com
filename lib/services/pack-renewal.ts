@@ -187,14 +187,22 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
 
   // The charge just succeeded — everything from here on must not lose that
   // fact. createClientPackage + updateRenewalAttempt are wrapped together: if
-  // either throws, the client has been charged with no pack and no record of
-  // why, and (since source_package_id is unique) this attempt can never be
+  // either throws, the client has been charged with no record of why, and
+  // (since source_package_id is unique) this attempt can never be
   // auto-retried. That combination — real money, silent hole, no retry path —
   // is the one outcome worse than a normal decline, so it gets its own recovery
   // branch instead of propagating.
+  //
+  // `createdId` (separate from `created` below) is what lets the catch block
+  // tell the two failure shapes apart: if createClientPackage already
+  // succeeded, a real paid pack EXISTS, and the recovery message must say so
+  // — telling an admin to "create the pack manually" when one already exists
+  // is how a client ends up double-credited.
+  let createdId: string | null = null
   let created: ClientPackage
   try {
     created = await createClientPackage(buildRenewalPack(pkg, { paid: true, now }))
+    createdId = created.id
     await updateRenewalAttempt(attempt.id, {
       status: "succeeded",
       stripe_payment_intent_id: result.paymentIntentId,
@@ -211,6 +219,7 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
       await updateRenewalAttempt(attempt.id, {
         status: "failed",
         stripe_payment_intent_id: result.paymentIntentId,
+        new_package_id: createdId,
         failure_reason: `post_charge_write_failed: ${err instanceof Error ? err.message : String(err)}`,
       })
     } catch (updateErr) {
@@ -224,14 +233,17 @@ export async function attemptPackRenewal(pkg: ClientPackage, now = new Date()): 
       metadata: {
         reason: "post_charge_write_failed",
         stripe_payment_intent_id: result.paymentIntentId,
+        new_package_id: createdId,
         amount_cents: pkg.price_cents,
         client_user_id: pkg.client_user_id,
       },
     })
-    await notifyAdmins(
-      "Pack renewal charged but did not complete — needs manual fix",
-      `${clientName}'s card was charged (PaymentIntent ${result.paymentIntentId}) but creating the renewed pack failed. Check Stripe payment ${result.paymentIntentId} and create/credit the pack manually.`,
-    )
+    // Two very different situations, and telling them apart is the difference
+    // between an admin fixing this and an admin double-crediting the client.
+    const adminMessage = createdId
+      ? `${clientName}'s card was charged (PaymentIntent ${result.paymentIntentId}) and pack ${createdId} WAS created, but the renewal record could not be updated. Do NOT create another pack — reconcile the attempt row against pack ${createdId}.`
+      : `${clientName}'s card was charged (PaymentIntent ${result.paymentIntentId}) but creating the renewed pack failed. Create and credit the pack manually.`
+    await notifyAdmins("Pack renewal charged but did not complete — needs manual fix", adminMessage)
     return { renewed: false, reason: "post_charge_write_failed" }
   }
 
