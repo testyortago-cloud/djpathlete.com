@@ -30,7 +30,7 @@ export default async function MySessionsPage() {
         )}
       </div>
       <MySessionsList packs={view?.packs ?? []} />
-      {showCard && <MyCardPanel card={card} />}
+      {showCard && <MyCardPanel card={card} packs={view?.packs ?? []} />}
     </div>
   )
 }

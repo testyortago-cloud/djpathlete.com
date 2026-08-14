@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { loadClientPacksView } from "@/lib/services/client-packs-view"
+import { listRenewalAttemptsForUser } from "@/lib/db/pack-renewal-attempts"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 
-/** GET ?clientUserId= — a client's packages, each with its check-in history. */
+/** GET ?clientUserId= — a client's packages (each with its check-in history)
+ *  plus their recent auto-renewal attempts, for the packs panel. */
 export async function GET(request: Request) {
   try {
     const session = await auth()
@@ -16,8 +18,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "clientUserId is required" }, { status: 400 })
     }
 
-    const packages = await loadClientPacksView(clientUserId)
-    return NextResponse.json({ packages })
+    const [packages, attempts] = await Promise.all([
+      loadClientPacksView(clientUserId),
+      listRenewalAttemptsForUser(clientUserId),
+    ])
+    return NextResponse.json({ packages, attempts })
   } catch (error) {
     console.error("List packages error:", error)
     return NextResponse.json({ error: "Failed to load packages" }, { status: 500 })

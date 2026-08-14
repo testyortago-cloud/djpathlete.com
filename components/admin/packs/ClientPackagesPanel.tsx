@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Ticket, Plus, Undo2, Link2, Trash2, BadgeCheck, Mail, UserPen } from "lucide-react"
+import { Ticket, Plus, Undo2, Link2, Trash2, BadgeCheck, Mail, UserPen, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,8 +16,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  DataTableCard,
+  DataTable,
+  DataTableHeader,
+  DataTableHead,
+  DataTableRow,
+  DataTableCell,
+  DataTableEmpty,
+  DataTableBadge,
+  type DataTableBadgeTone,
+} from "@/components/ui/data-table"
 import { SellPackDialog } from "./SellPackDialog"
-import type { ClientPackage } from "@/types/database"
+import type { ClientPackage, PackRenewalAttempt } from "@/types/database"
 import type { PackWithCheckins } from "@/lib/services/client-packs-view"
 
 const STATUS_COLORS: Record<string, string> = {
@@ -25,6 +37,15 @@ const STATUS_COLORS: Record<string, string> = {
   expired: "bg-muted text-muted-foreground",
   refunded: "bg-muted text-muted-foreground",
   cancelled: "bg-muted text-muted-foreground",
+}
+
+/** Brief's prescribed tone set — only success/danger/neutral, so pending and
+ *  skipped (no clean failure, no clean success) both read as neutral. */
+const RENEWAL_STATUS_TONE: Record<PackRenewalAttempt["status"], DataTableBadgeTone> = {
+  succeeded: "success",
+  failed: "danger",
+  pending: "neutral",
+  skipped: "neutral",
 }
 
 function remaining(p: ClientPackage) {
@@ -47,7 +68,54 @@ export function ClientPackagesPanel({
   const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<PackWithCheckins | null>(null)
+  const [attempts, setAttempts] = useState<PackRenewalAttempt[]>([])
+  const [attemptsLoaded, setAttemptsLoaded] = useState(false)
   const packages = initialPacks
+
+  useEffect(() => {
+    let cancelled = false
+    setAttemptsLoaded(false)
+    fetch(`/api/admin/session-packs?clientUserId=${clientUserId}`)
+      .then((r) => (r.ok ? r.json() : { attempts: [] }))
+      .then((d) => {
+        if (!cancelled) setAttempts(d.attempts ?? [])
+      })
+      .catch(() => {
+        if (!cancelled) setAttempts([])
+      })
+      .finally(() => {
+        if (!cancelled) setAttemptsLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [clientUserId])
+
+  async function toggleAutoRenew(pack: PackWithCheckins, next: boolean) {
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/admin/session-packs/${pack.id}/auto-renew`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ autoRenew: next }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        toast.error(d.error ?? "Could not update auto-renew")
+        return
+      }
+      toast.success(
+        next
+          ? "Auto-renew turned on — this pack re-buys itself when it runs out"
+          : "Auto-renew turned off",
+      )
+      router.refresh()
+    } catch {
+      toast.error("Network error — auto-renew not updated")
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function voidCheckin(checkinId: string) {
     setBusy(true)
@@ -236,6 +304,19 @@ export function ClientPackagesPanel({
                       → {p.program_name} · advances on check-in
                     </p>
                   )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <Switch
+                      id={`auto-renew-${p.id}`}
+                      size="sm"
+                      checked={p.auto_renew}
+                      onCheckedChange={(checked) => toggleAutoRenew(p, checked)}
+                      disabled={busy}
+                    />
+                    <label htmlFor={`auto-renew-${p.id}`} className="text-xs text-muted-foreground">
+                      Auto-renew {p.auto_renew ? "on" : "off"} — re-buys this pack from the card on file when it runs
+                      out
+                    </label>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right">
@@ -326,6 +407,45 @@ export function ClientPackagesPanel({
           ))}
         </div>
       )}
+
+      <div className="mt-6">
+        <h3 className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+          <RefreshCw className="size-3.5 text-muted-foreground" strokeWidth={1.5} />
+          Recent renewal attempts
+        </h3>
+        {attemptsLoaded ? (
+          <DataTableCard>
+            <DataTable>
+              <DataTableHeader>
+                <DataTableHead>Date</DataTableHead>
+                <DataTableHead>Amount</DataTableHead>
+                <DataTableHead>Status</DataTableHead>
+                <DataTableHead>Details</DataTableHead>
+              </DataTableHeader>
+              <tbody>
+                {attempts.length === 0 ? (
+                  <DataTableEmpty colSpan={4}>No renewal attempts yet.</DataTableEmpty>
+                ) : (
+                  attempts.map((a) => (
+                    <DataTableRow key={a.id}>
+                      <DataTableCell>{fmtDate(a.created_at)}</DataTableCell>
+                      <DataTableCell>${(a.amount_cents / 100).toFixed(2)}</DataTableCell>
+                      <DataTableCell>
+                        <DataTableBadge tone={RENEWAL_STATUS_TONE[a.status]}>{a.status}</DataTableBadge>
+                      </DataTableCell>
+                      <DataTableCell muted>
+                        {a.failure_reason ?? (a.status === "succeeded" ? "Renewal pack created" : "—")}
+                      </DataTableCell>
+                    </DataTableRow>
+                  ))
+                )}
+              </tbody>
+            </DataTable>
+          </DataTableCard>
+        ) : (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        )}
+      </div>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>

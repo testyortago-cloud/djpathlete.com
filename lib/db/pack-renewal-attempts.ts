@@ -55,3 +55,17 @@ export async function listRenewalAttempts(limit = 100) {
   if (error) throw error
   return data as PackRenewalAttempt[]
 }
+
+/** One client's renewal attempts (newest first) — the trainee, not the payer,
+ *  so this reads correctly even when a household payer's card was charged. */
+export async function listRenewalAttemptsForUser(userId: string, limit = 20) {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("pack_renewal_attempts")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return data as PackRenewalAttempt[]
+}

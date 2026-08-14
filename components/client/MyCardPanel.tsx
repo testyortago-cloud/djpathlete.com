@@ -5,12 +5,40 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { CreditCard } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import type { UserPaymentMethod } from "@/types/database"
+import type { ClientPackage, UserPaymentMethod } from "@/types/database"
 
-/** The athlete's own card-on-file management (on /client/sessions). */
-export function MyCardPanel({ card }: { card: UserPaymentMethod | null }) {
+type AutoRenewPack = Pick<ClientPackage, "id" | "session_type" | "credits_total" | "price_cents" | "auto_renew">
+
+/** The athlete's own card-on-file management (on /client/sessions). Also
+ *  surfaces auto-renew consent, since "auto_renew" lives on the pack, not the
+ *  user — a client could have it armed on more than one pack over time. */
+export function MyCardPanel({ card, packs = [] }: { card: UserPaymentMethod | null; packs?: AutoRenewPack[] }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
+  const [turningOffId, setTurningOffId] = useState<string | null>(null)
+  const armedPacks = packs.filter((p) => p.auto_renew)
+
+  async function turnOffAutoRenew(packId: string) {
+    setTurningOffId(packId)
+    try {
+      const res = await fetch(`/api/client/session-packs/${packId}/auto-renew`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ autoRenew: false }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        toast.error(d.error ?? "Could not turn off auto-renew")
+        return
+      }
+      toast.success("Auto-renew turned off")
+      router.refresh()
+    } catch {
+      toast.error("Network error — auto-renew not updated")
+    } finally {
+      setTurningOffId(null)
+    }
+  }
 
   async function addCard() {
     setBusy(true)
@@ -74,6 +102,28 @@ export function MyCardPanel({ card }: { card: UserPaymentMethod | null }) {
           <Button size="sm" onClick={addCard} disabled={busy}>
             {busy ? "Opening…" : "Add card"}
           </Button>
+        </div>
+      )}
+
+      {armedPacks.length > 0 && (
+        <div className="mt-4 space-y-2 border-t border-border pt-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Auto-renew</p>
+          {armedPacks.map((p) => (
+            <div key={p.id} className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-foreground">
+                On for your {p.session_type} pack — buys another {p.credits_total}-session pack ($
+                {(p.price_cents / 100).toFixed(0)}) on this card when it runs out.
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => turnOffAutoRenew(p.id)}
+                disabled={turningOffId === p.id}
+              >
+                Turn off
+              </Button>
+            </div>
+          ))}
         </div>
       )}
     </div>

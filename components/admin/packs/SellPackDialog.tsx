@@ -53,6 +53,9 @@ export function SellPackDialog({
   // Someone other than the client is paying (a parent with no account here).
   const [billToOther, setBillToOther] = useState(false)
   const [billToEmail, setBillToEmail] = useState("")
+  // Consent checkbox: save the payer's card and auto-buy a replacement pack on
+  // depletion. Default OFF — this is the entire legal basis for a later charge.
+  const [autoRenew, setAutoRenew] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -91,6 +94,11 @@ export function SellPackDialog({
           return
         }
         body.billToEmail = trimmedBillTo
+      }
+
+      // Only meaningful with a real card checkout — cash/comp never save a card.
+      if (paymentMethod === "stripe") {
+        body.autoRenew = autoRenew
       }
 
       if (mode === "catalogue") {
@@ -191,6 +199,7 @@ export function SellPackDialog({
       setCopied(false)
       setBillToOther(false)
       setBillToEmail("")
+      setAutoRenew(false)
     }
   }
 
@@ -239,6 +248,13 @@ export function SellPackDialog({
       </Dialog>
     )
   }
+
+  // What the consent copy needs to name — credits and price of the pack being
+  // sold right now, whichever mode built it.
+  const selectedProduct = mode === "catalogue" ? (products.find((p) => p.id === productId) ?? null) : null
+  const renewCredits = selectedProduct ? selectedProduct.credits : parseInt(credits, 10) || 0
+  const renewPriceCents = selectedProduct ? selectedProduct.price_cents : Math.round(parseFloat(price || "0") * 100)
+  const renewPriceDisplay = (renewPriceCents / 100).toFixed(0)
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -328,12 +344,45 @@ export function SellPackDialog({
             )}
             {paymentMethod === "stripe" && (
               <div className="space-y-2 rounded-md border border-border p-3">
+                <label
+                  htmlFor="autoRenew"
+                  className={`flex items-start gap-2 text-sm ${billToOther ? "text-muted-foreground" : ""}`}
+                >
+                  <input
+                    id="autoRenew"
+                    type="checkbox"
+                    checked={autoRenew}
+                    disabled={billToOther}
+                    onChange={(e) => setAutoRenew(e.target.checked)}
+                    className="mt-0.5 size-4 rounded border-border"
+                  />
+                  <span>
+                    Save the client&apos;s card and automatically buy another {renewCredits}-session pack ($
+                    {renewPriceDisplay}) when this one runs out. Cancel any time.
+                  </span>
+                </label>
+                {billToOther && (
+                  <p className="text-xs text-muted-foreground">
+                    Not available when billing someone else with no account here — there&apos;s no card to save.
+                  </p>
+                )}
+              </div>
+            )}
+            {paymentMethod === "stripe" && (
+              <div className="space-y-2 rounded-md border border-border p-3">
                 <label htmlFor="billToOther" className="flex items-center gap-2 text-sm">
                   <input
                     id="billToOther"
                     type="checkbox"
                     checked={billToOther}
-                    onChange={(e) => setBillToOther(e.target.checked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setBillToOther(checked)
+                      // An account-less payer has no Stripe customer to attach a
+                      // card to — leaving the box checked would promise a save
+                      // that can never happen.
+                      if (checked) setAutoRenew(false)
+                    }}
                     className="size-4 rounded border-border"
                   />
                   Someone else is paying
