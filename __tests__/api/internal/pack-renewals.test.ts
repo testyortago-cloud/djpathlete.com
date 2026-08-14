@@ -25,6 +25,10 @@ vi.mock("@/lib/packs/flags", () => ({
   PACK_RENEWALS_CRON_KEY: "cron_pack_renewals_enabled",
   packReminderLowAt: async () => 2,
   packReminderExpiryDays: async () => 7,
+  // This suite doesn't exercise the auto-renew sweep (see
+  // pack-renewals-sweep.test.ts for that) — default it off so the sweep
+  // no-ops cleanly instead of throwing on a missing mock export.
+  packAutoRenewEnabled: async () => false,
 }))
 
 import { POST } from "@/app/api/admin/internal/pack-renewals/route"
