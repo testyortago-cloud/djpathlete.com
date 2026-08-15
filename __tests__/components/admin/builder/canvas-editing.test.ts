@@ -15,6 +15,10 @@ const MARKUP = `
   <p class="djp-sub djp-empty" data-edit="sub" data-edit-empty="1">Add a subheading</p>
   <div class="djp-hero-media" data-edit-image="media"><img src="/a.jpg" alt="" /></div>
   <a class="djp-btn" href="/signup" data-edit="primaryCta.label">Start my free week</a>
+  <!-- An island CTA: the anchor is on a WRAPPER, and the focusable thing is
+       INSIDE it. That nesting is what exposed the blur bug below. -->
+  <span class="djp-edit-slot" data-edit="cta.label"><a data-djp-island="checkout" href="/login">Reserve a spot</a></span>
+  <input id="stray" />
 </section>
 <section id="c1" data-sec="c1">
   <h2 class="djp-hd" data-edit="headline">Ready?</h2>
@@ -167,6 +171,120 @@ describe("inline text editing", () => {
     el('[data-edit="headline"]').textContent = "Changed"
     blur('[data-edit="headline"]')
     expect(onCommit).toHaveBeenCalledTimes(1)
+  })
+
+  it("reports a commit ONCE when ending the edit blurs the element", () => {
+    // THE BUG THIS FILE COULD NOT SEE, AND THE REASON IT COULD NOT.
+    //
+    // In a browser, `element.contentEditable = "false"` takes the caret off a
+    // focused element and fires `blur` SYNCHRONOUSLY on that line. `stopEditing`
+    // set `editing = null` AFTER it, so the document's capture-phase blur
+    // listener re-entered `commitText` with `editing` still set and every canvas
+    // edit reported twice — two PUTs on the same revision, one saved, one 409,
+    // and the owner staring at "This page changed in another tab" over an edit
+    // that had just worked.
+    //
+    // jsdom fires no blur when `contentEditable` changes, so nothing here could
+    // observe it. The property below is that browser behaviour, written down:
+    // it is not a mock of our own code, it is the one DOM behaviour jsdom is
+    // missing. Found by counting requests in a real browser.
+    const element = el('[data-edit="headline"]')
+    let value = "inherit"
+    Object.defineProperty(element, "contentEditable", {
+      configurable: true,
+      get: () => value,
+      set(next: string) {
+        value = next
+        if (next === "false") element.dispatchEvent(new FocusEvent("blur", { bubbles: false }))
+      },
+    })
+
+    dblclick('[data-edit="headline"]')
+    element.textContent = "Committed once"
+    key('[data-edit="headline"]', "Enter")
+
+    expect(onCommit).toHaveBeenCalledTimes(1)
+    expect(onCommit).toHaveBeenCalledWith({
+      sectionId: "h1",
+      path: "headline",
+      value: "Committed once",
+      wasEmpty: false,
+    })
+  })
+
+  it("reports a commit ONCE even when the canvas is bound twice", () => {
+    // MUTANT KILLED: the old contract, where a second bind simply attached a
+    // second set of listeners and the CALLER was trusted to have cleaned up.
+    //
+    // In a real browser `PreviewPane` binds three times per page load — once to
+    // the iframe's `about:blank`, once from the element's `load` listener, once
+    // more when the `loadGeneration` state bump re-runs the effect — and two of
+    // those are live on the same document. Every commit then fired twice with
+    // the SAME revision, so the first PUT saved and the second came back 409:
+    // a correctly-saved edit under "This page changed in another tab. Reload
+    // before editing again."
+    //
+    // Deliberately does NOT run the first cleanup, because the caller didn't.
+    bindCanvasEditing(document, { onSelect, onCommit, onPickImage })
+
+    dblclick('[data-edit="headline"]')
+    el('[data-edit="headline"]').textContent = "Changed once"
+    key('[data-edit="headline"]', "Enter")
+
+    expect(onCommit).toHaveBeenCalledTimes(1)
+  })
+
+  it("reports a selection ONCE when the canvas is bound twice", () => {
+    bindCanvasEditing(document, { onSelect, onCommit, onPickImage })
+    click('[data-edit="headline"]')
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it("ignores a blur from some OTHER element while an edit is open", () => {
+    // MUTANT KILLED: `onBlur = () => { if (editing) commitText() }`, which is
+    // what shipped. `blur` does not bubble, so the listener is in CAPTURE mode
+    // on the document and sees EVERY element in the previewed page losing
+    // focus — not just the one being edited.
+    //
+    // FOUND IN A REAL BROWSER. Double-clicking an island CTA never produced a
+    // caret: a link takes DOM focus on mousedown, so `startEditing`'s own
+    // `element.focus()` blurred the <a> underneath it, this handler committed,
+    // and `stopEditing` closed the edit one line after it opened. The event log
+    // read mousedown:A, focus:A, click:A, ..., blur:A, contenteditable=false —
+    // an editor that "does nothing" with no error anywhere.
+    dblclick('[data-edit="cta.label"]')
+    expect(el('[data-edit="cta.label"]').contentEditable).toBe("true")
+
+    blur("#stray")
+
+    expect(el('[data-edit="cta.label"]').contentEditable).toBe("true")
+    expect(el('[data-edit="cta.label"]').classList.contains("djp-editing")).toBe(true)
+    expect(onCommit).not.toHaveBeenCalled()
+  })
+
+  it("does not let another element's blur commit half-typed text", () => {
+    // The damaging shape of the same bug: an input inside the previewed form
+    // losing focus would end an open edit mid-word and save it.
+    dblclick('[data-edit="headline"]')
+    el('[data-edit="headline"]').textContent = "Half-typed"
+    blur("#stray")
+    expect(onCommit).not.toHaveBeenCalled()
+    // Still editable, so the owner can carry on typing.
+    expect(el('[data-edit="headline"]').contentEditable).toBe("true")
+  })
+
+  it("still commits when the edited element itself blurs", () => {
+    // The fix must not turn blur into a no-op: clicking away from an edit is
+    // how most edits end.
+    dblclick('[data-edit="cta.label"]')
+    el('[data-edit="cta.label"]').textContent = "Reserve your spot"
+    blur('[data-edit="cta.label"]')
+    expect(onCommit).toHaveBeenCalledWith({
+      sectionId: "h1",
+      path: "cta.label",
+      value: "Reserve your spot",
+      wasEmpty: false,
+    })
   })
 
   it("cancels on Escape and puts the original text back", () => {

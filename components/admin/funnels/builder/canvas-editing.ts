@@ -105,22 +105,76 @@ function sectionIdOf(element: HTMLElement | null): string | null {
 }
 
 /**
+ * The current binding's teardown, parked on the Document it belongs to.
+ *
+ * Not a module-level map: a Document is thrown away on every preview reload,
+ * and a map keyed by it would either leak or need a WeakMap for no benefit.
+ * The property dies with the document.
+ */
+const BINDING = "__djpCanvasBinding"
+
+type BoundDocument = Document & { [BINDING]?: () => void }
+
+/**
  * Attaches the editing gestures to `doc` and returns a cleanup.
  *
- * NOT idempotent per Document: calling it twice attaches twice, so the caller
- * must run the returned cleanup before re-binding. `useCanvasEditing` does, and
- * `canvas-editing.test.ts` pins that an unbound canvas reports nothing - the
- * preview rebinds on every reload, so a leaked listener means one click
- * reported N times.
+ * ONE BINDING PER DOCUMENT, ENFORCED HERE — a second call releases the first.
+ *
+ * IT USED TO BE THE CALLER'S JOB. This comment read "NOT idempotent per
+ * Document: the caller must run the returned cleanup before re-binding", and
+ * `PreviewPane` looks like it does — but in a real browser it binds three times
+ * per page load: once to the iframe's `about:blank` document, once from the
+ * element's own `load` listener when the real document arrives, and once more
+ * when the `loadGeneration` state bump re-runs the effect against that same
+ * document. Whether any two of those overlap depends on the order React
+ * flushes a state update against a non-bubbling `load` event, which is not a
+ * thing this file should be betting on.
+ *
+ * SO IT IS ENFORCED HERE INSTEAD, where the listeners actually live. A leaked
+ * second binding is not a cosmetic problem: each has its own `editing` state,
+ * so one keystroke commits twice, and the two `PUT`s carry the same revision —
+ * one saves, the other 409s, and the owner sees "This page changed in another
+ * tab" over an edit that worked.
+ *
+ * NOT to be confused with the re-entrancy in `stopEditing` below, which caused
+ * exactly that symptom for a different reason and is the one that was actually
+ * firing. This guard closes the other route to it.
  */
 export function bindCanvasEditing(doc: Document, handlers: CanvasHandlers): () => void {
+  const host = doc as BoundDocument
+  host[BINDING]?.()
+
   /** The element currently in `contentEditable`, and what it said before. */
   let editing: { element: HTMLElement; original: string; wasEmpty: boolean } | null = null
 
+  /**
+   * CLEARS THE STATE **BEFORE** TOUCHING THE DOM, AND THE ORDER IS THE FIX.
+   *
+   * `element.contentEditable = "false"` takes the caret away from a focused
+   * element, so the browser fires `blur` SYNCHRONOUSLY, right there on that
+   * line. With `editing = null` last, the document's capture-phase `blur`
+   * listener re-entered `commitText` while `editing` was still set, and every
+   * single canvas edit reported TWICE:
+   *
+   *   Enter -> commitText -> stopEditing -> blur -> commitText -> onCommit (1)
+   *                                                            -> onCommit (2)
+   *
+   * The two `PUT`s carried the SAME revision, so one saved and the other came
+   * back 409 — the owner's correct, saved edit sitting under a red strip
+   * reading "This page changed in another tab. Reload before editing again."
+   * Nothing had changed and nothing needed reloading, which is the worst kind
+   * of error message: it is about a problem that does not exist, on a feature
+   * that just worked.
+   *
+   * jsdom does not fire `blur` when `contentEditable` changes, so this was
+   * invisible to every test in this repo until one was written that models the
+   * browser's behaviour explicitly. It was found by counting requests in a real
+   * browser, and it has been there since the canvas shipped.
+   */
   function stopEditing(element: HTMLElement) {
+    editing = null
     element.contentEditable = "false"
     element.classList.remove(EDITING_CLASS)
-    editing = null
   }
 
   /**
@@ -249,8 +303,34 @@ export function bindCanvasEditing(doc: Document, handlers: CanvasHandlers): () =
     }
   }
 
-  const onBlur = () => {
-    if (editing) commitText()
+  /**
+   * A BLUR ONLY ENDS THE EDIT IF IT IS **THIS** ELEMENT'S BLUR.
+   *
+   * The listener is on the document in CAPTURE mode, because `blur` does not
+   * bubble — which means it sees every element in the canvas losing focus, not
+   * just the one being edited. Committing on all of them made `startEditing`
+   * close the edit it had just opened:
+   *
+   *   double-click a button -> the <a> under the pointer already has DOM focus
+   *   (a link takes focus on mousedown) -> `startEditing` calls
+   *   `element.focus()` -> the <a> fires `blur` -> this handler committed ->
+   *   `stopEditing` -> no caret ever appeared and nothing could be typed.
+   *
+   * FOUND IN A REAL BROWSER AND NOWHERE ELSE. The recorded event log was
+   * `mousedown:A, focus:A, click:A, ..., blur:A, contenteditable=false` — an
+   * editor that silently does nothing. It was invisible until island CTA labels
+   * became editable, because until then no editable element sat inside anything
+   * focusable; the general form (an input in the previewed form losing focus
+   * ends an open edit) was there the whole time.
+   *
+   * Identity comparison is safe across the iframe realm — this is the same
+   * object we stored, not a value being type-tested. See `asElement` above for
+   * the check that is NOT safe.
+   */
+  const onBlur = (event: FocusEvent) => {
+    if (!editing) return
+    if (event.target !== null && event.target !== editing.element) return
+    commitText()
   }
 
   doc.addEventListener("click", onClick, true)
@@ -259,11 +339,19 @@ export function bindCanvasEditing(doc: Document, handlers: CanvasHandlers): () =
   // Capture, because `blur` does not bubble.
   doc.addEventListener("blur", onBlur, true)
 
-  return () => {
+  const teardown = () => {
     doc.removeEventListener("click", onClick, true)
     doc.removeEventListener("dblclick", onDoubleClick, true)
     doc.removeEventListener("keydown", onKeyDown, true)
     doc.removeEventListener("blur", onBlur, true)
     if (editing) stopEditing(editing.element)
+    // Only clear the marker if it is still OURS. A caller running a stale
+    // cleanup after a newer binding took over must not leave the document
+    // looking unbound — the next bind would then not release the live one,
+    // which is the exact double-binding this marker exists to prevent.
+    if (host[BINDING] === teardown) delete host[BINDING]
   }
+
+  host[BINDING] = teardown
+  return teardown
 }
