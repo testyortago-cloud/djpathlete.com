@@ -167,17 +167,31 @@ export default async function FunnelEditPage({ params, searchParams }: PageProps
     ? await resolveAndCompile(draft.doc, funnelBasePath)
     : { doc: null, unresolved: [], danglingAnchors: [], compile: null, resolutionError: null }
 
-  // The newest revision whose stored document still parses — what the
-  // unreadable-document recovery button should be pointed at. Same scan the
-  // build route makes; done here so the recovery is on screen the moment the
-  // page opens, rather than only after a turn has been refused.
+  // WHICH TURNS CAN BE GONE BACK TO: the ones whose stored document still
+  // parses. Computed for EVERY turn, not just when the draft is unreadable,
+  // because this is now the transcript's undo as well as its recovery.
+  //
+  // It matters more than it did. Until click-to-edit, a change to this page was
+  // an AI turn — deliberate, infrequent, and visible in the chat. Now a
+  // double-click and a keystroke commits one, so "step back one" has to exist.
+  // The mechanism already did (`revertToRevision`, a `source:'revert'` head
+  // turn); only the affordance was missing, and it was only ever wired to
+  // corruption recovery.
+  const restorable = new Set<number>()
+  for (const turn of turns) {
+    if (turn.doc === null || turn.doc === undefined) continue
+    if (sectionDocSchema.safeParse(turn.doc).success) restorable.add(turn.revision)
+  }
+
+  // The newest restorable revision — what the unreadable-document recovery
+  // button should be pointed at. Derived from the SAME set as the per-turn
+  // controls, so the recovery button and the transcript cannot disagree about
+  // which revisions are good.
   let resetToRevision: number | null = null
   if (draft.docInvalid) {
     for (let index = turns.length - 1; index >= 0; index--) {
-      const turn = turns[index]
-      if (turn.doc === null || turn.doc === undefined) continue
-      if (sectionDocSchema.safeParse(turn.doc).success) {
-        resetToRevision = turn.revision
+      if (restorable.has(turns[index].revision)) {
+        resetToRevision = turns[index].revision
         break
       }
     }
@@ -187,11 +201,22 @@ export default async function FunnelEditPage({ params, searchParams }: PageProps
     .filter((turn) => typeof turn.message === "string" && turn.message.trim() !== "")
     .map((turn) =>
       turn.role === "user"
-        ? { id: `turn-${turn.revision}`, role: "owner" as const, text: turn.message }
+        ? {
+            id: `turn-${turn.revision}`,
+            role: "owner" as const,
+            text: turn.message,
+            revision: turn.revision,
+            // An INSPECTOR turn is `role: "user"` AND carries a document — a
+            // click edit is written by the owner, not the model — so an owner
+            // message is restorable exactly as often as a builder one.
+            producedDoc: restorable.has(turn.revision),
+          }
         : {
             id: `turn-${turn.revision}`,
             role: "builder" as const,
             text: turn.message,
+            revision: turn.revision,
+            producedDoc: restorable.has(turn.revision),
             blocked: turn.blocked,
             failed: turn.status === "failed",
             // No receipt: `funnel_step_turns` stores the ops, not the diff the

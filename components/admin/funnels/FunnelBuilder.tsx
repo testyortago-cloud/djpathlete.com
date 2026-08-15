@@ -264,6 +264,12 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         id: nextLocalId(`rev-${data.revision}`),
         role: "builder",
         text: data.reply,
+        // Carried so a turn taken in THIS session can be gone back to without a
+        // reload. `producedDoc` mirrors the server's rule — a turn is
+        // restorable exactly when it wrote a document — and `compile !== null`
+        // is this response's own signal for that, per BuildTurnResponse.
+        revision: data.revision,
+        producedDoc: data.compile !== null && data.doc !== null,
         receipt: data.receipt,
         compile: data.compile,
         danglingAnchors: data.compile !== null ? data.danglingAnchors : [],
@@ -304,6 +310,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         const body = (await response.json().catch(() => null)) as {
           revision?: number
           doc?: SectionDoc
+          message?: string
           error?: string
           problems?: string[]
           code?: string
@@ -333,6 +340,23 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         editRevision.current = body.revision
         setPreviewRevision(body.revision)
         setConflict(null)
+
+        // A click edit belongs in the transcript for the same reason an AI turn
+        // does: the chat is the record of everything that changed this page,
+        // and it is where "go back to here" lives. Without this the edit is
+        // invisible — and un-undoable — until a reload.
+        if (body.message) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextLocalId(`edit-${body.revision}`),
+              role: "owner" as const,
+              text: body.message as string,
+              revision: body.revision,
+              producedDoc: true,
+            },
+          ])
+        }
       } catch {
         setCanvasError("That change could not be saved. Check your connection and try again.")
       } finally {
@@ -1004,6 +1028,8 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           value={input}
           onChange={setInput}
           onSend={send}
+          currentRevision={revision}
+          onRestore={restore}
           busy={busy === "building"}
           composerDisabled={docInvalid}
           pinned={pinned}

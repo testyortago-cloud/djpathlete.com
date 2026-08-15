@@ -66,10 +66,25 @@ export interface BuildErrorResponse {
   resetToRevision?: number | null
 }
 
+/**
+ * What a transcript entry knows about the document it left behind.
+ *
+ * These are FACTS, not a verdict: "can this be restored to" also depends on
+ * what the CURRENT revision is, which a message cannot know and which changes
+ * under it every turn. `ChatPane` derives the verdict from these plus
+ * `currentRevision`, so a message never has to be rewritten when the head moves.
+ */
+interface Restorable {
+  /** `funnel_steps.doc_revision` after this turn. */
+  revision?: number
+  /** This turn wrote a document, so there is something to go back to. */
+  producedDoc?: boolean
+}
+
 /** One entry in the transcript. */
 export type BuilderMessage =
-  | { id: string; role: "owner"; text: string }
-  | {
+  | ({ id: string; role: "owner"; text: string } & Restorable)
+  | ({
       id: string
       role: "builder"
       text: string
@@ -80,7 +95,7 @@ export type BuilderMessage =
       resolutionError?: string | null
       blocked?: boolean
       failed?: boolean
-    }
+    } & Restorable)
   /**
    * A publish refusal, routed back INTO the chat rather than a toast, so the
    * "Fix it for me" button sits next to the problem it fixes.

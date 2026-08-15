@@ -138,13 +138,15 @@ export const PUT = withAudit(
         )
       }
 
+      const summary = summarise(applied.receipt)
+
       const written = await appendTurn({
         stepId,
         expectedRevision: parsed.data.revision,
         role: "user",
         source: "inspector",
         status: "complete",
-        message: summarise(applied.receipt),
+        message: summary,
         ops: parsed.data.ops,
         doc: applied.doc,
         createdBy: session.user.id,
@@ -171,6 +173,12 @@ export const PUT = withAudit(
         revision: written.revision,
         doc: applied.doc,
         receipt: applied.receipt,
+        // The line that was written to the transcript, returned rather than
+        // re-derived on the client. A click edit has to appear in the chat
+        // immediately or it has no "go back to here" until a reload — and
+        // summarising it twice is how the transcript and the live view start
+        // describing the same change differently.
+        message: summary,
       })
     } catch (error) {
       console.error("[PUT /api/admin/funnels/steps/:id/edit]", error)

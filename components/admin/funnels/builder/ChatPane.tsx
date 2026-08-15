@@ -16,7 +16,7 @@
 //     document, including the ones where the answer is "nothing".
 
 import { useEffect, useRef, type ReactNode } from "react"
-import { AlertTriangle, Link2Off, Loader2, Send, Sparkles, Wrench } from "lucide-react"
+import { AlertTriangle, Link2Off, Loader2, Send, Sparkles, Undo2, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { formatReceipt, fixPublishProblemsMessage } from "./format"
 import type { BuilderMessage } from "./types"
@@ -57,6 +57,25 @@ interface ChatPaneProps {
    * transcript re-render on every token. `ChatPane` stays a dumb transcript.
    */
   stage?: ReactNode
+  /**
+   * The head revision. A turn is restorable only if it produced a document AND
+   * is not the head — restoring to where you already are burns a revision and
+   * changes nothing, which is exactly the kind of button that teaches people
+   * the undo is broken.
+   */
+  currentRevision: number
+  /** Copies an earlier turn's document forward. Non-destructive: it APPENDS. */
+  onRestore?: (revision: number) => void
+}
+
+/** Shown on any turn that left a document behind, once it is no longer the head. */
+function canRestore(message: BuilderMessage, currentRevision: number): message is BuilderMessage & { revision: number } {
+  return (
+    message.role !== "problems" &&
+    message.producedDoc === true &&
+    typeof message.revision === "number" &&
+    message.revision < currentRevision
+  )
 }
 
 export function ChatPane({
@@ -70,6 +89,8 @@ export function ChatPane({
   composerDisabled,
   pinned,
   stage,
+  currentRevision,
+  onRestore,
 }: ChatPaneProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -117,7 +138,13 @@ export function ChatPane({
         ) : null}
 
         {messages.map((message) => (
-          <MessageCard key={message.id} message={message} onSend={onSend} busy={busy} />
+          <MessageCard
+            key={message.id}
+            message={message}
+            onSend={onSend}
+            busy={busy}
+            onRestore={canRestore(message, currentRevision) && onRestore ? onRestore : undefined}
+          />
         ))}
 
         {/* The turn in flight. `stage` is the live wireframe; the bare line
@@ -169,19 +196,55 @@ export function ChatPane({
   )
 }
 
+/**
+ * "Go back to here" — the undo.
+ *
+ * Deliberately worded as going back rather than "undo", because it does not
+ * delete anything: the restore APPENDS a turn carrying the older document, so
+ * every later turn stays in the transcript and can itself be gone back to. That
+ * makes it safe to press without a confirmation, and the line below says so, so
+ * an owner does not have to find out by risking their page.
+ */
+function RestoreButton({ revision, busy, onRestore }: { revision: number; busy: boolean; onRestore: (revision: number) => void }) {
+  return (
+    <div className="mt-2 border-t border-border pt-2">
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-7 px-2 text-xs"
+        disabled={busy}
+        onClick={() => onRestore(revision)}
+      >
+        <Undo2 className="size-3.5" aria-hidden />
+        Go back to here
+      </Button>
+      <span className="ml-1 text-xs text-muted-foreground">Nothing is deleted.</span>
+    </div>
+  )
+}
+
 function MessageCard({
   message,
   onSend,
   busy,
+  onRestore,
 }: {
   message: BuilderMessage
   onSend: (text: string) => void
   busy: boolean
+  /** Set only when this turn is restorable — see `canRestore`. */
+  onRestore?: (revision: number) => void
 }) {
+  const restore =
+    onRestore && message.role !== "problems" && typeof message.revision === "number" ? (
+      <RestoreButton revision={message.revision} busy={busy} onRestore={onRestore} />
+    ) : null
+
   if (message.role === "owner") {
     return (
       <div className="ml-6 rounded-xl border border-border bg-surface/60 p-3 text-sm shadow-sm">
         <p className="whitespace-pre-wrap text-foreground">{message.text}</p>
+        {restore}
       </div>
     )
   }
@@ -259,6 +322,8 @@ function MessageCard({
             : `${message.compile.warnings.length} things will be removed when this publishes — review them before you publish.`}
         </p>
       ) : null}
+
+      {restore}
     </div>
   )
 }
