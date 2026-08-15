@@ -48,16 +48,6 @@ interface ChatPaneProps {
   /** Pinned above the transcript: the unreadable-document recovery, conflicts. */
   pinned?: ReactNode
   /**
-   * What to show while a turn is in flight — `GenerationStage`, holding the
-   * live wireframe.
-   *
-   * Passed in rather than built here because the stream state belongs to
-   * whoever owns the fetch, and threading four rapidly-changing values through
-   * this component only to hand them straight back down would make the
-   * transcript re-render on every token. `ChatPane` stays a dumb transcript.
-   */
-  stage?: ReactNode
-  /**
    * The head revision. A turn is restorable only if it produced a document AND
    * is not the head — restoring to where you already are burns a revision and
    * changes nothing, which is exactly the kind of button that teaches people
@@ -99,7 +89,6 @@ export function ChatPane({
   busy,
   composerDisabled,
   pinned,
-  stage,
   currentRevision,
   onRestore,
 }: ChatPaneProps) {
@@ -158,17 +147,20 @@ export function ChatPane({
           />
         ))}
 
-        {/* The turn in flight. `stage` is the live wireframe; the bare line
-            below it is the fallback for a caller that has none to give, which
-            is what this whole area used to be. */}
-        {busy
-          ? (stage ?? (
-              <p className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
-                <Loader2 className="size-3.5 animate-spin" aria-hidden />
-                Working on it…
-              </p>
-            ))
-          : null}
+        {/* The turn in flight, in one line.
+            THE WIREFRAME USED TO BE HERE and was moved out to the preview pane
+            (see `GenerationStage`'s call site in FunnelBuilder). It is a
+            stand-in for the page, so it belongs where the page appears; wedged
+            into a 340px transcript it pushed the conversation around every time
+            a section arrived. What is left is a heartbeat — the chat's job
+            while a turn runs is to say "yes, this is happening", and the
+            detail is on screen beside it. */}
+        {busy ? (
+          <p className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" aria-hidden />
+            Working on it…
+          </p>
+        ) : null}
       </div>
 
       <div className="border-t border-border p-3">

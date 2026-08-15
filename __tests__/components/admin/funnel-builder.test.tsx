@@ -750,14 +750,22 @@ describe("<FunnelBuilder> — the empty state", () => {
 // ---------------------------------------------------------------------------
 
 describe("<FunnelBuilder> — the preview across a review round-trip", () => {
-  /** PreviewPane renders `className` on its outer div: iframe -> box -> pane. */
   function draftFrame(container: HTMLElement): HTMLIFrameElement {
     const frame = container.querySelector<HTMLIFrameElement>('iframe[title="Draft preview of this page"]')
     expect(frame).not.toBeNull()
     return frame as HTMLIFrameElement
   }
+  /**
+   * The COLUMN, which is what carries the show/hide classes — the pane itself
+   * now fills it absolutely so the generation stage can be laid over it.
+   *
+   * Found by its testid rather than by counting `parentElement` hops: the walk
+   * this used to do (iframe -> box -> pane) broke silently the moment a wrapper
+   * appeared, and it broke into reading SOME element's className, not into an
+   * error.
+   */
   function paneClasses(frame: HTMLIFrameElement): string {
-    return frame.parentElement?.parentElement?.className ?? ""
+    return frame.closest<HTMLElement>('[data-testid="preview-column"]')?.className ?? ""
   }
 
   it("hides the draft preview for the review instead of unmounting it", () => {
@@ -1174,5 +1182,113 @@ describe("FunnelBuilder — watching the page get written", () => {
     // The message goes back in the composer — the honest mirror of "we do not
     // know whether that saved".
     await waitFor(() => expect(composer()).toHaveValue("build me a waitlist page"))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Where the turn in flight is DRAWN
+//
+// The wireframe is a stand-in for the page, so it belongs in the space the page
+// appears in — which on a first build is the space that otherwise reads
+// "Nothing to preview yet" for the whole thirty seconds. It used to be wedged
+// into the 340px transcript, where every arriving section shoved the
+// conversation around.
+// ---------------------------------------------------------------------------
+
+describe("<FunnelBuilder> — the stage is over the preview, not in the chat", () => {
+  it("draws the streamed sections in the preview column while the chat keeps a one-line heartbeat", async () => {
+    // MUTANT KILLED: handing the stage back to `ChatPane` via its `stage` prop.
+    // Both places render the same component and the same text, so a test that
+    // only asked "is the headline on screen" (which every other test in this
+    // file does) passes either way — the ANCESTRY is the whole claim.
+    const stream = controlledStream()
+    const fetchMock = mockFetch({ raw: () => stream.response })
+
+    // A page with no document yet: the case the owner was looking at, where
+    // the preview column has nothing else in it.
+    const { container } = render(
+      <FunnelBuilder {...baseProps({ initialDoc: null, initialCompile: null, initialMessages: [] })} />,
+    )
+    typeMessage("waitlist page")
+    clickSend()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    stream.push(
+      sectionEvent({
+        section: { key: "0:0", op: "set_page", kind: "hero", id: null, variant: null, headline: "Six athletes, one coach" },
+      }),
+    )
+    const headline = await screen.findByText("Six athletes, one coach")
+
+    const column = container.querySelector<HTMLElement>('[data-testid="preview-column"]')
+    expect(column).not.toBeNull()
+    expect(column?.contains(headline)).toBe(true)
+    // And the column really is the preview column rather than some ancestor of
+    // the whole builder — without this the assertion above would hold even if
+    // the stage had never moved.
+    expect(column?.contains(composer())).toBe(false)
+
+    // The chat still says something is happening. Losing that would trade one
+    // silence for another: below `lg` the two are tabs, and a transcript that
+    // goes completely quiet for thirty seconds is what the stage was built for.
+    expect(screen.getByText(/working on it/i)).toBeInTheDocument()
+
+    stream.push({ type: "result", turn: turn({ revision: 6 }) })
+    stream.close()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Publishing the same page twice
+//
+// "when i publish there is no version showing then the publish button is still
+// available that its confusing, it should be activated again once there are
+// changes" — the strip said "Published version 1" and the button beside it sat
+// there enabled, so the only available reading was "that did not take".
+// ---------------------------------------------------------------------------
+
+describe("<FunnelBuilder> — Publish after a publish", () => {
+  it("stops offering Publish once the live page IS this page, and offers it again after a change", async () => {
+    // MUTANT KILLED (two): leaving `canPublish` alone after a publish, which is
+    // the reported bug; and gating on "has ever been published" instead of on
+    // the revision, which would leave the button dead for the rest of the
+    // session no matter what the owner changed. The last assertion is the one
+    // that separates them.
+    const fetchMock = mockFetch({
+      publish: () => ({ status: 200, body: { version: 3, warnings: [] } }),
+      build: () => ({ status: 200, body: turn({ revision: 6 }) }),
+    })
+
+    render(<FunnelBuilder {...baseProps()} />)
+    expect(publishButton()).toBeEnabled()
+
+    fireEvent.click(publishButton())
+    await waitFor(() => expect(screen.getByText(/published version 3/i)).toBeInTheDocument())
+
+    // Not "Publish, greyed out" — that reads as a publish that failed. The
+    // button says what happened, and the header says what is live.
+    expect(screen.queryByRole("button", { name: /^publish$/i })).toBeNull()
+    expect(screen.getByRole("button", { name: /^published$/i })).toBeDisabled()
+    expect(screen.getByText(/v3 live/i)).toBeInTheDocument()
+
+    // A turn moves the revision past the published one, so there is something
+    // to publish again.
+    typeMessage("make the headline shorter")
+    clickSend()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(publishButton()).toBeEnabled())
+  })
+
+  it("names the live version on load but keeps Publish armed, because nothing here proves the draft matches it", () => {
+    // MUTANT KILLED: seeding `publishedRevision` from `initialRevision` when a
+    // version exists. That would disable Publish on every page the owner opens
+    // that has ever been published — including one whose draft has moved on
+    // since — and the failure direction is "cannot publish my changes", which
+    // is far worse than an extra identical version row. `getVersionNumber`
+    // carries the reasoning; this pins the behaviour.
+    render(<FunnelBuilder {...baseProps({ initialPublishedVersion: 2 })} />)
+
+    expect(screen.getByText(/v2 live/i)).toBeInTheDocument()
+    expect(publishButton()).toBeEnabled()
   })
 })

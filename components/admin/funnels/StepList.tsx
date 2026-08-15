@@ -23,8 +23,11 @@ export function StepList({ funnel, initialSteps }: StepListProps) {
     // button for an entry step, so that message was unreachable and a
     // single-page funnel had no delete affordance at all.
     const deletingFunnel = step.is_entry
+    const isPage = funnel.kind === "page"
     const message = deletingFunnel
-      ? `Delete "${funnel.name}" and all of its pages? This cannot be undone.`
+      ? isPage
+        ? `Delete the "${funnel.name}" landing page? This cannot be undone.`
+        : `Delete "${funnel.name}" and all of its pages? This cannot be undone.`
       : `Delete the "${step.name}" page? This cannot be undone.`
     if (!window.confirm(message)) return
 
@@ -40,7 +43,7 @@ export function StepList({ funnel, initialSteps }: StepListProps) {
         return
       }
       if (deletingFunnel) {
-        toast.success(funnel.kind === "page" ? "Landing page deleted." : "Funnel deleted.")
+        toast.success(isPage ? "Landing page deleted." : "Funnel deleted.")
         // Back to the screen it came FROM. Both kinds reach this page, so a
         // hard-coded /admin/funnels would strand someone who deleted a landing
         // page on a list that will never contain it.

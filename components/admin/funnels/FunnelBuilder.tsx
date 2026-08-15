@@ -58,6 +58,7 @@ import { toast } from "sonner"
 import {
   AlertTriangle,
   ArrowLeft,
+  Check,
   ExternalLink,
   MessageSquare,
   Monitor,
@@ -131,6 +132,18 @@ export interface FunnelBuilderProps {
   initialCompile: CompileSummary | null
   initialResolutionError: string | null
   initialMessages: BuilderMessage[]
+  /**
+   * The version number the live page is currently serving, or null if this page
+   * has never been published.
+   *
+   * DISPLAY ONLY — it says WHICH snapshot is live, never that the draft still
+   * matches it. `lib/db/funnels.ts:getVersionNumber` gives the whole reason;
+   * the short version is that proving "unchanged" from stored JSON is not
+   * reliable, and a wrong answer would disable Publish on a page that needs it.
+   * So a reload always re-arms Publish, and only a publish this tab performed
+   * turns the button off.
+   */
+  initialPublishedVersion?: number | null
   /**
    * First instruction for a page created through the create dialog, composed
    * server-side from the stored name, goal and description.
@@ -230,6 +243,28 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   const [conflict, setConflict] = useState<number | null>(null)
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null)
   const [serverBlockers, setServerBlockers] = useState<string[]>([])
+
+  /**
+   * WHAT IS LIVE, AND WHETHER IT IS STILL WHAT THIS TAB IS LOOKING AT.
+   *
+   * The owner published, the strip said "Published version 1", and the Publish
+   * button sat there enabled beside it — so the only reading available was
+   * "that did not take, press it again", and pressing it again writes a second
+   * identical version row. Two separate facts fix it, and they are separate on
+   * purpose:
+   *
+   *   `publishedVersion` — WHICH version is live. Survives a reload, because
+   *   the server reads it off the step row.
+   *
+   *   `publishedRevision` — the document revision that publish sent. Null at
+   *   mount even when a version exists: nothing the server can cheaply read
+   *   proves the draft still matches what was published (see the prop's note),
+   *   and claiming it did would disable Publish on a page that needs it. So
+   *   this is only ever set by a publish THIS TAB watched succeed, and every
+   *   later turn moves `revision` past it, which re-arms the button by itself.
+   */
+  const [publishedVersion, setPublishedVersion] = useState<number | null>(props.initialPublishedVersion ?? null)
+  const [publishedRevision, setPublishedRevision] = useState<number | null>(null)
 
   const [canvasError, setCanvasError] = useState<string | null>(null)
 
@@ -514,6 +549,14 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
       setInput("")
       setBusy("building")
       setMode("edit")
+      // A NO-OP ON A WIDE SCREEN, and the point of it on a narrow one. Above
+      // `lg` both panes are always on screen and `tab` decides nothing; below
+      // it they are tabs, and the build now draws itself in the preview — so
+      // without this the owner sends a message on a phone and watches a bare
+      // "Working on it…" while the thing he asked for is being drawn on a tab
+      // he cannot see. Nothing is lost by moving: the composer is disabled for
+      // the duration anyway, and the reply is waiting in the chat afterwards.
+      setTab("preview")
       setStream(INITIAL_STREAM)
 
       const rollback = () => {
@@ -635,6 +678,9 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
 
     setBusy("building")
     setMode("edit")
+    // Same reason as `send` — the reviewers' findings arrive on the stage,
+    // which now lives over the preview.
+    setTab("preview")
     setStream({ ...INITIAL_STREAM, phase: "reviewing" })
 
     try {
@@ -762,7 +808,17 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     return list
   }, [compile, conflict, doc, docInvalid, serverBlockers])
 
-  const canPublish = busy === "idle" && unresolved.length === 0 && blockers.length === 0 && doc !== null
+  /**
+   * The live page already IS this document, so there is nothing to publish.
+   *
+   * Not a blocker and deliberately not in the `blockers` list: a blocker is
+   * something wrong that has to be fixed, and this is the opposite — the page
+   * is finished. It would read as a failure in the review's "N things are
+   * blocking publishing" heading, and there is nothing there to act on.
+   */
+  const upToDate = publishedRevision !== null && publishedRevision === revision
+
+  const canPublish = busy === "idle" && unresolved.length === 0 && blockers.length === 0 && doc !== null && !upToDate
 
   const blockingCount = blockers.length + unresolved.length
 
@@ -936,6 +992,13 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         warnings: body.warnings ?? [],
         notLive: funnelIsDraft && body.wentLive !== true,
       })
+      // WHAT IS NOW LIVE. `revision` is read here rather than at the top of the
+      // function on purpose: it cannot move while a publish is in flight (every
+      // writer is gated on `busy === "idle"`), and reading it at the point of
+      // success keeps the pair — the version number and the document it was
+      // rendered from — assigned from the same moment.
+      setPublishedVersion(body.version)
+      setPublishedRevision(revision)
       setMode("edit")
       toast.success(`Published version ${body.version}.`)
     } catch {
@@ -943,7 +1006,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     } finally {
       setBusy("idle")
     }
-  }, [canPublish, doc, props, reportRefusal])
+  }, [canPublish, doc, props, reportRefusal, revision])
 
   const pickCandidate = useCallback(
     (cta: UnresolvedCta, candidateName: string) => {
@@ -1055,6 +1118,19 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           />
         </div>
 
+        {/* WHICH VERSION IS LIVE, in the one place that is always on screen.
+            It used to be said only in the publish strip — which is dismissible,
+            and gone entirely after a reload — so the answer to "did that
+            publish, and what is out there now?" lived nowhere. */}
+        {publishedVersion !== null ? (
+          <span
+            className="hidden shrink-0 rounded-full bg-surface px-2 py-0.5 text-xs text-muted-foreground sm:inline"
+            title={`The live page is serving version ${publishedVersion}.`}
+          >
+            v{publishedVersion} live
+          </span>
+        ) : null}
+
         <Button asChild variant="ghost" size="sm">
           <a href={props.publicUrl} target="_blank" rel="noopener noreferrer">
             <ExternalLink className="size-4" aria-hidden />
@@ -1102,23 +1178,38 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
             // flight disables this button without a second check.
             disabled={!canPublish}
             title={
-              canPublish
-                ? "Publishes straight away."
-                : "Publishing is blocked — open the blockers list to see what needs fixing."
+              upToDate
+                ? `Version ${publishedVersion} is live and this page has not changed since. Publish comes back the moment you change something.`
+                : canPublish
+                  ? "Publishes straight away."
+                  : "Publishing is blocked — open the blockers list to see what needs fixing."
             }
             onClick={() => void publish()}
           >
-            <Rocket className="size-4" aria-hidden />
-            {/* ALWAYS "Publish". An earlier attempt swapped this to
-                "Review & publish" when a review was pending, on the theory that
-                a button should announce which of two things it does. The
+            {/* "Publish" IN EVERY STATE BUT ONE. An earlier attempt swapped this
+                to "Review & publish" when a review was pending, on the theory
+                that a button should announce which of two things it does. The
                 existing tests rejected it, and they were right: the complaint
                 that started this was TOO MANY publish affordances, and a label
-                that mutates between two names is one more thing to read. The
-                button means "publish this page" in both cases; sometimes that
-                routes through a confirmation because there is something to
-                show. The tooltip carries the difference. */}
-            Publish
+                that mutates between two names is one more thing to read.
+                Publishing through a confirmation is still publishing, so the
+                tooltip carries that difference, not the label.
+                `upToDate` is not that case. The button is not offering a
+                different route to the same act — there is no act left to
+                perform — and a greyed-out "Publish" beside a strip saying
+                "Published version 1" is exactly the confusion the owner
+                reported: it reads as a publish that did not take. */}
+            {upToDate ? (
+              <>
+                <Check className="size-4" aria-hidden />
+                Published
+              </>
+            ) : (
+              <>
+                <Rocket className="size-4" aria-hidden />
+                Publish
+              </>
+            )}
           </Button>
         )}
       </div>
@@ -1212,21 +1303,6 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           busy={busy === "building"}
           composerDisabled={docInvalid}
           pinned={pinned}
-          stage={
-            stream ? (
-              <GenerationStage
-                phase={stream.phase}
-                sections={stream.sections}
-                tokens={stream.tokens}
-                // The document BEING EDITED, so an `update_section` event —
-                // which names a section by id and carries no kind — can still
-                // be drawn in the right shape.
-                doc={doc}
-                attempt={stream.attempt}
-                findings={stream.findings}
-              />
-            ) : null
-          }
           onPolish={polish}
           canPolish={doc !== null && !docInvalid}
         />
@@ -1247,6 +1323,8 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
             funnelHref={adminHref}
             publicUrl={props.publicUrl}
             canPublish={canPublish}
+            upToDate={upToDate}
+            publishedVersion={publishedVersion}
             publishing={busy === "publishing"}
             onPublish={publish}
             onCancel={() => setMode("edit")}
@@ -1266,20 +1344,65 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
             NOT VERIFIED IN A BROWSER: that the frame's scroll position survives
             display:none in every engine. The document does; the scroll offset
             is the engine's to keep. */}
-        <PreviewPane
-          className={`${previewVisibility} min-w-0 flex-1 overflow-hidden bg-surface/50`}
-          stepId={props.stepId}
-          device={device}
-          revision={previewRevision}
-          title="Draft preview of this page"
-          // Only in edit mode, and never while a turn is in flight: the canvas
-          // and the chat write the same document through the same lock, so
-          // letting a click land mid-turn would 409 one of them for nothing.
-          editable={mode === "edit" && doc !== null && !docInvalid}
-          onSelect={handleCanvasSelect}
-          onCommit={handleCanvasCommit}
-          onPickImage={handlePickImage}
-        />
+        <div data-testid="preview-column" className={`${previewVisibility} relative min-w-0 flex-1 overflow-hidden`}>
+          <PreviewPane
+            className="absolute inset-0 bg-surface/50"
+            stepId={props.stepId}
+            device={device}
+            revision={previewRevision}
+            title="Draft preview of this page"
+            // Only in edit mode, and never while a turn is in flight: the canvas
+            // and the chat write the same document through the same lock, so
+            // letting a click land mid-turn would 409 one of them for nothing.
+            editable={mode === "edit" && doc !== null && !docInvalid}
+            onSelect={handleCanvasSelect}
+            onCommit={handleCanvasCommit}
+            onPickImage={handlePickImage}
+          />
+
+          {/* ------------------------------------------------------------------
+              THE TURN IN FLIGHT IS DRAWN OVER THE PAGE, NOT INSIDE THE CHAT.
+              ------------------------------------------------------------------
+              It lived in the transcript, where it was a 340px-wide card wedged
+              between messages — and the owner asked for it here, in the space
+              that otherwise says "Nothing to preview yet". He is right about
+              more than the aesthetics: the wireframe is a stand-in for the
+              PAGE, so the place it belongs is the place the page appears. On a
+              first build that area is empty for the whole thirty seconds, which
+              is exactly the dead air this display exists to fill.
+
+              An overlay rather than a branch, for the reason the comment above
+              gives: the iframe underneath must not unmount. It also stops
+              clicks reaching the canvas mid-turn, which the chat and the canvas
+              would otherwise 409 each other over.
+
+              The scrim is opaque only when there is nothing behind it. On an
+              edit turn the current page stays legible through it — being able
+              to see what is being changed while it changes is the whole
+              difference between a preview and a loading screen. */}
+          {stream ? (
+            <div
+              data-testid="build-stage"
+              className={`absolute inset-0 z-10 flex justify-center overflow-y-auto p-4 lg:p-6 ${
+                doc === null ? "bg-surface" : "bg-surface/80 backdrop-blur-[2px]"
+              }`}
+            >
+              <div className="h-fit w-full max-w-md">
+                <GenerationStage
+                  phase={stream.phase}
+                  sections={stream.sections}
+                  tokens={stream.tokens}
+                  // The document BEING EDITED, so an `update_section` event —
+                  // which names a section by id and carries no kind — can still
+                  // be drawn in the right shape.
+                  doc={doc}
+                  attempt={stream.attempt}
+                  findings={stream.findings}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
 
         {/* The inspector, beside the canvas. Hidden below lg for the same
             reason the sidebar is: there is no room for three columns. */}

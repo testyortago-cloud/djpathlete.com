@@ -62,6 +62,18 @@ interface PublishReviewProps {
   /** The public URL this page WOULD have, named in the draft warning. */
   publicUrl: string
   canPublish: boolean
+  /**
+   * The live page already IS this document, so `canPublish` is false with
+   * nothing wrong.
+   *
+   * It has to be said HERE and not only in the header, because this screen's
+   * whole contract is that a disabled publish button has a reason printed
+   * above it. Without it the review reads "Nothing is blocking this page" over
+   * a dead button — a silent gate, which reads as broken.
+   */
+  upToDate?: boolean
+  /** Which version is live. Only used to name it in the up-to-date line. */
+  publishedVersion?: number | null
   publishing: boolean
   onPublish: () => void
   onCancel: () => void
@@ -88,6 +100,8 @@ export function PublishReview({
   funnelHref,
   publicUrl,
   canPublish,
+  upToDate = false,
+  publishedVersion = null,
   publishing,
   onPublish,
   onCancel,
@@ -148,10 +162,12 @@ export function PublishReview({
           <section className="rounded-xl border border-border bg-white p-4 shadow-sm">
             <h3 className="flex items-center gap-2 font-heading text-sm text-[var(--success)]">
               <ShieldCheck className="size-4" aria-hidden />
-              Nothing is blocking this page
+              {upToDate ? "This page is already live" : "Nothing is blocking this page"}
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Every button points at something real. Read the claims, check the phone view below, then publish.
+              {upToDate
+                ? `The live page is serving ${publishedVersion === null ? "this exact page" : `version ${publishedVersion}`}, and nothing has changed since. Publishing comes back as soon as you change something.`
+                : "Every button points at something real. Read the claims, check the phone view below, then publish."}
             </p>
           </section>
         )}

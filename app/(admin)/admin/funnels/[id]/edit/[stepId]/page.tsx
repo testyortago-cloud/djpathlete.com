@@ -21,7 +21,7 @@
 // may turn a page the owner wants to edit into an error screen.
 
 import { notFound, redirect } from "next/navigation"
-import { getFunnelById, getStep } from "@/lib/db/funnels"
+import { getFunnelById, getStep, getVersionNumber } from "@/lib/db/funnels"
 import { getDraft, listTurns } from "@/lib/db/funnel-builder"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import { reassemble } from "@/lib/funnels/sections/doc"
@@ -171,13 +171,20 @@ export async function FunnelBuilderScreen({
   const funnelBasePath = `/go/${funnel.slug}`
 
   // Neither read is allowed to take the editor down: a transcript that cannot
-  // be listed costs the owner their history, not their page.
-  const [draft, turns] = await Promise.all([
+  // be listed costs the owner their history, not their page. The same goes for
+  // the live version number, which is a label — the editor opens without it.
+  const [draft, turns, publishedVersion] = await Promise.all([
     getDraft(stepId),
     listTurns(stepId).catch((error) => {
       console.error("[funnels/edit] transcript read failed — opening without history:", error)
       return []
     }),
+    step.published_version_id
+      ? getVersionNumber(step.published_version_id).catch((error) => {
+          console.error("[funnels/edit] could not read the live version number:", error)
+          return null
+        })
+      : Promise.resolve(null),
   ])
   if (!draft) notFound()
 
@@ -268,6 +275,7 @@ export async function FunnelBuilderScreen({
       initialCompile={initial.compile}
       initialResolutionError={initial.resolutionError}
       initialMessages={initialMessages}
+      initialPublishedVersion={publishedVersion}
       initialPrompt={initialPrompt}
       maxMessageLength={SECTION_BUILDER_MAX_MESSAGE_LENGTH}
       renderForPublish={renderDocForPublish.bind(null, step.id)}

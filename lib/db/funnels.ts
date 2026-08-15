@@ -280,6 +280,34 @@ export async function publishStep(input: {
   return { ok: true, version, warnings: compiled.warnings }
 }
 
+/**
+ * The version NUMBER a step is currently serving — the "3" in "version 3".
+ *
+ * For DISPLAY only, and deliberately nothing more. It says which snapshot is
+ * live; it does not say whether the draft still matches that snapshot, and it
+ * must not be read as if it did. Proving "nothing has changed since" would mean
+ * comparing the stored document with the one publish would render TODAY, and
+ * those disagree for reasons that have nothing to do with the owner editing —
+ * `project_data` is `jsonb`, which does not preserve key order, and the
+ * document publish sends is the RESOLVED one, so a program renamed since would
+ * read as an edit. Getting that comparison wrong in the "unchanged" direction
+ * would disable Publish on a page that genuinely needs republishing, so the
+ * builder only claims "up to date" about publishes it watched happen.
+ *
+ * Takes the version ID rather than the step ID because every caller has already
+ * loaded the step row and holds it.
+ */
+export async function getVersionNumber(versionId: string): Promise<number | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("funnel_step_versions")
+    .select("version")
+    .eq("id", versionId)
+    .maybeSingle()
+  if (error) throw new Error(`getVersionNumber: ${error.message}`)
+  return (data as { version: number } | null)?.version ?? null
+}
+
 export interface PublishedStep {
   funnel: Funnel
   step: FunnelStep

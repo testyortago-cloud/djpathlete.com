@@ -61,9 +61,16 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
 
   async function handleDelete({ step, funnel }: BoardPage) {
     // Deleting the entry page has no meaning on its own — it IS the funnel.
+    // But WHICH word describes what just vanished depends on the row, not on
+    // the request: a landing page's entry step also deletes a `funnels` row,
+    // and saying "Funnel deleted" on the pages screen names a thing the owner
+    // has never seen. `funnel.kind`, not the endpoint, decides the vocabulary.
     const deletingFunnel = step.is_entry
+    const isPage = funnel.kind === "page"
     const message = deletingFunnel
-      ? `Delete "${funnel.name}" and all of its pages? This cannot be undone.`
+      ? isPage
+        ? `Delete the "${funnel.name}" landing page? This cannot be undone.`
+        : `Delete "${funnel.name}" and all of its pages? This cannot be undone.`
       : `Delete the "${step.name}" page? This cannot be undone.`
     if (!window.confirm(message)) return
 
@@ -76,7 +83,7 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
         toast.error(body?.error ?? "Could not delete.")
         return
       }
-      toast.success(deletingFunnel ? "Funnel deleted." : "Page deleted.")
+      toast.success(deletingFunnel ? (isPage ? "Landing page deleted." : "Funnel deleted.") : "Page deleted.")
       router.refresh()
     } catch {
       toast.error("Could not delete.")
