@@ -160,11 +160,33 @@ export const THEME_CSS = `
 ${ROOT} { --djp-radius: 0.6rem; }
 ${ROOT}, ${ROOT} *, ${ROOT} *::before, ${ROOT} *::after { box-sizing: border-box; }
 
+/* CENTRING IS DONE BY THE SECTION'S PADDING, NOT BY THE CHILDREN'S MARGINS.
+   ---------------------------------------------------------------------------
+   This used to be .djp-s > * { max-width: 72rem; margin-inline: auto; } and
+   it did not centre anything. max-width applied; margin-inline was
+   clobbered on almost every child by that child's OWN rule further down this
+   file — .djp-hd { margin: 0 0 0.5rem }, and every other margin
+   SHORTHAND, which resets margin-left/right to 0 at equal specificity and later
+   source order.
+
+   Measured on the live page at a 2560px viewport: section 2560 wide, child
+   capped to 1152px as intended, marginLeft computed 0px, content hard
+   against the left edge. The whole page hugged the left on any wide monitor.
+
+   IT HID BEHIND THE PREVIEW. The builder previews desktop at 1280px, where
+   1152 + 40 of padding fills the viewport and left-aligned and centred are the
+   same picture. Only a real browser wider than ~1192px shows it, which is where
+   the owner found it.
+
+   Padding cannot be clobbered by a child's margin shorthand, and it holds for a
+   section with many children as well as one — so it does not depend on every
+   future rule in this file remembering not to write margin. The section
+   keeps its full-bleed background; only its CONTENT is inset. */
 ${ROOT} .djp-s {
   font-family: var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif);
   color: var(--foreground);
   padding-block: 3rem;
-  padding-inline: 1.25rem;
+  padding-inline: max(1.25rem, calc((100% - 72rem) / 2));
 }
 ${ROOT} .djp-s > * { max-width: 72rem; margin-inline: auto; }
 

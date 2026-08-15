@@ -55,6 +55,8 @@ interface PublishReviewProps {
    * real and staging a page before flipping the funnel live is legitimate.
    */
   funnelIsDraft: boolean
+  /** "landing page" or "funnel" — the owner's word for the thing, not ours. */
+  noun: string
   /** Where the funnel's status control lives, for the draft warning. */
   funnelHref: string
   /** The public URL this page WOULD have, named in the draft warning. */
@@ -82,6 +84,7 @@ export function PublishReview({
   compileWarnings,
   resolutionError,
   funnelIsDraft,
+  noun,
   funnelHref,
   publicUrl,
   canPublish,
@@ -161,12 +164,12 @@ export function PublishReview({
           <section className="rounded-xl border border-[var(--warning)] bg-white p-4 shadow-sm">
             <h3 className="flex items-center gap-2 font-heading text-sm text-[var(--warning)]">
               <AlertTriangle className="size-4" aria-hidden />
-              This funnel isn&apos;t live yet
+              This {noun} isn&apos;t live yet
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">
               Publishing saves this page, but it still won&apos;t be reachable at{" "}
-              <span className="font-mono">{publicUrl}</span> — the funnel itself is a draft, and
-              the public route only serves published funnels.{" "}
+              <span className="font-mono">{publicUrl}</span> — the {noun} itself is a draft, and
+              the public route only serves published ones.{" "}
               <Link href={funnelHref} className="text-primary underline underline-offset-2">
                 Set it to Published
               </Link>{" "}

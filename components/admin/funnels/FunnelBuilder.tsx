@@ -110,6 +110,12 @@ export interface FunnelBuilderProps {
    * infer it from a 404.
    */
   funnelStatus: string
+  /**
+   * `page` or `funnel`. Same row, same editor — but the owner never asked for a
+   * funnel, and being told his landing page "isn't a funnel yet" reads as the
+   * wrong screen rather than as a shared implementation.
+   */
+  funnelKind: string
   initialDoc: SectionDoc | null
   initialRevision: number
   /**
@@ -178,6 +184,13 @@ const INITIAL_STREAM: StreamState = { phase: "reading", sections: [], tokens: nu
 interface PublishResult {
   version: number
   warnings: string[]
+  /**
+   * The page is published but the FUNNEL ROW is still a draft, so `/go/<slug>`
+   * still 404s. Reported here rather than in a pre-publish confirmation: it is
+   * not a reason to stop, it is the next thing to do, and it comes with the
+   * button that does it.
+   */
+  notLive: boolean
 }
 
 let localMessageSeq = 0
@@ -688,12 +701,41 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
    *
    * So: silence earns one click, anything worth saying earns the review.
    */
-  const reviewHasSomethingToSay =
-    blockingCount > 0 ||
-    danglingAnchors.length > 0 ||
-    (compile?.warnings.length ?? 0) > 0 ||
-    resolutionError !== null ||
-    funnelIsDraft
+  const noun = props.funnelKind === "page" ? "landing page" : "funnel"
+
+  /**
+   * Things worth SEEING that do not stop a publish: a CTA pointing at a section
+   * that no longer exists, something the compiler stripped, CTA refs that could
+   * not be checked this turn.
+   *
+   * THEY NEED THEIR OWN DOOR NOW THAT PUBLISH NO LONGER OPENS THE REVIEW.
+   * Removing the confirmation without this would have made every warning
+   * invisible until after the write — the review was their only home, and
+   * "Fix N blockers" only appears when something actually blocks. So the count
+   * gets a quiet outline button beside Publish: available, never in the way.
+   */
+  const advisoryCount =
+    danglingAnchors.length + (compile?.warnings.length ?? 0) + (resolutionError === null ? 0 : 1)
+
+  /**
+   * PUBLISH PUBLISHES. ONE CLICK, ALWAYS.
+   *
+   * It used to route through a confirmation whenever there was anything to
+   * report, on the reasoning that warnings must be seen BEFORE the write
+   * because the previous editor showed them after and they faded away. The
+   * first half of that is sound and the second half is no longer true: the
+   * publish RESULT is a strip that stays until it is dismissed, not a toast, so
+   * nothing is lost by reporting after.
+   *
+   * What the confirmation actually did in practice was fire on EVERY page,
+   * because `funnelIsDraft` is true for every funnel that has not been taken
+   * live yet — which is every new one. The owner met a second "Publish now" on
+   * his first publish and said: "theres another publish now, i dont want that
+   * if i click the publish it should publish now."
+   *
+   * Blockers are unaffected: `canPublish` still disables the button, and the
+   * review is still reachable through "Fix N blockers".
+   */
 
   /**
    * A publish refusal, routed back INTO the chat behind "Fix it for me".
@@ -776,7 +818,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         return
       }
 
-      setPublishResult({ version: body.version, warnings: body.warnings ?? [] })
+      setPublishResult({ version: body.version, warnings: body.warnings ?? [], notLive: funnelIsDraft })
       setMode("edit")
       toast.success(`Published version ${body.version}.`)
     } catch {
@@ -917,6 +959,21 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           </Button>
         ) : null}
 
+        {mode !== "review" && blockingCount === 0 && advisoryCount > 0 ? (
+          <Button
+            variant="outline"
+            size="sm"
+            title="Nothing here stops you publishing — but it is worth a look."
+            onClick={() => {
+              setMode("review")
+              setTab("preview")
+            }}
+          >
+            <AlertTriangle className="size-4 text-[var(--warning)]" aria-hidden />
+            {advisoryCount === 1 ? "1 to check" : `${advisoryCount} to check`}
+          </Button>
+        ) : null}
+
         {/* Hidden in review mode. It used to stay on screen NEXT TO
             "Publish now", so two publish affordances were visible at once and
             this one was a no-op — its onClick only re-entered the mode it was
@@ -928,22 +985,11 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
             // flight disables this button without a second check.
             disabled={!canPublish}
             title={
-              !canPublish
-                ? "Publishing is blocked — open the blockers list to see what needs fixing."
-                : reviewHasSomethingToSay
-                  ? "There's something to check before this goes live."
-                  : "Publishes straight away — nothing needs reviewing."
+              canPublish
+                ? "Publishes straight away."
+                : "Publishing is blocked — open the blockers list to see what needs fixing."
             }
-            onClick={() => {
-              // Nothing to report: commit on this click. Anything to report:
-              // show it BEFORE the write, never after.
-              if (!reviewHasSomethingToSay) {
-                void publish()
-                return
-              }
-              setMode("review")
-              setTab("preview")
-            }}
+            onClick={() => void publish()}
           >
             <Rocket className="size-4" aria-hidden />
             {/* ALWAYS "Publish". An earlier attempt swapped this to
@@ -994,6 +1040,22 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
                   <li key={index}>{warning}</li>
                 ))}
               </ul>
+            ) : null}
+            {/* The one thing left to do, WITH the button that does it. This
+                used to be a pre-publish confirmation the owner had to click
+                past on every single page; here it arrives after the write,
+                where it is the next step rather than an obstacle. */}
+            {publishResult.notLive ? (
+              <p className="mt-1 text-muted-foreground">
+                This {noun} is still a draft, so its public link will not open for anyone yet.{" "}
+                <Link
+                  href={`/admin/funnels/${props.funnelId}`}
+                  className="text-primary underline underline-offset-2"
+                >
+                  Take it live
+                </Link>
+                .
+              </p>
             ) : null}
           </div>
           <button
@@ -1061,6 +1123,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
             compileWarnings={compile?.warnings ?? []}
             resolutionError={resolutionError}
             funnelIsDraft={funnelIsDraft}
+            noun={noun}
             funnelHref={`/admin/funnels/${props.funnelId}`}
             publicUrl={props.publicUrl}
             canPublish={canPublish}

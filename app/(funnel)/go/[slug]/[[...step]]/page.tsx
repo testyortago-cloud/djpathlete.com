@@ -66,7 +66,8 @@ export default async function FunnelPage({ params, searchParams }: PageProps) {
       {css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null}
       {isPreview && funnel.status !== "published" ? (
         <div data-djp-preview-banner role="status">
-          Preview — this funnel is {funnel.status} and is not visible to the public.
+          Preview — this {funnel.kind === "page" ? "landing page" : "funnel"} is {funnel.status} and is
+          not visible to the public.
         </div>
       ) : null}
       <NodeRenderer

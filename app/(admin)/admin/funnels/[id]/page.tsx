@@ -66,7 +66,7 @@ export default async function FunnelDetailPage({ params }: PageProps) {
               takenSlugs={steps.map((step) => step.slug)}
             />
           ) : null}
-          <FunnelStatusControl funnelId={funnel.id} status={funnel.status} />
+          <FunnelStatusControl funnelId={funnel.id} status={funnel.status} kind={funnel.kind} />
         </div>
       </div>
 

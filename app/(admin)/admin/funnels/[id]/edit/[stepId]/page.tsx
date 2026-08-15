@@ -240,6 +240,7 @@ export default async function FunnelEditPage({ params, searchParams }: PageProps
       stepName={step.name}
       publicUrl={publicUrl}
       funnelStatus={funnel.status}
+      funnelKind={funnel.kind}
       initialDoc={initial.doc}
       initialRevision={draft.revision}
       docInvalid={draft.docInvalid}

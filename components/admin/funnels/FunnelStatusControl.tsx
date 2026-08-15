@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { DataTableBadge, type DataTableBadgeTone } from "@/components/ui/data-table"
-import type { FunnelStatus } from "@/types/database"
+import type { FunnelStatus, FunnelKind } from "@/types/database"
 
 const TONE: Record<FunnelStatus, DataTableBadgeTone> = {
   draft: "neutral",
@@ -20,9 +20,18 @@ const TONE: Record<FunnelStatus, DataTableBadgeTone> = {
 interface FunnelStatusControlProps {
   funnelId: string
   status: FunnelStatus
+  /**
+   * A landing page and a funnel are the same row with a different `kind`, and
+   * the owner is never told that. Calling his landing page a "funnel" on the
+   * one button that makes it public reads as the wrong screen, not as a shared
+   * implementation — he said so: "the landing page still says its not a funnel
+   * yet which isnt true its different".
+   */
+  kind: FunnelKind
 }
 
-export function FunnelStatusControl({ funnelId, status }: FunnelStatusControlProps) {
+export function FunnelStatusControl({ funnelId, status, kind }: FunnelStatusControlProps) {
+  const noun = kind === "page" ? "Landing page" : "Funnel"
   const router = useRouter()
   const [current, setCurrent] = useState<FunnelStatus>(status)
   const [pending, startTransition] = useTransition()
@@ -39,9 +48,7 @@ export function FunnelStatusControl({ funnelId, status }: FunnelStatusControlPro
         return
       }
       setCurrent(next)
-      toast.success(
-        next === "published" ? "Funnel is live." : `Funnel is now ${next}.`,
-      )
+      toast.success(next === "published" ? `${noun} is live.` : `${noun} is now ${next}.`)
       startTransition(() => router.refresh())
     } catch {
       toast.error("Could not change the status.")
@@ -57,7 +64,7 @@ export function FunnelStatusControl({ funnelId, status }: FunnelStatusControlPro
         </Button>
       ) : (
         <Button size="sm" disabled={pending} onClick={() => setStatus("published")}>
-          Publish funnel
+          Publish {noun.toLowerCase()}
         </Button>
       )}
     </div>

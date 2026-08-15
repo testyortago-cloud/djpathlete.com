@@ -126,6 +126,7 @@ function baseProps(overrides: Partial<FunnelBuilderProps> = {}): FunnelBuilderPr
     // own tests below — but it must not silently become the baseline, or every
     // assertion here would be measuring the draft banner instead.
     funnelStatus: "published",
+  funnelKind: "funnel",
     initialDoc: DOC,
     initialRevision: 5,
     docInvalid: false,
@@ -247,6 +248,18 @@ function mockFetch(handlers: {
   })
   global.fetch = fetchMock as unknown as typeof fetch
   return fetchMock
+}
+
+/**
+ * The review is no longer reached by clicking Publish — Publish publishes.
+ * Warnings get their own quiet door ("N to check"); blockers keep theirs
+ * ("Fix N blockers"). Both open the same review.
+ */
+function openReview() {
+  const door =
+    screen.queryByRole("button", { name: /\d+ to check/i }) ??
+    screen.getByRole("button", { name: /fix \d+ blocker/i })
+  fireEvent.click(door)
 }
 
 function publishButton() {
@@ -385,7 +398,7 @@ describe("<FunnelBuilder> — dangling anchors", () => {
     expect(publishButton()).toBeEnabled()
     expect(screen.queryByRole("button", { name: /fix \d+ blocker/i })).not.toBeInTheDocument()
 
-    fireEvent.click(publishButton())
+    openReview()
     expect(screen.getByText(/jumps to "#pricing"/i)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /publish now/i })).toBeEnabled()
   })
@@ -411,7 +424,11 @@ describe("<FunnelBuilder> — the pre-publish review", () => {
       />,
     )
 
-    fireEvent.click(publishButton())
+    // STILL BEFORE THE WRITE. Publish now publishes on one click, so the
+    // warning moved behind its own affordance rather than in front of the
+    // publish button — but it is still reachable without writing anything,
+    // which is the property this test exists for.
+    openReview()
 
     expect(screen.getByText("A video embed was removed.")).toBeInTheDocument()
     expect(renderForPublish).not.toHaveBeenCalled()
@@ -542,7 +559,7 @@ describe("<FunnelBuilder> — the publish button and the global Messages dock", 
     // A dangling anchor is a WARNING, so it opens the review without blocking
     // publish — which is exactly the state this test needs to inspect.
     render(<FunnelBuilder {...baseProps({ initialDanglingAnchors: [DANGLING] })} />)
-    fireEvent.click(publishButton())
+    openReview()
 
     const footer = screen.getByRole("button", { name: /publish now/i }).closest("div")
     expect(footer).not.toBeNull()
@@ -755,8 +772,7 @@ describe("<FunnelBuilder> — the preview across a review round-trip", () => {
     const { container } = render(<FunnelBuilder {...baseProps({ initialDanglingAnchors: [DANGLING] })} />)
     const before = draftFrame(container)
     expect(paneClasses(before)).toContain("lg:block")
-
-    fireEvent.click(publishButton())
+    openReview()
     expect(screen.getByRole("button", { name: /publish now/i })).toBeInTheDocument()
 
     expect(draftFrame(container)).toBe(before)
@@ -877,21 +893,42 @@ describe("<FunnelBuilder> — one click when there is nothing to say", () => {
     expect(screen.queryByRole("button", { name: /publish now/i })).not.toBeInTheDocument()
   })
 
-  it("routes through the review when there IS something to say, and writes nothing first", async () => {
-    // MUTANT KILLED: publishing immediately in ALL cases, which would re-create
-    // the post-publish-toast defect this feature exists to fix. A dangling
-    // anchor warns without blocking, so publish is ENABLED here — the review
-    // still has to interpose.
+  it("publishes on ONE CLICK even when there are warnings", async () => {
+    // THIS REVERSES AN EARLIER RULE, ON THE OWNER'S INSTRUCTION: "theres
+    // another publish now, i dont want that if i click the publish it should
+    // publish now."
+    //
+    // The old rule sent every publish through a confirmation whenever there was
+    // anything to report. In practice that was every page, because a funnel
+    // that has not been taken live yet counts — i.e. every new one. Publish now
+    // means publish; the warnings keep a door of their own, and the result
+    // strip that reports them afterwards does not fade.
     const fetchMock = mockFetch({
       publish: () => ({ status: 200, body: { version: 4, warnings: [] } }),
     })
 
     render(<FunnelBuilder {...baseProps({ initialDanglingAnchors: [DANGLING] })} />)
-    expect(publishButton()).toBeEnabled()
     fireEvent.click(publishButton())
 
-    expect(screen.getByRole("button", { name: /publish now/i })).toBeInTheDocument()
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/publish"))).toBe(false)
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/publish"))).toBe(true),
+    )
+    expect(screen.queryByRole("button", { name: /publish now/i })).not.toBeInTheDocument()
+  })
+
+  it("still shows warnings BEFORE the write, behind their own door", () => {
+    // MUTANT KILLED: dropping the advisory affordance along with the
+    // confirmation. The review was the ONLY home these had — without a way in
+    // that does not write, a dangling anchor becomes invisible until after the
+    // page is live, which is worse than the friction that was removed.
+    const fetchMock = mockFetch({})
+    render(<FunnelBuilder {...baseProps({ initialDanglingAnchors: [DANGLING] })} />)
+
+    openReview()
+
+    expect(screen.getByText(/jumps to "#pricing"/i)).toBeInTheDocument()
+    expect(renderForPublish).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it("shows only ONE publish affordance at a time — the header button is gone in review", () => {
@@ -899,7 +936,7 @@ describe("<FunnelBuilder> — one click when there is nothing to say", () => {
     // guard. Under that, "Publish" and "Publish now" are both on screen and
     // the header one does nothing but re-enter review.
     render(<FunnelBuilder {...baseProps({ initialDanglingAnchors: [DANGLING] })} />)
-    fireEvent.click(publishButton())
+    openReview()
 
     expect(screen.getByRole("button", { name: /publish now/i })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /^publish$/i })).not.toBeInTheDocument()
@@ -917,26 +954,47 @@ describe("<FunnelBuilder> — one click when there is nothing to say", () => {
 // ---------------------------------------------------------------------------
 
 describe("<FunnelBuilder> — a funnel that is still a draft", () => {
-  it("warns BEFORE the write that publishing will not make the page reachable", () => {
-    // MUTANT KILLED: omitting the draft banner (i.e. what shipped), which let
-    // the owner publish into a 404 with a success message and no explanation.
+  it("says so AFTER publishing, in a strip that does not fade, with the fix on it", async () => {
+    // THE FAILURE THIS PINS IS REAL AND HAPPENED ON PRODUCTION: page published,
+    // "Published version 1" reported, and a 404 at the public URL, because
+    // `funnels.status` was still draft and the public route serves only
+    // published funnels.
+    //
+    // It used to be reported BEFORE the write, in a confirmation. That
+    // confirmation is gone on the owner's instruction — but the notice is not,
+    // because losing it is how the 404 happened in the first place. It moved to
+    // the publish RESULT strip, which is persistent (not a toast) and now
+    // carries the link that fixes it.
+    //
+    // MUTANT KILLED: dropping the notice along with the confirmation.
+    mockFetch({ publish: () => ({ status: 200, body: { version: 4, warnings: [] } }) })
     render(<FunnelBuilder {...baseProps({ funnelStatus: "draft" })} />)
+
     fireEvent.click(publishButton())
 
-    expect(screen.getByText(/this funnel isn't live yet/i)).toBeInTheDocument()
-    expect(screen.getByText(/\/go\/summer-camp/)).toBeInTheDocument()
-    // And it links to where the status control actually lives, rather than
-    // naming the problem and leaving him to hunt for the fix.
-    expect(screen.getByRole("link", { name: /set it to published/i })).toHaveAttribute(
+    expect(await screen.findByText(/still a draft/i)).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /take it live/i })).toHaveAttribute(
       "href",
       "/admin/funnels/funnel-1",
     )
   })
 
-  it("counts as something to review, so a draft funnel never publishes on one click", () => {
-    // MUTANT KILLED: leaving `funnelIsDraft` out of `reviewHasSomethingToSay`.
-    // The page here is otherwise perfectly clean, so without that term this
-    // would publish immediately and silently into a 404.
+  it("calls a landing page a landing page, not a funnel", async () => {
+    // The owner, on his own landing page: "it still says its not a funnel yet
+    // which isnt true its different". Same row, same editor, different noun —
+    // and the noun is the whole of what he sees.
+    mockFetch({ publish: () => ({ status: 200, body: { version: 4, warnings: [] } }) })
+    render(<FunnelBuilder {...baseProps({ funnelStatus: "draft", funnelKind: "page" })} />)
+
+    fireEvent.click(publishButton())
+
+    expect(await screen.findByText(/this landing page is still a draft/i)).toBeInTheDocument()
+  })
+
+  it("publishes a draft funnel on one click rather than interposing", async () => {
+    // MUTANT KILLED: putting `funnelIsDraft` back into the pre-publish gate.
+    // It is true for every funnel nobody has taken live yet — i.e. every new
+    // one — so it made the second click universal, which is the complaint.
     const fetchMock = mockFetch({
       publish: () => ({ status: 200, body: { version: 4, warnings: [] } }),
     })
@@ -944,17 +1002,21 @@ describe("<FunnelBuilder> — a funnel that is still a draft", () => {
     render(<FunnelBuilder {...baseProps({ funnelStatus: "draft" })} />)
     fireEvent.click(publishButton())
 
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/publish"))).toBe(false)
-    expect(screen.getByRole("button", { name: /publish now/i })).toBeInTheDocument()
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/publish"))).toBe(true),
+    )
+    expect(screen.queryByRole("button", { name: /publish now/i })).not.toBeInTheDocument()
   })
 
-  it("says nothing about drafts when the funnel is live", () => {
+  it("says nothing about drafts when the funnel is live", async () => {
     // MUTANT KILLED: `funnelIsDraft = true` unconditionally, which would make
     // the two tests above pass for the wrong reason and nag on every publish.
+    mockFetch({ publish: () => ({ status: 200, body: { version: 4, warnings: [] } }) })
     render(<FunnelBuilder {...baseProps({ initialDanglingAnchors: [DANGLING] })} />)
     fireEvent.click(publishButton())
 
-    expect(screen.queryByText(/this funnel isn't live yet/i)).not.toBeInTheDocument()
+    expect(await screen.findByText(/published version 4/i)).toBeInTheDocument()
+    expect(screen.queryByText(/still a draft/i)).not.toBeInTheDocument()
   })
 })
 
