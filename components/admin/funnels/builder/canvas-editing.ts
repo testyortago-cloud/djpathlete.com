@@ -55,15 +55,53 @@ export interface CanvasHandlers {
 const SELECTED_CLASS = "djp-selected"
 const EDITING_CLASS = "djp-editing"
 
+// ---------------------------------------------------------------------------
+// NEVER `instanceof` A NODE THAT CAME OUT OF THE IFRAME.
+// ---------------------------------------------------------------------------
+// The canvas is a SEPARATE REALM. Its `Element`, `HTMLElement` and `Node` are
+// different constructor objects from this window's, so `target instanceof
+// Element` is FALSE for every node in the page being edited — even though it is
+// obviously an element.
+//
+// That is exactly how this shipped broken: the first line of the click handler
+// bailed on every click, so the whole canvas was inert in production while all
+// 900+ tests passed. jsdom binds the listener and dispatches the event inside
+// ONE realm, so `instanceof` holds there and the bug is invisible to every unit
+// test that could have been written against it. It took driving a real browser
+// to see it.
+//
+// Duck-typing is not a shortcut here, it is the correct cross-realm check: what
+// matters is that the thing can answer `closest`, not which window minted it.
+
+interface ElementLike {
+  closest(selector: string): ElementLike | null
+  getAttribute(name: string): string | null
+  classList: DOMTokenList
+  contains(other: unknown): boolean
+}
+
+/**
+ * Exported ONLY so the realm bug can be regression-tested. jsdom cannot give a
+ * test a genuinely foreign-realm node, but it can give it the thing that
+ * matters: a value that answers `closest` and is not `instanceof Element`.
+ */
+export function asElement(value: unknown): ElementLike | null {
+  if (value === null || typeof value !== "object") return null
+  const candidate = value as Partial<ElementLike>
+  return typeof candidate.closest === "function" && typeof candidate.getAttribute === "function"
+    ? (candidate as ElementLike)
+    : null
+}
+
 function closestWithin(start: EventTarget | null, selector: string): HTMLElement | null {
-  if (!(start instanceof Element)) return null
-  const found = start.closest(selector)
-  return found instanceof HTMLElement ? found : null
+  const element = asElement(start)
+  if (!element) return null
+  return (element.closest(selector) as HTMLElement | null) ?? null
 }
 
 function sectionIdOf(element: HTMLElement | null): string | null {
-  const section = element?.closest("[data-sec]")
-  return section instanceof HTMLElement ? (section.dataset.sec ?? null) : null
+  const section = asElement(element)?.closest("[data-sec]")
+  return section ? section.getAttribute("data-sec") : null
 }
 
 /**
@@ -156,7 +194,9 @@ export function bindCanvasEditing(doc: Document, handlers: CanvasHandlers): () =
     const link = closestWithin(event.target, "a[href]")
     if (link) event.preventDefault()
 
-    if (editing && event.target instanceof Node && editing.element.contains(event.target)) return
+    // `contains` rather than an `instanceof Node` guard, for the realm reason
+    // above: a node from the canvas is not `instanceof` this window's `Node`.
+    if (editing && event.target !== null && editing.element.contains(event.target as Node)) return
     if (editing) commitText()
 
     const field = closestWithin(event.target, "[data-edit]")

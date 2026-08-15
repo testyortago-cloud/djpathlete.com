@@ -7,7 +7,7 @@
 // placeholder.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { bindCanvasEditing } from "@/components/admin/funnels/builder/canvas-editing"
+import { bindCanvasEditing, asElement } from "@/components/admin/funnels/builder/canvas-editing"
 
 const MARKUP = `
 <section id="h1" data-sec="h1">
@@ -62,6 +62,42 @@ afterEach(() => {
   cleanup?.()
   cleanup = null
   document.body.innerHTML = ""
+})
+
+describe("nodes from the canvas's own realm", () => {
+  // THE BUG THIS FILE MISSED. The canvas is an iframe, so its `Element` is a
+  // DIFFERENT constructor from this window's: `target instanceof Element` is
+  // FALSE for every node in the page being edited. The click handler bailed on
+  // its first line and the whole editor was inert in production while all 20
+  // tests below passed — because jsdom binds and dispatches inside ONE realm,
+  // where `instanceof` happens to hold.
+  //
+  // jsdom cannot hand a test a genuinely foreign node, but the property that
+  // actually matters is testable: recognise a thing by what it can DO, never by
+  // which window minted it.
+
+  it("recognises an element-like value that is not instanceof Element", () => {
+    const foreign = {
+      closest: (selector: string) => (selector === "[data-sec]" ? foreign : null),
+      getAttribute: (name: string) => (name === "data-sec" ? "hero" : null),
+      classList: { add() {}, remove() {}, contains: () => false },
+      contains: () => false,
+    }
+    expect(foreign instanceof Element).toBe(false)
+    expect(asElement(foreign)).not.toBeNull()
+  })
+
+  it("still recognises a real element", () => {
+    document.body.innerHTML = `<div id="x"></div>`
+    expect(asElement(document.getElementById("x"))).not.toBeNull()
+  })
+
+  it("refuses things that cannot answer closest", () => {
+    expect(asElement(null)).toBeNull()
+    expect(asElement("a string")).toBeNull()
+    expect(asElement({ getAttribute: () => null })).toBeNull()
+    expect(asElement(document)).toBeNull()
+  })
 })
 
 describe("selection", () => {

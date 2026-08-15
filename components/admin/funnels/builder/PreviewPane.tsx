@@ -163,24 +163,60 @@ export function PreviewPane({
   const handlers = useRef<CanvasHandlers>({})
   handlers.current = { onSelect, onCommit, onPickImage }
 
+  // ---------------------------------------------------------------------------
+  // BINDING THE CANVAS. THE `load` LISTENER IS ON THE IFRAME, NOT REACT'S onLoad.
+  // ---------------------------------------------------------------------------
+  // An iframe starts life holding `about:blank` and gets a BRAND NEW Document
+  // when its src finishes loading, so a binding made on mount is attached to a
+  // document that is about to be thrown away.
+  //
+  // The first version leaned on React's `onLoad` to re-run this effect, and it
+  // did not work — verified in a real browser, where the canvas was completely
+  // inert: every anchor was present in the DOM and not one click did anything.
+  // Against a local dev server the frame can finish loading BEFORE hydration
+  // attaches React's handler, so the event is missed outright and the effect
+  // never re-runs. Nothing throws. There is no console error. The feature is
+  // simply dead, which is why no test caught it: jsdom never loads the frame,
+  // so every unit test exercised `bindCanvasEditing` directly and passed.
+  //
+  // So this attaches its OWN listener to the element, and binds immediately as
+  // well — covering both orders, whichever way the race falls:
+  //
+  //   already loaded  -> `attach()` binds now
+  //   loads later     -> the element's own `load` fires and rebinds
+  //   reloads (a turn) -> same listener rebinds again
   useEffect(() => {
     if (!editable) return
     const frame = frames.current[front]
-    // Same-origin, but a frame that is not yet readable must not throw here:
-    // the effect runs again on the next load.
-    let doc: Document | null = null
-    try {
-      doc = frame?.contentDocument ?? null
-    } catch {
-      return
-    }
-    if (!doc) return
+    if (!frame) return
 
-    return bindCanvasEditing(doc, {
-      onSelect: (selection) => handlers.current.onSelect?.(selection),
-      onCommit: (commit) => handlers.current.onCommit?.(commit),
-      onPickImage: (target) => handlers.current.onPickImage?.(target),
-    })
+    let unbind: (() => void) | null = null
+
+    const attach = () => {
+      unbind?.()
+      unbind = null
+      // Same-origin, but an unreadable frame must not throw: the `load`
+      // listener below will simply try again.
+      let doc: Document | null = null
+      try {
+        doc = frame.contentDocument
+      } catch {
+        return
+      }
+      if (!doc) return
+      unbind = bindCanvasEditing(doc, {
+        onSelect: (selection) => handlers.current.onSelect?.(selection),
+        onCommit: (commit) => handlers.current.onCommit?.(commit),
+        onPickImage: (target) => handlers.current.onPickImage?.(target),
+      })
+    }
+
+    attach()
+    frame.addEventListener("load", attach)
+    return () => {
+      frame.removeEventListener("load", attach)
+      unbind?.()
+    }
   }, [editable, front, loadGeneration])
 
   useEffect(() => {
