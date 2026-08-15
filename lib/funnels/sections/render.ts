@@ -76,6 +76,99 @@ export function escapeHtml(value: string): string {
 export interface RenderContext {
   /** e.g. "/go/summer-camp" — no trailing slash. */
   funnelBasePath?: string
+  /**
+   * Stamp editing anchors onto the markup. DEFAULTS TO FALSE, AND THAT DEFAULT
+   * IS LOAD-BEARING: publish, `/go` and every stored version row render through
+   * this same function, so an anchor emitted unconditionally would be editor
+   * scaffolding shipped to visitors. `render-editable.test.ts` asserts byte
+   * identity between `{}` and `{ editable: false }` for all ten kinds.
+   */
+  editable?: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Editing anchors — the attributes the click-to-edit canvas reads.
+//
+// `data-sec` names the section, `data-edit` names a path RELATIVE TO THAT
+// SECTION'S PROPS, and `data-item` indexes a repeating item.
+//
+// THE PATH IS RELATIVE, AND NOT AN ABSOLUTE `sections.2.items.0.title`, FOR A
+// REASON: section ids are stable and array positions are not. A single
+// `move_section` renders every absolute path on the page stale, and
+// `update_section` addresses a section by id anyway — so an absolute path would
+// be a second, weaker addressing scheme that has to be kept in step with the
+// first.
+//
+// NEVER `data-djp-edit`. `filterAttrs` (compile/sanitize.ts) `continue`s on the
+// `data-djp-` prefix BEFORE its plain `data-*` passthrough is reached, so the
+// attribute would be dropped — no error, no warning, and a feature that simply
+// does nothing. This is the same trap the style knobs (`data-h`, `data-align`)
+// already carry a warning about.
+// ---------------------------------------------------------------------------
+
+function editAttr(ctx: RenderContext, path: string): string {
+  return ctx.editable ? ` data-edit="${escapeHtml(path)}"` : ""
+}
+
+function itemAttr(ctx: RenderContext, index: number): string {
+  return ctx.editable ? ` data-item="${index}"` : ""
+}
+
+/**
+ * A text element carrying its own anchor.
+ *
+ * `value` is escaped exactly as it was before — the anchor is an attribute
+ * added beside the existing markup, never a change to how content is emitted.
+ */
+function textEl(ctx: RenderContext, tag: string, className: string, path: string, value: string): string {
+  const classAttr = className ? ` class="${className}"` : ""
+  return `<${tag}${classAttr}${editAttr(ctx, path)}>${escapeHtml(value)}</${tag}>`
+}
+
+/**
+ * A text run that is a BARE TEXT NODE in the published page and gains a
+ * wrapper only while editing.
+ *
+ * Used where the existing markup interpolates a string directly beside other
+ * elements — `djp-plan-price`, whose `<p>` also contains the cadence span.
+ * Anchoring the `<p>` itself would make an inline edit swallow the cadence into
+ * the price; adding a permanent wrapper would change the PUBLISHED markup, and
+ * a section's stylesheet is written against the markup it currently emits. So
+ * the wrapper exists only in edit mode, where the only consumer is the editor.
+ */
+function anchoredRun(ctx: RenderContext, className: string, path: string, value: string): string {
+  if (!ctx.editable) return escapeHtml(value)
+  return textEl(ctx, "span", className, path, value)
+}
+
+/**
+ * An optional text field: the real value when set, a dimmed placeholder when
+ * editing and unset, and NOTHING AT ALL when not editing.
+ *
+ * The placeholder is the fix for the commonest "I can't edit this" complaint
+ * about builders of this shape: an unset optional field renders no element, so
+ * there is no pixel to click, so it can never be filled in from the page. The
+ * inspector can still reach it either way — this is what makes it reachable
+ * from the canvas too.
+ *
+ * `djp-empty` is styled by the EDIT-MODE stylesheet, which only the preview
+ * route injects. It is deliberately not in `styles.ts`: that stylesheet ships
+ * to visitors, and this class can never appear in a page they are served.
+ */
+function optionalText(
+  ctx: RenderContext,
+  tag: string,
+  className: string,
+  path: string,
+  value: string | undefined,
+  placeholder: string,
+): string {
+  if (value !== undefined && value !== "") return textEl(ctx, tag, className, path, value)
+  if (!ctx.editable) return ""
+  return (
+    `<${tag} class="${className} djp-empty"${editAttr(ctx, path)} data-edit-empty="1">` +
+    `${escapeHtml(placeholder)}</${tag}>`
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -117,12 +210,18 @@ function resolveStyle(style: SectionStyleKnobs): ResolvedStyle {
   }
 }
 
-function sectionOpenTag(section: Section): string {
+function sectionOpenTag(section: Section, ctx: RenderContext): string {
   const { headline, align, tone, pad } = resolveStyle(section.style)
   const classes = `djp-s djp-s-${section.kind} djp-v-${section.variant}`
+  // `data-sec` duplicates `id` on purpose. `id` is the ANCHOR TARGET — it is
+  // what `CtaTarget.kind === "anchor"` links to and it is published — whereas
+  // `data-sec` is the editor's handle and exists only in edit mode. Reading the
+  // editor's selection off `id` would mean the canvas could not tell a section
+  // wrapper from any other element an author gave an id to.
+  const editorHandle = ctx.editable ? ` data-sec="${escapeHtml(section.id)}"` : ""
   return (
     `<section id="${escapeHtml(section.id)}" class="${escapeHtml(classes)}" ` +
-    `data-h="${headline}" data-align="${align}" data-tone="${tone}" data-pad="${pad}">`
+    `data-h="${headline}" data-align="${align}" data-tone="${tone}" data-pad="${pad}"${editorHandle}>`
   )
 }
 
@@ -188,12 +287,13 @@ function renderIslandIfValid(
   return renderIsland(name, parsed.props)
 }
 
-function disabledCta(label: string, className: string): string {
+function disabledCta(label: string, className: string, anchor = ""): string {
   // Not a <button disabled> — "disabled" is not in ALLOWED_ATTRS, so it would
   // be silently dropped and the element would look and act like a live
   // button. A <span> styled + aria-disabled fails visibly instead.
   return (
-    `<span class="${className} djp-btn-disabled" role="button" aria-disabled="true">` + `${escapeHtml(label)}</span>`
+    `<span class="${className} djp-btn-disabled" role="button" aria-disabled="true"${anchor}>` +
+    `${escapeHtml(label)}</span>`
   )
 }
 
@@ -261,19 +361,39 @@ function disabledCta(label: string, className: string): string {
 // unresolved ref never needs to fall back to a disabled placeholder there.
 // ---------------------------------------------------------------------------
 
-function renderCtaTarget(target: CtaTarget, label: string, className: string, ctx: RenderContext): string {
+/**
+ * `path` is the CTA's own path in the section's props (e.g. `primaryCta`), and
+ * the anchor it produces addresses the LABEL (`primaryCta.label`) — the only
+ * part of a CTA that is editable as text on the page. The target is a typed
+ * union and belongs to the inspector.
+ *
+ * ISLAND-BACKED CTAs GET NO ANCHOR, DELIBERATELY. `program`, `session_pack`,
+ * `event` and `booking` render as `data-djp-island` divs, and `convertIsland`
+ * consumes those elements before `filterAttrs` ever runs — a `data-edit` on one
+ * would not survive the compiler. Emitting it anyway would give the owner a
+ * click target that silently does nothing, which is worse than none: the
+ * section is still selectable, and the inspector still edits the label.
+ */
+function renderCtaTarget(
+  target: CtaTarget,
+  label: string,
+  className: string,
+  ctx: RenderContext,
+  path?: string,
+): string {
+  const anchor = path ? editAttr(ctx, `${path}.label`) : ""
   switch (target.kind) {
     case "url":
       return SAFE_LINK.test(target.href)
-        ? `<a class="${className}" href="${escapeHtml(target.href)}">${escapeHtml(label)}</a>`
-        : disabledCta(label, className)
+        ? `<a class="${className}" href="${escapeHtml(target.href)}"${anchor}>${escapeHtml(label)}</a>`
+        : disabledCta(label, className, anchor)
     case "anchor":
-      return `<a class="${className}" href="#${escapeHtml(target.sectionId)}">${escapeHtml(label)}</a>`
+      return `<a class="${className}" href="#${escapeHtml(target.sectionId)}"${anchor}>${escapeHtml(label)}</a>`
     case "step": {
       const base = ctx.funnelBasePath
-      if (!base || !base.startsWith("/")) return disabledCta(label, className)
+      if (!base || !base.startsWith("/")) return disabledCta(label, className, anchor)
       const href = `${base}/${encodeURIComponent(target.stepSlug)}`
-      return `<a class="${className}" href="${escapeHtml(href)}">${escapeHtml(label)}</a>`
+      return `<a class="${className}" href="${escapeHtml(href)}"${anchor}>${escapeHtml(label)}</a>`
     }
     case "booking":
       return renderIslandIfValid("booking", { label }, label, className)
@@ -297,8 +417,8 @@ function renderCtaTarget(target: CtaTarget, label: string, className: string, ct
   }
 }
 
-function renderCtaButton(cta: CtaWithLabel, className: string, ctx: RenderContext): string {
-  return renderCtaTarget(cta.target, cta.label, className, ctx)
+function renderCtaButton(cta: CtaWithLabel, className: string, ctx: RenderContext, path?: string): string {
+  return renderCtaTarget(cta.target, cta.label, className, ctx, path)
 }
 
 // ---------------------------------------------------------------------------
@@ -353,13 +473,15 @@ function renderMedia(media: NonNullable<HeroSectionProps["media"]>): string {
 
 function renderHeroSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.hero.propsSchema.parse(section.props) as HeroSectionProps
-  const parts: string[] = [sectionOpenTag(section), `<div class="djp-hero-inner">`, `<div class="djp-hero-copy">`]
-  if (props.eyebrow) parts.push(`<p class="djp-eyebrow">${escapeHtml(props.eyebrow)}</p>`)
-  parts.push(`<h1 class="djp-hd">${escapeHtml(props.headline)}</h1>`)
-  if (props.sub) parts.push(`<p class="djp-sub">${escapeHtml(props.sub)}</p>`)
+  const parts: string[] = [sectionOpenTag(section, ctx), `<div class="djp-hero-inner">`, `<div class="djp-hero-copy">`]
+  parts.push(optionalText(ctx, "p", "djp-eyebrow", "eyebrow", props.eyebrow, "Add an eyebrow"))
+  parts.push(textEl(ctx, "h1", "djp-hd", "headline", props.headline))
+  parts.push(optionalText(ctx, "p", "djp-sub", "sub", props.sub, "Add a subheading"))
   parts.push(`<div class="djp-hero-ctas">`)
-  parts.push(renderCtaButton(props.primaryCta, "djp-btn djp-btn-primary", ctx))
-  if (props.secondaryCta) parts.push(renderCtaButton(props.secondaryCta, "djp-btn djp-btn-secondary", ctx))
+  parts.push(renderCtaButton(props.primaryCta, "djp-btn djp-btn-primary", ctx, "primaryCta"))
+  if (props.secondaryCta) {
+    parts.push(renderCtaButton(props.secondaryCta, "djp-btn djp-btn-secondary", ctx, "secondaryCta"))
+  }
   parts.push(`</div>`, `</div>`) // .djp-hero-ctas, .djp-hero-copy
   if (props.media) parts.push(renderMedia(props.media))
   parts.push(`</div>`, `</section>`) // .djp-hero-inner
@@ -370,20 +492,22 @@ function renderHeroSection(section: Section, ctx: RenderContext): string {
 // bullets
 // ---------------------------------------------------------------------------
 
-function renderBulletsSection(section: Section, _ctx: RenderContext): string {
+function renderBulletsSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.bullets.propsSchema.parse(section.props) as BulletsSectionProps
-  const parts: string[] = [sectionOpenTag(section)]
-  if (props.heading) parts.push(`<h2 class="djp-hd">${escapeHtml(props.heading)}</h2>`)
-  if (props.intro) parts.push(`<p class="djp-sub">${escapeHtml(props.intro)}</p>`)
+  const parts: string[] = [sectionOpenTag(section, ctx)]
+  parts.push(optionalText(ctx, "h2", "djp-hd", "heading", props.heading, "Add a heading"))
+  parts.push(optionalText(ctx, "p", "djp-sub", "intro", props.intro, "Add an intro"))
   parts.push(`<ul class="djp-bullets-list">`)
-  for (const item of props.items) {
-    parts.push(`<li class="djp-bullet-item">`)
+  props.items.forEach((item, index) => {
+    parts.push(`<li class="djp-bullet-item"${itemAttr(ctx, index)}>`)
     parts.push(renderIcon(item.icon))
     parts.push(`<div class="djp-bullet-body">`)
-    parts.push(`<h3 class="djp-bullet-title">${escapeHtml(item.title)}</h3>`)
-    if (item.body) parts.push(`<p class="djp-bullet-text">${escapeHtml(item.body)}</p>`)
+    parts.push(textEl(ctx, "h3", "djp-bullet-title", `items.${index}.title`, item.title))
+    parts.push(
+      optionalText(ctx, "p", "djp-bullet-text", `items.${index}.body`, item.body, "Add a description"),
+    )
     parts.push(`</div>`, `</li>`)
-  }
+  })
   parts.push(`</ul>`, `</section>`)
   return parts.join("")
 }
@@ -393,19 +517,21 @@ function renderBulletsSection(section: Section, _ctx: RenderContext): string {
 // allowlisted, unwrapped, an accordion would silently flatten).
 // ---------------------------------------------------------------------------
 
-function renderStepsSection(section: Section, _ctx: RenderContext): string {
+function renderStepsSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.steps.propsSchema.parse(section.props) as StepsSectionProps
-  const parts: string[] = [sectionOpenTag(section)]
-  if (props.heading) parts.push(`<h2 class="djp-hd">${escapeHtml(props.heading)}</h2>`)
-  if (props.intro) parts.push(`<p class="djp-sub">${escapeHtml(props.intro)}</p>`)
+  const parts: string[] = [sectionOpenTag(section, ctx)]
+  parts.push(optionalText(ctx, "h2", "djp-hd", "heading", props.heading, "Add a heading"))
+  parts.push(optionalText(ctx, "p", "djp-sub", "intro", props.intro, "Add an intro"))
   parts.push(`<ol class="djp-steps-list">`)
-  for (const step of props.steps) {
-    parts.push(`<li class="djp-step-item">`)
+  props.steps.forEach((step, index) => {
+    parts.push(`<li class="djp-step-item"${itemAttr(ctx, index)}>`)
     parts.push(`<div class="djp-step-body">`)
-    parts.push(`<h3 class="djp-step-title">${escapeHtml(step.title)}</h3>`)
-    if (step.body) parts.push(`<p class="djp-step-text">${escapeHtml(step.body)}</p>`)
+    parts.push(textEl(ctx, "h3", "djp-step-title", `steps.${index}.title`, step.title))
+    parts.push(
+      optionalText(ctx, "p", "djp-step-text", `steps.${index}.body`, step.body, "Add a description"),
+    )
     parts.push(`</div>`, `</li>`)
-  }
+  })
   parts.push(`</ol>`, `</section>`)
   return parts.join("")
 }
@@ -416,21 +542,25 @@ function renderStepsSection(section: Section, _ctx: RenderContext): string {
 // attribution line uses <footer><span>, both allowed.
 // ---------------------------------------------------------------------------
 
-function renderTestimonialSection(section: Section, _ctx: RenderContext): string {
+function renderTestimonialSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.testimonial.propsSchema.parse(section.props) as TestimonialSectionProps
-  const parts: string[] = [sectionOpenTag(section)]
+  const parts: string[] = [sectionOpenTag(section, ctx)]
   if (props.source === "live") {
+    // A live feed has no authored copy to anchor — the section is selectable
+    // and its `limit`/`featuredOnly` knobs belong to the inspector.
     parts.push(renderIsland("testimonials", { limit: props.limit, featuredOnly: props.featuredOnly }))
   } else {
     parts.push(`<div class="djp-testimonial-grid">`)
-    for (const quote of props.quotes) {
-      parts.push(`<blockquote class="djp-quote">`)
-      parts.push(`<p class="djp-quote-text">${escapeHtml(quote.quote)}</p>`)
+    props.quotes.forEach((quote, index) => {
+      parts.push(`<blockquote class="djp-quote"${itemAttr(ctx, index)}>`)
+      parts.push(textEl(ctx, "p", "djp-quote-text", `quotes.${index}.quote`, quote.quote))
       parts.push(`<footer class="djp-quote-attribution">`)
-      parts.push(`<span class="djp-quote-name">${escapeHtml(quote.name)}</span>`)
-      if (quote.detail) parts.push(`<span class="djp-quote-detail">${escapeHtml(quote.detail)}</span>`)
+      parts.push(textEl(ctx, "span", "djp-quote-name", `quotes.${index}.name`, quote.name))
+      parts.push(
+        optionalText(ctx, "span", "djp-quote-detail", `quotes.${index}.detail`, quote.detail, "Add a detail"),
+      )
       parts.push(`</footer>`, `</blockquote>`)
-    }
+    })
     parts.push(`</div>`)
   }
   parts.push(`</section>`)
@@ -443,28 +573,35 @@ function renderTestimonialSection(section: Section, _ctx: RenderContext): string
 
 function renderPricingSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.pricing.propsSchema.parse(section.props) as PricingSectionProps
-  const parts: string[] = [sectionOpenTag(section)]
-  if (props.heading) parts.push(`<h2 class="djp-hd">${escapeHtml(props.heading)}</h2>`)
+  const parts: string[] = [sectionOpenTag(section, ctx)]
+  parts.push(optionalText(ctx, "h2", "djp-hd", "heading", props.heading, "Add a heading"))
   parts.push(`<div class="djp-pricing-grid">`)
-  for (const plan of props.plans) {
+  props.plans.forEach((plan, index) => {
     const highlightClass = plan.highlight ? " djp-plan-highlight" : ""
-    parts.push(`<article class="djp-plan${highlightClass}">`)
-    parts.push(`<h3 class="djp-plan-name">${escapeHtml(plan.name)}</h3>`)
-    parts.push(`<p class="djp-plan-price">${escapeHtml(plan.price)}`)
-    if (plan.cadence) parts.push(`<span class="djp-plan-cadence">${escapeHtml(plan.cadence)}</span>`)
+    parts.push(`<article class="djp-plan${highlightClass}"${itemAttr(ctx, index)}>`)
+    parts.push(textEl(ctx, "h3", "djp-plan-name", `plans.${index}.name`, plan.name))
+    parts.push(`<p class="djp-plan-price">`)
+    parts.push(anchoredRun(ctx, "djp-plan-amount", `plans.${index}.price`, plan.price))
+    parts.push(
+      optionalText(ctx, "span", "djp-plan-cadence", `plans.${index}.cadence`, plan.cadence, "Add a cadence"),
+    )
     parts.push(`</p>`)
-    if (plan.blurb) parts.push(`<p class="djp-plan-blurb">${escapeHtml(plan.blurb)}</p>`)
+    parts.push(
+      optionalText(ctx, "p", "djp-plan-blurb", `plans.${index}.blurb`, plan.blurb, "Add a description"),
+    )
     parts.push(`<ul class="djp-plan-features">`)
-    for (const feature of plan.features) {
-      parts.push(`<li>${renderIcon("check")}<span>${escapeHtml(feature)}</span></li>`)
-    }
+    plan.features.forEach((feature, featureIndex) => {
+      parts.push(`<li>${renderIcon("check")}`)
+      parts.push(textEl(ctx, "span", "", `plans.${index}.features.${featureIndex}`, feature))
+      parts.push(`</li>`)
+    })
     parts.push(`</ul>`)
     parts.push(`<div class="djp-plan-cta">`)
-    parts.push(renderCtaButton(plan.cta, "djp-btn djp-btn-primary", ctx))
+    parts.push(renderCtaButton(plan.cta, "djp-btn djp-btn-primary", ctx, `plans.${index}.cta`))
     parts.push(`</div>`, `</article>`)
-  }
+  })
   parts.push(`</div>`)
-  if (props.footnote) parts.push(`<p class="djp-footnote">${escapeHtml(props.footnote)}</p>`)
+  parts.push(optionalText(ctx, "p", "djp-footnote", "footnote", props.footnote, "Add a footnote"))
   parts.push(`</section>`)
   return parts.join("")
 }
@@ -474,20 +611,20 @@ function renderPricingSection(section: Section, ctx: RenderContext): string {
 // <dl>/<dt>/<dd> list — NOT <details>/<summary> (constraint 1).
 // ---------------------------------------------------------------------------
 
-function renderFaqSection(section: Section, _ctx: RenderContext): string {
+function renderFaqSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.faq.propsSchema.parse(section.props) as FaqSectionProps
-  const parts: string[] = [sectionOpenTag(section)]
-  if (props.heading) parts.push(`<h2 class="djp-hd">${escapeHtml(props.heading)}</h2>`)
+  const parts: string[] = [sectionOpenTag(section, ctx)]
+  parts.push(optionalText(ctx, "h2", "djp-hd", "heading", props.heading, "Add a heading"))
   if (props.source === "live") {
     parts.push(renderIsland("faq", { pageKey: props.pageKey }))
   } else {
     parts.push(`<dl class="djp-faq-list">`)
-    for (const item of props.items) {
-      parts.push(`<div class="djp-faq-item">`)
-      parts.push(`<dt class="djp-faq-q">${escapeHtml(item.q)}</dt>`)
-      parts.push(`<dd class="djp-faq-a">${escapeHtml(item.a)}</dd>`)
+    props.items.forEach((item, index) => {
+      parts.push(`<div class="djp-faq-item"${itemAttr(ctx, index)}>`)
+      parts.push(textEl(ctx, "dt", "djp-faq-q", `items.${index}.q`, item.q))
+      parts.push(textEl(ctx, "dd", "djp-faq-a", `items.${index}.a`, item.a))
       parts.push(`</div>`)
-    }
+    })
     parts.push(`</dl>`)
   }
   parts.push(`</section>`)
@@ -500,10 +637,10 @@ function renderFaqSection(section: Section, _ctx: RenderContext): string {
 // verbatim as the island's props.
 // ---------------------------------------------------------------------------
 
-function renderFormSection(section: Section, _ctx: RenderContext): string {
+function renderFormSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.form.propsSchema.parse(section.props) as FormSectionProps
   const { heading, sub, proofPoints, ...islandProps } = props
-  const parts: string[] = [sectionOpenTag(section)]
+  const parts: string[] = [sectionOpenTag(section, ctx)]
 
   // `split` — the pitch beside the form, so capture happens on the first
   // screen. `proofPoints` render ONLY here: on `boxed` and `band` there is no
@@ -513,13 +650,15 @@ function renderFormSection(section: Section, _ctx: RenderContext): string {
   if (section.variant === "split") {
     parts.push(`<div class="djp-form-split">`)
     parts.push(`<div class="djp-form-pitch">`)
-    if (heading) parts.push(`<h2 class="djp-hd">${escapeHtml(heading)}</h2>`)
-    if (sub) parts.push(`<p class="djp-sub">${escapeHtml(sub)}</p>`)
+    parts.push(optionalText(ctx, "h2", "djp-hd", "heading", heading, "Add a heading"))
+    parts.push(optionalText(ctx, "p", "djp-sub", "sub", sub, "Add a subheading"))
     if (proofPoints && proofPoints.length > 0) {
       parts.push(`<ul class="djp-form-proof">`)
-      for (const point of proofPoints) {
-        parts.push(`<li><span class="djp-ic djp-ic-check" aria-hidden="true"></span>${escapeHtml(point)}</li>`)
-      }
+      proofPoints.forEach((point, index) => {
+        parts.push(`<li${itemAttr(ctx, index)}><span class="djp-ic djp-ic-check" aria-hidden="true"></span>`)
+        parts.push(anchoredRun(ctx, "djp-form-proof-text", `proofPoints.${index}`, point))
+        parts.push(`</li>`)
+      })
       parts.push(`</ul>`)
     }
     parts.push(`</div>`)
@@ -531,8 +670,8 @@ function renderFormSection(section: Section, _ctx: RenderContext): string {
     return parts.join("")
   }
 
-  if (heading) parts.push(`<h2 class="djp-hd">${escapeHtml(heading)}</h2>`)
-  if (sub) parts.push(`<p class="djp-sub">${escapeHtml(sub)}</p>`)
+  parts.push(optionalText(ctx, "h2", "djp-hd", "heading", heading, "Add a heading"))
+  parts.push(optionalText(ctx, "p", "djp-sub", "sub", sub, "Add a subheading"))
   parts.push(renderIsland("form", islandProps))
   parts.push(`</section>`)
   return parts.join("")
@@ -543,17 +682,17 @@ function renderFormSection(section: Section, _ctx: RenderContext): string {
 // registry's note on why a logo bar was deliberately not built.
 // ---------------------------------------------------------------------------
 
-function renderProofSection(section: Section, _ctx: RenderContext): string {
+function renderProofSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.proof.propsSchema.parse(section.props) as ProofSectionProps
-  const parts: string[] = [sectionOpenTag(section)]
-  if (props.heading) parts.push(`<h2 class="djp-hd">${escapeHtml(props.heading)}</h2>`)
+  const parts: string[] = [sectionOpenTag(section, ctx)]
+  parts.push(optionalText(ctx, "h2", "djp-hd", "heading", props.heading, "Add a heading"))
   parts.push(`<dl class="djp-proof-list">`)
-  for (const item of props.items) {
-    parts.push(`<div class="djp-proof-item">`)
-    parts.push(`<dt class="djp-proof-value">${escapeHtml(item.value)}</dt>`)
-    parts.push(`<dd class="djp-proof-label">${escapeHtml(item.label)}</dd>`)
+  props.items.forEach((item, index) => {
+    parts.push(`<div class="djp-proof-item"${itemAttr(ctx, index)}>`)
+    parts.push(textEl(ctx, "dt", "djp-proof-value", `items.${index}.value`, item.value))
+    parts.push(textEl(ctx, "dd", "djp-proof-label", `items.${index}.label`, item.label))
     parts.push(`</div>`)
-  }
+  })
   parts.push(`</dl>`)
   parts.push(`</section>`)
   return parts.join("")
@@ -565,10 +704,10 @@ function renderProofSection(section: Section, _ctx: RenderContext): string {
 
 function renderCtaSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.cta.propsSchema.parse(section.props) as CtaSectionProps
-  const parts: string[] = [sectionOpenTag(section), `<div class="djp-cta-inner">`]
-  parts.push(`<h2 class="djp-hd">${escapeHtml(props.headline)}</h2>`)
-  if (props.sub) parts.push(`<p class="djp-sub">${escapeHtml(props.sub)}</p>`)
-  parts.push(renderCtaButton(props.cta, "djp-btn djp-btn-primary", ctx))
+  const parts: string[] = [sectionOpenTag(section, ctx), `<div class="djp-cta-inner">`]
+  parts.push(textEl(ctx, "h2", "djp-hd", "headline", props.headline))
+  parts.push(optionalText(ctx, "p", "djp-sub", "sub", props.sub, "Add a subheading"))
+  parts.push(renderCtaButton(props.cta, "djp-btn djp-btn-primary", ctx, "cta"))
   parts.push(`</div>`, `</section>`)
   return parts.join("")
 }
@@ -579,19 +718,25 @@ function renderCtaSection(section: Section, ctx: RenderContext): string {
 
 function renderFooterSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.footer.propsSchema.parse(section.props) as FooterSectionProps
-  const parts: string[] = [sectionOpenTag(section), `<footer class="djp-footer-inner">`]
-  parts.push(`<p class="djp-footer-business">${escapeHtml(props.businessName)}</p>`)
+  const parts: string[] = [sectionOpenTag(section, ctx), `<footer class="djp-footer-inner">`]
+  parts.push(textEl(ctx, "p", "djp-footer-business", "businessName", props.businessName))
   if (props.lines.length > 0) {
     parts.push(`<div class="djp-footer-lines">`)
-    for (const line of props.lines) parts.push(`<p class="djp-footer-line">${escapeHtml(line)}</p>`)
+    props.lines.forEach((line, index) => {
+      parts.push(textEl(ctx, "p", "djp-footer-line", `lines.${index}`, line))
+    })
     parts.push(`</div>`)
   }
   if (props.links.length > 0) {
     parts.push(`<ul class="djp-footer-links">`)
-    for (const link of props.links) parts.push(`<li>${renderCtaButton(link, "djp-footer-link", ctx)}</li>`)
+    props.links.forEach((link, index) => {
+      parts.push(`<li${itemAttr(ctx, index)}>`)
+      parts.push(renderCtaButton(link, "djp-footer-link", ctx, `links.${index}`))
+      parts.push(`</li>`)
+    })
     parts.push(`</ul>`)
   }
-  if (props.legal) parts.push(`<p class="djp-footer-legal">${escapeHtml(props.legal)}</p>`)
+  parts.push(optionalText(ctx, "p", "djp-footer-legal", "legal", props.legal, "Add a legal line"))
   parts.push(`</footer>`, `</section>`)
   return parts.join("")
 }
