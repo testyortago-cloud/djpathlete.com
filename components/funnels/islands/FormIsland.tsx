@@ -25,6 +25,14 @@ export function FormIsland({ props, context }: FormIslandProps) {
       }
       redirectUrl={typeof props.redirectUrl === "string" ? props.redirectUrl : undefined}
       consentText={typeof props.consentText === "string" ? props.consentText : undefined}
+      // The paths FunnelForm stamps (`submitLabel`, `fields.0.label`) are
+      // relative to the SECTION's props, and they are correct without any
+      // rewriting here because a form section's props ARE this island's props:
+      // `formSectionPropsSchema` is `{heading, sub, proofPoints}` INTERSECTED
+      // with `formIslandSchema`, and `renderFormSection` passes the rest
+      // through verbatim. If that ever becomes a nested object, every path
+      // below needs a prefix.
+      editable={context.editable === true}
     />
   )
 }

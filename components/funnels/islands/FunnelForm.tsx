@@ -27,7 +27,7 @@
 // to keep in step. The `data-djp-*` attributes are kept as-is; they are
 // semantic hooks and nothing about them changed.
 
-import { useRef, useState, type FormEvent } from "react"
+import { useRef, useState, type FormEvent, type ReactNode } from "react"
 import type { FunnelFormField } from "@/lib/funnels/islands"
 
 interface FunnelFormProps {
@@ -41,9 +41,34 @@ interface FunnelFormProps {
   redirectUrl?: string
   consentText?: string
   isPreview: boolean
+  /**
+   * The builder canvas is editing this page. Stamps `data-edit` anchors and
+   * nothing else — no copy changes, no layout changes, no behaviour changes
+   * beyond the submit guard below.
+   *
+   * ON A LEAD-GEN PAGE THIS FORM IS MOST OF THE PAGE. Every label, the consent
+   * line and the button were the largest block of text on a funnel the owner
+   * could not click, and none of them are reachable from the inspector either:
+   * `RepeaterEditor` deliberately delegates "what each item SAYS" to the canvas
+   * (its own comment says so), so a field label had no editor at all — only the
+   * chat could change it.
+   */
+  editable?: boolean
 }
 
 type Status = "idle" | "submitting" | "done" | "error"
+
+/**
+ * A string the canvas can click into, or the bare string when not editing.
+ *
+ * A FRAGMENT, NOT AN ALWAYS-PRESENT SPAN, when not editing: this component
+ * renders the published page too, and a permanent wrapper would be new markup
+ * on every live funnel for the sole benefit of an editor no visitor can open.
+ */
+function Editable({ editable, path, children }: { editable: boolean; path: string; children: ReactNode }) {
+  if (!editable) return <>{children}</>
+  return <span data-edit={path}>{children}</span>
+}
 
 export function FunnelForm({
   funnelId,
@@ -56,6 +81,7 @@ export function FunnelForm({
   redirectUrl,
   consentText,
   isPreview,
+  editable = false,
 }: FunnelFormProps) {
   const [status, setStatus] = useState<Status>("idle")
   const [error, setError] = useState<string | null>(null)
@@ -65,6 +91,14 @@ export function FunnelForm({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (status === "submitting") return
+
+    // ON THE CANVAS, SILENCE. The owner is editing the page, not testing it,
+    // and the first click of a double-click on the button IS a submit — so
+    // without this, double-clicking "Request a spot" to rename it answers with
+    // "This is a preview — submissions are disabled," which reads as the edit
+    // having failed. The plain (non-editing) preview still says it, because
+    // there the click really was someone trying the form.
+    if (editable) return
 
     if (isPreview) {
       setError("This is a preview — submissions are disabled.")
@@ -130,7 +164,7 @@ export function FunnelForm({
 
   return (
     <form className="djp-form" onSubmit={handleSubmit} noValidate data-djp-form={formKey}>
-      {fields.map((field) => (
+      {fields.map((field, index) => (
         <div
           key={field.name}
           className="djp-field"
@@ -142,7 +176,13 @@ export function FunnelForm({
           data-djp-field-type={field.type}
         >
           <label className="djp-field-label" htmlFor={`${formKey}-${field.name}`}>
-            {field.label}
+            {/* The anchor wraps the LABEL TEXT, never the <label> element: the
+                required marker is inside it, and `commitText` takes
+                `textContent`, so anchoring the whole thing would save "Email *"
+                as the label and then render a second asterisk beside it. */}
+            <Editable editable={editable} path={`fields.${index}.label`}>
+              {field.label}
+            </Editable>
             {field.required ? (
               <span className="djp-req" aria-hidden>
                 {" "}
@@ -150,7 +190,7 @@ export function FunnelForm({
               </span>
             ) : null}
           </label>
-          {renderControl(field, formKey)}
+          {renderControl(field, formKey, editable, index)}
         </div>
       ))}
 
@@ -161,8 +201,16 @@ export function FunnelForm({
       </div>
 
       {consentText ? (
-        <p className="djp-consent" data-djp-consent>
+        <p className="djp-consent" data-djp-consent data-edit={editable ? "consentText" : undefined}>
           {consentText}
+        </p>
+      ) : editable ? (
+        // The placeholder rule `optionalText` follows in render.ts, applied to
+        // the one optional string that lives inside the island: an unset
+        // optional field renders no element, so there is no pixel to click, so
+        // it can never be filled in from the page. Never rendered to a visitor.
+        <p className="djp-consent djp-empty" data-djp-consent data-edit="consentText" data-edit-empty="1">
+          Add a consent line
         </p>
       ) : null}
 
@@ -175,20 +223,37 @@ export function FunnelForm({
       {/* `djp-btn djp-btn-primary` are the SHARED button classes every other
           CTA on the page uses, so this inherits the sizing, the radius and —
           critically — the tone-contrast rule that repaints a primary button
-          when it lands on an accent section. */}
-      <button
-        type="submit"
-        className="djp-btn djp-btn-primary djp-form-submit"
-        data-djp-submit
-        disabled={status === "submitting"}
-      >
-        {status === "submitting" ? "Sending…" : submitLabel}
-      </button>
+          when it lands on an accent section.
+
+          ON THE CANVAS IT IS A <span>, NOT A <button>, AND THAT IS NOT
+          COSMETIC. A caret inside a <button> cannot be typed into: SPACE
+          activates the button instead of inserting a space. Verified in a real
+          browser — typing "Claim my spot" into the real button saved "Claim",
+          because the first space submitted the form (four "Blocked form
+          submission ... sandboxed" warnings) instead of reaching the text. The
+          span carries the same three classes and the same text, so the canvas
+          looks identical, and `render.ts` uses exactly this substitution for
+          the same reason (`disabledCta`). The published page still ships a real
+          <button type="submit">. */}
+      {editable ? (
+        <span className="djp-btn djp-btn-primary djp-form-submit" role="button" data-djp-submit data-edit="submitLabel">
+          {submitLabel}
+        </span>
+      ) : (
+        <button
+          type="submit"
+          className="djp-btn djp-btn-primary djp-form-submit"
+          data-djp-submit
+          disabled={status === "submitting"}
+        >
+          {status === "submitting" ? "Sending…" : submitLabel}
+        </button>
+      )}
     </form>
   )
 }
 
-function renderControl(field: FunnelFormField, formKey: string) {
+function renderControl(field: FunnelFormField, formKey: string, editable: boolean, index: number) {
   const id = `${formKey}-${field.name}`
   const shared = {
     id,
@@ -202,14 +267,42 @@ function renderControl(field: FunnelFormField, formKey: string) {
   if (field.type === "checkbox") return <input {...shared} type="checkbox" />
   if (field.type === "select") {
     return (
-      <select {...shared}>
-        <option value="">Select…</option>
-        {(field.options ?? []).map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
+      <>
+        <select {...shared}>
+          <option value="">Select…</option>
+          {(field.options ?? []).map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+        {/* A DROPDOWN'S CHOICES CANNOT BE EDITED WHERE THEY APPEAR. An <option>
+            is drawn by the operating system, not by the page: it takes no
+            `contenteditable`, and the popup it lives in is not somewhere a
+            double-click can reach. Anchoring the <option> itself would be
+            exactly the dead click target this whole change exists to stop
+            shipping.
+
+            So the choices get a second, editable rendering that exists only on
+            the canvas — the same move `optionalText` makes for an unset field,
+            and the only way "9th, 10th, 11th, 12th" is reachable outside the
+            chat: `RepeaterEditor` offers structure for `fields`, never the
+            words inside an item. */}
+        {editable && (field.options?.length ?? 0) > 0 ? (
+          <div className="djp-edit-options" role="group" aria-label={`${field.label} choices`}>
+            <span className="djp-edit-note">Choices</span>
+            {(field.options ?? []).map((option, optionIndex) => (
+              <span
+                key={`${optionIndex}-${option}`}
+                className="djp-edit-chip"
+                data-edit={`fields.${index}.options.${optionIndex}`}
+              >
+                {option}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </>
     )
   }
   return <input {...shared} type={field.type} />

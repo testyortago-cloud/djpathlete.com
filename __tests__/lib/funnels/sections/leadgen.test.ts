@@ -16,6 +16,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { describe, expect, it } from "vitest"
 import { SECTION_CSS, THEME_CSS } from "@/lib/funnels/sections/styles"
+import { CANVAS_EDIT_CSS } from "@/lib/funnels/sections/edit-css"
 import { renderSection } from "@/lib/funnels/sections/render"
 import { SECTION_BUILDER_BLOCK_A, LEADGEN_RULES } from "@/lib/funnels/sections/prompt"
 import { SECTION_REGISTRY, type Section } from "@/lib/funnels/sections/registry"
@@ -50,8 +51,17 @@ describe("every class an island emits is a class the stylesheet defines", () => 
     const classes = emittedClasses(islandSource(file))
     expect(classes.length, `${file} emits no djp- classes at all`).toBeGreaterThan(0)
 
-    const undefined_ = classes.filter((cls) => !ALL_CSS.includes(`.${cls}`))
-    expect(undefined_, `${file} emits classes the stylesheet never targets`).toEqual([])
+    // TWO stylesheets, because an island now emits into two worlds. The
+    // published page gets THEME_CSS + SECTION_CSS; the builder canvas
+    // additionally gets CANVAS_EDIT_CSS, which the editable preview route
+    // injects and no visitor ever receives. A class defined only there is
+    // correct AS LONG AS it is only emitted while editing — asserted for real,
+    // by rendering, in funnel-form-editable.test.tsx, because a source scan
+    // cannot tell a gated class from an ungated one.
+    const undefined_ = classes.filter(
+      (cls) => !ALL_CSS.includes(`.${cls}`) && !CANVAS_EDIT_CSS.includes(`.${cls}`),
+    )
+    expect(undefined_, `${file} emits classes neither stylesheet targets`).toEqual([])
   })
 })
 

@@ -21,6 +21,24 @@ export interface FunnelRenderContext {
   stepSlug: string
   /** Preview pages must not create real leads or real checkout sessions. */
   isPreview: boolean
+  /**
+   * Stamp `data-edit` anchors inside the island so the builder canvas can click
+   * into it. Set ONLY by `/funnel-preview/[stepId]?edit=1`.
+   *
+   * WHY AN ISLAND HAS TO DO ITS OWN STAMPING. Everywhere else the anchors are
+   * written by `render.ts` and survive the compiler as ordinary `data-*`
+   * attributes. An island's insides never pass through the compiler at all —
+   * `convertIsland` keeps only its name and props, and the markup is created
+   * here, at request time. And unlike a CTA, whose one editable string can be
+   * addressed by a wrapper, a form holds MANY: `submitLabel`, `consentText`,
+   * `fields.0.label`, `fields.3.options.1`. Each needs its own path, and a
+   * wrapper cannot express more than one.
+   *
+   * Optional, and false everywhere else BY OMISSION: `/go` and every published
+   * version row build this context without it, so a visitor's page is
+   * byte-identical to what it was before this existed.
+   */
+  editable?: boolean
 }
 
 type Props = Record<string, unknown>

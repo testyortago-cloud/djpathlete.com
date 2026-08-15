@@ -171,6 +171,47 @@ function anchoredRun(ctx: RenderContext, className: string, path: string, value:
 }
 
 /**
+ * An island CTA's label, made clickable on the canvas.
+ *
+ * THE ISLAND CANNOT CARRY THE ANCHOR ITSELF. `convertIsland`
+ * (compile/sanitize.ts) consumes an element the moment it sees
+ * `data-djp-island`, BEFORE `filterAttrs` runs, so a `data-edit` written onto
+ * the island div is gone by the time the canvas looks for it — silently, with
+ * no compiler signal. The wrapper is the same trick `anchoredRun` plays for the
+ * plan price and for the same reason: it exists ONLY while editing, so the
+ * published markup — which every section stylesheet is written against — does
+ * not change by one byte.
+ *
+ * THIS REVERSES A DECISION MADE ONE STAGE AGO, deliberately. It read: an island
+ * CTA gets no anchor, because a click target that silently does nothing is
+ * worse than none. The MECHANISM in that reasoning was right and is restated
+ * above; the PRODUCT judgement was wrong. A funnel page's buy button is one of
+ * the few strings on it that decides whether the page earns anything, and an
+ * editor that says "click the page to change it" while skipping the button
+ * teaches the owner the canvas cannot be trusted — which is the same lesson,
+ * learned worse.
+ */
+function anchoredIsland(ctx: RenderContext, path: string | undefined, markup: string): string {
+  if (!ctx.editable || !path) return markup
+  return `<span class="djp-edit-slot" data-edit="${escapeHtml(path)}.label">${markup}</span>`
+}
+
+/**
+ * An edit-mode-only sentence saying why a section's words cannot be typed into.
+ *
+ * `testimonial` and `faq` with `source: "live"` render ROWS FROM ANOTHER TABLE.
+ * They are correctly not anchored — retyping a quote here would be an edit to
+ * (or worse, a silently discarded edit to) a record that belongs to a different
+ * screen — but "not anchored" and "broken" look identical to someone clicking
+ * at it. Every other block on the page answers a click; these two must say why
+ * they don't rather than stay mute.
+ */
+function liveFeedNote(ctx: RenderContext, text: string): string {
+  if (!ctx.editable) return ""
+  return `<p class="djp-edit-note">${escapeHtml(text)}</p>`
+}
+
+/**
  * An optional text field: the real value when set, a dimmed placeholder when
  * editing and unset, and NOTHING AT ALL when not editing.
  *
@@ -396,12 +437,10 @@ function disabledCta(label: string, className: string, anchor = ""): string {
  * part of a CTA that is editable as text on the page. The target is a typed
  * union and belongs to the inspector.
  *
- * ISLAND-BACKED CTAs GET NO ANCHOR, DELIBERATELY. `program`, `session_pack`,
- * `event` and `booking` render as `data-djp-island` divs, and `convertIsland`
- * consumes those elements before `filterAttrs` ever runs — a `data-edit` on one
- * would not survive the compiler. Emitting it anyway would give the owner a
- * click target that silently does nothing, which is worse than none: the
- * section is still selectable, and the inspector still edits the label.
+ * ISLAND-BACKED CTAs (`program`, `session_pack`, `event`, `booking`) get their
+ * anchor from a WRAPPER instead — see `anchoredIsland`, which also records why
+ * the attribute cannot simply go on the island div and why the earlier
+ * "no anchor at all" decision was reversed.
  */
 function renderCtaTarget(
   target: CtaTarget,
@@ -425,19 +464,27 @@ function renderCtaTarget(
       return `<a class="${className}" href="${escapeHtml(href)}"${anchor}>${escapeHtml(label)}</a>`
     }
     case "booking":
-      return renderIslandIfValid("booking", { label }, label, className)
+      return anchoredIsland(ctx, path, renderIslandIfValid("booking", { label }, label, className))
     case "event":
-      return renderIslandIfValid("event", { eventId: target.ref, label }, label, className)
+      return anchoredIsland(ctx, path, renderIslandIfValid("event", { eventId: target.ref, label }, label, className))
     case "program":
-      return renderIslandIfValid("checkout", { productKind: "program", productId: target.ref, label }, label, className)
+      return anchoredIsland(
+        ctx,
+        path,
+        renderIslandIfValid("checkout", { productKind: "program", productId: target.ref, label }, label, className),
+      )
     case "session_pack": {
       const withId = parseIslandProps("checkout", { productKind: "session_pack", productId: target.ref, label })
-      if (withId.ok) return renderIsland("checkout", withId.props)
+      if (withId.ok) return anchoredIsland(ctx, path, renderIsland("checkout", withId.props))
       // `ref` didn't validate as a productId (not resolved yet, or never
       // will be) — CheckoutIsland ignores productId for this productKind
       // regardless, so omitting it is always safe and this branch cannot
       // itself fail.
-      return renderIslandIfValid("checkout", { productKind: "session_pack", label }, label, className)
+      return anchoredIsland(
+        ctx,
+        path,
+        renderIslandIfValid("checkout", { productKind: "session_pack", label }, label, className),
+      )
     }
     default: {
       const _exhaustive: never = target
@@ -590,7 +637,15 @@ function renderTestimonialSection(section: Section, ctx: RenderContext): string 
   const parts: string[] = [sectionOpenTag(section, ctx)]
   if (props.source === "live") {
     // A live feed has no authored copy to anchor — the section is selectable
-    // and its `limit`/`featuredOnly` knobs belong to the inspector.
+    // and its `limit`/`featuredOnly` knobs belong to the inspector. The note
+    // is what stops "no anchor" from reading as "this bit is broken".
+    parts.push(
+      liveFeedNote(
+        ctx,
+        "These quotes are pulled live from your Testimonials list, so they cannot be retyped here — " +
+          "change them under Testimonials in the admin. This section chooses how many to show.",
+      ),
+    )
     parts.push(renderIsland("testimonials", { limit: props.limit, featuredOnly: props.featuredOnly }))
   } else {
     parts.push(`<div class="djp-testimonial-grid">`)
@@ -659,6 +714,13 @@ function renderFaqSection(section: Section, ctx: RenderContext): string {
   const parts: string[] = [sectionOpenTag(section, ctx)]
   parts.push(optionalText(ctx, "h2", "djp-hd", "heading", props.heading, "Add a heading"))
   if (props.source === "live") {
+    parts.push(
+      liveFeedNote(
+        ctx,
+        "These questions are pulled live from your FAQ list, so they cannot be retyped here — " +
+          "change them under FAQs in the admin. This section chooses which set to show.",
+      ),
+    )
     parts.push(renderIsland("faq", { pageKey: props.pageKey }))
   } else {
     parts.push(`<dl class="djp-faq-list">`)

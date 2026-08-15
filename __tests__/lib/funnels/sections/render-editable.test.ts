@@ -16,6 +16,11 @@ import { renderSection } from "@/lib/funnels/sections/render"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import { SECTION_KINDS, type Section, type SectionDoc } from "@/lib/funnels/sections/registry"
+import { CANVAS_EDIT_CSS } from "@/lib/funnels/sections/edit-css"
+import { SECTION_CSS, THEME_CSS } from "@/lib/funnels/sections/styles"
+
+/** Everything a VISITOR's page is styled by. The canvas sheet is not in it. */
+const PUBLISHED_CSS = [THEME_CSS, ...Object.values(SECTION_CSS)].join("\n")
 
 // ---------------------------------------------------------------------------
 // Fixtures — one of every kind, each with its optional fields SET, so the
@@ -241,20 +246,111 @@ describe("editable render mode", () => {
     expect(html).not.toContain("data-edit-empty")
   })
 
-  it("leaves an island CTA to the inspector rather than a broken anchor", () => {
-    // convertIsland consumes the element before filterAttrs runs, so a
-    // data-edit on an island div would not survive. Anchoring it anyway would
-    // be a click target that silently does nothing.
-    const section: Section = {
-      ...FIXTURES.cta,
-      props: {
-        ...FIXTURES.cta.props,
-        cta: { label: "Buy", target: { kind: "booking" } },
-      },
-    }
-    const html = renderSection(section, { editable: true })
+  // -------------------------------------------------------------------------
+  // Island CTA labels.
+  //
+  // This block REPLACES a test that asserted the opposite ("leaves an island
+  // CTA to the inspector rather than a broken anchor"). The reasoning it
+  // recorded — `convertIsland` consumes the element before `filterAttrs` runs,
+  // so a `data-edit` on an island div does not survive — is still true and is
+  // still what makes the WRAPPER necessary. What changed is the conclusion:
+  // "buy now" is the string a funnel page exists for, and no anchor at all is
+  // its own kind of broken.
+  // -------------------------------------------------------------------------
+
+  const ISLAND_TARGETS = [
+    { name: "booking", target: { kind: "booking" } },
+    { name: "event", target: { kind: "event", ref: "11111111-2222-4333-8444-555555555555" } },
+    { name: "program", target: { kind: "program", ref: "11111111-2222-4333-8444-555555555555" } },
+    { name: "session_pack", target: { kind: "session_pack", ref: "Ten Session Pack" } },
+  ] as const
+
+  function ctaWith(target: unknown): Section {
+    return { ...FIXTURES.cta, props: { ...FIXTURES.cta.props, cta: { label: "Buy", target } } }
+  }
+
+  it.each(ISLAND_TARGETS)("anchors a $name CTA's label through a wrapper", ({ target }) => {
+    const html = renderSection(ctaWith(target), { editable: true })
     expect(html).toContain("data-djp-island")
-    expect(html).not.toContain('data-edit="cta.label"')
+    expect(html).toContain('data-edit="cta.label"')
+    // The anchor must be OUTSIDE the island element, or the compiler eats it.
+    expect(html).toMatch(/<span class="djp-edit-slot" data-edit="cta\.label"><(div|span)/)
+  })
+
+  it.each(ISLAND_TARGETS)("ships no wrapper around a $name CTA when not editing", ({ target }) => {
+    // MUTANT KILLED: an unconditional wrapper. It would be new markup on every
+    // published page, and `styles.ts` is written against the markup this file
+    // currently emits.
+    const html = renderSection(ctaWith(target), {})
+    expect(html).toContain("data-djp-island")
+    expect(html).not.toContain("djp-edit-slot")
+    expect(html).not.toContain("data-edit")
+  })
+
+  it("anchors an island CTA that degraded to a disabled placeholder", () => {
+    // An unresolvable ref renders as `disabledCta`, and that is EXACTLY when
+    // the owner most needs to reach the label — the same rule the image slot
+    // follows for an unrenderable src. A `program` ref that is not a valid uuid
+    // cannot reach the island, so this is the degraded branch.
+    const html = renderSection(ctaWith({ kind: "program", ref: "Comeback Code" }), { editable: true })
+    expect(html).toContain("djp-btn-disabled")
+    expect(html).toContain('data-edit="cta.label"')
+  })
+
+  it("survives the compiler on an island CTA, which is the whole reason for the wrapper", () => {
+    // The load-bearing claim, checked against the REAL compiler rather than
+    // asserted: `filterAttrs` strips `data-djp-*` silently and `convertIsland`
+    // consumes the island element whole, so the only proof that this anchor is
+    // clickable is that it is still there after compiling.
+    const { html, css } = reassemble(docWith(ctaWith({ kind: "booking" })), { editable: true })
+    const compiled = compileFunnelStep({ html, css })
+    if (!compiled.ok) throw new Error(compiled.errors.map((e) => e.message).join("; "))
+    expect(JSON.stringify(compiled.nodes)).toContain('"data-edit":"cta.label"')
+  })
+
+  it("styles the canvas notes so they survive a dark section", () => {
+    // MUTANT KILLED: a note that sets only `color`. Section tone is one of
+    // four, `dark` among them, and the FIRST version of this shipped grey text
+    // onto the near-black testimonials band — caught in a screenshot, not by a
+    // test, because markup assertions cannot see contrast. Declaring BOTH a
+    // background and a colour is the property that makes it tone-independent,
+    // and that much a test can hold.
+    const note = CANVAS_EDIT_CSS.slice(CANVAS_EDIT_CSS.indexOf(".djp-edit-note {"))
+    const block = note.slice(0, note.indexOf("}"))
+    expect(block).toContain("background:")
+    expect(block).toContain("color:")
+
+    const chip = CANVAS_EDIT_CSS.slice(CANVAS_EDIT_CSS.indexOf(".djp-edit-chip {"))
+    const chipBlock = chip.slice(0, chip.indexOf("}"))
+    expect(chipBlock).toContain("background:")
+    expect(chipBlock).toContain("color:")
+  })
+
+  it("keeps every canvas-only class OUT of the published stylesheet", () => {
+    // The pair to the class/stylesheet harness in leadgen.test.ts, from the
+    // other side: these classes must live in CANVAS_EDIT_CSS *only*, because
+    // that sheet is injected by the editable preview route and by nothing else.
+    for (const cls of [".djp-edit-slot", ".djp-edit-note", ".djp-edit-chip", ".djp-edit-options"]) {
+      expect(CANVAS_EDIT_CSS, `${cls} must be defined in the canvas stylesheet`).toContain(cls)
+      expect(PUBLISHED_CSS, `${cls} must NOT be in the published stylesheet`).not.toContain(cls)
+    }
+  })
+
+  it.each(["testimonial", "faq"] as const)("says why a live %s feed cannot be typed into", (kind) => {
+    // Not decoration. Every other block on the canvas answers a click; these
+    // two deliberately do not, and "deliberately read-only" and "broken" look
+    // identical to whoever is clicking at it.
+    const section: Section =
+      kind === "testimonial"
+        ? { ...FIXTURES.testimonial, props: { source: "live", limit: 3, featuredOnly: false } }
+        : { ...FIXTURES.faq, props: { heading: "Questions", source: "live", pageKey: "camps" } }
+
+    const editing = renderSection(section, { editable: true })
+    expect(editing).toContain("djp-edit-note")
+    expect(editing).toMatch(/cannot be retyped here/)
+
+    // MUTANT KILLED: editor chrome shipped to a visitor.
+    expect(renderSection(section, {})).not.toContain("djp-edit-note")
   })
 
   it("marks a hero's media as an image slot", () => {

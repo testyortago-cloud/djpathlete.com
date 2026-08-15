@@ -238,6 +238,13 @@ export default async function FunnelDraftPreviewPage({ params, searchParams }: P
           // event registration — the page is not published, so anything it
           // submits is noise in the owner's real data.
           isPreview: true,
+          // The same flag `reassemble` got, for the parts of the page
+          // `reassemble` cannot reach. An island's insides are built here, at
+          // request time, and never pass through the compiler — so the form's
+          // own labels have to be anchored by the component that draws them.
+          // Passing the two independently would let the canvas end up with
+          // anchors on the page and none in the form, or the reverse.
+          editable,
         }}
       />
     </div>
