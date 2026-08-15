@@ -403,6 +403,97 @@ export function styleFields(): SectionField[] {
   return walk(sectionStyleSchema, "", {})
 }
 
+// ---------------------------------------------------------------------------
+// Blank values, for growing a list
+// ---------------------------------------------------------------------------
+
+/**
+ * A value for `field` that its own schema will accept.
+ *
+ * Adding a bullet needs something to add, and "something" is schema-specific:
+ * `bulletItemSchema.title` is `min(1)`, so an empty object or `{title: ""}` is
+ * refused — the owner would click Add and be told a field they never saw is
+ * invalid. Every required leaf therefore gets a placeholder value, and
+ * `fields.test.ts` proves the result parses for every repeater of every kind
+ * by running the real `applyOps` over it.
+ *
+ * Optional fields are OMITTED rather than blanked. An optional string set to
+ * "" is not the same as unset: `render.ts` renders the empty element instead of
+ * the placeholder, so the new row would come back with a dead space in it.
+ */
+export function blankValueFor(field: SectionField): unknown {
+  switch (field.type) {
+    case "checkbox":
+      return false
+    case "number":
+      return field.min ?? 1
+    case "select":
+      return field.options?.[0]?.id ?? ""
+    case "cta":
+      // `/` satisfies SAFE_LINK, so the button is valid and obviously a
+      // placeholder rather than a dead link to somewhere real.
+      return { label: "Button", target: { kind: "url", href: "/" } }
+    case "list": {
+      const count = Math.max(field.min ?? 0, 1)
+      return Array.from({ length: count }, () => truncate(`New ${singular(field.label)}`, field.maxLength))
+    }
+    case "repeater": {
+      const count = Math.max(field.min ?? 0, 1)
+      return Array.from({ length: count }, () => blankItemFor(field))
+    }
+    default:
+      // A FORMAT-BOUND field cannot take prose. `funnelFormFieldSchema.name` is
+      // `^[a-z0-9_]+$`, so "New name" fails on the space and the capital, and
+      // the owner would click Add and be refused over a value they never chose.
+      // The slug of the label satisfies every pattern these schemas currently
+      // use, and the per-kind test proves it against the real validator rather
+      // than asserting it here.
+      return field.pattern !== undefined
+        ? truncate(slug(field.label), field.maxLength)
+        : truncate(`New ${field.label.toLowerCase()}`, field.maxLength)
+  }
+}
+
+/**
+ * One item for a repeater, built from the item's own fields.
+ *
+ * AN ITEM IS NOT ALWAYS AN OBJECT OF FIELDS. `footer.links` is an array of
+ * `ctaWithLabelSchema`, which `walk` reports as ONE field with an empty path
+ * (a CTA is a single editor, never a walked union). Building a record from that
+ * produced `{"": {…}}` — a shape the schema rejects with "label: expected
+ * string, received undefined", naming a field the owner never touched. Caught
+ * by the per-kind growth test, which is exactly what it is for.
+ */
+export function blankItemFor(field: SectionField): unknown {
+  const children = field.item ?? []
+
+  const whole = children.length === 1 && children[0].path === "" ? children[0] : null
+  if (whole) return blankValueFor(whole)
+
+  const item: Record<string, unknown> = {}
+  for (const child of children) {
+    // Optional leaves are left out entirely — see `blankValueFor`.
+    if (child.optional) continue
+    item[child.path] = blankValueFor(child)
+  }
+  return item
+}
+
+function truncate(value: string, max: number | undefined): string {
+  return max !== undefined && value.length > max ? value.slice(0, max) : value
+}
+
+/** "Field name" -> "field_name". For fields whose schema constrains the format. */
+function slug(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
+}
+
+/** "Items" -> "item", "Lines" -> "line". Presentation only. */
+function singular(label: string): string {
+  const lower = label.toLowerCase()
+  return lower.endsWith("s") ? lower.slice(0, -1) : lower
+}
+
 /** Variant choices for a kind — constrained per kind by the registry. */
 export function variantOptions(section: Section): { id: string; label: string }[] {
   const def = SECTION_REGISTRY[section.kind]

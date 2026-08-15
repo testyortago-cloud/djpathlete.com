@@ -11,7 +11,7 @@
 // defines must be reachable through some field, for every kind.
 
 import { describe, it, expect } from "vitest"
-import { fieldsForSection } from "@/lib/funnels/sections/fields"
+import { fieldsForSection, blankItemFor, blankValueFor } from "@/lib/funnels/sections/fields"
 import { applyOps } from "@/lib/funnels/sections/apply"
 import {
   SECTION_KINDS,
@@ -99,6 +99,9 @@ function fixtureFor(kind: SectionKind, override: Record<string, unknown> = {}): 
 function rootKeys(section: Section): Set<string> {
   return new Set(fieldsForSection(section).map((field) => field.path.split(".")[0]))
 }
+
+/** How many growable lists each kind turned out to have. See the pair below. */
+const growable: Partial<Record<SectionKind, number>> = {}
 
 describe("fieldsForSection", () => {
   it.each(SECTION_KINDS)("reaches every prop key a %s actually holds", (kind) => {
@@ -278,6 +281,89 @@ describe("fieldsForSection", () => {
     const hero = fieldsForSection(fixtureFor("hero"))
     expect(hero.find((f) => f.path === "headline")?.label).toBe("Headline")
     expect(hero.find((f) => f.path === "primaryCta")?.label).toBe("Primary CTA")
+  })
+
+  it.each(SECTION_KINDS)("can grow every repeating list a %s has", (kind) => {
+    // The point of `blankValueFor`: adding a bullet needs something to add, and
+    // "something" is schema-specific. `bulletItemSchema.title` is min(1), so an
+    // empty object is refused and the owner would click Add and be told a field
+    // they never saw is invalid.
+    //
+    // Asked of the REAL validator, through the real op path.
+    const section = fixtureFor(kind)
+    const doc: SectionDoc = {
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "accent", radius: "soft" },
+      sections: [section],
+    }
+
+    let checked = 0
+    for (const field of fieldsForSection(section)) {
+      if (field.type !== "repeater" && field.type !== "list") continue
+      const current = (section.props as Record<string, unknown>)[field.path]
+      if (!Array.isArray(current)) continue
+      if (field.max !== undefined && current.length >= field.max) continue
+
+      checked++
+      const grown = [...current, field.type === "repeater" ? blankItemFor(field) : blankValueFor({ ...field, type: "text" })]
+      const result = applyOps(doc, [
+        { op: "update_section", id: section.id, props: { [field.path]: grown } },
+      ])
+      expect(
+        result.ok,
+        `${kind}.${field.path}: ${result.ok ? "" : result.errors.join("; ")}`,
+      ).toBe(true)
+    }
+
+    // `hero` and `cta` genuinely have no repeating content, so a per-kind
+    // "must have found one" assertion would be false rather than strict. The
+    // vacuity guard lives in the next test instead, over the whole set.
+    growable[kind] = checked
+  })
+
+  it("found something to grow in the kinds that have lists", () => {
+    // MUTANT KILLED: a `fieldsForSection` that stopped reporting repeaters at
+    // all would make every loop in the test above vacuous and green.
+    const withLists = SECTION_KINDS.filter((kind) => (growable[kind] ?? 0) > 0)
+    expect(withLists).toEqual(
+      expect.arrayContaining(["bullets", "steps", "proof", "pricing", "faq", "testimonial", "footer", "form"]),
+    )
+  })
+
+  it("omits optional leaves from a blank item rather than blanking them", () => {
+    // An optional string set to "" is NOT the same as unset: render.ts renders
+    // the empty element instead of the placeholder, so a new row would come
+    // back with a dead space in it that the owner cannot get rid of.
+    const items = fieldsForSection(fixtureFor("bullets")).find((f) => f.path === "items")
+    const blank = blankItemFor(items!)
+    expect(blank).toHaveProperty("title")
+    expect(blank).not.toHaveProperty("body")
+    expect(blank).not.toHaveProperty("icon")
+  })
+
+  it("builds a valid CTA for a plan, not a dead button", () => {
+    // `pricingPlanSchema.cta` is required, and a CtaTarget that fails SAFE_LINK
+    // renders as a disabled placeholder with ok:true and no warning.
+    const plans = fieldsForSection(fixtureFor("pricing")).find((f) => f.path === "plans")
+    const blank = blankItemFor(plans!) as { cta: { label: string; target: { kind: string; href: string } } }
+    expect(blank.cta.target).toEqual({ kind: "url", href: "/" })
+    expect(blank.cta.label.length).toBeGreaterThan(0)
+    // A plan also needs at least one feature — `features` is min(1).
+    expect(Array.isArray((blank as unknown as { features: unknown }).features)).toBe(true)
+  })
+
+  it("never exceeds a field's own max length", () => {
+    // The placeholder is generated from the label, and a long label on a short
+    // field would produce a value the schema rejects for length alone.
+    for (const kind of SECTION_KINDS) {
+      for (const field of fieldsForSection(fixtureFor(kind))) {
+        if (field.type !== "text" && field.type !== "textarea") continue
+        const value = blankValueFor(field)
+        if (typeof value !== "string" || field.maxLength === undefined) continue
+        expect(value.length, `${kind}.${field.path}`).toBeLessThanOrEqual(field.maxLength)
+      }
+    }
   })
 
   it("does not throw on a section whose props are incomplete", () => {
