@@ -115,6 +115,35 @@ function itemAttr(ctx: RenderContext, index: number): string {
 }
 
 /**
+ * Marks an element as the image slot for `path`.
+ *
+ * Separate from `data-edit` because the gesture is different: text goes
+ * `contenteditable`, an image opens a picker. The canvas gives TEXT priority
+ * when both apply, so a headline lying on a hero photo edits rather than
+ * swapping the photo.
+ */
+function mediaSlotAttr(ctx: RenderContext, path: string): string {
+  return ctx.editable ? ` data-edit-image="${escapeHtml(path)}"` : ""
+}
+
+/**
+ * The click target for a media slot that holds nothing.
+ *
+ * `renderMedia` is only reached when `props.media` exists, so without this an
+ * image-less hero offers no pixel that opens the picker and could never gain an
+ * image from the canvas — the same unreachability `optionalText` fixes for
+ * copy. Editing only: a published hero with no photo must render nothing, not
+ * an empty grey box.
+ */
+function emptyMediaSlot(ctx: RenderContext, path: string): string {
+  if (!ctx.editable) return ""
+  return (
+    `<div class="djp-hero-media djp-empty"${mediaSlotAttr(ctx, path)} data-edit-empty="1">` +
+    `Add an image or video</div>`
+  )
+}
+
+/**
  * A text element carrying its own anchor.
  *
  * `value` is escaped exactly as it was before — the anchor is an attribute
@@ -448,23 +477,37 @@ function renderCtaButton(cta: CtaWithLabel, className: string, ctx: RenderContex
 
 const YOUTUBE_ID_RE = /^[A-Za-z0-9_-]{6,20}$/
 
-function invalidMediaPlaceholder(alt: string): string {
+function invalidMediaPlaceholder(alt: string, slot: string): string {
   const text = alt.trim().length > 0 ? alt : "Media unavailable"
-  return `<div class="djp-hero-media djp-media-invalid">${escapeHtml(text)}</div>`
+  return `<div class="djp-hero-media djp-media-invalid"${slot}>${escapeHtml(text)}</div>`
 }
 
-function renderMedia(media: NonNullable<HeroSectionProps["media"]>): string {
+/**
+ * `slot` is carried onto EVERY branch including the two failure placeholders,
+ * and that is the point: a `src` the sanitiser would drop is exactly when the
+ * owner most needs to click the thing and choose a real image. A marker only on
+ * the happy path would make a broken image the one image you cannot replace.
+ */
+function renderMedia(
+  media: NonNullable<HeroSectionProps["media"]>,
+  ctx: RenderContext,
+  path: string,
+): string {
+  const slot = mediaSlotAttr(ctx, path)
   if (media.kind === "image") {
     const src = safeUrl(media.src, { allowDataImage: true })
-    if (!src) return invalidMediaPlaceholder(media.alt)
+    if (!src) return invalidMediaPlaceholder(media.alt, slot)
     return (
       `<img class="djp-hero-media" src="${escapeHtml(src)}" alt="${escapeHtml(media.alt)}" ` +
-      `width="${media.w}" height="${media.h}" loading="lazy" />`
+      `width="${media.w}" height="${media.h}" loading="lazy"${slot} />`
     )
   }
-  if (!YOUTUBE_ID_RE.test(media.src)) return invalidMediaPlaceholder(media.alt)
+  if (!YOUTUBE_ID_RE.test(media.src)) return invalidMediaPlaceholder(media.alt, slot)
   const embedSrc = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(media.src)}`
-  return `<iframe class="djp-hero-media" src="${escapeHtml(embedSrc)}" title="${escapeHtml(media.alt)}" loading="lazy"></iframe>`
+  return (
+    `<iframe class="djp-hero-media" src="${escapeHtml(embedSrc)}" title="${escapeHtml(media.alt)}" ` +
+    `loading="lazy"${slot}></iframe>`
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -483,7 +526,7 @@ function renderHeroSection(section: Section, ctx: RenderContext): string {
     parts.push(renderCtaButton(props.secondaryCta, "djp-btn djp-btn-secondary", ctx, "secondaryCta"))
   }
   parts.push(`</div>`, `</div>`) // .djp-hero-ctas, .djp-hero-copy
-  if (props.media) parts.push(renderMedia(props.media))
+  parts.push(props.media ? renderMedia(props.media, ctx, "media") : emptyMediaSlot(ctx, "media"))
   parts.push(`</div>`, `</section>`) // .djp-hero-inner
   return parts.join("")
 }

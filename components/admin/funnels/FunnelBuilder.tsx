@@ -73,7 +73,8 @@ import { GenerationStage } from "./builder/GenerationStage"
 import { PreviewPane, type PreviewDevice } from "./builder/PreviewPane"
 import { PublishReview } from "./builder/PublishReview"
 import { SectionInspector } from "./builder/SectionInspector"
-import { patchForPath } from "./builder/section-patch"
+import { patchForPath, valueAtPath } from "./builder/section-patch"
+import { ImageSlotDialog, type HeroMedia } from "./builder/ImageSlotDialog"
 import type { CanvasCommit, CanvasSelection } from "./builder/canvas-editing"
 import { candidatePickMessage } from "./builder/format"
 import { readTurnStream } from "./builder/stream"
@@ -344,6 +345,53 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   const handleCanvasSelect = useCallback((selection: CanvasSelection) => {
     setSelected(selection)
   }, [])
+
+  /** Which media slot the picker is open for, if any. */
+  const [imageSlot, setImageSlot] = useState<{ sectionId: string; path: string } | null>(null)
+
+  const handlePickImage = useCallback((target: { sectionId: string; path: string }) => {
+    setImageSlot(target)
+  }, [])
+
+  const currentMedia = (() => {
+    if (!imageSlot || !doc) return null
+    const section = doc.sections.find((candidate) => candidate.id === imageSlot.sectionId)
+    const value = section ? valueAtPath(section.props, imageSlot.path) : undefined
+    return (value ?? null) as HeroMedia | null
+  })()
+
+  const chooseMedia = useCallback(
+    (media: HeroMedia) => {
+      if (!imageSlot || !doc) return
+      const section = doc.sections.find((candidate) => candidate.id === imageSlot.sectionId)
+      if (!section) return
+      setImageSlot(null)
+      sendOps([
+        {
+          op: "update_section",
+          id: imageSlot.sectionId,
+          props: patchForPath(section.props as Record<string, unknown>, imageSlot.path, media),
+        } as SectionOp,
+      ])
+    },
+    [doc, imageSlot, sendOps],
+  )
+
+  const removeMedia = useCallback(() => {
+    if (!imageSlot || !doc) return
+    const section = doc.sections.find((candidate) => candidate.id === imageSlot.sectionId)
+    if (!section) return
+    setImageSlot(null)
+    // `null` is the delete sentinel — `media` is optional, so removing it puts
+    // the hero back to no image rather than storing an empty media object.
+    sendOps([
+      {
+        op: "update_section",
+        id: imageSlot.sectionId,
+        props: patchForPath(section.props as Record<string, unknown>, imageSlot.path, null),
+      } as SectionOp,
+    ])
+  }, [doc, imageSlot, sendOps])
 
   /**
    * Turns a committed text edit into an `update_section`.
@@ -1021,6 +1069,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           editable={mode === "edit" && doc !== null && !docInvalid}
           onSelect={handleCanvasSelect}
           onCommit={handleCanvasCommit}
+          onPickImage={handlePickImage}
         />
 
         {/* The inspector, beside the canvas. Hidden below lg for the same
@@ -1036,6 +1085,15 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           />
         ) : null}
       </div>
+
+      <ImageSlotDialog
+        open={imageSlot !== null}
+        stepId={props.stepId}
+        current={currentMedia}
+        onClose={() => setImageSlot(null)}
+        onChoose={chooseMedia}
+        onRemove={removeMedia}
+      />
     </div>
   )
 }

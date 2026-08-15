@@ -257,6 +257,55 @@ describe("editable render mode", () => {
     expect(html).not.toContain('data-edit="cta.label"')
   })
 
+  it("marks a hero's media as an image slot", () => {
+    const hero: Section = {
+      ...FIXTURES.hero,
+      props: {
+        ...FIXTURES.hero.props,
+        media: { kind: "image", src: "https://cdn.example.com/a.jpg", alt: "Athlete", w: 1200, h: 800 },
+      },
+    }
+    expect(renderSection(hero, { editable: true })).toContain('data-edit-image="media"')
+    // MUTANT KILLED: shipping the editor's slot marker to visitors.
+    expect(renderSection(hero, {})).not.toContain("data-edit-image")
+  })
+
+  it("gives a hero with NO media a slot to click, so one can be added", () => {
+    // The image twin of the placeholder rule. `renderMedia` is only called when
+    // `props.media` exists, so without this an image-less hero has no pixel
+    // that opens the picker and can never gain an image from the canvas.
+    const html = renderSection(FIXTURES.hero, { editable: true })
+    expect(FIXTURES.hero.props.media).toBeUndefined()
+    expect(html).toContain('data-edit-image="media"')
+    expect(html).toContain("data-edit-empty")
+  })
+
+  it("emits no empty media slot when not editing", () => {
+    // MUTANT KILLED: an empty grey box on every published hero without a photo.
+    expect(renderSection(FIXTURES.hero, {})).not.toContain("djp-hero-media")
+  })
+
+  it("marks a youtube hero's slot too", () => {
+    const hero: Section = {
+      ...FIXTURES.hero,
+      props: { ...FIXTURES.hero.props, media: { kind: "youtube", src: "dQw4w9WgXcQ", alt: "Intro", w: 16, h: 9 } },
+    }
+    expect(renderSection(hero, { editable: true })).toContain('data-edit-image="media"')
+  })
+
+  it("marks the slot even when the media is unrenderable", () => {
+    // A `src` that fails `safeUrl` degrades to a visible placeholder. That
+    // placeholder is EXACTLY when the owner most needs to click it and pick a
+    // real image, so it must carry the slot marker like any other.
+    const hero: Section = {
+      ...FIXTURES.hero,
+      props: { ...FIXTURES.hero.props, media: { kind: "image", src: "not-a-url", alt: "Broken", w: 10, h: 10 } },
+    }
+    const html = renderSection(hero, { editable: true })
+    expect(html).toContain("djp-media-invalid")
+    expect(html).toContain('data-edit-image="media"')
+  })
+
   it("survives the compiler, which strips data-djp-* silently", () => {
     const { html, css } = reassemble(docWith(FIXTURES.hero), { editable: true })
     const compiled = compileFunnelStep({ html, css })
