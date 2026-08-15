@@ -630,17 +630,40 @@ async function lastGoodRevision(stepId: string): Promise<number | null> {
 /** How often to send an SSE comment so proxies don't drop an idle stream. */
 const HEARTBEAT_MS = 15_000
 
+// ---------------------------------------------------------------------------
+// THE WORK MUST NOT BE AWAITED INSIDE `start()`.
+// ---------------------------------------------------------------------------
+// This used to be `new ReadableStream({ async start(controller) { await run() } })`,
+// which reads perfectly and delivers NOTHING until the turn is over. A stream
+// whose `start` returns a promise is not considered started until that promise
+// settles, so the whole point of the format — watching the page get written —
+// was lost behind a single flush at the end.
+//
+// AND IT LOOKS EXACTLY LIKE A HANG RATHER THAN A BUG, which is why it survived:
+// `INITIAL_STREAM.phase` on the client is `"reading"`, set locally before any
+// event arrives. So a stream that delivers no events shows "Reading your brief"
+// with a spinner for the entire turn and then jumps straight to the finished
+// page. Every phase after the first is emitted correctly by the code below and
+// none of them was ever seen. The owner's report was "it's stuck on the first
+// step and never goes to the others", which is precisely this.
+//
+// A `TransformStream` writer, written to by a function nobody awaits, is the
+// shape that actually flushes: the Response is constructed around `readable`
+// and returned immediately, while the turn goes on filling `writable`.
+// ---------------------------------------------------------------------------
 function streamingResponse(run: (emit: (event: BuildStreamEvent) => void) => Promise<void>): Response {
   const encoder = new TextEncoder()
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
+  const writer = writable.getWriter()
 
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
+  void (async () => {
+    {
       let closed = false
 
       const write = (payload: string) => {
         if (closed) return
         try {
-          controller.enqueue(encoder.encode(payload))
+          void writer.write(encoder.encode(payload))
         } catch {
           // The consumer went away — a closed tab, a navigation, a dropped
           // connection. THE TURN KEEPS RUNNING ON PURPOSE. The owner's message
@@ -672,15 +695,15 @@ function streamingResponse(run: (emit: (event: BuildStreamEvent) => void) => Pro
         clearInterval(heartbeat)
         closed = true
         try {
-          controller.close()
+          await writer.close()
         } catch {
           // Already closed by the consumer disconnecting.
         }
       }
-    },
-  })
+    }
+  })()
 
-  return new Response(stream, {
+  return new Response(readable, {
     status: 200,
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
