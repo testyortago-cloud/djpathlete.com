@@ -909,7 +909,13 @@ export const runAgentStrategist = onSchedule(
     timeoutSeconds: 540,
     memory: "512MiB",
     region: "us-central1",
-    secrets: [internalCronToken, appUrl],
+    // supabaseUrl/ServiceRoleKey are required by the getSupabase() call below.
+    // They were missing when cron_runs logging was added here on 2026-07-14,
+    // and Firebase only injects secrets a function declares — so getSupabase()
+    // threw on the first statement, before logCronStart could record anything.
+    // The function died silently every Wednesday for five weeks and the health
+    // scanner could not see it, because "no rows at all" was its blind spot.
+    secrets: [supabaseUrl, supabaseServiceRoleKey, internalCronToken, appUrl],
   },
   async () => {
     const { getSupabase } = await import("./lib/supabase.js")

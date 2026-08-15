@@ -5,6 +5,31 @@
 export interface ExpectedCron {
   name: string
   sla_hours: number // expected max gap between successful runs
+  /**
+   * True when the cron writes its own cron_runs rows (calls logCronStart).
+   * Only these can be judged on "never succeeded even once" — most watched
+   * crons run perfectly well but never log, so for them an absent success row
+   * carries no information and must not raise an alert.
+   */
+  reports_to_cron_runs?: boolean
+  /**
+   * ISO date the cron's logging shipped. The "never succeeded" clock starts
+   * here rather than at the beginning of the cron_runs ledger, so a cron
+   * instrumented last week isn't judged against a window that opened months
+   * ago. Required whenever reports_to_cron_runs is set.
+   */
+  watch_from?: string
+  /**
+   * system_settings key gating the cron, when it has one. A cron switched off
+   * is dormant by choice, not silent, so it is never alerted on.
+   */
+  enabled_flag?: string
+  /**
+   * What the gate resolves to when the settings row is absent. Mirrors the
+   * owning route's own `defaultEnabled`, so a deleted row can't quietly flip
+   * a cron between "watched" and "ignored" behind the scanner's back.
+   */
+  enabled_flag_default?: boolean
 }
 
 /**
@@ -13,10 +38,10 @@ export interface ExpectedCron {
  * Add/remove rows here when new crons are deployed.
  */
 export const EXPECTED_CRONS: ExpectedCron[] = [
+  // — Crons that do NOT write cron_runs. They are watched only for a stale
+  //   last-success; absence of any success row says nothing about them.
   { name: "autoBlogCron", sla_hours: 96 },             // Tue + Thu
   { name: "syncPlatformAnalytics", sla_hours: 30 },    // daily 03:00
-  { name: "syncGoogleAds", sla_hours: 30 },            // daily 06:00
-  { name: "runAgentStrategist", sla_hours: 192 },      // weekly Wed 13:00
   { name: "chiefStrategistCron", sla_hours: 192 },     // weekly Sun
   { name: "seoAgentCron", sla_hours: 192 },            // weekly Sun
   { name: "performanceLearningLoop", sla_hours: 192 }, // weekly Mon
@@ -26,16 +51,86 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
   { name: "socialAgentCron", sla_hours: 96 },          // Tue + Thu
   { name: "clientRiskScanCron", sla_hours: 30 },       // daily 05:00
   { name: "revenueDigestCron", sla_hours: 192 },       // weekly Mon
-  { name: "auditLogRetentionCron", sla_hours: 30 },    // daily 03:00
   { name: "packRenewalScanCron", sla_hours: 30 },      // daily 09:00
-  { name: "bookkeepingRetentionCron", sla_hours: 30 }, // daily 04:00
-  { name: "bookkeepingQuarterlyPackCron", sla_hours: 2280 }, // quarterly Jan/Apr/Jul/Oct 1
-  { name: "bookkeepingReceiptWatchdogCron", sla_hours: 204 }, // weekly Tue 07:00 (+ slack)
-  { name: "bookkeepingCloseNudgeCron", sla_hours: 800 },      // monthly 3rd 13:00 (31d + slack)
-  { name: "bookkeepingIncomeSyncCron", sla_hours: 30 },  // daily 04:30
-  { name: "bookkeepingGmailReceiptsCron", sla_hours: 6 }, // hourly :20 — delay-tolerant, a Gmail blip must not page (C-2)
-  { name: "bookkeepingPayoutSyncCron", sla_hours: 30 },  // daily 05:15
-  { name: "reapStaleAiJobsCron", sla_hours: 1 },       // every 15 min
+
+  // — Crons that call logCronStart. These are also judged on "never succeeded
+  //   once", measured from watch_from (the date their logging shipped).
+  {
+    name: "syncGoogleAds", // daily 06:00
+    sla_hours: 30,
+    reports_to_cron_runs: true,
+    watch_from: "2026-07-14",
+  },
+  {
+    name: "runAgentStrategist", // weekly Wed 13:00
+    sla_hours: 192,
+    reports_to_cron_runs: true,
+    watch_from: "2026-07-14",
+  },
+  {
+    name: "auditLogRetentionCron", // daily 03:00
+    sla_hours: 30,
+    reports_to_cron_runs: true,
+    watch_from: "2026-05-16",
+    enabled_flag: "cron_audit_log_retention_enabled",
+    enabled_flag_default: true, // unbounded growth is a cost risk — on by default
+  },
+  {
+    name: "bookkeepingRetentionCron", // daily 04:00
+    sla_hours: 30,
+    reports_to_cron_runs: true,
+    watch_from: "2026-07-18",
+    enabled_flag: "cron_bookkeeping_retention_enabled",
+  },
+  {
+    name: "bookkeepingQuarterlyPackCron", // quarterly Jan/Apr/Jul/Oct 1
+    sla_hours: 2280,
+    reports_to_cron_runs: true,
+    watch_from: "2026-07-18",
+    enabled_flag: "cron_bookkeeping_quarterly_pack_enabled",
+  },
+  {
+    name: "bookkeepingReceiptWatchdogCron", // weekly Tue 07:00 (+ slack)
+    sla_hours: 204,
+    reports_to_cron_runs: true,
+    watch_from: "2026-07-19",
+    enabled_flag: "cron_bookkeeping_receipt_watchdog_enabled",
+  },
+  {
+    name: "bookkeepingCloseNudgeCron", // monthly 3rd 13:00 (31d + slack)
+    sla_hours: 800,
+    reports_to_cron_runs: true,
+    watch_from: "2026-08-03",
+    enabled_flag: "cron_bookkeeping_close_nudge_enabled",
+  },
+  {
+    name: "bookkeepingIncomeSyncCron", // daily 04:30
+    sla_hours: 30,
+    reports_to_cron_runs: true,
+    watch_from: "2026-07-24",
+    enabled_flag: "cron_bookkeeping_income_sync_enabled",
+  },
+  {
+    // hourly :20 — delay-tolerant, a Gmail blip must not page (C-2)
+    name: "bookkeepingGmailReceiptsCron",
+    sla_hours: 6,
+    reports_to_cron_runs: true,
+    watch_from: "2026-07-25",
+    enabled_flag: "cron_bookkeeping_gmail_receipts_enabled",
+  },
+  {
+    name: "bookkeepingPayoutSyncCron", // daily 05:15
+    sla_hours: 30,
+    reports_to_cron_runs: true,
+    watch_from: "2026-07-25",
+    enabled_flag: "cron_bookkeeping_payout_sync_enabled",
+  },
+  {
+    name: "reapStaleAiJobsCron", // every 15 min
+    sla_hours: 1,
+    reports_to_cron_runs: true,
+    watch_from: "2026-07-20",
+  },
 ]
 
 export interface ScannerInput {
@@ -45,6 +140,11 @@ export interface ScannerInput {
   ai_jobs_pending_over_1h: number
   /** Latest successful run for each watched cron. null = never recorded yet. */
   last_success_per_cron: Record<string, string | null>
+  /**
+   * Names whose enabled_flag is currently off. These are skipped entirely —
+   * a cron the operator switched off is dormant, not broken.
+   */
+  disabled_crons?: string[]
 }
 
 export interface SilentCron {
@@ -61,13 +161,57 @@ export interface ScannerOutput {
   alert_summary: string | null
 }
 
-export function scanAutomationHealth(input: ScannerInput): ScannerOutput {
+/**
+ * A cron that has never recorded a success is either brand new or completely
+ * broken, and the two are only distinguishable with an anchor. We alert when
+ * the cron reports to cron_runs, is switched on, and its own logging shipped
+ * longer ago than its SLA — i.e. it has had at least one chance to succeed and
+ * took none of them.
+ *
+ * runAgentStrategist is why this exists: it threw on its first statement, so
+ * the crash preceded logCronStart and no row was ever written. Skipping every
+ * null made the single worst failure mode the one the watchdog could not see.
+ */
+function judgeNeverSucceeded(
+  cron: ExpectedCron,
+  now: number,
+  disabled: Set<string>,
+): SilentCron | null {
+  if (!cron.reports_to_cron_runs) return null // silence proves nothing here
+  if (disabled.has(cron.name)) return null // off on purpose
+  if (!cron.watch_from) return null // no anchor — stay quiet rather than guess
+
+  const watchedFor = (now - new Date(cron.watch_from).getTime()) / 3600_000
+  if (!Number.isFinite(watchedFor) || watchedFor <= cron.sla_hours) return null
+
+  return {
+    cron_name: cron.name,
+    last_success_at: null,
+    hours_since: watchedFor,
+    sla_hours: cron.sla_hours,
+    severity: watchedFor > cron.sla_hours * 2 ? "critical" : "warning",
+  }
+}
+
+export function scanAutomationHealth(
+  input: ScannerInput,
+  crons: ExpectedCron[] = EXPECTED_CRONS,
+): ScannerOutput {
   const now = Date.now()
   const silent_crons: SilentCron[] = []
+  const disabled = new Set(input.disabled_crons ?? [])
 
-  for (const { name, sla_hours } of EXPECTED_CRONS) {
+  for (const cron of crons) {
+    const { name, sla_hours } = cron
+    if (disabled.has(name)) continue
+
     const last = input.last_success_per_cron[name]
-    if (!last) continue // never run yet — don't false-alert
+    if (!last) {
+      const verdict = judgeNeverSucceeded(cron, now, disabled)
+      if (verdict) silent_crons.push(verdict)
+      continue
+    }
+
     const hours_since = (now - new Date(last).getTime()) / 3600_000
     if (hours_since <= sla_hours) continue
     silent_crons.push({
@@ -114,7 +258,13 @@ export function scanAutomationHealth(input: ScannerInput): ScannerOutput {
   // 3) silent crons
   for (const sc of silent_crons) {
     severity = bumpSeverity(severity, sc.severity)
-    reasons.push(`${sc.cron_name} silent ${Math.round(sc.hours_since)}h (SLA ${sc.sla_hours}h)`)
+    // "silent 780h" reads as "it used to work" — for a cron that has never
+    // once succeeded, say so, because the fix is usually deployment-side.
+    reasons.push(
+      sc.last_success_at === null
+        ? `${sc.cron_name} has never succeeded in ${Math.round(sc.hours_since)}h of watching (SLA ${sc.sla_hours}h)`
+        : `${sc.cron_name} silent ${Math.round(sc.hours_since)}h (SLA ${sc.sla_hours}h)`,
+    )
   }
 
   return {

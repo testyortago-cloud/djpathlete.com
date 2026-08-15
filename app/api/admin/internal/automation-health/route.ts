@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { createElement } from "react"
-import { isCronSkipped } from "@/lib/db/system-settings"
+import { getSetting, isCronSkipped } from "@/lib/db/system-settings"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { getAdminFirestore } from "@/lib/firebase-admin"
 import { resend, FROM_EMAIL } from "@/lib/resend"
@@ -76,11 +76,24 @@ export async function POST(request: NextRequest) {
     EXPECTED_CRONS.map((c) => c.name),
   )
 
+  // 2b) Gate state. A cron the operator switched off is dormant, not silent —
+  // without this the "never succeeded" check would nag forever about crons
+  // that are off on purpose.
+  const gated = EXPECTED_CRONS.filter((c) => c.enabled_flag)
+  const gateStates = await Promise.all(
+    gated.map(async (c) => ({
+      name: c.name,
+      enabled: await getSetting<boolean>(c.enabled_flag!, c.enabled_flag_default ?? false),
+    })),
+  )
+  const disabled_crons = gateStates.filter((g) => !g.enabled).map((g) => g.name)
+
   // 3) Score
   const scored = scanAutomationHealth({
     ai_jobs_failed_by_type_24h,
     ai_jobs_pending_over_1h,
     last_success_per_cron,
+    disabled_crons,
   })
 
   // 4) Persist
@@ -90,7 +103,11 @@ export async function POST(request: NextRequest) {
     silent_crons: scored.silent_crons,
     alert_severity: scored.alert_severity,
     alert_summary: scored.alert_summary,
-    raw: { expected_crons: EXPECTED_CRONS.map((c) => c.name) },
+    raw: {
+      expected_crons: EXPECTED_CRONS.map((c) => c.name),
+      // Recorded so a quiet snapshot can be read back as "off" vs "healthy".
+      disabled_crons,
+    },
   }
   const { error: insertErr } = await supabase
     .from("automation_health_snapshots")

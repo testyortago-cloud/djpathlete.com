@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   scanAutomationHealth,
+  type ExpectedCron,
   type ScannerInput,
   EXPECTED_CRONS,
 } from "@/lib/automation/automation-health-scanner"
@@ -101,5 +102,134 @@ describe("scanAutomationHealth", () => {
     expect(r.alert_summary).toContain("12")
     expect(r.alert_summary).toContain("blog_generation")
     expect(r.alert_summary).toContain(cron.name)
+  })
+
+})
+
+// ── Never-succeeded crons ───────────────────────────────────────────────────
+// runAgentStrategist crashed on its first statement every Wednesday from
+// 2026-07-15 for five weeks. Because the crash preceded logCronStart, it never
+// wrote a cron_runs row at all — and the blanket `if (!last) continue` above
+// meant the watchdog skipped it forever. A cron that has NEVER succeeded is
+// the most broken state there is; it must not be the one state we ignore.
+//
+// The guards that keep this from becoming noise: only crons that actually
+// write cron_runs are judged (most don't), only while their flag is on, and
+// only measured from the date their logging shipped.
+
+const HOUR = 3600_000
+const hoursAgoISO = (h: number) => new Date(Date.now() - h * HOUR).toISOString()
+
+/** Minimal synthetic list so these cases don't drift with the real roster. */
+const CRONS: ExpectedCron[] = [
+  {
+    name: "instrumentedCron",
+    sla_hours: 24,
+    reports_to_cron_runs: true,
+    watch_from: hoursAgoISO(500),
+  },
+  { name: "quietCron", sla_hours: 24 }, // runs fine, just never logs
+  {
+    name: "gatedCron",
+    sla_hours: 24,
+    reports_to_cron_runs: true,
+    watch_from: hoursAgoISO(500),
+    enabled_flag: "cron_gated_enabled",
+  },
+  {
+    name: "freshlyInstrumentedCron",
+    sla_hours: 192,
+    reports_to_cron_runs: true,
+    watch_from: hoursAgoISO(10),
+  },
+]
+
+const neverAny: ScannerInput = {
+  ai_jobs_failed_by_type_24h: {},
+  ai_jobs_pending_over_1h: 0,
+  last_success_per_cron: Object.fromEntries(CRONS.map((c) => [c.name, null])),
+}
+
+describe("scanAutomationHealth — crons that have never succeeded", () => {
+  it("flags an instrumented cron that has never succeeded past its SLA", () => {
+    const r = scanAutomationHealth(neverAny, CRONS)
+    const hit = r.silent_crons.find((c) => c.cron_name === "instrumentedCron")
+
+    expect(hit).toBeTruthy()
+    expect(hit!.last_success_at).toBeNull()
+    // 500h against a 24h SLA is far past 2x — the worst tier.
+    expect(hit!.severity).toBe("critical")
+    expect(r.alert_severity).toBe("critical")
+  })
+
+  it("says 'never succeeded' rather than reporting a bogus silent-since gap", () => {
+    const r = scanAutomationHealth(neverAny, CRONS)
+    expect(r.alert_summary).toContain("instrumentedCron")
+    expect(r.alert_summary).toContain("never succeeded")
+  })
+
+  it("ignores crons that do not write cron_runs at all", () => {
+    // quietCron has no reports_to_cron_runs: a missing success row tells us
+    // nothing about it, so silence must stay silent.
+    const r = scanAutomationHealth(neverAny, CRONS)
+    expect(r.silent_crons.find((c) => c.cron_name === "quietCron")).toBeFalsy()
+  })
+
+  it("ignores a cron whose feature flag is switched off", () => {
+    // Dormant by choice is not the same as broken.
+    const r = scanAutomationHealth({ ...neverAny, disabled_crons: ["gatedCron"] }, CRONS)
+    expect(r.silent_crons.find((c) => c.cron_name === "gatedCron")).toBeFalsy()
+  })
+
+  it("flags that same gated cron once its flag is switched back on", () => {
+    const r = scanAutomationHealth(neverAny, CRONS)
+    expect(r.silent_crons.find((c) => c.cron_name === "gatedCron")).toBeTruthy()
+  })
+
+  it("gives a newly instrumented cron until its SLA before complaining", () => {
+    // watch_from is 10h ago against a 192h SLA — it simply hasn't been due yet.
+    const r = scanAutomationHealth(neverAny, CRONS)
+    expect(r.silent_crons.find((c) => c.cron_name === "freshlyInstrumentedCron")).toBeFalsy()
+  })
+
+  it("measures from watch_from, not from the start of the cron_runs ledger", () => {
+    const r = scanAutomationHealth(neverAny, CRONS)
+    const hit = r.silent_crons.find((c) => c.cron_name === "instrumentedCron")
+    expect(hit!.hours_since).toBeGreaterThan(499)
+    expect(hit!.hours_since).toBeLessThan(501)
+  })
+
+  it("a cron with no watch_from anchor stays quiet", () => {
+    const noAnchor: ExpectedCron[] = [
+      { name: "anchorless", sla_hours: 1, reports_to_cron_runs: true },
+    ]
+    const r = scanAutomationHealth(
+      { ...neverAny, last_success_per_cron: { anchorless: null } },
+      noAnchor,
+    )
+    expect(r.silent_crons).toEqual([])
+    expect(r.alert_severity).toBe("none")
+  })
+})
+
+describe("EXPECTED_CRONS roster", () => {
+  it("watches runAgentStrategist for a first success", () => {
+    // Regression guard for the 2026-07-15 outage: this cron writes cron_runs,
+    // so a total absence of success rows is meaningful and must be alertable.
+    const cron = EXPECTED_CRONS.find((c) => c.name === "runAgentStrategist")
+    expect(cron).toBeTruthy()
+    expect(cron!.reports_to_cron_runs).toBe(true)
+    expect(cron!.watch_from).toBeTruthy()
+  })
+
+  it("gives every cron-runs reporter a watch_from anchor", () => {
+    const missing = EXPECTED_CRONS.filter((c) => c.reports_to_cron_runs && !c.watch_from)
+    expect(missing.map((c) => c.name)).toEqual([])
+  })
+
+  it("never marks a cron as reporting unless it is one we instrumented", () => {
+    // autoBlogCron and friends run fine but never call logCronStart.
+    const cron = EXPECTED_CRONS.find((c) => c.name === "autoBlogCron")
+    expect(cron!.reports_to_cron_runs).toBeUndefined()
   })
 })
