@@ -888,6 +888,26 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         )}
       </div>
 
+      {/* A REFUSED CANVAS EDIT, as a strip rather than a toast.
+          The canvas reverts nothing on failure - the page simply does not
+          change - so without this the owner types, sees no result, and has no
+          idea whether the click missed, the save failed, or the app is broken.
+          A silent refusal reads as a broken editor. */}
+      {canvasError ? (
+        <div className="flex shrink-0 items-start gap-2 border-b border-[var(--warning)]/40 bg-[var(--warning)]/10 px-4 py-2 text-xs">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--warning)]" aria-hidden />
+          <p className="min-w-0 flex-1 text-foreground">{canvasError}</p>
+          <button
+            type="button"
+            onClick={() => setCanvasError(null)}
+            aria-label="Dismiss this message"
+            className="text-muted-foreground hover:text-primary"
+          >
+            <X className="size-4" aria-hidden />
+          </button>
+        </div>
+      ) : null}
+
       {/* The publish RESULT, as a strip that stays put. A toast would take the
           news of what the compiler removed away with it. */}
       {publishResult ? (
