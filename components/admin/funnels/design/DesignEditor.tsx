@@ -39,7 +39,7 @@ interface DesignEditorProps {
    * blank, and the next Save would write it over the top of a real page while
    * advancing the revision the chat builder shares.
    */
-  blockedReason?: "unreadable" | "section_doc"
+  blockedReason?: "unreadable" | "section_doc" | "parked"
 }
 
 /** A refusal, not an error. Nothing is wrong with the page — only with opening it here. */
@@ -64,6 +64,19 @@ function Blocked({
 }
 
 export function DesignEditor(props: DesignEditorProps) {
+  if (props.blockedReason === "parked") {
+    return (
+      <Blocked
+        title="The drag designer is parked"
+        body="Pages are built and edited in the page builder now — click anything on the page to change it, double-click text to type into it, and double-click a photo to swap it. Nothing here has been deleted; this canvas is switched off because it could not publish a page, and keeping two page formats going costs more than it gave back."
+        action={{
+          href: `/admin/funnels/${props.funnelId}/edit/${props.stepId}`,
+          label: "Open the page builder",
+        }}
+      />
+    )
+  }
+
   if (props.blockedReason === "unreadable") {
     return (
       <Blocked

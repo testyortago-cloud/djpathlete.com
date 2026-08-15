@@ -14,7 +14,7 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { PenTool, Settings2 } from "lucide-react"
+import { Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { FUNNEL_GOALS } from "@/lib/validators/funnel"
@@ -188,15 +188,12 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
                     {kind === "page" && step.is_entry ? (
                       <ConvertToFunnelDialog funnelId={funnel.id} funnelName={funnel.name} />
                     ) : null}
-                    {/* The visual designer. Separate from Open, which goes to
-                        the AI builder: a page is edited by chatting to it OR by
-                        dragging, and which one a step uses is decided by which
-                        document column is populated, not by a mode toggle. */}
-                    <Button asChild variant="outline" size="sm" title="Design this page">
-                      <Link href={`/admin/funnels/${funnel.id}/edit/${step.id}/design`}>
-                        <PenTool className="size-4" />
-                      </Link>
-                    </Button>
+                    {/* THE DRAG DESIGNER'S BUTTON WAS HERE AND IS DELIBERATELY
+                        GONE. See lib/funnels/tree/parked.ts: it could not
+                        publish a page, no page ever used it, and a page is now
+                        edited by clicking it in the builder that Open goes to.
+                        The route still exists and explains itself to anyone
+                        holding a bookmark. */}
                     <Button asChild variant="outline" size="sm" title="Funnel settings & pages">
                       <Link href={`/admin/funnels/${funnel.id}`}>
                         <Settings2 className="size-4" />

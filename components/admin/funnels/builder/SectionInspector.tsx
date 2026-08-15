@@ -15,13 +15,20 @@
 // change the owner asked for.
 
 import { useMemo } from "react"
-import { Trash2, ChevronUp, ChevronDown, Copy } from "lucide-react"
+import { Trash2, ChevronUp, ChevronDown, Copy, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { fieldsForSection, styleFields, variantOptions, type SectionField } from "@/lib/funnels/sections/fields"
+import {
+  fieldsForSection,
+  styleFields,
+  variantOptions,
+  blankItemFor,
+  blankValueFor,
+  type SectionField,
+} from "@/lib/funnels/sections/fields"
 import { SECTION_REGISTRY, type Section, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { SectionOp } from "@/lib/funnels/sections/apply"
 import { patchForPath, valueAtPath as valueAt } from "./section-patch"
@@ -321,7 +328,7 @@ export function SectionInspector({
         {fields.map((field) => (
           <div key={field.path}>
             {field.type === "repeater" || field.type === "list" ? (
-              <RepeaterSummary field={field} props={props} />
+              <RepeaterEditor field={field} section={section} onOps={onOps} busy={busy} />
             ) : (
               <FieldControl
                 field={field}
@@ -355,29 +362,155 @@ export function SectionInspector({
 }
 
 /**
- * Repeating content is edited ON THE PAGE, not in a nested form in this panel.
+ * Repeating content: HOW MANY and IN WHAT ORDER live here; WHAT EACH ONE SAYS
+ * is edited on the page.
  *
- * The items are all visible in the canvas with their own anchors, so a second
- * copy of them here would be two controls for one value - and the one in the
- * panel would be the worse of the two, because it has no layout context. This
- * says how many there are and points at the page.
+ * The split is deliberate. Every item is already on the canvas carrying its own
+ * `data-edit` anchors, so duplicating its text fields into this panel would be
+ * two controls for one value — and the panel's copy would be the worse of the
+ * two, because it has no layout context. What the canvas CANNOT express is
+ * structure: there is no gesture for "add a fourth bullet" or "move this one
+ * up". That is what these rows are.
  */
-function RepeaterSummary({ field, props }: { field: SectionField; props: Record<string, unknown> }) {
+function RepeaterEditor({
+  field,
+  section,
+  onOps,
+  busy,
+}: {
+  field: SectionField
+  section: Section
+  onOps: (ops: SectionOp[]) => void
+  busy: boolean
+}) {
+  const props = section.props as Record<string, unknown>
   const value = valueAt(props, field.path)
-  const count = Array.isArray(value) ? value.length : 0
+  const items: unknown[] = Array.isArray(value) ? value : []
+
+  const min = field.min ?? 0
+  const max = field.max ?? 24
+
+  /**
+   * A format-bound required field means a generated blank could COLLIDE with an
+   * existing one. `funnelFormFieldSchema.name` is the live case: two form
+   * fields both named `name` submit one value, so the second silently eats the
+   * first's lead data. Reordering and removing are still safe; only ADD is
+   * withheld, and the note below says so rather than leaving a dead button.
+   */
+  const unsafeToAdd = (field.item ?? []).some(
+    (child) => !child.optional && child.pattern !== undefined,
+  )
+
+  const replace = (next: unknown[]) => {
+    onOps([
+      { op: "update_section", id: section.id, props: patchForPath(props, field.path, next) } as SectionOp,
+    ])
+  }
+
+  const move = (index: number, direction: -1 | 1) => {
+    const target = index + direction
+    if (target < 0 || target >= items.length) return
+    const next = [...items]
+    const [moved] = next.splice(index, 1)
+    next.splice(target, 0, moved)
+    replace(next)
+  }
+
+  const remove = (index: number) => replace(items.filter((_, i) => i !== index))
+
+  const add = () =>
+    replace([...items, field.type === "repeater" ? blankItemFor(field) : blankValueFor(field)])
+
+  /** The first text a row holds, so a row is recognisable without opening it. */
+  const rowLabel = (item: unknown, index: number): string => {
+    if (typeof item === "string") return item
+    if (item && typeof item === "object") {
+      for (const child of field.item ?? []) {
+        const candidate = (item as Record<string, unknown>)[child.path]
+        if (typeof candidate === "string" && candidate.trim() !== "") return candidate
+      }
+      // A CTA item (footer links) keeps its label one level in.
+      const label = (item as { label?: unknown }).label
+      if (typeof label === "string" && label.trim() !== "") return label
+    }
+    return `Item ${index + 1}`
+  }
+
   return (
-    <div className="rounded-md border border-border bg-surface/40 px-3 py-2">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">{field.label}</p>
-      <p className="mt-1 text-sm text-foreground">
-        {count} {count === 1 ? "item" : "items"}
-        {field.min !== undefined && field.max !== undefined ? (
-          <span className="text-muted-foreground">
-            {" "}
-            (allowed: {field.min}&ndash;{field.max})
-          </span>
-        ) : null}
+    // A named group, because a section can hold more than one list (a form has
+    // both `fields` and `proofPoints`) and "Add" on its own says nothing about
+    // what it adds — to a screen reader or to a test.
+    <div role="group" aria-label={field.label} className="rounded-md border border-border bg-surface/40 p-2">
+      <div className="flex items-center justify-between gap-2 px-1 pb-2">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">{field.label}</p>
+        <p className="text-xs text-muted-foreground">
+          {items.length} of {min}&ndash;{max}
+        </p>
+      </div>
+
+      <ul className="space-y-1">
+        {items.map((item, index) => (
+          <li key={index} className="flex items-center gap-1 rounded bg-white px-2 py-1.5">
+            <span className="min-w-0 flex-1 truncate text-sm text-foreground">{rowLabel(item, index)}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              aria-label={`Move ${field.label} ${index + 1} up`}
+              disabled={busy || index === 0}
+              onClick={() => move(index, -1)}
+            >
+              <ChevronUp className="size-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              aria-label={`Move ${field.label} ${index + 1} down`}
+              disabled={busy || index === items.length - 1}
+              onClick={() => move(index, 1)}
+            >
+              <ChevronDown className="size-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              aria-label={`Remove ${field.label} ${index + 1}`}
+              // The schema's own lower bound. Removing past it produces a
+              // document `applyOps` refuses, so the row would vanish from the
+              // page and come straight back — worse than a disabled button.
+              disabled={busy || items.length <= min}
+              title={items.length <= min ? `At least ${min} required` : undefined}
+              onClick={() => remove(index)}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </li>
+        ))}
+      </ul>
+
+      {unsafeToAdd ? (
+        <p className="px-1 pt-2 text-xs text-muted-foreground">
+          Add a field by describing it in the chat — new ones need a unique name.
+        </p>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-2 w-full"
+          disabled={busy || items.length >= max}
+          title={items.length >= max ? `At most ${max}` : undefined}
+          onClick={add}
+        >
+          <Plus className="size-4" />
+          Add
+        </Button>
+      )}
+
+      <p className="px-1 pt-2 text-xs text-muted-foreground">
+        Double-click an item on the page to change its wording.
       </p>
-      <p className="mt-1 text-xs text-muted-foreground">Double-click an item on the page to edit it.</p>
     </div>
   )
 }

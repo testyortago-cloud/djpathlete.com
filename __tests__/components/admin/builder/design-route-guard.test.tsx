@@ -24,6 +24,12 @@ vi.mock("@/lib/db/funnels", () => ({
 }))
 vi.mock("@/lib/db/funnel-page-tree", () => ({ getPageTree: vi.fn() }))
 vi.mock("@/lib/db/funnel-builder", () => ({ getDraft: vi.fn() }))
+// The designer is PARKED in production (lib/funnels/tree/parked.ts). The
+// decision table below is the fix for a real data-loss bug and must not rot
+// while it is switched off, so most of this file runs with the flag mocked
+// OFF — that is what whoever unparks it will be turning back on. The parked
+// behaviour itself is asserted in its own block at the end.
+vi.mock("@/lib/funnels/tree/parked", () => ({ DESIGNER_PARKED: false }))
 
 const { getFunnelById, getStep } = await import("@/lib/db/funnels")
 const { getPageTree } = await import("@/lib/db/funnel-page-tree")
@@ -70,7 +76,35 @@ beforeEach(() => {
   } as never)
 })
 
-describe("the designer route's decision table", () => {
+describe("the designer route while parked", () => {
+  it("refuses every step and points at the page builder", async () => {
+    // The real constant, not the mock: this is what production does.
+    vi.resetModules()
+    vi.doMock("@/lib/funnels/tree/parked", () => ({ DESIGNER_PARKED: true }))
+    const { default: ParkedPage } = await import(
+      "@/app/(admin)/admin/funnels/[id]/edit/[stepId]/design/page"
+    )
+
+    // A step with NOTHING in either column — the one case that used to open a
+    // canvas. Parked outranks it.
+    vi.mocked(getPageTree).mockResolvedValue({ tree: null, revision: 0, treeInvalid: false })
+    vi.mocked(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 0 })
+
+    render(await ParkedPage({ params: Promise.resolve({ id: "f1", stepId: "s1" }) }))
+
+    expect(screen.getByText(/drag designer is parked/i)).toBeInTheDocument()
+    expect(screen.queryByText("Section")).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /open the page builder/i })).toHaveAttribute(
+      "href",
+      "/admin/funnels/f1/edit/s1",
+    )
+
+    vi.doUnmock("@/lib/funnels/tree/parked")
+    vi.resetModules()
+  })
+})
+
+describe("the designer route's decision table (what unparking restores)", () => {
   it("refuses to open a blank canvas over a page the AI built", async () => {
     vi.mocked(getPageTree).mockResolvedValue({ tree: null, revision: 4, treeInvalid: false })
     vi.mocked(getDraft).mockResolvedValue({ doc: aSectionDoc(), docInvalid: false, revision: 4 })

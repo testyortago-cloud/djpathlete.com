@@ -32,6 +32,7 @@ import { getFunnelById, getStep } from "@/lib/db/funnels"
 import { getPageTree } from "@/lib/db/funnel-page-tree"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { emptyPageTree } from "@/lib/funnels/tree/schema"
+import { DESIGNER_PARKED } from "@/lib/funnels/tree/parked"
 import { DesignEditor } from "@/components/admin/funnels/design/DesignEditor"
 
 export const metadata = { title: "Design" }
@@ -59,10 +60,19 @@ export default async function DesignPage({ params }: PageProps) {
 
   const publicUrl = `/go/${funnel.slug}${step.is_entry ? "" : `/${step.slug}`}`
 
+  // PARKED TAKES PRECEDENCE OVER EVERYTHING BELOW. See `parked.ts` for why and
+  // for what would justify unparking. The decision table is deliberately left
+  // intact underneath rather than deleted: it is the fix for a real data-loss
+  // bug (a blank canvas over an AI page, whose first Save also advanced the
+  // shared revision), and whoever unparks this must get it back working, not
+  // rediscover it. `design-route-guard.test.tsx` still exercises it with the
+  // constant mocked off, so it cannot rot while parked.
+  //
   // Order matters. An unreadable TREE is reported as unreadable even on a step
   // that also holds a document — this editor's own document is the broken one.
-  const blockedReason =
-    draftTree.treeInvalid || (draftTree.tree === null && draft?.docInvalid)
+  const blockedReason = DESIGNER_PARKED
+    ? ("parked" as const)
+    : draftTree.treeInvalid || (draftTree.tree === null && draft?.docInvalid)
       ? ("unreadable" as const)
       : draftTree.tree === null && draft?.doc
         ? ("section_doc" as const)

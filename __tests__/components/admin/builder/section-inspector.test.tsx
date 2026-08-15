@@ -11,7 +11,7 @@
 // is exactly the sequence being asserted.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, within } from "@testing-library/react"
 import { SectionInspector, nextSectionId } from "@/components/admin/funnels/builder/SectionInspector"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
@@ -161,13 +161,100 @@ describe("SectionInspector", () => {
     expect(onOps).toHaveBeenCalledWith([{ op: "remove_section", id: "h1" }])
   })
 
-  it("points repeating content at the page instead of duplicating it here", () => {
-    // Two controls for one value, and the panel's would be the worse of the
-    // two: it has no layout context. The items already carry their own anchors
-    // on the canvas.
+  it("lists repeating items by their own text, and points wording edits at the page", () => {
+    // HOW MANY and IN WHAT ORDER belong here; WHAT EACH SAYS belongs on the
+    // canvas, where the item already carries its anchors and its layout.
     mount({ selectedId: "b1" })
-    expect(screen.getByText(/2 items/i)).toBeInTheDocument()
+    expect(screen.getByText("Program")).toBeInTheDocument()
+    expect(screen.getByText("Numbers")).toBeInTheDocument()
     expect(screen.getByText(/double-click an item on the page/i)).toBeInTheDocument()
+  })
+
+  it("adds an item the schema will accept", () => {
+    mount({ selectedId: "b1" })
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }))
+
+    const [ops] = onOps.mock.calls[0]
+    expect(ops[0].op).toBe("update_section")
+    // The WHOLE array, because applyOps merges props shallow per top-level key.
+    expect(ops[0].props.items).toHaveLength(3)
+    // MUTANT KILLED: appending `{}`. `bulletItemSchema.title` is min(1), so an
+    // empty item is refused and the owner is told a field they never saw is
+    // invalid. `blankItemFor` is proven against the real validator in
+    // fields.test.ts; this checks the panel actually uses it.
+    expect(ops[0].props.items[2].title).toEqual(expect.any(String))
+    expect(ops[0].props.items[2].title.length).toBeGreaterThan(0)
+  })
+
+  it("reorders an item without touching its content", () => {
+    mount({ selectedId: "b1" })
+    fireEvent.click(screen.getByRole("button", { name: /move items 2 up/i }))
+
+    const [ops] = onOps.mock.calls[0]
+    expect(ops[0].props.items.map((i: { title: string }) => i.title)).toEqual(["Numbers", "Program"])
+  })
+
+  it("removes an item", () => {
+    const doc = aDoc()
+    doc.sections[1].props.items = [
+      { title: "One" },
+      { title: "Two" },
+      { title: "Three" },
+    ] as never
+    mount({ doc, selectedId: "b1" })
+
+    fireEvent.click(screen.getByRole("button", { name: /remove items 2/i }))
+    const [ops] = onOps.mock.calls[0]
+    expect(ops[0].props.items.map((i: { title: string }) => i.title)).toEqual(["One", "Three"])
+  })
+
+  it("refuses to remove past the schema's own lower bound", () => {
+    // `bulletsPropsSchema.items` is min(2). Removing a third would produce a
+    // document applyOps refuses, so the row would vanish from the page and come
+    // straight back.
+    mount({ selectedId: "b1" })
+    expect(screen.getByRole("button", { name: /remove items 1/i })).toBeDisabled()
+  })
+
+  it("refuses to add past the schema's upper bound", () => {
+    const doc = aDoc()
+    doc.sections[1].props.items = Array.from({ length: 6 }, (_, i) => ({ title: `B${i}` })) as never
+    mount({ doc, selectedId: "b1" })
+    expect(screen.getByRole("button", { name: /^add$/i })).toBeDisabled()
+  })
+
+  it("withholds Add where a generated blank could collide, and says why", () => {
+    // `funnelFormFieldSchema.name` is `^[a-z0-9_]+$` and not unique-checked, so
+    // two generated fields both named `name` would submit one value — the
+    // second silently eating the first's lead data. Reorder and remove stay.
+    const doc = aDoc()
+    doc.sections.push({
+      id: "fm1",
+      kind: "form",
+      variant: "boxed",
+      style: {},
+      props: {
+        formKey: "trial",
+        fields: [
+          { name: "email", label: "Email", type: "email", required: true },
+          { name: "phone", label: "Phone", type: "tel", required: false },
+        ],
+      },
+    } as never)
+    mount({ doc, selectedId: "fm1" })
+
+    // Scoped to the Fields group: a form ALSO has `proofPoints`, which is a
+    // plain string list and stays freely growable. An unscoped query here found
+    // that one and passed for the wrong reason.
+    const fields = within(screen.getByRole("group", { name: "Fields" }))
+    expect(fields.queryByRole("button", { name: /^add$/i })).not.toBeInTheDocument()
+    expect(fields.getByText(/unique name/i)).toBeInTheDocument()
+    expect(fields.getByRole("button", { name: /move fields 2 up/i })).not.toBeDisabled()
+
+    // The other list on the same section is unaffected.
+    expect(
+      within(screen.getByRole("group", { name: /reassurance/i })).getByRole("button", { name: /^add$/i }),
+    ).toBeInTheDocument()
   })
 
   it("disables every control while a turn is in flight", () => {
