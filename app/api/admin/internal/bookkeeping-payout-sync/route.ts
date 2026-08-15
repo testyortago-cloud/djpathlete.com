@@ -31,6 +31,24 @@ function epochToIsoDate(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toISOString().slice(0, 10)
 }
 
+/**
+ * Stripe REJECTS a per-payout balance-transaction filter for a manual payout —
+ * "Balance transaction history can only be filtered on automatic transfers, not
+ * manual." It does not return an empty list, which is what this route was
+ * written to expect, and what its test mocked.
+ *
+ * Matched narrowly on purpose. A blanket catch around that call would turn a
+ * Stripe outage into a run full of payouts stored with zero fees, each looking
+ * exactly like one we had successfully inspected.
+ */
+function isManualPayoutFilterError(e: unknown): boolean {
+  const err = e as { type?: string; rawType?: string; message?: string }
+  const invalidRequest =
+    err?.type === "StripeInvalidRequestError" || err?.rawType === "invalid_request_error"
+  const message = err?.message ?? ""
+  return invalidRequest && /automatic/i.test(message) && /manual/i.test(message)
+}
+
 export async function POST(request: NextRequest) {
   const expected = process.env.INTERNAL_CRON_TOKEN
   const authHeader = request.headers.get("authorization") ?? ""
@@ -107,27 +125,45 @@ export async function POST(request: NextRequest) {
         warnings.push(`payout ${p.id}: currency ${p.currency} ≠ book currency ${bookCurrency} — skipped (no FX conversion in this system)`)
         continue
       }
-      const txns: Stripe.BalanceTransaction[] = await stripe.balanceTransactions
-        .list({ payout: p.id, limit: 100 })
-        .autoPagingToArray({ limit: 10000 })
+      // Stripe enumerates constituent balance transactions for AUTOMATIC
+      // payouts only. `payout.automatic` is the documented, structured signal
+      // for that ("false if it's requested manually"), so a manual payout is
+      // never asked about — cheaper than provoking a rejection and far more
+      // robust than parsing one. The catch is only a backstop for a payload
+      // without the field; it must stay narrow (see isManualPayoutFilterError).
+      let txns: Stripe.BalanceTransaction[] = []
+      let linesUnavailable = p.automatic === false
+      if (!linesUnavailable) {
+        try {
+          txns = await stripe.balanceTransactions
+            .list({ payout: p.id, limit: 100 })
+            .autoPagingToArray({ limit: 10000 })
+        } catch (e) {
+          if (!isManualPayoutFilterError(e)) throw e
+          linesUnavailable = true
+        }
+      }
       // Landmine: the payout's own type:"payout" balance txn appears in this
       // listing — it is the transfer itself, not a constituent line.
       const lines = txns.filter((t) => t.type !== "payout")
       const gross = lines.reduce((s, t) => s + t.amount, 0)
       const fee = lines.reduce((s, t) => s + t.fee, 0)
       // The gross−fee−net reconciliation identity, now PERSISTED (00194) rather
-      // than only whispered into cron_runs.detail. Stripe's per-payout balance
-      // transaction filter is documented as working "for automatic Stripe
-      // payouts only", so a MANUAL payout ("Pay out now") returns zero lines and
-      // its real fees never enter the mirror. Storing that as fees_reconciled
-      // false is what lets the report layer say "fees incomplete for N of M
-      // payouts" instead of printing a clean — and false — net number.
+      // than only whispered into cron_runs.detail. A MANUAL payout ("Pay out
+      // now") can never be broken down — Stripe refuses the query — so its real
+      // fees never enter the mirror. Storing that as fees_reconciled false is
+      // what lets the report layer say "fees incomplete for N of M payouts"
+      // instead of printing a clean — and false — net number.
       const delta = gross - fee - p.amount
       if (delta !== 0) {
         unreconciled += 1
-        warnings.push(lines.length === 0
-          ? `payout ${p.id}: no constituent balance transactions (Stripe enumerates them for automatic payouts only) — fees unknown for net ${p.amount}`
-          : `payout ${p.id}: gross ${gross} − fee ${fee} = ${gross - fee} ≠ payout net ${p.amount}`)
+        warnings.push(
+          linesUnavailable
+            ? `payout ${p.id}: manual payout — Stripe breaks down automatic payouts only, so fees are unknown for net ${p.amount}`
+            : lines.length === 0
+              ? `payout ${p.id}: no constituent balance transactions (Stripe enumerates them for automatic payouts only) — fees unknown for net ${p.amount}`
+              : `payout ${p.id}: gross ${gross} − fee ${fee} = ${gross - fee} ≠ payout net ${p.amount}`,
+        )
       }
       const status: BookkeepingPayoutStatus = PAYOUT_STATUSES.includes(p.status)
         ? (p.status as BookkeepingPayoutStatus)

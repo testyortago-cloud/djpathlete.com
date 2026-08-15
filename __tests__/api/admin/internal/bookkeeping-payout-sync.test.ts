@@ -315,6 +315,120 @@ describe("POST /api/admin/internal/bookkeeping-payout-sync", () => {
     expect(body.warnings.some((w: string) => w.includes("po_1") && w.toLowerCase().includes("automatic"))).toBe(true)
   })
 
+  // ── What Stripe ACTUALLY does for a manual payout ─────────────────────────
+  // The test above mocks `list` resolving to []. Stripe does not do that: it
+  // REJECTS the request outright with "Balance transaction history can only be
+  // filtered on automatic transfers, not manual." Because that call sat in the
+  // payout loop with no catch, one manual payout killed the whole run — the
+  // cron failed 12 of 12 runs and bookkeeping_payouts never received a row.
+  // The empty-array case was invented by the test and could never fail.
+  const manualErr = () =>
+    Object.assign(
+      new Error("Balance transaction history can only be filtered on automatic transfers, not manual."),
+      { type: "StripeInvalidRequestError", rawType: "invalid_request_error" },
+    )
+
+  it("does not even ask Stripe for the lines of a manual payout", async () => {
+    // payout.automatic is the documented, structured signal — cheaper and far
+    // more robust than provoking the error and parsing its message.
+    mockFn(stripe.payouts.list).mockReturnValue(pager([{ ...stripePayout, automatic: false }]))
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    expect(stripe.balanceTransactions.list).not.toHaveBeenCalled()
+  })
+
+  it("stores a manual payout unreconciled instead of dropping the run", async () => {
+    mockFn(stripe.payouts.list).mockReturnValue(pager([{ ...stripePayout, automatic: false }]))
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    expect(mockFn(upsertPayouts).mock.calls[0][0][0]).toMatchObject({
+      stripe_payout_id: "po_1", gross_cents: 0, fee_cents: 0,
+      fees_reconciled: false, reconcile_delta_cents: -9600,
+    })
+    const body = await res.json()
+    expect(body.upserted).toBe(1)
+    expect(body.unreconciled).toBe(1)
+    expect(body.warnings.some((w: string) => w.includes("po_1") && /manual/i.test(w))).toBe(true)
+  })
+
+  it("still fetches lines for an automatic payout", async () => {
+    // Guard against the skip being written too broadly.
+    mockFn(stripe.payouts.list).mockReturnValue(pager([{ ...stripePayout, automatic: true }]))
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    expect(stripe.balanceTransactions.list).toHaveBeenCalledWith({ payout: "po_1", limit: 100 })
+    expect(mockFn(upsertPayouts).mock.calls[0][0][0]).toMatchObject({ fees_reconciled: true })
+  })
+
+  it("survives the manual-payout rejection even when `automatic` is absent", async () => {
+    // Backstop for an older API version or a payload without the field: the
+    // error itself must not wedge the cron the way it did for five weeks.
+    mockFn(stripe.balanceTransactions.list).mockImplementation(() => { throw manualErr() })
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    expect(mockFn(upsertPayouts).mock.calls[0][0][0]).toMatchObject({
+      fees_reconciled: false, reconcile_delta_cents: -9600,
+    })
+    expect((await res.json()).unreconciled).toBe(1)
+  })
+
+  it("survives the rejection the way Stripe actually delivers it (async, from autoPaging)", async () => {
+    // `list()` hands back a lazy ApiListPromise and the request only fires on
+    // autoPagingToArray — so in production this arrives as a REJECTED PROMISE,
+    // not the synchronous throw the tests above simulate. Cover the real shape.
+    mockFn(stripe.balanceTransactions.list).mockReturnValue({
+      autoPagingToArray: vi.fn().mockRejectedValue(manualErr()),
+    })
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    expect(mockFn(upsertPayouts).mock.calls[0][0][0]).toMatchObject({
+      fees_reconciled: false, reconcile_delta_cents: -9600,
+    })
+    expect((await res.json()).unreconciled).toBe(1)
+  })
+
+  it("an async NON-manual rejection still fails the run", async () => {
+    mockFn(stripe.balanceTransactions.list).mockReturnValue({
+      autoPagingToArray: vi.fn().mockRejectedValue(new Error("Stripe is down")),
+    })
+    expect((await POST(makeRequest())).status).toBe(500)
+  })
+
+  it("a manual payout does not stop the payouts after it from syncing", async () => {
+    mockFn(stripe.payouts.list).mockReturnValue(
+      pager([
+        { ...stripePayout, id: "po_manual", automatic: false, arrival_date: 1783382400 },
+        { ...stripePayout, id: "po_auto", automatic: true, arrival_date: 1783468800 },
+      ]),
+    )
+    mockFn(upsertPayouts)
+      .mockResolvedValueOnce([{ id: "bp-manual", stripe_payout_id: "po_manual" }])
+      .mockResolvedValueOnce([{ id: "bp-auto", stripe_payout_id: "po_auto" }])
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.upserted).toBe(2)
+    expect(body.unreconciled).toBe(1)
+    expect(mockFn(upsertPayouts).mock.calls[1][0][0]).toMatchObject({
+      stripe_payout_id: "po_auto", fees_reconciled: true,
+    })
+  })
+
+  it("a Stripe error that is NOT the manual-payout rejection still fails the run", async () => {
+    // Fail-closed must survive this fix: swallowing every error here would
+    // write zero-fee rows during a Stripe outage and call them reconciled.
+    mockFn(stripe.balanceTransactions.list).mockImplementation(() => {
+      throw Object.assign(new Error("Rate limit exceeded"), {
+        type: "StripeRateLimitError", rawType: "rate_limit_error",
+      })
+    })
+    const res = await POST(makeRequest())
+    expect(res.status).toBe(500)
+    expect(logCronEnd).toHaveBeenCalledWith(
+      expect.anything(), "run-1", "failed", expect.objectContaining({ message: "Rate limit exceeded" }),
+    )
+  })
+
   it("a fully explained payout is stored RECONCILED with a zero delta", async () => {
     const res = await POST(makeRequest())
     expect(res.status).toBe(200)
