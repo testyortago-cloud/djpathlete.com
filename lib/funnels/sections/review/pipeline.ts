@@ -181,24 +181,71 @@ async function runReview(doc: SectionDoc, onFinding?: (finding: Finding) => void
     return { changed: false, doc, ops: [], summary: "", findings, surviving: [], receipt: null, error: null }
   }
 
-  // --- 3. The reviser. ---------------------------------------------------
-  let revision: { summary: string; ops: SectionOp[] }
-  try {
-    revision = await runReviser(doc, findings)
-  } catch (error) {
-    console.error("[funnels/review] reviser failed:", error)
-    return unchanged(doc, findings, message(error))
+  // --- 3-5. Revise, apply, gate — up to SECTION_REVIEW_MAX_ROUNDS times. --
+  //
+  // The loop is REAL rather than a constant nobody reads. Shipping
+  // `SECTION_REVIEW_MAX_ROUNDS = 1` with no loop behind it would make the
+  // number a lie: raising it to 2 would change nothing, silently, and the next
+  // person to try it would conclude a second round does not help when in fact
+  // it never ran. A tunable that does not tune is worse than no tunable.
+  //
+  // Each round revises against WHAT THE GATE STILL SEES, not against the
+  // original list — a second pass handed the findings the first pass already
+  // fixed would undo its own work.
+  let workingDoc = doc
+  let outstanding = findings
+  const allOps: SectionOp[] = []
+  const summaries: string[] = []
+  let receipt: DiffReceipt | null = null
+
+  for (let round = 0; round < SECTION_REVIEW_MAX_ROUNDS; round += 1) {
+    let revision: { summary: string; ops: SectionOp[] }
+    try {
+      revision = await runReviser(workingDoc, outstanding)
+    } catch (error) {
+      console.error("[funnels/review] reviser failed:", error)
+      // A LATER round failing keeps what earlier rounds achieved. Only a
+      // first-round failure means nothing was gained.
+      if (allOps.length === 0) return unchanged(doc, findings, message(error))
+      break
+    }
+
+    if (revision.ops.length === 0) {
+      // A reviser that read the findings and judged the page fine is a GOOD
+      // outcome, not a failure. Its words are still worth keeping.
+      if (summaries.length === 0) summaries.push(revision.summary)
+      break
+    }
+
+    // Not a schema check: `opSchema` accepts an `update_section` carrying
+    // nothing, and `applyOps` is what rejects it — taking the whole batch with
+    // it, because the batch is transactional. A parse success upstream
+    // guarantees nothing here.
+    const applied = applyOps(workingDoc, revision.ops)
+    if (!applied.ok) {
+      console.error("[funnels/review] ops rejected:", applied.errors)
+      if (allOps.length === 0) return unchanged(doc, findings, `ops rejected: ${applied.errors.join("; ")}`)
+      break
+    }
+
+    workingDoc = applied.doc
+    receipt = applied.receipt
+    allOps.push(...revision.ops)
+    summaries.push(revision.summary)
+
+    // THE GATE. A reviser that fixed one tone seam by creating another is
+    // caught here, for free, because the auditor is pure and both readings are
+    // comparable. What survives becomes the next round's brief.
+    outstanding = auditDoc(workingDoc)
+    if (outstanding.every((finding) => finding.severity !== "high")) break
   }
 
-  if (revision.ops.length === 0) {
-    // A reviser that read the findings and judged the page fine is a GOOD
-    // outcome, not a failure — and it must not append a turn, or every page
-    // gains an empty "I changed nothing" entry in its transcript.
+  if (allOps.length === 0) {
     return {
       changed: false,
       doc,
       ops: [],
-      summary: revision.summary,
+      summary: summaries.join(" ").trim(),
       findings,
       surviving: findings,
       receipt: null,
@@ -206,30 +253,14 @@ async function runReview(doc: SectionDoc, onFinding?: (finding: Finding) => void
     }
   }
 
-  // --- 4. Apply, transactionally, through the real applier. --------------
-  // Not a schema check: `opSchema` accepts an `update_section` carrying
-  // nothing, and `applyOps` is what rejects it — taking the whole batch with
-  // it, because the batch is transactional. So a parse success upstream
-  // guarantees nothing here.
-  const applied = applyOps(doc, revision.ops)
-  if (!applied.ok) {
-    console.error("[funnels/review] ops rejected:", applied.errors)
-    return unchanged(doc, findings, `ops rejected: ${applied.errors.join("; ")}`)
-  }
-
-  // --- 5. The gate. ------------------------------------------------------
-  // A reviser that fixed one tone seam by creating another is caught here,
-  // for free, because the auditor is pure and both readings are comparable.
-  const surviving = auditDoc(applied.doc)
-
   return {
     changed: true,
-    doc: applied.doc,
-    ops: revision.ops,
-    summary: revision.summary,
+    doc: workingDoc,
+    ops: allOps,
+    summary: summaries.join(" ").trim(),
     findings,
-    surviving,
-    receipt: applied.receipt,
+    surviving: auditDoc(workingDoc),
+    receipt,
     error: null,
   }
 }

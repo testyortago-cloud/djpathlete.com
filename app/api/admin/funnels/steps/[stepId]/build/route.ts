@@ -1488,7 +1488,7 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
 
   if (!review.changed) {
     if (!standalone) return
-    await emitNoChangeReview({ emit, stepId, userId, baseRevision, summary: review.summary, userIdForTurn: userId })
+    await emitNoChangeReview({ emit, stepId, userId, baseRevision, summary: review.summary })
     return
   }
 
@@ -1562,11 +1562,10 @@ async function emitNoChangeReview(args: {
   emit: (event: BuildStreamEvent) => void
   stepId: string
   userId: string
-  userIdForTurn: string
   baseRevision: number
   summary: string
 }): Promise<void> {
-  const { emit, stepId, baseRevision, summary, userIdForTurn } = args
+  const { emit, stepId, baseRevision, summary, userId } = args
   const reply = summary.trim() === "" ? "I read the page through and found nothing worth changing." : summary
 
   const turn = await appendTurn({
@@ -1577,7 +1576,7 @@ async function emitNoChangeReview(args: {
     status: "complete",
     message: reply,
     model: SECTION_BUILDER_MODEL,
-    createdBy: userIdForTurn,
+    createdBy: userId,
   })
 
   if (!turn.ok) {
