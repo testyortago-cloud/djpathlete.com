@@ -262,6 +262,79 @@ describe("SectionInspector", () => {
     expect(screen.getByLabelText(/headline/i)).toBeDisabled()
     expect(screen.getByRole("button", { name: /delete section/i })).toBeDisabled()
   })
+
+  // -------------------------------------------------------------------------
+  // The CTA control.
+  //
+  // `fieldsForSection` reports a CTA as ONE field of type "cta", and this panel
+  // had no branch for it: the value fell through to the plain text input at the
+  // bottom of `FieldControl`, which reads `typeof value === "string"`, found an
+  // OBJECT, and rendered an empty box labelled "Primary CTA". Blurring that box
+  // wrote a bare string over `{label, target}` — an op `applyOps` refuses, so
+  // the only thing the control could do was produce "that change could not be
+  // applied". It shipped that way with a green suite because no test opened it.
+  // -------------------------------------------------------------------------
+
+  it("shows the CTA's real label rather than an empty box", () => {
+    mount()
+    expect(screen.getByLabelText(/primary cta/i)).toHaveValue("Start")
+  })
+
+  it("edits the CTA's LABEL, never the whole CTA", () => {
+    // MUTANT KILLED: `onChange(field.path, value)`. That replaces
+    // `{label, target}` with a string and loses where the button goes.
+    mount()
+    editField(/primary cta/i, "Start my free week")
+    expect(onOps).toHaveBeenCalledWith([
+      {
+        op: "update_section",
+        id: "h1",
+        props: { primaryCta: { label: "Start my free week", target: { kind: "url", href: "/signup" } } },
+      },
+    ])
+  })
+
+  it("refuses to clear a CTA label instead of sending an op that must fail", () => {
+    // `ctaWithLabelSchema.label` is `min(1)`. Sending "" earns a server refusal
+    // reported as "that change could not be applied", which names no rule and
+    // reads like a bug in the editor.
+    mount()
+    const input = editField(/primary cta/i, "   ")
+    expect(onOps).not.toHaveBeenCalled()
+    expect(input).toHaveValue("Start")
+  })
+
+  it("says where the button goes, since that is not editable here", () => {
+    mount()
+    expect(screen.getByText(/goes to \/signup/i)).toBeInTheDocument()
+    // SPECIFIC. A hero lists BOTH `primaryCta` and `secondaryCta`, and both
+    // panels end with a sentence starting "Ask in the chat" — one to re-point
+    // this button, one to add the missing one. A loose match finds two nodes,
+    // and a `getAllBy(...)[0]` would pass while asserting about whichever
+    // happened to render first.
+    expect(screen.getByText(/ask in the chat to send this button somewhere else/i)).toBeInTheDocument()
+  })
+
+  it("offers no label box for an optional CTA the section does not have", () => {
+    // MUTANT KILLED: rendering the label input regardless. `fieldsForSection`
+    // lists `secondaryCta` whether or not the hero has one, so an input there
+    // sends `{secondaryCta: {label}}` with no `target` — refused by `applyOps`,
+    // and reported to the owner as "that change could not be applied" for a
+    // rule nothing showed them.
+    mount()
+    expect(screen.queryByLabelText(/secondary cta/i)).toBeNull()
+    expect(screen.getByText(/no secondary cta\. ask in the chat/i)).toBeInTheDocument()
+  })
+
+  it("describes an island-backed target by what it does", () => {
+    const doc = aDoc()
+    doc.sections[0].props = {
+      ...doc.sections[0].props,
+      primaryCta: { label: "Reserve a spot", target: { kind: "program", ref: "Summer Speed Camp" } },
+    }
+    mount({ doc })
+    expect(screen.getByText(/buys the program "Summer Speed Camp"/i)).toBeInTheDocument()
+  })
 })
 
 describe("nextSectionId", () => {

@@ -61,6 +61,36 @@ export function nextSectionId(doc: SectionDoc, kind: string): string {
   return `${prefix}${Date.now().toString(36)}`
 }
 
+/**
+ * Where a CTA currently points, in one line of plain English.
+ *
+ * Reads the stored union defensively rather than casting to `CtaTarget`: the
+ * panel opens on whatever is in the document, including a target written by an
+ * older build or one whose ref has not been resolved yet, and a control that
+ * throws on an unrecognised shape would take the whole inspector down with it.
+ */
+export function describeCtaTarget(target: Record<string, unknown> | undefined): string {
+  const read = (key: string): string => (typeof target?.[key] === "string" ? (target[key] as string) : "")
+  switch (typeof target?.kind === "string" ? target.kind : "") {
+    case "url":
+      return `Goes to ${read("href") || "a link"}`
+    case "anchor":
+      return `Scrolls down to the "${read("sectionId")}" section`
+    case "step":
+      return `Goes to the "${read("stepSlug")}" step of this funnel`
+    case "program":
+      return `Buys the program "${read("ref")}"`
+    case "session_pack":
+      return `Buys the session pack "${read("ref")}"`
+    case "event":
+      return `Registers for "${read("ref")}"`
+    case "booking":
+      return "Goes to the booking enquiry"
+    default:
+      return "This button has no destination yet."
+  }
+}
+
 function FieldControl({
   field,
   props,
@@ -89,6 +119,73 @@ function FieldControl({
         <Label htmlFor={id} className="text-sm font-normal">
           {field.label}
         </Label>
+      </div>
+    )
+  }
+
+  // A CTA is `{label, target}` — an OBJECT — and without this branch it fell
+  // through to the text input at the bottom of this function. That input read
+  // `typeof value === "string"`, found an object, and rendered EMPTY; blurring
+  // it then wrote a bare string over the whole CTA, which `applyOps` refuses.
+  // An editor control whose only possible effect was to corrupt the thing it
+  // was editing, on the panel that pairs with the canvas.
+  //
+  // THE LABEL IS EDITABLE, THE TARGET IS DESCRIBED. That split is a real limit
+  // and not an oversight: a target is a typed union whose `program` / `event`
+  // refs are only meaningful once `resolve.ts` matches them against live rows,
+  // and inventing a picker here would be a second, weaker resolver. So the
+  // panel says where the button currently goes and points at the one place
+  // that can change it — the same move `RepeaterEditor` makes for adding a
+  // form field.
+  if (field.type === "cta") {
+    const cta = (value ?? {}) as { label?: unknown; target?: Record<string, unknown> }
+    const currentLabel = typeof cta.label === "string" ? cta.label : ""
+
+    // AN OPTIONAL CTA THAT DOES NOT EXIST GETS NO INPUT. `fieldsForSection`
+    // lists `secondaryCta` whether or not the hero has one, and a label box on
+    // a missing CTA is another control that can only fail: typing in it sends
+    // `{secondaryCta: {label: "x"}}`, which `applyOps` refuses for want of a
+    // `target`, and the owner is told their change "could not be applied" for a
+    // reason they were never shown. The chat can add the whole button at once.
+    if (cta.target === undefined) {
+      return (
+        <div className="space-y-1.5">
+          <Label className="text-xs uppercase tracking-wide text-muted-foreground">{field.label}</Label>
+          <p className="text-xs text-muted-foreground">
+            This section has no {field.label.toLowerCase()}. Ask in the chat to add one.
+          </p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-1.5">
+        <Label htmlFor={id} className="text-xs uppercase tracking-wide text-muted-foreground">
+          {field.label}
+          {field.optional ? null : <span className="ml-1 text-[var(--error)]">*</span>}
+        </Label>
+        <Input
+          id={id}
+          // NO `maxLength` HERE. `ctaWithLabelSchema` owns the bound; copying
+          // the number into this file is the restated-validator mistake this
+          // repo has paid for repeatedly, and the server refuses an over-long
+          // label anyway.
+          disabled={disabled}
+          autoFocus={autoFocus}
+          defaultValue={currentLabel}
+          onBlur={(event) => {
+            const next = event.target.value.trim()
+            // The schema's `min(1)`. Sending "" would come back as "that change
+            // could not be applied", which names no rule and looks like a bug.
+            if (next === "") {
+              event.target.value = currentLabel
+              return
+            }
+            onChange(`${field.path}.label`, next)
+          }}
+        />
+        <p className="text-xs text-muted-foreground">{describeCtaTarget(cta.target)}</p>
+        <p className="text-xs text-muted-foreground">Ask in the chat to send this button somewhere else.</p>
       </div>
     )
   }
