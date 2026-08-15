@@ -81,17 +81,17 @@ beforeEach(() => {
 
 describe("shouldReview", () => {
   it("runs on a first draft — every word is the model's own", () => {
-    expect(shouldReview({ isRewrite: true, requested: false })).toBe(true)
+    expect(shouldReview({ rewrotePage: true, requested: false })).toBe(true)
   })
 
   it("does not run on an ordinary edit turn", () => {
     // The owner just said exactly what they wanted. A reviewer that
     // second-guesses that every turn is one they will switch off.
-    expect(shouldReview({ isRewrite: false, requested: false })).toBe(false)
+    expect(shouldReview({ rewrotePage: false, requested: false })).toBe(false)
   })
 
   it("runs on an ordinary turn when the owner pressed Polish", () => {
-    expect(shouldReview({ isRewrite: false, requested: true })).toBe(true)
+    expect(shouldReview({ rewrotePage: false, requested: true })).toBe(true)
   })
 })
 

@@ -43,6 +43,16 @@ vi.mock("@/lib/db/funnels", () => ({
   listSteps: vi.fn(),
 }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
+// The review stage. MOCKED FOR A CORRECTNESS REASON, NOT A SPEED ONE: only
+// `streamAgent` is faked above, so `callAgent` is the real one — and the review
+// runs automatically on every `set_page`, which is what the first-draft tests
+// below produce. Left unmocked, those existing tests would each fire four live
+// Anthropic calls. `shouldReview` stays REAL, because which turns earn a review
+// is exactly what the tests here are about.
+vi.mock("@/lib/funnels/sections/review/pipeline", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/funnels/sections/review/pipeline")>()),
+  reviewDoc: vi.fn(),
+}))
 // The three catalogue reads, so the REAL `loadCatalogues` runs over them.
 vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.fn() }))
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
@@ -59,6 +69,7 @@ import { getFaqCountsByPage } from "@/lib/db/faqs"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
+import { reviewDoc } from "@/lib/funnels/sections/review/pipeline"
 import {
   SECTION_BUILDER_EDIT_MAX_TOKENS,
   SECTION_BUILDER_MAX_TOKENS_CEILING,
@@ -263,6 +274,20 @@ beforeEach(() => {
 
   mock(createGenerationLog).mockResolvedValue({ id: "log-1" })
   mock(updateGenerationLog).mockResolvedValue({})
+
+  // The review finds nothing by default, so every pre-existing test below sees
+  // the behaviour it was written against. The review-specific tests override
+  // this; nothing else should have to know the stage exists.
+  mock(reviewDoc).mockResolvedValue({
+    changed: false,
+    doc: doc(),
+    ops: [],
+    summary: "",
+    findings: [],
+    surviving: [],
+    receipt: null,
+    error: null,
+  })
 
   // Revisions advance 4 -> 5 (user turn) -> 6 (assistant turn).
   let next = 4
@@ -1207,5 +1232,284 @@ describe("POST .../build — which paths stream", () => {
     const invalid = await POST(req({ message: "hi", revision: 9 }), ctx)
     expect(invalid.status).toBe(422)
     expect(invalid.headers.get("content-type")).toContain("application/json")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The review stage.
+//
+// `reviewDoc` is mocked (see the note on the mock at the top of this file);
+// `shouldReview` and `opsRewrotePage` are the real ones, because WHICH TURNS
+// EARN A REVIEW is the claim these tests exist to pin. Getting that wrong is
+// not a cosmetic defect — it is four extra model calls on every typo fix.
+// ---------------------------------------------------------------------------
+
+const REVIEWED_DOC = doc("A reviewed headline")
+
+function reviewChanged(summary = "Retoned two seams.") {
+  return {
+    changed: true,
+    doc: REVIEWED_DOC,
+    ops: [{ op: "update_section", id: "hero", style: { tone: "muted" } }],
+    summary,
+    findings: [
+      {
+        code: "tone-run",
+        severity: "high" as const,
+        sectionIds: ["a", "b"],
+        issue: "two sections share a tone",
+        suggestion: "retone one",
+        source: "audit" as const,
+      },
+    ],
+    surviving: [],
+    receipt: { changed: [], isRewrite: false } as never,
+    error: null,
+  }
+}
+
+/** A model response that REPLACES the page — the first-draft shape. */
+function setPageResult() {
+  return {
+    reply: "Drafted the page.",
+    blocked: false,
+    ops: [{ op: "set_page", sections: fullPageSections() }],
+  }
+}
+
+/**
+ * Install `reviewDoc` so it CALLS BACK the way the real one does.
+ *
+ * A plain `mockResolvedValue` returns the outcome without ever invoking
+ * `onFinding`, which would leave the route's streaming half completely
+ * unexercised — the `finding` events would silently never be emitted and the
+ * assertions about them would be measuring the mock rather than the route.
+ */
+function installReview(outcome: ReturnType<typeof reviewChanged>) {
+  mock(reviewDoc).mockImplementation(async (input: { onFinding?: (finding: unknown) => void }) => {
+    for (const finding of outcome.findings) input.onFinding?.(finding)
+    return outcome
+  })
+}
+
+describe("POST .../build — which turns earn a review", () => {
+  it("reviews a set_page, because every word on that page is the model's own", async () => {
+    mock(streamAgent).mockImplementation(() => agentResult(setPageResult()))
+    mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 4 })
+
+    await readEvents(await POST(req({ message: "build me a page", revision: 4 }), ctx))
+
+    expect(reviewDoc).toHaveBeenCalledTimes(1)
+  })
+
+  it("does NOT review an ordinary edit turn", async () => {
+    // MUTANT: keying the trigger off `DiffReceipt.isRewrite`. That flag is a
+    // 60%-of-sections VOLUME heuristic, so on this one-section draft an
+    // ordinary headline edit scores 1/1 and reads as a full rewrite — and the
+    // owner pays four model calls to fix a typo. The default mocked op here is
+    // exactly that edit, which is why this test goes red under the mutant.
+    await readEvents(await POST(req({ message: "shorter headline", revision: 4 }), ctx))
+
+    expect(reviewDoc).not.toHaveBeenCalled()
+  })
+
+  it("does not review a turn the model refused", async () => {
+    mock(streamAgent).mockImplementation(() =>
+      agentResult({ reply: "The catalogue has no such program.", blocked: true, ops: [] }),
+    )
+
+    await readEvents(await POST(req({ message: "sell the moon", revision: 4 }), ctx))
+
+    expect(reviewDoc).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST .../build — the review stage runs AFTER the page is safe", () => {
+  beforeEach(() => {
+    mock(streamAgent).mockImplementation(() => agentResult(setPageResult()))
+    mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 4 })
+  })
+
+  it("emits result BEFORE it starts reviewing", async () => {
+    // THE WHOLE SAFETY ARGUMENT. If `result` came after the review, a review
+    // that hung would leave the owner watching a turn that had already
+    // succeeded — and one that threw would report a failure for a page that
+    // built fine.
+    installReview(reviewChanged())
+
+    const events = await readEvents(await POST(req({ message: "build", revision: 4 }), ctx))
+    const types = events.map((event) => event.type)
+
+    expect(types.indexOf("result")).toBeLessThan(types.indexOf("finding"))
+    expect(types.indexOf("result")).toBeLessThan(types.indexOf("review"))
+  })
+
+  it("writes the review as its OWN turn, with source review", async () => {
+    // MUTANT: appending with source "ai", or folding the polish into the build
+    // turn. Both make "Go back to here" unable to undo the polish without also
+    // discarding the draft it polished.
+    installReview(reviewChanged())
+
+    await readEvents(await POST(req({ message: "build", revision: 4 }), ctx))
+
+    const reviewWrite = mock(appendTurn).mock.calls.find(
+      (call) => (call[0] as { source: string }).source === "review",
+    )
+    expect(reviewWrite).toBeDefined()
+    expect(reviewWrite?.[0]).toMatchObject({
+      role: "assistant",
+      source: "review",
+      status: "complete",
+      message: "Retoned two seams.",
+    })
+  })
+
+  it("supersedes the ASSISTANT turn's revision, not the user turn's", async () => {
+    // MUTANT: passing the pre-build revision. The compare-and-swap would fail
+    // every time and the polish would be silently dropped on every page.
+    installReview(reviewChanged())
+
+    await readEvents(await POST(req({ message: "build", revision: 4 }), ctx))
+
+    const calls = mock(appendTurn).mock.calls.map((call) => call[0] as { source: string; expectedRevision: number })
+    // 4 -> 5 (user turn) -> 6 (assistant turn) -> the review must expect 6.
+    const review = calls.find((call) => call.source === "review")
+    expect(review?.expectedRevision).toBe(6)
+  })
+
+  it("streams each finding so the extra wait shows its work", async () => {
+    installReview(reviewChanged())
+
+    const events = await readEvents(await POST(req({ message: "build", revision: 4 }), ctx))
+    const findings = events.filter((event) => event.type === "finding")
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toMatchObject({ finding: { code: "tone-run", severity: "high" } })
+  })
+
+  it("emits a review event carrying the polished document", async () => {
+    installReview(reviewChanged())
+
+    const events = await readEvents(await POST(req({ message: "build", revision: 4 }), ctx))
+    const review = events.find((event) => event.type === "review")
+
+    expect(review).toMatchObject({
+      turn: { revision: 7, source: "review", reply: "Retoned two seams." },
+    })
+  })
+
+  it("writes NOTHING when the review changed nothing", async () => {
+    // MUTANT: appending a turn regardless. Every page would gain an empty
+    // "I changed nothing" entry in the owner's transcript.
+    await readEvents(await POST(req({ message: "build", revision: 4 }), ctx))
+
+    expect(mock(appendTurn).mock.calls.some((call) => (call[0] as { source: string }).source === "review")).toBe(false)
+  })
+})
+
+describe("POST .../build — a review that goes wrong cannot break the turn", () => {
+  beforeEach(() => {
+    mock(streamAgent).mockImplementation(() => agentResult(setPageResult()))
+    mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 4 })
+  })
+
+  it("still delivers the built page when the review reports an error", async () => {
+    mock(reviewDoc).mockResolvedValue({
+      changed: false,
+      doc: doc(),
+      ops: [],
+      summary: "",
+      findings: [],
+      surviving: [],
+      receipt: null,
+      error: "reviser failed",
+    })
+
+    const events = await readEvents(await POST(req({ message: "build", revision: 4 }), ctx))
+
+    expect(events.some((event) => event.type === "result")).toBe(true)
+    expect(events.some((event) => event.type === "fail")).toBe(false)
+  })
+
+  it("drops the polish silently when the owner edited underneath it", async () => {
+    // A lost compare-and-swap on the REVIEW turn means a human was typing
+    // while a background improvement ran. The human wins, and they must not be
+    // shown an error about it — they already have a correct page.
+    installReview(reviewChanged())
+    mock(appendTurn).mockImplementation(async (input: { expectedRevision: number; source: string }) => {
+      if (input.source === "review") return { ok: false, reason: "stale_revision", currentRevision: 99 }
+      return {
+        ok: true,
+        turn: { revision: input.expectedRevision + 1, doc: null, message: "" },
+        revision: input.expectedRevision + 1,
+      }
+    })
+
+    const events = await readEvents(await POST(req({ message: "build", revision: 4 }), ctx))
+
+    expect(events.some((event) => event.type === "result")).toBe(true)
+    expect(events.some((event) => event.type === "fail")).toBe(false)
+    expect(events.some((event) => event.type === "review")).toBe(false)
+  })
+})
+
+describe("POST .../build — the Polish button", () => {
+  it("reviews without calling the builder at all", async () => {
+    // MUTANT: implementing Polish as a message body. The builder would run
+    // first, spending an Opus call answering a message the owner never wrote.
+    installReview(reviewChanged("Tightened three headlines."))
+
+    const events = await readEvents(await POST(req({ action: "polish", revision: 4 }), ctx))
+
+    expect(streamAgent).not.toHaveBeenCalled()
+    expect(reviewDoc).toHaveBeenCalledTimes(1)
+    expect(events.some((event) => event.type === "review")).toBe(true)
+  })
+
+  it("appends no user turn — the owner did not write a message", async () => {
+    installReview(reviewChanged())
+
+    await readEvents(await POST(req({ action: "polish", revision: 4 }), ctx))
+
+    expect(mock(appendTurn).mock.calls.some((call) => (call[0] as { role: string }).role === "user")).toBe(false)
+  })
+
+  it("supersedes the CURRENT revision", async () => {
+    installReview(reviewChanged())
+
+    await readEvents(await POST(req({ action: "polish", revision: 4 }), ctx))
+
+    const review = mock(appendTurn).mock.calls.find((call) => (call[0] as { source: string }).source === "review")
+    expect((review?.[0] as { expectedRevision: number }).expectedRevision).toBe(4)
+  })
+
+  it("refuses when the client is behind, before spending anything", async () => {
+    const res = await POST(req({ action: "polish", revision: 2 }), ctx)
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ code: "stale_revision", currentRevision: 4 })
+    expect(reviewDoc).not.toHaveBeenCalled()
+  })
+
+  it("refuses when there is no page yet, rather than reviewing a seed", async () => {
+    // MUTANT: falling through to `seedDoc()`. Four model calls would be spent
+    // discovering that a one-section placeholder footer is too short.
+    mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 4 })
+
+    const res = await POST(req({ action: "polish", revision: 4 }), ctx)
+
+    expect(res.status).toBe(409)
+    expect(reviewDoc).not.toHaveBeenCalled()
+  })
+
+  it("refuses a document this builder cannot read", async () => {
+    mock(getDraft).mockResolvedValue({ doc: null, docInvalid: true, revision: 4 })
+    mock(listTurns).mockResolvedValue([])
+
+    const res = await POST(req({ action: "polish", revision: 4 }), ctx)
+
+    expect(res.status).toBe(422)
+    expect(await res.json()).toMatchObject({ code: "doc_invalid" })
+    expect(reviewDoc).not.toHaveBeenCalled()
   })
 })

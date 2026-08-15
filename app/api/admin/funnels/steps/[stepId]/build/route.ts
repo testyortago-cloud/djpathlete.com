@@ -101,6 +101,7 @@ import {
   type UnresolvedCta,
 } from "@/lib/funnels/sections/resolve"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
+import { opsRewrotePage, reviewDoc, shouldReview } from "@/lib/funnels/sections/review/pipeline"
 import {
   SECTION_BUILDER_EDIT_MAX_TOKENS,
   SECTION_BUILDER_MODEL,
@@ -258,8 +259,15 @@ interface TurnResponse {
    * prevent). Both are documented at their own site.
    */
   resolutionError: string | null
-  /** Which path produced this revision. Mirrors `funnel_step_turns.source`. */
-  source: "ai" | "revert"
+  /**
+   * Which path produced this revision. Mirrors `funnel_step_turns.source`.
+   *
+   * `review` is the AI review stage. It is a distinct value rather than
+   * another `ai` because the client renders it differently and because "Go
+   * back to here" has to be able to undo a polish without also discarding the
+   * draft it polished.
+   */
+  source: "ai" | "revert" | "review"
 }
 
 /**
@@ -495,6 +503,17 @@ export const POST = withAudit(
         return await handleReset(stepId, step.funnel_id, step.slug, parsed.data.toRevision, userId)
       }
 
+      if (parsed.data.action === "polish") {
+        return await handlePolish({
+          stepId,
+          funnelId: step.funnel_id,
+          stepSlug: step.slug,
+          draft,
+          expectedRevision: parsed.data.revision,
+          userId,
+        })
+      }
+
       return await handleBuild({
         stepId,
         funnelId: step.funnel_id,
@@ -717,6 +736,95 @@ function streamingResponse(run: (emit: (event: BuildStreamEvent) => void) => Pro
       "X-Accel-Buffering": "no",
     },
   })
+}
+
+// ---------------------------------------------------------------------------
+// (c2) The Polish path — a review with no build in front of it.
+//
+// Its own action rather than a flag on a message body, and that is the
+// difference between one model call and five: a message body would run the
+// builder first, spending an Opus call answering a message the owner never
+// wrote, and would append a build turn saying nothing ahead of the review turn
+// that says everything.
+//
+// It shares `handleBuild`'s two pre-flight refusals verbatim, because both
+// reasons survive the change of action: a document this builder cannot read
+// cannot be polished either, and a client that is behind would have its review
+// turn rejected by the compare-and-swap anyway — better to say so before
+// spending four model calls than after.
+// ---------------------------------------------------------------------------
+
+interface PolishArgs {
+  stepId: string
+  funnelId: string
+  stepSlug: string
+  draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>
+  expectedRevision: number
+  userId: string
+}
+
+async function handlePolish(args: PolishArgs): Promise<Response> {
+  const { stepId, funnelId, stepSlug, draft, expectedRevision, userId } = args
+  const startTime = Date.now()
+
+  if (draft.docInvalid) {
+    const resetToRevision = await lastGoodRevision(stepId)
+    return NextResponse.json(
+      {
+        error:
+          "This page's saved content is not a document this builder can read, so there is nothing to polish. " +
+          (resetToRevision === null
+            ? "There is no earlier version to restore."
+            : `Restore step ${resetToRevision} to carry on from the last version that still opens.`),
+        code: "doc_invalid",
+        currentRevision: draft.revision,
+        resetToRevision,
+      },
+      { status: 422 },
+    )
+  }
+
+  // Polish is a review of a page that EXISTS. There is no seed document here
+  // and there must not be: reviewing a placeholder footer would spend four
+  // model calls to discover that a one-section page is too short.
+  if (draft.doc === null) {
+    return NextResponse.json(
+      { error: "There is no page to polish yet. Describe the page you want and the builder will draft it first." },
+      { status: 409 },
+    )
+  }
+
+  if (expectedRevision !== draft.revision) {
+    return NextResponse.json(
+      {
+        error: "Someone else changed this page while you were working on it. Reload and try again.",
+        code: "stale_revision",
+        currentRevision: draft.revision,
+      },
+      { status: 409 },
+    )
+  }
+
+  const [context, catalogueLoad] = await Promise.all([loadPageContext(funnelId, stepSlug), loadCataloguesSafely()])
+  const { catalogues, error: catalogueError } = catalogueLoad
+  const doc = draft.doc
+
+  // No user turn is appended. The owner did not write a message, and a
+  // fabricated one ("Polish this page") in the transcript would be a sentence
+  // they never typed sitting in their own conversation.
+  return streamingResponse((emit) =>
+    runReviewStage({
+      emit,
+      stepId,
+      userId,
+      doc,
+      baseRevision: draft.revision,
+      context,
+      catalogues,
+      catalogueError,
+      startTime,
+    }),
+  )
 }
 
 async function handleBuild(args: BuildArgs): Promise<Response> {
@@ -1277,7 +1385,137 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
     resolutionError: resolution.error,
     source: "ai",
   }
+
+  // THE BUILT PAGE IS EMITTED FIRST, BEFORE ANY REVIEW RUNS.
+  //
+  // The ordering is the whole safety argument. By this line the owner's
+  // document is written, the revision has advanced, and `result` has told the
+  // client about both — so everything the review does afterwards is additive,
+  // and a review that fails, hangs or is abandoned leaves them with exactly
+  // the page the builder made rather than an error about a turn that worked.
   emit({ type: "result", turn: response })
+
+  // `opsRewrotePage`, not `outcome.receipt.isRewrite` — see `shouldReview`.
+  // The receipt's flag is a 60%-of-sections volume heuristic, so on a short
+  // page an ordinary headline edit reads as a full rewrite and would spend
+  // four model calls reviewing a typo fix.
+  if (!shouldReview({ rewrotePage: opsRewrotePage(outcome.ops), requested: false })) return
+
+  await runReviewStage({
+    emit,
+    stepId,
+    userId,
+    doc: resolution.doc,
+    baseRevision: assistantTurn.revision,
+    context,
+    catalogues,
+    catalogueError,
+    startTime,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// (f) The review stage.
+//
+// Shared by the automatic path above (a first draft, where every word on the
+// page is the model's own) and the Polish button below (an explicit ask). One
+// implementation, because the only difference between them is what decided to
+// call it.
+//
+// NOTHING IN HERE MAY EMIT `fail` OR THROW. It runs after a document is
+// already saved — in `runTurn`'s case after `result` has already been sent —
+// so there is no failure here that should reach the owner as a broken turn.
+// `reviewDoc` has no throwing path and reports trouble in `error`; this
+// function's job is to make the same promise about the WRITE that follows it.
+// ---------------------------------------------------------------------------
+
+interface ReviewStageArgs {
+  emit: (event: BuildStreamEvent) => void
+  stepId: string
+  userId: string
+  /** The document as it stands, already resolved and stored. */
+  doc: SectionDoc
+  /** The revision the review's own turn must supersede. */
+  baseRevision: number
+  context: PageContext
+  catalogues: Catalogues | null
+  catalogueError: string | null
+  startTime: number
+}
+
+async function runReviewStage(args: ReviewStageArgs): Promise<void> {
+  const { emit, stepId, userId, doc, baseRevision, context, catalogues, catalogueError, startTime } = args
+
+  emit({ type: "phase", phase: "reviewing" })
+
+  const review = await reviewDoc({
+    doc,
+    onFinding: (finding) => emit({ type: "finding", finding }),
+  })
+
+  if (review.error !== null) {
+    // Logged, not surfaced. The owner has a page; telling them a background
+    // improvement did not happen would read as a failure of the thing that
+    // did.
+    console.warn("[funnels/build] review stage did not complete:", review.error)
+    return
+  }
+  if (!review.changed) return
+
+  emit({ type: "phase", phase: "polishing" })
+
+  // Resolve and compile the REVISED document by the same route the build turn
+  // takes. The review emits ops against the resolved doc, and `resolveDoc` is
+  // idempotent by design — but a reviser that rewrote a CTA's `ref` has
+  // introduced a NAME that has never been resolved, and skipping this would
+  // store it unresolved and block publish with no warning anywhere.
+  const resolution = resolveSafely(review.doc, catalogues, catalogueError)
+  const compile = compileDoc(resolution.doc, context.funnelBasePath)
+
+  const reviewTurn = await appendTurn({
+    stepId,
+    expectedRevision: baseRevision,
+    role: "assistant",
+    source: "review",
+    status: "complete",
+    message: review.summary,
+    ops: review.ops,
+    doc: resolution.doc,
+    compileStatus: compileStatus(compile),
+    compileProblems: { problems: compile.problems, warnings: compile.warnings },
+    unresolved: unresolvedForStorage(resolution),
+    model: SECTION_BUILDER_MODEL,
+    latencyMs: Date.now() - startTime,
+    createdBy: userId,
+  })
+
+  // A LOST RACE IS NOT AN ERROR HERE.
+  //
+  // It means the owner edited the page while the review was running, and their
+  // edit wins: a background improvement must never beat a human who was typing
+  // at the same moment. They already have a correct page and a correct
+  // revision from `result`, so the right thing to do is drop the polish
+  // silently and let them keep what they wrote.
+  if (!reviewTurn.ok) {
+    console.warn("[funnels/build] review turn lost the compare-and-swap; the owner's own edit wins")
+    return
+  }
+
+  emit({
+    type: "review",
+    turn: {
+      revision: reviewTurn.revision,
+      doc: resolution.doc,
+      reply: review.summary,
+      blocked: false,
+      receipt: review.receipt,
+      compile,
+      unresolved: resolution.unresolved,
+      danglingAnchors: resolution.danglingAnchors,
+      resolutionError: resolution.error,
+      source: "review",
+    } satisfies TurnResponse,
+  })
 }
 
 /**

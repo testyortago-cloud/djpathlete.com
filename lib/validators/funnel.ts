@@ -151,12 +151,38 @@ export const buildResetRequestSchema = z.object({
 })
 
 /**
- * Reset FIRST: a body carrying `action: "reset"` fails the message member (no
- * `message`, and the literal disagrees), and a `{message, revision}` body fails
- * the reset member, so the union is unambiguous in both directions rather than
- * order-dependent.
+ * THE POLISH BUTTON — a review with no build in front of it.
+ *
+ * A review normally rides on a first draft, where the builder has just written
+ * every word on the page. Pressing Polish asks for the review ALONE, against
+ * the document as it already stands.
+ *
+ * It is its own action rather than a `review: true` flag on a message body,
+ * and that is the difference between one model call and five: a message body
+ * would run the builder first, spending an Opus call to answer a message the
+ * owner never wrote, and would append a build turn saying nothing before the
+ * review turn that says everything.
+ *
+ * It carries `revision` for the same optimistic-lock reason a message does —
+ * the review writes a turn, so it can lose the same compare-and-swap race, and
+ * a client that opted out by omission would silently clobber the other tab.
  */
-export const buildRequestSchema = z.union([buildResetRequestSchema, buildMessageRequestSchema])
+export const buildPolishRequestSchema = z.object({
+  action: z.literal("polish"),
+  revision: z.number().int().min(0),
+})
+
+/**
+ * Reset and polish FIRST: a body carrying `action: "reset"` or
+ * `action: "polish"` fails the message member (no `message`, and the literal
+ * disagrees), and a `{message, revision}` body fails both, so the union is
+ * unambiguous in every direction rather than order-dependent.
+ */
+export const buildRequestSchema = z.union([
+  buildResetRequestSchema,
+  buildPolishRequestSchema,
+  buildMessageRequestSchema,
+])
 
 /**
  * Publish-time size caps. Named and exported — not restated as bare literals

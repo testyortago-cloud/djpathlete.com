@@ -60,18 +60,35 @@ export interface ReviewOutcome {
 /**
  * Whether a turn earns a review.
  *
- * A REWRITE — a `set_page`, meaning a first draft or an explicit start-over —
- * is reviewed automatically, because every word on the page is the model's own
- * and there is nothing of the owner's to overwrite. An ordinary edit turn is
- * not: the owner has just said exactly what they wanted, and a reviewer that
- * second-guesses that on every turn is a reviewer they will want turned off.
+ * A `set_page` is reviewed automatically. That op means a first draft or an
+ * explicit start-over — the model's own gloss for it in the builder prompt —
+ * so every word on the resulting page is the model's and there is nothing of
+ * the owner's to second-guess. An ordinary edit turn is not reviewed: the
+ * owner has just said exactly what they wanted, and a reviewer that argues
+ * with that on every turn is one they will switch off.
+ *
+ * ---------------------------------------------------------------------------
+ * THE SIGNAL IS THE OP, NOT `DiffReceipt.isRewrite`.
+ * ---------------------------------------------------------------------------
+ * `isRewrite` looks like the right field and is not. It is a VOLUME heuristic
+ * — `SECTION_REWRITE_THRESHOLD` in apply.ts, 60% of sections changed — so on a
+ * small page it is true for edits that are nothing of the kind: a one-section
+ * draft where the owner retitles the hero scores 1/1 and reads as a full
+ * rewrite. Keying the review off it would run four model calls every time
+ * somebody fixed a typo on a short page, which is the exact behaviour the
+ * "first drafts only" decision exists to avoid.
  *
  * `requested` is the Polish button — an explicit ask, which outranks all of
  * the above.
  */
-export function shouldReview(input: { isRewrite: boolean; requested: boolean }): boolean {
+export function shouldReview(input: { rewrotePage: boolean; requested: boolean }): boolean {
   if (SECTION_REVIEW_MAX_ROUNDS < 1) return false
-  return input.requested || input.isRewrite
+  return input.requested || input.rewrotePage
+}
+
+/** Whether a batch of ops replaced the whole page. See `shouldReview`. */
+export function opsRewrotePage(ops: ReadonlyArray<{ op: string }>): boolean {
+  return ops.some((op) => op.op === "set_page")
 }
 
 function unchanged(doc: SectionDoc, findings: Finding[], error: string | null): ReviewOutcome {
