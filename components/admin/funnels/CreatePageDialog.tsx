@@ -100,8 +100,8 @@ export function CreatePageDialog({ takenSlugs }: CreatePageDialogProps) {
       // guard (empty document, no turns) decides whether the first prompt fires.
       router.push(
         body.entryStepId
-          ? `/admin/funnels/${body.funnel.id}/edit/${body.entryStepId}?start=1`
-          : `/admin/funnels/${body.funnel.id}`,
+          ? `/admin/pages/${body.funnel.id}/edit/${body.entryStepId}?start=1`
+          : `/admin/pages/${body.funnel.id}`,
       )
     } catch {
       toast.error("Could not create the page.")

@@ -18,6 +18,7 @@ const baseProps = {
   stepName: "Landing page",
   publicUrl: "/go/free-trial",
   funnelStatus: "draft",
+  funnelKind: "funnel",
   initialDoc: null,
   initialRevision: 0,
   docInvalid: false,

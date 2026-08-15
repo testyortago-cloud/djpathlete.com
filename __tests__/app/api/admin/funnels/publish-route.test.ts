@@ -24,7 +24,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/permissions/guard", () => ({ canAccessAdminPath: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
-vi.mock("@/lib/db/funnels", () => ({ getStep: vi.fn(), publishStep: vi.fn() }))
+vi.mock("@/lib/db/funnels", () => ({
+  getStep: vi.fn(),
+  publishStep: vi.fn(),
+  getFunnelById: vi.fn(),
+  updateFunnel: vi.fn(),
+}))
 vi.mock("@/lib/db/funnel-builder", () => ({ getDraft: vi.fn() }))
 // The three catalogue read pairs, so the REAL `loadCatalogues` runs over them.
 vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.fn() }))
@@ -37,7 +42,7 @@ vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
 import { POST } from "@/app/api/admin/funnels/steps/[stepId]/publish/route"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
-import { getStep, publishStep } from "@/lib/db/funnels"
+import { getStep, publishStep, getFunnelById, updateFunnel } from "@/lib/db/funnels"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
@@ -207,7 +212,15 @@ describe("POST /api/admin/funnels/steps/:stepId/publish — the publish gate", (
     const res = await POST(req({ html: HTML, css: CSS, project_data: doc }), ctx)
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ version: 7, warnings: ["dropped a <marquee>"] })
+    // `wentLive` reports whether the route ALSO took a landing page live, which
+    // is the second half of "a landing page has one publish, not two". False
+    // here: this fixture is a funnel, where publishing one step must never put
+    // the whole funnel live.
+    expect(await res.json()).toEqual({
+      version: 7,
+      warnings: ["dropped a <marquee>"],
+      wentLive: false,
+    })
     expect(publishStep).toHaveBeenCalledWith({
       stepId: STEP_ID,
       html: HTML,
@@ -369,5 +382,61 @@ describe("POST .../publish — auth, body and existence", () => {
 
     expect(res.status).toBe(422)
     expect((await res.json()).problems).toEqual(["The page is 620 KB; the limit is 500 KB."])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A LANDING PAGE HAS ONE PUBLISH, NOT TWO.
+//
+// Publishing a step writes a version row; `/go/<slug>` additionally needs the
+// FUNNEL ROW to be published. For a funnel that separation is real. For a
+// landing page it is an artefact of the two sharing a table, and it cost the
+// owner a 404 and a second button he did not want: "i published it but there
+// are is still another publish button, I DONT WANT THAT".
+// ---------------------------------------------------------------------------
+
+describe("publishing a landing page takes it live", () => {
+  it("flips the row to published and says so", async () => {
+    mock(getFunnelById).mockResolvedValue({ id: "f1", kind: "page", status: "draft" })
+
+    const res = await POST(req({ html: HTML, css: CSS, project_data: docWithCta(PROGRAM_NAME) }), ctx)
+
+    expect(res.status).toBe(200)
+    expect(updateFunnel).toHaveBeenCalledWith("f1", { status: "published" })
+    expect((await res.json()).wentLive).toBe(true)
+  })
+
+  it("leaves a FUNNEL alone — one step is not the whole funnel", async () => {
+    // MUTANT KILLED: flipping the row for every kind. Publishing step 1 of a
+    // five-step funnel would put the unfinished rest of it in front of the
+    // public.
+    mock(getFunnelById).mockResolvedValue({ id: "f1", kind: "funnel", status: "draft" })
+
+    const res = await POST(req({ html: HTML, css: CSS, project_data: docWithCta(PROGRAM_NAME) }), ctx)
+
+    expect(updateFunnel).not.toHaveBeenCalled()
+    expect((await res.json()).wentLive).toBe(false)
+  })
+
+  it("does not re-publish a landing page that is already live", async () => {
+    mock(getFunnelById).mockResolvedValue({ id: "f1", kind: "page", status: "published" })
+
+    const res = await POST(req({ html: HTML, css: CSS, project_data: docWithCta(PROGRAM_NAME) }), ctx)
+
+    expect(updateFunnel).not.toHaveBeenCalled()
+    expect((await res.json()).wentLive).toBe(false)
+  })
+
+  it("still reports the publish as a success when taking it live fails", async () => {
+    // The version row is written and the page IS published. Reporting a failed
+    // publish for a publish that succeeded would be the worse lie, and the
+    // owner can still flip the row by hand.
+    mock(getFunnelById).mockResolvedValue({ id: "f1", kind: "page", status: "draft" })
+    mock(updateFunnel).mockRejectedValue(new Error("db down"))
+
+    const res = await POST(req({ html: HTML, css: CSS, project_data: docWithCta(PROGRAM_NAME) }), ctx)
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).wentLive).toBe(false)
   })
 })

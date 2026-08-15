@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { publishStepSchema } from "@/lib/validators/funnel"
-import { getStep, publishStep } from "@/lib/db/funnels"
+import { getFunnelById, getStep, publishStep, updateFunnel } from "@/lib/db/funnels"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
@@ -195,9 +195,43 @@ export const POST = withAudit(
         )
       }
 
+      // ---------------------------------------------------------------------
+      // A LANDING PAGE HAS ONE PUBLISH, NOT TWO.
+      // ---------------------------------------------------------------------
+      // Publishing a STEP writes a version row; the public `/go/<slug>` route
+      // additionally requires the FUNNEL ROW to be `published`. For a funnel
+      // that separation is real — several steps, and the owner decides when the
+      // whole thing goes live. For a LANDING PAGE it is an artefact of the two
+      // sharing a table: a page IS the thing being published, and there is
+      // nothing else it could be waiting for.
+      //
+      // Without this the owner publishes, is told it worked, and finds a second
+      // "Publish landing page" button on the next screen and a 404 at the
+      // public URL until he presses it. He hit exactly that twice: "i published
+      // it but there are is still another publish button, I DONT WANT THAT".
+      //
+      // Funnels are deliberately UNCHANGED: publishing step 1 of a five-step
+      // funnel must not put the whole funnel live.
+      //
+      // Failure here does NOT fail the publish. The version row is written and
+      // the page is genuinely published; not flipping the row leaves it
+      // unreachable, which is the state the owner can still fix by hand, and
+      // reporting a failed publish for a publish that succeeded would be worse.
+      let wentLive = false
+      try {
+        const funnel = await getFunnelById(step.funnel_id)
+        if (funnel && funnel.kind === "page" && funnel.status !== "published") {
+          await updateFunnel(funnel.id, { status: "published" })
+          wentLive = true
+        }
+      } catch (error) {
+        console.error("[publish] could not take the landing page live:", error)
+      }
+
       return NextResponse.json({
         version: result.version.version,
         warnings: result.warnings.map((w) => w.message),
+        wentLive,
       })
     } catch (error) {
       console.error("[POST /api/admin/funnels/steps/:stepId/publish]", error)

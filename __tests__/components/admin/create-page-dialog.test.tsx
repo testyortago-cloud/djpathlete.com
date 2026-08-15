@@ -92,7 +92,7 @@ describe("<CreatePageDialog>", () => {
     fireEvent.change(screen.getByLabelText(/name/i), { target: { value: "Free Trial Week" } })
     fireEvent.click(screen.getByRole("button", { name: /create & build/i }))
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/admin/funnels/f1/edit/s1?start=1"))
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/admin/pages/f1/edit/s1?start=1"))
   })
 
   it("keeps the dialog open and reports the error when the server refuses", async () => {

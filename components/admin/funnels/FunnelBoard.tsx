@@ -25,6 +25,7 @@ import { CreateFunnelDialog } from "./CreateFunnelDialog"
 import { ConvertToFunnelDialog } from "./ConvertToFunnelDialog"
 import type { DataTableBadgeTone } from "@/components/ui/data-table"
 import type { Funnel, FunnelStep, FunnelKind } from "@/types/database"
+import { adminFunnelHref, adminStepHref } from "@/lib/funnels/admin-path"
 
 export interface BoardPage {
   step: FunnelStep
@@ -157,7 +158,7 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
                 subtitle={step.is_entry ? path : `${funnel.name} · ${path}`}
                 previewUrl={published ? `${path}?preview=1` : null}
                 // Straight to the canvas. That is the only reason to click.
-                href={`/admin/funnels/${funnel.id}/edit/${step.id}`}
+                href={adminStepHref(funnel.kind, funnel.id, step.id)}
                 primaryLabel="Open"
                 publicUrl={live ? path : null}
                 badgeLabel={badge.label}
@@ -195,7 +196,7 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
                         The route still exists and explains itself to anyone
                         holding a bookmark. */}
                     <Button asChild variant="outline" size="sm" title="Funnel settings & pages">
-                      <Link href={`/admin/funnels/${funnel.id}`}>
+                      <Link href={adminFunnelHref(funnel.kind, funnel.id)}>
                         <Settings2 className="size-4" />
                       </Link>
                     </Button>

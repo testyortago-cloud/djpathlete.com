@@ -20,7 +20,7 @@
 // (which the UI treats as "unknown", never as "all clear"), and nothing here
 // may turn a page the owner wants to edit into an error screen.
 
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import { getFunnelById, getStep } from "@/lib/db/funnels"
 import { getDraft, listTurns } from "@/lib/db/funnel-builder"
 import { compileFunnelStep } from "@/lib/funnels/compile"
@@ -142,12 +142,30 @@ async function resolveAndCompile(doc: SectionDoc, funnelBasePath: string): Promi
   return { doc: resolvedDoc, unresolved, danglingAnchors, compile, resolutionError }
 }
 
-export default async function FunnelEditPage({ params, searchParams }: PageProps) {
-  const { id, stepId } = await params
-  const { start } = await searchParams
-
+/**
+ * The AI builder for one step of a funnel, or for a landing page.
+ *
+ * `base` is which URL it is being served from — see the sibling detail screen.
+ * The two kinds share this builder but not their address, because the admin
+ * sidebar highlights by path prefix. Redirecting on a MISMATCH (rather than on
+ * `kind` alone) is what keeps the page route from redirecting to itself.
+ */
+export async function FunnelBuilderScreen({
+  id,
+  stepId,
+  start,
+  base,
+}: {
+  id: string
+  stepId: string
+  start?: string | string[]
+  base: "pages" | "funnels"
+}) {
   const [funnel, step] = await Promise.all([getFunnelById(id), getStep(stepId)])
   if (!funnel || !step || step.funnel_id !== funnel.id) notFound()
+
+  const correctBase = funnel.kind === "page" ? "pages" : "funnels"
+  if (correctBase !== base) redirect(`/admin/${correctBase}/${funnel.id}/edit/${step.id}`)
 
   const publicUrl = `/go/${funnel.slug}${step.is_entry ? "" : `/${step.slug}`}`
   const funnelBasePath = `/go/${funnel.slug}`
@@ -255,4 +273,10 @@ export default async function FunnelEditPage({ params, searchParams }: PageProps
       renderForPublish={renderDocForPublish.bind(null, step.id)}
     />
   )
+}
+
+export default async function FunnelEditPage({ params, searchParams }: PageProps) {
+  const { id, stepId } = await params
+  const { start } = await searchParams
+  return <FunnelBuilderScreen id={id} stepId={stepId} start={start} base="funnels" />
 }

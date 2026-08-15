@@ -702,6 +702,8 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
    * So: silence earns one click, anything worth saying earns the review.
    */
   const noun = props.funnelKind === "page" ? "landing page" : "funnel"
+  /** Back to the tab this row actually lives in — see lib/funnels/admin-path.ts. */
+  const adminHref = `${props.funnelKind === "page" ? "/admin/pages" : "/admin/funnels"}/${props.funnelId}`
 
   /**
    * Things worth SEEING that do not stop a publish: a CTA pointing at a section
@@ -714,8 +716,16 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
    * "Fix N blockers" only appears when something actually blocks. So the count
    * gets a quiet outline button beside Publish: available, never in the way.
    */
+  // OPTIONAL-CHAINED ON EVERY TERM, and that is not defensiveness for its own
+  // sake. `applyTurn` assigns these straight from the turn response, and a
+  // response that omits `danglingAnchors` or `compile.warnings` puts UNDEFINED
+  // into state — at which point reading `.length` throws during render and the
+  // whole builder unmounts into an error boundary. Caught by the initial-prompt
+  // test, which drives a turn whose response carries neither.
   const advisoryCount =
-    danglingAnchors.length + (compile?.warnings.length ?? 0) + (resolutionError === null ? 0 : 1)
+    (danglingAnchors?.length ?? 0) +
+    (compile?.warnings?.length ?? 0) +
+    (resolutionError === null || resolutionError === undefined ? 0 : 1)
 
   /**
    * PUBLISH PUBLISHES. ONE CLICK, ALWAYS.
@@ -794,6 +804,8 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         warnings?: string[]
         problems?: string[]
         error?: string
+        /** The route took the landing page live as part of this publish. */
+        wentLive?: boolean
       } | null
 
       if (response.status === 422 && body?.problems?.length) {
@@ -818,7 +830,14 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         return
       }
 
-      setPublishResult({ version: body.version, warnings: body.warnings ?? [], notLive: funnelIsDraft })
+            // `wentLive` comes from the route, which is the only thing that knows
+      // whether it flipped the row. `funnelIsDraft` is this tab's stale copy of
+      // the status and would keep nagging about a page that is now live.
+      setPublishResult({
+        version: body.version,
+        warnings: body.warnings ?? [],
+        notLive: funnelIsDraft && body.wentLive !== true,
+      })
       setMode("edit")
       toast.success(`Published version ${body.version}.`)
     } catch {
@@ -905,7 +924,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
       {/* Header — h-12 */}
       <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-white px-4">
         <Link
-          href={`/admin/funnels/${props.funnelId}`}
+          href={adminHref}
           className="inline-flex items-center gap-1 truncate text-sm text-muted-foreground hover:text-primary"
         >
           <ArrowLeft className="size-4" aria-hidden />
@@ -1049,7 +1068,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
               <p className="mt-1 text-muted-foreground">
                 This {noun} is still a draft, so its public link will not open for anyone yet.{" "}
                 <Link
-                  href={`/admin/funnels/${props.funnelId}`}
+                  href={adminHref}
                   className="text-primary underline underline-offset-2"
                 >
                   Take it live
@@ -1124,7 +1143,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
             resolutionError={resolutionError}
             funnelIsDraft={funnelIsDraft}
             noun={noun}
-            funnelHref={`/admin/funnels/${props.funnelId}`}
+            funnelHref={adminHref}
             publicUrl={props.publicUrl}
             canPublish={canPublish}
             publishing={busy === "publishing"}

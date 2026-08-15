@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { getFunnelById, listSteps } from "@/lib/db/funnels"
 import { FunnelStatusControl } from "@/components/admin/funnels/FunnelStatusControl"
@@ -21,10 +21,26 @@ export async function generateMetadata({ params }: PageProps) {
   return { title: funnel.kind === "page" ? `${funnel.name} · Landing page` : `${funnel.name} · Funnel` }
 }
 
-export default async function FunnelDetailPage({ params }: PageProps) {
-  const { id } = await params
+/**
+ * The settings screen for one funnel OR one landing page.
+ *
+ * `base` is WHICH URL IT IS BEING SERVED FROM, and it is what makes the split
+ * safe. The two kinds share this screen but not their address: the admin
+ * sidebar highlights by path prefix, so a landing page served from
+ * `/admin/funnels` lights up "Funnels" — exactly what the owner reported
+ * ("IM CREATING A LANDING PAGE WHEN I GO BACK IM IN THE FUNNEL TAB").
+ *
+ * A mismatch redirects to the right base. That is the safety net for every
+ * stale link, bookmark and open tab — and it is why this takes `base` rather
+ * than redirecting on `kind` alone, which would have sent the page route
+ * straight back to itself, forever.
+ */
+export async function FunnelDetailScreen({ id, base }: { id: string; base: "pages" | "funnels" }) {
   const funnel = await getFunnelById(id)
   if (!funnel) notFound()
+
+  const correctBase = funnel.kind === "page" ? "pages" : "funnels"
+  if (correctBase !== base) redirect(`/admin/${correctBase}/${funnel.id}`)
 
   const steps = await listSteps(id)
 
@@ -73,4 +89,9 @@ export default async function FunnelDetailPage({ params }: PageProps) {
       <StepList funnel={funnel} initialSteps={steps} />
     </div>
   )
+}
+
+export default async function FunnelDetailPage({ params }: PageProps) {
+  const { id } = await params
+  return <FunnelDetailScreen id={id} base="funnels" />
 }
