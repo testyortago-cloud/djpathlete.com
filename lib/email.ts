@@ -2749,3 +2749,65 @@ export async function sendNewFunnelLeadEmail(input: NewFunnelLeadEmailInput) {
     throw new Error("Failed to send new funnel lead email")
   }
 }
+
+/**
+ * PAID BUT NOT DELIVERED. The one outcome an anonymous funnel purchase can
+ * reach that costs a customer and the coach's reputation at once: the card
+ * succeeded and the account, the grant or the welcome email did not.
+ *
+ * IT IS AN EMAIL AND NEVER A LOG LINE, on purpose. Nobody reads server logs on
+ * a Saturday, and the person on the other end has been charged. Everything
+ * needed to fix it by hand is in the body — the Stripe session id to look the
+ * payment up by, the buyer's email to contact them on, and the stage that
+ * failed so it is obvious whether they need an account, a grant or a resend.
+ *
+ * Deliberately NOT gated on the coach's notification preferences the way
+ * `sendCoachPurchaseNotification` is. That preference is about routine "you got
+ * paid" notices; this is a fault report about money already taken.
+ */
+export async function sendFunnelPurchaseFailureAlert(input: {
+  stripeSessionId: string
+  buyerEmail: string
+  buyerName: string | null
+  productKind: string
+  productId: string
+  stage: string
+  error: string
+}) {
+  const html = emailLayout(`
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+      <tr>
+        <td style="padding:0 40px 40px;">
+          <h1 style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, serif; font-size:22px; color:#8B1A1A;">
+            A funnel purchase was paid for but not delivered
+          </h1>
+          <p style="margin:0 0 24px; font-family:'Lexend Deca', -apple-system, sans-serif; font-size:15px; color:#333;">
+            The card was charged. Everything after that failed at the stage below, so this buyer has
+            paid and cannot yet use what they bought. Fix it by hand, then reply to them.
+          </p>
+          ${infoCard([
+            { label: "Failed at", value: escapeHtml(input.stage), valueColor: "#8B1A1A" },
+            { label: "Reason", value: escapeHtml(input.error) },
+            { label: "Buyer", value: escapeHtml(input.buyerName ?? "-") },
+            { label: "Buyer email", value: escapeHtml(input.buyerEmail) },
+            { label: "Bought", value: `${escapeHtml(input.productKind)} ${escapeHtml(input.productId)}` },
+            { label: "Stripe session", value: escapeHtml(input.stripeSessionId) },
+          ])}
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: ADMIN_CC,
+    replyTo: input.buyerEmail,
+    subject: `[URGENT] Paid but not delivered — ${input.buyerEmail}`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send funnel purchase failure alert:", error)
+    throw new Error("Failed to send funnel purchase failure alert")
+  }
+}

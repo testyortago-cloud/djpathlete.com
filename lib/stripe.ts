@@ -682,3 +682,63 @@ export async function createMembershipCheckoutSession(opts: {
     cancel_url: `${baseUrl}${opts.cancelUrl ?? `/admin/clients/${opts.userId}`}?membership=cancelled`,
   })
 }
+
+/**
+ * An anonymous purchase of a program from a published funnel page.
+ *
+ * `customer_email` IS PINNED to the address the visitor gave us, and that is
+ * load-bearing rather than a convenience. The webhook finds-or-creates the
+ * buyer's account BY EMAIL, so letting Stripe collect a different one would
+ * grant the program to an account the buyer never sees — and would split a
+ * returning customer's history across two logins, which §5.2 of the spec exists
+ * to prevent. Same reasoning as the pack payment links, which pin it too.
+ *
+ * `metadata.type` is what routes this to its own webhook branch. WITHOUT IT the
+ * session falls through to `handleOneTimeCheckout`, which — finding a programId
+ * and no userId — records it as an "External Stripe checkout" and grants
+ * nothing. That is a silent no-delivery, not an error.
+ */
+export async function createFunnelProgramCheckoutSession(opts: {
+  program: Program
+  buyerEmail: string
+  funnelId: string
+  stepId: string
+  leadId: string | null
+  successUrl: string
+  cancelUrl: string
+  tracking?: CheckoutTrackingParams
+}): Promise<Stripe.Checkout.Session> {
+  if (opts.program.price_cents == null || opts.program.price_cents <= 0) {
+    throw new Error("Cannot create checkout: program has no price")
+  }
+  return stripe.checkout.sessions.create({
+    mode: "payment",
+    line_items: [
+      {
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: opts.program.name,
+            description: opts.program.description ?? undefined,
+          },
+          unit_amount: opts.program.price_cents,
+        },
+        quantity: 1,
+      },
+    ],
+    customer_email: opts.buyerEmail,
+    metadata: {
+      type: "funnel_purchase",
+      productKind: "program",
+      productId: opts.program.id,
+      funnelId: opts.funnelId,
+      stepId: opts.stepId,
+      // Stripe metadata values must be strings; an absent lead is "" rather
+      // than the string "null", which would later read as a real id.
+      leadId: opts.leadId ?? "",
+      ...buildTrackingMetadata(opts.tracking),
+    },
+    success_url: opts.successUrl,
+    cancel_url: opts.cancelUrl,
+  })
+}

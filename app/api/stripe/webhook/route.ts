@@ -45,6 +45,8 @@ import { activatePaidPackage } from "@/lib/services/session-credits"
 import { createServiceRoleClient as createSupabaseServiceClient } from "@/lib/supabase"
 import { enqueuePaymentValueAdjustmentByEmail } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
+import { getSetting } from "@/lib/db/system-settings"
+import { FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT } from "@/lib/funnels/checkout/flag"
 
 // Plan 3.4 — Stripe webhook audit instrumentation. Only the event types in
 // this map get audited; others (e.g. payment_intent.*) pass through silently.
@@ -131,6 +133,18 @@ export async function POST(request: Request) {
 
         if (session.metadata?.type === "session_membership") {
           await handleMembershipCheckout(session)
+          break
+        }
+
+        // ANONYMOUS FUNNEL PURCHASE. This MUST be dispatched before the
+        // `mode`/one-time fallthrough below, and not merely for tidiness: a
+        // funnel session carries a programId and NO userId, which is exactly
+        // the shape `handleOneTimeCheckout` treats as an "External Stripe
+        // checkout" — it would record a record-keeping payment and grant
+        // nothing at all, silently, on a page that had just taken money.
+        if (session.metadata?.type === "funnel_purchase") {
+          await handleFunnelPurchaseCheckout(session)
+          await tryEnqueueAdsValueAdjustment(session)
           break
         }
 
@@ -1178,4 +1192,115 @@ async function handleEventSignupRefund(paymentIntentId: string) {
     .from("event_signups")
     .update({ status: "refunded", updated_at: new Date().toISOString() })
     .eq("id", signup.id)
+}
+
+// ─── Anonymous funnel purchase ──────────────────────────────────────────────
+//
+// The buyer had no account when they paid. Everything that turns the payment
+// into working access lives in `lib/funnels/checkout/grant.ts`, which takes its
+// dependencies as arguments so the order of operations can be tested for real;
+// this function is the seam between Stripe's payload and those arguments.
+//
+// FLAG-GATED HERE AS WELL AS ON THE ROUTE. New Stripe-webhook logic must be
+// flag-gated and resilient to a missing table regardless of what created the
+// session — a session made while the flag was on can arrive (or be retried for
+// days) after it has been turned off, and the answer then is to do nothing
+// rather than to half-run a path the owner has switched off.
+
+async function handleFunnelPurchaseCheckout(session: Stripe.Checkout.Session) {
+  if (!(await getSetting<boolean>(FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT))) {
+    console.warn("[funnel-checkout] session received while the flag is off; ignoring", session.id)
+    return
+  }
+
+  const productId = session.metadata?.productId
+  const productKind = session.metadata?.productKind
+
+  // A SESSION THIS FLOW DID NOT CREATE IS IGNORED, NEVER GUESSED AT. Metadata
+  // is attacker-visible and hand-editable in the Stripe dashboard; inventing a
+  // product from a half-filled payload would be granting on a shape nobody
+  // designed.
+  if (productKind !== "program" || !productId) {
+    console.error("[funnel-checkout] unusable metadata; ignoring", session.id, session.metadata)
+    return
+  }
+
+  // Stripe collects the email itself, but we PIN `customer_email` when creating
+  // the session, so these agree. Falling back through both is defensive: with
+  // no email there is no account to find or create, and granting to nobody is
+  // worse than refusing loudly.
+  const email = session.customer_details?.email ?? session.customer_email ?? null
+  if (!email) {
+    console.error("[funnel-checkout] no buyer email on the session; ignoring", session.id)
+    return
+  }
+
+  // IMPORTED LAZILY, AND NOT AS A MICRO-OPTIMISATION. `buildGrantDeps` reaches
+  // `assign-program`, the 2800-line email module, the password-reset tokens DAL
+  // and Supabase; imported at the top of this file, every one of the ten event
+  // types this webhook handles would pay for that graph on every delivery.
+  // Measured as a real cost, not a guess: adding those imports pushed several
+  // unrelated Stripe webhook tests past their 5s timeout purely on load.
+  const [{ grantFunnelPurchase }, { buildGrantDeps }] = await Promise.all([
+    import("@/lib/funnels/checkout/grant"),
+    import("@/lib/funnels/checkout/deps"),
+  ])
+
+  const leadId = session.metadata?.leadId || null
+  const result = await grantFunnelPurchase(
+    {
+      sessionId: session.id,
+      email,
+      name: session.customer_details?.name ?? null,
+      productKind: "program",
+      productId,
+      leadId,
+    },
+    buildGrantDeps({
+      funnelId: session.metadata?.funnelId ?? null,
+      stepId: session.metadata?.stepId ?? null,
+      leadId,
+    }),
+  )
+
+  // THE PAYMENT ROW IS WRITTEN WHATEVER HAPPENED TO THE GRANT. The money moved;
+  // a failed grant is a delivery problem, and leaving the payment unrecorded
+  // would hide real revenue and make the alert impossible to reconcile against
+  // Stripe. `getPaymentByStripeId` keeps a webhook retry from double-counting.
+  const paymentIntentId = (session.payment_intent as string) ?? null
+  if (paymentIntentId) {
+    const existingPayment = await getPaymentByStripeId(paymentIntentId)
+    if (!existingPayment) {
+      const tracking = await resolveTrackingParams(session.metadata ?? {}, email)
+      await createPayment({
+        user_id: result.ok && result.userId !== "" ? result.userId : null,
+        stripe_payment_id: paymentIntentId,
+        stripe_customer_id: (session.customer as string) ?? null,
+        amount_cents: session.amount_total ?? 0,
+        currency: session.currency ?? "usd",
+        status: "succeeded",
+        description: "Funnel purchase",
+        metadata: {
+          source: "funnel",
+          sessionId: session.id,
+          productKind,
+          productId,
+          funnelId: session.metadata?.funnelId ?? null,
+          stepId: session.metadata?.stepId ?? null,
+          customerEmail: email,
+          granted: result.ok,
+        },
+        ...tracking,
+      })
+    }
+  }
+
+  // `grantFunnelPurchase` never throws — a throw inside a webhook is a retry
+  // storm — and it has already alerted a human on every failing stage. Throwing
+  // HERE would ask Stripe to retry, which is the right thing: the grant is
+  // written to be replay-safe, and a transient database failure should get
+  // another attempt rather than one email and silence.
+  if (!result.ok) {
+    throw new Error(`[funnel-checkout] grant failed at ${result.stage}: ${result.error}`)
+  }
 }

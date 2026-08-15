@@ -28,6 +28,29 @@ describe("computeAssignmentPaymentStatus", () => {
   it("subscription entry is pending", () => {
     expect(computeAssignmentPaymentStatus("subscription", false)).toBe("pending")
   })
+
+  it("prepaid is paid, so a buyer is not locked out of what they just bought", () => {
+    // MUTANT KILLED: ignoring `prepaid`. A paid program seeds "pending", and
+    // `isAccessAllowed` refuses every workout route while it is pending — so an
+    // anonymous funnel purchase would charge the card and then deny access to
+    // the thing bought. Set ONLY by a caller holding a settled payment.
+    expect(computeAssignmentPaymentStatus("one_time", false, true)).toBe("paid")
+    expect(computeAssignmentPaymentStatus("subscription", false, true)).toBe("paid")
+  })
+
+  it("keeps a complimentary or free assignment not_required even when prepaid", () => {
+    // A gift stays a gift. Promoting it to "paid" would rewrite the coach's
+    // decision to give it away in the record.
+    expect(computeAssignmentPaymentStatus("free", false, true)).toBe("not_required")
+    expect(computeAssignmentPaymentStatus("one_time", true, true)).toBe("not_required")
+  })
+
+  it("still defaults to pending when prepaid is not passed at all", () => {
+    // Every pre-existing caller omits the argument and every one of them means
+    // "awaiting payment". A default of true would silently mark every
+    // admin-assigned paid program as already settled.
+    expect(computeAssignmentPaymentStatus("one_time", false)).toBe("pending")
+  })
 })
 
 describe("buildWeekAccessRows", () => {

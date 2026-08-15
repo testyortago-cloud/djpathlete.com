@@ -22,8 +22,28 @@ type NewWeekAccessRow = Omit<ProgramWeekAccess, "id" | "created_at" | "updated_a
 export function computeAssignmentPaymentStatus(
   paymentType: PaymentType,
   complimentary: boolean,
+  /**
+   * THE MONEY IS ALREADY IN. Set only by a caller holding a settled payment —
+   * today that is the funnel's anonymous checkout, running from the Stripe
+   * webhook after `checkout.session.completed`.
+   *
+   * WITHOUT THIS, GRANTING A PURCHASE THROUGH `assignProgram` LOCKS THE BUYER
+   * OUT OF THE THING THEY JUST BOUGHT. A paid program seeds `pending`, and
+   * `isAccessAllowed` refuses every workout route while it is pending — so the
+   * happy path would end in "you do not have access", which is the one outcome
+   * that costs a customer and the coach's reputation together.
+   *
+   * The alternative is what the pre-existing purchase path does: skip
+   * `assignProgram` and `createAssignment` directly with `payment_status:
+   * "paid"`. That works and it is why this gap went unnoticed — but it also
+   * skips this function's premium-week seeding, so a program with paid weeks
+   * grants every week as included. One canonical assign path that can express
+   * "already paid" beats two paths that disagree.
+   */
+  prepaid = false,
 ): AssignmentPaymentStatus {
   if (complimentary || paymentType === "free") return "not_required"
+  if (prepaid) return "paid"
   // one_time and subscription both start pending; the Stripe webhook promotes them.
   return "pending"
 }
@@ -134,6 +154,8 @@ export interface AssignProgramInput {
   notes?: string | null
   assignedBy?: string | null
   complimentary?: boolean
+  /** The payment has already settled — see `computeAssignmentPaymentStatus`. */
+  prepaid?: boolean
 }
 
 export interface AssignProgramResult {
@@ -154,6 +176,7 @@ export async function assignProgram(input: AssignProgramInput): Promise<AssignPr
     notes = null,
     assignedBy = null,
     complimentary = false,
+    prepaid = false,
   } = input
 
   const existing = await getAssignmentByUserAndProgram(userId, programId)
@@ -162,7 +185,7 @@ export async function assignProgram(input: AssignProgramInput): Promise<AssignPr
   const program = await getProgramById(programId)
   const premiumWeeks = await getPremiumWeeks(programId)
   const totalWeeks = program.duration_weeks ?? 1
-  const paymentStatus = computeAssignmentPaymentStatus(program.payment_type, complimentary)
+  const paymentStatus = computeAssignmentPaymentStatus(program.payment_type, complimentary, prepaid)
 
   const assignment = await createAssignment({
     program_id: programId,
