@@ -44,6 +44,12 @@ export interface PreviewCardProps {
   deleteLabel?: string
   /** Rendered next to the primary button — e.g. a link to funnel settings. */
   secondaryAction?: ReactNode
+  /**
+   * Rendered immediately after the title — e.g. the rename pencil. It belongs
+   * beside the name rather than in the button row below, because the row is
+   * where you act on the PAGE and this acts on the word above it.
+   */
+  titleAction?: ReactNode
 }
 
 /**
@@ -88,6 +94,7 @@ export function PreviewCard({
   onDelete,
   deleteLabel = "Delete",
   secondaryAction,
+  titleAction,
 }: PreviewCardProps) {
   const [deleting, setDeleting] = useState(false)
 
@@ -154,9 +161,12 @@ export function PreviewCard({
       <div className="flex flex-1 flex-col gap-3 p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <Link href={href} className="block truncate font-medium text-primary hover:underline">
-              {title}
-            </Link>
+            <div className="flex min-w-0 items-center gap-1">
+              <Link href={href} className="truncate font-medium text-primary hover:underline">
+                {title}
+              </Link>
+              {titleAction}
+            </div>
             {subtitle ? <p className="mt-0.5 truncate text-xs text-muted-foreground">{subtitle}</p> : null}
           </div>
           {/* Both badges, never one instead of the other: the goal says what the

@@ -23,6 +23,7 @@ import { FunnelGoLiveButton } from "./FunnelGoLiveButton"
 import { CreatePageDialog } from "./CreatePageDialog"
 import { CreateFunnelDialog } from "./CreateFunnelDialog"
 import { ConvertToFunnelDialog } from "./ConvertToFunnelDialog"
+import { RenameDialog } from "./RenameDialog"
 import type { DataTableBadgeTone } from "@/components/ui/data-table"
 import type { Funnel, FunnelStep, FunnelKind } from "@/types/database"
 import { adminFunnelHref, adminStepHref } from "@/lib/funnels/admin-path"
@@ -41,15 +42,57 @@ interface FunnelBoardProps {
   leadCounts: Record<string, number>
 }
 
+/**
+ * THE NAME THE OWNER TYPED, wherever it happens to live.
+ *
+ * A landing page's name is on the FUNNEL row: `createFunnel` names its only
+ * step "Landing page", a label nobody chose and every card shares. Titling the
+ * card with it turned the owner's own name into a filter chip and nothing else,
+ * so a list of landing pages read as several identical rows called "Landing
+ * page" — sorted under categories the owner never created.
+ *
+ * A funnel's page is a different thing: its steps are named individually and
+ * the funnel's name is the container above them, so there `step.name` is right.
+ * `funnel.kind`, not the screen, decides — the row is the fact.
+ */
+export function titlesTheFunnelRow({ step, funnel }: BoardPage): boolean {
+  return funnel.kind === "page" && step.is_entry
+}
+
+export function cardTitle(page: BoardPage): string {
+  return titlesTheFunnelRow(page) ? page.funnel.name : page.step.name
+}
+
 export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardProps) {
   const router = useRouter()
   const [query, setQuery] = useState("")
   const [funnelFilter, setFunnelFilter] = useState<string>("all")
 
+  const pageCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const { funnel } of pages) counts.set(funnel.id, (counts.get(funnel.id) ?? 0) + 1)
+    return counts
+  }, [pages])
+
+  /**
+   * Chips group pages BY FUNNEL, which is only worth doing when grouping
+   * actually groups. On the landing pages screen every funnel holds exactly one
+   * page, so each chip filtered down to a single card that was already on
+   * screen — and, being labelled with the funnel's name, it read as a category
+   * the owner had somehow assigned rather than the name of the page itself.
+   */
+  const groups = useMemo(() => funnels.filter((f) => (pageCounts.get(f.id) ?? 0) > 0), [funnels, pageCounts])
+  const showFilters = groups.length > 1 && groups.some((f) => (pageCounts.get(f.id) ?? 0) > 1)
+
+  // Ignored, not just hidden. Deleting a page can drop the board below the
+  // threshold above while a chip is still selected, and a filter with no
+  // visible control is a board that silently hides rows.
+  const activeFilter = showFilters ? funnelFilter : "all"
+
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
     return pages.filter(({ step, funnel }) => {
-      if (funnelFilter !== "all" && funnel.id !== funnelFilter) return false
+      if (activeFilter !== "all" && funnel.id !== activeFilter) return false
       if (needle.length === 0) return true
       return (
         step.name.toLowerCase().includes(needle) ||
@@ -57,7 +100,7 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
         funnel.slug.toLowerCase().includes(needle)
       )
     })
-  }, [pages, query, funnelFilter])
+  }, [pages, query, activeFilter])
 
   async function handleDelete({ step, funnel }: BoardPage) {
     // Deleting the entry page has no meaning on its own — it IS the funnel.
@@ -90,8 +133,6 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
     }
   }
 
-  const multiPageFunnels = funnels.filter((f) => pages.filter((p) => p.funnel.id === f.id).length > 0)
-
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -110,18 +151,18 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
         </div>
       </div>
 
-      {multiPageFunnels.length > 1 ? (
+      {showFilters ? (
         <div className="flex flex-wrap gap-2">
           <FilterChip
             label={`All (${pages.length})`}
-            active={funnelFilter === "all"}
+            active={activeFilter === "all"}
             onClick={() => setFunnelFilter("all")}
           />
-          {multiPageFunnels.map((funnel) => (
+          {groups.map((funnel) => (
             <FilterChip
               key={funnel.id}
-              label={`${funnel.name} (${pages.filter((p) => p.funnel.id === funnel.id).length})`}
-              active={funnelFilter === funnel.id}
+              label={`${funnel.name} (${pageCounts.get(funnel.id) ?? 0})`}
+              active={activeFilter === funnel.id}
               onClick={() => setFunnelFilter(funnel.id)}
             />
           ))}
@@ -158,11 +199,33 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
                 ? FUNNEL_GOALS.find((option) => option.value === funnel.goal)?.label
                 : undefined
 
+            // The card's title and the row the rename writes to must be the
+            // SAME row, or the pencil edits a word the card does not show —
+            // hence one predicate feeding both, not two conditions that agree
+            // today.
+            const titlesTheFunnel = titlesTheFunnelRow(page)
+            const title = cardTitle(page)
+
             return (
               <PreviewCard
                 key={step.id}
-                title={step.name}
-                subtitle={step.is_entry ? path : `${funnel.name} · ${path}`}
+                title={title}
+                // The funnel's name is dropped here only when the title already
+                // IS the funnel's name; on every other card it is the one thing
+                // saying which funnel this page belongs to.
+                subtitle={titlesTheFunnel ? path : `${funnel.name} · ${path}`}
+                titleAction={
+                  <RenameDialog
+                    name={title}
+                    noun={titlesTheFunnel ? "landing page" : funnel.kind === "page" ? "page" : "step"}
+                    endpoint={
+                      titlesTheFunnel
+                        ? `/api/admin/funnels/${funnel.id}`
+                        : `/api/admin/funnels/steps/${step.id}`
+                    }
+                    publicPath={path}
+                  />
+                }
                 previewUrl={published ? `${path}?preview=1` : null}
                 // Straight to the canvas. That is the only reason to click.
                 href={adminStepHref(funnel.kind, funnel.id, step.id)}

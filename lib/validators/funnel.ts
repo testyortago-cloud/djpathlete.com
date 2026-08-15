@@ -30,6 +30,18 @@ export const RESERVED_FUNNEL_SLUGS: ReadonlySet<string> = new Set([
 ])
 
 /**
+ * Bounds on a funnel's or a step's display name, EXPORTED for exactly the
+ * reason the slug pattern above is: the create dialogs and the rename dialog
+ * gate their submit button on these, and a copied `>= 2` drifts the moment this
+ * changes — the owner then meets the difference as a 400 the dialog promised
+ * would not happen.
+ */
+export const FUNNEL_NAME_MIN_LENGTH = 2
+export const FUNNEL_NAME_MAX_LENGTH = 120
+
+const nameSchema = z.string().min(FUNNEL_NAME_MIN_LENGTH).max(FUNNEL_NAME_MAX_LENGTH)
+
+/**
  * What a landing page is for. These are not free labels: every value except
  * `leads` names a CTA target lib/funnels/sections/registry.ts already resolves,
  * so the choice can seed a real call to action. `leads` maps to a form section.
@@ -50,7 +62,7 @@ const kindSchema = z.enum(["page", "funnel"])
 
 export const createFunnelSchema = z.object({
   slug: slugSchema.refine((s) => !RESERVED_FUNNEL_SLUGS.has(s), "That slug is reserved"),
-  name: z.string().min(2).max(120),
+  name: nameSchema,
   description: z.string().max(500).nullable().optional(),
   // Defaulted, not required: the create route predates this field and callers
   // that never heard of it must keep working.
@@ -60,7 +72,7 @@ export const createFunnelSchema = z.object({
 
 export const updateFunnelSchema = z.object({
   slug: slugSchema.optional(),
-  name: z.string().min(2).max(120).optional(),
+  name: nameSchema.optional(),
   description: z.string().max(500).nullable().optional(),
   status: z.enum(["draft", "published", "archived"]).optional(),
   kind: kindSchema.optional(),
@@ -70,12 +82,12 @@ export const updateFunnelSchema = z.object({
 export const createStepSchema = z.object({
   funnel_id: z.string().uuid(),
   slug: slugSchema,
-  name: z.string().min(2).max(120),
+  name: nameSchema,
 })
 
 export const updateStepSchema = z.object({
   slug: slugSchema.optional(),
-  name: z.string().min(2).max(120).optional(),
+  name: nameSchema.optional(),
   position: z.number().int().min(0).max(200).optional(),
   seo_title: z.string().max(160).nullable().optional(),
   seo_description: z.string().max(320).nullable().optional(),
