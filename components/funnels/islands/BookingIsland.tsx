@@ -5,6 +5,7 @@
 // this island routes rather than pretending to be a calendar.
 
 import Link from "next/link"
+import { ctaClassFor } from "@/lib/funnels/cta-class"
 
 interface BookingIslandProps {
   props: Record<string, unknown>
@@ -15,7 +16,7 @@ export function BookingIsland({ props }: BookingIslandProps) {
   const href = typeof props.href === "string" && props.href.length > 0 ? props.href : "/contact"
 
   return (
-    <Link href={href} data-djp-island="booking">
+    <Link href={href} className={ctaClassFor(props.variant) || undefined} data-djp-island="booking">
       {label}
     </Link>
   )

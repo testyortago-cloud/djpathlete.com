@@ -42,6 +42,7 @@ import {
 } from "@/lib/funnels/sections/registry"
 import { parseIslandProps, SAFE_LINK, type IslandName } from "@/lib/funnels/islands"
 import { safeUrl } from "@/lib/funnels/compile/sanitize"
+import { CTA_CLASS, type CtaVariant } from "@/lib/funnels/cta-class"
 
 // ---------------------------------------------------------------------------
 // Escaping — constraint 4. Every interpolated string, text node OR attribute
@@ -350,10 +351,10 @@ function renderIslandIfValid(
   name: IslandName,
   candidate: Record<string, unknown>,
   label: string,
-  className: string,
+  variant: CtaVariant,
 ): string {
-  const parsed = parseIslandProps(name, candidate)
-  if (!parsed.ok) return disabledCta(label, className)
+  const parsed = parseIslandProps(name, { ...candidate, variant })
+  if (!parsed.ok) return disabledCta(label, CTA_CLASS[variant])
   return renderIsland(name, parsed.props)
 }
 
@@ -445,10 +446,11 @@ function disabledCta(label: string, className: string, anchor = ""): string {
 function renderCtaTarget(
   target: CtaTarget,
   label: string,
-  className: string,
+  variant: CtaVariant,
   ctx: RenderContext,
   path?: string,
 ): string {
+  const className = CTA_CLASS[variant]
   const anchor = path ? editAttr(ctx, `${path}.label`) : ""
   switch (target.kind) {
     case "url":
@@ -464,17 +466,17 @@ function renderCtaTarget(
       return `<a class="${className}" href="${escapeHtml(href)}"${anchor}>${escapeHtml(label)}</a>`
     }
     case "booking":
-      return anchoredIsland(ctx, path, renderIslandIfValid("booking", { label }, label, className))
+      return anchoredIsland(ctx, path, renderIslandIfValid("booking", { label }, label, variant))
     case "event":
-      return anchoredIsland(ctx, path, renderIslandIfValid("event", { eventId: target.ref, label }, label, className))
+      return anchoredIsland(ctx, path, renderIslandIfValid("event", { eventId: target.ref, label }, label, variant))
     case "program":
       return anchoredIsland(
         ctx,
         path,
-        renderIslandIfValid("checkout", { productKind: "program", productId: target.ref, label }, label, className),
+        renderIslandIfValid("checkout", { productKind: "program", productId: target.ref, label }, label, variant),
       )
     case "session_pack": {
-      const withId = parseIslandProps("checkout", { productKind: "session_pack", productId: target.ref, label })
+      const withId = parseIslandProps("checkout", { productKind: "session_pack", productId: target.ref, label, variant })
       if (withId.ok) return anchoredIsland(ctx, path, renderIsland("checkout", withId.props))
       // `ref` didn't validate as a productId (not resolved yet, or never
       // will be) — CheckoutIsland ignores productId for this productKind
@@ -483,7 +485,7 @@ function renderCtaTarget(
       return anchoredIsland(
         ctx,
         path,
-        renderIslandIfValid("checkout", { productKind: "session_pack", label }, label, className),
+        renderIslandIfValid("checkout", { productKind: "session_pack", label }, label, variant),
       )
     }
     default: {
@@ -493,8 +495,8 @@ function renderCtaTarget(
   }
 }
 
-function renderCtaButton(cta: CtaWithLabel, className: string, ctx: RenderContext, path?: string): string {
-  return renderCtaTarget(cta.target, cta.label, className, ctx, path)
+function renderCtaButton(cta: CtaWithLabel, variant: CtaVariant, ctx: RenderContext, path?: string): string {
+  return renderCtaTarget(cta.target, cta.label, variant, ctx, path)
 }
 
 // ---------------------------------------------------------------------------
@@ -568,9 +570,9 @@ function renderHeroSection(section: Section, ctx: RenderContext): string {
   parts.push(textEl(ctx, "h1", "djp-hd", "headline", props.headline))
   parts.push(optionalText(ctx, "p", "djp-sub", "sub", props.sub, "Add a subheading"))
   parts.push(`<div class="djp-hero-ctas">`)
-  parts.push(renderCtaButton(props.primaryCta, "djp-btn djp-btn-primary", ctx, "primaryCta"))
+  parts.push(renderCtaButton(props.primaryCta, "primary", ctx, "primaryCta"))
   if (props.secondaryCta) {
-    parts.push(renderCtaButton(props.secondaryCta, "djp-btn djp-btn-secondary", ctx, "secondaryCta"))
+    parts.push(renderCtaButton(props.secondaryCta, "secondary", ctx, "secondaryCta"))
   }
   parts.push(`</div>`, `</div>`) // .djp-hero-ctas, .djp-hero-copy
   parts.push(props.media ? renderMedia(props.media, ctx, "media") : emptyMediaSlot(ctx, "media"))
@@ -695,7 +697,7 @@ function renderPricingSection(section: Section, ctx: RenderContext): string {
     })
     parts.push(`</ul>`)
     parts.push(`<div class="djp-plan-cta">`)
-    parts.push(renderCtaButton(plan.cta, "djp-btn djp-btn-primary", ctx, `plans.${index}.cta`))
+    parts.push(renderCtaButton(plan.cta, "primary", ctx, `plans.${index}.cta`))
     parts.push(`</div>`, `</article>`)
   })
   parts.push(`</div>`)
@@ -812,7 +814,7 @@ function renderCtaSection(section: Section, ctx: RenderContext): string {
   const parts: string[] = [sectionOpenTag(section, ctx), `<div class="djp-cta-inner">`]
   parts.push(textEl(ctx, "h2", "djp-hd", "headline", props.headline))
   parts.push(optionalText(ctx, "p", "djp-sub", "sub", props.sub, "Add a subheading"))
-  parts.push(renderCtaButton(props.cta, "djp-btn djp-btn-primary", ctx, "cta"))
+  parts.push(renderCtaButton(props.cta, "primary", ctx, "cta"))
   parts.push(`</div>`, `</section>`)
   return parts.join("")
 }
@@ -836,7 +838,7 @@ function renderFooterSection(section: Section, ctx: RenderContext): string {
     parts.push(`<ul class="djp-footer-links">`)
     props.links.forEach((link, index) => {
       parts.push(`<li${itemAttr(ctx, index)}>`)
-      parts.push(renderCtaButton(link, "djp-footer-link", ctx, `links.${index}`))
+      parts.push(renderCtaButton(link, "link", ctx, `links.${index}`))
       parts.push(`</li>`)
     })
     parts.push(`</ul>`)

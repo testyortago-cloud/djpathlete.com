@@ -2,6 +2,7 @@
 // that already owns registration (EventSignupCard / EventSignupModal).
 
 import Link from "next/link"
+import { ctaClassFor } from "@/lib/funnels/cta-class"
 import { getEventById } from "@/lib/db/events"
 import { formatEventWhen } from "@/lib/events/format"
 
@@ -39,7 +40,13 @@ export async function EventIsland({ props }: EventIslandProps) {
           {soldOut ? "Sold out" : `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`}
         </p>
       ) : null}
-      {soldOut ? null : <Link href={href}>{label}</Link>}
+      {/* The card is the island; only its REGISTER LINK is the CTA, so the
+          variant lands here and not on the wrapper. */}
+      {soldOut ? null : (
+        <Link href={href} className={ctaClassFor(props.variant) || undefined}>
+          {label}
+        </Link>
+      )}
     </div>
   )
 }

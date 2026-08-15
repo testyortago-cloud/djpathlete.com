@@ -11,6 +11,7 @@
 // switches on it — so those three can never drift apart.
 
 import { z } from "zod"
+import { CTA_VARIANTS } from "@/lib/funnels/cta-class"
 
 export const ISLAND_NAMES = ["form", "checkout", "event", "booking", "testimonials", "faq"] as const
 
@@ -164,6 +165,20 @@ export const checkoutIslandSchema = z
     // model to fabricate ids, so it must be optional in that branch.
     productId: z.string().uuid().optional(),
     label: z.string().min(1).max(60).optional().default("Buy now"),
+
+/**
+ * Which CTA treatment this island wears — see `lib/funnels/cta-class.ts`.
+ *
+ * SET BY THE RENDERER, NEVER BY AN AUTHOR AND NEVER BY THE AI. A CTA in a
+ * `SectionDoc` is `{label, target}`; how it should LOOK is a property of where
+ * it sits (a hero's primary, a footer's link row), which only the call site in
+ * `render.ts` knows. That is also why it has no `ISLAND_TRAITS` entry: there is
+ * nothing here for a person to choose.
+ *
+ * Optional with NO DEFAULT, so a page published before this existed keeps
+ * rendering exactly as it does today. See `ctaClassFor`.
+ */
+  variant: z.enum(CTA_VARIANTS).optional(),
   })
   .superRefine((value, ctx) => {
     if (value.productKind === "program" && !value.productId) {
@@ -179,6 +194,20 @@ export const eventIslandSchema = z.object({
   eventId: z.string().uuid(),
   showSpots: z.boolean().optional().default(true),
   label: z.string().min(1).max(60).optional().default("Register"),
+
+/**
+ * Which CTA treatment this island wears — see `lib/funnels/cta-class.ts`.
+ *
+ * SET BY THE RENDERER, NEVER BY AN AUTHOR AND NEVER BY THE AI. A CTA in a
+ * `SectionDoc` is `{label, target}`; how it should LOOK is a property of where
+ * it sits (a hero's primary, a footer's link row), which only the call site in
+ * `render.ts` knows. That is also why it has no `ISLAND_TRAITS` entry: there is
+ * nothing here for a person to choose.
+ *
+ * Optional with NO DEFAULT, so a page published before this existed keeps
+ * rendering exactly as it does today. See `ctaClassFor`.
+ */
+  variant: z.enum(CTA_VARIANTS).optional(),
 })
 
 export const bookingIslandSchema = z.object({
@@ -189,6 +218,20 @@ export const bookingIslandSchema = z.object({
    * rather than an inline calendar.
    */
   href: z.string().max(300).regex(SAFE_LINK, "Must be a site path or an https URL").optional().default("/contact"),
+
+/**
+ * Which CTA treatment this island wears — see `lib/funnels/cta-class.ts`.
+ *
+ * SET BY THE RENDERER, NEVER BY AN AUTHOR AND NEVER BY THE AI. A CTA in a
+ * `SectionDoc` is `{label, target}`; how it should LOOK is a property of where
+ * it sits (a hero's primary, a footer's link row), which only the call site in
+ * `render.ts` knows. That is also why it has no `ISLAND_TRAITS` entry: there is
+ * nothing here for a person to choose.
+ *
+ * Optional with NO DEFAULT, so a page published before this existed keeps
+ * rendering exactly as it does today. See `ctaClassFor`.
+ */
+  variant: z.enum(CTA_VARIANTS).optional(),
 })
 
 export const testimonialsIslandSchema = z.object({

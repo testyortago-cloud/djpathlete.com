@@ -1356,7 +1356,18 @@ describe("CtaTarget rendering", () => {
     // href is not authored on the CtaTarget (booking carries no ref/href at
     // all) — bookingIslandSchema fills its own default ("/contact") when the
     // compiler re-validates the island's JSON props.
-    expect(islands.find((i) => i.name === "booking")?.props).toEqual({ label: "Click me", href: "/contact" })
+    //
+    // `variant` is not authored either, and comes from the CALL SITE rather
+    // than the document: a `cta` section renders its button as the primary
+    // treatment, and the island has to be told, because it is a React component
+    // rendered at request time and carries no class of its own otherwise. That
+    // is the whole reason every buy button on a published page used to render
+    // as plain link text. See lib/funnels/cta-class.ts.
+    expect(islands.find((i) => i.name === "booking")?.props).toEqual({
+      label: "Click me",
+      href: "/contact",
+      variant: "primary",
+    })
   })
 
   it("program with a resolved (UUID-shaped) ref renders a valid checkout island", () => {
