@@ -71,8 +71,18 @@ export type TurnRole = "user" | "assistant"
  * Where the turn came from. `ai` is a model call, `inspector` is a direct
  * property edit made in the UI without the model, `revert` is the head turn
  * `revertToRevision` appends.
+ *
+ * `review` is the AI review stage (`lib/funnels/sections/review/`), which runs
+ * AFTER an `ai` turn has already committed and appends its improvements
+ * separately. Kept distinct from `ai` deliberately: "Go back to here" has to be
+ * able to undo the polish without also throwing away the draft it polished, and
+ * the transcript has to be able to say which of the two changed what.
+ *
+ * Constrained in the database by `funnel_step_turns_source_check` — widening
+ * this union without the matching migration writes a row Postgres rejects.
+ * (00209 is the one that added `review`.)
  */
-export type TurnSource = "ai" | "inspector" | "revert"
+export type TurnSource = "ai" | "inspector" | "revert" | "review"
 
 export type TurnStatus = "complete" | "failed"
 

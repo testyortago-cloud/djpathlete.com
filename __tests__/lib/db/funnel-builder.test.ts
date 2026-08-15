@@ -34,6 +34,8 @@
 // `columns` value this DAL sets is therefore pinned below.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 
 interface QueryRecord {
   table: string
@@ -533,5 +535,45 @@ describe("revertToRevision", () => {
       currentRevision: 12,
     })
     expect(find("funnel_step_turns", "insert")).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The review turn source.
+//
+// A TypeScript union and a Postgres CHECK constraint are two copies of one
+// rule, and only one of them runs in production. Widening the union alone
+// compiles green, passes every unit test, and then throws a constraint
+// violation on the first real review — at which point the turn is lost and
+// the owner sees a stream that ends in nothing.
+// ---------------------------------------------------------------------------
+
+describe("the review turn source", () => {
+  const MIGRATION = "supabase/migrations/00209_funnel_review_turns.sql"
+
+  it("is allowed by a migration, not only by TypeScript", () => {
+    const sql = readFileSync(join(process.cwd(), MIGRATION), "utf8")
+    expect(sql).toContain("funnel_step_turns_source_check")
+    expect(sql).toMatch(/'review'/)
+  })
+
+  it("keeps every source that already exists in the table", () => {
+    // Dropping one would orphan every turn already written with it, and the
+    // constraint would fail to apply against real data rather than failing
+    // later — but only on a database that HAS such rows.
+    const sql = readFileSync(join(process.cwd(), MIGRATION), "utf8")
+    for (const source of ["ai", "inspector", "revert"]) {
+      expect(sql).toMatch(new RegExp(`'${source}'`))
+    }
+  })
+
+  it("drops the old constraint before adding the new one", () => {
+    const sql = readFileSync(join(process.cwd(), MIGRATION), "utf8")
+    expect(sql.indexOf("drop constraint")).toBeLessThan(sql.indexOf("add constraint"))
+  })
+
+  it("is in the TypeScript union too", () => {
+    const source = readFileSync(join(process.cwd(), "lib/db/funnel-builder.ts"), "utf8")
+    expect(source).toMatch(/export type TurnSource =[^\n]*"review"/)
   })
 })
