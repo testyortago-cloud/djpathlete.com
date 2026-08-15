@@ -213,6 +213,36 @@ async function readEvents(res: Response): Promise<BuildStreamEvent[]> {
 }
 
 /**
+ * POST a build turn and WAIT FOR THE WHOLE TURN, discarding the events.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS EXISTS: `await POST(...)` NO LONGER WAITS FOR THE TURN.
+ * ---------------------------------------------------------------------------
+ * It used to, by accident. `withAudit` awaited `resp.clone().json()` before
+ * returning, and cloning a streaming Response TEES the body — so that await
+ * did not settle until the stream closed, and every assertion about what the
+ * route WROTE happened to run after the writes had finished.
+ *
+ * That was the bug that made the live progress stream useless in production:
+ * the client got nothing until the turn was over. Fixing it (with-audit.ts,
+ * `isStreamingResponse`) means `POST` now returns as soon as the headers are
+ * ready, which is correct — and which leaves any test that asserts on a
+ * database write racing the handler it is testing.
+ *
+ * So the waiting is now explicit and in one place. A test that asserts about
+ * writes uses this; a test that asserts about a pre-flight status code can
+ * still use `POST` directly, because those responses are ordinary JSON.
+ */
+async function runTurn(body: unknown): Promise<Response> {
+  const res = await POST(req(body), ctx)
+  // Only a streaming response has work still in flight behind it.
+  if ((res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+    await res.clone().text()
+  }
+  return res
+}
+
+/**
  * The turn, however the route chose to deliver it.
  *
  * A pre-flight failure is still ordinary JSON with a real status; a build turn
@@ -286,6 +316,7 @@ beforeEach(() => {
     findings: [],
     surviving: [],
     receipt: null,
+    tokensUsed: 0,
     error: null,
   })
 
@@ -329,7 +360,7 @@ describe("POST /api/admin/funnels/steps/:stepId/build — auth", () => {
     // exists). A `client` session would then be able to rewrite funnel pages
     // and spend Opus tokens doing it.
     mock(canAccessAdminPath).mockResolvedValue(false)
-    const res = await POST(req({ message: "hi", revision: 4 }), ctx)
+    const res = await runTurn({ message: "hi", revision: 4 })
     expect(res.status).toBe(403)
     expect(getDraft).not.toHaveBeenCalled()
     expect(streamAgent).not.toHaveBeenCalled()
@@ -340,7 +371,7 @@ describe("POST /api/admin/funnels/steps/:stepId/build — auth", () => {
     // not covered by middleware's /admin/* matcher (that matches PAGES), so
     // the handler's own check is the only gate.
     mock(auth).mockResolvedValue(null)
-    const res = await POST(req({ message: "hi", revision: 4 }), ctx)
+    const res = await runTurn({ message: "hi", revision: 4 })
     expect(res.status).toBe(403)
     expect(getDraft).not.toHaveBeenCalled()
   })
@@ -370,7 +401,7 @@ describe("POST .../build — request handling", () => {
     for (let i = 0; i < SECTION_BUILDER_RATE_LIMIT_MAX; i++) {
       expect((await POST(req({ message: "again", revision: 4 }), ctx)).status).toBe(200)
     }
-    const res = await POST(req({ message: "one too many", revision: 4 }), ctx)
+    const res = await runTurn({ message: "one too many", revision: 4 })
     expect(res.status).toBe(429)
   })
 
@@ -391,7 +422,7 @@ describe("POST .../build — the optimistic lock", () => {
     // silently overwrite each other, and because the document is a FULL
     // snapshot per turn the loser's page reverts several turns with no message.
     mock(getDraft).mockResolvedValue({ doc: doc(), docInvalid: false, revision: 9 })
-    const res = await POST(req({ message: "hi", revision: 4 }), ctx)
+    const res = await runTurn({ message: "hi", revision: 4 })
     expect(res.status).toBe(409)
     const body = await readTurn(res)
     expect(body.code).toBe("stale_revision")
@@ -406,7 +437,7 @@ describe("POST .../build — the optimistic lock", () => {
     // the CAS result can, and ignoring it drops the turn on the floor with a
     // 200 and a doc the DB never stored.
     mock(appendTurn).mockResolvedValue({ ok: false, reason: "stale_revision", currentRevision: 11 })
-    const res = await POST(req({ message: "hi", revision: 4 }), ctx)
+    const res = await runTurn({ message: "hi", revision: 4 })
     expect(res.status).toBe(409)
     const body = await readTurn(res)
     expect(body.code).toBe("stale_revision")
@@ -432,7 +463,7 @@ describe("POST .../build — a draft this builder cannot read", () => {
       { revision: 6, doc: null },
     ])
 
-    const res = await POST(req({ message: "make the headline bigger", revision: 7 }), ctx)
+    const res = await runTurn({ message: "make the headline bigger", revision: 7 })
     expect(res.status).toBe(422)
     const body = await readTurn(res)
     expect(body.code).toBe("doc_invalid")
@@ -485,7 +516,7 @@ describe("POST .../build — the one-shot retry", () => {
         }),
       )
 
-    const res = await POST(req({ message: "change the headline", revision: 4 }), ctx)
+    const res = await runTurn({ message: "change the headline", revision: 4 })
     expect(res.status).toBe(200)
     expect(streamAgent).toHaveBeenCalledTimes(2)
 
@@ -525,7 +556,7 @@ describe("POST .../build — the one-shot retry", () => {
     // MUTANT 3: writing a document anyway — the draft must be untouched.
     mock(streamAgent).mockImplementation(() => agentFailure("no object generated: could not parse"))
 
-    const res = await POST(req({ message: "hi", revision: 4 }), ctx)
+    const res = await runTurn({ message: "hi", revision: 4 })
     expect(res.status).toBe(200)
     expect(streamAgent).toHaveBeenCalledTimes(2)
 
@@ -554,7 +585,7 @@ describe("POST .../build — a catalogue that cannot be read", () => {
     const thousand = Array.from({ length: 1000 }, (_, i) => ({ id: `p${i}`, name: `Program ${i}` }))
     mock(getAllPrograms).mockResolvedValue(thousand)
 
-    const res = await POST(req({ message: "hi", revision: 4 }), ctx)
+    const res = await runTurn({ message: "hi", revision: 4 })
     expect(res.status).toBe(200)
 
     const body = await readTurn(res)
@@ -572,7 +603,7 @@ describe("POST .../build — a catalogue that cannot be read", () => {
     // entirely. Telling the model about programs the server cannot resolve
     // produces CTAs that come back unresolved on every subsequent turn.
     mock(getAllPrograms).mockResolvedValue(Array.from({ length: 1000 }, (_, i) => ({ id: `p${i}`, name: `P${i}` })))
-    await POST(req({ message: "hi", revision: 4 }), ctx)
+    await runTurn({ message: "hi", revision: 4 })
     const system = mock(streamAgent).mock.calls[0][0] as string
     expect(system).toContain("The catalogue — the only names a CTA may reference")
     expect(system).not.toContain(PROGRAM_NAME)
@@ -592,7 +623,7 @@ describe("POST .../build — resolve, compile, store", () => {
     // doc keeps the NAME, `resolveDoc`'s id-match-first idempotence rule can
     // never engage: every turn re-resolves from scratch forever and a program
     // renamed tomorrow silently breaks a button committed today.
-    const res = await POST(req({ message: "hi", revision: 4 }), ctx)
+    const res = await runTurn({ message: "hi", revision: 4 })
     expect(res.status).toBe(200)
 
     const stored = mock(appendTurn).mock.calls.map((c) => c[0]).find((i) => i.doc)
@@ -679,7 +710,7 @@ describe("POST .../build — resolve, compile, store", () => {
         ops: [{ op: "set_page", sections: overCapSections() }],
       }),
     )
-    const res = await POST(req({ message: "hi", revision: 4 }), ctx)
+    const res = await runTurn({ message: "hi", revision: 4 })
     expect(res.status).toBe(200)
 
     const body = await readTurn(res)
@@ -705,7 +736,7 @@ describe("POST .../build — resolve, compile, store", () => {
     // decide whether a page can be published.
     mock(getAllPrograms).mockResolvedValue(Array.from({ length: 1000 }, (_, i) => ({ id: `p${i}`, name: `P${i}` })))
 
-    await POST(req({ message: "hi", revision: 4 }), ctx)
+    await runTurn({ message: "hi", revision: 4 })
     const stored = mock(appendTurn).mock.calls.map((c) => c[0]).find((i) => i.doc)
     expect(stored).toBeDefined()
     expect(Array.isArray(stored.unresolved)).toBe(false)
@@ -719,7 +750,7 @@ describe("POST .../build — resolve, compile, store", () => {
     // distinction above worthless.
     mock(getPrograms).mockResolvedValue([])
     mock(getAllPrograms).mockResolvedValue([])
-    await POST(req({ message: "hi", revision: 4 }), ctx)
+    await runTurn({ message: "hi", revision: 4 })
     const stored = mock(appendTurn).mock.calls.map((c) => c[0]).find((i) => i.doc)
     expect(Array.isArray(stored.unresolved)).toBe(true)
     expect(stored.unresolved).toHaveLength(1)
@@ -746,7 +777,7 @@ describe("POST .../build — what it writes down", () => {
       return agentResult({ reply: "ok", blocked: false, ops: [] })
     })
 
-    await POST(req({ message: "make it shorter", revision: 4 }), ctx)
+    await runTurn({ message: "make it shorter", revision: 4 })
     expect(order).toEqual(["append:user", "streamAgent", "append:assistant"])
 
     const userTurn = mock(appendTurn).mock.calls[0][0]
@@ -764,7 +795,7 @@ describe("POST .../build — what it writes down", () => {
     // types/database.ts declares them. Prod's `ai_generation_log` has neither,
     // and PostgREST rejects the ENTIRE insert with PGRST204 on one unknown key
     // — which would kill the AI leg of every request.
-    await POST(req({ message: "hi", revision: 4 }), ctx)
+    await runTurn({ message: "hi", revision: 4 })
     const insert = mock(createGenerationLog).mock.calls[0][0]
     expect(insert.input_params.feature).toBe("funnel_page_build")
     expect(Object.keys(insert)).not.toContain("generation_trigger")
@@ -782,7 +813,7 @@ describe("POST .../build — what it writes down", () => {
       .mockImplementationOnce(() =>
         agentResult({ reply: "y", blocked: false, ops: [{ op: "update_section", id: "hero", props: { sub: "s" } }] }),
       )
-    await POST(req({ message: "hi", revision: 4 }), ctx)
+    await runTurn({ message: "hi", revision: 4 })
     expect(updateGenerationLog).toHaveBeenCalledWith("log-1", expect.objectContaining({ tokens_used: 2400 }))
   })
 
@@ -790,7 +821,7 @@ describe("POST .../build — what it writes down", () => {
     // MUTANT: awaiting `createGenerationLog` unguarded. A ledger outage would
     // then 500 an owner's page edit.
     mock(createGenerationLog).mockRejectedValue(new Error("PGRST204"))
-    const res = await POST(req({ message: "hi", revision: 4 }), ctx)
+    const res = await runTurn({ message: "hi", revision: 4 })
     expect(res.status).toBe(200)
   })
 })
@@ -812,7 +843,7 @@ describe("POST .../build — blocked", () => {
         ops: [{ op: "remove_section", id: "hero" }],
       }),
     )
-    const res = await POST(req({ message: "sell the gold pack", revision: 4 }), ctx)
+    const res = await runTurn({ message: "sell the gold pack", revision: 4 })
     expect(res.status).toBe(200)
 
     const body = await readTurn(res)
@@ -849,7 +880,7 @@ describe("POST .../build — the first draft", () => {
         agentResult({ reply: "Built the page.", blocked: false, ops: [{ op: "set_page", sections: fullPageSections() }] }),
       )
 
-    const res = await POST(req({ message: "build me a camp page", revision: 0 }), ctx)
+    const res = await runTurn({ message: "build me a camp page", revision: 0 })
     expect(res.status).toBe(200)
     expect(streamAgent).toHaveBeenCalledTimes(2)
 
@@ -868,7 +899,7 @@ describe("POST .../build — the first draft", () => {
     mock(streamAgent).mockImplementation(() =>
       agentResult({ reply: "Built it.", blocked: false, ops: [{ op: "set_page", sections: fullPageSections() }] }),
     )
-    await POST(req({ message: "build me a page", revision: 0 }), ctx)
+    await runTurn({ message: "build me a page", revision: 0 })
     const userMessage = mock(streamAgent).mock.calls[0][1] as string
     expect(userMessage).toContain("There is no page yet")
     expect(userMessage).not.toContain("draft-placeholder")
@@ -901,7 +932,7 @@ describe("POST .../build — reset to an earlier revision", () => {
     // rejected by `applyOps` at its entry parse, before any op is inspected —
     // so unlike a duplicate id (repairable by `set_page`) there is no chat
     // instruction that can ever fix it. Without this, that page is dead.
-    const res = await POST(req({ action: "reset", toRevision: 5 }), ctx)
+    const res = await runTurn({ action: "reset", toRevision: 5 })
     expect(res.status).toBe(200)
     const body = await readTurn(res)
     expect(body.source).toBe("revert")
@@ -959,7 +990,7 @@ describe("POST .../build — the prompt", () => {
     // MUTANT: passing the recognition set, or a catalogue rendered with ids.
     // One UUID in the prompt is a training signal to emit UUIDs, which is the
     // exact failure the whole name-not-id design exists to make impossible.
-    await POST(req({ message: "hi", revision: 4 }), ctx)
+    await runTurn({ message: "hi", revision: 4 })
     const [system, , , options] = mock(streamAgent).mock.calls[0]
     expect(system).toContain(PROGRAM_NAME)
     expect(system).not.toContain(PROGRAM_ID)
@@ -981,7 +1012,7 @@ describe("POST .../build — the prompt", () => {
     mock(streamAgent).mockImplementation(() =>
       agentResult({ reply: "Built it.", blocked: false, ops: [{ op: "set_page", sections: fullPageSections() }] }),
     )
-    await POST(req({ message: "build me a page", revision: 0 }), ctx)
+    await runTurn({ message: "build me a page", revision: 0 })
     const firstDraftBudget = mock(streamAgent).mock.calls[0][3].maxTokens
 
     // The same turn against an EXISTING page. Comparing the two is what makes
@@ -991,7 +1022,7 @@ describe("POST .../build — the prompt", () => {
     mock(streamAgent).mockImplementation(() =>
       agentResult({ reply: "ok", blocked: false, ops: [{ op: "update_section", id: "hero", props: { sub: "s" } }] }),
     )
-    await POST(req({ message: "tweak it", revision: 4 }), ctx)
+    await runTurn({ message: "tweak it", revision: 4 })
     const editBudget = mock(streamAgent).mock.calls[0][3].maxTokens
 
     // A first draft is a single `set_page` carrying every section — the same
@@ -1005,7 +1036,7 @@ describe("POST .../build — the prompt", () => {
   it("offers the funnel's OTHER steps, never this one", async () => {
     // MUTANT: passing every step. A CTA pointing at the page it is on is a
     // no-op link the owner cannot diagnose.
-    await POST(req({ message: "hi", revision: 4 }), ctx)
+    await runTurn({ message: "hi", revision: 4 })
     const system = mock(streamAgent).mock.calls[0][0] as string
     expect(system).toContain('"thanks"')
     expect(system).not.toContain('"apply"')
@@ -1177,7 +1208,7 @@ describe("POST .../build — failures that happen after the stream is open", () 
       return { ok: false, reason: "stale_revision", currentRevision: 11 }
     })
 
-    const res = await POST(req({ message: "hi", revision: 4 }), ctx)
+    const res = await runTurn({ message: "hi", revision: 4 })
     expect(res.status).toBe(200)
 
     const events = await readEvents(res)
@@ -1264,6 +1295,7 @@ function reviewChanged(summary = "Retoned two seams.") {
     ],
     surviving: [],
     receipt: { changed: [], isRewrite: false } as never,
+    tokensUsed: 1020,
     error: null,
   }
 }
@@ -1422,6 +1454,7 @@ describe("POST .../build — a review that goes wrong cannot break the turn", ()
       findings: [],
       surviving: [],
       receipt: null,
+      tokensUsed: 120,
       error: "reviser failed",
     })
 
@@ -1484,7 +1517,7 @@ describe("POST .../build — the Polish button", () => {
   })
 
   it("refuses when the client is behind, before spending anything", async () => {
-    const res = await POST(req({ action: "polish", revision: 2 }), ctx)
+    const res = await runTurn({ action: "polish", revision: 2 })
 
     expect(res.status).toBe(409)
     expect(await res.json()).toMatchObject({ code: "stale_revision", currentRevision: 4 })
@@ -1496,7 +1529,7 @@ describe("POST .../build — the Polish button", () => {
     // discovering that a one-section placeholder footer is too short.
     mock(getDraft).mockResolvedValue({ doc: null, docInvalid: false, revision: 4 })
 
-    const res = await POST(req({ action: "polish", revision: 4 }), ctx)
+    const res = await runTurn({ action: "polish", revision: 4 })
 
     expect(res.status).toBe(409)
     expect(reviewDoc).not.toHaveBeenCalled()
@@ -1506,7 +1539,7 @@ describe("POST .../build — the Polish button", () => {
     mock(getDraft).mockResolvedValue({ doc: null, docInvalid: true, revision: 4 })
     mock(listTurns).mockResolvedValue([])
 
-    const res = await POST(req({ action: "polish", revision: 4 }), ctx)
+    const res = await runTurn({ action: "polish", revision: 4 })
 
     expect(res.status).toBe(422)
     expect(await res.json()).toMatchObject({ code: "doc_invalid" })

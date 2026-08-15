@@ -63,8 +63,33 @@ const SEVERITY_DOT: Record<Finding["severity"], string> = {
   low: "bg-muted-foreground/40",
 }
 
+/**
+ * The phases that belong to a build, and the ones that belong to a review.
+ *
+ * THE CHECKLIST HAS TO KNOW WHICH RUN IT IS DRAWING. A Polish press starts at
+ * `reviewing`, so a single list would tick "Reading your brief", "Planning the
+ * page" and "Writing sections" as complete for a run in which the builder was
+ * never called — and an ordinary edit turn, which stops at `checking`, would
+ * show two review steps that never complete and look stalled.
+ *
+ * Split from `BUILD_PHASES` rather than hardcoded, so a phase added there
+ * without being placed here shows up as a missing step rather than silently
+ * disappearing from the display.
+ */
+const REVIEW_PHASES: readonly BuildPhase[] = BUILD_PHASES.filter(
+  (phase) => phase === "reviewing" || phase === "polishing",
+)
+const BUILD_ONLY_PHASES: readonly BuildPhase[] = BUILD_PHASES.filter((phase) => !REVIEW_PHASES.includes(phase))
+
 export function GenerationStage({ phase, sections, tokens, doc, attempt, findings }: GenerationStageProps) {
-  const currentIndex = BUILD_PHASES.indexOf(phase)
+  // A run that opened on a review phase is a Polish; anything else is a build
+  // that may or may not go on to be reviewed.
+  const isReviewOnly = REVIEW_PHASES.includes(phase) && sections.length === 0 && attempt === 1
+  const track = isReviewOnly ? REVIEW_PHASES : BUILD_ONLY_PHASES
+  const inTrack = track.indexOf(phase)
+  // A build turn that has moved into the review phases: every build step is
+  // done, so the last one stays ticked rather than the track resetting.
+  const currentIndex = inTrack === -1 ? track.length : inTrack
 
   return (
     <div className="rounded-xl border border-border bg-white p-3 shadow-sm">
@@ -85,7 +110,7 @@ export function GenerationStage({ phase, sections, tokens, doc, attempt, finding
       </p>
 
       <ol className="mt-2 flex flex-wrap gap-x-3 gap-y-1" aria-hidden>
-        {BUILD_PHASES.map((candidate, index) => {
+        {track.map((candidate, index) => {
           const done = index < currentIndex
           const active = index === currentIndex
           return (

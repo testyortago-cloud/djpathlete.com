@@ -53,6 +53,15 @@ export interface ReviewOutcome {
    */
   surviving: Finding[]
   receipt: DiffReceipt | null
+  /**
+   * Tokens this stage spent, across every critic and every reviser round.
+   *
+   * Carried out so the turn that stores the result can record it. The stage
+   * roughly triples the AI spend of a first draft, and every other model call
+   * on the build route is already accounted for — a cost that appears only on
+   * the invoice is a cost nobody can attribute to a feature.
+   */
+  tokensUsed: number
   /** Set when the stage gave up. NEVER thrown. */
   error: string | null
 }
@@ -100,8 +109,18 @@ export function opsRewrotePage(ops: unknown): boolean {
   return ops.some((op) => typeof op === "object" && op !== null && (op as { op?: unknown }).op === "set_page")
 }
 
-function unchanged(doc: SectionDoc, findings: Finding[], error: string | null): ReviewOutcome {
-  return { changed: false, doc, ops: [], summary: "", findings, surviving: findings, receipt: null, error }
+function unchanged(doc: SectionDoc, findings: Finding[], error: string | null, tokensUsed = 0): ReviewOutcome {
+  return {
+    changed: false,
+    doc,
+    ops: [],
+    summary: "",
+    findings,
+    surviving: findings,
+    receipt: null,
+    tokensUsed,
+    error,
+  }
 }
 
 function message(error: unknown): string {
@@ -159,15 +178,16 @@ async function runReview(doc: SectionDoc, onFinding?: (finding: Finding) => void
   // findings alone are still a review worth doing — which is the reason the
   // auditor exists rather than making the critics do all of it.
   let criticFindings: Finding[] = []
+  let tokensUsed = 0
   try {
     const returned = await runCritics(doc, auditFindings)
-    // Defended rather than trusted. `runCritics` is typed to return an array,
-    // but a schema change or a partially-applied refactor that made it return
-    // undefined would otherwise take the WHOLE review down at the merge —
-    // losing the deterministic findings, which had already succeeded and cost
-    // nothing. The panel degrading to zero findings is the correct floor here,
-    // not an abandoned stage.
-    criticFindings = Array.isArray(returned) ? returned : []
+    // Defended rather than trusted. A schema change or a partially-applied
+    // refactor that made this return the wrong shape would otherwise take the
+    // WHOLE review down at the merge — losing the deterministic findings,
+    // which had already succeeded and cost nothing. The panel degrading to
+    // zero findings is the correct floor here, not an abandoned stage.
+    criticFindings = Array.isArray(returned?.findings) ? returned.findings : []
+    tokensUsed += returned?.tokensUsed ?? 0
     for (const finding of criticFindings) onFinding?.(finding)
   } catch (error) {
     console.error("[funnels/review] critic panel failed wholesale:", error)
@@ -177,8 +197,18 @@ async function runReview(doc: SectionDoc, onFinding?: (finding: Finding) => void
   const findings = mergeFindings([auditFindings, criticFindings], SECTION_REVIEW_MAX_FINDINGS)
 
   if (findings.length === 0) {
-    // Nothing to fix. No reviser call, no turn, no cost.
-    return { changed: false, doc, ops: [], summary: "", findings, surviving: [], receipt: null, error: null }
+    // Nothing to fix. No reviser call — but the critics were still paid for.
+    return {
+      changed: false,
+      doc,
+      ops: [],
+      summary: "",
+      findings,
+      surviving: [],
+      receipt: null,
+      tokensUsed,
+      error: null,
+    }
   }
 
   // --- 3-5. Revise, apply, gate — up to SECTION_REVIEW_MAX_ROUNDS times. --
@@ -199,14 +229,15 @@ async function runReview(doc: SectionDoc, onFinding?: (finding: Finding) => void
   let receipt: DiffReceipt | null = null
 
   for (let round = 0; round < SECTION_REVIEW_MAX_ROUNDS; round += 1) {
-    let revision: { summary: string; ops: SectionOp[] }
+    let revision: { summary: string; ops: SectionOp[]; tokensUsed: number }
     try {
       revision = await runReviser(workingDoc, outstanding)
+      tokensUsed += revision.tokensUsed
     } catch (error) {
       console.error("[funnels/review] reviser failed:", error)
       // A LATER round failing keeps what earlier rounds achieved. Only a
       // first-round failure means nothing was gained.
-      if (allOps.length === 0) return unchanged(doc, findings, message(error))
+      if (allOps.length === 0) return unchanged(doc, findings, message(error), tokensUsed)
       break
     }
 
@@ -224,7 +255,7 @@ async function runReview(doc: SectionDoc, onFinding?: (finding: Finding) => void
     const applied = applyOps(workingDoc, revision.ops)
     if (!applied.ok) {
       console.error("[funnels/review] ops rejected:", applied.errors)
-      if (allOps.length === 0) return unchanged(doc, findings, `ops rejected: ${applied.errors.join("; ")}`)
+      if (allOps.length === 0) return unchanged(doc, findings, `ops rejected: `, tokensUsed)
       break
     }
 
@@ -249,6 +280,7 @@ async function runReview(doc: SectionDoc, onFinding?: (finding: Finding) => void
       findings,
       surviving: findings,
       receipt: null,
+      tokensUsed,
       error: null,
     }
   }
@@ -261,6 +293,7 @@ async function runReview(doc: SectionDoc, onFinding?: (finding: Finding) => void
     findings,
     surviving: auditDoc(workingDoc),
     receipt,
+    tokensUsed,
     error: null,
   }
 }

@@ -123,7 +123,7 @@ describe("the source stamp", () => {
   it("comes from the CALLER, not from the model", async () => {
     callAgent.mockImplementation(() => Promise.resolve(reply("x")))
     const found = await runCritics(DOC, [])
-    expect(new Set(found.map((f) => f.source))).toEqual(new Set(["art", "copy", "conversion"]))
+    expect(new Set(found.findings.map((f) => f.source))).toEqual(new Set(["art", "copy", "conversion"]))
   })
 
   it("is not overridable by a model that returns its own source", async () => {
@@ -140,7 +140,7 @@ describe("the source stamp", () => {
       }),
     )
     const found = await runCritics(DOC, [])
-    expect(found.every((f) => f.source !== "audit")).toBe(true)
+    expect(found.findings.every((f) => f.source !== "audit")).toBe(true)
   })
 })
 
@@ -150,12 +150,12 @@ describe("failure containment", () => {
       .mockImplementationOnce(() => Promise.reject(new Error("boom")))
       .mockImplementation(() => Promise.resolve(reply("x")))
     const found = await runCritics(DOC, [])
-    expect(found).toHaveLength(2)
+    expect(found.findings).toHaveLength(2)
   })
 
   it("returns an empty list — never throws — when all three fail", async () => {
     callAgent.mockImplementation(() => Promise.reject(new Error("provider down")))
-    await expect(runCritics(DOC, [])).resolves.toEqual([])
+    await expect(runCritics(DOC, [])).resolves.toMatchObject({ findings: [] })
   })
 
   it("does not let one failure discard the successes", async () => {
@@ -165,7 +165,7 @@ describe("failure containment", () => {
       .mockImplementationOnce(() => Promise.reject(new Error("boom")))
       .mockImplementationOnce(() => Promise.resolve(reply("third")))
     const found = await runCritics(DOC, [])
-    expect(found.map((f) => f.code).sort()).toEqual(["first", "third"])
+    expect(found.findings.map((f) => f.code).sort()).toEqual(["first", "third"])
   })
 })
 

@@ -92,7 +92,10 @@ function findingsBlock(findings: Finding[]): string {
  * change" and "could not be asked". `pipeline.ts` catches it and gives the
  * page back untouched.
  */
-export async function runReviser(doc: SectionDoc, findings: Finding[]): Promise<ReviseResult> {
+export async function runReviser(
+  doc: SectionDoc,
+  findings: Finding[],
+): Promise<ReviseResult & { tokensUsed: number }> {
   const message = `## The page as it stands
 
 ${JSON.stringify(doc, null, 2)}
@@ -103,7 +106,7 @@ ${findingsBlock(findings)}
 
 Emit the ops that fix these. Return JSON only.`
 
-  const { content } = await callAgent(REVISER_SYSTEM, message, reviseResultSchema, {
+  const { content, tokens_used } = await callAgent(REVISER_SYSTEM, message, reviseResultSchema, {
     model: SECTION_BUILDER_MODEL,
     maxTokens: SECTION_REVIEW_REVISER_MAX_TOKENS,
     // NOT cached, and not an oversight. `cacheSystemPrompt` puts ONE
@@ -114,7 +117,7 @@ Emit the ops that fix these. Return JSON only.`
     // builder pays for its cache because Block A is the whole of its system
     // string; here the win is smaller and the trap is one edit away.
   })
-  return content
+  return { ...content, tokensUsed: tokens_used ?? 0 }
 }
 
 export type { SectionOp }

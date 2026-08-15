@@ -805,6 +805,18 @@ async function handlePolish(args: PolishArgs): Promise<Response> {
     )
   }
 
+  // THE KILL SWITCH APPLIES HERE TOO. `SECTION_REVIEW_MAX_ROUNDS = 0` turns the
+  // review off, and a Polish press that still wrote "I found nothing worth
+  // changing" and advanced the revision would be the switch reporting a review
+  // it never ran. `shouldReview` owns that decision for both paths; the
+  // automatic one already asks it.
+  if (!shouldReview({ rewrotePage: false, requested: true })) {
+    return NextResponse.json(
+      { error: "Page review is switched off right now." },
+      { status: 503 },
+    )
+  }
+
   const [context, catalogueLoad] = await Promise.all([loadPageContext(funnelId, stepSlug), loadCataloguesSafely()])
   const { catalogues, error: catalogueError } = catalogueLoad
   const doc = draft.doc
@@ -1463,6 +1475,7 @@ interface ReviewStageArgs {
 async function runReviewStage(args: ReviewStageArgs): Promise<void> {
   const { emit, stepId, userId, doc, baseRevision, context, catalogues, catalogueError, startTime, standalone } = args
 
+  const reviewStartedAt = Date.now()
   emit({ type: "phase", phase: "reviewing" })
 
   const review = await reviewDoc({
@@ -1515,19 +1528,45 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
     compileProblems: { problems: compile.problems, warnings: compile.warnings },
     unresolved: unresolvedForStorage(resolution),
     model: SECTION_BUILDER_MODEL,
-    latencyMs: Date.now() - startTime,
+    // The stage's OWN spend — three Sonnet critics plus one Opus reviser per
+    // round. Recorded because this feature roughly triples the AI cost of a
+    // first draft, and every other model call on this route is already
+    // accounted for; a cost visible only on the invoice is one nobody can
+    // attribute to a feature.
+    tokensInput: review.tokensUsed,
+    // Measured from when the REVIEW started, not from the request. `startTime`
+    // covers the build too, and reusing it here would report the review as
+    // having taken the whole turn — which is exactly the number someone would
+    // later use to decide the review is too slow.
+    latencyMs: Date.now() - reviewStartedAt,
     createdBy: userId,
   })
 
-  // A LOST RACE IS NOT AN ERROR HERE.
+  // A LOST RACE IS NOT AN ERROR ON THE AUTOMATIC PATH.
   //
   // It means the owner edited the page while the review was running, and their
   // edit wins: a background improvement must never beat a human who was typing
-  // at the same moment. They already have a correct page and a correct
-  // revision from `result`, so the right thing to do is drop the polish
-  // silently and let them keep what they wrote.
+  // at the same moment. They already have a correct page and a correct revision
+  // from `result`, so the right thing to do is drop the polish silently.
+  //
+  // ON THE POLISH PATH THERE IS NO `result` BEHIND IT. Returning silently there
+  // ends the stream with no terminal event at all, and the client — correctly —
+  // reports a dropped connection instead of resyncing the revision. So the same
+  // 409 the pre-flight check would have produced is emitted as a `fail`, which
+  // `handleErrorResponse` already knows how to turn into a resync.
   if (!reviewTurn.ok) {
     console.warn("[funnels/build] review turn lost the compare-and-swap; the owner's own edit wins")
+    if (standalone) {
+      emit({
+        type: "fail",
+        status: 409,
+        body: {
+          error: "Someone else changed this page while the reviewer was reading it. Reload and try again.",
+          code: "stale_revision",
+          currentRevision: "currentRevision" in reviewTurn ? reviewTurn.currentRevision : baseRevision,
+        },
+      })
+    }
     return
   }
 

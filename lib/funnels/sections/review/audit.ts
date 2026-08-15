@@ -188,12 +188,25 @@ function targetKey(target: Record<string, unknown>): string {
 }
 
 /**
- * Every CTA target in a section.
+ * Every CTA target in a section that counts as an OFFER.
  *
  * Recognised by SHAPE — an object carrying both `label` and an object
  * `target` — rather than by a list of known key names. `ctaWithLabelSchema` is
  * reused at hero, pricing plan, cta and footer link sites, and a hardcoded key
  * list would silently miss the day an eleventh kind adds a fifth.
+ *
+ * ---------------------------------------------------------------------------
+ * FOOTER `links` ARE SKIPPED, AND NOT AS A CONVENIENCE.
+ * ---------------------------------------------------------------------------
+ * `LEADGEN_RULES` says, in the same breath as the one-offer-one-action rule:
+ * "If the owner asks for a second action, put it in the footer as a link, not
+ * as a competing button." The footer link row is therefore the SANCTIONED
+ * place for a second destination — counting it as divergence would raise a
+ * high-severity finding on every page carrying a Privacy or Terms link, and
+ * send the reviser off to point them all at the checkout.
+ *
+ * The production fixture has `links: []`, so nothing in this suite would have
+ * caught it. `footer.links` is the only `links` field in the whole registry.
  */
 function ctaTargetsOf(section: Section): string[] {
   const out: string[] = []
@@ -211,7 +224,10 @@ function ctaTargetsOf(section: Section): string[] {
       if (key !== "") out.push(key)
       return
     }
-    for (const child of Object.values(record)) walk(child)
+    for (const [childKey, child] of Object.entries(record)) {
+      if (childKey === "links") continue
+      walk(child)
+    }
   }
 
   walk(section.props)
@@ -281,13 +297,21 @@ export function auditDoc(doc: SectionDoc): Finding[] {
   }
 
   // --- pad-monotony: "boring" --------------------------------------------
+  //
+  // Compared on the RESOLVED value, not the raw one. `render.ts` emits
+  // `data-pad="normal"` for a section that set no pad, so a page mixing
+  // `undefined` and `"normal"` renders as one flat run of identical bands — and
+  // a raw comparison would call that variety and report nothing. The three
+  // sibling rules (`tone-run` via `effectiveTone`, `align-thrash`,
+  // `headline-scale`) all resolve their defaults; this one was the odd one out.
+  const pads = sections.map((section) => section.style.pad ?? "normal")
   let runStart = 0
   for (let index = 1; index <= sections.length; index += 1) {
-    const continues = index < sections.length && sections[index].style.pad === sections[runStart].style.pad
+    const continues = index < sections.length && pads[index] === pads[runStart]
     if (continues) continue
     const length = index - runStart
     if (length >= PAD_RUN_LIMIT) {
-      const value = sections[runStart].style.pad ?? "normal"
+      const value = pads[runStart]
       findings.push(
         finding(
           "pad-monotony",

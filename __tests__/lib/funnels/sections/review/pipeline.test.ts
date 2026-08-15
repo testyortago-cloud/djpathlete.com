@@ -97,8 +97,8 @@ describe("shouldReview", () => {
 
 describe("the happy path, end to end", () => {
   it("clears the real page's tone seams, proven by a second audit", async () => {
-    runCritics.mockResolvedValue([])
-    runReviser.mockResolvedValue({ summary: "Retoned two seams.", ops: RETONE_OPS })
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
+    runReviser.mockResolvedValue({ summary: "Retoned two seams.", ops: RETONE_OPS, tokensUsed: 900 })
 
     const out = await reviewDoc({ doc: PROD })
 
@@ -115,8 +115,8 @@ describe("the happy path, end to end", () => {
     // The gate's whole justification. These ops close one seam and open
     // another; without the re-audit the turn would report two seams fixed and
     // ship a page with one still in it.
-    runCritics.mockResolvedValue([])
-    runReviser.mockResolvedValue({ summary: "Retoned two seams.", ops: SEAM_SHUFFLING_OPS })
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
+    runReviser.mockResolvedValue({ summary: "Retoned two seams.", ops: SEAM_SHUFFLING_OPS, tokensUsed: 900 })
 
     const out = await reviewDoc({ doc: PROD })
 
@@ -127,24 +127,24 @@ describe("the happy path, end to end", () => {
   })
 
   it("returns the receipt from the real applier, not the model's claim", async () => {
-    runCritics.mockResolvedValue([])
-    runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS })
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
+    runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS, tokensUsed: 900 })
     const out = await reviewDoc({ doc: PROD })
     expect(out.receipt).not.toBeNull()
     expect(out.receipt?.isRewrite).toBe(false)
   })
 
   it("merges critic findings in with the deterministic ones", async () => {
-    runCritics.mockResolvedValue([CRITIC_FINDING])
-    runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS })
+    runCritics.mockResolvedValue({ findings: [CRITIC_FINDING], tokensUsed: 120 })
+    runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS, tokensUsed: 900 })
     const out = await reviewDoc({ doc: PROD })
     expect(out.findings.map((f) => f.code)).toContain("vague-headline")
     expect(out.findings.map((f) => f.code)).toContain("tone-run")
   })
 
   it("hands the reviser the merged list, high severity first", async () => {
-    runCritics.mockResolvedValue([CRITIC_FINDING])
-    runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS })
+    runCritics.mockResolvedValue({ findings: [CRITIC_FINDING], tokensUsed: 120 })
+    runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS, tokensUsed: 900 })
     await reviewDoc({ doc: PROD })
     const passed = runReviser.mock.calls[0][1] as Finding[]
     expect(passed[0].severity).toBe("high")
@@ -153,7 +153,7 @@ describe("the happy path, end to end", () => {
 
 describe("failure containment", () => {
   it("returns the page UNCHANGED, by reference, when the reviser throws", async () => {
-    runCritics.mockResolvedValue([])
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockRejectedValue(new Error("model down"))
 
     const out = await reviewDoc({ doc: PROD })
@@ -164,7 +164,7 @@ describe("failure containment", () => {
   })
 
   it("returns the page UNCHANGED when applyOps rejects the batch", async () => {
-    runCritics.mockResolvedValue([])
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "s", ops: [{ op: "remove_section", id: "does-not-exist" }] })
 
     const out = await reviewDoc({ doc: PROD })
@@ -177,7 +177,7 @@ describe("failure containment", () => {
   it("returns the page UNCHANGED on a schema-valid op the applier refuses", async () => {
     // `opSchema` accepts an update_section carrying nothing; applyOps does
     // not, and it takes the whole batch down with it.
-    runCritics.mockResolvedValue([])
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "s", ops: [{ op: "update_section", id: "hero" }] })
 
     const out = await reviewDoc({ doc: PROD })
@@ -188,7 +188,7 @@ describe("failure containment", () => {
 
   it("still reviews from deterministic findings alone when the panel dies", async () => {
     runCritics.mockRejectedValue(new Error("all three failed"))
-    runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS })
+    runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS, tokensUsed: 900 })
 
     const out = await reviewDoc({ doc: PROD })
 
@@ -209,7 +209,7 @@ describe("failure containment", () => {
     // CRITIC findings only. The deterministic pass had already succeeded and
     // cost nothing, and losing it would abandon a review that was working.
     runCritics.mockResolvedValue(undefined)
-    runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS })
+    runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS, tokensUsed: 900 })
 
     const out = await reviewDoc({ doc: PROD })
 
@@ -223,8 +223,8 @@ describe("restraint", () => {
   it("appends nothing when the reviser judges the page fine", async () => {
     // An empty ops array is a GOOD outcome. Treating it as a change would give
     // every page an empty "I changed nothing" turn in its transcript.
-    runCritics.mockResolvedValue([])
-    runReviser.mockResolvedValue({ summary: "The page reads well.", ops: [] })
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
+    runReviser.mockResolvedValue({ summary: "The page reads well.", ops: [], tokensUsed: 900 })
 
     const out = await reviewDoc({ doc: PROD })
 
@@ -299,7 +299,7 @@ describe("restraint", () => {
       ],
     })
 
-    runCritics.mockResolvedValue([])
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     const out = await reviewDoc({ doc: clean as SectionDoc })
 
     expect(out.changed).toBe(false)
@@ -310,8 +310,8 @@ describe("restraint", () => {
 
 describe("streaming", () => {
   it("emits each deterministic finding as it lands", async () => {
-    runCritics.mockResolvedValue([])
-    runReviser.mockResolvedValue({ summary: "s", ops: [] })
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
+    runReviser.mockResolvedValue({ summary: "s", ops: [], tokensUsed: 900 })
 
     const seen: string[] = []
     await reviewDoc({ doc: PROD, onFinding: (finding) => seen.push(finding.code) })
@@ -321,8 +321,8 @@ describe("streaming", () => {
   })
 
   it("emits critic findings too", async () => {
-    runCritics.mockResolvedValue([CRITIC_FINDING])
-    runReviser.mockResolvedValue({ summary: "s", ops: [] })
+    runCritics.mockResolvedValue({ findings: [CRITIC_FINDING], tokensUsed: 120 })
+    runReviser.mockResolvedValue({ summary: "s", ops: [], tokensUsed: 900 })
 
     const seen: string[] = []
     await reviewDoc({ doc: PROD, onFinding: (finding) => seen.push(finding.code) })
@@ -331,8 +331,50 @@ describe("streaming", () => {
   })
 
   it("does not require an onFinding callback", async () => {
-    runCritics.mockResolvedValue([])
-    runReviser.mockResolvedValue({ summary: "s", ops: [] })
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
+    runReviser.mockResolvedValue({ summary: "s", ops: [], tokensUsed: 900 })
     await expect(reviewDoc({ doc: PROD })).resolves.toBeDefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Cost accounting.
+//
+// This stage roughly triples the AI spend of a first draft. Every other model
+// call on the build route already records its tokens, so a review whose four
+// calls were invisible would show up only as an unexplained rise on the
+// invoice — attributable to nothing.
+// ---------------------------------------------------------------------------
+
+describe("token accounting", () => {
+  it("sums the critics and the reviser", async () => {
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
+    runReviser.mockResolvedValue({ summary: "s", ops: RETONE_OPS, tokensUsed: 900 })
+
+    const out = await reviewDoc({ doc: PROD })
+
+    expect(out.tokensUsed).toBe(1020)
+  })
+
+  it("still reports the critics' spend when the reviser declines to change anything", async () => {
+    // MUTANT: returning 0 on the no-ops path. The critics were still called
+    // and still billed.
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
+    runReviser.mockResolvedValue({ summary: "Reads well.", ops: [], tokensUsed: 300 })
+
+    const out = await reviewDoc({ doc: PROD })
+
+    expect(out.changed).toBe(false)
+    expect(out.tokensUsed).toBe(420)
+  })
+
+  it("still reports the critics' spend when the reviser throws", async () => {
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
+    runReviser.mockRejectedValue(new Error("model down"))
+
+    const out = await reviewDoc({ doc: PROD })
+
+    expect(out.error).toContain("model down")
+    expect(out.tokensUsed).toBe(120)
   })
 })

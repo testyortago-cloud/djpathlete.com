@@ -398,3 +398,98 @@ describe("purity", () => {
     expect(JSON.stringify(PROD)).toBe(before)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Two defects found by review, both invisible to every fixture above because
+// the production page happens not to exercise either.
+// ---------------------------------------------------------------------------
+
+describe("footer links are not a second offer", () => {
+  function pageWithFooterLinks(links: Array<{ label: string; target: Record<string, unknown> }>): SectionDoc {
+    return {
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "accent", radius: "soft" },
+      sections: [
+        {
+          id: "hero",
+          kind: "hero",
+          variant: "centered",
+          style: { headline: "xl", tone: "dark", pad: "roomy" },
+          props: { headline: "Book a call", primaryCta: { label: "Book", target: { kind: "booking" } } },
+        },
+        {
+          id: "proof",
+          kind: "proof",
+          variant: "stats",
+          style: { pad: "tight" },
+          props: {
+            items: [
+              { value: "500+", label: "athletes" },
+              { value: "12 yrs", label: "coaching" },
+            ],
+          },
+        },
+        {
+          id: "footer",
+          kind: "footer",
+          variant: "simple",
+          style: { tone: "muted", pad: "tight" },
+          props: { businessName: "DJP Athlete", lines: [], links },
+        },
+      ],
+    } as SectionDoc
+  }
+
+  it("does NOT flag a page whose footer carries Privacy and Terms", () => {
+    // LEADGEN_RULES puts a second action in the footer as a link ON PURPOSE:
+    // "not as a competing button". Counting those as divergence raises a high
+    // finding on nearly every real page and sends the reviser off to point the
+    // legal links at the checkout.
+    const doc = pageWithFooterLinks([
+      { label: "Privacy", target: { kind: "url", href: "/privacy" } },
+      { label: "Terms", target: { kind: "url", href: "/terms" } },
+    ])
+    expect(codes(doc)).not.toContain("cta-divergence")
+  })
+
+  it("still flags two competing BUTTONS outside the footer", () => {
+    // The rule must not have been switched off wholesale.
+    const doc = pageWithFooterLinks([])
+    const withSecondOffer: SectionDoc = {
+      ...doc,
+      sections: [
+        doc.sections[0],
+        {
+          id: "buy",
+          kind: "cta",
+          variant: "band",
+          style: { tone: "accent", pad: "roomy" },
+          props: { headline: "Or buy the program", cta: { label: "Buy", target: { kind: "url", href: "/shop" } } },
+        },
+        doc.sections[1],
+        doc.sections[2],
+      ],
+    } as SectionDoc
+    expect(codes(withSecondOffer)).toContain("cta-divergence")
+  })
+})
+
+describe("pad-monotony resolves the default", () => {
+  it("sees a run mixing unset and explicit normal as one flat run", () => {
+    // render.ts emits data-pad="normal" for a section that set no pad, so this
+    // page renders as four identical bands. A raw comparison calls it variety.
+    const doc: SectionDoc = {
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "accent", radius: "soft" },
+      sections: [
+        cta("a", { tone: "accent" }),
+        cta("b", { tone: "dark", pad: "normal" }),
+        cta("c", { tone: "muted" }),
+        cta("d", { tone: "accent", pad: "normal" }),
+      ],
+    }
+    expect(codes(doc)).toContain("pad-monotony")
+  })
+})

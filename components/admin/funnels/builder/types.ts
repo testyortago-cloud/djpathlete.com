@@ -53,7 +53,15 @@ export interface BuildTurnResponse {
    * previous list rather than taking the empty one.
    */
   resolutionError: string | null
-  source: "ai" | "revert"
+  /**
+   * Which path produced this revision.
+   *
+   * `review` is the AI review stage, which appends its improvements as their
+   * own turn after the build turn has committed. It must be in this union
+   * rather than left to a cast: the wire carries it today, and a client type
+   * that does not know the value is a client that cannot branch on it.
+   */
+  source: "ai" | "revert" | "review"
 }
 
 /** The error bodies the build route returns, flattened. */

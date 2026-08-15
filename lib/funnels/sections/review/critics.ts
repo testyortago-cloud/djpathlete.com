@@ -182,7 +182,20 @@ Report what your lens finds. Return JSON only.`
  * discards the two calls that succeeded, which turns a partial outage into a
  * total one for no reason.
  */
-export async function runCritics(doc: SectionDoc, auditFindings: Finding[]): Promise<Finding[]> {
+export interface CriticPanelResult {
+  findings: Finding[]
+  /**
+   * Tokens the panel actually spent, summed across the lenses that answered.
+   *
+   * Reported rather than dropped because this stage roughly triples the AI
+   * spend of a first draft, and every other model call on the build route is
+   * already accounted for. A cost that only shows up on the invoice is a cost
+   * nobody can attribute.
+   */
+  tokensUsed: number
+}
+
+export async function runCritics(doc: SectionDoc, auditFindings: Finding[]): Promise<CriticPanelResult> {
   const message = userMessage(doc, auditFindings)
 
   const settled = await Promise.allSettled(
@@ -196,17 +209,22 @@ export async function runCritics(doc: SectionDoc, auditFindings: Finding[]): Pro
       // the merge would then silently collapse two independent observations
       // into one — losing exactly the cross-lens agreement that made the
       // finding worth trusting.
-      return result.content.findings.map((finding): Finding => ({ ...finding, source: critic.source }))
+      return {
+        findings: result.content.findings.map((finding): Finding => ({ ...finding, source: critic.source })),
+        tokensUsed: result.tokens_used ?? 0,
+      }
     }),
   )
 
-  const out: Finding[] = []
+  const findings: Finding[] = []
+  let tokensUsed = 0
   for (const [index, result] of settled.entries()) {
     if (result.status === "fulfilled") {
-      out.push(...result.value)
+      findings.push(...result.value.findings)
+      tokensUsed += result.value.tokensUsed
       continue
     }
     console.error(`[funnels/review] critic "${CRITICS[index].source}" failed:`, result.reason)
   }
-  return out
+  return { findings, tokensUsed }
 }

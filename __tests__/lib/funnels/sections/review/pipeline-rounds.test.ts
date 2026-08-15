@@ -47,15 +47,19 @@ const ROUND_TWO_OPS = [
 beforeEach(() => {
   runCritics.mockReset()
   runReviser.mockReset()
-  runCritics.mockResolvedValue([])
+  runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
 })
 
 describe("with the round count raised", () => {
-  it("actually runs a second round — the constant is not decorative", () => {
-    // Guard on the mock itself. If the module mock above ever stops taking
-    // effect, every assertion in this file would silently become a
-    // single-round test that happens to pass.
-    expect(true).toBe(true)
+  it("really has the constant mocked to 2", async () => {
+    // A GUARD ON THE MOCK ITSELF. If `vi.mock` on builder-config ever stops
+    // taking effect — a path change, a hoisting change, an import ordering
+    // change — every assertion in this file would silently become a
+    // single-round test, and the ones that assert two rounds would fail in a
+    // way that looks like a product bug rather than a broken fixture. This
+    // says which it is, first, in one line.
+    const { SECTION_REVIEW_MAX_ROUNDS } = await import("@/lib/funnels/sections/builder-config")
+    expect(SECTION_REVIEW_MAX_ROUNDS).toBe(2)
   })
 
   it("revises again when high-severity findings survive the gate", async () => {
@@ -111,6 +115,7 @@ describe("with the round count raised", () => {
     // The early exit. Without it every page would pay two reviser calls even
     // when the first one settled it.
     runReviser.mockResolvedValueOnce({
+      tokensUsed: 900,
       summary: "Cleared both seams.",
       ops: [
         { op: "update_section", id: "proof", style: { tone: "muted" } },

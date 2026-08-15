@@ -26,8 +26,36 @@ function classifyOutcome(status: number): AuditOutcome {
   return "failure"
 }
 
+/**
+ * A response whose body is still being written when the handler returns.
+ *
+ * ---------------------------------------------------------------------------
+ * READING ONE HERE HOLDS THE WHOLE RESPONSE UNTIL THE STREAM CLOSES.
+ * ---------------------------------------------------------------------------
+ * `resp.clone()` TEES the body — it does not snapshot it — so `clone.json()`
+ * does not settle until the last byte is written, and this wrapper awaits it
+ * BEFORE `return resp`. On a 60-second AI turn that means the client receives
+ * nothing at all for 60 seconds and then every frame in one lump: the progress
+ * UI sits on its first step for the whole turn and the stream might as well not
+ * exist. Measured, not reasoned about — a Response over a stream that closes at
+ * 1.5s makes `clone().json()` settle at 1517ms, and the caller unblocks at
+ * 1518ms.
+ *
+ * A streaming route also has no JSON body to read, so there was never anything
+ * to gain: `maybeReadError` would have thrown, and the metadata callback below
+ * would have returned `{}` after paying the full delay for it.
+ *
+ * The funnel builder hit exactly this. `35944ac8` fixed one cause (a
+ * `ReadableStream` whose `start()` returned a promise, so the stream never
+ * started) and this was the second one behind it, still holding every frame.
+ */
+function isStreamingResponse(response: Response): boolean {
+  return (response.headers.get("content-type") ?? "").includes("text/event-stream")
+}
+
 async function maybeReadError(response: Response): Promise<{ code?: string; message?: string } | undefined> {
   if (response.ok) return undefined
+  if (isStreamingResponse(response)) return { code: String(response.status) }
   try {
     const clone = response.clone()
     const body = await clone.json() as { error?: string; code?: string }
@@ -76,9 +104,17 @@ export function withAudit(options: WithAuditOptions, handler: Handler): Handler 
 
     let extra: Record<string, unknown> = {}
     if (options.metadata) {
-      try {
-        extra = (await options.metadata(request, resp.clone())) ?? {}
-      } catch { /* swallow */ }
+      if (isStreamingResponse(resp)) {
+        // NOT called. See `isStreamingResponse`: a metadata callback that
+        // reads the body would hold the entire response until the stream
+        // closed, and there is no JSON body for it to find anyway. The row
+        // says so rather than pretending the callback returned nothing.
+        extra = { streamed: true }
+      } else {
+        try {
+          extra = (await options.metadata(request, resp.clone())) ?? {}
+        } catch { /* swallow */ }
+      }
     }
 
     void recordAudit({
