@@ -211,6 +211,49 @@ ${ROOT} .djp-s[data-tone="dark"] .djp-hd { color: inherit; }
 ${ROOT} .djp-s[data-tone="accent"] .djp-sub,
 ${ROOT} .djp-s[data-tone="dark"] .djp-sub { color: inherit; opacity: 0.85; }
 
+/* SECTION BOUNDARY — the fix for "the spacing looks off".
+
+   NOTE FOR ANYONE EDITING THIS COMMENT: no backticks. This whole string is a
+   template literal, so one backtick in a CSS comment closes it and the file
+   stops parsing — which is exactly how this block failed the first time it
+   was written.
+
+   Two adjacent sections at the same tone had NOTHING between them. There was
+   no rule of any kind pairing one .djp-s with the next in this whole file: no
+   border, no adjacent-sibling selector, no divider. So they painted as one
+   continuous band with both sections' padding-block stacked into a single
+   6rem void, and a reader could not tell where one idea ended and the next
+   began. The real production page did it twice in eight sections.
+
+   THIS IS A SAFETY NET, NOT THE FIX. The tone-run rule in review/audit.ts is
+   what stops the model creating same-tone neighbours in the first place; these
+   four rules make the page legible on the occasions one still gets through,
+   and they are the only repair available to pages that are ALREADY PUBLISHED —
+   a version row freezes HTML *and* CSS, so nothing live repaints on deploy and
+   those pages pick this up when next published.
+
+   EXPLICIT TOKEN PER TONE, NEVER currentColor. render.test.ts's tone-contrast
+   harness resolves colours BY TOKEN, so a currentColor divider is UNMODELLED
+   by it: the suite would stay green while the only test that checks tone
+   rendering had no idea this existed. Each rule mixes the tone's own paired
+   foreground, which is also why the pair survives a scope flip — the same
+   reason the contrast pass below swaps pairs rather than picking a lightness.
+   The two repainted tones sit higher (22%) because a 10% mix of a light
+   foreground on a saturated brand background does not resolve to a visible
+   line. */
+${ROOT} .djp-s[data-tone="default"] + .djp-s[data-tone="default"] {
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 10%, transparent);
+}
+${ROOT} .djp-s[data-tone="muted"] + .djp-s[data-tone="muted"] {
+  border-top: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
+}
+${ROOT} .djp-s[data-tone="accent"] + .djp-s[data-tone="accent"] {
+  border-top: 1px solid color-mix(in oklch, var(--accent-foreground) 22%, transparent);
+}
+${ROOT} .djp-s[data-tone="dark"] + .djp-s[data-tone="dark"] {
+  border-top: 1px solid color-mix(in oklch, var(--primary-foreground) 22%, transparent);
+}
+
 /* TONE CONTRAST PASS — see the block comment above THEME_CSS. Move 1:
    a panel inside a repainted section LIFTS, it does not switch to --surface. */
 ${ROOT} .djp-s[data-tone="accent"].djp-s-bullets.djp-v-cards .djp-bullet-item,
