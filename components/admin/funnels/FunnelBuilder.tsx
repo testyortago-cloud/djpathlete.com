@@ -702,8 +702,21 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
    * So: silence earns one click, anything worth saying earns the review.
    */
   const noun = props.funnelKind === "page" ? "landing page" : "funnel"
-  /** Back to the tab this row actually lives in — see lib/funnels/admin-path.ts. */
-  const adminHref = `${props.funnelKind === "page" ? "/admin/pages" : "/admin/funnels"}/${props.funnelId}`
+  /**
+   * Back to the tab this row actually lives in — see lib/funnels/admin-path.ts.
+   *
+   * A LANDING PAGE GOES BACK TO THE LIST, NOT TO ITS OWN DETAIL SCREEN. A
+   * landing page is one page, so `/admin/pages/<id>` shows a single card that
+   * repeats the card the list already shows — and every control that was once
+   * only there (go live, public URL, delete, convert to funnel) now lives on
+   * the list card. Leaving the editor onto it meant a second, emptier copy of
+   * the screen the owner was trying to get back to.
+   *
+   * A FUNNEL still goes to its own screen: that one lists the steps, which is
+   * information the board cannot show.
+   */
+  const adminHref =
+    props.funnelKind === "page" ? "/admin/pages" : `/admin/funnels/${props.funnelId}`
 
   /**
    * Things worth SEEING that do not stop a publish: a CTA pointing at a section

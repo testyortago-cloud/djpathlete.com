@@ -10,11 +10,28 @@
 // it redirects on a MISMATCH between the row's kind and the URL it arrived on,
 // never on the kind alone. See lib/funnels/admin-path.ts.
 
+import { redirect } from "next/navigation"
+import { getFunnelById } from "@/lib/db/funnels"
 import { FunnelDetailScreen } from "@/app/(admin)/admin/funnels/[id]/page"
 
 export const metadata = { title: "Landing page" }
 
 export default async function LandingPageDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const funnel = await getFunnelById(id)
+
+  // A LANDING PAGE HAS NO DETAIL SCREEN. The shared screen is a step list, and
+  // a landing page is one step by definition, so this URL rendered a single
+  // card repeating the one `/admin/pages` already shows. Its controls — go
+  // live, public URL, convert to funnel, delete — all moved onto that card, so
+  // the list IS the screen and this address is only ever somewhere to pass
+  // through: an old bookmark, an open tab, a link written before the split.
+  //
+  // Kind-checked, not unconditional. A FUNNEL reached on this URL still needs
+  // the mismatch redirect the shared screen owns (`/admin/funnels/<id>`), and a
+  // row that does not exist still needs its notFound() — restating either here
+  // is how the two would drift apart.
+  if (funnel?.kind === "page") redirect("/admin/pages")
+
   return <FunnelDetailScreen id={id} base="pages" />
 }

@@ -221,15 +221,17 @@ export function LeadsBoard(props: LeadsBoardProps) {
       </DataTableToolbar>
 
       <DataTable>
+        {/* No <tr> here — DataTableHeader renders the row itself. Wrapping the
+            heads in one nests a row inside a row, which lays the header out in
+            its own anonymous table and leaves every label misaligned with the
+            column it names. */}
         <DataTableHeader>
-          <tr>
-            <DataTableHead className="w-8" aria-label="Expand" />
-            <DataTableHead>When</DataTableHead>
-            <DataTableHead>Page</DataTableHead>
-            <DataTableHead>Lead</DataTableHead>
-            <DataTableHead>Contact</DataTableHead>
-            <DataTableHead>Status</DataTableHead>
-          </tr>
+          <DataTableHead className="w-8" aria-label="Expand" />
+          <DataTableHead>When</DataTableHead>
+          <DataTableHead>Page</DataTableHead>
+          <DataTableHead>Lead</DataTableHead>
+          <DataTableHead>Contact</DataTableHead>
+          <DataTableHead>Status</DataTableHead>
         </DataTableHeader>
         <tbody>
           {leads.length === 0 ? (

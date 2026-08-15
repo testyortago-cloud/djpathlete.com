@@ -195,11 +195,20 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
                         edited by clicking it in the builder that Open goes to.
                         The route still exists and explains itself to anyone
                         holding a bookmark. */}
-                    <Button asChild variant="outline" size="sm" title="Funnel settings & pages">
-                      <Link href={adminFunnelHref(funnel.kind, funnel.id)}>
-                        <Settings2 className="size-4" />
-                      </Link>
-                    </Button>
+                    {/* FUNNELS ONLY, and for the same reason the go-live
+                        button above moved onto this card: `/admin/<base>/<id>`
+                        is a STEP LIST, and a landing page has exactly one step.
+                        For a page it rendered a second, emptier copy of this
+                        card and nothing else — every control it held is now
+                        here. A funnel's steps are real information this board
+                        cannot show, so the button stays there. */}
+                    {kind === "funnel" ? (
+                      <Button asChild variant="outline" size="sm" title="Funnel settings & pages">
+                        <Link href={adminFunnelHref(funnel.kind, funnel.id)}>
+                          <Settings2 className="size-4" />
+                        </Link>
+                      </Button>
+                    ) : null}
                   </>
                 }
               />
