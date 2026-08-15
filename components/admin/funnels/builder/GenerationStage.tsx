@@ -28,7 +28,7 @@
 // `exact: false` renders with a `~`. See `BuildStreamEvent`.
 
 import { Check, Loader2 } from "lucide-react"
-import { BUILD_PHASES, BUILD_PHASE_LABELS, type BuildPhase } from "@/lib/funnels/sections/build-stream"
+import { BUILD_PHASES, BUILD_PHASE_LABELS, type BuildPhase, type Finding } from "@/lib/funnels/sections/build-stream"
 import type { StreamedSection } from "@/lib/funnels/sections/stream-progress"
 import type { SectionDoc } from "./types"
 
@@ -45,9 +45,25 @@ export interface GenerationStageProps {
   doc: SectionDoc | null
   /** 2 while the model's first answer is being rewritten after a rejection. */
   attempt: number
+  /**
+   * What the reviewers have caught so far, in arrival order.
+   *
+   * The review adds 30-40 seconds AFTER the page is already on screen, so
+   * without this the owner watches a spinner over a finished page for longer
+   * than the build itself took. Naming each problem as it is found is what
+   * makes that time legible.
+   */
+  findings: Finding[]
 }
 
-export function GenerationStage({ phase, sections, tokens, doc, attempt }: GenerationStageProps) {
+/** High reads as a real problem; the rest are shades of polish. */
+const SEVERITY_DOT: Record<Finding["severity"], string> = {
+  high: "bg-[var(--error)]",
+  medium: "bg-[var(--warning)]",
+  low: "bg-muted-foreground/40",
+}
+
+export function GenerationStage({ phase, sections, tokens, doc, attempt, findings }: GenerationStageProps) {
   const currentIndex = BUILD_PHASES.indexOf(phase)
 
   return (
@@ -92,6 +108,22 @@ export function GenerationStage({ phase, sections, tokens, doc, attempt }: Gener
             <WireframeBlock key={section.key} section={section} doc={doc} />
           ))}
         </div>
+      ) : null}
+
+      {findings.length > 0 ? (
+        // Not `aria-hidden`, unlike the wireframe above: these are words with
+        // meaning, and a screen-reader user waiting through the review has the
+        // same right to know what it found. `aria-live` is deliberately absent
+        // — the phase line above already announces, and a second live region
+        // firing per finding would talk over it.
+        <ul className="mt-3 space-y-1 border-t border-border pt-3">
+          {findings.map((finding, index) => (
+            <li key={`${finding.code}-${index}`} className="flex items-start gap-2 text-[0.7rem] text-muted-foreground">
+              <span className={`mt-1.5 size-1.5 shrink-0 rounded-full ${SEVERITY_DOT[finding.severity]}`} aria-hidden />
+              <span className="min-w-0">{finding.issue}</span>
+            </li>
+          ))}
+        </ul>
       ) : null}
 
       {tokens ? (

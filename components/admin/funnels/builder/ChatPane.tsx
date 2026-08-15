@@ -64,6 +64,15 @@ interface ChatPaneProps {
    * the undo is broken.
    */
   currentRevision: number
+  /**
+   * Run the reviewers over the page as it stands.
+   *
+   * Optional so a caller with no review wired up simply gets no button, rather
+   * than a control that throws when pressed.
+   */
+  onPolish?: () => void
+  /** False before a page exists, or when the draft cannot be read at all. */
+  canPolish?: boolean
   /** Copies an earlier turn's document forward. Non-destructive: it APPENDS. */
   onRestore?: (revision: number) => void
 }
@@ -85,6 +94,8 @@ export function ChatPane({
   value,
   onChange,
   onSend,
+  onPolish,
+  canPolish,
   busy,
   composerDisabled,
   pinned,
@@ -181,15 +192,29 @@ export function ChatPane({
           className="w-full resize-none rounded-xl border border-border bg-white p-2 text-sm shadow-sm outline-none focus-visible:border-accent disabled:opacity-50"
         />
         <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
             {value.length > maxMessageLength * 0.8
               ? `${value.length} / ${maxMessageLength}`
               : "Enter to send · Shift+Enter for a new line"}
           </span>
-          <Button size="sm" disabled={!canSend} onClick={() => onSend(value)}>
-            {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Send className="size-4" aria-hidden />}
-            Send
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {/*
+              POLISH sits beside Send rather than in a menu, and it is HIDDEN
+              rather than disabled when there is no page: a control that cannot
+              do anything yet, shown greyed out with no explanation, reads as
+              broken rather than as not-yet-applicable.
+            */}
+            {onPolish && canPolish ? (
+              <Button size="sm" variant="outline" disabled={busy} onClick={onPolish} title="Have the reviewers read the page and improve it">
+                <Sparkles className="size-4" aria-hidden />
+                Polish
+              </Button>
+            ) : null}
+            <Button size="sm" disabled={!canSend} onClick={() => onSend(value)}>
+              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Send className="size-4" aria-hidden />}
+              Send
+            </Button>
+          </div>
         </div>
       </div>
     </div>

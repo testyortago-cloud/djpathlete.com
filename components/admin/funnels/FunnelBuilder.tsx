@@ -80,7 +80,7 @@ import { candidatePickMessage } from "./builder/format"
 import { readTurnStream } from "./builder/stream"
 import { fieldsForSection } from "@/lib/funnels/sections/fields"
 import type { SectionOp } from "@/lib/funnels/sections/apply"
-import type { BuildPhase } from "@/lib/funnels/sections/build-stream"
+import type { BuildPhase, Finding } from "@/lib/funnels/sections/build-stream"
 import type { StreamedSection } from "@/lib/funnels/sections/stream-progress"
 import type {
   BuildErrorResponse,
@@ -177,9 +177,19 @@ interface StreamState {
   sections: StreamedSection[]
   tokens: { count: number; exact: boolean } | null
   attempt: number
+  /**
+   * What the review has caught so far.
+   *
+   * Shown live for one reason: the review adds 30-40 seconds to a first draft,
+   * and the difference between dead air and watching six specific problems get
+   * named is the whole of whether that wait reads as work. They are progress,
+   * not a result — the turn that follows is what actually changed the page —
+   * so they live here and vanish with the rest of the stream state.
+   */
+  findings: Finding[]
 }
 
-const INITIAL_STREAM: StreamState = { phase: "reading", sections: [], tokens: null, attempt: 1 }
+const INITIAL_STREAM: StreamState = { phase: "reading", sections: [], tokens: null, attempt: 1, findings: [] }
 
 interface PublishResult {
   version: number
@@ -560,10 +570,23 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
                 sections[index] = event.section
                 return { ...current, sections }
               }
+              case "finding":
+                return { ...current, findings: [...current.findings, event.finding] }
               default:
                 return current
             }
           })
+
+          // APPLIED THE MOMENT IT ARRIVES, not when the stream ends.
+          //
+          // The review holds this stream open for another 30-40 seconds AFTER
+          // the page is written. Waiting for the terminal outcome would leave
+          // the owner watching a progress panel for a page that had already
+          // been saved — which is exactly what emitting `result` before the
+          // review was designed to avoid on the server side.
+          if (event.type === "result" || event.type === "review") {
+            applyTurn(event.turn as BuildTurnResponse)
+          }
         })
 
         if (outcome.type === "fail") {
@@ -581,7 +604,9 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           toast.error("The connection dropped before the page came back. Reload to see if it saved.")
           return
         }
-        applyTurn(outcome.turn)
+        // Both turns were already applied above as their events arrived. There
+        // is deliberately no `applyTurn(outcome.turn)` here: calling it again
+        // would append the same builder message to the transcript twice.
       } catch {
         rollback()
         toast.error("Could not reach the page builder. Nothing was changed.")
@@ -592,6 +617,66 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     },
     [applyTurn, busy, docInvalid, handleErrorResponse, props.stepId, revision],
   )
+
+  /**
+   * Polish — run the reviewers over the page as it stands.
+   *
+   * A review normally rides on a first draft, where the builder wrote every
+   * word. This is the way to ask for one on a page that has since been edited.
+   * It posts `{action:"polish"}` rather than a message, which is what stops the
+   * builder running first and spending a call answering a sentence the owner
+   * never typed.
+   *
+   * No optimistic message and no rollback: nothing of the owner's is at stake
+   * here, so a failure has nothing to put back.
+   */
+  const polish = useCallback(async () => {
+    if (busy !== "idle" || docInvalid || doc === null) return
+
+    setBusy("building")
+    setMode("edit")
+    setStream({ ...INITIAL_STREAM, phase: "reviewing" })
+
+    try {
+      const response = await fetch(`/api/admin/funnels/steps/${props.stepId}/build`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "polish", revision }),
+      })
+
+      const isStream = (response.headers.get("content-type") ?? "").includes("text/event-stream")
+      if (!isStream) {
+        const body = (await response.json().catch(() => null)) as BuildErrorResponse | null
+        handleErrorResponse(response.status, body)
+        return
+      }
+
+      const outcome = await readTurnStream(response, (event) => {
+        setStream((current) => {
+          if (!current) return current
+          if (event.type === "phase") return { ...current, phase: event.phase }
+          if (event.type === "finding") return { ...current, findings: [...current.findings, event.finding] }
+          return current
+        })
+        if (event.type === "result" || event.type === "review") {
+          applyTurn(event.turn as BuildTurnResponse)
+        }
+      })
+
+      if (outcome.type === "fail") {
+        handleErrorResponse(outcome.status, outcome.body)
+        return
+      }
+      if (outcome.type === "none") {
+        toast.error("The connection dropped while the page was being reviewed. Reload to see if anything saved.")
+      }
+    } catch {
+      toast.error("Could not reach the reviewer. Nothing was changed.")
+    } finally {
+      setBusy("idle")
+      setStream(null)
+    }
+  }, [applyTurn, busy, doc, docInvalid, handleErrorResponse, props.stepId, revision])
 
   /**
    * The way back out of a document no op can repair. `applyOps` rejects an
@@ -1138,9 +1223,12 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
                 // be drawn in the right shape.
                 doc={doc}
                 attempt={stream.attempt}
+                findings={stream.findings}
               />
             ) : null
           }
+          onPolish={polish}
+          canPolish={doc !== null && !docInvalid}
         />
 
         {mode === "review" ? (

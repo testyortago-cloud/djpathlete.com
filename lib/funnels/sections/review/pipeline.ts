@@ -86,9 +86,18 @@ export function shouldReview(input: { rewrotePage: boolean; requested: boolean }
   return input.requested || input.rewrotePage
 }
 
-/** Whether a batch of ops replaced the whole page. See `shouldReview`. */
-export function opsRewrotePage(ops: ReadonlyArray<{ op: string }>): boolean {
-  return ops.some((op) => op.op === "set_page")
+/**
+ * Whether a batch of ops replaced the whole page. See `shouldReview`.
+ *
+ * Takes `unknown` because the call site holds the model's parsed response,
+ * whose `ops` is typed loosely at that point in the route. Narrowing here
+ * rather than casting at the call site keeps the "is this a rewrite" rule in
+ * one place — a cast would move the decision to the caller and let a second
+ * caller narrow it differently.
+ */
+export function opsRewrotePage(ops: unknown): boolean {
+  if (!Array.isArray(ops)) return false
+  return ops.some((op) => typeof op === "object" && op !== null && (op as { op?: unknown }).op === "set_page")
 }
 
 function unchanged(doc: SectionDoc, findings: Finding[], error: string | null): ReviewOutcome {

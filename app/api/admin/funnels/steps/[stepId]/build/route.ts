@@ -821,6 +821,7 @@ async function handlePolish(args: PolishArgs): Promise<Response> {
       baseRevision: draft.revision,
       context,
       catalogues,
+      standalone: true,
       catalogueError,
       startTime,
     }),
@@ -1411,6 +1412,10 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
     catalogues,
     catalogueError,
     startTime,
+    // The build turn has already emitted `result`, so this stage must not
+    // emit a second terminal event and must stay silent when it finds
+    // nothing.
+    standalone: false,
   })
 }
 
@@ -1441,10 +1446,22 @@ interface ReviewStageArgs {
   catalogues: Catalogues | null
   catalogueError: string | null
   startTime: number
+  /**
+   * True on the Polish path, where this stage IS the turn.
+   *
+   * It changes what silence means. After a build, a review that found nothing
+   * should say nothing — the owner asked for a page and already has one, and an
+   * "I changed nothing" entry on every draft is noise. After a Polish press the
+   * owner asked THIS question directly, so "nothing needed changing" is the
+   * answer and has to be both written down and delivered as a terminal event —
+   * otherwise the stream ends with no terminal at all and the client correctly
+   * reports a dropped connection.
+   */
+  standalone: boolean
 }
 
 async function runReviewStage(args: ReviewStageArgs): Promise<void> {
-  const { emit, stepId, userId, doc, baseRevision, context, catalogues, catalogueError, startTime } = args
+  const { emit, stepId, userId, doc, baseRevision, context, catalogues, catalogueError, startTime, standalone } = args
 
   emit({ type: "phase", phase: "reviewing" })
 
@@ -1454,13 +1471,26 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
   })
 
   if (review.error !== null) {
-    // Logged, not surfaced. The owner has a page; telling them a background
-    // improvement did not happen would read as a failure of the thing that
-    // did.
+    // Logged, not surfaced on the automatic path: the owner has a page, and
+    // telling them a background improvement did not happen reads as a failure
+    // of the thing that did. On the Polish path it IS the thing they asked
+    // for, so it becomes a real failure event.
     console.warn("[funnels/build] review stage did not complete:", review.error)
+    if (standalone) {
+      emit({
+        type: "fail",
+        status: 502,
+        body: { error: "The reviewer could not finish. Your page has not been changed." },
+      })
+    }
     return
   }
-  if (!review.changed) return
+
+  if (!review.changed) {
+    if (!standalone) return
+    await emitNoChangeReview({ emit, stepId, userId, baseRevision, summary: review.summary, userIdForTurn: userId })
+    return
+  }
 
   emit({ type: "phase", phase: "polishing" })
 
@@ -1513,6 +1543,71 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
       unresolved: resolution.unresolved,
       danglingAnchors: resolution.danglingAnchors,
       resolutionError: resolution.error,
+      source: "review",
+    } satisfies TurnResponse,
+  })
+}
+
+/**
+ * The Polish path's "nothing needed changing" answer.
+ *
+ * Written down as a real turn rather than emitted as a bare toast, because the
+ * owner asked a question and the transcript is where this builder's answers
+ * live — a verdict that vanishes on reload is a verdict they will ask for
+ * again. The turn carries NO document: `compile === null` on the client side
+ * moves the revision and appends the message without touching the preview,
+ * which is exactly right for a turn that changed nothing.
+ */
+async function emitNoChangeReview(args: {
+  emit: (event: BuildStreamEvent) => void
+  stepId: string
+  userId: string
+  userIdForTurn: string
+  baseRevision: number
+  summary: string
+}): Promise<void> {
+  const { emit, stepId, baseRevision, summary, userIdForTurn } = args
+  const reply = summary.trim() === "" ? "I read the page through and found nothing worth changing." : summary
+
+  const turn = await appendTurn({
+    stepId,
+    expectedRevision: baseRevision,
+    role: "assistant",
+    source: "review",
+    status: "complete",
+    message: reply,
+    model: SECTION_BUILDER_MODEL,
+    createdBy: userIdForTurn,
+  })
+
+  if (!turn.ok) {
+    // The owner edited while the review ran. Their edit wins, and the stream
+    // still has to terminate — a Polish that ends in silence reads as a
+    // dropped connection.
+    emit({
+      type: "fail",
+      status: 409,
+      body: {
+        error: "Someone else changed this page while the reviewer was reading it. Reload and try again.",
+        code: "stale_revision",
+        currentRevision: turn.ok === false && "currentRevision" in turn ? turn.currentRevision : baseRevision,
+      },
+    })
+    return
+  }
+
+  emit({
+    type: "result",
+    turn: {
+      revision: turn.revision,
+      doc: null,
+      reply,
+      blocked: false,
+      receipt: null,
+      compile: null,
+      unresolved: [],
+      danglingAnchors: [],
+      resolutionError: null,
       source: "review",
     } satisfies TurnResponse,
   })

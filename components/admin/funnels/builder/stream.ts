@@ -25,7 +25,7 @@ import type { BuildErrorResponse, BuildTurnResponse } from "./types"
  * turn was written.
  */
 export type TurnStreamOutcome =
-  | { type: "result"; turn: BuildTurnResponse }
+  | { type: "result"; turn: BuildTurnResponse; review: BuildTurnResponse | null }
   | { type: "fail"; status: number; body: BuildErrorResponse | null }
   | { type: "none" }
 
@@ -53,7 +53,25 @@ export async function readTurnStream(
   const consume = (events: BuildStreamEvent[]) => {
     for (const event of events) {
       if (event.type === "result") {
-        outcome = { type: "result", turn: event.turn as BuildTurnResponse }
+        outcome = { type: "result", turn: event.turn as BuildTurnResponse, review: null }
+        // Passed on as well as recorded. The review stage keeps this stream
+        // open for another 30-40 seconds AFTER the page is written, so a caller
+        // that only learned the outcome at the end would leave the owner
+        // watching progress for a page that had already been saved.
+        onEvent(event)
+        continue
+      }
+      if (event.type === "review") {
+        // Attached to the result rather than replacing it. Both turns are real
+        // and both are in the transcript: the builder wrote a page, then the
+        // reviewer changed it. A `review` arriving without a `result` before it
+        // is the Polish path, which has no build turn of its own.
+        if (outcome.type === "result") {
+          outcome = { ...outcome, review: event.turn as BuildTurnResponse }
+        } else {
+          outcome = { type: "result", turn: event.turn as BuildTurnResponse, review: null }
+        }
+        onEvent(event)
         continue
       }
       if (event.type === "fail") {
