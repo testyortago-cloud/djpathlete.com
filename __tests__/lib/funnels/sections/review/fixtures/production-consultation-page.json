@@ -1,0 +1,194 @@
+{
+  "v": 1,
+  "engine": "sections",
+  "theme": {
+    "tone": "light",
+    "accent": "accent",
+    "radius": "soft"
+  },
+  "sections": [
+    {
+      "id": "hero",
+      "kind": "hero",
+      "variant": "centered",
+      "style": {
+        "pad": "roomy",
+        "tone": "dark",
+        "align": "center",
+        "headline": "xl"
+      },
+      "props": {
+        "eyebrow": "Free 20-minute consultation",
+        "headline": "Find out exactly what's holding your training back",
+        "sub": "A short call with a coach: we look at your sport, your schedule and your history, then tell you the straight answer on what to train next — whether or not you work with us.",
+        "primaryCta": {
+          "label": "Book your consultation",
+          "target": { "kind": "booking" }
+        }
+      }
+    },
+    {
+      "id": "proof",
+      "kind": "proof",
+      "variant": "stats",
+      "style": {
+        "pad": "normal",
+        "align": "center"
+      },
+      "props": {
+        "items": [
+          { "value": "20 min", "label": "Call length, no cost" },
+          { "value": "1,000+", "label": "Athlete sessions coached" },
+          { "value": "48 hrs", "label": "Typical time to first call" }
+        ]
+      }
+    },
+    {
+      "id": "what-you-get",
+      "kind": "bullets",
+      "variant": "cards",
+      "style": {
+        "pad": "normal",
+        "align": "left",
+        "headline": "lg"
+      },
+      "props": {
+        "heading": "What the call actually covers",
+        "intro": "No sales script. Twenty focused minutes on your training.",
+        "items": [
+          {
+            "title": "Where you are now",
+            "body": "Your sport, training age, current week, and anything that hurts or has hurt.",
+            "icon": "check"
+          },
+          {
+            "title": "What's limiting you",
+            "body": "The one or two things — strength, power, movement, or load management — most likely capping your performance.",
+            "icon": "bolt"
+          },
+          {
+            "title": "What to do next",
+            "body": "A concrete recommendation you can act on, in person or online, with or without us.",
+            "icon": "arrow"
+          }
+        ]
+      }
+    },
+    {
+      "id": "how",
+      "kind": "steps",
+      "variant": "numbered",
+      "style": {
+        "pad": "normal",
+        "tone": "muted",
+        "align": "left",
+        "headline": "lg"
+      },
+      "props": {
+        "heading": "How it works",
+        "steps": [
+          {
+            "title": "Send your details",
+            "body": "Sport, goal, availability and any injury history. Two minutes."
+          },
+          {
+            "title": "Pick a time",
+            "body": "We come back with call times, usually within 48 hours."
+          },
+          {
+            "title": "Talk it through",
+            "body": "Twenty minutes on the phone or video. You leave with a plan either way."
+          }
+        ]
+      }
+    },
+    {
+      "id": "voices",
+      "kind": "testimonial",
+      "variant": "grid",
+      "style": {
+        "pad": "normal",
+        "align": "center"
+      },
+      "props": {
+        "source": "live",
+        "limit": 3,
+        "featuredOnly": false
+      }
+    },
+    {
+      "id": "questions",
+      "kind": "faq",
+      "variant": "stack",
+      "style": {
+        "pad": "normal",
+        "align": "left",
+        "headline": "lg"
+      },
+      "props": {
+        "heading": "Before you book",
+        "source": "inline",
+        "items": [
+          {
+            "q": "Does the consultation cost anything?",
+            "a": "No. It's free and there's no obligation to buy anything afterwards."
+          },
+          {
+            "q": "Is this a sales call?",
+            "a": "It's a coaching conversation. We tell you what we'd do in your position. If we're not the right fit, we say so and point you elsewhere."
+          },
+          {
+            "q": "I'm currently injured — should I still book?",
+            "a": "Yes. Bring the details of the injury and where you are in rehab. We coach a lot of athletes returning to sport and will tell you honestly whether now is the right time to add load."
+          },
+          {
+            "q": "I'm a beginner. Is this only for serious athletes?",
+            "a": "It's for anyone who trains with a goal. Youth athletes, adults returning to sport and complete beginners all book these calls."
+          },
+          {
+            "q": "Do I have to train in person?",
+            "a": "No. We coach both in person and online, and the call will cover which suits your schedule better."
+          },
+          {
+            "q": "How long until I hear back?",
+            "a": "Usually within 48 hours with a set of times to choose from."
+          }
+        ]
+      }
+    },
+    {
+      "id": "book",
+      "kind": "cta",
+      "variant": "band",
+      "style": {
+        "pad": "roomy",
+        "tone": "accent",
+        "align": "center",
+        "headline": "lg"
+      },
+      "props": {
+        "headline": "Twenty minutes now can save you a wasted season",
+        "sub": "Free, no obligation, and you leave with a clear next step.",
+        "cta": {
+          "label": "Book your consultation",
+          "target": { "kind": "booking" }
+        }
+      }
+    },
+    {
+      "id": "footer",
+      "kind": "footer",
+      "variant": "simple",
+      "style": {
+        "pad": "tight",
+        "align": "center"
+      },
+      "props": {
+        "businessName": "DJP Athlete",
+        "lines": ["Questions before booking? hello@djpathlete.com"],
+        "links": [],
+        "legal": "© DJP Athlete. All rights reserved."
+      }
+    }
+  ]
+}

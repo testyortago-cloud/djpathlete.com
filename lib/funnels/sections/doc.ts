@@ -100,10 +100,34 @@ const RADIUS_CSS_VALUE: Record<SectionDocTheme["radius"], string> = {
 // what a later `set_theme` back to `light` has to be able to undo.
 // ---------------------------------------------------------------------------
 
+/**
+ * The tone a section will ACTUALLY render at, once the page theme has had its
+ * say. Exported for the review auditor (`review/audit.ts`).
+ *
+ * This is `sectionForPage`'s rule, extracted rather than copied, and
+ * `sectionForPage` now calls it — so the two cannot drift. That matters more
+ * than it looks: an auditor that reads `section.style.tone` directly sees four
+ * distinct `undefined`s on a dark-themed page and cheerfully reports a page
+ * with no tone runs at all, while the page renders as four identical dark
+ * bands with nothing between them. Two copies of one rule, one of them wrong,
+ * is the failure `ask_the_validator_never_restate_it` names — and here the
+ * wrong copy would be silent, because a missing finding looks exactly like a
+ * clean page.
+ */
+export function effectiveTone(
+  section: Section,
+  theme: SectionDocTheme,
+): NonNullable<Section["style"]["tone"]> {
+  const own = section.style.tone
+  if (own !== undefined && own !== "default") return own
+  return theme.tone === "dark" ? "dark" : "default"
+}
+
 function sectionForPage(section: Section, theme: SectionDocTheme): Section {
   if (theme.tone !== "dark") return section
-  if (section.style.tone !== undefined && section.style.tone !== "default") return section
-  return { ...section, style: { ...section.style, tone: "dark" } }
+  const tone = effectiveTone(section, theme)
+  if (tone === section.style.tone) return section
+  return { ...section, style: { ...section.style, tone } }
 }
 
 function themeCss(theme: SectionDocTheme): string {
