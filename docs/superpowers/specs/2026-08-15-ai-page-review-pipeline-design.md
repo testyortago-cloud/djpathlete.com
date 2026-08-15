@@ -58,10 +58,22 @@ rather than as a deliberate change of pace.
 
 ### 1.4 Rules the prompt already states and nothing enforces
 
-`LEADGEN_RULES` (`prompt.ts`) tells the model that proof goes near the top and
-that a campaign page must never use a live FAQ. The production page above puts
-its testimonial at position 5 of 8 and its FAQ at 6. The prompt is advice; there
-is no gate. Every rule in that array is currently unenforced.
+`LEADGEN_RULES` (`prompt.ts`) tells the model that proof goes near the top, that
+every CTA points at one place, and that a campaign page must never use a live
+FAQ. Every rule in that array is advice; nothing gates any of it.
+
+**The production page happens to satisfy those three** — its proof strip is at
+position 2, both CTAs target `booking`, and its FAQ is `source: "inline"`. That
+is the argument for enforcing them, not against: the rules held on this page by
+the model's good judgement alone, and nothing would have said a word if they had
+not. The audit codes for them (§4.3) will correctly stay silent on the fixture,
+which is exactly what makes the fixture worth having — see §10.2.
+
+Note also what is deliberately *not* a rule: the page's `testimonial` uses
+`source: "live"`, and that is correct. The prompt explicitly prefers live
+testimonials over authored copies when the owner already has the content. Only
+the live *FAQ* is campaign-hostile, because the site-wide FAQ answers "what is
+DJP Athlete" rather than an objection to this offer.
 
 ---
 
@@ -158,7 +170,7 @@ high → low so a truncated list loses the least important entries.
 |---|---|---|
 | `tone-run` | high | ≥2 adjacent sections share an **effective** tone |
 | `pad-monotony` | medium | ≥4 consecutive sections share a `pad`, or ≤1 distinct value across ≥5 sections |
-| `align-thrash` | medium | alignment changes with no run of length ≥2 |
+| `align-thrash` | medium | alignment changes ≥3 times across the page |
 | `headline-scale` | medium | the hero is not the largest headline, or body sections show no hierarchy |
 | `markdown-leak` | high | `**`, `__`, backticks, or a leading `#` / `- ` / `1. ` in any string prop |
 | `proof-below-fold` | high | the first `proof` or `testimonial` sits past the halfway index |
@@ -179,6 +191,12 @@ of one rule, one of which is wrong.
 
 **`length-strain` derives its caps from the registry schemas**, the same way
 `prompt.ts` derives `UUID_FIELD_PATHS` — never a hand-typed table of maximums.
+
+**`copy-echo` must exclude CTA labels.** The production page uses "Book your
+consultation" as both the hero and the closing CTA label, and that repetition is
+*required* by `LEADGEN_RULES`' one-offer-one-action rule. A naive
+same-string-twice check would flag the page for obeying the prompt. It compares
+prose fields only — `headline`, `sub`, `heading`, `intro`, `body`, `blurb`.
 
 #### 4.3.1 The audit ↔ prompt cross-reference
 
@@ -386,26 +404,34 @@ The defect class this repo keeps shipping is a green test that never verified
 its claim. The suite is built to fail on the known-bad input first.
 
 1. **The production document is a checked-in fixture, and the auditor must FIRE
-   on it.** `tone-run` twice (sections 2–3 and 5–6), `pad-monotony`, and
-   `align-thrash`. An auditor returning clean on the page that motivated the
-   work is worthless, so this assertion is the point of the suite, not a
-   supplement to it.
-2. **A hand-built good document must return zero high-severity findings.**
-   Without this, a rule set that fires on everything scores identically to one
-   that works. Score the known-good baseline before trusting the metric.
-3. **Effective-tone coverage:** a dark-themed doc whose sections set no tone must
+   on it — with the exact expected set, not merely "something".** Computed by
+   hand against the real document: `tone-run` twice (`proof`+`what-you-get`, and
+   `voices`+`questions`), `pad-monotony` once (five consecutive `normal`), and
+   `align-thrash` once (four alignment changes across eight sections). An
+   auditor returning clean on the page that motivated the work is worthless, so
+   this assertion is the point of the suite, not a supplement to it.
+2. **The same fixture must NOT fire the four codes it does not violate** —
+   `cta-divergence` (both CTAs target `booking`), `live-faq-on-campaign` (the
+   FAQ is `inline`), `proof-below-fold` (the proof strip is at position 2), and
+   `section-count` (8 is within 6–9). Asserting the exact set in both directions
+   is what separates a rule set that discriminates from one that just fires on
+   everything — an auditor that flags all twelve codes on every page would pass
+   assertion 1 while being useless.
+3. **A hand-built good document must return zero high-severity findings.**
+   Score the known-good baseline before trusting the metric.
+4. **Effective-tone coverage:** a dark-themed doc whose sections set no tone must
    raise `tone-run`, proving the auditor went through `sectionForPage` rather
    than reading `style.tone`.
-4. **Reviser ops go through the real `opSchema` and the real `applyOps`** — a
+5. **Reviser ops go through the real `opSchema` and the real `applyOps`** — a
    stubbed applier would pass on ops the builder would reject.
-5. **A critic returning garbage does not take the turn down**, and all three
+6. **A critic returning garbage does not take the turn down**, and all three
    failing still produces a review from the deterministic findings.
-6. **CSS:** the four divider selectors exist *and* match markup that
+7. **CSS:** the four divider selectors exist *and* match markup that
    `renderSection` actually emits — asserted against rendered output, not against
    a hand-written selector string. The existing tone-contrast suite must stay
    green.
-7. **The audit ↔ `LEADGEN_RULES` cross-reference** of §4.3.1.
-8. **Prompt cache integrity:** `SECTION_BUILDER_BLOCK_A` must remain
+8. **The audit ↔ `LEADGEN_RULES` cross-reference** of §4.3.1.
+9. **Prompt cache integrity:** `SECTION_BUILDER_BLOCK_A` must remain
    reference-identical (`toBe`). Nothing in this work may interpolate into it.
 
 Verification is targeted suites plus `npm run build` — not a full-suite run.
