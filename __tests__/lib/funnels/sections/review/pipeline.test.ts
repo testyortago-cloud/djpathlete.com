@@ -31,7 +31,7 @@ import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/regist
 import type { Finding } from "@/lib/funnels/sections/review/findings"
 import fixture from "./fixtures/production-consultation-page.json"
 
-const PROD: SectionDoc = sectionDocSchema.parse(fixture)
+const PROD: SectionDoc = sectionDocSchema.parse(fixture) as SectionDoc
 
 // The production page's tones, in order:
 //   hero dark | proof — | what-you-get — | how muted | voices — | questions — |
@@ -234,7 +234,7 @@ describe("restraint", () => {
   })
 
   it("does not call the reviser at all when nothing was found", async () => {
-    const clean: SectionDoc = sectionDocSchema.parse({
+    const clean = sectionDocSchema.parse({
       v: 1,
       engine: "sections",
       theme: { tone: "light", accent: "accent", radius: "soft" },
@@ -300,7 +300,7 @@ describe("restraint", () => {
     })
 
     runCritics.mockResolvedValue([])
-    const out = await reviewDoc({ doc: clean })
+    const out = await reviewDoc({ doc: clean as SectionDoc })
 
     expect(out.changed).toBe(false)
     expect(out.error).toBeNull()

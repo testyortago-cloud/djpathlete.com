@@ -21,7 +21,7 @@ import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/regist
 import fixture from "./fixtures/production-consultation-page.json"
 
 /** Parsed through the REAL schema, so a fixture that drifted is a red test. */
-const PROD: SectionDoc = sectionDocSchema.parse(fixture)
+const PROD: SectionDoc = sectionDocSchema.parse(fixture) as SectionDoc
 
 function codes(doc: SectionDoc): string[] {
   return auditDoc(doc).map((f) => f.code)

@@ -24,7 +24,7 @@ import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/regist
 import type { Finding } from "@/lib/funnels/sections/review/findings"
 import fixture from "./fixtures/production-consultation-page.json"
 
-const PROD: SectionDoc = sectionDocSchema.parse(fixture)
+const PROD: SectionDoc = sectionDocSchema.parse(fixture) as SectionDoc
 
 const FINDING: Finding = {
   code: "tone-run",
@@ -119,7 +119,9 @@ describe("the reviser prompt", () => {
   })
 
   it("tells the editor to prefer update_section over set_page", () => {
-    expect(REVISER_SYSTEM).toMatch(/update_section.*over.*set_page/is)
+    // No `s` flag: the tsconfig target predates dotAll, and the instruction
+    // is a single line anyway.
+    expect(REVISER_SYSTEM).toMatch(/update_section.*over.*set_page/i)
   })
 
   it("permits an empty ops array explicitly", () => {

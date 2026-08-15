@@ -99,3 +99,77 @@ describe("the build stream wire format", () => {
     expect(encoded.slice(0, -2)).not.toContain("\n")
   })
 })
+
+// ---------------------------------------------------------------------------
+// The review stage's additions to the wire format.
+// ---------------------------------------------------------------------------
+
+describe("the review phases", () => {
+  it("adds reviewing and polishing, in order, after checking", () => {
+    // Order is meaningful: the review runs after the build turn is SAVED, so a
+    // UI drawing these as a progress track must not show them mid-build.
+    expect(BUILD_PHASES.slice(-2)).toEqual(["reviewing", "polishing"])
+    expect(BUILD_PHASES.indexOf("reviewing")).toBeGreaterThan(BUILD_PHASES.indexOf("checking"))
+  })
+
+  it("labels every phase — a missing label is a blank pill, not an error", () => {
+    // BUILD_PHASE_LABELS is a Record over BuildPhase, so this is also a
+    // compile-time guarantee. Asserted at runtime too because the compile-time
+    // half is only as good as the next person not reaching for a Partial.
+    for (const phase of BUILD_PHASES) {
+      expect(BUILD_PHASE_LABELS[phase]).toBeTruthy()
+    }
+  })
+
+  it("has no duplicate phases", () => {
+    expect(new Set(BUILD_PHASES).size).toBe(BUILD_PHASES.length)
+  })
+})
+
+describe("the finding event", () => {
+  const finding = {
+    code: "tone-run",
+    severity: "high" as const,
+    sectionIds: ["a", "b"],
+    issue: "they share a tone",
+    suggestion: "retone one",
+    source: "audit" as const,
+  }
+
+  it("round-trips through the encoder and decoder", () => {
+    const decode = createBuildStreamDecoder()
+    expect(decode(encodeBuildStreamEvent({ type: "finding", finding }))).toEqual([{ type: "finding", finding }])
+  })
+
+  it("survives an issue containing newlines — the frame stays one line", () => {
+    // A critic quoting multi-line copy would otherwise split one SSE frame
+    // into two and corrupt the stream from that point on.
+    const multiline = { ...finding, issue: "line one\nline two" }
+    const frame = encodeBuildStreamEvent({ type: "finding", finding: multiline })
+    expect(frame.split("\n").filter((line) => line.startsWith("data:"))).toHaveLength(1)
+    expect(createBuildStreamDecoder()(frame)[0]).toEqual({ type: "finding", finding: multiline })
+  })
+
+  it("survives copy containing a quote mark", () => {
+    const quoted = { ...finding, issue: 'the headline "Train smarter" says nothing' }
+    const decoded = createBuildStreamDecoder()(encodeBuildStreamEvent({ type: "finding", finding: quoted }))
+    expect(decoded[0]).toEqual({ type: "finding", finding: quoted })
+  })
+})
+
+describe("the review event", () => {
+  it("round-trips and carries a turn", () => {
+    const event = { type: "review" as const, turn: { revision: 4, reply: "Retoned two seams." } }
+    expect(createBuildStreamDecoder()(encodeBuildStreamEvent(event))).toEqual([event])
+  })
+
+  it("arrives after result when both are in one chunk", () => {
+    // A client that only understands `result` must still end up with the built
+    // page; ordering is what guarantees that.
+    const chunk =
+      encodeBuildStreamEvent({ type: "result", turn: { revision: 3 } }) +
+      encodeBuildStreamEvent({ type: "review", turn: { revision: 4 } })
+    const events = createBuildStreamDecoder()(chunk)
+    expect(events.map((event) => event.type)).toEqual(["result", "review"])
+  })
+})

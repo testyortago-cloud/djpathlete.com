@@ -8,16 +8,24 @@
 // the note on `FunnelBuilder.maxMessageLength`.
 
 import type { StreamedSection } from "./stream-progress"
+import type { Finding } from "./review/findings"
 
 export type { StreamedSection }
+export type { Finding }
 
 /**
- * The four phases of a turn, in order. `checking` covers everything after the
- * model stops writing — applying the ops, resolving CTA refs against the real
+ * The phases of a turn, in order. `checking` covers everything after the model
+ * stops writing — applying the ops, resolving CTA refs against the real
  * catalogue, and compiling — which really is a distinct chunk of the wait and
  * really can fail on its own.
+ *
+ * `reviewing` and `polishing` belong to the review stage and only occur on a
+ * turn that earns one (a first draft, or the Polish button). They come AFTER
+ * `checking` because the review runs after the build turn has already been
+ * saved — by the time `reviewing` is emitted the owner's page exists, which is
+ * also why neither of them can fail the turn.
  */
-export const BUILD_PHASES = ["reading", "planning", "writing", "checking"] as const
+export const BUILD_PHASES = ["reading", "planning", "writing", "checking", "reviewing", "polishing"] as const
 export type BuildPhase = (typeof BUILD_PHASES)[number]
 
 export const BUILD_PHASE_LABELS: Record<BuildPhase, string> = {
@@ -25,6 +33,8 @@ export const BUILD_PHASE_LABELS: Record<BuildPhase, string> = {
   planning: "Planning the page",
   writing: "Writing sections",
   checking: "Checking links and layout",
+  reviewing: "Reviewing the page",
+  polishing: "Applying improvements",
 }
 
 /**
@@ -68,7 +78,26 @@ export type BuildStreamEvent =
    * has 8 sections.
    */
   | { type: "restart"; attempt: number }
+  /**
+   * One thing the review stage found, streamed as it lands.
+   *
+   * This exists for a UX reason rather than a data one. The panel adds 30-40
+   * seconds to a first draft, and the difference between dead air and watching
+   * six specific problems get named is the whole of whether that wait feels
+   * like work being done. The document that results is carried by `review`
+   * below; nothing downstream depends on having seen these.
+   */
+  | { type: "finding"; finding: Finding }
   | { type: "result"; turn: unknown }
+  /**
+   * The review appended its own turn, carrying the polished document.
+   *
+   * Sent AFTER `result`, never instead of it. A client that does not
+   * understand this event still ends up with the built page and a correct
+   * revision — it just misses the polish until it refetches, which is a far
+   * better failure than a client that misses the page.
+   */
+  | { type: "review"; turn: unknown }
   | { type: "fail"; status: number; body: unknown }
 
 /**
