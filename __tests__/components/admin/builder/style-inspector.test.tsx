@@ -53,7 +53,6 @@ const base = {
   funnelId: "f1",
   publicUrl: "/go/x",
   initialRevision: 3,
-  treeInvalid: false,
 }
 
 beforeEach(() => {

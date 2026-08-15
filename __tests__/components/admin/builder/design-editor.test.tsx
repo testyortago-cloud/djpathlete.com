@@ -47,7 +47,6 @@ const base = {
   funnelId: "f1",
   publicUrl: "/go/x",
   initialRevision: 3,
-  treeInvalid: false,
 }
 
 beforeEach(() => {
@@ -64,7 +63,7 @@ describe("<DesignEditor>", () => {
     // MUTANT KILLED: falling back to an empty canvas. The owner's next save
     // would write the blank page over content that was still recoverable —
     // a helpful default destroying data.
-    render(<DesignEditor {...base} initialTree={tree} treeInvalid />)
+    render(<DesignEditor {...base} initialTree={tree} blockedReason="unreadable" />)
     expect(screen.getByText(/cannot be read/i)).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /^save$/i })).not.toBeInTheDocument()
   })

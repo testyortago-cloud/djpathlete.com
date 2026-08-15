@@ -30,23 +30,60 @@ interface DesignEditorProps {
   publicUrl: string
   initialTree: PageTree
   initialRevision: number
-  /** The stored document did not parse. Editing must not silently overwrite it. */
-  treeInvalid: boolean
+  /**
+   * Why this step must not be opened on a canvas, if it must not be.
+   *
+   * `unreadable` — the stored document did not parse. `section_doc` — the step
+   * is a page the AI builder made, and this editor does not read that format.
+   * Both refuse for the SAME underlying reason: the canvas we would show is
+   * blank, and the next Save would write it over the top of a real page while
+   * advancing the revision the chat builder shares.
+   */
+  blockedReason?: "unreadable" | "section_doc"
+}
+
+/** A refusal, not an error. Nothing is wrong with the page — only with opening it here. */
+function Blocked({
+  title,
+  body,
+  action,
+}: {
+  title: string
+  body: string
+  action: { href: string; label: string }
+}) {
+  return (
+    <div className="rounded-xl border border-[var(--error)]/40 bg-[var(--error)]/5 p-6">
+      <h2 className="font-heading text-lg text-primary">{title}</h2>
+      <p className="mt-2 max-w-prose text-sm text-muted-foreground">{body}</p>
+      <Button asChild variant="outline" className="mt-4">
+        <Link href={action.href}>{action.label}</Link>
+      </Button>
+    </div>
+  )
 }
 
 export function DesignEditor(props: DesignEditorProps) {
-  if (props.treeInvalid) {
+  if (props.blockedReason === "unreadable") {
     return (
-      <div className="rounded-xl border border-[var(--error)]/40 bg-[var(--error)]/5 p-6">
-        <h2 className="font-heading text-lg text-primary">This page&rsquo;s saved layout cannot be read</h2>
-        <p className="mt-2 max-w-prose text-sm text-muted-foreground">
-          Rather than opening a blank canvas — which your next save would write over the top of — the
-          designer has stopped here. The published version of this page is unaffected and is still live.
-        </p>
-        <Button asChild variant="outline" className="mt-4">
-          <Link href={`/admin/funnels/${props.funnelId}`}>Back to the funnel</Link>
-        </Button>
-      </div>
+      <Blocked
+        title="This page’s saved layout cannot be read"
+        body="Rather than opening a blank canvas — which your next save would write over the top of — the designer has stopped here. The published version of this page is unaffected and is still live."
+        action={{ href: `/admin/funnels/${props.funnelId}`, label: "Back to the funnel" }}
+      />
+    )
+  }
+
+  if (props.blockedReason === "section_doc") {
+    return (
+      <Blocked
+        title="This page was built in the page builder"
+        body="It is edited by clicking the page itself, or by chatting to it — not on this canvas. The drag designer keeps its pages in a different format, so opening this one here would show you an empty canvas and your next save would write it over the top of your page."
+        action={{
+          href: `/admin/funnels/${props.funnelId}/edit/${props.stepId}`,
+          label: "Open the page builder",
+        }}
+      />
     )
   }
 
