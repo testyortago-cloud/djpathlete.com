@@ -153,7 +153,25 @@ function overCapDoc(): SectionDoc {
   } as SectionDoc
 }
 
-const render = () => Page({ params: Promise.resolve({ stepId: STEP_ID }) })
+/**
+ * `searchParams` IS NOT OPTIONAL, AND THIS FILE FOUND OUT THE HARD WAY.
+ *
+ * The helper used to be `Page({ params })`, written when the page took only
+ * params. `?edit=1` added `const { edit } = await searchParams` — and every
+ * test in this file has thrown "Cannot destructure property 'edit' of
+ * '(intermediate value)' as it is undefined" ever since: 14 of 17 red on main,
+ * through the whole click-to-edit build, because the funnel work was verified
+ * with targeted runs over `__tests__/lib/funnels` and this file sits under
+ * `__tests__/app`.
+ *
+ * Fixed HERE rather than by defaulting `searchParams` in the page, deliberately:
+ * Next always passes it, so a page that copes without it would be coping with a
+ * call that cannot happen, and the test would go on modelling the framework
+ * wrongly. `tsc --noEmit` had this one flagged the whole time (TS2345 on this
+ * line) — under 554 other pre-existing test-only errors.
+ */
+const render = (searchParams: Record<string, string> = {}) =>
+  Page({ params: Promise.resolve({ stepId: STEP_ID }), searchParams: Promise.resolve(searchParams) })
 
 /** Walks a returned element tree for the NodeRenderer's `nodes` prop. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -303,6 +321,25 @@ describe("/funnel-preview/[stepId] — what it renders", () => {
       stepId: STEP_ID,
       stepSlug: STEP.slug,
     })
+  })
+
+  it("passes edit mode to the islands, not only to the section renderer", async () => {
+    // MUTANT KILLED: threading `editable` into `reassemble` and forgetting the
+    // island context — which is what shipped, and it is not a partial feature
+    // but an incoherent one. `reassemble` stamps anchors on everything the
+    // COMPILER emits; an island's insides are built at request time and never
+    // go through the compiler at all, so the form's labels and its submit
+    // button can only be anchored by the component that draws them. Split the
+    // flag and the canvas gets a page whose headline edits and whose form —
+    // most of a lead-gen page — does not.
+    expect(findContext(await render({ edit: "1" }))).toMatchObject({ editable: true, isPreview: true })
+  })
+
+  it("leaves edit mode off unless it was asked for", async () => {
+    // MUTANT KILLED: `editable: true` unconditionally. This route is the ONLY
+    // caller that may set it, and a preview opened from the funnel board (no
+    // `?edit=1`) must render exactly what a visitor would see.
+    expect(findContext(await render())).toMatchObject({ editable: false })
   })
 
   it("emits the scoped stylesheet", async () => {
