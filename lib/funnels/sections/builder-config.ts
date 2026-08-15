@@ -164,3 +164,80 @@ export const SECTION_BUILDER_RATE_LIMIT_MAX = 20
 
 /** Rate limit: window duration (ms). Pattern: app/api/admin/ai-chat/route.ts. */
 export const SECTION_BUILDER_RATE_LIMIT_WINDOW_MS = 300_000
+
+// ---------------------------------------------------------------------------
+// THE REVIEW STAGE
+//
+// Runs AFTER a build turn has already committed. Every constant below is sized
+// on that fact: the stage can be abandoned at any point, for any reason, and
+// the cost is the tokens already spent — never the owner's page. Nothing here
+// needs a safety margin for "what if it fails", because failing is free.
+//
+// Spec: docs/superpowers/specs/2026-08-15-ai-page-review-pipeline-design.md
+// ---------------------------------------------------------------------------
+
+/**
+ * How many times the reviser may run against a fresh set of findings.
+ *
+ * ONE, ARGUED FOR RATHER THAN ASSUMED. Subjective copy tends to oscillate
+ * between rounds instead of converging: the second reviser reads the first's
+ * output as a new page with new problems, and "make it punchier" applied twice
+ * produces a headline with no verbs left in it. Raising this to 2 is a one-line
+ * change and should be made against evidence — `ReviewOutcome.surviving`
+ * records exactly which findings the first round failed to clear, which IS
+ * that evidence.
+ *
+ * `0` disables the review stage outright. That is the kill switch this feature
+ * has instead of a flag: the project rule is that flags guard money and
+ * mass-email risk, and this guards neither.
+ */
+export const SECTION_REVIEW_MAX_ROUNDS = 1
+
+/**
+ * The critics' model.
+ *
+ * SONNET, AND NOT BECAUSE CRITIQUE IS THE EASY PART. A critic emits FINDINGS —
+ * prose in a fixed envelope. Nothing it returns has to satisfy `opSchema`,
+ * nothing it returns can reject a batch, and a critic that writes a slightly
+ * worse sentence costs a slightly worse sentence. The reviser is the call that
+ * must produce structurally valid ops against a ten-kind registry where one
+ * malformed op rejects every other op sent with it, and that is where the Opus
+ * budget goes. Same shape as `lib/agents/self-critique.ts`, which runs a cheap
+ * second-pass critic behind an expensive main call.
+ */
+export const SECTION_REVIEW_CRITIC_MODEL = MODEL_SONNET
+
+/** maxTokens for ONE critic. A findings list, not a document. */
+export const SECTION_REVIEW_CRITIC_MAX_TOKENS = 2_000
+
+/**
+ * maxTokens for the reviser.
+ *
+ * Matched to `SECTION_BUILDER_EDIT_MAX_TOKENS` and for the same reason spelled
+ * out there: a reviser acting on a page-wide rhythm finding may legitimately
+ * emit an `update_section` for every section on the page, and on
+ * `claude-opus-5` `max_tokens` buys thinking and output out of the same purse.
+ * Sizing this to "a few ops" is what dead-ends the turn.
+ */
+export const SECTION_REVIEW_REVISER_MAX_TOKENS = 14_000
+
+/**
+ * Wall-clock budget for the WHOLE stage — critics, reviser, apply and re-audit.
+ *
+ * The route sets `maxDuration = 300` and the build turn preceding this has
+ * typically spent ~30s of it. 90s covers the parallel critic fan-out (~15s),
+ * a reviser (~30s) and a retry with room to spare, while still guaranteeing
+ * the owner gets an answer rather than a stream that hangs until a proxy
+ * drops it.
+ */
+export const SECTION_REVIEW_TIMEOUT_MS = 90_000
+
+/**
+ * How many findings reach the reviser after merge.
+ *
+ * Bounded by `SECTION_BUILDER_MAX_OPS` (24) on purpose: a findings list longer
+ * than the batch that could act on it guarantees the reviser silently ignores
+ * the tail, and a page with more than 24 distinct problems wants rebuilding,
+ * not polishing.
+ */
+export const SECTION_REVIEW_MAX_FINDINGS = 24

@@ -18,6 +18,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import * as anthropic from "@/lib/ai/anthropic"
 import * as models from "@/lib/ai/models"
+import * as config from "@/lib/funnels/sections/builder-config"
 
 const ROOT = process.cwd()
 
@@ -142,5 +143,53 @@ describe("the model ids were MOVED, not repointed", () => {
     expect(models.MODEL_SONNET).toBe("claude-sonnet-4-6")
     expect(models.MODEL_HAIKU).toBe("claude-haiku-4-5-20251001")
     expect(models.MODEL_OPUS_5).toBe("claude-opus-5")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The review stage's tunables.
+//
+// These are numbers, so the only tests worth writing are the RELATIONSHIPS
+// between them — a test asserting `SECTION_REVIEW_CRITIC_MAX_TOKENS === 2000`
+// restates the constant and fails the moment someone deliberately tunes it,
+// which is a test that costs more than it protects.
+// ---------------------------------------------------------------------------
+
+describe("review configuration", () => {
+  it("ships with exactly one revise round", () => {
+    // Not a taste call: the spec argues a second round oscillates on
+    // subjective copy rather than converging, and says to raise this against
+    // the surviving-findings evidence rather than on spec.
+    expect(config.SECTION_REVIEW_MAX_ROUNDS).toBe(1)
+  })
+
+  it("keeps the reviser budget under the non-streaming ceiling", () => {
+    // `generateObject` is non-streaming, so a bigger budget is a longer single
+    // HTTP request, not just a bigger bill.
+    expect(config.SECTION_REVIEW_REVISER_MAX_TOKENS).toBeLessThan(config.SECTION_BUILDER_MAX_TOKENS_CEILING)
+  })
+
+  it("gives the reviser the same room as a whole-page edit", () => {
+    // A page-wide rhythm finding legitimately produces one op per section.
+    expect(config.SECTION_REVIEW_REVISER_MAX_TOKENS).toBe(config.SECTION_BUILDER_EDIT_MAX_TOKENS)
+  })
+
+  it("cannot ask for more findings than a batch has ops to fix them with", () => {
+    // Otherwise the reviser silently ignores the tail of the list.
+    expect(config.SECTION_REVIEW_MAX_FINDINGS).toBeLessThanOrEqual(config.SECTION_BUILDER_MAX_OPS)
+  })
+
+  it("gives a critic far less room than the reviser", () => {
+    // A critic emitting a document-sized response has misunderstood its job.
+    expect(config.SECTION_REVIEW_CRITIC_MAX_TOKENS).toBeLessThan(config.SECTION_REVIEW_REVISER_MAX_TOKENS / 4)
+  })
+
+  it("allows the whole stage more wall clock than any single call inside it", () => {
+    expect(config.SECTION_REVIEW_TIMEOUT_MS).toBeGreaterThanOrEqual(60_000)
+  })
+
+  it("runs the critics on Sonnet, not on the builder's Opus", () => {
+    expect(config.SECTION_REVIEW_CRITIC_MODEL).toBe(models.MODEL_SONNET)
+    expect(config.SECTION_REVIEW_CRITIC_MODEL).not.toBe(config.SECTION_BUILDER_MODEL)
   })
 })
