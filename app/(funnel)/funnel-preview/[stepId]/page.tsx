@@ -63,6 +63,7 @@ import { FUNNEL_ROOT_ID, compileFunnelStep } from "@/lib/funnels/compile"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { getFunnelById, getStep } from "@/lib/db/funnels"
 import { reassemble } from "@/lib/funnels/sections/doc"
+import { CANVAS_EDIT_CSS } from "@/lib/funnels/sections/edit-css"
 import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
 
 /**
@@ -74,6 +75,7 @@ export const metadata = { robots: { index: false, follow: false } }
 
 interface PageProps {
   params: Promise<{ stepId: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
 /**
@@ -128,12 +130,23 @@ function PreviewBlockedBanner({ problems }: { problems: string[] }) {
   )
 }
 
-export default async function FunnelDraftPreviewPage({ params }: PageProps) {
+export default async function FunnelDraftPreviewPage({ params, searchParams }: PageProps) {
   const session = await auth()
   const role = session?.user?.role
   if (role !== "admin" && role !== "staff") notFound()
 
   const { stepId } = await params
+
+  // EDIT MODE ADDS ATTRIBUTES AND A STYLESHEET. NOTHING ELSE.
+  //
+  // The page the owner clicks on is the same render publish ships, which is the
+  // whole reason the canvas is this route rather than a second, client-side
+  // drawing of the same document. `?edit=1` is safe to be a query string
+  // because this route is already admin-gated above and because the flag cannot
+  // reach `/go` or a version row: `reassemble`'s `editable` defaults to false
+  // and only this call site ever sets it.
+  const { edit } = await searchParams
+  const editable = edit === "1"
   const [draft, step] = await Promise.all([getDraft(stepId), getStep(stepId)])
   if (!draft || !step) notFound()
 
@@ -189,7 +202,7 @@ export default async function FunnelDraftPreviewPage({ params }: PageProps) {
   // wrong with it" is strictly more useful.
   let rendered
   try {
-    rendered = reassemble(docToRender, { funnelBasePath: `/go/${funnel.slug}` })
+    rendered = reassemble(docToRender, { funnelBasePath: `/go/${funnel.slug}`, editable })
   } catch (error) {
     return <PreviewNotice title="This page can't be rendered" lines={[(error as Error).message]} />
   }
@@ -209,6 +222,10 @@ export default async function FunnelDraftPreviewPage({ params }: PageProps) {
     <div id={FUNNEL_ROOT_ID}>
       {/* Scoped by the compiler — every selector is prefixed with this id. */}
       {compiled.css ? <style dangerouslySetInnerHTML={{ __html: compiled.css }} /> : null}
+      {/* AFTER the page's own stylesheet, so selection chrome wins at equal
+          specificity. Not scoped to the funnel root: `djp-selected` is added to
+          the <section> elements themselves, which are inside it anyway. */}
+      {editable ? <style dangerouslySetInnerHTML={{ __html: CANVAS_EDIT_CSS }} /> : null}
       <NodeRenderer
         nodes={compiled.nodes}
         context={{

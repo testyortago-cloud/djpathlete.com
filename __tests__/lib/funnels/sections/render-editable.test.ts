@@ -260,7 +260,7 @@ describe("editable render mode", () => {
   it("survives the compiler, which strips data-djp-* silently", () => {
     const { html, css } = reassemble(docWith(FIXTURES.hero), { editable: true })
     const compiled = compileFunnelStep({ html, css })
-    expect(compiled.ok).toBe(true)
+    if (!compiled.ok) throw new Error(compiled.errors.map((e) => e.message).join("; "))
     const serialized = JSON.stringify(compiled.nodes)
     expect(serialized).toContain("data-edit")
     expect(serialized).toContain("data-sec")

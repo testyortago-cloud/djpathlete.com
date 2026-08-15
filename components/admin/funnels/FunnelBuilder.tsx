@@ -72,8 +72,13 @@ import { ChatPane } from "./builder/ChatPane"
 import { GenerationStage } from "./builder/GenerationStage"
 import { PreviewPane, type PreviewDevice } from "./builder/PreviewPane"
 import { PublishReview } from "./builder/PublishReview"
+import { SectionInspector } from "./builder/SectionInspector"
+import { patchForPath } from "./builder/section-patch"
+import type { CanvasCommit, CanvasSelection } from "./builder/canvas-editing"
 import { candidatePickMessage } from "./builder/format"
 import { readTurnStream } from "./builder/stream"
+import { fieldsForSection } from "@/lib/funnels/sections/fields"
+import type { SectionOp } from "@/lib/funnels/sections/apply"
 import type { BuildPhase } from "@/lib/funnels/sections/build-stream"
 import type { StreamedSection } from "@/lib/funnels/sections/stream-progress"
 import type {
@@ -202,9 +207,25 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   const [publishResult, setPublishResult] = useState<PublishResult | null>(null)
   const [serverBlockers, setServerBlockers] = useState<string[]>([])
 
+  const [canvasError, setCanvasError] = useState<string | null>(null)
+
   const [device, setDevice] = useState<PreviewDevice>("desktop")
   const [mode, setMode] = useState<"edit" | "review">("edit")
   const [tab, setTab] = useState<"chat" | "preview">("chat")
+
+  /** What the owner last clicked on the canvas. Selection only, never content. */
+  const [selected, setSelected] = useState<CanvasSelection | null>(null)
+
+  /**
+   * The revision the NEXT canvas edit must send.
+   *
+   * A ref, not state, for the reason `DesignEditor` gives: two edits in quick
+   * succession must send the revision the FIRST one came back with, and a
+   * closure over state would still be holding the value from its own render.
+   * Kept in step with `revision` below so a chat turn and a click cannot
+   * disagree about what "current" is.
+   */
+  const editRevision = useRef(props.initialRevision)
 
   /**
    * Adopts a turn. See the two state rules in the header: a `compile: null`
@@ -214,6 +235,10 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
    */
   const applyTurn = useCallback((data: BuildTurnResponse) => {
     setRevision(data.revision)
+    // The canvas and the chat share one lock, so a chat turn moves the number
+    // the next click must send. Forgetting this line is a 409 on the owner's
+    // first click after every single AI turn.
+    editRevision.current = data.revision
     setConflict(null)
 
     if (data.compile !== null) {
@@ -247,6 +272,116 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
       },
     ])
   }, [])
+
+  // -------------------------------------------------------------------------
+  // The canvas
+  //
+  // Three functions, and the split between them is the design's governing rule:
+  // the canvas reports INTENT (`handleCanvasSelect`, `handleCanvasCommit`), and
+  // this component decides what that intent MEANS as an op (`sendOps`). The
+  // canvas never holds document state, so there is nothing there to diverge.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Sends a batch to the non-AI edit route and adopts the result.
+   *
+   * The SERVER's document is what gets adopted, never a locally-replayed copy:
+   * `applyOps` runs there, transactionally, and re-deriving the same result
+   * here would be a second implementation of the merge rules to keep in step.
+   */
+  const sendOps = useCallback(
+    async (ops: SectionOp[]) => {
+      if (ops.length === 0) return
+      setBusy("building")
+      setCanvasError(null)
+      try {
+        const response = await fetch(`/api/admin/funnels/steps/${props.stepId}/edit`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ops, revision: editRevision.current }),
+        })
+        const body = (await response.json().catch(() => null)) as {
+          revision?: number
+          doc?: SectionDoc
+          error?: string
+          problems?: string[]
+          code?: string
+          currentRevision?: number
+        } | null
+
+        if (response.status === 409) {
+          // Same re-sync rule the chat path uses: move to their revision so the
+          // next edit lands on top of their document rather than racing it, and
+          // point the preview at what is actually stored.
+          const current = body?.currentRevision ?? revision
+          setConflict(current)
+          setRevision(current)
+          editRevision.current = current
+          setPreviewRevision(current)
+          setCanvasError(body?.error ?? "This page changed in another tab. Reload before editing again.")
+          return
+        }
+
+        if (!response.ok || typeof body?.revision !== "number" || !body.doc) {
+          setCanvasError(body?.problems?.join(" ") ?? body?.error ?? "That change could not be applied.")
+          return
+        }
+
+        setDoc(body.doc)
+        setRevision(body.revision)
+        editRevision.current = body.revision
+        setPreviewRevision(body.revision)
+        setConflict(null)
+      } catch {
+        setCanvasError("That change could not be saved. Check your connection and try again.")
+      } finally {
+        setBusy("idle")
+      }
+    },
+    [props.stepId, revision],
+  )
+
+  const handleCanvasSelect = useCallback((selection: CanvasSelection) => {
+    setSelected(selection)
+  }, [])
+
+  /**
+   * Turns a committed text edit into an `update_section`.
+   *
+   * THE EMPTY-STRING DECISION LIVES HERE AND NOT IN THE CANVAS, because it
+   * depends on the SCHEMA: clearing an optional field means unset it (`null` is
+   * `applyOps`'s delete sentinel, the only way to remove a key over JSON),
+   * while clearing a required one is not a legal document and is refused
+   * locally rather than sent to be refused remotely. The canvas knows neither
+   * of those things, and should not.
+   */
+  const handleCanvasCommit = useCallback(
+    (commit: CanvasCommit) => {
+      if (!doc) return
+      const section = doc.sections.find((candidate) => candidate.id === commit.sectionId)
+      if (!section) return
+
+      const field = fieldsForSection(section).find((candidate) => candidate.path === commit.path)
+
+      if (commit.value === "") {
+        if (!field?.optional) {
+          setCanvasError("That text cannot be left empty.")
+          return
+        }
+        sendOps([{ op: "update_section", id: commit.sectionId, props: { [commit.path]: null } } as SectionOp])
+        return
+      }
+
+      sendOps([
+        {
+          op: "update_section",
+          id: commit.sectionId,
+          props: patchForPath(section.props as Record<string, unknown>, commit.path, commit.value),
+        } as SectionOp,
+      ])
+    },
+    [doc, sendOps],
+  )
 
   /** The build route's non-200s, each with the one thing the owner can do. */
   const handleErrorResponse = useCallback(
@@ -860,7 +995,26 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           device={device}
           revision={previewRevision}
           title="Draft preview of this page"
+          // Only in edit mode, and never while a turn is in flight: the canvas
+          // and the chat write the same document through the same lock, so
+          // letting a click land mid-turn would 409 one of them for nothing.
+          editable={mode === "edit" && doc !== null && !docInvalid}
+          onSelect={handleCanvasSelect}
+          onCommit={handleCanvasCommit}
         />
+
+        {/* The inspector, beside the canvas. Hidden below lg for the same
+            reason the sidebar is: there is no room for three columns. */}
+        {mode === "edit" && doc !== null && !docInvalid ? (
+          <SectionInspector
+            className={`${tab === "preview" ? "block" : "hidden"} w-80 shrink-0 overflow-y-auto border-l border-border bg-white lg:block`}
+            doc={doc}
+            selectedId={selected?.sectionId ?? null}
+            selectedPath={selected?.path ?? null}
+            onOps={sendOps}
+            busy={busy !== "idle"}
+          />
+        ) : null}
       </div>
     </div>
   )

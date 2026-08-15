@@ -38,6 +38,7 @@
 // reloading the document that was just loaded.
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { bindCanvasEditing, type CanvasHandlers } from "./canvas-editing"
 
 export type PreviewDevice = "desktop" | "tablet" | "mobile"
 
@@ -72,10 +73,22 @@ interface PreviewPaneProps {
   className?: string
   /** Accessible name; distinguishes this frame from the review's mobile one. */
   title?: string
+  /**
+   * Render with editing anchors and bind the click-to-edit gestures.
+   *
+   * Part of the SRC, not just a listener: the anchors are stamped server-side
+   * by `reassemble`, so turning edit mode on and off reloads the document. That
+   * is deliberate — a canvas whose markup disagreed with what publish ships is
+   * the failure this whole approach exists to avoid.
+   */
+  editable?: boolean
+  onSelect?: CanvasHandlers["onSelect"]
+  onCommit?: CanvasHandlers["onCommit"]
+  onPickImage?: CanvasHandlers["onPickImage"]
 }
 
-function previewSrc(stepId: string, revision: number): string {
-  return `/funnel-preview/${stepId}?rev=${revision}`
+function previewSrc(stepId: string, revision: number, editable: boolean): string {
+  return `/funnel-preview/${stepId}?rev=${revision}${editable ? "&edit=1" : ""}`
 }
 
 /** Same-origin, but a cross-origin error here must not take the pane down. */
@@ -96,8 +109,18 @@ function writeScrollY(frame: HTMLIFrameElement | null, y: number) {
   }
 }
 
-export function PreviewPane({ stepId, device, revision, className, title }: PreviewPaneProps) {
-  const wanted = previewSrc(stepId, revision)
+export function PreviewPane({
+  stepId,
+  device,
+  revision,
+  className,
+  title,
+  editable = false,
+  onSelect,
+  onCommit,
+  onPickImage,
+}: PreviewPaneProps) {
+  const wanted = previewSrc(stepId, revision, editable)
 
   const boxRef = useRef<HTMLDivElement | null>(null)
   const frames = useRef<Array<HTMLIFrameElement | null>>([null, null])
@@ -116,8 +139,15 @@ export function PreviewPane({ stepId, device, revision, className, title }: Prev
     })
   }, [wanted, front])
 
+  // Bumped on every frame load so the binding effect re-runs against the
+  // document that is now in front. A `load` is a NEW Document object, so a
+  // binding made against the previous one is attached to a detached tree and
+  // reports nothing — silently, which is the worst way for an editor to fail.
+  const [loadGeneration, setLoadGeneration] = useState(0)
+
   const handleLoad = useCallback(
     (slot: number) => {
+      setLoadGeneration((n) => n + 1)
       // The front slot firing `load` is the first paint, not a swap.
       if (slot === front) return
       if (srcs[slot] !== wanted) return
@@ -126,6 +156,32 @@ export function PreviewPane({ stepId, device, revision, className, title }: Prev
     },
     [front, srcs, wanted],
   )
+
+  // Handlers are held in a ref so a parent that re-creates its callbacks on
+  // every render does not tear down and re-attach the listeners underneath the
+  // owner's pointer.
+  const handlers = useRef<CanvasHandlers>({})
+  handlers.current = { onSelect, onCommit, onPickImage }
+
+  useEffect(() => {
+    if (!editable) return
+    const frame = frames.current[front]
+    // Same-origin, but a frame that is not yet readable must not throw here:
+    // the effect runs again on the next load.
+    let doc: Document | null = null
+    try {
+      doc = frame?.contentDocument ?? null
+    } catch {
+      return
+    }
+    if (!doc) return
+
+    return bindCanvasEditing(doc, {
+      onSelect: (selection) => handlers.current.onSelect?.(selection),
+      onCommit: (commit) => handlers.current.onCommit?.(commit),
+      onPickImage: (target) => handlers.current.onPickImage?.(target),
+    })
+  }, [editable, front, loadGeneration])
 
   useEffect(() => {
     const el = boxRef.current
