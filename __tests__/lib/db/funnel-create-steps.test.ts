@@ -4,6 +4,7 @@
 // against a DAL that silently drops every step after the first.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { __resetIntakeColumnCache } from "@/lib/db/funnel-schema-support"
 
 const funnelInsert = vi.fn()
 const stepInsert = vi.fn()
@@ -39,12 +40,20 @@ function mockSupabase(stepRows: { id: string; slug: string }[] | null, stepError
   })
   stepInsert.mockReturnValue(stepResult(stepRows, stepError))
   from.mockImplementation((table: string) =>
-    table === "funnels" ? { insert: funnelInsert } : { insert: stepInsert },
+    table === "funnels"
+      ? {
+          insert: funnelInsert,
+          // The 00210 presence probe. These tests describe a MIGRATED database;
+          // the degraded path has its own file (funnel-pre-00210-tolerance).
+          select: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }),
+        }
+      : { insert: stepInsert },
   )
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  __resetIntakeColumnCache()
 })
 
 const threeSteps = [

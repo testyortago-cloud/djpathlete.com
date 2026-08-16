@@ -7,6 +7,7 @@
 // Supabase with a key named `offer`, which is not a column.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { __resetIntakeColumnCache } from "@/lib/db/funnel-schema-support"
 
 const update = vi.fn()
 const from = vi.fn()
@@ -15,10 +16,16 @@ vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => ({ from }) }))
 
 beforeEach(() => {
   vi.clearAllMocks()
+  __resetIntakeColumnCache()
   update.mockReturnValue({
     eq: () => ({ select: () => ({ single: () => Promise.resolve({ data: { id: "f1" }, error: null }) }) }),
   })
-  from.mockReturnValue({ update })
+  // The 00210 presence probe answers "migrated" — the degraded path is covered
+  // in funnel-pre-00210-tolerance.test.ts.
+  from.mockReturnValue({
+    update,
+    select: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }),
+  })
 })
 
 async function patch(input: Record<string, unknown>) {

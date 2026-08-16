@@ -309,8 +309,13 @@ export async function FunnelBuilderScreen({
   // The real guards are the two that follow, and they are unchanged: a step
   // with no document and no turns has nothing to lose. `FunnelBuilder` re-checks
   // both plus its own `initialPromptFired` ref before sending.
+  // A TRUTHY check, not `!== null`. Before migration 00210 lands, `select("*")`
+  // returns rows with no `template` key at all — and `undefined !== null` is
+  // TRUE, which would fire the creation prompt on every untouched step of every
+  // funnel that predates templates. Truthiness covers null, undefined and the
+  // empty string alike.
   const wantsFirstDraft =
-    (start === "1" || funnel.template !== null) && draft.doc === null && turns.length === 0
+    (start === "1" || Boolean(funnel.template)) && draft.doc === null && turns.length === 0
 
   // The sibling read happens ONLY when a draft is actually wanted — which is
   // once in a step's life. Hoisting it above the guard would put an extra query

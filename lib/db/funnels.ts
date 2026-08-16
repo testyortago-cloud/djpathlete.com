@@ -4,6 +4,7 @@
 // Per repo convention the Database generic is dropped and rows are cast here.
 
 import { createServiceRoleClient } from "@/lib/supabase"
+import { hasIntakeColumns } from "@/lib/db/funnel-schema-support"
 import { ENTRY_STEP_SLUG } from "@/lib/funnels/templates"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import type { CompileError, FunnelNode } from "@/lib/funnels/compile/types"
@@ -99,6 +100,14 @@ export async function createFunnel(
   input: CreateFunnelInput,
 ): Promise<Funnel & { entryStepId: string }> {
   const supabase = getClient()
+
+  // Migration 00210 may not have reached this database yet — see
+  // `lib/db/funnel-schema-support.ts` for the deploy-race caveat this
+  // satisfies, and for why `.env.local` hits it every time. When the columns
+  // are absent everything below degrades to the exact insert this function
+  // performed before 00210 rather than 500ing.
+  const intake = await hasIntakeColumns(supabase)
+
   const { data, error } = await supabase
     .from("funnels")
     .insert({
@@ -108,16 +117,20 @@ export async function createFunnel(
       kind: input.kind ?? "page",
       goal: input.goal ?? null,
       created_by: input.created_by ?? null,
-      template: input.template ?? null,
-      audience: input.audience ?? null,
-      // Both halves from the one source, so the paired CHECK cannot be tripped
-      // by writing a kind with no ref.
-      offer_kind: input.offer?.kind ?? null,
-      offer_ref: input.offer?.ref ?? null,
-      starts_at: input.starts_at ?? null,
-      ends_at: input.ends_at ?? null,
-      auto_offline_at_end: input.auto_offline_at_end ?? false,
-      notify_emails: input.notify_emails ?? null,
+      ...(intake
+        ? {
+            template: input.template ?? null,
+            audience: input.audience ?? null,
+            // Both halves from the one source, so the paired CHECK cannot be
+            // tripped by writing a kind with no ref.
+            offer_kind: input.offer?.kind ?? null,
+            offer_ref: input.offer?.ref ?? null,
+            starts_at: input.starts_at ?? null,
+            ends_at: input.ends_at ?? null,
+            auto_offline_at_end: input.auto_offline_at_end ?? false,
+            notify_emails: input.notify_emails ?? null,
+          }
+        : {}),
     })
     .select("*")
     .single()
@@ -149,7 +162,10 @@ export async function createFunnel(
         // else; this makes it true regardless.
         slug: index === 0 ? ENTRY_STEP_SLUG : step.slug,
         name: step.name,
-        goal: step.goal ?? null,
+        // The MULTI-STEP PLAN STILL WORKS without 00210 — slug, name, position
+        // and is_entry all predate it. Only the per-step goal is lost, so a
+        // funnel created in the window has its shape and not its intent.
+        ...(intake ? { goal: step.goal ?? null } : {}),
         position: index,
         is_entry: index === 0,
       })),
@@ -197,16 +213,33 @@ export type UpdateFunnelInput = Partial<
 
 export async function updateFunnel(id: string, input: UpdateFunnelInput): Promise<Funnel> {
   const supabase = getClient()
-  const { offer, ...columns } = input
+  const { offer, audience, starts_at, ends_at, auto_offline_at_end, notify_emails, ...core } = input
+
+  // Same tolerance as createFunnel. `core` — slug, name, description, status,
+  // kind, goal — predates 00210 and always writes; the intake half is dropped
+  // when the columns are not there yet. A rename, and more importantly a
+  // PUBLISH, must not fail because a migration is fifteen seconds behind.
+  const intake = await hasIntakeColumns(supabase)
+
   // `undefined` means "not supplied" and must not become a write; an explicit
-  // `null` means "clear it" and must. Spreading the pair only when the key is
+  // `null` means "clear it" and must. Spreading each key only when it is
   // present keeps both halves of the paired CHECK in step.
-  const offerColumns =
-    offer === undefined ? {} : { offer_kind: offer?.kind ?? null, offer_ref: offer?.ref ?? null }
+  const intakeColumns = intake
+    ? {
+        ...(offer === undefined
+          ? {}
+          : { offer_kind: offer?.kind ?? null, offer_ref: offer?.ref ?? null }),
+        ...(audience === undefined ? {} : { audience }),
+        ...(starts_at === undefined ? {} : { starts_at }),
+        ...(ends_at === undefined ? {} : { ends_at }),
+        ...(auto_offline_at_end === undefined ? {} : { auto_offline_at_end }),
+        ...(notify_emails === undefined ? {} : { notify_emails }),
+      }
+    : {}
 
   const { data, error } = await supabase
     .from("funnels")
-    .update({ ...columns, ...offerColumns, updated_at: new Date().toISOString() })
+    .update({ ...core, ...intakeColumns, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select("*")
     .single()
