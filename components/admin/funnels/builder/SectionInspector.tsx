@@ -31,7 +31,9 @@ import {
 } from "@/lib/funnels/sections/fields"
 import { SECTION_REGISTRY, type Section, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { SectionOp } from "@/lib/funnels/sections/apply"
-import { patchForPath, valueAtPath as valueAt } from "./section-patch"
+import { patchForPath, valueAtPath as valueAt } from "@/lib/funnels/sections/patch"
+import { DestinationPicker } from "./DestinationPicker"
+import { useConnections } from "@/components/admin/funnels/connections-context"
 
 interface SectionInspectorProps {
   doc: SectionDoc
@@ -97,12 +99,15 @@ function FieldControl({
   onChange,
   disabled,
   autoFocus,
+  sectionIds = [],
 }: {
   field: SectionField
   props: Record<string, unknown>
   onChange: (path: string, value: unknown) => void
   disabled: boolean
   autoFocus: boolean
+  /** Ids of the sections on THIS page, for an in-page anchor destination. */
+  sectionIds?: string[]
 }) {
   const value = valueAt(props, field.path)
   const id = `field-${field.path.replace(/\./g, "-")}`
@@ -130,13 +135,20 @@ function FieldControl({
   // An editor control whose only possible effect was to corrupt the thing it
   // was editing, on the panel that pairs with the canvas.
   //
-  // THE LABEL IS EDITABLE, THE TARGET IS DESCRIBED. That split is a real limit
-  // and not an oversight: a target is a typed union whose `program` / `event`
-  // refs are only meaningful once `resolve.ts` matches them against live rows,
-  // and inventing a picker here would be a second, weaker resolver. So the
-  // panel says where the button currently goes and points at the one place
-  // that can change it — the same move `RepeaterEditor` makes for adding a
-  // form field.
+  // THE LABEL IS EDITABLE, AND SO — SINCE THE STEP RAIL — IS THE DESTINATION,
+  // BUT ONLY THE HALF THAT IS SAFE TO PICK.
+  //
+  // This used to read "the target is described", with a real reason: a
+  // `program` / `event` ref is only meaningful once `resolve.ts` matches it
+  // against live rows, so a picker over those would be a second, weaker
+  // resolver. That reasoning stands and `DestinationPicker` keeps it — an
+  // offer or booking target still says "ask in the chat".
+  //
+  // What it did not cover is the case the owner was actually stuck on. A page
+  // slug is not a row id; it is authored text this funnel owns, and the page
+  // list is right there in the layout's context. So pages and in-page anchors
+  // are pickable, and the owner is no longer told to describe in prose a
+  // button they are looking straight at.
   if (field.type === "cta") {
     const cta = (value ?? {}) as { label?: unknown; target?: Record<string, unknown> }
     const currentLabel = typeof cta.label === "string" ? cta.label : ""
@@ -184,8 +196,18 @@ function FieldControl({
             onChange(`${field.path}.label`, next)
           }}
         />
+        <DestinationPicker
+          id={`${id}-target`}
+          target={cta.target}
+          sectionIds={sectionIds}
+          disabled={disabled}
+          onChange={(next) => onChange(`${field.path}.target`, next)}
+        />
+        {/* Kept UNDER the picker as confirmation, not replaced by it. The
+            picker says what you may choose; this says, in one plain sentence,
+            what the button does right now — including for the offer targets
+            the picker deliberately will not touch. */}
         <p className="text-xs text-muted-foreground">{describeCtaTarget(cta.target)}</p>
-        <p className="text-xs text-muted-foreground">Ask in the chat to send this button somewhere else.</p>
       </div>
     )
   }
@@ -299,6 +321,11 @@ export function SectionInspector({
 
   const props = section.props as Record<string, unknown>
   const kindLabel = SECTION_REGISTRY[section.kind].label
+  // Anchor destinations are in-PAGE, so this is the whole document's section
+  // list, not the selected section's. Read here rather than in `FieldControl`
+  // because that component is deliberately given only one field's worth of
+  // context.
+  const sectionIds = doc.sections.map((entry) => entry.id)
 
   const setProp = (path: string, raw: unknown) => {
     const current = valueAt(props, path)
@@ -426,13 +453,27 @@ export function SectionInspector({
           <div key={field.path}>
             {field.type === "repeater" || field.type === "list" ? (
               <RepeaterEditor field={field} section={section} onOps={onOps} busy={busy} />
-            ) : (
+            ) : field.path === "successMode" ? (
+              // ONE CONTROL FOR TWO FIELDS, and `redirectUrl` is dropped from
+              // the list below. They are not independent: `formIslandSchema`'s
+              // superRefine rejects `successMode: "redirect"` with no
+              // `redirectUrl`, so two separate controls let an owner build a
+              // state the server refuses — and the failure would arrive as
+              // "that change could not be applied", naming no rule.
+              <FormSuccessControl
+                props={props}
+                onOps={onOps}
+                sectionId={section.id}
+                disabled={busy}
+              />
+            ) : field.path === "redirectUrl" ? null : (
               <FieldControl
                 field={field}
                 props={props}
                 onChange={setProp}
                 disabled={busy}
                 autoFocus={field.path === selectedPath}
+                sectionIds={sectionIds}
               />
             )}
           </div>
@@ -455,6 +496,120 @@ export function SectionInspector({
         </div>
       </div>
     </aside>
+  )
+}
+
+/**
+ * What happens after someone submits the form.
+ *
+ * ---------------------------------------------------------------------------
+ * THIS IS THE CONNECTOR THAT ACTUALLY MATTERS ON A LEAD-CAPTURE FUNNEL
+ * ---------------------------------------------------------------------------
+ * `successMode` defaults to `"message"`, so a form nobody has configured
+ * captures the lead, prints "Thanks — you're in", and stops dead in front of a
+ * thank-you page that was built and will never be reached. Wiring it used to
+ * mean switching a dropdown AND hand-typing `/go/<funnel>/<page>` into a
+ * free-text box that nothing validated.
+ *
+ * ONE CONTROL, TWO PROPS, ONE PATCH. `formIslandSchema`'s superRefine refuses
+ * `redirect` with no `redirectUrl`, so they have to move together or the op is
+ * rejected. Choosing a page writes both; choosing a message CLEARS the URL,
+ * because a leftover redirect target is exactly the half-configured state
+ * `autoConnectOps` then has to refuse to touch.
+ */
+function FormSuccessControl({
+  props,
+  onOps,
+  sectionId,
+  disabled,
+}: {
+  props: Record<string, unknown>
+  onOps: (ops: SectionOp[]) => void
+  sectionId: string
+  disabled: boolean
+}) {
+  const context = useConnections()
+  const pages = [...(context?.pages ?? [])].sort((a, b) => a.position - b.position)
+  const funnelSlug = context?.funnelSlug ?? ""
+
+  const redirectUrl = typeof props.redirectUrl === "string" ? props.redirectUrl : ""
+  const redirecting = props.successMode === "redirect" && redirectUrl !== ""
+
+  // Which page the stored URL names, if it names one of ours. Derived rather
+  // than stored: `redirectUrl` stays the single source of truth, so a URL an
+  // owner typed by hand before this control existed selects correctly here.
+  const base = `/go/${funnelSlug}`
+  const currentSlug = redirecting
+    ? redirectUrl === base
+      ? (pages.find((page) => page.isEntry)?.slug ?? "")
+      : redirectUrl.startsWith(`${base}/`)
+        ? redirectUrl.slice(base.length + 1)
+        : ""
+    : ""
+
+  const selected = redirecting ? (currentSlug ? `page:${currentSlug}` : "elsewhere") : "message"
+
+  function choose(value: string) {
+    if (value === "message") {
+      // `null` is `applyOps`'s delete sentinel — the only way to remove an
+      // optional key over JSON. Leaving the URL behind would be a form that
+      // says "show a message" while carrying a destination.
+      onOps([
+        { op: "update_section", id: sectionId, props: { successMode: "message", redirectUrl: null } },
+      ])
+      return
+    }
+    if (!value.startsWith("page:")) return
+    onOps([
+      {
+        op: "update_section",
+        id: sectionId,
+        props: { successMode: "redirect", redirectUrl: `${base}/${value.slice("page:".length)}` },
+      },
+    ])
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <Label
+        htmlFor={`field-successMode-${sectionId}`}
+        className="text-xs uppercase tracking-wide text-muted-foreground"
+      >
+        After someone submits
+      </Label>
+      <select
+        id={`field-successMode-${sectionId}`}
+        className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
+        value={selected}
+        disabled={disabled}
+        onChange={(event) => choose(event.target.value)}
+      >
+        <option value="message">Show a thank-you message</option>
+        {pages.length > 1 ? (
+          <optgroup label="Send them to a page">
+            {pages.map((page) => (
+              <option key={page.id} value={`page:${page.slug}`}>
+                {page.name}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {/* Only offered when it is ALREADY the state. A destination outside
+            this funnel is legitimate (`islands.ts` allows an allowlisted host,
+            which is why Calendly is on that list), but it is not something to
+            hand someone a free-text box for here — the chat can set it, and
+            this option exists so choosing it back is not the only way to see
+            what is currently set. */}
+        {selected === "elsewhere" ? (
+          <option value="elsewhere">Send them to {redirectUrl}</option>
+        ) : null}
+      </select>
+      {selected === "message" && pages.length > 1 ? (
+        <p className="text-xs text-muted-foreground">
+          This page will not lead anywhere after the form is submitted.
+        </p>
+      ) : null}
+    </div>
   )
 }
 

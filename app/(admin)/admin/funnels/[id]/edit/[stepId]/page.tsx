@@ -26,7 +26,13 @@ import { getDraft, listTurns } from "@/lib/db/funnel-builder"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
-import { loadCatalogues, resolveDoc, type DanglingAnchor, type UnresolvedCta } from "@/lib/funnels/sections/resolve"
+import {
+  loadCatalogues,
+  resolveDoc,
+  type DanglingAnchor,
+  type FunnelStepRef,
+  type UnresolvedCta,
+} from "@/lib/funnels/sections/resolve"
 import { SECTION_BUILDER_MAX_MESSAGE_LENGTH } from "@/lib/funnels/sections/builder-config"
 import { FUNNEL_GOALS } from "@/lib/validators/funnel"
 import type { Funnel, FunnelStep } from "@/types/database"
@@ -144,7 +150,15 @@ interface InitialState {
  * twin is edited, edit this one; the fix that deletes this comment is exporting
  * `compileDoc` from the route and calling it from both sides.
  */
-async function resolveAndCompile(doc: SectionDoc, funnelBasePath: string): Promise<InitialState> {
+async function resolveAndCompile(
+  doc: SectionDoc,
+  funnelBasePath: string,
+  // `null` means the page list could not be read, which `resolveDoc` treats as
+  // "step links not checked". That is the RIGHT degrade here and the wrong one
+  // in the publish route: losing the check costs this screen a warning, and
+  // nothing on it may turn a page the owner wants to edit into an error.
+  pages: FunnelStepRef[] | null,
+): Promise<InitialState> {
   let resolvedDoc = doc
   let unresolved: UnresolvedCta[] = []
   let danglingAnchors: DanglingAnchor[] = []
@@ -156,7 +170,7 @@ async function resolveAndCompile(doc: SectionDoc, funnelBasePath: string): Promi
     // corrupt document, precisely so a caller cannot accidentally unblock
     // publish. Catching it and saying "not checked" honours that; swallowing
     // it into `unresolved: []` would defeat it.
-    const resolution = resolveDoc(doc, catalogues)
+    const resolution = resolveDoc(doc, catalogues, pages)
     resolvedDoc = resolution.doc
     unresolved = resolution.unresolved
     danglingAnchors = resolution.danglingAnchors
@@ -221,7 +235,7 @@ export async function FunnelBuilderScreen({
   // Neither read is allowed to take the editor down: a transcript that cannot
   // be listed costs the owner their history, not their page. The same goes for
   // the live version number, which is a label — the editor opens without it.
-  const [draft, turns, publishedVersion] = await Promise.all([
+  const [draft, turns, publishedVersion, pages] = await Promise.all([
     getDraft(stepId),
     listTurns(stepId).catch((error) => {
       console.error("[funnels/edit] transcript read failed — opening without history:", error)
@@ -233,11 +247,20 @@ export async function FunnelBuilderScreen({
           return null
         })
       : Promise.resolve(null),
+    // `null` on failure, NOT `[]` — see `resolveDoc`. An empty list would say
+    // "this funnel has no pages" and report every step link on the screen as
+    // broken; `null` says "not checked", which is what actually happened.
+    listSteps(funnel.id)
+      .then((rows) => rows.map((row) => ({ slug: row.slug, name: row.name })))
+      .catch((error) => {
+        console.error("[funnels/edit] could not read the page list — links unchecked:", error)
+        return null
+      }),
   ])
   if (!draft) notFound()
 
   const initial: InitialState = draft.doc
-    ? await resolveAndCompile(draft.doc, funnelBasePath)
+    ? await resolveAndCompile(draft.doc, funnelBasePath, pages)
     : { doc: null, unresolved: [], danglingAnchors: [], compile: null, resolutionError: null }
 
   // WHICH TURNS CAN BE GONE BACK TO: the ones whose stored document still

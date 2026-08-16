@@ -95,9 +95,11 @@ import {
 import {
   loadCatalogues,
   resolveDoc,
+  type BrokenStepLink,
   type Catalogue,
   type Catalogues,
   type DanglingAnchor,
+  type FunnelStepRef,
   type UnresolvedCta,
 } from "@/lib/funnels/sections/resolve"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
@@ -334,6 +336,7 @@ interface Resolution {
   doc: SectionDoc
   unresolved: UnresolvedCta[]
   danglingAnchors: DanglingAnchor[]
+  brokenStepLinks: BrokenStepLink[]
   error: string | null
 }
 
@@ -343,21 +346,32 @@ interface Resolution {
  * empty list would WRONGLY UNBLOCK PUBLISH. Honouring that here means catching
  * it and saying so, not swallowing it into an empty list.
  */
-function resolveSafely(doc: SectionDoc, catalogues: Catalogues | null, catalogueError: string | null): Resolution {
+function resolveSafely(
+  doc: SectionDoc,
+  catalogues: Catalogues | null,
+  catalogueError: string | null,
+  pages: FunnelStepRef[] | null,
+): Resolution {
   if (!catalogues) {
     return {
       doc,
       unresolved: [],
       danglingAnchors: [],
+      brokenStepLinks: [],
       error: `CTA links were not checked this turn: the catalogue could not be read (${catalogueError ?? "unknown error"}).`,
     }
   }
   try {
-    const result = resolveDoc(doc, catalogues)
+    // `pages` may legitimately be `null` here — this route degrades rather
+    // than throwing, because `loadCatalogues` runs on EVERY builder turn and
+    // a throw would take down all editing. `null` means step links go
+    // unchecked for this turn; the publish route re-checks and fails closed.
+    const result = resolveDoc(doc, catalogues, pages)
     return {
       doc: result.doc,
       unresolved: result.unresolved,
       danglingAnchors: result.danglingAnchors,
+      brokenStepLinks: result.brokenStepLinks,
       error: null,
     }
   } catch (error) {
@@ -366,6 +380,7 @@ function resolveSafely(doc: SectionDoc, catalogues: Catalogues | null, catalogue
       doc,
       unresolved: [],
       danglingAnchors: [],
+      brokenStepLinks: [],
       error: `CTA links were not checked this turn: ${(error as Error).message}`,
     }
   }
@@ -398,8 +413,29 @@ function unresolvedForStorage(resolution: Resolution): unknown {
 interface PageContext {
   /** "/go/<funnel-slug>" — render.ts degrades `step` CTAs when absent. */
   funnelBasePath: string | undefined
-  /** Sibling step slugs, for `{kind:"step"}` CTAs. Never includes this step. */
+  /**
+   * Sibling step slugs, for the PROMPT. Never includes this step, so the model
+   * is not offered a link from a page to itself.
+   */
   stepSlugs: string[]
+  /**
+   * Every page of the funnel, for the VALIDATOR — and it DOES include this
+   * step, because a "start over" button linking to its own page is legitimate
+   * and must not be reported broken.
+   *
+   * `null` means the read failed, which `resolveDoc` reads as "not checked".
+   * It must never degrade to `[]`: that would mean "this funnel has no pages"
+   * and would brand every step link in the document broken on the strength of
+   * one Supabase blip.
+   */
+  allPages: FunnelStepRef[] | null
+  /**
+   * The page after this one by `position`, or `null` on the last page — and
+   * `null` too when the list could not be read, which is the same instruction
+   * ("this page ends") and is safe: it makes the model connect nothing rather
+   * than connect something to a page it is guessing at.
+   */
+  nextStepSlug: string | null
   faqPageKeys: string[]
 }
 
@@ -414,14 +450,32 @@ async function loadPageContext(funnelId: string, thisStepSlug: string): Promise<
       listSteps(funnelId),
       getFaqCountsByPage(),
     ])
+    // BY POSITION, not by the order the rows arrived. `listSteps` already
+    // orders, but deriving "what comes next" from an assumed sort is how a
+    // funnel ends up wired backwards.
+    const ordered = [...steps].sort((a, b) => a.position - b.position)
+    const index = ordered.findIndex((s) => s.slug === thisStepSlug)
+    const next = index >= 0 ? (ordered[index + 1] ?? null) : null
+
     return {
       funnelBasePath: funnel ? `/go/${funnel.slug}` : undefined,
       stepSlugs: steps.map((s) => s.slug).filter((slug) => slug !== thisStepSlug),
+      allPages: steps.map((s) => ({ slug: s.slug, name: s.name })),
+      nextStepSlug: next?.slug ?? null,
       faqPageKeys: Object.keys(faqCounts).sort(),
     }
   } catch (error) {
     console.error("[funnels/build] page context load failed — continuing degraded:", error)
-    return { funnelBasePath: undefined, stepSlugs: [], faqPageKeys: [] }
+    // `allPages: null`, NOT `[]`. Everything else here degrades to "less
+    // information"; an empty page list would degrade to a WRONG ANSWER —
+    // every step link reported broken — and block a publish that is fine.
+    return {
+      funnelBasePath: undefined,
+      stepSlugs: [],
+      allPages: null,
+      nextStepSlug: null,
+      faqPageKeys: [],
+    }
   }
 }
 
@@ -571,7 +625,7 @@ async function handleReset(
   // route must re-resolve. A program deleted since would otherwise have the
   // chat tell the owner a page is publishable when it is not.
   const { catalogues, error: catalogueError } = await loadCataloguesSafely()
-  const resolution = resolveSafely(restored, catalogues, catalogueError)
+  const resolution = resolveSafely(restored, catalogues, catalogueError, context.allPages)
   const compile = compileDoc(resolution.doc, context.funnelBasePath)
 
   const response: TurnResponse = {
@@ -929,6 +983,7 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
     catalogue: catalogues?.offer ?? EMPTY_CATALOGUE,
     faqPageKeys: context.faqPageKeys,
     stepSlugs: context.stepSlugs,
+    nextStepSlug: context.nextStepSlug,
   })
   const baseTurnMessage = buildTurnMessage({ doc: draft.doc, history, message })
 
@@ -1336,7 +1391,7 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
   // Resolve -> compile -> write. See the header note on why resolution runs
   // BEFORE the compile and why the RESOLVED document is what gets stored.
   // -------------------------------------------------------------------------
-  const resolution = resolveSafely(outcome.doc, catalogues, catalogueError)
+  const resolution = resolveSafely(outcome.doc, catalogues, catalogueError, context.allPages)
   const compile = compileDoc(resolution.doc, context.funnelBasePath)
 
   if (logId) {
@@ -1512,7 +1567,7 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
   // idempotent by design — but a reviser that rewrote a CTA's `ref` has
   // introduced a NAME that has never been resolved, and skipping this would
   // store it unresolved and block publish with no warning anywhere.
-  const resolution = resolveSafely(review.doc, catalogues, catalogueError)
+  const resolution = resolveSafely(review.doc, catalogues, catalogueError, context.allPages)
   const compile = compileDoc(resolution.doc, context.funnelBasePath)
 
   const reviewTurn = await appendTurn({

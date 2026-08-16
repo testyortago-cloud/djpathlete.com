@@ -60,7 +60,7 @@
 
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
-import { getFunnelById, getStep } from "@/lib/db/funnels"
+import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import { sectionDocSchema } from "@/lib/funnels/sections/registry"
 import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
@@ -112,7 +112,15 @@ export async function renderDocForPublish(
   let gateWarnings: string[] = []
   try {
     const catalogues = await loadCatalogues()
-    const resolution = resolveDoc(doc, catalogues)
+    // FAILS CLOSED, like the catalogue read beside it and like the route.
+    // This is a publish path, so `null` ("step links not checked") would be
+    // the wrong answer here even though it is the right one on the editor
+    // screen — a throw belongs in the catch below, which refuses.
+    const pages = (await listSteps(step.funnel_id)).map((row) => ({
+      slug: row.slug,
+      name: row.name,
+    }))
+    const resolution = resolveDoc(doc, catalogues, pages)
     const gate = publishGate(resolution)
     if (!gate.ok) return { ok: false, blockers: gate.blockers, warnings: gate.warnings }
     resolvedDoc = resolution.doc

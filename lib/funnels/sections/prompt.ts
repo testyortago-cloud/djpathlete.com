@@ -636,6 +636,15 @@ a plausible name.
 "anchor" points at a section id ON THIS PAGE. "url" takes a site path ("/contact") or an
 https URL. "booking" needs nothing else.
 
+## Joining this page to the next one
+
+The catalogue names THE NEXT PAGE. When there is one, this page leads to it: its main action
+is a \`{ kind: "step", stepSlug }\` CTA with that slug, and any \`form\` gets
+\`successMode: "redirect"\` plus \`redirectUrl: "/go/<funnel-slug>/<next-page-slug>"\`. A form
+left on the default \`"message"\` captures the lead and stops there — the commonest way a
+funnel breaks. Never write the next page's content into this one, and never invent a slug
+that is not listed. When it says this is the last page, it ends.
+
 ## You never write a UUID
 ${
   UUID_FIELD_PATHS.length > 0
@@ -723,6 +732,22 @@ export interface BuilderCatalogueInput {
   faqPageKeys: string[]
   /** Slugs of the other steps in this funnel, for `{kind:"step"}` CTAs. */
   stepSlugs: string[]
+  /**
+   * The slug of the page that comes AFTER this one, or `null` on the last page.
+   *
+   * Required, not optional, following the reasoning above: a forgotten
+   * argument becomes a compile error instead of a page that silently stops
+   * being told to connect itself.
+   *
+   * `stepSlugs` alone was not enough and the difference is the whole point. It
+   * says which pages EXIST; it does not say which one this page should lead
+   * to, so the model had to guess an ordering it could not see — and mostly
+   * did not try, which is how a real funnel ended up with six CTAs and not one
+   * link to another page.
+   *
+   * Stable for the life of a page, so Block B stays cacheable.
+   */
+  nextStepSlug: string | null
 }
 
 function nameList(names: string[]): string {
@@ -739,7 +764,7 @@ function nameList(names: string[]): string {
  * turn, no ordering that depends on anything but the source rows.
  */
 export function buildCatalogueBlock(input: BuilderCatalogueInput): string {
-  const { catalogue, faqPageKeys, stepSlugs } = input
+  const { catalogue, faqPageKeys, stepSlugs, nextStepSlug } = input
   return `
 ## The catalogue — the only names a CTA may reference
 
@@ -759,6 +784,17 @@ ${nameList(faqPageKeys)}
 
 Other steps in this funnel ({ kind: "step", stepSlug }):
 ${nameList(stepSlugs)}
+
+The next page in the sequence:
+${
+  // STATED EITHER WAY, never omitted. A missing line reads to a model as a
+  // field it was not given and is free to guess at; "this is the last page" is
+  // an instruction, and it is the one that stops a thank-you page growing its
+  // own thank-you page.
+  nextStepSlug === null
+    ? "  (none — this is the last page of the funnel, so it ends here)"
+    : `  ${JSON.stringify(nextStepSlug)}`
+}
 `.trim()
 }
 

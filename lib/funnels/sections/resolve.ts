@@ -544,9 +544,9 @@ export interface UnresolvedCta {
  * `<a href="#nope">` is perfectly valid markup. Nothing else in the pipeline
  * can see it, because nothing else holds the whole doc at once.
  *
- * `step` targets are deliberately NOT validated here: the funnel's slug list
- * is not available at this layer, and Stage 1.2 already degrades an unroutable
- * step CTA to a visible disabled placeholder.
+ * A dangling anchor WARNS and does not block: it scrolls nowhere on a page
+ * that is otherwise fine. `BrokenStepLink` below is the opposite call, and the
+ * two sitting next to each other is the point.
  */
 export interface DanglingAnchor {
   /** The section CONTAINING the dead link. */
@@ -555,6 +555,39 @@ export interface DanglingAnchor {
   field: string
   /** The anchor id it points at, which matches no section in the doc. */
   target: string
+}
+
+/**
+ * One page of the funnel this document belongs to, reduced to what checking a
+ * step link needs. `name` is carried for the messages a picker and a blocker
+ * show the owner — never for matching, which is on `slug` alone.
+ */
+export interface FunnelStepRef {
+  slug: string
+  name: string
+}
+
+/**
+ * A `{kind:"step"}` CTA naming a page this funnel does not have.
+ *
+ * THE FAILURE THIS CLOSES WAS TOTALLY SILENT, and worse than a dangling
+ * anchor. `renderCtaTarget` degrades a step CTA only when `funnelBasePath` is
+ * missing or malformed — a *wrong slug* with a good base path renders an
+ * ordinary, healthy-looking `<a href="/go/camp/offer-page">`. The compiler is
+ * happy (valid markup), the publish gate was happy (nothing looked at it), and
+ * the owner finds out when a visitor they paid for hits a 404.
+ *
+ * So this BLOCKS, where `DanglingAnchor` only warns. Slugs change — renaming a
+ * page and deleting one both produce this — so it is not only a model
+ * hallucination guard.
+ */
+export interface BrokenStepLink {
+  /** The section CONTAINING the dead link. */
+  sectionId: string
+  /** Path within that section's props — see the format note above. */
+  field: string
+  /** The slug it points at, which matches no page in this funnel. */
+  stepSlug: string
 }
 
 /**
@@ -602,6 +635,12 @@ export interface ResolveResult {
   /** NON-EMPTY MEANS PUBLISH IS BLOCKED. See `publishGate()`. */
   unresolved: UnresolvedCta[]
   danglingAnchors: DanglingAnchor[]
+  /**
+   * NON-EMPTY MEANS PUBLISH IS BLOCKED. Always empty when `resolveDoc` was
+   * given a `null` page list, because that means "not checked" — never
+   * "checked and fine".
+   */
+  brokenStepLinks: BrokenStepLink[]
   /** NON-EMPTY MEANS PUBLISH IS BLOCKED. See `publishGate()`. */
   unknownFaqKeys: UnknownFaqKey[]
 }
@@ -921,14 +960,40 @@ function transformNode(value: unknown, path: string, visit: CtaVisitor): unknown
  * Stage 1.7 (the build route) and the publish route MUST wrap every call to
  * `resolveDoc` in try/catch and treat a thrown error as "cannot resolve /
  * cannot publish this turn," not let it surface as an unhandled 500.
+ *
+ * ---------------------------------------------------------------------------
+ * `steps` IS REQUIRED, AND `null` IS NOT THE SAME AS `[]`.
+ * ---------------------------------------------------------------------------
+ *   - `null` — the funnel's pages are NOT KNOWN. Step links are not checked
+ *              and `brokenStepLinks` comes back empty. That means "not
+ *              checked", never "checked and fine".
+ *   - `[]`   — the pages ARE known and there are none, so every step link in
+ *              the document is broken.
+ *
+ * Conflating them is a live hazard, not a nicety: `loadPageContext` in the
+ * build route degrades a failed Supabase read to an empty slug list. If empty
+ * meant "checked against nothing", one blip would mark every step link in the
+ * document broken and block a publish that is perfectly fine.
+ *
+ * REQUIRED rather than optional for the reason `Catalogues`' own fields are: a
+ * caller that forgets becomes a compile error here instead of silently
+ * skipping the check. Every call site therefore has to say which of the two it
+ * means — and the publish route is the one that may never say `null`.
  */
-export function resolveDoc(doc: SectionDoc, catalogues: Catalogues): ResolveResult {
+export function resolveDoc(
+  doc: SectionDoc,
+  catalogues: Catalogues,
+  steps: FunnelStepRef[] | null,
+): ResolveResult {
   sectionDocSchema.parse(doc)
 
   const sectionIds = new Set(doc.sections.map((section) => section.id))
+  // `null` propagates as `null` — see the contract above. Never `?? []`.
+  const knownSlugs = steps === null ? null : new Set(steps.map((step) => step.slug))
   const resolved: ResolvedCta[] = []
   const unresolved: UnresolvedCta[] = []
   const danglingAnchors: DanglingAnchor[] = []
+  const brokenStepLinks: BrokenStepLink[] = []
   const unknownFaqKeys: UnknownFaqKey[] = []
 
   // Copy-on-write: `nextSections` stays null — and therefore `doc.sections`
@@ -979,8 +1044,19 @@ export function resolveDoc(doc: SectionDoc, catalogues: Catalogues): ResolveResu
         return null
       }
 
-      // `url` / `step` / `booking` carry no ref: nothing to resolve, and they
-      // must appear in NEITHER result array. Narrowed with `in` rather than a
+      // The sibling of the anchor branch above, and reported separately
+      // because publishing treats the two differently — see `BrokenStepLink`.
+      // `knownSlugs === null` means the page list could not be read, and
+      // reports NOTHING rather than everything.
+      if (target.kind === "step") {
+        if (knownSlugs !== null && !knownSlugs.has(target.stepSlug)) {
+          brokenStepLinks.push({ sectionId: section.id, field, stepSlug: target.stepSlug })
+        }
+        return null
+      }
+
+      // `url` / `booking` carry no ref: nothing to resolve, and they must
+      // appear in NEITHER result array. Narrowed with `in` rather than a
       // restated list of the three ref-carrying kinds.
       if (!("ref" in target)) return null
 
@@ -1057,6 +1133,7 @@ export function resolveDoc(doc: SectionDoc, catalogues: Catalogues): ResolveResu
     resolved,
     unresolved,
     danglingAnchors,
+    brokenStepLinks,
     unknownFaqKeys,
   }
 }
@@ -1110,6 +1187,18 @@ function describeDanglingAnchor(entry: DanglingAnchor): string {
 }
 
 /**
+ * "page", not "step" — the owner-facing vocabulary the funnel screens already
+ * use. This string is a publish BLOCKER, so it is the whole explanation of why
+ * someone cannot ship, and it has to name the slug they need to look for.
+ */
+function describeBrokenStepLink(entry: BrokenStepLink): string {
+  return (
+    `Section "${entry.sectionId}" (${entry.field}): links to the page ` +
+    `"${entry.stepSlug}", which is not a page in this funnel.`
+  )
+}
+
+/**
  * THE publish gate for a section document.
  *
  * Derived from the `SectionDoc` via `ResolveResult`, deliberately NOT from the
@@ -1132,6 +1221,10 @@ export function publishGate(result: ResolveResult): PublishGate {
   const blockers = [
     ...result.unresolved.map(describeUnresolved),
     ...result.unknownFaqKeys.map(describeUnknownFaqKey),
+    // BLOCKS, unlike the dangling anchors below. A dead in-page anchor scrolls
+    // nowhere on a page that is otherwise fine; a dead step link is a 404 on a
+    // page the owner is paying to send traffic to.
+    ...result.brokenStepLinks.map(describeBrokenStepLink),
   ]
   const warnings = result.danglingAnchors.map(describeDanglingAnchor)
   return { ok: blockers.length === 0, blockers, warnings }

@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, within } from "@testing-library/react"
 import { SectionInspector, nextSectionId } from "@/components/admin/funnels/builder/SectionInspector"
+import { ConnectionsProvider } from "@/components/admin/funnels/connections-context"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 function aDoc(): SectionDoc {
@@ -61,6 +62,39 @@ function mount(overrides: Partial<Parameters<typeof SectionInspector>[0]> = {}) 
     ...overrides,
   }
   return render(<SectionInspector {...props} />)
+}
+
+/**
+ * The inspector as it renders INSIDE the funnel edit layout, which is the only
+ * place it can offer other pages as destinations.
+ *
+ * `mount()` above deliberately keeps rendering it bare, because that is also a
+ * real configuration — the landing-page editor and the preview harness — and
+ * the picker has to degrade there rather than throw.
+ */
+function mountInFunnel(overrides: Partial<Parameters<typeof SectionInspector>[0]> = {}) {
+  const pages = [
+    { id: "s1", name: "Opt-in", slug: "index", position: 0, isEntry: true, published: true, live: true },
+    { id: "s2", name: "Thanks", slug: "thanks", position: 1, isEntry: false, published: false, live: false },
+  ]
+  return render(
+    <ConnectionsProvider
+      funnelId="f1"
+      funnelSlug="camp"
+      funnelKind="funnel"
+      pages={pages}
+      initialDocs={pages.map((page) => ({ ...page, doc: null }))}
+    >
+      <SectionInspector
+        doc={aDoc()}
+        selectedId="h1"
+        selectedPath={null}
+        onOps={onOps}
+        busy={false}
+        {...overrides}
+      />
+    </ConnectionsProvider>,
+  )
 }
 
 beforeEach(() => {
@@ -304,14 +338,65 @@ describe("SectionInspector", () => {
     expect(input).toHaveValue("Start")
   })
 
-  it("says where the button goes, since that is not editable here", () => {
+  it("still says where the button goes, UNDER the picker rather than instead of it", () => {
+    // This test used to assert "ask in the chat to send this button somewhere
+    // else" — the panel's old refusal to edit a destination at all. That
+    // sentence is gone for pickable targets, deliberately: the owner's
+    // complaint was that connecting two pages required describing a button in
+    // prose while looking straight at it.
+    //
+    // The plain-English sentence survives BECAUSE it does a different job from
+    // the picker. The picker says what may be chosen; this says what the button
+    // does right now, in one line, including for the offer targets the picker
+    // will not touch.
     mount()
     expect(screen.getByText(/goes to \/signup/i)).toBeInTheDocument()
-    // SPECIFIC. A hero lists BOTH `primaryCta` and `secondaryCta`, and both
-    // panels end with a sentence starting "Ask in the chat" — one to re-point
-    // this button, one to add the missing one. A loose match finds two nodes,
-    // and a `getAllBy(...)[0]` would pass while asserting about whichever
-    // happened to render first.
+  })
+
+  it("offers the funnel's other pages as destinations", () => {
+    mountInFunnel()
+    // SCOPED to the one control. A hero lists `primaryCta` AND `secondaryCta`,
+    // so an unscoped option query would find whichever rendered first and pass
+    // for the wrong reason — the exact trap this repo has hit twice.
+    const picker = screen.getByLabelText(/goes to/i)
+    expect(within(picker).getByRole("option", { name: "Thanks" })).toBeInTheDocument()
+  })
+
+  it("writes a page destination as a TARGET OBJECT through the ops path", () => {
+    // MUTANT KILLED: sending the slug as a bare string. `applyOps` refuses a
+    // string where a CTA object belongs, and the owner is told their change
+    // "could not be applied" for a rule they were never shown — which is the
+    // exact failure the CTA branch of this panel was written to close.
+    mountInFunnel()
+    fireEvent.change(screen.getByLabelText(/goes to/i), { target: { value: "step:thanks" } })
+    expect(onOps).toHaveBeenCalledWith([
+      {
+        op: "update_section",
+        id: "h1",
+        props: { primaryCta: { label: "Start", target: { kind: "step", stepSlug: "thanks" } } },
+      },
+    ])
+  })
+
+  it("offers this page's own sections as scroll destinations", () => {
+    mountInFunnel()
+    const picker = screen.getByLabelText(/goes to/i)
+    // `b1` is the bullets section in `aDoc`. In-PAGE anchors come from the
+    // whole document, not from the selected section.
+    expect(within(picker).getByRole("option", { name: "b1" })).toBeInTheDocument()
+  })
+
+  it("will not pick a destination for an offer button — that is still the chat's job", () => {
+    // The old refusal's REASON survives even though its blanket application
+    // does not: a program ref only means anything once `resolve.ts` matches it
+    // against live rows, so a picker here would be a second, weaker resolver.
+    const doc = aDoc()
+    ;(doc.sections[0].props as Record<string, unknown>).primaryCta = {
+      label: "Buy",
+      target: { kind: "program", ref: "Comeback Code" },
+    }
+    mountInFunnel({ doc })
+    expect(screen.queryByLabelText(/goes to/i)).toBeNull()
     expect(screen.getByText(/ask in the chat to send this button somewhere else/i)).toBeInTheDocument()
   })
 
@@ -349,5 +434,122 @@ describe("nextSectionId", () => {
     const doc = aDoc()
     doc.sections[0].id = "he1"
     expect(nextSectionId(doc, "hero")).toBe("he2")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The form's success destination — the connector that actually matters.
+//
+// `successMode` defaults to "message", so a form nobody configured captures
+// the lead, prints a thank-you line, and stops dead in front of a thank-you
+// PAGE that was built and never reached. A probe of a real funnel found
+// exactly that.
+// ---------------------------------------------------------------------------
+describe("SectionInspector — what happens after a form is submitted", () => {
+  function formDoc(props: Record<string, unknown> = {}): SectionDoc {
+    return {
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "accent", radius: "soft" },
+      sections: [
+        {
+          id: "fo1",
+          kind: "form",
+          variant: "split",
+          style: {},
+          props: {
+            formKey: "optin",
+            fields: [{ name: "email", label: "Email", type: "email" }],
+            ...props,
+          },
+        },
+      ],
+    } as SectionDoc
+  }
+
+  const mountForm = (props: Record<string, unknown> = {}) =>
+    mountInFunnel({ doc: formDoc(props), selectedId: "fo1" })
+
+  it("writes successMode AND redirectUrl together, never one without the other", () => {
+    // MUTANT KILLED: writing only `successMode`. `formIslandSchema`'s
+    // superRefine refuses `redirect` with no `redirectUrl`, so a half-patch is
+    // an op `applyOps` rejects — and the owner is told "that change could not
+    // be applied", naming no rule they could act on.
+    mountForm()
+    fireEvent.change(screen.getByLabelText(/after someone submits/i), {
+      target: { value: "page:thanks" },
+    })
+    expect(onOps).toHaveBeenCalledWith([
+      {
+        op: "update_section",
+        id: "fo1",
+        props: { successMode: "redirect", redirectUrl: "/go/camp/thanks" },
+      },
+    ])
+  })
+
+  it("choosing a message CLEARS the redirect URL rather than leaving it behind", () => {
+    // A form that says "show a message" while still carrying a destination is
+    // the half-configured state `autoConnectOps` then has to refuse to touch —
+    // so it would be permanently stuck, fixable only through the chat.
+    mountForm({ successMode: "redirect", redirectUrl: "/go/camp/thanks" })
+    fireEvent.change(screen.getByLabelText(/after someone submits/i), {
+      target: { value: "message" },
+    })
+    expect(onOps).toHaveBeenCalledWith([
+      { op: "update_section", id: "fo1", props: { successMode: "message", redirectUrl: null } },
+    ])
+  })
+
+  it("selects the page a hand-typed URL already names", () => {
+    // `redirectUrl` stays the single source of truth — there is no second
+    // `successStepSlug` column — so a URL typed before this control existed
+    // has to select correctly here rather than reading as "somewhere else".
+    mountForm({ successMode: "redirect", redirectUrl: "/go/camp/thanks" })
+    expect(screen.getByLabelText(/after someone submits/i)).toHaveValue("page:thanks")
+  })
+
+  it("shows a destination outside this funnel instead of silently resetting it", () => {
+    // An allowlisted external host is legitimate (islands.ts allows one, which
+    // is why Calendly is on that list). Rendering it as "show a message" would
+    // misreport it, and the next change would quietly destroy it.
+    mountForm({ successMode: "redirect", redirectUrl: "https://calendly.com/djp/intro" })
+    expect(screen.getByLabelText(/after someone submits/i)).toHaveValue("elsewhere")
+  })
+
+  it("warns that a message-only form leads nowhere, where the owner is deciding it", () => {
+    mountForm({ successMode: "message" })
+    expect(screen.getByText(/will not lead anywhere/i)).toBeInTheDocument()
+  })
+
+  it("does not offer pages, or nag, when there is only one page", () => {
+    // A landing page has nowhere to send anyone. The warning would be advice
+    // to do something impossible.
+    render(
+      <ConnectionsProvider
+        funnelId="f1"
+        funnelSlug="camp"
+        funnelKind="page"
+        pages={[
+          { id: "s1", name: "Landing", slug: "index", position: 0, isEntry: true, published: true, live: true },
+        ]}
+        initialDocs={[
+          { id: "s1", name: "Landing", slug: "index", position: 0, isEntry: true, doc: null },
+        ]}
+      >
+        <SectionInspector doc={formDoc()} selectedId="fo1" selectedPath={null} onOps={onOps} busy={false} />
+      </ConnectionsProvider>,
+    )
+    const control = screen.getByLabelText(/after someone submits/i)
+    expect(within(control).queryByRole("option", { name: "Landing" })).toBeNull()
+    expect(screen.queryByText(/will not lead anywhere/i)).toBeNull()
+  })
+
+  it("renders no second, separate redirect URL box", () => {
+    // MUTANT KILLED: leaving the generated `redirectUrl` field in the list.
+    // Two controls for one decision let an owner set a URL while the mode says
+    // message — a state the server refuses.
+    mountForm()
+    expect(screen.queryByLabelText(/redirect url/i)).toBeNull()
   })
 })

@@ -18,7 +18,7 @@ vi.mock("next/navigation", () => ({
 }))
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/db/funnel-builder", () => ({ getDraft: vi.fn() }))
-vi.mock("@/lib/db/funnels", () => ({ getStep: vi.fn(), getFunnelById: vi.fn() }))
+vi.mock("@/lib/db/funnels", () => ({ getStep: vi.fn(), getFunnelById: vi.fn(), listSteps: vi.fn() }))
 // The catalogue reads, so the REAL `loadCatalogues` / `resolveDoc` /
 // `publishGate` run over them — the point of this page is that it runs the
 // same resolution publish does, and a mocked resolver would assert only that
@@ -32,7 +32,7 @@ import Page from "@/app/(funnel)/funnel-preview/[stepId]/page"
 import { metadata } from "@/app/(funnel)/funnel-preview/[stepId]/page"
 import { auth } from "@/lib/auth"
 import { getDraft } from "@/lib/db/funnel-builder"
-import { getFunnelById, getStep } from "@/lib/db/funnels"
+import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
@@ -228,6 +228,14 @@ beforeEach(() => {
   mock(getDraft).mockResolvedValue({ doc: doc(), docInvalid: false, revision: 4 })
   mock(getStep).mockResolvedValue(STEP)
   mock(getFunnelById).mockResolvedValue(FUNNEL)
+  // The funnel's pages, for `resolveDoc`'s step-link check. "thanks" is where
+  // the pricing card's step CTA above points, so these tests keep meaning what
+  // they meant: this page's links are fine and the assertions are about
+  // rendering, not about a broken link.
+  mock(listSteps).mockResolvedValue([
+    { slug: STEP.slug, name: STEP.name },
+    { slug: "thanks", name: "Thanks" },
+  ])
 
   mock(getAllPrograms).mockResolvedValue([{ id: PROGRAM_ID, name: PROGRAM_NAME }])
   mock(getPrograms).mockResolvedValue([{ id: PROGRAM_ID, name: PROGRAM_NAME }])

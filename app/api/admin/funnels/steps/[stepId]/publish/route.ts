@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { publishStepSchema } from "@/lib/validators/funnel"
-import { getFunnelById, getStep, publishStep, updateFunnel } from "@/lib/db/funnels"
+import { getFunnelById, getStep, listSteps, publishStep, updateFunnel } from "@/lib/db/funnels"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
@@ -129,7 +129,20 @@ async function gateSectionDoc(stepId: string, projectData: unknown): Promise<Gat
     const doc = await docUnderPublish(stepId, projectData)
     if (!doc) return { ok: true }
 
-    const gate = publishGate(resolveDoc(doc, await loadCatalogues()))
+    // THE PAGE LIST IS READ HERE, NOT PASSED AS `null`. `resolveDoc` treats
+    // `null` as "step links were not checked", and a publish gate that quietly
+    // stops checking is the absence of a gate — the same reasoning as the
+    // catalogue above, which is why a throw from either lands in the same
+    // catch and refuses. `getStep` is re-read rather than threaded in because
+    // `gateSectionDoc` derives everything it gates on from `stepId` alone;
+    // accepting a funnel id from the caller would be a way to opt out.
+    const step = await getStep(stepId)
+    if (!step) return { ok: false, problems: ["This page no longer exists."] }
+
+    const [catalogues, steps] = await Promise.all([loadCatalogues(), listSteps(step.funnel_id)])
+    const pages = steps.map((row) => ({ slug: row.slug, name: row.name }))
+
+    const gate = publishGate(resolveDoc(doc, catalogues, pages))
     if (!gate.ok) return { ok: false, problems: gate.blockers }
     // `gate.warnings` (dangling in-page anchors) are deliberately not blockers
     // and are deliberately not smuggled into the 200 response's `warnings`

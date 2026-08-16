@@ -38,7 +38,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/permissions/guard", () => ({ canAccessAdminPath: vi.fn() }))
-vi.mock("@/lib/db/funnels", () => ({ getStep: vi.fn(), getFunnelById: vi.fn() }))
+vi.mock("@/lib/db/funnels", () => ({ getStep: vi.fn(), getFunnelById: vi.fn(), listSteps: vi.fn() }))
 // The catalogue reads, so the REAL `loadCatalogues` runs over them.
 vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.fn() }))
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
@@ -48,7 +48,7 @@ vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
 import { renderDocForPublish } from "@/components/admin/funnels/builder/publish-actions"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
-import { getFunnelById, getStep } from "@/lib/db/funnels"
+import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
@@ -141,6 +141,15 @@ beforeEach(() => {
   mock(canAccessAdminPath).mockResolvedValue(true)
   mock(getStep).mockResolvedValue(STEP)
   mock(getFunnelById).mockResolvedValue(FUNNEL)
+  // The funnel's pages, for `resolveDoc`'s step-link check. "thanks" is the
+  // slug `docWithStepCta` points at, so the default state of this suite is a
+  // funnel whose step links all resolve — otherwise every test in this file
+  // would ALSO be a test about a broken link, and the `funnelBasePath` one
+  // would fail for a reason that has nothing to do with base paths.
+  mock(listSteps).mockResolvedValue([
+    { slug: STEP.slug, name: STEP.name },
+    { slug: "thanks", name: "Thanks" },
+  ])
 
   mock(getAllPrograms).mockResolvedValue([{ id: PROGRAM_ID, name: PROGRAM_NAME }])
   mock(getPrograms).mockResolvedValue([{ id: PROGRAM_ID, name: PROGRAM_NAME }])
