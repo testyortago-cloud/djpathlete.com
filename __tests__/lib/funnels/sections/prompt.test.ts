@@ -107,6 +107,7 @@ function catalogueInput(): BuilderCatalogueInput {
     },
     faqPageKeys: ["programs"],
     stepSlugs: ["thank-you"],
+    nextStepSlug: "thank-you",
   }
 }
 
@@ -262,6 +263,7 @@ describe("Block A is built once, at module load", () => {
       catalogue: { program: [], session_pack: [], event: [{ id: UUID_EVENT, name: "Spring Camp" }] },
       faqPageKeys: [],
       stepSlugs: [],
+      nextStepSlug: null,
     })
     expect(pageOne.startsWith(SECTION_BUILDER_BLOCK_A)).toBe(true)
     expect(pageTwo.startsWith(SECTION_BUILDER_BLOCK_A)).toBe(true)
@@ -609,6 +611,7 @@ describe("Block B carries names and never ids", () => {
       catalogue: { program: [], session_pack: [], event: [] },
       faqPageKeys: [],
       stepSlugs: [],
+      nextStepSlug: null,
     })
     expect(block.match(/\(none\)/g)).toHaveLength(5)
   })
@@ -624,6 +627,7 @@ describe("Block B carries names and never ids", () => {
       },
       faqPageKeys: [],
       stepSlugs: [],
+      nextStepSlug: null,
     })
     expect(block).toContain('"Comeback Code: Phase 2, Rebuilt"')
   })
@@ -744,5 +748,59 @@ describe("buildResultSchema", () => {
     // here would make "what do you think of the headline?" impossible to answer.
     const parsed = buildResultSchema.safeParse({ reply: "The headline reads well as it is.", ops: [] })
     expect(parsed.success).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The next page — the field that turns a list of pages into a sequence.
+//
+// `stepSlugs` already said which pages EXIST. It never said which one this
+// page should lead to, so the model had to infer an ordering it could not see
+// and mostly did not try: a probe of a real funnel found six CTAs and not one
+// link to another page.
+// ---------------------------------------------------------------------------
+describe("the next page", () => {
+  const withNext = (nextStepSlug: string | null) =>
+    buildCatalogueBlock({
+      catalogue: { program: [], session_pack: [], event: [] },
+      faqPageKeys: [],
+      stepSlugs: ["thank-you"],
+      nextStepSlug,
+    })
+
+  it("names the next page in the catalogue block", () => {
+    expect(withNext("thank-you")).toMatch(/next page[\s\S]*"thank-you"/i)
+  })
+
+  it("SAYS it is the last page rather than omitting the line", () => {
+    // MUTANT TO KILL: rendering nothing when `nextStepSlug` is null. An absent
+    // heading reads to a model as a field it was not given and is free to
+    // guess at — which is how a thank-you page grows its own thank-you page.
+    // "(none)" reads as an instruction. Same reasoning the catalogue's own
+    // empty-list rendering already records.
+    const block = withNext(null)
+    expect(block).toMatch(/next page/i)
+    expect(block).toMatch(/last page/i)
+  })
+
+  it("Block A tells the model to lead to the next page, and how", () => {
+    // The three things that were missing, checked as three things. The form
+    // half is the one that matters: `successMode` defaults to "message", so a
+    // page whose form is left alone captures the lead and stops.
+    expect(SECTION_BUILDER_BLOCK_A).toMatch(/next page/i)
+    expect(SECTION_BUILDER_BLOCK_A).toContain('successMode: "redirect"')
+    expect(SECTION_BUILDER_BLOCK_A).toMatch(/kind": "step"|kind: "step"/)
+  })
+
+  it("Block A still forbids inventing a page slug", () => {
+    expect(SECTION_BUILDER_BLOCK_A).toMatch(/never invent a slug/i)
+  })
+
+  it("the next page does not change Block A, so the cache prefix is stable", () => {
+    // Block A and Block B share the system string, and Block A is the cached
+    // prefix. A per-page value leaking into it would cost a cache miss on
+    // every page of every funnel.
+    expect(buildSystemPrompt({ ...catalogueInput(), nextStepSlug: "a" }).startsWith(SECTION_BUILDER_BLOCK_A)).toBe(true)
+    expect(buildSystemPrompt({ ...catalogueInput(), nextStepSlug: "b" }).startsWith(SECTION_BUILDER_BLOCK_A)).toBe(true)
   })
 })

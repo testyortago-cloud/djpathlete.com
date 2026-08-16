@@ -429,6 +429,13 @@ interface PageContext {
    * one Supabase blip.
    */
   allPages: FunnelStepRef[] | null
+  /**
+   * The page after this one by `position`, or `null` on the last page — and
+   * `null` too when the list could not be read, which is the same instruction
+   * ("this page ends") and is safe: it makes the model connect nothing rather
+   * than connect something to a page it is guessing at.
+   */
+  nextStepSlug: string | null
   faqPageKeys: string[]
 }
 
@@ -443,10 +450,18 @@ async function loadPageContext(funnelId: string, thisStepSlug: string): Promise<
       listSteps(funnelId),
       getFaqCountsByPage(),
     ])
+    // BY POSITION, not by the order the rows arrived. `listSteps` already
+    // orders, but deriving "what comes next" from an assumed sort is how a
+    // funnel ends up wired backwards.
+    const ordered = [...steps].sort((a, b) => a.position - b.position)
+    const index = ordered.findIndex((s) => s.slug === thisStepSlug)
+    const next = index >= 0 ? (ordered[index + 1] ?? null) : null
+
     return {
       funnelBasePath: funnel ? `/go/${funnel.slug}` : undefined,
       stepSlugs: steps.map((s) => s.slug).filter((slug) => slug !== thisStepSlug),
       allPages: steps.map((s) => ({ slug: s.slug, name: s.name })),
+      nextStepSlug: next?.slug ?? null,
       faqPageKeys: Object.keys(faqCounts).sort(),
     }
   } catch (error) {
@@ -454,7 +469,13 @@ async function loadPageContext(funnelId: string, thisStepSlug: string): Promise<
     // `allPages: null`, NOT `[]`. Everything else here degrades to "less
     // information"; an empty page list would degrade to a WRONG ANSWER —
     // every step link reported broken — and block a publish that is fine.
-    return { funnelBasePath: undefined, stepSlugs: [], allPages: null, faqPageKeys: [] }
+    return {
+      funnelBasePath: undefined,
+      stepSlugs: [],
+      allPages: null,
+      nextStepSlug: null,
+      faqPageKeys: [],
+    }
   }
 }
 
@@ -962,6 +983,7 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
     catalogue: catalogues?.offer ?? EMPTY_CATALOGUE,
     faqPageKeys: context.faqPageKeys,
     stepSlugs: context.stepSlugs,
+    nextStepSlug: context.nextStepSlug,
   })
   const baseTurnMessage = buildTurnMessage({ doc: draft.doc, history, message })
 
