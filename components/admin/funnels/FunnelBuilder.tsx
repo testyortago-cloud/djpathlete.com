@@ -75,6 +75,7 @@ import { PreviewPane, type PreviewDevice } from "./builder/PreviewPane"
 import { PublishReview } from "./builder/PublishReview"
 import { SectionInspector } from "./builder/SectionInspector"
 import { patchForPath, valueAtPath } from "@/lib/funnels/sections/patch"
+import { usePublishStepConnections } from "./connections-context"
 import { ImageSlotDialog, type HeroMedia } from "./builder/ImageSlotDialog"
 import type { CanvasCommit, CanvasSelection } from "./builder/canvas-editing"
 import { candidatePickMessage } from "./builder/format"
@@ -234,6 +235,16 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   const [resolutionError, setResolutionError] = useState(props.initialResolutionError)
   const [docInvalid, setDocInvalid] = useState(props.docInvalid)
   const [resetToRevision, setResetToRevision] = useState(props.resetToRevision)
+
+  // THE RAIL'S FEED. The rail is a server-rendered sibling in the edit layout,
+  // so without this it would be right at mount and wrong from the first edit —
+  // wire a button in the inspector and the arrow would not move until a
+  // refresh. A no-op outside the layout (tests, the preview harness), so the
+  // builder still mounts standalone.
+  const publishStepConnections = usePublishStepConnections()
+  useEffect(() => {
+    publishStepConnections(props.stepId, doc)
+  }, [publishStepConnections, props.stepId, doc])
 
   const [messages, setMessages] = useState<BuilderMessage[]>(props.initialMessages)
   const [input, setInput] = useState("")
@@ -1081,7 +1092,11 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     ) : null
 
   return (
-    <div className="-m-6 flex h-[calc(100dvh-4rem)] flex-col">
+    // `h-full`, and no `-m-6`. The edit LAYOUT owns both now — it has to, or
+    // the step rail would sit inside the admin page padding while the builder
+    // escaped it, and the two would not line up. Height comes from the layout's
+    // `h-[calc(100dvh-4rem)]` box.
+    <div className="flex h-full flex-col">
       {/* Header — h-12 */}
       <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border bg-white px-4">
         <Link
