@@ -32,6 +32,21 @@ import { BUILD_PHASES, BUILD_PHASE_LABELS, type BuildPhase, type Finding } from 
 import type { StreamedSection } from "@/lib/funnels/sections/stream-progress"
 import type { SectionDoc } from "./types"
 
+/**
+ * The overlay's inner wrapper, EXPORTED so `FunnelBuilder`'s call site and this
+ * file's test read the same string.
+ *
+ * It used to be `h-fit w-full max-w-md`. That 448px cap put a small card in the
+ * middle of a ~1260px pane, so the one moment the app is visibly working looked
+ * mostly like empty space — which is the opposite of what an overlay whose own
+ * comment says it belongs "in the place the page appears" is for.
+ *
+ * `max-w-5xl` rather than uncapped: past about 1024px the skeleton stops
+ * reading as a page and starts reading as stretched bars, because a real page's
+ * content column does not grow forever either.
+ */
+export const BUILD_STAGE_WRAPPER_CLASS = "h-full w-full max-w-5xl"
+
 export interface GenerationStageProps {
   phase: BuildPhase
   sections: StreamedSection[]
@@ -92,7 +107,10 @@ export function GenerationStage({ phase, sections, tokens, doc, attempt, finding
   const currentIndex = inTrack === -1 ? track.length : inTrack
 
   return (
-    <div className="rounded-xl border border-border bg-white p-3 shadow-sm">
+    <div
+      data-testid="generation-stage"
+      className="flex h-full w-full flex-col rounded-xl border border-border bg-white p-4 shadow-sm sm:p-6"
+    >
       {/*
         POLITE, AND ONLY THE PHASE. An assertive region, or one that also
         announced each section, would interrupt a screen-reader user eight
@@ -128,7 +146,7 @@ export function GenerationStage({ phase, sections, tokens, doc, attempt, finding
       </ol>
 
       {sections.length > 0 ? (
-        <div className="mt-3 space-y-1.5 border-t border-border pt-3" aria-hidden>
+        <div className="mt-4 flex-1 space-y-3 overflow-y-auto border-t border-border pt-4" aria-hidden>
           {sections.map((section) => (
             <WireframeBlock key={section.key} section={section} doc={doc} />
           ))}
@@ -185,7 +203,7 @@ function WireframeBlock({ section, doc }: { section: StreamedSection; doc: Secti
   const kind = resolveKind(section, doc)
 
   return (
-    <div className="rounded-lg border border-border bg-surface/40 p-2 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1">
+    <div className="rounded-lg border border-border bg-surface/40 p-4 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
           {kind ?? section.id ?? "section"}
@@ -193,7 +211,7 @@ function WireframeBlock({ section, doc }: { section: StreamedSection; doc: Secti
         {section.op === "update_section" ? <span className="text-[0.6rem] text-muted-foreground">editing</span> : null}
       </div>
 
-      <div className="mt-1.5">
+      <div className="mt-3">
         <Skeleton kind={kind} />
       </div>
 
@@ -215,21 +233,23 @@ function WireframeBlock({ section, doc }: { section: StreamedSection; doc: Secti
 // has to be kept in step with `render.ts` forever.
 // ---------------------------------------------------------------------------
 
+// Sized for a full-pane canvas, not the old 448px card. A 1.5px bar at this
+// width reads as a hairline rather than as a line of text.
 function Bar({ className = "" }: { className?: string }) {
-  return <div className={`h-1.5 rounded-full bg-muted-foreground/25 ${className}`} />
+  return <div className={`h-2.5 rounded-full bg-muted-foreground/25 ${className}`} />
 }
 
 function Pill() {
-  return <div className="h-3 w-16 rounded-full bg-accent/40" />
+  return <div className="h-6 w-32 rounded-full bg-accent/40" />
 }
 
 function Row({ children }: { children: React.ReactNode }) {
-  return <div className="flex gap-1.5">{children}</div>
+  return <div className="flex gap-3">{children}</div>
 }
 
 function Cell() {
   return (
-    <div className="flex-1 space-y-1 rounded border border-border/60 bg-white/60 p-1.5">
+    <div className="flex-1 space-y-2 rounded-lg border border-border/60 bg-white/60 p-3">
       <Bar className="w-2/3" />
       <Bar className="w-full" />
     </div>
@@ -240,10 +260,11 @@ function Skeleton({ kind }: { kind: string | null }) {
   switch (kind) {
     case "hero":
       return (
-        <div className="space-y-1.5">
-          <Bar className="h-2.5 w-4/5" />
-          <Bar className="w-3/5" />
-          <div className="pt-1">
+        <div className="space-y-3 py-4">
+          <Bar className="h-6 w-4/5" />
+          <Bar className="h-6 w-3/5" />
+          <Bar className="w-2/5" />
+          <div className="pt-2">
             <Pill />
           </div>
         </div>

@@ -70,7 +70,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ChatPane } from "./builder/ChatPane"
-import { GenerationStage } from "./builder/GenerationStage"
+import { GenerationStage, BUILD_STAGE_WRAPPER_CLASS } from "./builder/GenerationStage"
 import { PreviewPane, type PreviewDevice } from "./builder/PreviewPane"
 import { PublishReview } from "./builder/PublishReview"
 import { SectionInspector } from "./builder/SectionInspector"
@@ -1387,7 +1387,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
                 doc === null ? "bg-surface" : "bg-surface/80 backdrop-blur-[2px]"
               }`}
             >
-              <div className="h-fit w-full max-w-md">
+              <div className={BUILD_STAGE_WRAPPER_CLASS}>
                 <GenerationStage
                   phase={stream.phase}
                   sections={stream.sections}

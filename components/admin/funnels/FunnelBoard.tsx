@@ -23,11 +23,40 @@ import { FunnelGoLiveButton } from "./FunnelGoLiveButton"
 import { formatRunWindow } from "@/lib/funnels/run-window"
 import { CreatePageDialog } from "./CreatePageDialog"
 import { CreateFunnelDialog } from "./CreateFunnelDialog"
+import type { OwnExample } from "./ExamplesDialog"
 import { ConvertToFunnelDialog } from "./ConvertToFunnelDialog"
 import { RenameDialog } from "./RenameDialog"
 import type { DataTableBadgeTone } from "@/components/ui/data-table"
 import type { Funnel, FunnelStep, FunnelKind } from "@/types/database"
 import { adminFunnelHref, adminStepHref } from "@/lib/funnels/admin-path"
+
+/**
+ * The owner's own funnels, for the examples modal.
+ *
+ * Derived from what the board ALREADY has: the screen loads every funnel and
+ * every step to render one card per page, so grouping them costs nothing. A
+ * dedicated endpoint would be a second read of data sitting in this component.
+ *
+ * Ordered most-stepped first — the examples modal is asking "what shape could
+ * this be", and a four-step funnel answers that better than a one-step one.
+ */
+export function deriveOwnExamples(pages: BoardPage[]): OwnExample[] {
+  const byFunnel = new Map<string, { funnel: Funnel; steps: FunnelStep[] }>()
+  for (const page of pages) {
+    const entry = byFunnel.get(page.funnel.id) ?? { funnel: page.funnel, steps: [] }
+    entry.steps.push(page.step)
+    byFunnel.set(page.funnel.id, entry)
+  }
+  return [...byFunnel.values()]
+    .map(({ funnel, steps }) => ({
+      id: funnel.id,
+      name: funnel.name,
+      template: funnel.template ?? null,
+      stepNames: [...steps].sort((a, b) => a.position - b.position).map((step) => step.name),
+      live: funnel.status === "published",
+    }))
+    .sort((a, b) => b.stepNames.length - a.stepNames.length)
+}
 
 export interface BoardPage {
   step: FunnelStep
@@ -74,6 +103,8 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
     for (const { funnel } of pages) counts.set(funnel.id, (counts.get(funnel.id) ?? 0) + 1)
     return counts
   }, [pages])
+
+  const ownExamples = useMemo(() => deriveOwnExamples(pages), [pages])
 
   /**
    * Chips group pages BY FUNNEL, which is only worth doing when grouping
@@ -147,7 +178,7 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
           {kind === "page" ? (
             <CreatePageDialog takenSlugs={funnels.map((f) => f.slug)} />
           ) : (
-            <CreateFunnelDialog takenSlugs={funnels.map((f) => f.slug)} />
+            <CreateFunnelDialog takenSlugs={funnels.map((f) => f.slug)} ownExamples={ownExamples} />
           )}
         </div>
       </div>

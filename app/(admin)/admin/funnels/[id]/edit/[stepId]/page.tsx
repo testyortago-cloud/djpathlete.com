@@ -76,6 +76,10 @@ export function creationPrompt(
       `Build a landing page called "${funnel.name}".`,
       `Its job: ${goal.label.toLowerCase()} — ${goal.hint.toLowerCase()}.`,
     ]
+    // Appended, never inserted above the existing lines: the two-then-
+    // description shape is the tuned behaviour, and a page created before the
+    // audience field existed composes exactly the string it always did.
+    if (funnel.audience) lines.push(`Who it is for: ${funnel.audience}`)
     if (funnel.description) lines.push(`What it is for: ${funnel.description}`)
     return lines.join("\n")
   }

@@ -22,7 +22,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Plus } from "lucide-react"
+import { BookOpen, Plus, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -39,7 +39,10 @@ import {
 import { slugify } from "@/lib/funnels/slug"
 import { FUNNEL_TEMPLATES, getTemplate, type FunnelTemplate } from "@/lib/funnels/templates"
 import { RESERVED_FUNNEL_SLUGS, FUNNEL_SLUG_PATTERN } from "@/lib/validators/funnel"
+import type { CreatePlan } from "@/lib/funnels/ai-plan"
 import { StepPlanEditor, stepPlanErrors, type PlannedStep } from "./StepPlanEditor"
+import { AskAiDialog } from "./AskAiDialog"
+import { ExamplesDialog, type OwnExample } from "./ExamplesDialog"
 
 interface Offer {
   id: string
@@ -52,9 +55,18 @@ function planOf(template: FunnelTemplate): PlannedStep[] {
   return template.steps.map((step) => ({ ...step }))
 }
 
-export function CreateFunnelDialog({ takenSlugs }: { takenSlugs: string[] }) {
+export function CreateFunnelDialog({
+  takenSlugs,
+  ownExamples = [],
+}: {
+  takenSlugs: string[]
+  /** The owner's own funnels, for the examples modal. Derived by the board. */
+  ownExamples?: OwnExample[]
+}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [askAiOpen, setAskAiOpen] = useState(false)
+  const [examplesOpen, setExamplesOpen] = useState(false)
   const [name, setName] = useState("")
   const [slug, setSlug] = useState("")
   const [slugTouched, setSlugTouched] = useState(false)
@@ -132,6 +144,48 @@ export function CreateFunnelDialog({ takenSlugs }: { takenSlugs: string[] }) {
     }
     if (!nextAsks.includes("notify")) setNotify("")
     if (!nextAsks.includes("audience")) setAudience("")
+  }
+
+  /**
+   * THE ONE WAY ANYTHING WRITES TO THESE FIELDS.
+   *
+   * Ask AI and the examples modal both land here rather than each poking at
+   * state, so "what can change the dialog without the owner typing" has exactly
+   * one answer — and a field added to the dialog has one place to be handled.
+   *
+   * It sets the slug and marks it TOUCHED, so a name applied here does not get
+   * silently re-derived over on the next keystroke; and it re-runs the same
+   * clearing `selectTemplate` does, because an applied plan changes the
+   * template and must not leave a hidden field behind it.
+   */
+  function applyPlan(plan: CreatePlan) {
+    // Narrowed, not cast. The dialogs are shared with the pages screen, so a
+    // page plan reaching here is a wiring mistake — and silently applying half
+    // of it would be worse than doing nothing.
+    if (plan.kind !== "funnel") return
+    const template = getTemplate(plan.template) ?? DEFAULT_TEMPLATE
+    setTemplateId(template.value)
+    setSteps(plan.steps.map((step) => ({ ...step })))
+
+    if (plan.name) {
+      setName(plan.name)
+      setSlug(slugify(plan.name))
+      setSlugTouched(true)
+    }
+
+    const nextAsks = template.asks as readonly string[]
+    setAudience(nextAsks.includes("audience") ? (plan.audience ?? "") : "")
+    setOfferRef(nextAsks.includes("offer") ? (plan.offer?.ref ?? "") : "")
+    if (nextAsks.includes("dates")) {
+      setStartsAt(plan.startsAt ? plan.startsAt.slice(0, 10) : "")
+      setEndsAt(plan.endsAt ? plan.endsAt.slice(0, 10) : "")
+    } else {
+      setStartsAt("")
+      setEndsAt("")
+      setAutoOffline(false)
+    }
+    if (!nextAsks.includes("notify")) setNotify("")
+    if (plan.description) setDescription(plan.description)
   }
 
   const stepErrors = stepPlanErrors(steps)
@@ -252,6 +306,21 @@ export function CreateFunnelDialog({ takenSlugs }: { takenSlugs: string[] }) {
             you can change them here before anything is created.
           </DialogDescription>
         </DialogHeader>
+
+        {/* Above the fields, because its whole purpose is to answer "what do I
+            type here" — offered after the first field it would be advice
+            arriving too late to take. */}
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border bg-surface/30 px-3 py-2">
+          <span className="text-xs text-muted-foreground">Not sure where to start?</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => setExamplesOpen(true)}>
+            <BookOpen className="size-3.5" />
+            See examples
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setAskAiOpen(true)}>
+            <Sparkles className="size-3.5" />
+            Ask AI
+          </Button>
+        </div>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -441,6 +510,18 @@ export function CreateFunnelDialog({ takenSlugs }: { takenSlugs: string[] }) {
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Siblings, not children of DialogContent: a Dialog nested inside another
+          Dialog's content traps focus in the outer one and the inner modal
+          cannot be typed into. */}
+      <AskAiDialog open={askAiOpen} onOpenChange={setAskAiOpen} onApply={applyPlan} kind="funnel" />
+      <ExamplesDialog
+        open={examplesOpen}
+        onOpenChange={setExamplesOpen}
+        onApply={applyPlan}
+        ownExamples={ownExamples}
+        kind="funnel"
+      />
     </Dialog>
   )
 }
