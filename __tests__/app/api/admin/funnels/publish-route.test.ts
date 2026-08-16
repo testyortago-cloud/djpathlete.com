@@ -29,6 +29,7 @@ vi.mock("@/lib/db/funnels", () => ({
   publishStep: vi.fn(),
   getFunnelById: vi.fn(),
   updateFunnel: vi.fn(),
+  listSteps: vi.fn(),
 }))
 vi.mock("@/lib/db/funnel-builder", () => ({ getDraft: vi.fn() }))
 // The three catalogue read pairs, so the REAL `loadCatalogues` runs over them.
@@ -42,7 +43,7 @@ vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
 import { POST } from "@/app/api/admin/funnels/steps/[stepId]/publish/route"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
-import { getStep, publishStep, getFunnelById, updateFunnel } from "@/lib/db/funnels"
+import { getStep, publishStep, getFunnelById, updateFunnel, listSteps } from "@/lib/db/funnels"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
@@ -129,6 +130,13 @@ beforeEach(() => {
   mock(auth).mockResolvedValue({ user: { id: ADMIN_ID, role: "admin" } })
   mock(canAccessAdminPath).mockResolvedValue(true)
   mock(getStep).mockResolvedValue(STEP)
+  // The funnel's pages, for `resolveDoc`'s step-link check. Resolves cleanly
+  // unless a test says otherwise, so a refusal below is never an accident of
+  // the fixture — the same discipline the draft mock below states.
+  mock(listSteps).mockResolvedValue([
+    { slug: STEP.slug, name: STEP.name },
+    { slug: "thanks", name: "Thanks" },
+  ])
   mock(publishStep).mockResolvedValue({
     ok: true,
     version: { id: "v1", version: 7 },
@@ -438,5 +446,77 @@ describe("publishing a landing page takes it live", () => {
 
     expect(res.status).toBe(200)
     expect((await res.json()).wentLive).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Step links — the gate's newest blocker, and the one that used to be nothing.
+//
+// A `{kind:"step"}` CTA naming a page the funnel does not have rendered as an
+// ordinary healthy <a> and published GREEN. `renderCtaTarget` only degrades a
+// step CTA when `funnelBasePath` is missing, so a wrong slug is invisible to
+// the compiler and was invisible here. It 404'd on a live page instead.
+// ---------------------------------------------------------------------------
+describe("POST — step links", () => {
+  /** A page whose CTA points at another page of the funnel. */
+  function docWithStepCta(stepSlug: string): SectionDoc {
+    return {
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "accent", radius: "soft" },
+      sections: [
+        {
+          id: "hero",
+          kind: "hero",
+          variant: "centered",
+          style: {},
+          props: {
+            headline: "Rotational power in eight weeks",
+            primaryCta: { label: "Get my spot", target: { kind: "step", stepSlug } },
+          },
+        },
+      ],
+    } as SectionDoc
+  }
+
+  it("publishes a step CTA that names a real page", () => {
+    return POST(req({ html: HTML, css: CSS, project_data: docWithStepCta("thanks") }), ctx).then(
+      async (res) => {
+        expect(res.status).toBe(200)
+        expect(mock(publishStep)).toHaveBeenCalled()
+      },
+    )
+  })
+
+  it("REFUSES a step CTA that names a page this funnel does not have, and writes nothing", async () => {
+    const res = await POST(req({ html: HTML, css: CSS, project_data: docWithStepCta("offer-page") }), ctx)
+
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as { problems?: string[] }
+    // Names the slug, because that is the only thing the owner can search for.
+    expect((body.problems ?? []).join(" ")).toContain("offer-page")
+    // THE POINT: the live page keeps serving what it was already serving.
+    expect(mock(publishStep)).not.toHaveBeenCalled()
+  })
+
+  it("REFUSES when the page list cannot be read, rather than publishing unchecked", async () => {
+    // MUTANT KILLED — and it is NOT "pass `null` to `resolveDoc`", which this
+    // comment claimed until the mutation was actually run and the test stayed
+    // green. Both spellings throw out of the same `Promise.all`, so that
+    // mutant is killed by the sibling test above, not by this one.
+    //
+    // What THIS test kills is degrading the read: `listSteps(...).catch(() =>
+    // null)`. That reads as ordinary defensive coding — every other funnel
+    // screen does exactly it — and here it would silently convert "could not
+    // check" into "checked, nothing wrong" and publish unchecked. Verified by
+    // applying that mutation and watching this test, and only this test, fail.
+    mock(listSteps).mockRejectedValueOnce(new Error("supabase down"))
+
+    const res = await POST(req({ html: HTML, css: CSS, project_data: docWithStepCta("thanks") }), ctx)
+
+    expect(res.status).toBe(422)
+    const body = (await res.json()) as { problems?: string[] }
+    expect((body.problems ?? []).join(" ")).toContain("could not be checked")
+    expect(mock(publishStep)).not.toHaveBeenCalled()
   })
 })

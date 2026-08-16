@@ -46,13 +46,33 @@ import {
   type SectionDoc,
 } from "@/lib/funnels/sections/registry"
 import {
-  resolveDoc,
+  resolveDoc as resolveDocWithPages,
   publishGate,
   toCatalogue,
   type Catalogue,
   type Catalogues,
+  type FunnelStepRef,
   type ResolvableCtaKind,
 } from "@/lib/funnels/sections/resolve"
+
+/**
+ * `resolveDoc` WITHOUT A PAGE LIST, which is what every test above the step-link
+ * block means and must keep meaning.
+ *
+ * The third parameter is `FunnelStepRef[] | null`, and `null` is "the funnel's
+ * pages are not known, so do not check step links" — exactly the behaviour
+ * these fifty-odd tests were written against, none of which is about step
+ * links. Shadowing here rather than threading `null` through every call site
+ * keeps them readable AND keeps the real signature required, so a production
+ * caller that forgets is still a compile error.
+ *
+ * The step-link tests at the bottom call `resolveDocWithPages` directly, with a
+ * real list. Anything asserting on `brokenStepLinks` MUST use that one — this
+ * shadow can never produce a broken link, so a test that used it would pass
+ * for the wrong reason.
+ */
+const resolveDoc = (doc: SectionDoc, catalogues: Catalogues) =>
+  resolveDocWithPages(doc, catalogues, null)
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -1516,5 +1536,117 @@ describe("loadCatalogues", () => {
 
     expect(catalogues.offer).not.toBe(catalogues.recognition)
     expect(catalogues.offer.program).not.toBe(catalogues.recognition.program)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Step links — "does this button point at a page this funnel actually has?"
+//
+// Until now `resolveDoc` could not answer that: the funnel's slug list was not
+// available at this layer, so a `{kind:"step"}` CTA naming a page that had been
+// renamed, deleted or invented by the model published GREEN and 404'd live.
+// `renderCtaTarget` only degrades when `funnelBasePath` is missing, so a wrong
+// slug renders a perfectly ordinary <a>.
+//
+// EVERY TEST HERE USES `resolveDocWithPages`, never the shadow above — the
+// shadow passes `null` and can never report a broken link.
+// ---------------------------------------------------------------------------
+describe("step links against the funnel's real pages", () => {
+  const PAGES: FunnelStepRef[] = [
+    { slug: "index", name: "Opt-in" },
+    { slug: "offer", name: "Offer" },
+  ]
+
+  const pageCta = (stepSlug: string): CtaWithLabel => ({
+    label: "Get my spot",
+    target: { kind: "step", stepSlug },
+  })
+
+  it("a step CTA naming a real page is not broken", () => {
+    const result = resolveDocWithPages(docOf([hero({ primaryCta: pageCta("offer") })]), catalogue(), PAGES)
+    expect(result.brokenStepLinks).toEqual([])
+    expect(publishGate(result).ok).toBe(true)
+  })
+
+  it("a step CTA naming a page that does not exist is reported, with the slug", () => {
+    const result = resolveDocWithPages(
+      docOf([hero({ primaryCta: pageCta("offer-page") })]),
+      catalogue(),
+      PAGES,
+    )
+    expect(result.brokenStepLinks).toEqual([
+      { sectionId: "hero1", field: "primaryCta", stepSlug: "offer-page" },
+    ])
+  })
+
+  it("a broken step link BLOCKS publishing, and the message names the page", () => {
+    const gate = publishGate(
+      resolveDocWithPages(docOf([hero({ primaryCta: pageCta("offer-page") })]), catalogue(), PAGES),
+    )
+    expect(gate.ok).toBe(false)
+    expect(gate.blockers.join(" ")).toContain("offer-page")
+  })
+
+  it("a dangling in-page anchor still only WARNS — the two are not the same problem", () => {
+    // A dead #anchor scrolls nowhere; a dead step link is a 404 on a page the
+    // owner is paying to send traffic to. Publishing must treat them
+    // differently, and this pins the split rather than assuming it.
+    const gate = publishGate(
+      resolveDocWithPages(docOf([hero({ primaryCta: anchorCta("nope") })]), catalogue(), PAGES),
+    )
+    expect(gate.ok).toBe(true)
+    expect(gate.warnings).toHaveLength(1)
+  })
+
+  it("a NULL page list checks nothing — an unreadable page list must not brand every link broken", () => {
+    // MUTANT TO KILL: treating `null` as `[]`. `loadPageContext` in the build
+    // route already degrades a failed read, so conflating the two would turn
+    // one Supabase blip into "every link in this document is broken" and block
+    // a publish that is perfectly fine.
+    const result = resolveDocWithPages(
+      docOf([hero({ primaryCta: pageCta("offer-page") })]),
+      catalogue(),
+      null,
+    )
+    expect(result.brokenStepLinks).toEqual([])
+    expect(publishGate(result).ok).toBe(true)
+  })
+
+  it("an EMPTY page list is not the same as null — it means the funnel has no pages", () => {
+    const result = resolveDocWithPages(docOf([hero({ primaryCta: pageCta("offer") })]), catalogue(), [])
+    expect(result.brokenStepLinks).toHaveLength(1)
+  })
+
+  it("a step CTA pointing at its own page is not broken", () => {
+    // A "start over" button is legitimate. The PROMPT's sibling list excludes
+    // the current page so the model does not link a page to itself; the
+    // VALIDATOR's list must not, or every such button would block publish.
+    const result = resolveDocWithPages(docOf([hero({ primaryCta: pageCta("index") })]), catalogue(), PAGES)
+    expect(result.brokenStepLinks).toEqual([])
+  })
+
+  it("finds a broken step link nested inside a repeater, not just at the top level", () => {
+    // The CTA walk is `transformRecord`, which recurses. A check bolted onto
+    // top-level props only would miss a pricing card's button.
+    const result = resolveDocWithPages(
+      docOf([pricing([plan("Starter", pageCta("gone"))])]),
+      catalogue(),
+      PAGES,
+    )
+    // `plans[0].cta`, BRACKETS — this module's own reporting format (see the
+    // format note above `ResolvedCta`). NOT `plans.0.cta`, which is the
+    // dotted form `patchForPath` takes. The two formats are for two different
+    // jobs (telling a human where the problem is vs. addressing a value to
+    // write) and anything converting between them must do so explicitly.
+    expect(result.brokenStepLinks).toEqual([
+      { sectionId: "price1", field: "plans[0].cta", stepSlug: "gone" },
+    ])
+  })
+
+  it("a broken step link leaves the document itself untouched", () => {
+    // Reporting is not rewriting. `resolveDoc`'s reference-identity guarantee
+    // has to survive the new branch.
+    const doc = docOf([hero({ primaryCta: pageCta("gone") })])
+    expect(resolveDocWithPages(doc, catalogue(), PAGES).doc).toBe(doc)
   })
 })

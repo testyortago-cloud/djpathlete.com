@@ -61,7 +61,7 @@ import { auth } from "@/lib/auth"
 import { NodeRenderer } from "@/components/funnels/NodeRenderer"
 import { FUNNEL_ROOT_ID, compileFunnelStep } from "@/lib/funnels/compile"
 import { getDraft } from "@/lib/db/funnel-builder"
-import { getFunnelById, getStep } from "@/lib/db/funnels"
+import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import { CANVAS_EDIT_CSS } from "@/lib/funnels/sections/edit-css"
 import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
@@ -185,7 +185,15 @@ export default async function FunnelDraftPreviewPage({ params, searchParams }: P
   let docToRender = draft.doc
   let gateBlockers: string[] = []
   try {
-    const resolution = resolveDoc(draft.doc, await loadCatalogues())
+    // Both reads are inside the same try, so either failing lands in the catch
+    // below — which already tells the owner publishing will refuse the page
+    // until its links can be checked. That is the honest answer here; `null`
+    // would quietly claim the step links were fine.
+    const [catalogues, pages] = await Promise.all([
+      loadCatalogues(),
+      listSteps(funnel.id).then((rows) => rows.map((row) => ({ slug: row.slug, name: row.name }))),
+    ])
+    const resolution = resolveDoc(draft.doc, catalogues, pages)
     docToRender = resolution.doc
     gateBlockers = publishGate(resolution).blockers
   } catch (error) {
