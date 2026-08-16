@@ -10,7 +10,7 @@ import { getSetting, isCronSkipped } from "@/lib/db/system-settings"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { getAdminFirestore } from "@/lib/firebase-admin"
 import { resend, FROM_EMAIL } from "@/lib/resend"
-import { lastSuccessPerCron } from "@/lib/db/cron-runs"
+import { lastFailurePerCron, lastSuccessPerCron } from "@/lib/db/cron-runs"
 import {
   EXPECTED_CRONS,
   scanAutomationHealth,
@@ -70,11 +70,21 @@ export async function POST(request: NextRequest) {
     console.error("[automation-health] Firestore read failed:", err)
   }
 
-  // 2) Per-cron last success
-  const last_success_per_cron = await lastSuccessPerCron(
-    supabase,
-    EXPECTED_CRONS.map((c) => c.name),
-  )
+  // 2) Per-cron last success, and — for the crons that write cron_runs at all
+  //    — their last failure. The scanner reads the failure only for crons with
+  //    no success on record, to tell a cron the deploy never reached from one
+  //    that runs and loses. Asking about the 11 non-reporters would be 11
+  //    round trips guaranteed to answer null.
+  const [last_success_per_cron, last_failure_per_cron] = await Promise.all([
+    lastSuccessPerCron(
+      supabase,
+      EXPECTED_CRONS.map((c) => c.name),
+    ),
+    lastFailurePerCron(
+      supabase,
+      EXPECTED_CRONS.filter((c) => c.reports_to_cron_runs).map((c) => c.name),
+    ),
+  ])
 
   // 2b) Gate state. A cron the operator switched off is dormant, not silent —
   // without this the "never succeeded" check would nag forever about crons
@@ -93,6 +103,7 @@ export async function POST(request: NextRequest) {
     ai_jobs_failed_by_type_24h,
     ai_jobs_pending_over_1h,
     last_success_per_cron,
+    last_failure_per_cron,
     disabled_crons,
   })
 

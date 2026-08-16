@@ -20,6 +20,20 @@ export interface ExpectedCron {
    */
   watch_from?: string
   /**
+   * ISO date a deploy fixed the reason this cron could never succeed. The
+   * "never succeeded" clock restarts here, because after a fix the useful
+   * question is whether the FIXED cron works — and a weekly cron repaired on a
+   * Sunday has had no chance to answer that before Wednesday. Without this the
+   * watchdog re-reports the old outage every morning at critical, which is how
+   * an alert channel gets ignored.
+   *
+   * This cannot hide a fix that did not work: a failed run recorded after the
+   * anchor alerts immediately, without waiting the window out (see
+   * judgeNeverSucceeded). Leave watch_from alone when setting this — the pair
+   * records both that the outage happened and that it was addressed.
+   */
+  fix_shipped_at?: string
+  /**
    * system_settings key gating the cron, when it has one. A cron switched off
    * is dormant by choice, not silent, so it is never alerted on.
    */
@@ -70,6 +84,14 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
     sla_hours: 192,
     reports_to_cron_runs: true,
     watch_from: "2026-07-14",
+    // 89211738 declared the two Supabase secrets the function had been missing
+    // since 2026-07-15, and CI deployed it 2026-08-16 05:59 UTC. A forced run
+    // that afternoon returned HTTP 200 and wrote the first success row, so
+    // this cron is judged on staleness again and the anchor below is now
+    // belt-and-braces. Kept as the worked example of what the field is for:
+    // the next weekly cron repaired on a Sunday needs it, or the watchdog
+    // spends four mornings re-reporting an outage that is already fixed.
+    fix_shipped_at: "2026-08-16",
   },
   {
     name: "auditLogRetentionCron", // daily 03:00
@@ -145,6 +167,15 @@ export interface ScannerInput {
   /** Latest successful run for each watched cron. null = never recorded yet. */
   last_success_per_cron: Record<string, string | null>
   /**
+   * Latest FAILED run per cron, where one is on record. Read only for crons
+   * that have never succeeded: there, a failure row is proof the cron is
+   * reachable and losing, which deserves an alert immediately rather than at
+   * the end of a window that exists to spare crons which have had no chance.
+   * A missing key or a null falls back to the window rule — a failed read must
+   * not manufacture an alert, and cannot suppress one either.
+   */
+  last_failure_per_cron?: Record<string, string | null>
+  /**
    * Names whose enabled_flag is currently off. These are skipped entirely —
    * a cron the operator switched off is dormant, not broken.
    */
@@ -157,6 +188,12 @@ export interface SilentCron {
   hours_since: number
   sla_hours: number
   severity: "warning" | "critical"
+  /**
+   * Set only when the cron has never succeeded and a failed run is on record.
+   * It separates the two never-succeeded shapes: nothing in the ledger points
+   * at deployment, a failure row points at the run itself.
+   */
+  last_failure_at?: string
 }
 
 export interface ScannerOutput {
@@ -168,9 +205,13 @@ export interface ScannerOutput {
 /**
  * A cron that has never recorded a success is either brand new or completely
  * broken, and the two are only distinguishable with an anchor. We alert when
- * the cron reports to cron_runs, is switched on, and its own logging shipped
- * longer ago than its SLA — i.e. it has had at least one chance to succeed and
- * took none of them.
+ * the cron reports to cron_runs, is switched on, and its anchor — the date its
+ * logging shipped, or the later date a fix shipped — is further back than its
+ * SLA: it has had at least one chance to succeed and took none of them.
+ *
+ * A failed run recorded since the anchor short-circuits that wait. The window
+ * exists to avoid judging a cron that has had no opportunity; a failure row is
+ * an opportunity taken and lost, so there is nothing left to wait for.
  *
  * runAgentStrategist is why this exists: it threw on its first statement, so
  * the crash preceded logCronStart and no row was ever written. Skipping every
@@ -180,13 +221,36 @@ function judgeNeverSucceeded(
   cron: ExpectedCron,
   now: number,
   disabled: Set<string>,
+  lastFailureAt: string | null,
 ): SilentCron | null {
   if (!cron.reports_to_cron_runs) return null // silence proves nothing here
   if (disabled.has(cron.name)) return null // off on purpose
   if (!cron.watch_from) return null // no anchor — stay quiet rather than guess
 
-  const watchedFor = (now - new Date(cron.watch_from).getTime()) / 3600_000
-  if (!Number.isFinite(watchedFor) || watchedFor <= cron.sla_hours) return null
+  const anchor = watchAnchor(cron)
+  if (anchor === null) return null
+  const watchedFor = (now - anchor) / 3600_000
+  if (!Number.isFinite(watchedFor)) return null
+
+  // A failure recorded since the anchor settles the question the window was
+  // only estimating: the cron ran and could not finish. Say so at once — a
+  // cron with no success to its name and a failed attempt on the board is as
+  // broken as it gets, and waiting out the rest of the window buys nothing.
+  if (lastFailureAt !== null) {
+    const failedAt = new Date(lastFailureAt).getTime()
+    if (Number.isFinite(failedAt) && failedAt >= anchor) {
+      return {
+        cron_name: cron.name,
+        last_success_at: null,
+        last_failure_at: lastFailureAt,
+        hours_since: watchedFor,
+        sla_hours: cron.sla_hours,
+        severity: "critical",
+      }
+    }
+  }
+
+  if (watchedFor <= cron.sla_hours) return null
 
   return {
     cron_name: cron.name,
@@ -195,6 +259,20 @@ function judgeNeverSucceeded(
     sla_hours: cron.sla_hours,
     severity: watchedFor > cron.sla_hours * 2 ? "critical" : "warning",
   }
+}
+
+/**
+ * When the never-succeeded clock starts: the later of the date logging shipped
+ * and the date a fix shipped. An unparseable date yields null so the caller
+ * stays quiet rather than judging against NaN.
+ */
+function watchAnchor(cron: ExpectedCron): number | null {
+  if (!cron.watch_from) return null
+  const from = new Date(cron.watch_from).getTime()
+  if (!Number.isFinite(from)) return null
+  if (!cron.fix_shipped_at) return from
+  const fixed = new Date(cron.fix_shipped_at).getTime()
+  return Number.isFinite(fixed) ? Math.max(from, fixed) : from
 }
 
 export function scanAutomationHealth(
@@ -211,7 +289,8 @@ export function scanAutomationHealth(
 
     const last = input.last_success_per_cron[name]
     if (!last) {
-      const verdict = judgeNeverSucceeded(cron, now, disabled)
+      const failure = input.last_failure_per_cron?.[name] ?? null
+      const verdict = judgeNeverSucceeded(cron, now, disabled, failure)
       if (verdict) silent_crons.push(verdict)
       continue
     }
@@ -262,13 +341,7 @@ export function scanAutomationHealth(
   // 3) silent crons
   for (const sc of silent_crons) {
     severity = bumpSeverity(severity, sc.severity)
-    // "silent 780h" reads as "it used to work" — for a cron that has never
-    // once succeeded, say so, because the fix is usually deployment-side.
-    reasons.push(
-      sc.last_success_at === null
-        ? `${sc.cron_name} has never succeeded in ${Math.round(sc.hours_since)}h of watching (SLA ${sc.sla_hours}h)`
-        : `${sc.cron_name} silent ${Math.round(sc.hours_since)}h (SLA ${sc.sla_hours}h)`,
-    )
+    reasons.push(describeSilentCron(sc, now))
   }
 
   return {
@@ -276,6 +349,24 @@ export function scanAutomationHealth(
     alert_severity: severity,
     alert_summary: reasons.length === 0 ? null : reasons.join("; "),
   }
+}
+
+/**
+ * One line per offender. "silent 780h" reads as "it used to work", so a cron
+ * that has never once succeeded says so instead — and when a failed run is on
+ * record it says that too, because the two point at different repairs: nothing
+ * in the ledger means the deploy never reached it, a failure means the run
+ * itself is broken.
+ */
+function describeSilentCron(sc: SilentCron, now: number): string {
+  if (sc.last_success_at !== null) {
+    return `${sc.cron_name} silent ${Math.round(sc.hours_since)}h (SLA ${sc.sla_hours}h)`
+  }
+  if (sc.last_failure_at) {
+    const since = Math.round((now - new Date(sc.last_failure_at).getTime()) / 3600_000)
+    return `${sc.cron_name} has never succeeded — its last run failed ${since}h ago`
+  }
+  return `${sc.cron_name} has never succeeded in ${Math.round(sc.hours_since)}h of watching (SLA ${sc.sla_hours}h)`
 }
 
 function bumpSeverity(

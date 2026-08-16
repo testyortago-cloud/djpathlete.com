@@ -212,6 +212,121 @@ describe("scanAutomationHealth — crons that have never succeeded", () => {
   })
 })
 
+// ── A fix that shipped reopens the window ───────────────────────────────────
+// runAgentStrategist was repaired and deployed on a Sunday morning; its next
+// scheduled tick is Wednesday. Between those two the old alert is history, not
+// news, and re-sending it at critical every morning is how an alert channel
+// gets tuned out. fix_shipped_at restarts the clock — and a failed run after
+// the fix alerts the same morning, so the restart cannot hide a bad fix.
+
+const FIXED: ExpectedCron[] = [
+  {
+    name: "repairedCron",
+    sla_hours: 192,
+    reports_to_cron_runs: true,
+    watch_from: hoursAgoISO(800), // the original outage, five weeks of it
+    fix_shipped_at: hoursAgoISO(2), // deployed two hours ago
+  },
+]
+
+const noSuccessYet: ScannerInput = {
+  ai_jobs_failed_by_type_24h: {},
+  ai_jobs_pending_over_1h: 0,
+  last_success_per_cron: { repairedCron: null },
+}
+
+describe("scanAutomationHealth — a fix that has not had its first run", () => {
+  it("stops re-reporting the old outage once the fix shipped", () => {
+    const r = scanAutomationHealth(noSuccessYet, FIXED)
+    expect(r.silent_crons).toEqual([])
+    expect(r.alert_severity).toBe("none")
+  })
+
+  it("still alerts when the fix is older than the SLA and nothing ran", () => {
+    // The window reopened, then closed again with no success: that is a fix
+    // that did not take, and it must come back on its own.
+    const stale: ExpectedCron[] = [{ ...FIXED[0], fix_shipped_at: hoursAgoISO(400) }]
+    const r = scanAutomationHealth(noSuccessYet, stale)
+    expect(r.silent_crons.find((c) => c.cron_name === "repairedCron")).toBeTruthy()
+    expect(r.alert_severity).toBe("critical") // 400h > 2x 192h
+  })
+
+  it("alerts immediately when the repaired cron runs and fails", () => {
+    // One hour after the fix, inside the reopened window. Waiting the window
+    // out would buy nothing — the cron already answered, and it lost.
+    const r = scanAutomationHealth(
+      { ...noSuccessYet, last_failure_per_cron: { repairedCron: hoursAgoISO(1) } },
+      FIXED,
+    )
+    const hit = r.silent_crons.find((c) => c.cron_name === "repairedCron")
+    expect(hit).toBeTruthy()
+    expect(hit!.severity).toBe("critical")
+    expect(hit!.last_failure_at).toBeTruthy()
+    expect(r.alert_summary).toContain("its last run failed")
+  })
+
+  it("ignores failures from before the anchor", () => {
+    // Failures from the outage the fix addressed are not evidence about the
+    // fix. Judging on them would make fix_shipped_at do nothing at all.
+    const r = scanAutomationHealth(
+      { ...noSuccessYet, last_failure_per_cron: { repairedCron: hoursAgoISO(700) } },
+      FIXED,
+    )
+    expect(r.silent_crons).toEqual([])
+  })
+
+  it("does not consult failures for a cron that has succeeded since", () => {
+    // A cron that succeeded is judged on staleness alone; an older failure is
+    // just a run that got retried.
+    const r = scanAutomationHealth(
+      {
+        ...noSuccessYet,
+        last_success_per_cron: { repairedCron: hoursAgoISO(1) },
+        last_failure_per_cron: { repairedCron: hoursAgoISO(1) },
+      },
+      FIXED,
+    )
+    expect(r.silent_crons).toEqual([])
+    expect(r.alert_severity).toBe("none")
+  })
+
+  it("a failed first run alerts even for a cron with no fix on record", () => {
+    // Not special to repairs: any instrumented cron whose only runs failed is
+    // broken now, not at the end of its window.
+    const brandNew: ExpectedCron[] = [
+      {
+        name: "newCron",
+        sla_hours: 192,
+        reports_to_cron_runs: true,
+        watch_from: hoursAgoISO(10), // nowhere near its window
+      },
+    ]
+    const r = scanAutomationHealth(
+      {
+        ai_jobs_failed_by_type_24h: {},
+        ai_jobs_pending_over_1h: 0,
+        last_success_per_cron: { newCron: null },
+        last_failure_per_cron: { newCron: hoursAgoISO(1) },
+      },
+      brandNew,
+    )
+    expect(r.silent_crons.find((c) => c.cron_name === "newCron")?.severity).toBe("critical")
+  })
+
+  it("a cron switched off stays quiet even with a failure on record", () => {
+    const gated: ExpectedCron[] = [{ ...FIXED[0], enabled_flag: "cron_repaired_enabled" }]
+    const r = scanAutomationHealth(
+      {
+        ...noSuccessYet,
+        last_failure_per_cron: { repairedCron: hoursAgoISO(1) },
+        disabled_crons: ["repairedCron"],
+      },
+      gated,
+    )
+    expect(r.silent_crons).toEqual([])
+  })
+})
+
 describe("EXPECTED_CRONS roster", () => {
   it("watches runAgentStrategist for a first success", () => {
     // Regression guard for the 2026-07-15 outage: this cron writes cron_runs,
@@ -225,6 +340,19 @@ describe("EXPECTED_CRONS roster", () => {
   it("gives every cron-runs reporter a watch_from anchor", () => {
     const missing = EXPECTED_CRONS.filter((c) => c.reports_to_cron_runs && !c.watch_from)
     expect(missing.map((c) => c.name)).toEqual([])
+  })
+
+  it("does not judge runAgentStrategist on the outage that was already fixed", () => {
+    // The secrets fix deployed 2026-08-16 05:59 UTC and a forced run at 13:59
+    // UTC wrote the first success row, so the anchor is no longer load-bearing
+    // for this cron — it is judged on staleness now. Pinned anyway: the pair
+    // (watch_from, fix_shipped_at) is the record of an outage and its repair,
+    // and it is the worked example the field is documented against.
+    const cron = EXPECTED_CRONS.find((c) => c.name === "runAgentStrategist")!
+    expect(cron.fix_shipped_at).toBe("2026-08-16")
+    expect(new Date(cron.fix_shipped_at!).getTime()).toBeGreaterThan(
+      new Date(cron.watch_from!).getTime(),
+    )
   })
 
   it("never marks a cron as reporting unless it is one we instrumented", () => {

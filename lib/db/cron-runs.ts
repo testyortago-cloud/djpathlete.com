@@ -91,3 +91,30 @@ export async function lastSuccessPerCron(
   }
   return out
 }
+
+/**
+ * For each named cron, when its most recent FAILED run was (or null).
+ * Read by the automation-health scanner for crons that have never succeeded,
+ * where a failure row is the difference between "the deploy never reached it"
+ * and "it runs and loses". Ordered by started_at because a run that died
+ * between logCronStart and logCronEnd never got a finished_at.
+ */
+export async function lastFailurePerCron(
+  supabase: SupabaseClient,
+  cron_names: string[],
+): Promise<Record<string, string | null>> {
+  const out: Record<string, string | null> = {}
+  for (const name of cron_names) {
+    const { data } = await supabase
+      .from("cron_runs")
+      .select("started_at, finished_at")
+      .eq("cron_name", name)
+      .eq("status", "failed")
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const row = data as { started_at?: string; finished_at?: string | null } | null
+    out[name] = row ? (row.finished_at ?? row.started_at ?? null) : null
+  }
+  return out
+}

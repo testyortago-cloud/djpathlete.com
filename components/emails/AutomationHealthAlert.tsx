@@ -67,9 +67,18 @@ export function AutomationHealthAlert({
                         <td style={{ padding: "0 32px 24px" }}>
                           <h2 style={{ margin: "0 0 8px", color: BRAND.primary, fontFamily: "'Lexend Exa', Georgia, serif", fontSize: "13px", textTransform: "uppercase", letterSpacing: "1.5px" }}>Silent crons</h2>
                           <ul style={{ margin: 0, paddingLeft: "16px", fontFamily: "'Lexend Deca', sans-serif", fontSize: "14px", color: BRAND.primary }}>
+                            {/* "last success 800h ago" about a cron that has
+                                never succeeded once reads as a cron that used
+                                to work — the opposite of the truth, and the
+                                wrong repair. Match the summary's wording. */}
                             {silent_crons.map((sc) => (
                               <li key={sc.cron_name}>
-                                <code>{sc.cron_name}</code> · last success {Math.round(sc.hours_since)}h ago (SLA {sc.sla_hours}h)
+                                <code>{sc.cron_name}</code> ·{" "}
+                                {sc.last_success_at !== null
+                                  ? `last success ${Math.round(sc.hours_since)}h ago (SLA ${sc.sla_hours}h)`
+                                  : sc.last_failure_at
+                                    ? "has never succeeded — its last run failed"
+                                    : `has never succeeded in ${Math.round(sc.hours_since)}h of watching (SLA ${sc.sla_hours}h)`}
                               </li>
                             ))}
                           </ul>
