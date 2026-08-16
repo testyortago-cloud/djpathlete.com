@@ -10,11 +10,21 @@ import {
   MAX_FUNNEL_STEPS,
   getTemplate,
   templateAsks,
+  type TemplateAsk,
 } from "@/lib/funnels/templates"
 import { FUNNEL_SLUG_PATTERN, FUNNEL_NAME_MIN_LENGTH } from "@/lib/validators/funnel"
 import { FUNNEL_GOALS } from "@/lib/validators/funnel"
 
 const GOAL_VALUES = new Set(FUNNEL_GOALS.map((goal) => goal.value))
+
+/**
+ * `as const satisfies` narrows each template's `asks` to its own literal tuple,
+ * so `["audience"].includes("offer")` is a type error rather than the `false`
+ * these tests are asking about. Widening at the read site keeps the registry's
+ * narrowing — which is what makes a typo in `asks` a compile error — while
+ * letting the tests ask the question.
+ */
+const asksOf = (template: { asks: readonly TemplateAsk[] }): readonly string[] => template.asks
 
 describe("FUNNEL_TEMPLATES", () => {
   it("gives every template a unique id", () => {
@@ -75,7 +85,7 @@ describe("FUNNEL_TEMPLATES", () => {
     // with nothing to pick; one that names a catalogue but never asks silently
     // ignores whatever is chosen.
     for (const template of FUNNEL_TEMPLATES) {
-      expect(template.asks.includes("offer"), template.value).toBe(template.offerKind !== null)
+      expect(asksOf(template).includes("offer"), template.value).toBe(template.offerKind !== null)
     }
   })
 
@@ -85,7 +95,7 @@ describe("FUNNEL_TEMPLATES", () => {
     // the dialog this redesign exists to quieten.
     for (const template of FUNNEL_TEMPLATES) {
       const capturesLeads = template.steps.some((step) => step.goal === "leads")
-      expect(template.asks.includes("notify"), template.value).toBe(capturesLeads)
+      expect(asksOf(template).includes("notify"), template.value).toBe(capturesLeads)
     }
   })
 
