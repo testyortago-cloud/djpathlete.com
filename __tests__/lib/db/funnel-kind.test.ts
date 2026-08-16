@@ -56,14 +56,34 @@ describe("listFunnels({ kind })", () => {
 })
 
 describe("createFunnel", () => {
+  // The two inserts no longer share a chain shape: the funnel insert still ends
+  // in `.single()`, while the step insert writes a PLAN — one row or ten — and
+  // so ends in a plain `.select("id, slug")` that awaits to an array. Mocking
+  // one shape for both stopped being possible when steps became a list
+  // (2026-08-16). The claims below are unchanged; only the plumbing moved.
+  const funnelInsert = vi.fn()
+  const stepInsert = vi.fn()
+
+  function mockBothTables() {
+    funnelInsert.mockReturnValue({
+      select: () => ({ single: () => Promise.resolve({ data: { id: "f1" }, error: null }) }),
+    })
+    stepInsert.mockReturnValue({
+      select: () => ({
+        then: (resolve: (value: unknown) => unknown) =>
+          resolve({ data: [{ id: "s1", slug: "index" }], error: null }),
+      }),
+    })
+    from.mockImplementation((table: string) =>
+      table === "funnels" ? { insert: funnelInsert } : { insert: stepInsert },
+    )
+  }
+
   it("persists kind and goal on the inserted row", async () => {
     // MUTANT KILLED: dropping kind/goal from the insert. The row would fall
     // back to the column default 'page' with a null goal, so a funnel created
     // from the Funnels screen would appear under Landing pages instead.
-    single.mockResolvedValue({ data: { id: "f1" }, error: null })
-    select.mockReturnValue({ single })
-    insert.mockReturnValue({ select })
-    from.mockReturnValue({ insert })
+    mockBothTables()
 
     const { createFunnel } = await import("@/lib/db/funnels")
     await createFunnel({
@@ -73,21 +93,20 @@ describe("createFunnel", () => {
       goal: "event",
     })
 
-    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ kind: "funnel", goal: "event" }))
+    expect(funnelInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "funnel", goal: "event" }),
+    )
   })
 
   it("returns the entry step id so the caller can open the builder", async () => {
     // MUTANT KILLED: keeping the old fire-and-forget entry-step insert. Without
     // the id the create dialog cannot route into the builder and would have to
     // dump the owner back on the list — the behaviour this feature replaces.
-    single.mockResolvedValue({ data: { id: "f1" }, error: null })
-    select.mockReturnValue({ single })
-    insert.mockReturnValue({ select })
-    from.mockReturnValue({ insert })
+    mockBothTables()
 
     const { createFunnel } = await import("@/lib/db/funnels")
     const result = await createFunnel({ slug: "free-trial", name: "Free Trial" })
 
-    expect(result.entryStepId).toBe("f1")
+    expect(result.entryStepId).toBe("s1")
   })
 })

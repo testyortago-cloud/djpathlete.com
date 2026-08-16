@@ -4,6 +4,7 @@
 // Per repo convention the Database generic is dropped and rows are cast here.
 
 import { createServiceRoleClient } from "@/lib/supabase"
+import { ENTRY_STEP_SLUG } from "@/lib/funnels/templates"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import type { CompileError, FunnelNode } from "@/lib/funnels/compile/types"
 import type {
@@ -14,6 +15,7 @@ import type {
   FunnelStatus,
   FunnelKind,
   FunnelGoal,
+  OfferKind,
 } from "@/types/database"
 
 function getClient() {
@@ -63,6 +65,24 @@ export interface CreateFunnelInput {
   kind?: FunnelKind
   goal?: FunnelGoal | null
   created_by?: string | null
+  /** Which template produced this funnel. See `lib/funnels/templates.ts`. */
+  template?: string | null
+  audience?: string | null
+  /** Both halves or neither — `funnels_offer_paired_check` enforces it. */
+  offer?: { kind: OfferKind; ref: string } | null
+  starts_at?: string | null
+  ends_at?: string | null
+  auto_offline_at_end?: boolean
+  notify_emails?: string[] | null
+  /**
+   * The step plan.
+   *
+   * OPTIONAL, AND THAT IS LOAD-BEARING: every caller that predates templates —
+   * `CreatePageDialog` above all — sends nothing here and must keep getting
+   * exactly the single entry step it got before, named by `kind` the way the
+   * 2026-08-12 split named it.
+   */
+  steps?: { name: string; slug: string; goal: FunnelGoal | null }[]
 }
 
 /**
@@ -88,28 +108,65 @@ export async function createFunnel(
       kind: input.kind ?? "page",
       goal: input.goal ?? null,
       created_by: input.created_by ?? null,
+      template: input.template ?? null,
+      audience: input.audience ?? null,
+      // Both halves from the one source, so the paired CHECK cannot be tripped
+      // by writing a kind with no ref.
+      offer_kind: input.offer?.kind ?? null,
+      offer_ref: input.offer?.ref ?? null,
+      starts_at: input.starts_at ?? null,
+      ends_at: input.ends_at ?? null,
+      auto_offline_at_end: input.auto_offline_at_end ?? false,
+      notify_emails: input.notify_emails ?? null,
     })
     .select("*")
     .single()
   if (error) throw new Error(`createFunnel: ${error.message}`)
 
   const funnel = data as Funnel
-  const { data: stepRow, error: stepError } = await supabase
+
+  // No plan means the pre-template behaviour, byte for byte: one entry step,
+  // named by kind. A funnel's first page is "Step 1"; a landing page's only
+  // page is the page itself. Same row, read differently on two screens.
+  const planned =
+    input.steps && input.steps.length > 0
+      ? input.steps
+      : [
+          {
+            name: input.kind === "funnel" ? "Step 1" : "Landing page",
+            slug: ENTRY_STEP_SLUG,
+            goal: null,
+          },
+        ]
+
+  const { data: stepRows, error: stepError } = await supabase
     .from("funnel_steps")
-    .insert({
-      funnel_id: funnel.id,
-      slug: "index",
-      // A funnel's first page is "Step 1"; a landing page's only page is the
-      // page itself. Same row, and the owner reads the two screens differently.
-      name: input.kind === "funnel" ? "Step 1" : "Landing page",
-      position: 0,
-      is_entry: true,
-    })
-    .select("id")
-    .single()
+    .insert(
+      planned.map((step, index) => ({
+        funnel_id: funnel.id,
+        // The entry step's path is not the client's to choose: `/go/<slug>` is
+        // served by whichever step is `index`. The validator refuses anything
+        // else; this makes it true regardless.
+        slug: index === 0 ? ENTRY_STEP_SLUG : step.slug,
+        name: step.name,
+        goal: step.goal ?? null,
+        position: index,
+        is_entry: index === 0,
+      })),
+    )
+    .select("id, slug")
   if (stepError) throw new Error(`createFunnel(entry step): ${stepError.message}`)
 
-  return { ...funnel, entryStepId: (stepRow as { id: string }).id }
+  // BY SLUG, NOT BY POSITION IN THE RETURNED ARRAY. Postgres does not promise
+  // that RETURNING comes back in VALUES order, and the create dialog routes the
+  // owner straight into whichever step this names — so `stepRows[0]` would
+  // occasionally open the confirmation page as though it were step one.
+  const entry = (stepRows as { id: string; slug: string }[] | null)?.find(
+    (row) => row.slug === ENTRY_STEP_SLUG,
+  )
+  if (!entry) throw new Error("createFunnel(entry step): the entry step was not returned")
+
+  return { ...funnel, entryStepId: entry.id }
 }
 
 export async function updateFunnel(
