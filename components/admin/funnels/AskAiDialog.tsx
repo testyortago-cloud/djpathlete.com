@@ -26,7 +26,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { getTemplate } from "@/lib/funnels/templates"
-import type { FunnelPlan } from "@/lib/funnels/ai-plan"
+import { FUNNEL_GOALS } from "@/lib/validators/funnel"
+import type { CreatePlan } from "@/lib/funnels/ai-plan"
 
 interface InterviewQuestion {
   id: string
@@ -38,17 +39,23 @@ interface InterviewQuestion {
 interface AskAiDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onApply: (plan: FunnelPlan) => void
+  onApply: (plan: CreatePlan) => void
+  /**
+   * Which thing is being created. It changes the questions the model is told
+   * to ask and the shape it returns — a page interview must not ask how many
+   * steps there are, and a funnel interview must not return a bare goal.
+   */
+  kind: "page" | "funnel"
 }
 
 type Screen = "brief" | "questions" | "review"
 
-export function AskAiDialog({ open, onOpenChange, onApply }: AskAiDialogProps) {
+export function AskAiDialog({ open, onOpenChange, onApply, kind }: AskAiDialogProps) {
   const [screen, setScreen] = useState<Screen>("brief")
   const [brief, setBrief] = useState("")
   const [questions, setQuestions] = useState<InterviewQuestion[]>([])
   const [answers, setAnswers] = useState<Record<string, string>>({})
-  const [plan, setPlan] = useState<FunnelPlan | null>(null)
+  const [plan, setPlan] = useState<CreatePlan | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -74,7 +81,7 @@ export function AskAiDialog({ open, onOpenChange, onApply }: AskAiDialogProps) {
       const response = await fetch("/api/admin/funnels/ai/interview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brief: brief.trim() }),
+        body: JSON.stringify({ brief: brief.trim(), kind }),
       })
       const body = (await response.json()) as { questions?: InterviewQuestion[]; error?: string }
       if (!response.ok || !body.questions) {
@@ -98,6 +105,7 @@ export function AskAiDialog({ open, onOpenChange, onApply }: AskAiDialogProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          kind,
           brief: brief.trim(),
           answers: questions.map((question) => ({
             question: question.question,
@@ -105,7 +113,7 @@ export function AskAiDialog({ open, onOpenChange, onApply }: AskAiDialogProps) {
           })),
         }),
       })
-      const body = (await response.json()) as { plan?: FunnelPlan; error?: string }
+      const body = (await response.json()) as { plan?: CreatePlan; error?: string }
       if (!response.ok || !body.plan) {
         setError(body.error ?? "Could not draft a plan just now.")
         return
@@ -131,7 +139,7 @@ export function AskAiDialog({ open, onOpenChange, onApply }: AskAiDialogProps) {
           </DialogTitle>
           <DialogDescription>
             {screen === "brief"
-              ? "Tell me what you want to build and I'll ask a few questions."
+              ? `Tell me about the ${kind === "page" ? "page" : "funnel"} and I'll ask a few questions.`
               : screen === "questions"
                 ? "Answer what you can — skip anything that doesn't apply."
                 : "Here's the plan. Nothing is created until you say so."}
@@ -187,21 +195,34 @@ export function AskAiDialog({ open, onOpenChange, onApply }: AskAiDialogProps) {
             data-testid="ai-plan-review"
             className="space-y-3 rounded-lg border border-border bg-surface/40 p-3 text-sm"
           >
-            <Row label="Kind" value={getTemplate(plan.template)?.label ?? plan.template} />
-            <div>
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Steps</p>
-              <ol className="mt-1 space-y-0.5">
-                {plan.steps.map((step, index) => (
-                  <li key={step.slug} className="text-sm">
-                    <span className="text-muted-foreground">{index + 1}.</span> {step.name}
-                    <span className="ml-1 font-mono text-xs text-muted-foreground">/{step.slug}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
+            {plan.kind === "funnel" ? (
+              <>
+                <Row label="Kind" value={getTemplate(plan.template)?.label ?? plan.template} />
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Steps</p>
+                  <ol className="mt-1 space-y-0.5">
+                    {plan.steps.map((step, index) => (
+                      <li key={step.slug} className="text-sm">
+                        <span className="text-muted-foreground">{index + 1}.</span> {step.name}
+                        <span className="ml-1 font-mono text-xs text-muted-foreground">
+                          /{step.slug}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </>
+            ) : (
+              <Row
+                label="Job"
+                value={FUNNEL_GOALS.find((goal) => goal.value === plan.goal)?.label ?? plan.goal}
+              />
+            )}
             {plan.name ? <Row label="Name" value={plan.name} /> : null}
             {plan.audience ? <Row label="For" value={plan.audience} /> : null}
-            {plan.offer ? <Row label="Offer" value={plan.offer.ref} /> : null}
+            {plan.kind === "funnel" && plan.offer ? (
+              <Row label="Offer" value={plan.offer.ref} />
+            ) : null}
             {plan.description ? <Row label="About" value={plan.description} /> : null}
           </div>
         ) : null}

@@ -24,7 +24,10 @@ import { FUNNEL_GOALS } from "@/lib/validators/funnel"
 
 beforeEach(() => {
   vi.clearAllMocks()
-  callAgentMock.mockResolvedValue({ data: { questions: [], template: "leads" } })
+  // `content`, NOT `data`. AgentCallResult's field is `content`, and mocking
+  // the wrong name is how the implementation shipped reading `result.data` —
+  // undefined at runtime — with every test green. Only tsc caught it.
+  callAgentMock.mockResolvedValue({ content: { questions: [], template: "leads" }, tokens_used: 0 })
 })
 
 /** (system, user, schema, options) as handed to callAgent. */
@@ -143,5 +146,25 @@ describe("draftFunnelPlan", () => {
   it("truncates an over-long answer", async () => {
     await draftFunnelPlan("camp", [{ question: "Why?", answer: "y".repeat(5000) }])
     expect(lastCall().user.length).toBeLessThan(2000)
+  })
+})
+
+describe("what callAgent actually returns", () => {
+  it("reads the questions out of `content`", async () => {
+    // MUTANT KILLED: `result.data`. AgentCallResult has no `data` field, so the
+    // feature returned undefined at runtime while every mocked test passed.
+    // This asserts the real contract rather than the mock's shape.
+    callAgentMock.mockResolvedValue({
+      content: { questions: [{ id: "q1", question: "Why?", hint: null, placeholder: null }] },
+      tokens_used: 12,
+    })
+    await expect(interviewQuestions("camp")).resolves.toEqual([
+      { id: "q1", question: "Why?", hint: null, placeholder: null },
+    ])
+  })
+
+  it("reads the plan out of `content`", async () => {
+    callAgentMock.mockResolvedValue({ content: { template: "event", name: "Camp" }, tokens_used: 9 })
+    await expect(draftFunnelPlan("camp", [])).resolves.toMatchObject({ template: "event" })
   })
 })

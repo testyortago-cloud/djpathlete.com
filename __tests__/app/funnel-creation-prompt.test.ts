@@ -161,3 +161,38 @@ describe("creationPrompt — funnel steps", () => {
     expect(prompt).not.toBeNull()
   })
 })
+
+describe("creationPrompt — a landing page that names its reader", () => {
+  it("includes the audience when there is one", () => {
+    // The field would otherwise be collected and never read — the defect this
+    // whole area has already shipped twice (funnels.description, notify_emails).
+    const page = funnel({
+      kind: "page",
+      template: null,
+      goal: "leads",
+      name: "Free Trial Week",
+      audience: "High-school athletes",
+      description: "A week of training.",
+    })
+    const prompt = creationPrompt(page, step({ goal: null }), [])!
+    expect(prompt).toContain("Who it is for: High-school athletes")
+  })
+
+  it("composes the old string exactly when there is no audience", () => {
+    // MUTANT KILLED: inserting the audience line unconditionally, which shifts
+    // the prompt for every page created before the field existed.
+    const page = funnel({
+      kind: "page",
+      template: null,
+      goal: "leads",
+      name: "Free Trial Week",
+      audience: null,
+      description: "A week of training.",
+    })
+    expect(creationPrompt(page, step({ goal: null }), [])).toBe(
+      'Build a landing page called "Free Trial Week".\n' +
+        "Its job: capture leads — a form that lands in your inbox.\n" +
+        "What it is for: A week of training.",
+    )
+  })
+})

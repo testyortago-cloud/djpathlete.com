@@ -48,6 +48,9 @@ const questionsSchema = z.object({
 
 export type InterviewQuestion = z.infer<typeof questionSchema>
 
+/** Which thing is being created. A page is not a one-step funnel. */
+export type CreateKind = "page" | "funnel"
+
 /**
  * The template vocabulary the model may return, DERIVED from the registry for
  * the same reason `createFunnelSchema`'s is: a hand-typed list here would let
@@ -88,7 +91,7 @@ function templateCatalogue(): string {
   }).join("\n")
 }
 
-const QUESTIONS_SYSTEM = `You help a strength-and-conditioning coach set up a marketing funnel. Given one sentence about what they want to build, ask the ${MIN_QUESTIONS}-${MAX_QUESTIONS} questions whose answers would most change the finished pages.
+const FUNNEL_QUESTIONS_SYSTEM = `You help a strength-and-conditioning coach set up a marketing funnel. Given one sentence about what they want to build, ask the ${MIN_QUESTIONS}-${MAX_QUESTIONS} questions whose answers would most change the finished pages.
 
 Ask about things only they can know — who it is for, what is being sold and at what price, dates, what happens after signup, what makes their offer different. NEVER ask which template to use, what the URL should be, or anything about page layout: the system decides those.
 
@@ -119,12 +122,16 @@ function briefUser(brief: string): string {
 }
 
 /** Step 1 — Haiku. Returns the questions to put in front of the owner. */
-export async function interviewQuestions(brief: string): Promise<InterviewQuestion[]> {
-  const result = await callAgent(QUESTIONS_SYSTEM, briefUser(brief), questionsSchema, {
+export async function interviewQuestions(
+  brief: string,
+  kind: CreateKind = "funnel",
+): Promise<InterviewQuestion[]> {
+  const system = kind === "page" ? PAGE_QUESTIONS_SYSTEM : FUNNEL_QUESTIONS_SYSTEM
+  const result = await callAgent(system, briefUser(brief), questionsSchema, {
     model: MODEL_HAIKU,
     maxTokens: 1200,
   })
-  return result.data.questions
+  return result.content.questions
 }
 
 /** Step 2 — Sonnet. Returns the plan, still unsanitised. */
@@ -142,5 +149,66 @@ export async function draftFunnelPlan(
     planSchema,
     { model: MODEL_SONNET, maxTokens: 2000 },
   )
-  return result.data as RawFunnelPlan
+  return result.content as RawFunnelPlan
+}
+
+// ---------------------------------------------------------------------------
+// LANDING PAGES.
+//
+// A page interview asks different questions and returns a different shape. The
+// temptation is to reuse the funnel prompt and ignore the step fields — that
+// produces questions about sequences the owner cannot build ("what happens
+// after they sign up?" has no second page to happen on), and a plan whose most
+// important field, the goal, was never asked about.
+// ---------------------------------------------------------------------------
+
+const PAGE_QUESTIONS_SYSTEM = `You help a strength-and-conditioning coach set up a single landing page. Given one sentence about what they want, ask the ${MIN_QUESTIONS}-${MAX_QUESTIONS} questions whose answers would most change the finished page.
+
+Ask about things only they can know — who the page is for, what is being offered and on what terms, what the visitor is being asked to do, what objection stops them, what happens after they act. NEVER ask about page layout, sections, URLs, or how many pages there are: this is ONE page and the system decides its structure.
+
+Each question is one short sentence, answerable in a line or two. No compound questions.
+
+Return only the questions.`
+
+const pageGoalCatalogue = () =>
+  FUNNEL_GOALS.map((goal) => `- ${goal.value}: ${goal.label} — ${goal.hint}`).join("\n")
+
+const pagePlanSchema = z.object({
+  goal: z.enum(FUNNEL_GOALS.map((goal) => goal.value) as [string, ...string[]]),
+  name: z.string().min(1).max(120),
+  audience: z.string().max(300).nullable(),
+  description: z.string().max(500).nullable(),
+})
+
+function pagePlanSystem(): string {
+  return `You turn a coach's brief and their answers into a plan for ONE landing page.
+
+Choose the goal that matches what the page is for:
+${pageGoalCatalogue()}
+
+Rules:
+- "goal" decides the page's call to action, so pick the one the visitor is actually being asked to do. If they are only collecting details, that is "leads".
+- "name" is what the coach would call this in a list — short, and only their words.
+- "audience" is who the page is written for, in one line.
+- "description" is 2-4 sentences a page writer could work from: who it is for, what they get, what they are asked to do, and the objection to answer. It is the brief for the page, so write instructions, not marketing copy.
+
+Return only the plan.`
+}
+
+/** Step 2, pages. Sonnet, same as the funnel side. */
+export async function draftPagePlan(
+  brief: string,
+  answers: { question: string; answer: string }[],
+): Promise<Record<string, unknown>> {
+  const transcript = answers
+    .map((entry) => `Q: ${entry.question}\nA: ${entry.answer.slice(0, ANSWER_MAX_LENGTH)}`)
+    .join("\n\n")
+
+  const result = await callAgent(
+    pagePlanSystem(),
+    `${briefUser(brief)}\n\nWhat they told us:\n${transcript}`,
+    pagePlanSchema,
+    { model: MODEL_SONNET, maxTokens: 1500 },
+  )
+  return result.content as Record<string, unknown>
 }

@@ -21,9 +21,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { DataTableBadge } from "@/components/ui/data-table"
-import { FUNNEL_EXAMPLES } from "@/lib/funnels/examples"
+import { FUNNEL_EXAMPLES, PAGE_EXAMPLES } from "@/lib/funnels/examples"
 import { getTemplate } from "@/lib/funnels/templates"
-import type { FunnelPlan } from "@/lib/funnels/ai-plan"
+import { FUNNEL_GOALS } from "@/lib/validators/funnel"
+import type { CreatePlan } from "@/lib/funnels/ai-plan"
 
 /** One of the owner's funnels, derived from what the board already loaded. */
 export interface OwnExample {
@@ -37,11 +38,18 @@ export interface OwnExample {
 interface ExamplesDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onApply: (plan: FunnelPlan) => void
+  onApply: (plan: CreatePlan) => void
   ownExamples: OwnExample[]
+  /**
+   * Which screen this is. A page has a GOAL where a funnel has a template and
+   * a step plan, so the two share the modal and nothing else — rendering one
+   * list and hiding half its fields would show a page owner a step sequence
+   * they cannot have.
+   */
+  kind: "page" | "funnel"
 }
 
-export function ExamplesDialog({ open, onOpenChange, onApply, ownExamples }: ExamplesDialogProps) {
+export function ExamplesDialog({ open, onOpenChange, onApply, ownExamples, kind }: ExamplesDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -56,7 +64,50 @@ export function ExamplesDialog({ open, onOpenChange, onApply, ownExamples }: Exa
         </DialogHeader>
 
         <div className="space-y-3">
-          {FUNNEL_EXAMPLES.map((example) => {
+          {kind === "page"
+            ? PAGE_EXAMPLES.map((example) => (
+                <article
+                  key={example.slug}
+                  data-testid="curated-example"
+                  className="rounded-lg border border-border p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        {FUNNEL_GOALS.find((goal) => goal.value === example.goal)?.label ?? example.goal}
+                      </p>
+                      <h3 className="mt-0.5 font-medium text-primary">{example.name}</h3>
+                      <p className="font-mono text-xs text-muted-foreground">/go/{example.slug}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        onApply({
+                          kind: "page",
+                          goal: example.goal,
+                          name: example.name,
+                          audience: example.audience,
+                          description: example.description,
+                        })
+                        onOpenChange(false)
+                      }}
+                    >
+                      Start from this
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">For:</span> {example.audience}
+                  </p>
+                  <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
+                    {example.description}
+                  </p>
+                  <p className="mt-2 border-t border-border pt-2 text-xs text-foreground">
+                    <span className="font-medium">Why it works:</span> {example.whyItWorks}
+                  </p>
+                </article>
+              ))
+            : FUNNEL_EXAMPLES.map((example) => {
             const template = getTemplate(example.template)
             return (
               <article
@@ -77,6 +128,7 @@ export function ExamplesDialog({ open, onOpenChange, onApply, ownExamples }: Exa
                     variant="outline"
                     onClick={() => {
                       onApply({
+                        kind: "funnel",
                         template: example.template,
                         name: example.name,
                         steps: example.steps.map((step) => ({ ...step })),
@@ -118,7 +170,10 @@ export function ExamplesDialog({ open, onOpenChange, onApply, ownExamples }: Exa
         {/* Absent, not an empty state: the curated set above already answers
             "show me one", so a "you have no funnels yet" panel would be a box
             saying nothing directly under six boxes saying plenty. */}
-        {ownExamples.length > 0 ? (
+        {/* Funnels only. "Copy this structure" copies a TEMPLATE's step plan,
+            and a page has neither — so on the pages screen this section would
+            offer a button that cannot do anything. */}
+        {kind === "funnel" && ownExamples.length > 0 ? (
           <section className="space-y-2 border-t border-border pt-4">
             <h3 className="text-sm font-medium">Your funnels</h3>
             {ownExamples.map((own) => (
@@ -148,6 +203,7 @@ export function ExamplesDialog({ open, onOpenChange, onApply, ownExamples }: Exa
                     onClick={() => {
                       const template = getTemplate(own.template!)!
                       onApply({
+                        kind: "funnel",
                         template: template.value,
                         // NEVER the name or the slug. Both must stay unique, and
                         // copying them hands the owner a guaranteed 409.

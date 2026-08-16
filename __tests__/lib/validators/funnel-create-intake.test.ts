@@ -270,3 +270,36 @@ describe("createFunnelSchema — what must not change", () => {
     expect(createFunnelSchema.safeParse({ ...base, template: "webinar" }).success).toBe(false)
   })
 })
+
+describe("createFunnelSchema — landing pages, which have no template", () => {
+  const page = { name: "Free Trial", slug: "free-trial", kind: "page" as const, goal: "leads" as const }
+
+  it("accepts an audience on a page", () => {
+    // MUTANT KILLED: `asks()` returning false whenever there is no template.
+    // A page legitimately names its reader — `funnels.audience` is a plain
+    // column the page builder's first prompt reads — and the obvious reading
+    // of the asks filter rejected every one of them.
+    const result = createFunnelSchema.safeParse({
+      ...page,
+      audience: "High-school athletes considering a first block",
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("still refuses a run window on a page", () => {
+    // Dates exist only as a thing a funnel TEMPLATE asks for. Loosening the
+    // no-template case must not loosen this one too.
+    expect(
+      createFunnelSchema.safeParse({ ...page, ends_at: "2026-08-15T00:00:00.000Z" }).success,
+    ).toBe(false)
+  })
+
+  it("still refuses an offer and recipients on a page", () => {
+    expect(
+      createFunnelSchema.safeParse({ ...page, offer: { kind: "program", ref: "X" } }).success,
+    ).toBe(false)
+    expect(
+      createFunnelSchema.safeParse({ ...page, notify_emails: ["a@b.com"] }).success,
+    ).toBe(false)
+  })
+})

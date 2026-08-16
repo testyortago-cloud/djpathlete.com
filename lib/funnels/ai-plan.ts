@@ -58,6 +58,8 @@ export interface PlannedStep {
 }
 
 export interface FunnelPlan {
+  /** Discriminant. A page plan is a different shape, not a smaller funnel. */
+  kind: "funnel"
   template: string
   name: string
   steps: PlannedStep[]
@@ -67,6 +69,26 @@ export interface FunnelPlan {
   startsAt: string | null
   endsAt: string | null
 }
+
+/**
+ * A LANDING PAGE PLAN, which is deliberately not a one-step funnel.
+ *
+ * A page has a `goal` where a funnel has a `template`, has exactly one step
+ * that needs no naming, and has no run window or step sequence to describe.
+ * Modelling it as a funnel with `steps.length === 1` would mean every consumer
+ * carrying an "is this really a page?" branch, and `CreatePageDialog` would
+ * have to ignore fields it has no controls for.
+ */
+export interface PagePlan {
+  kind: "page"
+  goal: FunnelGoal
+  name: string
+  audience: string | null
+  description: string | null
+}
+
+/** What either assist hands back. Discriminated on `kind`. */
+export type CreatePlan = FunnelPlan | PagePlan
 
 export interface SanitiseOptions {
   /**
@@ -154,6 +176,7 @@ export function sanitiseFunnelPlan(
   // The same array the dialog renders from and the validator refuses by. A
   // field the template does not ask for cannot arrive here by any route.
   return {
+    kind: "funnel",
     template: template.value,
     name: typeof raw.name === "string" ? raw.name.trim() : "",
     steps,
@@ -162,5 +185,28 @@ export function sanitiseFunnelPlan(
     offer,
     startsAt: asks("dates") ? isoOrNull(raw.starts_at) : null,
     endsAt: asks("dates") ? isoOrNull(raw.ends_at) : null,
+  }
+}
+
+/**
+ * The page equivalent.
+ *
+ * The one field that can be wrong in a way nothing downstream catches is
+ * `goal`: `CreatePageDialog` renders its options from `FUNNEL_GOALS` and the
+ * server refuses anything else, so a model-invented goal would be a plan the
+ * dialog cannot display AND the API would reject. Unlike the funnel case there
+ * is nothing to repair it with — a page IS its goal — so an unknown one falls
+ * back to `leads`, the only goal that needs no linked product to work.
+ */
+export function sanitisePagePlan(raw: RawFunnelPlan & { goal?: unknown }): PagePlan {
+  const goal =
+    typeof raw.goal === "string" && GOAL_VALUES.has(raw.goal) ? (raw.goal as FunnelGoal) : "leads"
+
+  return {
+    kind: "page",
+    goal,
+    name: typeof raw.name === "string" ? raw.name.trim() : "",
+    audience: text(raw.audience, AUDIENCE_MAX),
+    description: text(raw.description, DESCRIPTION_MAX),
   }
 }

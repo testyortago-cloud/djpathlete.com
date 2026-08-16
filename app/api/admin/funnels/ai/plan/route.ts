@@ -15,8 +15,13 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
-import { draftFunnelPlan, BRIEF_MAX_LENGTH, MAX_QUESTIONS } from "@/lib/ai/funnel-interview"
-import { sanitiseFunnelPlan } from "@/lib/funnels/ai-plan"
+import {
+  draftFunnelPlan,
+  draftPagePlan,
+  BRIEF_MAX_LENGTH,
+  MAX_QUESTIONS,
+} from "@/lib/ai/funnel-interview"
+import { sanitiseFunnelPlan, sanitisePagePlan } from "@/lib/funnels/ai-plan"
 import { getTemplate } from "@/lib/funnels/templates"
 import { loadCatalogues } from "@/lib/funnels/sections/resolve"
 
@@ -35,7 +40,7 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { brief?: unknown; answers?: unknown }
+    | { brief?: unknown; answers?: unknown; kind?: unknown }
     | null
   const brief = typeof body?.brief === "string" ? body.brief.trim() : ""
   if (brief.length < 3) {
@@ -51,6 +56,22 @@ export async function POST(request: Request) {
     // An unanswered question is worse than an absent one: it tells the model
     // the coach had nothing to say, when they simply skipped it.
     .filter((entry) => entry.question !== "" && entry.answer !== "")
+
+  // Defaults to "funnel" so the documented body keeps working.
+  const kind = body?.kind === "page" ? "page" : "funnel"
+
+  // A PAGE IS NOT A ONE-STEP FUNNEL. It has a goal rather than a template, no
+  // step sequence and no run window, so it gets its own prompt and its own
+  // sanitiser rather than a funnel plan with fields the page dialog ignores.
+  if (kind === "page") {
+    try {
+      const rawPage = await draftPagePlan(brief.slice(0, BRIEF_MAX_LENGTH), answers)
+      return NextResponse.json({ plan: sanitisePagePlan(rawPage) })
+    } catch (error) {
+      console.error("[funnels/ai/plan] page draft failed", error)
+      return NextResponse.json({ error: "Could not draft a plan just now." }, { status: 502 })
+    }
+  }
 
   let raw
   try {

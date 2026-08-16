@@ -9,7 +9,7 @@
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Plus } from "lucide-react"
+import { BookOpen, Plus, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -26,6 +26,9 @@ import {
 import { slugify } from "@/lib/funnels/slug"
 import { FUNNEL_GOALS, RESERVED_FUNNEL_SLUGS, FUNNEL_SLUG_PATTERN } from "@/lib/validators/funnel"
 import type { FunnelGoal } from "@/types/database"
+import type { CreatePlan } from "@/lib/funnels/ai-plan"
+import { AskAiDialog } from "./AskAiDialog"
+import { ExamplesDialog } from "./ExamplesDialog"
 
 interface CreatePageDialogProps {
   /** Slugs already taken, for the inline hint. The server 409 stays authoritative. */
@@ -39,6 +42,9 @@ export function CreatePageDialog({ takenSlugs }: CreatePageDialogProps) {
   const [slug, setSlug] = useState("")
   const [slugTouched, setSlugTouched] = useState(false)
   const [goal, setGoal] = useState<FunnelGoal>("leads")
+  const [audience, setAudience] = useState("")
+  const [askAiOpen, setAskAiOpen] = useState(false)
+  const [examplesOpen, setExamplesOpen] = useState(false)
   const [description, setDescription] = useState("")
   const [creating, setCreating] = useState(false)
 
@@ -65,7 +71,28 @@ export function CreatePageDialog({ takenSlugs }: CreatePageDialogProps) {
     setSlug("")
     setSlugTouched(false)
     setGoal("leads")
+    setAudience("")
     setDescription("")
+  }
+
+  /**
+   * THE ONE WAY ANYTHING WRITES TO THESE FIELDS — the same contract the funnel
+   * dialog has. Both assists land here rather than each poking at state.
+   *
+   * Narrowed, not cast: the modals are shared, so a funnel plan arriving on the
+   * pages screen is a wiring mistake, and applying half of it (a template this
+   * dialog has no control for) would be worse than doing nothing.
+   */
+  function applyPlan(plan: CreatePlan) {
+    if (plan.kind !== "page") return
+    setGoal(plan.goal)
+    if (plan.name) {
+      setName(plan.name)
+      setSlug(slugify(plan.name))
+      setSlugTouched(true)
+    }
+    if (plan.audience) setAudience(plan.audience)
+    if (plan.description) setDescription(plan.description)
   }
 
   async function handleCreate() {
@@ -80,6 +107,7 @@ export function CreatePageDialog({ takenSlugs }: CreatePageDialogProps) {
           slug: effectiveSlug,
           kind: "page",
           goal,
+          ...(audience.trim() ? { audience: audience.trim() } : {}),
           description: description.trim() === "" ? null : description.trim(),
         }),
       })
@@ -125,6 +153,18 @@ export function CreatePageDialog({ takenSlugs }: CreatePageDialogProps) {
             One focused page with one job. Answer these and the builder writes the first draft for you.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-border bg-surface/30 px-3 py-2">
+          <span className="text-xs text-muted-foreground">Not sure where to start?</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => setExamplesOpen(true)}>
+            <BookOpen className="size-3.5" />
+            See examples
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setAskAiOpen(true)}>
+            <Sparkles className="size-3.5" />
+            Ask AI
+          </Button>
+        </div>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
@@ -190,6 +230,22 @@ export function CreatePageDialog({ takenSlugs }: CreatePageDialogProps) {
             </div>
           </fieldset>
 
+          {/* A real column (`funnels.audience`) that the page builder's first
+              prompt reads. Added here because Ask AI produces one and a field
+              written with nowhere to land is the defect this whole area has
+              already shipped twice. */}
+          <div className="space-y-1.5">
+            <Label htmlFor="page-audience">Who is this for?</Label>
+            <Input
+              id="page-audience"
+              value={audience}
+              onChange={(event) => setAudience(event.target.value)}
+              placeholder="High-school athletes considering a first training block"
+              maxLength={300}
+            />
+            <p className="text-xs text-muted-foreground">Optional. The page is written to this reader.</p>
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="page-description">Describe it</Label>
             <Textarea
@@ -216,6 +272,17 @@ export function CreatePageDialog({ takenSlugs }: CreatePageDialogProps) {
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Siblings, not children: a Dialog inside another Dialog's content traps
+          focus in the outer one and the inner modal cannot be typed into. */}
+      <AskAiDialog open={askAiOpen} onOpenChange={setAskAiOpen} onApply={applyPlan} kind="page" />
+      <ExamplesDialog
+        open={examplesOpen}
+        onOpenChange={setExamplesOpen}
+        onApply={applyPlan}
+        ownExamples={[]}
+        kind="page"
+      />
     </Dialog>
   )
 }

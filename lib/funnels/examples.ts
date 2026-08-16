@@ -17,6 +17,7 @@
 // without it is a filled-in form; with it, it is a reason.
 
 import { FUNNEL_TEMPLATES, type FunnelTemplateId } from "@/lib/funnels/templates"
+import { FUNNEL_GOALS } from "@/lib/validators/funnel"
 import type { FunnelGoal } from "@/types/database"
 
 export interface FunnelExample {
@@ -109,3 +110,86 @@ export const FUNNEL_EXAMPLES = [
 export function exampleFor(templateId: string): FunnelExample | null {
   return FUNNEL_EXAMPLES.find((example) => example.template === templateId) ?? null
 }
+
+// ---------------------------------------------------------------------------
+// LANDING PAGES.
+//
+// A page is not a one-step funnel and its examples are not one-step funnel
+// examples. What varies between pages is the GOAL — the same five values
+// `CreatePageDialog` renders and `FUNNEL_GOALS` owns — so there is one worked
+// example per goal, and the test asserts the set covers all of them.
+//
+// The `whyItWorks` line carries more weight here than on the funnel side. A
+// funnel example teaches shape, which the step list already shows; a page has
+// no shape to show, so the reason IS the lesson.
+// ---------------------------------------------------------------------------
+
+export interface PageExample {
+  goal: FunnelGoal
+  name: string
+  slug: string
+  audience: string
+  description: string
+  whyItWorks: string
+}
+
+export const PAGE_EXAMPLES = [
+  {
+    goal: "leads",
+    name: "Free Trial Week",
+    slug: "free-trial-week",
+    audience: "High-school athletes considering their first structured training block",
+    description:
+      "One week of in-person training, no payment, to see whether the coaching fits. The form asks sport, age and current training days — nothing else — so the first reply can be specific. Promise a reply within 24 hours and say so on the page.",
+    whyItWorks:
+      "Three form fields, not ten. Every extra field costs completions, and sport and age are all you need to reply well.",
+  },
+  {
+    goal: "booking",
+    name: "Free Consult",
+    slug: "free-consult",
+    audience: "People weighing up coaching who have not decided what they need",
+    description:
+      "A twenty-minute call to work out whether coaching is the right next step and which kind. No prep, no obligation. Say plainly what happens on the call and what they walk away with.",
+    whyItWorks:
+      "It names the fear — that this is a sales pitch — instead of hoping nobody has it.",
+  },
+  {
+    goal: "program",
+    name: "Off-Season Block",
+    slug: "off-season-block",
+    audience: "Returning clients who train alone between seasons",
+    description:
+      "An eight-week programme for athletes who already know the movements and train unsupervised. Three sessions a week in the app, weekly check-ins. Sell structure and accountability, not novelty — these people have trained before.",
+    whyItWorks:
+      "It says who it is not for, so the people it is not for do not buy it and then churn.",
+  },
+  {
+    goal: "session_pack",
+    name: "Ten-Session Pack",
+    slug: "ten-session-pack",
+    audience: "Local clients who want in-person sessions without a monthly commitment",
+    description:
+      "Ten one-to-one sessions, used whenever suits, no expiry. For people who want coaching in the room but will not sign up to a subscription. Lead on flexibility and on what a single session actually contains.",
+    whyItWorks:
+      "The objection it answers is in the first line rather than buried in an FAQ nobody opens.",
+  },
+  {
+    goal: "event",
+    name: "Spring Skills Clinic",
+    slug: "spring-skills-clinic",
+    audience: "Club players aged 14-18 and the parents booking for them",
+    description:
+      "A one-day clinic on serve mechanics and return position, capped at 16 players. Write for the parent, who is the one paying and reading. Cover date, venue, what to bring, and what a player leaves able to do.",
+    whyItWorks:
+      "It answers the logistics a parent needs before they will even consider the coaching.",
+  },
+] as const satisfies readonly PageExample[]
+
+/** The example for a page goal, or null. */
+export function pageExampleFor(goal: string): PageExample | null {
+  return PAGE_EXAMPLES.find((example) => example.goal === goal) ?? null
+}
+
+/** Every goal the page dialog offers has an example. Asserted in the test. */
+export const PAGE_GOALS_COVERED = FUNNEL_GOALS.every((goal) => pageExampleFor(goal.value) !== null)

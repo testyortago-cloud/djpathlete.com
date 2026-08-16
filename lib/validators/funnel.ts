@@ -130,7 +130,17 @@ export const createFunnelSchema = z
     // clear, and the window closer would eventually act on it.
     // ---------------------------------------------------------------------
     const template = getTemplate(value.template)
-    const asks = (ask: TemplateAsk) => template?.asks.includes(ask) ?? false
+    // WITH NO TEMPLATE, ONLY `audience` IS ALLOWED — and that is not a special
+    // case bolted on, it is what a landing page is. A page has no template
+    // (templates describe a step sequence and a page has one step), but
+    // `funnels.audience` is a plain column it legitimately sets and the page
+    // builder's first prompt reads. Dates, offers and lead recipients remain
+    // refused, because those exist only as things a funnel template asks for.
+    //
+    // Returning `false` for everything here — the obvious reading — silently
+    // rejected every landing page that named its reader.
+    const asks = (ask: TemplateAsk) =>
+      template ? template.asks.includes(ask) : ask === "audience"
 
     const wantsWindow =
       value.starts_at != null || value.ends_at != null || value.auto_offline_at_end === true

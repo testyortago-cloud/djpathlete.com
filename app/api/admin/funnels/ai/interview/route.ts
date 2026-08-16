@@ -7,7 +7,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
-import { interviewQuestions, BRIEF_MAX_LENGTH } from "@/lib/ai/funnel-interview"
+import { interviewQuestions, BRIEF_MAX_LENGTH, type CreateKind } from "@/lib/ai/funnel-interview"
 
 export const runtime = "nodejs"
 export const maxDuration = 60
@@ -18,14 +18,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  const body = (await request.json().catch(() => null)) as { brief?: unknown } | null
+  const body = (await request.json().catch(() => null)) as
+    | { brief?: unknown; kind?: unknown }
+    | null
   const brief = typeof body?.brief === "string" ? body.brief.trim() : ""
   if (brief.length < 3) {
     return NextResponse.json({ error: "Tell me what you want to build first." }, { status: 400 })
   }
 
   try {
-    const questions = await interviewQuestions(brief.slice(0, BRIEF_MAX_LENGTH))
+    // Defaults to "funnel" so the documented one-field body keeps working.
+    const kind: CreateKind = body?.kind === "page" ? "page" : "funnel"
+    const questions = await interviewQuestions(brief.slice(0, BRIEF_MAX_LENGTH), kind)
     return NextResponse.json({ questions })
   } catch (error) {
     // A model failure costs the owner the assist, never the dialog — the client

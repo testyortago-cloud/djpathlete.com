@@ -64,7 +64,7 @@ describe("<GenerationStage>", () => {
   })
 
   it("keeps the wireframe out of the accessibility tree", () => {
-    stage({ sections: [{ key: "s1", op: "add_section", kind: "hero", id: "a", headline: "Hi" }] })
+    stage({ sections: [{ key: "s1", op: "add_section", kind: "hero", id: "a", headline: "Hi", variant: null }] })
     const wireframe = screen.getByText("hero").closest("[aria-hidden]")
     expect(wireframe).not.toBeNull()
   })
@@ -82,7 +82,7 @@ describe("<GenerationStage>", () => {
     const { container: heroBox } = render(
       <GenerationStage
         phase="writing"
-        sections={[{ key: "s1", op: "add_section", kind: "hero", id: "a", headline: null }]}
+        sections={[{ key: "s1", op: "add_section", kind: "hero", id: "a", headline: null, variant: null }]}
         tokens={null}
         doc={null}
         attempt={1}
@@ -92,7 +92,7 @@ describe("<GenerationStage>", () => {
     const { container: unknownBox } = render(
       <GenerationStage
         phase="writing"
-        sections={[{ key: "s2", op: "add_section", kind: "made-up", id: "b", headline: null }]}
+        sections={[{ key: "s2", op: "add_section", kind: "made-up", id: "b", headline: null, variant: null }]}
         tokens={null}
         doc={null}
         attempt={1}
@@ -104,7 +104,7 @@ describe("<GenerationStage>", () => {
 
   it("scrolls the section list rather than overflowing the pane", () => {
     // A ten-section plan must not push the token meter off the bottom.
-    stage({ sections: [{ key: "s1", op: "add_section", kind: "hero", id: "a", headline: null }] })
+    stage({ sections: [{ key: "s1", op: "add_section", kind: "hero", id: "a", headline: null, variant: null }] })
     const list = screen.getByText("hero").closest("[aria-hidden]")!
     expect(list.className).toContain("overflow-y-auto")
   })

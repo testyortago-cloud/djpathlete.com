@@ -39,7 +39,7 @@ import {
 import { slugify } from "@/lib/funnels/slug"
 import { FUNNEL_TEMPLATES, getTemplate, type FunnelTemplate } from "@/lib/funnels/templates"
 import { RESERVED_FUNNEL_SLUGS, FUNNEL_SLUG_PATTERN } from "@/lib/validators/funnel"
-import type { FunnelPlan } from "@/lib/funnels/ai-plan"
+import type { CreatePlan } from "@/lib/funnels/ai-plan"
 import { StepPlanEditor, stepPlanErrors, type PlannedStep } from "./StepPlanEditor"
 import { AskAiDialog } from "./AskAiDialog"
 import { ExamplesDialog, type OwnExample } from "./ExamplesDialog"
@@ -158,7 +158,11 @@ export function CreateFunnelDialog({
    * clearing `selectTemplate` does, because an applied plan changes the
    * template and must not leave a hidden field behind it.
    */
-  function applyPlan(plan: FunnelPlan) {
+  function applyPlan(plan: CreatePlan) {
+    // Narrowed, not cast. The dialogs are shared with the pages screen, so a
+    // page plan reaching here is a wiring mistake — and silently applying half
+    // of it would be worse than doing nothing.
+    if (plan.kind !== "funnel") return
     const template = getTemplate(plan.template) ?? DEFAULT_TEMPLATE
     setTemplateId(template.value)
     setSteps(plan.steps.map((step) => ({ ...step })))
@@ -510,12 +514,13 @@ export function CreateFunnelDialog({
       {/* Siblings, not children of DialogContent: a Dialog nested inside another
           Dialog's content traps focus in the outer one and the inner modal
           cannot be typed into. */}
-      <AskAiDialog open={askAiOpen} onOpenChange={setAskAiOpen} onApply={applyPlan} />
+      <AskAiDialog open={askAiOpen} onOpenChange={setAskAiOpen} onApply={applyPlan} kind="funnel" />
       <ExamplesDialog
         open={examplesOpen}
         onOpenChange={setExamplesOpen}
         onApply={applyPlan}
         ownExamples={ownExamples}
+        kind="funnel"
       />
     </Dialog>
   )

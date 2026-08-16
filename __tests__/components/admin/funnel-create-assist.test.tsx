@@ -17,7 +17,11 @@ vi.mock("sonner", () => ({ toast }))
 const push = vi.hoisted(() => vi.fn())
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }) }))
 
+// `kind` is REQUIRED. Without it applyPlan refuses the plan — which is the
+// discriminant doing its job, since the modals are shared with the pages
+// screen and a plan with no kind could be either.
 const PLAN = {
+  kind: "funnel",
   template: "event",
   name: "Summer Camp 2026",
   steps: [
