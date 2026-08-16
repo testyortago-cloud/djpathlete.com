@@ -15,13 +15,14 @@
 // than the server does. Every other page stays exactly as the server described
 // it, because nothing in this tab can have changed it.
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 import {
   funnelConnections,
   type FunnelConnections,
   type StepWithDoc,
 } from "@/lib/funnels/connections"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
+import type { SectionOp } from "@/lib/funnels/sections/apply"
 
 interface ConnectionsState {
   connections: FunnelConnections
@@ -44,9 +45,28 @@ export interface RailPage {
   published: boolean
 }
 
+/**
+ * The one page that can currently be repaired, and how.
+ *
+ * ONLY THE PAGE BEING EDITED. Applying ops needs the step's revision, which
+ * `PUT .../edit` checks to refuse a stale write — and the layout holds no
+ * revisions, only documents. A "fix every page" button would therefore have to
+ * either skip the check or invent revisions, and both mean silently clobbering
+ * whatever another tab has done. So the rail reports every page that leads
+ * nowhere, and offers the fix on the one whose revision the builder is holding.
+ */
+interface Repair {
+  stepId: string
+  apply: (ops: SectionOp[]) => void | Promise<void>
+}
+
 interface ContextValue extends ConnectionsState {
   /** Recompute one page's rows from the document the builder now holds. */
   publishStepConnections: (stepId: string, doc: SectionDoc | null) => void
+  repair: Repair | null
+  registerRepair: (repair: Repair | null) => void
+  /** The document the builder currently holds, for the page it is editing. */
+  docFor: (stepId: string) => SectionDoc | null
 }
 
 const ConnectionsContext = createContext<ContextValue | null>(null)
@@ -85,14 +105,31 @@ export function ConnectionsProvider({
     })
   }, [])
 
+  const [repair, setRepair] = useState<Repair | null>(null)
+
   // Recomputed from the documents rather than stored, so there is exactly one
   // definition of "what leads where" and the rail cannot drift from what the
   // publish gate will say about the same page.
   const connections = useMemo(() => funnelConnections(funnelSlug, docs), [funnelSlug, docs])
 
+  const docFor = useCallback(
+    (stepId: string) => docs.find((entry) => entry.id === stepId)?.doc ?? null,
+    [docs],
+  )
+
   const value = useMemo<ContextValue>(
-    () => ({ connections, pages, funnelId, funnelSlug, funnelKind, publishStepConnections }),
-    [connections, pages, funnelId, funnelSlug, funnelKind, publishStepConnections],
+    () => ({
+      connections,
+      pages,
+      funnelId,
+      funnelSlug,
+      funnelKind,
+      publishStepConnections,
+      repair,
+      registerRepair: setRepair,
+      docFor,
+    }),
+    [connections, pages, funnelId, funnelSlug, funnelKind, publishStepConnections, repair, docFor],
   )
 
   return <ConnectionsContext.Provider value={value}>{children}</ConnectionsContext.Provider>
@@ -122,4 +159,26 @@ export function usePublishStepConnections(): (stepId: string, doc: SectionDoc | 
     () => context?.publishStepConnections ?? (() => {}),
     [context],
   )
+}
+
+/**
+ * The builder tells the rail how to write to the page it is holding.
+ *
+ * The rail cannot write on its own: `PUT .../edit` checks a revision, and the
+ * layout holds documents but no revisions. The builder has both, so it lends
+ * the rail its writer for the one page it is editing — and takes it back on
+ * unmount, so a stale writer can never be aimed at a page that is no longer
+ * open.
+ */
+export function useRegisterRepair(
+  stepId: string,
+  apply: (ops: SectionOp[]) => void | Promise<void>,
+): void {
+  const context = useContext(ConnectionsContext)
+  const register = context?.registerRepair
+  useEffect(() => {
+    if (!register) return
+    register({ stepId, apply })
+    return () => register(null)
+  }, [register, stepId, apply])
 }

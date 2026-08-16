@@ -75,7 +75,7 @@ import { PreviewPane, type PreviewDevice } from "./builder/PreviewPane"
 import { PublishReview } from "./builder/PublishReview"
 import { SectionInspector } from "./builder/SectionInspector"
 import { patchForPath, valueAtPath } from "@/lib/funnels/sections/patch"
-import { usePublishStepConnections } from "./connections-context"
+import { usePublishStepConnections, useRegisterRepair } from "./connections-context"
 import { ImageSlotDialog, type HeroMedia } from "./builder/ImageSlotDialog"
 import type { CanvasCommit, CanvasSelection } from "./builder/canvas-editing"
 import { candidatePickMessage } from "./builder/format"
@@ -434,6 +434,13 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     },
     [props.stepId, revision],
   )
+
+  // LENDS THE RAIL THIS PAGE'S WRITER, so its "Connect to <page>" button can
+  // act on the one page whose revision this builder is holding. Registered
+  // AFTER `sendOps` exists, and through it rather than around it, so a repair
+  // takes the same revision check, the same 409 handling and the same
+  // transcript turn as any other edit — which is what makes it undoable.
+  useRegisterRepair(props.stepId, sendOps)
 
   const handleCanvasSelect = useCallback((selection: CanvasSelection) => {
     setSelected(selection)

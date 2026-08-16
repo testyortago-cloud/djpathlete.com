@@ -22,7 +22,7 @@ import { usePathname } from "next/navigation"
 import { AlertTriangle, ArrowDown, CircleDot } from "lucide-react"
 import { useConnections, type RailPage } from "./connections-context"
 import { adminStepHref } from "@/lib/funnels/admin-path"
-import type { Connection } from "@/lib/funnels/connections"
+import { autoConnectOps, type Connection } from "@/lib/funnels/connections"
 
 /** The rows leaving one page that go to another page of this funnel. */
 function exitsFrom(connections: Connection[], stepId: string): Connection[] {
@@ -53,10 +53,13 @@ function Exits({
   exits,
   isLast,
   pagesBySlug,
+  repair,
 }: {
   exits: Connection[]
   isLast: boolean
   pagesBySlug: Map<string, RailPage>
+  /** The "connect this page" control, on the page being edited. */
+  repair?: React.ReactNode
 }) {
   if (exits.length === 0) {
     // The last page is SUPPOSED to end. Saying so is the difference between a
@@ -70,9 +73,12 @@ function Exits({
       )
     }
     return (
-      <div className="flex items-center gap-1.5 py-1 pl-3 text-[11px] text-[var(--warning)]">
-        <AlertTriangle className="size-3 shrink-0" aria-hidden />
-        <span>leads nowhere</span>
+      <div className="space-y-1 py-1 pl-3">
+        <div className="flex items-center gap-1.5 text-[11px] text-[var(--warning)]">
+          <AlertTriangle className="size-3 shrink-0" aria-hidden />
+          <span>leads nowhere</span>
+        </div>
+        {repair}
       </div>
     )
   }
@@ -109,6 +115,50 @@ function Exits({
         )
       })}
     </div>
+  )
+}
+
+/**
+ * "Connect this page" — the repair tool, offered where the problem is named.
+ *
+ * Renders NOTHING unless all three are true: this is the page the builder is
+ * holding (so there is a revision to write against), there is a page after it,
+ * and `autoConnectOps` actually found something it is allowed to change. That
+ * last one matters — a button that can be pressed and does nothing teaches the
+ * owner it is broken, and a page whose buttons are all deliberate choices is
+ * exactly the case the repair tool refuses.
+ *
+ * It CONFIRMS FIRST, listing every change in the owner's own button text. The
+ * ops go through the builder's normal writer, so the whole repair lands as one
+ * transcript turn and "go back to here" undoes it.
+ */
+function ConnectThisPage({ page, next }: { page: RailPage; next: RailPage | null }) {
+  const context = useConnections()
+  const repair = context?.repair
+  if (!context || !repair || repair.stepId !== page.id || !next) return null
+
+  const doc = context.docFor(page.id)
+  if (!doc) return null
+
+  const plan = autoConnectOps(doc, { funnelSlug: context.funnelSlug, nextStepSlug: next.slug })
+  if (plan.ops.length === 0) return null
+
+  return (
+    <button
+      type="button"
+      className="rounded-md border border-border px-1.5 py-0.5 text-[11px] text-primary transition-colors hover:bg-surface"
+      onClick={() => {
+        const lines = plan.changes.map((change) => `• ${change.label} → ${next.name}`)
+        const ok = window.confirm(
+          `Connect "${page.name}" to "${next.name}"?\n\n${lines.join("\n")}\n\n` +
+            `You can undo this from the chat.`,
+        )
+        if (!ok) return
+        void repair.apply(plan.ops)
+      }}
+    >
+      Connect to {next.name}
+    </button>
   )
 }
 
@@ -158,6 +208,11 @@ export function StepRail() {
                 exits={exitsFrom(connections.connections, page.id)}
                 isLast={page.id === lastId}
                 pagesBySlug={pagesBySlug}
+                repair={
+                  // Only on the page being edited — see `Repair` in the
+                  // context for why the rail cannot write to the others.
+                  <ConnectThisPage page={page} next={ordered[index + 1] ?? null} />
+                }
               />
             </li>
           )

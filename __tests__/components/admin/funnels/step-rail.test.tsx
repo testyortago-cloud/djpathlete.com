@@ -8,7 +8,7 @@
 // `@testing-library/user-event` is not a dependency here — `fireEvent` only.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, within } from "@testing-library/react"
+import { render, screen, within, fireEvent } from "@testing-library/react"
 
 const pathnameMock = vi.fn(() => "/admin/funnels/f1/edit/s1")
 vi.mock("next/navigation", () => ({ usePathname: () => pathnameMock() }))
@@ -21,7 +21,11 @@ vi.mock("next/link", () => ({
 }))
 
 import { StepRail } from "@/components/admin/funnels/StepRail"
-import { ConnectionsProvider, type RailPage } from "@/components/admin/funnels/connections-context"
+import {
+  ConnectionsProvider,
+  useRegisterRepair,
+  type RailPage,
+} from "@/components/admin/funnels/connections-context"
 import type { StepWithDoc } from "@/lib/funnels/connections"
 import type { Section, SectionDoc } from "@/lib/funnels/sections/registry"
 
@@ -227,3 +231,97 @@ describe("StepRail", () => {
     expect(within(items[1]).getByRole("link")).toHaveAttribute("href", "/admin/pages/f1/edit/s2")
   })
 })
+
+// ---------------------------------------------------------------------------
+// "Connect to <page>" — the repair tool, offered where the problem is named.
+//
+// It can only ever act on the page the BUILDER is holding, because applying
+// ops needs a revision and the layout has none. So the rail reports every page
+// that leads nowhere and offers the fix on exactly one of them.
+// ---------------------------------------------------------------------------
+describe("StepRail — connecting a page that leads nowhere", () => {
+  const apply = vi.fn()
+
+  function renderWithRepair(first: SectionDoc | null, stepId = "s1") {
+    render(
+      <ConnectionsProvider
+        funnelId="f1"
+        funnelSlug="camp"
+        funnelKind="funnel"
+        pages={PAGES}
+        initialDocs={docsFor(first)}
+      >
+        <RepairRegistration stepId={stepId} apply={apply} />
+        <StepRail />
+      </ConnectionsProvider>,
+    )
+    return screen.getByRole("navigation", { name: /pages in this funnel/i })
+  }
+
+  beforeEach(() => {
+    apply.mockClear()
+    vi.spyOn(window, "confirm").mockReturnValue(true)
+  })
+
+  it("offers the fix on the page being edited", () => {
+    const rail = renderWithRepair(heroWith({ kind: "url", href: "/" }))
+    const items = within(rail).getAllByRole("listitem")
+    expect(within(items[0]).getByRole("button", { name: /connect to thanks/i })).toBeInTheDocument()
+  })
+
+  it("previews every change and applies NOTHING when the owner cancels", () => {
+    // MUTANT KILLED: applying first and confirming after, or not confirming.
+    // This rewrites the owner's page; doing it without showing what changes
+    // means diffing their own page afterwards to find out.
+    vi.spyOn(window, "confirm").mockReturnValue(false)
+    const rail = renderWithRepair(heroWith({ kind: "url", href: "/" }))
+    fireEvent.click(within(rail).getByRole("button", { name: /connect to thanks/i }))
+    expect(window.confirm).toHaveBeenCalled()
+    expect(String(vi.mocked(window.confirm).mock.calls[0][0])).toContain("Get my spot")
+    expect(apply).not.toHaveBeenCalled()
+  })
+
+  it("sends the repair through the builder's own writer, so it is revertible", () => {
+    const rail = renderWithRepair(heroWith({ kind: "url", href: "/" }))
+    fireEvent.click(within(rail).getByRole("button", { name: /connect to thanks/i }))
+    expect(apply).toHaveBeenCalledWith([
+      {
+        op: "update_section",
+        id: "he1",
+        props: {
+          primaryCta: { label: "Get my spot", target: { kind: "step", stepSlug: "thanks" } },
+        },
+      },
+    ])
+  })
+
+  it("does NOT offer a fix on a page the builder is not holding", () => {
+    // No revision for it, so the write would either skip the staleness check
+    // or invent one — both are silently clobbering another tab.
+    const rail = renderWithRepair(heroWith({ kind: "url", href: "/" }), "s2")
+    expect(within(rail).queryByRole("button", { name: /connect to/i })).toBeNull()
+  })
+
+  it("does NOT offer a fix when every button is a deliberate choice", () => {
+    // MUTANT TO KILL: rendering the button whenever a page leads nowhere. A
+    // program CTA is a real destination the repair tool refuses to touch, so
+    // the button would be pressable and do nothing — which teaches the owner
+    // the control is broken.
+    const rail = renderWithRepair(heroWith({ kind: "program", ref: "Comeback Code" }))
+    expect(within(rail).queryByRole("button", { name: /connect to/i })).toBeNull()
+    // The warning still stands: the page really does lead nowhere.
+    const items = within(rail).getAllByRole("listitem")
+    expect(within(items[0]).getByText(/leads nowhere/i)).toBeInTheDocument()
+  })
+
+  it("offers no fix on the last page, which is supposed to end", () => {
+    const rail = renderWithRepair(null, "s2")
+    expect(within(rail).queryByRole("button", { name: /connect to/i })).toBeNull()
+  })
+})
+
+/** Stands in for `FunnelBuilder`, lending the rail a writer for one page. */
+function RepairRegistration({ stepId, apply }: { stepId: string; apply: (ops: unknown[]) => void }) {
+  useRegisterRepair(stepId, apply as never)
+  return null
+}
