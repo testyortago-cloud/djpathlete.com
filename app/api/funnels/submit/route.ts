@@ -188,6 +188,10 @@ async function notifyCoachOfLead(input: {
     // Deep-linked to this page's leads, filtered, so the click lands on the
     // one lead the email is about rather than on the whole inbox.
     leadsUrl: `${base}/admin/funnels/leads?funnelId=${encodeURIComponent(input.funnelId)}`,
+    // Set at creation by templates that capture leads. Read here rather than
+    // stored on the step, because the owner thinks of it as "who hears about
+    // THIS campaign", not about one page of it.
+    extraRecipients: funnel?.notify_emails ?? null,
   })
 }
 

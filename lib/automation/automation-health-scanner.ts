@@ -52,6 +52,10 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
   { name: "clientRiskScanCron", sla_hours: 30 },       // daily 05:00
   { name: "revenueDigestCron", sla_hours: 192 },       // weekly Mon
   { name: "packRenewalScanCron", sla_hours: 30 },      // daily 09:00
+  // Watched even though it ships disabled: a funnel set to auto-close while
+  // this never runs is the failure mode the detail screen warns about, and a
+  // silent cron death is how it would become permanent.
+  { name: "funnelWindowCron", sla_hours: 30 },          // daily 04:00
 
   // — Crons that call logCronStart. These are also judged on "never succeeded
   //   once", measured from watch_from (the date their logging shipped).

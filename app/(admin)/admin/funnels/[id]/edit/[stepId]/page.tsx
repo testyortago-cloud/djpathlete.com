@@ -21,7 +21,7 @@
 // may turn a page the owner wants to edit into an error screen.
 
 import { notFound, redirect } from "next/navigation"
-import { getFunnelById, getStep, getVersionNumber } from "@/lib/db/funnels"
+import { getFunnelById, getStep, getVersionNumber, listSteps } from "@/lib/db/funnels"
 import { getDraft, listTurns } from "@/lib/db/funnel-builder"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import { reassemble } from "@/lib/funnels/sections/doc"
@@ -29,7 +29,7 @@ import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/regist
 import { loadCatalogues, resolveDoc, type DanglingAnchor, type UnresolvedCta } from "@/lib/funnels/sections/resolve"
 import { SECTION_BUILDER_MAX_MESSAGE_LENGTH } from "@/lib/funnels/sections/builder-config"
 import { FUNNEL_GOALS } from "@/lib/validators/funnel"
-import type { Funnel } from "@/types/database"
+import type { Funnel, FunnelStep } from "@/types/database"
 import { FunnelBuilder } from "@/components/admin/funnels/FunnelBuilder"
 import { renderDocForPublish } from "@/components/admin/funnels/builder/publish-actions"
 import type { BuilderMessage, CompileSummary } from "@/components/admin/funnels/builder/types"
@@ -53,14 +53,58 @@ interface PageProps {
  * Returns null when the page has no goal, which is every row created before
  * goals existed. Those pages open the way they always did.
  */
-function creationPrompt(funnel: Funnel): string | null {
-  const goal = FUNNEL_GOALS.find((option) => option.value === funnel.goal)
-  if (!goal) return null
-  const lines = [
-    `Build a landing page called "${funnel.name}".`,
-    `Its job: ${goal.label.toLowerCase()} — ${goal.hint.toLowerCase()}.`,
-  ]
-  if (funnel.description) lines.push(`What it is for: ${funnel.description}`)
+export function creationPrompt(
+  funnel: Funnel,
+  step: FunnelStep,
+  siblings: FunnelStep[],
+): string | null {
+  // A STEP'S OWN GOAL WINS. `funnel.goal` describes a landing page, which has
+  // exactly one job; a funnel's steps have different ones, and reading the
+  // container's goal here would tell the payment step it is a lead form.
+  const goal = FUNNEL_GOALS.find((option) => option.value === (step.goal ?? funnel.goal))
+
+  // A funnel created before templates, or a page created before goals, has
+  // nothing to say — and must open exactly as it always did rather than have
+  // this feature start drafting over old work.
+  if (!goal && funnel.template === null) return null
+
+  // Landing pages keep their prompt verbatim. It is a shipped, tuned behaviour
+  // and this change is explicitly not in scope for it.
+  if (funnel.kind === "page") {
+    if (!goal) return null
+    const lines = [
+      `Build a landing page called "${funnel.name}".`,
+      `Its job: ${goal.label.toLowerCase()} — ${goal.hint.toLowerCase()}.`,
+    ]
+    if (funnel.description) lines.push(`What it is for: ${funnel.description}`)
+    return lines.join("\n")
+  }
+
+  // `siblings` is the whole ordered list, so the model knows what comes before
+  // and after — a checkout page written without knowing a confirmation follows
+  // it tends to write the confirmation into itself.
+  const ordered = [...siblings].sort((a, b) => a.position - b.position)
+  const position = ordered.findIndex((candidate) => candidate.id === step.id)
+  const lines: string[] = []
+
+  lines.push(
+    position >= 0 && ordered.length > 1
+      ? `Build step ${position + 1} of ${ordered.length} of the "${funnel.name}" funnel, called "${step.name}".`
+      : `Build the "${step.name}" page of the "${funnel.name}" funnel.`,
+  )
+  if (goal) lines.push(`Its job: ${goal.label.toLowerCase()} — ${goal.hint.toLowerCase()}.`)
+  if (funnel.audience) lines.push(`Who it is for: ${funnel.audience}`)
+  if (funnel.description) lines.push(`What the funnel is for: ${funnel.description}`)
+  if (funnel.offer_kind && funnel.offer_ref) {
+    // Named so the CTA can point at something real. The ref came from the
+    // catalogue picker, so `resolve.ts` matches it exactly instead of guessing
+    // at a name the model invented.
+    lines.push(`The offer is the ${funnel.offer_kind.replace("_", " ")} "${funnel.offer_ref}".`)
+  }
+  if (ordered.length > 1) {
+    lines.push(`The full sequence is: ${ordered.map((entry) => entry.name).join(", ")}.`)
+  }
+
   return lines.join("\n")
 }
 
@@ -254,8 +298,41 @@ export async function FunnelBuilderScreen({
   // `start=1` is a nudge from the create dialog, not the condition. The same
   // guards run again inside the builder, so a hand-edited URL cannot make an
   // established page re-run its creation prompt.
-  const initialPrompt =
-    start === "1" && draft.doc === null && turns.length === 0 ? creationPrompt(funnel) : null
+  //
+  // `funnel.template !== null` IS WHAT MAKES STEPS 2..N LAZY. The create dialog
+  // routes into step one with the nudge; every later step is reached from the
+  // step list by an ordinary link with no query string, and would otherwise
+  // open blank forever — which would leave the template having named four steps
+  // and drafted one. A templated funnel therefore drafts any step that has
+  // never been touched, on first open.
+  //
+  // The real guards are the two that follow, and they are unchanged: a step
+  // with no document and no turns has nothing to lose. `FunnelBuilder` re-checks
+  // both plus its own `initialPromptFired` ref before sending.
+  // A TRUTHY check, not `!== null`. Before migration 00210 lands, `select("*")`
+  // returns rows with no `template` key at all — and `undefined !== null` is
+  // TRUE, which would fire the creation prompt on every untouched step of every
+  // funnel that predates templates. Truthiness covers null, undefined and the
+  // empty string alike.
+  const wantsFirstDraft =
+    (start === "1" || Boolean(funnel.template)) && draft.doc === null && turns.length === 0
+
+  // The sibling read happens ONLY when a draft is actually wanted — which is
+  // once in a step's life. Hoisting it above the guard would put an extra query
+  // on every open of every page in the account, forever, to compose a string
+  // that is thrown away.
+  const initialPrompt = wantsFirstDraft
+    ? creationPrompt(
+        funnel,
+        step,
+        await listSteps(funnel.id).catch((error) => {
+          // Losing the sequence context costs the prompt one line. Losing the
+          // editor costs the owner their page.
+          console.error("[funnels/edit] could not read sibling steps for the first draft:", error)
+          return [step]
+        }),
+      )
+    : null
 
   return (
     <FunnelBuilder

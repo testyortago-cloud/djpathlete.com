@@ -1,5 +1,13 @@
 import { z } from "zod"
 import { SECTION_BUILDER_MAX_MESSAGE_LENGTH } from "@/lib/funnels/sections/builder-config"
+import {
+  ENTRY_STEP_SLUG,
+  FUNNEL_TEMPLATES,
+  MAX_FUNNEL_STEPS,
+  getTemplate,
+  type FunnelTemplateId,
+  type TemplateAsk,
+} from "@/lib/funnels/templates"
 import type { FunnelGoal } from "@/types/database"
 
 /**
@@ -60,16 +68,169 @@ export const FUNNEL_GOALS = [
 const goalSchema = z.enum(["leads", "booking", "program", "session_pack", "event"])
 const kindSchema = z.enum(["page", "funnel"])
 
-export const createFunnelSchema = z.object({
-  slug: slugSchema.refine((s) => !RESERVED_FUNNEL_SLUGS.has(s), "That slug is reserved"),
+/**
+ * The template vocabulary, DERIVED FROM THE REGISTRY rather than restated. A
+ * hand-typed enum here would let the dialog offer a template the schema
+ * refuses, which is the exact failure `FUNNEL_GOALS` was introduced to prevent.
+ */
+const templateIdSchema = z.enum(
+  FUNNEL_TEMPLATES.map((template) => template.value) as [FunnelTemplateId, ...FunnelTemplateId[]],
+)
+
+/**
+ * One planned step. `goal` DEFAULTS to null rather than being required: a
+ * thank-you page sells nothing, and forcing the client to send an explicit null
+ * for it is a rule with no purpose that every caller would have to remember.
+ */
+export const createStepPlanSchema = z.object({
   name: nameSchema,
-  description: z.string().max(500).nullable().optional(),
-  // Defaulted, not required: the create route predates this field and callers
-  // that never heard of it must keep working.
-  kind: kindSchema.default("page"),
-  goal: goalSchema.nullable().optional(),
+  slug: slugSchema,
+  goal: goalSchema.nullable().default(null),
 })
 
+/**
+ * `ref` is bounded at 120 to match `ctaTargetSchema`'s own bound in
+ * `lib/funnels/sections/registry.ts`. A longer ref accepted here would be
+ * rejected at RENDER — the worst possible place to discover it, because the
+ * funnel is already created and the CTA silently degrades to a placeholder.
+ */
+const offerSchema = z.object({
+  kind: z.enum(["program", "session_pack", "event"]),
+  ref: z.string().min(1).max(120),
+})
+
+export const createFunnelSchema = z
+  .object({
+    slug: slugSchema.refine((s) => !RESERVED_FUNNEL_SLUGS.has(s), "That slug is reserved"),
+    name: nameSchema,
+    description: z.string().max(500).nullable().optional(),
+    // Defaulted, not required: the create route predates this field and callers
+    // that never heard of it must keep working.
+    kind: kindSchema.default("page"),
+    goal: goalSchema.nullable().optional(),
+    // Everything below is optional for the same reason. A body with none of it
+    // is the landing-page body, and it must parse exactly as it did before.
+    template: templateIdSchema.nullable().optional(),
+    audience: z.string().max(300).nullable().optional(),
+    offer: offerSchema.nullable().optional(),
+    starts_at: z.string().datetime().nullable().optional(),
+    ends_at: z.string().datetime().nullable().optional(),
+    auto_offline_at_end: z.boolean().optional(),
+    notify_emails: z.array(z.string().email()).max(5).nullable().optional(),
+    steps: z.array(createStepPlanSchema).min(1).max(MAX_FUNNEL_STEPS).optional(),
+  })
+  .superRefine((value, ctx) => {
+    // ---------------------------------------------------------------------
+    // THE CONDITIONAL-FIELD RULE, SERVER SIDE.
+    //
+    // The dialog HIDES a field its template does not ask for. This REFUSES it.
+    // Both read the same `asks` array, so they cannot drift into disagreeing —
+    // and without this half, a hidden field is merely invisible, not absent:
+    // a hand-crafted POST would store a run window the owner can never see or
+    // clear, and the window closer would eventually act on it.
+    // ---------------------------------------------------------------------
+    const template = getTemplate(value.template)
+    const asks = (ask: TemplateAsk) => template?.asks.includes(ask) ?? false
+
+    const wantsWindow =
+      value.starts_at != null || value.ends_at != null || value.auto_offline_at_end === true
+    if (wantsWindow && !asks("dates")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ends_at"],
+        message: "This kind of funnel has no run window.",
+      })
+    }
+    // Mirrors the migration's funnels_run_window_check, so the owner meets this
+    // as a message in the dialog rather than a 500 from Postgres.
+    if (value.starts_at && value.ends_at && new Date(value.ends_at) <= new Date(value.starts_at)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["ends_at"],
+        message: "The end must come after the start.",
+      })
+    }
+
+    if (value.offer) {
+      if (!asks("offer")) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["offer"],
+          message: "This kind of funnel has no offer to link.",
+        })
+      } else if (template && value.offer.kind !== template.offerKind) {
+        // A program ref on an event funnel resolves against the wrong table.
+        ctx.addIssue({
+          code: "custom",
+          path: ["offer", "kind"],
+          message: "That offer is from the wrong catalogue.",
+        })
+      }
+    }
+
+    if (value.notify_emails?.length && !asks("notify")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["notify_emails"],
+        message: "This kind of funnel captures no leads.",
+      })
+    }
+
+    if (value.audience && !asks("audience")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["audience"],
+        message: "This kind of funnel does not ask that.",
+      })
+    }
+
+    // `length > 0`, NOT a bare truthiness check on the array.
+    //
+    // ZOD 4 RUNS superRefine EVEN WHEN THE INNER SCHEMA ALREADY FAILED. An
+    // empty `steps` fails `.min(1)` above and still arrives here, so
+    // `value.steps[0].slug` threw a TypeError — turning a body that should be a
+    // clean 400 into a 500 from inside the validator. Zod 3 short-circuited;
+    // this one does not, and every superRefine in this file that indexes into
+    // an array needs the same guard.
+    if (value.steps && value.steps.length > 0) {
+      // The funnel's address /go/<slug> is served by whichever step is the
+      // entry, so a plan that starts anywhere else builds a funnel with no
+      // front door.
+      if (value.steps[0].slug !== ENTRY_STEP_SLUG) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["steps", 0, "slug"],
+          message: `The first step must be "${ENTRY_STEP_SLUG}".`,
+        })
+      }
+      const seen = new Set<string>()
+      value.steps.forEach((step, index) => {
+        if (seen.has(step.slug)) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["steps", index, "slug"],
+            message: "Two steps cannot share a path.",
+          })
+        }
+        seen.add(step.slug)
+      })
+    }
+  })
+
+/**
+ * NO `template` AND NO `steps`, deliberately.
+ *
+ * A template describes CREATION. Changing it later would mean deciding what
+ * happens to steps the old template made and the new one does not — which is a
+ * destructive question a PATCH body should not be able to ask by accident.
+ * Steps are managed through `/api/admin/funnels/steps`, which already exists
+ * and already orders, renames and deletes them one at a time.
+ *
+ * The intake fields ARE editable here — a camp's dates move — and they carry no
+ * template conditional for the same reason: the funnel already exists, and
+ * refusing to let someone clear a date on a funnel whose template was retired
+ * would strand the row.
+ */
 export const updateFunnelSchema = z.object({
   slug: slugSchema.optional(),
   name: nameSchema.optional(),
@@ -77,6 +238,12 @@ export const updateFunnelSchema = z.object({
   status: z.enum(["draft", "published", "archived"]).optional(),
   kind: kindSchema.optional(),
   goal: goalSchema.nullable().optional(),
+  audience: z.string().max(300).nullable().optional(),
+  offer: offerSchema.nullable().optional(),
+  starts_at: z.string().datetime().nullable().optional(),
+  ends_at: z.string().datetime().nullable().optional(),
+  auto_offline_at_end: z.boolean().optional(),
+  notify_emails: z.array(z.string().email()).max(5).nullable().optional(),
 })
 
 export const createStepSchema = z.object({

@@ -42,6 +42,11 @@ export const POST = withAudit(
       // Split the entry step id back out rather than nesting it inside
       // `funnel`: every existing caller reads `body.funnel` as a Funnel row, and
       // widening that shape would be a silent change to all of them.
+      // `parsed.data` spreads straight through: every intake field the schema
+      // accepts is a field `CreateFunnelInput` names, so adding one to the
+      // validator does not need a second edit here. `offer` stays nested and is
+      // split into its two columns by the DAL, which is where the paired CHECK
+      // is honoured.
       const { entryStepId, ...funnel } = await createFunnel({
         ...parsed.data,
         created_by: session.user.id,

@@ -14,7 +14,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
-import { ExternalLink, Trash2, Users } from "lucide-react"
+import { CalendarRange, ExternalLink, Trash2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DataTableBadge, type DataTableBadgeTone } from "@/components/ui/data-table"
 
@@ -37,6 +37,13 @@ export interface PreviewCardProps {
   goalLabel?: string
   /** The owner's own note about what this page is for. */
   description?: string | null
+  /**
+   * The run window, already formatted (`formatRunWindow`). Describes the DATES
+   * only — never the auto-offline job, which is flag-gated and may not be
+   * running. Omitted for every funnel without one, which is all of them until
+   * someone creates a camp.
+   */
+  runWindow?: string | null
   leadCount?: number
   /** Where the lead count points. Omitted = render it as plain text. */
   leadsHref?: string
@@ -89,6 +96,7 @@ export function PreviewCard({
   badgeTone,
   goalLabel,
   description,
+  runWindow,
   leadCount,
   leadsHref,
   onDelete,
@@ -180,6 +188,16 @@ export function PreviewCard({
         {description ? (
           <p data-testid="card-description" className="line-clamp-2 text-xs text-muted-foreground">
             {description}
+          </p>
+        ) : null}
+
+        {runWindow ? (
+          <p
+            data-testid="card-run-window"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground"
+          >
+            <CalendarRange className="size-3.5" aria-hidden />
+            {runWindow}
           </p>
         ) : null}
 

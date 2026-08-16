@@ -187,6 +187,13 @@ export const AUDIT_ACTIONS = [
   { slug: "funnel.deleted", category: "admin_write", description: "Funnel or step deleted (admin)" },
   { slug: "funnel.ai_turn", category: "admin_write", description: "Funnel page AI build turn (admin)" },
   {
+    // The one automation in the app that changes what a visitor sees. Audited
+    // because "who took my camp page down" must have an answer.
+    slug: "funnel.auto_offline",
+    category: "automation",
+    description: "Funnel taken offline because its run window closed (cron)",
+  },
+  {
     slug: "funnel.reverted",
     category: "admin_write",
     description: "Funnel page draft reverted to an earlier turn (admin)",

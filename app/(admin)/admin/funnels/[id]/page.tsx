@@ -2,6 +2,8 @@ import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { getFunnelById, listSteps } from "@/lib/db/funnels"
+import { getSetting } from "@/lib/db/system-settings"
+import { formatRunWindow } from "@/lib/funnels/run-window"
 import { FunnelStatusControl } from "@/components/admin/funnels/FunnelStatusControl"
 import { StepList } from "@/components/admin/funnels/StepList"
 import { AddStepDialog } from "@/components/admin/funnels/AddStepDialog"
@@ -44,6 +46,22 @@ export async function FunnelDetailScreen({ id, base }: { id: string; base: "page
 
   const steps = await listSteps(id)
 
+  const runWindow = formatRunWindow(funnel.starts_at, funnel.ends_at)
+  const offerLabel =
+    funnel.offer_kind && funnel.offer_ref
+      ? `${funnel.offer_ref} (${funnel.offer_kind.replace("_", " ")})`
+      : null
+
+  // Read only when it can change what the screen says. A funnel with no
+  // auto-offline intent needs no answer about the job that honours it.
+  const windowCloserEnabled = funnel.auto_offline_at_end
+    ? await getSetting<boolean>("cron_funnel_window_enabled", false)
+        // Fails CLOSED. If the flag cannot be read, the screen must not claim
+        // the job is running — the whole point of the sentence is that the
+        // owner can trust it.
+        .catch(() => false)
+    : false
+
   return (
     <div>
       {/* Back to the screen this funnel actually lives on. Both kinds reach
@@ -70,6 +88,34 @@ export async function FunnelDetailScreen({ id, base }: { id: string; base: "page
               /go/{funnel.slug}
             </a>
           </p>
+          {runWindow ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {runWindow}
+              {funnel.auto_offline_at_end ? (
+                <>
+                  {" · "}
+                  {/* THE HONEST SENTENCE. The create dialog's checkbox records
+                      an intent; the cron that acts on it is gated by
+                      `cron_funnel_window_enabled` and ships OFF. Saying "goes
+                      offline automatically" on a deployment where the flag is
+                      false would be a promise the app cannot keep, and the
+                      owner would find out by discovering a dead camp page
+                      still taking registrations. */}
+                  {windowCloserEnabled ? (
+                    <span>goes offline when the run ends</span>
+                  ) : (
+                    <span className="text-[var(--warning)]">
+                      set to go offline when the run ends, but the job that does
+                      it is switched off
+                    </span>
+                  )}
+                </>
+              ) : null}
+            </p>
+          ) : null}
+          {offerLabel ? (
+            <p className="mt-1 text-sm text-muted-foreground">Selling: {offerLabel}</p>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           {/* Funnels only. A landing page is single-page by definition — the
