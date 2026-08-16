@@ -2743,11 +2743,16 @@ export async function sendNewFunnelLeadEmail(input: NewFunnelLeadEmailInput) {
     </table>
   `)
 
-  // De-duplicated: a funnel whose recipient list already names the admin
-  // address must not send the same lead twice.
-  const recipients = Array.from(
-    new Set([...(Array.isArray(ADMIN_CC) ? ADMIN_CC : [ADMIN_CC]), ...(input.extraRecipients ?? [])]),
-  ).filter(Boolean)
+  // De-duplicated case-insensitively: a funnel whose recipient list already
+  // names the admin address — in any casing — must not send the same lead
+  // twice. `ADMIN_CC` is always first, so it is the spelling that survives.
+  const seen = new Set<string>()
+  const recipients = [ADMIN_CC, ...(input.extraRecipients ?? [])].filter((address) => {
+    const key = address.trim().toLowerCase()
+    if (key === "" || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
