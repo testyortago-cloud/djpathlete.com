@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, within } from "@testing-library/react"
 import { SectionInspector, nextSectionId } from "@/components/admin/funnels/builder/SectionInspector"
+import { ConnectionsProvider } from "@/components/admin/funnels/connections-context"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 function aDoc(): SectionDoc {
@@ -61,6 +62,39 @@ function mount(overrides: Partial<Parameters<typeof SectionInspector>[0]> = {}) 
     ...overrides,
   }
   return render(<SectionInspector {...props} />)
+}
+
+/**
+ * The inspector as it renders INSIDE the funnel edit layout, which is the only
+ * place it can offer other pages as destinations.
+ *
+ * `mount()` above deliberately keeps rendering it bare, because that is also a
+ * real configuration — the landing-page editor and the preview harness — and
+ * the picker has to degrade there rather than throw.
+ */
+function mountInFunnel(overrides: Partial<Parameters<typeof SectionInspector>[0]> = {}) {
+  const pages = [
+    { id: "s1", name: "Opt-in", slug: "index", position: 0, isEntry: true, published: true, live: true },
+    { id: "s2", name: "Thanks", slug: "thanks", position: 1, isEntry: false, published: false, live: false },
+  ]
+  return render(
+    <ConnectionsProvider
+      funnelId="f1"
+      funnelSlug="camp"
+      funnelKind="funnel"
+      pages={pages}
+      initialDocs={pages.map((page) => ({ ...page, doc: null }))}
+    >
+      <SectionInspector
+        doc={aDoc()}
+        selectedId="h1"
+        selectedPath={null}
+        onOps={onOps}
+        busy={false}
+        {...overrides}
+      />
+    </ConnectionsProvider>,
+  )
 }
 
 beforeEach(() => {
@@ -304,14 +338,65 @@ describe("SectionInspector", () => {
     expect(input).toHaveValue("Start")
   })
 
-  it("says where the button goes, since that is not editable here", () => {
+  it("still says where the button goes, UNDER the picker rather than instead of it", () => {
+    // This test used to assert "ask in the chat to send this button somewhere
+    // else" — the panel's old refusal to edit a destination at all. That
+    // sentence is gone for pickable targets, deliberately: the owner's
+    // complaint was that connecting two pages required describing a button in
+    // prose while looking straight at it.
+    //
+    // The plain-English sentence survives BECAUSE it does a different job from
+    // the picker. The picker says what may be chosen; this says what the button
+    // does right now, in one line, including for the offer targets the picker
+    // will not touch.
     mount()
     expect(screen.getByText(/goes to \/signup/i)).toBeInTheDocument()
-    // SPECIFIC. A hero lists BOTH `primaryCta` and `secondaryCta`, and both
-    // panels end with a sentence starting "Ask in the chat" — one to re-point
-    // this button, one to add the missing one. A loose match finds two nodes,
-    // and a `getAllBy(...)[0]` would pass while asserting about whichever
-    // happened to render first.
+  })
+
+  it("offers the funnel's other pages as destinations", () => {
+    mountInFunnel()
+    // SCOPED to the one control. A hero lists `primaryCta` AND `secondaryCta`,
+    // so an unscoped option query would find whichever rendered first and pass
+    // for the wrong reason — the exact trap this repo has hit twice.
+    const picker = screen.getByLabelText(/goes to/i)
+    expect(within(picker).getByRole("option", { name: "Thanks" })).toBeInTheDocument()
+  })
+
+  it("writes a page destination as a TARGET OBJECT through the ops path", () => {
+    // MUTANT KILLED: sending the slug as a bare string. `applyOps` refuses a
+    // string where a CTA object belongs, and the owner is told their change
+    // "could not be applied" for a rule they were never shown — which is the
+    // exact failure the CTA branch of this panel was written to close.
+    mountInFunnel()
+    fireEvent.change(screen.getByLabelText(/goes to/i), { target: { value: "step:thanks" } })
+    expect(onOps).toHaveBeenCalledWith([
+      {
+        op: "update_section",
+        id: "h1",
+        props: { primaryCta: { label: "Start", target: { kind: "step", stepSlug: "thanks" } } },
+      },
+    ])
+  })
+
+  it("offers this page's own sections as scroll destinations", () => {
+    mountInFunnel()
+    const picker = screen.getByLabelText(/goes to/i)
+    // `b1` is the bullets section in `aDoc`. In-PAGE anchors come from the
+    // whole document, not from the selected section.
+    expect(within(picker).getByRole("option", { name: "b1" })).toBeInTheDocument()
+  })
+
+  it("will not pick a destination for an offer button — that is still the chat's job", () => {
+    // The old refusal's REASON survives even though its blanket application
+    // does not: a program ref only means anything once `resolve.ts` matches it
+    // against live rows, so a picker here would be a second, weaker resolver.
+    const doc = aDoc()
+    ;(doc.sections[0].props as Record<string, unknown>).primaryCta = {
+      label: "Buy",
+      target: { kind: "program", ref: "Comeback Code" },
+    }
+    mountInFunnel({ doc })
+    expect(screen.queryByLabelText(/goes to/i)).toBeNull()
     expect(screen.getByText(/ask in the chat to send this button somewhere else/i)).toBeInTheDocument()
   })
 

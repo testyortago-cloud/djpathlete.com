@@ -32,6 +32,7 @@ import {
 import { SECTION_REGISTRY, type Section, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { SectionOp } from "@/lib/funnels/sections/apply"
 import { patchForPath, valueAtPath as valueAt } from "@/lib/funnels/sections/patch"
+import { DestinationPicker } from "./DestinationPicker"
 
 interface SectionInspectorProps {
   doc: SectionDoc
@@ -97,12 +98,15 @@ function FieldControl({
   onChange,
   disabled,
   autoFocus,
+  sectionIds = [],
 }: {
   field: SectionField
   props: Record<string, unknown>
   onChange: (path: string, value: unknown) => void
   disabled: boolean
   autoFocus: boolean
+  /** Ids of the sections on THIS page, for an in-page anchor destination. */
+  sectionIds?: string[]
 }) {
   const value = valueAt(props, field.path)
   const id = `field-${field.path.replace(/\./g, "-")}`
@@ -130,13 +134,20 @@ function FieldControl({
   // An editor control whose only possible effect was to corrupt the thing it
   // was editing, on the panel that pairs with the canvas.
   //
-  // THE LABEL IS EDITABLE, THE TARGET IS DESCRIBED. That split is a real limit
-  // and not an oversight: a target is a typed union whose `program` / `event`
-  // refs are only meaningful once `resolve.ts` matches them against live rows,
-  // and inventing a picker here would be a second, weaker resolver. So the
-  // panel says where the button currently goes and points at the one place
-  // that can change it — the same move `RepeaterEditor` makes for adding a
-  // form field.
+  // THE LABEL IS EDITABLE, AND SO — SINCE THE STEP RAIL — IS THE DESTINATION,
+  // BUT ONLY THE HALF THAT IS SAFE TO PICK.
+  //
+  // This used to read "the target is described", with a real reason: a
+  // `program` / `event` ref is only meaningful once `resolve.ts` matches it
+  // against live rows, so a picker over those would be a second, weaker
+  // resolver. That reasoning stands and `DestinationPicker` keeps it — an
+  // offer or booking target still says "ask in the chat".
+  //
+  // What it did not cover is the case the owner was actually stuck on. A page
+  // slug is not a row id; it is authored text this funnel owns, and the page
+  // list is right there in the layout's context. So pages and in-page anchors
+  // are pickable, and the owner is no longer told to describe in prose a
+  // button they are looking straight at.
   if (field.type === "cta") {
     const cta = (value ?? {}) as { label?: unknown; target?: Record<string, unknown> }
     const currentLabel = typeof cta.label === "string" ? cta.label : ""
@@ -184,8 +195,18 @@ function FieldControl({
             onChange(`${field.path}.label`, next)
           }}
         />
+        <DestinationPicker
+          id={`${id}-target`}
+          target={cta.target}
+          sectionIds={sectionIds}
+          disabled={disabled}
+          onChange={(next) => onChange(`${field.path}.target`, next)}
+        />
+        {/* Kept UNDER the picker as confirmation, not replaced by it. The
+            picker says what you may choose; this says, in one plain sentence,
+            what the button does right now — including for the offer targets
+            the picker deliberately will not touch. */}
         <p className="text-xs text-muted-foreground">{describeCtaTarget(cta.target)}</p>
-        <p className="text-xs text-muted-foreground">Ask in the chat to send this button somewhere else.</p>
       </div>
     )
   }
@@ -299,6 +320,11 @@ export function SectionInspector({
 
   const props = section.props as Record<string, unknown>
   const kindLabel = SECTION_REGISTRY[section.kind].label
+  // Anchor destinations are in-PAGE, so this is the whole document's section
+  // list, not the selected section's. Read here rather than in `FieldControl`
+  // because that component is deliberately given only one field's worth of
+  // context.
+  const sectionIds = doc.sections.map((entry) => entry.id)
 
   const setProp = (path: string, raw: unknown) => {
     const current = valueAt(props, path)
@@ -433,6 +459,7 @@ export function SectionInspector({
                 onChange={setProp}
                 disabled={busy}
                 autoFocus={field.path === selectedPath}
+                sectionIds={sectionIds}
               />
             )}
           </div>
