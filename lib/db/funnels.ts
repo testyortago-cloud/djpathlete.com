@@ -169,14 +169,44 @@ export async function createFunnel(
   return { ...funnel, entryStepId: entry.id }
 }
 
-export async function updateFunnel(
-  id: string,
-  input: Partial<Pick<Funnel, "slug" | "name" | "description" | "status" | "kind" | "goal">>,
-): Promise<Funnel> {
+/**
+ * `offer` is accepted in the SAME nested shape `createFunnel` takes and is split
+ * into its two columns here, so callers never hand Supabase a key called
+ * `offer` — there is no such column, and the update would 500 from Postgres.
+ *
+ * That is not hypothetical: widening `updateFunnelSchema` without widening this
+ * signature type-checks (excess-property checks do not apply to a variable), so
+ * a PATCH carrying an offer parsed cleanly and then failed at the database.
+ */
+export type UpdateFunnelInput = Partial<
+  Pick<
+    Funnel,
+    | "slug"
+    | "name"
+    | "description"
+    | "status"
+    | "kind"
+    | "goal"
+    | "audience"
+    | "starts_at"
+    | "ends_at"
+    | "auto_offline_at_end"
+    | "notify_emails"
+  >
+> & { offer?: { kind: OfferKind; ref: string } | null }
+
+export async function updateFunnel(id: string, input: UpdateFunnelInput): Promise<Funnel> {
   const supabase = getClient()
+  const { offer, ...columns } = input
+  // `undefined` means "not supplied" and must not become a write; an explicit
+  // `null` means "clear it" and must. Spreading the pair only when the key is
+  // present keeps both halves of the paired CHECK in step.
+  const offerColumns =
+    offer === undefined ? {} : { offer_kind: offer?.kind ?? null, offer_ref: offer?.ref ?? null }
+
   const { data, error } = await supabase
     .from("funnels")
-    .update({ ...input, updated_at: new Date().toISOString() })
+    .update({ ...columns, ...offerColumns, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select("*")
     .single()

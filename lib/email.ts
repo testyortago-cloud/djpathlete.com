@@ -2673,6 +2673,13 @@ export interface NewFunnelLeadEmailInput {
   answers: Record<string, unknown>
   /** Absolute link into the leads inbox. */
   leadsUrl: string
+  /**
+   * Extra recipients set on the funnel itself, ADDED TO `ADMIN_CC` rather than
+   * replacing it. A per-funnel list is "also tell these people", never "instead
+   * of the coach" — a camp handed to an assistant must not stop reaching the
+   * person who owns the inbox.
+   */
+  extraRecipients?: string[] | null
 }
 
 /**
@@ -2736,9 +2743,15 @@ export async function sendNewFunnelLeadEmail(input: NewFunnelLeadEmailInput) {
     </table>
   `)
 
+  // De-duplicated: a funnel whose recipient list already names the admin
+  // address must not send the same lead twice.
+  const recipients = Array.from(
+    new Set([...(Array.isArray(ADMIN_CC) ? ADMIN_CC : [ADMIN_CC]), ...(input.extraRecipients ?? [])]),
+  ).filter(Boolean)
+
   const { error } = await resend.emails.send({
     from: FROM_EMAIL,
-    to: ADMIN_CC,
+    to: recipients,
     ...(input.email ? { replyTo: input.email } : {}),
     subject: `[Lead] ${displayName} — ${input.pageName}`,
     html,
