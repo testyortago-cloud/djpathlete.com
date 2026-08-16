@@ -33,6 +33,7 @@ import { SECTION_REGISTRY, type Section, type SectionDoc } from "@/lib/funnels/s
 import type { SectionOp } from "@/lib/funnels/sections/apply"
 import { patchForPath, valueAtPath as valueAt } from "@/lib/funnels/sections/patch"
 import { DestinationPicker } from "./DestinationPicker"
+import { useConnections } from "@/components/admin/funnels/connections-context"
 
 interface SectionInspectorProps {
   doc: SectionDoc
@@ -452,7 +453,20 @@ export function SectionInspector({
           <div key={field.path}>
             {field.type === "repeater" || field.type === "list" ? (
               <RepeaterEditor field={field} section={section} onOps={onOps} busy={busy} />
-            ) : (
+            ) : field.path === "successMode" ? (
+              // ONE CONTROL FOR TWO FIELDS, and `redirectUrl` is dropped from
+              // the list below. They are not independent: `formIslandSchema`'s
+              // superRefine rejects `successMode: "redirect"` with no
+              // `redirectUrl`, so two separate controls let an owner build a
+              // state the server refuses — and the failure would arrive as
+              // "that change could not be applied", naming no rule.
+              <FormSuccessControl
+                props={props}
+                onOps={onOps}
+                sectionId={section.id}
+                disabled={busy}
+              />
+            ) : field.path === "redirectUrl" ? null : (
               <FieldControl
                 field={field}
                 props={props}
@@ -482,6 +496,120 @@ export function SectionInspector({
         </div>
       </div>
     </aside>
+  )
+}
+
+/**
+ * What happens after someone submits the form.
+ *
+ * ---------------------------------------------------------------------------
+ * THIS IS THE CONNECTOR THAT ACTUALLY MATTERS ON A LEAD-CAPTURE FUNNEL
+ * ---------------------------------------------------------------------------
+ * `successMode` defaults to `"message"`, so a form nobody has configured
+ * captures the lead, prints "Thanks — you're in", and stops dead in front of a
+ * thank-you page that was built and will never be reached. Wiring it used to
+ * mean switching a dropdown AND hand-typing `/go/<funnel>/<page>` into a
+ * free-text box that nothing validated.
+ *
+ * ONE CONTROL, TWO PROPS, ONE PATCH. `formIslandSchema`'s superRefine refuses
+ * `redirect` with no `redirectUrl`, so they have to move together or the op is
+ * rejected. Choosing a page writes both; choosing a message CLEARS the URL,
+ * because a leftover redirect target is exactly the half-configured state
+ * `autoConnectOps` then has to refuse to touch.
+ */
+function FormSuccessControl({
+  props,
+  onOps,
+  sectionId,
+  disabled,
+}: {
+  props: Record<string, unknown>
+  onOps: (ops: SectionOp[]) => void
+  sectionId: string
+  disabled: boolean
+}) {
+  const context = useConnections()
+  const pages = [...(context?.pages ?? [])].sort((a, b) => a.position - b.position)
+  const funnelSlug = context?.funnelSlug ?? ""
+
+  const redirectUrl = typeof props.redirectUrl === "string" ? props.redirectUrl : ""
+  const redirecting = props.successMode === "redirect" && redirectUrl !== ""
+
+  // Which page the stored URL names, if it names one of ours. Derived rather
+  // than stored: `redirectUrl` stays the single source of truth, so a URL an
+  // owner typed by hand before this control existed selects correctly here.
+  const base = `/go/${funnelSlug}`
+  const currentSlug = redirecting
+    ? redirectUrl === base
+      ? (pages.find((page) => page.isEntry)?.slug ?? "")
+      : redirectUrl.startsWith(`${base}/`)
+        ? redirectUrl.slice(base.length + 1)
+        : ""
+    : ""
+
+  const selected = redirecting ? (currentSlug ? `page:${currentSlug}` : "elsewhere") : "message"
+
+  function choose(value: string) {
+    if (value === "message") {
+      // `null` is `applyOps`'s delete sentinel — the only way to remove an
+      // optional key over JSON. Leaving the URL behind would be a form that
+      // says "show a message" while carrying a destination.
+      onOps([
+        { op: "update_section", id: sectionId, props: { successMode: "message", redirectUrl: null } },
+      ])
+      return
+    }
+    if (!value.startsWith("page:")) return
+    onOps([
+      {
+        op: "update_section",
+        id: sectionId,
+        props: { successMode: "redirect", redirectUrl: `${base}/${value.slice("page:".length)}` },
+      },
+    ])
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <Label
+        htmlFor={`field-successMode-${sectionId}`}
+        className="text-xs uppercase tracking-wide text-muted-foreground"
+      >
+        After someone submits
+      </Label>
+      <select
+        id={`field-successMode-${sectionId}`}
+        className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
+        value={selected}
+        disabled={disabled}
+        onChange={(event) => choose(event.target.value)}
+      >
+        <option value="message">Show a thank-you message</option>
+        {pages.length > 1 ? (
+          <optgroup label="Send them to a page">
+            {pages.map((page) => (
+              <option key={page.id} value={`page:${page.slug}`}>
+                {page.name}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {/* Only offered when it is ALREADY the state. A destination outside
+            this funnel is legitimate (`islands.ts` allows an allowlisted host,
+            which is why Calendly is on that list), but it is not something to
+            hand someone a free-text box for here — the chat can set it, and
+            this option exists so choosing it back is not the only way to see
+            what is currently set. */}
+        {selected === "elsewhere" ? (
+          <option value="elsewhere">Send them to {redirectUrl}</option>
+        ) : null}
+      </select>
+      {selected === "message" && pages.length > 1 ? (
+        <p className="text-xs text-muted-foreground">
+          This page will not lead anywhere after the form is submitted.
+        </p>
+      ) : null}
+    </div>
   )
 }
 

@@ -436,3 +436,120 @@ describe("nextSectionId", () => {
     expect(nextSectionId(doc, "hero")).toBe("he2")
   })
 })
+
+// ---------------------------------------------------------------------------
+// The form's success destination — the connector that actually matters.
+//
+// `successMode` defaults to "message", so a form nobody configured captures
+// the lead, prints a thank-you line, and stops dead in front of a thank-you
+// PAGE that was built and never reached. A probe of a real funnel found
+// exactly that.
+// ---------------------------------------------------------------------------
+describe("SectionInspector — what happens after a form is submitted", () => {
+  function formDoc(props: Record<string, unknown> = {}): SectionDoc {
+    return {
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "accent", radius: "soft" },
+      sections: [
+        {
+          id: "fo1",
+          kind: "form",
+          variant: "split",
+          style: {},
+          props: {
+            formKey: "optin",
+            fields: [{ name: "email", label: "Email", type: "email" }],
+            ...props,
+          },
+        },
+      ],
+    } as SectionDoc
+  }
+
+  const mountForm = (props: Record<string, unknown> = {}) =>
+    mountInFunnel({ doc: formDoc(props), selectedId: "fo1" })
+
+  it("writes successMode AND redirectUrl together, never one without the other", () => {
+    // MUTANT KILLED: writing only `successMode`. `formIslandSchema`'s
+    // superRefine refuses `redirect` with no `redirectUrl`, so a half-patch is
+    // an op `applyOps` rejects — and the owner is told "that change could not
+    // be applied", naming no rule they could act on.
+    mountForm()
+    fireEvent.change(screen.getByLabelText(/after someone submits/i), {
+      target: { value: "page:thanks" },
+    })
+    expect(onOps).toHaveBeenCalledWith([
+      {
+        op: "update_section",
+        id: "fo1",
+        props: { successMode: "redirect", redirectUrl: "/go/camp/thanks" },
+      },
+    ])
+  })
+
+  it("choosing a message CLEARS the redirect URL rather than leaving it behind", () => {
+    // A form that says "show a message" while still carrying a destination is
+    // the half-configured state `autoConnectOps` then has to refuse to touch —
+    // so it would be permanently stuck, fixable only through the chat.
+    mountForm({ successMode: "redirect", redirectUrl: "/go/camp/thanks" })
+    fireEvent.change(screen.getByLabelText(/after someone submits/i), {
+      target: { value: "message" },
+    })
+    expect(onOps).toHaveBeenCalledWith([
+      { op: "update_section", id: "fo1", props: { successMode: "message", redirectUrl: null } },
+    ])
+  })
+
+  it("selects the page a hand-typed URL already names", () => {
+    // `redirectUrl` stays the single source of truth — there is no second
+    // `successStepSlug` column — so a URL typed before this control existed
+    // has to select correctly here rather than reading as "somewhere else".
+    mountForm({ successMode: "redirect", redirectUrl: "/go/camp/thanks" })
+    expect(screen.getByLabelText(/after someone submits/i)).toHaveValue("page:thanks")
+  })
+
+  it("shows a destination outside this funnel instead of silently resetting it", () => {
+    // An allowlisted external host is legitimate (islands.ts allows one, which
+    // is why Calendly is on that list). Rendering it as "show a message" would
+    // misreport it, and the next change would quietly destroy it.
+    mountForm({ successMode: "redirect", redirectUrl: "https://calendly.com/djp/intro" })
+    expect(screen.getByLabelText(/after someone submits/i)).toHaveValue("elsewhere")
+  })
+
+  it("warns that a message-only form leads nowhere, where the owner is deciding it", () => {
+    mountForm({ successMode: "message" })
+    expect(screen.getByText(/will not lead anywhere/i)).toBeInTheDocument()
+  })
+
+  it("does not offer pages, or nag, when there is only one page", () => {
+    // A landing page has nowhere to send anyone. The warning would be advice
+    // to do something impossible.
+    render(
+      <ConnectionsProvider
+        funnelId="f1"
+        funnelSlug="camp"
+        funnelKind="page"
+        pages={[
+          { id: "s1", name: "Landing", slug: "index", position: 0, isEntry: true, published: true, live: true },
+        ]}
+        initialDocs={[
+          { id: "s1", name: "Landing", slug: "index", position: 0, isEntry: true, doc: null },
+        ]}
+      >
+        <SectionInspector doc={formDoc()} selectedId="fo1" selectedPath={null} onOps={onOps} busy={false} />
+      </ConnectionsProvider>,
+    )
+    const control = screen.getByLabelText(/after someone submits/i)
+    expect(within(control).queryByRole("option", { name: "Landing" })).toBeNull()
+    expect(screen.queryByText(/will not lead anywhere/i)).toBeNull()
+  })
+
+  it("renders no second, separate redirect URL box", () => {
+    // MUTANT KILLED: leaving the generated `redirectUrl` field in the list.
+    // Two controls for one decision let an owner set a URL while the mode says
+    // message — a state the server refuses.
+    mountForm()
+    expect(screen.queryByLabelText(/redirect url/i)).toBeNull()
+  })
+})
