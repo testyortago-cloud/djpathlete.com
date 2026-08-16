@@ -311,3 +311,126 @@ export function funnelConnections(funnelSlug: string, steps: StepWithDoc[]): Fun
 
   return { connections, broken, deadEnds }
 }
+
+// ---------------------------------------------------------------------------
+// autoConnectOps — the repair tool
+// ---------------------------------------------------------------------------
+//
+// FOR FUNNELS THAT ALREADY EXIST. New pages are connected by the model, which
+// is told which page comes next; a button added in the inspector is connected
+// by the picker. Neither of those helps the funnels already built, whose
+// buttons still carry the placeholder and whose forms still show a message.
+//
+// IT IS ONLY ALLOWED TO TOUCH WHAT NOBODY CHOSE, and there are exactly two
+// such things. Everything else on the page is somebody's decision — including
+// a URL that looks unhelpful, and including a step link with a typo in it,
+// because a typo is still a choice and overwriting it would destroy the only
+// evidence of what was meant.
+//
+// An earlier draft of this design had this function doing all the connecting.
+// That was wrong in a way worth recording: it can only recognise the
+// INSPECTOR's placeholder, and a freshly drafted page has never been near the
+// inspector — the model writes whatever it likes. One mechanism would have
+// left new funnels exactly as disconnected as before while appearing to fix
+// them.
+
+import { patchForPath } from "@/lib/funnels/sections/patch"
+import type { SectionOp } from "@/lib/funnels/sections/apply"
+
+export interface AutoConnectTarget {
+  funnelSlug: string
+  nextStepSlug: string
+}
+
+/** One change, in the words the rail shows the owner before applying it. */
+export interface AutoConnectChange {
+  sectionId: string
+  field: string
+  /** The button's text, or "Form submit". */
+  label: string
+  /** The page slug it will point at. */
+  to: string
+}
+
+export interface AutoConnectPlan {
+  ops: SectionOp[]
+  changes: AutoConnectChange[]
+}
+
+/** Is this target the placeholder `blankValueFor` writes, and nothing else? */
+function isUnsetCta(target: Record<string, unknown>): boolean {
+  return target.kind === "url" && target.href === UNSET_HREF
+}
+
+/**
+ * The ops that would connect ONE page to the next.
+ *
+ * Returns `{ops: [], changes: []}` when nothing qualifies, so the caller can
+ * say "nothing to connect here" rather than pretending it did something.
+ *
+ * Never throws, for the same reason `funnelConnections` does not: it runs
+ * across every page of a funnel at once.
+ */
+export function autoConnectOps(doc: SectionDoc, target: AutoConnectTarget): AutoConnectPlan {
+  const sections = doc?.sections
+  if (!Array.isArray(sections)) return { ops: [], changes: [] }
+
+  const redirectUrl = `/go/${target.funnelSlug}/${target.nextStepSlug}`
+  const ops: SectionOp[] = []
+  const changes: AutoConnectChange[] = []
+
+  for (const section of sections) {
+    if (section === null || typeof section !== "object") continue
+    const sectionId = typeof section.id === "string" ? section.id : ""
+    const props = section.props
+    if (props === null || typeof props !== "object") continue
+
+    // ONE PATCH PER SECTION, BUILT AGAINST AN EVOLVING COPY. Two CTAs in the
+    // same repeater share a top-level key (`plans`), so patching them
+    // independently and merging the results would keep only the last one —
+    // and two `update_section` ops for the same id would do the same, since
+    // `applyOps` merges props shallow per top-level key.
+    const working = structuredClone(props) as Record<string, unknown>
+    let patch: Record<string, unknown> = {}
+    let touched = false
+
+    const sites: Array<[string, { label: string; target: Record<string, unknown> }]> = []
+    ctaSites(props, "", sites)
+    for (const [field, cta] of sites) {
+      if (!isUnsetCta(cta.target)) continue
+      const next = { label: cta.label, target: { kind: "step", stepSlug: target.nextStepSlug } }
+      const fragment = patchForPath(working, field, next)
+      Object.assign(working, fragment)
+      patch = { ...patch, ...fragment }
+      touched = true
+      changes.push({ sectionId, field, label: cta.label, to: target.nextStepSlug })
+    }
+
+    if (section.kind === "form") {
+      const record = props as Record<string, unknown>
+      const hasUrl = typeof record.redirectUrl === "string" && record.redirectUrl !== ""
+      const mode = record.successMode
+      // HALF-CONFIGURED IS STILL CONFIGURED. A form carrying a redirect URL is
+      // left alone even if `successMode` was never switched over, because that
+      // URL is the only evidence of what the owner meant.
+      const untouched = !hasUrl && (mode === undefined || mode === "message")
+      if (untouched) {
+        // BOTH KEYS TOGETHER. `formIslandSchema`'s superRefine rejects
+        // `successMode: "redirect"` with no `redirectUrl`, so writing one
+        // without the other is an op `applyOps` refuses outright.
+        patch = { ...patch, successMode: "redirect", redirectUrl }
+        touched = true
+        changes.push({
+          sectionId,
+          field: "redirectUrl",
+          label: FORM_SUBMIT_LABEL,
+          to: target.nextStepSlug,
+        })
+      }
+    }
+
+    if (touched) ops.push({ op: "update_section", id: sectionId, props: patch })
+  }
+
+  return { ops, changes }
+}

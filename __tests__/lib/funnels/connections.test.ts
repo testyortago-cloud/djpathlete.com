@@ -14,7 +14,8 @@
 // to key on.
 import { describe, it, expect } from "vitest"
 import type { Section, SectionDoc } from "@/lib/funnels/sections/registry"
-import { funnelConnections, type StepWithDoc } from "@/lib/funnels/connections"
+import { applyOps } from "@/lib/funnels/sections/apply"
+import { autoConnectOps, funnelConnections, type StepWithDoc } from "@/lib/funnels/connections"
 
 function docOf(sections: Section[]): SectionDoc {
   return {
@@ -279,5 +280,184 @@ describe("funnelConnections — robustness", () => {
 
   it("a funnel with no pages at all is not a crash", () => {
     expect(funnelConnections("camp", [])).toEqual({ connections: [], broken: [], deadEnds: [] })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// autoConnectOps — the repair tool, for funnels that already exist.
+//
+// IT IS ONLY ALLOWED TO TOUCH WHAT NOBODY CHOSE. There are exactly two such
+// things: a CTA still carrying `blankValueFor`'s `{kind:"url", href:"/"}`
+// placeholder, and a form left on its `successMode` default. Everything else
+// on the page is somebody's decision, including a URL that looks unhelpful.
+//
+// The refusals are tested harder than the successes, deliberately: a repair
+// tool that rewrites a deliberate choice is worse than one that does nothing,
+// and "it connected my pages" is easy to notice while "it silently re-pointed
+// my buy button" is not.
+// ---------------------------------------------------------------------------
+describe("autoConnectOps", () => {
+  const TARGET = { funnelSlug: "camp", nextStepSlug: "thanks" }
+
+  it("rewires a placeholder button to the next page", () => {
+    const plan = autoConnectOps(heroWith({ kind: "url", href: "/" }), TARGET)
+    expect(plan.ops).toEqual([
+      {
+        op: "update_section",
+        id: "he1",
+        props: {
+          primaryCta: { label: "Get my spot", target: { kind: "step", stepSlug: "thanks" } },
+        },
+      },
+    ])
+  })
+
+  it("describes every change before it is applied, in the owner's words", () => {
+    // The rail shows this list and waits. A repair tool that just acts is one
+    // the owner has to diff their own page against afterwards.
+    const plan = autoConnectOps(heroWith({ kind: "url", href: "/" }), TARGET)
+    expect(plan.changes).toEqual([
+      { sectionId: "he1", field: "primaryCta", label: "Get my spot", to: "thanks" },
+    ])
+  })
+
+  it.each([
+    ["a program CTA", { kind: "program", ref: "Comeback Code" }],
+    ["a session pack CTA", { kind: "session_pack", ref: "10 Session Pack" }],
+    ["an event CTA", { kind: "event", ref: "Summer Camp" }],
+    ["a booking CTA", { kind: "booking" }],
+    ["an in-page anchor", { kind: "anchor", sectionId: "pricing" }],
+    ["a URL somebody actually typed", { kind: "url", href: "/contact" }],
+    ["a page link already set", { kind: "step", stepSlug: "index" }],
+    ["a page link that is BROKEN — a typo is still a choice", { kind: "step", stepSlug: "nope" }],
+  ])("refuses to touch %s", (_label, target) => {
+    expect(autoConnectOps(heroWith(target), TARGET)).toEqual({ ops: [], changes: [] })
+  })
+
+  it("switches a message-only form to redirect at the next page", () => {
+    const plan = autoConnectOps(formWith({ successMode: "message" }), TARGET)
+    expect(plan.ops).toEqual([
+      {
+        op: "update_section",
+        id: "fo1",
+        // BOTH keys, in one patch. `formIslandSchema`'s superRefine rejects
+        // `successMode: "redirect"` with no `redirectUrl`, so writing one
+        // without the other would be an op `applyOps` refuses.
+        props: { successMode: "redirect", redirectUrl: "/go/camp/thanks" },
+      },
+    ])
+  })
+
+  it("switches a form that has no successMode at all — the default is message", () => {
+    expect(autoConnectOps(formWith({}), TARGET).ops).toHaveLength(1)
+  })
+
+  it("refuses a form that already redirects somewhere", () => {
+    const doc = formWith({ successMode: "redirect", redirectUrl: "/go/camp/somewhere-else" })
+    expect(autoConnectOps(doc, TARGET).ops).toEqual([])
+  })
+
+  it("refuses a form carrying a redirect URL even if successMode was left behind", () => {
+    // Half-configured is still configured. Overwriting the URL here would
+    // discard the only evidence of what the owner meant.
+    const doc = formWith({ successMode: "message", redirectUrl: "/go/camp/somewhere-else" })
+    expect(autoConnectOps(doc, TARGET).ops).toEqual([])
+  })
+
+  it("returns nothing when there is nothing to connect, so the button can say so", () => {
+    expect(autoConnectOps(heroWith({ kind: "step", stepSlug: "thanks" }), TARGET)).toEqual({
+      ops: [],
+      changes: [],
+    })
+  })
+
+  it("rewires a placeholder nested in a repeater", () => {
+    const doc = docOf([
+      {
+        id: "price1",
+        kind: "pricing",
+        variant: "cards",
+        style: {},
+        props: {
+          plans: [
+            {
+              name: "Eight weeks",
+              price: "$480",
+              features: ["Two sessions a week"],
+              cta: { label: "Apply", target: { kind: "url", href: "/" } },
+            },
+          ],
+        },
+      } as Section,
+    ])
+    const plan = autoConnectOps(doc, TARGET)
+    // The WHOLE `plans` array comes back, one leaf changed — `applyOps` merges
+    // props shallow per top-level key, so a `{"plans.0.cta": ...}` patch would
+    // invent a key rather than edit the array.
+    expect(plan.ops).toHaveLength(1)
+    const op = plan.ops[0] as { props: { plans: Array<{ name: string; cta: unknown }> } }
+    expect(op.props.plans[0].cta).toEqual({
+      label: "Apply",
+      target: { kind: "step", stepSlug: "thanks" },
+    })
+    expect(op.props.plans[0].name).toBe("Eight weeks")
+  })
+
+  it("emits ONE op per section even when that section has two placeholders", () => {
+    // MUTANT TO KILL: one op per CTA. Two `update_section` ops for the same id
+    // in one batch both patch the same top-level key, and the second overwrites
+    // the first — so one of the two buttons would silently stay unwired.
+    const doc = docOf([
+      {
+        id: "he1",
+        kind: "hero",
+        variant: "centered",
+        style: {},
+        props: {
+          headline: "Camp",
+          primaryCta: { label: "Get my spot", target: { kind: "url", href: "/" } },
+          secondaryCta: { label: "Learn more", target: { kind: "url", href: "/" } },
+        },
+      } as Section,
+    ])
+    const plan = autoConnectOps(doc, TARGET)
+    expect(plan.ops).toHaveLength(1)
+    expect(plan.changes).toHaveLength(2)
+
+    // AND BOTH FIXES ARE IN THAT ONE OP. Asserting only the op count let a
+    // second mutant through — a patch that does not accumulate emits exactly
+    // one op containing only the LAST button, so the count was right and one
+    // button silently stayed unwired. Verified by running that mutation.
+    const op = plan.ops[0] as { props: Record<string, { target: unknown }> }
+    expect(op.props.primaryCta.target).toEqual({ kind: "step", stepSlug: "thanks" })
+    expect(op.props.secondaryCta.target).toEqual({ kind: "step", stepSlug: "thanks" })
+  })
+
+  it("the ops it returns are accepted by the REAL applyOps", () => {
+    // The op shape is only correct if `applyOps` says so. Asserting on a
+    // hand-written object literal is an assertion about a contract, not the
+    // contract — which is exactly how this repo shipped a feature whose tests
+    // and implementation were wrong in the same direction.
+    const doc = heroWith({ kind: "url", href: "/" })
+    const result = applyOps(doc, autoConnectOps(doc, TARGET).ops)
+    expect(result.ok).toBe(true)
+  })
+
+  it("the form ops it returns are accepted by the REAL applyOps", () => {
+    const doc = formWith({ successMode: "message" })
+    const result = applyOps(doc, autoConnectOps(doc, TARGET).ops)
+    expect(result.ok).toBe(true)
+  })
+
+  it("applying its ops actually removes the dead end it was reported for", () => {
+    // The end-to-end property, and the only one that matters: the rail says
+    // this page leads nowhere, the button is pressed, the rail stops saying it.
+    const doc = formWith({ successMode: "message" })
+    expect(funnelConnections("camp", twoPages(doc)).deadEnds).toEqual(["s1"])
+
+    const applied = applyOps(doc, autoConnectOps(doc, TARGET).ops)
+    expect(applied.ok).toBe(true)
+    if (!applied.ok) return
+    expect(funnelConnections("camp", twoPages(applied.doc)).deadEnds).toEqual([])
   })
 })
