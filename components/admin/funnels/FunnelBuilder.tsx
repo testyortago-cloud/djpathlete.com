@@ -74,7 +74,7 @@ import { GenerationStage, BUILD_STAGE_WRAPPER_CLASS } from "./builder/Generation
 import { PreviewPane, type PreviewDevice } from "./builder/PreviewPane"
 import { PublishReview } from "./builder/PublishReview"
 import { SectionInspector } from "./builder/SectionInspector"
-import { patchForPath, valueAtPath } from "./builder/section-patch"
+import { patchForPath, valueAtPath } from "@/lib/funnels/sections/patch"
 import { ImageSlotDialog, type HeroMedia } from "./builder/ImageSlotDialog"
 import type { CanvasCommit, CanvasSelection } from "./builder/canvas-editing"
 import { candidatePickMessage } from "./builder/format"

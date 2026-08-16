@@ -1,5 +1,13 @@
-// components/admin/funnels/builder/section-patch.ts - building a props patch
-// for a path that may be nested.
+// lib/funnels/sections/patch.ts - building a props patch for a path that may
+// be nested.
+//
+// IT LIVES IN `lib/` BECAUSE IT HAS A THIRD CALLER THAT CANNOT REACH
+// `components/`. It began beside the inspector, which was right while the
+// inspector and the inline-text canvas were the only two callers. Then
+// `autoConnectOps` in `lib/funnels/connections.ts` needed to build the very
+// same patch, and a `lib/` module importing from `components/` is backwards.
+// Copying it would have been the restated-rule mistake this repo has paid for
+// three times, so it moved instead. All three callers import it from here.
 //
 // `applyOps` merges props SHALLOW, per top-level key, and says why: a deep
 // merge would splice an incoming array element-by-element over the old one and

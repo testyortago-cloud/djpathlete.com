@@ -31,7 +31,7 @@ import {
 } from "@/lib/funnels/sections/fields"
 import { SECTION_REGISTRY, type Section, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { SectionOp } from "@/lib/funnels/sections/apply"
-import { patchForPath, valueAtPath as valueAt } from "./section-patch"
+import { patchForPath, valueAtPath as valueAt } from "@/lib/funnels/sections/patch"
 
 interface SectionInspectorProps {
   doc: SectionDoc
