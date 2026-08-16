@@ -1556,6 +1556,44 @@ export const socialAgentCron = onSchedule(
 // Runs an hour before Daily Pulse (07:00 Central) so the latest inbox-health
 // snapshot is available for the email.
 
+// ─── Funnel run-window closer (daily 04:00 UTC) ──────────────────────────────
+// Takes offline any published funnel whose run window has closed and whose
+// owner ticked "take the funnel offline when the run ends".
+//
+// THE ONLY SCHEDULED JOB HERE THAT CHANGES WHAT A VISITOR SEES — the rest write
+// snapshot rows. Gated by `cron_funnel_window_enabled` in system_settings,
+// which ships FALSE; the route enforces that, not this file.
+
+export const funnelWindowCron = onSchedule(
+  {
+    schedule: "0 4 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[funnelWindowCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/funnel-window`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[funnelWindowCron]", res.status, body)
+    } catch (err) {
+      console.error("[funnelWindowCron] failed:", err)
+    }
+  },
+)
+
 export const inboxSlaCron = onSchedule(
   {
     schedule: "0 6 * * 1-5",
