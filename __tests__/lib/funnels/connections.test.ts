@@ -14,7 +14,7 @@
 // to key on.
 import { describe, it, expect } from "vitest"
 import type { Section, SectionDoc } from "@/lib/funnels/sections/registry"
-import { applyOps } from "@/lib/funnels/sections/apply"
+import { applyOps, type SectionOp } from "@/lib/funnels/sections/apply"
 import { autoConnectOps, funnelConnections, type StepWithDoc } from "@/lib/funnels/connections"
 
 function docOf(sections: Section[]): SectionDoc {
@@ -54,6 +54,21 @@ function formWith(props: Record<string, unknown>): SectionDoc {
       },
     } as Section,
   ])
+}
+
+/**
+ * The `props` of an op that must be an `update_section`.
+ *
+ * NARROWS the discriminated union rather than casting through it. A direct
+ * `as { props: ... }` does not type-check against `SectionOp` (no overlap with
+ * `set_page`), and the way round that is `as unknown as` — which would also
+ * silence a genuine change of op kind. Asserting the discriminant means a
+ * future `autoConnectOps` that emitted `set_page` fails here loudly.
+ */
+function updateProps(op: SectionOp): Record<string, unknown> {
+  expect(op.op).toBe("update_section")
+  if (op.op !== "update_section") throw new Error("not an update_section")
+  return (op.props ?? {}) as Record<string, unknown>
 }
 
 /**
@@ -395,12 +410,13 @@ describe("autoConnectOps", () => {
     // props shallow per top-level key, so a `{"plans.0.cta": ...}` patch would
     // invent a key rather than edit the array.
     expect(plan.ops).toHaveLength(1)
-    const op = plan.ops[0] as { props: { plans: Array<{ name: string; cta: unknown }> } }
-    expect(op.props.plans[0].cta).toEqual({
+    const props = updateProps(plan.ops[0])
+    const plans = props.plans as Array<{ name: string; cta: unknown }>
+    expect(plans[0].cta).toEqual({
       label: "Apply",
       target: { kind: "step", stepSlug: "thanks" },
     })
-    expect(op.props.plans[0].name).toBe("Eight weeks")
+    expect(plans[0].name).toBe("Eight weeks")
   })
 
   it("emits ONE op per section even when that section has two placeholders", () => {
@@ -428,9 +444,9 @@ describe("autoConnectOps", () => {
     // second mutant through — a patch that does not accumulate emits exactly
     // one op containing only the LAST button, so the count was right and one
     // button silently stayed unwired. Verified by running that mutation.
-    const op = plan.ops[0] as { props: Record<string, { target: unknown }> }
-    expect(op.props.primaryCta.target).toEqual({ kind: "step", stepSlug: "thanks" })
-    expect(op.props.secondaryCta.target).toEqual({ kind: "step", stepSlug: "thanks" })
+    const props = updateProps(plan.ops[0])
+    expect((props.primaryCta as { target: unknown }).target).toEqual({ kind: "step", stepSlug: "thanks" })
+    expect((props.secondaryCta as { target: unknown }).target).toEqual({ kind: "step", stepSlug: "thanks" })
   })
 
   it("the ops it returns are accepted by the REAL applyOps", () => {
