@@ -3170,6 +3170,14 @@ export type FunnelKind = "page" | "funnel"
  */
 export type FunnelGoal = "leads" | "booking" | "program" | "session_pack" | "event"
 
+/**
+ * Which catalogue a funnel's linked offer comes from. A strict subset of
+ * `FunnelGoal` — `leads` and `booking` sell nothing, so they have nothing to
+ * link. Mirrors the `program` / `session_pack` / `event` members of
+ * `ctaTargetSchema`, which is what the ref eventually resolves against.
+ */
+export type OfferKind = "program" | "session_pack" | "event"
+
 export interface Funnel {
   id: string
   slug: string
@@ -3179,6 +3187,44 @@ export interface Funnel {
   kind: FunnelKind
   /** Null on rows created before goals existed — they have no honest value. */
   goal: FunnelGoal | null
+  /**
+   * Which template created this funnel (`lib/funnels/templates.ts`). Null for
+   * every row created before templates existed, and for landing pages, which
+   * have no sequence to plan.
+   *
+   * Deliberately a bare `string | null` rather than `FunnelTemplateId | null`:
+   * the column has no CHECK constraint (see migration 00210 for why), so a row
+   * CAN hold an id this build does not know — a funnel created after a template
+   * was renamed or retired. `getTemplate()` returns null for those and every
+   * caller already handles null, which is the honest shape. Narrowing the type
+   * here would be a lie the database is free to break.
+   */
+  template: string | null
+  /** Who the funnel is written for. Feeds every step's first draft. */
+  audience: string | null
+  /**
+   * The linked offer. Both columns or neither — the migration's
+   * `funnels_offer_paired_check` enforces it, because half an offer renders as
+   * a dead CTA.
+   *
+   * `offer_ref` is a NAME, not a uuid, matching the mechanism
+   * `lib/funnels/sections/resolve.ts` substitutes into a real id at render time.
+   */
+  offer_kind: OfferKind | null
+  offer_ref: string | null
+  /** The run window, for funnels whose template asks for one (camps, events). */
+  starts_at: string | null
+  ends_at: string | null
+  /**
+   * Take the funnel offline once `ends_at` passes. Honoured by the
+   * `funnel-window` cron, which is gated by `cron_funnel_window_enabled` in
+   * `system_settings` and defaults OFF — so this records an INTENT, and the
+   * funnel detail screen says plainly whether the job that acts on it is
+   * running.
+   */
+  auto_offline_at_end: boolean
+  /** Extra recipients for this funnel's leads. The inbox always gets them too. */
+  notify_emails: string[] | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -3195,6 +3241,16 @@ export interface FunnelStep {
   name: string
   position: number
   is_entry: boolean
+  /**
+   * What THIS step is for — the goal the 2026-08-12 spec identified as
+   * belonging to steps rather than to the container. Written from the template
+   * at creation, and read by the builder's first-draft prompt so the payment
+   * step is not told it is a lead form.
+   *
+   * Null for every step created before templates, and for steps a template
+   * gives no job (a thank-you page sells nothing).
+   */
+  goal: FunnelGoal | null
   seo_title: string | null
   seo_description: string | null
   og_image_url: string | null
