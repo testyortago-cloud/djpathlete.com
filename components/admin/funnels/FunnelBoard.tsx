@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { FUNNEL_GOALS } from "@/lib/validators/funnel"
 import { PreviewCard } from "./PreviewCard"
 import { FunnelGoLiveButton } from "./FunnelGoLiveButton"
+import { formatRunWindow } from "@/lib/funnels/run-window"
 import { CreatePageDialog } from "./CreatePageDialog"
 import { CreateFunnelDialog } from "./CreateFunnelDialog"
 import { ConvertToFunnelDialog } from "./ConvertToFunnelDialog"
@@ -235,6 +236,10 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
                 badgeTone={badge.tone}
                 goalLabel={goalLabel}
                 description={step.is_entry ? funnel.description : null}
+                // Entry card only: the window belongs to the funnel, not to
+                // each of its pages, so repeating it on every step would read
+                // as four different windows.
+                runWindow={step.is_entry ? formatRunWindow(funnel.starts_at, funnel.ends_at) : null}
                 leadCount={step.is_entry ? (leadCounts[funnel.id] ?? 0) : undefined}
                 leadsHref={`/admin/funnels/leads?funnelId=${funnel.id}`}
                 onDelete={() => handleDelete(page)}
