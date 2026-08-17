@@ -155,10 +155,26 @@ import { getFaqCountsByPage } from "@/lib/db/faqs"
  */
 export type ResolvableCtaKind = Extract<CtaTarget, { ref: string }>["kind"]
 
-/** One selectable row, reduced to the two fields resolution needs. */
+/** One selectable row, reduced to the fields resolution needs. */
 export interface CatalogueEntry {
   id: string
   name: string
+  /**
+   * EVENTS ONLY, AND OPTIONAL ON PURPOSE — a form that takes payment needs to
+   * know whether its camp CAN be paid for, and `{id, name}` cannot say.
+   *
+   * Optional because of the warning above about `loadCatalogue`: a `Catalogue`
+   * key that a producer does not supply must never be required, or the missing
+   * key becomes a silently unresolved CTA instead of a compile error. A program
+   * carries neither key, so a reader must treat `undefined` as "not
+   * applicable" and never as `false`.
+   *
+   * `true` when the event has a `stripe_price_id`. Without one,
+   * `/api/events/[id]/checkout` refuses outright.
+   */
+  priced?: boolean
+  /** Events only: `signup_count >= capacity`. */
+  soldOut?: boolean
 }
 
 /**
@@ -234,7 +250,14 @@ export interface Catalogues {
 export interface CatalogueRows {
   programs: { id: string; name: string }[]
   sessionPacks: { id: string; name: string }[]
-  events: { id: string; title: string }[]
+  /**
+   * The payment fields are OPTIONAL on this input type, not on the `Event` rows
+   * the real callers pass — `getPublishedEvents` and `getEvents` both
+   * `select("*")`, so they always arrive. Optional here keeps this type usable
+   * with the plain literals `toCatalogue`'s tests are built from, which is the
+   * whole reason the assembly was split out of `loadCatalogue`.
+   */
+  events: { id: string; title: string; stripe_price_id?: string | null; capacity?: number; signup_count?: number }[]
 }
 
 /**
@@ -250,7 +273,18 @@ export function toCatalogue({ programs, sessionPacks, events }: CatalogueRows): 
   return {
     program: programs.map((row) => ({ id: row.id, name: row.name })),
     session_pack: sessionPacks.map((row) => ({ id: row.id, name: row.name })),
-    event: events.map((row) => ({ id: row.id, name: row.title })),
+    event: events.map((row) => ({
+      id: row.id,
+      name: row.title,
+      // Derived, never fetched: both come off rows already in hand, so the
+      // publish gate that reads them costs no extra query.
+      priced: typeof row.stripe_price_id === "string" && row.stripe_price_id.length > 0,
+      // `>=`, not `>`. The 12th signup of a 12-place camp fills it, and a strict
+      // comparison would sell a 13th place for the webhook to refund.
+      soldOut: typeof row.capacity === "number" && typeof row.signup_count === "number"
+        ? row.signup_count >= row.capacity
+        : false,
+    })),
   }
 }
 

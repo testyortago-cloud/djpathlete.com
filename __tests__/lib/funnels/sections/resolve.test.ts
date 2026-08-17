@@ -1166,7 +1166,11 @@ describe("toCatalogue", () => {
     expect(result).toEqual({
       program: [{ id: "prog-1", name: "Program Row" }],
       session_pack: [{ id: "pack-1", name: "Pack Row" }],
-      event: [{ id: "event-1", name: "Event Row" }],
+      // The two event-only keys a checkout gate reads. Still a whole-object
+      // toEqual, so an extra or missing key still fails — a row with no
+      // stripe_price_id is `priced: false`, and one with no capacity numbers
+      // cannot be sold out.
+      event: [{ id: "event-1", name: "Event Row", priced: false, soldOut: false }],
     })
   })
 
@@ -1181,6 +1185,57 @@ describe("toCatalogue", () => {
     })
 
     expect(result.program.map((r) => r.id)).toEqual(["p1", "p2"])
+  })
+})
+
+// ===========================================================================
+// The two event-only keys a checkout gate reads.
+//
+// `CatalogueEntry` was `{id, name}`, which cannot answer "can this camp take
+// money?". Both keys are derived from rows ALREADY IN HAND — getPublishedEvents
+// does select("*") — so the publish gate costs no extra query.
+// ===========================================================================
+
+describe("toCatalogue carries what a checkout gate needs", () => {
+  const eventRow = (over: Record<string, unknown> = {}) => ({
+    id: "11111111-2222-4333-8444-555555555555",
+    title: "Summer Camp",
+    stripe_price_id: "price_123",
+    capacity: 12,
+    signup_count: 3,
+    ...over,
+  })
+
+  it("marks an event with a stripe price as priced and not sold out", () => {
+    const cat = toCatalogue({ programs: [], sessionPacks: [], events: [eventRow()] })
+    expect(cat.event[0]).toMatchObject({ name: "Summer Camp", priced: true, soldOut: false })
+  })
+
+  it("marks an event with no stripe price as unpriced", () => {
+    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ stripe_price_id: null })] }).event[0].priced).toBe(false)
+    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ stripe_price_id: "" })] }).event[0].priced).toBe(false)
+  })
+
+  it("marks a full event sold out, at capacity and over it", () => {
+    // MUTANT: `>` instead of `>=`. The 12th signup of a 12-place camp fills it;
+    // a strict comparison would sell a 13th place and leave the webhook to
+    // refund a parent who thought they had a spot.
+    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ signup_count: 12 })] }).event[0].soldOut).toBe(true)
+    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ signup_count: 13 })] }).event[0].soldOut).toBe(true)
+    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ signup_count: 11 })] }).event[0].soldOut).toBe(false)
+  })
+
+  it("leaves programs and packs without the event-only keys", () => {
+    // MUTANT: setting priced/soldOut for every kind. A program's sellability is
+    // not decided by an event's Stripe price, and a reader must be able to tell
+    // "not applicable" from "false".
+    const cat = toCatalogue({
+      programs: [{ id: "p", name: "Program" }],
+      sessionPacks: [{ id: "s", name: "Pack" }],
+      events: [],
+    })
+    expect(cat.program[0].priced).toBeUndefined()
+    expect(cat.session_pack[0].soldOut).toBeUndefined()
   })
 })
 
@@ -1507,15 +1562,19 @@ describe("loadCatalogues", () => {
           { id: "pack-active", name: "Active Pack" },
           { id: "pack-retired", name: "Retired Pack" },
         ],
+        // priced/soldOut are the checkout gate's two event-only keys. The
+        // fixtures here carry no stripe_price_id and no capacity, so both are
+        // false — kept in this whole-object toEqual rather than loosened to
+        // toMatchObject, because catching an extra or missing key is the point.
         event: [
-          { id: "event-published", name: "Published Event" },
-          { id: "event-completed", name: "Completed Event" },
+          { id: "event-published", name: "Published Event", priced: false, soldOut: false },
+          { id: "event-completed", name: "Completed Event", priced: false, soldOut: false },
         ],
       },
       offer: {
         program: [{ id: "prog-active", name: "Active Program" }],
         session_pack: [{ id: "pack-active", name: "Active Pack" }],
-        event: [{ id: "event-published", name: "Published Event" }],
+        event: [{ id: "event-published", name: "Published Event", priced: false, soldOut: false }],
       },
       faqPageKeys: ["camps", "training"],
     })
