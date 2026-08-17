@@ -1963,6 +1963,13 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           // draft lands, which is also when there is finally something to
           // change.
           composerDisabled={docInvalid || queueOwnsThisStep}
+          // AND THE STARTER CHIPS GO, rather than being greyed out with the
+          // composer. Disabling stops the second build; it does not stop the
+          // screen asking "What is this page for?" immediately above a card
+          // answering "it is already being written, there is nothing to type".
+          // The pinned card is the status for this state, and it should be the
+          // only one.
+          startersHidden={queueOwnsThisStep}
           pinned={pinned}
           onPolish={polish}
           canPolish={doc !== null && !docInvalid}

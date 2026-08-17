@@ -997,6 +997,19 @@ describe("the creation prompt and the background queue", () => {
     //    "Fix 1 blocker" button and the review behind it prints the copy.
     expect(screen.queryByRole("button", { name: /fix \d+ blocker/i })).toBeNull()
 
+    // 4. THE STARTER CHIPS ARE GONE, not merely greyed.
+    //    MUTANT: `startersHidden` dropped, leaving `composerDisabled` to dim
+    //    them. The transcript is empty here, so `ChatPane`'s empty state
+    //    renders — heading "What is this page for?", five chips — directly
+    //    above a card saying the page is already being written and there is
+    //    nothing to type. Disabled chips make that unclickable but leave the
+    //    screen holding two answers to the same question, which is the
+    //    contradiction this branch exists to remove. Asserted by ABSENCE
+    //    (`queryBy`), because a `toBeDisabled` check passes on exactly the
+    //    version being ruled out.
+    expect(screen.queryByText(/what is this page for/i)).toBeNull()
+    expect(screen.queryByRole("button", { name: /^(Landing|Opt-in|Sales|Thank-you|Waitlist)/ })).toBeNull()
+
     // Still exactly one build: the guard AND the disabled composer.
     expect(buildUrls(fetchMock as unknown as FetchMock)).toHaveLength(1)
   })

@@ -47,6 +47,20 @@ interface ChatPaneProps {
   busy: boolean
   /** Set when the draft cannot be read at all; the composer would be useless. */
   composerDisabled?: boolean
+  /**
+   * Hides the empty state — the "What is this page for?" heading and the five
+   * starter chips — leaving `pinned` to say what IS happening.
+   *
+   * SEPARATE FROM `composerDisabled`, and disabling was not enough. The chips
+   * are an invitation to START A PAGE, and the state this exists for is a page
+   * the background queue is already writing. Greying them out stops the click
+   * but leaves "What is this page for? Describe it in a sentence." on screen
+   * directly above a card reading "This page is being written for you — there
+   * is nothing to type". Two statuses on one screen contradicting each other is
+   * the defect class this whole branch removes, so the invitation is withdrawn
+   * rather than dimmed.
+   */
+  startersHidden?: boolean
   /** Pinned above the transcript: the unreadable-document recovery, conflicts. */
   pinned?: ReactNode
   /**
@@ -105,6 +119,7 @@ export function ChatPane({
   canPolish,
   busy,
   composerDisabled,
+  startersHidden,
   pinned,
   currentRevision,
   onRestore,
@@ -129,7 +144,7 @@ export function ChatPane({
       {pinned ? <div className="border-b border-border p-3">{pinned}</div> : null}
 
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        {messages.length === 0 ? (
+        {messages.length === 0 && !startersHidden ? (
           <div className="space-y-3">
             <div className="flex items-start gap-2">
               <Sparkles className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden />

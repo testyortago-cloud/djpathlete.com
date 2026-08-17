@@ -158,15 +158,59 @@ describe("the draft queue", () => {
     await waitFor(() => expect(screen.getByTestId("s3")).toHaveTextContent("done"))
   })
 
-  it("cannot be started twice", async () => {
+  it("cannot be started twice WHILE IT IS RUNNING", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => streamResponse())
     mount()
     act(() => { screen.getByText("start").click() })
     act(() => { screen.getByText("start").click() })
     await waitFor(() => expect(screen.getByTestId("s3")).toHaveTextContent("done"))
-    // MUTANT: no `started` ref. `FunnelBuilder` calls this from an effect that
-    // can re-run, and a second pass would draft every page a second time —
-    // over the top of the first pass's work, at full model cost.
+    // MUTANT: the `some(phase === "writing")` guard in `startAutoDraft`.
+    //
+    // CORRECTED. This assertion used to claim it killed "no `started` ref". It
+    // does not, and the claim was checked by deleting the ref: `runJob` sets
+    // its step's phase to "writing" SYNCHRONOUSLY, before its `await fetch`, so
+    // by the time the second click lands there is already a "writing" phase and
+    // that guard returns on its own. Both clicks happen while the queue is
+    // running, which is the only thing this test can see — hence the rename,
+    // and hence the drained-queue test below for what `started` really buys.
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not restart once the queue has DRAINED", async () => {
+    // A DRAINED QUEUE THAT WROTE NOTHING TO THE GRAPH — every job `blocked`, so
+    // `turn.compile` is null and `runJob` lands on `failed` without publishing.
+    //
+    // THE FIXTURE IS THE WHOLE TEST, and the obvious version proves nothing: on
+    // a drain of SUCCESSFUL builds, `startAutoDraft`'s run-time check
+    // (`docsRef.current.find(...)?.doc`) skips every step on the second pass
+    // and no fetch happens whether `started` exists or not. Verified — the
+    // successful-drain version of this test passes with the ref deleted. Only a
+    // drain that left the graph empty puts `started` on its own.
+    //
+    // It is also the case that MATTERS most: `failed` is terminal precisely so
+    // a model refusal is not repeated automatically at twice the cost.
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => streamResponse(BUILT, true))
+    mount()
+    act(() => { screen.getByText("start").click() })
+
+    // DRAINED, not merely started: both phases terminal and `queueInFlight`
+    // back to false. Every OTHER guard has stopped applying here — no phase is
+    // "writing" any more — so `started` is the only thing holding the door.
+    await waitFor(() => expect(screen.getByTestId("s2")).toHaveTextContent("failed"))
+    await waitFor(() => expect(screen.getByTestId("s3")).toHaveTextContent("failed"))
+    expect(fetchSpy).toHaveBeenCalledTimes(2)
+
+    act(() => { screen.getByText("start").click() })
+
+    // MUTANT: no `started` ref — the mutant the test above was wrongly credited
+    // with killing. `FunnelBuilder` calls `startAutoDraft` from an effect that
+    // can re-run, and once the queue has drained nothing else refuses: every
+    // page is drafted again at full model cost, and every page the model
+    // declined is asked again, which `DraftPhase` explicitly forbids.
+    //
+    // `waitFor` on the COUNT rather than a bare assertion, so a restart that is
+    // one microtask behind this line is still caught.
+    await waitFor(() => expect(screen.getByTestId("s2")).toHaveTextContent("failed"))
     expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 

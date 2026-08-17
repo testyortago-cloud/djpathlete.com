@@ -50,6 +50,13 @@ describe("<FunnelGoLiveButton>", () => {
     expect((init as RequestInit).method).toBe("PATCH")
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({ status: "published" })
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("This page is live."))
+    // MUTANT: deleting `setCurrent(next)` from `setStatus`. THE NEGATIVE
+    // ASSERTION IN "keeps the failure visible" CANNOT SEE THAT — it only ever
+    // checks the label did NOT flip, so a control that never flips at all
+    // passes it. Without this positive sibling the whole file stays green with
+    // the state update removed, and the owner presses Go live, gets a success
+    // toast, and watches the button go on saying "Go live".
+    expect(await screen.findByRole("button", { name: /take offline/i })).toBeInTheDocument()
   })
 
   it("offers Take offline when it is already live, and PATCHes back to draft", async () => {
@@ -151,6 +158,13 @@ describe("<FunnelGoLiveButton> — a funnel goes live through the guarded route"
     expect(init?.method).toBe("POST")
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
     expect(String(toast.success.mock.calls[0][0])).toMatch(/funnel is live/i)
+    // MUTANT: deleting `setCurrent("published")` from `goLive`. Same unpaired
+    // -negative trap as the page path above: this describe block asserts the
+    // label does NOT become "Take offline" after a 422, and nothing asserted it
+    // DOES after a 200 — so the state update could be removed with the file
+    // still green, leaving the card claiming a draft over a funnel that is live.
+    // `funnel-status-control.test.tsx` pairs its own negative this way.
+    expect(await screen.findByRole("button", { name: /take offline/i })).toBeInTheDocument()
   })
 
   it("reports a refusal, naming the page, instead of claiming success", async () => {
