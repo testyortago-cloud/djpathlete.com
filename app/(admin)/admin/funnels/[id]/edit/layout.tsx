@@ -28,8 +28,13 @@ import { notFound } from "next/navigation"
 import { getFunnelById, listSteps } from "@/lib/db/funnels"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { StepWithDoc } from "@/lib/funnels/connections"
-import { ConnectionsProvider, type RailPage } from "@/components/admin/funnels/connections-context"
+import {
+  ConnectionsProvider,
+  type DraftJob,
+  type RailPage,
+} from "@/components/admin/funnels/connections-context"
 import { StepRail } from "@/components/admin/funnels/StepRail"
+import { creationPrompt } from "@/lib/funnels/creation-prompt"
 
 /**
  * The shell, shared by `/admin/funnels` and `/admin/pages`.
@@ -88,6 +93,31 @@ export async function FunnelBuilderShell({
       : null,
   }))
 
+  // WHICH STEPS THE QUEUE MAY DRAFT: the ones that have never been touched.
+  //
+  // The same condition `[stepId]/page.tsx` uses to fire its own creation
+  // prompt — no stored document — minus the turn check, which needs a per-step
+  // query this layout deliberately does not make. The builder's own guard
+  // (`draftPhase !== "idle"`) covers the overlap, and a step with turns but no
+  // document is a step whose build failed, which is exactly a step worth
+  // retrying.
+  //
+  // ONLY FOR A FUNNEL. A landing page has one step and it is drafted by the
+  // create dialog's `?start=1`.
+  const draftJobs: DraftJob[] =
+    funnel.kind !== "funnel"
+      ? []
+      : ordered
+          .filter((step) => !sectionDocSchema.safeParse(step.project_data).success)
+          .map((step) => ({
+            stepId: step.id,
+            prompt: creationPrompt(funnel, step, ordered) ?? "",
+            revision: step.doc_revision ?? 0,
+          }))
+          // A step with no goal and no template composes no prompt. Sending an
+          // empty message would be a 400 from the build route's own validator.
+          .filter((job) => job.prompt !== "")
+
   return (
     <ConnectionsProvider
       funnelId={funnel.id}
@@ -95,6 +125,7 @@ export async function FunnelBuilderShell({
       funnelKind={funnel.kind}
       pages={pages}
       initialDocs={docs}
+      draftJobs={draftJobs}
     >
       <div className="-m-6 flex h-[calc(100dvh-4rem)]">
         <StepRail />
