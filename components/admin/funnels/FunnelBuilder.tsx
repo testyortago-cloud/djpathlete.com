@@ -59,6 +59,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  ChevronDown,
   ExternalLink,
   MessageSquare,
   Monitor,
@@ -69,13 +70,14 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { ChatPane } from "./builder/ChatPane"
 import { GenerationStage, BUILD_STAGE_WRAPPER_CLASS } from "./builder/GenerationStage"
 import { PreviewPane, type PreviewDevice } from "./builder/PreviewPane"
 import { PublishReview } from "./builder/PublishReview"
 import { SectionInspector } from "./builder/SectionInspector"
 import { patchForPath, valueAtPath } from "@/lib/funnels/sections/patch"
-import { usePublishStepConnections, useRegisterRepair } from "./connections-context"
+import { usePublishStepConnections, useRegisterRepair, useDraftQueue } from "./connections-context"
 import { ImageSlotDialog, type HeroMedia } from "./builder/ImageSlotDialog"
 import type { CanvasCommit, CanvasSelection } from "./builder/canvas-editing"
 import { candidatePickMessage } from "./builder/format"
@@ -84,6 +86,7 @@ import { fieldsForSection } from "@/lib/funnels/sections/fields"
 import type { SectionOp } from "@/lib/funnels/sections/apply"
 import type { BuildPhase, Finding } from "@/lib/funnels/sections/build-stream"
 import type { StreamedSection } from "@/lib/funnels/sections/stream-progress"
+import type { PagePublishProblem } from "@/lib/funnels/publish-plan"
 import type {
   BuildErrorResponse,
   BuildTurnResponse,
@@ -206,15 +209,26 @@ interface StreamState {
 const INITIAL_STREAM: StreamState = { phase: "reading", sections: [], tokens: null, attempt: 1, findings: [] }
 
 interface PublishResult {
-  version: number
+  /**
+   * `null` on the funnel-wide path. A funnel-wide publish writes a version row
+   * PER PAGE, so there is no single number to report — `pages` carries the
+   * count instead. Never `0`: that reads as a version, and "Published version
+   * 0" is a lie about a publish that in fact wrote several real ones.
+   */
+  version: number | null
   warnings: string[]
   /**
    * The page is published but the FUNNEL ROW is still a draft, so `/go/<slug>`
    * still 404s. Reported here rather than in a pre-publish confirmation: it is
    * not a reason to stop, it is the next thing to do, and it comes with the
    * button that does it.
+   *
+   * Always `false` on the funnel-wide path: that publish takes the funnel row
+   * live as part of the same write, so there is nothing left to say.
    */
   notLive: boolean
+  /** Set only by `publishFunnel` — how many pages were just published. */
+  pages?: number
 }
 
 let localMessageSeq = 0
@@ -245,6 +259,10 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   useEffect(() => {
     publishStepConnections(props.stepId, doc)
   }, [publishStepConnections, props.stepId, doc])
+
+  // A no-op outside a provider (`draftPhase` returns `"idle"` everywhere), so
+  // the builder still mounts standalone in tests and in the preview harness.
+  const { draftPhase, startAutoDraft, draftStep } = useDraftQueue()
 
   const [messages, setMessages] = useState<BuilderMessage[]>(props.initialMessages)
   const [input, setInput] = useState("")
@@ -798,11 +816,73 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   useEffect(() => {
     if (initialPromptFired.current) return
     if (!props.initialPrompt) return
+    // THE QUEUE MAY ALREADY BE ON THIS PAGE. `[stepId]/page.tsx` computes
+    // `wantsFirstDraft` from "no document and no turns", and the build route
+    // writes its turn LAST — so for the whole ~30s of a background draft both
+    // are still true, and clicking into that page would start a SECOND build
+    // on the same step: two writers racing one optimistic lock, one of them
+    // wasted. The provider outlives the navigation, so it is the only thing on
+    // the client that knows.
+    const phase = draftPhase(props.stepId)
+    if (phase === "queued" || phase === "writing") {
+      // THE REF IS SPENT, NOT JUST THIS PASS SKIPPED. A bare `return` here
+      // leaves the effect ARMED, and it re-runs: `draftPhase` is a
+      // `useCallback` over the phase map, so its identity changes on every
+      // transition. When the queue FINISHES, `phase` becomes "done" and every
+      // remaining guard below is still satisfied — `props.initialDoc` is a
+      // PROP, so it is still the `null` the server rendered — and the creation
+      // prompt fires about thirty seconds after the page was successfully
+      // written. That is the same double build this guard exists to prevent,
+      // arriving through a later door.
+      //
+      // Spending the ref says the true thing: the queue owns this page for
+      // this mount, so this mount's creation prompt is done with. It also
+      // honours `DraftPhase`'s own rule that a `failed` draft is not retried
+      // automatically — "a model refusal repeated automatically is the same
+      // refusal at twice the cost". A fresh navigation re-arms it.
+      initialPromptFired.current = true
+      return
+    }
     if (props.initialDoc !== null) return
     if (props.initialMessages.length > 0) return
     initialPromptFired.current = true
     void send(props.initialPrompt)
-  }, [props.initialPrompt, props.initialDoc, props.initialMessages, send])
+  }, [props.initialPrompt, props.initialDoc, props.initialMessages, props.stepId, draftPhase, send])
+
+  /**
+   * Kicks the background draft queue off once THIS step's first draft has
+   * landed.
+   *
+   * Only off the back of a FIRST draft. A funnel whose pages are all written
+   * has nothing queued anyway (the layout composes no jobs for them), but
+   * firing this on every turn would mean re-entering `startAutoDraft` on
+   * every edit for the whole session.
+   *
+   * ---------------------------------------------------------------------
+   * THIS EFFECT MUST STAY DECLARED AFTER THE `publishStepConnections` ONE.
+   * ---------------------------------------------------------------------
+   * React runs a component's effects in declaration order, and the queue's
+   * skip check reads the graph AT RUN TIME rather than as the layout composed
+   * it. On a brand-new templated funnel the layout lists step 1 as a draft job
+   * too — it has no way to know this builder is about to write it from
+   * `initialPrompt` — so the only thing that stops the queue re-drafting the
+   * page the owner just watched succeed is that `publishStepConnections` has
+   * already put its document in the graph by the time `startAutoDraft` looks.
+   *
+   * Move this above that effect and nothing throws, nothing turns red, and
+   * every funnel silently costs one extra model call while the page the owner
+   * is looking at flips to a red "failed" badge when the two writers race the
+   * build route's revision check. The ordering is pinned by
+   * "starts the queue only once this page's own draft has reached the graph"
+   * in __tests__/components/admin/funnel-publish-all.test.tsx.
+   */
+  const autoDraftKicked = useRef(false)
+  useEffect(() => {
+    if (autoDraftKicked.current) return
+    if (!props.initialPrompt || doc === null) return
+    autoDraftKicked.current = true
+    startAutoDraft()
+  }, [doc, props.initialPrompt, startAutoDraft])
 
   // --------------------------------------------------------------------------
   // The gate
@@ -948,7 +1028,30 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     setTab("chat")
   }, [])
 
-  const publish = useCallback(async () => {
+  /**
+   * A funnel-wide refusal, routed into the chat WITH the page it is about.
+   *
+   * `reportRefusal` flattens to strings, which is right when every problem is
+   * about the page on screen. A funnel publish reports on four pages at once,
+   * and a bare "Thank you has no content yet." leaves the owner to find Thank
+   * you themselves. So each problem carries a link, and a merely-blank page
+   * carries the fix as well.
+   */
+  const reportPageRefusal = useCallback((pages: PagePublishProblem[]) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: nextLocalId("pages"),
+        role: "pages",
+        text: "This funnel was not published.",
+        pages,
+      },
+    ])
+    setMode("edit")
+    setTab("chat")
+  }, [])
+
+  const publishThisPage = useCallback(async () => {
     if (!doc || !canPublish) return
     setBusy("publishing")
     try {
@@ -1025,6 +1128,89 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
       setBusy("idle")
     }
   }, [canPublish, doc, props, reportRefusal, revision])
+
+  /**
+   * PUBLISH THE WHOLE FUNNEL — the primary action, and one click.
+   *
+   * The owner published a page, was told it worked, and found a second
+   * "Publish funnel" button on the next screen with a 404 behind it until he
+   * pressed it: "There should be no seperate publish again, if i publish it in
+   * the builder it should publish it now immidately, the whole funnel."
+   *
+   * It does NOT send this tab's document. The route reads every page's stored
+   * draft, gates all of them, and writes only if all pass — so what it
+   * publishes is what is SAVED, which is the only thing it could honestly
+   * publish for the four pages this tab is not holding. `canPublish` already
+   * requires this page to be saved and clean, and `upToDate` stops a no-op.
+   */
+  const publishFunnel = useCallback(async () => {
+    if (!doc || !canPublish) return
+    setBusy("publishing")
+    try {
+      const response = await fetch(`/api/admin/funnels/${props.funnelId}/publish`, { method: "POST" })
+      const body = (await response.json().catch(() => null)) as {
+        published?: number
+        /**
+         * ONE KEY, TWO SHAPES, AND THE STATUS IS WHAT TELLS THEM APART. On a
+         * 200 the route sends `{stepId, stepName, version}` per page it wrote;
+         * on a 422 it sends `PagePublishProblem` per page it refused. Typed as
+         * `unknown[]` so neither branch can read the other's fields by
+         * accident — each narrows it below, inside a branch that has already
+         * checked the status.
+         */
+        pages?: unknown[]
+        warnings?: string[]
+        error?: string
+      } | null
+
+      if (response.status === 422 && body?.pages?.length) {
+        const refused = body.pages as PagePublishProblem[]
+        // Same treatment as the step route's 422 — `setServerBlockers` FIRST
+        // so the gate stays shut, then the way out. See `reportPageRefusal`.
+        setServerBlockers(refused.flatMap((page) => page.problems))
+        reportPageRefusal(refused)
+        return
+      }
+      if (!response.ok || !body?.published) {
+        toast.error(body?.error ?? "Could not publish. The live funnel is unchanged.")
+        return
+      }
+
+      setPublishResult({ version: null, pages: body.published, warnings: body.warnings ?? [], notLive: false })
+      // WHAT THE HEADER'S "vN live" PILL NOW HAS TO SAY. A funnel-wide publish
+      // wrote a version row for this page too, and the route names it — so
+      // leaving the pill on the previous number would have it reporting a
+      // snapshot that is no longer being served. Read off the response rather
+      // than guessed, and left alone if this step is not in the list (a legacy
+      // GrapesJS page is deliberately skipped by the planner).
+      const written = (body.pages ?? []) as { stepId: string; version: number }[]
+      const mine = written.find((page) => page.stepId === props.stepId)
+      if (mine) setPublishedVersion(mine.version)
+      setPublishedRevision(revision)
+      setMode("edit")
+      toast.success(`Published ${body.published} page${body.published === 1 ? "" : "s"}. The funnel is live.`)
+    } catch {
+      toast.error("Could not publish. The live funnel is unchanged.")
+    } finally {
+      setBusy("idle")
+    }
+  }, [canPublish, doc, props.funnelId, props.stepId, reportPageRefusal, revision])
+
+  /**
+   * What the review's "Publish now" does — the SAME act as the header's
+   * primary button, whichever kind this row is.
+   *
+   * ONE PRIMARY PUBLISH ACT PER SCREEN. The review is reachable from "N to
+   * check" while publishing is still allowed, and it carries a "Publish now"
+   * of its own. If that published only this page while the header's button
+   * published the funnel, the screen would carry two controls both labelled
+   * publish that did different things — which is the complaint that started
+   * this feature ("there is two publish, and also a publish now"). It would be
+   * worse here than it was then, because the review's own copy says the funnel
+   * is not live yet, so the button beside that sentence has to be the one that
+   * fixes it. The per-page publish keeps its own door: the split menu.
+   */
+  const primaryPublish = props.funnelKind === "funnel" ? publishFunnel : publishThisPage
 
   const pickCandidate = useCallback(
     (cta: UnresolvedCta, candidateName: string) => {
@@ -1192,8 +1378,69 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         {/* Hidden in review mode. It used to stay on screen NEXT TO
             "Publish now", so two publish affordances were visible at once and
             this one was a no-op — its onClick only re-entered the mode it was
-            already in. The preview pane above branches on the same condition. */}
-        {mode === "review" ? null : (
+            already in. The preview pane above branches on the same condition.
+
+            A FUNNEL GETS A SPLIT BUTTON, A LANDING PAGE DOES NOT. "There
+            should be no seperate publish again, if i publish it in the
+            builder it should publish it now immidately, the whole funnel,
+            also when its a funnel when i click publish you can choose publish
+            all or publish steps." A landing page is one page — offering to
+            publish it two ways would be noise, and "Publish funnel" on it is
+            the wrong-screen wording the owner already objected to once (see
+            `noun` above). */}
+        {mode === "review" ? null : props.funnelKind === "funnel" ? (
+          <div className="flex items-center">
+            <Button
+              size="sm"
+              className="rounded-r-none"
+              // `canPublish` already requires `busy === "idle"`, so a publish
+              // in flight disables this button without a second check.
+              disabled={!canPublish}
+              title={
+                upToDate
+                  ? "This funnel is live and nothing on this page has changed since. Publish comes back the moment you change something."
+                  : canPublish
+                    ? "Publishes the whole funnel immediately."
+                    : "Publishing is blocked — open the blockers list to see what needs fixing."
+              }
+              onClick={() => void publishFunnel()}
+            >
+              {/* THE SAME `upToDate` SWAP THE LANDING-PAGE BUTTON MAKES, for
+                  the same reported reason: "when i publish there is no version
+                  showing then the publish button is still available that its
+                  confusing". A greyed-out "Publish funnel" sitting beside a
+                  strip that says "3 pages published" reads as a publish that
+                  did not take. The button says what HAPPENED; there is no act
+                  left for it to offer. */}
+              {upToDate ? (
+                <>
+                  <Check className="size-4" aria-hidden />
+                  Published
+                </>
+              ) : (
+                <>
+                  <Rocket className="size-4" aria-hidden />
+                  Publish funnel
+                </>
+              )}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  disabled={!canPublish}
+                  aria-label="More publish options"
+                  className="rounded-l-none border-l border-primary-foreground/20 px-2"
+                >
+                  <ChevronDown className="size-4" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => void publishThisPage()}>Publish this page only</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ) : (
           <Button
             size="sm"
             // `canPublish` already requires `busy === "idle"`, so a publish in
@@ -1206,7 +1453,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
                   ? "Publishes straight away."
                   : "Publishing is blocked — open the blockers list to see what needs fixing."
             }
-            onClick={() => void publish()}
+            onClick={() => void publishThisPage()}
           >
             {/* "Publish" IN EVERY STATE BUT ONE. An earlier attempt swapped this
                 to "Review & publish" when a review was pending, on the theory
@@ -1262,7 +1509,13 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         <div className="flex shrink-0 items-start gap-2 border-b border-border bg-surface/60 px-4 py-2 text-xs">
           <div className="min-w-0 flex-1">
             <p className="font-medium text-foreground">
-              Published version {publishResult.version}. The live page is updated.
+              {/* Two publish paths, two facts to report — never both. A
+                  funnel-wide publish writes one version row PER PAGE, so
+                  there is no single number to name; `pages` carries the count
+                  instead. See the ruling on `PublishResult.version` above. */}
+              {typeof publishResult.pages === "number"
+                ? `${publishResult.pages} page${publishResult.pages === 1 ? "" : "s"} published — the funnel is live.`
+                : `Published version ${publishResult.version}. The live page is updated.`}
             </p>
             {publishResult.warnings.length > 0 ? (
               <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground">
@@ -1327,6 +1580,9 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           pinned={pinned}
           onPolish={polish}
           canPolish={doc !== null && !docInvalid}
+          funnelKind={props.funnelKind}
+          funnelId={props.funnelId}
+          onDraftStep={draftStep}
         />
 
         {mode === "review" ? (
@@ -1348,7 +1604,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
             upToDate={upToDate}
             publishedVersion={publishedVersion}
             publishing={busy === "publishing"}
-            onPublish={publish}
+            onPublish={primaryPublish}
             onCancel={() => setMode("edit")}
             onPickCandidate={pickCandidate}
           />
