@@ -10,7 +10,15 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createServiceRoleClient } from "@/lib/supabase"
-import { createSubmission, getFunnelById, getPublishedFormConfig, getStep } from "@/lib/db/funnels"
+import { createSubmission, getFunnelById, getPublishedFormConfig, getStep, listSteps } from "@/lib/db/funnels"
+import { getEventById } from "@/lib/db/events"
+import { getSetting } from "@/lib/db/system-settings"
+import { getAttributionBySession } from "@/lib/db/marketing-attribution"
+import { createEventSignupCheckout } from "@/lib/events/checkout"
+import { FUNNEL_CHECKOUT_DEFAULT, FUNNEL_CHECKOUT_FLAG } from "@/lib/funnels/checkout/flag"
+import { labelForRole, signupInputFromRoles } from "@/lib/funnels/checkout/roles"
+import { createEventSignupSchema } from "@/lib/validators/event-signups"
+import { getBaseUrl } from "@/lib/url"
 import { sendNewFunnelLeadEmail } from "@/lib/email"
 import { funnelFormFieldSchema, type FunnelFormField } from "@/lib/funnels/islands"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
@@ -153,7 +161,114 @@ export async function POST(request: Request) {
     console.error("[funnels/submit] lead alert failed (the lead was saved):", error)
   })
 
+  // Read here, not inside the closure: TypeScript does not carry the `!config`
+  // narrowing above into a closure body, and widening it back to
+  // `config!.eventId` inside would be an assertion standing in for a check that
+  // has already happened right here.
+  const configEventId = typeof config.eventId === "string" ? config.eventId : ""
+
+  if (config.successMode === "checkout") return await checkoutAfterSubmission()
+
   return NextResponse.json({ ok: true })
+
+  // -------------------------------------------------------------------------
+  // (c) THE PAYING BRANCH.
+  //
+  // Declared as a closure and called above so it reads in the order it happens
+  // and can see everything already resolved — `fields`, `payload`, `ip`,
+  // `sessionId` — without threading eight arguments through a top-level helper.
+  //
+  // IT RUNS AFTER THE SUBMISSION IS WRITTEN, and that ordering is the whole
+  // point: the visitor most worth calling is the one who filled the form and
+  // could not pay, so a Stripe outage must cost them their checkout and never
+  // their place in the owner's leads.
+  // -------------------------------------------------------------------------
+  async function checkoutAfterSubmission(): Promise<Response> {
+    // MONEY AND MASS EMAIL — the repo's stated bar for a flag. 404 rather than
+    // 403 for the same reason /api/funnels/checkout gives: a 403 confirms the
+    // endpoint exists and is merely switched off, which is a map of what to come
+    // back for.
+    if (!(await getSetting<boolean>(FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT))) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
+
+    const event = configEventId === "" ? null : await getEventById(configEventId).catch(() => null)
+    if (!event || event.status !== "published") {
+      // The publish gate refuses this configuration, so reaching it means the
+      // camp changed AFTER the page went live. The visitor gets the plain fact.
+      return NextResponse.json({ error: "This camp is not open for booking yet." }, { status: 400 })
+    }
+
+    // The form's own declaration, mapped and then handed to the REAL validator.
+    const parsedSignup = createEventSignupSchema.safeParse(signupInputFromRoles(fields, parsedBody.values))
+    if (!parsedSignup.success) {
+      // Named with the OWNER'S OWN LABEL. "athlete_age must be less than or
+      // equal to 21" describes a field the parent never saw; "Player's age must
+      // be between 6 and 21" describes the one in front of them.
+      const issue = parsedSignup.error.issues[0]
+      const role = typeof issue?.path?.[0] === "string" ? issue.path[0] : ""
+      const label = role === "" ? "That form" : labelForRole(fields, role)
+      const detail =
+        role === "athlete_age"
+          ? "must be between 6 and 21"
+          : role === "waiver_accepted"
+            ? "must be accepted before you can pay"
+            : (issue?.message ?? "is not valid")
+      return NextResponse.json({ error: `${label} ${detail}.` }, { status: 400 })
+    }
+
+    // Attribution, resolved the same way /api/events/[id]/checkout resolves it,
+    // so a funnel-born signup carries its gclid onto `event_signups` rather than
+    // appearing from nowhere.
+    const attrRow = sessionId ? await getAttributionBySession(sessionId).catch(() => null) : null
+    const tracking = attrRow
+      ? { gclid: attrRow.gclid, gbraid: attrRow.gbraid, wbraid: attrRow.wbraid, fbclid: attrRow.fbclid }
+      : undefined
+
+    const outcome = await createEventSignupCheckout({
+      event,
+      input: parsedSignup.data,
+      ipAddress: ip === "unknown" ? null : ip,
+      userAgent: request.headers.get("user-agent"),
+      tracking,
+      baseUrl: getBaseUrl(),
+      returnUrls: await funnelReturnUrls(),
+    })
+    if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })
+    return NextResponse.json({ sessionUrl: outcome.sessionUrl })
+  }
+
+  /**
+   * Where Stripe sends the visitor, BUILT FROM THE FUNNEL'S OWN SLUGS.
+   *
+   * Never from request input — the same rule that put a host allowlist on
+   * `redirectUrl`, and it matters more here because these two URLs are handed to
+   * a third party who will send a paying visitor to them.
+   *
+   * Success is the funnel's LAST step by position: a completed purchase belongs
+   * on the page the owner wrote for it, and the step rail already labels that one
+   * "ends here". Cancel returns to the step the form is on, so a parent who backs
+   * out of Stripe lands where they were rather than at the top of the funnel.
+   *
+   * Returns undefined when either lookup fails, which leaves the helper's own
+   * default (the event's pages) — a worse landing, but a completed payment.
+   */
+  async function funnelReturnUrls(): Promise<{ successUrl: string; cancelUrl: string } | undefined> {
+    const [funnel, steps] = await Promise.all([
+      getFunnelById(parsedBody.funnelId).catch(() => null),
+      listSteps(parsedBody.funnelId).catch(() => [] as Awaited<ReturnType<typeof listSteps>>),
+    ])
+    const thisStep = steps.find((candidate) => candidate.id === parsedBody.stepId)
+    const last = [...steps].sort((a, b) => a.position - b.position).at(-1)
+    if (!funnel || !last || !thisStep) return undefined
+    const base = `${getBaseUrl()}/go/${funnel.slug}`
+    return {
+      // `{CHECKOUT_SESSION_ID}` is Stripe's own placeholder. It must reach Stripe
+      // unescaped, so it is never passed through encodeURIComponent.
+      successUrl: `${base}/${last.slug}?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${base}/${thisStep.slug}?checkout=cancelled`,
+    }
+  }
 }
 
 /**

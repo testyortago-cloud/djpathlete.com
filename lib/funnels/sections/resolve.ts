@@ -114,6 +114,7 @@
 import {
   ctaWithLabelSchema,
   faqPropsSchema,
+  formSectionPropsSchema,
   sectionDocSchema,
   type CtaTarget,
   type CtaWithLabel,
@@ -155,10 +156,26 @@ import { getFaqCountsByPage } from "@/lib/db/faqs"
  */
 export type ResolvableCtaKind = Extract<CtaTarget, { ref: string }>["kind"]
 
-/** One selectable row, reduced to the two fields resolution needs. */
+/** One selectable row, reduced to the fields resolution needs. */
 export interface CatalogueEntry {
   id: string
   name: string
+  /**
+   * EVENTS ONLY, AND OPTIONAL ON PURPOSE — a form that takes payment needs to
+   * know whether its camp CAN be paid for, and `{id, name}` cannot say.
+   *
+   * Optional because of the warning above about `loadCatalogue`: a `Catalogue`
+   * key that a producer does not supply must never be required, or the missing
+   * key becomes a silently unresolved CTA instead of a compile error. A program
+   * carries neither key, so a reader must treat `undefined` as "not
+   * applicable" and never as `false`.
+   *
+   * `true` when the event has a `stripe_price_id`. Without one,
+   * `/api/events/[id]/checkout` refuses outright.
+   */
+  priced?: boolean
+  /** Events only: `signup_count >= capacity`. */
+  soldOut?: boolean
 }
 
 /**
@@ -234,7 +251,14 @@ export interface Catalogues {
 export interface CatalogueRows {
   programs: { id: string; name: string }[]
   sessionPacks: { id: string; name: string }[]
-  events: { id: string; title: string }[]
+  /**
+   * The payment fields are OPTIONAL on this input type, not on the `Event` rows
+   * the real callers pass — `getPublishedEvents` and `getEvents` both
+   * `select("*")`, so they always arrive. Optional here keeps this type usable
+   * with the plain literals `toCatalogue`'s tests are built from, which is the
+   * whole reason the assembly was split out of `loadCatalogue`.
+   */
+  events: { id: string; title: string; stripe_price_id?: string | null; capacity?: number; signup_count?: number }[]
 }
 
 /**
@@ -250,7 +274,18 @@ export function toCatalogue({ programs, sessionPacks, events }: CatalogueRows): 
   return {
     program: programs.map((row) => ({ id: row.id, name: row.name })),
     session_pack: sessionPacks.map((row) => ({ id: row.id, name: row.name })),
-    event: events.map((row) => ({ id: row.id, name: row.title })),
+    event: events.map((row) => ({
+      id: row.id,
+      name: row.title,
+      // Derived, never fetched: both come off rows already in hand, so the
+      // publish gate that reads them costs no extra query.
+      priced: typeof row.stripe_price_id === "string" && row.stripe_price_id.length > 0,
+      // `>=`, not `>`. The 12th signup of a 12-place camp fills it, and a strict
+      // comparison would sell a 13th place for the webhook to refund.
+      soldOut: typeof row.capacity === "number" && typeof row.signup_count === "number"
+        ? row.signup_count >= row.capacity
+        : false,
+    })),
   }
 }
 
@@ -624,6 +659,28 @@ export interface UnknownFaqKey {
   candidates: string[]
 }
 
+/**
+ * A form whose `successMode` is "checkout" and whose camp cannot be paid for.
+ *
+ * `reason` exists so the owner is told which of three different things to fix.
+ * `not_offered` and `unknown` are deliberately separate: an owner who
+ * un-published a camp to fix a typo — which `Catalogues` above calls ROUTINE
+ * WORK — must not be told they have a broken id and sent looking for a mistake
+ * they did not make.
+ */
+export interface UnsellableCheckout {
+  sectionId: string
+  eventId: string
+  reason: "unknown" | "not_offered" | "unpriced"
+}
+
+/** A form selling a camp that is full. Reported, never blocked. */
+export interface SoldOutCheckout {
+  sectionId: string
+  eventId: string
+  name: string
+}
+
 export interface ResolveResult {
   /**
    * The doc with every resolvable ref substituted. The SAME OBJECT as the
@@ -643,6 +700,17 @@ export interface ResolveResult {
   brokenStepLinks: BrokenStepLink[]
   /** NON-EMPTY MEANS PUBLISH IS BLOCKED. See `publishGate()`. */
   unknownFaqKeys: UnknownFaqKey[]
+  /**
+   * NON-EMPTY MEANS PUBLISH IS BLOCKED. Forms that take payment for a camp that
+   * cannot take payment. See `publishGate()`.
+   */
+  unsellableCheckouts: UnsellableCheckout[]
+  /**
+   * A WARNING, NOT A BLOCKER — see `publishGate()`. A full camp is a legitimate
+   * page: the owner may want it live saying so, and refusing to publish it would
+   * be the gate deciding something that is not its business.
+   */
+  soldOutCheckouts: SoldOutCheckout[]
 }
 
 // ---------------------------------------------------------------------------
@@ -995,6 +1063,8 @@ export function resolveDoc(
   const danglingAnchors: DanglingAnchor[] = []
   const brokenStepLinks: BrokenStepLink[] = []
   const unknownFaqKeys: UnknownFaqKey[] = []
+  const unsellableCheckouts: UnsellableCheckout[] = []
+  const soldOutCheckouts: SoldOutCheckout[] = []
 
   // Copy-on-write: `nextSections` stays null — and therefore `doc.sections`
   // is returned untouched — until some section actually changes. A plain
@@ -1031,6 +1101,39 @@ export function resolveDoc(
           // caller.
           candidates: catalogues.faqPageKeys,
         })
+      }
+    }
+
+    // FORMS THAT TAKE MONEY. Beside the FAQ check above for the same stated
+    // reason: both ask "does this model-or-owner-written value name something
+    // this server can actually find?", and a reader looking for that answer
+    // should find all of it in one place.
+    //
+    // ONLY `successMode: "checkout"` is inspected. An opt-in form carrying an
+    // eventId is not selling anything, and a blocker on it would stop every
+    // lead-gen page already live from publishing.
+    //
+    // Narrowed through the registry's own schema, never a cast — same rule the
+    // FAQ branch follows, and `sectionDocSchema.parse(doc)` at the top of this
+    // function means this parse cannot fail.
+    if (section.kind === "form") {
+      const formProps = formSectionPropsSchema.parse(section.props)
+      if (formProps.successMode === "checkout") {
+        const eventId = typeof formProps.eventId === "string" ? formProps.eventId : ""
+        const offered = eventId === "" ? undefined : catalogues.offer.event.find((entry) => entry.id === eventId)
+        if (!offered) {
+          // Recognition answers a DIFFERENT question — "did this row ever
+          // exist?" — and that is exactly what separates a typo from a camp the
+          // owner has temporarily taken down.
+          const known = eventId !== "" && catalogues.recognition.event.some((entry) => entry.id === eventId)
+          unsellableCheckouts.push({ sectionId: section.id, eventId, reason: known ? "not_offered" : "unknown" })
+        } else if (offered.priced !== true) {
+          // `!== true`, not `=== false`: `priced` is optional, and `undefined`
+          // means "nothing said this camp has a price", which is not a yes.
+          unsellableCheckouts.push({ sectionId: section.id, eventId, reason: "unpriced" })
+        } else if (offered.soldOut === true) {
+          soldOutCheckouts.push({ sectionId: section.id, eventId, name: offered.name })
+        }
       }
     }
 
@@ -1135,6 +1238,8 @@ export function resolveDoc(
     danglingAnchors,
     brokenStepLinks,
     unknownFaqKeys,
+    unsellableCheckouts,
+    soldOutCheckouts,
   }
 }
 
@@ -1176,6 +1281,34 @@ function describeUnknownFaqKey(entry: UnknownFaqKey): string {
   return (
     `Section "${entry.sectionId}" (${entry.field}): no FAQs are filed under ` +
     `"${entry.pageKey}", so that section would show nothing at all — ${known}.`
+  )
+}
+
+/**
+ * Written for the owner, and naming which of three fixes is theirs to make.
+ *
+ * "Its camp" rather than "its eventId": the owner picked a camp in the builder
+ * and never typed the word eventId, so an error message about one describes a
+ * field they cannot see.
+ */
+function describeUnsellableCheckout(entry: UnsellableCheckout): string {
+  const where = `Section "${entry.sectionId}" takes payment`
+  if (entry.reason === "unpriced") {
+    return `${where}, but its camp has no price set up in Stripe yet, so nobody could pay for it.`
+  }
+  if (entry.reason === "not_offered") {
+    return (
+      `${where}, but its camp is not currently open — it may be unpublished, ` +
+      `cancelled, or already finished. Re-publish the camp, or point this form at another one.`
+    )
+  }
+  return `${where}, but does not name a camp that exists.`
+}
+
+function describeSoldOutCheckout(entry: SoldOutCheckout): string {
+  return (
+    `Section "${entry.sectionId}" sells "${entry.name}", which is full. ` +
+    `Visitors will be told it is full instead of being able to pay.`
   )
 }
 
@@ -1225,7 +1358,15 @@ export function publishGate(result: ResolveResult): PublishGate {
     // nowhere on a page that is otherwise fine; a dead step link is a 404 on a
     // page the owner is paying to send traffic to.
     ...result.brokenStepLinks.map(describeBrokenStepLink),
+    // BLOCKS. A page that charges for a camp which cannot take the money is a
+    // page that takes a visitor's details and then fails them at the last step.
+    ...result.unsellableCheckouts.map(describeUnsellableCheckout),
   ]
-  const warnings = result.danglingAnchors.map(describeDanglingAnchor)
+  const warnings = [
+    ...result.danglingAnchors.map(describeDanglingAnchor),
+    // WARNS ONLY. A sold-out camp on a live page is a legitimate thing to
+    // publish, and the visitor is told plainly rather than taken to a checkout.
+    ...result.soldOutCheckouts.map(describeSoldOutCheckout),
+  ]
   return { ok: blockers.length === 0, blockers, warnings }
 }

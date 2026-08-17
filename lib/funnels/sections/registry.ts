@@ -557,7 +557,23 @@ const faqDef: SectionDef<"faq"> = {
 const formDef: SectionDef<"form"> = {
   kind: "form",
   label: "Form",
-  description: "An opt-in / lead-capture form. Renders as the `form` island.",
+  description:
+    "An opt-in / lead-capture form. Renders as the `form` island. " +
+    // THE RULE, NOT JUST THE SIGNATURE. The generated props above already show
+    // `role` and `successMode: "checkout"`, so a model can see the fields exist
+    // and cannot tell from them that a checkout form with a missing role is
+    // REFUSED AT PUBLISH. Said here rather than in prompt.ts so it travels with
+    // the schema it constrains.
+    'NEVER WRITE successMode "checkout" AND NEVER WRITE eventId. A form that sells a camp ' +
+    "needs a camp id that only the owner can supply, in the builder, so a checkout form you " +
+    "wrote yourself could never be completed — and because eventId is required for that mode, " +
+    "the whole batch of ops would be rejected and the owner's turn would fail. Write " +
+    'successMode "message" or "redirect".' +
+    " IF A FORM ALREADY HAS successMode \"checkout\", KEEP IT AND KEEP ITS eventId EXACTLY AS " +
+    "THEY ARE — the owner switched that on deliberately. Such a form must keep a field for each " +
+    "of parent_name, parent_email, athlete_name, athlete_age and waiver_accepted, each carrying " +
+    "that value in its `role`, with the waiver field a required checkbox. Dropping any of them, " +
+    "or the eventId, makes the page impossible to publish.",
   variants: FORM_VARIANTS,
   propsSchema: formSectionPropsSchema,
   schema: formSchema,

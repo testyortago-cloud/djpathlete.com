@@ -50,6 +50,7 @@ import {
   publishGate,
   toCatalogue,
   type Catalogue,
+  type CatalogueEntry,
   type Catalogues,
   type FunnelStepRef,
   type ResolvableCtaKind,
@@ -1166,7 +1167,11 @@ describe("toCatalogue", () => {
     expect(result).toEqual({
       program: [{ id: "prog-1", name: "Program Row" }],
       session_pack: [{ id: "pack-1", name: "Pack Row" }],
-      event: [{ id: "event-1", name: "Event Row" }],
+      // The two event-only keys a checkout gate reads. Still a whole-object
+      // toEqual, so an extra or missing key still fails — a row with no
+      // stripe_price_id is `priced: false`, and one with no capacity numbers
+      // cannot be sold out.
+      event: [{ id: "event-1", name: "Event Row", priced: false, soldOut: false }],
     })
   })
 
@@ -1181,6 +1186,57 @@ describe("toCatalogue", () => {
     })
 
     expect(result.program.map((r) => r.id)).toEqual(["p1", "p2"])
+  })
+})
+
+// ===========================================================================
+// The two event-only keys a checkout gate reads.
+//
+// `CatalogueEntry` was `{id, name}`, which cannot answer "can this camp take
+// money?". Both keys are derived from rows ALREADY IN HAND — getPublishedEvents
+// does select("*") — so the publish gate costs no extra query.
+// ===========================================================================
+
+describe("toCatalogue carries what a checkout gate needs", () => {
+  const eventRow = (over: Record<string, unknown> = {}) => ({
+    id: "11111111-2222-4333-8444-555555555555",
+    title: "Summer Camp",
+    stripe_price_id: "price_123",
+    capacity: 12,
+    signup_count: 3,
+    ...over,
+  })
+
+  it("marks an event with a stripe price as priced and not sold out", () => {
+    const cat = toCatalogue({ programs: [], sessionPacks: [], events: [eventRow()] })
+    expect(cat.event[0]).toMatchObject({ name: "Summer Camp", priced: true, soldOut: false })
+  })
+
+  it("marks an event with no stripe price as unpriced", () => {
+    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ stripe_price_id: null })] }).event[0].priced).toBe(false)
+    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ stripe_price_id: "" })] }).event[0].priced).toBe(false)
+  })
+
+  it("marks a full event sold out, at capacity and over it", () => {
+    // MUTANT: `>` instead of `>=`. The 12th signup of a 12-place camp fills it;
+    // a strict comparison would sell a 13th place and leave the webhook to
+    // refund a parent who thought they had a spot.
+    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ signup_count: 12 })] }).event[0].soldOut).toBe(true)
+    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ signup_count: 13 })] }).event[0].soldOut).toBe(true)
+    expect(toCatalogue({ programs: [], sessionPacks: [], events: [eventRow({ signup_count: 11 })] }).event[0].soldOut).toBe(false)
+  })
+
+  it("leaves programs and packs without the event-only keys", () => {
+    // MUTANT: setting priced/soldOut for every kind. A program's sellability is
+    // not decided by an event's Stripe price, and a reader must be able to tell
+    // "not applicable" from "false".
+    const cat = toCatalogue({
+      programs: [{ id: "p", name: "Program" }],
+      sessionPacks: [{ id: "s", name: "Pack" }],
+      events: [],
+    })
+    expect(cat.program[0].priced).toBeUndefined()
+    expect(cat.session_pack[0].soldOut).toBeUndefined()
   })
 })
 
@@ -1507,15 +1563,19 @@ describe("loadCatalogues", () => {
           { id: "pack-active", name: "Active Pack" },
           { id: "pack-retired", name: "Retired Pack" },
         ],
+        // priced/soldOut are the checkout gate's two event-only keys. The
+        // fixtures here carry no stripe_price_id and no capacity, so both are
+        // false — kept in this whole-object toEqual rather than loosened to
+        // toMatchObject, because catching an extra or missing key is the point.
         event: [
-          { id: "event-published", name: "Published Event" },
-          { id: "event-completed", name: "Completed Event" },
+          { id: "event-published", name: "Published Event", priced: false, soldOut: false },
+          { id: "event-completed", name: "Completed Event", priced: false, soldOut: false },
         ],
       },
       offer: {
         program: [{ id: "prog-active", name: "Active Program" }],
         session_pack: [{ id: "pack-active", name: "Active Pack" }],
-        event: [{ id: "event-published", name: "Published Event" }],
+        event: [{ id: "event-published", name: "Published Event", priced: false, soldOut: false }],
       },
       faqPageKeys: ["camps", "training"],
     })
@@ -1648,5 +1708,121 @@ describe("step links against the funnel's real pages", () => {
     // has to survive the new branch.
     const doc = docOf([hero({ primaryCta: pageCta("gone") })])
     expect(resolveDocWithPages(doc, catalogue(), PAGES).doc).toBe(doc)
+  })
+})
+
+// ===========================================================================
+// Forms that take payment — the publish gate (design §5).
+//
+// A checkout form's promise is that a visitor can pay. Three ways that promise
+// is already broken at publish time, and the owner can fix all three: the camp
+// does not exist, the camp is not currently open, the camp has no Stripe price.
+// Each is a BLOCKER. A FULL camp is not — a sold-out page is a legitimate page,
+// and refusing to publish it would be this gate overreaching.
+// ===========================================================================
+
+/**
+ * A form section selling `eventId`, with a fully-roled field set.
+ *
+ * `null` means "name no camp at all" — NOT `undefined`, which would trigger the
+ * default parameter and silently hand back a section that names EVENT_CAMP after
+ * all. That mistake made the no-camp test pass against a fully valid fixture.
+ */
+function checkoutFormSection(eventId: string | null = EVENT_CAMP): Section {
+  return {
+    id: "signup",
+    kind: "form",
+    // `variant` and `style` are REQUIRED by sectionDocSchema, which
+    // resolveDoc parses before it does anything else. Copied from the known-good
+    // fixture in apply.test.ts rather than invented — a fixture that cannot
+    // parse fails every assertion built on it for the wrong reason.
+    variant: "boxed",
+    style: {},
+    props: {
+      heading: "Reserve a spot",
+      formKey: "register",
+      successMode: "checkout",
+      ...(eventId === null ? {} : { eventId }),
+      fields: [
+        { name: "parent_name", label: "Your name", type: "text", required: true, role: "parent_name" },
+        { name: "email", label: "Email", type: "email", required: true, role: "parent_email" },
+        { name: "player", label: "Player's name", type: "text", required: true, role: "athlete_name" },
+        { name: "age", label: "Player's age", type: "select", required: true, role: "athlete_age", options: ["12"] },
+        { name: "waiver", label: "I accept the waiver", type: "checkbox", required: true, role: "waiver_accepted" },
+      ],
+    },
+  } as unknown as Section
+}
+
+/** A catalogue whose one event carries the payment facts a gate reads. */
+function eventCatalogue(entry: Partial<CatalogueEntry> | null, opts: { knownButNotOffered?: boolean } = {}): Catalogues {
+  const row = entry === null ? null : { id: EVENT_CAMP, name: "Summer Camp", priced: true, soldOut: false, ...entry }
+  const offer = lists({ event: row === null ? [] : [row] })
+  // Recognition sees the row even when the offer set does not — that asymmetry
+  // is what tells "never existed" apart from "not open right now".
+  const recognition = lists({
+    event: row === null && opts.knownButNotOffered ? [{ id: EVENT_CAMP, name: "Summer Camp" }] : row === null ? [] : [row],
+  })
+  return { recognition, offer, faqPageKeys: FAQ_KEYS }
+}
+
+describe("publishGate on a form that takes payment", () => {
+  it("cannot even be STORED with no camp named — the schema is the first gate", () => {
+    // Not a gate assertion, and that is the finding. `formIslandSchema` refuses a
+    // checkout form with no eventId, so `sectionDocSchema.parse` at the top of
+    // resolveDoc throws and the document can never reach the database in that
+    // state. Written as a throw rather than deleted: the next reader needs to
+    // know WHY the gate has no "names no camp" message, or they will add one and
+    // wonder why it never fires.
+    expect(() => resolveDoc(docOf([checkoutFormSection(null)]), eventCatalogue({}))).toThrow()
+  })
+
+  it("blocks when the camp does not exist at all", () => {
+    const gate = publishGate(resolveDoc(docOf([checkoutFormSection()]), eventCatalogue(null)))
+    expect(gate.ok).toBe(false)
+    expect(gate.blockers.join(" ")).toMatch(/does not name a camp/i)
+  })
+
+  it("blocks a camp that exists but is not currently open, and says so differently", () => {
+    // MUTANT: collapsing this into the "does not exist" message. An owner who
+    // un-published a camp to fix a typo would be told they had a broken id and
+    // go looking for a mistake they did not make.
+    const gate = publishGate(
+      resolveDoc(docOf([checkoutFormSection()]), eventCatalogue(null, { knownButNotOffered: true })),
+    )
+    expect(gate.ok).toBe(false)
+    expect(gate.blockers.join(" ")).toMatch(/not currently open/i)
+    expect(gate.blockers.join(" ")).not.toMatch(/does not name a camp/i)
+  })
+
+  it("blocks a camp with no Stripe price", () => {
+    const gate = publishGate(resolveDoc(docOf([checkoutFormSection()]), eventCatalogue({ priced: false })))
+    expect(gate.ok).toBe(false)
+    expect(gate.blockers.join(" ")).toMatch(/no price set up in Stripe/i)
+  })
+
+  it("WARNS but still publishes when the camp is full", () => {
+    // Asserted as a warning rather than merely "not a blocker": a full camp is a
+    // page an owner may legitimately want live saying it is full, and turning
+    // this into a blocker would stop them publishing it at all.
+    const gate = publishGate(resolveDoc(docOf([checkoutFormSection()]), eventCatalogue({ soldOut: true })))
+    expect(gate.ok).toBe(true)
+    expect(gate.warnings.join(" ")).toMatch(/is full/i)
+  })
+
+  it("passes a sellable camp with no warning of its own", () => {
+    const gate = publishGate(resolveDoc(docOf([checkoutFormSection()]), eventCatalogue({})))
+    expect(gate.ok).toBe(true)
+    expect(gate.warnings.join(" ")).not.toMatch(/full/i)
+  })
+
+  it("leaves a lead-gen form pointing at the same unpriced camp completely alone", () => {
+    // MUTANT: gating on eventId regardless of successMode. An opt-in form sells
+    // nothing and must not inherit a payment blocker — every page already live
+    // would stop publishing.
+    const section = checkoutFormSection()
+    ;(section.props as Record<string, unknown>).successMode = "message"
+    const gate = publishGate(resolveDoc(docOf([section]), eventCatalogue({ priced: false })))
+    expect(gate.ok).toBe(true)
   })
 })

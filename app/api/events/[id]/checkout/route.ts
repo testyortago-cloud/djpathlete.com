@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server"
 import { createEventSignupSchema } from "@/lib/validators/event-signups"
 import { getEventById } from "@/lib/db/events"
-import { createSignup } from "@/lib/db/event-signups"
-import { getActiveDocument } from "@/lib/db/legal-documents"
-import { createEventCheckoutSession } from "@/lib/stripe"
-import { createServiceRoleClient } from "@/lib/supabase"
+import { createEventSignupCheckout } from "@/lib/events/checkout"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { getAttributionBySession } from "@/lib/db/marketing-attribution"
 
@@ -35,66 +32,42 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     if (!event || event.status !== "published") {
       return NextResponse.json({ error: "Event not available" }, { status: 404 })
     }
-    if (!event.stripe_price_id) {
-      return NextResponse.json({ error: "This event is not yet available for booking" }, { status: 400 })
-    }
 
-    // Capacity check uses confirmed signup_count only — slots are reserved
-    // post-payment via the confirm_event_signup RPC (atomic, locks the event
-    // row). If two checkouts race for the last slot, the loser's webhook
-    // gets at_capacity and triggers an automatic refund. See
-    // handleEventSignupCheckout in app/api/stripe/webhook/route.ts.
-    if (event.signup_count >= event.capacity) {
-      return NextResponse.json({ error: "at_capacity" }, { status: 409 })
-    }
-
-    const waiverDoc = await getActiveDocument("liability_waiver")
-    const ipAddress = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || null
-    const userAgent = request.headers.get("user-agent") || null
-    const { waiver_accepted: _waiver_accepted, ...signupInput } = parsed.data
-
-    // Resolve visitor tracking params from djp_attr cookie BEFORE creating the
-    // signup row so gclid is persisted on event_signups (not just on the
-    // downstream payments row from the Stripe webhook).
+    // Resolved from the djp_attr cookie BEFORE the signup is created, so gclid
+    // lands on `event_signups` itself and not only on the downstream payments row
+    // the Stripe webhook writes.
     const attrSessionId = parseAttrCookie(request.headers.get("cookie"))
     const attrRow = attrSessionId ? await getAttributionBySession(attrSessionId).catch(() => null) : null
     const tracking = attrRow
       ? { gclid: attrRow.gclid, gbraid: attrRow.gbraid, wbraid: attrRow.wbraid, fbclid: attrRow.fbclid }
       : undefined
 
-    const signup = await createSignup(
-      id,
-      signupInput,
-      "paid",
-      {
-        document_id: waiverDoc?.id ?? null,
-        ip_address: ipAddress,
-        user_agent: userAgent,
-      },
+    // THE SEQUENCE LIVES IN lib/events/checkout.ts, shared with the funnel form
+    // that now sells camps directly. What used to be inline here — the price and
+    // capacity refusals, the active-waiver lookup, the signup insert with its
+    // evidence, the Stripe session, the session-id write — is one call, so the
+    // legal gate and the money cannot drift between the two callers.
+    //
+    // NO `returnUrls`: this route sends the visitor back to the EVENT's own
+    // success and cancel pages, which is what the helper defaults to.
+    const outcome = await createEventSignupCheckout({
+      event,
+      input: parsed.data,
+      ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || null,
+      userAgent: request.headers.get("user-agent"),
       tracking,
-    )
+      baseUrl: getBaseUrl(),
+    })
 
-    let session
-    try {
-      session = await createEventCheckoutSession({
-        event,
-        signup,
-        parentEmail: parsed.data.parent_email,
-        baseUrl: getBaseUrl(),
-        tracking,
-      })
-    } catch (err) {
-      console.error("[api/events/checkout] Stripe error", err)
-      return NextResponse.json({ error: "Payment provider unavailable, please try again" }, { status: 502 })
+    if (!outcome.ok) {
+      // `at_capacity` is preserved verbatim: the modal branches on this exact
+      // string to tell the visitor the camp filled up rather than showing a
+      // generic failure.
+      const error = outcome.status === 409 ? "at_capacity" : outcome.error
+      return NextResponse.json({ error }, { status: outcome.status })
     }
 
-    const supabase = createServiceRoleClient()
-    await supabase
-      .from("event_signups")
-      .update({ stripe_session_id: session.id, updated_at: new Date().toISOString() })
-      .eq("id", signup.id)
-
-    return NextResponse.json({ sessionUrl: session.url, signupId: signup.id })
+    return NextResponse.json({ sessionUrl: outcome.sessionUrl, signupId: outcome.signupId })
   } catch (err) {
     console.error("[api/events/checkout] unexpected error", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

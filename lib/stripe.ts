@@ -356,6 +356,17 @@ export async function createEventCheckoutSession(opts: {
   parentEmail: string
   baseUrl: string
   tracking?: CheckoutTrackingParams
+  /**
+   * Where Stripe returns the visitor.
+   *
+   * OPTIONAL, DEFAULTING TO THE EVENT'S OWN PAGES, so the caller that existed
+   * before these two parameters behaves exactly as it did. A funnel supplies its
+   * own pages: a funnel-born checkout that returned here would land the parent on
+   * the event's success page, and the funnel's own Confirmation step — the page
+   * its owner wrote for precisely this moment — would never be seen.
+   */
+  successUrl?: string
+  cancelUrl?: string
 }): Promise<Stripe.Checkout.Session> {
   if (!opts.event.stripe_price_id) {
     throw new Error("Cannot create checkout: event has no stripe_price_id")
@@ -372,8 +383,9 @@ export async function createEventCheckoutSession(opts: {
       event_id: opts.event.id,
       ...buildTrackingMetadata(opts.tracking),
     },
-    success_url: `${opts.baseUrl}/${segment}/${opts.event.slug}/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${opts.baseUrl}/${segment}/${opts.event.slug}?checkout=cancelled`,
+    success_url:
+      opts.successUrl ?? `${opts.baseUrl}/${segment}/${opts.event.slug}/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: opts.cancelUrl ?? `${opts.baseUrl}/${segment}/${opts.event.slug}?checkout=cancelled`,
   })
 }
 

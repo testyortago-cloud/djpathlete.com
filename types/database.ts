@@ -874,6 +874,9 @@ export interface LeadInquiry {
   injuries: string | null
   how_heard: string | null
   gclid: string | null
+  gbraid: string | null
+  wbraid: string | null
+  fbclid: string | null
   ai_priority: LeadPriority | null
   ai_priority_reason: string | null
   ai_summary: string | null
