@@ -235,9 +235,14 @@ export function ConnectionsProvider({
         // `compile`, not `blocked` and not `doc`. `BuildTurnResponse.compile`
         // (`components/admin/funnels/builder/types.ts`) is already documented
         // as the single flag meaning "this turn produced no document": the
-        // route returns it null on exactly two paths — the model declined
-        // (`blocked`) and both attempts failed — and non-null on every path
-        // that wrote a document, review turns included.
+        // route returns it null on THREE paths — the model declined
+        // (`blocked`, `build/route.ts:1380`), both attempts failed
+        // (`build/route.ts:1328`), and a review pass that found nothing worth
+        // changing (`emitNoChangeReview`, `build/route.ts:1700`) — and
+        // non-null on every path that wrote a document. The third is reachable
+        // HERE: `turn` above is `outcome.review ?? outcome.turn`, so a first
+        // draft whose own review pass lands on "nothing worth changing" is
+        // this function's problem too, not just a hand-triggered Polish's.
         //
         // `blocked` alone is wrong: the both-attempts-failed path also leaves
         // no document behind but reports `blocked: false`, so a `blocked`-only
@@ -246,17 +251,20 @@ export function ConnectionsProvider({
         // owner would then never open, with `failed` gone (it is terminal, so
         // never retried either).
         //
-        // `doc` alone is wrong the other way: the refusal path emits
-        // `doc: draft.doc`, the page as it ALREADY stood, not the page that
-        // was asked for — so on a step that had something there before, a
-        // nullness check alone reads a refusal as a success.
+        // `doc` alone is wrong the other way: the declined and both-attempts-
+        // failed paths emit `doc: draft.doc` — the page as it ALREADY stood,
+        // not the page that was asked for — so on a step that had something
+        // there before, a nullness check alone reads a refusal as a success.
+        // (The review path sends `doc: null` outright; a nullness check would
+        // happen to get that one right, but only by accident.)
         if (turn.compile === null) {
           // AND NOTHING IS PUBLISHED. `compile`'s own doc comment names this
-          // mistake: both null-compile paths send `doc: draft.doc`, the page as
-          // it ALREADY stood, so adopting it would write the route's fallback
-          // over the graph. Harmless for a queued step (null over null) but not
-          // for `draftStep`, which is meant to be runnable on a page that has a
-          // document already.
+          // mistake: the declined and both-attempts-failed paths send
+          // `doc: draft.doc`, the page as it ALREADY stood, so adopting it
+          // would write the route's fallback over the graph — harmless for a
+          // queued step (null over null) but not for `draftStep`, which is
+          // meant to be runnable on a page that has a document already. The
+          // review path's `doc: null` would be exactly as wrong to adopt.
           setPhase(job.stepId, "failed")
           return
         }
@@ -284,6 +292,23 @@ export function ConnectionsProvider({
    */
   const startAutoDraft = useCallback(() => {
     if (started.current || draftJobs.length === 0) return
+    // ALSO NOT WHILE `draftStep` HAS A BUILD IN FLIGHT — the mirror of the
+    // guard on `draftStep` below, and until now this direction did not exist.
+    // `queueInFlight` stops `draftStep` from opening a second build while THIS
+    // loop is running; nothing stopped the reverse, even though the comment on
+    // `draftStep` claimed builds go one at a time as a settled fact. Checked by
+    // phase rather than a second ref: `draftStep`'s own build sets its step's
+    // phase to "writing" synchronously, which is the one signal this function
+    // can read without `draftStep` exposing a ref of its own.
+    //
+    // CURRENTLY UNREACHABLE. `startAutoDraft` fires only from `FunnelBuilder`'s
+    // auto-draft effect, which requires `props.initialPrompt` non-null and
+    // `doc !== null` — true only while THIS mount is still finishing its own
+    // first draft, before any 422 exists and so before "Generate it now"
+    // (`draftStep`) can even be offered. Fixed anyway: it is one condition, and
+    // it becomes reachable the moment `started` is ever reset or a second
+    // `startAutoDraft` caller is added.
+    if (Object.values(phasesRef.current).some((phase) => phase === "writing")) return
     started.current = true
     queueInFlight.current = true
     for (const job of draftJobs) setPhase(job.stepId, "queued")
@@ -317,8 +342,12 @@ export function ConnectionsProvider({
     (stepId: string) => {
       // NOT WHILE THE QUEUE IS RUNNING. The phase guard below is per-step, so
       // on its own it would happily start a second build alongside the queue —
-      // for a step the queue has already left `failed`, or skipped to `done` —
-      // and this task's one hard constraint is that builds go one at a time.
+      // for a step the queue has already left `failed`, or skipped to `done`.
+      // `startAutoDraft`'s own guard (above) is the OTHER half: it refuses to
+      // start while THIS function has a build in flight. Builds go one at a
+      // time because BOTH guards exist — neither one enforces it alone, and
+      // until the one above was added this comment was overclaiming what a
+      // single `if` actually provides.
       if (queueInFlight.current) return
       const job = draftJobs.find((entry) => entry.stepId === stepId)
       if (!job) return

@@ -594,6 +594,72 @@ describe("the draft queue", () => {
     expect(seen[2]).toContain("/api/admin/funnels/steps/s2/build")
   })
 
+  it("refuses to start the queue while a single-step draft is in flight", async () => {
+    // THE MIRROR OF THE TEST ABOVE. `queueInFlight` stops `draftStep` from
+    // opening a second build while the queue is running; nothing stopped the
+    // reverse before this fix, even though the comment on `draftStep` claimed
+    // "this task's one hard constraint is that builds go one at a time" as a
+    // settled fact.
+    //
+    // Currently unreachable from the real app — `startAutoDraft` only fires
+    // from `FunnelBuilder`'s auto-draft effect, which requires
+    // `initialPrompt` non-null and `doc !== null`, true only while THAT mount
+    // is still finishing its OWN first draft, before any 422 exists and so
+    // before "Generate it now" (`draftStep`) can even be offered — but this
+    // test drives the provider directly, the way Task 5's `draftSiblingStep`
+    // or a future caller could.
+    const seen: string[] = []
+    let release: (() => void) | null = null
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      seen.push(String(url))
+      if (seen.length === 1) await new Promise<void>((resolve) => { release = resolve })
+      return streamResponse()
+    })
+
+    function BothProbe() {
+      const context = useConnections()
+      if (!context) return null
+      return (
+        <div>
+          <button onClick={() => context.draftStep("s2")}>one</button>
+          <button onClick={() => context.startAutoDraft()}>start</button>
+          <span data-testid="s2">{context.draftPhase("s2")}</span>
+          <span data-testid="s3">{context.draftPhase("s3")}</span>
+        </div>
+      )
+    }
+
+    render(
+      <ConnectionsProvider
+        funnelId="f1" funnelSlug="free-trial-week" funnelKind="funnel"
+        pages={PAGES} initialDocs={PAGES.map((p) => ({ ...p, doc: null }))} draftJobs={JOBS}
+      >
+        <BothProbe />
+      </ConnectionsProvider>,
+    )
+    act(() => { screen.getByText("one").click() })
+    await waitFor(() => expect(screen.getByTestId("s2")).toHaveTextContent("writing"))
+
+    act(() => { screen.getByText("start").click() })
+    // MUTANT: dropping the "any phase is writing" guard from `startAutoDraft`.
+    // Without it the queue's loop would proceed, see s2 has no document yet
+    // (the manual draft has not landed), and open a SECOND build on the exact
+    // step `draftStep` is already writing.
+    expect(seen).toHaveLength(1)
+    expect(screen.getByTestId("s3")).toHaveTextContent("idle")
+
+    act(() => { release?.() })
+    await waitFor(() => expect(screen.getByTestId("s2")).toHaveTextContent("done"))
+
+    // ...and once the manual draft has landed, the queue can run normally —
+    // the guard defers it rather than disabling it for the session. s2 is
+    // skipped (its document is already in the graph) and s3 drafts.
+    act(() => { screen.getByText("start").click() })
+    await waitFor(() => expect(screen.getByTestId("s3")).toHaveTextContent("done"))
+    expect(seen).toHaveLength(2)
+    expect(seen[1]).toContain("/api/admin/funnels/steps/s3/build")
+  })
+
   it("is inert outside a provider, so the builder still mounts standalone", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch")
     function Standalone() {
