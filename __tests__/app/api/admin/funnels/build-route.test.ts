@@ -1296,7 +1296,10 @@ function reviewChanged(summary = "Retoned two seams.") {
     surviving: [],
     receipt: { changed: [], isRewrite: false } as never,
     tokensUsed: 1020,
-    error: null,
+    // Widened deliberately: `reviewDoc` reports trouble in `error` rather than
+    // throwing, so a test that overrides this field is exercising a real
+    // branch. Inferred as `null` it would be un-overridable.
+    error: null as string | null,
   }
 }
 
@@ -1486,7 +1489,7 @@ describe("POST .../build — a review that goes wrong cannot break the turn", ()
   })
 })
 
-describe("POST .../build — the Polish button", () => {
+describe("POST .../build — the Polish button PROPOSES, and writes nothing", () => {
   it("reviews without calling the builder at all", async () => {
     // MUTANT: implementing Polish as a message body. The builder would run
     // first, spending an Opus call answering a message the owner never wrote.
@@ -1496,7 +1499,69 @@ describe("POST .../build — the Polish button", () => {
 
     expect(streamAgent).not.toHaveBeenCalled()
     expect(reviewDoc).toHaveBeenCalledTimes(1)
-    expect(events.some((event) => event.type === "review")).toBe(true)
+    expect(events.some((event) => event.type === "proposal")).toBe(true)
+  })
+
+  it("WRITES NOTHING — no turn of any kind, however good the review was", async () => {
+    // THE WHOLE FEATURE. Polish used to append a `source:"review"` turn the
+    // instant the reviser returned, so the owner's first sight of the change
+    // was a page that had already changed.
+    //
+    // MUTANT: restoring the `appendTurn` call before the proposal is emitted.
+    // Nothing else in this file would notice — the stream still terminates and
+    // the document is still correct — which is exactly why this assertion is
+    // about the CALL COUNT and not about the response.
+    installReview(reviewChanged("Tightened three headlines."))
+
+    await runTurn({ action: "polish", revision: 4 })
+
+    expect(appendTurn).not.toHaveBeenCalled()
+  })
+
+  it("emits the ops Apply will replay, and the revision they were computed against", async () => {
+    // MUTANT: sending only `doc`. Apply would have nothing to re-apply and
+    // would have to trust a document from the client — which is the authority
+    // this design exists to keep on the server.
+    installReview(reviewChanged())
+
+    const events = await readEvents(await POST(req({ action: "polish", revision: 4 }), ctx))
+    const proposal = events.find((event) => event.type === "proposal")
+
+    expect(proposal).toBeDefined()
+    const payload = (proposal as { proposal: Record<string, unknown> }).proposal
+    expect(payload.baseRevision).toBe(4)
+    expect(payload.ops).toEqual([{ op: "update_section", id: "hero", style: { tone: "muted" } }])
+    // Carried for the preview, so the owner sees what they are agreeing to.
+    expect(payload.doc).toBeTruthy()
+  })
+
+  it("says 'nothing worth changing' as a terminal event, without moving the revision", async () => {
+    // This used to append a turn — burning a revision to record that nothing
+    // happened. MUTANT: returning early with no event at all. The stream would
+    // end with no terminal and the client would report a dropped connection on
+    // a review that completed perfectly.
+    installReview({ ...reviewChanged(), changed: false, ops: [], summary: "" })
+
+    const events = await readEvents(await POST(req({ action: "polish", revision: 4 }), ctx))
+    const proposal = events.find((event) => event.type === "proposal")
+
+    expect(proposal).toBeDefined()
+    expect((proposal as { proposal: unknown }).proposal).toBeNull()
+    expect((proposal as { summary: string }).summary).toMatch(/nothing worth changing/i)
+    expect(appendTurn).not.toHaveBeenCalled()
+  })
+
+  it("still fails loudly when the reviewer itself could not finish", async () => {
+    // Unchanged behaviour, pinned because the error branch now sits beside a
+    // `mode` check and is the easiest thing to break while editing it.
+    installReview({ ...reviewChanged(), changed: false, ops: [], error: "review exceeded 60000ms" })
+
+    const events = await readEvents(await POST(req({ action: "polish", revision: 4 }), ctx))
+    const fail = events.find((event) => event.type === "fail")
+
+    expect(fail).toBeDefined()
+    expect((fail as { status: number }).status).toBe(502)
+    expect(appendTurn).not.toHaveBeenCalled()
   })
 
   it("appends no user turn — the owner did not write a message", async () => {
@@ -1505,15 +1570,6 @@ describe("POST .../build — the Polish button", () => {
     await readEvents(await POST(req({ action: "polish", revision: 4 }), ctx))
 
     expect(mock(appendTurn).mock.calls.some((call) => (call[0] as { role: string }).role === "user")).toBe(false)
-  })
-
-  it("supersedes the CURRENT revision", async () => {
-    installReview(reviewChanged())
-
-    await readEvents(await POST(req({ action: "polish", revision: 4 }), ctx))
-
-    const review = mock(appendTurn).mock.calls.find((call) => (call[0] as { source: string }).source === "review")
-    expect((review?.[0] as { expectedRevision: number }).expectedRevision).toBe(4)
   })
 
   it("refuses when the client is behind, before spending anything", async () => {
@@ -1544,5 +1600,116 @@ describe("POST .../build — the Polish button", () => {
     expect(res.status).toBe(422)
     expect(await res.json()).toMatchObject({ code: "doc_invalid" })
     expect(reviewDoc).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST .../build — accepting a proposed polish", () => {
+  /** The op the propose leg emitted, replayed by the client on Apply. */
+  const OPS = [{ op: "update_section", id: "hero", style: { tone: "muted" } }]
+
+  it("writes exactly one turn, and spends nothing to do it", async () => {
+    // MUTANT: leaving the model call in. The whole point of the split is that
+    // the thinking was paid for on the propose leg — an Apply that re-ran the
+    // reviewer would double the cost of every accepted polish AND could produce
+    // a different page from the one the owner previewed and agreed to.
+    const res = await runTurn({ action: "apply_polish", revision: 4, ops: OPS })
+
+    expect(res.status).toBe(200)
+    expect(streamAgent).not.toHaveBeenCalled()
+    expect(reviewDoc).not.toHaveBeenCalled()
+    expect(appendTurn).toHaveBeenCalledTimes(1)
+  })
+
+  it("records it as the REVIEWER's edit, not the builder's", async () => {
+    // MUTANT: `source: "ai"`. Migration 00209 exists precisely so "the builder
+    // wrote this, then the reviewer changed that" stays separable — folding
+    // them together would make "Go back to here" unable to undo only the
+    // polish. The owner pressing Apply does not make it the builder's work.
+    await runTurn({ action: "apply_polish", revision: 4, ops: OPS })
+
+    expect(mock(appendTurn).mock.calls[0][0]).toMatchObject({ source: "review", role: "assistant" })
+  })
+
+  it("applies the ops to the SERVER's document, not to anything the client sent", async () => {
+    // The security claim, and the one a test can most easily fake. The draft on
+    // the server has a headline no client ever sent; the ops touch only `style`.
+    // If the route ever started trusting a client document, the stored doc's
+    // headline would stop being this one.
+    //
+    // MUTANT: accepting a `doc` field from the body and storing it. There is no
+    // `doc` in the request at all, so a route that read one would store
+    // undefined and this assertion would go red.
+    mock(getDraft).mockResolvedValue({ doc: doc("Only the server knows this"), docInvalid: false, revision: 4 })
+
+    await runTurn({ action: "apply_polish", revision: 4, ops: OPS })
+
+    const written = mock(appendTurn).mock.calls[0][0] as { doc: SectionDoc }
+    expect(written.doc.sections[0].props.headline).toBe("Only the server knows this")
+    expect(written.doc.sections[0].style).toMatchObject({ tone: "muted" })
+  })
+
+  it("takes the compare-and-swap on the revision the proposal was computed against", async () => {
+    await runTurn({ action: "apply_polish", revision: 4, ops: OPS })
+
+    expect(mock(appendTurn).mock.calls[0][0]).toMatchObject({ expectedRevision: 4 })
+  })
+
+  it("discards the polish when the owner edited while it waited", async () => {
+    // The proposal sat on screen; the page moved underneath it. The ops were
+    // computed against a document that no longer exists, so they are thrown
+    // away rather than applied to one they were never meant for.
+    //
+    // MUTANT: dropping the revision check. The ops would apply to a document
+    // the reviewer never read, silently reverting the owner's own edit.
+    const res = await runTurn({ action: "apply_polish", revision: 3, ops: OPS })
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ code: "stale_revision", currentRevision: 4 })
+    expect(appendTurn).not.toHaveBeenCalled()
+  })
+
+  it("refuses ops the document will not take, rather than writing a half-applied page", async () => {
+    // `applyOps` is transactional. MUTANT: ignoring `applied.ok` and storing
+    // `applied.doc` anyway.
+    const res = await runTurn({
+      action: "apply_polish",
+      revision: 4,
+      ops: [{ op: "update_section", id: "no-such-section", style: { tone: "muted" } }],
+    })
+
+    expect(res.status).toBe(422)
+    expect(await res.json()).toMatchObject({ code: "ops_rejected" })
+    expect(appendTurn).not.toHaveBeenCalled()
+  })
+
+  it("rejects an empty batch at the validator", async () => {
+    // An empty batch is not a polish. Letting it through would write a turn
+    // announcing changes that did not happen.
+    const res = await runTurn({ action: "apply_polish", revision: 4, ops: [] })
+
+    expect(res.status).toBe(400)
+    expect(appendTurn).not.toHaveBeenCalled()
+  })
+
+  it("rejects an op that is not in the schema", async () => {
+    // The body is whatever the client sent, not what the server sent it.
+    const res = await runTurn({
+      action: "apply_polish",
+      revision: 4,
+      ops: [{ op: "drop_database", id: "hero" }],
+    })
+
+    expect(res.status).toBe(400)
+    expect(appendTurn).not.toHaveBeenCalled()
+  })
+
+  it("answers as plain JSON, not as a stream", async () => {
+    // There is no model call to narrate, so opening an SSE stream to say one
+    // thing would be pure ceremony — and the client branches on the content
+    // type to decide how to read the response.
+    const res = await runTurn({ action: "apply_polish", revision: 4, ops: OPS })
+
+    expect(res.headers.get("content-type")).toContain("application/json")
+    expect(await res.json()).toMatchObject({ source: "review", revision: 5 })
   })
 })

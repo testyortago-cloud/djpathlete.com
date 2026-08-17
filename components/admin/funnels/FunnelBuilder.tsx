@@ -64,10 +64,13 @@ import {
   Loader2,
   MessageSquare,
   Monitor,
+  Redo2,
   RotateCcw,
   Rocket,
   Smartphone,
+  Sparkles,
   Tablet,
+  Undo2,
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -100,10 +103,22 @@ import type {
   BuilderMessage,
   CompileSummary,
   DanglingAnchor,
+  PolishProposal,
   RenderForPublish,
   SectionDoc,
   UnresolvedCta,
 } from "./builder/types"
+import {
+  canRedo,
+  canUndo,
+  moveCursor,
+  pushRevision,
+  redoTarget,
+  seedHistory,
+  undoTarget,
+  type HistoryState,
+} from "./builder/history"
+import { PolishProposalBanner } from "./builder/PolishProposalBanner"
 
 export interface FunnelBuilderProps {
   funnelId: string
@@ -333,6 +348,35 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     return phase === "queued" || phase === "writing"
   })()
 
+  /**
+   * What Polish came back with, held here and written NOWHERE until Apply.
+   *
+   * Non-null means the builder is asking a question with two answers. While it
+   * is set the preview shows `proposal.doc` rather than `doc`, and sending,
+   * editing, polishing and publishing are all disabled — an edit landing
+   * underneath a pending proposal would create a third state nobody designed.
+   */
+  const [proposal, setProposal] = useState<PolishProposal | null>(null)
+  const [applyingPolish, setApplyingPolish] = useState(false)
+
+  /**
+   * The undo stack. See `builder/history.ts` — a pointer over the revisions
+   * that produced a document, seeded from the server-rendered transcript so
+   * Cmd+Z works on a page the owner has only just opened.
+   */
+  const [history, setHistory] = useState<HistoryState>(() => seedHistory(props.initialMessages))
+
+  /**
+   * Set while an undo or a redo is in flight.
+   *
+   * A REF, NOT STATE, and assigned outside every `setState` updater. `applyTurn`
+   * is a `useCallback([])` that cannot see state, and it needs to know whether
+   * the turn arriving is new work or a journey — a restore appends a turn and
+   * mints a new revision, and pushing that would truncate the redo future on
+   * the way past, making a single undo permanent.
+   */
+  const travelling = useRef(false)
+
   const [messages, setMessages] = useState<BuilderMessage[]>(props.initialMessages)
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState<Busy>("idle")
@@ -416,6 +460,11 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
    */
   const applyTurn = useCallback((data: BuildTurnResponse) => {
     setRevision(data.revision)
+    // A turn that wrote a document is a new restore point — unless it IS a
+    // restore, in which case the pointer moves instead (see `travelling`).
+    if (data.compile !== null && data.doc !== null && !travelling.current) {
+      setHistory((prev) => pushRevision(prev, data.revision))
+    }
     // The canvas and the chat share one lock, so a chat turn moves the number
     // the next click must send. Forgetting this line is a 409 on the owner's
     // first click after every single AI turn.
@@ -802,9 +851,13 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
    *
    * No optimistic message and no rollback: nothing of the owner's is at stake
    * here, so a failure has nothing to put back.
+   *
+   * IT NO LONGER CHANGES THE PAGE. The route answers with a `proposal` —
+   * everything the reviewer would do, and no write behind it — which is held in
+   * state until the owner presses Apply or Discard.
    */
   const polish = useCallback(async () => {
-    if (busy !== "idle" || docInvalid || doc === null) return
+    if (busy !== "idle" || docInvalid || doc === null || proposal !== null) return
 
     setBusy("building")
     setMode("edit")
@@ -834,9 +887,10 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           if (event.type === "finding") return { ...current, findings: [...current.findings, event.finding] }
           return current
         })
-        if (event.type === "result" || event.type === "review") {
-          applyTurn(event.turn as BuildTurnResponse)
-        }
+        // DELIBERATELY NO `applyTurn` HERE ANY MORE. The propose path emits no
+        // `result` and no `review`, and adopting either would be the old
+        // write-it-and-tell-them-after behaviour coming back through the event
+        // handler rather than the route.
       })
 
       if (outcome.type === "fail") {
@@ -844,7 +898,17 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         return
       }
       if (outcome.type === "none") {
-        toast.error("The connection dropped while the page was being reviewed. Reload to see if anything saved.")
+        toast.error("The connection dropped while the page was being reviewed. Nothing was changed.")
+        return
+      }
+      if (outcome.type === "proposal") {
+        if (outcome.proposal === null) {
+          // A real, successful answer — not a failure, and not a page change.
+          toast.success(outcome.summary)
+          return
+        }
+        setProposal(outcome.proposal)
+        return
       }
     } catch {
       toast.error("Could not reach the reviewer. Nothing was changed.")
@@ -852,7 +916,52 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
       setBusy("idle")
       setStream(null)
     }
-  }, [applyTurn, busy, doc, docInvalid, handleErrorResponse, props.stepId, revision])
+  }, [busy, doc, docInvalid, handleErrorResponse, proposal, props.stepId, revision])
+
+  /**
+   * Take the polish. The ops go back; the server re-applies them to its own
+   * copy of the page under a compare-and-swap on the revision the review read.
+   */
+  const applyPolish = useCallback(async () => {
+    if (proposal === null || applyingPolish) return
+    setApplyingPolish(true)
+    try {
+      const response = await fetch(`/api/admin/funnels/steps/${props.stepId}/build`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "apply_polish",
+          revision: proposal.baseRevision,
+          ops: proposal.ops,
+        }),
+      })
+      const body = (await response.json().catch(() => null)) as (BuildTurnResponse & BuildErrorResponse) | null
+
+      if (!response.ok || body === null) {
+        // Including the 409 for a page edited while the proposal waited. The
+        // proposal is dropped either way — it was computed against a document
+        // that no longer exists, so there is nothing left to accept.
+        setProposal(null)
+        handleErrorResponse(response.status, body)
+        return
+      }
+      applyTurn(body)
+      setProposal(null)
+      toast.success("Polish applied.")
+    } catch {
+      toast.error("Could not apply the polish. Nothing was changed.")
+    } finally {
+      setApplyingPolish(false)
+    }
+  }, [applyTurn, applyingPolish, handleErrorResponse, proposal, props.stepId])
+
+  /**
+   * Throw the polish away. Pure client state — nothing was ever written, so
+   * there is nothing to undo and nothing worth saying in the transcript.
+   */
+  const discardPolish = useCallback(() => {
+    setProposal(null)
+  }, [])
 
   /**
    * The way back out of a document no op can repair. `applyOps` rejects an
@@ -888,6 +997,80 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     },
     [applyTurn, busy, handleErrorResponse, props.stepId],
   )
+
+  // --------------------------------------------------------------------------
+  // Undo and redo
+  //
+  // Both are `restore` with the pointer moved — the SAME route, the same
+  // optimistic lock and the same transcript turn as "Go back to here", so an
+  // undo from the keyboard and an undo from the chat cannot disagree about what
+  // happened or leave the page in states the other cannot reach.
+  //
+  // `travelling` is set across the await so `applyTurn` records a journey
+  // rather than new work. It is cleared in a `finally`: leaving it true after a
+  // failed restore would make the NEXT real edit fail to become a restore
+  // point, which is a corruption that outlives the request that caused it.
+  // --------------------------------------------------------------------------
+
+  const travel = useCallback(
+    async (direction: -1 | 1) => {
+      if (busy !== "idle" || proposal !== null) return
+      const target = direction === -1 ? undoTarget(history) : redoTarget(history)
+      if (target === null) return
+
+      travelling.current = true
+      try {
+        await restore(target)
+        setHistory((prev) => moveCursor(prev, direction))
+      } finally {
+        travelling.current = false
+      }
+    },
+    [busy, history, proposal, restore],
+  )
+
+  const undo = useCallback(() => travel(-1), [travel])
+  const redo = useCallback(() => travel(1), [travel])
+
+  const undoAvailable = canUndo(history) && busy === "idle" && proposal === null
+  const redoAvailable = canRedo(history) && busy === "idle" && proposal === null
+
+  /**
+   * Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z.
+   *
+   * REDO IS SHIFT+Z, NOT CMD+R. Cmd+R is the browser's reload; capturing it
+   * would mean reload stops working inside the builder, which is a worse
+   * surprise than learning one shortcut. Shift+Z is what Figma, Notion, VS Code
+   * and Docs all use.
+   *
+   * THE TARGET CHECK IS THE LOAD-BEARING PART. Cmd+Z with the caret in the chat
+   * composer must undo TYPING, not the page — an owner halfway through a
+   * sentence who loses their last edit instead of their last word will not
+   * press it again. Inputs, textareas and contenteditable are all exempt.
+   *
+   * Keys pressed inside the preview iframe never reach this listener at all
+   * (the canvas installs its own on its own document), so inline text editing
+   * keeps native undo without any coordination here.
+   */
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return
+      if (event.key.toLowerCase() !== "z") return
+
+      const target = event.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) return
+      }
+
+      event.preventDefault()
+      if (event.shiftKey) void redo()
+      else void undo()
+    }
+
+    document.addEventListener("keydown", onKeyDown)
+    return () => document.removeEventListener("keydown", onKeyDown)
+  }, [redo, undo])
 
   // --------------------------------------------------------------------------
   // The creation hand-off
@@ -1135,7 +1318,11 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   const funnelUpToDate = funnelPublishedRevision !== null && funnelPublishedRevision === revision
 
   /** What both publishes need, before each one's own list and "already done". */
-  const publishable = busy === "idle" && unresolved.length === 0
+  // `proposal !== null` blocks publish for the same reason it blocks the
+  // composer: the owner is mid-decision about what this page IS, and
+  // publishing the pre-polish version underneath that question would answer
+  // it for them in the one direction that reaches the public.
+  const publishable = busy === "idle" && unresolved.length === 0 && proposal === null
 
   const canPublish = publishable && blockers.length === 0 && doc !== null && !upToDate
 
@@ -1663,7 +1850,28 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         <span className="text-sm text-muted-foreground">/</span>
         <h1 className="truncate text-sm font-medium text-primary">{props.stepName}</h1>
 
-        <div className="ml-auto flex items-center gap-1" role="group" aria-label="Preview width">
+        {/* UNDO / REDO. In the header rather than the chat, because they act on
+            the PAGE and are reachable from either tab — and because this is the
+            one strip that is always on screen on both funnels and landing
+            pages, which is the whole of "make it work for both". */}
+        <div className="ml-auto flex items-center gap-1" role="group" aria-label="History">
+          <HistoryButton
+            label="Undo"
+            hint={`Undo (${modifierLabel}Z)`}
+            disabled={!undoAvailable}
+            onClick={undo}
+            icon={<Undo2 className="size-4" aria-hidden />}
+          />
+          <HistoryButton
+            label="Redo"
+            hint={`Redo (${modifierLabel}⇧Z)`}
+            disabled={!redoAvailable}
+            onClick={redo}
+            icon={<Redo2 className="size-4" aria-hidden />}
+          />
+        </div>
+
+        <div className="flex items-center gap-1" role="group" aria-label="Preview width">
           <DeviceButton
             device="desktop"
             current={device}
@@ -1933,6 +2141,20 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         </div>
       ) : null}
 
+      {/* THE PROPOSAL. Full width, above both panes, because it is modal in
+          spirit — while it is up, sending, editing, polishing and publishing
+          are all disabled, and a control that owns the whole screen should look
+          like it does. */}
+      {proposal !== null ? (
+        <PolishProposalBanner
+          summary={proposal.summary}
+          receipt={proposal.receipt}
+          applying={applyingPolish}
+          onApply={applyPolish}
+          onDiscard={discardPolish}
+        />
+      ) : null}
+
       {/* Below lg the sidebar is already hidden and there is no room for two
           panes, so they become tabs rather than a squeeze. */}
       <div className="flex shrink-0 items-center gap-1 border-b border-border bg-white px-3 py-1.5 lg:hidden">
@@ -1962,7 +2184,12 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           // written — see `queueOwnsThisStep`. It comes back the moment the
           // draft lands, which is also when there is finally something to
           // change.
-          composerDisabled={docInvalid || queueOwnsThisStep}
+          // A PENDING PROPOSAL DISABLES THE COMPOSER TOO. The proposal's ops
+          // were computed against this exact revision; an edit landing under it
+          // would leave Apply about to replay them onto a page they were never
+          // meant for. The server would refuse (409), but the owner should not
+          // have to discover that by pressing Apply.
+          composerDisabled={docInvalid || queueOwnsThisStep || proposal !== null}
           // AND THE STARTER CHIPS GO, rather than being greyed out with the
           // composer. Disabling stops the second build; it does not stop the
           // screen asking "What is this page for?" immediately above a card
@@ -1972,7 +2199,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           startersHidden={queueOwnsThisStep}
           pinned={pinned}
           onPolish={polish}
-          canPolish={doc !== null && !docInvalid}
+          canPolish={doc !== null && !docInvalid && proposal === null}
           funnelKind={props.funnelKind}
           funnelId={props.funnelId}
           onDraftStep={draftSiblingStep}
@@ -2128,6 +2355,45 @@ function DeviceButton({
       className={`rounded-md p-1.5 transition-colors ${
         active ? "bg-surface text-primary" : "text-muted-foreground hover:text-primary"
       }`}
+    >
+      {icon}
+    </button>
+  )
+}
+
+/**
+ * The modifier this machine actually uses, for the tooltips only.
+ *
+ * `navigator` is read defensively: this component renders on the server for the
+ * initial HTML, where there is no navigator at all. Guessing wrong costs a
+ * wrong character in a tooltip — reading it unguarded costs the whole builder.
+ */
+const modifierLabel =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "") ? "⌘" : "Ctrl+"
+
+function HistoryButton({
+  label,
+  hint,
+  disabled,
+  onClick,
+  icon,
+}: {
+  label: string
+  hint: string
+  disabled: boolean
+  onClick: () => void
+  icon: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      // The accessible name stays "Undo" / "Redo" whatever the tooltip says, so
+      // a test and a screen reader both have one stable thing to look for.
+      aria-label={label}
+      title={hint}
+      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-surface hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
     >
       {icon}
     </button>

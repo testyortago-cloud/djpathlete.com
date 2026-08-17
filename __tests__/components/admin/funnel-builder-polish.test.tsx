@@ -22,7 +22,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 import { FunnelBuilder, type FunnelBuilderProps } from "@/components/admin/funnels/FunnelBuilder"
 import { encodeBuildStreamEvent, type BuildStreamEvent } from "@/lib/funnels/sections/build-stream"
-import type { BuildTurnResponse, CompileSummary, SectionDoc } from "@/components/admin/funnels/builder/types"
+import type {
+  BuildTurnResponse,
+  CompileSummary,
+  PolishProposal,
+  SectionDoc,
+} from "@/components/admin/funnels/builder/types"
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }))
 vi.mock("sonner", () => ({ toast }))
@@ -52,6 +57,27 @@ function turn(overrides: Partial<BuildTurnResponse> = {}): BuildTurnResponse {
     danglingAnchors: [],
     resolutionError: null,
     source: "ai",
+    ...overrides,
+  }
+}
+
+/**
+ * What Polish now answers with: everything the reviewer would do, and no write
+ * behind it. `baseRevision` is the revision it READ — Apply's optimistic lock —
+ * and is deliberately allowed to differ from the builder's current revision in
+ * the tests that care.
+ */
+function proposal(overrides: Partial<PolishProposal> = {}): PolishProposal {
+  return {
+    baseRevision: 5,
+    ops: [{ op: "update_section", id: "hero1", props: { headline: "A polished headline" } }],
+    doc: docWith("A polished headline"),
+    summary: "Retoned two seams.",
+    receipt: { changed: [], unchangedCount: 1, totalSections: 1, themeChanged: false, isRewrite: false },
+    compile: CLEAN_COMPILE,
+    unresolved: [],
+    danglingAnchors: [],
+    resolutionError: null,
     ...overrides,
   }
 }
@@ -151,21 +177,113 @@ describe("the Polish button", () => {
     })
   })
 
-  it("applies the polished document when the review changes the page", async () => {
+  it("shows the suggestion and CHANGES NOTHING until the owner says so", async () => {
+    // THE BEHAVIOUR CHANGE. This test used to assert the opposite — that the
+    // polished document was adopted the moment `review` landed — and that was
+    // the defect: the owner's first sight of the change was a page that had
+    // already changed.
+    //
+    // MUTANT: calling `applyTurn` from the proposal. The banner would still
+    // appear, so only the second half of this assertion catches it.
     ;(globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
       sseResponse([
         { type: "phase", phase: "reviewing" },
-        {
-          type: "review",
-          turn: turn({ revision: 6, source: "review", reply: "Retoned two seams.", doc: docWith("A polished headline") }),
-        },
+        { type: "proposal", proposal: proposal(), summary: "Retoned two seams." },
       ]),
     )
 
     render(<FunnelBuilder {...baseProps()} />)
     fireEvent.click(await screen.findByRole("button", { name: /polish/i }))
 
-    expect(await screen.findByText("Retoned two seams.")).toBeTruthy()
+    expect(await screen.findByRole("region", { name: /suggested polish/i })).toBeTruthy()
+    expect(screen.getByText(/nothing has been saved yet/i)).toBeTruthy()
+    expect(screen.getByText("Retoned two seams.")).toBeTruthy()
+    // Exactly one request — the polish itself. Nothing was applied.
+    expect((globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1)
+  })
+
+  it("Apply posts the ops back against the revision the review read", async () => {
+    // MUTANT: posting `revision` (the builder's current one) instead of
+    // `proposal.baseRevision`. They are the same here only because nothing
+    // moved in between — so the fixture deliberately makes them differ.
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    fetchMock.mockResolvedValueOnce(
+      sseResponse([{ type: "proposal", proposal: proposal({ baseRevision: 5 }), summary: "Retoned two seams." }]),
+    )
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(turn({ revision: 6, source: "review", reply: "Applied the polish — one change." })), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    )
+
+    render(<FunnelBuilder {...baseProps()} />)
+    fireEvent.click(await screen.findByRole("button", { name: /polish/i }))
+    fireEvent.click(await screen.findByRole("button", { name: /^apply$/i }))
+
+    await waitFor(() => {
+      expect(lastFetchBody()).toEqual({
+        action: "apply_polish",
+        revision: 5,
+        ops: [{ op: "update_section", id: "hero1", props: { headline: "A polished headline" } }],
+      })
+    })
+    // And the turn is adopted, so the transcript records what happened.
+    expect(await screen.findByText("Applied the polish — one change.")).toBeTruthy()
+    // The banner is gone — the question has been answered.
+    expect(screen.queryByRole("region", { name: /suggested polish/i })).toBeNull()
+  })
+
+  it("Discard writes nothing at all", async () => {
+    // MUTANT: making Discard post anything. The whole value of Discard is that
+    // saying no is free.
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    fetchMock.mockResolvedValue(
+      sseResponse([{ type: "proposal", proposal: proposal(), summary: "Retoned two seams." }]),
+    )
+
+    render(<FunnelBuilder {...baseProps()} />)
+    fireEvent.click(await screen.findByRole("button", { name: /polish/i }))
+    fireEvent.click(await screen.findByRole("button", { name: /^discard$/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: /suggested polish/i })).toBeNull()
+    })
+    expect(fetchMock.mock.calls).toHaveLength(1)
+  })
+
+  it("reports 'nothing worth changing' as a success, not a dropped connection", async () => {
+    // MUTANT: treating a null proposal as a failure. The owner would be told
+    // the connection dropped on a review that finished cleanly.
+    ;(globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      sseResponse([
+        { type: "proposal", proposal: null, summary: "I read the page through and found nothing worth changing." },
+      ]),
+    )
+
+    render(<FunnelBuilder {...baseProps()} />)
+    fireEvent.click(await screen.findByRole("button", { name: /polish/i }))
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("I read the page through and found nothing worth changing.")
+    })
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(screen.queryByRole("region", { name: /suggested polish/i })).toBeNull()
+  })
+
+  it("locks the composer while the question is open", async () => {
+    // An edit landing under a pending proposal would leave Apply about to
+    // replay ops onto a page they were never computed against. The server
+    // refuses that (409), but the owner should not find out by pressing Apply.
+    ;(globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      sseResponse([{ type: "proposal", proposal: proposal(), summary: "Retoned two seams." }]),
+    )
+
+    render(<FunnelBuilder {...baseProps()} />)
+    fireEvent.click(await screen.findByRole("button", { name: /polish/i }))
+    await screen.findByRole("region", { name: /suggested polish/i })
+
+    expect((screen.getByLabelText(/describe the change/i) as HTMLTextAreaElement).disabled).toBe(true)
   })
 
   it("reports a review that could not finish, without claiming the page changed", async () => {

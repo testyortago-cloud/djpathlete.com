@@ -8,7 +8,7 @@
 // in a diff.
 
 import { createBuildStreamDecoder, type BuildStreamEvent } from "@/lib/funnels/sections/build-stream"
-import type { BuildErrorResponse, BuildTurnResponse } from "./types"
+import type { BuildErrorResponse, BuildTurnResponse, PolishProposal } from "./types"
 
 /**
  * How a turn ended.
@@ -26,6 +26,13 @@ import type { BuildErrorResponse, BuildTurnResponse } from "./types"
  */
 export type TurnStreamOutcome =
   | { type: "result"; turn: BuildTurnResponse; review: BuildTurnResponse | null }
+  /**
+   * Polish finished and wrote NOTHING. `proposal: null` is the reviewer saying
+   * it found nothing worth changing — a real, successful answer, and NOT the
+   * same thing as `none` below. Conflating the two would report a clean review
+   * as a dropped connection and invite the owner to pay for it twice.
+   */
+  | { type: "proposal"; proposal: PolishProposal | null; summary: string }
   | { type: "fail"; status: number; body: BuildErrorResponse | null }
   | { type: "none" }
 
@@ -72,6 +79,26 @@ export async function readTurnStream(
           outcome = { type: "result", turn: event.turn as BuildTurnResponse, review: null }
         }
         onEvent(event)
+        continue
+      }
+      if (event.type === "proposal") {
+        // NOT passed to `onEvent`. The caller's event handler is what adopts
+        // turns; handing it a terminal it does not expect is precisely how a
+        // proposal would get auto-applied, which is the behaviour this feature
+        // exists to remove. The proposal reaches the UI through the outcome,
+        // once, after the stream is drained.
+        //
+        // A `result` already in hand WINS. The server never sends both — the
+        // propose path has no build turn in front of it — but a contract held
+        // together only by that is one refactor from losing a page that really
+        // was written.
+        if (outcome.type !== "result") {
+          outcome = {
+            type: "proposal",
+            proposal: (event.proposal ?? null) as PolishProposal | null,
+            summary: event.summary,
+          }
+        }
         continue
       }
       if (event.type === "fail") {
