@@ -74,6 +74,32 @@ function docWithCta(ref: string): SectionDoc {
   } as unknown as SectionDoc
 }
 
+/**
+ * A page whose RENDERED output blows past `FUNNEL_STEP_HTML_MAX_LENGTH`.
+ *
+ * Copied in shape from `build-route.test.ts`'s `overCapSections`, and for the
+ * same reason it exists there: the size caps are measured on rendered HTML,
+ * not on the document, so no per-field limit can produce this and only a real
+ * fixture can reach the branch. 8 FAQ sections x 12 items x ~1200 chars, with
+ * `&` expanding to `&amp;` on the way out, clears 500 KB.
+ */
+function overCapDoc(): SectionDoc {
+  const q = "&".repeat(200)
+  const a = "&".repeat(1000)
+  return {
+    v: 1,
+    engine: "sections",
+    theme: { tone: "light", accent: "accent", radius: "soft" },
+    sections: Array.from({ length: 8 }, (_, index) => ({
+      id: `faq-${index}`,
+      kind: "faq",
+      variant: "stack",
+      style: {},
+      props: { source: "inline", items: Array.from({ length: 12 }, () => ({ q, a })) },
+    })),
+  } as unknown as SectionDoc
+}
+
 function stepRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "s1",
@@ -329,6 +355,109 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     expect(mock(updateFunnel)).not.toHaveBeenCalled()
   })
 
+  it("REFUSES on the SECOND page's size cap without writing the FIRST", async () => {
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
+    ])
+    mock(getDraft).mockImplementation(async (stepId: string) =>
+      stepId === "s1"
+        ? { doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 }
+        : { doc: overCapDoc(), docInvalid: false, revision: 1 },
+    )
+
+    const response = await POST(request(), ctx)
+    const body = await response.json()
+    expect(response.status).toBe(422)
+    // The premise. If the fixture is not actually over the cap this test
+    // proves nothing — it would be asserting a happy path wrote nothing.
+    expect(body.pages).toHaveLength(1)
+    expect(body.pages[0].stepId).toBe("s2")
+    expect(body.pages[0].problems.join(" ")).toMatch(/over the 500000-character publish cap/)
+
+    // MUTANT: the size-cap check living INSIDE the write loop, which is where
+    // it was. Page 1 passes its own check, gets a version row and a repointed
+    // `published_version_id`, and only THEN does page 2 refuse — a partial
+    // write reported by a 422 that never mentions it. The status code is 422
+    // either way, so ONLY this assertion can see the difference.
+    expect(mock(publishStep)).not.toHaveBeenCalled()
+    expect(mock(updateFunnel)).not.toHaveBeenCalled()
+  })
+
+  it("names EVERY page that fails its size cap, not just the first", async () => {
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
+    ])
+    mock(getDraft).mockResolvedValue({ doc: overCapDoc(), docInvalid: false, revision: 1 })
+
+    const response = await POST(request(), ctx)
+    const body = await response.json()
+    expect(response.status).toBe(422)
+    // MUTANT: returning on the first render problem instead of accumulating.
+    // That sends the owner back to fix one page and only then tells them about
+    // the next — the friction `funnelPublishPlan` already refuses to create,
+    // and the refusal shape must match it.
+    expect(body.pages.map((page: { stepId: string }) => page.stepId)).toEqual(["s1", "s2"])
+    expect(mock(publishStep)).not.toHaveBeenCalled()
+  })
+
+  it("tells a REPUBLISHED funnel that the pages already written are public", async () => {
+    // THE STATE NO OTHER TEST IN THIS FILE STARTS FROM. Every other case here
+    // begins at `status: "draft"`, which is why the catch below could claim
+    // "none of it is public yet" unconditionally and survive the suite.
+    mock(getFunnelById).mockResolvedValue({ ...FUNNEL, status: "published" })
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
+    ])
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+    mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => {
+      if (stepId === "s2") throw new Error("connection reset")
+      return { ok: true, version: { id: "v1", version: 1 }, warnings: [] }
+    })
+
+    const response = await POST(request(), ctx)
+    const body = await response.json()
+    expect(response.status).toBe(422)
+    const problem = body.pages[0].problems[0]
+
+    // MUTANT: the unconditional "It is still a draft, so none of it is public
+    // yet — publishing again is safe." That sentence is TRUE on a first
+    // publish and FALSE here: the funnel row was already `published` on the
+    // way in, so page 1's new version is being served to the public right now
+    // while page 2 still serves its previous one. Nothing crashes, which is
+    // exactly why only the wording can catch it.
+    expect(problem).not.toContain("still a draft")
+    expect(problem).not.toContain("none of it is public")
+    expect(problem).toContain("already live")
+    expect(problem).toContain("1 of its pages were published")
+    expect(problem).toContain("connection reset")
+  })
+
+  it("still says nothing is public when a DRAFT funnel throws part way through", async () => {
+    // The sibling of the test above, pinned so the two messages cannot be
+    // collapsed back into one. Same failure, opposite entry status.
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
+    ])
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+    mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => {
+      if (stepId === "s2") throw new Error("connection reset")
+      return { ok: true, version: { id: "v1", version: 1 }, warnings: [] }
+    })
+
+    const response = await POST(request(), ctx)
+    const body = await response.json()
+    const problem = body.pages[0].problems[0]
+    // MUTANT: making the "already live" wording unconditional instead, which
+    // would tell the owner of a draft funnel that changes are public when the
+    // row was never flipped and none of it is reachable.
+    expect(problem).toContain("still a draft")
+    expect(problem).not.toContain("already live")
+  })
+
   it("does not flip the funnel row when a page fails to compile", async () => {
     mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false })])
     mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
@@ -340,6 +469,15 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     expect(response.status).toBe(422)
     // MUTANT: flipping the row regardless of the write results. A half-written
     // funnel that says "published" is the state with no way to reason about it.
+    //
+    // NOTE ON WHAT THIS NOW COVERS. `publishStep` returning `ok:false` is
+    // UNREACHABLE since the compile gate moved above the write loop — the
+    // route runs the same pure `compileFunnelStep` over the same `{html,css}`
+    // first, so a page that reaches the write has already compiled. This mock
+    // therefore drives the route's defensive `throw`, and what is pinned here
+    // is that the throw behaves like every other mid-write failure: 422, row
+    // untouched. It must not become a mid-loop `return` of a 422, which would
+    // reinstate the partial write silently.
     expect(mock(updateFunnel)).not.toHaveBeenCalled()
   })
 })

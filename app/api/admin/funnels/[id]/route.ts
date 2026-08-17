@@ -68,15 +68,51 @@ export const PATCH = withAudit(
        * 400 in this file family, not a 403 (nothing about who is asking) or a
        * 409 (nothing here conflicts with concurrent state).
        */
-      if (parsed.data.status === "published") {
+      /**
+       * `kind` IS ITSELF PATCHABLE HERE, WHICH MAKES IT A DOOR IN THE GUARD.
+       *
+       * Gating on the stored `funnel.kind` alone left a two-request bypass
+       * wide open: `PATCH {kind:"page"}` demotes the row, then
+       * `PATCH {status:"published"}` reads back "page" and publishes the
+       * funnel ungated — the exact split above, reached in two individually
+       * legal requests. Gating on the INCOMING kind alone is no better and
+       * fails faster: `PATCH {kind:"page", status:"published"}` would then
+       * publish a funnel in ONE request, and that body is refused today.
+       *
+       * So both directions are closed, and they need different rules:
+       *
+       *   - PUBLISHING is refused if the row is a funnel by EITHER account.
+       *     A stored funnel cannot be published, and neither can a page being
+       *     promoted in the same body (`{kind:"funnel", status:"published"}`),
+       *     which would otherwise become a live funnel whose pages were never
+       *     gated.
+       *   - DEMOTING a stored funnel to a page is refused outright. Nothing in
+       *     the product does it — `ConvertToFunnelDialog` is the only `kind`
+       *     PATCH there is and it only goes page → funnel — and on a row with
+       *     several steps it is not a meaningful edit, it is the first half of
+       *     the bypass above.
+       *
+       * PROMOTION IS STILL ALLOWED, on its own: `{kind:"funnel"}` with no
+       * status never reads the row and never refuses.
+       */
+      const incomingKind = parsed.data.kind
+      if (parsed.data.status === "published" || incomingKind === "page") {
         const funnel = await getFunnelById(id)
         if (!funnel) return NextResponse.json({ error: "Not found" }, { status: 404 })
-        if (funnel.kind === "funnel") {
+
+        if (parsed.data.status === "published" && (funnel.kind === "funnel" || incomingKind === "funnel")) {
           return NextResponse.json(
             {
               error:
                 "A funnel is published as a whole. Use POST /api/admin/funnels/:id/publish, which gates every page before any of them go live.",
             },
+            { status: 400 },
+          )
+        }
+
+        if (incomingKind === "page" && funnel.kind === "funnel") {
+          return NextResponse.json(
+            { error: "A funnel cannot be turned back into a single page." },
             { status: 400 },
           )
         }
