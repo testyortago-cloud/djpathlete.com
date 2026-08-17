@@ -92,7 +92,9 @@ export function FunnelStatusControl({ funnelId, status, kind }: FunnelStatusCont
         return
       }
       setCurrent("published")
-      toast.success(publishedSummary(result.published))
+      // WITH THE WARNINGS. This is the only surface the owner gets from this
+      // screen, so "your video embed was removed" has nowhere else to go.
+      toast.success(publishedSummary(result.published, result.warnings))
       startTransition(() => router.refresh())
     } finally {
       setSaving(false)

@@ -33,6 +33,7 @@ import {
   type DraftJob,
   type RailPage,
 } from "@/components/admin/funnels/connections-context"
+import { publishedSummary } from "@/components/admin/funnels/publish-funnel"
 import { encodeBuildStreamEvent, type BuildStreamEvent } from "@/lib/funnels/sections/build-stream"
 import { sectionDocSchema } from "@/lib/funnels/sections/registry"
 import type { StepWithDoc } from "@/lib/funnels/connections"
@@ -300,7 +301,7 @@ describe("publishing a funnel from the builder", () => {
     // proposed. "Published version 0" is a lie about a row that does not exist,
     // and a sentinel only one branch understands is how the next reader gets it
     // wrong — so the funnel-wide result reports PAGES and nothing else.
-    expect(await screen.findByText(/3 pages published/i)).toBeInTheDocument()
+    expect(await screen.findByText(/published 3 pages/i)).toBeInTheDocument()
     expect(screen.queryByText(/published version/i)).toBeNull()
 
     // MUTANT: rendering this tab's document and POSTing it. The funnel route
@@ -363,7 +364,7 @@ describe("publishing a funnel from the builder", () => {
   it("stops offering the funnel publish once the funnel IS this document", async () => {
     // MUTANT: the funnel primary button with no `upToDate` branch — which is
     // what the draft shipped. It renders a greyed-out "Publish funnel" beside a
-    // strip reading "3 pages published", and the only available reading of that
+    // strip reading "Published 3 pages", and the only available reading of that
     // is "the publish did not take, press it again". It is the owner's own
     // report, one control over: "when i publish there is no version showing
     // then the publish button is still available that its confusing".
@@ -385,7 +386,7 @@ describe("publishing a funnel from the builder", () => {
     render(<FunnelBuilder {...baseProps()} />)
     fireEvent.click(publishFunnelButton())
 
-    await waitFor(() => expect(screen.getByText(/3 pages published/i)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/published 3 pages/i)).toBeInTheDocument())
     expect(screen.queryByRole("button", { name: /^publish funnel$/i })).toBeNull()
     expect(screen.getByRole("button", { name: /^published$/i })).toBeDisabled()
 
@@ -412,8 +413,48 @@ describe("publishing a funnel from the builder", () => {
     render(<FunnelBuilder {...baseProps()} />)
     fireEvent.click(publishFunnelButton())
 
-    await waitFor(() => expect(screen.getByText(/0 pages published/i)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/published 0 pages/i)).toBeInTheDocument())
     expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it("does not read a route's internal error out to the owner", async () => {
+    // MUTANT: `toast.error(body?.error ?? "Could not publish…")`, which is what
+    // shipped. On a 24-hour session expiry this route answers 403
+    // `{error: "Forbidden"}` — so pressing Publish showed a toast that said, in
+    // full, "Forbidden". The path this replaced said "Could not change the
+    // status."
+    //
+    // Only 400 and 422 carry a sentence written for the owner, and the 422 is
+    // asserted at length below ("routes a 422 naming ANOTHER page into the
+    // chat"), so this rule cannot be passing by muting every message.
+    mockFetch({ funnelPublish: () => ({ status: 403, body: { error: "Forbidden" } }) })
+
+    render(<FunnelBuilder {...baseProps()} />)
+    fireEvent.click(publishFunnelButton())
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const message = String(toast.error.mock.calls[0][0])
+    expect(message).not.toContain("Forbidden")
+    expect(message).toMatch(/the live funnel is unchanged/i)
+  })
+
+  it("words a funnel publish the same way every other surface does", async () => {
+    // MUTANT: the inlined literal this call site used to hold. `publishedSummary`
+    // exists precisely so the builder's toast, the builder's result strip, the
+    // funnel detail control and the board's Go live cannot drift — and the
+    // builder was re-typing the sentence rather than calling the helper, while
+    // the strip beside it worded it a third way ("3 pages published — the
+    // funnel is live").
+    //
+    // Asserted against the HELPER, not a literal, so a reworded sentence moves
+    // both surfaces or fails here.
+    mockFetch({ funnelPublish: () => ({ status: 200, body: { published: 3, pages: [], warnings: [] } }) })
+
+    render(<FunnelBuilder {...baseProps()} />)
+    fireEvent.click(publishFunnelButton())
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(publishedSummary(3)))
+    expect(await screen.findByText(publishedSummary(3))).toBeInTheDocument()
   })
 
   it("keeps offering the funnel publish after only ONE page was published", async () => {
@@ -464,7 +505,7 @@ describe("publishing a funnel from the builder", () => {
     fireEvent.click(screen.getByRole("button", { name: /back to editing/i }))
 
     fireEvent.click(publishFunnelButton())
-    await waitFor(() => expect(screen.getByText(/3 pages published/i)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/published 3 pages/i)).toBeInTheDocument())
 
     // A turn moves the revision on, so there is something to publish again and
     // the review is reachable exactly as it was.

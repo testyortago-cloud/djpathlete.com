@@ -122,6 +122,51 @@ describe("<FunnelStatusControl> — publishing a funnel", () => {
     expect(message).toContain("It has no content yet.")
   })
 
+  it("does not read a route's internal error out to the owner", async () => {
+    // MUTANT KILLED: `error ?? fallback` with no status check, which is what
+    // shipped. `auth()` answers an expired 24-hour session with
+    // `{error: "Forbidden"}` — so the owner pressed Publish and read a toast
+    // that said, in full, "Forbidden". The path this replaced said "Could not
+    // change the status."
+    //
+    // The status is the whole of the rule: 400 and 422 are the two the route
+    // writes for the owner (and the 422 case is asserted directly above, so
+    // this cannot be passing by muting everything).
+    mockFetch({ ok: false, status: 403, json: async () => ({ error: "Forbidden" }) })
+
+    render(<FunnelStatusControl funnelId="f1" status="draft" kind="funnel" />)
+    fireEvent.click(screen.getByRole("button", { name: /publish funnel/i }))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const message = String(toast.error.mock.calls[0][0])
+    expect(message).not.toContain("Forbidden")
+    expect(message).toMatch(/could not publish this funnel/i)
+  })
+
+  it("carries what the compiler changed into the success toast", async () => {
+    // MUTANT KILLED: `publishedSummary(result.published)` with the warnings
+    // dropped — which is what shipped, on BOTH toast-only surfaces. The route
+    // collects `result.warnings` per page on purpose (`route.ts:216`); a card
+    // on a list has no strip to put them in, so a toast that ignores them
+    // loses them altogether. "Collected and then ignored" is this path's own
+    // recorded failure, twice.
+    mockFetch({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        published: 2,
+        pages: [],
+        warnings: ["The video embed on Thank you was removed."],
+      }),
+    })
+
+    render(<FunnelStatusControl funnelId="f1" status="draft" kind="funnel" />)
+    fireEvent.click(screen.getByRole("button", { name: /publish funnel/i }))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(String(toast.success.mock.calls[0][0])).toContain("The video embed on Thank you was removed.")
+  })
+
   it("unpublishes through PATCH, unchanged", async () => {
     // MUTANT KILLED: routing the un-publish through the publish endpoint too.
     // Taking a funnel OFF the air has nothing to gate — refusing to hide a

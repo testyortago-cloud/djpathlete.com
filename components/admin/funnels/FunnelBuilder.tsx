@@ -78,6 +78,12 @@ import { PublishReview } from "./builder/PublishReview"
 import { SectionInspector } from "./builder/SectionInspector"
 import { patchForPath, valueAtPath } from "@/lib/funnels/sections/patch"
 import { usePublishStepConnections, useRegisterRepair, useDraftQueue } from "./connections-context"
+// THE SENTENCES, SHARED. `publishFunnel` itself is deliberately not used here —
+// this screen has a transcript to write a refusal into, which is strictly more
+// than a toast can carry — but the wording of a success and the rule for when a
+// route's `error` may be shown to an owner belong in one place for all three
+// publish surfaces. See the module header.
+import { ownerFacingError, publishedSummary } from "./publish-funnel"
 import { ImageSlotDialog, type HeroMedia } from "./builder/ImageSlotDialog"
 import type { CanvasCommit, CanvasSelection } from "./builder/canvas-editing"
 import { candidatePickMessage } from "./builder/format"
@@ -259,6 +265,16 @@ function pagePublishProblems(rows: unknown[]): PagePublishProblem[] {
     return [{ stepId, stepName, problems: problems as string[], blank: blank === true }]
   })
 }
+
+/**
+ * What the owner is told when a funnel publish fails for a reason that was not
+ * written for him — a 403 from an expired session, a 500, a dropped connection.
+ *
+ * One constant because it is the fallback on four branches, and a publish that
+ * reported two different sentences for the same non-event would be one more
+ * thing to reconcile.
+ */
+const FUNNEL_PUBLISH_FAILED = "Could not publish. The live funnel is unchanged."
 
 let localMessageSeq = 0
 function nextLocalId(prefix: string): string {
@@ -1281,7 +1297,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         if (refused.length === 0) {
           // A 422 whose `pages` is not the shape this route documents. Refuse
           // to invent a refusal from it rather than rendering `undefined`.
-          toast.error(body?.error ?? "Could not publish. The live funnel is unchanged.")
+          toast.error(ownerFacingError(response.status, body?.error, FUNNEL_PUBLISH_FAILED))
           return
         }
         // Same treatment as the step route's 422 — `setServerBlockers` FIRST
@@ -1303,7 +1319,11 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
       // funnel had, in fact, just gone live — the same defect family as the
       // draft queue calling a failed build "done" (see `runJob`'s own note).
       if (!response.ok || typeof body?.published !== "number") {
-        toast.error(body?.error ?? "Could not publish. The live funnel is unchanged.")
+        // `ownerFacingError`, NOT `body?.error ?? …`. On a 24-hour session
+        // expiry this route answers `{error: "Forbidden"}`, and the owner
+        // pressed Publish and read a toast saying "Forbidden". Only 400 and
+        // 422 carry a sentence written for him; see the helper.
+        toast.error(ownerFacingError(response.status, body?.error, FUNNEL_PUBLISH_FAILED))
         return
       }
 
@@ -1326,9 +1346,15 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
       // prop and is now stale. Asserting the fact, not guessing it.
       setWentLive(true)
       setMode("edit")
-      toast.success(`Published ${body.published} page${body.published === 1 ? "" : "s"}. The funnel is live.`)
+      // THE SHARED SENTENCE, not a fourth copy of it. `publishedSummary` exists
+      // so the funnel detail control, the board's Go live and this builder
+      // cannot word the same publish three ways — and this call site was
+      // re-typing the literal it was written to own. No `warnings` argument:
+      // the result strip below lists them under the headline, and saying them
+      // twice on one screen is noise rather than emphasis.
+      toast.success(publishedSummary(body.published))
     } catch {
-      toast.error("Could not publish. The live funnel is unchanged.")
+      toast.error(FUNNEL_PUBLISH_FAILED)
     } finally {
       setBusy("idle")
     }
@@ -1696,7 +1722,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
                   there is no single number to name; `pages` carries the count
                   instead. See the ruling on `PublishResult.version` above. */}
               {typeof publishResult.pages === "number"
-                ? `${publishResult.pages} page${publishResult.pages === 1 ? "" : "s"} published — the funnel is live.`
+                ? publishedSummary(publishResult.pages)
                 : `Published version ${publishResult.version}. The live page is updated.`}
             </p>
             {publishResult.warnings.length > 0 ? (

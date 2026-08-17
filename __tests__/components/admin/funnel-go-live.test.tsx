@@ -202,6 +202,49 @@ describe("<FunnelGoLiveButton> — a funnel goes live through the guarded route"
     expect(String(fetchMock.mock.calls[0][0])).toBe("/api/admin/funnels/f1/publish")
   })
 
+  it("carries what the compiler changed into the success toast", async () => {
+    // MUTANT KILLED: dropping `result.warnings`, which is what shipped here and
+    // on `FunnelStatusControl`. This card is a row on a list — there is no
+    // result strip anywhere near it — so a toast that ignores the warnings is
+    // the only place they could have been said, and it says nothing.
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        published: 3,
+        pages: [],
+        warnings: ["A custom font on Offer could not be carried over."],
+      }),
+    })) as unknown as typeof fetch
+
+    render(<FunnelGoLiveButton funnelId="f1" status="draft" kind="funnel" canGoLive />)
+    fireEvent.click(screen.getByRole("button", { name: /go live/i }))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalled())
+    expect(String(toast.success.mock.calls[0][0])).toContain("A custom font on Offer could not be carried over.")
+  })
+
+  it("does not read a route's internal error out to the owner", async () => {
+    // MUTANT KILLED: `error ?? fallback` with no status check. A 24-hour
+    // session expiring mid-session makes this route answer 403
+    // `{error: "Forbidden"}`, and the owner read a toast saying "Forbidden".
+    global.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: "supabaseAdmin.from is not a function" }),
+    })) as unknown as typeof fetch
+
+    render(<FunnelGoLiveButton funnelId="f1" status="draft" kind="funnel" canGoLive />)
+    fireEvent.click(screen.getByRole("button", { name: /go live/i }))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    const message = String(toast.error.mock.calls[0][0])
+    expect(message).not.toContain("supabaseAdmin")
+    expect(message).toMatch(/could not publish this funnel/i)
+    // ...and the 422 the route DOES write for the owner still comes through in
+    // full — asserted two tests up, so this rule mutes the right half only.
+  })
+
   it("takes a funnel offline through PATCH, unchanged", async () => {
     // MUTANT KILLED: routing the un-publish through the publish endpoint too.
     // Hiding a broken funnel must not be gated on the funnel being unbroken.

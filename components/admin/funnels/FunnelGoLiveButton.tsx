@@ -107,7 +107,9 @@ export function FunnelGoLiveButton({ funnelId, status, kind, canGoLive }: Funnel
         return
       }
       setCurrent("published")
-      toast.success(publishedSummary(result.published))
+      // WITH THE WARNINGS. A card on a list has no strip to put them in, so a
+      // toast that drops them loses them entirely.
+      toast.success(publishedSummary(result.published, result.warnings))
       startTransition(() => router.refresh())
     } finally {
       setSaving(false)
