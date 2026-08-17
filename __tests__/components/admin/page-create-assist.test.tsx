@@ -59,7 +59,7 @@ function lastPost() {
 describe("Examples on the pages screen", () => {
   it("shows a page example for every goal, not funnel templates", () => {
     // MUTANT KILLED: reusing FUNNEL_EXAMPLES here. It would offer a page owner
-    // a four-step camp funnel as the thing to start from.
+    // a multi-step camp funnel as the thing to start from.
     open()
     fireEvent.click(screen.getByRole("button", { name: /see examples/i }))
     expect(screen.getAllByTestId("curated-example")).toHaveLength(PAGE_EXAMPLES.length)

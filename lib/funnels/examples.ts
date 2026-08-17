@@ -45,9 +45,9 @@ export const FUNNEL_EXAMPLES = [
     steps: planOf("event"),
     audience: "Junior tennis players aged 12-16 and the parent who pays",
     description:
-      "A four-week summer camp running weekday mornings at the Riverside courts. Sessions are 90 minutes, capped at 12 players, focused on serve mechanics and match play. Parents book and pay; every player needs a signed waiver before day one. Write for the parent, not the player — they are the one filling this in.",
+      "A four-week summer camp running weekday mornings at the Riverside courts. Sessions are 90 minutes, capped at 12 players, focused on serve mechanics and match play. Register asks for the parent's name and email, the player's name and age, and a tick to accept the liability waiver — then takes the payment on that same page. Write for the parent, not the player: they are the one filling this in.",
     whyItWorks:
-      "Register comes before Payment, so an abandoned checkout still leaves you a lead you can call.",
+      "The signup is saved before Stripe is called, so a parent who abandons checkout is still a lead you can phone.",
   },
   {
     template: "leads",
@@ -180,9 +180,9 @@ export const PAGE_EXAMPLES = [
     slug: "spring-skills-clinic",
     audience: "Club players aged 14-18 and the parents booking for them",
     description:
-      "A one-day clinic on serve mechanics and return position, capped at 16 players. Write for the parent, who is the one paying and reading. Cover date, venue, what to bring, and what a player leaves able to do.",
+      "A one-day clinic on serve mechanics and return position, capped at 16 players. Write for the parent, who is the one paying and reading. Cover date, venue, what to bring, and what a player leaves able to do — then a form that takes the booking and the payment without leaving the page: parent and player details, the waiver to tick, and pay.",
     whyItWorks:
-      "It answers the logistics a parent needs before they will even consider the coaching.",
+      "A parent who has just read the logistics can pay on the spot, rather than being sent somewhere else to re-type it all.",
   },
 ] as const satisfies readonly PageExample[]
 

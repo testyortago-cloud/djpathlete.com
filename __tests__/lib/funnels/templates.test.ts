@@ -113,6 +113,22 @@ describe("FUNNEL_TEMPLATES", () => {
     }
   })
 
+  it("sells the camp on the register step rather than a page of its own", () => {
+    // MUTANT KILLED: putting a "Payment" step back into the event plan. The
+    // register form takes the money itself — it writes the signup, then hands
+    // off to Stripe — so a payment step is a whole page whose only job is a CTA
+    // that leaves the funnel for the camp's own page, where the parent re-types
+    // everything they just filled in. That is the bug the checkout work fixed,
+    // and a template naming the step would rebuild it for every new funnel.
+    const event = getTemplate("event")!
+    expect(event.steps.map((step) => step.slug)).toEqual(["index", "register", "thank-you"])
+
+    // And the step that collects the parent is a FORM, not another link-out:
+    // `event` is the goal whose whole meaning is "links to a camp or clinic
+    // signup", which is precisely what this step replaces.
+    expect(event.steps.find((step) => step.slug === "register")!.goal).toBe("leads")
+  })
+
   it("offers a single-step template so 'no template' is still reachable", () => {
     // The old behaviour — one funnel, one step, no assumptions — must remain
     // available, or this redesign removes a thing people were relying on.

@@ -102,13 +102,22 @@ export const FUNNEL_TEMPLATES = [
   {
     value: "event",
     label: "Fill an event or camp",
-    hint: "Details, register, pay, confirm",
+    hint: "Details, register and pay, confirm",
     steps: [
       { name: "Details", slug: ENTRY_STEP_SLUG, goal: "event" },
-      // The register step captures the athlete's details BEFORE payment, which
-      // is why this template is the four-step one and why it asks who to notify.
+      // ONE STEP, NOT TWO. The Register form takes the payment itself — it
+      // writes the signup, then hands off to Stripe — so a separate Payment
+      // step would be a whole page whose only job is a CTA that leaves the
+      // funnel for the camp's own page, where the parent re-types everything
+      // they just filled in. That was the bug the checkout work fixed; naming
+      // the step here would rebuild it for every new funnel.
+      //
+      // ITS GOAL STAYS `leads`, and that is not an oversight. `leads` is the
+      // goal that renders a FORM; `event` is the one that "links to a camp or
+      // clinic signup", which is exactly the link-out this step replaces. The
+      // `leads` goal is also what makes this template ask who to notify — the
+      // parent who fills the form and never reaches Stripe is still a lead.
       { name: "Register", slug: "register", goal: "leads" },
-      { name: "Payment", slug: "payment", goal: "event" },
       { name: "Confirmation", slug: "thank-you", goal: null },
     ],
     asks: ["audience", "offer", "dates", "notify"],

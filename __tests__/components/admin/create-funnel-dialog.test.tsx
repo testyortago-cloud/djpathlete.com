@@ -90,7 +90,7 @@ describe("<CreateFunnelDialog> — the template", () => {
     pick(/capture leads/i)
     expect(rows()).toHaveLength(2)
     pick(/fill an event or camp/i)
-    expect(rows()).toHaveLength(4)
+    expect(rows()).toHaveLength(3)
     pick(/start from scratch/i)
     expect(rows()).toHaveLength(1)
   })
@@ -190,16 +190,15 @@ describe("<CreateFunnelDialog> — the step plan", () => {
     open()
     fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: "Camp 2026" } })
     pick(/fill an event or camp/i)
-    // Scoped to the row: an unscoped remove query across a four-row editor is
+    // Scoped to the row: an unscoped remove query across a multi-row editor is
     // exactly the "passed for the wrong reason" trap this repo has hit before.
-    fireEvent.click(within(rows()[3]).getByRole("button", { name: /remove step 4/i }))
+    fireEvent.click(within(rows()[2]).getByRole("button", { name: /remove step 3/i }))
     fireEvent.click(screen.getByRole("button", { name: /create funnel/i }))
 
     await waitFor(() => expect(createBody().steps).toBeDefined())
     expect(createBody().steps.map((step: { slug: string }) => step.slug)).toEqual([
       "index",
       "register",
-      "payment",
     ])
   })
 
@@ -235,9 +234,8 @@ describe("<CreateFunnelDialog> — the step plan", () => {
     await waitFor(() => expect(createBody().steps).toBeDefined())
     expect(createBody().steps.map((step: { slug: string }) => step.slug)).toEqual([
       "index",
-      "payment",
-      "register",
       "thank-you",
+      "register",
     ])
   })
 

@@ -257,8 +257,8 @@ export async function FunnelBuilderScreen({
   // `funnel.template !== null` IS WHAT MAKES STEPS 2..N LAZY. The create dialog
   // routes into step one with the nudge; every later step is reached from the
   // step list by an ordinary link with no query string, and would otherwise
-  // open blank forever — which would leave the template having named four steps
-  // and drafted one. A templated funnel therefore drafts any step that has
+  // open blank forever — which would leave the template having named several
+  // steps and drafted one. A templated funnel therefore drafts any step that has
   // never been touched, on first open.
   //
   // The real guards are the two that follow, and they are unchanged: a step

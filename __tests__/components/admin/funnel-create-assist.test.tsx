@@ -212,7 +212,7 @@ describe("Examples", () => {
     fireEvent.click(within(camp).getByRole("button", { name: /start from this/i }))
 
     await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toHaveValue("Summer Camp 2026"))
-    expect(screen.getAllByTestId("step-row")).toHaveLength(4)
+    expect(screen.getAllByTestId("step-row")).toHaveLength(3)
   })
 
   it("hides the your-funnels section when there are none", () => {
@@ -236,7 +236,7 @@ describe("Examples", () => {
     fireEvent.click(screen.getByRole("button", { name: /see examples/i }))
     fireEvent.click(screen.getByRole("button", { name: /copy this structure/i }))
 
-    await waitFor(() => expect(screen.getAllByTestId("step-row")).toHaveLength(4))
+    await waitFor(() => expect(screen.getAllByTestId("step-row")).toHaveLength(3))
     expect(screen.getByLabelText(/^name$/i)).toHaveValue("")
     expect(screen.getByLabelText(/^url$/i)).toHaveValue("")
   })
@@ -250,7 +250,7 @@ describe("Examples", () => {
     fireEvent.click(screen.getByRole("button", { name: /see examples/i }))
     fireEvent.click(screen.getByRole("button", { name: /copy this structure/i }))
 
-    await waitFor(() => expect(screen.getAllByTestId("step-row")).toHaveLength(4))
+    await waitFor(() => expect(screen.getAllByTestId("step-row")).toHaveLength(3))
     expect(screen.getByLabelText(/^name$/i)).toHaveValue("Autumn Camp")
   })
 
