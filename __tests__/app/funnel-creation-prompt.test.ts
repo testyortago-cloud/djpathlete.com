@@ -10,7 +10,7 @@
 // reason funnel_steps.goal exists.
 
 import { describe, it, expect } from "vitest"
-import { creationPrompt } from "@/app/(admin)/admin/funnels/[id]/edit/[stepId]/page"
+import { creationPrompt } from "@/lib/funnels/creation-prompt"
 import type { Funnel, FunnelStep } from "@/types/database"
 
 function funnel(overrides: Partial<Funnel> = {}): Funnel {
