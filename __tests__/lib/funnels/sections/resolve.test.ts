@@ -50,6 +50,7 @@ import {
   publishGate,
   toCatalogue,
   type Catalogue,
+  type CatalogueEntry,
   type Catalogues,
   type FunnelStepRef,
   type ResolvableCtaKind,

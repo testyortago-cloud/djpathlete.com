@@ -251,36 +251,46 @@ export const formIslandSchema = z
       }
     }
 
+    /**
+     * Reports against the FIELD'S OWN PATH, so the builder highlights the field
+     * that is wrong rather than the whole form.
+     *
+     * Takes the index as a definite number: `seen.get()` returns
+     * `number | undefined`, and a guard on the FIELD does not narrow the INDEX —
+     * `path: ["fields", maybeUndefined, "type"]` is a type error, and four of them
+     * nearly shipped here.
+     */
+    const rejectField = (index: number, message: string) => {
+      ctx.addIssue({ code: "custom", path: ["fields", index, "type"], message })
+    }
+
     // `required` carries `.default(false)`, and a superRefine can see raw input
     // on some paths — so compare against `!== true`, never `=== false`.
     const waiverIndex = seen.get("waiver_accepted")
-    const waiver = waiverIndex === undefined ? undefined : fields[waiverIndex]
-    if (waiver && (waiver.type !== "checkbox" || waiver.required !== true)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["fields", waiverIndex, "type"],
-        message: "The waiver field must be a required checkbox — a legal gate that can be left blank is not a gate.",
-      })
+    if (waiverIndex !== undefined) {
+      const waiver = fields[waiverIndex]
+      if (waiver && (waiver.type !== "checkbox" || waiver.required !== true)) {
+        rejectField(
+          waiverIndex,
+          "The waiver field must be a required checkbox — a legal gate that can be left blank is not a gate.",
+        )
+      }
     }
 
     const emailIndex = seen.get("parent_email")
-    const email = emailIndex === undefined ? undefined : fields[emailIndex]
-    if (email && email.type !== "email") {
-      ctx.addIssue({
-        code: "custom",
-        path: ["fields", emailIndex, "type"],
-        message: "The field carrying the parent's email must be type email.",
-      })
+    if (emailIndex !== undefined) {
+      const email = fields[emailIndex]
+      if (email && email.type !== "email") {
+        rejectField(emailIndex, "The field carrying the parent's email must be type email.")
+      }
     }
 
     const ageIndex = seen.get("athlete_age")
-    const age = ageIndex === undefined ? undefined : fields[ageIndex]
-    if (age && age.type !== "select" && age.type !== "text") {
-      ctx.addIssue({
-        code: "custom",
-        path: ["fields", ageIndex, "type"],
-        message: "The athlete's age must be a select or a text field, so it can be read as a number.",
-      })
+    if (ageIndex !== undefined) {
+      const age = fields[ageIndex]
+      if (age && age.type !== "select" && age.type !== "text") {
+        rejectField(ageIndex, "The athlete's age must be a select or a text field, so it can be read as a number.")
+      }
     }
   })
 
