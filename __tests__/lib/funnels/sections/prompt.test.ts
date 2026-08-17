@@ -310,14 +310,23 @@ describe("Block A is built once, at module load", () => {
   })
 
   it("stays under the size ceiling the token budget assumes", () => {
-    // ~4 characters per token for English prose, so 16000 characters is
-    // roughly 4000 tokens. The design budgets Block A at ~3000 tokens; it
-    // measures ~3200 today. The ceiling is deliberately close, not generous:
+    // ~4 characters per token for English prose, so 17000 characters is
+    // roughly 4250 tokens. The design budgets Block A at ~3000 tokens; it
+    // measures ~4050 today. The ceiling is deliberately close, not generous:
     // Block A is written into the cache on the first turn of every page, and
     // the thing that would silently blow it up is someone inlining the nine
     // props schemas as raw JSON Schema (11119 characters on its own) instead
     // of the compact signatures. This goes red long before that reaches prod.
-    expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(16_000)
+    //
+    // RAISED FROM 16000 on 2026-08-17, by 138 characters of real content: the
+    // form field's `role` enum (rendered ONCE, in the field signature) and
+    // `eventId` (rendered twice — the signature, and the UUID_FIELD_PATHS list
+    // that tells the model to omit it). Both were measured before raising this,
+    // because the failure mode this test exists to catch is duplication across
+    // the nine kinds, and an enum rendered nine times would have been a reason
+    // to compact the content instead of moving the line. The tripwire is intact:
+    // an inlined 11119-character JSON Schema still blows straight past 17000.
+    expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(17_000)
     // Not a "non-empty" check — `" "` would pass that. The floor is set below
     // the current size but far above any degenerate render.
     expect(SECTION_BUILDER_BLOCK_A.length).toBeGreaterThan(8_000)

@@ -78,6 +78,49 @@ function isAllowedRedirect(value: string): boolean {
 export const FUNNEL_FIELD_TYPES = ["text", "email", "tel", "textarea", "select", "checkbox"] as const
 export type FunnelFieldType = (typeof FUNNEL_FIELD_TYPES)[number]
 
+/**
+ * WHICH SIGNUP VALUE A FIELD CARRIES, DECLARED RATHER THAN GUESSED.
+ *
+ * Every name here is a key of `createEventSignupSchema` — islands.test.ts
+ * asserts that agreement against the real schema rather than a copy of its
+ * shape, because a role the signup schema has no key for is a role that maps
+ * nowhere. Nothing infers meaning from a label or a field name: "Player's name"
+ * carries `athlete_name` because the form says so, and an owner who renames it
+ * to "Your child" keeps a working checkout.
+ *
+ * A field with NO role is not second-class. It is an ordinary question whose
+ * answer lands in the funnel submission payload, which is how an owner's own
+ * "Current level" question survives on a form that also takes payment — there
+ * is no key for it in the signup schema and it does not need one.
+ */
+export const FORM_FIELD_ROLES = [
+  "parent_name",
+  "parent_email",
+  "parent_phone",
+  "athlete_name",
+  "athlete_age",
+  "sport",
+  "notes",
+  "waiver_accepted",
+] as const
+
+export type FormFieldRole = (typeof FORM_FIELD_ROLES)[number]
+
+/**
+ * The roles `createEventSignupSchema` will not accept a payload without.
+ *
+ * `parent_phone`, `sport` and `notes` are optional there and optional here. A
+ * checkout form missing any role below is refused by `formIslandSchema`, so the
+ * owner is told at publish instead of a parent discovering it mid-payment.
+ */
+export const CHECKOUT_REQUIRED_ROLES = [
+  "parent_name",
+  "parent_email",
+  "athlete_name",
+  "athlete_age",
+  "waiver_accepted",
+] as const
+
 export const funnelFormFieldSchema = z.object({
   /** Submitted key. Constrained so it can be a safe object key and form name. */
   name: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, "Field name must be lowercase letters, digits and underscores"),
@@ -87,6 +130,8 @@ export const funnelFormFieldSchema = z.object({
   placeholder: z.string().max(120).optional(),
   /** Only meaningful for type=select. */
   options: z.array(z.string().min(1).max(80)).max(30).optional(),
+  /** See `FORM_FIELD_ROLES`. Read only when `successMode` is "checkout". */
+  role: z.enum(FORM_FIELD_ROLES).optional(),
 })
 
 export type FunnelFormField = z.infer<typeof funnelFormFieldSchema>
@@ -97,7 +142,7 @@ export const formIslandSchema = z
     formKey: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/, "Invalid form key"),
     fields: z.array(funnelFormFieldSchema).min(1).max(20),
     submitLabel: z.string().min(1).max(60).optional().default("Submit"),
-    successMode: z.enum(["message", "redirect"]).optional().default("message"),
+    successMode: z.enum(["message", "redirect", "checkout"]).optional().default("message"),
     successMessage: z.string().max(400).optional(),
     // FunnelForm assigns this to window.location.href after a successful
     // submission, so an unvalidated value is an open redirect that fires at the
@@ -140,6 +185,19 @@ export const formIslandSchema = z
      */
     leadMagnetId: z.string().uuid().nullable().optional(),
     consentText: z.string().max(300).optional(),
+    /**
+     * The camp or clinic this form sells, when `successMode` is "checkout".
+     *
+     * A uuid the OWNER supplies through `island-fields.ts`, exactly as the event
+     * island's is. `UUID_FIELD_PATHS` is generated from the section schemas, so
+     * the builder prompt tells the model to omit it — and per the `leadMagnetId`
+     * note above, that is necessary and NOT SUFFICIENT: a prompt is a request,
+     * not a validator. What makes this safe is `publishGate`, which refuses to
+     * publish a checkout form whose id does not name an event that is currently
+     * offered and has a Stripe price. That is the resolver-and-gate treatment
+     * `leadMagnetId` is still waiting for.
+     */
+    eventId: z.string().uuid().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.successMode === "redirect" && !value.redirectUrl) {
@@ -147,6 +205,81 @@ export const formIslandSchema = z
         code: "custom",
         path: ["redirectUrl"],
         message: "redirectUrl is required when successMode is 'redirect'",
+      })
+    }
+
+    // ZOD 4 RUNS THIS EVEN WHEN `fields` ITSELF FAILED, so every read below is
+    // guarded. `lib/validators/funnel.ts` turned a clean 400 into a 500 by
+    // assuming `.min(1)` had short-circuited an array access here.
+    const fields = Array.isArray(value.fields) ? value.fields : []
+
+    // One field per role, in EVERY mode. Two fields claiming `parent_email` is
+    // ambiguous whatever the form does with them, and resolving it by taking the
+    // first silently drops a question the owner meant to ask.
+    const seen = new Map<string, number>()
+    fields.forEach((field, index) => {
+      const role = field?.role
+      if (typeof role !== "string") return
+      if (seen.has(role)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["fields", index, "role"],
+          message: `Two fields both claim the "${role}" role. Only one field may supply each value.`,
+        })
+        return
+      }
+      seen.set(role, index)
+    })
+
+    if (value.successMode !== "checkout") return
+
+    if (typeof value.eventId !== "string" || value.eventId === "") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["eventId"],
+        message: "A form that takes payment must name the camp or clinic it sells.",
+      })
+    }
+
+    for (const role of CHECKOUT_REQUIRED_ROLES) {
+      if (!seen.has(role)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["fields"],
+          message: `This form takes payment but no field carries the "${role}" role.`,
+        })
+      }
+    }
+
+    // `required` carries `.default(false)`, and a superRefine can see raw input
+    // on some paths — so compare against `!== true`, never `=== false`.
+    const waiverIndex = seen.get("waiver_accepted")
+    const waiver = waiverIndex === undefined ? undefined : fields[waiverIndex]
+    if (waiver && (waiver.type !== "checkbox" || waiver.required !== true)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["fields", waiverIndex, "type"],
+        message: "The waiver field must be a required checkbox — a legal gate that can be left blank is not a gate.",
+      })
+    }
+
+    const emailIndex = seen.get("parent_email")
+    const email = emailIndex === undefined ? undefined : fields[emailIndex]
+    if (email && email.type !== "email") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["fields", emailIndex, "type"],
+        message: "The field carrying the parent's email must be type email.",
+      })
+    }
+
+    const ageIndex = seen.get("athlete_age")
+    const age = ageIndex === undefined ? undefined : fields[ageIndex]
+    if (age && age.type !== "select" && age.type !== "text") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["fields", ageIndex, "type"],
+        message: "The athlete's age must be a select or a text field, so it can be read as a number.",
       })
     }
   })
