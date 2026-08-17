@@ -35,7 +35,6 @@ import {
 } from "@/lib/funnels/sections/resolve"
 import { SECTION_BUILDER_MAX_MESSAGE_LENGTH } from "@/lib/funnels/sections/builder-config"
 import { creationPrompt } from "@/lib/funnels/creation-prompt"
-import type { Funnel, FunnelStep } from "@/types/database"
 import { FunnelBuilder } from "@/components/admin/funnels/FunnelBuilder"
 import { renderDocForPublish } from "@/components/admin/funnels/builder/publish-actions"
 import type { BuilderMessage, CompileSummary } from "@/components/admin/funnels/builder/types"
