@@ -72,6 +72,42 @@ describe("funnelPublishPlan", () => {
     expect(plan.publish.map((entry) => entry.stepId)).toEqual(["a"])
   })
 
+  it("does NOT let a published version rescue a page the gate blocks", () => {
+    // THE OTHER SIDE OF THE TEST ABOVE, and the one that says where the
+    // published-version arm STOPS.
+    //
+    // MUTANT: hoisting `if (step.hasPublishedVersion) continue` to the top of
+    // the loop — the obvious reading of "a page that is already serving
+    // something real does not hold up a publish", and a reading the test above
+    // passes happily because its legacy step has no document to gate. It is
+    // wrong: `hasPublishedVersion` excuses a MISSING DOCUMENT and nothing else.
+    // A step with a real `SectionDoc` whose CTA points at a deleted program is
+    // blocked whether or not an older snapshot of it is live — publishing over
+    // it is exactly what a funnel publish is for, and skipping it would put a
+    // funnel live around a page with a dead button in it.
+    //
+    // The layout's queue depends on the same boundary from the other end
+    // (`app/(admin)/admin/funnels/[id]/edit/layout.tsx`), so this is the line
+    // both layers are written against.
+    const plan = funnelPublishPlan(
+      [step({ id: "live-but-broken", name: "Offer", hasPublishedVersion: true })],
+      () => ({ ok: false, blockers: ['Its buy button points at "Comeback Cod", which does not exist.'] }),
+    )
+
+    expect(plan.ok).toBe(false)
+    expect(plan.publish).toEqual([])
+    expect(plan.problems).toEqual([
+      {
+        stepId: "live-but-broken",
+        stepName: "Offer",
+        problems: ['Its buy button points at "Comeback Cod", which does not exist.'],
+        // `blank: false` — it has content, it is just wrong. The UI branches on
+        // this to offer "Generate it now", which would be nonsense here.
+        blank: false,
+      },
+    ])
+  })
+
   it("carries a blocked page's blockers under that page's own name", () => {
     // Two DISTINCT blocked docs, not one: a flattening bug that merges every
     // blocked page's blockers into whichever entry got created first is

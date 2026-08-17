@@ -237,6 +237,20 @@ async function openPublishMenu(): Promise<HTMLElement> {
   return screen.findByRole("menuitem", { name: /publish this page only/i })
 }
 
+/**
+ * The queue's phase for one step, rendered so a test can WAIT for it.
+ *
+ * Needed because several of the assertions below are about what the builder
+ * does once a background draft has settled, and "settled" is not observable
+ * from the builder's own DOM — a disabled publish button, for one, looks
+ * identical before and after a draft fails. Waiting on a microtask instead
+ * would be waiting on nothing in particular.
+ */
+function PhaseProbe({ stepId }: { stepId: string }) {
+  const context = useConnections()
+  return <span data-testid={`phase-${stepId}`}>{context?.draftPhase(stepId)}</span>
+}
+
 function renderInProvider(props: FunnelBuilderProps, draftJobs: DraftJob[], docs: StepWithDoc[] = BLANK_DOCS) {
   return render(
     <ConnectionsProvider
@@ -247,6 +261,9 @@ function renderInProvider(props: FunnelBuilderProps, draftJobs: DraftJob[], docs
       initialDocs={docs}
       draftJobs={draftJobs}
     >
+      {PAGES.map((page) => (
+        <PhaseProbe key={page.id} stepId={page.id} />
+      ))}
       <FunnelBuilder {...props} />
     </ConnectionsProvider>,
   )
@@ -723,6 +740,14 @@ describe("a funnel-wide publish refusal", () => {
     // MUTANT: clearing `serverBlockers` on the click instead of on the phase.
     // The refusal would be dismissed by pressing a button, and publish would be
     // re-armed over a page that is still exactly as blank as it was reported.
+    //
+    // THE FAILURE IS WAITED FOR, NOT ASSUMED. This used to assert
+    // `toBeDisabled()` after a single microtask — and disabled is ALSO the
+    // state before the failure lands, so a pass proved the button was shut, not
+    // that it STAYED shut through a failed draft. It did kill the mutant it
+    // names (which re-arms on the click, before any phase moves), so it was
+    // never vacuous; it simply did not prove what its title claims. `s2`
+    // reaching `failed` is the event this test is about, so it waits for it.
     const fetchMock = vi.fn(async (url: string) => {
       if (String(url) === "/api/admin/funnels/f1/publish") {
         return jsonResponse(422, {
@@ -746,10 +771,14 @@ describe("a funnel-wide publish refusal", () => {
       expect(buildUrls(fetchMock as unknown as FetchMock)).toContain("/api/admin/funnels/steps/s2/build"),
     )
 
-    await act(async () => {
-      await Promise.resolve()
-    })
+    // THE DRAFT HAS ACTUALLY FAILED BY THIS LINE. `runJob` sets `failed` on a
+    // non-streaming response, so this is the same signal the rail paints — and
+    // it is the one thing that distinguishes "still shut" from "not open yet".
+    await waitFor(() => expect(screen.getByTestId("phase-s2")).toHaveTextContent("failed"))
     expect(publishFunnelButton()).toBeDisabled()
+    // ...and the reason is still on screen, rather than a gate shut for no
+    // stated cause.
+    expect(screen.getByText(/thank you has no content yet/i)).toBeInTheDocument()
   })
 
   it("says so rather than doing nothing when a blank page has no job to draft", async () => {
