@@ -766,10 +766,27 @@ ${ROOT} .djp-form .djp-field[data-djp-field-type="checkbox"] {
   gap: 0.6rem;
 }
 ${ROOT} .djp-form .djp-field[data-djp-field-type="checkbox"] .djp-field-label { font-weight: 400; }
+/* A CHECKBOX KEEPS ITS NATIVE WIDGET. The .djp-control rule below sets
+   appearance:none — right for a text input, and on a checkbox it deletes the tick
+   along with the box, so checked and unchecked paint IDENTICALLY. Measured in
+   Chromium against this stylesheet: clicking toggled the input to checked and the
+   two screenshots of the control were byte-for-byte equal. A visitor gets no
+   feedback, clicks the label as well (the natural second try), toggles it back
+   off, and the submit fails with "... is required" — which is what a required
+   consent box did on the live register page.
+   The padding, border and radius are reset for the same reason: .djp-control pads
+   every control 0.7rem/0.9rem under box-sizing:border-box, which ate the whole
+   1.15rem square and left a 29x22 rounded pill with no content area at all.
+   accent-color only does anything once the native widget is back. */
 ${ROOT} .djp-form .djp-field[data-djp-field-type="checkbox"] .djp-control {
+  appearance: auto;
+  -webkit-appearance: auto;
   width: 1.15rem;
   height: 1.15rem;
   min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   flex: none;
   accent-color: var(--accent);
 }

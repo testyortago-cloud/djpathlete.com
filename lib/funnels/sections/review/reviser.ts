@@ -25,6 +25,7 @@ import { opSchema, type SectionOp } from "@/lib/funnels/sections/apply"
 import {
   SECTION_BUILDER_MAX_OPS,
   SECTION_BUILDER_MODEL,
+  SECTION_REVIEW_MAX_SUMMARY_LENGTH,
   SECTION_REVIEW_REVISER_MAX_TOKENS,
 } from "@/lib/funnels/sections/builder-config"
 import { SECTION_BUILDER_BLOCK_A } from "@/lib/funnels/sections/prompt"
@@ -35,12 +36,50 @@ export const reviseResultSchema = z.object({
   /**
    * Plain prose for the owner's transcript. What changed and why, in their
    * terms — this is the only part of the review most owners will ever read.
+   *
+   * ---------------------------------------------------------------------------
+   * DELIBERATELY UNCONSTRAINED. NO `.min()`, NO `.max()`. DO NOT ADD ONE.
+   * ---------------------------------------------------------------------------
+   * It carried `.min(1).max(600)`, and that is the bug that took the review
+   * stage down in production: a reviser that fixed sixteen findings wrote 1,048
+   * characters, and the single `too_big` issue on THIS FIELD made
+   * `generateObject` throw away the nine valid ops it came with. The owner saw
+   * "The reviewer could not finish."
+   *
+   * The limit still exists — `clampSummary` applies
+   * `SECTION_REVIEW_MAX_SUMMARY_LENGTH` after the call, where an over-long
+   * summary costs a truncation instead of the whole revision. `ops` keeps its
+   * `.max()` because an op batch over the limit is a functional problem and
+   * `applyOps` has to reject it.
    */
-  summary: z.string().min(1).max(600),
+  summary: z.string().default(""),
   ops: z.array(opSchema).max(SECTION_BUILDER_MAX_OPS),
 })
 
 export type ReviseResult = z.infer<typeof reviseResultSchema>
+
+/** Said when the model returns ops with no prose at all. Never empty: `appendTurn` stores this as the turn's message. */
+const SUMMARY_FALLBACK = "Applied the reviewers' fixes to the page."
+
+/**
+ * The transcript's length limit, applied where it cannot cost anything.
+ *
+ * Cuts at the last sentence that fits, so the summary ends on a full stop rather
+ * than mid-word; falls back to the last whole word with an ellipsis when one
+ * sentence is longer than the entire budget.
+ */
+export function clampSummary(raw: string): string {
+  const text = raw.trim()
+  if (text === "") return SUMMARY_FALLBACK
+  if (text.length <= SECTION_REVIEW_MAX_SUMMARY_LENGTH) return text
+
+  const room = text.slice(0, SECTION_REVIEW_MAX_SUMMARY_LENGTH - 1)
+  const sentence = Math.max(room.lastIndexOf(". "), room.lastIndexOf("? "), room.lastIndexOf("! "))
+  if (sentence >= SECTION_REVIEW_MAX_SUMMARY_LENGTH / 2) return room.slice(0, sentence + 1)
+
+  const word = room.lastIndexOf(" ")
+  return `${(word >= SECTION_REVIEW_MAX_SUMMARY_LENGTH / 2 ? room.slice(0, word) : room).trimEnd()}…`
+}
 
 export const REVISER_SYSTEM = `${SECTION_BUILDER_BLOCK_A}
 
@@ -106,6 +145,9 @@ ${findingsBlock(findings)}
 
 Emit the ops that fix these. Return JSON only.`
 
+  // `clampSummary` is applied HERE rather than in the schema, so a summary the
+  // model wrote too long costs a truncated sentence and not the ops. See
+  // `reviseResultSchema.summary`.
   const { content, tokens_used } = await callAgent(REVISER_SYSTEM, message, reviseResultSchema, {
     model: SECTION_BUILDER_MODEL,
     maxTokens: SECTION_REVIEW_REVISER_MAX_TOKENS,
@@ -117,7 +159,7 @@ Emit the ops that fix these. Return JSON only.`
     // builder pays for its cache because Block A is the whole of its system
     // string; here the win is smaller and the trap is one edit away.
   })
-  return { ...content, tokensUsed: tokens_used ?? 0 }
+  return { ...content, summary: clampSummary(content.summary), tokensUsed: tokens_used ?? 0 }
 }
 
 export type { SectionOp }

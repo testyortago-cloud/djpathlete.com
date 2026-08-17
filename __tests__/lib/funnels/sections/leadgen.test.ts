@@ -101,6 +101,34 @@ describe("the form is actually styled", () => {
     expect(rules).not.toContain(":has(")
   })
 
+  it("leaves the checkbox its native widget, so a tick is actually drawn", () => {
+    // THE REGRESSION, and the reason this is asserted on the RULE rather than on
+    // a rendering: `.djp-control` sets `appearance: none`, which on a checkbox
+    // removes the tick along with the box. Measured in Chromium against this
+    // stylesheet before the fix — clicking set `checked` to true and the two
+    // screenshots of the control were byte-identical, so the visitor had no way
+    // to tell a checked box from an unchecked one. On the live register page that
+    // made a REQUIRED consent box unpassable: no feedback, click the label as
+    // well, toggle it back off, submit fails "... is required".
+    //
+    // MUTANT: deleting `appearance: auto` from the checkbox rule. Every other
+    // assertion in this file still passes — the layout, the focus ring and the
+    // class coverage are all unaffected by whether the tick is visible.
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, "")
+    const checkboxRule = rules.match(
+      /\.djp-field\[data-djp-field-type="checkbox"\]\s+\.djp-control\s*\{([^}]*)\}/,
+    )?.[1]
+    expect(checkboxRule, "the checkbox control rule is gone").toBeDefined()
+    // Anchored so `-webkit-appearance` cannot satisfy it. It did on the first
+    // run of this test: deleting the standard property left the prefixed one and
+    // the assertion still passed, which in Chromium is a checkbox that paints
+    // nothing again.
+    expect(checkboxRule).toMatch(/(^|[\s;{])appearance:\s*auto/)
+    // `.djp-control` pads every control under box-sizing:border-box, which ate
+    // the whole 1.15rem square and left a 29x22 pill with no content area.
+    expect(checkboxRule).toMatch(/padding:\s*0/)
+  })
+
   it("does not restate the button's colours", () => {
     // MUTANT: giving .djp-form-submit its own `background: var(--accent)`. It
     // would look right on a light page and become invisible on an accent

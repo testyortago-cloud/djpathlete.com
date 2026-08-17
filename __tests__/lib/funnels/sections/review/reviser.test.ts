@@ -12,11 +12,12 @@ vi.mock("@/lib/ai/anthropic", () => ({
   callAgent: (...args: unknown[]) => callAgent(...args),
 }))
 
-import { REVISER_SYSTEM, reviseResultSchema, runReviser } from "@/lib/funnels/sections/review/reviser"
+import { clampSummary, REVISER_SYSTEM, reviseResultSchema, runReviser } from "@/lib/funnels/sections/review/reviser"
 import { applyOps, opSchema } from "@/lib/funnels/sections/apply"
 import {
   SECTION_BUILDER_MAX_OPS,
   SECTION_BUILDER_MODEL,
+  SECTION_REVIEW_MAX_SUMMARY_LENGTH,
   SECTION_REVIEW_REVISER_MAX_TOKENS,
 } from "@/lib/funnels/sections/builder-config"
 import { SECTION_BUILDER_BLOCK_A } from "@/lib/funnels/sections/prompt"
@@ -88,12 +89,66 @@ describe("reviseResultSchema", () => {
     expect(reviseResultSchema.safeParse({ summary: "x", ops }).success).toBe(false)
   })
 
-  it("requires a summary — the owner's transcript cannot be blank", () => {
-    expect(reviseResultSchema.safeParse({ summary: "", ops: [] }).success).toBe(false)
+  it("NEVER rejects a summary for its length — the prose cannot cost the ops", () => {
+    // THE REGRESSION. This is the production failure, reproduced at the exact
+    // size that caused it: against a real stored page the reviser returned nine
+    // valid ops with a 1,048-character summary, `summary` carried `.max(600)`,
+    // and the single `too_big` issue made `generateObject` throw
+    // `AI_NoObjectGeneratedError` — so all nine edits were discarded and the
+    // owner was told "The reviewer could not finish."
+    //
+    // MUTANT: putting any `.max()` back on `summary`. It passes every other test
+    // in this file, because every other summary here is three words long.
+    const op = { op: "update_section", id: "hero", style: { tone: "muted" } }
+    const long = "Retoned the seam between the proof and the offer. ".repeat(22)
+    expect(long.length).toBeGreaterThan(1_000)
+
+    const parsed = reviseResultSchema.safeParse({ summary: long, ops: [op] })
+    expect(parsed.success).toBe(true)
+    // And the ops are intact, which is the whole point of not rejecting.
+    expect(parsed.success && parsed.data.ops).toHaveLength(1)
+  })
+
+  it("tolerates a missing summary rather than losing the ops with it", () => {
+    // Same argument one step further: a model that returns ops and no prose at
+    // all has still done the work. `clampSummary` supplies the sentence.
+    const parsed = reviseResultSchema.safeParse({ ops: [] })
+    expect(parsed.success).toBe(true)
+    expect(parsed.success && parsed.data.summary).toBe("")
   })
 
   it("accepts an empty ops array — 'the page is fine' is a valid answer", () => {
     expect(reviseResultSchema.safeParse({ summary: "Page reads well.", ops: [] }).success).toBe(true)
+  })
+})
+
+describe("clampSummary", () => {
+  it("leaves a summary that fits exactly as the model wrote it", () => {
+    expect(clampSummary("  Retoned the seam.  ")).toBe("Retoned the seam.")
+  })
+
+  it("cuts an over-long summary to the last whole sentence that fits", () => {
+    const long = "Retoned the seam between the proof and the offer. ".repeat(22)
+    const clamped = clampSummary(long)
+    expect(clamped.length).toBeLessThanOrEqual(SECTION_REVIEW_MAX_SUMMARY_LENGTH)
+    // A full stop, not a severed word: this lands in the owner's transcript.
+    expect(clamped.endsWith(".")).toBe(true)
+    expect(long.startsWith(clamped)).toBe(true)
+  })
+
+  it("falls back to a word boundary when one sentence outruns the whole budget", () => {
+    const clamped = clampSummary("word ".repeat(400))
+    expect(clamped.length).toBeLessThanOrEqual(SECTION_REVIEW_MAX_SUMMARY_LENGTH)
+    expect(clamped.endsWith("…")).toBe(true)
+    expect(clamped).not.toMatch(/\s…$/)
+  })
+
+  it("never returns an empty string — appendTurn stores this as the turn's message", () => {
+    // MUTANT: `return text` for the empty case. A blank summary would reach
+    // `appendTurn` as the review turn's `message`, and the owner would get a
+    // transcript row that says nothing about a page that changed.
+    expect(clampSummary("")).not.toBe("")
+    expect(clampSummary("   ")).not.toBe("")
   })
 })
 
@@ -189,6 +244,20 @@ describe("ops the reviser produces reach the REAL applier", () => {
     // uses, and it is the only thing that can say these ops are really valid.
     const applied = applyOps(PROD, result.ops)
     expect(applied.ok).toBe(true)
+  })
+
+  it("returns the ops and a clamped summary when the model overruns the transcript limit", async () => {
+    // The end-to-end shape of the production failure: nine ops, a summary far
+    // over the limit. What the caller gets back is nine ops and a shorter
+    // sentence — not an exception.
+    const ops = Array.from({ length: 9 }, () => ({ op: "update_section", id: "hero", style: { tone: "muted" } }))
+    const long = "Retoned the seam between the proof and the offer. ".repeat(22)
+    callAgent.mockResolvedValue({ content: { summary: long, ops }, usage: {} })
+
+    const result = await runReviser(PROD, [FINDING])
+    expect(result.ops).toHaveLength(9)
+    expect(result.summary.length).toBeLessThanOrEqual(SECTION_REVIEW_MAX_SUMMARY_LENGTH)
+    expect(result.summary.length).toBeGreaterThan(0)
   })
 
   it("an op naming a section that does not exist is rejected by the applier, not by us", async () => {

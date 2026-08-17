@@ -255,7 +255,13 @@ async function runReview(doc: SectionDoc, onFinding?: (finding: Finding) => void
     const applied = applyOps(workingDoc, revision.ops)
     if (!applied.ok) {
       console.error("[funnels/review] ops rejected:", applied.errors)
-      if (allOps.length === 0) return unchanged(doc, findings, `ops rejected: `, tokensUsed)
+      // The errors are INTERPOLATED. This read `\`ops rejected: \`` — a template
+      // literal with nothing in it — so the one field that says why the stage
+      // gave up said nothing, and diagnosing a rejection meant having the
+      // server log for the same request.
+      if (allOps.length === 0) {
+        return unchanged(doc, findings, `ops rejected: ${applied.errors.join("; ")}`, tokensUsed)
+      }
       break
     }
 

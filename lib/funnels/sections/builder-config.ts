@@ -222,6 +222,28 @@ export const SECTION_REVIEW_CRITIC_MAX_TOKENS = 2_000
 export const SECTION_REVIEW_REVISER_MAX_TOKENS = 14_000
 
 /**
+ * How long the reviser's transcript summary may be — ENFORCED BY TRUNCATION,
+ * NEVER BY VALIDATION.
+ *
+ * This number used to be a `.max(600)` on `reviseResultSchema.summary`, and that
+ * is how the whole review stage came to fail in production. A reviser fixing 16
+ * findings wrote a proportionate 1,048-character summary, `generateObject`
+ * validated the object it had just parsed, and the ONE `too_big` issue on a prose
+ * field threw `AI_NoObjectGeneratedError` — discarding NINE structurally valid
+ * ops. The owner got "The reviewer could not finish", the automatic path (which
+ * swallows review errors by design) had been failing silently the same way, and
+ * nothing about it was transient: more findings means a longer summary, so the
+ * better the review, the more certainly it died.
+ *
+ * A length limit on a model's prose is a PRESENTATION concern. Presentation
+ * concerns must not be able to reject a payload whose functional half is
+ * correct — `clampSummary` cuts it to a sentence boundary instead, which is what
+ * the transcript wanted in the first place. `opSchema` stays strict, because a
+ * malformed op is a functional failure and `applyOps` must reject it.
+ */
+export const SECTION_REVIEW_MAX_SUMMARY_LENGTH = 600
+
+/**
  * Wall-clock budget for the WHOLE stage — critics, reviser, apply and re-audit.
  *
  * The route sets `maxDuration = 300` and the build turn preceding this has
