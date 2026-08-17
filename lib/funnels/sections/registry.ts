@@ -564,12 +564,16 @@ const formDef: SectionDef<"form"> = {
     // and cannot tell from them that a checkout form with a missing role is
     // REFUSED AT PUBLISH. Said here rather than in prompt.ts so it travels with
     // the schema it constrains.
-    'successMode "checkout" makes this form sell a camp, and you may only write it ' +
-    "when the owner has told you which camp to sell. It then needs a field for each of " +
-    "parent_name, parent_email, athlete_name, athlete_age and waiver_accepted, each " +
-    'carrying that value in its `role`, and the waiver field must be a required checkbox. ' +
-    "You never write eventId — the owner fills that in. A checkout form missing any of " +
-    'that cannot be published, so when in doubt write an ordinary form with successMode "message".',
+    'NEVER WRITE successMode "checkout" AND NEVER WRITE eventId. A form that sells a camp ' +
+    "needs a camp id that only the owner can supply, in the builder, so a checkout form you " +
+    "wrote yourself could never be completed — and because eventId is required for that mode, " +
+    "the whole batch of ops would be rejected and the owner's turn would fail. Write " +
+    'successMode "message" or "redirect".' +
+    " IF A FORM ALREADY HAS successMode \"checkout\", KEEP IT AND KEEP ITS eventId EXACTLY AS " +
+    "THEY ARE — the owner switched that on deliberately. Such a form must keep a field for each " +
+    "of parent_name, parent_email, athlete_name, athlete_age and waiver_accepted, each carrying " +
+    "that value in its `role`, with the waiver field a required checkbox. Dropping any of them, " +
+    "or the eventId, makes the page impossible to publish.",
   variants: FORM_VARIANTS,
   propsSchema: formSectionPropsSchema,
   schema: formSchema,

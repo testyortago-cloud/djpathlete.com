@@ -836,6 +836,16 @@ describe("the prompt describes a form that takes payment", () => {
     expect(SECTION_BUILDER_BLOCK_A).toMatch(/cannot be published/i)
   })
 
+  it("forbids the model from writing a checkout form at all", () => {
+    // MUTANT: telling the model it MAY write one "when the owner has said which
+    // camp". It cannot: eventId is required for that mode and the model is
+    // forbidden from writing a uuid, so the form fails formIslandSchema, applyOps
+    // rejects THE WHOLE BATCH, and the owner's build turn dies. The only safe
+    // instruction is "never write this mode".
+    expect(SECTION_BUILDER_BLOCK_A).toMatch(/NEVER WRITE successMode "checkout"/)
+    expect(SECTION_BUILDER_BLOCK_A).toMatch(/KEEP IT AND KEEP ITS eventId/i)
+  })
+
   it("tells the model not to write eventId, and lists it among the uuid fields", () => {
     expect(SECTION_BUILDER_BLOCK_A).toMatch(/never write eventId/i)
     // UUID_FIELD_PATHS is generated, so this also pins that the field really is
