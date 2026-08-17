@@ -39,7 +39,7 @@ import {
   SECTION_BUILDER_MAX_REPLY_LENGTH,
 } from "@/lib/funnels/sections/builder-config"
 import { SECTION_KINDS, SECTION_REGISTRY, type Section, type SectionDoc } from "@/lib/funnels/sections/registry"
-import { ISLAND_LIST, SAFE_LINK } from "@/lib/funnels/islands"
+import { CHECKOUT_REQUIRED_ROLES, FORM_FIELD_ROLES, ISLAND_LIST, SAFE_LINK } from "@/lib/funnels/islands"
 import { applyOps, opSchema } from "@/lib/funnels/sections/apply"
 import { reassemble } from "@/lib/funnels/sections/doc"
 
@@ -811,5 +811,39 @@ describe("the next page", () => {
     // every page of every funnel.
     expect(buildSystemPrompt({ ...catalogueInput(), nextStepSlug: "a" }).startsWith(SECTION_BUILDER_BLOCK_A)).toBe(true)
     expect(buildSystemPrompt({ ...catalogueInput(), nextStepSlug: "b" }).startsWith(SECTION_BUILDER_BLOCK_A)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A form that takes payment (2026-08-17-funnel-event-checkout-design.md).
+//
+// The generated signature already shows `role` and `successMode: "checkout"`,
+// which is exactly why these tests exist: a model can see that those fields
+// EXIST and cannot infer from a type that a checkout form missing one of them is
+// refused at publish. The rule has to be said.
+// ---------------------------------------------------------------------------
+
+describe("the prompt describes a form that takes payment", () => {
+  it("names every role the signup schema accepts", () => {
+    for (const role of FORM_FIELD_ROLES) expect(SECTION_BUILDER_BLOCK_A).toContain(role)
+  })
+
+  it("names each role a checkout form cannot be published without", () => {
+    // MUTANT: describing the roles but not which are mandatory. The model would
+    // write plausible checkout forms that the publish gate then refuses, and the
+    // owner would see a page they cannot publish with no idea why.
+    for (const role of CHECKOUT_REQUIRED_ROLES) expect(SECTION_BUILDER_BLOCK_A).toContain(role)
+    expect(SECTION_BUILDER_BLOCK_A).toMatch(/cannot be published/i)
+  })
+
+  it("tells the model not to write eventId, and lists it among the uuid fields", () => {
+    expect(SECTION_BUILDER_BLOCK_A).toMatch(/never write eventId/i)
+    // UUID_FIELD_PATHS is generated, so this also pins that the field really is
+    // typed `uuid` rather than a bare string that merely holds one.
+    expect(SECTION_BUILDER_BLOCK_A).toContain("form.props.eventId")
+  })
+
+  it("says the waiver field must be a required checkbox", () => {
+    expect(SECTION_BUILDER_BLOCK_A).toMatch(/required checkbox/i)
   })
 })
