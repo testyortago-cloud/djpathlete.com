@@ -73,9 +73,25 @@ describe("funnelPublishPlan", () => {
   })
 
   it("carries a blocked page's blockers under that page's own name", () => {
-    const gate = (doc: SectionDoc) =>
-      doc === DOC ? { ok: false, blockers: ["A button points at a program that no longer exists."] } : { ok: true, blockers: [] }
-    const plan = funnelPublishPlan([step({ id: "b", name: "Offer" })], gate)
+    // Two DISTINCT blocked docs, not one: a flattening bug that merges every
+    // blocked page's blockers into whichever entry got created first is
+    // indistinguishable from correct per-page scoping when only one page in
+    // the plan is blocked — a single-step version of this test cannot fail
+    // for the reason its comment claims.
+    const OFFER_DOC = DOC
+    const UPSELL_DOC = { ...DOC } as SectionDoc
+    const gate = (doc: SectionDoc) => {
+      if (doc === OFFER_DOC) return { ok: false, blockers: ["A button points at a program that no longer exists."] }
+      if (doc === UPSELL_DOC) return { ok: false, blockers: ["Missing a headline."] }
+      return { ok: true, blockers: [] }
+    }
+    const plan = funnelPublishPlan(
+      [
+        step({ id: "b", name: "Offer", doc: OFFER_DOC, position: 0 }),
+        step({ id: "c", name: "Upsell", doc: UPSELL_DOC, position: 1 }),
+      ],
+      gate,
+    )
     // MUTANT: flattening every page's blockers into one list. The owner has to
     // know WHICH page to open, and a bare blocker string does not say.
     expect(plan.problems).toEqual([
@@ -83,6 +99,12 @@ describe("funnelPublishPlan", () => {
         stepId: "b",
         stepName: "Offer",
         problems: ["A button points at a program that no longer exists."],
+        blank: false,
+      },
+      {
+        stepId: "c",
+        stepName: "Upsell",
+        problems: ["Missing a headline."],
         blank: false,
       },
     ])
