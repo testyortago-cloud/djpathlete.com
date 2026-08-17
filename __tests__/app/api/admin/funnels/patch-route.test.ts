@@ -185,11 +185,14 @@ describe("PATCH /api/admin/funnels/[id]", () => {
 
     const response = await PATCH(patch({ kind: "funnel" }) as never, ctx as never)
 
-    // MUTANT (both assertions, and it takes both): widening the outer
+    // MUTANT (the third assertion below, on its own): widening the outer
     // condition from `incomingKind === "page"` to `incomingKind !== undefined`
-    // so that ANY `kind` change is inspected. That breaks the one `kind` PATCH
-    // the product actually makes — `ConvertToFunnelDialog` sends exactly this
-    // body — and there is nothing to gate: promoting does not publish.
+    // so that ANY `kind` change is inspected. Verified: with that widening,
+    // the response is still 200 and `updateFunnel` is still called with
+    // `{kind:"funnel"}` (`getFunnelById` is mocked to `PAGE_ROW`, so nothing
+    // downstream refuses) — only the read that should not have happened does.
+    // These first two assertions exist to pin the promotion's outward
+    // behavior, not to help kill this mutant.
     //
     // VERIFIED, and the first version of this comment was WRONG. It claimed
     // the mutant was "refusing every kind change", i.e. flipping the INNER

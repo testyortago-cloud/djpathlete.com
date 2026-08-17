@@ -164,15 +164,20 @@ describe("the draft queue", () => {
     act(() => { screen.getByText("start").click() })
     act(() => { screen.getByText("start").click() })
     await waitFor(() => expect(screen.getByTestId("s3")).toHaveTextContent("done"))
-    // MUTANT: the `some(phase === "writing")` guard in `startAutoDraft`.
-    //
-    // CORRECTED. This assertion used to claim it killed "no `started` ref". It
-    // does not, and the claim was checked by deleting the ref: `runJob` sets
-    // its step's phase to "writing" SYNCHRONOUSLY, before its `await fetch`, so
-    // by the time the second click lands there is already a "writing" phase and
-    // that guard returns on its own. Both clicks happen while the queue is
-    // running, which is the only thing this test can see — hence the rename,
-    // and hence the drained-queue test below for what `started` really buys.
+    // MUTANT: neither guard on its own — verified by deleting each
+    // separately. Delete `started.current` alone and this still passes:
+    // `runJob` sets its step's phase to "writing" SYNCHRONOUSLY, before its
+    // `await fetch`, so by the time the second click lands the `some(writing)`
+    // guard is already there to catch it. Delete `some(writing)` alone and
+    // this still passes too, the other way round: `started.current` is set
+    // synchronously on the first call, so it catches the second click before
+    // the writing check is ever reached. Only deleting BOTH at once fails
+    // this test (4 fetches instead of 2). Both clicks happen while the queue
+    // is running, which is the only thing this test can see — hence the
+    // drained-queue test below for what `started` buys once every phase is
+    // terminal and the writing guard no longer applies. The writing guard is
+    // also documented above as CURRENTLY UNREACHABLE in production, so no
+    // test can pin it alone.
     expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
 
