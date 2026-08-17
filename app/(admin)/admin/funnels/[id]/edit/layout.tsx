@@ -108,11 +108,32 @@ export async function FunnelBuilderShell({
   // length and the same order, and its `doc` is null on exactly the steps a
   // second `safeParse` would have re-derived — at the cost of parsing every
   // page's document twice on every navigation between steps.
+  //
+  // ---------------------------------------------------------------------
+  // "UNBUILT" IS DEFINED IN TWO PLACES AND THEY HAVE TO AGREE.
+  // ---------------------------------------------------------------------
+  // THE OTHER HALF OF THIS RULE IS `lib/funnels/publish-plan.ts:82-94`, and
+  // it must be read alongside this line: the planner treats a doc-less step
+  // that ALREADY CARRIES A PUBLISHED VERSION as "left alone — neither
+  // published nor a problem", because that is a legacy GrapesJS page serving
+  // real content that no `SectionDoc` can improve on.
+  //
+  // Without `!published_version_id` here the two layers disagree, and the
+  // disagreement is destructive rather than cosmetic. A legacy step fails
+  // `sectionDocSchema`, so its `doc` is null and it would be queued — the
+  // background model then writes a first draft over its `project_data`. The
+  // live page does not change that instant (the version row still points at
+  // the old compiled snapshot), but the step now HAS a `SectionDoc`, so the
+  // very next funnel publish renders that AI draft over a page the owner
+  // never asked to have rewritten. It also puts `writing…` in the rail over a
+  // row the rail is simultaneously badging `live`.
+  //
+  // Neither layer may be changed alone.
   const draftJobs: DraftJob[] =
     funnel.kind !== "funnel"
       ? []
       : ordered
-          .filter((_step, index) => docs[index].doc === null)
+          .filter((_step, index) => docs[index].doc === null && !ordered[index].published_version_id)
           .map((step) => ({
             stepId: step.id,
             prompt: creationPrompt(funnel, step, ordered) ?? "",
