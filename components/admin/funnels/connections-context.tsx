@@ -212,11 +212,25 @@ export function ConnectionsProvider({
         // INTO THE GRAPH IMMEDIATELY, so the rail's arrows appear as the pages
         // are made rather than at the next refresh.
         publishStepConnections(job.stepId, doc)
-        // `blocked`, not `doc` nullness: a review pass can legitimately leave
-        // `doc` pointed at the build turn's document while adding no sections
-        // of its own, and a stream can succeed with an empty-but-real page. The
-        // one signal that means "the model actually refused" is `blocked`.
-        setPhase(job.stepId, turn.blocked ? "failed" : "done")
+        // `compile`, not `blocked` and not `doc`. `BuildTurnResponse.compile`
+        // (`components/admin/funnels/builder/types.ts`) is already documented
+        // as the single flag meaning "this turn produced no document": the
+        // route returns it null on exactly two paths — the model declined
+        // (`blocked`) and both attempts failed — and non-null on every path
+        // that wrote a document, review turns included.
+        //
+        // `blocked` alone is wrong: the both-attempts-failed path also leaves
+        // no document behind but reports `blocked: false`, so a `blocked`-only
+        // check would call a transient model/API error "done" and paint a
+        // green badge over a page that is still blank — the one page the
+        // owner would then never open, with `failed` gone (it is terminal, so
+        // never retried either).
+        //
+        // `doc` alone is wrong the other way: the refusal path emits
+        // `doc: draft.doc`, the page as it ALREADY stood, not the page that
+        // was asked for — so on a step that had something there before, a
+        // nullness check alone reads a refusal as a success.
+        setPhase(job.stepId, turn.compile === null ? "failed" : "done")
       } catch (error) {
         // Never takes the editor down. The owner came here to edit a page.
         console.error("[funnels/draft-queue] could not draft a step:", error)
