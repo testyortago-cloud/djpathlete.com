@@ -18,8 +18,12 @@ const requestSchema = z.object({
 // Restrict the admin to flipping keys that are actually declared on a cron
 // in the catalog. Prevents the endpoint from being repurposed as a generic
 // system_settings writer.
+function isCronKey(key: string): boolean {
+  return CRON_CATALOG.some((c) => c.enabledKey === key)
+}
+
 function isAllowedKey(key: string): boolean {
-  return CRON_CATALOG.some((c) => c.enabledKey === key) || isFeatureFlagKey(key)
+  return isCronKey(key) || isFeatureFlagKey(key)
 }
 
 export async function POST(request: NextRequest) {
@@ -42,10 +46,15 @@ export async function POST(request: NextRequest) {
   try {
     await setSetting(enabledKey, enabled, session.user.id)
     await recordAudit({
-      action:
-        enabledKey.startsWith("cron_") || enabledKey.startsWith("feature_")
-          ? "feature_flag.toggled"
-          : "system_setting.changed",
+      // ASKS THE CATALOGUES, NOT THE KEY'S SPELLING. This was
+      // `startsWith("cron_") || startsWith("feature_")`, a string heuristic
+      // standing in for a question the catalogues answer exactly — and it
+      // misfiled the first flag whose name matched neither prefix
+      // (`funnel_anonymous_checkout_enabled`, the one that moves money) as a
+      // generic setting change. Anyone auditing flag flips by filtering
+      // `feature_flag.toggled` would have missed precisely the flip worth
+      // reviewing.
+      action: isFeatureFlagKey(enabledKey) || isCronKey(enabledKey) ? "feature_flag.toggled" : "system_setting.changed",
       category: "system",
       target: { type: "system_setting", id: enabledKey, label: enabledKey },
       metadata: { key: enabledKey, new_value: enabled },
