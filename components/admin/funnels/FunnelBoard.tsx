@@ -9,6 +9,15 @@
 // that is a `kind` prop, not a second component. Two copies of this file would
 // drift, and the drift would be invisible until one screen quietly stopped
 // matching the other.
+//
+// AS OF THE PER-FUNNEL BOARD, `/admin/funnels` NO LONGER RENDERS THIS. It uses
+// `FunnelList`, which draws one card per FUNNEL with its steps listed inside.
+// This file now serves `/admin/pages` only, where one funnel really IS one page
+// and this card is still the right one — so the paragraph above still holds for
+// the screen that remains. The `kind === "funnel"` branches are unreached by
+// any screen today; they are left in place, with their tests, because removing
+// them is a separate cleanup with real regression surface on the one board that
+// is still live.
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
@@ -24,6 +33,8 @@ import { formatRunWindow } from "@/lib/funnels/run-window"
 import { CreatePageDialog } from "./CreatePageDialog"
 import { CreateFunnelDialog } from "./CreateFunnelDialog"
 import type { OwnExample } from "./ExamplesDialog"
+import { ownExamplesFromGroups } from "./own-examples"
+import { BoardEmptyState } from "./BoardEmptyState"
 import { ConvertToFunnelDialog } from "./ConvertToFunnelDialog"
 import { RenameDialog } from "./RenameDialog"
 import type { DataTableBadgeTone } from "@/components/ui/data-table"
@@ -47,15 +58,7 @@ export function deriveOwnExamples(pages: BoardPage[]): OwnExample[] {
     entry.steps.push(page.step)
     byFunnel.set(page.funnel.id, entry)
   }
-  return [...byFunnel.values()]
-    .map(({ funnel, steps }) => ({
-      id: funnel.id,
-      name: funnel.name,
-      template: funnel.template ?? null,
-      stepNames: [...steps].sort((a, b) => a.position - b.position).map((step) => step.name),
-      live: funnel.status === "published",
-    }))
-    .sort((a, b) => b.stepNames.length - a.stepNames.length)
+  return ownExamplesFromGroups([...byFunnel.values()])
 }
 
 export interface BoardPage {
@@ -203,7 +206,7 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
 
       {visible.length === 0 ? (
         pages.length === 0 ? (
-          <EmptyState kind={kind} />
+          <BoardEmptyState kind={kind} />
         ) : (
           <div className="rounded-xl border border-dashed border-border bg-surface/30 px-4 py-16 text-center text-muted-foreground">
             Nothing matches that search.
@@ -339,45 +342,6 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
  * makes. A single grey "nothing here yet" line taught nothing, and it is the
  * state the screen spends its whole first day in.
  */
-function EmptyState({ kind }: { kind: FunnelKind }) {
-  const copy =
-    kind === "page"
-      ? {
-          title: "No landing pages yet",
-          body: "A landing page is one focused page at /go/<url>, built to do a single job — capture a lead, sell a program, fill a camp.",
-          steps: [
-            "Name it and pick what it should do",
-            "Describe it — the builder writes the first draft",
-            "Review it, then go live",
-          ],
-        }
-      : {
-          title: "No funnels yet",
-          body: "A funnel is more than one step in order — a landing page, then a booking step, then a thank-you — all sharing one address.",
-          steps: [
-            "Create the funnel and name its first step",
-            "Add the steps that follow it",
-            "Publish each step, then take the funnel live",
-          ],
-        }
-
-  return (
-    <div className="rounded-xl border border-dashed border-border bg-surface/30 px-6 py-14 text-center">
-      <h2 className="font-heading text-lg text-primary">{copy.title}</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{copy.body}</p>
-      <ol className="mx-auto mt-5 max-w-xs space-y-2 text-left text-sm text-muted-foreground">
-        {copy.steps.map((entry, index) => (
-          <li key={entry} className="flex gap-2.5">
-            <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-accent/15 text-xs font-medium text-accent">
-              {index + 1}
-            </span>
-            {entry}
-          </li>
-        ))}
-      </ol>
-    </div>
-  )
-}
 
 function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (

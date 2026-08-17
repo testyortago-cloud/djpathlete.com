@@ -57,6 +57,19 @@ export interface PreviewCardProps {
    * where you act on the PAGE and this acts on the word above it.
    */
   titleAction?: ReactNode
+  /**
+   * Rendered in the card body, above the lead count and the button row — the
+   * funnels board's step list lives here.
+   *
+   * A SLOT RATHER THAN A SECOND CARD COMPONENT. A funnel card and a page card
+   * differ by exactly this one region: everything else (the scaled same-origin
+   * thumbnail, the title/badge row, the leads link, the action row) is
+   * identical, and the thumbnail alone is 60 lines of ResizeObserver work that
+   * has already been got wrong once by hard-coding its scale. Copying all of
+   * that to add a list under the description is how the two cards start
+   * drifting.
+   */
+  extra?: ReactNode
 }
 
 /**
@@ -103,6 +116,7 @@ export function PreviewCard({
   deleteLabel = "Delete",
   secondaryAction,
   titleAction,
+  extra,
 }: PreviewCardProps) {
   const [deleting, setDeleting] = useState(false)
 
@@ -170,7 +184,12 @@ export function PreviewCard({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1">
-              <Link href={href} className="truncate font-medium text-primary hover:underline">
+              <Link
+                href={href}
+                data-testid="card-title"
+                title={title}
+                className="truncate font-medium text-primary hover:underline"
+              >
                 {title}
               </Link>
               {titleAction}
@@ -180,7 +199,9 @@ export function PreviewCard({
           {/* Both badges, never one instead of the other: the goal says what the
               page is for, the status says whether anyone can reach it. */}
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <DataTableBadge tone={badgeTone}>{badgeLabel}</DataTableBadge>
+            <span data-testid="card-badge">
+              <DataTableBadge tone={badgeTone}>{badgeLabel}</DataTableBadge>
+            </span>
             {goalLabel ? <DataTableBadge tone="info">{goalLabel}</DataTableBadge> : null}
           </div>
         </div>
@@ -200,6 +221,8 @@ export function PreviewCard({
             {runWindow}
           </p>
         ) : null}
+
+        {extra}
 
         {/* A LINK, not a label. This count was the only lead surface in the
             app and it went nowhere: it told you leads existed and gave you no
