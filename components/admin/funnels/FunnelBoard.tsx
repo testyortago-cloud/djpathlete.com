@@ -6,6 +6,14 @@
 // would otherwise need two near-identical screens and an extra click to reach
 // the only thing you actually want: the editor. What differs between a landing
 // page and a funnel is the words, the create dialog and whether a goal applies;
+// AS OF THE PER-FUNNEL BOARD, `/admin/funnels` NO LONGER RENDERS THIS — it uses
+// `FunnelList`, which draws one card per FUNNEL with its steps listed inside.
+// This file now serves `/admin/pages` only, where one funnel really is one page
+// and this card is still the right one. The `kind === "funnel"` branches below
+// are therefore unreached by any screen today; they are left in place, and
+// their tests with them, because removing them is a separate cleanup with real
+// regression surface and nothing depends on it being done now.
+//
 // that is a `kind` prop, not a second component. Two copies of this file would
 // drift, and the drift would be invisible until one screen quietly stopped
 // matching the other.
@@ -47,7 +55,20 @@ export function deriveOwnExamples(pages: BoardPage[]): OwnExample[] {
     entry.steps.push(page.step)
     byFunnel.set(page.funnel.id, entry)
   }
-  return [...byFunnel.values()]
+  return ownExamplesFromGroups([...byFunnel.values()])
+}
+
+/**
+ * The same derivation, for a caller that already holds funnels grouped.
+ *
+ * `FunnelList` (the funnels screen) never flattens its funnels into pages, so
+ * it would otherwise have to flatten them only for `deriveOwnExamples` to
+ * regroup them. Both entry points share this body rather than restating the
+ * shape of an example — restating a rule instead of importing it is how this
+ * repo has shipped three defects.
+ */
+export function ownExamplesFromGroups(groups: { funnel: Funnel; steps: FunnelStep[] }[]): OwnExample[] {
+  return groups
     .map(({ funnel, steps }) => ({
       id: funnel.id,
       name: funnel.name,

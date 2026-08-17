@@ -4,7 +4,7 @@
 import Link from "next/link"
 import { Workflow } from "lucide-react"
 import { listFunnels, listSteps, getSubmissionCountsByFunnel } from "@/lib/db/funnels"
-import { FunnelBoard, type BoardPage } from "@/components/admin/funnels/FunnelBoard"
+import { FunnelList, type FunnelWithSteps } from "@/components/admin/funnels/FunnelList"
 
 export const metadata = { title: "Funnels" }
 
@@ -16,11 +16,21 @@ export default async function FunnelsScreen() {
     Promise.all(funnels.map((funnel) => listSteps(funnel.id).catch(() => []))),
   ])
 
-  // One card per PAGE, same as the landing pages screen — a funnel's steps are
-  // the things you open, and the funnel itself is the filter chip above them.
-  const pages: BoardPage[] = funnels.flatMap((funnel, index) =>
-    stepsPerFunnel[index].map((step) => ({ step, funnel })),
-  )
+  // ONE CARD PER FUNNEL, and its steps are a list inside that card.
+  //
+  // This used to flatten to one card per PAGE, with the funnel demoted to a
+  // filter chip above them. The owner's report: "why connected funnels is not
+  // compiled, and also the category filter is wrong its filtering the name."
+  // Both halves were that one decision — a three-step funnel was three loose
+  // cards, the funnel had no card of its own, and the chips were funnel NAMES
+  // doing duty as categories.
+  //
+  // It also left this screen contradicting the model underneath it: publishing
+  // and background drafting are both funnel-level operations now.
+  const withSteps: FunnelWithSteps[] = funnels.map((funnel, index) => ({
+    funnel,
+    steps: stepsPerFunnel[index],
+  }))
 
   return (
     <div>
@@ -39,7 +49,7 @@ export default async function FunnelsScreen() {
         </div>
       </div>
 
-      <FunnelBoard kind="funnel" pages={pages} funnels={funnels} leadCounts={leadCounts} />
+      <FunnelList funnels={withSteps} leadCounts={leadCounts} />
     </div>
   )
 }
