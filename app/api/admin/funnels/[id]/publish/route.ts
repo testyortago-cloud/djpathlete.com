@@ -67,6 +67,7 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { getFunnelById, listSteps, publishStep, updateFunnel } from "@/lib/db/funnels"
 import { getDraft } from "@/lib/db/funnel-builder"
+import { ensureEventPriced } from "@/lib/events/ensure-priced"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import { loadCatalogues, publishGate, resolveDoc, type PublishGate } from "@/lib/funnels/sections/resolve"
@@ -124,13 +125,29 @@ export const POST = withAudit(
         return NextResponse.json({ error: "This funnel has no pages to publish." }, { status: 400 })
       }
 
-      // READ ONCE FOR THE WHOLE FUNNEL. Both are funnel-wide facts, and
-      // re-reading them per page would not only cost N times the work but
-      // could gate page 1 and page 4 against different catalogues.
-      const [catalogues, drafts] = await Promise.all([
-        loadCatalogues(),
-        Promise.all(steps.map((step) => getDraft(step.id))),
-      ])
+      // The drafts are read FIRST and the catalogue after, because a camp this
+      // funnel sells may need its Stripe price created before the catalogue is
+      // asked whether it has one. See `ensureCheckoutCampsPriced` below.
+      const drafts = await Promise.all(steps.map((step) => getDraft(step.id)))
+
+      // GIVE A CAMP ITS STRIPE PRICE RATHER THAN REFUSING IT.
+      //
+      // `publishGate` blocks a checkout form whose camp has no `stripe_price_id`,
+      // and that is right — nobody could pay. But when the camp already carries a
+      // `price_cents`, the server can create the Stripe product itself, and being
+      // told to go and do that by hand is worse than it just happening. The most
+      // common way a camp ends up in that state is being DUPLICATED: the duplicate
+      // route copies the price and deliberately drops the Stripe ids.
+      //
+      // Runs BEFORE `loadCatalogues`, because the catalogue is where `priced`
+      // comes from and a repair after the read would be invisible until the next
+      // publish. Never throws; a camp it cannot fix is still reported by the gate.
+      await ensureCheckoutCampsPriced(drafts)
+
+      // READ ONCE FOR THE WHOLE FUNNEL. A funnel-wide fact, and re-reading it per
+      // page would not only cost N times the work but could gate page 1 and page 4
+      // against different catalogues.
+      const catalogues = await loadCatalogues()
       // `[]` is correct here and `null` would be wrong: these ARE the funnel's
       // pages, freshly read. `null` means "could not be checked", and a failed
       // read has already thrown into the catch below.
@@ -320,3 +337,29 @@ export const POST = withAudit(
     }
   },
 )
+
+/**
+ * Every camp sold by a checkout form on any of this funnel's pages, given its
+ * Stripe product and price if that is all it lacks.
+ *
+ * Sequential rather than parallel, and deliberately: this touches Stripe, the
+ * list is one or two camps on a real funnel, and a burst of concurrent product
+ * creations against one account buys nothing worth the risk of rate limiting.
+ */
+async function ensureCheckoutCampsPriced(drafts: (Awaited<ReturnType<typeof getDraft>> | null)[]): Promise<void> {
+  const eventIds = new Set<string>()
+  for (const draft of drafts) {
+    for (const section of draft?.doc?.sections ?? []) {
+      if (section.kind !== "form") continue
+      const props = section.props as { successMode?: unknown; eventId?: unknown }
+      if (props.successMode !== "checkout") continue
+      if (typeof props.eventId === "string" && props.eventId !== "") eventIds.add(props.eventId)
+    }
+  }
+  for (const eventId of eventIds) {
+    const outcome = await ensureEventPriced(eventId)
+    if (outcome.ok && outcome.changed) {
+      console.info("[funnels/publish] created a Stripe price for camp", eventId)
+    }
+  }
+}
