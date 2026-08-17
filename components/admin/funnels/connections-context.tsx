@@ -119,28 +119,36 @@ export function ConnectionsProvider({
 }: ConnectionsProviderProps) {
   const [docs, setDocs] = useState<StepWithDoc[]>(initialDocs)
 
-  // Read by the draft queue's run loop below. `docs` itself is a value closed
-  // over at whatever render created the callback that reads it — fine for
-  // rendering, wrong for a loop that keeps running across many renders. This
-  // ref is written SYNCHRONOUSLY inside `publishStepConnections`, not via a
-  // `useEffect` mirror, so a document published a moment before
-  // `startAutoDraft` runs is visible even if no render has committed in
-  // between.
+  // THE REF IS THE SOURCE OF TRUTH; `docs` state is a render of it.
+  //
+  // The draft queue's run loop reads this. `docs` itself is a value closed over
+  // at whatever render created the callback — fine for rendering, wrong for a
+  // loop that keeps running across many renders.
+  //
+  // It is assigned in `publishStepConnections` BEFORE `setDocs`, never inside
+  // the updater. Assigning inside the updater would look synchronous and only
+  // be synchronous by accident: React runs a `useState` updater at dispatch
+  // time only under the eager-state optimization, which it skips the moment the
+  // fiber already has queued work — and `setRepair`/`setPhases` share this
+  // provider's fiber, so any earlier dispatch in the same batch defers the
+  // updater to the render phase and leaves this ref stale exactly when the
+  // queue is about to consult it. Writing during render is also wrong on its
+  // own terms: a discarded concurrent render or a StrictMode double-invoke
+  // would leave the ref describing state that never committed.
   const docsRef = useRef(docs)
 
   const publishStepConnections = useCallback((stepId: string, doc: SectionDoc | null) => {
-    setDocs((current) => {
-      const index = current.findIndex((entry) => entry.id === stepId)
-      // A page this provider does not know about is ignored rather than
-      // appended: the rail's rows come from the server's page list, and
-      // inventing one here would draw a row for a page with no id to link to.
-      if (index === -1) return current
-      if (current[index].doc === doc) return current
-      const next = current.slice()
-      next[index] = { ...next[index], doc }
-      docsRef.current = next
-      return next
-    })
+    const current = docsRef.current
+    const index = current.findIndex((entry) => entry.id === stepId)
+    // A page this provider does not know about is ignored rather than
+    // appended: the rail's rows come from the server's page list, and
+    // inventing one here would draw a row for a page with no id to link to.
+    if (index === -1) return
+    if (current[index].doc === doc) return
+    const next = current.slice()
+    next[index] = { ...next[index], doc }
+    docsRef.current = next
+    setDocs(next)
   }, [])
 
   const [repair, setRepair] = useState<Repair | null>(null)
@@ -162,21 +170,35 @@ export function ConnectionsProvider({
   // --------------------------------------------------------------------
 
   const [phases, setPhases] = useState<Record<string, DraftPhase>>({})
-  // Kept in step with `phases` so `draftStep`'s guard reads the current
-  // value without re-creating the callback on every phase change.
+  // SAME DISCIPLINE AS `docsRef`, and for the same reason. A `useEffect`
+  // mirror would only catch up one render late, and `startAutoDraft` marks
+  // every job "queued" through state — so a `draftStep` call in the window
+  // before that render commits would read an empty map, walk straight past its
+  // own guard, and open a second build on a step the queue is about to take.
   const phasesRef = useRef(phases)
-  useEffect(() => {
-    phasesRef.current = phases
-  }, [phases])
 
   // A REF, not state. `startAutoDraft` is called from an effect in
   // `FunnelBuilder` that can legitimately re-run, and a state flag would not
   // be visible to the second call in the same tick — so the queue would run
   // twice, drafting every page over the top of itself at full model cost.
-  const running = useRef(false)
+  //
+  // NEVER RESET, deliberately. The automatic pass is a one-time thing per
+  // provider: it exists to fill in a funnel's blank pages once, and a queue
+  // that could restart would re-draft on any effect that fires again later.
+  // Retrying an individual page is `draftStep`'s job, which is why `failed` is
+  // terminal here and offers no automatic second attempt.
+  const started = useRef(false)
+
+  // True only while the loop is actually running. Separate from `started`
+  // because that one never clears: gating `draftStep` on `started` would kill
+  // "Generate it now" for the rest of the session the moment the queue had run.
+  const queueInFlight = useRef(false)
 
   const setPhase = useCallback((stepId: string, phase: DraftPhase) => {
-    setPhases((current) => (current[stepId] === phase ? current : { ...current, [stepId]: phase }))
+    if (phasesRef.current[stepId] === phase) return
+    const next = { ...phasesRef.current, [stepId]: phase }
+    phasesRef.current = next
+    setPhases(next)
   }, [])
 
   /**
@@ -208,10 +230,8 @@ export function ConnectionsProvider({
           return
         }
         const turn = outcome.review ?? outcome.turn
-        const doc = turn.doc as SectionDoc | null
-        // INTO THE GRAPH IMMEDIATELY, so the rail's arrows appear as the pages
-        // are made rather than at the next refresh.
-        publishStepConnections(job.stepId, doc)
+        // THE VERDICT COMES BEFORE THE DOCUMENT IS ADOPTED.
+        //
         // `compile`, not `blocked` and not `doc`. `BuildTurnResponse.compile`
         // (`components/admin/funnels/builder/types.ts`) is already documented
         // as the single flag meaning "this turn produced no document": the
@@ -230,7 +250,20 @@ export function ConnectionsProvider({
         // `doc: draft.doc`, the page as it ALREADY stood, not the page that
         // was asked for — so on a step that had something there before, a
         // nullness check alone reads a refusal as a success.
-        setPhase(job.stepId, turn.compile === null ? "failed" : "done")
+        if (turn.compile === null) {
+          // AND NOTHING IS PUBLISHED. `compile`'s own doc comment names this
+          // mistake: both null-compile paths send `doc: draft.doc`, the page as
+          // it ALREADY stood, so adopting it would write the route's fallback
+          // over the graph. Harmless for a queued step (null over null) but not
+          // for `draftStep`, which is meant to be runnable on a page that has a
+          // document already.
+          setPhase(job.stepId, "failed")
+          return
+        }
+        // INTO THE GRAPH IMMEDIATELY, so the rail's arrows appear as the pages
+        // are made rather than at the next refresh.
+        publishStepConnections(job.stepId, turn.doc as SectionDoc | null)
+        setPhase(job.stepId, "done")
       } catch (error) {
         // Never takes the editor down. The owner came here to edit a page.
         console.error("[funnels/draft-queue] could not draft a step:", error)
@@ -250,24 +283,31 @@ export function ConnectionsProvider({
    * rather than aspirational.
    */
   const startAutoDraft = useCallback(() => {
-    if (running.current || draftJobs.length === 0) return
-    running.current = true
+    if (started.current || draftJobs.length === 0) return
+    started.current = true
+    queueInFlight.current = true
     for (const job of draftJobs) setPhase(job.stepId, "queued")
     void (async () => {
-      for (const job of draftJobs) {
-        // RUN-TIME CHECK, against the CURRENT graph — not the graph as it
-        // stood when the layout computed `draftJobs`. On a brand-new
-        // templated funnel, step 1 is a job here too (the layout has no way
-        // to know it is about to be drafted from `initialPrompt`), and by the
-        // time this line runs `FunnelBuilder` may already have published a
-        // document for it. Re-drafting would cost nothing server-side (the
-        // build route's revision check 409s before the model call) but would
-        // flip a page the owner just watched succeed to a red "failed" badge.
-        if (docsRef.current.find((entry) => entry.id === job.stepId)?.doc) {
-          setPhase(job.stepId, "done")
-          continue
+      try {
+        for (const job of draftJobs) {
+          // RUN-TIME CHECK, against the CURRENT graph — not the graph as it
+          // stood when the layout computed `draftJobs`. On a brand-new
+          // templated funnel, step 1 is a job here too (the layout has no way
+          // to know it is about to be drafted from `initialPrompt`), and by the
+          // time this line runs `FunnelBuilder` may already have published a
+          // document for it. Re-drafting would cost nothing server-side (the
+          // build route's revision check 409s before the model call) but would
+          // flip a page the owner just watched succeed to a red "failed" badge.
+          if (docsRef.current.find((entry) => entry.id === job.stepId)?.doc) {
+            setPhase(job.stepId, "done")
+            continue
+          }
+          await runJob(job)
         }
-        await runJob(job)
+      } finally {
+        // `finally`, so an unforeseen throw cannot leave the flag stuck on and
+        // silently disable "Generate it now" for the rest of the session.
+        queueInFlight.current = false
       }
     })()
   }, [draftJobs, runJob, setPhase])
@@ -275,6 +315,11 @@ export function ConnectionsProvider({
   /** One named step, now — the publish refusal's "Generate it now". */
   const draftStep = useCallback(
     (stepId: string) => {
+      // NOT WHILE THE QUEUE IS RUNNING. The phase guard below is per-step, so
+      // on its own it would happily start a second build alongside the queue —
+      // for a step the queue has already left `failed`, or skipped to `done` —
+      // and this task's one hard constraint is that builds go one at a time.
+      if (queueInFlight.current) return
       const job = draftJobs.find((entry) => entry.stepId === stepId)
       if (!job) return
       if (phasesRef.current[stepId] === "writing" || phasesRef.current[stepId] === "queued") return

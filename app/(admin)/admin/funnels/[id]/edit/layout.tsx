@@ -104,11 +104,15 @@ export async function FunnelBuilderShell({
   //
   // ONLY FOR A FUNNEL. A landing page has one step and it is drafted by the
   // create dialog's `?start=1`.
+  // `docs` ALREADY ANSWERS THIS. It is `ordered.map(...)`, so it is the same
+  // length and the same order, and its `doc` is null on exactly the steps a
+  // second `safeParse` would have re-derived — at the cost of parsing every
+  // page's document twice on every navigation between steps.
   const draftJobs: DraftJob[] =
     funnel.kind !== "funnel"
       ? []
       : ordered
-          .filter((step) => !sectionDocSchema.safeParse(step.project_data).success)
+          .filter((_step, index) => docs[index].doc === null)
           .map((step) => ({
             stepId: step.id,
             prompt: creationPrompt(funnel, step, ordered) ?? "",

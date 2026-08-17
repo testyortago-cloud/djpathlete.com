@@ -340,6 +340,95 @@ describe("the draft queue", () => {
     expect(screen.getByTestId("s2")).toHaveTextContent("failed")
   })
 
+  it("does not adopt the document a refused turn hands back", async () => {
+    // Both null-compile paths emit `doc: draft.doc` — the page as it already
+    // stood, which for a queued step is the blank the queue was sent to fill.
+    // `BuildTurnResponse.compile`'s own doc comment names adopting it as the
+    // mistake: it writes the route's fallback over the graph.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) =>
+      String(url).includes("/steps/s2/") ? streamResponse(BUILT, true) : streamResponse(),
+    )
+    const seenDocs: (SectionDoc | null)[] = []
+    function DocProbe() {
+      const context = useConnections()
+      seenDocs.push(context?.docFor("s2") ?? null)
+      return (
+        <div>
+          <button onClick={() => context?.startAutoDraft()}>start</button>
+          <span data-testid="s3">{context?.draftPhase("s3")}</span>
+        </div>
+      )
+    }
+    render(
+      <ConnectionsProvider
+        funnelId="f1" funnelSlug="free-trial-week" funnelKind="funnel"
+        pages={PAGES} initialDocs={PAGES.map((p) => ({ ...p, doc: null }))} draftJobs={JOBS}
+      >
+        <DocProbe />
+      </ConnectionsProvider>,
+    )
+    act(() => { screen.getByText("start").click() })
+
+    await waitFor(() => expect(screen.getByTestId("s3")).toHaveTextContent("done"))
+    // MUTANT: publishing into the graph before the compile check. The rail
+    // would draw s2's arrows from a document the owner does not have.
+    expect(seenDocs.every((entry) => entry === null)).toBe(true)
+  })
+
+  it("sees a document published after an earlier dispatch on the same provider", async () => {
+    // THE EAGER-STATE OPTIMIZATION IS NOT A GUARANTEE. React runs a `useState`
+    // updater at dispatch time only while the fiber has no queued work, so
+    // assigning `docsRef` INSIDE the `setDocs` updater is synchronous by
+    // accident and deferred to the render phase as soon as anything else has
+    // already dispatched on this same provider fiber.
+    //
+    // `registerRepair` is such a dispatch (`setRepair`), and it is ordinary for
+    // the builder to register its repair handler in the same commit that
+    // publishes its first document. So: dispatch, publish, start — and the skip
+    // must still see the document.
+    const seen: string[] = []
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      seen.push(String(url))
+      return streamResponse()
+    })
+
+    function OrderedProbe() {
+      const context = useConnections()
+      if (!context) return null
+      return (
+        <div>
+          <button
+            onClick={() => {
+              context.registerRepair({ stepId: "s1", apply: () => {} })
+              context.publishStepConnections("s2", BUILT)
+              context.startAutoDraft()
+            }}
+          >
+            go
+          </button>
+          <span data-testid="s3">{context.draftPhase("s3")}</span>
+        </div>
+      )
+    }
+
+    render(
+      <ConnectionsProvider
+        funnelId="f1" funnelSlug="free-trial-week" funnelKind="funnel"
+        pages={PAGES} initialDocs={PAGES.map((p) => ({ ...p, doc: null }))} draftJobs={JOBS}
+      >
+        <OrderedProbe />
+      </ConnectionsProvider>,
+    )
+    act(() => { screen.getByText("go").click() })
+
+    await waitFor(() => expect(screen.getByTestId("s3")).toHaveTextContent("done"))
+    // MUTANT: `docsRef.current = next` back inside the `setDocs` updater. The
+    // earlier `setRepair` puts work on the fiber, React skips the eager path,
+    // and the queue re-drafts the page it was just told about.
+    expect(seen.some((url) => url.includes("/api/admin/funnels/steps/s2/build"))).toBe(false)
+    expect(seen.some((url) => url.includes("/api/admin/funnels/steps/s3/build"))).toBe(true)
+  })
+
   // ---------------------------------------------------------------------
   // `draftStep` and `useDraftQueue` — the surface Tasks 5 and 6 consume.
   // ---------------------------------------------------------------------
@@ -408,6 +497,101 @@ describe("the draft queue", () => {
 
     act(() => { release?.() })
     await waitFor(() => expect(screen.getByTestId("s3")).toHaveTextContent("done"))
+  })
+
+  it("declines a second press before any render has committed", async () => {
+    // `phasesRef` has to be assigned the moment `setPhase` is called, not
+    // mirrored from `phases` by an effect. An effect mirror is a render behind,
+    // so two presses inside one handler — or, in the real provider, a
+    // `draftStep` in the same tick that `startAutoDraft` marked everything
+    // "queued" — both read an empty map and both start a build on the SAME
+    // step, which then race the build route's revision check.
+    const seen: string[] = []
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      seen.push(String(url))
+      return streamResponse()
+    })
+
+    function TwiceProbe() {
+      const context = useConnections()
+      if (!context) return null
+      return (
+        <div>
+          <button onClick={() => { context.draftStep("s2"); context.draftStep("s2") }}>twice</button>
+          <span data-testid="s2">{context.draftPhase("s2")}</span>
+        </div>
+      )
+    }
+
+    render(
+      <ConnectionsProvider
+        funnelId="f1" funnelSlug="free-trial-week" funnelKind="funnel"
+        pages={PAGES} initialDocs={PAGES.map((p) => ({ ...p, doc: null }))} draftJobs={JOBS}
+      >
+        <TwiceProbe />
+      </ConnectionsProvider>,
+    )
+    act(() => { screen.getByText("twice").click() })
+
+    await waitFor(() => expect(screen.getByTestId("s2")).toHaveTextContent("done"))
+    // MUTANT: `phasesRef` kept in step by `useEffect(() => { phasesRef.current
+    // = phases }, [phases])` instead of being assigned inside `setPhase`.
+    expect(seen).toHaveLength(1)
+  })
+
+  it("refuses a single-step draft while the queue is still running", async () => {
+    // The per-step phase guard cannot cover this on its own: by the time the
+    // queue has moved past s2 it has already left it `failed`, which is
+    // neither "writing" nor "queued". Without a queue-in-flight guard the
+    // owner's "Generate it now" opens a second build alongside the one the
+    // queue is running — against this task's one hard constraint.
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const seen: string[] = []
+    let release: (() => void) | null = null
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      seen.push(String(url))
+      // s2 fails immediately; s3 then holds the queue open.
+      if (seen.length === 1) return new Response("{}", { status: 500, headers: { "content-type": "application/json" } })
+      if (seen.length === 2) await new Promise<void>((resolve) => { release = resolve })
+      return streamResponse()
+    })
+
+    function BothProbe() {
+      const context = useConnections()
+      if (!context) return null
+      return (
+        <div>
+          <button onClick={() => context.startAutoDraft()}>start</button>
+          <button onClick={() => context.draftStep("s2")}>one</button>
+          <span data-testid="s2">{context.draftPhase("s2")}</span>
+          <span data-testid="s3">{context.draftPhase("s3")}</span>
+        </div>
+      )
+    }
+
+    render(
+      <ConnectionsProvider
+        funnelId="f1" funnelSlug="free-trial-week" funnelKind="funnel"
+        pages={PAGES} initialDocs={PAGES.map((p) => ({ ...p, doc: null }))} draftJobs={JOBS}
+      >
+        <BothProbe />
+      </ConnectionsProvider>,
+    )
+    act(() => { screen.getByText("start").click() })
+    await waitFor(() => expect(screen.getByTestId("s2")).toHaveTextContent("failed"))
+    expect(screen.getByTestId("s3")).toHaveTextContent("writing")
+
+    act(() => { screen.getByText("one").click() })
+    // MUTANT: dropping the `queueInFlight` guard from `draftStep`.
+    expect(seen).toHaveLength(2)
+
+    // ...and once the queue is done, the same press is allowed through, which
+    // is why the flag is separate from the never-cleared `started`.
+    act(() => { release?.() })
+    await waitFor(() => expect(screen.getByTestId("s3")).toHaveTextContent("done"))
+    act(() => { screen.getByText("one").click() })
+    await waitFor(() => expect(seen).toHaveLength(3))
+    expect(seen[2]).toContain("/api/admin/funnels/steps/s2/build")
   })
 
   it("is inert outside a provider, so the builder still mounts standalone", () => {
