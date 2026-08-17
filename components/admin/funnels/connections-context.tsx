@@ -24,6 +24,7 @@ import {
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 import type { SectionOp } from "@/lib/funnels/sections/apply"
 import { readTurnStream } from "@/components/admin/funnels/builder/stream"
+import type { BuildTurnResponse } from "@/components/admin/funnels/builder/types"
 
 interface ConnectionsState {
   connections: FunnelConnections
@@ -88,6 +89,19 @@ interface ContextValue extends ConnectionsState {
   docFor: (stepId: string) => SectionDoc | null
   /** Where a step's background draft is, or `"idle"` if it has none queued. */
   draftPhase: (stepId: string) => DraftPhase
+  /**
+   * The turn a background draft finished with, for a builder that is standing
+   * on that very step.
+   *
+   * WHY THE WHOLE TURN AND NOT JUST THE DOCUMENT. The graph only ever needed
+   * the document, which is why `publishStepConnections` takes one — but a
+   * builder mounted on the page being drafted needs everything `applyTurn`
+   * needs, and above all the REVISION. Handing it the document alone would
+   * leave it editing a page whose revision it is a build behind on, so the
+   * owner's next message or click would 409 against a page nobody else
+   * touched. `null` for a step this session never drafted.
+   */
+  draftedTurn: (stepId: string) => BuildTurnResponse | null
   /** Draft every unbuilt step, one at a time, in the order the layout gave. */
   startAutoDraft: () => void
   /** Draft one named step, now. */
@@ -170,6 +184,19 @@ export function ConnectionsProvider({
   // --------------------------------------------------------------------
 
   const [phases, setPhases] = useState<Record<string, DraftPhase>>({})
+  /**
+   * WHAT EACH FINISHED DRAFT WROTE, kept so a builder standing on that step can
+   * adopt it instead of showing a blank editor until the next reload.
+   *
+   * Set in the SAME batch as the `done` phase (see `runJob`), so the render
+   * that first reports `done` already carries the turn — a consumer watching
+   * the phase can never see the flag without the payload.
+   *
+   * Plain state, not the ref discipline `docsRef`/`phasesRef` use: nothing
+   * inside this provider reads it, only React children do, so there is no loop
+   * that could consult a stale closure.
+   */
+  const [draftedTurns, setDraftedTurns] = useState<Record<string, BuildTurnResponse>>({})
   // SAME DISCIPLINE AS `docsRef`, and for the same reason. A `useEffect`
   // mirror would only catch up one render late, and `startAutoDraft` marks
   // every job "queued" through state — so a `draftStep` call in the window
@@ -280,6 +307,12 @@ export function ConnectionsProvider({
         // INTO THE GRAPH IMMEDIATELY, so the rail's arrows appear as the pages
         // are made rather than at the next refresh.
         publishStepConnections(job.stepId, turn.doc as SectionDoc | null)
+        // AND KEPT WHOLE, for a builder that is sitting on this step watching
+        // its own editor say "There is no page yet". The graph takes the
+        // document; only the turn carries the REVISION that editor now has to
+        // send. Written BEFORE the phase moves, so no render can report `done`
+        // without it — see `draftedTurns`.
+        setDraftedTurns((current) => ({ ...current, [job.stepId]: turn }))
         setPhase(job.stepId, "done")
       } catch (error) {
         // Never takes the editor down. The owner came here to edit a page.
@@ -368,6 +401,11 @@ export function ConnectionsProvider({
 
   const draftPhase = useCallback((stepId: string): DraftPhase => phases[stepId] ?? "idle", [phases])
 
+  const draftedTurn = useCallback(
+    (stepId: string): BuildTurnResponse | null => draftedTurns[stepId] ?? null,
+    [draftedTurns],
+  )
+
   const value = useMemo<ContextValue>(
     () => ({
       connections,
@@ -380,6 +418,7 @@ export function ConnectionsProvider({
       registerRepair: setRepair,
       docFor,
       draftPhase,
+      draftedTurn,
       startAutoDraft,
       draftStep,
     }),
@@ -393,6 +432,7 @@ export function ConnectionsProvider({
       repair,
       docFor,
       draftPhase,
+      draftedTurn,
       startAutoDraft,
       draftStep,
     ],
@@ -436,11 +476,15 @@ export function usePublishStepConnections(): (stepId: string, doc: SectionDoc | 
  * `draftPhase` answering "idle" everywhere means the builder behaves exactly as
  * it did before this feature.
  */
-export function useDraftQueue(): Pick<ContextValue, "draftPhase" | "startAutoDraft" | "draftStep"> {
+export function useDraftQueue(): Pick<
+  ContextValue,
+  "draftPhase" | "draftedTurn" | "startAutoDraft" | "draftStep"
+> {
   const context = useContext(ConnectionsContext)
   return useMemo(
     () => ({
       draftPhase: context?.draftPhase ?? (() => "idle" as DraftPhase),
+      draftedTurn: context?.draftedTurn ?? (() => null),
       startAutoDraft: context?.startAutoDraft ?? (() => {}),
       draftStep: context?.draftStep ?? (() => {}),
     }),

@@ -887,4 +887,209 @@ describe("the creation prompt and the background queue", () => {
     expect(buildUrls(fetchMock).filter((url) => url.includes("/steps/s1/build"))).toHaveLength(1)
     expect(bodyOf(fetchMock, 0).message).toBe("The builder's own prompt")
   })
+
+  // -------------------------------------------------------------------------
+  // WHAT THE SCREEN SAYS WHILE THE QUEUE HAS THE PAGE.
+  //
+  // Declining to fire the creation prompt (above) was the whole of the guard,
+  // and it left the editor saying the opposite of what the rail said. These
+  // drive a REAL `writing -> done` transition against the real provider for the
+  // reason this file's header gives: a mocked static `draftPhase` cannot see
+  // the second half, and that is exactly where the guard was wrong once before.
+  // -------------------------------------------------------------------------
+
+  /** Holds the queue's build open until `release()`, then answers with `turn`. */
+  function heldBuild(response: BuildTurnResponse = turn()) {
+    let release: (() => void) | null = null
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      void init
+      if (String(url).includes("/build")) {
+        if (release === null) {
+          await new Promise<void>((resolve) => {
+            release = resolve
+          })
+          return sseResponse([{ type: "result", turn: response }])
+        }
+        // Any LATER build — a second one would mean the guard failed.
+        return sseResponse([{ type: "result", turn: response }])
+      }
+      return jsonResponse(200, {})
+    })
+    global.fetch = fetchMock as unknown as typeof fetch
+    return { fetchMock, release: () => release?.() }
+  }
+
+  function openOnAQueuedStep(response: BuildTurnResponse = turn()) {
+    const held = heldBuild(response)
+    render(
+      <ConnectionsProvider
+        funnelId={FUNNEL_ID}
+        funnelSlug="free-trial-week"
+        funnelKind="funnel"
+        pages={PAGES}
+        initialDocs={BLANK_DOCS}
+        draftJobs={[{ stepId: STEP_ID, prompt: "The queue's own prompt", revision: 0 }]}
+      >
+        <LateBuilder
+          builderProps={baseProps({
+            initialPrompt: "The builder's own prompt",
+            initialDoc: null,
+            initialCompile: null,
+          })}
+        />
+      </ConnectionsProvider>,
+    )
+    return held
+  }
+
+  it("says the page is being written, instead of inviting a competing build", async () => {
+    // MUTANT: the guard alone, with nothing said on screen — which is what
+    // shipped. With a null document this builder showed an empty transcript, an
+    // ENABLED composer, and a blocker reading "There is no page yet. Describe
+    // what you want in the chat first." — two inches from a rail badge saying
+    // `writing…`. Taking that explicit invitation calls `send`, which opens a
+    // SECOND build on the step the queue is writing; whichever loses the build
+    // route's revision check loses, and if the queue loses then `runJob` paints
+    // `draft failed` over a page that was written perfectly well. The
+    // lying-status-badge defect this feature exists to remove, produced by the
+    // feature itself.
+    const { fetchMock } = openOnAQueuedStep()
+
+    fireEvent.click(screen.getByText("queue this page"))
+    await waitFor(() => expect(screen.getByTestId("phase-s1")).toHaveTextContent("writing"))
+    fireEvent.click(screen.getByText("open the builder"))
+
+    // 1. It SAYS so.
+    expect(await screen.findByText(/being written for you/i)).toBeInTheDocument()
+    // 2. The composer cannot be used to say it again.
+    expect(composer()).toBeDisabled()
+    // 3. And the gate is not carrying the sentence that told them to. That
+    //    sentence is a blocker, so with it back the header grows a
+    //    "Fix 1 blocker" button and the review behind it prints the copy.
+    expect(screen.queryByRole("button", { name: /fix \d+ blocker/i })).toBeNull()
+
+    // Still exactly one build: the guard AND the disabled composer.
+    expect(buildUrls(fetchMock as unknown as FetchMock)).toHaveLength(1)
+  })
+
+  it("fills the editor in when the queue's draft lands, rather than waiting for a reload", async () => {
+    // MUTANT: the three items above without the adoption effect. `FunnelBuilder`
+    // holds its own `doc`, seeded from `props.initialDoc` and only ever PUSHED
+    // into the provider — so the card would promise a page that never arrives.
+    // The rail goes `writing… → done` and the editor sits blank until someone
+    // thinks to reload.
+    //
+    // A REAL PHASE TRANSITION, against the real provider. A mocked static
+    // `draftPhase` cannot reach `done` at all, which is the mistake this file's
+    // header records having already been made once on this branch.
+    const { fetchMock, release } = openOnAQueuedStep()
+
+    fireEvent.click(screen.getByText("queue this page"))
+    await waitFor(() => expect(screen.getByTestId("phase-s1")).toHaveTextContent("writing"))
+    fireEvent.click(screen.getByText("open the builder"))
+    expect(await screen.findByText(/being written for you/i)).toBeInTheDocument()
+
+    act(() => release())
+    await waitFor(() => expect(screen.getByTestId("phase-s1")).toHaveTextContent("done"))
+
+    // The turn's own reply is in the transcript, the card is gone, and the
+    // composer is back — the editor is simply on a page that now exists.
+    expect(await screen.findByText("Built the page.")).toBeInTheDocument()
+    expect(screen.queryByText(/being written for you/i)).toBeNull()
+    await waitFor(() => expect(composer()).toBeEnabled())
+    expect(publishFunnelButton()).toBeEnabled()
+
+    // MUTANT: adopting the DOCUMENT alone and leaving `revision` at the one the
+    // server rendered. `applyTurn` is used precisely so the revision comes with
+    // it: the queue's build moved this step from 5 to 6, so a builder still
+    // holding 5 would 409 the owner's very first message against a page nobody
+    // else had touched.
+    typeMessage("make the headline shorter")
+    clickSend()
+    await waitFor(() => expect(buildUrls(fetchMock as unknown as FetchMock)).toHaveLength(2))
+    expect(bodyOf(fetchMock as unknown as FetchMock, 1).revision).toBe(6)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A LEGACY PAGE MUST NOT LOCK THE FUNNEL PUBLISH
+// ---------------------------------------------------------------------------
+
+describe("the funnel gate on a page the funnel route would skip", () => {
+  /** A legacy GrapesJS step: unreadable draft, real compiled version, live. */
+  const legacy = () =>
+    baseProps({
+      docInvalid: true,
+      initialDoc: null,
+      initialCompile: null,
+      initialPublishedVersion: 3,
+    })
+
+  it("still offers the funnel publish from a legacy page", async () => {
+    // MUTANT: `publishable = … && blockers.length === 0 && doc !== null` shared
+    // by both controls, which is what shipped. On a legacy page `docInvalid` is
+    // true, so `blockers` carries "This page's saved content is not something
+    // the builder can read." and `doc` is null — making `canPublishFunnel`
+    // permanently false with the tooltip "Publishing is blocked".
+    //
+    // The route would have published that funnel without complaint:
+    // `funnelPublishPlan` (`publish-plan.ts:86`) SKIPS a doc-less step that
+    // already carries a published version. So the builder was stricter than the
+    // route, and the owner standing on a legacy page was told the funnel could
+    // not go live and sent to another screen to do it — a small rebuild of the
+    // two-screens complaint this branch exists to remove.
+    const fetchMock = mockFetch({
+      funnelPublish: () => ({ status: 200, body: { published: 2, pages: [], warnings: [] } }),
+    })
+
+    render(<FunnelBuilder {...legacy()} />)
+
+    expect(publishFunnelButton()).toBeEnabled()
+    fireEvent.click(publishFunnelButton())
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/admin/funnels/f1/publish",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    )
+    // ...and nothing was rendered to send, because the funnel route reads the
+    // STORED drafts. A legacy page has nothing this tab could render anyway.
+    expect(renderForPublish).not.toHaveBeenCalled()
+  })
+
+  it("keeps the PAGE publish shut on that same legacy page, and says why", () => {
+    // MUTANT: opening both halves. `publishThisPage` renders THIS tab's
+    // document through `renderForPublish`, and on a legacy page there is no
+    // document to render — the split button's two halves genuinely disagree
+    // here, and the dropdown must stay shut.
+    render(<FunnelBuilder {...legacy()} />)
+
+    const menu = screen.getByRole("button", { name: /more publish options/i })
+    expect(menu).toBeDisabled()
+    // MUTANT: a bare disabled chevron. With this page's blocker out of the
+    // funnel-scoped "Fix N blockers" count, nothing else on screen explains the
+    // grey half — `silent_gate_reads_as_broken`, which this repo has shipped
+    // before.
+    expect(menu).toHaveAttribute("title", expect.stringMatching(/can't be published on its own/i))
+  })
+
+  it("still refuses the funnel publish on a page that has never been written at all", async () => {
+    // MUTANT: dropping the `doc !== null || publishedVersion !== null` term
+    // along with the blocker, i.e. letting the funnel button through on any
+    // blank page. `funnelPublishPlan` calls a doc-less step with NO published
+    // version a problem — "<name> has no content yet." — so the button would be
+    // offering an act the route is certain to refuse.
+    const fetchMock = mockFetch()
+
+    render(
+      <FunnelBuilder {...baseProps({ initialDoc: null, initialCompile: null, initialPublishedVersion: null })} />,
+    )
+
+    expect(publishFunnelButton()).toBeDisabled()
+    fireEvent.click(publishFunnelButton())
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(urlsOf(fetchMock)).not.toContain("/api/admin/funnels/f1/publish")
+  })
 })
