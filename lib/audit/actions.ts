@@ -183,7 +183,7 @@ export const AUDIT_ACTIONS = [
   { slug: "funnel.submission_received", category: "marketing", description: "Funnel page form submitted" },
   { slug: "funnel.created", category: "admin_write", description: "Funnel created (admin)" },
   { slug: "funnel.updated", category: "admin_write", description: "Funnel or step updated (admin)" },
-  { slug: "funnel.published", category: "admin_write", description: "Funnel step published (admin)" },
+  { slug: "funnel.published", category: "admin_write", description: "Funnel step or whole funnel published (admin)" },
   { slug: "funnel.deleted", category: "admin_write", description: "Funnel or step deleted (admin)" },
   { slug: "funnel.ai_turn", category: "admin_write", description: "Funnel page AI build turn (admin)" },
   {

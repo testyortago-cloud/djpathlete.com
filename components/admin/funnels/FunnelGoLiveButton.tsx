@@ -28,20 +28,30 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Globe, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import type { FunnelStatus } from "@/types/database"
+import { publishFunnel, publishedSummary } from "./publish-funnel"
+import type { FunnelStatus, FunnelKind } from "@/types/database"
 
 interface FunnelGoLiveButtonProps {
   funnelId: string
   status: FunnelStatus
   /**
+   * A landing page and a funnel are the same row with a different `kind`, and
+   * they go live by different routes — see `goLive` below. The board renders
+   * this button on both, so it has to be told which one it is holding.
+   */
+  kind: FunnelKind
+  /**
    * The entry page has a published version. A funnel with no compiled page has
    * nothing to serve, so going live would produce a reachable URL rendering
    * nothing — worse than a 404, because it looks deliberate.
+   *
+   * IT SAYS NOTHING ABOUT PAGES 2..N, which is why it is not the guard for a
+   * funnel. Every page of a funnel is gated by the publish route below.
    */
   canGoLive: boolean
 }
 
-export function FunnelGoLiveButton({ funnelId, status, canGoLive }: FunnelGoLiveButtonProps) {
+export function FunnelGoLiveButton({ funnelId, status, kind, canGoLive }: FunnelGoLiveButtonProps) {
   const router = useRouter()
   const [current, setCurrent] = useState<FunnelStatus>(status)
   const [saving, setSaving] = useState(false)
@@ -49,6 +59,7 @@ export function FunnelGoLiveButton({ funnelId, status, canGoLive }: FunnelGoLive
 
   const live = current === "published"
   const busy = saving || pending
+  const noun = kind === "page" ? "page" : "funnel"
 
   async function setStatus(next: FunnelStatus) {
     setSaving(true)
@@ -63,7 +74,7 @@ export function FunnelGoLiveButton({ funnelId, status, canGoLive }: FunnelGoLive
         return
       }
       setCurrent(next)
-      toast.success(next === "published" ? "This page is live." : "Taken offline.")
+      toast.success(next === "published" ? `This ${noun} is live.` : "Taken offline.")
       startTransition(() => router.refresh())
     } catch {
       toast.error("Could not change the status.")
@@ -72,7 +83,48 @@ export function FunnelGoLiveButton({ funnelId, status, canGoLive }: FunnelGoLive
     }
   }
 
-  if (!live && !canGoLive) {
+  /**
+   * ONE FUNNEL-PUBLISH OPERATION, THREE DOORWAYS — and this was the third.
+   *
+   * `canGoLive` above means "the ENTRY page has a published version". On a
+   * landing page that is the whole funnel, so the PATCH is honest. On a FUNNEL
+   * it says nothing about pages 2..N, so this button could take a five-step
+   * funnel live with four unbuilt pages behind it — a public URL whose own
+   * buttons 404, which is the exact defect `POST .../publish` exists to make
+   * unreachable. A guard on the builder and the detail page but not on the
+   * board is not a guard.
+   *
+   * TAKING IT OFFLINE STAYS ON THE PATCH for both kinds: there is nothing to
+   * gate about hiding something.
+   */
+  async function goLive() {
+    if (kind === "page") return setStatus("published")
+    setSaving(true)
+    try {
+      const result = await publishFunnel(funnelId)
+      if (!result.ok) {
+        toast.error(result.message)
+        return
+      }
+      setCurrent("published")
+      // WITH THE WARNINGS. A card on a list has no strip to put them in, so a
+      // toast that drops them loses them entirely.
+      toast.success(publishedSummary(result.published, result.warnings))
+      startTransition(() => router.refresh())
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // THE CLIENT-SIDE GATE IS FOR LANDING PAGES ONLY, because the two kinds no
+  // longer run the same operation. A landing page still goes live by the
+  // unguarded PATCH, so `canGoLive` is the only thing between it and a public
+  // URL with nothing behind it. A funnel goes live through `POST .../publish`,
+  // which reads every page, publishes their DRAFTS, and refuses with the reason
+  // — so "the entry page has no published version yet" has stopped being a
+  // reason to refuse. Leaving the button disabled would tell the owner to go
+  // and do by hand the exact thing this button now does for him.
+  if (!live && kind === "page" && !canGoLive) {
     // Say why rather than omitting the control. A missing button is
     // indistinguishable from a broken one, which is how this whole class of
     // confusion started.
@@ -89,11 +141,11 @@ export function FunnelGoLiveButton({ funnelId, status, canGoLive }: FunnelGoLive
       variant={live ? "outline" : "default"}
       size="sm"
       disabled={busy}
-      onClick={() => setStatus(live ? "draft" : "published")}
+      onClick={() => (live ? setStatus("draft") : goLive())}
       title={
         live
-          ? "Stop serving this page at its public URL."
-          : "Make this page reachable at its public URL."
+          ? `Stop serving this ${noun} at its public URL.`
+          : `Make this ${noun} reachable at its public URL.`
       }
     >
       {busy ? <Loader2 className="size-4 animate-spin" /> : <Globe className="size-4" />}

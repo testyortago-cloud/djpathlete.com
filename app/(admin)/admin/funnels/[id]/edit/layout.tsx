@@ -28,8 +28,13 @@ import { notFound } from "next/navigation"
 import { getFunnelById, listSteps } from "@/lib/db/funnels"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { StepWithDoc } from "@/lib/funnels/connections"
-import { ConnectionsProvider, type RailPage } from "@/components/admin/funnels/connections-context"
+import {
+  ConnectionsProvider,
+  type DraftJob,
+  type RailPage,
+} from "@/components/admin/funnels/connections-context"
 import { StepRail } from "@/components/admin/funnels/StepRail"
+import { creationPrompt } from "@/lib/funnels/creation-prompt"
 
 /**
  * The shell, shared by `/admin/funnels` and `/admin/pages`.
@@ -88,6 +93,56 @@ export async function FunnelBuilderShell({
       : null,
   }))
 
+  // WHICH STEPS THE QUEUE MAY DRAFT: the ones that have never been touched.
+  //
+  // The same condition `[stepId]/page.tsx` uses to fire its own creation
+  // prompt — no stored document — minus the turn check, which needs a per-step
+  // query this layout deliberately does not make. The builder's own guard
+  // (`draftPhase !== "idle"`) covers the overlap, and a step with turns but no
+  // document is a step whose build failed, which is exactly a step worth
+  // retrying.
+  //
+  // ONLY FOR A FUNNEL. A landing page has one step and it is drafted by the
+  // create dialog's `?start=1`.
+  // `docs` ALREADY ANSWERS THIS. It is `ordered.map(...)`, so it is the same
+  // length and the same order, and its `doc` is null on exactly the steps a
+  // second `safeParse` would have re-derived — at the cost of parsing every
+  // page's document twice on every navigation between steps.
+  //
+  // ---------------------------------------------------------------------
+  // "UNBUILT" IS DEFINED IN TWO PLACES AND THEY HAVE TO AGREE.
+  // ---------------------------------------------------------------------
+  // THE OTHER HALF OF THIS RULE IS `lib/funnels/publish-plan.ts:82-94`, and
+  // it must be read alongside this line: the planner treats a doc-less step
+  // that ALREADY CARRIES A PUBLISHED VERSION as "left alone — neither
+  // published nor a problem", because that is a legacy GrapesJS page serving
+  // real content that no `SectionDoc` can improve on.
+  //
+  // Without `!published_version_id` here the two layers disagree, and the
+  // disagreement is destructive rather than cosmetic. A legacy step fails
+  // `sectionDocSchema`, so its `doc` is null and it would be queued — the
+  // background model then writes a first draft over its `project_data`. The
+  // live page does not change that instant (the version row still points at
+  // the old compiled snapshot), but the step now HAS a `SectionDoc`, so the
+  // very next funnel publish renders that AI draft over a page the owner
+  // never asked to have rewritten. It also puts `writing…` in the rail over a
+  // row the rail is simultaneously badging `live`.
+  //
+  // Neither layer may be changed alone.
+  const draftJobs: DraftJob[] =
+    funnel.kind !== "funnel"
+      ? []
+      : ordered
+          .filter((_step, index) => docs[index].doc === null && !ordered[index].published_version_id)
+          .map((step) => ({
+            stepId: step.id,
+            prompt: creationPrompt(funnel, step, ordered) ?? "",
+            revision: step.doc_revision ?? 0,
+          }))
+          // A step with no goal and no template composes no prompt. Sending an
+          // empty message would be a 400 from the build route's own validator.
+          .filter((job) => job.prompt !== "")
+
   return (
     <ConnectionsProvider
       funnelId={funnel.id}
@@ -95,6 +150,7 @@ export async function FunnelBuilderShell({
       funnelKind={funnel.kind}
       pages={pages}
       initialDocs={docs}
+      draftJobs={draftJobs}
     >
       <div className="-m-6 flex h-[calc(100dvh-4rem)]">
         <StepRail />

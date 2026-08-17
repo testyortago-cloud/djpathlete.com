@@ -16,9 +16,11 @@
 //     document, including the ones where the answer is "nothing".
 
 import { useEffect, useRef, type ReactNode } from "react"
+import Link from "next/link"
 import { AlertTriangle, Link2Off, Loader2, Send, Sparkles, Undo2, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { formatReceipt, fixPublishProblemsMessage } from "./format"
+import { adminStepHref } from "@/lib/funnels/admin-path"
 import type { BuilderMessage } from "./types"
 
 /**
@@ -45,6 +47,20 @@ interface ChatPaneProps {
   busy: boolean
   /** Set when the draft cannot be read at all; the composer would be useless. */
   composerDisabled?: boolean
+  /**
+   * Hides the empty state — the "What is this page for?" heading and the five
+   * starter chips — leaving `pinned` to say what IS happening.
+   *
+   * SEPARATE FROM `composerDisabled`, and disabling was not enough. The chips
+   * are an invitation to START A PAGE, and the state this exists for is a page
+   * the background queue is already writing. Greying them out stops the click
+   * but leaves "What is this page for? Describe it in a sentence." on screen
+   * directly above a card reading "This page is being written for you — there
+   * is nothing to type". Two statuses on one screen contradicting each other is
+   * the defect class this whole branch removes, so the invitation is withdrawn
+   * rather than dimmed.
+   */
+  startersHidden?: boolean
   /** Pinned above the transcript: the unreadable-document recovery, conflicts. */
   pinned?: ReactNode
   /**
@@ -65,12 +81,27 @@ interface ChatPaneProps {
   canPolish?: boolean
   /** Copies an earlier turn's document forward. Non-destructive: it APPENDS. */
   onRestore?: (revision: number) => void
+  /**
+   * `page` or `funnel` and the funnel's own id — needed to link a `pages`
+   * message's problems back to the step they are about, via `adminStepHref`.
+   *
+   * REQUIRED, NOT DEFAULTED. `funnelId = ""` builds `/admin/funnels//edit/<id>`
+   * — a 404 offered as the way out of a publish refusal. Unreachable today
+   * because `FunnelBuilder` is the only caller and always passes both, which is
+   * exactly why it should be the type system holding it and not a default that
+   * would quietly absorb the next caller's omission.
+   */
+  funnelKind: string
+  funnelId: string
+  /** One named step, now — the `pages` message's "Generate it now". */
+  onDraftStep?: (stepId: string) => void
 }
 
 /** Shown on any turn that left a document behind, once it is no longer the head. */
 function canRestore(message: BuilderMessage, currentRevision: number): message is BuilderMessage & { revision: number } {
   return (
     message.role !== "problems" &&
+    message.role !== "pages" &&
     message.producedDoc === true &&
     typeof message.revision === "number" &&
     message.revision < currentRevision
@@ -88,9 +119,13 @@ export function ChatPane({
   canPolish,
   busy,
   composerDisabled,
+  startersHidden,
   pinned,
   currentRevision,
   onRestore,
+  funnelKind,
+  funnelId,
+  onDraftStep,
 }: ChatPaneProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
@@ -109,7 +144,7 @@ export function ChatPane({
       {pinned ? <div className="border-b border-border p-3">{pinned}</div> : null}
 
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        {messages.length === 0 ? (
+        {messages.length === 0 && !startersHidden ? (
           <div className="space-y-3">
             <div className="flex items-start gap-2">
               <Sparkles className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden />
@@ -144,6 +179,9 @@ export function ChatPane({
             onSend={onSend}
             busy={busy}
             onRestore={canRestore(message, currentRevision) && onRestore ? onRestore : undefined}
+            funnelKind={funnelKind}
+            funnelId={funnelId}
+            onDraftStep={onDraftStep}
           />
         ))}
 
@@ -245,15 +283,21 @@ function MessageCard({
   onSend,
   busy,
   onRestore,
+  funnelKind,
+  funnelId,
+  onDraftStep,
 }: {
   message: BuilderMessage
   onSend: (text: string) => void
   busy: boolean
   /** Set only when this turn is restorable — see `canRestore`. */
   onRestore?: (revision: number) => void
+  funnelKind: string
+  funnelId: string
+  onDraftStep?: (stepId: string) => void
 }) {
   const restore =
-    onRestore && message.role !== "problems" && typeof message.revision === "number" ? (
+    onRestore && message.role !== "problems" && message.role !== "pages" && typeof message.revision === "number" ? (
       <RestoreButton revision={message.revision} busy={busy} onRestore={onRestore} />
     ) : null
 
@@ -291,6 +335,60 @@ function MessageCard({
           <Wrench className="size-4" aria-hidden />
           Fix it for me
         </Button>
+      </div>
+    )
+  }
+
+  // A FUNNEL-WIDE publish refusal, naming EACH page it is about. A bare
+  // "Thank you has no content yet." leaves the owner to find Thank you
+  // themselves, so every problem here carries a link back to its own editor —
+  // and a page that is merely BLANK (never built, as opposed to built and
+  // blocked) carries its own fix too.
+  if (message.role === "pages") {
+    return (
+      <div className="rounded-xl border border-border bg-white p-3 text-sm shadow-sm">
+        <p className="flex items-center gap-2 font-medium text-[var(--error)]">
+          <AlertTriangle className="size-4" aria-hidden />
+          {message.text}
+        </p>
+        <div className="mt-2 space-y-3">
+          {message.pages.map((page, index) => (
+            <div key={page.stepId || index} className="border-t border-border pt-2 first:border-t-0 first:pt-0">
+              <p className="font-medium text-foreground">
+                {/* A blank `stepId` is the route's fail-closed catch — "This
+                    funnel could not be checked" rather than a real page — and
+                    there is nothing to link to. */}
+                {page.stepId ? (
+                  <Link
+                    href={adminStepHref(funnelKind, funnelId, page.stepId)}
+                    className="text-primary underline underline-offset-2"
+                  >
+                    {page.stepName}
+                  </Link>
+                ) : (
+                  page.stepName
+                )}
+              </p>
+              <ul className="mt-1 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                {page.problems.map((problem, problemIndex) => (
+                  <li key={problemIndex}>{problem}</li>
+                ))}
+              </ul>
+              {page.blank && onDraftStep ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  disabled={busy}
+                  onClick={() => onDraftStep(page.stepId)}
+                >
+                  <Sparkles className="size-4" aria-hidden />
+                  Generate it now
+                </Button>
+              ) : null}
+            </div>
+          ))}
+        </div>
       </div>
     )
   }

@@ -287,7 +287,15 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
                         Entry card only: the entry page IS the funnel, so a
                         per-page toggle on a child step would be a lie. */}
                     {step.is_entry ? (
-                      <FunnelGoLiveButton funnelId={funnel.id} status={funnel.status} canGoLive={published} />
+                      <FunnelGoLiveButton
+                        funnelId={funnel.id}
+                        status={funnel.status}
+                        // A FUNNEL AND A LANDING PAGE GO LIVE BY DIFFERENT
+                        // ROUTES. `funnel.kind`, not the screen's `kind`, is
+                        // the fact — the same rule `titlesTheFunnel` follows.
+                        kind={funnel.kind}
+                        canGoLive={published}
+                      />
                     ) : null}
                     {/* Only on a landing page, and only on the entry card: a
                         funnel is already a funnel, and a child step is not the

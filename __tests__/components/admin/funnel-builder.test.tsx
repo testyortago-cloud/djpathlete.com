@@ -23,7 +23,7 @@
 
 import fs from "node:fs"
 import path from "node:path"
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest"
 import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 import { FunnelBuilder, type FunnelBuilderProps } from "@/components/admin/funnels/FunnelBuilder"
 import {
@@ -52,10 +52,33 @@ vi.mock("sonner", () => ({ toast }))
 
 // next/navigation is globally mocked in __tests__/setup.tsx.
 
+// Radix DropdownMenu relies on Pointer Events APIs jsdom doesn't ship. Without
+// these, opening the split publish button's menu (one test below, for a
+// funnelKind: "funnel" override) hangs — see
+// __tests__/components/admin/content-studio/drawer/GenerateQuoteCardsButton.test.tsx.
+beforeAll(() => {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => {}
+  }
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {}
+  }
+})
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
+// `primaryCta` IS REQUIRED BY `heroPropsSchema` AND WAS MISSING, so this
+// fixture did not satisfy `sectionDocSchema` at all. Nothing in `FunnelBuilder`
+// validates `initialDoc`, which is why it went unnoticed — and it is a landmine
+// the moment a test hands the document to anything that does parse it (the
+// funnel-wide publish tests mount the real `ConnectionsProvider`, which feeds
+// `funnelConnections`). Fixed here rather than only in the copy, so the shape
+// this file teaches by example is a legal one.
 const DOC: SectionDoc = {
   v: 1,
   engine: "sections",
@@ -66,7 +89,10 @@ const DOC: SectionDoc = {
       kind: "hero",
       variant: "centered",
       style: {},
-      props: { headline: "Train like an athlete" },
+      props: {
+        headline: "Train like an athlete",
+        primaryCta: { label: "Get started", target: { kind: "step", stepSlug: "thanks" } },
+      },
     },
   ],
 }
@@ -126,7 +152,19 @@ function baseProps(overrides: Partial<FunnelBuilderProps> = {}): FunnelBuilderPr
     // own tests below — but it must not silently become the baseline, or every
     // assertion here would be measuring the draft banner instead.
     funnelStatus: "published",
-  funnelKind: "funnel",
+    // Default to "page" rather than "funnel". Task 5 gave `funnelKind ===
+    // "funnel"` its own primary action — a "Publish funnel" split button that
+    // calls the FUNNEL-WIDE route — while `publishButton()` below and every
+    // test in this file exercise the single-button PER-PAGE publish gate
+    // (`publishThisPage`): unresolved CTAs, dangling anchors, compile
+    // warnings, 409 conflicts, one-click publish. None of that depends on
+    // `funnelKind` except the strip's noun, which already has its own explicit
+    // `funnelKind: "page"` override below ("calls a landing page a landing
+    // page, not a funnel") — so "page" here keeps every other assertion
+    // testing exactly the mechanism its comment names, unchanged by the split
+    // control. See __tests__/components/admin/funnel-publish-all.test.tsx for
+    // the funnel-wide control itself.
+    funnelKind: "page",
     initialDoc: DOC,
     initialRevision: 5,
     docInvalid: false,
@@ -975,10 +1013,23 @@ describe("<FunnelBuilder> — a funnel that is still a draft", () => {
     // carries the link that fixes it.
     //
     // MUTANT KILLED: dropping the notice along with the confirmation.
+    //
+    // funnelKind: "funnel" HERE ON PURPOSE — this describe block is about a
+    // FUNNEL, and the href assertion below is what proves it (a landing page
+    // gets `/admin/pages`, see the sibling test just below). Task 5 gave
+    // funnelKind: "funnel" a split "Publish funnel" primary action that always
+    // reports `notLive: false` (a funnel-wide publish takes the funnel row
+    // live as part of the same write, so there is nothing left to say) — so
+    // the single-page publish this test is actually about now lives behind
+    // the menu, as "Publish this page only".
     mockFetch({ publish: () => ({ status: 200, body: { version: 4, warnings: [] } }) })
-    render(<FunnelBuilder {...baseProps({ funnelStatus: "draft" })} />)
+    render(<FunnelBuilder {...baseProps({ funnelStatus: "draft", funnelKind: "funnel" })} />)
 
-    fireEvent.click(publishButton())
+    const menuTrigger = screen.getByRole("button", { name: /more publish options/i })
+    fireEvent.pointerDown(menuTrigger, { button: 0 })
+    fireEvent.pointerUp(menuTrigger, { button: 0 })
+    fireEvent.click(menuTrigger)
+    fireEvent.click(await screen.findByRole("menuitem", { name: /publish this page only/i }))
 
     expect(await screen.findByText(/still a draft/i)).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /take it live/i })).toHaveAttribute(
@@ -1110,6 +1161,12 @@ describe("FunnelBuilder — watching the page get written", () => {
 
     stream.push({ type: "result", turn: turn({ revision: 6 }) })
     stream.close()
+    // AWAITED, not just closed. The reader's loop resolves after the body ends
+    // and sets `busy`/`stream` on the way out, so a test that returned here
+    // left React updating an unmounted-in-a-moment tree outside `act` — a real
+    // warning about a real unobserved state change, not noise. Asserting the
+    // stage is gone is the cheapest way to wait for exactly that.
+    await waitFor(() => expect(screen.queryByTestId("build-stage")).not.toBeInTheDocument())
   })
 
   it("marks the running token count as an estimate and drops the tilde when it is exact", async () => {
@@ -1133,6 +1190,12 @@ describe("FunnelBuilder — watching the page get written", () => {
 
     stream.push({ type: "result", turn: turn({ revision: 6 }) })
     stream.close()
+    // AWAITED, not just closed. The reader's loop resolves after the body ends
+    // and sets `busy`/`stream` on the way out, so a test that returned here
+    // left React updating an unmounted-in-a-moment tree outside `act` — a real
+    // warning about a real unobserved state change, not noise. Asserting the
+    // stage is gone is the cheapest way to wait for exactly that.
+    await waitFor(() => expect(screen.queryByTestId("build-stage")).not.toBeInTheDocument())
   })
 
   it("routes a mid-stream 409 through the same resync as an HTTP 409", async () => {
@@ -1235,6 +1298,12 @@ describe("<FunnelBuilder> — the stage is over the preview, not in the chat", (
 
     stream.push({ type: "result", turn: turn({ revision: 6 }) })
     stream.close()
+    // AWAITED, not just closed. The reader's loop resolves after the body ends
+    // and sets `busy`/`stream` on the way out, so a test that returned here
+    // left React updating an unmounted-in-a-moment tree outside `act` — a real
+    // warning about a real unobserved state change, not noise. Asserting the
+    // stage is gone is the cheapest way to wait for exactly that.
+    await waitFor(() => expect(screen.queryByTestId("build-stage")).not.toBeInTheDocument())
   })
 })
 

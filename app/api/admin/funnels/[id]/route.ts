@@ -37,6 +37,87 @@ export const PATCH = withAudit(
     }
 
     try {
+      /**
+       * THIS ROUTE DOES NOT PUBLISH A FUNNEL. It never did more than flip
+       * `funnels.status` — see `steps/[stepId]/publish/route.ts`'s header for
+       * the same shape of defect on that route, fixed the same way: a direct
+       * POST there once skipped every gate the UI ran, and published a page
+       * with dead buy buttons. Here the UI-only guard is `FunnelStatusControl`
+       * and `FunnelGoLiveButton` routing `kind === "funnel"` through
+       * `POST .../publish` instead of this PATCH — but a body-level check the
+       * browser happens to make is not a guard, it is a request for one, and a
+       * direct `PATCH {"status":"published"}` on a funnel row would reproduce
+       * the exact "funnel published, pages are not" split this branch exists
+       * to eliminate.
+       *
+       * ONLY `kind === "funnel"` IS REFUSED, and only for `status: "published"`.
+       * A landing page (`kind === "page"`) legitimately publishes through this
+       * body — its one step is already gated by the step publish route, which
+       * is what flips a page's row live — so it is let through unchanged.
+       * Unpublishing and archiving are also let through for both kinds: taking
+       * something off the air has nothing to gate, and refusing to hide a
+       * broken funnel because it is broken would be exactly backwards.
+       *
+       * 400, not 422: this is not `updateFunnelSchema` failing to parse a
+       * shape (that path already returns 400 above) and not the publish
+       * route's own gate refusing a document it inspected (that is 422,
+       * reserved for a request this route never receives). It is a
+       * well-formed, schema-valid body that is not a legal operation on THIS
+       * route for THIS row — the same class of refusal
+       * `[id]/publish/route.ts` gives a funnel with no pages, which is also a
+       * 400 in this file family, not a 403 (nothing about who is asking) or a
+       * 409 (nothing here conflicts with concurrent state).
+       */
+      /**
+       * `kind` IS ITSELF PATCHABLE HERE, WHICH MAKES IT A DOOR IN THE GUARD.
+       *
+       * Gating on the stored `funnel.kind` alone left a two-request bypass
+       * wide open: `PATCH {kind:"page"}` demotes the row, then
+       * `PATCH {status:"published"}` reads back "page" and publishes the
+       * funnel ungated — the exact split above, reached in two individually
+       * legal requests. Gating on the INCOMING kind alone is no better and
+       * fails faster: `PATCH {kind:"page", status:"published"}` would then
+       * publish a funnel in ONE request, and that body is refused today.
+       *
+       * So both directions are closed, and they need different rules:
+       *
+       *   - PUBLISHING is refused if the row is a funnel by EITHER account.
+       *     A stored funnel cannot be published, and neither can a page being
+       *     promoted in the same body (`{kind:"funnel", status:"published"}`),
+       *     which would otherwise become a live funnel whose pages were never
+       *     gated.
+       *   - DEMOTING a stored funnel to a page is refused outright. Nothing in
+       *     the product does it — `ConvertToFunnelDialog` is the only `kind`
+       *     PATCH there is and it only goes page → funnel — and on a row with
+       *     several steps it is not a meaningful edit, it is the first half of
+       *     the bypass above.
+       *
+       * PROMOTION IS STILL ALLOWED, on its own: `{kind:"funnel"}` with no
+       * status never reads the row and never refuses.
+       */
+      const incomingKind = parsed.data.kind
+      if (parsed.data.status === "published" || incomingKind === "page") {
+        const funnel = await getFunnelById(id)
+        if (!funnel) return NextResponse.json({ error: "Not found" }, { status: 404 })
+
+        if (parsed.data.status === "published" && (funnel.kind === "funnel" || incomingKind === "funnel")) {
+          return NextResponse.json(
+            {
+              error:
+                "A funnel is published as a whole. Use POST /api/admin/funnels/:id/publish, which gates every page before any of them go live.",
+            },
+            { status: 400 },
+          )
+        }
+
+        if (incomingKind === "page" && funnel.kind === "funnel") {
+          return NextResponse.json(
+            { error: "A funnel cannot be turned back into a single page." },
+            { status: 400 },
+          )
+        }
+      }
+
       return NextResponse.json({ funnel: await updateFunnel(id, parsed.data) })
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error"

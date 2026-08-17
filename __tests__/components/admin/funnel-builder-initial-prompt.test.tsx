@@ -4,7 +4,7 @@
 // have happened. Each one is a paid model turn.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, waitFor } from "@testing-library/react"
+import { act, render, waitFor } from "@testing-library/react"
 import { FunnelBuilder } from "@/components/admin/funnels/FunnelBuilder"
 
 vi.mock("sonner", () => ({
@@ -51,7 +51,9 @@ describe("FunnelBuilder initialPrompt", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     rerender(<FunnelBuilder {...baseProps} initialPrompt="Build a free trial page." />)
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
@@ -71,14 +73,24 @@ describe("FunnelBuilder initialPrompt", () => {
       />,
     )
 
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    // `act`, because the settle is what lets next/link's own mount-time state
+    // update land — outside it, React warns and the warning is real: the
+    // assertion below would be reading a tree React had not finished with.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it("never sends when there is no prompt", async () => {
     const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>
     render(<FunnelBuilder {...baseProps} initialPrompt={null} />)
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    // `act`, because the settle is what lets next/link's own mount-time state
+    // update land — outside it, React warns and the warning is real: the
+    // assertion below would be reading a tree React had not finished with.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

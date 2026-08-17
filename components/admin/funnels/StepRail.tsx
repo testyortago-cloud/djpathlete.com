@@ -20,7 +20,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { AlertTriangle, ArrowDown, CircleDot } from "lucide-react"
-import { useConnections, type RailPage } from "./connections-context"
+import { useConnections, useDraftQueue, type DraftPhase, type RailPage } from "./connections-context"
 import { adminStepHref } from "@/lib/funnels/admin-path"
 import { autoConnectOps, type Connection } from "@/lib/funnels/connections"
 
@@ -29,7 +29,36 @@ function exitsFrom(connections: Connection[], stepId: string): Connection[] {
   return connections.filter((entry) => entry.fromStepId === stepId && entry.to.kind === "step")
 }
 
-function StatusPill({ page }: { page: RailPage }) {
+function StatusPill({ page, phase }: { page: RailPage; phase: DraftPhase }) {
+  // A PAGE BEING WRITTEN IS NOT "never published".
+  //
+  // The background queue drafts pages the owner never opened, one at a time,
+  // and it can take minutes. The rail is the only surface that lists every page
+  // at once, so it is where "is anything happening?" gets answered — and the
+  // old label sitting beside a page that is being written right now reads as a
+  // failure, which is the one page the owner would then go and rebuild by hand.
+  //
+  // `failed` IS SHOWN, and shown as a warning, because it is terminal: the
+  // queue deliberately never retries a refusal. A page that quietly fell back
+  // to "never published" is a page nobody is ever told to go and build.
+  //
+  // `done` DELIBERATELY FALLS THROUGH. The queue writes a DRAFT; it publishes
+  // nothing. "never published" is then still the honest word, and a green pill
+  // over an unpublished page would be the same lie in the other direction.
+  if (phase === "queued" || phase === "writing") {
+    return (
+      <span className="rounded-full bg-surface px-1.5 py-0.5 text-[10px] text-muted-foreground">
+        {phase === "writing" ? "writing…" : "queued"}
+      </span>
+    )
+  }
+  if (phase === "failed") {
+    return (
+      <span className="rounded-full bg-[var(--warning)]/10 px-1.5 py-0.5 text-[10px] text-[var(--warning)]">
+        draft failed
+      </span>
+    )
+  }
   // THE SAME RULE `StepList` USES, not a second opinion about the word
   // "published". A version row is not enough — the funnel itself has to be
   // published, or the page is unreachable and calling it live is a lie the
@@ -165,6 +194,10 @@ function ConnectThisPage({ page, next }: { page: RailPage; next: RailPage | null
 export function StepRail() {
   const context = useConnections()
   const pathname = usePathname()
+  // BEFORE the early return — hooks cannot be conditional. Outside a provider
+  // it answers `"idle"` for every page, which is what makes the rail's absence
+  // in the preview harness harmless.
+  const { draftPhase } = useDraftQueue()
 
   // Outside a provider, or a funnel with one page: nothing worth showing. A
   // landing page always lands here, which is why it keeps exactly the editor
@@ -200,7 +233,7 @@ export function StepRail() {
                 <span className="flex items-center gap-1.5">
                   <span className="text-[11px] text-muted-foreground">{index + 1}</span>
                   <span className="min-w-0 flex-1 truncate text-sm text-primary">{page.name}</span>
-                  <StatusPill page={page} />
+                  <StatusPill page={page} phase={draftPhase(page.id)} />
                 </span>
                 <span className="block truncate text-[11px] text-muted-foreground">/{page.slug}</span>
               </Link>

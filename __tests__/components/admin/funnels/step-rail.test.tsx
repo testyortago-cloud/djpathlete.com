@@ -7,8 +7,8 @@
 //
 // `@testing-library/user-event` is not a dependency here — `fireEvent` only.
 
-import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, within, fireEvent } from "@testing-library/react"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { render, screen, within, fireEvent, act, waitFor } from "@testing-library/react"
 
 const pathnameMock = vi.fn(() => "/admin/funnels/f1/edit/s1")
 vi.mock("next/navigation", () => ({ usePathname: () => pathnameMock() }))
@@ -23,7 +23,9 @@ vi.mock("next/link", () => ({
 import { StepRail } from "@/components/admin/funnels/StepRail"
 import {
   ConnectionsProvider,
+  useConnections,
   useRegisterRepair,
+  type DraftJob,
   type RailPage,
 } from "@/components/admin/funnels/connections-context"
 import type { StepWithDoc } from "@/lib/funnels/connections"
@@ -317,6 +319,178 @@ describe("StepRail — connecting a page that leads nowhere", () => {
   it("offers no fix on the last page, which is supposed to end", () => {
     const rail = renderWithRepair(null, "s2")
     expect(within(rail).queryByRole("button", { name: /connect to/i })).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The background draft queue, seen from the rail.
+//
+// The queue's whole promise is that the owner does not have to open each blank
+// page — so a queue with no visible progress is indistinguishable from one that
+// is not running, and the rail is the only surface that lists every page at
+// once. These tests drive the REAL provider (a hung / failing `fetch`) rather
+// than a mocked `draftPhase`, because a static mock cannot tell "the rail reads
+// the phase" apart from "the rail renders a constant".
+// ---------------------------------------------------------------------------
+describe("StepRail — pages the queue is writing", () => {
+  const QUEUE_PAGES: RailPage[] = [
+    { id: "s1", name: "Opt-in", slug: "index", position: 0, isEntry: true, published: true, live: true },
+    { id: "s2", name: "Thanks", slug: "thanks", position: 1, isEntry: false, published: false, live: false },
+    { id: "s3", name: "Offer", slug: "offer", position: 2, isEntry: false, published: false, live: false },
+  ]
+
+  const JOBS: DraftJob[] = [
+    { stepId: "s2", prompt: "Build Thanks", revision: 0 },
+    { stepId: "s3", prompt: "Build Offer", revision: 0 },
+  ]
+
+  /** Stands in for `FunnelBuilder`'s kick-off effect. */
+  function StartQueue() {
+    const context = useConnections()
+    if (!context) return null
+    return (
+      <button type="button" onClick={() => context.startAutoDraft()}>
+        start
+      </button>
+    )
+  }
+
+  function renderQueueRail() {
+    render(
+      <ConnectionsProvider
+        funnelId="f1"
+        funnelSlug="camp"
+        funnelKind="funnel"
+        pages={QUEUE_PAGES}
+        initialDocs={QUEUE_PAGES.map((page) => ({
+          id: page.id,
+          name: page.name,
+          slug: page.slug,
+          position: page.position,
+          isEntry: page.isEntry,
+          doc: null,
+        }))}
+        draftJobs={JOBS}
+      >
+        <StartQueue />
+        <StepRail />
+      </ConnectionsProvider>,
+    )
+  }
+
+  /** Re-read after every state change — React replaces the pill nodes. */
+  function rows() {
+    const rail = screen.getByRole("navigation", { name: /pages in this funnel/i })
+    return within(rail).getAllByRole("listitem")
+  }
+
+  /**
+   * A build that never answers, so the queue sits in `writing` to be looked at.
+   *
+   * RELEASED IN `afterEach`, not left dangling. An unresolved `fetch` keeps the
+   * queue's run loop alive past the end of the test and wedges the worker on
+   * teardown — a hung suite reads as a broken assertion.
+   */
+  const release: (() => void)[] = []
+  function hangingFetch() {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          release.push(() => resolve(new Response("{}", { status: 500 })))
+        }),
+    )
+  }
+
+  afterEach(() => {
+    for (const resolve of release.splice(0)) resolve()
+    vi.restoreAllMocks()
+  })
+
+  it("says which page is being written, and which is waiting its turn", () => {
+    // MUTANT TO KILL: no status at all — i.e. `StatusPill` ignoring the phase.
+    // The queue drafts pages one at a time and can take minutes; a rail that
+    // says nothing while it runs is indistinguishable from a queue that never
+    // started, which is exactly the "did my click do anything?" the whole
+    // feature exists to answer.
+    hangingFetch()
+    renderQueueRail()
+
+    act(() => {
+      screen.getByText("start").click()
+    })
+
+    expect(within(rows()[1]).getByText(/writing/i)).toBeInTheDocument()
+    expect(within(rows()[2]).getByText(/queued/i)).toBeInTheDocument()
+  })
+
+  it("does not call a page the queue is working on 'never published'", () => {
+    // MUTANT TO KILL: leaving `StatusPill` alone. "never published" beside a
+    // page that is being written RIGHT NOW reads as a failure, and it is the
+    // one page the owner would then go and open by hand.
+    hangingFetch()
+    renderQueueRail()
+
+    act(() => {
+      screen.getByText("start").click()
+    })
+
+    expect(within(rows()[1]).queryByText(/never published/i)).toBeNull()
+    expect(within(rows()[2]).queryByText(/never published/i)).toBeNull()
+    // ...and the page the queue is NOT touching keeps the status it had, so a
+    // mutant that simply deletes the pill cannot pass this.
+    expect(within(rows()[0]).getByText("live")).toBeInTheDocument()
+  })
+
+  it("names a page whose draft failed instead of quietly leaving it blank", async () => {
+    // MUTANT TO KILL: treating `failed` as `idle`. `failed` is terminal — the
+    // queue never retries it — so a page that silently reverts to "never
+    // published" is a page the owner is never told to go and build.
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => new Response("{}", { status: 500, headers: { "content-type": "application/json" } }),
+    )
+    renderQueueRail()
+
+    act(() => {
+      screen.getByText("start").click()
+    })
+
+    await waitFor(() => expect(within(rows()[1]).getByText(/draft failed/i)).toBeInTheDocument())
+    expect(within(rows()[1]).queryByText(/never published/i)).toBeNull()
+  })
+
+  it("leaves a page the queue never touched exactly as it was", () => {
+    // MUTANT TO KILL: painting every unpublished page as "queued" whenever a
+    // queue exists. `draftJobs` is the layout's list of NEVER-BUILT steps; a
+    // page with a document the owner simply has not published is not queued,
+    // and telling him it is would send him away to wait for nothing.
+    hangingFetch()
+    render(
+      <ConnectionsProvider
+        funnelId="f1"
+        funnelSlug="camp"
+        funnelKind="funnel"
+        pages={QUEUE_PAGES}
+        initialDocs={QUEUE_PAGES.map((page) => ({
+          id: page.id,
+          name: page.name,
+          slug: page.slug,
+          position: page.position,
+          isEntry: page.isEntry,
+          doc: null,
+        }))}
+        draftJobs={[JOBS[0]]}
+      >
+        <StartQueue />
+        <StepRail />
+      </ConnectionsProvider>,
+    )
+
+    act(() => {
+      screen.getByText("start").click()
+    })
+
+    expect(within(rows()[2]).getByText("never published")).toBeInTheDocument()
   })
 })
 
