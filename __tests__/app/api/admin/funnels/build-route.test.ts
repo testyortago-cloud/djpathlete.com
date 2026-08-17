@@ -1296,7 +1296,10 @@ function reviewChanged(summary = "Retoned two seams.") {
     surviving: [],
     receipt: { changed: [], isRewrite: false } as never,
     tokensUsed: 1020,
-    error: null,
+    // Widened deliberately: `reviewDoc` reports trouble in `error` rather than
+    // throwing, so a test that overrides this field is exercising a real
+    // branch. Inferred as `null` it would be un-overridable.
+    error: null as string | null,
   }
 }
 
