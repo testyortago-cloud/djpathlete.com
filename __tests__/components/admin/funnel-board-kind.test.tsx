@@ -116,6 +116,23 @@ describe("<FunnelBoard kind='page'>", () => {
     // a funnel and nothing else.
     expect(asked).not.toContain("all of its pages")
   })
+
+  it("takes a landing page live with the PATCH its single step already gates", async () => {
+    // The other half of the pair below. Without it, "route through the funnel
+    // planner" could be satisfied by routing EVERYTHING through it — a second
+    // code path with no second page to justify it.
+    const fetchMock = goLiveOnTheOnlyCard(
+      <FunnelBoard
+        kind="page"
+        pages={[{ step: step(), funnel: funnel({ status: "draft" }) }]}
+        funnels={[funnel({ status: "draft" })]}
+        leadCounts={{}}
+      />,
+    )
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/admin/funnels/f1")
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("PATCH")
+  })
 })
 
 describe("<FunnelBoard kind='funnel'>", () => {
@@ -151,4 +168,37 @@ describe("<FunnelBoard kind='funnel'>", () => {
     expect(told).toBe("Funnel deleted.")
     expect(asked).toContain("all of its pages")
   })
+
+  it("takes a funnel live through the guarded route, not the unguarded PATCH", async () => {
+    // MUTANT KILLED: `kind="page"` hardcoded at this call site, or the prop
+    // dropped. `canGoLive` on this card means "the ENTRY page has a published
+    // version" and says nothing about pages 2..N, so the PATCH here could take
+    // a five-step funnel live with four unbuilt pages behind it — a public URL
+    // whose own buttons 404. This board was the third doorway onto that write.
+    const f = funnel({ kind: "funnel", goal: null, status: "draft" })
+    const fetchMock = goLiveOnTheOnlyCard(
+      <FunnelBoard kind="funnel" pages={[{ step: step(), funnel: f }]} funnels={[f]} leadCounts={{}} />,
+    )
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/admin/funnels/f1/publish")
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST")
+  })
 })
+
+/**
+ * Presses Go live on the only card and hands back the fetch it fired.
+ *
+ * The URL is the whole assertion: BOTH publish paths call `fetch`, so "a
+ * request was made" would pass against the unguarded write this change exists
+ * to remove.
+ */
+function goLiveOnTheOnlyCard(ui: React.ReactElement) {
+  const fetchMock = vi.fn(
+    async (_url: string, _init?: RequestInit) =>
+      new Response(JSON.stringify({ published: 2, pages: [], warnings: [] }), { status: 200 }),
+  )
+  vi.stubGlobal("fetch", fetchMock)
+  render(ui)
+  fireEvent.click(screen.getByRole("button", { name: /go live/i }))
+  return fetchMock
+}
