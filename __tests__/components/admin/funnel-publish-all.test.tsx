@@ -395,6 +395,27 @@ describe("publishing a funnel from the builder", () => {
     expect(screen.getByText(/v9 live/i)).toBeInTheDocument()
   })
 
+  it("reports an all-legacy funnel publish as a success, not a failure", async () => {
+    // MUTANT: `!body?.published` instead of `typeof body?.published !== "number"`.
+    // `funnelPublishPlan` (`publish-plan.ts:86`) skips a step that already
+    // carries a compiled version and has no `SectionDoc` to render — so a
+    // funnel made entirely of legacy GrapesJS pages produces `plan.ok` with
+    // `publish: []`, and the route still flips the funnel row live and returns
+    // a real 200 `{published: 0}`. `0` is falsy, so the naive check reported
+    // that success as "Could not publish. The live funnel is unchanged." while
+    // the funnel had, in fact, just gone live — the same defect family as the
+    // draft queue calling a failed build "done".
+    mockFetch({
+      funnelPublish: () => ({ status: 200, body: { published: 0, pages: [], warnings: [] } }),
+    })
+
+    render(<FunnelBuilder {...baseProps()} />)
+    fireEvent.click(publishFunnelButton())
+
+    await waitFor(() => expect(screen.getByText(/0 pages published/i)).toBeInTheDocument())
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
   it("keeps offering the funnel publish after only ONE page was published", async () => {
     // MUTANT: the funnel button reading the shared `upToDate`, which is what
     // shipped. `publishThisPage` also sets `publishedRevision`, so publishing

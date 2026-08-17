@@ -39,11 +39,15 @@ export interface BuildTurnResponse {
   receipt: DiffReceipt | null
   /**
    * NULL MEANS "THIS TURN PRODUCED NO DOCUMENT" and is the single flag the UI
-   * branches on. The route returns `compile: null` on exactly two paths — the
-   * model declined (`blocked`), and both attempts failed — and a non-null
-   * compile on every path that wrote a document. Adopting `doc`/`unresolved`/
-   * `danglingAnchors` from a null-compile response would replace a real
-   * verdict with the route's placeholder empties and silently unblock publish.
+   * branches on. The route returns `compile: null` on THREE paths — the model
+   * declined (`blocked`, `build/route.ts:1380`), both attempts failed
+   * (`build/route.ts:1328`), and a review pass that found nothing worth
+   * changing (`emitNoChangeReview`, `build/route.ts:1700`, reachable off a
+   * first draft too — see `runJob` in `connections-context.tsx`, which reads
+   * `outcome.review ?? outcome.turn`) — and a non-null compile on every path
+   * that wrote a document. Adopting `doc`/`unresolved`/`danglingAnchors` from a
+   * null-compile response would replace a real verdict with the route's
+   * placeholder empties and silently unblock publish.
    */
   compile: CompileSummary | null
   unresolved: UnresolvedCta[]
