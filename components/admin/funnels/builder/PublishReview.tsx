@@ -57,6 +57,16 @@ interface PublishReviewProps {
   funnelIsDraft: boolean
   /** "landing page" or "funnel" — the owner's word for the thing, not ours. */
   noun: string
+  /**
+   * What the "Publish now" below will actually take live.
+   *
+   * The findings above are always about the page on screen; on a funnel the
+   * button beside them publishes every page. Saying "Nothing is blocking this
+   * page" over a control that publishes five is the kind of near-miss wording
+   * this screen exists to remove — so the heading names the scope the BUTTON
+   * has, and the copy underneath still describes what was checked.
+   */
+  publishScope?: "page" | "funnel"
   /** Where the funnel's status control lives, for the draft warning. */
   funnelHref: string
   /** The public URL this page WOULD have, named in the draft warning. */
@@ -97,6 +107,7 @@ export function PublishReview({
   resolutionError,
   funnelIsDraft,
   noun,
+  publishScope = "page",
   funnelHref,
   publicUrl,
   canPublish,
@@ -162,12 +173,20 @@ export function PublishReview({
           <section className="rounded-xl border border-border bg-white p-4 shadow-sm">
             <h3 className="flex items-center gap-2 font-heading text-sm text-[var(--success)]">
               <ShieldCheck className="size-4" aria-hidden />
-              {upToDate ? "This page is already live" : "Nothing is blocking this page"}
+              {upToDate
+                ? publishScope === "funnel"
+                  ? "This funnel is already live"
+                  : "This page is already live"
+                : publishScope === "funnel"
+                  ? "Nothing is blocking this funnel"
+                  : "Nothing is blocking this page"}
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">
               {upToDate
                 ? `The live page is serving ${publishedVersion === null ? "this exact page" : `version ${publishedVersion}`}, and nothing has changed since. Publishing comes back as soon as you change something.`
-                : "Every button points at something real. Read the claims, check the phone view below, then publish."}
+                : publishScope === "funnel"
+                  ? "Every button on this page points at something real. Read the claims, check the phone view below, then publish — Publish now takes the whole funnel live, and every other page is checked again as it goes."
+                  : "Every button points at something real. Read the claims, check the phone view below, then publish."}
             </p>
           </section>
         )}

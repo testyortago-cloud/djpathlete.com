@@ -1161,6 +1161,12 @@ describe("FunnelBuilder — watching the page get written", () => {
 
     stream.push({ type: "result", turn: turn({ revision: 6 }) })
     stream.close()
+    // AWAITED, not just closed. The reader's loop resolves after the body ends
+    // and sets `busy`/`stream` on the way out, so a test that returned here
+    // left React updating an unmounted-in-a-moment tree outside `act` — a real
+    // warning about a real unobserved state change, not noise. Asserting the
+    // stage is gone is the cheapest way to wait for exactly that.
+    await waitFor(() => expect(screen.queryByTestId("build-stage")).not.toBeInTheDocument())
   })
 
   it("marks the running token count as an estimate and drops the tilde when it is exact", async () => {
@@ -1184,6 +1190,12 @@ describe("FunnelBuilder — watching the page get written", () => {
 
     stream.push({ type: "result", turn: turn({ revision: 6 }) })
     stream.close()
+    // AWAITED, not just closed. The reader's loop resolves after the body ends
+    // and sets `busy`/`stream` on the way out, so a test that returned here
+    // left React updating an unmounted-in-a-moment tree outside `act` — a real
+    // warning about a real unobserved state change, not noise. Asserting the
+    // stage is gone is the cheapest way to wait for exactly that.
+    await waitFor(() => expect(screen.queryByTestId("build-stage")).not.toBeInTheDocument())
   })
 
   it("routes a mid-stream 409 through the same resync as an HTTP 409", async () => {
@@ -1286,6 +1298,12 @@ describe("<FunnelBuilder> — the stage is over the preview, not in the chat", (
 
     stream.push({ type: "result", turn: turn({ revision: 6 }) })
     stream.close()
+    // AWAITED, not just closed. The reader's loop resolves after the body ends
+    // and sets `busy`/`stream` on the way out, so a test that returned here
+    // left React updating an unmounted-in-a-moment tree outside `act` — a real
+    // warning about a real unobserved state change, not noise. Asserting the
+    // stage is gone is the cheapest way to wait for exactly that.
+    await waitFor(() => expect(screen.queryByTestId("build-stage")).not.toBeInTheDocument())
   })
 })
 

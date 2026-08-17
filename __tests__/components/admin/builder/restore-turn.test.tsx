@@ -31,6 +31,11 @@ function mount(messages: BuilderMessage[], currentRevision: number) {
       busy={false}
       currentRevision={currentRevision}
       onRestore={onRestore}
+      // Required rather than defaulted: a `funnelId` that defaulted to "" would
+      // build `/admin/funnels//edit/<id>` in a `pages` message. Nothing here
+      // produces one, but the type is what stops the next caller forgetting.
+      funnelKind="funnel"
+      funnelId="funnel-1"
     />,
   )
 }
@@ -110,6 +115,8 @@ describe("go back to here", () => {
         busy
         currentRevision={5}
         onRestore={onRestore}
+        funnelKind="funnel"
+        funnelId="funnel-1"
       />,
     )
     expect(screen.getByRole("button", { name: /go back to here/i })).toBeDisabled()
@@ -125,6 +132,8 @@ describe("go back to here", () => {
         onSend={onSend}
         busy={false}
         currentRevision={5}
+        funnelKind="funnel"
+        funnelId="funnel-1"
       />,
     )
     expect(screen.queryByRole("button", { name: /go back to here/i })).not.toBeInTheDocument()

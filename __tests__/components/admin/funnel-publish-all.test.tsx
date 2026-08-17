@@ -220,6 +220,10 @@ function bodyOf(fetchMock: FetchMock, call: number): Record<string, unknown> {
 
 const publishFunnelButton = () => screen.getByRole("button", { name: /^publish funnel$/i })
 
+const composer = () => screen.getByLabelText(/describe the change/i)
+const typeMessage = (text: string) => fireEvent.change(composer(), { target: { value: text } })
+const clickSend = () => fireEvent.click(screen.getByRole("button", { name: /^send$/i }))
+
 /**
  * Radix opens on pointerdown and closes over a portal; `fireEvent.click` alone
  * does not open it in jsdom. Same driver as GenerateQuoteCardsButton's test.
@@ -391,6 +395,93 @@ describe("publishing a funnel from the builder", () => {
     expect(screen.getByText(/v9 live/i)).toBeInTheDocument()
   })
 
+  it("keeps offering the funnel publish after only ONE page was published", async () => {
+    // MUTANT: the funnel button reading the shared `upToDate`, which is what
+    // shipped. `publishThisPage` also sets `publishedRevision`, so publishing
+    // one page through the menu turned the primary into a disabled
+    // "✓ Published" — claiming the whole funnel was live, on a funnel whose row
+    // is still `draft`, with the one-click whole-funnel action gone from the
+    // screen. That is the owner's original complaint rebuilt inside the control
+    // that exists to remove it.
+    const fetchMock = mockFetch({ stepPublish: () => ({ status: 200, body: { version: 4, warnings: [] } }) })
+
+    render(<FunnelBuilder {...baseProps()} />)
+    fireEvent.click(await openPublishMenu())
+    await waitFor(() => expect(screen.getByText(/published version 4/i)).toBeInTheDocument())
+
+    // The page is done, so its own control stands down…
+    expect(await screen.findByText(/this funnel is still a draft/i)).toBeInTheDocument()
+    // …and the funnel's does NOT: nothing has taken the funnel live.
+    expect(publishFunnelButton()).toBeEnabled()
+    expect(screen.queryByRole("button", { name: /^published$/i })).toBeNull()
+
+    fireEvent.click(publishFunnelButton())
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/admin/funnels/f1/publish",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    )
+  })
+
+  it("stops calling the funnel a draft once it has taken it live", async () => {
+    // MUTANT: `funnelIsDraft = props.funnelStatus !== "published"` alone, which
+    // is what shipped. `funnelStatus` is a PROP and nothing reloads the page, so
+    // every review opened after a successful one-click publish went on saying
+    // "This funnel isn't live yet — set it to Published", linking to the very
+    // screen this feature exists to delete. The route flips the row before it
+    // returns 200, so this is a fact, not a guess.
+    mockFetch({
+      funnelPublish: () => ({ status: 200, body: { published: 3, pages: [], warnings: [] } }),
+      build: () => sseResponse([{ type: "result", turn: turn({ revision: 9, danglingAnchors: [DANGLING] }) }]),
+    })
+
+    render(<FunnelBuilder {...baseProps({ initialDanglingAnchors: [DANGLING] })} />)
+    // Before: the review says the funnel is a draft.
+    fireEvent.click(screen.getByRole("button", { name: /\d+ to check/i }))
+    expect(screen.getByText(/isn't live yet/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /back to editing/i }))
+
+    fireEvent.click(publishFunnelButton())
+    await waitFor(() => expect(screen.getByText(/3 pages published/i)).toBeInTheDocument())
+
+    // A turn moves the revision on, so there is something to publish again and
+    // the review is reachable exactly as it was.
+    typeMessage("make the headline shorter")
+    clickSend()
+    await waitFor(() => expect(publishFunnelButton()).toBeEnabled())
+
+    fireEvent.click(screen.getByRole("button", { name: /\d+ to check/i }))
+    expect(screen.queryByText(/isn't live yet/i)).toBeNull()
+  })
+
+  it("hides the whole split control in review mode, menu included", () => {
+    // MUTANT: dropping the `mode === "review"` guard from the funnel arm. The
+    // page arm has been covered since an earlier stage ("the header button is
+    // gone in review"); the funnel arm brought a second affordance with it —
+    // and "Publish funnel", "More publish options" and "Publish now" all on
+    // screen at once is three publish controls, which is the complaint that
+    // started this feature with one more added.
+    render(<FunnelBuilder {...baseProps({ initialDanglingAnchors: [DANGLING] })} />)
+    fireEvent.click(screen.getByRole("button", { name: /\d+ to check/i }))
+
+    expect(screen.getByRole("button", { name: /publish now/i })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^publish funnel$/i })).toBeNull()
+    expect(screen.queryByRole("button", { name: /more publish options/i })).toBeNull()
+  })
+
+  it("names the funnel, not the page, in a review whose button publishes the funnel", () => {
+    // MUTANT: leaving the review's heading page-scoped. "Nothing is blocking
+    // this page" sitting directly above a button that takes five pages live is
+    // the near-miss wording this screen exists to remove — the reader is being
+    // told the scope of the CHECK where they need the scope of the ACT.
+    render(<FunnelBuilder {...baseProps({ initialDanglingAnchors: [DANGLING] })} />)
+    fireEvent.click(screen.getByRole("button", { name: /\d+ to check/i }))
+
+    expect(screen.getByText(/nothing is blocking this funnel/i)).toBeInTheDocument()
+    expect(screen.queryByText(/nothing is blocking this page/i)).toBeNull()
+  })
+
   it("makes the review's 'Publish now' the same act as the header's", async () => {
     // MUTANT: leaving the review's `onPublish` on `publishThisPage` for a
     // funnel — which is what the draft shipped. The review is reachable from
@@ -526,6 +617,106 @@ describe("a funnel-wide publish refusal", () => {
     // real writer, so the proof is the build request for THAT page and no other.
     await waitFor(() => expect(buildUrls(fetchMock)).toContain("/api/admin/funnels/steps/s2/build"))
     expect(buildUrls(fetchMock)).not.toContain("/api/admin/funnels/steps/s3/build")
+  })
+
+  it("lets the fix it offers REOPEN the gate it shut", async () => {
+    // MUTANT: `setServerBlockers(...)` on the funnel path with nothing that
+    // clears it — which is what shipped, and it makes the headline feature's
+    // primary error path a trap. `serverBlockers` is cleared in exactly one
+    // other place, `applyTurn`, which only runs for THIS step's turns. So the
+    // owner presses the "Generate it now" the refusal itself put in front of
+    // him, the sibling page is written perfectly well through the provider, and
+    // both publish controls stay disabled until he reloads the browser.
+    //
+    // The per-page 422 path self-heals only because the fix IT offers ("Fix it
+    // for me") is a chat turn about this page. This path had no such property.
+    const fetchMock = mockFetch({
+      funnelPublish: () => ({
+        status: 422,
+        body: {
+          error: "This funnel could not be published.",
+          pages: [
+            { stepId: "s2", stepName: "Thank you", problems: ["Thank you has no content yet."], blank: true },
+          ],
+        },
+      }),
+    })
+
+    renderInProvider(baseProps(), [{ stepId: "s2", prompt: "Write the thank-you page", revision: 0 }])
+    fireEvent.click(publishFunnelButton())
+
+    await waitFor(() => expect(publishFunnelButton()).toBeDisabled())
+
+    fireEvent.click(await screen.findByRole("button", { name: /generate it now/i }))
+    await waitFor(() => expect(buildUrls(fetchMock)).toContain("/api/admin/funnels/steps/s2/build"))
+
+    // REOPENED BY THE DRAFT LANDING, not by the click. The gate reopens because
+    // a page really has been written, which is the honest trigger — a click
+    // that reopened it would unblock publish for a page that had just failed.
+    await waitFor(() => expect(publishFunnelButton()).toBeEnabled())
+    expect(screen.queryByText(/thank you has no content yet/i)).not.toBeNull()
+  })
+
+  it("keeps the gate shut when the page it named FAILS to draft", async () => {
+    // MUTANT: clearing `serverBlockers` on the click instead of on the phase.
+    // The refusal would be dismissed by pressing a button, and publish would be
+    // re-armed over a page that is still exactly as blank as it was reported.
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url) === "/api/admin/funnels/f1/publish") {
+        return jsonResponse(422, {
+          error: "This funnel could not be published.",
+          pages: [
+            { stepId: "s2", stepName: "Thank you", problems: ["Thank you has no content yet."], blank: true },
+          ],
+        })
+      }
+      // The build route refuses: `runJob` reports this step "failed".
+      return jsonResponse(500, {})
+    })
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    renderInProvider(baseProps(), [{ stepId: "s2", prompt: "Write the thank-you page", revision: 0 }])
+    fireEvent.click(publishFunnelButton())
+    await waitFor(() => expect(publishFunnelButton()).toBeDisabled())
+
+    fireEvent.click(await screen.findByRole("button", { name: /generate it now/i }))
+    await waitFor(() =>
+      expect(buildUrls(fetchMock as unknown as FetchMock)).toContain("/api/admin/funnels/steps/s2/build"),
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(publishFunnelButton()).toBeDisabled()
+  })
+
+  it("says so rather than doing nothing when a blank page has no job to draft", async () => {
+    // MUTANT: handing `draftStep` to the chat raw. It is a NO-OP when the layout
+    // composed no job for that step — a page with neither a goal nor a template
+    // composes no creation prompt — so the page is reported blank, offered the
+    // button, and the press does nothing whatsoever. A control that silently
+    // does nothing reads as a broken app; this repo calls that
+    // `silent_gate_reads_as_broken`.
+    const fetchMock = mockFetch({
+      funnelPublish: () => ({
+        status: 422,
+        body: {
+          error: "This funnel could not be published.",
+          pages: [
+            { stepId: "s2", stepName: "Thank you", problems: ["Thank you has no content yet."], blank: true },
+          ],
+        },
+      }),
+    })
+
+    // NO JOB for s2 — the case the provider cannot report on its own.
+    renderInProvider(baseProps(), [{ stepId: "s3", prompt: "Write the offer page", revision: 0 }])
+    fireEvent.click(publishFunnelButton())
+
+    fireEvent.click(await screen.findByRole("button", { name: /generate it now/i }))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/can't be written automatically/i)))
+    expect(buildUrls(fetchMock)).toHaveLength(0)
   })
 })
 

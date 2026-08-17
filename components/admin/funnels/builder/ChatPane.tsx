@@ -71,12 +71,14 @@ interface ChatPaneProps {
    * `page` or `funnel` and the funnel's own id — needed to link a `pages`
    * message's problems back to the step they are about, via `adminStepHref`.
    *
-   * Optional so a caller with no funnel-wide publish wired up (this file's own
-   * `restore-turn.test.tsx`, which never produces a `pages` message) does not
-   * have to supply values that would go unused.
+   * REQUIRED, NOT DEFAULTED. `funnelId = ""` builds `/admin/funnels//edit/<id>`
+   * — a 404 offered as the way out of a publish refusal. Unreachable today
+   * because `FunnelBuilder` is the only caller and always passes both, which is
+   * exactly why it should be the type system holding it and not a default that
+   * would quietly absorb the next caller's omission.
    */
-  funnelKind?: string
-  funnelId?: string
+  funnelKind: string
+  funnelId: string
   /** One named step, now — the `pages` message's "Generate it now". */
   onDraftStep?: (stepId: string) => void
 }
@@ -106,8 +108,8 @@ export function ChatPane({
   pinned,
   currentRevision,
   onRestore,
-  funnelKind = "funnel",
-  funnelId = "",
+  funnelKind,
+  funnelId,
   onDraftStep,
 }: ChatPaneProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
