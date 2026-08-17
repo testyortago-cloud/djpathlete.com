@@ -1,5 +1,12 @@
 import { z } from "zod"
-import { SECTION_BUILDER_MAX_MESSAGE_LENGTH } from "@/lib/funnels/sections/builder-config"
+// `apply.ts` is a leaf — zod and the section registry, nothing else — so this
+// does not drag server code into any bundle that imports a validator.
+import { opSchema } from "@/lib/funnels/sections/apply"
+import {
+  SECTION_BUILDER_MAX_MESSAGE_LENGTH,
+  SECTION_BUILDER_MAX_OPS,
+  SECTION_REVIEW_MAX_ROUNDS,
+} from "@/lib/funnels/sections/builder-config"
 import {
   ENTRY_STEP_SLUG,
   FUNNEL_TEMPLATES,
@@ -362,14 +369,52 @@ export const buildPolishRequestSchema = z.object({
 })
 
 /**
- * Reset and polish FIRST: a body carrying `action: "reset"` or
- * `action: "polish"` fails the message member (no `message`, and the literal
- * disagrees), and a `{message, revision}` body fails both, so the union is
- * unambiguous in every direction rather than order-dependent.
+ * TAKING THE POLISH THE REVIEWER PROPOSED.
+ *
+ * `action: "polish"` now WRITES NOTHING — it streams back a proposal and stops.
+ * This is the owner saying yes to one. It is a separate action rather than a
+ * flag on the polish body because the two do genuinely different things: one
+ * spends five model calls and touches no row, the other spends none and is the
+ * only one of the pair that can move a revision.
+ *
+ * `ops` IS THE PAYLOAD, AND DELIBERATELY NOT `doc`. The server re-applies these
+ * against its OWN copy of the page, so the worst a tampered-with body can do is
+ * describe a legal edit — which is the same authority the owner already has
+ * through the chat. A body carrying a document would let any admin session
+ * write any document, skipping `applyOps` entirely.
+ *
+ * `opSchema` is the SAME schema the route parses model output with. A proposal
+ * arriving here has already been through it once on the way out; parsing it
+ * again on the way back in is not redundant, because what comes back is
+ * whatever the client sent, not what the server sent it.
+ *
+ * `.min(1)` because an empty batch is not a polish. `reviewDoc` only reports
+ * `changed: true` when it has ops, so an empty array here means either a client
+ * bug or a hand-made request, and both deserve a 400 rather than a turn that
+ * says the reviewer changed something and changed nothing.
+ */
+export const buildApplyPolishRequestSchema = z.object({
+  action: z.literal("apply_polish"),
+  revision: z.number().int().min(0),
+  // THE PRODUCT, not `SECTION_BUILDER_MAX_OPS` alone. The reviser is capped at
+  // that many ops PER ROUND and the review runs up to `SECTION_REVIEW_MAX_ROUNDS`
+  // of them, accumulating into one `allOps` batch (review/pipeline.ts). Capping
+  // at the per-round number would be correct only while rounds === 1, and would
+  // start rejecting legitimate proposals the day somebody raises it — the exact
+  // silent-ceiling bug the pipeline's own comment warns about for the loop.
+  ops: z.array(opSchema).min(1).max(SECTION_BUILDER_MAX_OPS * SECTION_REVIEW_MAX_ROUNDS),
+})
+
+/**
+ * Reset, polish and apply_polish FIRST: a body carrying any of those `action`
+ * literals fails the message member (no `message`, and the literal disagrees),
+ * and a `{message, revision}` body fails all three, so the union is unambiguous
+ * in every direction rather than order-dependent.
  */
 export const buildRequestSchema = z.union([
   buildResetRequestSchema,
   buildPolishRequestSchema,
+  buildApplyPolishRequestSchema,
   buildMessageRequestSchema,
 ])
 

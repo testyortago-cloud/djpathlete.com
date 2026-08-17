@@ -40,8 +40,8 @@ export const BUILD_PHASE_LABELS: Record<BuildPhase, string> = {
 /**
  * One event on the wire.
  *
- * `result` and `fail` are TERMINAL and mutually exclusive: exactly one of them
- * ends a stream that opened at all.
+ * `result`, `proposal` and `fail` are TERMINAL and mutually exclusive: exactly
+ * one of them ends a stream that opened at all.
  *
  * `fail` carries an HTTP `status` and the JSON `body` that a non-streaming
  * route would have returned. THAT IS THE WHOLE POINT OF IT. The failures that
@@ -98,6 +98,26 @@ export type BuildStreamEvent =
    * better failure than a client that misses the page.
    */
   | { type: "review"; turn: unknown }
+  /**
+   * The review ran and WROTE NOTHING. The third terminal event.
+   *
+   * This is the Polish button's answer. `review` above says "the reviewer has
+   * already changed your page"; `proposal` says "here is what it would change,
+   * you decide" — and the difference is the whole feature. Nothing has been
+   * written when this is emitted: no turn, no revision movement, no row.
+   *
+   * `proposal: null` MEANS THE REVIEWER FOUND NOTHING WORTH CHANGING, and it is
+   * still terminal. A stream that ended without a terminal event reads to the
+   * client as a dropped connection, so "nothing to do" has to be said out loud
+   * rather than by falling silent. `summary` carries the reviewer's own words
+   * for it, which is why it sits on the event rather than inside `proposal`.
+   *
+   * A `proposal` never co-occurs with a `result`: the propose path has no build
+   * turn in front of it. `readTurnStream` still refuses to let one overwrite
+   * the other, because a wire contract that depends on the server never doing
+   * something is one bug away from being wrong.
+   */
+  | { type: "proposal"; proposal: unknown; summary: string }
   | { type: "fail"; status: number; body: unknown }
 
 /**

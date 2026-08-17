@@ -82,7 +82,7 @@ import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation
 import { appendTurn, getDraft, listTurns, revertToRevision } from "@/lib/db/funnel-builder"
 import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
-import { applyOps, type DiffReceipt } from "@/lib/funnels/sections/apply"
+import { applyOps, type DiffReceipt, type SectionOp } from "@/lib/funnels/sections/apply"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import {
@@ -568,6 +568,18 @@ export const POST = withAudit(
         })
       }
 
+      if (parsed.data.action === "apply_polish") {
+        return await handleApplyPolish({
+          stepId,
+          funnelId: step.funnel_id,
+          stepSlug: step.slug,
+          draft,
+          expectedRevision: parsed.data.revision,
+          ops: parsed.data.ops,
+          userId,
+        })
+      }
+
       return await handleBuild({
         stepId,
         funnelId: step.funnel_id,
@@ -641,6 +653,149 @@ async function handleReset(
     source: "revert",
   }
   return NextResponse.json(response)
+}
+
+// ---------------------------------------------------------------------------
+// Taking the polish the reviewer proposed.
+//
+// `action: "polish"` streams a proposal and writes nothing. This is the owner
+// saying yes to one. There is NO MODEL CALL here — the thinking was done and
+// paid for on the propose leg — so it answers as a plain JSON `TurnResponse`,
+// exactly like `action: "reset"`, rather than opening a stream to say one
+// thing.
+//
+// THE OPS ARE RE-APPLIED TO THE SERVER'S OWN DOCUMENT. The client sends what
+// to do, never what the page should become. That is what keeps `applyOps` —
+// with its duplicate-id checks, its unknown-section rejection and its
+// transactional batch — on the path of every write, instead of trusting a
+// document that has been out of the server's hands.
+// ---------------------------------------------------------------------------
+
+interface ApplyPolishArgs {
+  stepId: string
+  funnelId: string
+  stepSlug: string
+  draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>
+  expectedRevision: number
+  ops: SectionOp[]
+  userId: string
+}
+
+async function handleApplyPolish(args: ApplyPolishArgs): Promise<Response> {
+  const { stepId, funnelId, stepSlug, draft, expectedRevision, ops, userId } = args
+
+  // Same refusal as the build path, for the same reason: a document no op can
+  // repair cannot be polished either, and `applyOps` would reject it at its
+  // entry parse without inspecting an op.
+  if (draft.docInvalid || draft.doc === null) {
+    return NextResponse.json(
+      { error: "There is no readable page here to apply a polish to.", code: "doc_invalid", currentRevision: draft.revision },
+      { status: 422 },
+    )
+  }
+
+  // THE PROPOSAL WENT STALE. The owner edited the page — in this tab or
+  // another — while the proposal sat on screen waiting for an answer. Their
+  // edit wins, and the ops are thrown away rather than applied to a page they
+  // were never computed against.
+  //
+  // Body byte-for-byte identical to every other 409 here, because the client
+  // feeds all of them to one `handleErrorResponse`.
+  if (draft.revision !== expectedRevision) {
+    return NextResponse.json(
+      {
+        error: "You changed this page while the polish was waiting. It has been discarded — run Polish again.",
+        code: "stale_revision",
+        currentRevision: draft.revision,
+      },
+      { status: 409 },
+    )
+  }
+
+  const applied = applyOps(draft.doc, ops)
+  if (!applied.ok) {
+    // The ops were computed against this exact document a moment ago and the
+    // revision has not moved, so a rejection here is not an ordinary outcome —
+    // it means the stored document and the revision disagree. Refuse loudly.
+    console.error("[funnels/apply-polish] ops rejected against the current draft:", applied.errors)
+    return NextResponse.json(
+      { error: "That polish no longer fits this page. Run Polish again.", code: "ops_rejected" },
+      { status: 422 },
+    )
+  }
+
+  const context = await loadPageContext(funnelId, stepSlug)
+  const { catalogues, error: catalogueError } = await loadCataloguesSafely()
+  const resolution = resolveSafely(applied.doc, catalogues, catalogueError, context.allPages)
+  const compile = compileDoc(resolution.doc, context.funnelBasePath)
+
+  const turn = await appendTurn({
+    stepId,
+    expectedRevision,
+    role: "assistant",
+    // STILL `review`, not `ai`. The reviewer wrote these words and these ops;
+    // the owner only agreed to them. Migration 00209's whole argument is that
+    // "the builder wrote this, then the reviewer changed that" is a different
+    // story from "the builder wrote this" — and the owner pressing Apply does
+    // not make the reviewer's edit the builder's.
+    source: "review",
+    status: "complete",
+    message: applyPolishMessage(ops.length),
+    ops,
+    doc: resolution.doc,
+    compileStatus: compileStatus(compile),
+    compileProblems: { problems: compile.problems, warnings: compile.warnings },
+    unresolved: unresolvedForStorage(resolution),
+    model: SECTION_BUILDER_MODEL,
+    // NO `tokensInput`. The spend was recorded on the propose leg, which is
+    // where the model calls happened. Recording it again here would double-count
+    // every polish the owner accepts and make accepted polishes look twice as
+    // expensive as discarded ones.
+    createdBy: userId,
+  })
+
+  if (!turn.ok) {
+    if (turn.reason === "stale_revision") {
+      return NextResponse.json(
+        {
+          error: "You changed this page while the polish was waiting. It has been discarded — run Polish again.",
+          code: "stale_revision",
+          currentRevision: turn.currentRevision,
+        },
+        { status: 409 },
+      )
+    }
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
+  }
+
+  const response: TurnResponse = {
+    revision: turn.revision,
+    doc: resolution.doc,
+    reply: applyPolishMessage(ops.length),
+    blocked: false,
+    receipt: applied.receipt,
+    compile,
+    unresolved: resolution.unresolved,
+    danglingAnchors: resolution.danglingAnchors,
+    resolutionError: resolution.error,
+    source: "review",
+  }
+  return NextResponse.json(response)
+}
+
+/**
+ * What the transcript says about an accepted polish.
+ *
+ * The reviewer's own summary is NOT reused here. It is written in the future
+ * conditional — "I'd tighten the hero and retone one seam" — because when it
+ * was generated nothing had happened yet. Replaying it as the record of an edit
+ * that HAS happened would leave the transcript describing the owner's page in a
+ * tense that no longer applies.
+ */
+function applyPolishMessage(opCount: number): string {
+  return opCount === 1
+    ? "Applied the polish — one change."
+    : `Applied the polish — ${opCount} changes.`
 }
 
 // ---------------------------------------------------------------------------
@@ -887,7 +1042,10 @@ async function handlePolish(args: PolishArgs): Promise<Response> {
       baseRevision: draft.revision,
       context,
       catalogues,
-      standalone: true,
+      // THE POLISH BUTTON PROPOSES. It reads the page, decides what it would
+      // change, and writes nothing — the owner accepts it with `apply_polish`
+      // or throws it away for free.
+      mode: "propose",
       catalogueError,
       startTime,
     }),
@@ -1481,8 +1639,11 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
     startTime,
     // The build turn has already emitted `result`, so this stage must not
     // emit a second terminal event and must stay silent when it finds
-    // nothing.
-    standalone: false,
+    // nothing. It writes its improvement directly — unchanged behaviour, and
+    // deliberately NOT switched to `propose`: the owner has invested nothing
+    // in a page the model wrote seconds ago, and a proposal dialog on every
+    // first draft would be a question nobody wants asked.
+    mode: "apply",
   })
 }
 
@@ -1514,21 +1675,34 @@ interface ReviewStageArgs {
   catalogueError: string | null
   startTime: number
   /**
-   * True on the Polish path, where this stage IS the turn.
+   * WHETHER THIS STAGE MAY WRITE.
    *
-   * It changes what silence means. After a build, a review that found nothing
-   * should say nothing — the owner asked for a page and already has one, and an
-   * "I changed nothing" entry on every draft is noise. After a Polish press the
-   * owner asked THIS question directly, so "nothing needed changing" is the
-   * answer and has to be both written down and delivered as a terminal event —
-   * otherwise the stream ends with no terminal at all and the client correctly
-   * reports a dropped connection.
+   * `"apply"` — the automatic review that rides on a first draft. It appends
+   * its own turn the moment the reviser returns, because the owner has not
+   * invested anything in a page the model wrote thirty seconds ago and a
+   * background improvement they never have to think about is the right
+   * behaviour there. Silence is also right there: a review that found nothing
+   * says nothing, because an "I changed nothing" entry on every draft is noise.
+   *
+   * `"propose"` — the Polish button. THE STAGE WRITES NOTHING. It runs the same
+   * critics, the same reviser, the same resolve and the same compile, and then
+   * emits the result as a `proposal` for the owner to accept or throw away.
+   * This is a button pressed on a page they have been editing, and changing it
+   * under them and calling the transcript an undo is not consent.
+   *
+   * It also changes what silence means, in the opposite direction from
+   * `"apply"`: here the owner asked the question directly, so "nothing needed
+   * changing" is the answer and must be delivered as a terminal event — a
+   * stream that ends with no terminal reads to the client as a dropped
+   * connection. It is delivered as `{proposal: null}` rather than written to
+   * the transcript, because on this path nothing happened and no revision
+   * should move to record that nothing happened.
    */
-  standalone: boolean
+  mode: "apply" | "propose"
 }
 
 async function runReviewStage(args: ReviewStageArgs): Promise<void> {
-  const { emit, stepId, userId, doc, baseRevision, context, catalogues, catalogueError, startTime, standalone } = args
+  const { emit, stepId, userId, doc, baseRevision, context, catalogues, catalogueError, startTime, mode } = args
 
   const reviewStartedAt = Date.now()
   emit({ type: "phase", phase: "reviewing" })
@@ -1544,7 +1718,7 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
     // of the thing that did. On the Polish path it IS the thing they asked
     // for, so it becomes a real failure event.
     console.warn("[funnels/build] review stage did not complete:", review.error)
-    if (standalone) {
+    if (mode === "propose") {
       emit({
         type: "fail",
         status: 502,
@@ -1555,8 +1729,18 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
   }
 
   if (!review.changed) {
-    if (!standalone) return
-    await emitNoChangeReview({ emit, stepId, userId, baseRevision, summary: review.summary })
+    if (mode === "apply") return
+    // This used to append a turn saying "I found nothing worth changing",
+    // advancing the revision to record that nothing happened. That helper is
+    // deleted: on the propose path the owner is being asked a question, and
+    // "there is nothing to decide" is an answer, not an edit. The sentence is
+    // still said — it rides on the terminal event instead of on a row.
+    emit({
+      type: "proposal",
+      proposal: null,
+      summary:
+        review.summary.trim() === "" ? "I read the page through and found nothing worth changing." : review.summary,
+    })
     return
   }
 
@@ -1567,8 +1751,35 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
   // idempotent by design — but a reviser that rewrote a CTA's `ref` has
   // introduced a NAME that has never been resolved, and skipping this would
   // store it unresolved and block publish with no warning anywhere.
+  //
+  // DONE ON THE PROPOSE PATH TOO, before the owner sees anything. What the
+  // preview shows has to be what Apply produces — resolving only at Apply would
+  // mean previewing a document with an unresolved CTA in it and discovering
+  // that only after saying yes.
   const resolution = resolveSafely(review.doc, catalogues, catalogueError, context.allPages)
   const compile = compileDoc(resolution.doc, context.funnelBasePath)
+
+  if (mode === "propose") {
+    // THE WHOLE FEATURE, IN ONE EARLY RETURN. No `appendTurn`, so no row, no
+    // revision movement, and nothing for the owner to undo if they say no.
+    emit({
+      type: "proposal",
+      summary: review.summary,
+      proposal: {
+        baseRevision,
+        // What Apply re-applies. The document below is for the preview only.
+        ops: review.ops,
+        doc: resolution.doc,
+        summary: review.summary,
+        receipt: review.receipt,
+        compile,
+        unresolved: resolution.unresolved,
+        danglingAnchors: resolution.danglingAnchors,
+        resolutionError: resolution.error,
+      },
+    })
+    return
+  }
 
   const reviewTurn = await appendTurn({
     stepId,
@@ -1597,31 +1808,24 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
     createdBy: userId,
   })
 
-  // A LOST RACE IS NOT AN ERROR ON THE AUTOMATIC PATH.
+  // A LOST RACE IS NOT AN ERROR HERE, AND THIS IS NOW THE ONLY PATH THAT
+  // REACHES IT.
   //
-  // It means the owner edited the page while the review was running, and their
-  // edit wins: a background improvement must never beat a human who was typing
-  // at the same moment. They already have a correct page and a correct revision
-  // from `result`, so the right thing to do is drop the polish silently.
+  // Only `mode: "apply"` gets this far — the propose path returned above,
+  // before `appendTurn` — so this is always the automatic review riding on a
+  // build turn. A lost race means the owner edited the page while the review
+  // was running, and their edit wins: a background improvement must never beat
+  // a human who was typing at the same moment. They already have a correct page
+  // and a correct revision from `result`, so the right thing to do is drop the
+  // polish silently.
   //
-  // ON THE POLISH PATH THERE IS NO `result` BEHIND IT. Returning silently there
-  // ends the stream with no terminal event at all, and the client — correctly —
-  // reports a dropped connection instead of resyncing the revision. So the same
-  // 409 the pre-flight check would have produced is emitted as a `fail`, which
-  // `handleErrorResponse` already knows how to turn into a resync.
+  // The `standalone` branch that used to live here — emitting a 409 so the
+  // Polish path had a terminal event — is GONE rather than left unreachable.
+  // Polish can no longer lose this race because it no longer writes; its own
+  // race is checked in `handleApplyPolish`, which returns a real 409 response
+  // rather than an event.
   if (!reviewTurn.ok) {
     console.warn("[funnels/build] review turn lost the compare-and-swap; the owner's own edit wins")
-    if (standalone) {
-      emit({
-        type: "fail",
-        status: 409,
-        body: {
-          error: "Someone else changed this page while the reviewer was reading it. Reload and try again.",
-          code: "stale_revision",
-          currentRevision: "currentRevision" in reviewTurn ? reviewTurn.currentRevision : baseRevision,
-        },
-      })
-    }
     return
   }
 
@@ -1637,70 +1841,6 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
       unresolved: resolution.unresolved,
       danglingAnchors: resolution.danglingAnchors,
       resolutionError: resolution.error,
-      source: "review",
-    } satisfies TurnResponse,
-  })
-}
-
-/**
- * The Polish path's "nothing needed changing" answer.
- *
- * Written down as a real turn rather than emitted as a bare toast, because the
- * owner asked a question and the transcript is where this builder's answers
- * live — a verdict that vanishes on reload is a verdict they will ask for
- * again. The turn carries NO document: `compile === null` on the client side
- * moves the revision and appends the message without touching the preview,
- * which is exactly right for a turn that changed nothing.
- */
-async function emitNoChangeReview(args: {
-  emit: (event: BuildStreamEvent) => void
-  stepId: string
-  userId: string
-  baseRevision: number
-  summary: string
-}): Promise<void> {
-  const { emit, stepId, baseRevision, summary, userId } = args
-  const reply = summary.trim() === "" ? "I read the page through and found nothing worth changing." : summary
-
-  const turn = await appendTurn({
-    stepId,
-    expectedRevision: baseRevision,
-    role: "assistant",
-    source: "review",
-    status: "complete",
-    message: reply,
-    model: SECTION_BUILDER_MODEL,
-    createdBy: userId,
-  })
-
-  if (!turn.ok) {
-    // The owner edited while the review ran. Their edit wins, and the stream
-    // still has to terminate — a Polish that ends in silence reads as a
-    // dropped connection.
-    emit({
-      type: "fail",
-      status: 409,
-      body: {
-        error: "Someone else changed this page while the reviewer was reading it. Reload and try again.",
-        code: "stale_revision",
-        currentRevision: turn.ok === false && "currentRevision" in turn ? turn.currentRevision : baseRevision,
-      },
-    })
-    return
-  }
-
-  emit({
-    type: "result",
-    turn: {
-      revision: turn.revision,
-      doc: null,
-      reply,
-      blocked: false,
-      receipt: null,
-      compile: null,
-      unresolved: [],
-      danglingAnchors: [],
-      resolutionError: null,
       source: "review",
     } satisfies TurnResponse,
   })

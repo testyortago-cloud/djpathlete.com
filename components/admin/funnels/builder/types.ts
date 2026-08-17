@@ -14,12 +14,12 @@
 // safest change is to export the route's interface in a later stage and delete
 // this one.
 
-import type { DiffReceipt } from "@/lib/funnels/sections/apply"
+import type { DiffReceipt, SectionOp } from "@/lib/funnels/sections/apply"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 import type { DanglingAnchor, UnresolvedCta } from "@/lib/funnels/sections/resolve"
 import type { PagePublishProblem } from "@/lib/funnels/publish-plan"
 
-export type { DanglingAnchor, DiffReceipt, PagePublishProblem, SectionDoc, UnresolvedCta }
+export type { DanglingAnchor, DiffReceipt, PagePublishProblem, SectionDoc, SectionOp, UnresolvedCta }
 
 /** Mirror of the route's `CompileSummary`. */
 export interface CompileSummary {
@@ -67,6 +67,38 @@ export interface BuildTurnResponse {
    * that does not know the value is a client that cannot branch on it.
    */
   source: "ai" | "revert" | "review"
+}
+
+/**
+ * What Polish came back with, held on the client and written nowhere.
+ *
+ * MIRRORS the route's `proposal` payload, for the same reason `BuildTurnResponse`
+ * mirrors `TurnResponse`: the route does not export it.
+ *
+ * The invariant that matters: NOTHING IN HERE HAS BEEN SAVED. `baseRevision` is
+ * the revision the reviewer read, not one it created — no turn was appended and
+ * `funnel_steps.doc_revision` has not moved. Apply posts `ops` back and the
+ * server re-applies them under a compare-and-swap on `baseRevision`; Discard
+ * drops this object and there is nothing to undo.
+ *
+ * `doc` is carried ONLY so the preview can show the owner what they would be
+ * agreeing to. It is deliberately not what Apply sends — a client that posted a
+ * document could post any document, so `ops` is the wire and the server's own
+ * copy of the page is the base they are applied to.
+ */
+export interface PolishProposal {
+  /** The revision the review read. Apply's optimistic lock. */
+  baseRevision: number
+  /** What Apply re-applies, server-side. */
+  ops: SectionOp[]
+  /** Resolved and compiled, for the preview only. */
+  doc: SectionDoc
+  summary: string
+  receipt: DiffReceipt | null
+  compile: CompileSummary
+  unresolved: UnresolvedCta[]
+  danglingAnchors: DanglingAnchor[]
+  resolutionError: string | null
 }
 
 /** The error bodies the build route returns, flattened. */
