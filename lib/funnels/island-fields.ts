@@ -40,12 +40,20 @@ export const ISLAND_TRAITS: Record<IslandName, IslandTrait[]> = {
       options: [
         { id: "message", label: "Show a message" },
         { id: "redirect", label: "Redirect to a URL" },
+        // Without this option the owner cannot switch a form to selling at all,
+        // which would make eventId below purely decorative — the same mistake
+        // the comment above this select records about redirectUrl.
+        { id: "checkout", label: "Take payment for a camp" },
       ],
     },
     { name: "successMessage", label: "Success message", type: "text" },
     { name: "redirectUrl", label: "Redirect URL (if redirecting)", type: "text" },
     { name: "consentText", label: "Consent text (optional)", type: "text" },
     { name: "fields", label: "Fields (JSON)", type: "json" },
+    // The camp a checkout form sells. A uuid the OWNER supplies here, never
+    // the model — UUID_FIELD_PATHS tells the prompt to omit it, and publishGate
+    // verifies it names a camp that can actually take money.
+    { name: "eventId", label: "Camp / clinic ID", type: "text" },
   ],
   checkout: [
     // Without this the owner could never switch a buy button from a program to

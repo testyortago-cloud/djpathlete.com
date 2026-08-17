@@ -838,6 +838,25 @@ ${ROOT} .djp-form select.djp-control {
 ${ROOT} .djp-form .djp-form-submit { width: 100%; margin-top: 0.35rem; }
 ${ROOT} .djp-form .djp-form-submit:disabled { opacity: 0.6; cursor: progress; }
 
+/* The waiver document, above the tick that accepts it. Scrolls rather than
+   pushing the button off the page: on a phone the whole form is one column, and a
+   full waiver inline would put "Pay" several screens below the last field.
+   NO BACKTICKS ANYWHERE IN THIS FILE — it is one JS template literal, and a
+   backtick in a comment ends it at a line of prose. */
+${ROOT} .djp-form .djp-waiver {
+  max-height: 11rem;
+  overflow-y: auto;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--djp-radius, 0.6rem);
+  background: var(--surface);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+${ROOT} .djp-form .djp-waiver p { margin: 0 0 0.6rem; }
+${ROOT} .djp-form .djp-waiver p:last-child { margin-bottom: 0; }
+
 ${ROOT} .djp-form .djp-consent {
   margin: 0;
   font-size: 0.8rem;

@@ -36,10 +36,20 @@ interface FunnelFormProps {
   formKey: string
   fields: FunnelFormField[]
   submitLabel: string
-  successMode: "message" | "redirect"
+  successMode: "message" | "redirect" | "checkout"
   successMessage: string
   redirectUrl?: string
   consentText?: string
+  /**
+   * The active liability waiver, already rendered to HTML by the server wrapper.
+   *
+   * PRESENT ONLY ON A CHECKOUT FORM, and what makes the consent tick beside it
+   * informed rather than nominal: the server files the waiver document's id, the
+   * visitor's IP and their user agent as evidence of agreement, so the document
+   * has to be in front of them. `null` falls back to a link, which is the same
+   * fallback EventSignupModal makes for the same reason.
+   */
+  waiverHtml?: string | null
   isPreview: boolean
   /**
    * The builder canvas is editing this page. Stamps `data-edit` anchors and
@@ -80,6 +90,7 @@ export function FunnelForm({
   successMessage,
   redirectUrl,
   consentText,
+  waiverHtml,
   isPreview,
   editable = false,
 }: FunnelFormProps) {
@@ -133,6 +144,20 @@ export function FunnelForm({
         const body = (await response.json().catch(() => null)) as { error?: string } | null
         setError(body?.error ?? "Something went wrong. Please try again.")
         setStatus("error")
+        return
+      }
+
+      // A CHECKOUT FORM'S SUCCESS IS A REDIRECT TO STRIPE, and it is checked
+      // before `successMode` on purpose: if a page published as "message" is
+      // later turned into a checkout form, the server is the thing that knows,
+      // and thanking someone for a payment they never made is the worse failure.
+      //
+      // Only https, and only a URL the SERVER produced — this is not owner input,
+      // so there is no allowlist to consult, but the scheme check keeps a
+      // compromised or mocked response from becoming a javascript: navigation.
+      const body = (await response.clone().json().catch(() => null)) as { sessionUrl?: unknown } | null
+      if (typeof body?.sessionUrl === "string" && body.sessionUrl.startsWith("https://")) {
+        window.location.href = body.sessionUrl
         return
       }
 
@@ -190,6 +215,23 @@ export function FunnelForm({
               </span>
             ) : null}
           </label>
+          {field.role === "waiver_accepted" ? (
+            <div className="djp-waiver" data-djp-waiver>
+              {waiverHtml ? (
+                // The document itself. Server-rendered from `legal_documents`,
+                // never authored here.
+                <div dangerouslySetInnerHTML={{ __html: waiverHtml }} />
+              ) : (
+                <p>
+                  Please read the{" "}
+                  <a href="/liability-waiver" target="_blank" rel="noreferrer">
+                    liability waiver
+                  </a>{" "}
+                  before continuing.
+                </p>
+              )}
+            </div>
+          ) : null}
           {renderControl(field, formKey, editable, index)}
         </div>
       ))}
