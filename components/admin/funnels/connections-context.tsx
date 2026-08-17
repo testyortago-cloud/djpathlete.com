@@ -239,10 +239,19 @@ export function ConnectionsProvider({
         // (`blocked`, `build/route.ts:1380`), both attempts failed
         // (`build/route.ts:1328`), and a review pass that found nothing worth
         // changing (`emitNoChangeReview`, `build/route.ts:1700`) — and
-        // non-null on every path that wrote a document. The third is reachable
-        // HERE: `turn` above is `outcome.review ?? outcome.turn`, so a first
-        // draft whose own review pass lands on "nothing worth changing" is
-        // this function's problem too, not just a hand-triggered Polish's.
+        // non-null on every path that wrote a document. ONLY THE FIRST TWO ARE
+        // REACHABLE HERE, both on `outcome.turn`. `emitNoChangeReview` fires
+        // only when the review stage runs `standalone` (`build/route.ts:1558`
+        // gates it on that flag), which is true only for the Polish button's
+        // own request (`:890`) — the automatic post-build review this
+        // function's plain build also triggers passes `standalone: false`
+        // (`:1485`) and, finding nothing worth changing, returns without
+        // emitting anything (`:1558`'s `if (!standalone) return`), so
+        // `outcome.review` stays undefined rather than ever carrying a null
+        // compile. The `outcome.review ?? outcome.turn` fallback above exists
+        // for the OTHER review outcome — one that DID change the page — so a
+        // first draft whose automatic review revises the document adopts that
+        // revised doc instead of the build's own.
         //
         // `blocked` alone is wrong: the both-attempts-failed path also leaves
         // no document behind but reports `blocked: false`, so a `blocked`-only
