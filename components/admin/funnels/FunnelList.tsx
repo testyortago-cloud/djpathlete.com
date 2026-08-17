@@ -29,7 +29,8 @@ import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { FunnelCard } from "./FunnelCard"
 import { CreateFunnelDialog } from "./CreateFunnelDialog"
-import { ownExamplesFromGroups } from "./FunnelBoard"
+import { ownExamplesFromGroups } from "./own-examples"
+import { BoardEmptyState } from "./BoardEmptyState"
 import type { Funnel, FunnelStep } from "@/types/database"
 
 export interface FunnelWithSteps {
@@ -101,9 +102,18 @@ export function FunnelList({ funnels, leadCounts }: FunnelListProps) {
       </div>
 
       {visible.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-surface/30 px-4 py-16 text-center text-muted-foreground">
-          {funnels.length === 0 ? "No funnels yet." : "Nothing matches that search."}
-        </div>
+        // THE REAL EMPTY STATE FOR AN EMPTY ACCOUNT, not one line of grey text.
+        // This is the first screen a new owner meets, before they know what a
+        // funnel is; the board it replaced explained that, and losing the
+        // explanation was a silent regression. A no-MATCHES result is a
+        // different thing and keeps its one line.
+        funnels.length === 0 ? (
+          <BoardEmptyState kind="funnel" />
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-surface/30 px-4 py-16 text-center text-muted-foreground">
+            Nothing matches that search.
+          </div>
+        )
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {visible.map(({ funnel, steps }) => (

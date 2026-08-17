@@ -25,6 +25,7 @@
 // funnel is connected, and the publish gate resolves the same refs again. Three
 // surfaces, one definition.
 
+import { useMemo } from "react"
 import Link from "next/link"
 import { AlertTriangle, ArrowRight, CircleDot } from "lucide-react"
 import { PreviewCard } from "./PreviewCard"
@@ -44,9 +45,24 @@ export interface FunnelCardProps {
   onDelete: () => void | Promise<void>
 }
 
-/** The rows leaving one page that go to another page of this funnel. */
+/**
+ * The rows leaving one page that go to another page of this funnel.
+ *
+ * DEDUPED BY DESTINATION. A real page legitimately carries several buttons to
+ * the same next step — the probe recorded in `connections.ts` found six CTAs on
+ * one page — and six identical `→ Checkout` chips in a card this size is noise,
+ * not information. The rail shows one row per exit because it has the height
+ * for it and the owner is editing that page; the board is answering the
+ * coarser question "does this join up?".
+ */
 function exitsFrom(connections: Connection[], stepId: string): Connection[] {
-  return connections.filter((entry) => entry.fromStepId === stepId && entry.to.kind === "step")
+  const seen = new Set<string>()
+  return connections.filter((entry) => {
+    if (entry.fromStepId !== stepId || entry.to.kind !== "step") return false
+    if (seen.has(entry.to.slug)) return false
+    seen.add(entry.to.slug)
+    return true
+  })
 }
 
 /**
@@ -100,25 +116,54 @@ function StepExits({ exits, isLast, nameBySlug }: { exits: Connection[]; isLast:
 }
 
 export function FunnelCard({ funnel, steps, leadCount, onDelete }: FunnelCardProps) {
-  const ordered = [...steps].sort((a, b) => a.position - b.position)
-  // `find`, not `[0]`. A funnel whose entry step was reordered still has
-  // exactly one `is_entry` row, and that is the page `/go/<slug>` serves.
-  const entry = ordered.find((step) => step.is_entry) ?? ordered[0] ?? null
+  // MEMOISED, and not as a micro-optimisation. `FunnelList` owns the search
+  // box, so every keystroke re-renders every card — and without this, each one
+  // re-runs `sectionDocSchema.safeParse` over every step's FULL page document.
+  // On a board of a dozen funnels that is a zod parse of a dozen whole pages
+  // per character typed.
+  const { ordered, entry, graph, nameBySlug, lastId } = useMemo(() => {
+    const ordered = [...steps].sort((a, b) => a.position - b.position)
+    // `find`, not `[0]`. A funnel whose entry step was reordered still has
+    // exactly one `is_entry` row, and that is the page `/go/<slug>` serves.
+    const entry = ordered.find((step) => step.is_entry) ?? ordered[0] ?? null
 
-  // PARSED, NOT CAST — `project_data` is jsonb typed `unknown`, and a legacy
-  // GrapesJS blob is indistinguishable from a document by shape alone. A page
-  // whose draft no longer parses loses its arrows, not the whole card.
-  const docs: StepWithDoc[] = ordered.map((step) => ({
-    id: step.id,
-    name: step.name,
-    slug: step.slug,
-    position: step.position,
-    isEntry: step.is_entry,
-    doc: sectionDocSchema.safeParse(step.project_data).success ? (step.project_data as SectionDoc) : null,
-  }))
-  const graph = funnelConnections(funnel.slug, docs)
-  const nameBySlug = new Map(ordered.map((step) => [step.slug, step.name]))
-  const lastId = ordered[ordered.length - 1]?.id
+    // PARSED, NOT CAST — `project_data` is jsonb typed `unknown`, and a legacy
+    // GrapesJS blob is indistinguishable from a document by shape alone. A page
+    // whose draft no longer parses loses its arrows, not the whole card.
+    const docs: StepWithDoc[] = ordered.map((step) => {
+      const parsed = sectionDocSchema.safeParse(step.project_data)
+      return {
+        id: step.id,
+        name: step.name,
+        slug: step.slug,
+        position: step.position,
+        isEntry: step.is_entry,
+        // `parsed.data`, not a re-cast of the raw value. Casting the input
+        // after validating a rebuilt copy is how a schema that later gains a
+        // `.default()` or a transform silently stops describing what is used.
+        doc: parsed.success ? (parsed.data as SectionDoc) : null,
+      }
+    })
+
+    // THE READER'S OWN TIE-BREAK, not `ordered[length - 1]`. `funnelConnections`
+    // picks the last page with `reduce((f, s) => s.position > f.position ? s : f)`,
+    // which keeps the FIRST of a tied maximum; taking the array's last element
+    // keeps the LAST. With duplicate positions the two disagree about which
+    // page is allowed to end, and "the board and the builder cannot disagree"
+    // is this card's whole premise.
+    const last =
+      ordered.length === 0
+        ? null
+        : ordered.reduce((furthest, step) => (step.position > furthest.position ? step : furthest))
+
+    return {
+      ordered,
+      entry,
+      graph: funnelConnections(funnel.slug, docs),
+      nameBySlug: new Map(ordered.map((step) => [step.slug, step.name])),
+      lastId: last?.id,
+    }
+  }, [steps, funnel.slug])
 
   // THE SAME RULE `StepList`, `StepRail` AND THE BOARD ALREADY USE. A version
   // row is not enough on its own: if the funnel is a draft the page is
@@ -178,7 +223,10 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete }: FunnelCardPro
           </>
         }
         extra={
-          <div className="rounded-lg border border-border bg-surface/30 p-2">
+          // A funnel with no steps at all — `listSteps` degrades to `[]` on a
+          // failed read — would otherwise render an empty bordered box.
+          ordered.length === 0 ? null : (
+          <div data-testid="funnel-step-list" className="rounded-lg border border-border bg-surface/30 p-2">
             <ol className="space-y-1.5">
               {ordered.map((step, index) => {
                 const stepLive = Boolean(step.published_version_id) && funnel.status === "published"
@@ -194,6 +242,7 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete }: FunnelCardPro
                         <Link
                           href={`/admin/funnels/${funnel.id}/edit/${step.id}`}
                           data-testid="step-name"
+                          title={step.name}
                           className="truncate text-xs text-primary hover:underline"
                         >
                           {step.name}
@@ -215,17 +264,9 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete }: FunnelCardPro
               })}
             </ol>
           </div>
+          )
         }
       />
-      {/* Read by the tests and by nothing else — the visible status lives in
-          PreviewCard's badge, and duplicating it as text would put the word on
-          screen twice. */}
-      <span data-testid="funnel-status" className="sr-only">
-        {badge.label}
-      </span>
-      <span data-testid="funnel-name" className="sr-only">
-        {funnel.name}
-      </span>
     </div>
   )
 }

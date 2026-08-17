@@ -121,13 +121,19 @@ describe("<FunnelList>", () => {
     // card on screen for every STEP. Asserted by the cards' accessible names
     // rather than by a count: a count of 2 would also pass for a board that
     // dropped a funnel and duplicated another.
+    // `card-title` is the LINK PreviewCard renders, not a mirror of the prop.
+    // An earlier draft asserted an `sr-only` span carrying the same string,
+    // which would have passed even if the card stopped rendering a title at
+    // all — and, being `sr-only`, announced every funnel's name twice to a
+    // screen reader.
     const cards = screen.getAllByTestId("funnel-card")
-    expect(cards.map((card) => within(card).getByTestId("funnel-name").textContent)).toEqual([
+    expect(cards.map((card) => within(card).getByTestId("card-title").textContent)).toEqual([
       "Ten-Session Pack",
       "Free Trial Week",
     ])
-    // And the step names must NOT be card titles — that is the whole complaint.
-    expect(screen.queryByTestId("funnel-card-Checkout")).toBeNull()
+    // And a step name must NOT be a card title — that is the whole complaint.
+    const titles = screen.getAllByTestId("card-title").map((n) => n.textContent)
+    expect(titles).not.toContain("Checkout")
   })
 
   it("lists the funnel's steps INSIDE its card, in position order", () => {
@@ -198,7 +204,11 @@ describe("<FunnelList>", () => {
     // MUTANT: badging on `funnel.status` alone. A published funnel whose entry
     // page has no compiled version serves nothing — calling that "live" is the
     // lie the rest of this area was built to stop telling.
-    expect(screen.getByTestId("funnel-status").textContent).toBe("never published")
+    //
+    // Read off the RENDERED badge, not a mirror of the computed value: this is
+    // the highest-value assertion in the file, and against a mirror it would
+    // still pass if the badge vanished from the card entirely.
+    expect(screen.getByTestId("card-badge").textContent).toBe("never published")
   })
 
   it("searches step names and surfaces the parent funnel", () => {
@@ -216,7 +226,83 @@ describe("<FunnelList>", () => {
     // MUTANT: matching only funnel name and slug. Typing a page's name and
     // getting "nothing matches" is the search failing at the one thing the
     // flattened board did well.
-    const names = screen.getAllByTestId("funnel-name").map((n) => n.textContent)
+    const names = screen.getAllByTestId("card-title").map((n) => n.textContent)
     expect(names).toEqual(["Ten-Session Pack"])
+  })
+
+  it("explains what a funnel IS when there are none yet", () => {
+    mount([])
+    // MUTANT: the one-line "No funnels yet." this replaced. That regression was
+    // silent — the board being retired carried a whole getting-started panel
+    // for `kind="funnel"`, and this is the first screen a new owner meets,
+    // before they have any idea what the feature does.
+    expect(screen.getByText(/No funnels yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/more than one step in order/i)).toBeInTheDocument()
+    // And it must describe the ONE-publish model, not the two-screen flow the
+    // owner asked to have removed.
+    expect(screen.getByText(/takes the whole funnel live/i)).toBeInTheDocument()
+  })
+
+  it("keeps a plain line for a search that matches nothing", () => {
+    mount()
+    fireEvent.change(screen.getByPlaceholderText(/search funnels/i), { target: { value: "zzzz" } })
+    // MUTANT: showing the getting-started panel here. "No funnels yet" over an
+    // account that HAS funnels is simply false.
+    expect(screen.getByText(/Nothing matches that search/i)).toBeInTheDocument()
+    expect(screen.queryByText(/No funnels yet/i)).toBeNull()
+  })
+
+  it("renders no step list at all for a funnel with no steps", () => {
+    mount([{ funnel: funnel(), steps: [] }])
+    // MUTANT: rendering the container unconditionally, which leaves an empty
+    // bordered grey box on the card. `listSteps` degrades to `[]` on a failed
+    // read, so this is reachable without any funnel being malformed.
+    //
+    // ASSERTS THE CONTAINER, NOT THE ROWS — and the first version of this test
+    // asserted the rows, which is why it SURVIVED its own mutant: with no
+    // steps there are no rows either way, so `queryAllByTestId("funnel-step-row")`
+    // is empty whether the box renders or not. The box is the thing the owner
+    // would see, so the box is the thing to assert.
+    expect(screen.queryByTestId("funnel-step-list")).toBeNull()
+    expect(screen.queryAllByTestId("funnel-step-row")).toHaveLength(0)
+    expect(screen.getByTestId("card-title").textContent).toBe("Ten-Session Pack")
+  })
+
+  it("shows ONE arrow per destination, not one per button", () => {
+    const twoButtonsToCheckout = {
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "accent", radius: "soft" },
+      sections: [
+        {
+          id: "hero",
+          kind: "hero",
+          variant: "centered",
+          style: { headline: "lg", align: "center" },
+          props: {
+            headline: "Ten sessions",
+            sub: "No expiry.",
+            primaryCta: { label: "Get started", target: { kind: "step", stepSlug: "checkout" } },
+            secondaryCta: { label: "Buy now", target: { kind: "step", stepSlug: "checkout" } },
+          },
+        },
+      ],
+    } as unknown as SectionDoc
+
+    mount([
+      {
+        funnel: funnel(),
+        steps: [
+          step({ id: "s1", name: "Offer", slug: "index", position: 0, is_entry: true, project_data: twoButtonsToCheckout }),
+          step({ id: "s2", name: "Checkout", slug: "checkout", position: 1, is_entry: false }),
+        ],
+      },
+    ])
+    const rows = screen.getAllByTestId("funnel-step-row")
+    // MUTANT: dropping the dedupe. A real page carries several buttons to the
+    // same next step — the probe in connections.ts found six on one page — and
+    // six identical arrows in a card this size is noise, not information.
+    const arrows = within(rows[0]).getByTestId("step-exits").textContent ?? ""
+    expect(arrows.match(/Checkout/g) ?? []).toHaveLength(1)
   })
 })

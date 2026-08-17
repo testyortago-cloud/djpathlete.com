@@ -184,7 +184,12 @@ export function PreviewCard({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1">
-              <Link href={href} className="truncate font-medium text-primary hover:underline">
+              <Link
+                href={href}
+                data-testid="card-title"
+                title={title}
+                className="truncate font-medium text-primary hover:underline"
+              >
                 {title}
               </Link>
               {titleAction}
@@ -194,7 +199,9 @@ export function PreviewCard({
           {/* Both badges, never one instead of the other: the goal says what the
               page is for, the status says whether anyone can reach it. */}
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <DataTableBadge tone={badgeTone}>{badgeLabel}</DataTableBadge>
+            <span data-testid="card-badge">
+              <DataTableBadge tone={badgeTone}>{badgeLabel}</DataTableBadge>
+            </span>
             {goalLabel ? <DataTableBadge tone="info">{goalLabel}</DataTableBadge> : null}
           </div>
         </div>
