@@ -1709,3 +1709,119 @@ describe("step links against the funnel's real pages", () => {
     expect(resolveDocWithPages(doc, catalogue(), PAGES).doc).toBe(doc)
   })
 })
+
+// ===========================================================================
+// Forms that take payment — the publish gate (design §5).
+//
+// A checkout form's promise is that a visitor can pay. Three ways that promise
+// is already broken at publish time, and the owner can fix all three: the camp
+// does not exist, the camp is not currently open, the camp has no Stripe price.
+// Each is a BLOCKER. A FULL camp is not — a sold-out page is a legitimate page,
+// and refusing to publish it would be this gate overreaching.
+// ===========================================================================
+
+/**
+ * A form section selling `eventId`, with a fully-roled field set.
+ *
+ * `null` means "name no camp at all" — NOT `undefined`, which would trigger the
+ * default parameter and silently hand back a section that names EVENT_CAMP after
+ * all. That mistake made the no-camp test pass against a fully valid fixture.
+ */
+function checkoutFormSection(eventId: string | null = EVENT_CAMP): Section {
+  return {
+    id: "signup",
+    kind: "form",
+    // `variant` and `style` are REQUIRED by sectionDocSchema, which
+    // resolveDoc parses before it does anything else. Copied from the known-good
+    // fixture in apply.test.ts rather than invented — a fixture that cannot
+    // parse fails every assertion built on it for the wrong reason.
+    variant: "boxed",
+    style: {},
+    props: {
+      heading: "Reserve a spot",
+      formKey: "register",
+      successMode: "checkout",
+      ...(eventId === null ? {} : { eventId }),
+      fields: [
+        { name: "parent_name", label: "Your name", type: "text", required: true, role: "parent_name" },
+        { name: "email", label: "Email", type: "email", required: true, role: "parent_email" },
+        { name: "player", label: "Player's name", type: "text", required: true, role: "athlete_name" },
+        { name: "age", label: "Player's age", type: "select", required: true, role: "athlete_age", options: ["12"] },
+        { name: "waiver", label: "I accept the waiver", type: "checkbox", required: true, role: "waiver_accepted" },
+      ],
+    },
+  } as unknown as Section
+}
+
+/** A catalogue whose one event carries the payment facts a gate reads. */
+function eventCatalogue(entry: Partial<CatalogueEntry> | null, opts: { knownButNotOffered?: boolean } = {}): Catalogues {
+  const row = entry === null ? null : { id: EVENT_CAMP, name: "Summer Camp", priced: true, soldOut: false, ...entry }
+  const offer = lists({ event: row === null ? [] : [row] })
+  // Recognition sees the row even when the offer set does not — that asymmetry
+  // is what tells "never existed" apart from "not open right now".
+  const recognition = lists({
+    event: row === null && opts.knownButNotOffered ? [{ id: EVENT_CAMP, name: "Summer Camp" }] : row === null ? [] : [row],
+  })
+  return { recognition, offer, faqPageKeys: FAQ_KEYS }
+}
+
+describe("publishGate on a form that takes payment", () => {
+  it("cannot even be STORED with no camp named — the schema is the first gate", () => {
+    // Not a gate assertion, and that is the finding. `formIslandSchema` refuses a
+    // checkout form with no eventId, so `sectionDocSchema.parse` at the top of
+    // resolveDoc throws and the document can never reach the database in that
+    // state. Written as a throw rather than deleted: the next reader needs to
+    // know WHY the gate has no "names no camp" message, or they will add one and
+    // wonder why it never fires.
+    expect(() => resolveDoc(docOf([checkoutFormSection(null)]), eventCatalogue({}))).toThrow()
+  })
+
+  it("blocks when the camp does not exist at all", () => {
+    const gate = publishGate(resolveDoc(docOf([checkoutFormSection()]), eventCatalogue(null)))
+    expect(gate.ok).toBe(false)
+    expect(gate.blockers.join(" ")).toMatch(/does not name a camp/i)
+  })
+
+  it("blocks a camp that exists but is not currently open, and says so differently", () => {
+    // MUTANT: collapsing this into the "does not exist" message. An owner who
+    // un-published a camp to fix a typo would be told they had a broken id and
+    // go looking for a mistake they did not make.
+    const gate = publishGate(
+      resolveDoc(docOf([checkoutFormSection()]), eventCatalogue(null, { knownButNotOffered: true })),
+    )
+    expect(gate.ok).toBe(false)
+    expect(gate.blockers.join(" ")).toMatch(/not currently open/i)
+    expect(gate.blockers.join(" ")).not.toMatch(/does not name a camp/i)
+  })
+
+  it("blocks a camp with no Stripe price", () => {
+    const gate = publishGate(resolveDoc(docOf([checkoutFormSection()]), eventCatalogue({ priced: false })))
+    expect(gate.ok).toBe(false)
+    expect(gate.blockers.join(" ")).toMatch(/no price set up in Stripe/i)
+  })
+
+  it("WARNS but still publishes when the camp is full", () => {
+    // Asserted as a warning rather than merely "not a blocker": a full camp is a
+    // page an owner may legitimately want live saying it is full, and turning
+    // this into a blocker would stop them publishing it at all.
+    const gate = publishGate(resolveDoc(docOf([checkoutFormSection()]), eventCatalogue({ soldOut: true })))
+    expect(gate.ok).toBe(true)
+    expect(gate.warnings.join(" ")).toMatch(/is full/i)
+  })
+
+  it("passes a sellable camp with no warning of its own", () => {
+    const gate = publishGate(resolveDoc(docOf([checkoutFormSection()]), eventCatalogue({})))
+    expect(gate.ok).toBe(true)
+    expect(gate.warnings.join(" ")).not.toMatch(/full/i)
+  })
+
+  it("leaves a lead-gen form pointing at the same unpriced camp completely alone", () => {
+    // MUTANT: gating on eventId regardless of successMode. An opt-in form sells
+    // nothing and must not inherit a payment blocker — every page already live
+    // would stop publishing.
+    const section = checkoutFormSection()
+    ;(section.props as Record<string, unknown>).successMode = "message"
+    const gate = publishGate(resolveDoc(docOf([section]), eventCatalogue({ priced: false })))
+    expect(gate.ok).toBe(true)
+  })
+})
