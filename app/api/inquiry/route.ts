@@ -6,6 +6,8 @@ import { sendInquiryEmail, sendInquiryAutoReply } from "@/lib/email"
 import { withAudit } from "@/lib/audit/with-audit"
 import { recordAudit } from "@/lib/audit/record"
 import { createLeadInquiry, updateLeadInquiryAiFields } from "@/lib/db/lead-inquiries"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
+import { getAttributionBySession, claimAttribution } from "@/lib/db/marketing-attribution"
 import { generateLeadAnalysis, type LeadAnalysisResult } from "@/lib/ai/lead-analysis"
 import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation-log"
 import { MODEL_SONNET } from "@/lib/ai/anthropic"
@@ -38,8 +40,27 @@ export const POST = withAudit(
       )
     }
 
-    const { name, email, phone, service, sport, experience, goals, injuries, how_heard, gclid } = result.data
+    const { name, email, phone, service, sport, experience, goals, injuries, how_heard, gclid: submittedGclid } = result.data
     const serviceLabel = SERVICE_LABELS[service]
+
+    // Resolve tracking from the djp_attr session rather than trusting the
+    // client. `proxy.ts` already recorded every click id server-side, so the
+    // browser cookie the form reads is a lossy copy of data we hold: it carries
+    // gclid only (never gbraid/wbraid), and goes empty on ITP eviction, a
+    // cleared jar, or a cross-browser return visit. The submitted value stays
+    // as a fallback for the case the cookie outlived the attribution row.
+    const attrSessionId = parseAttrCookie(request.headers.get("cookie"))
+    const attribution = attrSessionId
+      ? await getAttributionBySession(attrSessionId).catch((err) => {
+          console.error("Failed to read attribution for inquiry:", err)
+          return null
+        })
+      : null
+
+    const gclid = attribution?.gclid ?? submittedGclid
+    const gbraid = attribution?.gbraid ?? null
+    const wbraid = attribution?.wbraid ?? null
+    const fbclid = attribution?.fbclid ?? null
 
     const supabase = createServiceRoleClient()
 
@@ -83,6 +104,17 @@ export const POST = withAudit(
       }
     }
 
+    // Link the ad click to the lead we just created. Without this the
+    // attribution row keeps user_id NULL forever, which is why 337 Google-Ads
+    // sessions had produced 0 attributable signups: only /api/auth/register
+    // and the newsletter path ever claimed, and neither is the path an ad
+    // landing page's "apply" form takes. Non-fatal — the inquiry matters more.
+    if (attribution && leadUserId && !attribution.claimed_at) {
+      await claimAttribution(attribution.id, leadUserId).catch((err) =>
+        console.error("Failed to claim attribution for inquiry:", err),
+      )
+    }
+
     // Notify all admins
     const { data: admins } = await supabase.from("users").select("id").eq("role", "admin")
 
@@ -102,6 +134,9 @@ export const POST = withAudit(
         injuries,
         how_heard,
         gclid,
+        gbraid,
+        wbraid,
+        fbclid,
       })
       leadInquiryId = inquiryRow.id
     } catch (err) {
@@ -210,6 +245,10 @@ export const POST = withAudit(
         injuries ? `\nInjuries/Limitations:\n${injuries}` : null,
         how_heard ? `How they heard about us: ${how_heard}` : null,
         gclid ? `Google Ads click id: ${gclid}` : null,
+        // gbraid/wbraid arrive instead of gclid on iOS/privacy traffic, so a
+        // gclid-only line would report those leads as non-ad.
+        gbraid ? `Google Ads click id (gbraid): ${gbraid}` : null,
+        wbraid ? `Google Ads click id (wbraid): ${wbraid}` : null,
       ]
         .filter(Boolean)
         .join("\n")
@@ -269,6 +308,8 @@ export const POST = withAudit(
           // Stored as a tag so the GHL export can join lead → Google Ads click id
           // for the qualified-conversion upload back to Google Ads.
           gclid ? `gclid:${gclid}` : "",
+          gbraid ? `gbraid:${gbraid}` : "",
+          wbraid ? `wbraid:${wbraid}` : "",
         ].filter(Boolean),
         source: `website-inquiry-${service}`,
       })
