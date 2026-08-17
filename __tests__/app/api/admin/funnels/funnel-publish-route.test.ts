@@ -126,6 +126,68 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { status: "published" })
   })
 
+  it("publishes the RESOLVED document, with the CTA ref substituted for the real id", async () => {
+    mock(listSteps).mockResolvedValue([stepRow()])
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+
+    const response = await POST(request(), ctx)
+    expect(response.status).toBe(200)
+    // MUTANT: rendering and storing the raw draft (`drafts[i].doc`) instead of
+    // `resolution.doc`. `resolveDoc` matches a CTA `ref` BY NAME and puts the
+    // real row id into the doc it RETURNS, so the raw draft still says
+    // "Comeback Code" — and it PASSES THE GATE saying that. Downstream,
+    // `renderCtaTarget` hands that name to the checkout island as `productId`,
+    // the island schema requires a uuid, and `renderIslandIfValid` silently
+    // emits `disabledCta`: a dead button on a live page that compiles with
+    // `ok: true` and no warnings.
+    //
+    // The STATUS IS 200 EITHER WAY, so only asserting on the stored value can
+    // see this. That is the whole point of this test.
+    const stored = mock(publishStep).mock.calls[0][0].projectData as unknown as {
+      sections: { props: { primaryCta: { target: { ref: string } } } }[]
+    }
+    expect(stored.sections[0].props.primaryCta.target.ref).toBe(PROGRAM_ID)
+    expect(stored.sections[0].props.primaryCta.target.ref).not.toBe(PROGRAM_NAME)
+  })
+
+  it("returns the published pages, versions and warnings a caller reads", async () => {
+    mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false })])
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+    mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => ({
+      ok: true,
+      version: { id: `v-${stepId}`, version: stepId === "s1" ? 3 : 7 },
+      warnings: [{ message: `check ${stepId}` }],
+    }))
+
+    const response = await POST(request(), ctx)
+    const body = await response.json()
+    expect(response.status).toBe(200)
+    // MUTANT: dropping `version`, collapsing `pages` to a count, or swallowing
+    // the per-page warnings. Tasks 5 and 6 read exactly these fields, and this
+    // repo has twice shipped a field on the funnels path that was collected
+    // and then ignored — so the SHAPE is asserted whole, not field by field.
+    expect(body).toEqual({
+      published: 2,
+      pages: [
+        { stepId: "s1", stepName: "Signup", version: 3 },
+        { stepId: "s2", stepName: "Thank you", version: 7 },
+      ],
+      warnings: ["check s1", "check s2"],
+    })
+  })
+
+  it("404s when the funnel does not exist", async () => {
+    mock(getFunnelById).mockResolvedValue(null)
+
+    const response = await POST(request(), ctx)
+    expect(response.status).toBe(404)
+    // MUTANT: reading the steps before checking the funnel exists, which turns
+    // a missing funnel into an empty-funnel 400 or a publish against nothing.
+    expect(mock(listSteps)).not.toHaveBeenCalled()
+    expect(mock(publishStep)).not.toHaveBeenCalled()
+    expect(mock(updateFunnel)).not.toHaveBeenCalled()
+  })
+
   it("REFUSES when a page has never been built, and writes NOTHING", async () => {
     mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false })])
     mock(getDraft).mockImplementation(async (stepId: string) =>
@@ -241,6 +303,29 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     mock(canAccessAdminPath).mockResolvedValue(false)
     const response = await POST(request(), ctx)
     expect(response.status).toBe(403)
+    expect(mock(updateFunnel)).not.toHaveBeenCalled()
+  })
+
+  it("does not claim nothing was published when a write threw part way through", async () => {
+    mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false })])
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+    // `publishStep` THROWS rather than returning `ok:false` — any Supabase
+    // error does — after page 1 already has a version row.
+    mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => {
+      if (stepId === "s2") throw new Error("connection reset")
+      return { ok: true, version: { id: "v1", version: 1 }, warnings: [] }
+    })
+
+    const response = await POST(request(), ctx)
+    const body = await response.json()
+    expect(response.status).toBe(422)
+    // MUTANT: the single catch message that says "nothing was published". It
+    // is FALSE in this reachable state — page 1 is written — and this repo
+    // does not ship messages that lie. Nothing public breaks (the funnel row
+    // is still a draft), which is exactly why only the wording can catch it.
+    expect(body.pages[0].problems[0]).not.toContain("nothing was published")
+    expect(body.pages[0].problems[0]).toContain("1 of its pages were published")
+    expect(body.pages[0].problems[0]).toContain("connection reset")
     expect(mock(updateFunnel)).not.toHaveBeenCalled()
   })
 

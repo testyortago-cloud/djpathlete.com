@@ -46,19 +46,40 @@ import { withAudit } from "@/lib/audit/with-audit"
 import { getFunnelById, listSteps, publishStep, updateFunnel } from "@/lib/db/funnels"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { reassemble } from "@/lib/funnels/sections/doc"
-import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
+import { loadCatalogues, publishGate, resolveDoc, type PublishGate } from "@/lib/funnels/sections/resolve"
 import { funnelPublishPlan, type StepToPublish } from "@/lib/funnels/publish-plan"
+import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 export const maxDuration = 300
 
 export const POST = withAudit(
-  { action: "funnel.published", category: "admin_write" },
+  {
+    action: "funnel.published",
+    category: "admin_write",
+    // The slug is deliberately SHARED with the step publish route:
+    // `request_path` already tells the two apart, and splitting it would
+    // silently halve anything already filtering on `funnel.published`.
+    // `target` is what makes a funnel publish findable by the admin target
+    // filter instead of only by free text.
+    target: async (_req, ctx) => {
+      const { id } = (await ctx.params) as { id: string }
+      return { type: "funnel", id }
+    },
+  },
   async (_request, ctx) => {
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
     const { id } = await ctx.params
+
+    // DECLARED OUTSIDE THE TRY so the catch can tell the two reachable
+    // failures apart. `publishStep` throws on any Supabase error, and the try
+    // spans the write loop, so a blip on page 3 of 4 lands in the catch with
+    // pages 1-2 already carrying version rows. No invariant breaks — the
+    // funnel row is still a draft, so none of it is public — but the message
+    // must not say "nothing was published" when something was.
+    const published: { stepId: string; stepName: string; version: number }[] = []
 
     try {
       const funnel = await getFunnelById(id)
@@ -86,15 +107,54 @@ export const POST = withAudit(
       // read has already thrown into the catch below.
       const pages = steps.map((step) => ({ slug: step.slug, name: step.name }))
 
-      const toPublish: StepToPublish[] = steps.map((step, index) => ({
-        id: step.id,
-        name: step.name,
-        position: step.position,
-        doc: drafts[index]?.doc ?? null,
-        hasPublishedVersion: Boolean(step.published_version_id),
-      }))
+      // ---------------------------------------------------------------------
+      // RESOLVE ONCE, AND PUBLISH THE DOCUMENT THAT RESOLVING RETURNED.
+      // ---------------------------------------------------------------------
+      // `resolveDoc` matches a CTA `ref` BY NAME and substitutes the real row
+      // id into the doc it RETURNS. Gating the resolved doc while storing the
+      // raw one looks harmless and is not: a hero CTA left as
+      // `{kind:"program", ref:"Comeback Code"}` passes the gate, and then
+      // `renderCtaTarget` hands that NAME to the checkout island as
+      // `productId`. The island schema requires a uuid, so
+      // `renderIslandIfValid` silently emits `disabledCta` — an
+      // `aria-disabled` span. `compileFunnelStep` reports `ok: true` with no
+      // warnings, so a DEAD BUTTON ships on a live page with nothing anywhere
+      // saying so. That is the exact failure class this endpoint exists to
+      // stop, so do not "simplify" this back into the gate lambda.
+      //
+      // Reachable, not theoretical: the build route deliberately degrades and
+      // persists the UNRESOLVED doc when its own catalogue read throws. And
+      // every other renderer already does this — the draft preview and the
+      // admin editor both reassemble `resolution.doc`.
+      const verdicts = new Map<SectionDoc, PublishGate>()
+      const toPublish: StepToPublish[] = steps.map((step, index) => {
+        const base = {
+          id: step.id,
+          name: step.name,
+          position: step.position,
+          hasPublishedVersion: Boolean(step.published_version_id),
+        }
+        const draftDoc = drafts[index]?.doc ?? null
+        // No document: legacy GrapesJS state or a page never built. Nothing to
+        // resolve — the planner decides which of those two it is.
+        if (!draftDoc) return { ...base, doc: null }
 
-      const plan = funnelPublishPlan(toPublish, (doc) => publishGate(resolveDoc(doc, catalogues, pages)))
+        // Throws stay uncaught here on purpose: a `resolveDoc` failure is the
+        // 422 fail-closed path below, never a page published unchecked.
+        const resolution = resolveDoc(draftDoc, catalogues, pages)
+        verdicts.set(resolution.doc, publishGate(resolution))
+        return { ...base, doc: resolution.doc }
+      })
+
+      // A LOOKUP, not a second `resolveDoc`. `plan.publish[].doc` is the very
+      // object put in above, so identity holds. A miss would mean the planner
+      // gated a document this route never resolved: throw rather than invent a
+      // verdict, which lands in the catch as a refusal.
+      const plan = funnelPublishPlan(toPublish, (doc) => {
+        const verdict = verdicts.get(doc)
+        if (!verdict) throw new Error("publish gate asked about a document this route did not resolve")
+        return verdict
+      })
 
       if (!plan.ok) {
         return NextResponse.json(
@@ -104,7 +164,6 @@ export const POST = withAudit(
       }
 
       const funnelBasePath = `/go/${funnel.slug}`
-      const published: { stepId: string; stepName: string; version: number }[] = []
       const warnings: string[] = []
 
       for (const entry of plan.publish) {
@@ -165,17 +224,22 @@ export const POST = withAudit(
       console.error("[POST /api/admin/funnels/:id/publish]", error)
       // FAILS CLOSED as a 422 carrying the reason, never a 500 and never a
       // publish. The message lands in the UI the owner is already looking at.
+      //
+      // TWO CASES, because one of them would otherwise be a lie. The gate
+      // throwing means nothing was written at all; a write throwing part way
+      // through means some pages have version rows. Both leave the funnel a
+      // draft, so neither is public — but only the first can honestly say
+      // nothing was published.
+      const reason = (error as Error).message
+      const problem =
+        published.length > 0
+          ? `${published.length} of its pages were published, but the funnel was not taken live: ${reason}. ` +
+            `It is still a draft, so none of it is public yet — publishing again is safe.`
+          : `Its pages could not be checked, so nothing was published: ${reason}`
       return NextResponse.json(
         {
           error: "This funnel could not be published.",
-          pages: [
-            {
-              stepId: "",
-              stepName: "This funnel",
-              problems: [`Its pages could not be checked, so nothing was published: ${(error as Error).message}`],
-              blank: false,
-            },
-          ],
+          pages: [{ stepId: "", stepName: "This funnel", problems: [problem], blank: false }],
         },
         { status: 422 },
       )
