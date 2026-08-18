@@ -57,6 +57,7 @@
     "google-ads-api": "^23.0.0",
     "jose": "^6.2.8",
     "konva": "^10.3.0",
+    "libphonenumber-js": "^1.13.11",
     "lucide-react": "^0.542.0",
     "mammoth": "^1.12.0",
     "next": "16.0.10",
