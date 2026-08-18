@@ -333,3 +333,65 @@ export async function mergeContacts(survivorId: string, mergedId: string, busine
     .eq("business_id", businessId)
   if (deleteError) throw deleteError
 }
+
+/**
+ * Resolves a contact id from whichever identifiers a caller has on hand —
+ * used by the marketing-exit hooks (payment, booking) to find who to stop
+ * emailing. Resolution order: userId, then email (normalised), then phone
+ * (normalised) — each is only consulted if the previous one was given but
+ * matched nothing. Returns null when nothing matches; that is a legitimate
+ * answer (this person has no contact record yet), not an error.
+ *
+ * Email and phone are normalised through the same functions writes use
+ * (normaliseEmail / normalisePhone) before querying: the `contacts` unique
+ * index is on `lower(email)` while lookups use a plain `.eq("email", …)`,
+ * and they only agree because the value handed to `.eq()` was already
+ * normalised. Skipping normalisation here would silently fail to find
+ * people whose raw casing/formatting differs from what was stored.
+ */
+export async function findContactByIdentifiers(args: {
+  email?: string | null
+  phone?: string | null
+  userId?: string | null
+  businessId?: string
+}): Promise<string | null> {
+  const supabase = getClient()
+  const businessId = args.businessId ?? SINGLETON_BUSINESS_ID
+
+  if (args.userId) {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("id")
+      .eq("business_id", businessId)
+      .eq("user_id", args.userId)
+      .maybeSingle()
+    if (error) throw error
+    if (data) return (data as { id: string }).id
+  }
+
+  const email = normaliseEmail(args.email)
+  if (email) {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("id")
+      .eq("business_id", businessId)
+      .eq("email", email)
+      .maybeSingle()
+    if (error) throw error
+    if (data) return (data as { id: string }).id
+  }
+
+  const phone = normalisePhone(args.phone)
+  if (phone) {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("id")
+      .eq("business_id", businessId)
+      .eq("phone_e164", phone)
+      .maybeSingle()
+    if (error) throw error
+    if (data) return (data as { id: string }).id
+  }
+
+  return null
+}
