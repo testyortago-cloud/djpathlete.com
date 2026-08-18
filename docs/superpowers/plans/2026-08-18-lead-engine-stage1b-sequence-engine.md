@@ -1726,10 +1726,13 @@ a later task. Before declaring this branch done:
 grep -n "REFERENCES public.contacts(id)" supabase/migrations/*.sql
 ```
 
-Enumerate every result. For each, confirm it is either re-pointed in
-`merge_contacts` (`00217`) or explicitly exempt with a stated reason
-(`contact_merges.merged_id` carries no FK by design; `contact_suppressions` is
-keyed by identifier, not `contact_id`). Do not delegate this to per-task review
+**Expect five hits**, not four — an earlier draft of this plan and of spec §10
+both said four and both were wrong; `contact_merges.survivor_id` (`00213:51`)
+cascades too. For each hit, confirm it is either re-pointed in `merge_contacts`
+(`00217`) or explicitly exempt with a stated reason (`contact_merges.merged_id`
+carries no FK by design; `contact_suppressions` is keyed by identifier, not
+`contact_id`). If the grep returns a sixth row, the function is wrong until
+proven otherwise. Do not delegate this to per-task review
 — no single task's reviewer can see the interaction.
 
 ---

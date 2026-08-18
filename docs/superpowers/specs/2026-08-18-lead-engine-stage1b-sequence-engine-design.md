@@ -307,13 +307,36 @@ reviewer could see the interaction.
 **Stage 1b adds two more cascading children of `contacts`:** `sequence_runs.contact_id` and
 `sequence_messages.contact_id`. The identical bug is available again, in the same function.
 
+**And an earlier draft of this section proved the point by getting it wrong.** It listed four
+children. There are five. `contact_merges.survivor_id` (`00213`, line 51) is also
+`REFERENCES public.contacts(id) ON DELETE CASCADE` — so merging a contact that had itself survived
+an earlier merge destroys that earlier merge's audit row and its `merged_snapshot`. This is not an
+exotic path: `lib/lead-engine/merge.ts` picks the survivor as oldest-`created_at`-wins and merges
+never touch `created_at`, so a past survivor losing to an older contact that resurfaces is ordinary
+dedup behaviour. Task 1's reviewer caught it and reproduced it live. The lesson is not "remember
+contact_merges" — it is that the enumeration must be **run**, not recalled.
+
+The authoritative list, as of `00216`, produced by
+`grep -n "REFERENCES public.contacts(id)" supabase/migrations/*.sql`:
+
+| Child | Migration | Handling in `merge_contacts` |
+|---|---|---|
+| `contact_merges.survivor_id` | `00213:51` | re-point to survivor |
+| `contact_timeline_events.contact_id` | `00214:11` | re-point to survivor |
+| `contact_consents.contact_id` | `00215:15` | re-point to survivor |
+| `sequence_runs.contact_id` | `00216:70` | re-point, exiting a loser's run where the survivor is already active in that sequence |
+| `sequence_messages.contact_id` | `00216:103` | re-point to survivor |
+
+Exempt, with reasons: `contact_merges.merged_id` carries no FK by design, so the audit row survives
+its subject; `contact_suppressions` is keyed by identifier rather than `contact_id`, so a
+suppression survives a merge, a delete, and the same person arriving again months later.
+
 Therefore:
 
-- `merge_contacts` re-points `contact_timeline_events`, `contact_consents`, `sequence_runs` **and**
-  `sequence_messages` before the delete.
-- The plan's final review **enumerates every FK child of `contacts` from the migrations** and
-  checks each against the merge — it does not trust per-task review to catch cascade behaviour it
-  was never shown.
+- `merge_contacts` re-points all five before the delete.
+- The plan's final review **runs the grep** and checks each hit against the merge — it does not
+  trust per-task review, or this table, to be complete. If the grep returns a sixth row, the
+  function is wrong until proven otherwise.
 - A test asserts the merge preserves a losing contact's runs and messages, not only its consent.
 
 ## 11. Seed data — and the double-send audit
