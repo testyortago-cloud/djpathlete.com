@@ -74,4 +74,54 @@ describe("decideMerge", () => {
       contactId: older.id,
     })
   })
+
+  it("does not treat two phone-only contacts as the same person (null email guard)", () => {
+    const phoneOnly: MatchCandidate = {
+      id: "44444444-4444-4444-4444-444444444444",
+      email: null,
+      phone_e164: "+12025551234",
+      created_at: "2026-02-01T00:00:00Z",
+    }
+    expect(decideMerge([phoneOnly], null, "+16176504548")).toEqual({ kind: "create" })
+  })
+
+  it("uses id tiebreaker when created_at is identical, smaller id survives", () => {
+    const sameTime1: MatchCandidate = {
+      id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      email: "test@example.com",
+      phone_e164: null,
+      created_at: "2026-03-01T00:00:00Z",
+    }
+    const sameTime2: MatchCandidate = {
+      id: "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz",
+      email: null,
+      phone_e164: "+11234567890",
+      created_at: "2026-03-01T00:00:00Z",
+    }
+    expect(decideMerge([sameTime1, sameTime2], "test@example.com", "+11234567890")).toEqual({
+      kind: "merge",
+      survivorId: sameTime1.id,
+      mergedId: sameTime2.id,
+    })
+  })
+
+  it("uses id tiebreaker consistently regardless of order when created_at is identical", () => {
+    const sameTime1: MatchCandidate = {
+      id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      email: "test@example.com",
+      phone_e164: null,
+      created_at: "2026-03-01T00:00:00Z",
+    }
+    const sameTime2: MatchCandidate = {
+      id: "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz",
+      email: null,
+      phone_e164: "+11234567890",
+      created_at: "2026-03-01T00:00:00Z",
+    }
+    expect(decideMerge([sameTime2, sameTime1], "test@example.com", "+11234567890")).toEqual({
+      kind: "merge",
+      survivorId: sameTime1.id,
+      mergedId: sameTime2.id,
+    })
+  })
 })
