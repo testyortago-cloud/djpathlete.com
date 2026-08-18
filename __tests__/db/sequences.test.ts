@@ -268,6 +268,7 @@ function seedRun(id: string, contactId: string, sequenceId: string, overrides: P
     claimed_by: null,
     attempts: 0,
     exit_reason: null,
+    defer_reason: null,
     last_error: null,
     enrolled_at: new Date().toISOString(),
     completed_at: null,
@@ -508,7 +509,7 @@ describe("write-back functions", () => {
       current_position: 0,
       claimed_at: new Date().toISOString(),
       claimed_by: "tick-1",
-      last_error: "quiet_hours",
+      last_error: "some prior crash",
     })
     const deferUntil = new Date("2026-08-19T00:00:00Z")
 
@@ -521,6 +522,14 @@ describe("write-back functions", () => {
     expect(run.claimed_by).toBeNull()
   })
 
+  it("advanceRun clears defer_reason on forward progress", async () => {
+    const run = seedRun("run-1", "c-1", "seq-1", { defer_reason: "quiet_hours" })
+
+    await advanceRun("run-1", 1)
+
+    expect(run.defer_reason).toBeNull()
+  })
+
   it("advanceRun without deferUntil sets next_run_at to now (immediately due)", async () => {
     const run = seedRun("run-1", "c-1", "seq-1")
     const before = Date.now()
@@ -530,7 +539,7 @@ describe("write-back functions", () => {
     expect(new Date(run.next_run_at).getTime()).toBeGreaterThanOrEqual(before)
   })
 
-  it("deferRun sets next_run_at, records the reason and clears the claim", async () => {
+  it("deferRun sets next_run_at, records the reason in defer_reason, clears the claim, and leaves last_error null", async () => {
     const run = seedRun("run-1", "c-1", "seq-1", {
       claimed_at: new Date().toISOString(),
       claimed_by: "tick-1",
@@ -540,7 +549,11 @@ describe("write-back functions", () => {
     await deferRun("run-1", until, "quiet_hours")
 
     expect(run.next_run_at).toBe(until.toISOString())
-    expect(run.last_error).toBe("quiet_hours")
+    expect(run.defer_reason).toBe("quiet_hours")
+    // This is the whole point of the fix: a deferred run (the engine's
+    // normal steady state — sitting out quiet hours or the daily cap) must
+    // never look like a crash to anything reading `last_error`.
+    expect(run.last_error).toBeNull()
     expect(run.claimed_at).toBeNull()
     expect(run.claimed_by).toBeNull()
     expect(run.status).toBe("active")

@@ -75,7 +75,23 @@ CREATE TABLE IF NOT EXISTS public.sequence_runs (
   claimed_at       timestamptz,
   claimed_by       text,
   attempts         int  NOT NULL DEFAULT 0,
+  -- Three text columns for three different owners, deliberately kept
+  -- separate rather than merged into one "note" field:
+  --   exit_reason  — written once, by exitRun/exitRunsForContact, when
+  --                  status becomes 'exited'. Terminal.
+  --   defer_reason — written by deferRun every time a guardrail defers an
+  --                  ACTIVE run (quiet_hours / daily_cap / sibling_run).
+  --                  This is the engine's normal steady state — most runs
+  --                  sit deferred overnight or behind the daily cap — and
+  --                  cleared back to null by advanceRun on forward progress.
+  --   last_error   — written ONLY by failRun, when status becomes 'failed'.
+  --                  A dashboard or health check filtering "WHERE last_error
+  --                  IS NOT NULL" must see genuine crashes only. Overloading
+  --                  it with routine defer reasons would make every quiet
+  --                  night look like a failure and train the reader to
+  --                  ignore the one column meant to flag a real problem.
   exit_reason      text,
+  defer_reason     text,
   last_error       text,
   enrolled_at      timestamptz NOT NULL DEFAULT now(),
   completed_at     timestamptz,

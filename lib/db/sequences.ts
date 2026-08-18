@@ -288,6 +288,10 @@ export async function advanceRun(runId: string, toPosition: number, deferUntil?:
     .update({
       current_position: toPosition,
       next_run_at: deferUntil ? deferUntil.toISOString() : nowIso,
+      // Forward progress clears both notes: a defer that has resolved is no
+      // longer worth surfacing, and a prior error (if this advance follows
+      // one) is superseded by the run actually moving.
+      defer_reason: null,
       last_error: null,
       claimed_at: null,
       claimed_by: null,
@@ -297,13 +301,22 @@ export async function advanceRun(runId: string, toPosition: number, deferUntil?:
   if (error) throw error
 }
 
+/**
+ * Writes to `defer_reason`, NEVER `last_error`. A deferred run stays
+ * `active` — sitting out quiet hours overnight or behind the daily cap is
+ * this engine's normal steady state, not a failure. `last_error` is
+ * `failRun`'s column exclusively; overloading it here would make every
+ * quiet night indistinguishable from a genuine crash to anything reading
+ * "WHERE last_error IS NOT NULL" (this repo's automation-health-scanner
+ * already reads exactly that pattern elsewhere).
+ */
 export async function deferRun(runId: string, until: Date, reason: string): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase
     .from("sequence_runs")
     .update({
       next_run_at: until.toISOString(),
-      last_error: reason,
+      defer_reason: reason,
       claimed_at: null,
       claimed_by: null,
       updated_at: new Date().toISOString(),
