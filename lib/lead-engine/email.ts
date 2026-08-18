@@ -216,11 +216,68 @@ export function renderSequenceEmail(args: {
   return { subject, html, text }
 }
 
+export type RenderedSequenceEmail = { subject: string; html: string; text: string }
+
+/**
+ * Sends an ALREADY-RENDERED sequence email via Resend.
+ *
+ * Split out from `sendSequenceEmail` so a caller that needs the rendered
+ * output for its own purposes — `sequence-tick-runner.ts` records it on the
+ * `sequence_messages` row, because `body_rendered` must hold what was actually
+ * sent rather than the template it came from — can render once and send the
+ * very same bytes, instead of rendering twice and hoping the two agree.
+ */
+export async function sendRenderedSequenceEmail(args: {
+  to: string
+  rendered: RenderedSequenceEmail
+  settings: BusinessSettings
+  unsubscribeUrl?: string
+  oneClickUrl?: string
+  includeUnsubscribeFooter?: boolean
+}): Promise<{ providerMessageId: string | null }> {
+  const { settings, rendered } = args
+  const includeUnsubscribeFooter = args.includeUnsubscribeFooter !== false
+
+  const { data, error } = await resend.emails.send({
+    from: `${settings.sender_name} <${settings.sender_email}>`,
+    to: args.to,
+    replyTo: settings.reply_to,
+    subject: rendered.subject,
+    html: rendered.html,
+    text: rendered.text,
+    // No List-Unsubscribe headers on an internal notification: the header
+    // would carry a revocation URL for a THIRD PARTY (the lead the alert is
+    // about), and a mail client's unsubscribe button — or a scanner — would
+    // fire it on the operator's behalf.
+    //
+    // RFC 8058: `List-Unsubscribe-Post` obliges the URI in `List-Unsubscribe`
+    // to accept an HTTPS POST, so the two move together and the header points
+    // at the POST endpoint rather than the page. Without a one-click endpoint
+    // we still advertise unsubscription, but we do not claim a capability the
+    // URI does not have.
+    headers: includeUnsubscribeFooter
+      ? {
+          "List-Unsubscribe": `<${args.oneClickUrl ?? args.unsubscribeUrl}>`,
+          ...(args.oneClickUrl ? { "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}),
+        }
+      : undefined,
+  })
+
+  if (error) {
+    throw new Error(`sendSequenceEmail failed: ${error.message}`)
+  }
+
+  return { providerMessageId: data?.id ?? null }
+}
+
 /**
  * Renders and sends one sequence email via Resend. When `settings` is
  * omitted it is loaded from `business_settings` — pass it explicitly (as
  * `sequence-tick-runner.ts` will, having already loaded it once per tick)
  * to avoid a redundant read.
+ *
+ * Convenience wrapper over `renderSequenceEmail` + `sendRenderedSequenceEmail`
+ * for callers with nothing to do with the rendered output (the `alert` step).
  */
 export async function sendSequenceEmail(args: {
   to: string
@@ -253,7 +310,7 @@ export async function sendSequenceEmail(args: {
 
   const includeUnsubscribeFooter = args.includeUnsubscribeFooter !== false
 
-  const { subject, html, text } = renderSequenceEmail({
+  const rendered = renderSequenceEmail({
     settings,
     subject: args.subject,
     body: args.body,
@@ -262,33 +319,12 @@ export async function sendSequenceEmail(args: {
     includeUnsubscribeFooter,
   })
 
-  const { data, error } = await resend.emails.send({
-    from: `${settings.sender_name} <${settings.sender_email}>`,
+  return sendRenderedSequenceEmail({
     to: args.to,
-    replyTo: settings.reply_to,
-    subject,
-    html,
-    text,
-    // No List-Unsubscribe headers on an internal notification: the header
-    // would carry a revocation URL for a THIRD PARTY (the lead the alert is
-    // about), and a mail client's unsubscribe button — or a scanner — would
-    // fire it on the operator's behalf.
-    headers: includeUnsubscribeFooter
-      ? {
-          // RFC 8058: `List-Unsubscribe-Post` obliges the URI in
-          // `List-Unsubscribe` to accept an HTTPS POST, so the two move together
-          // and the header points at the POST endpoint rather than the page.
-          // Without a one-click endpoint we still advertise unsubscription, but
-          // we do not claim a capability the URI does not have.
-          "List-Unsubscribe": `<${args.oneClickUrl ?? args.unsubscribeUrl}>`,
-          ...(args.oneClickUrl ? { "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}),
-        }
-      : undefined,
+    rendered,
+    settings,
+    unsubscribeUrl: args.unsubscribeUrl,
+    oneClickUrl: args.oneClickUrl,
+    includeUnsubscribeFooter,
   })
-
-  if (error) {
-    throw new Error(`sendSequenceEmail failed: ${error.message}`)
-  }
-
-  return { providerMessageId: data?.id ?? null }
 }

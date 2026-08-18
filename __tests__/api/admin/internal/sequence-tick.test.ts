@@ -41,6 +41,7 @@ vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
 vi.mock("@/lib/lead-engine/email", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/lead-engine/email")>()),
   sendSequenceEmail: vi.fn(),
+  sendRenderedSequenceEmail: vi.fn(),
 }))
 vi.mock("@/lib/lead-engine/unsubscribe-token", () => ({
   unsubscribeUrl: vi.fn(() => "https://example.test/unsubscribe/tok"),
@@ -67,7 +68,7 @@ vi.mock("@/lib/db/sequences", async (importOriginal) => ({
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { logCronStart, logCronEnd } from "@/lib/db/cron-runs"
 import { getBusinessSettings } from "@/lib/db/businesses"
-import { sendSequenceEmail } from "@/lib/lead-engine/email"
+import { sendSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engine/email"
 import { unsubscribeUrl, unsubscribeOneClickUrl } from "@/lib/lead-engine/unsubscribe-token"
 import {
   claimDueRuns,
@@ -175,6 +176,7 @@ beforeEach(() => {
   ;(loadRunContext as ReturnType<typeof vi.fn>).mockResolvedValue(sendableContext())
   ;(recordSend as ReturnType<typeof vi.fn>).mockResolvedValue({ claimed: true, messageId: "msg-1" })
   ;(sendSequenceEmail as ReturnType<typeof vi.fn>).mockResolvedValue({ providerMessageId: "resend-1" })
+  ;(sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mockResolvedValue({ providerMessageId: "resend-1" })
   ;(markSent as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
   ;(markFailed as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
   ;(advanceRun as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
@@ -224,11 +226,10 @@ describe("POST /api/admin/internal/sequence-tick", () => {
         toIdentifier: "lead@example.com",
       }),
     )
-    expect(sendSequenceEmail).toHaveBeenCalledWith(
+    expect(sendRenderedSequenceEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "lead@example.com",
-        subject: "Hi",
-        body: "Welcome",
+        rendered: expect.objectContaining({ subject: "Hi", text: expect.stringContaining("Welcome") }),
         unsubscribeUrl: "https://example.test/unsubscribe/tok",
         // RFC 8058: the List-Unsubscribe header needs a POST-capable URI,
         // which is a different path from the human landing page.
@@ -357,7 +358,7 @@ describe("POST /api/admin/internal/sequence-tick", () => {
       const res = await POST(makeRequest())
 
       expect(res.status).toBe(200)
-      expect(sendSequenceEmail).toHaveBeenCalledTimes(1)
+      expect(sendRenderedSequenceEmail).toHaveBeenCalledTimes(1)
       expect(markFailed).not.toHaveBeenCalled()
     })
 
@@ -373,13 +374,56 @@ describe("POST /api/admin/internal/sequence-tick", () => {
 
     it("still marks the message failed when the PROVIDER is the thing that failed", async () => {
       ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-rejected")])
-      ;(sendSequenceEmail as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Resend rejected the sender"))
+      ;(sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error("Resend rejected the sender"),
+      )
 
       const res = await POST(makeRequest())
 
       expect(await res.json()).toMatchObject({ failed: 1, sent: 0 })
       expect(markFailed).toHaveBeenCalledWith("msg-1", expect.stringContaining("Resend rejected"))
       expect(markSent).not.toHaveBeenCalled()
+    })
+  })
+
+  // Fix wave (Important 9). recordSend was handed action.step.subject /
+  // action.step.body — the raw template rows, before {{name}} substitution and
+  // before the footer. body_rendered therefore stored what the sequence was
+  // configured to say, not what the person received. The spec insists
+  // to_identifier record what was actually contacted; body_rendered owes the
+  // same honesty, especially since the seed copy is designed to be edited.
+  describe("the recorded message", () => {
+    beforeEach(() => {
+      ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { ...EMAIL_STEP, subject: "Hi {{name}}", body: "Hey {{name}}, welcome aboard." },
+      ])
+      ;(loadRunContext as ReturnType<typeof vi.fn>).mockResolvedValue(
+        sendableContext({ contact: { email: "lead@example.com", phone_e164: null, user_id: null, name: "Jane" } }),
+      )
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-rendered")])
+    })
+
+    it("stores the substituted subject, not the template", async () => {
+      await POST(makeRequest())
+      expect(recordSend).toHaveBeenCalledWith(expect.objectContaining({ subject: "Hi Jane" }))
+    })
+
+    it("stores the rendered body including the footer that was actually sent", async () => {
+      await POST(makeRequest())
+      const arg = (recordSend as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(arg.bodyRendered).toContain("Hey Jane, welcome aboard.")
+      expect(arg.bodyRendered).not.toContain("{{name}}")
+      expect(arg.bodyRendered).toContain(SETTINGS.postal_address)
+      expect(arg.bodyRendered).toContain("https://example.test/unsubscribe/tok")
+    })
+
+    it("sends the very same rendering it recorded — one render, not two", async () => {
+      await POST(makeRequest())
+      const recorded = (recordSend as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      const sent = (sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+      expect(sent.rendered.subject).toBe(recorded.subject)
+      expect(sent.rendered.text).toBe(recorded.bodyRendered)
+      expect(sent.to).toBe("lead@example.com")
     })
   })
 
@@ -429,6 +473,7 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     expect(body).toMatchObject({ failed: 1 })
     expect(failRun).toHaveBeenCalledWith("r-sms", expect.stringContaining("sms"))
     expect(sendSequenceEmail).not.toHaveBeenCalled()
+    expect(sendRenderedSequenceEmail).not.toHaveBeenCalled()
     expect(recordSend).not.toHaveBeenCalled()
   })
 
@@ -468,7 +513,10 @@ describe("POST /api/admin/internal/sequence-tick", () => {
 
     await POST(makeRequest())
 
+    // The alert path is the one caller that still uses the render+send
+    // wrapper, because it has no use for the rendered output.
     expect(sendSequenceEmail).toHaveBeenCalledTimes(1)
+    expect(sendRenderedSequenceEmail).not.toHaveBeenCalled()
     const arg = (sendSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(arg.to).toBe(SETTINGS.reply_to)
     expect(arg.includeUnsubscribeFooter).toBe(false)
@@ -486,9 +534,12 @@ describe("POST /api/admin/internal/sequence-tick", () => {
 
     await POST(makeRequest())
 
-    const arg = (sendSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    const arg = (sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(arg.includeUnsubscribeFooter).not.toBe(false)
     expect(arg.unsubscribeUrl).toBe("https://example.test/unsubscribe/tok")
+    // The footer really is in the bytes handed to the provider, not merely
+    // implied by a flag.
+    expect(arg.rendered.text).toContain("https://example.test/unsubscribe/tok")
   })
 
   it("an unsupported tag/stage step writes a sequence_step_unsupported timeline event before advancing (spec §6, 'visible, not silent')", async () => {
@@ -551,7 +602,7 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     const body = await res.json()
     expect(body).toMatchObject({ deferred: 1, sent: 0 })
     expect(deferRun).toHaveBeenCalledWith("r-defer", expect.any(Date), "daily_cap")
-    expect(sendSequenceEmail).not.toHaveBeenCalled()
+    expect(sendRenderedSequenceEmail).not.toHaveBeenCalled()
   })
 
   it("recordSend reporting the send already owned by another attempt releases the claim via a short defer", async () => {
@@ -563,7 +614,7 @@ describe("POST /api/admin/internal/sequence-tick", () => {
 
     expect(res.status).toBe(200)
     expect(deferRun).toHaveBeenCalledWith("r-race", expect.any(Date), "send_in_progress")
-    expect(sendSequenceEmail).not.toHaveBeenCalled()
+    expect(sendRenderedSequenceEmail).not.toHaveBeenCalled()
   })
 
   // Fix round (Important 1): {{name}} was rendering empty for every
@@ -572,13 +623,16 @@ describe("POST /api/admin/internal/sequence-tick", () => {
   it("a contact with a name on file has it threaded through to the sent email", async () => {
     const run = makeRun("r-named")
     ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...EMAIL_STEP, subject: "Hi {{name}}" }])
     ;(loadRunContext as ReturnType<typeof vi.fn>).mockResolvedValue(
       sendableContext({ contact: { email: "lead@example.com", phone_e164: null, user_id: null, name: "Jane" } }),
     )
 
     await POST(makeRequest())
 
-    expect(sendSequenceEmail).toHaveBeenCalledWith(expect.objectContaining({ contactName: "Jane" }))
+    // The runner renders before it records, so the name is asserted on the
+    // rendered output rather than on a parameter that might never be used.
+    expect((sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0].rendered.subject).toBe("Hi Jane")
   })
 
   // Fix wave (Critical 1): migration 00212 seeds display_name / sender_name /
@@ -609,7 +663,7 @@ describe("POST /api/admin/internal/sequence-tick", () => {
       expect(claimDueRuns).not.toHaveBeenCalled()
       expect(failRun).not.toHaveBeenCalled()
       expect(recordSend).not.toHaveBeenCalled()
-      expect(sendSequenceEmail).not.toHaveBeenCalled()
+      expect(sendRenderedSequenceEmail).not.toHaveBeenCalled()
     })
 
     it("names only the fields that are actually blank", async () => {
@@ -646,6 +700,7 @@ describe("POST /api/admin/internal/sequence-tick", () => {
   it("a contact with no name on file still sends, with contactName null (falls back to '' per lib/lead-engine/email.ts)", async () => {
     const run = makeRun("r-unnamed")
     ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...EMAIL_STEP, subject: "Hi {{name}}" }])
     ;(loadRunContext as ReturnType<typeof vi.fn>).mockResolvedValue(
       sendableContext({ contact: { email: "lead@example.com", phone_e164: null, user_id: null, name: null } }),
     )
@@ -653,6 +708,10 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     const res = await POST(makeRequest())
 
     expect(res.status).toBe(200)
-    expect(sendSequenceEmail).toHaveBeenCalledWith(expect.objectContaining({ contactName: null }))
+    const unnamed = (sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    // Falls back to an empty substitution — never a guessed name, and never a
+    // leftover placeholder.
+    expect(unnamed.rendered.subject).toBe("Hi ")
+    expect(unnamed.rendered.text).not.toContain("{{name}}")
   })
 })

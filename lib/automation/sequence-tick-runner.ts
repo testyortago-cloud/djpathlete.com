@@ -26,7 +26,12 @@ import { randomUUID } from "crypto"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
-import { assertSendable, sendSequenceEmail } from "@/lib/lead-engine/email"
+import {
+  assertSendable,
+  renderSequenceEmail,
+  sendRenderedSequenceEmail,
+  sendSequenceEmail,
+} from "@/lib/lead-engine/email"
 import { unsubscribeUrl, unsubscribeOneClickUrl } from "@/lib/lead-engine/unsubscribe-token"
 import { decideStep } from "@/lib/automation/sequence-tick"
 import type { SequenceRunRow } from "@/lib/automation/sequence-tick"
@@ -186,14 +191,38 @@ async function processRun(
         return
       }
 
+      const origin = appOrigin()
+      const unsubUrl = unsubscribeUrl(origin, run.contact_id, businessId)
+      // The header URI must accept a POST (RFC 8058); the footer link is
+      // followed by a browser. Two paths, one token, one flow.
+      const oneClickUrl = unsubscribeOneClickUrl(origin, run.contact_id, businessId)
+
+      // Rendered ONCE, here, before anything is claimed or sent. The same
+      // bytes are then both recorded and delivered.
+      //
+      // recordSend used to be handed `action.step.subject` / `action.step.body`
+      // — the raw template rows, before {{name}} substitution and before the
+      // footer — so `body_rendered` stored what the sequence was configured to
+      // say rather than what the person received. The seed copy is explicitly
+      // meant to be edited, so the two drift the moment anyone does. The spec
+      // requires `to_identifier` to record what was actually contacted;
+      // `body_rendered` owes the same honesty.
+      const rendered = renderSequenceEmail({
+        settings,
+        subject: action.step.subject ?? "",
+        body: action.step.body ?? "",
+        unsubscribeUrl: unsubUrl,
+        contactName: ctx.contact.name,
+      })
+
       const { claimed, messageId } = await recordSend({
         runId: run.id,
         stepId: action.step.id,
         contactId: run.contact_id,
         channel: "email",
         toIdentifier: to,
-        subject: action.step.subject,
-        bodyRendered: action.step.body ?? "",
+        subject: rendered.subject,
+        bodyRendered: rendered.text,
         businessId,
       })
 
@@ -210,12 +239,6 @@ async function processRun(
         return
       }
 
-      const origin = appOrigin()
-      const unsubUrl = unsubscribeUrl(origin, run.contact_id, businessId)
-      // The header URI must accept a POST (RFC 8058); the footer link is
-      // followed by a browser. Two paths, one token, one flow.
-      const oneClickUrl = unsubscribeOneClickUrl(origin, run.contact_id, businessId)
-
       // THE TRY COVERS THE PROVIDER CALL AND NOTHING ELSE. It used to span
       // markSent/advanceRun too, so a write-back failure called markFailed on
       // a message Resend had already accepted and delivered. That corrupts the
@@ -226,14 +249,12 @@ async function processRun(
       // the message must never downgrade it.
       let providerMessageId: string | null = null
       try {
-        ;({ providerMessageId } = await sendSequenceEmail({
+        ;({ providerMessageId } = await sendRenderedSequenceEmail({
           to,
-          subject: action.step.subject ?? "",
-          body: action.step.body ?? "",
+          rendered,
+          settings,
           unsubscribeUrl: unsubUrl,
           oneClickUrl,
-          contactName: ctx.contact.name,
-          settings,
         }))
       } catch (err) {
         // The provider itself rejected it: nothing was delivered, so the
