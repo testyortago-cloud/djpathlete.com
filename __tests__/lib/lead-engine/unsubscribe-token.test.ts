@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, beforeAll } from "vitest"
+import { createHmac } from "crypto"
 import {
   signUnsubscribeToken,
   verifyUnsubscribeToken,
@@ -53,6 +54,27 @@ describe("unsubscribe token", () => {
   it("is itself rejected by verifyPersonalCheckinToken — the guard runs both ways", () => {
     const ours = signUnsubscribeToken(CONTACT, BUSINESS)
     expect(verifyPersonalCheckinToken(ours)).toEqual({ valid: false })
+  })
+
+  it("rejects a well-signed 3-segment token whose first segment is not the unsub marker", () => {
+    // Isolates the `unsub.` literal check itself, independent of what shape
+    // today's other token families happen to produce. Every foreign family
+    // that exists right now (pc., ap., the bare coach token) carries only
+    // ONE trailing value, so it decodes to 2 segments — meaning the
+    // `segs.length !== 3` check alone already rejects all three of them,
+    // and a mutation that removes ONLY the `segs[0] !== "unsub"` comparison
+    // is a no-op against every existing test above (confirmed by hand:
+    // removing just that comparison still leaves all prior tests green).
+    // Built directly with the same construction signUnsubscribeToken uses
+    // (not via another token module) specifically so this payload has the
+    // correct 3-segment SHAPE and only the marker itself is wrong — that is
+    // the only way to prove the literal comparison is checked at all, since
+    // relying on a shape mismatch proves nothing about the marker.
+    const payload = `notunsub.${CONTACT}.${BUSINESS}`
+    const b64 = Buffer.from(payload).toString("base64url")
+    const sig = createHmac("sha256", process.env.NEXTAUTH_SECRET as string).update(b64).digest("base64url")
+    const token = `${b64}.${sig}`
+    expect(verifyUnsubscribeToken(token)).toEqual({ valid: false })
   })
 
   describe("unsubscribeUrl", () => {
