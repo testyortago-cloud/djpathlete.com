@@ -173,10 +173,28 @@ async function processRun(
       if (action.channel === "sms") {
         // No Stage 1b sequence sends SMS (CONTEXT.md's consent regime — SMS
         // is opt-in and no consent rows exist today) and there is no SMS
-        // sender wired in this codebase yet. Fail loud rather than pretend
-        // to send, or crash with an unhandled "not a function".
-        await failRun(run.id, "sms send action reached the runner, but Stage 1b has no SMS sender wired in")
-        summary.failed += 1
+        // sender wired in this codebase yet.
+        //
+        // Spec §6 groups `sms` with `tag`/`stage`: an unsupported kind
+        // records a `sequence_step_unsupported` timeline event and ADVANCES.
+        // This used to failRun instead, which is unreachable today but
+        // permanent the day it is reached — nothing anywhere re-activates a
+        // failed run, so one SMS step would end that contact's whole
+        // sequence. The timeline row is what keeps it "visible, not silent";
+        // nothing here pretends to have sent anything.
+        await writeTimelineEvent({
+          businessId,
+          contactId: run.contact_id,
+          kind: "sequence_step_unsupported",
+          metadata: {
+            run_id: run.id,
+            sequence_id: run.sequence_id,
+            step_id: action.step.id,
+            step_kind: "sms",
+            reason: "no_sms_sender_wired",
+          },
+        })
+        await advanceRun(run.id, action.step.position + 1)
         return
       }
 

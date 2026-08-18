@@ -455,7 +455,12 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     )
   })
 
-  it("an sms send action fails that run loudly rather than pretending to send", async () => {
+  // Fix wave (Minor 11, spec deviation). Spec §6 groups `sms` with
+  // `tag`/`stage`: an unsupported kind records a `sequence_step_unsupported`
+  // timeline event and ADVANCES. The runner used to failRun instead —
+  // unreachable today (no Stage 1b sequence sends SMS) but permanent the day
+  // it is reached, because nothing re-activates a failed run.
+  it("an sms send action records the unsupported step and advances, rather than killing the run", async () => {
     const run = makeRun("r-sms")
     ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
     ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...EMAIL_STEP, kind: "sms" }])
@@ -469,9 +474,21 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     const res = await POST(makeRequest())
 
     expect(res.status).toBe(200)
-    const body = await res.json()
-    expect(body).toMatchObject({ failed: 1 })
-    expect(failRun).toHaveBeenCalledWith("r-sms", expect.stringContaining("sms"))
+    expect(await res.json()).toMatchObject({ failed: 0 })
+
+    expect(timelineInsertSpy).toHaveBeenCalledWith(
+      "contact_timeline_events",
+      expect.objectContaining({
+        contact_id: "contact-r-sms",
+        kind: "sequence_step_unsupported",
+        source: "sequence_engine",
+        metadata: expect.objectContaining({ run_id: "r-sms", step_id: "step-1", step_kind: "sms" }),
+      }),
+    )
+    expect(advanceRun).toHaveBeenCalledWith("r-sms", 1)
+    expect(failRun).not.toHaveBeenCalled()
+
+    // Still nothing pretends to have sent anything.
     expect(sendSequenceEmail).not.toHaveBeenCalled()
     expect(sendRenderedSequenceEmail).not.toHaveBeenCalled()
     expect(recordSend).not.toHaveBeenCalled()
