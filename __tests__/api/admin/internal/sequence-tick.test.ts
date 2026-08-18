@@ -33,7 +33,15 @@ vi.mock("@/lib/supabase", () => ({
 }))
 vi.mock("@/lib/db/cron-runs", () => ({ logCronStart: vi.fn(), logCronEnd: vi.fn() }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
-vi.mock("@/lib/lead-engine/email", () => ({ sendSequenceEmail: vi.fn() }))
+// Only the SENDER is mocked. `assertSendable`, `renderSequenceEmail` and
+// `BusinessNotConfiguredError` stay real: the route's unconfigured-business
+// arm is an `instanceof` check across this module boundary, and a mock that
+// replaced the class would make that check pass or fail for reasons unrelated
+// to the code that ships.
+vi.mock("@/lib/lead-engine/email", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/lead-engine/email")>()),
+  sendSequenceEmail: vi.fn(),
+}))
 vi.mock("@/lib/lead-engine/unsubscribe-token", () => ({ unsubscribeUrl: vi.fn(() => "https://example.test/unsubscribe/tok") }))
 vi.mock("@/lib/db/sequences", () => ({
   claimDueRuns: vi.fn(),
@@ -253,8 +261,9 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     expect(logCronEnd).toHaveBeenCalledWith(
       expect.anything(), "run-1", "success", expect.objectContaining({ claimed: 0 }),
     )
-    // Nothing claimed: business settings should not even be read.
-    expect(getBusinessSettings).not.toHaveBeenCalled()
+    // Settings ARE read before claiming now — the unconfigured-business
+    // preflight (assertSendable) has to run before anything is claimed.
+    expect(getBusinessSettings).toHaveBeenCalled()
   })
 
   it("writes a cron_runs row on failure when the batch itself throws", async () => {
@@ -396,6 +405,68 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     await POST(makeRequest())
 
     expect(sendSequenceEmail).toHaveBeenCalledWith(expect.objectContaining({ contactName: "Jane" }))
+  })
+
+  // Fix wave (Critical 1): migration 00212 seeds display_name / sender_name /
+  // sender_email / reply_to / postal_address as NOT NULL DEFAULT '' and
+  // nothing calls updateBusinessSettings, so the first tick after the flag is
+  // flipped would send `from: " <>"`, get rejected by Resend, and permanently
+  // fail every claimed run. The preflight must run BEFORE claiming.
+  describe("an unconfigured business", () => {
+    it("claims nothing, fails nothing, and answers 200 naming the missing fields", async () => {
+      ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
+        ...SETTINGS,
+        sender_email: "",
+        display_name: "",
+        postal_address: "",
+      })
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-would-have-sent")])
+
+      const res = await POST(makeRequest())
+
+      // 200, not 500: the caller is a scheduler. A 500 retries a
+      // misconfiguration forever.
+      expect(res.status).toBe(200)
+      const body = await res.json()
+      expect(body.error).toBe("business_settings not configured: sender_email, display_name, postal_address")
+
+      // Nothing claimed and nothing failed — the whole point of running the
+      // preflight before claimDueRuns.
+      expect(claimDueRuns).not.toHaveBeenCalled()
+      expect(failRun).not.toHaveBeenCalled()
+      expect(recordSend).not.toHaveBeenCalled()
+      expect(sendSequenceEmail).not.toHaveBeenCalled()
+    })
+
+    it("names only the fields that are actually blank", async () => {
+      ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ ...SETTINGS, postal_address: "   " })
+
+      const res = await POST(makeRequest())
+
+      expect(res.status).toBe(200)
+      expect((await res.json()).error).toBe("business_settings not configured: postal_address")
+      expect(claimDueRuns).not.toHaveBeenCalled()
+    })
+
+    it("records the refusal on the cron run so it is not silent", async () => {
+      ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ ...SETTINGS, sender_email: "" })
+
+      await POST(makeRequest())
+
+      expect(logCronEnd).toHaveBeenCalledWith(
+        expect.anything(),
+        "run-1",
+        "failed",
+        expect.objectContaining({ message: expect.stringContaining("business_settings not configured") }),
+      )
+    })
+
+    it("a fully configured business is not blocked", async () => {
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-fine")])
+      const res = await POST(makeRequest())
+      expect(res.status).toBe(200)
+      expect(await res.json()).toMatchObject({ ok: true, sent: 1 })
+    })
   })
 
   it("a contact with no name on file still sends, with contactName null (falls back to '' per lib/lead-engine/email.ts)", async () => {

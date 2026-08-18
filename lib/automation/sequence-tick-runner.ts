@@ -26,7 +26,7 @@ import { randomUUID } from "crypto"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
-import { sendSequenceEmail } from "@/lib/lead-engine/email"
+import { assertSendable, sendSequenceEmail } from "@/lib/lead-engine/email"
 import { unsubscribeUrl } from "@/lib/lead-engine/unsubscribe-token"
 import { decideStep } from "@/lib/automation/sequence-tick"
 import type { SequenceRunRow } from "@/lib/automation/sequence-tick"
@@ -299,13 +299,24 @@ export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Pr
 
   const summary: TickSummary = { claimed: 0, sent: 0, deferred: 0, exited: 0, completed: 0, failed: 0 }
 
+  // PREFLIGHT BEFORE ANY CLAIM. Migration 00212 seeds every identity column
+  // as NOT NULL DEFAULT '' and nothing calls updateBusinessSettings, so an
+  // untouched install would send `from: " <>"`, be rejected by Resend, and
+  // land in processRun's catch — permanently failing every claimed run with
+  // no admin surface and no re-activation path. assertSendable throws
+  // BusinessNotConfiguredError, which the route answers with a 200 (see
+  // app/api/admin/internal/sequence-tick/route.ts). Nothing is claimed, so
+  // nothing can be failed.
+  //
+  // Settings are also loaded once per tick rather than once per run —
+  // lib/lead-engine/email.ts's sendSequenceEmail explicitly supports being
+  // handed them to avoid a redundant read.
+  const settings = await getBusinessSettings(businessId)
+  assertSendable(settings)
+
   const runs = await claimDueRuns(limit, claimToken, businessId)
   summary.claimed = runs.length
   if (runs.length === 0) return summary
-
-  // Loaded once per tick, not once per run — lib/lead-engine/email.ts's
-  // sendSequenceEmail explicitly supports this to avoid a redundant read.
-  const settings = await getBusinessSettings(businessId)
 
   for (const run of runs) {
     try {

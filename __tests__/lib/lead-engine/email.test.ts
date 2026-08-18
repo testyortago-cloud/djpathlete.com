@@ -9,7 +9,13 @@ vi.mock("resend", () => ({
   },
 }))
 
-import { renderSequenceEmail, sendSequenceEmail, UNSUBSCRIBE_FOOTER_SENTENCE } from "@/lib/lead-engine/email"
+import {
+  assertSendable,
+  BusinessNotConfiguredError,
+  renderSequenceEmail,
+  sendSequenceEmail,
+  UNSUBSCRIBE_FOOTER_SENTENCE,
+} from "@/lib/lead-engine/email"
 
 const settingsA: BusinessSettings = {
   business_id: "00000000-0000-0000-0000-000000000001",
@@ -181,5 +187,48 @@ describe("sendSequenceEmail", () => {
     })
     expect(sendMock).not.toHaveBeenCalled()
     expect(result.providerMessageId).toBeNull()
+  })
+})
+
+// Fix wave (Critical 1). Migration 00212 seeds display_name / sender_name /
+// sender_email / reply_to / postal_address as NOT NULL DEFAULT '' and
+// `updateBusinessSettings` has no call site anywhere, so "an unconfigured
+// business" is the DEFAULT state of a fresh install, not an edge case.
+describe("assertSendable", () => {
+  it("passes a fully configured business", () => {
+    expect(() => assertSendable(settingsA)).not.toThrow()
+  })
+
+  it("throws naming every blank field, in a stable order", () => {
+    const blank = { ...settingsA, sender_email: "", display_name: "", postal_address: "" }
+    expect(() => assertSendable(blank)).toThrow(
+      "business_settings not configured: sender_email, display_name, postal_address",
+    )
+  })
+
+  it("names only the blank fields, not all three", () => {
+    expect(() => assertSendable({ ...settingsA, display_name: "" })).toThrow(
+      "business_settings not configured: display_name",
+    )
+    expect(() => assertSendable({ ...settingsA, postal_address: "" })).toThrow(
+      "business_settings not configured: postal_address",
+    )
+    expect(() => assertSendable({ ...settingsA, sender_email: "" })).toThrow(
+      "business_settings not configured: sender_email",
+    )
+  })
+
+  it("treats whitespace as blank — ' ' in a From address is still no From address", () => {
+    expect(() => assertSendable({ ...settingsA, sender_email: "   " })).toThrow(BusinessNotConfiguredError)
+  })
+
+  it("exposes the missing fields on the error so a caller need not parse the message", () => {
+    try {
+      assertSendable({ ...settingsA, sender_email: "", postal_address: "" })
+      throw new Error("assertSendable did not throw")
+    } catch (err) {
+      expect(err).toBeInstanceOf(BusinessNotConfiguredError)
+      expect((err as BusinessNotConfiguredError).missing).toEqual(["sender_email", "postal_address"])
+    }
   })
 })

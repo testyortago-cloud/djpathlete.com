@@ -11,6 +11,7 @@ import { isCronSkipped } from "@/lib/db/system-settings"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { logCronStart, logCronEnd } from "@/lib/db/cron-runs"
 import { runSequenceTick } from "@/lib/automation/sequence-tick-runner"
+import { BusinessNotConfiguredError } from "@/lib/lead-engine/email"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
@@ -39,6 +40,17 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : String(err)
     console.error("[sequence-tick] failed:", err)
     await logCronEnd(supabase, runId, "failed", { message })
+
+    // An unconfigured business_settings row answers 200, not 500. The caller
+    // is a scheduler: a 500 makes it retry a misconfiguration that no retry
+    // can fix, forever. The cron_runs row above is still marked `failed`, so
+    // the automation-health watchdog surfaces it to a human — which is the
+    // only thing that can actually resolve it. Nothing was claimed and
+    // nothing was failed (runSequenceTick preflights before claiming).
+    if (err instanceof BusinessNotConfiguredError) {
+      return NextResponse.json({ error: message }, { status: 200 })
+    }
+
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
