@@ -1,0 +1,185 @@
+// @vitest-environment node
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import type { BusinessSettings } from "@/lib/db/businesses"
+
+const sendMock = vi.fn()
+vi.mock("resend", () => ({
+  Resend: class {
+    emails = { send: (...a: unknown[]) => sendMock(...a) }
+  },
+}))
+
+import { renderSequenceEmail, sendSequenceEmail, UNSUBSCRIBE_FOOTER_SENTENCE } from "@/lib/lead-engine/email"
+
+const settingsA: BusinessSettings = {
+  business_id: "00000000-0000-0000-0000-000000000001",
+  display_name: "Acme Fitness",
+  sender_name: "Acme Team",
+  sender_email: "hello@acme.test",
+  reply_to: "support@acme.test",
+  logo_url: null,
+  timezone: "America/New_York",
+  quiet_hours_start: 8,
+  quiet_hours_end: 21,
+  daily_message_cap: 3,
+  postal_address: "123 Acme Way, Springfield, IL 62704",
+  sms_help_text: "Reply STOP to unsubscribe",
+}
+
+const settingsB: BusinessSettings = {
+  ...settingsA,
+  display_name: "Zenith Coaching",
+  sender_name: "Zenith Crew",
+  sender_email: "hi@zenith.test",
+  reply_to: "help@zenith.test",
+  postal_address: "456 Zenith Blvd, Austin, TX 78701",
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  process.env.RESEND_API_KEY = "re_test"
+  sendMock.mockResolvedValue({ data: { id: "resend-msg-1" }, error: null })
+})
+
+describe("renderSequenceEmail", () => {
+  it("takes every piece of identity from settings, not from constants", () => {
+    const a = renderSequenceEmail({
+      settings: settingsA,
+      subject: "Hello",
+      body: "Body text",
+      unsubscribeUrl: "https://x.test/u/1",
+      contactName: null,
+    })
+    const b = renderSequenceEmail({
+      settings: settingsB,
+      subject: "Hello",
+      body: "Body text",
+      unsubscribeUrl: "https://x.test/u/1",
+      contactName: null,
+    })
+
+    // Every piece of identity for A must be present in A's render...
+    expect(a.html).toContain(settingsA.sender_name)
+    expect(a.html).toContain(settingsA.display_name)
+    expect(a.html).toContain(settingsA.postal_address)
+
+    // ...and for B in B's render...
+    expect(b.html).toContain(settingsB.sender_name)
+    expect(b.html).toContain(settingsB.display_name)
+    expect(b.html).toContain(settingsB.postal_address)
+
+    // ...and never cross over. A hardcoded brand string cannot pass this:
+    // it would appear identically in both renders regardless of settings.
+    expect(a.html).not.toContain(settingsB.sender_name)
+    expect(a.html).not.toContain(settingsB.display_name)
+    expect(a.html).not.toContain(settingsB.postal_address)
+    expect(b.html).not.toContain(settingsA.sender_name)
+    expect(b.html).not.toContain(settingsA.display_name)
+    expect(b.html).not.toContain(settingsA.postal_address)
+  })
+
+  it("always renders the postal address and the unsubscribe link", () => {
+    const { html, text } = renderSequenceEmail({
+      settings: settingsA,
+      subject: "Hello",
+      body: "Body",
+      unsubscribeUrl: "https://x.test/u/2",
+      contactName: "Sam",
+    })
+    expect(html).toContain(settingsA.postal_address)
+    expect(html).toContain("https://x.test/u/2")
+    expect(text).toContain(settingsA.postal_address)
+    expect(text).toContain("https://x.test/u/2")
+  })
+
+  it("renders the postal address and unsubscribe link even with no contact name and a minimal body", () => {
+    // CAN-SPAM requirements must never become conditional on anything,
+    // including a sparse/empty personalization payload.
+    const { html, text } = renderSequenceEmail({
+      settings: settingsA,
+      subject: "Hi",
+      body: "",
+      unsubscribeUrl: "https://x.test/u/3",
+      contactName: null,
+    })
+    expect(html).toContain(settingsA.postal_address)
+    expect(html).toContain("https://x.test/u/3")
+    expect(text).toContain(settingsA.postal_address)
+    expect(text).toContain("https://x.test/u/3")
+  })
+
+  it("substitutes {{name}} and falls back to empty when the contact has none", () => {
+    const withName = renderSequenceEmail({
+      settings: settingsA,
+      subject: "Hi {{name}}",
+      body: "Hey {{name}}, welcome aboard.",
+      unsubscribeUrl: "https://x.test/u/4",
+      contactName: "Priya",
+    })
+    expect(withName.subject).toBe("Hi Priya")
+    expect(withName.html).toContain("Hey Priya, welcome aboard.")
+    expect(withName.text).toContain("Hey Priya, welcome aboard.")
+
+    const noName = renderSequenceEmail({
+      settings: settingsA,
+      subject: "Hi {{name}}",
+      body: "Hey {{name}}, welcome aboard.",
+      unsubscribeUrl: "https://x.test/u/4",
+      contactName: null,
+    })
+    // Falls back to empty string — never a brand word, never a guessed name.
+    // (The footer's own display_name/postal-address text is unrelated to
+    // this substitution and is asserted separately above.)
+    expect(noName.subject).toBe("Hi ")
+    expect(noName.html).toContain("Hey , welcome aboard.")
+    expect(noName.html).not.toMatch(/\{\{\s*name\s*\}\}/)
+  })
+
+  it("embeds the exported unsubscribe footer sentence verbatim", () => {
+    const { html } = renderSequenceEmail({
+      settings: settingsA,
+      subject: "Hi",
+      body: "Body",
+      unsubscribeUrl: "https://x.test/u/5",
+      contactName: null,
+    })
+    expect(UNSUBSCRIBE_FOOTER_SENTENCE.length).toBeGreaterThan(0)
+    expect(html).toContain(UNSUBSCRIBE_FOOTER_SENTENCE)
+  })
+})
+
+describe("sendSequenceEmail", () => {
+  it("sets List-Unsubscribe and List-Unsubscribe-Post headers, from and replyTo from settings", async () => {
+    const result = await sendSequenceEmail({
+      to: "lead@example.com",
+      subject: "Hi",
+      body: "Body",
+      unsubscribeUrl: "https://x.test/u/6",
+      contactName: null,
+      settings: settingsA,
+    })
+
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.headers["List-Unsubscribe"]).toBe("<https://x.test/u/6>")
+    expect(arg.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click")
+    expect(arg.from).toBe(`${settingsA.sender_name} <${settingsA.sender_email}>`)
+    expect(arg.replyTo).toBe(settingsA.reply_to)
+    expect(arg.to).toBe("lead@example.com")
+    expect(result.providerMessageId).toBe("resend-msg-1")
+  })
+
+  it("skips the provider entirely when RESEND_API_KEY is unset", async () => {
+    delete process.env.RESEND_API_KEY
+    const result = await sendSequenceEmail({
+      to: "lead@example.com",
+      subject: "Hi",
+      body: "Body",
+      unsubscribeUrl: "https://x.test/u/7",
+      contactName: null,
+      settings: settingsA,
+    })
+    expect(sendMock).not.toHaveBeenCalled()
+    expect(result.providerMessageId).toBeNull()
+  })
+})
