@@ -152,6 +152,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   timelineInsertSpy.mockClear()
   process.env.INTERNAL_CRON_TOKEN = TOKEN
+  // appOrigin() throws when no public origin is configured (fix wave,
+  // Critical 2). Pinned here rather than inherited from .env.local so this
+  // suite does not depend on a developer's local file.
+  process.env.NEXTAUTH_URL = "https://app.example.test"
   ;(isCronSkipped as ReturnType<typeof vi.fn>).mockResolvedValue({ skipped: false })
   ;(logCronStart as ReturnType<typeof vi.fn>).mockResolvedValue("run-1")
   ;(logCronEnd as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
