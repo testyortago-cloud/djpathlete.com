@@ -4,7 +4,7 @@ import { normaliseEmail, normalisePhone } from "@/lib/lead-engine/identity"
 
 describe("normaliseEmail", () => {
   it("lowercases and trims", () => {
-    expect(normaliseEmail("  Darren@Example.COM ")).toBe("darren@example.com")
+    expect(normaliseEmail("  Jordan@Example.COM ")).toBe("jordan@example.com")
   })
 
   it("returns null for blank or missing input", () => {

@@ -8,6 +8,18 @@
 --
 -- No citext: the extension is not enabled here, so uniqueness is enforced with
 -- expression indexes on lower(email), the pattern funnel_submissions uses.
+--
+-- NORMALISATION CONTRACT: the uniqueness index below is on lower(email), but
+-- every lookup in lib/db/contacts.ts (findMatchCandidates) queries with a
+-- plain .eq("email", email) — no lower() in the query. Those only agree
+-- because every write to contacts.email is required to already be lowercased
+-- by lib/lead-engine/identity.ts's normaliseEmail() before it reaches this
+-- table. This is not enforced by a CHECK constraint here. A caller that
+-- writes contacts.email without going through normaliseEmail first can
+-- insert a row the unique index still accepts (e.g. "Name@Example.com")
+-- that findMatchCandidates' case-sensitive .eq() will then never find —
+-- silently defeating the whole point of this table, which is one row per
+-- human across every write path.
 
 CREATE TABLE IF NOT EXISTS public.contacts (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),

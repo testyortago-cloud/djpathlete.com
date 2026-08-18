@@ -139,6 +139,8 @@ export async function POST(request: Request) {
     email,
     phone,
     attributionSessionId: sessionId,
+    funnelId: parsedBody.funnelId,
+    stepId: parsedBody.stepId,
     payload,
   })
 
