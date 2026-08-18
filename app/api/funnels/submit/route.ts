@@ -23,6 +23,7 @@ import { sendNewFunnelLeadEmail } from "@/lib/email"
 import { funnelFormFieldSchema, type FunnelFormField } from "@/lib/funnels/islands"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { recordAudit } from "@/lib/audit/record"
+import { captureContactFromSubmission } from "@/lib/funnels/capture-contact"
 
 /** Bots submit instantly; a person cannot read and fill a form this fast. */
 const MIN_ELAPSED_MS = 1500
@@ -130,6 +131,16 @@ export async function POST(request: Request) {
     console.error("[funnels/submit] failed to record submission:", error)
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
   }
+
+  // Feeds the contact spine (lead-engine Stage 1a). Never throws and never
+  // blocks the visitor's success on it — see lib/funnels/capture-contact.ts.
+  await captureContactFromSubmission({
+    name,
+    email,
+    phone,
+    attributionSessionId: sessionId,
+    payload,
+  })
 
   recordAudit({
     action: "funnel.submission_received",
