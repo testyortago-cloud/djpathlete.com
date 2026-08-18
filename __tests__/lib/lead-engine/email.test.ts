@@ -210,6 +210,67 @@ describe("renderSequenceEmail", () => {
   })
 })
 
+// Fix wave (Important 6). The alert step notifies the OPERATOR, but it reused
+// the marketing sender, so an internal ops email carried an unsubscribe link
+// signed for the LEAD the alert was about. The unsubscribe page writes on GET,
+// and corporate mail scanners (Safe Links, Mimecast, Barracuda) GET every URL
+// in an inbound message — so a scanner in the operator's own inbox would
+// silently suppress that lead, exit their runs, and write a granted:false
+// consent row attributing the revocation to `unsubscribe_link`: a falsified
+// record in the table whose entire purpose is defensible consent.
+describe("renderSequenceEmail with includeUnsubscribeFooter: false", () => {
+  it("omits the unsubscribe sentence and the link from html and text", () => {
+    const { html, text } = renderSequenceEmail({
+      settings: settingsA,
+      subject: "Alert",
+      body: "A lead replied.",
+      contactName: null,
+      includeUnsubscribeFooter: false,
+    })
+    expect(html).not.toContain(UNSUBSCRIBE_FOOTER_SENTENCE)
+    expect(html).not.toContain("Unsubscribe")
+    expect(text).not.toContain(UNSUBSCRIBE_FOOTER_SENTENCE)
+  })
+
+  it("still renders the message itself", () => {
+    const { html, text } = renderSequenceEmail({
+      settings: settingsA,
+      subject: "Alert",
+      body: "A lead replied.",
+      contactName: null,
+      includeUnsubscribeFooter: false,
+    })
+    expect(html).toContain("A lead replied.")
+    expect(text).toContain("A lead replied.")
+  })
+
+  it("defaults to including the footer — a marketing send must not opt out by omission", () => {
+    const { html } = renderSequenceEmail({
+      settings: settingsA,
+      subject: "Hi",
+      body: "Body",
+      unsubscribeUrl: "https://x.test/u/20",
+      contactName: null,
+    })
+    expect(html).toContain(UNSUBSCRIBE_FOOTER_SENTENCE)
+    expect(html).toContain("https://x.test/u/20")
+  })
+
+  it("refuses to render a footer-carrying email with no unsubscribe URL", () => {
+    // CAN-SPAM is not satisfied by an empty href. If the footer is on, the
+    // link is mandatory, and a caller that forgets it must fail loudly rather
+    // than ship a commercial email with a dead unsubscribe.
+    expect(() =>
+      renderSequenceEmail({
+        settings: settingsA,
+        subject: "Hi",
+        body: "Body",
+        contactName: null,
+      }),
+    ).toThrow(/unsubscribeUrl/i)
+  })
+})
+
 describe("sendSequenceEmail", () => {
   it("sets List-Unsubscribe and List-Unsubscribe-Post headers, from and replyTo from settings", async () => {
     const result = await sendSequenceEmail({
@@ -324,5 +385,23 @@ describe("assertSendable", () => {
       expect(err).toBeInstanceOf(BusinessNotConfiguredError)
       expect((err as BusinessNotConfiguredError).missing).toEqual(["sender_email", "postal_address"])
     }
+  })
+})
+
+describe("sendSequenceEmail for an internal notification", () => {
+  it("sends no List-Unsubscribe headers at all", async () => {
+    await sendSequenceEmail({
+      to: "ops@acme.test",
+      subject: "Sequence alert",
+      body: "A lead needs a human.",
+      contactName: null,
+      settings: settingsA,
+      includeUnsubscribeFooter: false,
+    })
+
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.headers?.["List-Unsubscribe"]).toBeUndefined()
+    expect(arg.headers?.["List-Unsubscribe-Post"]).toBeUndefined()
+    expect(arg.html).not.toContain(UNSUBSCRIBE_FOOTER_SENTENCE)
   })
 })

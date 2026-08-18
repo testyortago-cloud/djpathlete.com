@@ -120,10 +120,31 @@ export function renderSequenceEmail(args: {
   settings: BusinessSettings
   subject: string
   body: string
-  unsubscribeUrl: string
+  /** Required whenever the unsubscribe footer is rendered (the default). */
+  unsubscribeUrl?: string
   contactName: string | null
+  /**
+   * Defaults to TRUE. Every message this engine sends to a CONTACT is a
+   * commercial message and must carry the unsubscribe line, so opting out has
+   * to be deliberate and explicit.
+   *
+   * Pass `false` only for internal operator notifications (the `alert` step).
+   * Those are not commercial messages, and giving one an unsubscribe link is
+   * actively dangerous: the link is signed for the LEAD the alert concerns,
+   * the unsubscribe page writes on GET, and corporate mail scanners GET every
+   * URL in an inbound message — so a scanner in the operator's inbox would
+   * suppress that lead and write a falsified consent record for them.
+   */
+  includeUnsubscribeFooter?: boolean
 }): { subject: string; html: string; text: string } {
   const { settings, unsubscribeUrl, contactName } = args
+  const includeUnsubscribeFooter = args.includeUnsubscribeFooter !== false
+  if (includeUnsubscribeFooter && !unsubscribeUrl) {
+    // An empty href does not satisfy CAN-SPAM. A caller that forgot the URL
+    // must fail loudly rather than ship a commercial email whose unsubscribe
+    // link goes nowhere.
+    throw new Error("renderSequenceEmail: unsubscribeUrl is required unless includeUnsubscribeFooter is false")
+  }
   const subject = substituteName(args.subject, contactName)
   const body = substituteName(args.body, contactName)
 
@@ -137,13 +158,18 @@ export function renderSequenceEmail(args: {
     ? `<img src="${escapeHtml(settings.logo_url)}" alt="${escapeHtml(settings.display_name)}" style="max-height:48px; margin-bottom:24px; border:0;" />`
     : `<p style="margin:0 0 24px; font-weight:600; font-size:16px;">${escapeHtml(settings.display_name)}</p>`
 
-  // The footer's identity + unsubscribe lines render unconditionally — a
-  // missing postal address is a CAN-SPAM violation, so nothing here may be
-  // gated on personalization, body content, or any other optional input.
+  // The footer's identity + unsubscribe lines render unconditionally for a
+  // commercial message — a missing postal address is a CAN-SPAM violation, so
+  // nothing here may be gated on personalization, body content, or any other
+  // optional input. `includeUnsubscribeFooter: false` is the ONE exception and
+  // it is not an optional input: it marks the message as an internal operator
+  // notification rather than a message to a contact.
+  const unsubscribeLineHtml = includeUnsubscribeFooter
+    ? `\n    <p style="margin:0;">${escapeHtml(UNSUBSCRIBE_FOOTER_SENTENCE)} <a href="${escapeHtml(unsubscribeUrl as string)}">Unsubscribe</a></p>`
+    : ""
   const footerHtml = `
     <p style="margin:0 0 8px;">${escapeHtml(settings.display_name)}</p>
-    <p style="margin:0 0 8px;">Sent by ${escapeHtml(settings.sender_name)} &middot; ${escapeHtml(settings.postal_address)}</p>
-    <p style="margin:0;">${escapeHtml(UNSUBSCRIBE_FOOTER_SENTENCE)} <a href="${escapeHtml(unsubscribeUrl)}">Unsubscribe</a></p>
+    <p style="margin:0 0 8px;">Sent by ${escapeHtml(settings.sender_name)} &middot; ${escapeHtml(settings.postal_address)}</p>${unsubscribeLineHtml}
   `.trim()
 
   const html = `
@@ -184,7 +210,7 @@ export function renderSequenceEmail(args: {
     "---",
     settings.display_name,
     `Sent by ${settings.sender_name} · ${settings.postal_address}`,
-    `${UNSUBSCRIBE_FOOTER_SENTENCE} ${unsubscribeUrl}`,
+    ...(includeUnsubscribeFooter ? [`${UNSUBSCRIBE_FOOTER_SENTENCE} ${unsubscribeUrl}`] : []),
   ].join("\n")
 
   return { subject, html, text }
@@ -200,8 +226,11 @@ export async function sendSequenceEmail(args: {
   to: string
   subject: string
   body: string
-  /** The human link rendered in the footer — a browser GET lands on a page. */
-  unsubscribeUrl: string
+  /**
+   * The human link rendered in the footer — a browser GET lands on a page.
+   * Required unless `includeUnsubscribeFooter` is false.
+   */
+  unsubscribeUrl?: string
   /**
    * The RFC 8058 one-click endpoint, which must accept an HTTPS POST. Supply
    * it and the message declares `List-Unsubscribe-Post`; omit it and the
@@ -212,8 +241,17 @@ export async function sendSequenceEmail(args: {
   oneClickUrl?: string
   contactName: string | null
   settings?: BusinessSettings
+  /**
+   * Defaults to TRUE. `false` marks this as an internal operator
+   * notification: no unsubscribe footer AND no List-Unsubscribe headers. An
+   * ops email is not a commercial message, and must not carry a one-click
+   * revocation for somebody else's consent.
+   */
+  includeUnsubscribeFooter?: boolean
 }): Promise<{ providerMessageId: string | null }> {
   const settings = args.settings ?? (await getBusinessSettings())
+
+  const includeUnsubscribeFooter = args.includeUnsubscribeFooter !== false
 
   const { subject, html, text } = renderSequenceEmail({
     settings,
@@ -221,6 +259,7 @@ export async function sendSequenceEmail(args: {
     body: args.body,
     unsubscribeUrl: args.unsubscribeUrl,
     contactName: args.contactName,
+    includeUnsubscribeFooter,
   })
 
   const { data, error } = await resend.emails.send({
@@ -230,15 +269,21 @@ export async function sendSequenceEmail(args: {
     subject,
     html,
     text,
-    headers: {
-      // RFC 8058: `List-Unsubscribe-Post` obliges the URI in
-      // `List-Unsubscribe` to accept an HTTPS POST, so the two move together
-      // and the header points at the POST endpoint rather than the page.
-      // Without a one-click endpoint we still advertise unsubscription, but
-      // we do not claim a capability the URI does not have.
-      "List-Unsubscribe": `<${args.oneClickUrl ?? args.unsubscribeUrl}>`,
-      ...(args.oneClickUrl ? { "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}),
-    },
+    // No List-Unsubscribe headers on an internal notification: the header
+    // would carry a revocation URL for a THIRD PARTY (the lead the alert is
+    // about), and a mail client's unsubscribe button — or a scanner — would
+    // fire it on the operator's behalf.
+    headers: includeUnsubscribeFooter
+      ? {
+          // RFC 8058: `List-Unsubscribe-Post` obliges the URI in
+          // `List-Unsubscribe` to accept an HTTPS POST, so the two move together
+          // and the header points at the POST endpoint rather than the page.
+          // Without a one-click endpoint we still advertise unsubscription, but
+          // we do not claim a capability the URI does not have.
+          "List-Unsubscribe": `<${args.oneClickUrl ?? args.unsubscribeUrl}>`,
+          ...(args.oneClickUrl ? { "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}),
+        }
+      : undefined,
   })
 
   if (error) {

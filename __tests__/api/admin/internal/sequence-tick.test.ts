@@ -234,7 +234,10 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     expect(markSent).toHaveBeenCalledWith("msg-1", "resend", "resend-1")
     expect(advanceRun).toHaveBeenCalledWith("r1", 1)
     expect(logCronEnd).toHaveBeenCalledWith(
-      expect.anything(), "run-1", "success", expect.objectContaining({ claimed: 1, sent: 1 }),
+      expect.anything(),
+      "run-1",
+      "success",
+      expect.objectContaining({ claimed: 1, sent: 1 }),
     )
   })
 
@@ -270,7 +273,10 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     expect(res.status).toBe(200)
     expect(logCronStart).toHaveBeenCalledWith(expect.anything(), "sequenceTickCron")
     expect(logCronEnd).toHaveBeenCalledWith(
-      expect.anything(), "run-1", "success", expect.objectContaining({ claimed: 0 }),
+      expect.anything(),
+      "run-1",
+      "success",
+      expect.objectContaining({ claimed: 0 }),
     )
     // Settings ARE read before claiming now — the unconfigured-business
     // preflight (assertSendable) has to run before anything is claimed.
@@ -282,7 +288,10 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     const res = await POST(makeRequest())
     expect(res.status).toBe(500)
     expect(logCronEnd).toHaveBeenCalledWith(
-      expect.anything(), "run-1", "failed", expect.objectContaining({ message: expect.stringContaining("rpc unreachable") }),
+      expect.anything(),
+      "run-1",
+      "failed",
+      expect.objectContaining({ message: expect.stringContaining("rpc unreachable") }),
     )
   })
 
@@ -326,6 +335,44 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     )
     expect(advanceRun).toHaveBeenCalledWith("r-alert", 1)
     expect(failRun).not.toHaveBeenCalled()
+  })
+
+  // Fix wave (Important 6). The alert notifies the OPERATOR at
+  // settings.reply_to but reused the marketing sender, so it carried an
+  // unsubscribe link signed for the LEAD the alert concerns. The unsubscribe
+  // page writes on GET and corporate mail scanners GET every URL in an inbound
+  // message — a scanner in the operator's inbox would silently suppress that
+  // lead, exit their runs, and write a granted:false consent row blaming
+  // `unsubscribe_link`: a falsified record in the table whose whole purpose is
+  // defensible consent.
+  it("an alert email carries no unsubscribe link for the lead it is about", async () => {
+    const run = makeRun("r-alert-nolink")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...EMAIL_STEP, kind: "alert" }])
+
+    await POST(makeRequest())
+
+    expect(sendSequenceEmail).toHaveBeenCalledTimes(1)
+    const arg = (sendSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(arg.to).toBe(SETTINGS.reply_to)
+    expect(arg.includeUnsubscribeFooter).toBe(false)
+    // Not merely "not rendered" — no token URL is minted for this message at
+    // all, so there is nothing for a scanner to follow.
+    expect(arg.unsubscribeUrl).toBeUndefined()
+    expect(arg.oneClickUrl).toBeUndefined()
+    expect(unsubscribeUrl).not.toHaveBeenCalled()
+    expect(unsubscribeOneClickUrl).not.toHaveBeenCalled()
+  })
+
+  it("a normal marketing send still carries the footer (the flag is opt-out, not default-off)", async () => {
+    const run = makeRun("r-marketing")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+
+    await POST(makeRequest())
+
+    const arg = (sendSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(arg.includeUnsubscribeFooter).not.toBe(false)
+    expect(arg.unsubscribeUrl).toBe("https://example.test/unsubscribe/tok")
   })
 
   it("an unsupported tag/stage step writes a sequence_step_unsupported timeline event before advancing (spec §6, 'visible, not silent')", async () => {

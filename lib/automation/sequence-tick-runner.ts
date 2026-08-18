@@ -232,24 +232,24 @@ async function processRun(
         metadata: { run_id: run.id, sequence_id: run.sequence_id, step_id: action.step.id },
       })
 
-      // The email half reuses sendSequenceEmail as instructed, sent to
-      // business_settings.reply_to. That signature has no "internal
-      // notification" mode — renderSequenceEmail (Task 5, reviewed/
-      // committed) renders the postal address + unsubscribe link
-      // UNCONDITIONALLY, by design, because every other caller is a
-      // marketing send bound by CAN-SPAM. There is no flag to turn it off.
-      // Least-bad choice made here: point the unsubscribe link at the RUN's
-      // OWN contact (the lead this alert concerns), never at the business's
-      // identity — business_settings has no `contacts` row of its own, so
-      // there is no token that could resolve to and suppress reply_to. That
-      // closes the dangerous case (an operator accidentally suppressing
-      // their own inbox). What's left is a copy quirk, not a functional
-      // bug: an internal ops email will still carry a line reading "if you
-      // no longer want to receive these emails, you can unsubscribe",
-      // which reads oddly to the human being alerted. Flagged in
-      // task-8-report.md as a follow-up (e.g. an `includeUnsubscribeFooter`
-      // switch on renderSequenceEmail) rather than silently reshaping a
-      // reviewed contract.
+      // The email half reuses sendSequenceEmail, sent to
+      // business_settings.reply_to, with `includeUnsubscribeFooter: false`.
+      //
+      // That flag is not cosmetic. This mail goes to the OPERATOR, but the
+      // only unsubscribe token this code could mint is one for the LEAD the
+      // alert concerns. The unsubscribe page writes on GET, and corporate
+      // mail scanners (Safe Links, Mimecast, Barracuda) GET every URL in an
+      // inbound message — so a scanner in the operator's own inbox would
+      // silently suppress that lead, exit their runs, and write a
+      // granted:false consent row attributing the revocation to
+      // `unsubscribe_link`. That is a falsified record in the one table whose
+      // entire purpose is defensible consent, and nothing downstream could
+      // tell it apart from a real revocation.
+      //
+      // So no token is minted here at all: there is no URL for a scanner to
+      // follow, and no List-Unsubscribe header either. An internal ops
+      // notification is not a commercial message and CAN-SPAM's footer
+      // requirements do not attach to it.
       //
       // A failed alert EMAIL is logged, not fatal: the timeline row above
       // already satisfies "visible", and this lead's own sequence
@@ -260,9 +260,9 @@ async function processRun(
           to: settings.reply_to,
           subject: action.step.subject ?? "Sequence alert",
           body: action.step.body ?? "",
-          unsubscribeUrl: unsubscribeUrl(appOrigin(), run.contact_id, businessId),
           contactName: null,
           settings,
+          includeUnsubscribeFooter: false,
         })
       } catch (err) {
         console.error(`[sequence-tick] alert email to reply_to failed for run ${run.id}:`, err)
