@@ -141,6 +141,62 @@ describe("renderSequenceEmail", () => {
     expect(noName.html).not.toMatch(/\{\{\s*name\s*\}\}/)
   })
 
+  // Fix wave (Important 5). contactName comes from a funnel form — it is
+  // attacker-controllable text — and it was spliced into the subject with no
+  // CRLF stripping, then handed to Resend byte for byte. A bare newline in a
+  // header value is header injection where the transport allows it, and a
+  // mangled subject in most clients even where it does not.
+  describe("a contact name carrying CRLF", () => {
+    const HOSTILE = "Sam\r\nBcc: attacker@evil.test"
+
+    it("cannot put a newline in the subject", () => {
+      const { subject } = renderSequenceEmail({
+        settings: settingsA,
+        subject: "Hi {{name}}",
+        body: "Body",
+        unsubscribeUrl: "https://x.test/u/10",
+        contactName: HOSTILE,
+      })
+      expect(subject).not.toMatch(/[\r\n]/)
+      expect(subject).toBe("Hi Sam Bcc: attacker@evil.test")
+    })
+
+    it("cannot put a newline in the body either", () => {
+      const { text } = renderSequenceEmail({
+        settings: settingsA,
+        subject: "Hi",
+        body: "Hello {{name}}, welcome.",
+        unsubscribeUrl: "https://x.test/u/11",
+        contactName: HOSTILE,
+      })
+      expect(text).toContain("Hello Sam Bcc: attacker@evil.test, welcome.")
+    })
+
+    it("trims the substituted name so a whitespace-only name leaves no ragged gap", () => {
+      const { subject } = renderSequenceEmail({
+        settings: settingsA,
+        subject: "Hi {{name}}",
+        body: "Body",
+        unsubscribeUrl: "https://x.test/u/12",
+        contactName: "  \n Priya \r\n ",
+      })
+      expect(subject).toBe("Hi Priya")
+    })
+
+    it("reaches the provider with no newline in the subject", async () => {
+      await sendSequenceEmail({
+        to: "lead@example.com",
+        subject: "Welcome {{name}}",
+        body: "Body",
+        unsubscribeUrl: "https://x.test/u/13",
+        contactName: HOSTILE,
+        settings: settingsA,
+      })
+      const arg = sendMock.mock.calls[0][0]
+      expect(arg.subject).not.toMatch(/[\r\n]/)
+    })
+  })
+
   it("embeds the exported unsubscribe footer sentence verbatim", () => {
     const { html } = renderSequenceEmail({
       settings: settingsA,

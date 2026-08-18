@@ -95,9 +95,20 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;")
 }
 
-/** `{{name}}` substitution. Falls back to an empty string — never a brand word, never a guessed name. */
+/**
+ * `{{name}}` substitution. Falls back to an empty string — never a brand word,
+ * never a guessed name.
+ *
+ * CR and LF are collapsed to a space before substitution. `contactName` is
+ * funnel-submitted text, so it is attacker-controllable, and it lands in the
+ * SUBJECT — a mail header. A bare newline there is header injection wherever
+ * the transport passes it through, and a mangled subject in most clients even
+ * where it does not. Stripping happens here, once, rather than at each
+ * splice point, so a future caller cannot forget it.
+ */
 function substituteName(template: string, contactName: string | null): string {
-  return template.replaceAll("{{name}}", contactName ?? "")
+  const safeName = contactName?.replace(/[\r\n]+/g, " ").trim() ?? ""
+  return template.replaceAll("{{name}}", safeName)
 }
 
 /**
