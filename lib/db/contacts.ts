@@ -59,6 +59,18 @@ async function findMatchCandidates(
   return Array.from(byId.values())
 }
 
+// Applies a patch to the contacts row and throws on failure. Used for both
+// the plain-update path and the post-merge patch of the survivor: recording
+// who this person is must never fail silently.
+async function updateContact(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  contactId: string,
+  patch: Record<string, unknown>,
+) {
+  const { error } = await supabase.from("contacts").update(patch).eq("id", contactId)
+  if (error) throw error
+}
+
 export async function recordContactEvent(
   input: RecordContactEventInput,
 ): Promise<{ contactId: string; created: boolean; merged: boolean }> {
@@ -96,54 +108,98 @@ export async function recordContactEvent(
     created = true
   } else if (decision.kind === "update") {
     contactId = decision.contactId
-    await supabase
-      .from("contacts")
-      .update({
-        email: email ?? undefined,
-        phone_e164: phone ?? undefined,
-        name: input.name ?? undefined,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", contactId)
+    await updateContact(supabase, contactId, {
+      email: email ?? undefined,
+      phone_e164: phone ?? undefined,
+      name: input.name ?? undefined,
+      updated_at: new Date().toISOString(),
+    })
   } else {
     contactId = decision.survivorId
     merged = true
     await mergeContacts(decision.survivorId, decision.mergedId, businessId)
-    await supabase
-      .from("contacts")
-      .update({
-        email: email ?? undefined,
-        phone_e164: phone ?? undefined,
-        name: input.name ?? undefined,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", contactId)
+    await updateContact(supabase, contactId, {
+      email: email ?? undefined,
+      phone_e164: phone ?? undefined,
+      name: input.name ?? undefined,
+      updated_at: new Date().toISOString(),
+    })
   }
 
-  await supabase.from("contact_timeline_events").insert({
+  // A timeline row is history, not the record of who this person is. The
+  // contact write above already succeeded (or this function would already
+  // have thrown), so a failure here must not fail an entry point that has
+  // already captured the lead. Log it with enough context to find and
+  // backfill, and return normally.
+  const { error: timelineError } = await supabase.from("contact_timeline_events").insert({
     business_id: businessId,
     contact_id: contactId,
     kind: "entry_point",
     source: input.source,
     metadata: input.metadata ?? {},
   })
+  if (timelineError) {
+    console.error(
+      `recordContactEvent: failed to append timeline event for contact ${contactId} (source: ${input.source})`,
+      timelineError,
+    )
+  }
 
   return { contactId, created, merged }
 }
 
-async function mergeContacts(survivorId: string, mergedId: string, businessId: string) {
+// NOT transactional. Supabase REST cannot span statements, so this makes
+// three independent round-trips: re-point the loser's timeline rows, record
+// the merge audit row, delete the loser. If the process dies between the
+// audit insert and the delete, the loser row is left undeleted with the
+// audit row already recorded. That is the residual window — it is not closed
+// here; it is left to Stage 1b, which needs database-level primitives (a
+// plpgsql function) to close it for real.
+//
+// What IS guaranteed: a retry is safe. Before inserting the audit row, this
+// checks whether one already exists for this exact (survivor_id, merged_id)
+// pair and skips the insert if so, so re-running this function after a crash
+// re-merges correctly instead of doubling the audit trail.
+//
+// Timeline rows are re-pointed BEFORE the delete, and that order must not
+// change: contact_timeline_events.contact_id cascades on delete, so deleting
+// the loser first would destroy its timeline history before it could be
+// moved to the survivor.
+export async function mergeContacts(survivorId: string, mergedId: string, businessId: string) {
   const supabase = getClient()
-  const { data: loser } = await supabase.from("contacts").select("*").eq("id", mergedId).maybeSingle()
 
-  await supabase.from("contact_timeline_events").update({ contact_id: survivorId }).eq("contact_id", mergedId)
+  const { data: loser, error: loserError } = await supabase
+    .from("contacts")
+    .select("*")
+    .eq("id", mergedId)
+    .maybeSingle()
+  if (loserError) throw loserError
 
-  await supabase.from("contact_merges").insert({
-    business_id: businessId,
-    survivor_id: survivorId,
-    merged_id: mergedId,
-    merged_snapshot: loser ?? {},
-    reason: "email and phone resolved to different contacts",
-  })
+  const { error: repointError } = await supabase
+    .from("contact_timeline_events")
+    .update({ contact_id: survivorId })
+    .eq("contact_id", mergedId)
+  if (repointError) throw repointError
 
-  await supabase.from("contacts").delete().eq("id", mergedId)
+  const { data: existingMerge, error: existingMergeError } = await supabase
+    .from("contact_merges")
+    .select("id")
+    .eq("survivor_id", survivorId)
+    .eq("merged_id", mergedId)
+    .maybeSingle()
+  if (existingMergeError) throw existingMergeError
+
+  if (!existingMerge) {
+    const { error: mergeInsertError } = await supabase.from("contact_merges").insert({
+      business_id: businessId,
+      survivor_id: survivorId,
+      merged_id: mergedId,
+      merged_snapshot: loser ?? {},
+      reason: "email and phone resolved to different contacts",
+    })
+    if (mergeInsertError) throw mergeInsertError
+  }
+
+  const { error: deleteError } = await supabase.from("contacts").delete().eq("id", mergedId)
+  if (deleteError) throw deleteError
 }
