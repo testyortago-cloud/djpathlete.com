@@ -120,14 +120,20 @@ export async function POST(request: Request) {
 
     // Lead Engine: a marketing exit must never fail a booking webhook. Same
     // shape as the Stripe webhook's payment exit — catch, log, keep going to
-    // the normal response. Runs for every booking event (created, updated,
-    // any status): a booking is a reason to stop the sales pitch.
+    // the normal response. Gated to scheduled/completed only: a cancelled or
+    // no-show booking means the lead did NOT convert, and this branch has no
+    // re-enrolment path anywhere (enrollIfTriggered only fires from
+    // ContactEventSource values, none of which is "booking cancelled") — so
+    // exiting on a bad-outcome status would silently end the conversation
+    // forever, with nothing left to ever restart it.
     try {
-      const contactId = await findContactByIdentifiers({
-        email: data.contact_email,
-        phone: data.contact_phone,
-      })
-      if (contactId) await exitRunsForContact(contactId, "booking")
+      if (data.status === "scheduled" || data.status === "completed") {
+        const contactId = await findContactByIdentifiers({
+          email: data.contact_email,
+          phone: data.contact_phone,
+        })
+        if (contactId) await exitRunsForContact(contactId, "booking")
+      }
     } catch (err) {
       console.error("[ghl-booking-webhook] sequence exit failed", (err as Error).message)
     }

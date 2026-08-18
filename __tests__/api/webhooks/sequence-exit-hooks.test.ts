@@ -281,4 +281,77 @@ describe("GHL booking webhook — sequence exit on booking", () => {
     expect(consoleErrorSpy).toHaveBeenCalled()
     consoleErrorSpy.mockRestore()
   })
+
+  // A cancelled or no-show booking means the lead did NOT convert — the
+  // opposite of the "they booked, stop pitching" logic that justifies the
+  // exit at all. There is no re-enrolment path anywhere in this branch
+  // (enrollIfTriggered only fires from ContactEventSource values, and
+  // "booking cancelled" isn't one), so exiting here on a bad-outcome status
+  // would end the conversation permanently with nothing to ever restart it.
+
+  it("does not exit sequences when the booking is cancelled", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-5")
+
+    const { POST } = await import("@/app/api/webhooks/ghl-booking/route")
+    const res = await POST(
+      makeBookingReq({
+        contact_email: "lead@example.com",
+        contact_name: "Jane",
+        booking_date: "2026-05-10T15:00:00Z",
+        ghl_appointment_id: "appt-cancelled",
+        status: "cancelled",
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(exitRunsForContactMock).not.toHaveBeenCalled()
+  })
+
+  it("does not exit sequences when the booking is a no-show", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-6")
+
+    const { POST } = await import("@/app/api/webhooks/ghl-booking/route")
+    const res = await POST(
+      makeBookingReq({
+        contact_email: "lead@example.com",
+        contact_name: "Jane",
+        booking_date: "2026-05-10T15:00:00Z",
+        ghl_appointment_id: "appt-noshow",
+        status: "no_show",
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(exitRunsForContactMock).not.toHaveBeenCalled()
+  })
+
+  it("still exits sequences when the booking is scheduled or completed", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-7").mockResolvedValueOnce("contact-8")
+
+    const { POST } = await import("@/app/api/webhooks/ghl-booking/route")
+
+    const scheduledRes = await POST(
+      makeBookingReq({
+        contact_email: "lead@example.com",
+        contact_name: "Jane",
+        booking_date: "2026-05-10T15:00:00Z",
+        ghl_appointment_id: "appt-scheduled",
+        status: "scheduled",
+      }),
+    )
+    expect(scheduledRes.status).toBe(201)
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-7", "booking")
+
+    const completedRes = await POST(
+      makeBookingReq({
+        contact_email: "lead2@example.com",
+        contact_name: "Jane",
+        booking_date: "2026-05-10T15:00:00Z",
+        ghl_appointment_id: "appt-completed",
+        status: "completed",
+      }),
+    )
+    expect(completedRes.status).toBe(201)
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-8", "booking")
+  })
 })
