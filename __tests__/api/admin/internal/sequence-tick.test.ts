@@ -343,6 +343,46 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     })
   })
 
+  // Fix wave (Important 8). The try/catch used to span the provider call AND
+  // the markSent/advanceRun write-back, so a failed write after Resend had
+  // accepted the message called markFailed on a message that was genuinely
+  // delivered. That corrupts the audit trail, and because the daily-cap query
+  // filters status='sent', it also lets another sequence send the same contact
+  // a second message the same day.
+  describe("a write-back failure after the provider accepted the message", () => {
+    it("never rewrites the delivered message as failed", async () => {
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-delivered")])
+      ;(markSent as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("db write failed"))
+
+      const res = await POST(makeRequest())
+
+      expect(res.status).toBe(200)
+      expect(sendSequenceEmail).toHaveBeenCalledTimes(1)
+      expect(markFailed).not.toHaveBeenCalled()
+    })
+
+    it("is treated as a transient fault on the run, not a terminal one", async () => {
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-delivered2", { attempts: 1 })])
+      ;(advanceRun as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("db write failed"))
+
+      await POST(makeRequest())
+
+      expect(markFailed).not.toHaveBeenCalled()
+      expect(deferRun).toHaveBeenCalledWith("r-delivered2", expect.any(Date), "transient_error")
+    })
+
+    it("still marks the message failed when the PROVIDER is the thing that failed", async () => {
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-rejected")])
+      ;(sendSequenceEmail as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("Resend rejected the sender"))
+
+      const res = await POST(makeRequest())
+
+      expect(await res.json()).toMatchObject({ failed: 1, sent: 0 })
+      expect(markFailed).toHaveBeenCalledWith("msg-1", expect.stringContaining("Resend rejected"))
+      expect(markSent).not.toHaveBeenCalled()
+    })
+  })
+
   it("writes a cron_runs row on success (nothing due)", async () => {
     ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([])
     const res = await POST(makeRequest())

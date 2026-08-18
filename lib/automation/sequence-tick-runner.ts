@@ -216,8 +216,17 @@ async function processRun(
       // followed by a browser. Two paths, one token, one flow.
       const oneClickUrl = unsubscribeOneClickUrl(origin, run.contact_id, businessId)
 
+      // THE TRY COVERS THE PROVIDER CALL AND NOTHING ELSE. It used to span
+      // markSent/advanceRun too, so a write-back failure called markFailed on
+      // a message Resend had already accepted and delivered. That corrupts the
+      // audit trail — the row says "failed" about an email sitting in
+      // someone's inbox — and because loadRunContext's daily-cap query filters
+      // `status='sent'`, it also lets another sequence send that same contact
+      // a second message the same day. A failure AFTER the provider accepted
+      // the message must never downgrade it.
+      let providerMessageId: string | null = null
       try {
-        const { providerMessageId } = await sendSequenceEmail({
+        ;({ providerMessageId } = await sendSequenceEmail({
           to,
           subject: action.step.subject ?? "",
           body: action.step.body ?? "",
@@ -225,16 +234,28 @@ async function processRun(
           oneClickUrl,
           contactName: ctx.contact.name,
           settings,
-        })
-        await markSent(messageId as string, "resend", providerMessageId)
-        await advanceRun(run.id, action.step.position + 1)
-        summary.sent += 1
+        }))
       } catch (err) {
+        // The provider itself rejected it: nothing was delivered, so the
+        // message row is genuinely failed. failRun (rather than a retry) is
+        // deliberate — recordSend will not re-claim a message row in status
+        // 'failed', so a retried run could never get past its own idempotency
+        // gate and would defer on `send_in_progress` forever.
         const message = err instanceof Error ? err.message : String(err)
         await markFailed(messageId as string, message)
         await failRun(run.id, message)
         summary.failed += 1
+        return
       }
+
+      // Past this point the message is OUT. If either write below throws it
+      // propagates to runSequenceTick's per-run catch, which defers the run
+      // for a retry — the at-least-once contract documented on recordSend in
+      // lib/db/sequences.ts. What must not happen, and no longer can, is the
+      // delivered message being relabelled as failed.
+      await markSent(messageId as string, "resend", providerMessageId)
+      await advanceRun(run.id, action.step.position + 1)
+      summary.sent += 1
       return
     }
 
