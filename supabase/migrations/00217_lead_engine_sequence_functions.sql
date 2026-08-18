@@ -81,18 +81,48 @@ BEGIN
 
   -- Runs are re-pointed last among the children and need conflict handling:
   -- sequence_runs_one_active_per_sequence would reject moving a loser's
-  -- active run into a sequence the survivor is already active in. In that
-  -- case the survivor's own run stands and the loser's is marked exited, so
-  -- the merge cannot fail on a unique violation.
+  -- active run into a sequence the survivor is already active in. One of the
+  -- two has to be exited so the merge cannot fail on a unique violation.
+  --
+  -- WHICH one is not a free choice. This used to always keep the SURVIVOR's
+  -- run, regardless of progress. With the survivor's run at position 0 and
+  -- the loser's at position 4, the person then received steps 0..3 a SECOND
+  -- time, days apart, from the same sequence. sequence_messages_idem is
+  -- (run_id, step_id) and cannot stop that: the run ids differ, so every
+  -- replayed step looks like a first send.
+  --
+  -- The rule is therefore: KEEP WHICHEVER RUN IS FURTHER ALONG. A higher
+  -- current_position has, by definition, already delivered everything the
+  -- lower one still would. Ties fall back to enrolled_at (older survives) and
+  -- then to id, matching siblingRunDefer in lib/lead-engine/guardrails.ts,
+  -- where the older run is the one entitled to send.
+  WITH contested AS (
+    SELECT l.id AS loser_run,
+           CASE
+             WHEN l.current_position > s.current_position THEN s.id
+             WHEN l.current_position < s.current_position THEN l.id
+             WHEN l.enrolled_at      < s.enrolled_at      THEN s.id
+             WHEN l.enrolled_at      > s.enrolled_at      THEN l.id
+             WHEN l.id               < s.id               THEN s.id
+             ELSE l.id
+           END AS lagging_run
+      FROM public.sequence_runs l
+      JOIN public.sequence_runs s
+        ON  s.sequence_id = l.sequence_id
+        AND s.contact_id  = p_survivor
+        AND s.status      = 'active'
+     WHERE l.contact_id = p_merged
+       AND l.status     = 'active'
+  )
   UPDATE public.sequence_runs r
-     SET status = 'exited', exit_reason = 'merged_into_survivor', updated_at = now()
-   WHERE r.contact_id = p_merged
-     AND r.status = 'active'
-     AND EXISTS (
-       SELECT 1 FROM public.sequence_runs s
-        WHERE s.contact_id  = p_survivor
-          AND s.sequence_id = r.sequence_id
-          AND s.status      = 'active');
+     SET status      = 'exited',
+         exit_reason = CASE WHEN r.id = c.loser_run
+                            THEN 'merged_into_survivor'
+                            ELSE 'superseded_by_merged_run' END,
+         updated_at  = now()
+    FROM contested c
+   WHERE r.id = c.lagging_run;
+
   UPDATE public.sequence_runs SET contact_id = p_survivor WHERE contact_id = p_merged;
 
   -- Fifth child: a contact that survived an earlier merge is itself

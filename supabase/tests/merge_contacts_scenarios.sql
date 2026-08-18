@@ -21,6 +21,20 @@
 --      a contact_timeline_events row of kind 'user_id_conflict' is recorded.
 --   3. merge_contacts is called with a p_business that does not match the
 --      loser's business_id -> the loser is NOT deleted.
+--
+-- Scenarios 4-6 were added by the branch's fix wave. When BOTH contacts have
+-- an active run in the SAME sequence, the function used to always keep the
+-- survivor's run and exit the loser's, regardless of progress. If the
+-- survivor's run sat at position 0 and the loser's at position 4, the person
+-- received steps 0..3 a SECOND time, days apart. sequence_messages_idem is
+-- (run_id, step_id), so it cannot stop that — the run ids differ. The rule is
+-- now "keep whichever run is further along":
+--   4. Loser further along  -> the loser's run survives.
+--   5. Tie on position      -> the earlier enrolled_at survives (matching
+--                              siblingRunDefer in lib/lead-engine/guardrails.ts,
+--                              where the older run holds the right to send).
+--   6. Survivor further along -> the survivor's run survives (the original
+--                              behaviour, which was only ever right by luck).
 -- (Idempotency and contact_consents re-pointing are NOT re-covered here —
 -- Task 1's report already verified both live, with before/after row counts
 -- and a re-pointed contact_consents row respectively.)
@@ -140,6 +154,154 @@ BEGIN
   END IF;
 
   RAISE NOTICE 'SCENARIO 3 PASSED: a loser outside the merge''s business was left untouched';
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- Scenarios 4-6: two active runs in the same sequence -> the FURTHER-ALONG
+-- run survives the merge. Keeping the wrong one re-sends every step between
+-- the two positions to a real person.
+-- ---------------------------------------------------------------------------
+
+-- Scenario 4: the LOSER's run is further along -> it is the one that survives.
+DO $$
+DECLARE
+  v_business    uuid := '00000000-0000-0000-0000-000000000001';
+  v_sequence    uuid;
+  v_survivor    uuid;
+  v_loser       uuid;
+  v_run_behind  uuid;  -- survivor's, position 0
+  v_run_ahead   uuid;  -- loser's, position 4
+  v_ahead_status text;
+  v_behind_status text;
+  v_active_count int;
+BEGIN
+  INSERT INTO public.sequences (business_id, key, name, status)
+    VALUES (v_business, 'scenario4_seq', 'Scenario 4 sequence', 'active')
+    RETURNING id INTO v_sequence;
+
+  INSERT INTO public.contacts (business_id, email)
+    VALUES (v_business, 'scenario4-survivor@example.com') RETURNING id INTO v_survivor;
+  INSERT INTO public.contacts (business_id, phone_e164)
+    VALUES (v_business, '+16175551004') RETURNING id INTO v_loser;
+
+  INSERT INTO public.sequence_runs (business_id, sequence_id, contact_id, current_position, status, enrolled_at)
+    VALUES (v_business, v_sequence, v_survivor, 0, 'active', now() - interval '1 day')
+    RETURNING id INTO v_run_behind;
+  INSERT INTO public.sequence_runs (business_id, sequence_id, contact_id, current_position, status, enrolled_at)
+    VALUES (v_business, v_sequence, v_loser, 4, 'active', now() - interval '10 days')
+    RETURNING id INTO v_run_ahead;
+
+  PERFORM public.merge_contacts(v_survivor, v_loser, v_business, 'scenario4_further_along_wins');
+
+  SELECT status INTO v_ahead_status  FROM public.sequence_runs WHERE id = v_run_ahead;
+  SELECT status INTO v_behind_status FROM public.sequence_runs WHERE id = v_run_behind;
+
+  IF v_ahead_status <> 'active' THEN
+    RAISE EXCEPTION 'SCENARIO 4 FAILED: the run at position 4 is now %, expected it to survive as active. Keeping the position-0 run re-sends steps 0..3 to this person.',
+      v_ahead_status;
+  END IF;
+  IF v_behind_status <> 'exited' THEN
+    RAISE EXCEPTION 'SCENARIO 4 FAILED: the lagging run at position 0 is %, expected exited', v_behind_status;
+  END IF;
+
+  -- And exactly one active run remains for the survivor in this sequence:
+  -- sequence_runs_one_active_per_sequence would have rejected the re-point
+  -- otherwise, so this also proves the merge did not silently skip it.
+  SELECT count(*) INTO v_active_count FROM public.sequence_runs
+   WHERE contact_id = v_survivor AND sequence_id = v_sequence AND status = 'active';
+  IF v_active_count <> 1 THEN
+    RAISE EXCEPTION 'SCENARIO 4 FAILED: expected exactly 1 active run on the survivor, found %', v_active_count;
+  END IF;
+
+  RAISE NOTICE 'SCENARIO 4 PASSED: the further-along run survived the merge';
+END $$;
+
+-- Scenario 5: both runs sit at the SAME position -> the earlier enrolled_at
+-- survives. Neither would replay a step, so this is about determinism; the
+-- direction matches siblingRunDefer, where the older run is the one entitled
+-- to send.
+DO $$
+DECLARE
+  v_business   uuid := '00000000-0000-0000-0000-000000000001';
+  v_sequence   uuid;
+  v_survivor   uuid;
+  v_loser      uuid;
+  v_run_older  uuid;  -- loser's, enrolled first
+  v_run_newer  uuid;  -- survivor's
+  v_older_status text;
+  v_newer_status text;
+BEGIN
+  INSERT INTO public.sequences (business_id, key, name, status)
+    VALUES (v_business, 'scenario5_seq', 'Scenario 5 sequence', 'active')
+    RETURNING id INTO v_sequence;
+
+  INSERT INTO public.contacts (business_id, email)
+    VALUES (v_business, 'scenario5-survivor@example.com') RETURNING id INTO v_survivor;
+  INSERT INTO public.contacts (business_id, phone_e164)
+    VALUES (v_business, '+16175551005') RETURNING id INTO v_loser;
+
+  INSERT INTO public.sequence_runs (business_id, sequence_id, contact_id, current_position, status, enrolled_at)
+    VALUES (v_business, v_sequence, v_loser, 2, 'active', now() - interval '30 days')
+    RETURNING id INTO v_run_older;
+  INSERT INTO public.sequence_runs (business_id, sequence_id, contact_id, current_position, status, enrolled_at)
+    VALUES (v_business, v_sequence, v_survivor, 2, 'active', now() - interval '1 hour')
+    RETURNING id INTO v_run_newer;
+
+  PERFORM public.merge_contacts(v_survivor, v_loser, v_business, 'scenario5_tie_breaks_on_enrolled_at');
+
+  SELECT status INTO v_older_status FROM public.sequence_runs WHERE id = v_run_older;
+  SELECT status INTO v_newer_status FROM public.sequence_runs WHERE id = v_run_newer;
+
+  IF v_older_status <> 'active' OR v_newer_status <> 'exited' THEN
+    RAISE EXCEPTION 'SCENARIO 5 FAILED: on a position tie expected the older run to survive (older=%, newer=%)',
+      v_older_status, v_newer_status;
+  END IF;
+
+  RAISE NOTICE 'SCENARIO 5 PASSED: a position tie was broken on enrolled_at';
+END $$;
+
+-- Scenario 6: the SURVIVOR's run is further along -> it survives, and the
+-- loser's lagging run is exited. This is the pre-fix behaviour, and it is
+-- still the right answer in this direction; the scenario exists so a fix that
+-- simply inverted the rule cannot pass.
+DO $$
+DECLARE
+  v_business   uuid := '00000000-0000-0000-0000-000000000001';
+  v_sequence   uuid;
+  v_survivor   uuid;
+  v_loser      uuid;
+  v_run_ahead  uuid;  -- survivor's, position 6
+  v_run_behind uuid;  -- loser's, position 1
+  v_ahead_status  text;
+  v_behind_status text;
+BEGIN
+  INSERT INTO public.sequences (business_id, key, name, status)
+    VALUES (v_business, 'scenario6_seq', 'Scenario 6 sequence', 'active')
+    RETURNING id INTO v_sequence;
+
+  INSERT INTO public.contacts (business_id, email)
+    VALUES (v_business, 'scenario6-survivor@example.com') RETURNING id INTO v_survivor;
+  INSERT INTO public.contacts (business_id, phone_e164)
+    VALUES (v_business, '+16175551006') RETURNING id INTO v_loser;
+
+  INSERT INTO public.sequence_runs (business_id, sequence_id, contact_id, current_position, status, enrolled_at)
+    VALUES (v_business, v_sequence, v_survivor, 6, 'active', now() - interval '2 days')
+    RETURNING id INTO v_run_ahead;
+  INSERT INTO public.sequence_runs (business_id, sequence_id, contact_id, current_position, status, enrolled_at)
+    VALUES (v_business, v_sequence, v_loser, 1, 'active', now() - interval '20 days')
+    RETURNING id INTO v_run_behind;
+
+  PERFORM public.merge_contacts(v_survivor, v_loser, v_business, 'scenario6_survivor_further_along');
+
+  SELECT status INTO v_ahead_status  FROM public.sequence_runs WHERE id = v_run_ahead;
+  SELECT status INTO v_behind_status FROM public.sequence_runs WHERE id = v_run_behind;
+
+  IF v_ahead_status <> 'active' OR v_behind_status <> 'exited' THEN
+    RAISE EXCEPTION 'SCENARIO 6 FAILED: expected the survivor''s position-6 run to survive and the position-1 run to exit (ahead=%, behind=%)',
+      v_ahead_status, v_behind_status;
+  END IF;
+
+  RAISE NOTICE 'SCENARIO 6 PASSED: the further-along run survived, in the other direction too';
 END $$;
 
 ROLLBACK;
