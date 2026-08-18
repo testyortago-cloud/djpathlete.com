@@ -71,6 +71,41 @@ async function updateContact(
   if (error) throw error
 }
 
+type IdentifierConflict = { field: "email" | "phone"; submitted: string; existing: string }
+
+// A public form must never let a submitted identifier silently overwrite a
+// different one already on file — that is how a double-submit or a shared
+// device rewrites a stranger's email. An identifier is only ever WRITTEN when
+// the contact's current value for it is null (a fill). A submission carrying
+// a different non-null value is reported as a conflict instead, so the caller
+// can record it rather than discard it.
+function buildIdentifierPatch(
+  existing: { email: string | null; phone_e164: string | null } | null,
+  email: string | null,
+  phone: string | null,
+): { patch: Record<string, unknown>; conflicts: IdentifierConflict[] } {
+  const patch: Record<string, unknown> = {}
+  const conflicts: IdentifierConflict[] = []
+
+  if (email) {
+    if (!existing?.email) {
+      patch.email = email
+    } else if (existing.email !== email) {
+      conflicts.push({ field: "email", submitted: email, existing: existing.email })
+    }
+  }
+
+  if (phone) {
+    if (!existing?.phone_e164) {
+      patch.phone_e164 = phone
+    } else if (existing.phone_e164 !== phone) {
+      conflicts.push({ field: "phone", submitted: phone, existing: existing.phone_e164 })
+    }
+  }
+
+  return { patch, conflicts }
+}
+
 export async function recordContactEvent(
   input: RecordContactEventInput,
 ): Promise<{ contactId: string; created: boolean; merged: boolean }> {
@@ -90,6 +125,7 @@ export async function recordContactEvent(
   let contactId: string
   let created = false
   let merged = false
+  let identifierConflicts: IdentifierConflict[] = []
 
   if (decision.kind === "create") {
     const { data, error } = await supabase
@@ -108,19 +144,25 @@ export async function recordContactEvent(
     created = true
   } else if (decision.kind === "update") {
     contactId = decision.contactId
+    const existing = found.find((c) => c.id === contactId) ?? null
+    const built = buildIdentifierPatch(existing, email, phone)
+    identifierConflicts = built.conflicts
     await updateContact(supabase, contactId, {
-      email: email ?? undefined,
-      phone_e164: phone ?? undefined,
+      ...built.patch,
       name: input.name ?? undefined,
       updated_at: new Date().toISOString(),
     })
   } else {
     contactId = decision.survivorId
     merged = true
+    // Pre-merge candidates already include the survivor's current identifier
+    // values; the merge itself never touches them, so this lookup stays valid.
+    const existing = found.find((c) => c.id === contactId) ?? null
     await mergeContacts(decision.survivorId, decision.mergedId, businessId)
+    const built = buildIdentifierPatch(existing, email, phone)
+    identifierConflicts = built.conflicts
     await updateContact(supabase, contactId, {
-      email: email ?? undefined,
-      phone_e164: phone ?? undefined,
+      ...built.patch,
       name: input.name ?? undefined,
       updated_at: new Date().toISOString(),
     })
@@ -145,26 +187,53 @@ export async function recordContactEvent(
     )
   }
 
+  // A conflicting identifier is never silently discarded: it did not
+  // overwrite the record, so it is recorded on the timeline instead, one row
+  // per conflicting field.
+  for (const conflict of identifierConflicts) {
+    const { error: conflictError } = await supabase.from("contact_timeline_events").insert({
+      business_id: businessId,
+      contact_id: contactId,
+      kind: "identifier_conflict",
+      source: input.source,
+      metadata: { field: conflict.field, submitted: conflict.submitted, existing: conflict.existing },
+    })
+    if (conflictError) {
+      console.error(
+        `recordContactEvent: failed to append identifier_conflict event for contact ${contactId} (field: ${conflict.field})`,
+        conflictError,
+      )
+    }
+  }
+
   return { contactId, created, merged }
 }
 
 // NOT transactional. Supabase REST cannot span statements, so this makes
-// three independent round-trips: re-point the loser's timeline rows, record
-// the merge audit row, delete the loser. If the process dies between the
-// audit insert and the delete, the loser row is left undeleted with the
-// audit row already recorded. That is the residual window — it is not closed
-// here; it is left to Stage 1b, which needs database-level primitives (a
-// plpgsql function) to close it for real.
+// several independent round-trips: re-point the loser's timeline rows and
+// consent rows, carry over user_id if needed, record the merge audit row,
+// delete the loser. If the process dies between the audit insert and the
+// delete, the loser row is left undeleted with the audit row already
+// recorded. That is the residual window — it is not closed here; it is left
+// to Stage 1b, which needs database-level primitives (a plpgsql function) to
+// close it for real.
 //
 // What IS guaranteed: a retry is safe. Before inserting the audit row, this
 // checks whether one already exists for this exact (survivor_id, merged_id)
 // pair and skips the insert if so, so re-running this function after a crash
 // re-merges correctly instead of doubling the audit trail.
 //
-// Timeline rows are re-pointed BEFORE the delete, and that order must not
-// change: contact_timeline_events.contact_id cascades on delete, so deleting
-// the loser first would destroy its timeline history before it could be
-// moved to the survivor.
+// Timeline rows AND consent rows are re-pointed BEFORE the delete, and that
+// order must not change: both contact_timeline_events.contact_id and
+// contact_consents.contact_id cascade on delete (see
+// supabase/migrations/00214_lead_engine_timeline.sql and
+// 00215_lead_engine_consent.sql), so deleting the loser first would destroy
+// its timeline history and — far worse — its dated proof of consent, before
+// either could be moved to the survivor. contact_merges.merged_id carries no
+// FK (deliberately, so the audit trail survives the loser's row), and
+// contact_suppressions is keyed by identifier, not contact_id, so neither is
+// at risk here. Those are the only two other tables with a foreign key onto
+// contacts(id) as of migrations 00212-00215.
 export async function mergeContacts(survivorId: string, mergedId: string, businessId: string) {
   const supabase = getClient()
 
@@ -172,14 +241,55 @@ export async function mergeContacts(survivorId: string, mergedId: string, busine
     .from("contacts")
     .select("*")
     .eq("id", mergedId)
+    .eq("business_id", businessId)
     .maybeSingle()
   if (loserError) throw loserError
+
+  const { data: survivor, error: survivorError } = await supabase
+    .from("contacts")
+    .select("*")
+    .eq("id", survivorId)
+    .eq("business_id", businessId)
+    .maybeSingle()
+  if (survivorError) throw survivorError
 
   const { error: repointError } = await supabase
     .from("contact_timeline_events")
     .update({ contact_id: survivorId })
     .eq("contact_id", mergedId)
   if (repointError) throw repointError
+
+  const { error: consentRepointError } = await supabase
+    .from("contact_consents")
+    .update({ contact_id: survivorId })
+    .eq("contact_id", mergedId)
+  if (consentRepointError) throw consentRepointError
+
+  // "A user always has a contact" only holds if a merge never drops the
+  // link. If the survivor is missing it, carry the loser's over. If both
+  // have one and they disagree, that is not this function's call to make —
+  // leave the survivor's in place and record the conflict for a human.
+  if (survivor && loser) {
+    const survivorUserId = (survivor as { user_id?: string | null }).user_id ?? null
+    const loserUserId = (loser as { user_id?: string | null }).user_id ?? null
+
+    if (!survivorUserId && loserUserId) {
+      const { error: userIdError } = await supabase
+        .from("contacts")
+        .update({ user_id: loserUserId })
+        .eq("id", survivorId)
+      if (userIdError) throw userIdError
+    } else if (survivorUserId && loserUserId && survivorUserId !== loserUserId) {
+      const { error: userIdConflictError } = await supabase.from("contact_timeline_events").insert({
+        business_id: businessId,
+        contact_id: survivorId,
+        kind: "user_id_conflict",
+        source: "system_merge",
+        metadata: { survivor_user_id: survivorUserId, loser_user_id: loserUserId, merged_contact_id: mergedId },
+      })
+      if (userIdConflictError) throw userIdConflictError
+    }
+  }
 
   const { data: existingMerge, error: existingMergeError } = await supabase
     .from("contact_merges")
@@ -200,6 +310,10 @@ export async function mergeContacts(survivorId: string, mergedId: string, busine
     if (mergeInsertError) throw mergeInsertError
   }
 
-  const { error: deleteError } = await supabase.from("contacts").delete().eq("id", mergedId)
+  const { error: deleteError } = await supabase
+    .from("contacts")
+    .delete()
+    .eq("id", mergedId)
+    .eq("business_id", businessId)
   if (deleteError) throw deleteError
 }
