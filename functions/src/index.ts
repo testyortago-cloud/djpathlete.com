@@ -1957,6 +1957,72 @@ export const auditLogRetentionCron = onSchedule(
   },
 )
 
+// ─── Contact Timeline Retention (daily 03:30 UTC) ───────────────────────────
+// Lead Engine Stage 1b, Task 11. contact_timeline_events.metadata carries raw
+// funnel payload PII (names, emails, whatever the form collected) with no
+// retention. Scrubs metadata to {} and stamps scrubbed_at on rows older than
+// system_settings.contact_timeline_retention_days (default 365) — the row
+// itself (kind, source, occurred_at) survives; this scrubs, it does not
+// delete. Gated by system_settings.cron_contact_timeline_retention_enabled,
+// default TRUE — unlike most crons in this stage, on purpose: same reasoning
+// as cron_audit_log_retention_enabled, unbounded PII accumulation is the risk
+// being managed. Talks to Supabase directly via the service-role client — no
+// Next.js round-trip. (A Next.js route also exists at
+// /api/admin/internal/contact-timeline-retention purely for the admin
+// "Run now" button — see lib/cron-catalog.ts / VERCEL_ROUTE_JOBS.)
+//
+// 03:30 UTC runs after auditLogRetentionCron (03:00) and gscSyncCron (03:15);
+// all three operate on disjoint tables, so collision is fine.
+
+export const contactTimelineRetentionCron = onSchedule(
+  {
+    schedule: "30 3 * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 300,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [supabaseUrl, supabaseServiceRoleKey],
+  },
+  async () => {
+    const { getSupabase } = await import("./lib/supabase.js")
+    const { logCronStart, logCronEnd } = await import("./lib/cron-runs.js")
+    const { scrubContactTimeline } = await import("./lib/contact-timeline-retention.js")
+
+    const supabase = getSupabase()
+
+    const { data: enabledRow } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "cron_contact_timeline_retention_enabled")
+      .single()
+    // Default TRUE: unlike auditLogRetentionCron's `!== true` check (which
+    // relies on a seeded system_settings row to behave as "on"), this flag
+    // must default to enabled with no row present at all, so only an
+    // explicit `false` skips it.
+    if (enabledRow?.value === false) {
+      console.log("[contactTimelineRetentionCron] disabled via flag, skipping")
+      return
+    }
+
+    const { data: daysRow } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "contact_timeline_retention_days")
+      .single()
+    const days = typeof daysRow?.value === "number" ? daysRow.value : 365
+
+    const runId = await logCronStart(supabase, "contactTimelineRetentionCron")
+    try {
+      const scrubbed = await scrubContactTimeline(supabase, days)
+      await logCronEnd(supabase, runId, "success", { scrubbed, days })
+      console.log(`[contactTimelineRetentionCron] scrubbed ${scrubbed} rows older than ${days}d`)
+    } catch (err) {
+      await logCronEnd(supabase, runId, "failed", { message: (err as Error).message })
+      throw err
+    }
+  },
+)
+
 // ─── Bookkeeping Retention (daily 04:00 UTC) ────────────────────────────────
 // AI Bookkeeper Phase 3, Task 15. Prunes bookkeeping_documents (statements +
 // receipts) whose retain_until has passed — deletes the private-bucket object
