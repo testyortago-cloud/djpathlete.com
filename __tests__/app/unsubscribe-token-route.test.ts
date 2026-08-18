@@ -1,6 +1,12 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest"
 
+// The audit recorder is mocked rather than run: recordAudit resolves an actor
+// through NextAuth and writes via lib/db/audit-logs, neither of which this
+// route's behaviour depends on. What matters here is that the flow records the
+// event at all, with the right slug, category and actor.
+vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
+
 vi.mock("next/navigation", () => ({
   notFound: vi.fn(() => {
     throw new Error("NEXT_NOT_FOUND")
@@ -98,6 +104,7 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
+import { recordAudit } from "@/lib/audit/record"
 import { signUnsubscribeToken } from "@/lib/lead-engine/unsubscribe-token"
 import { signPersonalCheckinToken } from "@/lib/qr/checkin-token"
 import { UNSUBSCRIBE_FOOTER_SENTENCE } from "@/lib/lead-engine/email"
@@ -155,9 +162,9 @@ describe("/unsubscribe/[token]", () => {
   })
 
   it("does not write anything for an invalid token", async () => {
-    await expect(
-      UnsubscribeTokenPage({ params: Promise.resolve({ token: "garbage" }) }),
-    ).rejects.toThrow("NEXT_NOT_FOUND")
+    await expect(UnsubscribeTokenPage({ params: Promise.resolve({ token: "garbage" }) })).rejects.toThrow(
+      "NEXT_NOT_FOUND",
+    )
 
     expect(store.consents).toHaveLength(0)
     expect(store.suppressions).toHaveLength(0)
@@ -318,5 +325,60 @@ describe("POST /api/unsubscribe/[token] (RFC 8058 one-click)", () => {
 
     expect(viaPost).toEqual(viaPage)
     expect(viaPost.suppressions).toEqual(["marissa@example.com"])
+  })
+})
+
+// Fix wave (Important 10). Spec §13 requires new audit slugs in the closed
+// taxonomy, and nothing in this feature recorded an audit_logs row — not even
+// the unsubscribe, an UNAUTHENTICATED URL that revokes consent and suppresses
+// an address. A contact_timeline_events row is not a substitute: retention
+// scrubs its metadata.
+describe("the unsubscribe flow records an audit row", () => {
+  it("records marketing.unsubscribed against the contact, with a system actor", async () => {
+    const token = signUnsubscribeToken(CONTACT, BUSINESS)
+    await UnsubscribeTokenPage({ params: Promise.resolve({ token }) })
+
+    expect(recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "marketing.unsubscribed",
+        category: "compliance",
+        outcome: "success",
+        actor: expect.objectContaining({ role: "system" }),
+        target: expect.objectContaining({ type: "contact", id: CONTACT }),
+      }),
+    )
+  })
+
+  it("records the same row from the one-click POST", async () => {
+    const token = signUnsubscribeToken(CONTACT, BUSINESS)
+    await unsubscribePost(new Request("https://app.test/api/unsubscribe/tok", { method: "POST" }), {
+      params: Promise.resolve({ token }),
+    })
+
+    expect(recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "marketing.unsubscribed", category: "compliance" }),
+    )
+  })
+
+  it("carries no email address in the audit metadata", async () => {
+    const token = signUnsubscribeToken(CONTACT, BUSINESS)
+    await UnsubscribeTokenPage({ params: Promise.resolve({ token }) })
+
+    const arg = (recordAudit as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(JSON.stringify(arg)).not.toContain("marissa@example.com")
+  })
+
+  it("records nothing when the token is rejected", async () => {
+    await expect(UnsubscribeTokenPage({ params: Promise.resolve({ token: "garbage" }) })).rejects.toThrow(
+      "NEXT_NOT_FOUND",
+    )
+    expect(recordAudit).not.toHaveBeenCalled()
+  })
+
+  it("uses a slug that exists in the closed taxonomy", async () => {
+    const { getActionDef } = await import("@/lib/audit/actions")
+    const def = getActionDef("marketing.unsubscribed")
+    expect(def).toBeDefined()
+    expect(def?.category).toBe("compliance")
   })
 })

@@ -18,6 +18,7 @@ import { UNSUBSCRIBE_FOOTER_SENTENCE } from "@/lib/lead-engine/email"
 import { recordConsent, suppress } from "@/lib/db/contact-consents"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { recordAudit } from "@/lib/audit/record"
 
 export type UnsubscribeOutcome =
   | { ok: true; contactId: string; businessId: string }
@@ -93,6 +94,30 @@ export async function processUnsubscribe(token: string): Promise<UnsubscribeOutc
 
   await exitRunsForContact(contactId, "unsubscribed")
   await recordUnsubscribeTimelineEvent(contactId, businessId)
+
+  // Spec §13. This is an UNAUTHENTICATED public URL that revokes consent and
+  // suppresses an address, so it belongs in the audit trail and not only in
+  // `contact_timeline_events` — whose metadata the retention cron scrubs.
+  //
+  // The actor is `system` because nobody is signed in: the signed token is the
+  // authorisation. recordAudit swallows its own failures, so this cannot undo
+  // a revocation that has already been written.
+  //
+  // NO EMAIL ADDRESS in the metadata. The contact id is enough to answer "who
+  // was this", and the branch has already had to fix logs that carried PII.
+  await recordAudit({
+    action: "marketing.unsubscribed",
+    category: "compliance",
+    outcome: "success",
+    actor: { id: null, email: null, role: "system" },
+    target: { type: "contact", id: contactId },
+    metadata: {
+      business_id: businessId,
+      channel: "email",
+      source: "unsubscribe_link",
+      suppressed_identifier: contact.email !== null,
+    },
+  })
 
   return { ok: true, contactId, businessId }
 }
