@@ -39,6 +39,34 @@
 --      manual enrolment).
 -- contact_form and event_signup are audited above but not used as a Stage 1b
 -- sequence trigger; nothing here overlaps with their existing auto-reply.
+--
+-- WHICH OF THE FOUR CAN ACTUALLY FIRE TODAY (checked 2026-08-18):
+-- Seeding a trigger_source only matters once something calls
+-- recordContactEvent() with that exact source string — enrollIfTriggered()
+-- (lib/lead-engine/enroll.ts) is only reached from inside
+-- recordContactEvent() (lib/db/contacts.ts). `grep -rn "recordContactEvent("
+-- app/ lib/` finds exactly one call site in the whole repo:
+-- lib/funnels/capture-contact.ts, always with source: "funnel_form". Nothing
+-- emits "newsletter" or "lead_magnet" — the newsletter route
+-- (app/api/newsletter/route.ts) and the lead-magnet route
+-- (app/api/shop/leads/route.ts) never touch the contact spine at all.
+--
+-- | key                     | trigger_source | anything emits this source today?           | flipping to 'active' enrols anyone today? |
+-- |--------------------------|-----------------|-----------------------------------------------|----------------------------------------------|
+-- | new_lead_nurture        | funnel_form     | Yes — lib/funnels/capture-contact.ts           | Yes                                           |
+-- | lead_magnet_delivery    | lead_magnet     | No — nothing in the repo emits this source     | No — enrols nobody until wired                |
+-- | newsletter_welcome      | newsletter      | No — nothing in the repo emits this source     | No — enrols nobody until wired                |
+-- | cold_lead_re_engagement | NULL (manual)   | N/A — enrolment is manual by design            | No — no manual-enrol surface exists yet       |
+--
+-- Wiring the newsletter and lead-magnet routes to call recordContactEvent()
+-- with those sources is Stage 4 work (per the parent spec), not this task,
+-- and is correctly out of scope here. Until it lands, flipping
+-- lead_magnet_delivery or newsletter_welcome to 'active' is harmless — the
+-- CHECK constraints and RLS still hold, and nothing sends because nothing
+-- enrols — but it also does not do anything: the copy is ready and
+-- reviewed, the trigger source it is waiting on is not wired yet. Review
+-- and sign-off on their copy can happen now; there is nothing to observe in
+-- production until Stage 4 wires the source.
 -- =============================================================================
 
 INSERT INTO public.sequences (business_id, key, name, description, trigger_source, status)
