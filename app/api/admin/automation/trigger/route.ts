@@ -20,13 +20,17 @@ const BodySchema = z.object({
 })
 
 // Job names whose runner is a Vercel internal route (not a Firebase Function).
-// Map: catalog job name → internal route path.
-const VERCEL_ROUTE_JOBS: Record<string, string> = {
+// Map: catalog job name → internal route path. Exported so a test can assert
+// this map and lib/cron-catalog.ts agree — they are edited in different
+// files and drift silently otherwise (see the "catalog and trigger map
+// agree" test in __tests__/api/admin/automation/trigger.test.ts).
+export const VERCEL_ROUTE_JOBS: Record<string, string> = {
   "auto-blog-generation": "/api/admin/internal/auto-blog",
   "gsc-nightly-sync":     "/api/admin/internal/gsc-sync",
   "seo-agent-weekly":     "/api/admin/internal/seo-agent",
   "outcome-tracker-daily": "/api/admin/internal/outcome-tracker",
   "session-pack-renewals": "/api/admin/internal/pack-renewals",
+  "sequence-tick":        "/api/admin/internal/sequence-tick",
 }
 
 function getRunJobUrl(): string | null {

@@ -16,6 +16,7 @@ export type CronJobName =
   | "outcome-tracker-daily"
   | "ads-outcome-tracker-daily"
   | "session-pack-renewals"
+  | "sequence-tick"
 
 export interface CronJob {
   name: CronJobName
@@ -183,6 +184,19 @@ export const CRON_CATALOG: readonly CronJob[] = [
     firebaseFunction: "packRenewalScanCron",
     phase: "session-packs",
     enabledKey: "cron_pack_renewals_enabled",
+    defaultEnabled: false,
+  },
+  {
+    name: "sequence-tick",
+    label: "Follow-up sequences",
+    description:
+      "Every five minutes, checks which leads are due their next follow-up email and sends it — respecting quiet hours in their timezone, a daily limit of one message per person, and anyone who has unsubscribed.",
+    schedule: "*/5 * * * *",
+    timezone: "UTC",
+    humanSchedule: "Every 5 minutes",
+    firebaseFunction: "sequenceTickCron",
+    phase: "lead-engine-1b",
+    enabledKey: "cron_sequence_tick_enabled",
     defaultEnabled: false,
   },
 ] as const

@@ -1594,6 +1594,42 @@ export const funnelWindowCron = onSchedule(
   },
 )
 
+// ─── Lead Engine sequence tick (every 5 min, UTC) ───────────────────────────
+// Stage 1b: claims due sequence_runs and executes their next step (send an
+// email, wait, branch, exit, etc). Ships OFF by default via
+// cron_sequence_tick_enabled — the route no-ops until a human switches it on.
+// Spec: docs/superpowers/specs/2026-08-18-lead-engine-stage1b-sequence-engine-design.md §4.
+
+export const sequenceTickCron = onSchedule(
+  {
+    schedule: "*/5 * * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[sequenceTickCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/sequence-tick`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[sequenceTickCron]", res.status, body)
+    } catch (err) {
+      console.error("[sequenceTickCron] failed:", err)
+    }
+  },
+)
+
 export const inboxSlaCron = onSchedule(
   {
     schedule: "0 6 * * 1-5",

@@ -157,6 +157,15 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
     reports_to_cron_runs: true,
     watch_from: "2026-07-20",
   },
+  {
+    // Lead Engine Stage 1b sequence tick — every 5 min, off by default.
+    name: "sequenceTickCron",
+    sla_hours: 1,
+    reports_to_cron_runs: true,
+    watch_from: "2026-08-18",
+    enabled_flag: "cron_sequence_tick_enabled",
+    enabled_flag_default: false,
+  },
 ]
 
 export interface ScannerInput {
