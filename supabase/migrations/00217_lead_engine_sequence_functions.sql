@@ -40,11 +40,17 @@ $$;
 -- Atomic merge. Replaces three un-transacted REST round-trips.
 --
 -- ORDER IS LOAD-BEARING: every child is re-pointed BEFORE the loser is
--- deleted, because all four cascade. Stage 1a shipped a version that missed
+-- deleted, because all five cascade. Stage 1a shipped a version that missed
 -- contact_consents and silently destroyed consent evidence — in the subsystem
--- whose entire purpose is defensible consent. Stage 1b adds two more children.
--- Before editing this function, list every FK onto contacts(id) and check it
--- appears below.
+-- whose entire purpose is defensible consent. Stage 1b's own review caught a
+-- fifth: contact_merges.survivor_id also references contacts(id) ON DELETE
+-- CASCADE, so a contact that won an earlier merge would lose its own merge
+-- history (and the merged_snapshot inside it) the moment it later lost a
+-- merge to someone else. Before editing this function, re-run
+--   grep -n "REFERENCES public.contacts(id)" supabase/migrations/*.sql
+-- and check every hit is either re-pointed below or explicitly exempt
+-- (contact_merges.merged_id carries no FK by design; contact_suppressions is
+-- keyed by identifier, not contact_id).
 CREATE OR REPLACE FUNCTION public.merge_contacts(
   p_survivor uuid,
   p_merged   uuid,
@@ -88,6 +94,12 @@ BEGIN
           AND s.sequence_id = r.sequence_id
           AND s.status      = 'active');
   UPDATE public.sequence_runs SET contact_id = p_survivor WHERE contact_id = p_merged;
+
+  -- Fifth child: a contact that survived an earlier merge is itself
+  -- referenced as survivor_id on that historical contact_merges row. If this
+  -- contact now loses a later merge, that row must move with it or the
+  -- cascade delete below destroys it (merged_snapshot included).
+  UPDATE public.contact_merges SET survivor_id = p_survivor WHERE survivor_id = p_merged;
 
   -- "A user always has a contact" only holds if a merge never drops the link.
   IF v_survivor.user_id IS NULL AND v_loser.user_id IS NOT NULL THEN
