@@ -40,6 +40,46 @@ function utcForLocal(tz: string, y: number, mo: number, d: number, h: number, mi
     const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second)
     guess += Date.UTC(y, mo - 1, d, h, mi, 0) - asUtc
   }
+
+  // A spring-forward transition can make the requested wall-clock time not
+  // exist at all (e.g. 02:00-02:59 on America/New_York's March transition,
+  // where clocks jump straight from 02:00 to 03:00). The two-pass
+  // convergence above has no way to represent that — it silently lands on
+  // whatever instant happens to read back closest, which is the *pre*-jump
+  // offset and therefore an hour *before* the requested time. Detect that
+  // by reading the result back: if it doesn't match the wall-clock time we
+  // asked for, we're in a gap, and the correct fix is to snap FORWARD to
+  // the first valid instant at or after the request (in practice, the
+  // instant the clocks jump to) — never backward, since a window that
+  // "opens" at a nonexistent local time should open when that time would
+  // have arrived, not an hour early. Do not delete this check — the loop
+  // above looks complete without it.
+  const isAtOrAfterTarget = (ms: number): boolean => {
+    const p = partsIn(new Date(ms), tz)
+    if (p.year !== y) return p.year > y
+    if (p.month !== mo) return p.month > mo
+    if (p.day !== d) return p.day > d
+    if (p.hour !== h) return p.hour > h
+    return p.minute >= mi
+  }
+
+  if (!isAtOrAfterTarget(guess)) {
+    // Binary-search forward, to the minute, for the earliest instant that
+    // reads back at or after the requested wall-clock time. A 4-hour
+    // window comfortably covers any real-world DST gap (they run 30-120
+    // minutes); the outer loop is a defensive fallback that only matters
+    // for a pathological zone/date this repo will never see.
+    let lo = guess
+    let hi = guess + 4 * 60 * 60 * 1000
+    while (!isAtOrAfterTarget(hi)) hi += 4 * 60 * 60 * 1000
+    while (hi - lo > 60 * 1000) {
+      const mid = lo + Math.floor((hi - lo) / 2)
+      if (isAtOrAfterTarget(mid)) hi = mid
+      else lo = mid
+    }
+    return new Date(hi)
+  }
+
   return new Date(guess)
 }
 

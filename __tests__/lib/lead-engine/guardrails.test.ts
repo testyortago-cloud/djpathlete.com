@@ -125,3 +125,51 @@ describe("siblingRunDefer", () => {
     expect(siblingRunDefer(mine, [], now)).toBeNull()
   })
 })
+
+// Local wall-clock reader for a Date, independent of guardrails.ts's private
+// partsIn — used only to assert what an instant reads back as in a zone.
+function localHM(instant: Date, tz: string): { day: number; hour: number; minute: number } {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hourCycle: "h23",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+  const p: Record<string, string> = {}
+  for (const { type, value } of fmt.formatToParts(instant)) p[type] = value
+  return { day: +p.day, hour: +p.hour, minute: +p.minute }
+}
+
+describe("utcForLocal DST edge cases (exercised via quietHoursDefer)", () => {
+  it("snaps forward across a DST spring-forward gap instead of landing an hour early", () => {
+    // 2026-03-08 America/New_York: clocks jump 02:00 -> 03:00 EDT, so no
+    // instant reads back as 02:xx local that day. Ask for a window that
+    // opens at 02:00 on that date and confirm the defer instant does not
+    // silently land an hour early (01:00, the naive two-pass convergence
+    // result) but snaps forward to the first valid local time at or after
+    // 02:00 — 03:00 EDT, the moment the clocks jump.
+    const nowUtc = new Date("2026-03-08T05:00:00Z") // 00:00 EST local — before the window opens
+    const defer = quietHoursDefer(nowUtc, "America/New_York", { startHour: 2, endHour: 21 })
+    expect(defer).not.toBeNull()
+    const local = localHM(defer!, "America/New_York")
+    expect(local).toEqual({ day: 8, hour: 3, minute: 0 })
+    expect(defer!.toISOString()).toBe("2026-03-08T07:00:00.000Z")
+  })
+
+  it("pins a stable choice for an ambiguous (repeated) local hour on fall-back", () => {
+    // 2026-11-01 America/New_York: clocks fall back 02:00 -> 01:00, so
+    // 01:00 local occurs twice — once in EDT (UTC-4), once in EST (UTC-5).
+    // Either choice is defensible; pin this implementation's actual choice
+    // (the earlier, EDT occurrence, since the two-pass convergence's
+    // UTC-anchored initial guess resolves within the pre-transition
+    // instant for this case) so the behaviour is documented rather than
+    // accidental.
+    const nowUtc = new Date("2026-11-01T04:00:00Z") // 00:00 EDT local — before the window opens
+    const defer = quietHoursDefer(nowUtc, "America/New_York", { startHour: 1, endHour: 21 })
+    expect(defer).not.toBeNull()
+    const local = localHM(defer!, "America/New_York")
+    expect(local).toEqual({ day: 1, hour: 1, minute: 0 })
+    expect(defer!.toISOString()).toBe("2026-11-01T05:00:00.000Z")
+  })
+})
