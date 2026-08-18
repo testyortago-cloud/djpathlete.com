@@ -23,6 +23,7 @@
 // sequence chains such steps.
 
 import { randomUUID } from "crypto"
+import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
 import { sendSequenceEmail } from "@/lib/lead-engine/email"
@@ -62,6 +63,39 @@ function appOrigin(): string {
   const explicit = process.env.APP_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? null
   if (explicit) return explicit.replace(/\/+$/, "")
   return "http://localhost:3050"
+}
+
+/**
+ * Appends a `contact_timeline_events` row. Deliberately a raw
+ * `createServiceRoleClient()` call rather than a `lib/db/` DAL function —
+ * same accepted pattern as Task 6's
+ * `app/(marketing)/unsubscribe/[token]/page.tsx` (`recordUnsubscribeTimelineEvent`),
+ * chosen there because `lib/db/contacts.ts` has a queue of sequential
+ * editors (Tasks 7/9/10) this file is not part of.
+ *
+ * Throws on failure rather than logging-and-continuing. Spec §6 is explicit
+ * that an unsupported step or an alert must be "visible, not silent" — a
+ * timeline write that silently drops on error would recreate exactly the
+ * silence being fixed. The throw propagates out of `processRun` to
+ * `runSequenceTick`'s fault-isolation catch, which marks the run `failed`
+ * (still exactly one `sequence_runs` write-back — see the concurrency
+ * contract above).
+ */
+async function writeTimelineEvent(args: {
+  businessId: string
+  contactId: string
+  kind: string
+  metadata: Record<string, unknown>
+}): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const { error } = await supabase.from("contact_timeline_events").insert({
+    business_id: args.businessId,
+    contact_id: args.contactId,
+    kind: args.kind,
+    source: "sequence_engine",
+    metadata: args.metadata,
+  })
+  if (error) throw error
 }
 
 /**
@@ -138,12 +172,7 @@ async function processRun(
           subject: action.step.subject ?? "",
           body: action.step.body ?? "",
           unsubscribeUrl: unsubUrl,
-          // Stage 1b does not thread the contact's name through to the
-          // runner (loadRunContext's DecisionContext carries only what
-          // decideStep needs). {{name}} falls back to "" per
-          // lib/lead-engine/email.ts — safe, just unpersonalized. Follow-up:
-          // wire a name read through if this matters before Stage 2.
-          contactName: null,
+          contactName: ctx.contact.name,
           settings,
         })
         await markSent(messageId as string, "resend", providerMessageId)
@@ -158,19 +187,80 @@ async function processRun(
       return
     }
 
-    case "alert":
-      // Spec §6: alert notifies the business (email to reply_to + a
-      // timeline event), not the contact. That notification channel isn't
-      // wired yet — no Stage 1b seed sequence uses `alert` and Task 3 left
-      // it untested by design (progress.md). Advance past it so the run
-      // never stalls waiting on a side effect that doesn't exist; revisit
-      // once a real alert channel ships.
+    case "alert": {
+      // Spec §6: alert notifies the BUSINESS, not the contact. The timeline
+      // row is the required, unconditional "visible, not silent" signal —
+      // written first, and its failure propagates (see writeTimelineEvent).
+      await writeTimelineEvent({
+        businessId,
+        contactId: run.contact_id,
+        kind: "sequence_alert",
+        metadata: { run_id: run.id, sequence_id: run.sequence_id, step_id: action.step.id },
+      })
+
+      // The email half reuses sendSequenceEmail as instructed, sent to
+      // business_settings.reply_to. That signature has no "internal
+      // notification" mode — renderSequenceEmail (Task 5, reviewed/
+      // committed) renders the postal address + unsubscribe link
+      // UNCONDITIONALLY, by design, because every other caller is a
+      // marketing send bound by CAN-SPAM. There is no flag to turn it off.
+      // Least-bad choice made here: point the unsubscribe link at the RUN's
+      // OWN contact (the lead this alert concerns), never at the business's
+      // identity — business_settings has no `contacts` row of its own, so
+      // there is no token that could resolve to and suppress reply_to. That
+      // closes the dangerous case (an operator accidentally suppressing
+      // their own inbox). What's left is a copy quirk, not a functional
+      // bug: an internal ops email will still carry a line reading "if you
+      // no longer want to receive these emails, you can unsubscribe",
+      // which reads oddly to the human being alerted. Flagged in
+      // task-8-report.md as a follow-up (e.g. an `includeUnsubscribeFooter`
+      // switch on renderSequenceEmail) rather than silently reshaping a
+      // reviewed contract.
+      //
+      // A failed alert EMAIL is logged, not fatal: the timeline row above
+      // already satisfies "visible", and this lead's own sequence
+      // progression must not stall on a Resend hiccup for a side-channel
+      // notification to someone else.
+      try {
+        await sendSequenceEmail({
+          to: settings.reply_to,
+          subject: action.step.subject ?? "Sequence alert",
+          body: action.step.body ?? "",
+          unsubscribeUrl: unsubscribeUrl(appOrigin(), run.contact_id, businessId),
+          contactName: null,
+          settings,
+        })
+      } catch (err) {
+        console.error(`[sequence-tick] alert email to reply_to failed for run ${run.id}:`, err)
+      }
+
       await advanceRun(run.id, action.step.position + 1)
       return
+    }
 
-    case "advance":
+    case "advance": {
+      // Spec §6: an unsupported step kind (`tag`/`stage` today) must be
+      // visible, not silently skipped. decideStep already signals this via
+      // `note === "unsupported_kind"` — look up the step it was evaluating
+      // (by the run's CURRENT position, before this advance) purely to
+      // attach its id/kind to the timeline row.
+      if (action.note === "unsupported_kind") {
+        const unsupportedStep = steps.find((s) => s.position === run.current_position)
+        await writeTimelineEvent({
+          businessId,
+          contactId: run.contact_id,
+          kind: "sequence_step_unsupported",
+          metadata: {
+            run_id: run.id,
+            sequence_id: run.sequence_id,
+            step_id: unsupportedStep?.id ?? null,
+            step_kind: unsupportedStep?.kind ?? null,
+          },
+        })
+      }
       await advanceRun(run.id, action.toPosition, action.deferUntil)
       return
+    }
 
     case "defer":
       await deferRun(run.id, action.until, action.reason)

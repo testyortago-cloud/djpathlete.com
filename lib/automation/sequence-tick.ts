@@ -45,7 +45,7 @@ export type DecisionContext = {
   dailyCap: number
   sentAtToday: Array<string | Date>
   activeSiblings: Array<{ id: string; enrolled_at: string }>
-  contact: { email: string | null; phone_e164: string | null; user_id: string | null }
+  contact: { email: string | null; phone_e164: string | null; user_id: string | null; name: string | null }
   hasEmailConsent: boolean
   hasSmsConsent: boolean
   isSuppressed: boolean

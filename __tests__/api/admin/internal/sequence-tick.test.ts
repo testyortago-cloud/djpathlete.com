@@ -12,8 +12,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextRequest } from "next/server"
 
+// Tracks every `contact_timeline_events` insert the runner makes (for the
+// "sequence_step_unsupported" / "sequence_alert" visibility rows) without
+// reimplementing Supabase filtering — this table is write-only from the
+// runner's side, so a spy that records inserts is enough; no read path to
+// get wrong. `vi.hoisted` because the mock factory below runs before this
+// module's own top-level statements.
+const { timelineInsertSpy } = vi.hoisted(() => ({ timelineInsertSpy: vi.fn() }))
+
 vi.mock("@/lib/db/system-settings", () => ({ isCronSkipped: vi.fn() }))
-vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: vi.fn(() => ({})) }))
+vi.mock("@/lib/supabase", () => ({
+  createServiceRoleClient: vi.fn(() => ({
+    from: (table: string) => ({
+      insert: (row: Record<string, unknown>) => {
+        timelineInsertSpy(table, row)
+        return Promise.resolve({ error: null })
+      },
+    }),
+  })),
+}))
 vi.mock("@/lib/db/cron-runs", () => ({ logCronStart: vi.fn(), logCronEnd: vi.fn() }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
 vi.mock("@/lib/lead-engine/email", () => ({ sendSequenceEmail: vi.fn() }))
@@ -114,7 +131,7 @@ function sendableContext(overrides: Partial<DecisionContext> = {}): DecisionCont
     dailyCap: 5,
     sentAtToday: [],
     activeSiblings: [],
-    contact: { email: "lead@example.com", phone_e164: null, user_id: null },
+    contact: { email: "lead@example.com", phone_e164: null, user_id: null, name: null },
     hasEmailConsent: false,
     hasSmsConsent: false,
     isSuppressed: false,
@@ -125,6 +142,7 @@ function sendableContext(overrides: Partial<DecisionContext> = {}): DecisionCont
 
 beforeEach(() => {
   vi.clearAllMocks()
+  timelineInsertSpy.mockClear()
   process.env.INTERNAL_CRON_TOKEN = TOKEN
   ;(isCronSkipped as ReturnType<typeof vi.fn>).mockResolvedValue({ skipped: false })
   ;(logCronStart as ReturnType<typeof vi.fn>).mockResolvedValue("run-1")
@@ -253,7 +271,10 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
     ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...EMAIL_STEP, kind: "sms" }])
     ;(loadRunContext as ReturnType<typeof vi.fn>).mockResolvedValue(
-      sendableContext({ contact: { email: null, phone_e164: "+15551234567", user_id: null }, hasSmsConsent: true }),
+      sendableContext({
+        contact: { email: null, phone_e164: "+15551234567", user_id: null, name: null },
+        hasSmsConsent: true,
+      }),
     )
 
     const res = await POST(makeRequest())
@@ -266,7 +287,7 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     expect(recordSend).not.toHaveBeenCalled()
   })
 
-  it("an alert step advances the run rather than stalling it", async () => {
+  it("an alert step writes a sequence_alert timeline event and advances the run rather than stalling it", async () => {
     const run = makeRun("r-alert")
     ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
     ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...EMAIL_STEP, kind: "alert" }])
@@ -274,8 +295,63 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     const res = await POST(makeRequest())
 
     expect(res.status).toBe(200)
+    expect(timelineInsertSpy).toHaveBeenCalledWith(
+      "contact_timeline_events",
+      expect.objectContaining({
+        contact_id: "contact-r-alert",
+        kind: "sequence_alert",
+        source: "sequence_engine",
+        metadata: expect.objectContaining({ run_id: "r-alert", sequence_id: "seq-1", step_id: "step-1" }),
+      }),
+    )
     expect(advanceRun).toHaveBeenCalledWith("r-alert", 1)
     expect(failRun).not.toHaveBeenCalled()
+  })
+
+  it("an unsupported tag/stage step writes a sequence_step_unsupported timeline event before advancing (spec §6, 'visible, not silent')", async () => {
+    const run = makeRun("r-tag")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...EMAIL_STEP, kind: "tag" }])
+
+    const res = await POST(makeRequest())
+
+    expect(res.status).toBe(200)
+    expect(timelineInsertSpy).toHaveBeenCalledWith(
+      "contact_timeline_events",
+      expect.objectContaining({
+        contact_id: "contact-r-tag",
+        kind: "sequence_step_unsupported",
+        source: "sequence_engine",
+        metadata: expect.objectContaining({ run_id: "r-tag", sequence_id: "seq-1", step_id: "step-1" }),
+      }),
+    )
+    expect(advanceRun).toHaveBeenCalledWith("r-tag", 1, undefined)
+    expect(failRun).not.toHaveBeenCalled()
+  })
+
+  it("a 'stage' step ALSO writes the unsupported-kind timeline event (not just 'tag')", async () => {
+    const run = makeRun("r-stage")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...EMAIL_STEP, kind: "stage" }])
+
+    await POST(makeRequest())
+
+    expect(timelineInsertSpy).toHaveBeenCalledWith(
+      "contact_timeline_events",
+      expect.objectContaining({ kind: "sequence_step_unsupported" }),
+    )
+  })
+
+  it("a normal advance (e.g. past a wait step) does NOT write any timeline event", async () => {
+    const run = makeRun("r-wait")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...EMAIL_STEP, kind: "wait", wait_minutes: 60 }])
+
+    const res = await POST(makeRequest())
+
+    expect(res.status).toBe(200)
+    expect(advanceRun).toHaveBeenCalledWith("r-wait", 1, expect.any(Date))
+    expect(timelineInsertSpy).not.toHaveBeenCalled()
   })
 
   it("a guardrail-deferred send calls deferRun and counts it, not sent", async () => {
@@ -305,5 +381,33 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     expect(res.status).toBe(200)
     expect(deferRun).toHaveBeenCalledWith("r-race", expect.any(Date), "send_in_progress")
     expect(sendSequenceEmail).not.toHaveBeenCalled()
+  })
+
+  // Fix round (Important 1): {{name}} was rendering empty for every
+  // recipient because the runner hardcoded contactName: null instead of
+  // reading it from DecisionContext.contact.name.
+  it("a contact with a name on file has it threaded through to the sent email", async () => {
+    const run = makeRun("r-named")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+    ;(loadRunContext as ReturnType<typeof vi.fn>).mockResolvedValue(
+      sendableContext({ contact: { email: "lead@example.com", phone_e164: null, user_id: null, name: "Jane" } }),
+    )
+
+    await POST(makeRequest())
+
+    expect(sendSequenceEmail).toHaveBeenCalledWith(expect.objectContaining({ contactName: "Jane" }))
+  })
+
+  it("a contact with no name on file still sends, with contactName null (falls back to '' per lib/lead-engine/email.ts)", async () => {
+    const run = makeRun("r-unnamed")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+    ;(loadRunContext as ReturnType<typeof vi.fn>).mockResolvedValue(
+      sendableContext({ contact: { email: "lead@example.com", phone_e164: null, user_id: null, name: null } }),
+    )
+
+    const res = await POST(makeRequest())
+
+    expect(res.status).toBe(200)
+    expect(sendSequenceEmail).toHaveBeenCalledWith(expect.objectContaining({ contactName: null }))
   })
 })

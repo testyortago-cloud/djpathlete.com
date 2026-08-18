@@ -33,7 +33,7 @@ function ctx(over: Partial<DecisionContext> = {}): DecisionContext {
     dailyCap: 1,
     sentAtToday: [],
     activeSiblings: [],
-    contact: { email: "a@example.com", phone_e164: null, user_id: null },
+    contact: { email: "a@example.com", phone_e164: null, user_id: null, name: null },
     hasEmailConsent: false,
     hasSmsConsent: false,
     isSuppressed: false,
@@ -68,7 +68,7 @@ describe("decideStep — email and the consent regime", () => {
     const action = decideStep(
       run,
       [emailStep],
-      ctx({ contact: { email: null, phone_e164: "+15551234567", user_id: null } }),
+      ctx({ contact: { email: null, phone_e164: "+15551234567", user_id: null, name: null } }),
     )
     expect(action).toMatchObject({ kind: "advance", toPosition: 1, note: "no_email_address" })
   })
@@ -79,7 +79,7 @@ describe("decideStep — email and the consent regime", () => {
       run,
       [sms],
       ctx({
-        contact: { email: null, phone_e164: "+15551234567", user_id: null },
+        contact: { email: null, phone_e164: "+15551234567", user_id: null, name: null },
         hasSmsConsent: false,
       }),
     )
@@ -94,7 +94,7 @@ describe("decideStep — email and the consent regime", () => {
       run,
       [sms],
       ctx({
-        contact: { email: null, phone_e164: "+15551234567", user_id: null },
+        contact: { email: null, phone_e164: "+15551234567", user_id: null, name: null },
         hasSmsConsent: true,
       }),
     )
@@ -135,14 +135,14 @@ describe("evaluateBranch", () => {
     expect(
       evaluateBranch(
         { kind: "has_phone" },
-        ctx({ contact: { email: null, phone_e164: "+15551234567", user_id: null } }),
+        ctx({ contact: { email: null, phone_e164: "+15551234567", user_id: null, name: null } }),
       ),
     ).toEqual({ ok: true, value: true })
   })
 
   it("resolves has_user, has_consent and source_is", () => {
     expect(
-      evaluateBranch({ kind: "has_user" }, ctx({ contact: { email: "a@b.co", phone_e164: null, user_id: "u1" } })),
+      evaluateBranch({ kind: "has_user" }, ctx({ contact: { email: "a@b.co", phone_e164: null, user_id: "u1", name: null } })),
     ).toEqual({ ok: true, value: true })
     expect(evaluateBranch({ kind: "has_consent", channel: "sms" }, ctx({ hasSmsConsent: true }))).toEqual({
       ok: true,
@@ -175,7 +175,7 @@ describe("decideStep — branch routing", () => {
     const action = decideStep(
       run,
       [branch],
-      ctx({ contact: { email: null, phone_e164: "+15551234567", user_id: null } }),
+      ctx({ contact: { email: null, phone_e164: "+15551234567", user_id: null, name: null } }),
     )
     expect(action).toMatchObject({ kind: "advance", toPosition: 5 })
   })

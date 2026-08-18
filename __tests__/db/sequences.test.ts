@@ -240,6 +240,7 @@ function seedContact(id: string, overrides: Partial<Row> = {}) {
     phone_e164: null,
     user_id: null,
     timezone: null,
+    name: null,
     ...overrides,
   })
 }
@@ -435,13 +436,38 @@ describe("loadRunContext", () => {
     expect(ctx.timezone).toBe("America/New_York")
     expect(ctx.quiet).toEqual({ startHour: 8, endHour: 21 })
     expect(ctx.dailyCap).toBe(1)
-    expect(ctx.contact).toEqual({ email: "lead@example.com", phone_e164: null, user_id: "u-1" })
+    expect(ctx.contact).toEqual({ email: "lead@example.com", phone_e164: null, user_id: "u-1", name: null })
     expect(ctx.hasEmailConsent).toBe(false)
     expect(ctx.hasSmsConsent).toBe(false)
     expect(ctx.isSuppressed).toBe(false)
     expect(ctx.enrolledSource).toBe("funnel_form")
     expect(ctx.sentAtToday).toEqual([])
     expect(ctx.activeSiblings).toEqual([])
+  })
+
+  // Fix round (Important 1): DecisionContext.contact.name was never
+  // selected, so the runner had no name to thread into {{name}} and every
+  // sequence email rendered it empty.
+  it("carries the contact's name through into DecisionContext.contact.name", async () => {
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com", name: "Jane Doe" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
+
+    const ctx = await loadRunContext(run, now)
+
+    expect(ctx.contact.name).toBe("Jane Doe")
+  })
+
+  it("a contact with no name on file yields contact.name: null, not undefined", async () => {
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com", name: null })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
+
+    const ctx = await loadRunContext(run, now)
+
+    expect(ctx.contact.name).toBeNull()
   })
 
   it("reports suppression from contact_suppressions keyed by the contact's email", async () => {

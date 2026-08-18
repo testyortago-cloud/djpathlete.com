@@ -86,7 +86,7 @@ export async function loadRunContext(
 
   const { data: contactRow, error: contactErr } = await supabase
     .from("contacts")
-    .select("email, phone_e164, user_id, timezone")
+    .select("email, phone_e164, user_id, timezone, name")
     .eq("id", run.contact_id)
     .eq("business_id", businessId)
     .maybeSingle()
@@ -106,6 +106,7 @@ export async function loadRunContext(
     email: (contactRow.email as string | null) ?? null,
     phone_e164: (contactRow.phone_e164 as string | null) ?? null,
     user_id: (contactRow.user_id as string | null) ?? null,
+    name: (contactRow.name as string | null) ?? null,
   }
 
   // Do not wrap these in try/catch. See the doc comment above.
