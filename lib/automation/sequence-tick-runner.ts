@@ -27,7 +27,7 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
 import { assertSendable, sendSequenceEmail } from "@/lib/lead-engine/email"
-import { unsubscribeUrl } from "@/lib/lead-engine/unsubscribe-token"
+import { unsubscribeUrl, unsubscribeOneClickUrl } from "@/lib/lead-engine/unsubscribe-token"
 import { decideStep } from "@/lib/automation/sequence-tick"
 import type { SequenceRunRow } from "@/lib/automation/sequence-tick"
 import {
@@ -193,7 +193,11 @@ async function processRun(
         return
       }
 
-      const unsubUrl = unsubscribeUrl(appOrigin(), run.contact_id, businessId)
+      const origin = appOrigin()
+      const unsubUrl = unsubscribeUrl(origin, run.contact_id, businessId)
+      // The header URI must accept a POST (RFC 8058); the footer link is
+      // followed by a browser. Two paths, one token, one flow.
+      const oneClickUrl = unsubscribeOneClickUrl(origin, run.contact_id, businessId)
 
       try {
         const { providerMessageId } = await sendSequenceEmail({
@@ -201,6 +205,7 @@ async function processRun(
           subject: action.step.subject ?? "",
           body: action.step.body ?? "",
           unsubscribeUrl: unsubUrl,
+          oneClickUrl,
           contactName: ctx.contact.name,
           settings,
         })

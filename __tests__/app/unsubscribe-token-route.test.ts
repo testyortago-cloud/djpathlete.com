@@ -102,6 +102,7 @@ import { signUnsubscribeToken } from "@/lib/lead-engine/unsubscribe-token"
 import { signPersonalCheckinToken } from "@/lib/qr/checkin-token"
 import { UNSUBSCRIBE_FOOTER_SENTENCE } from "@/lib/lead-engine/email"
 import UnsubscribeTokenPage from "@/app/(marketing)/unsubscribe/[token]/page"
+import { POST as unsubscribePost, GET as unsubscribeGet } from "@/app/api/unsubscribe/[token]/route"
 
 const CONTACT = "c-1"
 const OTHER_CONTACT = "c-2"
@@ -203,5 +204,119 @@ describe("/unsubscribe/[token]", () => {
 
     const theirs = store.sequenceRuns.find((r) => r.id === "run-2")
     expect(theirs?.status).toBe("active")
+  })
+})
+
+// Fix wave (Important 3). `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+// declares RFC 8058, which obliges the URI in `List-Unsubscribe` to accept an
+// HTTPS POST. The declared target used to be the page above — GET only — so
+// Gmail's one-click button POSTed and got a 405: the reader pressed
+// unsubscribe and nothing happened.
+//
+// The endpoint lives under /api because Next.js App Router cannot serve a
+// `route.ts` and a `page.tsx` from the same segment (both normalise to
+// `/unsubscribe/[token]`). These tests exist to prove the two surfaces run the
+// SAME flow — that is the whole reason `processUnsubscribe` is shared.
+describe("POST /api/unsubscribe/[token] (RFC 8058 one-click)", () => {
+  function req(method = "POST") {
+    return new Request("https://app.test/api/unsubscribe/tok", { method })
+  }
+
+  it("performs the full suppress/revoke/exit flow and answers 200", async () => {
+    const token = signUnsubscribeToken(CONTACT, BUSINESS)
+    const res = await unsubscribePost(req(), { params: Promise.resolve({ token }) })
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true })
+
+    expect(store.suppressions).toHaveLength(1)
+    expect(store.suppressions[0].identifier).toBe("marissa@example.com")
+    expect(store.consents).toHaveLength(1)
+    expect(store.consents[0]).toMatchObject({
+      contact_id: CONTACT,
+      channel: "email",
+      granted: false,
+      source: "unsubscribe_link",
+      wording_shown: UNSUBSCRIBE_FOOTER_SENTENCE,
+    })
+    expect(store.timeline).toHaveLength(1)
+    expect(store.timeline[0]).toMatchObject({ contact_id: CONTACT, kind: "unsubscribed" })
+    expect(store.sequenceRuns.find((r) => r.id === "run-1")?.status).toBe("exited")
+    expect(store.sequenceRuns.find((r) => r.id === "run-2")?.status).toBe("active")
+  })
+
+  it("writes nothing for an invalid token and answers 404, not 500", async () => {
+    const res = await unsubscribePost(req(), { params: Promise.resolve({ token: "garbage" }) })
+    expect(res.status).toBe(404)
+    expect(store.consents).toHaveLength(0)
+    expect(store.suppressions).toHaveLength(0)
+    expect(store.timeline).toHaveLength(0)
+  })
+
+  it("writes nothing for a foreign (personal check-in) token", async () => {
+    const foreign = signPersonalCheckinToken("some-user-id")
+    const res = await unsubscribePost(req(), { params: Promise.resolve({ token: foreign }) })
+    expect(res.status).toBe(404)
+    expect(store.consents).toHaveLength(0)
+    expect(store.suppressions).toHaveLength(0)
+  })
+
+  it("is idempotent — a mail client retrying the POST still answers 200", async () => {
+    const token = signUnsubscribeToken(CONTACT, BUSINESS)
+    await unsubscribePost(req(), { params: Promise.resolve({ token }) })
+    const second = await unsubscribePost(req(), { params: Promise.resolve({ token }) })
+
+    expect(second.status).toBe(200)
+    expect(store.suppressions).toHaveLength(1)
+    // Consent is append-only: a second revocation is a second legitimate
+    // record, exactly as on the page path.
+    expect(store.consents).toHaveLength(2)
+  })
+
+  it("lands the reader on the page instead of writing, when a client GETs the header URI", async () => {
+    const token = signUnsubscribeToken(CONTACT, BUSINESS)
+    const res = await unsubscribeGet(req("GET"), { params: Promise.resolve({ token }) })
+
+    expect(res.status).toBe(303)
+    expect(res.headers.get("location")).toContain(`/unsubscribe/${encodeURIComponent(token)}`)
+    // The GET arm itself must not act — it only redirects.
+    expect(store.consents).toHaveLength(0)
+    expect(store.suppressions).toHaveLength(0)
+  })
+
+  it("reaches the same end state as the page for the same token", async () => {
+    // The two surfaces must not drift. Run the POST, snapshot; reset; run the
+    // page; compare the parts that matter.
+    const token = signUnsubscribeToken(CONTACT, BUSINESS)
+    await unsubscribePost(req(), { params: Promise.resolve({ token }) })
+    const viaPost = {
+      suppressions: store.suppressions.map((r) => r.identifier),
+      consents: store.consents.map((r) => `${r.channel}:${r.granted}:${r.source}`),
+      timeline: store.timeline.map((r) => r.kind),
+      runs: store.sequenceRuns.map((r) => `${r.id}:${r.status}`),
+    }
+
+    store.contacts = [
+      { id: "some-other-contact", business_id: BUSINESS, email: "not-marissa@example.com" },
+      { id: CONTACT, business_id: BUSINESS, email: "marissa@example.com" },
+    ]
+    store.consents = []
+    store.suppressions = []
+    store.timeline = []
+    store.sequenceRuns = [
+      { id: "run-1", contact_id: CONTACT, status: "active" },
+      { id: "run-2", contact_id: OTHER_CONTACT, status: "active" },
+    ]
+
+    await UnsubscribeTokenPage({ params: Promise.resolve({ token }) })
+    const viaPage = {
+      suppressions: store.suppressions.map((r) => r.identifier),
+      consents: store.consents.map((r) => `${r.channel}:${r.granted}:${r.source}`),
+      timeline: store.timeline.map((r) => r.kind),
+      runs: store.sequenceRuns.map((r) => `${r.id}:${r.status}`),
+    }
+
+    expect(viaPost).toEqual(viaPage)
+    expect(viaPost.suppressions).toEqual(["marissa@example.com"])
   })
 })

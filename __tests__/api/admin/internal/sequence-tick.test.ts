@@ -42,7 +42,10 @@ vi.mock("@/lib/lead-engine/email", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/lead-engine/email")>()),
   sendSequenceEmail: vi.fn(),
 }))
-vi.mock("@/lib/lead-engine/unsubscribe-token", () => ({ unsubscribeUrl: vi.fn(() => "https://example.test/unsubscribe/tok") }))
+vi.mock("@/lib/lead-engine/unsubscribe-token", () => ({
+  unsubscribeUrl: vi.fn(() => "https://example.test/unsubscribe/tok"),
+  unsubscribeOneClickUrl: vi.fn(() => "https://example.test/api/unsubscribe/tok"),
+}))
 vi.mock("@/lib/db/sequences", () => ({
   claimDueRuns: vi.fn(),
   loadSteps: vi.fn(),
@@ -61,7 +64,7 @@ import { isCronSkipped } from "@/lib/db/system-settings"
 import { logCronStart, logCronEnd } from "@/lib/db/cron-runs"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { sendSequenceEmail } from "@/lib/lead-engine/email"
-import { unsubscribeUrl } from "@/lib/lead-engine/unsubscribe-token"
+import { unsubscribeUrl, unsubscribeOneClickUrl } from "@/lib/lead-engine/unsubscribe-token"
 import {
   claimDueRuns,
   loadSteps,
@@ -220,10 +223,14 @@ describe("POST /api/admin/internal/sequence-tick", () => {
         subject: "Hi",
         body: "Welcome",
         unsubscribeUrl: "https://example.test/unsubscribe/tok",
+        // RFC 8058: the List-Unsubscribe header needs a POST-capable URI,
+        // which is a different path from the human landing page.
+        oneClickUrl: "https://example.test/api/unsubscribe/tok",
         settings: SETTINGS,
       }),
     )
     expect(unsubscribeUrl).toHaveBeenCalledWith(expect.any(String), "contact-r1", expect.any(String))
+    expect(unsubscribeOneClickUrl).toHaveBeenCalledWith(expect.any(String), "contact-r1", expect.any(String))
     expect(markSent).toHaveBeenCalledWith("msg-1", "resend", "resend-1")
     expect(advanceRun).toHaveBeenCalledWith("r1", 1)
     expect(logCronEnd).toHaveBeenCalledWith(

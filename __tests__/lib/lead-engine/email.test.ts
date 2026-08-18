@@ -161,18 +161,56 @@ describe("sendSequenceEmail", () => {
       subject: "Hi",
       body: "Body",
       unsubscribeUrl: "https://x.test/u/6",
+      oneClickUrl: "https://x.test/api/u/6",
       contactName: null,
       settings: settingsA,
     })
 
     expect(sendMock).toHaveBeenCalledTimes(1)
     const arg = sendMock.mock.calls[0][0]
-    expect(arg.headers["List-Unsubscribe"]).toBe("<https://x.test/u/6>")
+    // RFC 8058: the URI in List-Unsubscribe is the one Gmail POSTs to, so it
+    // must be the POST-capable endpoint, not the human landing page.
+    expect(arg.headers["List-Unsubscribe"]).toBe("<https://x.test/api/u/6>")
     expect(arg.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click")
     expect(arg.from).toBe(`${settingsA.sender_name} <${settingsA.sender_email}>`)
     expect(arg.replyTo).toBe(settingsA.reply_to)
     expect(arg.to).toBe("lead@example.com")
     expect(result.providerMessageId).toBe("resend-msg-1")
+  })
+
+  // Fix wave (Important 3). List-Unsubscribe-Post declares RFC 8058 one-click,
+  // which obliges the URI to accept an HTTPS POST. It used to be declared
+  // against the unsubscribe PAGE — GET-only, so Gmail's one-click button got
+  // a 405. Never promise one-click without a POST endpoint to back it.
+  it("does not declare One-Click when no POST-capable URI was supplied", async () => {
+    await sendSequenceEmail({
+      to: "lead@example.com",
+      subject: "Hi",
+      body: "Body",
+      unsubscribeUrl: "https://x.test/u/8",
+      contactName: null,
+      settings: settingsA,
+    })
+
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.headers["List-Unsubscribe"]).toBe("<https://x.test/u/8>")
+    expect(arg.headers["List-Unsubscribe-Post"]).toBeUndefined()
+  })
+
+  it("keeps the human footer link on the page even when the header points at the POST endpoint", async () => {
+    await sendSequenceEmail({
+      to: "lead@example.com",
+      subject: "Hi",
+      body: "Body",
+      unsubscribeUrl: "https://x.test/u/9",
+      oneClickUrl: "https://x.test/api/u/9",
+      contactName: null,
+      settings: settingsA,
+    })
+
+    const arg = sendMock.mock.calls[0][0]
+    expect(arg.html).toContain("https://x.test/u/9")
+    expect(arg.html).not.toContain("https://x.test/api/u/9")
   })
 
   it("skips the provider entirely when RESEND_API_KEY is unset", async () => {

@@ -189,7 +189,16 @@ export async function sendSequenceEmail(args: {
   to: string
   subject: string
   body: string
+  /** The human link rendered in the footer — a browser GET lands on a page. */
   unsubscribeUrl: string
+  /**
+   * The RFC 8058 one-click endpoint, which must accept an HTTPS POST. Supply
+   * it and the message declares `List-Unsubscribe-Post`; omit it and the
+   * message carries a plain `List-Unsubscribe` only. Declaring one-click
+   * against a GET-only page is what made Gmail's unsubscribe button answer
+   * 405.
+   */
+  oneClickUrl?: string
   contactName: string | null
   settings?: BusinessSettings
 }): Promise<{ providerMessageId: string | null }> {
@@ -211,8 +220,13 @@ export async function sendSequenceEmail(args: {
     html,
     text,
     headers: {
-      "List-Unsubscribe": `<${args.unsubscribeUrl}>`,
-      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      // RFC 8058: `List-Unsubscribe-Post` obliges the URI in
+      // `List-Unsubscribe` to accept an HTTPS POST, so the two move together
+      // and the header points at the POST endpoint rather than the page.
+      // Without a one-click endpoint we still advertise unsubscription, but
+      // we do not claim a capability the URI does not have.
+      "List-Unsubscribe": `<${args.oneClickUrl ?? args.unsubscribeUrl}>`,
+      ...(args.oneClickUrl ? { "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : {}),
     },
   })
 

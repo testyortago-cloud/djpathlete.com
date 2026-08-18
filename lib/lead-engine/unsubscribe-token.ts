@@ -66,3 +66,20 @@ export function unsubscribeUrl(baseUrl: string, contactId: string, businessId: s
   const token = signUnsubscribeToken(contactId, businessId)
   return `${baseUrl.replace(/\/+$/, "")}/unsubscribe/${token}`
 }
+
+/**
+ * Builds the RFC 8058 one-click endpoint for the `List-Unsubscribe` header —
+ * the URI a mail client POSTs to when the reader presses its unsubscribe
+ * button.
+ *
+ * It is a DIFFERENT path from `unsubscribeUrl` above because Next.js App
+ * Router cannot serve a `route.ts` and a `page.tsx` from the same segment:
+ * both normalise to the same pathname. The human link keeps the rendered page
+ * at `/unsubscribe/<token>`; the machine endpoint is
+ * `/api/unsubscribe/<token>`. Both carry the same token and both run the same
+ * flow (`processUnsubscribe`, lib/lead-engine/unsubscribe.ts).
+ */
+export function unsubscribeOneClickUrl(baseUrl: string, contactId: string, businessId: string): string {
+  const token = signUnsubscribeToken(contactId, businessId)
+  return `${baseUrl.replace(/\/+$/, "")}/api/unsubscribe/${token}`
+}
