@@ -23,9 +23,7 @@ export default async function UnsubscribeTokenPage({ params }: { params: Promise
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="max-w-md w-full text-center">
         <h1 className="text-2xl font-heading font-semibold text-primary mb-4">Unsubscribed</h1>
-        <p className="text-muted-foreground">
-          You won&apos;t receive any further emails in this sequence.
-        </p>
+        <p className="text-muted-foreground">You won&apos;t receive any further emails in this sequence.</p>
       </div>
     </div>
   )
