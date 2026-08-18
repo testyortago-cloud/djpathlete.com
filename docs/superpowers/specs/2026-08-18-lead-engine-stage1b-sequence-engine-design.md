@@ -185,6 +185,23 @@ Stage 1b seed sequence uses them.
 **`alert`** notifies the business, not the contact: an email to `business_settings.reply_to` plus a
 timeline event. It is the step type a sequence uses to say "a human should look at this one".
 
+### 6.1 The consent regime differs by channel
+
+Stage 1a deliberately writes no consent row from the funnel form —
+`wording_shown` is NOT NULL and the form displays no consent wording — so
+`hasConsent` returns `false` for every contact that exists today. Gating email on
+it would ship an engine that can never send.
+
+- **Email is opt-out.** Blocked only by `contact_suppressions`. This is the
+  CAN-SPAM regime, and the one-click unsubscribe in §8 is what satisfies it.
+- **SMS is opt-in.** Requires an explicit granted consent row. TCPA does not
+  accept opt-out, and §6 of the parent spec already rules that the 90 imported
+  phone numbers arrive with no SMS consent.
+
+No Stage 1b sequence sends SMS, so that branch is unreachable until Stage 2. The
+rule is encoded in the pure decision function now, with tests for both channels,
+rather than being invented under deadline later.
+
 **Branch predicates** are a closed set:
 
 ```
