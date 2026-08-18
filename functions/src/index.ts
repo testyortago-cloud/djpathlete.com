@@ -1990,6 +1990,24 @@ export const contactTimelineRetentionCron = onSchedule(
 
     const supabase = getSupabase()
 
+    // Global kill switch. The manual "Run now" path (the Next.js internal
+    // route) gates through isCronSkipped(), which checks BOTH this global
+    // pause AND the per-cron flag below — so the schedule must check both
+    // too, or "pause all automation" silently misses the nightly run while
+    // still stopping a manual click. Do not remove this in the name of
+    // "simplifying to match auditLogRetentionCron" — that cron has no
+    // manual counterpart, so its equivalent gap can never surface as a
+    // visible disagreement between two entry points the way this one would.
+    const { data: pausedRow } = await supabase
+      .from("system_settings")
+      .select("value")
+      .eq("key", "automation_paused")
+      .single()
+    if (pausedRow?.value === true) {
+      console.log("[contactTimelineRetentionCron] automation paused, skipping")
+      return
+    }
+
     const { data: enabledRow } = await supabase
       .from("system_settings")
       .select("value")
