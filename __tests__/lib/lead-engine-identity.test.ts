@@ -17,6 +17,17 @@ describe("normaliseEmail", () => {
   it("returns null for something that is not an address", () => {
     expect(normaliseEmail("not-an-email")).toBeNull()
   })
+
+  it("rejects commas and parentheses (filter-unsafe characters)", () => {
+    expect(normaliseEmail("a,b@x.com")).toBeNull()
+    expect(normaliseEmail("a(b)@x.com")).toBeNull()
+  })
+
+  it("accepts plus-addressing and complex domains", () => {
+    expect(normaliseEmail("first.last+tag@sub.example.co.uk")).toBe(
+      "first.last+tag@sub.example.co.uk",
+    )
+  })
 })
 
 describe("normalisePhone", () => {
