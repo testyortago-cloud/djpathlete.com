@@ -6,14 +6,18 @@ const state: {
   merges: any[]
   timelineEvents: any[]
   consents: any[]
-  errors: { contactsUpdate?: any; timelineInsert?: any }
-} = { rows: [], merges: [], timelineEvents: [], consents: [], errors: {} }
+  sequences: any[]
+  sequenceRuns: any[]
+  errors: { contactsUpdate?: any; timelineInsert?: any; sequencesSelect?: any }
+} = { rows: [], merges: [], timelineEvents: [], consents: [], sequences: [], sequenceRuns: [], errors: {} }
 
 function collectionFor(table: string): any[] {
   if (table === "contacts") return state.rows
   if (table === "contact_merges") return state.merges
   if (table === "contact_timeline_events") return state.timelineEvents
   if (table === "contact_consents") return state.consents
+  if (table === "sequences") return state.sequences
+  if (table === "sequence_runs") return state.sequenceRuns
   return []
 }
 
@@ -54,6 +58,12 @@ function makeTable(table: string) {
       return { data: rows[0] ?? null, error: null }
     },
     async then(res: any) {
+      // Lets a single test force `enrollIfTriggered`'s `sequences` select to
+      // fail, without giving every other test in this file a `sequences`
+      // table to worry about (they never seed one, so this stays inert).
+      if (table === "sequences" && state.errors.sequencesSelect) {
+        return res({ data: null, error: state.errors.sequencesSelect })
+      }
       return res({ data: filterRows(), error: null })
     },
     insert(payload: any) {
@@ -81,6 +91,11 @@ function makeTable(table: string) {
       if (table === "contact_consents") {
         const row = { id: `consent-${state.consents.length + 1}`, ...payload }
         state.consents.push(row)
+        return { data: row, error: null }
+      }
+      if (table === "sequence_runs") {
+        const row = { id: `run-${state.sequenceRuns.length + 1}`, ...payload }
+        state.sequenceRuns.push(row)
         return { data: row, error: null }
       }
       return { data: null, error: null }
@@ -152,6 +167,8 @@ beforeEach(() => {
   state.merges = []
   state.timelineEvents = []
   state.consents = []
+  state.sequences = []
+  state.sequenceRuns = []
   state.errors = {}
   vi.clearAllMocks()
 })
@@ -220,6 +237,39 @@ describe("recordContactEvent", () => {
     const [message] = consoleErrorSpy.mock.calls[0]
     expect(String(message)).toContain(out.contactId)
     expect(String(message)).toContain("funnel_form")
+
+    consoleErrorSpy.mockRestore()
+  })
+
+  it("never throws out of recordContactEvent when enrolment fails, and logs code/message only", async () => {
+    // Shaped like a real Postgres error: `details`/`hint` are the fields a
+    // unique-index violation on contacts embeds the literal email address
+    // in (see lib/funnels/capture-contact.ts). They must never reach the log.
+    state.errors.sequencesSelect = {
+      code: "42501",
+      message: "permission denied for table sequences",
+      details: "PII-SHAPED-DETAIL-must-not-appear",
+      hint: "PII-SHAPED-HINT-must-not-appear",
+    }
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const out = await recordContactEvent({
+      email: "enroll-resilient@example.com",
+      source: "funnel_form",
+    })
+
+    // The contact write itself is unaffected — enrolment failing is
+    // marketing, not the lead record.
+    expect(out.created).toBe(true)
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
+    const [message, meta] = consoleErrorSpy.mock.calls[0]
+    expect(String(message)).toContain(out.contactId)
+    expect(String(message)).toContain("funnel_form")
+    expect(meta).toEqual({ code: "42501", message: "permission denied for table sequences" })
+
+    const serializedCall = JSON.stringify(consoleErrorSpy.mock.calls[0])
+    expect(serializedCall).not.toContain("PII-SHAPED-DETAIL-must-not-appear")
+    expect(serializedCall).not.toContain("PII-SHAPED-HINT-must-not-appear")
 
     consoleErrorSpy.mockRestore()
   })

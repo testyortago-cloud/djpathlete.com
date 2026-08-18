@@ -4,6 +4,7 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { normaliseEmail, normalisePhone } from "@/lib/lead-engine/identity"
 import { decideMerge, type MatchCandidate } from "@/lib/lead-engine/merge"
+import { enrollIfTriggered } from "@/lib/lead-engine/enroll"
 
 export type ContactEventSource =
   | "funnel_form" | "funnel_checkout" | "contact_form" | "newsletter"
@@ -204,6 +205,21 @@ export async function recordContactEvent(
         conflictError,
       )
     }
+  }
+
+  // Enrolment is marketing; the contact record is the thing that matters.
+  // Losing an enrolment is recoverable, losing the lead is not — the same
+  // contract lib/funnels/capture-contact.ts documents. Never log the raw
+  // thrown value: a unique-index violation on contacts embeds the literal
+  // email address in `details`; `code` and `message` are safe.
+  try {
+    await enrollIfTriggered({ contactId, source: input.source, metadata: input.metadata, businessId })
+  } catch (err) {
+    const pgErr = err as { code?: unknown; message?: unknown } | null | undefined
+    console.error(`recordContactEvent: enrolment failed for contact ${contactId} (source: ${input.source})`, {
+      code: typeof pgErr?.code === "string" ? pgErr.code : undefined,
+      message: typeof pgErr?.message === "string" ? pgErr.message : undefined,
+    })
   }
 
   return { contactId, created, merged }
