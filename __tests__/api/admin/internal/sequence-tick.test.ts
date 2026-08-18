@@ -46,7 +46,11 @@ vi.mock("@/lib/lead-engine/unsubscribe-token", () => ({
   unsubscribeUrl: vi.fn(() => "https://example.test/unsubscribe/tok"),
   unsubscribeOneClickUrl: vi.fn(() => "https://example.test/api/unsubscribe/tok"),
 }))
-vi.mock("@/lib/db/sequences", () => ({
+vi.mock("@/lib/db/sequences", async (importOriginal) => ({
+  // Keep the real constants (TRANSIENT_ERROR_DEFER_REASON) — the runner and
+  // the DAL have to agree on that string, and a mock that invented its own
+  // would hide a mismatch instead of catching it.
+  ...(await importOriginal<typeof import("@/lib/db/sequences")>()),
   claimDueRuns: vi.fn(),
   loadSteps: vi.fn(),
   loadRunContext: vi.fn(),
@@ -113,6 +117,9 @@ function makeRun(id: string, overrides: Partial<SequenceRunRow> = {}): SequenceR
     contact_id: `contact-${id}`,
     current_position: 0,
     enrolled_at: "2026-08-18T00:00:00Z",
+    // `claim_sequence_runs` increments this before returning the row, so a
+    // freshly claimed run is on attempt 1, never 0.
+    attempts: 1,
     ...overrides,
   }
 }
@@ -254,10 +261,11 @@ describe("POST /api/admin/internal/sequence-tick", () => {
 
     expect(res.status).toBe(200)
     const body = await res.json()
-    // The poisoned run is recorded as failed; the healthy run still sent.
-    expect(body).toMatchObject({ ok: true, claimed: 2, sent: 1, failed: 1 })
+    // The throwing run is deferred for a retry (attempt 1 of 5); the healthy
+    // run still sent. Either way the batch continues.
+    expect(body).toMatchObject({ ok: true, claimed: 2, sent: 1, deferred: 1 })
 
-    expect(failRun).toHaveBeenCalledWith("r-poison", expect.stringContaining("contact row missing"))
+    expect(deferRun).toHaveBeenCalledWith("r-poison", expect.any(Date), "transient_error")
     // The second run was NOT skipped — it reached the real send path.
     expect(recordSend).toHaveBeenCalledWith(expect.objectContaining({ runId: "r-ok" }))
     expect(advanceRun).toHaveBeenCalledWith("r-ok", 1)
@@ -265,6 +273,74 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     // The batch as a whole still succeeded — a per-run failure is not a
     // cron-run failure.
     expect(logCronEnd).toHaveBeenCalledWith(expect.anything(), "run-1", "success", expect.anything())
+  })
+
+  // Fix wave (Important 7). The per-run catch treated EVERY throw as terminal:
+  // failRun, status='failed', and nothing anywhere re-activates a failed run.
+  // loadRunContext does five reads that throw by design on failure (correctly
+  // — a failed consent read is not "no consent"), so one Supabase blip during
+  // a 25-run tick permanently killed every run in it.
+  describe("a run that throws", () => {
+    function throwOn(id: string, err = new Error("supabase read failed")) {
+      ;(loadRunContext as ReturnType<typeof vi.fn>).mockImplementation(async (run: SequenceRunRow) => {
+        if (run.id === id) throw err
+        return sendableContext()
+      })
+    }
+
+    it("is deferred for a retry, not failed, while it has attempts left", async () => {
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-blip", { attempts: 1 })])
+      throwOn("r-blip")
+
+      const res = await POST(makeRequest())
+
+      expect(await res.json()).toMatchObject({ deferred: 1, failed: 0 })
+      expect(deferRun).toHaveBeenCalledWith("r-blip", expect.any(Date), "transient_error")
+      expect(failRun).not.toHaveBeenCalled()
+    })
+
+    it("backs off further with each attempt", async () => {
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-a", { attempts: 1 })])
+      throwOn("r-a")
+      await POST(makeRequest())
+      const firstDefer = (deferRun as ReturnType<typeof vi.fn>).mock.calls[0][1] as Date
+
+      vi.clearAllMocks()
+      ;(isCronSkipped as ReturnType<typeof vi.fn>).mockResolvedValue({ skipped: false })
+      ;(logCronStart as ReturnType<typeof vi.fn>).mockResolvedValue("run-1")
+      ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue(SETTINGS)
+      ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([EMAIL_STEP])
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-a", { attempts: 3 })])
+      throwOn("r-a")
+      await POST(makeRequest())
+      const laterDefer = (deferRun as ReturnType<typeof vi.fn>).mock.calls[0][1] as Date
+
+      expect(laterDefer.getTime()).toBeGreaterThan(firstDefer.getTime())
+    })
+
+    it("is failed once it has burned through its attempts", async () => {
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-poisoned", { attempts: 5 })])
+      throwOn("r-poisoned")
+
+      const res = await POST(makeRequest())
+
+      expect(await res.json()).toMatchObject({ failed: 1, deferred: 0 })
+      expect(failRun).toHaveBeenCalledWith("r-poisoned", expect.stringContaining("supabase read failed"))
+      expect(deferRun).not.toHaveBeenCalled()
+    })
+
+    it("does not stop the rest of the batch either way", async () => {
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([
+        makeRun("r-dead", { attempts: 9 }),
+        makeRun("r-ok"),
+      ])
+      throwOn("r-dead")
+
+      const res = await POST(makeRequest())
+
+      expect(await res.json()).toMatchObject({ claimed: 2, sent: 1, failed: 1 })
+      expect(recordSend).toHaveBeenCalledWith(expect.objectContaining({ runId: "r-ok" }))
+    })
   })
 
   it("writes a cron_runs row on success (nothing due)", async () => {

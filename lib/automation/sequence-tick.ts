@@ -36,6 +36,15 @@ export type SequenceRunRow = {
   contact_id: string
   current_position: number
   enrolled_at: string
+  /**
+   * Incremented by `claim_sequence_runs` (migration 00217) on every claim, so
+   * a freshly claimed run is always on attempt 1 or higher. Reset to 0 by any
+   * write-back that is not a transient-error defer, which makes it a count of
+   * CONSECUTIVE failures rather than a lifetime claim counter — see
+   * `deferRun` / `advanceRun` in lib/db/sequences.ts. `decideStep` does not
+   * read it; the runner uses it to decide retry vs. give up.
+   */
+  attempts: number
 }
 
 export type DecisionContext = {

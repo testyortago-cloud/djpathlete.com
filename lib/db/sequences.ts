@@ -281,6 +281,14 @@ export async function markFailed(messageId: string, error: string): Promise<void
 // run is due sooner. Clearing the claim on every write is what makes
 // `next_run_at` the only thing that governs when a run is next picked up.
 
+/**
+ * The one `defer_reason` that means "this run threw and we are retrying it",
+ * as opposed to a guardrail holding a healthy run back. Exported because
+ * `deferRun` treats it specially (it is the only reason that does NOT reset
+ * `attempts`) and the runner must not spell it differently.
+ */
+export const TRANSIENT_ERROR_DEFER_REASON = "transient_error"
+
 export async function advanceRun(runId: string, toPosition: number, deferUntil?: Date): Promise<void> {
   const supabase = getClient()
   const nowIso = new Date().toISOString()
@@ -294,6 +302,14 @@ export async function advanceRun(runId: string, toPosition: number, deferUntil?:
       // one) is superseded by the run actually moving.
       defer_reason: null,
       last_error: null,
+      // ...and the retry budget with them. `claim_sequence_runs` increments
+      // `attempts` on every claim, so without this reset a healthy long-lived
+      // run accumulates attempts simply by existing, and the runner's
+      // "attempts < MAX_ATTEMPTS" retry budget would be spent before the run
+      // ever hit a real error. Resetting on progress is also exactly what
+      // migration 00217's comment assumes: "attempts climbing without
+      // current_position moving is the signature of a poison run".
+      attempts: 0,
       claimed_at: null,
       claimed_by: null,
       updated_at: nowIso,
@@ -321,6 +337,12 @@ export async function deferRun(runId: string, until: Date, reason: string): Prom
       claimed_at: null,
       claimed_by: null,
       updated_at: new Date().toISOString(),
+      // A guardrail defer — quiet hours, the daily cap, a sibling run — is
+      // this engine's normal steady state and did not attempt anything, so it
+      // must not spend the runner's transient-error retry budget. Only a
+      // transient-error defer leaves `attempts` climbing, which is what makes
+      // it a count of CONSECUTIVE failures rather than of lifetime claims.
+      ...(reason === TRANSIENT_ERROR_DEFER_REASON ? {} : { attempts: 0 }),
     })
     .eq("id", runId)
   if (error) throw error

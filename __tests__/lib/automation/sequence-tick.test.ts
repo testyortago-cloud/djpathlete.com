@@ -9,6 +9,7 @@ const run: SequenceRunRow = {
   contact_id: "c-1",
   current_position: 0,
   enrolled_at: "2026-08-10T00:00:00Z",
+  attempts: 1,
 }
 
 function step(over: Partial<SequenceStepRow> & { position: number; kind: SequenceStepRow["kind"] }): SequenceStepRow {
@@ -142,7 +143,10 @@ describe("evaluateBranch", () => {
 
   it("resolves has_user, has_consent and source_is", () => {
     expect(
-      evaluateBranch({ kind: "has_user" }, ctx({ contact: { email: "a@b.co", phone_e164: null, user_id: "u1", name: null } })),
+      evaluateBranch(
+        { kind: "has_user" },
+        ctx({ contact: { email: "a@b.co", phone_e164: null, user_id: "u1", name: null } }),
+      ),
     ).toEqual({ ok: true, value: true })
     expect(evaluateBranch({ kind: "has_consent", channel: "sms" }, ctx({ hasSmsConsent: true }))).toEqual({
       ok: true,

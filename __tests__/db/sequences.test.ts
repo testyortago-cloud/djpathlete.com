@@ -191,6 +191,7 @@ import {
   markFailed,
   advanceRun,
   deferRun,
+  TRANSIENT_ERROR_DEFER_REASON,
   exitRun,
   completeRun,
   failRun,
@@ -582,6 +583,40 @@ describe("write-back functions", () => {
     expect(run.last_error).toBeNull()
     expect(run.claimed_at).toBeNull()
     expect(run.claimed_by).toBeNull()
+    expect(run.status).toBe("active")
+  })
+
+  // Fix wave (Important 7). `claim_sequence_runs` increments `attempts` on
+  // every claim. If nothing reset it, a healthy long-lived run would exhaust
+  // the runner's transient-error retry budget simply by existing — the first
+  // real blip after a fortnight of nightly quiet-hours defers would kill it
+  // permanently. Resetting on anything that is not a transient-error defer is
+  // what makes `attempts` a count of CONSECUTIVE failures, and is exactly what
+  // migration 00217's own comment assumes ("attempts climbing without
+  // current_position moving is the signature of a poison run").
+  it("advanceRun resets attempts — forward progress clears the retry budget", async () => {
+    const run = seedRun("run-1", "c-1", "seq-1", { attempts: 4 })
+
+    await advanceRun("run-1", 1)
+
+    expect(run.attempts).toBe(0)
+  })
+
+  it("a guardrail defer resets attempts — quiet hours is not a failed attempt", async () => {
+    const run = seedRun("run-1", "c-1", "seq-1", { attempts: 4 })
+
+    await deferRun("run-1", new Date("2026-08-19T08:00:00Z"), "quiet_hours")
+
+    expect(run.attempts).toBe(0)
+  })
+
+  it("a transient-error defer LEAVES attempts alone, so a poison run still runs out of retries", async () => {
+    const run = seedRun("run-1", "c-1", "seq-1", { attempts: 4 })
+
+    await deferRun("run-1", new Date("2026-08-19T08:00:00Z"), TRANSIENT_ERROR_DEFER_REASON)
+
+    expect(run.attempts).toBe(4)
+    expect(run.defer_reason).toBe("transient_error")
     expect(run.status).toBe("active")
   })
 

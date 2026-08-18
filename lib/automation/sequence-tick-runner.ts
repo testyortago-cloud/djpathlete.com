@@ -39,6 +39,7 @@ import {
   markFailed,
   advanceRun,
   deferRun,
+  TRANSIENT_ERROR_DEFER_REASON,
   exitRun,
   completeRun,
   failRun,
@@ -54,6 +55,22 @@ export type TickSummary = {
 }
 
 const DEFAULT_LIMIT = 25
+/**
+ * How many consecutive failures a run gets before it is given up on.
+ * `claim_sequence_runs` increments `attempts` on every claim and
+ * `advanceRun`/`deferRun` reset it on any non-transient write-back
+ * (lib/db/sequences.ts), so this counts consecutive failures, not lifetime
+ * claims.
+ */
+const MAX_ATTEMPTS = 5
+const TRANSIENT_BACKOFF_BASE_MS = 5 * 60 * 1000
+const TRANSIENT_BACKOFF_MAX_MS = 60 * 60 * 1000
+
+/** 5m, 10m, 20m, 40m, capped at 1h. */
+function transientBackoffMs(attempts: number): number {
+  const exponent = Math.max(0, attempts - 1)
+  return Math.min(TRANSIENT_BACKOFF_BASE_MS * 2 ** exponent, TRANSIENT_BACKOFF_MAX_MS)
+}
 // Release window for the narrow recordSend race described below — short
 // enough that a healthy retry lands within a tick or two, unrelated to
 // recordSend's own 15-minute crashed-attempt reclaim window.
@@ -322,8 +339,17 @@ async function processRun(
  * Claims up to `limit` due runs and processes each one to exactly one
  * write-back (see the concurrency contract above). A run that throws
  * anywhere in `processRun` — a bad DB read, an unexpected exception — is
- * caught HERE, marked failed via `failRun`, and the batch continues. One
- * poisoned run must never stop every other contact's sequence.
+ * caught HERE and the batch continues. One poisoned run must never stop every
+ * other contact's sequence.
+ *
+ * A caught throw is RETRIED, not buried. `status='failed'` is terminal —
+ * nothing in this codebase re-activates a failed run — and `loadRunContext`
+ * performs five reads that throw by design on failure (correctly: a failed
+ * consent read is not "no consent"). Treating every throw as terminal meant
+ * one Supabase blip during a 25-run tick permanently killed all 25. So the run
+ * is deferred with a backoff while it has attempts left, and only failed once
+ * it has burned through them — at which point it really is poison and a human
+ * should look at it.
  */
 export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Promise<TickSummary> {
   const now = opts?.now ?? new Date()
@@ -357,13 +383,27 @@ export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Pr
       await processRun(run, now, businessId, settings, summary)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error(`[sequence-tick] run ${run.id} threw, isolating:`, message)
+      const attempts = run.attempts ?? 0
+      const retryable = attempts < MAX_ATTEMPTS
+      console.error(
+        `[sequence-tick] run ${run.id} threw on attempt ${attempts}, ${retryable ? "deferring" : "failing"}:`,
+        message,
+      )
       try {
-        await failRun(run.id, message)
-      } catch (failErr) {
-        console.error(`[sequence-tick] failRun also failed for run ${run.id}:`, failErr)
+        if (retryable) {
+          await deferRun(run.id, new Date(now.getTime() + transientBackoffMs(attempts)), TRANSIENT_ERROR_DEFER_REASON)
+          summary.deferred += 1
+        } else {
+          await failRun(run.id, message)
+          summary.failed += 1
+        }
+      } catch (writeErr) {
+        // The write-back itself failed, so this run keeps its claim and will
+        // be re-claimed by the stale-claim arm in ~10 minutes. Nothing else
+        // to do here except not take the batch down with it.
+        console.error(`[sequence-tick] write-back after a throw also failed for run ${run.id}:`, writeErr)
+        summary.failed += 1
       }
-      summary.failed += 1
     }
   }
 
