@@ -91,6 +91,7 @@ type FooterProps = {
     facebook?: string
   }
   copyrightText?: string
+  operatorText?: string
 }
 
 const defaultSections: FooterSection[] = FOOTER_SECTIONS
@@ -101,8 +102,12 @@ export const Footer = ({
   sections = defaultSections,
   socialLinks = SOCIAL_LINKS,
   copyrightText,
+  operatorText,
 }: FooterProps) => {
   const copyright = copyrightText || `\u00A9 ${new Date().getFullYear()} DJP Athlete. All rights reserved.`
+  const operator =
+    operatorText ||
+    "darrenjpaul.com is operated by YORTAGO LLC, 3925 Addlestone Avenue 302, Wesley Chapel, Florida 33543, US"
   const iconClass =
     "w-9 h-9 flex items-center justify-center rounded-full bg-white border border-border text-muted-foreground hover:text-primary hover:border-primary transition-colors duration-150"
 
@@ -234,7 +239,10 @@ export const Footer = ({
           className="pt-8 border-t border-border"
         >
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-sm text-muted-foreground">{copyright}</p>
+            <div className="text-center md:text-left">
+              <p className="text-sm text-muted-foreground">{copyright}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{operator}</p>
+            </div>
           </div>
         </motion.div>
       </div>
