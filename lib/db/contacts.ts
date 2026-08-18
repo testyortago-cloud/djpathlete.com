@@ -225,113 +225,32 @@ export async function recordContactEvent(
   return { contactId, created, merged }
 }
 
-// NOT transactional. Supabase REST cannot span statements, so this makes
-// several independent round-trips: re-point the loser's timeline rows and
-// consent rows, carry over user_id if needed, record the merge audit row,
-// delete the loser. If the process dies between the audit insert and the
-// delete, the loser row is left undeleted with the audit row already
-// recorded. That is the residual window — it is not closed here; it is left
-// to Stage 1b, which needs database-level primitives (a plpgsql function) to
-// close it for real.
+// Runs in a single transaction inside the `merge_contacts` plpgsql function
+// (supabase/migrations/00217_lead_engine_sequence_functions.sql) — Supabase
+// REST cannot span statements, so this used to be several independent
+// round-trips with a real crash window between the audit insert and the
+// loser's delete. That window is closed: re-pointing every child, the
+// user_id carry-over, the idempotent audit insert, and the final delete all
+// commit or roll back together now.
 //
-// What IS guaranteed: a retry is safe. Before inserting the audit row, this
-// checks whether one already exists for this exact (survivor_id, merged_id)
-// pair and skips the insert if so, so re-running this function after a crash
-// re-merges correctly instead of doubling the audit trail.
-//
-// Timeline rows AND consent rows are re-pointed BEFORE the delete, and that
-// order must not change: both contact_timeline_events.contact_id and
-// contact_consents.contact_id cascade on delete (see
-// supabase/migrations/00214_lead_engine_timeline.sql and
-// 00215_lead_engine_consent.sql), so deleting the loser first would destroy
-// its timeline history and — far worse — its dated proof of consent, before
-// either could be moved to the survivor. contact_merges.merged_id carries no
-// FK (deliberately, so the audit trail survives the loser's row), and
-// contact_suppressions is keyed by identifier, not contact_id, so neither is
-// at risk here. Those are the only two other tables with a foreign key onto
-// contacts(id) as of migrations 00212-00215.
+// The list of child tables the function re-points before deleting the loser
+// — currently five: contact_timeline_events, contact_consents,
+// sequence_messages, sequence_runs, and contact_merges.survivor_id — lives
+// in that migration file, not here. It must be updated there whenever a new
+// table gains a foreign key onto contacts(id), or that table's rows for the
+// loser are destroyed by cascade instead of being carried to the survivor.
+// This is not hypothetical: Stage 1a's merge missed contact_consents and
+// destroyed consent evidence, and this function's own first draft missed a
+// fifth child, contact_merges.survivor_id.
 export async function mergeContacts(survivorId: string, mergedId: string, businessId: string) {
   const supabase = getClient()
-
-  const { data: loser, error: loserError } = await supabase
-    .from("contacts")
-    .select("*")
-    .eq("id", mergedId)
-    .eq("business_id", businessId)
-    .maybeSingle()
-  if (loserError) throw loserError
-
-  const { data: survivor, error: survivorError } = await supabase
-    .from("contacts")
-    .select("*")
-    .eq("id", survivorId)
-    .eq("business_id", businessId)
-    .maybeSingle()
-  if (survivorError) throw survivorError
-
-  const { error: repointError } = await supabase
-    .from("contact_timeline_events")
-    .update({ contact_id: survivorId })
-    .eq("contact_id", mergedId)
-  if (repointError) throw repointError
-
-  const { error: consentRepointError } = await supabase
-    .from("contact_consents")
-    .update({ contact_id: survivorId })
-    .eq("contact_id", mergedId)
-  if (consentRepointError) throw consentRepointError
-
-  // "A user always has a contact" only holds if a merge never drops the
-  // link. If the survivor is missing it, carry the loser's over. If both
-  // have one and they disagree, that is not this function's call to make —
-  // leave the survivor's in place and record the conflict for a human.
-  if (survivor && loser) {
-    const survivorUserId = (survivor as { user_id?: string | null }).user_id ?? null
-    const loserUserId = (loser as { user_id?: string | null }).user_id ?? null
-
-    if (!survivorUserId && loserUserId) {
-      const { error: userIdError } = await supabase
-        .from("contacts")
-        .update({ user_id: loserUserId })
-        .eq("id", survivorId)
-      if (userIdError) throw userIdError
-    } else if (survivorUserId && loserUserId && survivorUserId !== loserUserId) {
-      const { error: userIdConflictError } = await supabase.from("contact_timeline_events").insert({
-        business_id: businessId,
-        contact_id: survivorId,
-        kind: "user_id_conflict",
-        source: "system_merge",
-        metadata: { survivor_user_id: survivorUserId, loser_user_id: loserUserId, merged_contact_id: mergedId },
-      })
-      if (userIdConflictError) throw userIdConflictError
-    }
-  }
-
-  const { data: existingMerge, error: existingMergeError } = await supabase
-    .from("contact_merges")
-    .select("id")
-    .eq("survivor_id", survivorId)
-    .eq("merged_id", mergedId)
-    .maybeSingle()
-  if (existingMergeError) throw existingMergeError
-
-  if (!existingMerge) {
-    const { error: mergeInsertError } = await supabase.from("contact_merges").insert({
-      business_id: businessId,
-      survivor_id: survivorId,
-      merged_id: mergedId,
-      merged_snapshot: loser ?? {},
-      reason: "email and phone resolved to different contacts",
-    })
-    if (mergeInsertError) throw mergeInsertError
-  }
-
-  const { error: deleteError } = await supabase
-    .from("contacts")
-    .delete()
-    .eq("id", mergedId)
-    .eq("business_id", businessId)
-  if (deleteError) throw deleteError
+  const { error } = await supabase.rpc("merge_contacts", {
+    p_survivor: survivorId,
+    p_merged: mergedId,
+    p_business: businessId,
+    p_reason: "email and phone resolved to different contacts",
+  })
+  if (error) throw error
 }
 
 /**

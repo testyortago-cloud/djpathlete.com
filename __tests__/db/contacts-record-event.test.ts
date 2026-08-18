@@ -8,8 +8,9 @@ const state: {
   consents: any[]
   sequences: any[]
   sequenceRuns: any[]
-  errors: { contactsUpdate?: any; timelineInsert?: any; sequencesSelect?: any }
-} = { rows: [], merges: [], timelineEvents: [], consents: [], sequences: [], sequenceRuns: [], errors: {} }
+  rpcCalls: Array<{ name: string; args: any }>
+  errors: { contactsUpdate?: any; timelineInsert?: any; sequencesSelect?: any; mergeContactsRpc?: any }
+} = { rows: [], merges: [], timelineEvents: [], consents: [], sequences: [], sequenceRuns: [], rpcCalls: [], errors: {} }
 
 function collectionFor(table: string): any[] {
   if (table === "contacts") return state.rows
@@ -145,6 +146,19 @@ function makeTable(table: string) {
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({
     from: (table: string) => makeTable(table),
+    // mergeContacts (Task 10) delegates entirely to this RPC — the merge's
+    // actual behaviour (re-pointing children, idempotency, user_id carry,
+    // business scoping) now lives in the `merge_contacts` plpgsql function
+    // (supabase/migrations/00217) and is verified there, not against this
+    // JS mock. What stays testable here is only that mergeContacts calls the
+    // RPC with the right arguments and propagates its error.
+    rpc: async (name: string, args: any) => {
+      state.rpcCalls.push({ name, args })
+      if (name === "merge_contacts" && state.errors.mergeContactsRpc) {
+        return { data: null, error: state.errors.mergeContactsRpc }
+      }
+      return { data: null, error: null }
+    },
   }),
 }))
 
@@ -169,6 +183,7 @@ beforeEach(() => {
   state.consents = []
   state.sequences = []
   state.sequenceRuns = []
+  state.rpcCalls = []
   state.errors = {}
   vi.clearAllMocks()
 })
@@ -341,152 +356,37 @@ describe("recordContactEvent", () => {
   })
 })
 
+// Task 10: mergeContacts became a single `.rpc("merge_contacts", …)` call —
+// see lib/db/contacts.ts. The merge's actual behaviour (re-pointing all five
+// child tables, idempotency on retry, user_id carry-over, conflict recording,
+// business-id scoping) now lives entirely inside the `merge_contacts` plpgsql
+// function (supabase/migrations/00217_lead_engine_sequence_functions.sql)
+// and was verified there against a live Postgres instance in Task 1 — it is
+// no longer JS the DAL executes, so it is not re-tested against a JS mock
+// here. What this file can and must still pin: that mergeContacts calls the
+// RPC with exactly the arguments the caller passed, and that an error the
+// RPC returns is not swallowed.
 describe("mergeContacts", () => {
-  it("is idempotent: running the same merge twice yields exactly one audit row", async () => {
-    state.rows.push(
-      {
-        id: "contact-survivor",
-        business_id: "00000000-0000-0000-0000-000000000001",
-        email: "survivor@example.com",
-        phone_e164: null,
-        created_at: "2020-01-01T00:00:00Z",
-      },
-      {
-        id: "contact-loser",
-        business_id: "00000000-0000-0000-0000-000000000001",
-        email: null,
-        phone_e164: "+16176504548",
-        created_at: "2021-01-01T00:00:00Z",
-      },
-    )
-
-    await mergeContacts("contact-survivor", "contact-loser", "00000000-0000-0000-0000-000000000001")
+  it("delegates to the merge_contacts RPC with the survivor, merged id, business id, and reason", async () => {
     await mergeContacts("contact-survivor", "contact-loser", "00000000-0000-0000-0000-000000000001")
 
-    const rows = state.merges.filter(
-      (m) => m.survivor_id === "contact-survivor" && m.merged_id === "contact-loser",
-    )
-    expect(rows).toHaveLength(1)
-  })
-
-  it("re-points the loser's consent rows onto the survivor before deleting it", async () => {
-    state.rows.push(
-      {
-        id: "consent-survivor",
-        business_id: "00000000-0000-0000-0000-000000000001",
-        email: "survivor@example.com",
-        phone_e164: null,
-        created_at: "2020-01-01T00:00:00Z",
+    expect(state.rpcCalls).toHaveLength(1)
+    expect(state.rpcCalls[0]).toEqual({
+      name: "merge_contacts",
+      args: {
+        p_survivor: "contact-survivor",
+        p_merged: "contact-loser",
+        p_business: "00000000-0000-0000-0000-000000000001",
+        p_reason: "email and phone resolved to different contacts",
       },
-      {
-        id: "consent-loser",
-        business_id: "00000000-0000-0000-0000-000000000001",
-        email: null,
-        phone_e164: "+16176504548",
-        created_at: "2021-01-01T00:00:00Z",
-      },
-    )
-    state.consents.push({
-      id: "existing-consent",
-      business_id: "00000000-0000-0000-0000-000000000001",
-      contact_id: "consent-loser",
-      channel: "sms",
-      granted: true,
-      source: "funnel_form",
-      wording_shown: "You agree to receive texts.",
-    })
-
-    await mergeContacts("consent-survivor", "consent-loser", "00000000-0000-0000-0000-000000000001")
-
-    // The loser is gone...
-    expect(state.rows.some((r) => r.id === "consent-loser")).toBe(false)
-    // ...but its consent record survived the delete, re-pointed to the survivor.
-    const consent = state.consents.find((c) => c.id === "existing-consent")
-    expect(consent).toBeDefined()
-    expect(consent.contact_id).toBe("consent-survivor")
-  })
-
-  it("carries the loser's user_id onto the survivor when the survivor has none", async () => {
-    state.rows.push(
-      {
-        id: "uid-survivor",
-        business_id: "00000000-0000-0000-0000-000000000001",
-        email: "survivor2@example.com",
-        phone_e164: null,
-        user_id: null,
-        created_at: "2020-01-01T00:00:00Z",
-      },
-      {
-        id: "uid-loser",
-        business_id: "00000000-0000-0000-0000-000000000001",
-        email: null,
-        phone_e164: "+16178675309",
-        user_id: "user-42",
-        created_at: "2021-01-01T00:00:00Z",
-      },
-    )
-
-    await mergeContacts("uid-survivor", "uid-loser", "00000000-0000-0000-0000-000000000001")
-
-    const survivor = state.rows.find((r) => r.id === "uid-survivor")
-    expect(survivor.user_id).toBe("user-42")
-  })
-
-  it("does not guess when both contacts carry different user_ids — keeps the survivor's and records the conflict", async () => {
-    state.rows.push(
-      {
-        id: "uidconflict-survivor",
-        business_id: "00000000-0000-0000-0000-000000000001",
-        email: "survivor3@example.com",
-        phone_e164: null,
-        user_id: "user-keep-me",
-        created_at: "2020-01-01T00:00:00Z",
-      },
-      {
-        id: "uidconflict-loser",
-        business_id: "00000000-0000-0000-0000-000000000001",
-        email: null,
-        phone_e164: "+16179998888",
-        user_id: "user-other",
-        created_at: "2021-01-01T00:00:00Z",
-      },
-    )
-
-    await mergeContacts("uidconflict-survivor", "uidconflict-loser", "00000000-0000-0000-0000-000000000001")
-
-    const survivor = state.rows.find((r) => r.id === "uidconflict-survivor")
-    expect(survivor.user_id).toBe("user-keep-me")
-
-    const conflictEvents = state.timelineEvents.filter((e) => e.kind === "user_id_conflict")
-    expect(conflictEvents).toHaveLength(1)
-    expect(conflictEvents[0].metadata).toMatchObject({
-      survivor_user_id: "user-keep-me",
-      loser_user_id: "user-other",
     })
   })
 
-  it("does not delete the loser when its business_id does not match the merge's business_id", async () => {
-    state.rows.push(
-      {
-        id: "scope-survivor",
-        business_id: "00000000-0000-0000-0000-000000000001",
-        email: "survivor4@example.com",
-        phone_e164: null,
-        created_at: "2020-01-01T00:00:00Z",
-      },
-      {
-        id: "scope-loser",
-        business_id: "some-other-business",
-        email: null,
-        phone_e164: "+16171234567",
-        created_at: "2021-01-01T00:00:00Z",
-      },
-    )
+  it("throws when the merge_contacts RPC returns an error", async () => {
+    state.errors.mergeContactsRpc = new Error("merge_contacts boom")
 
-    await mergeContacts("scope-survivor", "scope-loser", "00000000-0000-0000-0000-000000000001")
-
-    // The loser belongs to a different business than the one this merge was
-    // scoped to, so it must not be touched.
-    expect(state.rows.some((r) => r.id === "scope-loser")).toBe(true)
+    await expect(
+      mergeContacts("contact-survivor", "contact-loser", "00000000-0000-0000-0000-000000000001"),
+    ).rejects.toThrow("merge_contacts boom")
   })
 })
