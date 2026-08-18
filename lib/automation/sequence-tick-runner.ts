@@ -120,7 +120,7 @@ export function appOrigin(): string {
  * Appends a `contact_timeline_events` row. Deliberately a raw
  * `createServiceRoleClient()` call rather than a `lib/db/` DAL function —
  * same accepted pattern as Task 6's
- * `app/(marketing)/unsubscribe/[token]/page.tsx` (`recordUnsubscribeTimelineEvent`),
+ * `lib/lead-engine/unsubscribe.ts` (`recordUnsubscribeTimelineEvent`),
  * chosen there because `lib/db/contacts.ts` has a queue of sequential
  * editors (Tasks 7/9/10) this file is not part of.
  *
@@ -128,9 +128,9 @@ export function appOrigin(): string {
  * that an unsupported step or an alert must be "visible, not silent" — a
  * timeline write that silently drops on error would recreate exactly the
  * silence being fixed. The throw propagates out of `processRun` to
- * `runSequenceTick`'s fault-isolation catch, which marks the run `failed`
- * (still exactly one `sequence_runs` write-back — see the concurrency
- * contract above).
+ * `runSequenceTick`'s fault-isolation catch, which defers the run for a retry
+ * and only fails it once its attempts are exhausted (still exactly one
+ * `sequence_runs` write-back — see the concurrency contract above).
  */
 async function writeTimelineEvent(args: {
   businessId: string
