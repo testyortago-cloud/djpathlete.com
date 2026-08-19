@@ -50,6 +50,7 @@ import { FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT } from "@/lib/funnels/che
 import { findContactByIdentifiers } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
+import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
 
 // Lead Engine: `checkout.session.completed` fires for every kind of money
 // this business takes, not just a coaching sale — merch, event tickets, and
@@ -296,7 +297,22 @@ export async function POST(request: Request) {
           // number, and Stripe fires this event for both full AND partial
           // refunds, so this must run unconditionally, not only on a full
           // refund.
-          if (payment) {
+          //
+          // Fix round 1 (Critical): `getPaymentByStripeId` select("*")s with
+          // NO type check — the same `payments` table also carries
+          // event-ticket and no-show-fee rows, keyed by `metadata.type`. A
+          // contact who separately has a real Won coaching deal and cancels
+          // an unrelated event ticket would otherwise subtract the ticket's
+          // refund from that coaching card's value_cents. Gated on
+          // NON_COACHING_PAYMENT_TYPES — the SAME denylist the reconciler
+          // already applies to this identical `payments` join
+          // (lib/lead-engine/constants.ts) — rather than a second copy that
+          // can drift. Deliberately a denylist: an unlabelled or newly-added
+          // coaching payment type must still be handled, not silently
+          // skipped.
+          const paymentType = payment?.metadata?.type
+          const isNonCoachingPayment = typeof paymentType === "string" && NON_COACHING_PAYMENT_TYPES.has(paymentType)
+          if (payment && !isNonCoachingPayment) {
             try {
               const contactId = await findContactByIdentifiers({ userId: payment.user_id, email: null })
               if (contactId) {

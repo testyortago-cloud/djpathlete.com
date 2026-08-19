@@ -310,6 +310,69 @@ describe("Stripe webhook — pipeline", () => {
       })
     })
 
+    // Fix round 1 (Critical): getPaymentByStripeId select("*")s with no type
+    // check — the SAME `payments` table also carries event-ticket and
+    // no-show-fee rows for a contact who may separately have a real Won
+    // coaching deal. Without this gate, cancelling an unrelated event ticket
+    // would subtract its refund from that contact's coaching value_cents.
+    // Mirrors NON_COACHING_PAYMENT_TYPES, the reconciler's identical gate on
+    // the identical `payments` join (lib/lead-engine/constants.ts) — one
+    // shared denylist, not a third copy.
+    it("does NOT amend a coaching card when the refunded payment is an event_signup ticket", async () => {
+      getPaymentByStripeIdMock.mockResolvedValueOnce({
+        id: "pay-ticket-1",
+        user_id: "user-1",
+        metadata: { type: "event_signup" },
+      })
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-refund-ticket")
+      verifyMock.mockReturnValueOnce(chargeRefundedEvent())
+      vi.spyOn(console, "error").mockImplementation(() => {})
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeStripeReq())
+
+      expect(res.status).toBe(200)
+      expect(applyPipelineEventMock).not.toHaveBeenCalled()
+    })
+
+    it("does NOT amend a coaching card when the refunded payment is a session_fee penalty", async () => {
+      getPaymentByStripeIdMock.mockResolvedValueOnce({
+        id: "pay-fee-1",
+        user_id: "user-1",
+        metadata: { type: "session_fee" },
+      })
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-refund-fee")
+      verifyMock.mockReturnValueOnce(chargeRefundedEvent())
+      vi.spyOn(console, "error").mockImplementation(() => {})
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeStripeReq())
+
+      expect(res.status).toBe(200)
+      expect(applyPipelineEventMock).not.toHaveBeenCalled()
+    })
+
+    // The denylist is a denylist, not an allowlist: a payment with no
+    // `metadata.type` at all (or any type outside the non-coaching set) must
+    // still amend — an unlabelled coaching payment must not go silently
+    // unhandled.
+    it("still amends an ordinary coaching refund whose payment carries no metadata.type", async () => {
+      getPaymentByStripeIdMock.mockResolvedValueOnce({ id: "pay-coaching-1", user_id: "user-1", metadata: {} })
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-refund-coaching")
+      verifyMock.mockReturnValueOnce(chargeRefundedEvent({ amount_refunded: 5000 }))
+      vi.spyOn(console, "error").mockImplementation(() => {})
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeStripeReq())
+
+      expect(res.status).toBe(200)
+      expect(applyPipelineEventMock).toHaveBeenCalledWith({
+        contactId: "contact-refund-coaching",
+        event: { kind: "refund", amountRefundedCents: 5000, occurredAt: expect.any(Date) },
+        metadata: { stripe_charge_id: "ch_test_1", amount_refunded: 5000 },
+      })
+    })
+
     it("does not call applyPipelineEvent when no payment resolves for the charge", async () => {
       getPaymentByStripeIdMock.mockResolvedValueOnce(null)
       verifyMock.mockReturnValueOnce(chargeRefundedEvent())

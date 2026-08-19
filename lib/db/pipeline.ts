@@ -403,9 +403,11 @@ export async function applyPipelineEvent(input: {
   // the delta rather than double-subtracting a prior delivery's cents (the
   // highest-risk failure mode here). Keyed on `metadata.stripe_charge_id`,
   // opt-in like the create-with-outcome duplicate check above: no charge id,
-  // no baseline.
+  // no baseline. Skipped entirely when there is no Won card at all
+  // (`current === null`) — `decideMove` noops that case regardless of the
+  // ledger, so reading it first is a query the no-op path never needed.
   let previouslyRefundedCents: number | undefined
-  if (isRefund) {
+  if (isRefund && current) {
     const chargeId = typeof input.metadata?.stripe_charge_id === "string" ? input.metadata.stripe_charge_id : null
     previouslyRefundedCents = chargeId ? await highestRecordedRefundAmount(chargeId, businessId) : 0
   }

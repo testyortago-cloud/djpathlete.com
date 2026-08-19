@@ -25,43 +25,29 @@ import {
   listReconciledSourceIds,
   DEFAULT_PIPELINE_KEY,
 } from "@/lib/db/pipeline"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
+import { SINGLETON_BUSINESS_ID, NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
 
-/**
- * Final review, Critical 1 — REVERTS the "replay every succeeded payment
- * unconditionally" ruling a prior fix round made. That ruling contradicted
- * spec §6 case 2 ("payments... whose contact has an OPEN opportunity → win
- * it") and, worse, `decideMove` creates a brand-new WON card when a payment
- * arrives for a contact with no opportunity at all. Subscription renewals
- * write `payments` rows with no `type` key at all
- * (app/api/stripe/webhook/route.ts's handleInvoicePaymentSucceeded) and pack
- * auto-renewals write `type: "session_pack"` (lib/services/pack-renewal.ts)
- * — NEITHER is a checkout, neither goes through applyPipelineEvent at write
- * time, and neither was ever excluded by this set. The hour the reconciler
- * is switched on, every existing coaching client who renewed in the scan
- * window gets a fabricated Won card, valued at one renewal, dated today.
- *
- * The real backstop is the precondition restored below (a payment may only
- * WIN a card that already exists and is OPEN — never create one). This set
- * stays as defense-in-depth for the one case the precondition alone does
- * NOT cover: a contact who legitimately has an open card and then pays a
- * fee or buys a ticket that is not evidence the deal closed. Confirmed by
- * grepping every `createPayment(...)` call site in the repo
- * (`grep -rn "createPayment(" app lib functions`), not guessed:
- *   - "event_signup" — a ticket, not a coaching deal (recordEventSignupPayment,
- *     app/api/stripe/webhook/route.ts).
- *   - "session_fee" — a no-show / late-cancellation PENALTY charged to an
- *     existing client (lib/services/session-fees.ts). Money moved, but it is
- *     not evidence of a deal.
- *
- * "shop_order" and "save_card" (excluded on the STRIPE WEBHOOK's own
- * `session.metadata.type` in app/api/stripe/webhook/route.ts, a different
- * value space keyed on the CHECKOUT SESSION, not the payment row) do NOT
- * need an entry here: `handleShopOrderCheckout` records its sale in
- * `shop_orders`, never `payments`, and `handleSaveCardCheckout` writes no
- * payment row at all (no money moves on a card-on-file setup).
- */
-const NON_COACHING_PAYMENT_TYPES = new Set(["event_signup", "session_fee"])
+// Final review, Critical 1 — REVERTS the "replay every succeeded payment
+// unconditionally" ruling a prior fix round made. That ruling contradicted
+// spec §6 case 2 ("payments... whose contact has an OPEN opportunity → win
+// it") and, worse, `decideMove` creates a brand-new WON card when a payment
+// arrives for a contact with no opportunity at all. Subscription renewals
+// write `payments` rows with no `type` key at all
+// (app/api/stripe/webhook/route.ts's handleInvoicePaymentSucceeded) and pack
+// auto-renewals write `type: "session_pack"` (lib/services/pack-renewal.ts)
+// — NEITHER is a checkout, neither goes through applyPipelineEvent at write
+// time, and neither was ever excluded by NON_COACHING_PAYMENT_TYPES. The
+// hour the reconciler is switched on, every existing coaching client who
+// renewed in the scan window gets a fabricated Won card, valued at one
+// renewal, dated today.
+//
+// The real backstop is the precondition restored below (a payment may only
+// WIN a card that already exists and is OPEN — never create one).
+// NON_COACHING_PAYMENT_TYPES (lib/lead-engine/constants.ts — shared with the
+// charge.refunded pipeline hook, which has the identical problem on the
+// refund side) stays as defense-in-depth for the one case the precondition
+// alone does NOT cover: a contact who legitimately has an open card and then
+// pays a fee or buys a ticket that is not evidence the deal closed.
 
 /**
  * How far back the reconciler looks for bookings/payments to repair. Named
