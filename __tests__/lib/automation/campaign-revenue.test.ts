@@ -181,7 +181,12 @@ function sum(rows: Array<{ wonValueCents: number }>): number {
 }
 
 function findUnattributed(rows: Awaited<ReturnType<typeof readCampaignRevenue>>) {
-  return rows.find((r) => r.unattributedCount > 0)
+  // Fix round 1, Finding 2: `unattributedCount > 0` is NOT the discriminator
+  // — it returns `undefined` in exactly the case that must stay visible
+  // (every deal attributed cleanly, bucket row present with a zero count).
+  // `isUnattributed` is the contract; it is `true` on the bucket row
+  // regardless of its counts.
+  return rows.find((r) => r.isUnattributed)
 }
 
 // ---------------------------------------------------------------------------
@@ -209,10 +214,12 @@ describe("readCampaignRevenue", () => {
     expect(spring?.wonValueCents).toBe(12_500)
     expect(spring?.utmSource).toBe("google")
     expect(spring?.utmMedium).toBe("cpc")
+    expect(spring?.isUnattributed).toBe(false)
 
     expect(summer).toBeDefined()
     expect(summer?.wonCount).toBe(1)
     expect(summer?.wonValueCents).toBe(2_000)
+    expect(summer?.isUnattributed).toBe(false)
   })
 
   it("reads value from opportunities, not from payments", async () => {
@@ -231,6 +238,7 @@ describe("readCampaignRevenue", () => {
 
     const unattributed = findUnattributed(rows)
     expect(unattributed).toBeDefined()
+    expect(unattributed?.isUnattributed).toBe(true)
     expect(unattributed?.unattributedCount).toBe(1)
     expect(unattributed?.wonValueCents).toBe(9_900)
     expect(unattributed?.utmSource).toBeNull()
@@ -259,6 +267,25 @@ describe("readCampaignRevenue", () => {
     const unattributed = findUnattributed(rows)
     expect(unattributed?.unattributedCount).toBe(2)
     expect(unattributed?.wonValueCents).toBe(3_000)
+  })
+
+  // Fix round 1, Finding 2: this is the case both the implementation and
+  // the original `findUnattributed` discriminator missed — every won deal
+  // attributes cleanly, so `unattributedCount` stays 0 on the bucket row.
+  // The row must still exist and be findable, or a UI following the old
+  // `unattributedCount > 0` contract silently omits "Unattributed: $0" in
+  // exactly the month it would be reassuring to see it.
+  it("still surfaces a findable, zeroed unattributed bucket when every won deal attributes cleanly", async () => {
+    seedAttribution("sess-a")
+    seedWonOpportunity({ source_session_id: "sess-a", value_cents: 6_000 })
+
+    const rows = await readCampaignRevenue({ since, until })
+
+    const unattributed = findUnattributed(rows)
+    expect(unattributed).toBeDefined()
+    expect(unattributed?.isUnattributed).toBe(true)
+    expect(unattributed?.unattributedCount).toBe(0)
+    expect(unattributed?.wonValueCents).toBe(0)
   })
 
   it("excludes open and lost deals", async () => {
