@@ -22,6 +22,8 @@ const ROOTS = [
   "app/(admin)/admin/pipeline/page.tsx",
   "components/admin/pipeline-board.tsx",
   "app/api/admin/pipeline/move/route.ts",
+  // Task 9 — the campaign-to-revenue surface.
+  "app/(admin)/admin/insights/campaign-revenue/page.tsx",
 ]
 
 function filesUnder(p: string): string[] {
