@@ -1,0 +1,347 @@
+// @vitest-environment node
+//
+// Migrations 00212-00218 have not run against any real database yet (see
+// Task 13's precondition check), so this cannot be a live-DB test the way
+// __tests__/migrations/00078_platform_connections.test.ts is. Instead it
+// parses the seed migration's raw SQL text — the same "read the file on
+// disk" approach __tests__/lib/lead-engine/no-brand-literals.test.ts already
+// uses for this file.
+//
+// The parser below is NOT a general SQL parser. It understands exactly the
+// subset of syntax this migration uses: single-quoted strings (with ''
+// escapes), dollar-quoted strings ($tag$...$tag$), line comments (-- ...),
+// and parenthesised VALUES tuples, including a parenthesised subselect as a
+// field value. That is enough to recover, from the file alone, the same
+// structure the CHECK constraints in 00216 enforce at insert time — so a
+// malformed step (e.g. an email step with no body) fails both here AND at
+// `pgcheck.sh`, for two different reasons.
+
+import { describe, it, expect } from "vitest"
+import { readFileSync } from "fs"
+import { join } from "path"
+
+const MIGRATION_PATH = join(process.cwd(), "supabase/migrations/00218_lead_engine_seed_sequences.sql")
+const rawSql = readFileSync(MIGRATION_PATH, "utf8")
+
+// ---------------------------------------------------------------------------
+// Minimal SQL tokenizing helpers
+// ---------------------------------------------------------------------------
+
+/** Strips `-- ...` line comments, but never inside a quoted or dollar-quoted string. */
+function stripSqlComments(sql: string): string {
+  let out = ""
+  let i = 0
+  while (i < sql.length) {
+    const ch = sql[i]
+    if (ch === "'") {
+      out += ch
+      i++
+      while (i < sql.length) {
+        out += sql[i]
+        if (sql[i] === "'" && sql[i + 1] === "'") {
+          out += sql[i + 1]
+          i += 2
+          continue
+        }
+        if (sql[i] === "'") {
+          i++
+          break
+        }
+        i++
+      }
+      continue
+    }
+    if (ch === "$") {
+      const m = /^\$[a-zA-Z0-9_]*\$/.exec(sql.slice(i))
+      if (m) {
+        const tag = m[0]
+        const endIdx = sql.indexOf(tag, i + tag.length)
+        const end = endIdx === -1 ? sql.length : endIdx + tag.length
+        out += sql.slice(i, end)
+        i = end
+        continue
+      }
+    }
+    if (ch === "-" && sql[i + 1] === "-") {
+      const nl = sql.indexOf("\n", i)
+      i = nl === -1 ? sql.length : nl
+      continue
+    }
+    out += ch
+    i++
+  }
+  return out
+}
+
+/**
+ * Splits `s` on `sepChar` only at paren-depth 0 and outside any quoted or
+ * dollar-quoted string. Used both to split the file into statements
+ * (`sepChar = ';'`) and to split a tuple's fields (`sepChar = ','`) —
+ * the latter must not split inside a parenthesised subselect field.
+ */
+function splitTopLevel(s: string, sepChar: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let current = ""
+  let i = 0
+  while (i < s.length) {
+    const ch = s[i]
+    if (ch === "'") {
+      current += ch
+      i++
+      while (i < s.length) {
+        current += s[i]
+        if (s[i] === "'" && s[i + 1] === "'") {
+          current += s[i + 1]
+          i += 2
+          continue
+        }
+        if (s[i] === "'") {
+          i++
+          break
+        }
+        i++
+      }
+      continue
+    }
+    if (ch === "$") {
+      const m = /^\$[a-zA-Z0-9_]*\$/.exec(s.slice(i))
+      if (m) {
+        const tag = m[0]
+        const endIdx = s.indexOf(tag, i + tag.length)
+        const end = endIdx === -1 ? s.length : endIdx + tag.length
+        current += s.slice(i, end)
+        i = end
+        continue
+      }
+    }
+    if (ch === "(") {
+      depth++
+      current += ch
+      i++
+      continue
+    }
+    if (ch === ")") {
+      depth--
+      current += ch
+      i++
+      continue
+    }
+    if (depth === 0 && ch === sepChar) {
+      parts.push(current)
+      current = ""
+      i++
+      continue
+    }
+    current += ch
+    i++
+  }
+  parts.push(current)
+  return parts.map((p) => p.trim()).filter((p) => p.length > 0)
+}
+
+/** Unwraps a single-quoted or dollar-quoted SQL literal; `NULL` -> null; anything else -> raw text (e.g. a bare integer or a subselect). */
+function unquote(raw: string): string | null {
+  const t = raw.trim()
+  if (/^NULL$/i.test(t)) return null
+  if (t.startsWith("'") && t.endsWith("'") && t.length >= 2) {
+    return t.slice(1, -1).replace(/''/g, "'")
+  }
+  const dollarMatch = /^(\$[a-zA-Z0-9_]*\$)([\s\S]*)\1$/.exec(t)
+  if (dollarMatch) return dollarMatch[2]
+  return t
+}
+
+const cleaned = stripSqlComments(rawSql)
+const statements = splitTopLevel(cleaned, ";")
+
+/** The text right after `VALUES`, stripped of any trailing `ON CONFLICT ...` clause. */
+function valuesSectionOf(statement: string): string {
+  const afterValues = statement.split(/\bVALUES\b/i)[1] ?? ""
+  return afterValues.split(/\bON CONFLICT\b/i)[0]
+}
+
+// splitTopLevel already yields whole "(...)" chunks when splitting on "," at
+// depth 0, because depth returns to 0 only once a tuple's closing paren is
+// consumed — the comma between tuples is the very next character.
+function extractTuples(valuesSection: string): string[] {
+  return splitTopLevel(valuesSection, ",")
+}
+
+function stripOuterParens(tuple: string): string {
+  const t = tuple.trim()
+  if (t.startsWith("(") && t.endsWith(")")) return t.slice(1, -1)
+  return t
+}
+
+// ---------------------------------------------------------------------------
+// Parse `sequences` rows: (business_id, key, name, description, trigger_source, status)
+// ---------------------------------------------------------------------------
+
+const sequencesStatement = statements.find((s) => /^INSERT INTO public\.sequences\s*\(/i.test(s.trim()))
+if (!sequencesStatement) throw new Error("no INSERT INTO public.sequences statement found in 00218 — parser or migration drifted")
+
+const sequenceRows = extractTuples(valuesSectionOf(sequencesStatement)).map((tuple) => {
+  const fields = splitTopLevel(stripOuterParens(tuple), ",")
+  const [businessId, key, name, description, triggerSource, status] = fields.map(unquote)
+  return { businessId, key, name, description, triggerSource, status }
+})
+
+// ---------------------------------------------------------------------------
+// Parse `sequence_steps` rows: (business_id, sequence_id, position, kind, wait_minutes, subject, body)
+// Each seeded step is its own single-row INSERT, so one tuple per statement.
+// `sequence_id` is a `(SELECT ... WHERE key = 'xxx')` subselect — the step's
+// owning sequence is recovered from that literal, per the brief's requirement
+// that steps reference their sequence via a subselect on `key`, never a
+// hardcoded uuid.
+// ---------------------------------------------------------------------------
+
+const stepStatements = statements.filter((s) => /^INSERT INTO public\.sequence_steps\s*\(/i.test(s.trim()))
+if (stepStatements.length === 0) throw new Error("no INSERT INTO public.sequence_steps statements found in 00218 — parser or migration drifted")
+
+const stepRows = stepStatements.map((statement) => {
+  const tuples = extractTuples(valuesSectionOf(statement))
+  expect(tuples.length).toBe(1) // one step per INSERT, by construction
+  const fields = splitTopLevel(stripOuterParens(tuples[0]), ",")
+  const [businessId, sequenceIdExpr, position, kind, waitMinutes, subject, body] = fields
+  const keyMatch = /key\s*=\s*'([^']+)'/.exec(sequenceIdExpr)
+  if (!keyMatch) throw new Error(`sequence_steps row does not reference its sequence via a key subselect: ${sequenceIdExpr}`)
+  return {
+    businessId: unquote(businessId),
+    sequenceKey: keyMatch[1],
+    position: Number(unquote(position)),
+    kind: unquote(kind),
+    waitMinutes: unquote(waitMinutes) === null ? null : Number(unquote(waitMinutes)),
+    subject: unquote(subject),
+    body: unquote(body),
+  }
+})
+
+function stepsFor(key: string) {
+  return stepRows.filter((s) => s.sequenceKey === key).sort((a, b) => a.position - b.position)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("seed migration 00218 — the four sequences", () => {
+  it("is actually parsing the file — a guard against a silently empty sweep", () => {
+    expect(sequenceRows.length).toBeGreaterThan(0)
+    expect(stepRows.length).toBeGreaterThan(0)
+  })
+
+  it("seeds exactly four sequences, all in draft", () => {
+    expect(sequenceRows).toHaveLength(4)
+    for (const row of sequenceRows) {
+      expect(row.status).toBe("draft")
+    }
+    expect(sequenceRows.map((r) => r.key).sort()).toEqual([
+      "cold_lead_re_engagement",
+      "lead_magnet_delivery",
+      "new_lead_nurture",
+      "newsletter_welcome",
+    ])
+  })
+
+  it("every step belongs to one of the four seeded sequences", () => {
+    const seededKeys = new Set(sequenceRows.map((r) => r.key))
+    for (const step of stepRows) {
+      expect(seededKeys.has(step.sequenceKey)).toBe(true)
+    }
+  })
+
+  it("gives every email step both a subject and a body", () => {
+    const emailSteps = stepRows.filter((s) => s.kind === "email")
+    expect(emailSteps.length).toBeGreaterThan(0)
+    for (const step of emailSteps) {
+      expect(step.subject, `sequence ${step.sequenceKey} position ${step.position}`).toBeTruthy()
+      expect(step.body, `sequence ${step.sequenceKey} position ${step.position}`).toBeTruthy()
+    }
+  })
+
+  it("gives every wait step a wait_minutes value", () => {
+    const waitSteps = stepRows.filter((s) => s.kind === "wait")
+    expect(waitSteps.length).toBeGreaterThan(0)
+    for (const step of waitSteps) {
+      expect(step.waitMinutes, `sequence ${step.sequenceKey} position ${step.position}`).not.toBeNull()
+      expect(step.waitMinutes as number).toBeGreaterThan(0)
+    }
+  })
+
+  it("opens with a wait on any source that already auto-replies", () => {
+    // From the migration header's audit table: contact_form, lead_magnet and
+    // event_signup already email the lead at the moment of capture.
+    const AUTO_REPLY_SOURCES = new Set(["contact_form", "lead_magnet", "event_signup"])
+    for (const row of sequenceRows) {
+      if (!row.triggerSource || !AUTO_REPLY_SOURCES.has(row.triggerSource)) continue
+      const steps = stepsFor(row.key as string)
+      expect(steps.length, `sequence ${row.key}`).toBeGreaterThan(0)
+      expect(steps[0].kind, `sequence ${row.key} (trigger_source=${row.triggerSource}) must open with a wait`).toBe("wait")
+    }
+    // Sanity: at least one seeded sequence actually exercises this rule —
+    // otherwise the assertion above would pass vacuously.
+    const auditedSequences = sequenceRows.filter((r) => r.triggerSource && AUTO_REPLY_SOURCES.has(r.triggerSource))
+    expect(auditedSequences.length).toBeGreaterThan(0)
+  })
+
+  it("does NOT open with a wait on a source that does not already email the lead", () => {
+    const AUTO_REPLY_SOURCES = new Set(["contact_form", "lead_magnet", "event_signup"])
+    const immediateSequences = sequenceRows.filter((r) => !r.triggerSource || !AUTO_REPLY_SOURCES.has(r.triggerSource))
+    expect(immediateSequences.length).toBeGreaterThan(0)
+    for (const row of immediateSequences) {
+      const steps = stepsFor(row.key as string)
+      expect(steps.length, `sequence ${row.key}`).toBeGreaterThan(0)
+      expect(steps[0].kind, `sequence ${row.key}`).toBe("email")
+    }
+  })
+
+  it("ends every sequence with a stop step", () => {
+    for (const row of sequenceRows) {
+      const steps = stepsFor(row.key as string)
+      expect(steps.length, `sequence ${row.key}`).toBeGreaterThan(0)
+      expect(steps[steps.length - 1].kind, `sequence ${row.key}`).toBe("stop")
+    }
+  })
+
+  it("numbers each sequence's steps contiguously from 0", () => {
+    for (const row of sequenceRows) {
+      const steps = stepsFor(row.key as string)
+      const positions = steps.map((s) => s.position)
+      expect(positions, `sequence ${row.key}`).toEqual(positions.map((_, idx) => idx))
+    }
+  })
+
+  it("uses {{name}} for personalisation, and never right before punctuation that would read badly when it renders empty", () => {
+    // e.g. "Hi {{name}}," would render "Hi ," when the contact has no name on
+    // file. lib/lead-engine/email.ts substitutes {{name}} with "" verbatim —
+    // there is no template fallback — so the character immediately after the
+    // token in the SOURCE COPY must never be a comma, period, or other
+    // punctuation mark that would look broken glued to nothing.
+    const emailSteps = stepRows.filter((s) => s.kind === "email")
+    let usesName = false
+    for (const step of emailSteps) {
+      for (const field of [step.subject, step.body]) {
+        if (!field) continue
+        let idx = field.indexOf("{{name}}")
+        while (idx !== -1) {
+          usesName = true
+          const after = field.slice(idx + "{{name}}".length, idx + "{{name}}".length + 1)
+          expect(/[,.!?;:]/.test(after), `sequence ${step.sequenceKey} position ${step.position}: "{{name}}${after}"`).toBe(false)
+          idx = field.indexOf("{{name}}", idx + 1)
+        }
+      }
+    }
+    expect(usesName).toBe(true)
+  })
+
+  it("uses no brand literal", () => {
+    // Mirrors __tests__/lib/lead-engine/no-brand-literals.test.ts, which now
+    // also scans this exact file path — this is the same check run directly
+    // against the migration so a failure here points straight at the copy.
+    const FORBIDDEN = [/DJP\s*Athlete/i, /\bDarren\b/i, /darrenjpaul\.com/i]
+    for (const re of FORBIDDEN) {
+      expect(re.test(rawSql), `matched ${re}`).toBe(false)
+    }
+  })
+})

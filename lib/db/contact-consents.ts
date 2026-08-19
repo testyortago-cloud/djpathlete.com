@@ -44,6 +44,7 @@ export async function hasConsent(contactId: string, channel: ConsentChannel): Pr
     .eq("contact_id", contactId)
     .eq("channel", channel)
     .order("occurred_at", { ascending: false })
+    .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()
   if (error) throw error
@@ -60,7 +61,13 @@ export async function suppress(
   const { error } = await supabase
     .from("contact_suppressions")
     .insert({ business_id: businessId, identifier: identifier.toLowerCase(), reason })
-  if (error && !String(error.message).includes("duplicate")) throw error
+  // 23505 is Postgres's unique_violation code — this identifier is already
+  // suppressed, which is the outcome this call wanted anyway. Matching the
+  // code instead of sniffing error.message for the word "duplicate" matters:
+  // a genuine failure whose message happens to contain that word (e.g. a
+  // permissions error on a table with "duplicate" in its constraint name)
+  // must not be swallowed.
+  if (error && (error as { code?: string }).code !== "23505") throw error
 }
 
 export async function isSuppressed(

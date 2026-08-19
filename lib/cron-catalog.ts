@@ -16,6 +16,8 @@ export type CronJobName =
   | "outcome-tracker-daily"
   | "ads-outcome-tracker-daily"
   | "session-pack-renewals"
+  | "sequence-tick"
+  | "contact-timeline-retention"
 
 export interface CronJob {
   name: CronJobName
@@ -184,5 +186,31 @@ export const CRON_CATALOG: readonly CronJob[] = [
     phase: "session-packs",
     enabledKey: "cron_pack_renewals_enabled",
     defaultEnabled: false,
+  },
+  {
+    name: "sequence-tick",
+    label: "Follow-up sequences",
+    description:
+      "Every five minutes, checks which leads are due their next follow-up email and sends it — respecting quiet hours in their timezone, a daily limit of one message per person, and anyone who has unsubscribed.",
+    schedule: "*/5 * * * *",
+    timezone: "UTC",
+    humanSchedule: "Every 5 minutes",
+    firebaseFunction: "sequenceTickCron",
+    phase: "lead-engine-1b",
+    enabledKey: "cron_sequence_tick_enabled",
+    defaultEnabled: false,
+  },
+  {
+    name: "contact-timeline-retention",
+    label: "Timeline PII cleanup",
+    description:
+      "Every night, clears the personal details (names, emails, form answers) out of old entries on a contact's timeline once they've aged past the retention window — keeping the fact that the contact reached a milestone, without keeping what they typed. ON by default: unscrubbed PII piling up indefinitely is the risk being managed.",
+    schedule: "30 3 * * *",
+    timezone: "UTC",
+    humanSchedule: "Every night at 3:30 AM UTC",
+    firebaseFunction: "contactTimelineRetentionCron",
+    phase: "lead-engine-1b",
+    enabledKey: "cron_contact_timeline_retention_enabled",
+    defaultEnabled: true,
   },
 ] as const

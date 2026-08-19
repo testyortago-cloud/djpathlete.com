@@ -185,6 +185,23 @@ Stage 1b seed sequence uses them.
 **`alert`** notifies the business, not the contact: an email to `business_settings.reply_to` plus a
 timeline event. It is the step type a sequence uses to say "a human should look at this one".
 
+### 6.1 The consent regime differs by channel
+
+Stage 1a deliberately writes no consent row from the funnel form —
+`wording_shown` is NOT NULL and the form displays no consent wording — so
+`hasConsent` returns `false` for every contact that exists today. Gating email on
+it would ship an engine that can never send.
+
+- **Email is opt-out.** Blocked only by `contact_suppressions`. This is the
+  CAN-SPAM regime, and the one-click unsubscribe in §8 is what satisfies it.
+- **SMS is opt-in.** Requires an explicit granted consent row. TCPA does not
+  accept opt-out, and §6 of the parent spec already rules that the 90 imported
+  phone numbers arrive with no SMS consent.
+
+No Stage 1b sequence sends SMS, so that branch is unreachable until Stage 2. The
+rule is encoded in the pure decision function now, with tests for both channels,
+rather than being invented under deadline later.
+
 **Branch predicates** are a closed set:
 
 ```
@@ -290,13 +307,36 @@ reviewer could see the interaction.
 **Stage 1b adds two more cascading children of `contacts`:** `sequence_runs.contact_id` and
 `sequence_messages.contact_id`. The identical bug is available again, in the same function.
 
+**And an earlier draft of this section proved the point by getting it wrong.** It listed four
+children. There are five. `contact_merges.survivor_id` (`00213`, line 51) is also
+`REFERENCES public.contacts(id) ON DELETE CASCADE` — so merging a contact that had itself survived
+an earlier merge destroys that earlier merge's audit row and its `merged_snapshot`. This is not an
+exotic path: `lib/lead-engine/merge.ts` picks the survivor as oldest-`created_at`-wins and merges
+never touch `created_at`, so a past survivor losing to an older contact that resurfaces is ordinary
+dedup behaviour. Task 1's reviewer caught it and reproduced it live. The lesson is not "remember
+contact_merges" — it is that the enumeration must be **run**, not recalled.
+
+The authoritative list, as of `00216`, produced by
+`grep -n "REFERENCES public.contacts(id)" supabase/migrations/*.sql`:
+
+| Child | Migration | Handling in `merge_contacts` |
+|---|---|---|
+| `contact_merges.survivor_id` | `00213:51` | re-point to survivor |
+| `contact_timeline_events.contact_id` | `00214:11` | re-point to survivor |
+| `contact_consents.contact_id` | `00215:15` | re-point to survivor |
+| `sequence_runs.contact_id` | `00216:70` | re-point, exiting a loser's run where the survivor is already active in that sequence |
+| `sequence_messages.contact_id` | `00216:103` | re-point to survivor |
+
+Exempt, with reasons: `contact_merges.merged_id` carries no FK by design, so the audit row survives
+its subject; `contact_suppressions` is keyed by identifier rather than `contact_id`, so a
+suppression survives a merge, a delete, and the same person arriving again months later.
+
 Therefore:
 
-- `merge_contacts` re-points `contact_timeline_events`, `contact_consents`, `sequence_runs` **and**
-  `sequence_messages` before the delete.
-- The plan's final review **enumerates every FK child of `contacts` from the migrations** and
-  checks each against the merge — it does not trust per-task review to catch cascade behaviour it
-  was never shown.
+- `merge_contacts` re-points all five before the delete.
+- The plan's final review **runs the grep** and checks each hit against the merge — it does not
+  trust per-task review, or this table, to be complete. If the grep returns a sixth row, the
+  function is wrong until proven otherwise.
 - A test asserts the merge preserves a losing contact's runs and messages, not only its consent.
 
 ## 11. Seed data — and the double-send audit

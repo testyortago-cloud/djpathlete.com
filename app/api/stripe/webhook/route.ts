@@ -47,6 +47,8 @@ import { enqueuePaymentValueAdjustmentByEmail } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
 import { getSetting } from "@/lib/db/system-settings"
 import { FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT } from "@/lib/funnels/checkout/flag"
+import { findContactByIdentifiers } from "@/lib/db/contacts"
+import { exitRunsForContact } from "@/lib/db/sequences"
 
 // Plan 3.4 — Stripe webhook audit instrumentation. Only the event types in
 // this map get audited; others (e.g. payment_intent.*) pass through silently.
@@ -102,6 +104,21 @@ export async function POST(request: Request) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session
+
+        // Lead Engine: a marketing exit must never fail a payment webhook.
+        // Stripe retries on a non-2xx response, so a throw here would replay
+        // a payment side effect (double-creating assignments, subscriptions,
+        // etc.) in order to fix a follow-up email. Runs for every completed
+        // checkout regardless of which branch below handles it — any payment
+        // is a reason to stop the sales pitch.
+        try {
+          const userId = session.metadata?.userId ?? null
+          const email = session.customer_details?.email ?? session.customer_email ?? null
+          const contactId = await findContactByIdentifiers({ userId, email })
+          if (contactId) await exitRunsForContact(contactId, "payment")
+        } catch (err) {
+          console.error("[stripe-webhook] sequence exit failed", (err as Error).message)
+        }
 
         if (session.metadata?.type === "shop_order") {
           await handleShopOrderCheckout(session)

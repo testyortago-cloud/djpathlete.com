@@ -4,6 +4,8 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { findAttributionByEmail } from "@/lib/db/marketing-attribution"
 import { enqueueBookingConversion } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
+import { findContactByIdentifiers } from "@/lib/db/contacts"
+import { exitRunsForContact } from "@/lib/db/sequences"
 
 /**
  * Webhook endpoint for GoHighLevel appointment bookings.
@@ -115,6 +117,26 @@ export async function POST(request: Request) {
 
     const supabase = createServiceRoleClient()
     const data = result.data
+
+    // Lead Engine: a marketing exit must never fail a booking webhook. Same
+    // shape as the Stripe webhook's payment exit — catch, log, keep going to
+    // the normal response. Gated to scheduled/completed only: a cancelled or
+    // no-show booking means the lead did NOT convert, and this branch has no
+    // re-enrolment path anywhere (enrollIfTriggered only fires from
+    // ContactEventSource values, none of which is "booking cancelled") — so
+    // exiting on a bad-outcome status would silently end the conversation
+    // forever, with nothing left to ever restart it.
+    try {
+      if (data.status === "scheduled" || data.status === "completed") {
+        const contactId = await findContactByIdentifiers({
+          email: data.contact_email,
+          phone: data.contact_phone,
+        })
+        if (contactId) await exitRunsForContact(contactId, "booking")
+      }
+    } catch (err) {
+      console.error("[ghl-booking-webhook] sequence exit failed", (err as Error).message)
+    }
 
     let gclid = data.gclid ?? null
     let gbraid = data.gbraid ?? null

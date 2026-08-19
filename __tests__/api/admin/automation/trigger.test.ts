@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { NextRequest } from "next/server"
 
 const authMock = vi.fn()
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 
-import { POST } from "@/app/api/admin/automation/trigger/route"
+import { POST, VERCEL_ROUTE_JOBS } from "@/app/api/admin/automation/trigger/route"
+import { CRON_CATALOG } from "@/lib/cron-catalog"
 
-function makeRequest(body: unknown): Request {
-  return new Request("http://localhost/api/admin/automation/trigger", {
+function makeRequest(body: unknown): NextRequest {
+  return new NextRequest("http://localhost/api/admin/automation/trigger", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -84,5 +86,37 @@ describe("POST /api/admin/automation/trigger", () => {
     const res = await POST(makeRequest({ jobName: "voice-drift-monitor" }))
     expect(res.status).toBe(502)
     vi.unstubAllGlobals()
+  })
+
+  it("forwards a Vercel-route job (sequence-tick) to its internal route with Bearer token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, claimed: 0 }), { status: 200 }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    const res = await POST(makeRequest({ jobName: "sequence-tick" }))
+    expect(res.status).toBe(200)
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe("http://localhost/api/admin/internal/sequence-tick")
+    const headers = init.headers as Record<string, string>
+    expect(headers.authorization).toBe("Bearer tok")
+
+    vi.unstubAllGlobals()
+  })
+})
+
+describe("the cron catalog and the Vercel trigger map agree", () => {
+  // lib/cron-catalog.ts and VERCEL_ROUTE_JOBS are edited in different files
+  // (task-8-brief.md) — a catalog entry with no matching route entry (or
+  // vice versa) makes the admin "Run now" button 500 silently.
+  it("sequence-tick exists in the catalog and has a Vercel route", () => {
+    expect(CRON_CATALOG.find((c) => c.name === "sequence-tick")).toBeTruthy()
+    expect(VERCEL_ROUTE_JOBS["sequence-tick"]).toBe("/api/admin/internal/sequence-tick")
+  })
+
+  it("every VERCEL_ROUTE_JOBS key names a real catalog entry", () => {
+    const catalogNames = new Set(CRON_CATALOG.map((c) => c.name))
+    for (const jobName of Object.keys(VERCEL_ROUTE_JOBS)) {
+      expect(catalogNames.has(jobName as (typeof CRON_CATALOG)[number]["name"])).toBe(true)
+    }
   })
 })

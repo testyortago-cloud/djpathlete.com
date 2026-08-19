@@ -235,6 +235,18 @@ export const AUDIT_ACTIONS = [
   { slug: "consent.withdrawn", category: "compliance", description: "User withdrew a consent" },
   { slug: "marketing_consent.changed", category: "compliance", description: "Marketing consent preference changed" },
   {
+    // Categorised `compliance`, not `marketing`, even though the slug sits in
+    // the marketing family: this row IS the consent record. It is written by
+    // an UNAUTHENTICATED public URL that revokes consent and suppresses an
+    // address, so "who did this, to whom, and when" has to be answerable from
+    // the audit trail rather than only from a contact_timeline_events row.
+    // Same reasoning as `marketing_consent.changed` directly above, which is
+    // likewise slug-prefixed marketing and categorised compliance.
+    slug: "marketing.unsubscribed",
+    category: "compliance",
+    description: "Sequence unsubscribe processed — consent revoked and the address suppressed",
+  },
+  {
     slug: "legal_document.published",
     category: "compliance",
     description: "New version of a legal document published",

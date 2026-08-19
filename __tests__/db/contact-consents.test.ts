@@ -10,6 +10,12 @@ const store: { consents: Row[]; suppressions: Row[] } = { consents: [], suppress
 // failure is not silently treated as "no record" / "not suppressed".
 let forceErrorOnTable: string | null = null
 
+// When set, the next `insert()` against the named table returns this
+// Postgres-shaped error instead of writing the row — lets `suppress`'s error
+// handling be exercised directly (a real 23505 vs. a genuine failure whose
+// message happens to contain "duplicate").
+let forceInsertError: { table: string; error: { code?: string; message: string } } | null = null
+
 // NOTE: the brief's mock let `.eq()` return `api` unconditionally, so every
 // query resolved to "the last row inserted into the table" regardless of
 // which contact/channel/identifier was actually asked for. That mock made
@@ -17,24 +23,35 @@ let forceErrorOnTable: string | null = null
 // depends on. This version tracks applied filters and actually narrows the
 // row set, so a broken `.eq()` chain in the implementation would fail these
 // tests instead of being invisible to them.
+//
+// It also tracks EVERY `.order()` call, not just the last one — a mock that
+// let a second `.order()` overwrite the first would make the occurred_at/
+// created_at tiebreak test pass without the implementation actually chaining
+// both order clauses. See CONTEXT.md's mock trap.
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({
     from: (table: string) => {
       const rows = table === "contact_consents" ? store.consents : store.suppressions
       const filters: Array<[string, any]> = []
-      let orderCol: string | null = null
-      let orderAscending = true
+      const orders: Array<{ col: string; ascending: boolean }> = []
       let limitN: number | null = null
 
       const applyQuery = (): Row[] => {
         let result = rows.filter((row) => filters.every(([col, val]) => row[col] === val))
-        if (orderCol) {
-          const col = orderCol
+        if (orders.length) {
+          // Sort ascending across every ordered column in the order they
+          // were chained, falling back to insertion order (_seq) as the
+          // final tiebreak, then reverse the whole result once if the LAST
+          // `.order()` call asked for descending. This mirrors how a real
+          // multi-column ORDER BY ... DESC behaves when every chained column
+          // shares the same direction (true for every caller in this file).
           result = [...result].sort((a, b) => {
-            if (a[col] === b[col]) return a._seq - b._seq
-            return a[col] > b[col] ? 1 : -1
+            for (const { col } of orders) {
+              if (a[col] !== b[col]) return a[col] > b[col] ? 1 : -1
+            }
+            return a._seq - b._seq
           })
-          if (!orderAscending) result.reverse()
+          if (orders[orders.length - 1].ascending === false) result.reverse()
         }
         if (limitN != null) result = result.slice(0, limitN)
         return result
@@ -42,9 +59,13 @@ vi.mock("@/lib/supabase", () => ({
 
       const api: any = {
         insert: async (payload: any) => {
+          if (forceInsertError && forceInsertError.table === table) {
+            return { error: forceInsertError.error }
+          }
           rows.push({
             ...payload,
             occurred_at: payload.occurred_at ?? new Date().toISOString(),
+            created_at: payload.created_at ?? new Date().toISOString(),
             _seq: rows.length,
           })
           return { error: null }
@@ -55,8 +76,7 @@ vi.mock("@/lib/supabase", () => ({
           return api
         },
         order: (col: string, opts?: { ascending?: boolean }) => {
-          orderCol = col
-          orderAscending = opts?.ascending ?? true
+          orders.push({ col, ascending: opts?.ascending ?? true })
           return api
         },
         limit: (n: number) => {
@@ -82,6 +102,7 @@ beforeEach(() => {
   store.consents = []
   store.suppressions = []
   forceErrorOnTable = null
+  forceInsertError = null
 })
 
 describe("consent", () => {
@@ -116,6 +137,41 @@ describe("consent", () => {
     expect(await hasConsent("c2", "email")).toBe(false)
   })
 
+  it("breaks an occurred_at tie by created_at, newest wins", async () => {
+    // Two rows sharing an identical occurred_at — exactly what a future
+    // marketing_consent_log backfill would produce for many rows at once.
+    // Without a secondary sort key, which one "the most recent record" means
+    // is undefined. The row with the newer created_at (the revoke) must win.
+    //
+    // The revoke is deliberately inserted FIRST (lower _seq) and the grant
+    // SECOND (higher _seq, but an OLDER created_at): if the implementation
+    // ever loses the created_at tiebreak and this mock's query fell back to
+    // insertion order, it would pick the grant (wrong answer, true) instead
+    // of the revoke — so this only passes when created_at is genuinely
+    // consulted, not by insertion-order coincidence.
+    const tiedOccurredAt = "2026-01-01T00:00:00.000Z"
+    store.consents.push(
+      {
+        contact_id: "c1",
+        channel: "email",
+        granted: false,
+        occurred_at: tiedOccurredAt,
+        created_at: "2026-01-01T00:00:00.002Z",
+        _seq: 0,
+      },
+      {
+        contact_id: "c1",
+        channel: "email",
+        granted: true,
+        occurred_at: tiedOccurredAt,
+        created_at: "2026-01-01T00:00:00.001Z",
+        _seq: 1,
+      },
+    )
+
+    expect(await hasConsent("c1", "email")).toBe(false)
+  })
+
   it("throws on a read failure instead of reporting no consent", async () => {
     // A record exists — if a failed read ever collapsed into `false`, this
     // test would still pass with the wrong answer for the wrong reason.
@@ -147,5 +203,22 @@ describe("suppression", () => {
     store.consents = []
 
     expect(await isSuppressed("marissa@example.com")).toBe(true)
+  })
+
+  it("swallows a real 23505 and rethrows anything else", async () => {
+    // The old code matched the string "duplicate" in error.message, so a
+    // genuine failure whose message happened to contain that word was
+    // silently swallowed. Matching the Postgres code instead fixes that.
+    forceInsertError = {
+      table: "contact_suppressions",
+      error: { code: "23505", message: 'duplicate key value violates unique constraint "contact_suppressions_uniq"' },
+    }
+    await expect(suppress("dup@example.com", "unsubscribed")).resolves.toBeUndefined()
+
+    forceInsertError = {
+      table: "contact_suppressions",
+      error: { code: "42501", message: "permission denied — this looks like a duplicate but is not one" },
+    }
+    await expect(suppress("other@example.com", "unsubscribed")).rejects.toThrow(/permission denied/)
   })
 })
