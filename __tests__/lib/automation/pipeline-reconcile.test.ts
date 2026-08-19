@@ -89,6 +89,15 @@ vi.mock("@/lib/supabase", () => ({
           id: p.id ?? nextId(String(table)),
           created_at: p.created_at ?? new Date().toISOString(),
           updated_at: p.updated_at ?? new Date().toISOString(),
+          // opportunity_stage_events.occurred_at is `NOT NULL DEFAULT now()`
+          // (migration 00219) — insertStageEvent (lib/db/pipeline.ts) never
+          // sets it explicitly, relying on Postgres. Fix round 1, Finding 3
+          // added a `.gte("occurred_at", …)` read against this column, so
+          // the mock must fake the same server-side default `created_at`/
+          // `updated_at` already get below, or every inserted row silently
+          // fails that filter (`undefined >= isoString` is false) and the
+          // idempotency ledger reads back empty forever.
+          occurred_at: p.occurred_at ?? new Date().toISOString(),
           _seq: rows.length,
         }
         rows.push(row)
@@ -318,6 +327,7 @@ function seedPayment(id: string, overrides: Row = {}) {
     currency: "usd",
     status: "succeeded",
     description: null,
+    metadata: {},
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     ...overrides,
@@ -390,6 +400,53 @@ describe("runPipelineReconcile", () => {
     expect(events).toHaveLength(1)
     expect(events[0].trigger).toBe("reconciler")
     expect(events[0].metadata).toEqual({ payment_id: "pay-1" })
+  })
+
+  // Fix round 1, Finding 2: this was previously unrepairable. The old
+  // "must already have an open card" pre-filter meant a dropped webhook for
+  // a genuine coaching sale with no prior booking could never be caught —
+  // exactly the failure this whole task exists to fix. Payments are now
+  // replayed unconditionally (like bookings), scoped only by
+  // NON_COACHING_PAYMENT_TYPES.
+  it("wins a card via a payment even when the contact has no opportunity at all", async () => {
+    seedBoard()
+    seedContact("c-1", { email: "lead@example.com", user_id: "user-1" })
+    seedPayment("pay-1", { user_id: "user-1", amount_cents: 50000, status: "succeeded" })
+
+    const summary = await runPipelineReconcile()
+
+    expect(summary.wonFromPayments).toBe(1)
+    expect(store.opportunities).toHaveLength(1)
+    const opp = store.opportunities[0]
+    expect(opp.contact_id).toBe("c-1")
+    expect(opp.stage_id).toBe("stage-won")
+    expect(opp.outcome).toBe("won")
+    expect(opp.value_cents).toBe(50000)
+    expect(opp.closed_trigger).toBe("payment") // real trigger, not relabelled (C1)
+
+    const events = stageEventsFor(opp.id)
+    expect(events).toHaveLength(1)
+    expect(events[0].trigger).toBe("reconciler")
+    expect(events[0].from_stage_id).toBeNull() // card creation has no origin
+    expect(events[0].metadata).toEqual({ payment_id: "pay-1" })
+  })
+
+  // Confirms NON_COACHING_PAYMENT_TYPES actually gates the replay — both
+  // contacts here have no opportunity at all, so absent the exclusion,
+  // decideMove would happily create a phantom Won card for a $30 no-show
+  // fee or an event ticket (the exact risk Finding 2's investigation found).
+  it("ignores event_signup and session_fee payments, even for a contact with no opportunity", async () => {
+    seedBoard()
+    seedContact("c-1", { email: "lead1@example.com", user_id: "user-1" })
+    seedContact("c-2", { email: "lead2@example.com", user_id: "user-2" })
+    seedPayment("pay-event", { user_id: "user-1", amount_cents: 4500, metadata: { type: "event_signup" } })
+    seedPayment("pay-fee", { user_id: "user-2", amount_cents: 3000, metadata: { type: "session_fee", kind: "no_show" } })
+
+    const summary = await runPipelineReconcile()
+
+    expect(summary.wonFromPayments).toBe(0)
+    expect(summary.scanned).toBe(2) // fetched (status='succeeded' passed the SQL filter) — excluded in-loop, not by SQL
+    expect(store.opportunities).toHaveLength(0)
   })
 
   it("ignores payments that are pending, failed or refunded", async () => {

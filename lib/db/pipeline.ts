@@ -412,11 +412,20 @@ export async function applyPipelineEvent(input: {
  * ever produced `noop` is never recorded here and stays eligible for
  * re-checking next pass — cheap extra reads, never a duplicate write).
  *
+ * `sinceIso` bounds this to the SAME window the booking/payment scans use
+ * (fix round 1, Finding 3) — without it this read grows without bound
+ * forever, unlike every other query in the reconciler. A source id can only
+ * ever need re-checking while its own source row is still inside that
+ * window (once a booking/payment ages out of the scan, it's never looked at
+ * again regardless of what this ledger says), so nothing outside the window
+ * is ever useful here.
+ *
  * Flat, single-table read scoped to this business — this repo runs one
  * pipeline, and booking/payment ids are unique system-wide, so no
  * `pipeline_id` join is needed to make the match unambiguous.
  */
 export async function listReconciledSourceIds(
+  sinceIso: string,
   businessId: string = SINGLETON_BUSINESS_ID,
 ): Promise<{ bookingIds: Set<string>; paymentIds: Set<string> }> {
   const supabase = getClient()
@@ -426,6 +435,7 @@ export async function listReconciledSourceIds(
     .select("metadata")
     .eq("business_id", businessId)
     .eq("trigger", "reconciler")
+    .gte("occurred_at", sinceIso)
   if (error) throw error
 
   const bookingIds = new Set<string>()

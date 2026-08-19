@@ -80,6 +80,16 @@ vi.mock("@/lib/email", () => ({
 }))
 vi.mock("@/lib/ghl", () => ({ ghlCreateContact: vi.fn(), ghlTriggerWorkflow: vi.fn() }))
 
+// Isolates the fix-round-1 tests below (a shop_order / save_card checkout
+// must not win a card) from the real handleShopOrderCheckout's DB chain —
+// which is untouched by this file's other mocks and would 500 the route.
+// handleSaveCardCheckout needs no equivalent mock: it returns immediately
+// when session.metadata.userId is absent, which the fixture below omits.
+const handleShopOrderCheckoutMock = vi.fn(async (..._a: any[]) => undefined)
+vi.mock("@/lib/shop/webhooks", () => ({
+  handleShopOrderCheckout: (...a: unknown[]) => handleShopOrderCheckoutMock(...a),
+}))
+
 // One shared "@/lib/supabase" mock services both route files under test in
 // this one file: the Stripe route only ever hits the generic update().eq()
 // shape below (event_signups status updates etc., all bypassed by the
@@ -207,6 +217,51 @@ describe("Stripe webhook — pipeline", () => {
     expect(res.status).toBe(200)
     expect(consoleErrorSpy).toHaveBeenCalled()
     consoleErrorSpy.mockRestore()
+  })
+
+  // Fix round 1, Finding 1: checkout.session.completed fires for every kind
+  // of money this business takes, not only a coaching sale — applyPipelineEvent
+  // must not win a card for the ones that aren't.
+  it("exits sequences but does NOT win a card for a shop_order checkout", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-shop-1")
+    verifyMock.mockReturnValueOnce(stripeEvent({ metadata: { type: "shop_order" } }))
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(makeStripeReq())
+
+    expect(res.status).toBe(200)
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-shop-1", "payment")
+    expect(applyPipelineEventMock).not.toHaveBeenCalled()
+    expect(handleShopOrderCheckoutMock).toHaveBeenCalled() // dispatch still runs — only the card is gated
+  })
+
+  it("exits sequences but does NOT win a card for a save_card checkout", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-savecard-1")
+    // No session.metadata.userId — handleSaveCardCheckout returns immediately,
+    // so this test needs no mock for it (see the module-level comment above).
+    verifyMock.mockReturnValueOnce(stripeEvent({ metadata: { type: "save_card" }, amount_total: 0 }))
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(makeStripeReq())
+
+    expect(res.status).toBe(200)
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-savecard-1", "payment")
+    expect(applyPipelineEventMock).not.toHaveBeenCalled()
+  })
+
+  it("still wins the card for an ordinary coaching checkout (no exclusion type set)", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-coaching-1")
+    verifyMock.mockReturnValueOnce(stripeEvent({ metadata: {}, amount_total: 30000 }))
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(makeStripeReq())
+
+    expect(res.status).toBe(200)
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-coaching-1", "payment")
+    expect(applyPipelineEventMock).toHaveBeenCalledWith({
+      contactId: "contact-coaching-1",
+      event: { kind: "payment", amountCents: 30000, currency: "usd", occurredAt: expect.any(Date) },
+    })
   })
 })
 
