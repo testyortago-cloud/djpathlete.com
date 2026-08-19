@@ -13,6 +13,7 @@
 import { requireAdmin } from "@/lib/auth-helpers"
 import { readBoard } from "@/lib/db/pipeline"
 import { getBusinessSettings } from "@/lib/db/businesses"
+import { possessiveName } from "@/lib/lead-engine/business-copy"
 import { PipelineBoard } from "@/components/admin/pipeline-board"
 
 export const metadata = { title: "Pipeline" }
@@ -22,15 +23,15 @@ export default async function PipelinePage() {
   await requireAdmin()
 
   const [columns, business] = await Promise.all([readBoard(), getBusinessSettings()])
+  const name = possessiveName(business.display_name)
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-primary">Pipeline</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {business.display_name}&rsquo;s coaching pipeline. Drag a card to move it between
-          stages — dropping it on Won or Lost closes the deal; dropping a closed card back on an
-          open stage reopens it.
+          {name.leading} coaching pipeline. Drag a card to move it between stages — dropping it on Won or Lost closes
+          the deal; dropping a closed card back on an open stage reopens it.
         </p>
       </div>
       <PipelineBoard columns={columns} />

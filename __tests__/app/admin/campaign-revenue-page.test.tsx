@@ -211,4 +211,30 @@ describe("campaign revenue page", () => {
     ;(readCampaignRevenue as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("db unreachable"))
     await expect(Page()).rejects.toThrow("db unreachable")
   })
+
+  // business_settings.display_name is seeded as '' (migration 00212 — NOT
+  // NULL DEFAULT ''), not null, on any install where the owner hasn't
+  // filled in Business Settings yet — including production today. A bare
+  // `${display_name}'s pipeline` then rendered as "Every won deal in 's
+  // pipeline..." — a stray leading apostrophe with nothing in front of it.
+  it("falls back to neutral copy, with no stray leading apostrophe, when display_name is blank", async () => {
+    ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ display_name: "" })
+    ;(readCampaignRevenue as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    const { container } = render(await Page())
+    const intro = container.querySelector("p")
+    expect(intro?.textContent).toMatch(/^Every won deal in the pipeline, traced back to the campaign/)
+    // No "'s"/"'s" standing alone at a word boundary anywhere in the intro
+    // — the unconditional-possessive bug renders "...deal in 's pipeline..."
+    // (an apostrophe-s token with nothing in front of it).
+    expect(intro?.textContent).not.toMatch(/(^|\s)[’']s(\s|$)/)
+  })
+
+  it("still renders the possessive when display_name is a real name", async () => {
+    ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ display_name: "Acme Coaching" })
+    ;(readCampaignRevenue as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    await renderPage()
+    expect(
+      screen.getByText(/Every won deal in Acme Coaching’s pipeline, traced back to the campaign/),
+    ).toBeInTheDocument()
+  })
 })

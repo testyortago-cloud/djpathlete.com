@@ -20,6 +20,7 @@
 
 import { requireAdmin } from "@/lib/auth-helpers"
 import { getBusinessSettings } from "@/lib/db/businesses"
+import { possessiveName } from "@/lib/lead-engine/business-copy"
 import { readCampaignRevenue } from "@/lib/automation/campaign-revenue"
 import { formatCents } from "@/lib/bookkeeping/money"
 import {
@@ -49,6 +50,7 @@ export default async function CampaignRevenuePage() {
   const since = new Date(0)
 
   const [rows, business] = await Promise.all([readCampaignRevenue({ since, until }), getBusinessSettings()])
+  const name = possessiveName(business.display_name)
 
   // Campaign rows only, most valuable first — sort key is `wonValueCents`,
   // never row position. The unattributed bucket is located the same sound
@@ -68,14 +70,13 @@ export default async function CampaignRevenuePage() {
       <div>
         <h1 className="text-2xl font-semibold text-primary">Campaign Revenue</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Every won deal in {business.display_name}&rsquo;s pipeline, traced back to the campaign
-          that produced it via first-touch attribution. Revenue is read from the pipeline&rsquo;s
-          own <code>value_cents</code>, never re-derived from payments, so this number and the
-          board&rsquo;s number are the same number by construction.
+          Every won deal in {name.inline} pipeline, traced back to the campaign that produced it via first-touch
+          attribution. Revenue is read from the pipeline&rsquo;s own <code>value_cents</code>, never re-derived from
+          payments, so this number and the board&rsquo;s number are the same number by construction.
         </p>
         <p className="mt-2 text-sm text-muted-foreground">
-          Reporting starts the moment the Lead Engine pipeline launched — there is nothing earlier
-          to back-fill. A thin first month is expected here, not a sign that anything is broken.
+          Reporting starts the moment the Lead Engine pipeline launched — there is nothing earlier to back-fill. A thin
+          first month is expected here, not a sign that anything is broken.
         </p>
       </div>
 
@@ -94,8 +95,8 @@ export default async function CampaignRevenuePage() {
           <tbody>
             {rows.length === 0 ? (
               <DataTableEmpty colSpan={5}>
-                No won deals yet. Reporting starts at launch — nothing to back-fill, so an empty
-                report here is expected until the first deal closes.
+                No won deals yet. Reporting starts at launch — nothing to back-fill, so an empty report here is expected
+                until the first deal closes.
               </DataTableEmpty>
             ) : (
               <>
@@ -139,8 +140,8 @@ export default async function CampaignRevenuePage() {
         {rows.length > 0 && (
           <DataTableFooter>
             <p className="text-xs text-muted-foreground">
-              {campaignRows.length} campaign{campaignRows.length === 1 ? "" : "s"} · {totalWonCount} won
-              deal{totalWonCount === 1 ? "" : "s"}
+              {campaignRows.length} campaign{campaignRows.length === 1 ? "" : "s"} · {totalWonCount} won deal
+              {totalWonCount === 1 ? "" : "s"}
             </p>
             <p className="font-mono text-sm font-semibold text-primary">{formatCents(totalWonValueCents)} total</p>
           </DataTableFooter>
