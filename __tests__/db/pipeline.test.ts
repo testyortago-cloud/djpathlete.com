@@ -298,6 +298,17 @@ describe("resolvePipeline", () => {
     const { stages } = await resolvePipeline("coaching")
     expect(stages.map((s) => s.key)).toEqual(["consult_booked", "consulted", "won", "lost"])
   })
+
+  // The mock's `.select()` (above) ignores the column list and returns whole
+  // rows regardless of what was asked for — real Supabase does not. This test
+  // exists so a `name` column dropped from the real SELECT string still fails
+  // here even though the mock itself wouldn't catch it: it pins the exact
+  // mapped values, not just that the field is present.
+  it("carries the configured stage name, not a key-derived one", async () => {
+    seedBoard()
+    const { stages } = await resolvePipeline("coaching")
+    expect(stages.map((s) => s.name)).toEqual(["Consult Booked", "Consulted", "Won", "Lost"])
+  })
 })
 
 describe("applyPipelineEvent", () => {

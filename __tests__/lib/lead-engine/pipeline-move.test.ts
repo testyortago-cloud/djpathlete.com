@@ -8,10 +8,10 @@ import {
 } from "@/lib/lead-engine/pipeline-move"
 
 const STAGES: StageRow[] = [
-  { id: "s1", key: "consult_booked", position: 1, kind: "open", amber_after_days: 3, red_after_days: 7 },
-  { id: "s2", key: "consulted",      position: 2, kind: "open", amber_after_days: 5, red_after_days: 14 },
-  { id: "s3", key: "won",            position: 3, kind: "won",  amber_after_days: null, red_after_days: null },
-  { id: "s4", key: "lost",           position: 4, kind: "lost", amber_after_days: null, red_after_days: null },
+  { id: "s1", key: "consult_booked", name: "Consult Booked", position: 1, kind: "open", amber_after_days: 3, red_after_days: 7 },
+  { id: "s2", key: "consulted",      name: "Consulted",      position: 2, kind: "open", amber_after_days: 5, red_after_days: 14 },
+  { id: "s3", key: "won",            name: "Won",            position: 3, kind: "won",  amber_after_days: null, red_after_days: null },
+  { id: "s4", key: "lost",           name: "Lost",           position: 4, kind: "lost", amber_after_days: null, red_after_days: null },
 ]
 
 const NOW = new Date("2026-08-19T12:00:00Z")

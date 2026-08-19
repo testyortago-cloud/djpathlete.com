@@ -14,6 +14,10 @@ export type Staleness = "fresh" | "amber" | "red"
 export type StageRow = {
   id: string
   key: string
+  // The human-facing label ("Consult Booked"). The state machine keys on
+  // `kind`, never on this or on `key` — see the schema comment in migration
+  // 00219 — so a business renaming a stage changes only what gets displayed.
+  name: string
   position: number
   kind: StageKind
   amber_after_days: number | null

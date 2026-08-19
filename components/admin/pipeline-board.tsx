@@ -41,13 +41,15 @@ interface PipelineBoardProps {
   columns: BoardColumn[]
 }
 
-// `pipeline_stages.name` ("Consult Booked", "Won", ...) is a DB column the
-// read path (lib/db/pipeline.ts, Task 3) does not select — the state machine
-// keys on `kind`, never `name` (see the schema comment in migration 00219),
-// so the UI derives its own label from `key` rather than reaching back into
-// the DAL for a column nothing else needs. For every stage key seeded today
-// this reconstructs the real name exactly ("consult_booked" -> "Consult
-// Booked"); a future snake_case key gets the same treatment for free.
+// `stage.name` (the configured column, e.g. "Consult Booked") is the real
+// label and is what renders. This is a DEFENSIVE FALLBACK ONLY, for a null
+// or empty name (the DB column is NOT NULL, so that should never happen, but
+// a fallback that silently reconstructs the wrong thing is worse than one
+// that's honest about being a fallback) — never the primary source. Deriving
+// display copy from `key` instead of `name` is exactly the bug this function
+// used to be: it reproduces today's seed by coincidence, and silently keeps
+// showing "Consult Booked" after a business renames the stage to "Discovery
+// Call", because nothing about `key` changes when only `name` does.
 function stageLabel(key: string): string {
   return key
     .split("_")
@@ -91,8 +93,8 @@ function PipelineCard({ card, stageKind }: { card: BoardCard; stageKind: string 
       {...attributes}
       {...listeners}
       className={cn(
-        "cursor-grab rounded-lg border border-border bg-white px-3 py-2.5 transition active:cursor-grabbing",
-        "hover:border-primary/40 hover:shadow-[0_2px_8px_-3px_rgba(15,23,42,0.1)]",
+        "cursor-grab rounded-lg border border-border bg-white px-3 py-2.5 shadow-sm transition active:cursor-grabbing",
+        "hover:border-primary/40 hover:shadow-md",
         isDragging && "opacity-40",
       )}
     >
@@ -129,14 +131,14 @@ function PipelineColumn({ stage, cards }: { stage: BoardColumn["stage"]; cards: 
       ref={setNodeRef}
       className={cn(
         "flex min-h-[220px] min-w-[240px] flex-1 basis-0 flex-col rounded-xl border border-border/60 bg-white/80",
-        "shadow-[0_1px_0_rgba(15,23,42,0.03)] transition",
+        "shadow-sm transition",
         isOver && "bg-primary/[0.04] ring-2 ring-primary/50",
       )}
     >
       <div className={cn("h-[3px] rounded-t-xl", STAGE_RULE[stage.kind] ?? "bg-border")} aria-hidden />
       <header className="flex items-center justify-between gap-2 px-3.5 pb-2.5 pt-3">
         <p className="truncate font-heading text-[10.5px] uppercase tracking-[0.14em] text-muted-foreground">
-          {stageLabel(stage.key)}
+          {stage.name || stageLabel(stage.key)}
         </p>
         <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-muted/60 px-1.5 py-0.5 font-mono text-[10.5px] font-medium tabular-nums leading-none text-muted-foreground">
           {cards.length}
@@ -199,7 +201,7 @@ export function PipelineBoard({ columns: initialColumns }: PipelineBoardProps) {
         const body = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(body.error || "Move failed")
       }
-      toast.success(`Moved to ${stageLabel(toStageKey)}`)
+      toast.success(`Moved to ${toColumn.stage.name || stageLabel(toStageKey)}`)
       router.refresh()
     } catch (err) {
       setColumns(previous)

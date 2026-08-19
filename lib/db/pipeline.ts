@@ -90,7 +90,7 @@ export async function resolvePipeline(
 
   const { data: stageData, error: stageErr } = await supabase
     .from("pipeline_stages")
-    .select("id, key, position, kind, amber_after_days, red_after_days")
+    .select("id, key, name, position, kind, amber_after_days, red_after_days")
     .eq("business_id", businessId)
     .eq("pipeline_id", pipelineRow.id)
     .order("position", { ascending: true })
@@ -486,7 +486,7 @@ export async function moveOpportunityManually(input: {
 
   const { data: stageData, error: stageErr } = await supabase
     .from("pipeline_stages")
-    .select("id, key, position, kind, amber_after_days, red_after_days")
+    .select("id, key, name, position, kind, amber_after_days, red_after_days")
     .eq("business_id", businessId)
     .eq("pipeline_id", oppRow.pipeline_id)
     .eq("key", input.toStageKey)
