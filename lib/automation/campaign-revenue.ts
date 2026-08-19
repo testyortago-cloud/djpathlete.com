@@ -35,8 +35,13 @@ type Row = Record<string, any>
 
 export type CampaignRevenueRow = {
   utmSource: string | null
-  utmMedium: string | null
   utmCampaign: string | null
+  // Final review, Minor: spec §7 groups by utm_campaign / utm_source /
+  // gclid, not utm_medium. A gclid-only paid click (no utm_* params at all,
+  // common on a plain Google Ads text ad) used to render as three em-dashes
+  // — visually identical to the Unattributed bucket while still counted as
+  // its own real campaign row.
+  gclid: string | null
   wonCount: number
   wonValueCents: number
   unattributedCount: number
@@ -44,9 +49,9 @@ export type CampaignRevenueRow = {
 }
 
 /**
- * Won revenue in `[since, until)`, grouped by (utm_source, utm_medium,
- * utm_campaign), plus one trailing "unattributed" row for won deals that
- * could not be traced back to a campaign at all.
+ * Won revenue in `[since, until)`, grouped by (utm_campaign, utm_source,
+ * gclid) per spec §7, plus one trailing "unattributed" row for won deals
+ * that could not be traced back to a campaign at all.
  *
  * Every campaign row carries `isUnattributed: false` and `unattributedCount:
  * 0`. The bucket row carries `isUnattributed: true` — that flag, not
@@ -97,7 +102,7 @@ export async function readCampaignRevenue(input: { since: Date; until: Date }): 
   if (sessionIds.length > 0) {
     const { data: attrData, error: attrErr } = await supabase
       .from("marketing_attribution")
-      .select("session_id, utm_source, utm_medium, utm_campaign")
+      .select("session_id, utm_source, utm_campaign, gclid")
       .in("session_id", sessionIds)
     if (attrErr) throw attrErr
     attributionRows = (attrData ?? []) as Row[]
@@ -108,8 +113,8 @@ export async function readCampaignRevenue(input: { since: Date; until: Date }): 
 
   type Bucket = {
     utmSource: string | null
-    utmMedium: string | null
     utmCampaign: string | null
+    gclid: string | null
     wonCount: number
     wonValueCents: number
   }
@@ -132,22 +137,22 @@ export async function readCampaignRevenue(input: { since: Date; until: Date }): 
     }
 
     const utmSource = attribution.utm_source ?? null
-    const utmMedium = attribution.utm_medium ?? null
     const utmCampaign = attribution.utm_campaign ?? null
+    const gclid = attribution.gclid ?? null
     // JSON.stringify, not a delimiter-joined string: text-safe (diffs
     // normally, no raw control bytes in the source), and stays unambiguous
     // even when a utm value itself contains whatever delimiter a joined
     // string would have used. Fix round 1, Finding 1: an earlier version of
     // this key used a literal NUL byte as the separator, which made this
     // file binary to git (`git diff`/`git blame` blind on it) forever after.
-    const key = JSON.stringify([utmSource, utmMedium, utmCampaign])
+    const key = JSON.stringify([utmCampaign, utmSource, gclid])
 
     const existing = buckets.get(key)
     if (existing) {
       existing.wonCount += 1
       existing.wonValueCents += valueCents
     } else {
-      buckets.set(key, { utmSource, utmMedium, utmCampaign, wonCount: 1, wonValueCents: valueCents })
+      buckets.set(key, { utmSource, utmCampaign, gclid, wonCount: 1, wonValueCents: valueCents })
     }
   }
 
@@ -159,8 +164,8 @@ export async function readCampaignRevenue(input: { since: Date; until: Date }): 
 
   rows.push({
     utmSource: null,
-    utmMedium: null,
     utmCampaign: null,
+    gclid: null,
     wonCount: unattributedCount,
     wonValueCents: unattributedValueCents,
     unattributedCount,

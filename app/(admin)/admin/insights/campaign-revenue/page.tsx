@@ -87,7 +87,7 @@ export default async function CampaignRevenuePage() {
           <DataTableHeader>
             <DataTableHead>Campaign</DataTableHead>
             <DataTableHead>Source</DataTableHead>
-            <DataTableHead>Medium</DataTableHead>
+            <DataTableHead>Gclid</DataTableHead>
             <DataTableHead align="right">Won deals</DataTableHead>
             <DataTableHead align="right">Won value</DataTableHead>
           </DataTableHeader>
@@ -100,10 +100,10 @@ export default async function CampaignRevenuePage() {
             ) : (
               <>
                 {campaignRows.map((row) => (
-                  <DataTableRow key={JSON.stringify([row.utmSource, row.utmMedium, row.utmCampaign])}>
+                  <DataTableRow key={JSON.stringify([row.utmCampaign, row.utmSource, row.gclid])}>
                     <DataTableCell className="font-medium">{utmCell(row.utmCampaign)}</DataTableCell>
                     <DataTableCell>{utmCell(row.utmSource)}</DataTableCell>
-                    <DataTableCell>{utmCell(row.utmMedium)}</DataTableCell>
+                    <DataTableCell>{utmCell(row.gclid)}</DataTableCell>
                     <DataTableCell align="right" className="font-mono">
                       {row.wonCount}
                     </DataTableCell>

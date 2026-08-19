@@ -8,7 +8,14 @@
 // Spec: docs/superpowers/specs/2026-08-19-lead-engine-stage1c-pipeline-design.md §4
 
 export type StageKind = "open" | "won" | "lost"
-export type MoveTrigger = "booking" | "payment" | "manual" | "reconciler"
+// "merge" is written by migration 00220's contested-opportunity CTE in
+// merge_contacts (closed_trigger='merge' on the merge-losing card) — not
+// produced by decideMove itself, but a real value this app must be able to
+// read back (readMostRecentOpportunity carries closed_trigger straight
+// through). Omitting it here was a type lie: the CHECK constraint on
+// opportunities.closed_trigger already allows it and 00220 already writes
+// it (final review, Minor).
+export type MoveTrigger = "booking" | "payment" | "manual" | "reconciler" | "merge"
 export type Staleness = "fresh" | "amber" | "red"
 
 export type StageRow = {

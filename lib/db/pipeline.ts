@@ -102,15 +102,36 @@ export async function resolvePipeline(
 }
 
 /**
- * The newest opportunity (open OR closed) for a (contact, pipeline), mapped
- * into the `OpportunityState` shape `decideMove` needs. `stages` is the
- * board's already-loaded stage list (from `resolvePipeline`) — used to
- * resolve `stage_position`/`stage_kind` in application code rather than a
- * join, so this stays a flat, single-table read.
+ * The live opportunity (open, when one exists) for a (contact, pipeline),
+ * else the most recently closed one. Mapped into the `OpportunityState`
+ * shape `decideMove` needs. `stages` is the board's already-loaded stage
+ * list (from `resolvePipeline`) — used to resolve `stage_position`/
+ * `stage_kind` in application code rather than a join, so this stays a
+ * flat, single-table read.
  *
  * Returns `null` when the contact has no opportunity on this board yet. That
  * is a real answer ("no deal exists"), never a stand-in for a failed read —
  * every Supabase error here is thrown, not swallowed into `null`.
+ *
+ * Final review, Critical 2 — this used to be a bare `ORDER BY created_at
+ * DESC LIMIT 1`, which is wrong the moment two opportunities exist for the
+ * same (contact, pipeline). Migration 00220's contested-opportunity CTE in
+ * `merge_contacts` closes whichever of two contested open cards is NEWER on
+ * the `created_at` tie-break (`outcome_reason='merged_into_survivor'`) — so
+ * after a contested merge, "most recent by created_at" deterministically
+ * returns the CLOSED, merge-losing card forever, and the genuinely open
+ * survivor card is never seen as `current` again. `decideMove` then either
+ * closes the wrong (already-dead) card as Won, or takes the `create` branch
+ * for a contact who already has an open card and throws on
+ * `opportunities_one_open_per_contact_pipeline`.
+ *
+ * Fixed by reading every opportunity for this (contact, pipeline) — there
+ * are only ever a handful, ever, per contact — and preferring the OPEN one
+ * regardless of its position in created_at order; only falling back to the
+ * newest CLOSED row (rows are already ordered newest-first) when the
+ * contact truly has no open card. This preserves the exact semantics
+ * `decideMove` expects: `current` is the live card when one exists, else
+ * the most recent closed one.
  */
 export async function readMostRecentOpportunity(
   contactId: string,
@@ -127,10 +148,10 @@ export async function readMostRecentOpportunity(
     .eq("pipeline_id", pipelineId)
     .eq("contact_id", contactId)
     .order("created_at", { ascending: false })
-    .limit(1)
   if (error) throw error
 
-  const row = ((data ?? []) as Row[])[0]
+  const rows = (data ?? []) as Row[]
+  const row = rows.find((r) => r.outcome == null) ?? rows[0]
   if (!row) return null
 
   const stage = stages.find((s) => s.id === row.stage_id)
@@ -166,6 +187,36 @@ function findStage(stages: StageRow[], key: string): StageRow {
  */
 function triggerForEvent(event: PipelineEvent): MoveTrigger {
   return event.kind === "payment" ? "payment" : "booking"
+}
+
+/**
+ * True when an EXISTING `opportunity_stage_events` row for this business
+ * already carries at least one of the same metadata key/value pairs as
+ * `metadata`. Used only by the create-with-outcome branch of
+ * `applyPipelineEvent` (Important 3, final review) — the one write the
+ * partial unique index cannot protect, because it inserts an opportunity
+ * that is already closed (`WHERE outcome IS NULL` never applies to it).
+ * Same "read `metadata` back and compare in JS" shape `listReconciledSourceIds`
+ * below already established, reused rather than a second idempotency
+ * mechanism. Unbounded by design: the create-with-outcome branch is a rare
+ * path (a payment with literally no prior deal), so this table-wide scan
+ * costs nothing a bounded window would meaningfully save.
+ */
+async function hasMatchingStageEventMetadata(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  businessId: string,
+  metadata: Record<string, unknown>,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("opportunity_stage_events")
+    .select("metadata")
+    .eq("business_id", businessId)
+  if (error) throw error
+
+  return ((data ?? []) as Row[]).some((row) => {
+    const existing = (row.metadata ?? {}) as Record<string, unknown>
+    return Object.entries(metadata).some(([key, value]) => value !== undefined && existing[key] === value)
+  })
 }
 
 async function insertStageEvent(
@@ -244,6 +295,31 @@ export async function applyPipelineEvent(input: {
   switch (decision.kind) {
     case "create": {
       const toStage = findStage(stages, decision.toStageKey)
+
+      // Final review, Important 3. The partial unique index on opportunities
+      // is `WHERE outcome IS NULL`, so it does NOT constrain this branch when
+      // `decision.outcome` is set (a payment arriving with no prior deal —
+      // the row is inserted already closed). Stripe delivers at-least-once
+      // with no event-id dedupe on this route: two concurrent
+      // `checkout.session.completed` deliveries for the same contact both
+      // read `current === null` above and would both reach this insert,
+      // minting two Won cards for one sale. (Sequential redelivery is
+      // already safe without this — the second call sees `current.outcome
+      // === "won"` and decideMove resolves to `noop`.)
+      //
+      // Fixed by reusing the SAME source-id ledger mechanism the reconciler
+      // already relies on (`listReconciledSourceIds` reads `metadata` back
+      // off `opportunity_stage_events`, never a second table) rather than
+      // inventing a second idempotency scheme: the caller passes a source id
+      // in `metadata` (the Stripe webhook passes `{ stripe_session_id }`),
+      // and if a stage event already carries that same id, this call is a
+      // duplicate delivery of a sale already recorded, not a new one.
+      if (decision.outcome && input.metadata) {
+        const duplicate = await hasMatchingStageEventMetadata(supabase, businessId, input.metadata)
+        if (duplicate) {
+          return { decision: { kind: "noop", reason: "duplicate_source_id" }, opportunityId: null }
+        }
+      }
 
       const { data: contactData, error: contactErr } = await supabase
         .from("contacts")

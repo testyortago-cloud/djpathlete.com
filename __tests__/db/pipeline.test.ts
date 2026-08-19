@@ -311,6 +311,70 @@ describe("resolvePipeline", () => {
   })
 })
 
+describe("readMostRecentOpportunity", () => {
+  // Final review, Critical 2. Reproduces the contested-merge scenario: two
+  // contacts, each with their own open card, merge (migration 00220). The
+  // merge CTE keeps whichever card is FURTHER ALONG, tie-broken by earlier
+  // created_at — so on a tie in stage position, the OLDER card survives open
+  // and the NEWER one is closed `lost`/`merged_into_survivor`. A bare
+  // `ORDER BY created_at DESC LIMIT 1` would therefore return the newer,
+  // permanently CLOSED card forever, stranding the genuinely open survivor.
+  it("prefers the open card over a newer closed one after a contested merge", async () => {
+    seedBoard()
+    seedContact("c-1")
+
+    // Older card — the survivor of the merge tie-break, still open.
+    seedOpportunity("opp-old-open", "c-1", {
+      stage_id: "stage-consult-booked",
+      created_at: new Date(Date.now() - 5 * DAY_MS).toISOString(),
+      outcome: null,
+    })
+    // Newer card — the merge LOSER, closed by the 00220 CTE. Newer
+    // created_at is exactly what makes plain "most recent" pick this one.
+    seedOpportunity("opp-new-closed", "c-1", {
+      stage_id: "stage-lost",
+      created_at: new Date().toISOString(),
+      outcome: "lost",
+      outcome_reason: "merged_into_survivor",
+      closed_trigger: "merge",
+      closed_at: new Date().toISOString(),
+    })
+
+    const { stages } = await resolvePipeline("coaching")
+    const current = await readMostRecentOpportunity("c-1", "pipe-1", stages)
+
+    expect(current?.id).toBe("opp-old-open")
+    expect(current?.outcome).toBeNull()
+  })
+
+  // No open card at all: falls back to the most recently closed one,
+  // preserving the pre-fix behavior for the common (non-contested) case.
+  it("falls back to the most recent closed card when the contact has no open card", async () => {
+    seedBoard()
+    seedContact("c-1")
+
+    seedOpportunity("opp-older-lost", "c-1", {
+      stage_id: "stage-lost",
+      created_at: new Date(Date.now() - 10 * DAY_MS).toISOString(),
+      outcome: "lost",
+      closed_at: new Date(Date.now() - 10 * DAY_MS).toISOString(),
+      closed_trigger: "booking",
+    })
+    seedOpportunity("opp-newer-won", "c-1", {
+      stage_id: "stage-won",
+      created_at: new Date().toISOString(),
+      outcome: "won",
+      closed_at: new Date().toISOString(),
+      closed_trigger: "payment",
+    })
+
+    const { stages } = await resolvePipeline("coaching")
+    const current = await readMostRecentOpportunity("c-1", "pipe-1", stages)
+
+    expect(current?.id).toBe("opp-newer-won")
+  })
+})
+
 describe("applyPipelineEvent", () => {
   it("creates a card in the first open stage on booking.scheduled", async () => {
     seedBoard()
@@ -444,6 +508,80 @@ describe("applyPipelineEvent", () => {
     expect(row.closed_trigger).toBe("payment")
     expect(row.stage_id).toBe("stage-won")
     expect(row.value_cents).toBe(12000)
+  })
+
+  // Final review, Important 3. The partial unique index only covers
+  // `WHERE outcome IS NULL`, so it does NOT protect the create-with-outcome
+  // branch above (the row is inserted already closed) — two CONCURRENT
+  // checkout.session.completed deliveries for the same contact would both
+  // read `current === null` and both reach the `create` branch. This test
+  // reproduces the moment that matters: by the time THIS call's create
+  // branch runs, another delivery of the SAME Stripe session has already
+  // recorded its stage event (the metadata check reads it back) — the exact
+  // ledger a genuinely concurrent duplicate would have written. Two
+  // deliveries of the same session id must produce exactly one card.
+  it("refuses to create a second card when the source id is already recorded on a stage event", async () => {
+    seedBoard()
+    seedContact("c-1")
+
+    // Stands in for the OTHER concurrent delivery, which already won its own
+    // card (for whichever contact/opportunity — the check is keyed on the
+    // source id alone, not on opportunity) and recorded this stage event.
+    store.opportunity_stage_events.push({
+      id: nextId("event"),
+      business_id: SINGLETON_BUSINESS_ID,
+      opportunity_id: "opp-from-other-delivery",
+      from_stage_id: null,
+      to_stage_id: "stage-won",
+      trigger: "payment",
+      actor_user_id: null,
+      refused_reason: null,
+      metadata: { stripe_session_id: "cs_test_dup_1" },
+      occurred_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      _seq: store.opportunity_stage_events.length,
+    })
+
+    const { decision, opportunityId } = await applyPipelineEvent({
+      contactId: "c-1",
+      event: { kind: "payment", amountCents: 12000, currency: "usd", occurredAt: new Date() },
+      metadata: { stripe_session_id: "cs_test_dup_1" },
+    })
+
+    expect(decision.kind).toBe("noop")
+    expect(opportunityId).toBeNull()
+    expect(store.opportunities).toHaveLength(0) // no duplicate card created
+  })
+
+  // Confirms the check is keyed on the metadata VALUE, not just presence —
+  // a different session id must still create normally.
+  it("still creates a card when metadata carries a DIFFERENT source id", async () => {
+    seedBoard()
+    seedContact("c-1")
+
+    store.opportunity_stage_events.push({
+      id: nextId("event"),
+      business_id: SINGLETON_BUSINESS_ID,
+      opportunity_id: "opp-from-other-delivery",
+      from_stage_id: null,
+      to_stage_id: "stage-won",
+      trigger: "payment",
+      actor_user_id: null,
+      refused_reason: null,
+      metadata: { stripe_session_id: "cs_totally_different" },
+      occurred_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      _seq: store.opportunity_stage_events.length,
+    })
+
+    const { decision } = await applyPipelineEvent({
+      contactId: "c-1",
+      event: { kind: "payment", amountCents: 12000, currency: "usd", occurredAt: new Date() },
+      metadata: { stripe_session_id: "cs_test_dup_1" },
+    })
+
+    expect(decision.kind).toBe("create")
+    expect(store.opportunities).toHaveLength(1)
   })
 
   it("records a refused event with refused_reason and does not move the card", async () => {

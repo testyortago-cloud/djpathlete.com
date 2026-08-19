@@ -93,4 +93,13 @@ describe("getAdminNav", () => {
       expect(section.pinned).not.toBe(true)
     }
   })
+
+  // Final review, Important 2: the Lead Engine pipeline board was URL-only —
+  // reachable, but not registered anywhere in the sidebar, so a person
+  // navigating the app had no way to discover it.
+  it("registers the Lead Engine pipeline board in the Coaching section", () => {
+    const nav = getAdminNav({ contentStudioEnabled: false })
+    const coaching = nav.groupedSections.find((s) => s.title === "Coaching")
+    expect(coaching?.items.some((i) => i.href === "/admin/pipeline")).toBe(true)
+  })
 })

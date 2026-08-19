@@ -154,6 +154,14 @@ export async function POST(request: Request) {
           if (contactId) {
             await exitRunsForContact(contactId, "payment")
             if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
+              // Final review, Important 3: the checkout session id is the
+              // source-id idempotency key for the create-with-outcome
+              // (instant Won, no prior deal) branch of applyPipelineEvent —
+              // the one path the partial unique index cannot protect,
+              // because a closed row never matches `WHERE outcome IS NULL`.
+              // Stripe delivers at-least-once with no dedupe on this route;
+              // two concurrent deliveries of the same session must not mint
+              // two Won cards for one sale.
               await applyPipelineEvent({
                 contactId,
                 event: {
@@ -162,6 +170,7 @@ export async function POST(request: Request) {
                   currency: session.currency ?? "usd",
                   occurredAt: new Date(),
                 },
+                metadata: { stripe_session_id: session.id },
               })
             }
           }

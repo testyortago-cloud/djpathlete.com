@@ -186,6 +186,7 @@ describe("Stripe webhook — pipeline", () => {
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-pay-1",
       event: { kind: "payment", amountCents: 12500, currency: "usd", occurredAt: expect.any(Date) },
+      metadata: { stripe_session_id: "cs_test_1" },
     })
   })
 
@@ -201,6 +202,7 @@ describe("Stripe webhook — pipeline", () => {
       expect.objectContaining({
         contactId: "contact-pay-2",
         event: expect.objectContaining({ kind: "payment", currency: "eur" }),
+        metadata: { stripe_session_id: "cs_test_1" },
       }),
     )
   })
@@ -261,6 +263,7 @@ describe("Stripe webhook — pipeline", () => {
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-coaching-1",
       event: { kind: "payment", amountCents: 30000, currency: "usd", occurredAt: expect.any(Date) },
+      metadata: { stripe_session_id: "cs_test_1" },
     })
   })
 })

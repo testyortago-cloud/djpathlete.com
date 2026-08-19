@@ -56,7 +56,7 @@ describe("campaign revenue page", () => {
     ;(readCampaignRevenue as ReturnType<typeof vi.fn>).mockResolvedValue([
       {
         utmSource: "google",
-        utmMedium: "cpc",
+        gclid: "Cj0KCQjw-test-1",
         utmCampaign: "spring_promo",
         wonCount: 2,
         wonValueCents: 250_000,
@@ -65,7 +65,7 @@ describe("campaign revenue page", () => {
       },
       {
         utmSource: null,
-        utmMedium: null,
+        gclid: null,
         utmCampaign: null,
         wonCount: 0,
         wonValueCents: 0,
@@ -89,7 +89,7 @@ describe("campaign revenue page", () => {
     ;(readCampaignRevenue as ReturnType<typeof vi.fn>).mockResolvedValue([
       {
         utmSource: null,
-        utmMedium: null,
+        gclid: null,
         utmCampaign: null,
         wonCount: 3,
         wonValueCents: 45_000,
@@ -98,7 +98,7 @@ describe("campaign revenue page", () => {
       },
       {
         utmSource: "newsletter",
-        utmMedium: "email",
+        gclid: "Cj0KCQjw-test-2",
         utmCampaign: "spring_promo",
         wonCount: 1,
         wonValueCents: 10_000,
@@ -122,7 +122,7 @@ describe("campaign revenue page", () => {
     ;(readCampaignRevenue as ReturnType<typeof vi.fn>).mockResolvedValue([
       {
         utmSource: null,
-        utmMedium: null,
+        gclid: null,
         utmCampaign: null,
         wonCount: 1,
         wonValueCents: 5_000,
@@ -131,7 +131,7 @@ describe("campaign revenue page", () => {
       },
       {
         utmSource: null,
-        utmMedium: null,
+        gclid: null,
         utmCampaign: null,
         wonCount: 0,
         wonValueCents: 0,
@@ -154,7 +154,7 @@ describe("campaign revenue page", () => {
     ;(readCampaignRevenue as ReturnType<typeof vi.fn>).mockResolvedValue([
       {
         utmSource: "google",
-        utmMedium: "cpc",
+        gclid: "Cj0KCQjw-test-1",
         utmCampaign: "spring_promo",
         wonCount: 1,
         wonValueCents: 123_456,
@@ -163,7 +163,7 @@ describe("campaign revenue page", () => {
       },
       {
         utmSource: null,
-        utmMedium: null,
+        gclid: null,
         utmCampaign: null,
         wonCount: 0,
         wonValueCents: 0,
@@ -181,7 +181,7 @@ describe("campaign revenue page", () => {
     ;(readCampaignRevenue as ReturnType<typeof vi.fn>).mockResolvedValue([
       {
         utmSource: "google",
-        utmMedium: "cpc",
+        gclid: "Cj0KCQjw-test-1",
         utmCampaign: "spring_promo",
         wonCount: 1,
         wonValueCents: 100_00,
@@ -190,7 +190,7 @@ describe("campaign revenue page", () => {
       },
       {
         utmSource: null,
-        utmMedium: null,
+        gclid: null,
         utmCampaign: null,
         wonCount: 1,
         wonValueCents: 50_00,

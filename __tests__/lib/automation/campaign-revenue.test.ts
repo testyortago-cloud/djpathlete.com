@@ -196,9 +196,9 @@ describe("readCampaignRevenue", () => {
   const until = new Date(Date.now() + DAY_MS)
 
   it("groups won value by utm_campaign", async () => {
-    seedAttribution("sess-a", { utm_source: "google", utm_medium: "cpc", utm_campaign: "spring-sale" })
-    seedAttribution("sess-b", { utm_source: "google", utm_medium: "cpc", utm_campaign: "spring-sale" })
-    seedAttribution("sess-c", { utm_source: "facebook", utm_medium: "social", utm_campaign: "summer-push" })
+    seedAttribution("sess-a", { utm_source: "google", utm_campaign: "spring-sale" })
+    seedAttribution("sess-b", { utm_source: "google", utm_campaign: "spring-sale" })
+    seedAttribution("sess-c", { utm_source: "facebook", utm_campaign: "summer-push" })
 
     seedWonOpportunity({ source_session_id: "sess-a", value_cents: 5_000 })
     seedWonOpportunity({ source_session_id: "sess-b", value_cents: 7_500 })
@@ -213,13 +213,46 @@ describe("readCampaignRevenue", () => {
     expect(spring?.wonCount).toBe(2)
     expect(spring?.wonValueCents).toBe(12_500)
     expect(spring?.utmSource).toBe("google")
-    expect(spring?.utmMedium).toBe("cpc")
     expect(spring?.isUnattributed).toBe(false)
 
     expect(summer).toBeDefined()
     expect(summer?.wonCount).toBe(1)
     expect(summer?.wonValueCents).toBe(2_000)
     expect(summer?.isUnattributed).toBe(false)
+  })
+
+  // Final review, Minor: spec §7 groups by utm_campaign / utm_source / gclid,
+  // not utm_medium. Before this fix, two won deals with the SAME gclid but no
+  // utm_* params at all (a plain Google Ads text ad, no UTM tagging) grouped
+  // into the utm_source/utm_medium/utm_campaign-only key `[null, null, null]`
+  // — identical to (and merged with) genuinely unattributed deals, even
+  // though every one of them has a real, distinguishing click id.
+  it("groups a gclid-only paid click as its own campaign row, not folded into utm_medium or Unattributed", async () => {
+    seedAttribution("sess-gclid-a", {
+      utm_source: null,
+      utm_campaign: null,
+      gclid: "Cj0KCQjw-click-1",
+    })
+    seedAttribution("sess-gclid-b", {
+      utm_source: null,
+      utm_campaign: null,
+      gclid: "Cj0KCQjw-click-1",
+    })
+
+    seedWonOpportunity({ source_session_id: "sess-gclid-a", value_cents: 10_000 })
+    seedWonOpportunity({ source_session_id: "sess-gclid-b", value_cents: 20_000 })
+
+    const rows = await readCampaignRevenue({ since, until })
+
+    const gclidRow = rows.find((r) => !r.isUnattributed && r.gclid === "Cj0KCQjw-click-1")
+    expect(gclidRow).toBeDefined()
+    expect(gclidRow?.wonCount).toBe(2)
+    expect(gclidRow?.wonValueCents).toBe(30_000)
+
+    const unattributed = findUnattributed(rows)
+    // The gclid clicks must NOT have landed in the unattributed bucket —
+    // they matched a real marketing_attribution row.
+    expect(unattributed?.unattributedCount).toBe(0)
   })
 
   it("reads value from opportunities, not from payments", async () => {
@@ -242,7 +275,7 @@ describe("readCampaignRevenue", () => {
     expect(unattributed?.unattributedCount).toBe(1)
     expect(unattributed?.wonValueCents).toBe(9_900)
     expect(unattributed?.utmSource).toBeNull()
-    expect(unattributed?.utmMedium).toBeNull()
+    expect(unattributed?.gclid).toBeNull()
     expect(unattributed?.utmCampaign).toBeNull()
   })
 
