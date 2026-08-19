@@ -178,6 +178,17 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
     enabled_flag: "cron_contact_timeline_retention_enabled",
     enabled_flag_default: true,
   },
+  {
+    // Lead Engine Stage 1c pipeline reconciler — hourly :20, off by default.
+    // Delay-tolerant like bookkeepingGmailReceiptsCron: it is a catch-up net
+    // for a rare dropped webhook, so an occasional missed hour must not page.
+    name: "pipelineReconcileCron",
+    sla_hours: 6,
+    reports_to_cron_runs: true,
+    watch_from: "2026-08-19",
+    enabled_flag: "cron_pipeline_reconcile_enabled",
+    enabled_flag_default: false,
+  },
 ]
 
 export interface ScannerInput {

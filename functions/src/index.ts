@@ -1630,6 +1630,42 @@ export const sequenceTickCron = onSchedule(
   },
 )
 
+// ─── Lead Engine pipeline reconciler (hourly, UTC) ──────────────────────────
+// Stage 1c: a hook that throws AFTER its booking/payment row is already
+// written loses a board card permanently — this catches it up. Ships OFF by
+// default via cron_pipeline_reconcile_enabled.
+// Spec: docs/superpowers/specs/2026-08-19-lead-engine-stage1c-pipeline-design.md §6.
+
+export const pipelineReconcileCron = onSchedule(
+  {
+    schedule: "20 * * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[pipelineReconcileCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/pipeline-reconcile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[pipelineReconcileCron]", res.status, body)
+    } catch (err) {
+      console.error("[pipelineReconcileCron] failed:", err)
+    }
+  },
+)
+
 export const inboxSlaCron = onSchedule(
   {
     schedule: "0 6 * * 1-5",

@@ -40,6 +40,7 @@ import {
   Repeat,
   Ban,
   BookOpen,
+  Kanban,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { canAccessPath, type PermissionActor } from "@/lib/permissions/registry"
@@ -118,6 +119,9 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: Permi
         title: "Coaching",
         pinned: true,
         items: [
+          // Lead Engine Stage 1c: the sales pipeline board — where a lead
+          // becomes a client. Final review, Important 2: was URL-only.
+          { label: "Pipeline", href: "/admin/pipeline", icon: Kanban },
           { label: "Clients", href: "/admin/clients", icon: Users },
           { label: "Schedule", href: "/admin/schedule", icon: CalendarClock },
           { label: "Programs", href: "/admin/programs", icon: ClipboardList },

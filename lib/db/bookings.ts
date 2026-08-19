@@ -82,3 +82,25 @@ export async function getBookingsInRange(from: Date, to: Date): Promise<Booking[
   if (error) throw error
   return (data ?? []) as Booking[]
 }
+
+/**
+ * Feeds the Lead Engine pipeline reconciler (lib/automation/pipeline-reconcile.ts,
+ * Task 6): rows in `statuses` written since `sinceIso`. Filters on
+ * `created_at` (when the row entered the DB — the moment a dropped webhook
+ * would have fired), never `booking_date` (which can be a future
+ * appointment time or a backfilled past one, neither of which says anything
+ * about when the hook ran).
+ */
+export async function getBookingsForPipelineReconcile(
+  statuses: BookingStatus[],
+  sinceIso: string,
+): Promise<Pick<Booking, "id" | "contact_email" | "contact_phone" | "status" | "created_at">[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("id, contact_email, contact_phone, status, created_at")
+    .in("status", statuses)
+    .gte("created_at", sinceIso)
+  if (error) throw error
+  return (data ?? []) as Pick<Booking, "id" | "contact_email" | "contact_phone" | "status" | "created_at">[]
+}

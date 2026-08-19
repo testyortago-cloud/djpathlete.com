@@ -18,6 +18,7 @@ export type CronJobName =
   | "session-pack-renewals"
   | "sequence-tick"
   | "contact-timeline-retention"
+  | "pipeline-reconcile"
 
 export interface CronJob {
   name: CronJobName
@@ -212,5 +213,18 @@ export const CRON_CATALOG: readonly CronJob[] = [
     phase: "lead-engine-1b",
     enabledKey: "cron_contact_timeline_retention_enabled",
     defaultEnabled: true,
+  },
+  {
+    name: "pipeline-reconcile",
+    label: "Pipeline board repair",
+    description:
+      "Every hour, checks for a booking or a payment whose card move failed to record and fixes it — so a dropped hook never leaves a deal silently missing from the board. OFF by default; flip the toggle to enable.",
+    schedule: "20 * * * *",
+    timezone: "UTC",
+    humanSchedule: "Every hour at :20",
+    firebaseFunction: "pipelineReconcileCron",
+    phase: "lead-engine-1c",
+    enabledKey: "cron_pipeline_reconcile_enabled",
+    defaultEnabled: false,
   },
 ] as const

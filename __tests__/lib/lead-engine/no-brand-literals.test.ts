@@ -11,6 +11,19 @@ const ROOTS = [
   "lib/automation/sequence-tick-runner.ts",
   "lib/db/sequences.ts",
   "supabase/migrations/00218_lead_engine_seed_sequences.sql",
+  // Stage 1c (pipeline board) — flagged as a gap by both Task 1 and Task 2,
+  // left for Task 8 to close.
+  "supabase/migrations/00219_lead_engine_pipeline.sql",
+  "supabase/migrations/00220_lead_engine_pipeline_merge.sql",
+  "lib/db/pipeline.ts",
+  "lib/lead-engine/pipeline-move.ts",
+  "lib/automation/pipeline-reconcile.ts",
+  "lib/automation/campaign-revenue.ts",
+  "app/(admin)/admin/pipeline/page.tsx",
+  "components/admin/pipeline-board.tsx",
+  "app/api/admin/pipeline/move/route.ts",
+  // Task 9 — the campaign-to-revenue surface.
+  "app/(admin)/admin/insights/campaign-revenue/page.tsx",
 ]
 
 function filesUnder(p: string): string[] {

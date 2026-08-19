@@ -6,6 +6,7 @@ import { enqueueBookingConversion } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
 import { findContactByIdentifiers } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
+import { applyPipelineEvent } from "@/lib/db/pipeline"
 
 /**
  * Webhook endpoint for GoHighLevel appointment bookings.
@@ -118,24 +119,38 @@ export async function POST(request: Request) {
     const supabase = createServiceRoleClient()
     const data = result.data
 
-    // Lead Engine: a marketing exit must never fail a booking webhook. Same
-    // shape as the Stripe webhook's payment exit — catch, log, keep going to
-    // the normal response. Gated to scheduled/completed only: a cancelled or
-    // no-show booking means the lead did NOT convert, and this branch has no
-    // re-enrolment path anywhere (enrollIfTriggered only fires from
-    // ContactEventSource values, none of which is "booking cancelled") — so
-    // exiting on a bad-outcome status would silently end the conversation
-    // forever, with nothing left to ever restart it.
+    // Lead Engine: neither the sequence exit nor the pipeline card move may
+    // ever fail a booking webhook — catch, log, keep going to the normal
+    // response. One contact resolution, two consumers, same catch.
+    //
+    // exitRunsForContact stays gated to scheduled/completed only: a
+    // cancelled or no-show booking means the lead did NOT convert, and this
+    // branch has no re-enrolment path anywhere (enrollIfTriggered only fires
+    // from ContactEventSource values, none of which is "booking cancelled")
+    // — so exiting on a bad-outcome status would silently end the
+    // conversation forever, with nothing left to ever restart it.
+    //
+    // applyPipelineEvent, by contrast, cares about all four statuses:
+    // cancelled and no_show close a card as lost (decideMove in
+    // lib/lead-engine/pipeline-move.ts). Do not "simplify" these into one
+    // shared condition — the two consumers legitimately fire on different
+    // status sets from the same resolved contact.
     try {
-      if (data.status === "scheduled" || data.status === "completed") {
-        const contactId = await findContactByIdentifiers({
-          email: data.contact_email,
-          phone: data.contact_phone,
+      const contactId = await findContactByIdentifiers({
+        email: data.contact_email,
+        phone: data.contact_phone,
+      })
+      if (contactId) {
+        if (data.status === "scheduled" || data.status === "completed") {
+          await exitRunsForContact(contactId, "booking")
+        }
+        await applyPipelineEvent({
+          contactId,
+          event: { kind: "booking", status: data.status, occurredAt: new Date() },
         })
-        if (contactId) await exitRunsForContact(contactId, "booking")
       }
     } catch (err) {
-      console.error("[ghl-booking-webhook] sequence exit failed", (err as Error).message)
+      console.error("[ghl-booking-webhook] sequence/pipeline hook failed", (err as Error).message)
     }
 
     let gclid = data.gclid ?? null

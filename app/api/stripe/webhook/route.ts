@@ -49,6 +49,28 @@ import { getSetting } from "@/lib/db/system-settings"
 import { FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT } from "@/lib/funnels/checkout/flag"
 import { findContactByIdentifiers } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
+import { applyPipelineEvent } from "@/lib/db/pipeline"
+
+// Lead Engine: `checkout.session.completed` fires for every kind of money
+// this business takes, not just a coaching sale — merch, event tickets, and
+// a $0 card-on-file setup all come through here too. Winning a pipeline
+// card is specific to a coaching sale (spec §2.1: "a contact books a
+// consult OR completes a checkout" — a coaching checkout), so
+// `applyPipelineEvent` below excludes these by `session.metadata?.type`
+// rather than trying to enumerate every coaching type (a new coaching
+// checkout that forgets to set `type` must still win its card, not
+// silently go missing from the board).
+//
+// This is every non-coaching `checkout.session.completed` type this route
+// currently dispatches on — confirmed by reading every
+// `session.metadata?.type` branch below, not guessed:
+//   - "shop_order": merch — lib/shop/webhooks.ts, revenue tracked in
+//     `shop_orders`, never `payments`.
+//   - "event_signup": a ticket, not a coaching deal — recordEventSignupPayment
+//     below.
+//   - "save_card": a card-on-file setup with `amount_total` of 0 — no sale
+//     happened at all.
+const NON_COACHING_CHECKOUT_TYPES = new Set(["shop_order", "event_signup", "save_card"])
 
 // Plan 3.4 — Stripe webhook audit instrumentation. Only the event types in
 // this map get audited; others (e.g. payment_intent.*) pass through silently.
@@ -105,19 +127,55 @@ export async function POST(request: Request) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session
 
-        // Lead Engine: a marketing exit must never fail a payment webhook.
-        // Stripe retries on a non-2xx response, so a throw here would replay
-        // a payment side effect (double-creating assignments, subscriptions,
-        // etc.) in order to fix a follow-up email. Runs for every completed
-        // checkout regardless of which branch below handles it — any payment
-        // is a reason to stop the sales pitch.
+        // Lead Engine: neither the sequence exit nor the pipeline card move
+        // may ever fail a payment webhook — catch, log, keep going to the
+        // normal response. Stripe retries on a non-2xx response, so a throw
+        // here would replay a payment side effect (double-creating
+        // assignments, subscriptions, etc.) in order to fix a follow-up
+        // email or a board card. One contact resolution, two consumers, same
+        // catch — same shape as the GHL booking webhook.
+        //
+        // exitRunsForContact runs for every completed checkout, unconditionally:
+        // any payment — merch, an event ticket, a coaching sale — is a real
+        // reason to stop the automated nurture sequence for this person.
+        //
+        // applyPipelineEvent, by contrast, is gated on
+        // NON_COACHING_CHECKOUT_TYPES: winning a pipeline card means "this is
+        // a coaching sale", and a shop order, an event ticket, or a $0
+        // card-on-file setup is not one — see that constant's comment for the
+        // full, confirmed list of what this route dispatches on and why each
+        // is excluded. Do not "simplify" these into one shared condition —
+        // the two consumers legitimately fire on different subsets of the
+        // same resolved contact's checkout.
         try {
           const userId = session.metadata?.userId ?? null
           const email = session.customer_details?.email ?? session.customer_email ?? null
           const contactId = await findContactByIdentifiers({ userId, email })
-          if (contactId) await exitRunsForContact(contactId, "payment")
+          if (contactId) {
+            await exitRunsForContact(contactId, "payment")
+            if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
+              // Final review, Important 3: the checkout session id is the
+              // source-id idempotency key for the create-with-outcome
+              // (instant Won, no prior deal) branch of applyPipelineEvent —
+              // the one path the partial unique index cannot protect,
+              // because a closed row never matches `WHERE outcome IS NULL`.
+              // Stripe delivers at-least-once with no dedupe on this route;
+              // two concurrent deliveries of the same session must not mint
+              // two Won cards for one sale.
+              await applyPipelineEvent({
+                contactId,
+                event: {
+                  kind: "payment",
+                  amountCents: session.amount_total ?? 0,
+                  currency: session.currency ?? "usd",
+                  occurredAt: new Date(),
+                },
+                metadata: { stripe_session_id: session.id },
+              })
+            }
+          }
         } catch (err) {
-          console.error("[stripe-webhook] sequence exit failed", (err as Error).message)
+          console.error("[stripe-webhook] sequence/pipeline hook failed", (err as Error).message)
         }
 
         if (session.metadata?.type === "shop_order") {

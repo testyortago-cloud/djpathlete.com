@@ -52,6 +52,15 @@ const NAV_KEYWORDS: Record<string, string[]> = {
   ],
   "/admin/messages": ["client chat", "message client", "conversation", "dm"],
 
+  "/admin/pipeline": [
+    "sales pipeline",
+    "deals",
+    "leads pipeline",
+    "consult booked",
+    "won deals",
+    "lost deals",
+    "pipeline board",
+  ],
   "/admin/clients": [
     "create client",
     "add client",
@@ -177,6 +186,14 @@ const EXTRA_ROUTES: CommandPaletteItem[] = [
     section: "Insights",
     icon: Timer,
     keywords: ["response time", "lead response", "sla report"],
+  },
+  {
+    id: "/admin/insights/campaign-revenue",
+    label: "Campaign Revenue",
+    href: "/admin/insights/campaign-revenue",
+    section: "Insights",
+    icon: TrendingUp,
+    keywords: ["campaign to revenue", "won deals by campaign", "attribution revenue", "utm revenue"],
   },
   {
     id: "/admin/books/accounts",

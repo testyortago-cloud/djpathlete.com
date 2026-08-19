@@ -30,6 +30,17 @@ describe("getCommandPaletteItems", () => {
     const items = getCommandPaletteItems({ contentStudioEnabled: false, actor: admin })
     expect(items.map((i) => i.href)).toContain("/admin/settings")
   })
+
+  // Final review, Important 2: both new Lead Engine surfaces were URL-only.
+  // The pipeline board flows through here via getAdminNav's sidebar entry;
+  // campaign-revenue is registered the same way its four sibling
+  // /admin/insights/* pages already are — an EXTRA_ROUTES entry, not sidebar.
+  it("includes the pipeline board and campaign-revenue insights page", () => {
+    const items = getCommandPaletteItems({ contentStudioEnabled: false })
+    const hrefs = items.map((i) => i.href)
+    expect(hrefs).toContain("/admin/pipeline")
+    expect(hrefs).toContain("/admin/insights/campaign-revenue")
+  })
 })
 
 describe("searchCommandPaletteItems", () => {
