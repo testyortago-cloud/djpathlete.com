@@ -651,4 +651,53 @@ describe("moveOpportunityManually", () => {
     expect(row.closed_trigger).toBeNull()
     expect(row.closed_by_user_id).toBeNull()
   })
+
+  // Controller ruling (fix round 1): a manual close must dual-log. _moved
+  // (admin_write) records who did it; _won/_lost (commerce) records what
+  // happened. A reader that counts won deals off the commerce category must
+  // see a manual close exactly like an automated one.
+  describe("audit dual-logging on a manual close (ruling 1)", () => {
+    it("emits BOTH pipeline.opportunity_moved and pipeline.opportunity_won when moving into the won stage", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" })
+
+      await moveOpportunityManually({ opportunityId: "opp-1", toStageKey: "won", actorUserId: "admin-1" })
+
+      const actions = store.audit_logs.map((a) => a.action)
+      expect(actions).toContain("pipeline.opportunity_moved")
+      expect(actions).toContain("pipeline.opportunity_won")
+      expect(actions).not.toContain("pipeline.opportunity_lost")
+
+      const won = store.audit_logs.find((a) => a.action === "pipeline.opportunity_won")!
+      expect(won.category).toBe("commerce")
+    })
+
+    it("emits BOTH pipeline.opportunity_moved and pipeline.opportunity_lost when moving into the lost stage", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+      await moveOpportunityManually({ opportunityId: "opp-1", toStageKey: "lost", actorUserId: "admin-1" })
+
+      const actions = store.audit_logs.map((a) => a.action)
+      expect(actions).toContain("pipeline.opportunity_moved")
+      expect(actions).toContain("pipeline.opportunity_lost")
+      expect(actions).not.toContain("pipeline.opportunity_won")
+
+      const lost = store.audit_logs.find((a) => a.action === "pipeline.opportunity_lost")!
+      expect(lost.category).toBe("commerce")
+    })
+
+    it("emits ONLY pipeline.opportunity_moved when moving between two open stages", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+      await moveOpportunityManually({ opportunityId: "opp-1", toStageKey: "consulted", actorUserId: "admin-1" })
+
+      const actions = store.audit_logs.map((a) => a.action)
+      expect(actions).toEqual(["pipeline.opportunity_moved"])
+    })
+  })
 })

@@ -394,6 +394,13 @@ export async function applyPipelineEvent(input: {
  * Moving a card back to an OPEN stage clears any prior closure fields
  * together, so a reopened card never sits in an inconsistent state that
  * violates `opportunities_closed_fields_agree`.
+ *
+ * Audits DUAL-LOG when the move closes the card: `pipeline.opportunity_moved`
+ * (admin_write — who did it) AND `pipeline.opportunity_won`/`_lost`
+ * (commerce — what happened). A reader counting won deals off the `commerce`
+ * category must see a manual close exactly like an automated one, or it
+ * silently undercounts every deal a human closed by hand. A non-closing move
+ * (open stage to open stage, or a reopen) emits only `_moved`.
  */
 export async function moveOpportunityManually(input: {
   opportunityId: string
@@ -462,6 +469,22 @@ export async function moveOpportunityManually(input: {
     target: { type: "opportunity", id: input.opportunityId },
     metadata: { to_stage: toStage.key, closing: isClosing },
   })
+
+  // Controller ruling (fix round 1): a manual close must dual-log. _moved is
+  // admin_write and records WHO did it; _won/_lost is commerce and records
+  // WHAT happened. Anything counting won deals by querying the commerce
+  // category must see a manual close exactly like an automated one — an
+  // audit trail that is complete only for machine-made decisions inverts the
+  // point of auditing a human's actions.
+  if (isClosing) {
+    await recordAudit({
+      action: toStage.kind === "won" ? "pipeline.opportunity_won" : "pipeline.opportunity_lost",
+      category: "commerce",
+      actor: { id: input.actorUserId, role: "admin" },
+      target: { type: "opportunity", id: input.opportunityId },
+      metadata: { to_stage: toStage.key, trigger: "manual" },
+    })
+  }
 }
 
 async function readContactNames(
