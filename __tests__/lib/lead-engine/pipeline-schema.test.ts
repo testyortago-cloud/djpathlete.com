@@ -16,7 +16,10 @@ describe("00219 pipeline schema", () => {
   })
 
   it("keys the state machine on kind, and constrains it to three values", () => {
-    expect(sql).toContain("kind        text NOT NULL CHECK (kind IN ('open','won','lost'))")
+    // Whitespace-tolerant on purpose: column alignment has no bearing on the
+    // invariant this test pins (kind is NOT NULL and limited to exactly these
+    // three values), so a harmless reformat must not fail it.
+    expect(sql).toMatch(/kind\s+text NOT NULL CHECK \(kind IN \('open','won','lost'\)\)/)
   })
 
   it("allows only one open opportunity per contact per pipeline", () => {
@@ -24,8 +27,20 @@ describe("00219 pipeline schema", () => {
   })
 
   it("does not decide finality from closed_by_user_id", () => {
-    // Spec §2.4: ON DELETE SET NULL would un-pin cards when an admin is deleted.
-    expect(sql).toContain("closed_trigger text CHECK")
+    // Spec §2.4: finality must come from closed_trigger = 'manual', never from
+    // closed_by_user_id — that column is ON DELETE SET NULL, so deriving
+    // finality from it would un-pin cards when an admin is deleted. Pin both
+    // halves of the rule: 'manual' is an allowed closed_trigger value, AND
+    // closed_by_user_id is declared ON DELETE SET NULL (so it structurally
+    // cannot carry the semantics). Also confirm the fields-agree CHECK that
+    // ties outcome/closed_at/closed_trigger together never mentions
+    // closed_by_user_id, so identity can't sneak into the rule there either.
+    expect(sql).toMatch(/closed_trigger text CHECK \(closed_trigger IN \([^)]*'manual'[^)]*\)\)/)
+    expect(sql).toContain("closed_by_user_id uuid REFERENCES public.users(id) ON DELETE SET NULL")
+
+    const agreeConstraint = sql.match(/CONSTRAINT opportunities_closed_fields_agree[\s\S]*?\);/)
+    expect(agreeConstraint).not.toBeNull()
+    expect(agreeConstraint![0]).not.toContain("closed_by_user_id")
   })
 
   it("seeds exactly one pipeline and four stages", () => {

@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS public.opportunity_stage_events (
   opportunity_id uuid NOT NULL REFERENCES public.opportunities(id) ON DELETE CASCADE,
   from_stage_id  uuid REFERENCES public.pipeline_stages(id),
   to_stage_id    uuid REFERENCES public.pipeline_stages(id),
-  trigger        text NOT NULL CHECK (trigger IN ('booking','payment','manual','reconciler')),
+  trigger        text NOT NULL CHECK (trigger IN ('booking','payment','manual','reconciler','merge')),
   actor_user_id  uuid REFERENCES public.users(id) ON DELETE SET NULL,
   -- Non-null when an event WANTED to move this card and was refused (spec §2.4).
   -- A refused move is recorded, never silently dropped.
