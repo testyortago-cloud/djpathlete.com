@@ -55,3 +55,24 @@ export async function updatePayment(id: string, updates: Partial<Omit<Payment, "
   if (error) throw error
   return data as Payment
 }
+
+/**
+ * Feeds the Lead Engine pipeline reconciler (lib/automation/pipeline-reconcile.ts,
+ * Task 6): succeeded payments written since `sinceIso`. `succeeded` only —
+ * pending/failed/refunded payments never move a card. `payments` covers
+ * every product this business sells, not just coaching consults, so this is
+ * deliberately broad; the reconciler itself narrows further to contacts
+ * already mid-pipeline before acting on any row this returns.
+ */
+export async function getSucceededPaymentsForPipelineReconcile(
+  sinceIso: string,
+): Promise<Pick<Payment, "id" | "user_id" | "amount_cents" | "currency" | "created_at">[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("payments")
+    .select("id, user_id, amount_cents, currency, created_at")
+    .eq("status", "succeeded")
+    .gte("created_at", sinceIso)
+  if (error) throw error
+  return (data ?? []) as Pick<Payment, "id" | "user_id" | "amount_cents" | "currency" | "created_at">[]
+}

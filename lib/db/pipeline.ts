@@ -178,6 +178,7 @@ async function insertStageEvent(
     trigger: string
     actorUserId?: string | null
     refusedReason?: string | null
+    metadata?: Record<string, unknown>
   },
 ): Promise<void> {
   const { error } = await supabase.from("opportunity_stage_events").insert({
@@ -188,6 +189,7 @@ async function insertStageEvent(
     trigger: args.trigger,
     actor_user_id: args.actorUserId ?? null,
     refused_reason: args.refusedReason ?? null,
+    metadata: args.metadata ?? {},
   })
   if (error) throw error
 }
@@ -207,6 +209,15 @@ const SYSTEM_ACTOR = { id: null, email: null, role: "system" as const }
  * regardless of who replayed it. A non-zero count of `trigger='reconciler'`
  * rows is the signal a later task watches for: it means a webhook was
  * dropped and the reconciler is the only reason the card ever moved.
+ *
+ * `metadata` is written verbatim onto the `opportunity_stage_events` row this
+ * call produces (every branch below, including `refuse`). The reconciler
+ * (Task 6) is the only caller that passes it today — it stamps
+ * `{ booking_id }` / `{ payment_id }` so a later reconcile pass can tell,
+ * without re-deciding anything, that this exact source row was already
+ * handled and must not be replayed. A `noop` decision writes no row, so it
+ * carries no metadata regardless of what was passed — there is nothing to
+ * mark as handled when nothing happened.
  */
 export async function applyPipelineEvent(input: {
   contactId: string
@@ -214,6 +225,7 @@ export async function applyPipelineEvent(input: {
   pipelineKey?: string
   source?: "hook" | "reconciler"
   businessId?: string
+  metadata?: Record<string, unknown>
 }): Promise<{ decision: MoveDecision; opportunityId: string | null }> {
   const businessId = input.businessId ?? SINGLETON_BUSINESS_ID
   const pipelineKey = input.pipelineKey ?? DEFAULT_PIPELINE_KEY
@@ -277,6 +289,7 @@ export async function applyPipelineEvent(input: {
         fromStageId: null,
         toStageId: toStage.id,
         trigger: writtenTrigger(decision.trigger),
+        metadata: input.metadata,
       })
 
       await recordAudit({
@@ -312,6 +325,7 @@ export async function applyPipelineEvent(input: {
         fromStageId: current.stage_id,
         toStageId: toStage.id,
         trigger: writtenTrigger(decision.trigger),
+        metadata: input.metadata,
       })
 
       return { decision, opportunityId: current.id }
@@ -340,6 +354,7 @@ export async function applyPipelineEvent(input: {
         fromStageId: current.stage_id,
         toStageId: toStage.id,
         trigger: writtenTrigger(decision.trigger),
+        metadata: input.metadata,
       })
 
       await recordAudit({
@@ -374,6 +389,7 @@ export async function applyPipelineEvent(input: {
         toStageId: null,
         trigger: writtenTrigger(triggerForEvent(input.event)),
         refusedReason: decision.reason,
+        metadata: input.metadata,
       })
 
       return { decision, opportunityId: current.id }
@@ -382,6 +398,44 @@ export async function applyPipelineEvent(input: {
     case "noop":
       return { decision, opportunityId: current?.id ?? null }
   }
+}
+
+/**
+ * The reconciler's (Task 6) own idempotency ledger: every `booking_id` /
+ * `payment_id` a PRIOR reconcile pass already stamped into
+ * `opportunity_stage_events.metadata` for a `trigger='reconciler'` row. A
+ * source id present here was already handled (created, advanced, closed, or
+ * correctly refused) by an earlier pass and must not be replayed — this is
+ * what keeps a suppressed-rebooking refusal from being re-written every
+ * single hourly pass for as long as the source row stays inside the scan
+ * window (a `noop` decision writes no row at all, so a source id that only
+ * ever produced `noop` is never recorded here and stays eligible for
+ * re-checking next pass — cheap extra reads, never a duplicate write).
+ *
+ * Flat, single-table read scoped to this business — this repo runs one
+ * pipeline, and booking/payment ids are unique system-wide, so no
+ * `pipeline_id` join is needed to make the match unambiguous.
+ */
+export async function listReconciledSourceIds(
+  businessId: string = SINGLETON_BUSINESS_ID,
+): Promise<{ bookingIds: Set<string>; paymentIds: Set<string> }> {
+  const supabase = getClient()
+
+  const { data, error } = await supabase
+    .from("opportunity_stage_events")
+    .select("metadata")
+    .eq("business_id", businessId)
+    .eq("trigger", "reconciler")
+  if (error) throw error
+
+  const bookingIds = new Set<string>()
+  const paymentIds = new Set<string>()
+  for (const row of (data ?? []) as Row[]) {
+    const metadata = (row.metadata ?? {}) as Record<string, unknown>
+    if (typeof metadata.booking_id === "string") bookingIds.add(metadata.booking_id)
+    if (typeof metadata.payment_id === "string") paymentIds.add(metadata.payment_id)
+  }
+  return { bookingIds, paymentIds }
 }
 
 /**

@@ -113,6 +113,11 @@ describe("the cron catalog and the Vercel trigger map agree", () => {
     expect(VERCEL_ROUTE_JOBS["sequence-tick"]).toBe("/api/admin/internal/sequence-tick")
   })
 
+  it("pipeline-reconcile exists in the catalog and has a Vercel route", () => {
+    expect(CRON_CATALOG.find((c) => c.name === "pipeline-reconcile")).toBeTruthy()
+    expect(VERCEL_ROUTE_JOBS["pipeline-reconcile"]).toBe("/api/admin/internal/pipeline-reconcile")
+  })
+
   it("every VERCEL_ROUTE_JOBS key names a real catalog entry", () => {
     const catalogNames = new Set(CRON_CATALOG.map((c) => c.name))
     for (const jobName of Object.keys(VERCEL_ROUTE_JOBS)) {

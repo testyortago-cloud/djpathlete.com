@@ -32,6 +32,7 @@ export const VERCEL_ROUTE_JOBS: Record<string, string> = {
   "session-pack-renewals": "/api/admin/internal/pack-renewals",
   "sequence-tick":        "/api/admin/internal/sequence-tick",
   "contact-timeline-retention": "/api/admin/internal/contact-timeline-retention",
+  "pipeline-reconcile":   "/api/admin/internal/pipeline-reconcile",
 }
 
 function getRunJobUrl(): string | null {
