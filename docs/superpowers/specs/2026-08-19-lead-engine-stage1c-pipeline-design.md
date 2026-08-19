@@ -82,8 +82,13 @@ report without any signal.
 
 **The guard is specifically about human closes.** A card closed by the *system*
 (auto-Lost on a no-show) is still movable by a later event — if that person turns
-up and pays, it becomes Won. Only `actor_user_id IS NOT NULL` on the closing stage
-event makes a close final.
+up and pays, it becomes Won. Only a close made by a person is final.
+
+Implemented as `opportunities.closed_by_user_id` (nullable; NULL = closed by the
+system), set on the same write that sets `outcome`. This is the denormalised form
+of "the closing `opportunity_stage_events` row had a non-null `actor_user_id`" —
+identical in meaning, but readable without a join on the hot path, since every
+inbound event must consult it.
 
 **The re-booking loophole, closed.** §3.3's unique index only covers *open*
 opportunities, so a contact whom Darren marked Lost could book again and get a
@@ -119,7 +124,8 @@ three days in Consulted.
 `id`, `business_id`, `pipeline_id`, `contact_id` (FK `contacts(id)` ON DELETE
 CASCADE), `stage_id`, `entered_stage_at`, `value_cents` (nullable),
 `currency`, `source_session_id`, `outcome` (nullable `won|lost`),
-`outcome_reason` (nullable), `closed_at`, `created_at`, `updated_at`.
+`outcome_reason` (nullable), `closed_at`, `closed_by_user_id` (nullable — NULL
+means the system closed it; see §2.4), `created_at`, `updated_at`.
 
 - `source_session_id` is **copied from `contacts.first_touch_session_id` at card
   creation** and never updated afterwards. First touch is a property of the deal at
