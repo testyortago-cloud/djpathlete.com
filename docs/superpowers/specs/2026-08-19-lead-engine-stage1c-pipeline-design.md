@@ -84,11 +84,20 @@ report without any signal.
 (auto-Lost on a no-show) is still movable by a later event — if that person turns
 up and pays, it becomes Won. Only a close made by a person is final.
 
-Implemented as `opportunities.closed_by_user_id` (nullable; NULL = closed by the
-system), set on the same write that sets `outcome`. This is the denormalised form
-of "the closing `opportunity_stage_events` row had a non-null `actor_user_id`" —
-identical in meaning, but readable without a join on the hot path, since every
-inbound event must consult it.
+Implemented as `opportunities.closed_trigger`
+(`manual|booking|payment|reconciler`), set on the same write that sets `outcome`.
+A close is final exactly when `closed_trigger = 'manual'`. This is the denormalised
+form of the closing `opportunity_stage_events` row's `trigger`, readable without a
+join on the hot path since every inbound event must consult it.
+
+**Why not `closed_by_user_id`:** the obvious version stores *who* closed it and
+treats non-NULL as "a human did this". But that column needs
+`REFERENCES users(id) ON DELETE SET NULL`, so deleting a departing admin's account
+would silently rewrite their deliberate Lost decisions into system closes and
+un-pin every one of those cards — months later, with no signal. Identity must not
+carry the semantics. `closed_by_user_id` is still stored alongside, nullable and
+purely informational, for "who closed this".
+
 
 **The re-booking loophole, closed.** §3.3's unique index only covers *open*
 opportunities, so a contact whom Darren marked Lost could book again and get a
@@ -124,8 +133,9 @@ three days in Consulted.
 `id`, `business_id`, `pipeline_id`, `contact_id` (FK `contacts(id)` ON DELETE
 CASCADE), `stage_id`, `entered_stage_at`, `value_cents` (nullable),
 `currency`, `source_session_id`, `outcome` (nullable `won|lost`),
-`outcome_reason` (nullable), `closed_at`, `closed_by_user_id` (nullable — NULL
-means the system closed it; see §2.4), `created_at`, `updated_at`.
+`outcome_reason` (nullable), `closed_at`, `closed_trigger` (nullable
+`manual|booking|payment|reconciler` — `manual` means final; see §2.4),
+`closed_by_user_id` (nullable, informational only), `created_at`, `updated_at`.
 
 - `source_session_id` is **copied from `contacts.first_touch_session_id` at card
   creation** and never updated afterwards. First touch is a property of the deal at
