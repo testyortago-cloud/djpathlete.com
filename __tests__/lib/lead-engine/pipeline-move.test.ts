@@ -25,6 +25,7 @@ function openAt(key: string, enteredIso = "2026-08-19T09:00:00Z") {
   return {
     id: "opp-1", stage_id: s.id, stage_position: s.position, stage_kind: s.kind,
     entered_stage_at: enteredIso, outcome: null, closed_trigger: null, closed_at: null,
+    value_cents: null,
   }
 }
 
@@ -33,6 +34,21 @@ function closedAt(outcome: "won" | "lost", trigger: "manual" | "booking" | "paym
   return {
     id: "opp-1", stage_id: s.id, stage_position: s.position, stage_kind: s.kind,
     entered_stage_at: closedIso, outcome, closed_trigger: trigger, closed_at: closedIso,
+    value_cents: null,
+  }
+}
+
+/** A Won opportunity carrying a specific value_cents — the shape refund events amend. */
+function wonAt(
+  valueCents: number | null,
+  closedIso = "2026-08-18T12:00:00Z",
+  trigger: "manual" | "booking" | "payment" | "reconciler" = "payment",
+) {
+  const s = STAGES.find((x) => x.kind === "won")!
+  return {
+    id: "opp-1", stage_id: s.id, stage_position: s.position, stage_kind: s.kind,
+    entered_stage_at: closedIso, outcome: "won" as const, closed_trigger: trigger, closed_at: closedIso,
+    value_cents: valueCents,
   }
 }
 
@@ -135,6 +151,83 @@ describe("decideMove — a human's close is final (spec §2.4)", () => {
       { kind: "booking", status: "scheduled", occurredAt: NOW },
     )
     expect(d.kind).toBe("create")
+  })
+})
+
+describe("decideMove — refunds (spec §14)", () => {
+  it("does nothing when the contact has no opportunity at all", () => {
+    const d = decideMove(ctx({ current: null }), {
+      kind: "refund", amountRefundedCents: 5000, occurredAt: NOW,
+    })
+    expect(d).toEqual({ kind: "noop", reason: "no_won_opportunity" })
+  })
+
+  it("does nothing when the most recent opportunity is Lost, not Won", () => {
+    const d = decideMove(ctx({ current: closedAt("lost", "booking", "2026-08-18T12:00:00Z") }), {
+      kind: "refund", amountRefundedCents: 5000, occurredAt: NOW,
+    })
+    expect(d).toEqual({ kind: "noop", reason: "no_won_opportunity" })
+  })
+
+  it("a full refund zeroes value_cents and reads 'refunded'", () => {
+    const d = decideMove(ctx({ current: wonAt(120000) }), {
+      kind: "refund", amountRefundedCents: 120000, occurredAt: NOW,
+    })
+    expect(d).toEqual({ kind: "amend", valueCents: 0, outcomeReason: "refunded", trigger: "payment" })
+  })
+
+  it("a partial refund subtracts and reads 'partially_refunded'", () => {
+    const d = decideMove(ctx({ current: wonAt(120000) }), {
+      kind: "refund", amountRefundedCents: 10000, occurredAt: NOW,
+    })
+    expect(d).toEqual({ kind: "amend", valueCents: 110000, outcomeReason: "partially_refunded", trigger: "payment" })
+  })
+
+  it("an over-refund clamps at 0 rather than going negative", () => {
+    const d = decideMove(ctx({ current: wonAt(5000) }), {
+      kind: "refund", amountRefundedCents: 999999, occurredAt: NOW,
+    })
+    expect(d).toEqual({ kind: "amend", valueCents: 0, outcomeReason: "refunded", trigger: "payment" })
+  })
+
+  it("treats a null value_cents as zero rather than throwing", () => {
+    const d = decideMove(ctx({ current: wonAt(null) }), {
+      kind: "refund", amountRefundedCents: 100, occurredAt: NOW,
+    })
+    expect(d).toEqual({ kind: "amend", valueCents: 0, outcomeReason: "refunded", trigger: "payment" })
+  })
+
+  // Stripe's charge.amount_refunded is CUMULATIVE per charge — a second,
+  // later partial refund on the same charge reports the running total, not
+  // just the new increment. `previouslyRefundedCents` is the impure caller's
+  // ledger read (highest amount_refunded already recorded for this charge);
+  // decideMove computes the delta itself so the same cumulative figure is
+  // never subtracted twice — the highest-risk failure mode named in the task.
+  describe("idempotency — the delta against previouslyRefundedCents", () => {
+    it("a second delivery reporting the SAME cumulative amount changes nothing", () => {
+      const d = decideMove(ctx({ current: wonAt(110000), previouslyRefundedCents: 10000 }), {
+        kind: "refund", amountRefundedCents: 10000, occurredAt: NOW,
+      })
+      expect(d).toEqual({ kind: "noop", reason: "refund_already_applied" })
+    })
+
+    it("a stale/lower redelivery also changes nothing", () => {
+      const d = decideMove(ctx({ current: wonAt(110000), previouslyRefundedCents: 10000 }), {
+        kind: "refund", amountRefundedCents: 4000, occurredAt: NOW,
+      })
+      expect(d).toEqual({ kind: "noop", reason: "refund_already_applied" })
+    })
+
+    it("a genuinely new partial refund on the same charge applies only the delta", () => {
+      // First refund already took value_cents from 120000 to 110000 (and is
+      // already recorded: previouslyRefundedCents=10000). A second, later
+      // partial refund brings the charge's cumulative amount_refunded to
+      // 25000 — only the NEW 15000 must come off, not the full 25000 again.
+      const d = decideMove(ctx({ current: wonAt(110000), previouslyRefundedCents: 10000 }), {
+        kind: "refund", amountRefundedCents: 25000, occurredAt: NOW,
+      })
+      expect(d).toEqual({ kind: "amend", valueCents: 95000, outcomeReason: "partially_refunded", trigger: "payment" })
+    })
   })
 })
 

@@ -41,22 +41,46 @@ export type OpportunityState = {
   outcome: "won" | "lost" | null
   closed_trigger: MoveTrigger | null
   closed_at: string | null
+  value_cents: number | null
 }
 
 export type MoveContext = {
   now: Date
   stages: StageRow[]
   current: OpportunityState | null
+  /**
+   * Highest `amount_refunded` (Stripe cents) the impure caller has already
+   * recorded against the charge behind an incoming `refund` event — read
+   * from the `opportunity_stage_events` metadata ledger. Ignored for every
+   * other event kind.
+   *
+   * Stripe's `charge.amount_refunded` is CUMULATIVE per charge: a second,
+   * later partial refund on the same charge reports the running total, not
+   * just the new increment. Without this baseline, re-applying that
+   * cumulative figure a second time would double-subtract cents a prior
+   * delivery already took off — the highest-risk failure mode for refunds
+   * (spec §14): it silently understates revenue. Defaults to 0 (no refund
+   * recorded yet for this charge).
+   */
+  previouslyRefundedCents?: number
 }
 
 export type PipelineEvent =
   | { kind: "booking"; status: "scheduled" | "completed" | "cancelled" | "no_show"; occurredAt: Date }
   | { kind: "payment"; amountCents: number; currency: string; occurredAt: Date }
+  // Spec §14: a refund reopens nothing — the card stays Won. `amountRefundedCents`
+  // is Stripe's `charge.amount_refunded` verbatim (the cumulative total for the
+  // charge), not an incremental delta; `decideMove` computes the delta itself
+  // against `MoveContext.previouslyRefundedCents`.
+  | { kind: "refund"; amountRefundedCents: number; occurredAt: Date }
 
 export type MoveDecision =
   | { kind: "create"; toStageKey: string; trigger: MoveTrigger; outcome?: "won" | "lost"; valueCents?: number; currency?: string; reason?: string }
   | { kind: "advance"; toStageKey: string; trigger: MoveTrigger }
   | { kind: "close"; outcome: "won" | "lost"; toStageKey: string; reason: string; trigger: MoveTrigger; valueCents?: number; currency?: string }
+  // No stage change — the card stays exactly where it is (Won). Only
+  // value_cents/outcome_reason are amended. Spec §14.
+  | { kind: "amend"; valueCents: number; outcomeReason: "refunded" | "partially_refunded"; trigger: MoveTrigger }
   | { kind: "refuse"; reason: string }
   | { kind: "noop"; reason: string }
 
@@ -117,6 +141,30 @@ export function decideMove(ctx: MoveContext, event: PipelineEvent): MoveDecision
       kind: "close", outcome: "won", toStageKey: won.key, reason: "payment_received",
       trigger: "payment", valueCents: event.amountCents, currency: event.currency,
     }
+  }
+
+  if (event.kind === "refund") {
+    // A refund reopens nothing (spec §14) — it only ever amends a card that
+    // is ALREADY Won. This is deliberately not the same "current" resolution
+    // as booking/payment events: the impure caller looks up the contact's
+    // most recent WON opportunity specifically, not whatever is merely most
+    // recent (which could be a newer open card from a since-suppressed
+    // re-booking window having lapsed).
+    if (!current || current.outcome !== "won") return { kind: "noop", reason: "no_won_opportunity" }
+
+    const alreadyRefunded = ctx.previouslyRefundedCents ?? 0
+    const delta = event.amountRefundedCents - alreadyRefunded
+    // Idempotency: a redelivery of the same webhook event reports the same
+    // (or, if stale, a lower) cumulative amount_refunded — nothing new came
+    // back since the last delivery this app already applied. Subtracting
+    // again here is exactly the double-subtract bug this guard exists to
+    // prevent.
+    if (delta <= 0) return { kind: "noop", reason: "refund_already_applied" }
+
+    const priorValue = current.value_cents ?? 0
+    const valueCents = Math.max(0, priorValue - delta)
+    const outcomeReason = valueCents === 0 ? "refunded" : "partially_refunded"
+    return { kind: "amend", valueCents, outcomeReason, trigger: "payment" }
   }
 
   // --- booking ---

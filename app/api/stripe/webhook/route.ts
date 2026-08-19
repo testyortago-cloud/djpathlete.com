@@ -283,6 +283,37 @@ export async function POST(request: Request) {
           } catch (err) {
             console.error("[webhook] session pack refund handling failed:", err)
           }
+
+          // Lead Engine (spec §14): a refund reopens nothing — the Won card
+          // stays Won — but its value is corrected so §7's campaign-to-revenue
+          // report self-heals instead of overstating what this deal actually
+          // earned. Contact resolves off the payment row this block already
+          // looked up (same "one resolution, one consumer" shape as the
+          // checkout.session.completed hook above), gated on `payment`
+          // existing since there is nothing to resolve a contact from
+          // otherwise. Same never-fail discipline as every other pipeline
+          // hook on this route: never fail the webhook to fix a reporting
+          // number, and Stripe fires this event for both full AND partial
+          // refunds, so this must run unconditionally, not only on a full
+          // refund.
+          if (payment) {
+            try {
+              const contactId = await findContactByIdentifiers({ userId: payment.user_id, email: null })
+              if (contactId) {
+                await applyPipelineEvent({
+                  contactId,
+                  event: {
+                    kind: "refund",
+                    amountRefundedCents: charge.amount_refunded,
+                    occurredAt: new Date(),
+                  },
+                  metadata: { stripe_charge_id: charge.id, amount_refunded: charge.amount_refunded },
+                })
+              }
+            } catch (err) {
+              console.error("[stripe-webhook] refund pipeline hook failed", (err as Error).message)
+            }
+          }
         }
 
         break

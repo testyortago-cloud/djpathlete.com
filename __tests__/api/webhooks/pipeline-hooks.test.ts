@@ -266,6 +266,90 @@ describe("Stripe webhook — pipeline", () => {
       metadata: { stripe_session_id: "cs_test_1" },
     })
   })
+
+  // ─── charge.refunded — pipeline (spec §14) ───────────────────────────────
+  //
+  // A refund reopens nothing — the Won card stays Won — but its value_cents
+  // is corrected so §7's campaign-to-revenue report self-heals. What
+  // decideMove actually computes (clamp, full vs partial reason,
+  // idempotency) is covered by __tests__/lib/lead-engine/pipeline-move.test.ts
+  // and __tests__/db/pipeline.test.ts; this file only owns the wiring: that
+  // the webhook resolves a contact off the refunded payment and hands
+  // applyPipelineEvent the right event/metadata shape.
+  describe("charge.refunded — pipeline (spec §14)", () => {
+    function chargeRefundedEvent(overrides: Record<string, any> = {}) {
+      return {
+        type: "charge.refunded",
+        data: {
+          object: {
+            id: "ch_test_1",
+            object: "charge",
+            payment_intent: "pi_test_refund_1",
+            amount_refunded: 10000,
+            ...overrides,
+          },
+        },
+      }
+    }
+
+    it("amends the Won card, resolving the contact from the payment's user_id", async () => {
+      getPaymentByStripeIdMock.mockResolvedValueOnce({ id: "pay-1", user_id: "user-1" })
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-refund-1")
+      verifyMock.mockReturnValueOnce(chargeRefundedEvent({ amount_refunded: 15000 }))
+      vi.spyOn(console, "error").mockImplementation(() => {})
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeStripeReq())
+
+      expect(res.status).toBe(200)
+      expect(findContactByIdentifiersMock).toHaveBeenCalledWith({ userId: "user-1", email: null })
+      expect(applyPipelineEventMock).toHaveBeenCalledWith({
+        contactId: "contact-refund-1",
+        event: { kind: "refund", amountRefundedCents: 15000, occurredAt: expect.any(Date) },
+        metadata: { stripe_charge_id: "ch_test_1", amount_refunded: 15000 },
+      })
+    })
+
+    it("does not call applyPipelineEvent when no payment resolves for the charge", async () => {
+      getPaymentByStripeIdMock.mockResolvedValueOnce(null)
+      verifyMock.mockReturnValueOnce(chargeRefundedEvent())
+      vi.spyOn(console, "error").mockImplementation(() => {})
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeStripeReq())
+
+      expect(res.status).toBe(200)
+      expect(applyPipelineEventMock).not.toHaveBeenCalled()
+    })
+
+    it("does not call applyPipelineEvent when no contact resolves from the payment", async () => {
+      getPaymentByStripeIdMock.mockResolvedValueOnce({ id: "pay-1", user_id: null })
+      findContactByIdentifiersMock.mockResolvedValueOnce(null)
+      verifyMock.mockReturnValueOnce(chargeRefundedEvent())
+      vi.spyOn(console, "error").mockImplementation(() => {})
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeStripeReq())
+
+      expect(res.status).toBe(200)
+      expect(applyPipelineEventMock).not.toHaveBeenCalled()
+    })
+
+    it("does not fail the webhook when applyPipelineEvent throws for a refund", async () => {
+      getPaymentByStripeIdMock.mockResolvedValueOnce({ id: "pay-1", user_id: "user-1" })
+      findContactByIdentifiersMock.mockResolvedValueOnce("contact-refund-2")
+      applyPipelineEventMock.mockRejectedValueOnce(new Error("board exploded"))
+      verifyMock.mockReturnValueOnce(chargeRefundedEvent())
+      const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeStripeReq())
+
+      expect(res.status).toBe(200)
+      expect(consoleErrorSpy).toHaveBeenCalled()
+      consoleErrorSpy.mockRestore()
+    })
+  })
 })
 
 // ─── GHL booking webhook ──────────────────────────────────────────────────────

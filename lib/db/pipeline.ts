@@ -143,7 +143,7 @@ export async function readMostRecentOpportunity(
 
   const { data, error } = await supabase
     .from("opportunities")
-    .select("id, stage_id, entered_stage_at, outcome, closed_trigger, closed_at")
+    .select("id, stage_id, entered_stage_at, outcome, closed_trigger, closed_at, value_cents")
     .eq("business_id", businessId)
     .eq("pipeline_id", pipelineId)
     .eq("contact_id", contactId)
@@ -168,7 +168,108 @@ export async function readMostRecentOpportunity(
     outcome: row.outcome ?? null,
     closed_trigger: row.closed_trigger ?? null,
     closed_at: row.closed_at ?? null,
+    value_cents: row.value_cents ?? null,
   }
+}
+
+/**
+ * The contact's most recent WON opportunity on this board — used only by the
+ * refund path (spec §14), never by booking/payment events.
+ *
+ * Deliberately NOT the same resolution as `readMostRecentOpportunity`, which
+ * prefers an OPEN card over a closed one regardless of outcome: a refund
+ * must find the Won card specifically, even when a newer non-Won card
+ * exists for the same contact (e.g. a re-booking after the 30-day
+ * suppression window lapsed). "Most recent" is by `closed_at` — when the
+ * card became Won — not `created_at`.
+ *
+ * Returns `null` when the contact has no Won opportunity on this board.
+ * That is a real answer, not a stand-in for a failed read — every Supabase
+ * error here is thrown, not swallowed.
+ *
+ * Stated limitation carried from the spec: a refund only ever carries a
+ * `payment_intent`, not the checkout session the Won card was created from,
+ * so a contact with two Won deals gets their MOST RECENT one amended, which
+ * may be the wrong one. Accepted rather than solved — see spec §14.
+ */
+export async function readMostRecentWonOpportunity(
+  contactId: string,
+  pipelineId: string,
+  stages: StageRow[],
+  businessId: string = SINGLETON_BUSINESS_ID,
+): Promise<OpportunityState | null> {
+  const supabase = getClient()
+
+  const { data, error } = await supabase
+    .from("opportunities")
+    .select("id, stage_id, entered_stage_at, outcome, closed_trigger, closed_at, value_cents")
+    .eq("business_id", businessId)
+    .eq("pipeline_id", pipelineId)
+    .eq("contact_id", contactId)
+    .eq("outcome", "won")
+    .order("closed_at", { ascending: false })
+  if (error) throw error
+
+  const rows = (data ?? []) as Row[]
+  const row = rows[0]
+  if (!row) return null
+
+  const stage = stages.find((s) => s.id === row.stage_id)
+  if (!stage) {
+    throw new Error(`opportunity ${row.id} references stage ${row.stage_id}, which is not on pipeline ${pipelineId}`)
+  }
+
+  return {
+    id: row.id,
+    stage_id: row.stage_id,
+    stage_position: stage.position,
+    stage_kind: stage.kind,
+    entered_stage_at: row.entered_stage_at,
+    outcome: row.outcome ?? null,
+    closed_trigger: row.closed_trigger ?? null,
+    closed_at: row.closed_at ?? null,
+    value_cents: row.value_cents ?? null,
+  }
+}
+
+/**
+ * The highest `amount_refunded` (Stripe cents) this app has already recorded
+ * against a given Stripe charge — read back from the `opportunity_stage_events`
+ * metadata ledger. Same "read `metadata` back and derive ledger state in JS"
+ * pattern as `hasMatchingStageEventMetadata` / `listReconciledSourceIds`
+ * above; not a second idempotency mechanism.
+ *
+ * Stripe's `charge.amount_refunded` is CUMULATIVE per charge: a second,
+ * later partial refund on the same charge reports the running total, not
+ * just the new increment. `applyPipelineEvent` hands this baseline to
+ * `decideMove`, which computes the delta still owed to the card — never
+ * re-subtracting cents a prior delivery already applied. This is the
+ * highest-risk part of refund handling: getting it wrong silently
+ * understates revenue.
+ *
+ * Unbounded by design, same rationale as `hasMatchingStageEventMetadata`:
+ * refunds are a rare path, so a table-wide scan costs nothing a bounded
+ * window would meaningfully save.
+ */
+export async function highestRecordedRefundAmount(
+  chargeId: string,
+  businessId: string = SINGLETON_BUSINESS_ID,
+): Promise<number> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("opportunity_stage_events")
+    .select("metadata")
+    .eq("business_id", businessId)
+  if (error) throw error
+
+  let highest = 0
+  for (const row of (data ?? []) as Row[]) {
+    const metadata = (row.metadata ?? {}) as Record<string, unknown>
+    if (metadata.stripe_charge_id === chargeId && typeof metadata.amount_refunded === "number") {
+      if (metadata.amount_refunded > highest) highest = metadata.amount_refunded
+    }
+  }
+  return highest
 }
 
 function findStage(stages: StageRow[], key: string): StageRow {
@@ -182,11 +283,13 @@ function findStage(stages: StageRow[], key: string): StageRow {
  * suppressed move never got far enough to have a `toStageKey`. So the
  * `trigger` column on the stage event it still must record (spec §2.4 — a
  * refusal is visible, never silently dropped) has to come from the
- * INCOMING event, not the decision. Payment events refuse as `payment`,
- * every booking status refuses as `booking`.
+ * INCOMING event, not the decision. Payment and refund events refuse as
+ * `payment` (both are Stripe-driven; `opportunity_stage_events.trigger`'s
+ * CHECK constraint has no separate `refund` value — see 00219), every
+ * booking status refuses as `booking`.
  */
 function triggerForEvent(event: PipelineEvent): MoveTrigger {
-  return event.kind === "payment" ? "payment" : "booking"
+  return event.kind === "booking" ? "booking" : "payment"
 }
 
 /**
@@ -284,10 +387,31 @@ export async function applyPipelineEvent(input: {
   const supabase = getClient()
 
   const { pipelineId, stages } = await resolvePipeline(pipelineKey, businessId)
-  const current = await readMostRecentOpportunity(input.contactId, pipelineId, stages, businessId)
+
+  const isRefund = input.event.kind === "refund"
+
+  // Refunds resolve `current` differently from every other event: they need
+  // the contact's most recent WON opportunity specifically (spec §14), not
+  // whatever `readMostRecentOpportunity` would prefer (an open card, if one
+  // exists, even a newer one from an unrelated re-booking).
+  const current = isRefund
+    ? await readMostRecentWonOpportunity(input.contactId, pipelineId, stages, businessId)
+    : await readMostRecentOpportunity(input.contactId, pipelineId, stages, businessId)
+
+  // Stripe's `charge.amount_refunded` is cumulative per charge — read back
+  // how much of it this app has already applied so `decideMove` can compute
+  // the delta rather than double-subtracting a prior delivery's cents (the
+  // highest-risk failure mode here). Keyed on `metadata.stripe_charge_id`,
+  // opt-in like the create-with-outcome duplicate check above: no charge id,
+  // no baseline.
+  let previouslyRefundedCents: number | undefined
+  if (isRefund) {
+    const chargeId = typeof input.metadata?.stripe_charge_id === "string" ? input.metadata.stripe_charge_id : null
+    previouslyRefundedCents = chargeId ? await highestRecordedRefundAmount(chargeId, businessId) : 0
+  }
 
   const now = new Date()
-  const decision = decideMove({ now, stages, current }, input.event)
+  const decision = decideMove({ now, stages, current, previouslyRefundedCents }, input.event)
 
   const writtenTrigger = (decisionTrigger: MoveTrigger): string =>
     source === "reconciler" ? "reconciler" : decisionTrigger
@@ -445,6 +569,39 @@ export async function applyPipelineEvent(input: {
           trigger: decision.trigger,
           source,
         },
+      })
+
+      return { decision, opportunityId: current.id }
+    }
+
+    case "amend": {
+      // Spec §14 — a refund reopens nothing. Only value_cents/outcome_reason
+      // change; stage_id, outcome, closed_at, closed_trigger are untouched,
+      // so the card stays exactly where it is (Won).
+      if (!current) throw new Error("decideMove returned 'amend' with no current opportunity")
+
+      const { error: updateErr } = await supabase
+        .from("opportunities")
+        .update({
+          value_cents: decision.valueCents,
+          outcome_reason: decision.outcomeReason,
+          updated_at: now.toISOString(),
+        })
+        .eq("id", current.id)
+      if (updateErr) throw updateErr
+
+      // Recorded so an amended value is never a silent edit (task
+      // requirement) — from_stage_id/to_stage_id both name the Won stage
+      // since no stage change happened, and this same row is what
+      // `highestRecordedRefundAmount` reads back on the next delivery to
+      // compute the delta.
+      await insertStageEvent(supabase, {
+        businessId,
+        opportunityId: current.id,
+        fromStageId: current.stage_id,
+        toStageId: current.stage_id,
+        trigger: writtenTrigger(decision.trigger),
+        metadata: input.metadata,
       })
 
       return { decision, opportunityId: current.id }

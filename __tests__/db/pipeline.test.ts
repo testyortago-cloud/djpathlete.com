@@ -163,6 +163,7 @@ import {
   readBoard,
   resolvePipeline,
   readMostRecentOpportunity,
+  readMostRecentWonOpportunity,
   PipelineNotConfiguredError,
   DEFAULT_PIPELINE_KEY,
 } from "@/lib/db/pipeline"
@@ -372,6 +373,70 @@ describe("readMostRecentOpportunity", () => {
     const current = await readMostRecentOpportunity("c-1", "pipe-1", stages)
 
     expect(current?.id).toBe("opp-newer-won")
+  })
+})
+
+describe("readMostRecentWonOpportunity", () => {
+  it("returns null when the contact has no Won opportunity", async () => {
+    seedBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+    const { stages } = await resolvePipeline("coaching")
+    const won = await readMostRecentWonOpportunity("c-1", "pipe-1", stages)
+
+    expect(won).toBeNull()
+  })
+
+  it("finds the Won opportunity even when a newer non-Won card exists", async () => {
+    seedBoard()
+    seedContact("c-1")
+
+    seedOpportunity("opp-won", "c-1", {
+      stage_id: "stage-won",
+      outcome: "won",
+      value_cents: 90000,
+      closed_at: new Date(Date.now() - 5 * DAY_MS).toISOString(),
+      closed_trigger: "payment",
+    })
+    // A newer open card (e.g. a re-booking after the suppression window
+    // lapsed) — readMostRecentOpportunity would prefer THIS one, but a
+    // refund must still find the Won card specifically.
+    seedOpportunity("opp-new-open", "c-1", {
+      stage_id: "stage-consult-booked",
+      created_at: new Date().toISOString(),
+    })
+
+    const { stages } = await resolvePipeline("coaching")
+    const won = await readMostRecentWonOpportunity("c-1", "pipe-1", stages)
+
+    expect(won?.id).toBe("opp-won")
+    expect(won?.value_cents).toBe(90000)
+  })
+
+  it("picks the more recently closed of two Won opportunities", async () => {
+    seedBoard()
+    seedContact("c-1")
+
+    seedOpportunity("opp-won-older", "c-1", {
+      stage_id: "stage-won",
+      outcome: "won",
+      value_cents: 50000,
+      closed_at: new Date(Date.now() - 20 * DAY_MS).toISOString(),
+      closed_trigger: "payment",
+    })
+    seedOpportunity("opp-won-newer", "c-1", {
+      stage_id: "stage-won",
+      outcome: "won",
+      value_cents: 70000,
+      closed_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+      closed_trigger: "payment",
+    })
+
+    const { stages } = await resolvePipeline("coaching")
+    const won = await readMostRecentWonOpportunity("c-1", "pipe-1", stages)
+
+    expect(won?.id).toBe("opp-won-newer")
   })
 })
 
@@ -666,6 +731,175 @@ describe("applyPipelineEvent", () => {
       })
 
       expect(stageEventsFor(opportunityId as string)[0].trigger).toBe("booking")
+    })
+  })
+
+  // Spec §14 — a refund reopens nothing but corrects value_cents so the
+  // campaign-to-revenue report (§7) self-heals instead of overstating what a
+  // refunded deal actually earned.
+  describe("refunds (spec §14)", () => {
+    it("a full refund zeroes value_cents, sets outcome_reason='refunded', and does not move the stage", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 120000,
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+      })
+
+      const { decision, opportunityId } = await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 120000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_full_1", amount_refunded: 120000 },
+      })
+
+      expect(decision).toMatchObject({ kind: "amend", valueCents: 0, outcomeReason: "refunded" })
+      expect(opportunityId).toBe("opp-1")
+      const row = store.opportunities[0]
+      expect(row.value_cents).toBe(0)
+      expect(row.outcome_reason).toBe("refunded")
+      expect(row.outcome).toBe("won") // card stays Won — refund reopens nothing
+      expect(row.stage_id).toBe("stage-won") // no stage change
+
+      const events = stageEventsFor("opp-1")
+      expect(events).toHaveLength(1)
+      expect(events[0].from_stage_id).toBe("stage-won")
+      expect(events[0].to_stage_id).toBe("stage-won")
+      expect(events[0].metadata).toMatchObject({ stripe_charge_id: "ch_full_1", amount_refunded: 120000 })
+    })
+
+    it("a partial refund subtracts and sets outcome_reason='partially_refunded'", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 120000,
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+      })
+
+      const { decision } = await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 10000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_partial_1", amount_refunded: 10000 },
+      })
+
+      expect(decision).toMatchObject({ kind: "amend", valueCents: 110000, outcomeReason: "partially_refunded" })
+      const row = store.opportunities[0]
+      expect(row.value_cents).toBe(110000)
+      expect(row.outcome_reason).toBe("partially_refunded")
+      expect(row.outcome).toBe("won")
+    })
+
+    it("an over-refund clamps value_cents at 0 rather than going negative", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 5000,
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+      })
+
+      const { decision } = await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 999999, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_over_1", amount_refunded: 999999 },
+      })
+
+      expect(decision).toMatchObject({ kind: "amend", valueCents: 0, outcomeReason: "refunded" })
+      expect(store.opportunities[0].value_cents).toBe(0)
+    })
+
+    it("a refund for a contact with no Won card does nothing and does not throw", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" }) // open, not Won
+
+      const { decision, opportunityId } = await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 5000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_nowon_1", amount_refunded: 5000 },
+      })
+
+      expect(decision).toEqual({ kind: "noop", reason: "no_won_opportunity" })
+      expect(opportunityId).toBeNull()
+      // The open card was left completely alone.
+      expect(store.opportunities[0].value_cents).toBeNull()
+      expect(stageEventsFor("opp-1")).toHaveLength(0)
+    })
+
+    // Highest-risk case: Stripe delivers at-least-once. A second delivery of
+    // the SAME refund (same charge, same cumulative amount_refunded) must
+    // not subtract twice.
+    it("a second delivery of the same refund changes nothing (idempotent)", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 120000,
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+      })
+
+      const first = await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 10000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_dup_1", amount_refunded: 10000 },
+      })
+      expect(first.decision.kind).toBe("amend")
+      expect(store.opportunities[0].value_cents).toBe(110000)
+
+      // Stripe retries the identical webhook delivery.
+      const second = await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 10000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_dup_1", amount_refunded: 10000 },
+      })
+
+      expect(second.decision).toEqual({ kind: "noop", reason: "refund_already_applied" })
+      expect(store.opportunities[0].value_cents).toBe(110000) // unchanged — not 100000
+      expect(stageEventsFor("opp-1")).toHaveLength(1) // no second event written
+    })
+
+    // A genuinely NEW partial refund on the same charge (Stripe's
+    // amount_refunded is cumulative) must apply only the delta on top of
+    // what a prior delivery already recorded.
+    it("a second, genuinely new partial refund on the same charge applies only the delta", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 120000,
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+      })
+
+      // First partial refund: 10000 off.
+      await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 10000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_accum_1", amount_refunded: 10000 },
+      })
+      expect(store.opportunities[0].value_cents).toBe(110000)
+
+      // A later, additional partial refund on the SAME charge — Stripe now
+      // reports the cumulative total (25000), not just the new increment.
+      const { decision } = await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 25000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_accum_1", amount_refunded: 25000 },
+      })
+
+      expect(decision).toMatchObject({ kind: "amend", valueCents: 95000, outcomeReason: "partially_refunded" })
+      expect(store.opportunities[0].value_cents).toBe(95000) // 120000 - 25000, NOT 120000 - 10000 - 25000
+      expect(stageEventsFor("opp-1")).toHaveLength(2)
     })
   })
 })
