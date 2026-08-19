@@ -339,12 +339,35 @@ introduced also nets to zero. Normalise line/column out of both error lists and
 1. **Consult booking source.** All four moves depend on the GHL booking webhook,
    which stays live until switch-over. If the Athlete Quiz replacement changes how
    consults are booked, §2.2's first two arrows need re-pointing.
-2. **Refunds.** `payments.status` supports `refunded`, and a refunded Won card
-   overstates revenue. Proposed: a refund reopens nothing but sets
-   `outcome_reason='refunded'` and zeroes `value_cents`, so the campaign report
-   self-corrects. Needs Darren's confirmation that this matches how he thinks about
-   a refunded sale.
-3. **The 30-day re-booking suppression window** (§2.4). Chosen as a default so the
-   design is implementable without blocking, not because 30 days is special. Too
-   short and a lead Darren ruled out reappears; too long and a genuine new enquiry
-   is swallowed silently. Confirm before build, since it is a one-line constant.
+2. ~~**Refunds.**~~ **RESOLVED 2026-08-19 — Darren approved.** See §14.
+3. ~~**The 30-day re-booking suppression window**~~ **RESOLVED 2026-08-19 —
+   Darren confirmed 30 days.** `REBOOKING_SUPPRESSION_DAYS = 30` stands as built;
+   no change required.
+
+## 14. Refunds (resolved)
+
+A refund **reopens nothing**. The card stays Won — the deal did happen — but its
+contribution to revenue is corrected so the campaign report self-heals.
+
+On `charge.refunded`, resolve the contact from the refunded payment and amend
+their most recent Won opportunity:
+
+- `value_cents := max(0, value_cents - amount_refunded)`
+- `outcome_reason := 'refunded'` when the result reaches 0, otherwise
+  `'partially_refunded'`
+
+**Why subtract rather than zero.** The approved shape was "zero it", and for a
+full refund subtraction gives exactly that. But Stripe fires `charge.refunded`
+for *partial* refunds too, and zeroing a $1,200 deal because $100 came back would
+understate revenue as badly as ignoring the refund overstates it. Subtraction is
+the same decision, correct in both cases.
+
+**Stated limitation.** The link from refund to card is contact + recency, because
+a refund carries a `payment_intent`, not the checkout session id the Won card was
+created from. A contact with two Won deals gets their most recent one amended,
+which may be the wrong one. Accepted rather than solved: correcting it means
+threading the payment intent onto the opportunity at creation, which is more
+schema than a rare case earns. Revisit if it is ever observed.
+
+Refund handling writes through the same `applyPipelineEvent` path and records an
+`opportunity_stage_events` row, so an amended value is never a silent edit.
