@@ -1,7 +1,8 @@
 -- supabase/tests/merge_contacts_scenarios.sql
 --
 -- Self-contained scenario coverage for `public.merge_contacts`
--- (supabase/migrations/00217_lead_engine_sequence_functions.sql).
+-- (supabase/migrations/00217_lead_engine_sequence_functions.sql, replaced
+-- wholesale by supabase/migrations/00220_lead_engine_pipeline_merge.sql).
 --
 -- WHY THIS IS SQL, NOT A VITEST TEST: mergeContacts() in lib/db/contacts.ts
 -- (Task 10) is now a single opaque `.rpc("merge_contacts", …)` call — the
@@ -39,9 +40,28 @@
 -- Task 1's report already verified both live, with before/after row counts
 -- and a re-pointed contact_consents row respectively.)
 --
+-- Scenarios 7-12 were added by Stage 1c Task 2, covering the sixth cascading
+-- child (opportunities) and the first_touch_session_id "earliest wins" rule:
+--   7. Loser has an open opportunity, survivor has none -> the survivor owns
+--      it afterward, still open.
+--   8. Both have an open opportunity in the SAME pipeline, loser's stage is
+--      further along -> the SURVIVOR's card is closed 'lost' /
+--      'merged_into_survivor' / closed_trigger 'merge', and the loser's card
+--      survives, re-pointed to the survivor. This is the assertion that
+--      fails if someone "simplifies" the contested block to always keep the
+--      survivor's card (see the mutation record in the Task 2 report).
+--   9. Survivor's first_touch_session_id is NULL, loser's is set -> survivor
+--      takes the loser's.
+--  10. Both set, loser's marketing_attribution row is older -> survivor takes
+--      the loser's.
+--  11. Both set, survivor's marketing_attribution row is older -> survivor
+--      keeps its own.
+--  12. Loser's first_touch_session_id is set but has no marketing_attribution
+--      row -> falls back to contacts.created_at, no crash.
+--
 -- HOW TO RUN (against the throwaway local cluster — see CONTEXT.md):
 --   export PATH="/opt/homebrew/opt/postgresql@18/bin:$PATH"
---   <pgcheck.sh helper> 00212 00213 00214 00215 00216 00217   # fresh schema
+--   <pgcheck.sh helper> 00212 00213 00214 00215 00216 00217 00218 00219 00220   # fresh schema
 --   psql -h 127.0.0.1 -p 55433 -U postgres -d mcheck \
 --        -v ON_ERROR_STOP=1 -f supabase/tests/merge_contacts_scenarios.sql
 --
@@ -302,6 +322,274 @@ BEGIN
   END IF;
 
   RAISE NOTICE 'SCENARIO 6 PASSED: the further-along run survived, in the other direction too';
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- Scenarios 7-8: opportunities, the sixth cascading child (Stage 1c Task 2).
+-- Both use the seeded 'coaching' pipeline from 00219 (consult_booked = position
+-- 1, consulted = position 2, both kind 'open').
+-- ---------------------------------------------------------------------------
+
+-- Scenario 7: loser has an open opportunity, survivor has none -> the
+-- survivor owns it afterward, and it is still open.
+DO $$
+DECLARE
+  v_business  uuid := '00000000-0000-0000-0000-000000000001';
+  v_pipeline  uuid;
+  v_stage     uuid;
+  v_survivor  uuid;
+  v_loser     uuid;
+  v_opp       uuid;
+  v_result_contact uuid;
+  v_result_outcome text;
+BEGIN
+  SELECT id INTO v_pipeline FROM public.pipelines
+   WHERE business_id = v_business AND key = 'coaching';
+  SELECT id INTO v_stage FROM public.pipeline_stages
+   WHERE pipeline_id = v_pipeline AND key = 'consult_booked';
+
+  INSERT INTO public.contacts (business_id, email)
+    VALUES (v_business, 'scenario7-survivor@example.com') RETURNING id INTO v_survivor;
+  INSERT INTO public.contacts (business_id, phone_e164)
+    VALUES (v_business, '+16175551007') RETURNING id INTO v_loser;
+
+  INSERT INTO public.opportunities (business_id, pipeline_id, contact_id, stage_id)
+    VALUES (v_business, v_pipeline, v_loser, v_stage)
+    RETURNING id INTO v_opp;
+
+  PERFORM public.merge_contacts(v_survivor, v_loser, v_business, 'scenario7_opportunity_no_conflict');
+
+  SELECT contact_id, outcome INTO v_result_contact, v_result_outcome
+    FROM public.opportunities WHERE id = v_opp;
+
+  IF v_result_contact IS DISTINCT FROM v_survivor THEN
+    RAISE EXCEPTION 'SCENARIO 7 FAILED: opportunity.contact_id = %, expected the survivor %',
+      v_result_contact, v_survivor;
+  END IF;
+  IF v_result_outcome IS NOT NULL THEN
+    RAISE EXCEPTION 'SCENARIO 7 FAILED: opportunity.outcome = % (expected still open / NULL)',
+      v_result_outcome;
+  END IF;
+
+  RAISE NOTICE 'SCENARIO 7 PASSED: the survivor owns the loser''s open opportunity, still open';
+END $$;
+
+-- Scenario 8: both have an open opportunity in the SAME pipeline, and the
+-- LOSER's card is further along (higher stage position) -> the SURVIVOR's
+-- card is closed 'lost' / 'merged_into_survivor' / closed_trigger 'merge',
+-- and the loser's card survives, re-pointed to the survivor. Keeping the
+-- survivor's card unconditionally would either violate
+-- opportunities_one_open_per_contact_pipeline on re-point, or (if someone
+-- "simplified" the contested CASE to always return the survivor's card)
+-- silently drop the loser's more-advanced deal.
+DO $$
+DECLARE
+  v_business       uuid := '00000000-0000-0000-0000-000000000001';
+  v_pipeline       uuid;
+  v_stage_behind   uuid;  -- consult_booked, position 1
+  v_stage_ahead    uuid;  -- consulted, position 2
+  v_survivor       uuid;
+  v_loser          uuid;
+  v_survivor_opp   uuid;  -- position 1, expected to be the one closed
+  v_loser_opp      uuid;  -- position 2, expected to survive
+  v_survivor_opp_outcome  text;
+  v_survivor_opp_reason   text;
+  v_survivor_opp_trigger  text;
+  v_loser_opp_contact     uuid;
+  v_loser_opp_outcome     text;
+  v_open_count            int;
+BEGIN
+  SELECT id INTO v_pipeline FROM public.pipelines
+   WHERE business_id = v_business AND key = 'coaching';
+  SELECT id INTO v_stage_behind FROM public.pipeline_stages
+   WHERE pipeline_id = v_pipeline AND key = 'consult_booked';
+  SELECT id INTO v_stage_ahead FROM public.pipeline_stages
+   WHERE pipeline_id = v_pipeline AND key = 'consulted';
+
+  INSERT INTO public.contacts (business_id, email)
+    VALUES (v_business, 'scenario8-survivor@example.com') RETURNING id INTO v_survivor;
+  INSERT INTO public.contacts (business_id, phone_e164)
+    VALUES (v_business, '+16175551008') RETURNING id INTO v_loser;
+
+  INSERT INTO public.opportunities (business_id, pipeline_id, contact_id, stage_id)
+    VALUES (v_business, v_pipeline, v_survivor, v_stage_behind)
+    RETURNING id INTO v_survivor_opp;
+  INSERT INTO public.opportunities (business_id, pipeline_id, contact_id, stage_id)
+    VALUES (v_business, v_pipeline, v_loser, v_stage_ahead)
+    RETURNING id INTO v_loser_opp;
+
+  PERFORM public.merge_contacts(v_survivor, v_loser, v_business, 'scenario8_contested_opportunity');
+
+  SELECT outcome, outcome_reason, closed_trigger
+    INTO v_survivor_opp_outcome, v_survivor_opp_reason, v_survivor_opp_trigger
+    FROM public.opportunities WHERE id = v_survivor_opp;
+  SELECT contact_id, outcome INTO v_loser_opp_contact, v_loser_opp_outcome
+    FROM public.opportunities WHERE id = v_loser_opp;
+
+  IF v_survivor_opp_outcome IS DISTINCT FROM 'lost' THEN
+    RAISE EXCEPTION 'SCENARIO 8 FAILED: survivor''s (less-advanced) opportunity.outcome = %, expected lost',
+      v_survivor_opp_outcome;
+  END IF;
+  IF v_survivor_opp_reason IS DISTINCT FROM 'merged_into_survivor' THEN
+    RAISE EXCEPTION 'SCENARIO 8 FAILED: survivor''s opportunity.outcome_reason = %, expected merged_into_survivor',
+      v_survivor_opp_reason;
+  END IF;
+  IF v_survivor_opp_trigger IS DISTINCT FROM 'merge' THEN
+    RAISE EXCEPTION 'SCENARIO 8 FAILED: survivor''s opportunity.closed_trigger = %, expected merge',
+      v_survivor_opp_trigger;
+  END IF;
+
+  IF v_loser_opp_contact IS DISTINCT FROM v_survivor THEN
+    RAISE EXCEPTION 'SCENARIO 8 FAILED: loser''s (further-along) opportunity.contact_id = %, expected the survivor % (it should survive, re-pointed)',
+      v_loser_opp_contact, v_survivor;
+  END IF;
+  IF v_loser_opp_outcome IS NOT NULL THEN
+    RAISE EXCEPTION 'SCENARIO 8 FAILED: loser''s (further-along) opportunity.outcome = % (expected still open / NULL)',
+      v_loser_opp_outcome;
+  END IF;
+
+  -- Confirms the re-point never collided with opportunities_one_open_per_contact_pipeline.
+  SELECT count(*) INTO v_open_count FROM public.opportunities
+   WHERE contact_id = v_survivor AND pipeline_id = v_pipeline AND outcome IS NULL;
+  IF v_open_count <> 1 THEN
+    RAISE EXCEPTION 'SCENARIO 8 FAILED: expected exactly 1 open opportunity for the survivor in this pipeline, found %',
+      v_open_count;
+  END IF;
+
+  RAISE NOTICE 'SCENARIO 8 PASSED: the further-along card survived, the lagging card was closed as a merge loss';
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- Scenarios 9-12: first_touch_session_id, the earliest-wins rule (Stage 1c
+-- Task 2). This column is the root of campaign-to-revenue reporting, so
+-- keeping the wrong one misattributes every dollar of the contact's revenue.
+-- ---------------------------------------------------------------------------
+
+-- Scenario 9: survivor's first_touch_session_id is NULL, loser's is set ->
+-- survivor takes the loser's, unconditionally (no attribution row needed).
+DO $$
+DECLARE
+  v_business uuid := '00000000-0000-0000-0000-000000000001';
+  v_survivor uuid;
+  v_loser    uuid;
+  v_result   text;
+BEGIN
+  INSERT INTO public.contacts (business_id, email, first_touch_session_id)
+    VALUES (v_business, 'scenario9-survivor@example.com', NULL) RETURNING id INTO v_survivor;
+  INSERT INTO public.contacts (business_id, phone_e164, first_touch_session_id)
+    VALUES (v_business, '+16175551009', 'sess-scenario9-loser') RETURNING id INTO v_loser;
+
+  PERFORM public.merge_contacts(v_survivor, v_loser, v_business, 'scenario9_first_touch_null_survivor');
+
+  SELECT first_touch_session_id INTO v_result FROM public.contacts WHERE id = v_survivor;
+
+  IF v_result IS DISTINCT FROM 'sess-scenario9-loser' THEN
+    RAISE EXCEPTION 'SCENARIO 9 FAILED: survivor.first_touch_session_id = %, expected the loser''s sess-scenario9-loser',
+      v_result;
+  END IF;
+
+  RAISE NOTICE 'SCENARIO 9 PASSED: survivor with no first touch took the loser''s';
+END $$;
+
+-- Scenario 10: both set, the LOSER's marketing_attribution row is older ->
+-- survivor takes the loser's session id.
+DO $$
+DECLARE
+  v_business uuid := '00000000-0000-0000-0000-000000000001';
+  v_survivor uuid;
+  v_loser    uuid;
+  v_result   text;
+BEGIN
+  INSERT INTO public.contacts (business_id, email, first_touch_session_id)
+    VALUES (v_business, 'scenario10-survivor@example.com', 'sess-scenario10-survivor')
+    RETURNING id INTO v_survivor;
+  INSERT INTO public.contacts (business_id, phone_e164, first_touch_session_id)
+    VALUES (v_business, '+16175551010', 'sess-scenario10-loser')
+    RETURNING id INTO v_loser;
+
+  INSERT INTO public.marketing_attribution (session_id, first_seen_at)
+    VALUES ('sess-scenario10-survivor', now() - interval '3 days');
+  INSERT INTO public.marketing_attribution (session_id, first_seen_at)
+    VALUES ('sess-scenario10-loser', now() - interval '30 days');
+
+  PERFORM public.merge_contacts(v_survivor, v_loser, v_business, 'scenario10_loser_touch_older');
+
+  SELECT first_touch_session_id INTO v_result FROM public.contacts WHERE id = v_survivor;
+
+  IF v_result IS DISTINCT FROM 'sess-scenario10-loser' THEN
+    RAISE EXCEPTION 'SCENARIO 10 FAILED: survivor.first_touch_session_id = %, expected the loser''s older sess-scenario10-loser',
+      v_result;
+  END IF;
+
+  RAISE NOTICE 'SCENARIO 10 PASSED: survivor took the loser''s older first touch';
+END $$;
+
+-- Scenario 11: both set, the SURVIVOR's marketing_attribution row is older ->
+-- survivor keeps its own.
+DO $$
+DECLARE
+  v_business uuid := '00000000-0000-0000-0000-000000000001';
+  v_survivor uuid;
+  v_loser    uuid;
+  v_result   text;
+BEGIN
+  INSERT INTO public.contacts (business_id, email, first_touch_session_id)
+    VALUES (v_business, 'scenario11-survivor@example.com', 'sess-scenario11-survivor')
+    RETURNING id INTO v_survivor;
+  INSERT INTO public.contacts (business_id, phone_e164, first_touch_session_id)
+    VALUES (v_business, '+16175551011', 'sess-scenario11-loser')
+    RETURNING id INTO v_loser;
+
+  INSERT INTO public.marketing_attribution (session_id, first_seen_at)
+    VALUES ('sess-scenario11-survivor', now() - interval '90 days');
+  INSERT INTO public.marketing_attribution (session_id, first_seen_at)
+    VALUES ('sess-scenario11-loser', now() - interval '1 day');
+
+  PERFORM public.merge_contacts(v_survivor, v_loser, v_business, 'scenario11_survivor_touch_older');
+
+  SELECT first_touch_session_id INTO v_result FROM public.contacts WHERE id = v_survivor;
+
+  IF v_result IS DISTINCT FROM 'sess-scenario11-survivor' THEN
+    RAISE EXCEPTION 'SCENARIO 11 FAILED: survivor.first_touch_session_id = %, expected it to keep its own older sess-scenario11-survivor',
+      v_result;
+  END IF;
+
+  RAISE NOTICE 'SCENARIO 11 PASSED: survivor with the older first touch kept its own';
+END $$;
+
+-- Scenario 12: loser's first_touch_session_id is set but has NO
+-- marketing_attribution row -> falls back to contacts.created_at, no crash.
+-- The loser's contact is deliberately created far in the past (older than
+-- the survivor's attribution row) so the fallback, not just "did it error",
+-- is what decides the outcome.
+DO $$
+DECLARE
+  v_business uuid := '00000000-0000-0000-0000-000000000001';
+  v_survivor uuid;
+  v_loser    uuid;
+  v_result   text;
+BEGIN
+  INSERT INTO public.contacts (business_id, email, first_touch_session_id)
+    VALUES (v_business, 'scenario12-survivor@example.com', 'sess-scenario12-survivor')
+    RETURNING id INTO v_survivor;
+  -- No marketing_attribution row exists for 'sess-scenario12-loser' at all.
+  INSERT INTO public.contacts (business_id, phone_e164, first_touch_session_id, created_at)
+    VALUES (v_business, '+16175551012', 'sess-scenario12-loser', now() - interval '365 days')
+    RETURNING id INTO v_loser;
+
+  INSERT INTO public.marketing_attribution (session_id, first_seen_at)
+    VALUES ('sess-scenario12-survivor', now() - interval '10 days');
+
+  PERFORM public.merge_contacts(v_survivor, v_loser, v_business, 'scenario12_loser_no_attribution_row');
+
+  SELECT first_touch_session_id INTO v_result FROM public.contacts WHERE id = v_survivor;
+
+  IF v_result IS DISTINCT FROM 'sess-scenario12-loser' THEN
+    RAISE EXCEPTION 'SCENARIO 12 FAILED: survivor.first_touch_session_id = %, expected the loser''s sess-scenario12-loser (fell back to contacts.created_at)',
+      v_result;
+  END IF;
+
+  RAISE NOTICE 'SCENARIO 12 PASSED: missing marketing_attribution row fell back to contacts.created_at without crashing';
 END $$;
 
 ROLLBACK;
