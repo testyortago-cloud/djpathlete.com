@@ -172,6 +172,12 @@ export const AUDIT_ACTIONS = [
   { slug: "shop.product_updated", category: "admin_write", description: "Shop product updated (admin)" },
   { slug: "shop.product_deleted", category: "admin_write", description: "Shop product deleted (admin)" },
 
+  // pipeline — the Lead Engine sales board
+  { slug: "pipeline.opportunity_created", category: "automation", description: "Pipeline card created by an event" },
+  { slug: "pipeline.opportunity_moved", category: "admin_write", description: "Pipeline card moved by an admin" },
+  { slug: "pipeline.opportunity_won", category: "commerce", description: "Pipeline card closed won" },
+  { slug: "pipeline.opportunity_lost", category: "commerce", description: "Pipeline card closed lost" },
+
   // marketing — public / outbound
   { slug: "newsletter.subscribed", category: "marketing", description: "Newsletter subscription created" },
   { slug: "newsletter.unsubscribed", category: "marketing", description: "Newsletter unsubscribe processed" },
