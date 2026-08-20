@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>New Lead Nurture — the three emails, as a lead receives them</title>
+<style>
+  body { margin: 0; padding: 40px 24px; background: #f0f2f5; color: #1f2328;
+         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 26px; margin: 0 0 8px; }
+  .sub { color: #57606a; margin: 0 0 12px; line-height: 1.6; }
+  .provenance { background: #fff8e6; border: 1px solid #e8d8a0; border-radius: 8px;
+                padding: 12px 16px; font-size: 14px; line-height: 1.6; margin: 0 0 36px; }
+  .email { background: #ffffff; border: 1px solid #d0d7de; border-radius: 10px;
+           margin: 0 0 36px; overflow: hidden; }
+  .email-hdr { padding: 16px 20px; border-bottom: 1px solid #d0d7de; }
+  .num { display: inline-block; width: 26px; height: 26px; line-height: 26px; text-align: center;
+         background: #1f6feb; color: #fff; border-radius: 50%; font-weight: 700; margin-right: 8px; }
+  .email-hdr h2 { display: inline; font-size: 18px; margin: 0; }
+  .timing { color: #57606a; font-size: 14px; margin: 6px 0 0 34px; }
+  .files { margin: 6px 0 0 34px; font-size: 13px; }
+  .files a { margin-right: 14px; }
+  img { display: block; width: 100%; height: auto; }
+  .note { font-size: 14px; color: #57606a; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>New Lead Nurture — the three emails</h1>
+  <p class="sub">What a lead receives after submitting a funnel form, now live in production.
+     Each capture's header strip shows the real send metadata; the body below it is the exact
+     rendered email. The layout follows the house email brand from <code>lib/email.ts</code>:
+     the dark Green Azure header band under the Gray Orange accent strip, the letter-spaced
+     Lexend&nbsp;Exa wordmark, Lexend&nbsp;Deca body copy, and the warm footer treatment.</p>
+  <div class="provenance">
+    <strong>How these were produced:</strong> the live <code>sequence_steps</code> and
+    <code>business_settings</code> rows were read from the production database and passed through
+    <code>renderSequenceEmail</code> — the same function the tick runner sends with. The
+    <code>step-*.html</code> / <code>step-*.txt</code> files beside this page are the exact HTML and
+    plain-text parts byte-for-byte; nothing was mocked or re-typed. The lead is a sample
+    ("Alex"), and the unsubscribe link carries a visibly fake <code>PREVIEW-TOKEN</code> so this
+    preview cannot unsubscribe anyone.
+  </div>
+
+  <div class="email">
+    <div class="email-hdr">
+      <span class="num">1</span><h2>Thanks for reaching out about training</h2>
+      <p class="timing">Sent immediately when the lead submits a funnel form. Safe as an immediate
+         send: the existing funnel notification goes to the coach only, so this is the first and
+         only automated email the lead gets at that moment.</p>
+      <p class="files"><a href="step-0.html">exact HTML part</a> <a href="step-0.txt">exact text part</a></p>
+    </div>
+    <img src="step-0.png" alt="Email 1 — Thanks for reaching out about training" />
+  </div>
+
+  <div class="email">
+    <div class="email-hdr">
+      <span class="num">2</span><h2>What working together actually looks like</h2>
+      <p class="timing">Sent 3 days after enrolment (4,320-minute wait step).</p>
+      <p class="files"><a href="step-2.html">exact HTML part</a> <a href="step-2.txt">exact text part</a></p>
+    </div>
+    <img src="step-2.png" alt="Email 2 — What working together actually looks like" />
+  </div>
+
+  <div class="email">
+    <div class="email-hdr">
+      <span class="num">3</span><h2>Still thinking it over?</h2>
+      <p class="timing">Sent 10 days after enrolment (a further 10,080-minute wait step). The
+         sequence then stops — three emails total, no more follow-ups.</p>
+      <p class="files"><a href="step-4.html">exact HTML part</a> <a href="step-4.txt">exact text part</a></p>
+    </div>
+    <img src="step-4.png" alt="Email 3 — Still thinking it over?" />
+  </div>
+
+  <p class="note">Every email carries the CAN-SPAM footer: the DJP Athlete name, the physical
+     address from <code>lib/business-info.ts</code>, and the unsubscribe sentence whose exact
+     wording is also stamped onto the consent row when someone unsubscribes. A real send signs
+     the unsubscribe token per contact. If a lead replies, it goes to
+     <code>darren@darrenjpaul.com</code>. To reword any of these, edit the
+     <code>sequence_steps</code> rows — <code>body_rendered</code> on each sent message records
+     what was actually delivered, so history stays truthful across edits.</p>
+</div>
+</body>
+</html>

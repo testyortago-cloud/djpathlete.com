@@ -151,12 +151,18 @@ export function renderSequenceEmail(args: {
   const bodyParagraphsHtml = body
     .split(/\n{2,}/)
     .filter((para) => para.length > 0)
-    .map((para) => `<p style="margin:0 0 16px; white-space:pre-line;">${escapeHtml(para)}</p>`)
+    .map(
+      (para) =>
+        `<p style="margin:0 0 18px; white-space:pre-line; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">${escapeHtml(para)}</p>`,
+    )
     .join("\n")
 
+  // Header band mirrors the house layout in lib/email.ts (dark #0E3F50 band
+  // under a #C49B7A gradient strip) — the LAYOUT is shared visual identity;
+  // the wordmark itself still comes only from `settings`.
   const headerHtml = settings.logo_url
-    ? `<img src="${escapeHtml(settings.logo_url)}" alt="${escapeHtml(settings.display_name)}" style="max-height:48px; margin-bottom:24px; border:0;" />`
-    : `<p style="margin:0 0 24px; font-weight:600; font-size:16px;">${escapeHtml(settings.display_name)}</p>`
+    ? `<img src="${escapeHtml(settings.logo_url)}" alt="${escapeHtml(settings.display_name)}" style="max-height:48px; border:0; display:block; margin:0 auto;" />`
+    : `<h1 style="margin:0; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#ffffff; letter-spacing:6px; text-transform:uppercase;">${escapeHtml(settings.display_name)}</h1>`
 
   // The footer's identity + unsubscribe lines render unconditionally for a
   // commercial message — a missing postal address is a CAN-SPAM violation, so
@@ -165,11 +171,11 @@ export function renderSequenceEmail(args: {
   // it is not an optional input: it marks the message as an internal operator
   // notification rather than a message to a contact.
   const unsubscribeLineHtml = includeUnsubscribeFooter
-    ? `\n    <p style="margin:0;">${escapeHtml(UNSUBSCRIBE_FOOTER_SENTENCE)} <a href="${escapeHtml(unsubscribeUrl as string)}">Unsubscribe</a></p>`
+    ? `\n    <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:11px; color:#b5b0a8; line-height:1.6;">${escapeHtml(UNSUBSCRIBE_FOOTER_SENTENCE)} <a href="${escapeHtml(unsubscribeUrl as string)}" style="color:#0E3F50; text-decoration:underline;">Unsubscribe</a></p>`
     : ""
   const footerHtml = `
-    <p style="margin:0 0 8px;">${escapeHtml(settings.display_name)}</p>
-    <p style="margin:0 0 8px;">Sent by ${escapeHtml(settings.sender_name)} &middot; ${escapeHtml(settings.postal_address)}</p>${unsubscribeLineHtml}
+    <p style="margin:0 0 6px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:10px; color:#C49B7A; letter-spacing:3px; text-transform:uppercase;">${escapeHtml(settings.display_name)}</p>
+    <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:11px; color:#a09b94; letter-spacing:0.5px;">Sent by ${escapeHtml(settings.sender_name)} &middot; ${escapeHtml(settings.postal_address)}</p>${unsubscribeLineHtml}
   `.trim()
 
   const html = `
@@ -180,19 +186,26 @@ export function renderSequenceEmail(args: {
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>${escapeHtml(subject)}</title>
 </head>
-<body style="margin:0; padding:0; background-color:#f4f4f4; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#222;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f4;">
+<body style="margin:0; padding:0; background-color:#edece8; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color:#5c5750; -webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#edece8;">
     <tr>
-      <td align="center" style="padding:32px 16px;">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; background:#ffffff;">
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; background-color:#ffffff; border-radius:2px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.04), 0 20px 60px rgba(14,63,80,0.06);">
           <tr>
-            <td style="padding:32px 32px 16px;">
+            <td style="height:3px; background:#C49B7A; background-image:linear-gradient(90deg, #C49B7A 0%, #d4b08e 50%, #C49B7A 100%); font-size:0; line-height:0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td align="center" style="background-color:#0E3F50; padding:30px 48px;">
               ${headerHtml}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:40px 48px 24px;">
               ${bodyParagraphsHtml}
             </td>
           </tr>
           <tr>
-            <td style="padding:24px 32px 32px; border-top:1px solid #e5e5e5; font-size:12px; color:#777; line-height:1.6;">
+            <td style="padding:24px 48px 32px; background-color:#faf9f7; border-top:1px solid #edece8;">
               ${footerHtml}
             </td>
           </tr>

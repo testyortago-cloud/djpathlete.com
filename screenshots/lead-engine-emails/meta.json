@@ -1,0 +1,26 @@
+[
+  {
+    "file": "step-0",
+    "position": 0,
+    "daysAfterEnrolment": 0,
+    "subject": "Thanks for reaching out about training",
+    "from": "Darren J. Paul <noreply@darrenjpaul.com>",
+    "replyTo": "darren@darrenjpaul.com"
+  },
+  {
+    "file": "step-2",
+    "position": 2,
+    "daysAfterEnrolment": 3,
+    "subject": "What working together actually looks like",
+    "from": "Darren J. Paul <noreply@darrenjpaul.com>",
+    "replyTo": "darren@darrenjpaul.com"
+  },
+  {
+    "file": "step-4",
+    "position": 4,
+    "daysAfterEnrolment": 10,
+    "subject": "Still thinking it over?",
+    "from": "Darren J. Paul <noreply@darrenjpaul.com>",
+    "replyTo": "darren@darrenjpaul.com"
+  }
+]
