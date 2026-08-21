@@ -102,6 +102,8 @@ const SETTINGS = {
   daily_message_cap: 5,
   postal_address: "123 Main St",
   sms_help_text: "Reply STOP to opt out.",
+  sms_messaging_service_sid: "",
+  sms_sender_phone: "",
 }
 
 function makeRequest(authHeader = AUTH): NextRequest {

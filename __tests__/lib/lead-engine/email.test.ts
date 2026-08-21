@@ -30,6 +30,8 @@ const settingsA: BusinessSettings = {
   daily_message_cap: 3,
   postal_address: "123 Acme Way, Springfield, IL 62704",
   sms_help_text: "Reply STOP to unsubscribe",
+  sms_messaging_service_sid: "",
+  sms_sender_phone: "",
 }
 
 const settingsB: BusinessSettings = {

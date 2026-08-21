@@ -229,6 +229,8 @@ function seedBusinessSettings(overrides: Partial<Row> = {}) {
     daily_message_cap: 1,
     postal_address: "123 Main St",
     sms_help_text: "Reply STOP to opt out.",
+    sms_messaging_service_sid: "",
+    sms_sender_phone: "",
     ...overrides,
   })
 }
