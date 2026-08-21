@@ -24,6 +24,9 @@ import { funnelFormFieldSchema, type FunnelFormField } from "@/lib/funnels/islan
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { recordAudit } from "@/lib/audit/record"
 import { captureContactFromSubmission } from "@/lib/funnels/capture-contact"
+import { recordConsent } from "@/lib/db/contact-consents"
+import { getBusinessSettings } from "@/lib/db/businesses"
+import { renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 
 /** Bots submit instantly; a person cannot read and fill a form this fast. */
 const MIN_ELAPSED_MS = 1500
@@ -49,6 +52,9 @@ const bodySchema = z.object({
   values: z.record(z.string(), z.string().max(2000)),
   website: z.string().optional(),
   elapsedMs: z.number().optional(),
+  // Wire name matches what the checkbox posts (FunnelForm) — see the funnel
+  // form's `sms_consent` FormData field, not a `smsConsent`-style rename.
+  sms_consent: z.boolean().optional().default(false),
 })
 
 export async function POST(request: Request) {
@@ -134,7 +140,7 @@ export async function POST(request: Request) {
 
   // Feeds the contact spine (lead-engine Stage 1a). Never throws and never
   // blocks the visitor's success on it — see lib/funnels/capture-contact.ts.
-  await captureContactFromSubmission({
+  const contactId = await captureContactFromSubmission({
     name,
     email,
     phone,
@@ -143,6 +149,24 @@ export async function POST(request: Request) {
     stepId: parsedBody.stepId,
     payload,
   })
+
+  // ---------------------------------------------------------------------------
+  // SMS consent (Lead Engine Stage 2, Task 6). FIRE AND FORGET, for the same
+  // reason `notifyCoachOfLead` below is: the lead is already captured, and a
+  // consent-row failure must never turn "we have your details" into an error
+  // for someone who has already handed over their phone number. Only fires
+  // when there is a contact to attach the row to and a phone that was
+  // actually captured — an unchecked or absent box writes no row at all.
+  // ---------------------------------------------------------------------------
+  if (contactId && phone && parsedBody.sms_consent === true) {
+    void recordFunnelSmsConsent({
+      contactId,
+      ip: ip === "unknown" ? null : ip,
+      userAgent: request.headers.get("user-agent"),
+    }).catch((error) => {
+      console.error("[funnels/submit] sms consent write failed (the lead was saved):", error)
+    })
+  }
 
   recordAudit({
     action: "funnel.submission_received",
@@ -282,6 +306,38 @@ export async function POST(request: Request) {
       cancelUrl: `${base}/${thisStep.slug}?checkout=cancelled`,
     }
   }
+}
+
+/**
+ * Writes the SMS consent row for a submission whose visitor ticked the
+ * opt-in box next to a phone field.
+ *
+ * The wording is re-rendered HERE, from `business_settings.display_name`
+ * through the exact same `renderSmsConsentWording` the form island used to
+ * show it — never passed through from the client, which cannot be trusted
+ * to relay what it actually rendered, and never a second copy of the
+ * sentence, which could drift from the first. Evidence of consent is what
+ * was shown; re-deriving it from the same inputs is how both sides of that
+ * claim stay provably identical.
+ *
+ * Called fire-and-forget from the caller below — see that call site's
+ * comment for why.
+ */
+async function recordFunnelSmsConsent(input: {
+  contactId: string
+  ip: string | null
+  userAgent: string | null
+}): Promise<void> {
+  const settings = await getBusinessSettings()
+  await recordConsent({
+    contactId: input.contactId,
+    channel: "sms",
+    granted: true,
+    source: "funnel_form",
+    wordingShown: renderSmsConsentWording(settings.display_name),
+    ip: input.ip,
+    userAgent: input.userAgent,
+  })
 }
 
 /**

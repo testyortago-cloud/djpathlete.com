@@ -3,6 +3,8 @@
 
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { renderLegalContent } from "@/lib/legal-content"
+import { getBusinessSettings } from "@/lib/db/businesses"
+import { renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { FunnelForm } from "./FunnelForm"
 import type { FunnelRenderContext } from "./index"
 import type { FunnelFormField } from "@/lib/funnels/islands"
@@ -13,6 +15,8 @@ interface FormIslandProps {
 }
 
 export async function FormIsland({ props, context }: FormIslandProps) {
+  const fields = (props.fields as FunnelFormField[]) ?? []
+
   // THE WAIVER IS FETCHED ONLY FOR A CHECKOUT FORM. Every lead-gen form in the
   // app renders through here too, and a legal_documents read on each of them
   // would be a query bought for nothing.
@@ -23,21 +27,37 @@ export async function FormIsland({ props, context }: FormIslandProps) {
   const waiverDoc = props.successMode === "checkout" ? await getActiveDocument("liability_waiver") : null
   const waiverHtml = waiverDoc?.content ? renderLegalContent(waiverDoc.content) : null
 
+  // THE SMS CONSENT WORDING IS FETCHED ONLY WHEN THE FORM HAS A PHONE FIELD —
+  // same reasoning as the waiver above, a business_settings read bought for
+  // nothing on a form with no phone to text.
+  //
+  // `/go` (the funnel page component) does not load business_settings today,
+  // so this island — already an async server component doing exactly this
+  // kind of "prepare it here, hand the client a rendered prop" work for the
+  // waiver — is the cleanest existing channel: no client fetch, no widening
+  // the page's own data needs. `renderSmsConsentWording` is called with the
+  // EXACT same input (`display_name`) the submit route re-renders from, so
+  // `contact_consents.wording_shown` reproduces what the visitor actually saw.
+  // A settings-read failure must not break the whole form, so it degrades to
+  // no checkbox rather than a broken page.
+  const smsConsentWording = fields.some((field) => field.type === "tel")
+    ? renderSmsConsentWording((await getBusinessSettings().catch(() => null))?.display_name ?? "")
+    : undefined
+
   return (
     <FunnelForm
       funnelId={context.funnelId}
       stepId={context.stepId}
       isPreview={context.isPreview}
       formKey={String(props.formKey ?? "optin")}
-      fields={(props.fields as FunnelFormField[]) ?? []}
+      fields={fields}
       submitLabel={String(props.submitLabel ?? "Submit")}
       successMode={
         props.successMode === "redirect" ? "redirect" : props.successMode === "checkout" ? "checkout" : "message"
       }
       waiverHtml={waiverHtml}
-      successMessage={
-        typeof props.successMessage === "string" ? props.successMessage : "Thanks — you're in."
-      }
+      smsConsentWording={smsConsentWording}
+      successMessage={typeof props.successMessage === "string" ? props.successMessage : "Thanks — you're in."}
       redirectUrl={typeof props.redirectUrl === "string" ? props.redirectUrl : undefined}
       consentText={typeof props.consentText === "string" ? props.consentText : undefined}
       // The paths FunnelForm stamps (`submitLabel`, `fields.0.label`) are
