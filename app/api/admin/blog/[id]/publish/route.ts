@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server"
-import { revalidatePath } from "next/cache"
 import { auth } from "@/lib/auth"
-import { getBlogPostById, updateBlogPost } from "@/lib/db/blog-posts"
-import { createAiJob } from "@/lib/ai-jobs"
-import { submitUrlToIndexNow } from "@/lib/indexnow"
+import { getBlogPostById } from "@/lib/db/blog-posts"
+import { publishBlogPost } from "@/lib/blog/publish-post"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -14,55 +12,8 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     }
 
     const { id } = await params
-    const post = await getBlogPostById(id)
-
-    const updated = await updateBlogPost(id, {
-      status: "published",
-      published_at: post.published_at ?? new Date().toISOString(),
-    })
-
-    // Flip any linked content_calendar row from "in_progress" to "published" so
-    // the SEO agent's outcome tracker sees the lifecycle terminate. The link is
-    // set by blog-generation.ts via content_calendar.reference_id = blogPostId.
-    // Fire-and-forget — the publish still succeeds if this fails.
-    try {
-      const { createServiceRoleClient } = await import("@/lib/supabase")
-      await createServiceRoleClient()
-        .from("content_calendar")
-        .update({ status: "published" })
-        .eq("reference_id", id)
-    } catch (err) {
-      console.error("[Blog publish] content_calendar status flip failed:", err)
-    }
-
-    // Queue an AI-drafted newsletter for admin review (replaces the old plain blast).
-    // Fire-and-forget: if queuing fails, publishing still succeeds.
-    createAiJob({
-      type: "newsletter_from_blog",
-      userId: session.user.id,
-      input: { blog_post_id: id },
-    }).catch((err) => console.error("[Blog] newsletter_from_blog queue failed:", err))
-
-    // Queue SEO enrichment (parallel to newsletter_from_blog). Fire-and-forget.
-    createAiJob({
-      type: "seo_enhance",
-      userId: session.user.id,
-      input: { blog_post_id: id },
-    }).catch((err) => console.error("[Blog] seo_enhance queue failed:", err))
-
-    // Ping IndexNow so Bing/Yandex re-crawl this post immediately. Fire-and-forget.
-    if (updated.slug) {
-      submitUrlToIndexNow(`/blog/${updated.slug}`).catch((err) =>
-        console.error("[Blog] IndexNow submit failed:", err),
-      )
-    }
-
-    // Invalidate the ISR cache so the new post appears on /blog immediately
-    // instead of waiting up to revalidate=60s after the next visitor request.
-    revalidatePath("/blog")
-    if (updated.slug) revalidatePath(`/blog/${updated.slug}`)
-
-    return NextResponse.json(updated)
+    await publishBlogPost({ id, actorId: session.user.id })
+    return NextResponse.json(await getBlogPostById(id))
   } catch (error) {
     console.error("Blog publish error:", error)
     return NextResponse.json({ error: "Failed to publish post" }, { status: 500 })
