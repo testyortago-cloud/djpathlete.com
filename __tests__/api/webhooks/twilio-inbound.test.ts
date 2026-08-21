@@ -294,6 +294,23 @@ describe("POST /api/webhooks/twilio/inbound — STOP", () => {
     expect(store.suppressions[0].reason).toBe("sms_stop")
   })
 
+  it.each(["Stop.", "STOP!"])(
+    "trailing punctuation does not dodge the keyword — %s is still the full STOP motion",
+    async (word) => {
+      const res = await POST(inboundRequest(smsBody(word)))
+
+      expect(res.status).toBe(200)
+      expect(store.suppressions).toHaveLength(1)
+      expect(store.consents).toHaveLength(1)
+      expect(store.consents[0]).toMatchObject({ granted: false, source: "sms_inbound" })
+      // wording_shown still quotes the raw body, punctuation and all — only
+      // the MATCH strips trailing punctuation, never the evidence.
+      expect(store.consents[0].wording_shown).toBe(word)
+      expect(store.sequenceRuns.find((r) => r.id === "run-1")?.status).toBe("exited")
+      expect(store.timeline[0].kind).toBe("sms_stop_received")
+    },
+  )
+
   it('"STOP IT" (extra words) is NOT a STOP keyword — it falls through to the anything-else path', async () => {
     const res = await POST(inboundRequest(smsBody("STOP IT")))
 
@@ -330,6 +347,51 @@ describe("POST /api/webhooks/twilio/inbound — STOP", () => {
     // Consent is an append-only log, like the unsubscribe flow's — a second
     // revocation event is a legitimate second record.
     expect(store.consents).toHaveLength(2)
+  })
+
+  // Fix (task review, Finding 1): a suppression keyed on a raw string that
+  // failed E.164 parsing protects nobody — every send path checks
+  // `isSuppressed` against the contact's NORMALISED `phone_e164`, so this
+  // row can never match a future send lookup. Without a matched contact
+  // there is also no timeline row possible. The only remaining way to make
+  // this failure visible is the ops-alert email, same mechanism as the
+  // anything-else path.
+  it("with an unparseable From: suppresses the raw string defensively, but escalates to a human via the ops-alert email — no consent row", async () => {
+    const res = await POST(inboundRequest(smsBody("STOP", "not-a-real-phone")))
+
+    expect(res.status).toBe(200)
+    expect(store.suppressions).toHaveLength(1)
+    expect(store.suppressions[0].identifier).toBe("not-a-real-phone")
+    expect(store.suppressions[0].reason).toBe("sms_stop")
+
+    // No contact matched (the phone never even got a lookup), so no consent
+    // row and no timeline row.
+    expect(store.consents).toHaveLength(0)
+    expect(store.timeline).toHaveLength(0)
+
+    expect(renderSequenceEmail).toHaveBeenCalledTimes(1)
+    const renderArg = (renderSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(renderArg.subject).toBe("SMS STOP needs manual review")
+    expect(renderArg.includeUnsubscribeFooter).toBe(false)
+    expect(renderArg.body).toContain("not-a-real-phone")
+
+    expect(sendRenderedSequenceEmail).toHaveBeenCalledTimes(1)
+    const sendArg = (sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(sendArg.to).toBe(SETTINGS.reply_to)
+    expect(sendArg.includeUnsubscribeFooter).toBe(false)
+  })
+
+  it("a matched STOP (valid phone, real contact) never sends the manual-review alert", async () => {
+    await POST(inboundRequest(smsBody("STOP")))
+    expect(renderSequenceEmail).not.toHaveBeenCalled()
+    expect(sendRenderedSequenceEmail).not.toHaveBeenCalled()
+  })
+
+  it("STOP from a valid but unrecognized phone number does not send the manual-review alert either — the suppression is real and sufficient", async () => {
+    store.contacts = []
+    await POST(inboundRequest(smsBody("STOP")))
+    expect(renderSequenceEmail).not.toHaveBeenCalled()
+    expect(sendRenderedSequenceEmail).not.toHaveBeenCalled()
   })
 })
 

@@ -25,10 +25,12 @@ import { renderSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engin
  * this business receives on -> "A Message Comes In" webhook URL, set to
  * this route's public URL.
  *
- * FOUR outcomes, by body content (trimmed, uppercased, exact match against a
- * fixed keyword set — NOT a substring/contains check: "STOP IT" is two
- * words, not the keyword "STOP", and correctly falls through to the
- * anything-else path. Carrier-level filtering on the bare keyword is
+ * FOUR outcomes, by body content (trimmed, trailing punctuation stripped,
+ * uppercased, exact match against a fixed keyword set — NOT a
+ * substring/contains check: "STOP IT" is two words, not the keyword "STOP",
+ * and correctly falls through to the anything-else path, while "Stop." and
+ * "STOP!" DO match — over-suppressing is the correct failure direction on a
+ * compliance surface. Carrier-level filtering on the bare keyword is
  * Twilio's own job; this route's job is the compliance RECORD of the act):
  *
  *   STOP / STOPALL / UNSUBSCRIBE / CANCEL / END / QUIT
@@ -38,7 +40,12 @@ import { renderSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engin
  *     something). When a contact DOES match: also record a `granted: false`
  *     consent row quoting the raw inbound body as evidence, exit every
  *     active sequence run for them, and write a `sms_stop_received`
- *     timeline event.
+ *     timeline event. When `From` fails to parse as a phone number at all
+ *     (no contact possible either), the suppression above is written under
+ *     the raw string as a defensive record, but that alone protects
+ *     nobody — see the inline comment at the `!phone` branch — so an
+ *     ops-alert email fires instead, asking a human to suppress the number
+ *     by hand.
  *
  *   START / UNSTOP / YES
  *     The inverse: unsuppress the phone number (always), and when a contact
@@ -159,7 +166,19 @@ export async function POST(request: Request) {
     const contactId = phone ? await findContactByIdentifiers({ phone }) : null
 
     const trimmed = rawBody.trim()
-    const upper = trimmed.toUpperCase()
+    // Trailing punctuation ("Stop.", "STOP!") must still count as the
+    // keyword: over-suppressing is the correct failure direction on a
+    // compliance surface — the cost of a false positive here (an unrelated
+    // message that happens to end in "stop.") is far lower than the cost of
+    // a false negative (an ignored opt-out). Only TRAILING punctuation is
+    // stripped, and only after trim: "STOP IT" has no trailing punctuation
+    // to strip and still correctly falls through to anything-else — extra
+    // WORDS are not forgiven, only trailing punctuation is. The keyword
+    // match stays exact against this stripped/uppercased form; `rawBody`
+    // (untouched) is still what gets quoted as consent evidence and stored
+    // in timeline metadata below.
+    const withoutTrailingPunctuation = trimmed.replace(/[.,!?]+$/, "")
+    const upper = withoutTrailingPunctuation.toUpperCase()
 
     if (STOP_KEYWORDS.has(upper)) {
       await suppress(identifier, "sms_stop")
@@ -177,6 +196,39 @@ export async function POST(request: Request) {
           kind: "sms_stop_received",
           metadata: { body: capBody(rawBody), from: rawFrom },
         })
+      } else if (!phone) {
+        // The suppression above is a defensive record only — it's keyed on
+        // the RAW, un-normalised `From`, but every SEND path checks
+        // `isSuppressed` against the contact's `phone_e164`, a NORMALISED
+        // identifier (lib/automation/sequence-tick-runner.ts). A
+        // suppression stored under a string that failed E.164 parsing will
+        // never match what a future send looks up, so on its own it
+        // protects nobody while looking compliant. There is also no
+        // contact to attach a timeline row to (contact_id is NOT NULL).
+        // The only way left to make this failure VISIBLE — instead of a
+        // silently self-congratulatory 200 — is the same ops-alert
+        // mechanism the anything-else path uses below: put it in front of a
+        // human so this number gets suppressed by hand. Its own try/catch:
+        // a failed alert here must not turn an already-degraded STOP into a
+        // 500, and this webhook's 200 to Twilio must not depend on Resend.
+        try {
+          const settings = await getBusinessSettings()
+          const rendered = renderSequenceEmail({
+            settings,
+            subject: "SMS STOP needs manual review",
+            body: `An SMS STOP request could not be automatically honored because the sender's number could not be parsed as a phone number.\n\nFrom: ${rawFrom}`,
+            contactName: null,
+            includeUnsubscribeFooter: false,
+          })
+          await sendRenderedSequenceEmail({
+            to: settings.reply_to,
+            rendered,
+            settings,
+            includeUnsubscribeFooter: false,
+          })
+        } catch (err) {
+          console.error("[twilio-inbound-webhook] STOP manual-review alert failed:", err)
+        }
       }
       return NextResponse.json({ ok: true, outcome: "stop", matched: Boolean(contactId) }, { status: 200 })
     }
