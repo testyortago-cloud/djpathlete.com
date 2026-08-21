@@ -1194,6 +1194,40 @@ export const publishDuePostsCron = onSchedule(
   },
 )
 
+// ─── Content Schedule (every 5 min) ──────────────────────────────────────────
+// Publishes blog posts and sends newsletters whose scheduled_at has arrived.
+// Sibling of publishDuePostsCron, which does the same for social posts.
+
+export const contentScheduleCron = onSchedule(
+  {
+    schedule: "*/5 * * * *",
+    timeZone: "UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[contentScheduleCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/content-schedule-due`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      console.log("[contentScheduleCron]", res.status, body)
+    } catch (err) {
+      console.error("[contentScheduleCron] failed:", err)
+    }
+  },
+)
+
 // ─── Tavily Trending Cron (Mon 06:00 UTC) ────────────────────────────────────
 // Replaces .github/workflows/tavily-trending-cron.yml. POSTs to the Next.js
 // /api/admin/internal/tavily-trending route, which enqueues a

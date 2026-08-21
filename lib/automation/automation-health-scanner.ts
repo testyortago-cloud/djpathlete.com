@@ -189,6 +189,14 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
     enabled_flag: "cron_pipeline_reconcile_enabled",
     enabled_flag_default: false,
   },
+  {
+    name: "contentScheduleCron", // every 5 min
+    sla_hours: 1,                // matches publishDuePostsCron and sequenceTickCron
+    reports_to_cron_runs: true,
+    watch_from: "2026-08-21",
+    enabled_flag: "cron_content_schedule_enabled",
+    enabled_flag_default: true, // a silent scheduler is worse than a dormant one
+  },
 ]
 
 export interface ScannerInput {
