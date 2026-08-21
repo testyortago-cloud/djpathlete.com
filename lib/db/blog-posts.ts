@@ -6,7 +6,7 @@ function getClient() {
 }
 
 // AI-automation fields added in migrations 00080 & 00084, plus scheduling fields added in
-// 00223, all have DB defaults or are nullable, so they stay optional on insert while
+// 00224, all have DB defaults or are nullable, so they stay optional on insert while
 // remaining required on read.
 type CreateBlogPostInput = Omit<
   BlogPost,

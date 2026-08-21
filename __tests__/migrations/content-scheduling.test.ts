@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
 const sql = readFileSync(
-  join(process.cwd(), "supabase/migrations/00223_content_scheduling.sql"),
+  join(process.cwd(), "supabase/migrations/00224_content_scheduling.sql"),
   "utf8",
 )
 
-describe("00223_content_scheduling", () => {
+describe("00224_content_scheduling", () => {
   it("allows the scheduled status on both tables", () => {
     expect(sql).toContain("CHECK (status IN ('draft', 'scheduled', 'published'))")
     expect(sql).toContain("CHECK (status IN ('draft', 'scheduled', 'sent'))")

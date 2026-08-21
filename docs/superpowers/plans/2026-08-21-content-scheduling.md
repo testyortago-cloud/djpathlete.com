@@ -30,7 +30,7 @@
 **Created**
 | File | Responsibility |
 |---|---|
-| `supabase/migrations/00223_content_scheduling.sql` | Columns, CHECK constraints, partial indexes, flag row |
+| `supabase/migrations/00224_content_scheduling.sql` | Columns, CHECK constraints, partial indexes, flag row |
 | `lib/content-schedule/flag.ts` | Leaf module: the flag key + its default. Imports nothing. |
 | `lib/content-schedule/due.ts` | Pure: rows + `now` → `{ fire, missed, waiting }`. No I/O. |
 | `lib/content-schedule/run-due.ts` | Loads rows, partitions, dispatches, writes terminal state |
@@ -73,7 +73,7 @@
 ## Task 1: Schema and types
 
 **Files:**
-- Create: `supabase/migrations/00223_content_scheduling.sql`
+- Create: `supabase/migrations/00224_content_scheduling.sql`
 - Modify: `types/database.ts:35-36`, `types/database.ts:1202-1230` (`BlogPost`), `types/database.ts:1282-1295` (`Newsletter`)
 - Modify: `lib/validators/blog-post.ts:98`
 - Test: `__tests__/migrations/content-scheduling.test.ts`
@@ -84,7 +84,7 @@
 
 - [ ] **Step 1: Write the migration**
 
-Create `supabase/migrations/00223_content_scheduling.sql`:
+Create `supabase/migrations/00224_content_scheduling.sql`:
 
 ```sql
 -- Content scheduling for blog posts and newsletters.
@@ -134,11 +134,11 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
 const sql = readFileSync(
-  join(process.cwd(), "supabase/migrations/00223_content_scheduling.sql"),
+  join(process.cwd(), "supabase/migrations/00224_content_scheduling.sql"),
   "utf8",
 )
 
-describe("00223_content_scheduling", () => {
+describe("00224_content_scheduling", () => {
   it("allows the scheduled status on both tables", () => {
     expect(sql).toContain("CHECK (status IN ('draft', 'scheduled', 'published'))")
     expect(sql).toContain("CHECK (status IN ('draft', 'scheduled', 'sent'))")
@@ -251,7 +251,7 @@ node -r dotenv/config -e '
   const fs = require("fs");
   const ref = "anjvztjiokcgiyhobknq";           // dev clone
   if (ref === "epzuvzkokzqtzomeyoha") throw new Error("refusing to touch prod");
-  const sql = fs.readFileSync("supabase/migrations/00223_content_scheduling.sql", "utf8");
+  const sql = fs.readFileSync("supabase/migrations/00224_content_scheduling.sql", "utf8");
   fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
     method: "POST",
     headers: {
@@ -291,7 +291,7 @@ Expected: **251**. Widening a union is additive, so nothing should break. If the
 - [ ] **Step 10: Commit**
 
 ```bash
-git add supabase/migrations/00223_content_scheduling.sql types/database.ts lib/db/blog-posts.ts lib/db/newsletters.ts lib/validators/blog-post.ts __tests__/migrations/content-scheduling.test.ts
+git add supabase/migrations/00224_content_scheduling.sql types/database.ts lib/db/blog-posts.ts lib/db/newsletters.ts lib/validators/blog-post.ts __tests__/migrations/content-scheduling.test.ts
 git commit -m "feat(content-schedule): a third state for a post that is neither written-and-waiting nor live"
 ```
 
@@ -2559,3 +2559,28 @@ Checked against the spec:
 - §14 (verification items) → Task 7 Step 8 (`published_at`), Task 3 (`actorId`), Task 11 Step 2 (the 251 baseline)
 
 **One spec item deliberately re-scoped:** §7.3 asks the implementer to confirm `lib/ghl-blog.ts` never round-trips `blog_posts.status`. Read it during Task 8 and record the finding in the commit message; it needs no code change if the reading holds.
+
+### 🛠 Migration renumber note (added 2026-08-22 at merge)
+
+This plan was written against `00223_content_scheduling.sql`. The Lead Engine
+Stage 4 branch landed on main first with its own `00223`
+(`00223_lead_engine_repermission_sequence.sql`), so this migration was renumbered
+to **`00224_content_scheduling.sql`** when the two branches were merged.
+
+Git merges the collision silently — the filenames differ, so there is no conflict
+to resolve. Nothing would have broken either: `scripts/migrations/apply.mjs`
+keys the `repo_migrations` ledger on the full filename, not the number, and the
+two migrations touch disjoint objects (this one alters `blog_posts` /
+`newsletters`; the other seeds `sequences` / `sequence_steps`), so application
+order between them does not matter. The renumber is hygiene — two files sharing a
+number is a trap for the next reader, not a live fault.
+
+Renumbering was free at this moment because neither migration had reached the
+`repo_migrations` ledger yet: prod applies on push to main via the
+`Apply Supabase Migrations` workflow, and this had not been pushed. Renaming a
+migration *after* it is in the ledger makes the applier see a new pending
+filename and re-run it.
+
+Content-scheduling was the side renumbered because it had the smaller reference
+footprint — two references in code, versus roughly fifteen prose mentions of
+"00223" across the Stage 4 branch's live code, scripts, and tests.

@@ -160,7 +160,7 @@ test exhaustively.
 
 ## 6. Data model
 
-Migration `00223_content_scheduling.sql`.
+Migration `00224_content_scheduling.sql`.
 
 ```sql
 ALTER TABLE blog_posts
@@ -409,7 +409,7 @@ may run against the old schema.
 1. Ship the §7 reader fixes and the type widening **first**; they tolerate a
    row with no `scheduled_at` column (`row.scheduled_at ?? null`, never a bare
    `!== null` on a column that may not exist).
-2. Migration `00223` applies.
+2. Migration `00224` applies.
 3. Only then does anything write `'scheduled'` — the routes are the only
    writers, and they are gated on the flag.
 
