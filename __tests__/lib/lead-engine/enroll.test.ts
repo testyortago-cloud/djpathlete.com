@@ -215,4 +215,19 @@ describe("enrollIfTriggered", () => {
     })
     expect(match.enrolled).toEqual(["seq-filtered"])
   })
+
+  // Lead Engine Stage 4, Task 5 (spec §4, "shop checkout" row): "NO sequence
+  // rides purchase in this stage" — a deliberate design choice, not an
+  // accident of no sequence having been seeded yet. Proven here against the
+  // real mechanism rather than only asserted in the Stripe webhook's own
+  // spine test (__tests__/api/spine/purchase-spine.test.ts), which mocks
+  // recordContactEvent — and therefore enrollIfTriggered itself — away.
+  it("does not enrol a 'purchase' source into a sequence triggered by a different source", async () => {
+    seedSequence("seq-newsletter", { trigger_source: "newsletter" })
+
+    const result = await enrollIfTriggered({ contactId: "contact-1", source: "purchase" })
+
+    expect(result.enrolled).toEqual([])
+    expect(store.sequence_runs).toHaveLength(0)
+  })
 })
