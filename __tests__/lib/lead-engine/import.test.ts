@@ -117,6 +117,7 @@ vi.mock("@/lib/supabase", () => ({
 import {
   importGhlContact,
   findEmailConsentEvidence,
+  classifyGhlRecord,
   EMAIL_CONSENT_TAG_ALLOWLIST,
   type GhlContactRecord,
 } from "@/lib/lead-engine/import"
@@ -565,5 +566,70 @@ describe("importGhlContact", () => {
 
       expect(state.sequenceRuns).toHaveLength(0)
     })
+  })
+})
+
+// classifyGhlRecord is the pure half of the same decision importGhlContact
+// makes — same branch order (no identifier -> dnd -> everything else), no
+// read or write. It exists so scripts/import-ghl-contacts.mjs's dry-run can
+// report outcome-CLASS counts without a DB client, off the exact same rule
+// importGhlContact runs at --execute time. These tests don't touch the
+// mocked Supabase state at all: classifyGhlRecord never calls getClient().
+describe("classifyGhlRecord", () => {
+  it("classifies a record with neither email nor phone as skipped_no_identifier", () => {
+    const out = classifyGhlRecord(baseRecord({ email: null, phone: null }))
+    expect(out).toEqual({ wouldBe: "skipped_no_identifier", hasPhone: false, consentEvidence: false })
+  })
+
+  it("treats an unparseable phone the same as no phone at all (same normaliser as importGhlContact)", () => {
+    const out = classifyGhlRecord(baseRecord({ email: null, phone: "not-a-phone-number" }))
+    expect(out).toEqual({ wouldBe: "skipped_no_identifier", hasPhone: false, consentEvidence: false })
+  })
+
+  it("classifies dnd === true as dnd_suppression even when both identifiers are present", () => {
+    const out = classifyGhlRecord(baseRecord({ email: "dnd@example.com", phone: "+16175550123", dnd: true }))
+    expect(out).toEqual({ wouldBe: "dnd_suppression", hasPhone: true, consentEvidence: false })
+  })
+
+  it("classifies dnd === true with only an email as dnd_suppression, hasPhone false", () => {
+    const out = classifyGhlRecord(baseRecord({ email: "dnd-email-only@example.com", phone: null, dnd: true }))
+    expect(out).toEqual({ wouldBe: "dnd_suppression", hasPhone: false, consentEvidence: false })
+  })
+
+  it("classifies an email-only, non-dnd record as importable with hasPhone false", () => {
+    const out = classifyGhlRecord(baseRecord({ email: "importable@example.com", phone: null }))
+    expect(out).toEqual({ wouldBe: "importable", hasPhone: false, consentEvidence: false })
+  })
+
+  it("classifies a phone-only, non-dnd record as importable with hasPhone true", () => {
+    const out = classifyGhlRecord(baseRecord({ email: null, phone: "+16175550199" }))
+    expect(out).toEqual({ wouldBe: "importable", hasPhone: true, consentEvidence: false })
+  })
+
+  it("reports consentEvidence true only when a tag is on the allowlist passed in", () => {
+    const record = baseRecord({ email: "opted-in@example.com", tags: ["verified-opt-in"] })
+
+    expect(classifyGhlRecord(record, [])).toEqual({
+      wouldBe: "importable",
+      hasPhone: false,
+      consentEvidence: false,
+    })
+    expect(classifyGhlRecord(record, ["verified-opt-in"])).toEqual({
+      wouldBe: "importable",
+      hasPhone: false,
+      consentEvidence: true,
+    })
+  })
+
+  it("never credits consent evidence to a phone-only record, even with an allowlisted tag (no email to attach it to)", () => {
+    const record = baseRecord({ email: null, phone: "+16175550188", tags: ["verified-opt-in"] })
+    const out = classifyGhlRecord(record, ["verified-opt-in"])
+    expect(out).toEqual({ wouldBe: "importable", hasPhone: true, consentEvidence: false })
+  })
+
+  it("defaults to the shipped (empty) EMAIL_CONSENT_TAG_ALLOWLIST when no allowlist argument is given", () => {
+    const record = baseRecord({ email: "untagged@example.com", tags: ["newsletter", "subscriber"] })
+    expect(EMAIL_CONSENT_TAG_ALLOWLIST).toEqual([])
+    expect(classifyGhlRecord(record)).toEqual({ wouldBe: "importable", hasPhone: false, consentEvidence: false })
   })
 })

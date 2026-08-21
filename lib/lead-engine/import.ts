@@ -117,6 +117,48 @@ export function findEmailConsentEvidence(
   return null
 }
 
+export type GhlRecordClassification = {
+  wouldBe: "skipped_no_identifier" | "dnd_suppression" | "importable"
+  hasPhone: boolean
+  consentEvidence: boolean
+}
+
+/**
+ * The pure half of `importGhlContact`'s decision: same branch order (no
+ * identifier -> dnd -> everything else), off the same normalisers and the
+ * same `findEmailConsentEvidence` rule — but it never reads or writes
+ * anything. `importGhlContact` calls this directly for its own branching
+ * (below), so the two can never drift: a script that classifies a record as
+ * "importable" is guaranteed to see `importGhlContact` attempt exactly that
+ * record, because it is the same code deciding both.
+ *
+ * That guarantee has a hard edge, and it is deliberate: "importable" is not
+ * "will report created" or "will report enriched". Those (and whether a
+ * merge happens) depend on what's already in the `contacts` table for this
+ * business — state a pure, DB-free classifier cannot see. A caller that
+ * wants outcome-class counts without a DB client (Task 8's dry-run) gets
+ * importable/dnd/skipped counts, not created/enriched counts; the latter
+ * are only knowable once `importGhlContact` actually runs.
+ */
+export function classifyGhlRecord(
+  record: GhlContactRecord,
+  allowlist: readonly string[] = EMAIL_CONSENT_TAG_ALLOWLIST,
+): GhlRecordClassification {
+  const email = normaliseEmail(record.email)
+  const phone = normalisePhone(record.phone)
+
+  if (!email && !phone) {
+    return { wouldBe: "skipped_no_identifier", hasPhone: false, consentEvidence: false }
+  }
+
+  if (record.dnd === true) {
+    return { wouldBe: "dnd_suppression", hasPhone: Boolean(phone), consentEvidence: false }
+  }
+
+  const evidence = email ? findEmailConsentEvidence(record.tags ?? [], allowlist) : null
+  return { wouldBe: "importable", hasPhone: Boolean(phone), consentEvidence: Boolean(evidence) }
+}
+
 function displayName(record: GhlContactRecord): string | null {
   if (record.contactName) return record.contactName
   const joined = [record.firstName, record.lastName].filter(Boolean).join(" ").trim()
@@ -154,7 +196,13 @@ export async function importGhlContact(
   const email = normaliseEmail(record.email)
   const phone = normalisePhone(record.phone)
 
-  if (!email && !phone) {
+  // The two early branches below (no identifier, dnd) are decided by
+  // `classifyGhlRecord` — the exact same function a DB-free dry-run uses to
+  // predict them — so the "what will this record do" answer can never
+  // diverge between the two call sites.
+  const classification = classifyGhlRecord(record, ctx.emailConsentTagAllowlist)
+
+  if (classification.wouldBe === "skipped_no_identifier") {
     return {
       kind: "skipped_no_identifier",
       contactId: null,
@@ -170,7 +218,7 @@ export async function importGhlContact(
   // identifiers the record carries (whichever are present) means a later
   // submission that reuses the same email OR the same phone is blocked
   // too, not just an exact repeat of this record.
-  if (record.dnd === true) {
+  if (classification.wouldBe === "dnd_suppression") {
     if (email) await suppress(email, "ghl_dnd_import", businessId)
     if (phone) await suppress(phone, "ghl_dnd_import", businessId)
     return {
