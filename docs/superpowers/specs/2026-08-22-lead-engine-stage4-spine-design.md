@@ -80,15 +80,15 @@ route's primary job on QUERY failures but runs BEFORE the response where
 the contact id is needed for consent; losing attribution is acceptable,
 losing the lead is not; a spine failure must never 500 a working form.
 
-| Route | source string | identifiers | notes |
-|---|---|---|---|
-| `/api/contact` | `contact_form` | email, name | already emails the lead — any future sequence on this source opens with wait (00218 audit row) |
-| `/api/newsletter` | `newsletter` | email | makes `newsletter_welcome` enrolable; EMAIL consent row written here (the subscribe action is the consent act; wording = the form's subscribe label, rendered server-side) |
-| `/api/shop/leads` | `lead_magnet` | email | makes `lead_magnet_delivery` enrolable |
-| `/api/inquiry` | `inquiry` (or `step_up` — see amendment) | email, phone, name + gclid/gbraid/wbraid/fbclid | phone present → checkbox (§5); keep its existing users-row behavior untouched. *Amended at execution (2026-08-22): StepUpInquiryForm posts `form_context: "step_up"` and records source `step_up` — the union member existed unemitted, and folding Step Up into generic `inquiry` would have made its leads permanently untargetable by future sequences.* |
-| event signup | `event_signup` | parent email, phone | audited: opens-with-wait class |
-| shop checkout (Stripe webhook, completed) | `purchase` | email, name | a paying customer is a contact; NO sequence rides this source in this stage |
-| `/api/questionnaire` | ~~`questionnaire`~~ EXCLUDED | — | *Ruled at execution (2026-08-22): the route requires `auth()` on GET and POST — an existing-logged-in-user flow, same class as assessments. Not a lead-capture surface; not wired.* |
+| Route                                     | source string                            | identifiers                                     | notes                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------- | ---------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/contact`                            | `contact_form`                           | email, name                                     | already emails the lead — any future sequence on this source opens with wait (00218 audit row)                                                                                                                                                                                                                                                              |
+| `/api/newsletter`                         | `newsletter`                             | email                                           | makes `newsletter_welcome` enrolable; EMAIL consent row written here (the subscribe action is the consent act; wording = the form's subscribe label, rendered server-side)                                                                                                                                                                                  |
+| `/api/shop/leads`                         | `lead_magnet`                            | email                                           | makes `lead_magnet_delivery` enrolable                                                                                                                                                                                                                                                                                                                      |
+| `/api/inquiry`                            | `inquiry` (or `step_up` — see amendment) | email, phone, name + gclid/gbraid/wbraid/fbclid | phone present → checkbox (§5); keep its existing users-row behavior untouched. _Amended at execution (2026-08-22): StepUpInquiryForm posts `form_context: "step_up"` and records source `step_up` — the union member existed unemitted, and folding Step Up into generic `inquiry` would have made its leads permanently untargetable by future sequences._ |
+| event signup                              | `event_signup`                           | parent email, phone                             | audited: opens-with-wait class                                                                                                                                                                                                                                                                                                                              |
+| shop checkout (Stripe webhook, completed) | `purchase`                               | email, name                                     | a paying customer is a contact; NO sequence rides this source in this stage                                                                                                                                                                                                                                                                                 |
+| `/api/questionnaire`                      | ~~`questionnaire`~~ EXCLUDED             | —                                               | _Ruled at execution (2026-08-22): the route requires `auth()` on GET and POST — an existing-logged-in-user flow, same class as assessments. Not a lead-capture surface; not wired._                                                                                                                                                                         |
 
 Rules: identifiers normalise through `normaliseEmail`/`normalisePhone`;
 every write carries attribution when the route has it; `enrollIfTriggered`
@@ -139,7 +139,13 @@ requires `--execute`). Reads the export snapshot, never the live API.
   ghl id lands on the contact row if a column for it exists (plan-time
   check; if none, metadata only — no new column without a reader).
 - **Attribution:** first-touch fields from GHL import only where the
-  export actually carries them; never fabricated.
+  export actually carries them; never fabricated. _Amended at execution
+  (2026-08-22): 246/300 real records carry a non-empty `attributions` array,
+  which lands verbatim in the `ghl_import` timeline event's own metadata
+  (the provenance bag §7 already writes ghl_id/snapshot to) rather than a
+  new column, capped defensively at 4000 serialized characters with
+  `attributions_truncated: true` if a future export's array ever needs
+  trimming — see `buildAttributionsMetadata`, lib/lead-engine/import.ts._
 - **The ~90 phones:** the import tags their contacts (timeline event
   `sms_repermission_candidate`) and the re-permission email ships as a
   DRAFT sequence (`sms_repermission`, manual-enrolment, trigger NULL, copy

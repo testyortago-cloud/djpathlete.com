@@ -92,7 +92,14 @@ const validBody = {
 
 const ctx = { params: Promise.resolve({ id: "evt-1" }) }
 
-/** The SMS consent write runs fire-and-forget; give its microtask chain a turn. */
+/**
+ * The signup route's SMS consent write runs fire-and-forget; give its
+ * microtask chain a turn. The checkout route's own write is AWAITED inline
+ * (app/api/events/[id]/checkout/route.ts's own comment explains why — no
+ * runway after it, unlike signup's own Promise.allSettled email sends), so
+ * calling this after `POST` resolves in the checkout describe blocks below
+ * is a harmless no-op, kept only so both blocks share one flush helper.
+ */
 async function flush() {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
@@ -446,6 +453,28 @@ describe("POST /api/events/[id]/checkout — SMS consent", () => {
 
     expect(res.status).toBe(200)
     expect(mocks.recordContactEvent).toHaveBeenCalled()
+    expect(mocks.recordConsent).toHaveBeenCalled()
+  })
+
+  // Unlike the signup route's identical-looking block, this route's consent
+  // write is AWAITED (see app/api/events/[id]/checkout/route.ts's own
+  // comment on why: no runway after it, unlike signup's Promise.allSettled
+  // email sends before ITS response). Awaiting a rejecting promise inside
+  // the route's own try/catch would turn a rejection into this route's
+  // generic 500 IF the `.catch` guard on the call site were ever removed —
+  // this test is the proof that guard is doing its job: even with the
+  // underlying DB call thrown all the way from `recordConsent`, the route
+  // still returns its real 200 payload (sessionUrl/signupId), not the
+  // catch-all "Internal server error" body from the route's outer try/catch.
+  it("returns the real sessionUrl/signupId payload, not a 500, when the awaited consent write rejects", async () => {
+    mockHappyCheckout()
+    mocks.recordConsent.mockRejectedValue(new Error("db is down"))
+    const { POST } = await import("@/app/api/events/[id]/checkout/route")
+    const res = await POST(checkoutReq({ ...validBody, sms_consent: true }), ctx)
+    const data = await res.json()
+
+    expect(res.status).toBe(200)
+    expect(data).toEqual({ sessionUrl: "https://checkout.stripe.com/cs_test_xyz", signupId: "sig-1" })
     expect(mocks.recordConsent).toHaveBeenCalled()
   })
 })

@@ -127,6 +127,15 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { enrolContactManually, type ManualEnrolOutcome } from "@/lib/lead-engine/enroll"
 import { getBusinessSettings } from "@/lib/db/businesses"
+import { maskEmail } from "@/lib/lead-engine/mask"
+
+// Re-exported so this script's own call sites below (unchanged) and
+// __tests__/scripts/enrol-repermission.test.ts's existing
+// `import { maskEmail } from "../../scripts/enrol-repermission"` both keep
+// working untouched — `maskEmail` itself now lives in
+// lib/lead-engine/mask.ts, shared with scripts/import-ghl-contacts.ts's own
+// dry-run masking (that script's is the newer of the two consumers).
+export { maskEmail }
 
 const SEQUENCE_KEY = "sms_repermission"
 const CANDIDATE_EVENT_KIND = "sms_repermission_candidate"
@@ -188,23 +197,6 @@ export function selectRepermissionCandidates(args: {
     out.push({ contactId: contact.id, email, name: contact.name })
   }
   return out
-}
-
-/**
- * `m***@d***` — first character of the local part and first character of
- * the domain, everything else replaced. A dry-run transcript prints real
- * candidates' identifiers to a terminal (and potentially a saved log); this
- * is enough to spot-check the query without putting a real email address
- * in that output.
- */
-export function maskEmail(email: string): string {
-  const at = email.indexOf("@")
-  if (at === -1) return `${email[0] ?? ""}***`
-  const local = email.slice(0, at)
-  const domain = email.slice(at + 1)
-  const maskedLocal = local ? `${local[0]}***` : "***"
-  const maskedDomain = domain ? `${domain[0]}***` : "***"
-  return `${maskedLocal}@${maskedDomain}`
 }
 
 // ---------------------------------------------------------------------

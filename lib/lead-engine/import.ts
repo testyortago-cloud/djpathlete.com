@@ -16,6 +16,16 @@
 // direct assertion (`sequence_runs` stays empty even with a matching ACTIVE
 // sequence present) and a mutation test (temporarily routing the identity
 // call through `recordContactEvent` instead makes that same assertion FAIL).
+//
+// First-touch attribution (spec §7): 246 of the real export's 300 records
+// carry a non-empty `attributions` array. Rather than fabricate first-touch
+// fields this import has no columns for, the record's raw `attributions`
+// blob rides along verbatim in the `ghl_import` timeline event's own
+// metadata — metadata is this file's whole provenance bag already (ghl_id,
+// snapshot, date_added), so attribution evidence belongs there too, capped
+// defensively at 4000 serialized characters (`buildAttributionsMetadata`
+// below) since nothing about the export's own shape bounds that array's
+// size.
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
@@ -157,6 +167,52 @@ export function classifyGhlRecord(
 
   const evidence = email ? findEmailConsentEvidence(record.tags ?? [], allowlist) : null
   return { wouldBe: "importable", hasPhone: Boolean(phone), consentEvidence: Boolean(evidence) }
+}
+
+// The `ghl_import` timeline event's own metadata bag is where the record's
+// raw `attributions` array (when the export carries one) lands — see the
+// header comment's "First-touch attribution" paragraph. 4000 serialized
+// characters is a defensive ceiling, not a real-world limit: the largest
+// `attributions` array across the actual export is ~1150 characters
+// serialized, so this branch is untested against real data by construction
+// and exists purely so a future, much larger export can't blow up a single
+// timeline row's metadata column.
+const ATTRIBUTIONS_METADATA_CAP_CHARS = 4000
+
+/**
+ * Pure, exported separately so the truncation rule is unit-testable without
+ * a database — same reasoning as `findEmailConsentEvidence` above.
+ *
+ * Returns `{}` (no `attributions` key at all, not `attributions: undefined`)
+ * when the record carries none, so spreading the result into the timeline
+ * event's metadata omits the key entirely rather than writing a null/empty
+ * placeholder — "this record had no attribution evidence" and "this record
+ * had attribution evidence we chose not to store" must stay distinguishable
+ * later, and only the former should ever produce a bare metadata object.
+ *
+ * When the full array already fits, it rides along untouched. When it
+ * doesn't, entries are kept from the front (GHL orders `isFirst` before
+ * `isLast` in practice, and the first-touch entry is the one spec §7 cares
+ * about) one at a time until the next one would push the serialized size
+ * over the cap, and `attributions_truncated: true` is stamped so a reader
+ * can tell the array was cut rather than assume it's complete.
+ */
+export function buildAttributionsMetadata(
+  attributions: Array<Record<string, unknown>> | undefined,
+): { attributions: Array<Record<string, unknown>>; attributions_truncated?: true } | Record<string, never> {
+  if (!attributions || attributions.length === 0) return {}
+
+  if (JSON.stringify(attributions).length <= ATTRIBUTIONS_METADATA_CAP_CHARS) {
+    return { attributions }
+  }
+
+  const kept: Array<Record<string, unknown>> = []
+  for (const entry of attributions) {
+    const candidate = [...kept, entry]
+    if (JSON.stringify(candidate).length > ATTRIBUTIONS_METADATA_CAP_CHARS) break
+    kept.push(entry)
+  }
+  return { attributions: kept, attributions_truncated: true }
 }
 
 function displayName(record: GhlContactRecord): string | null {
@@ -333,7 +389,12 @@ export async function importGhlContact(
     contact_id: contactId,
     kind: "ghl_import",
     source: "ghl_import",
-    metadata: { ghl_id: record.id, snapshot: ctx.snapshotTimestamp, date_added: record.dateAdded },
+    metadata: {
+      ghl_id: record.id,
+      snapshot: ctx.snapshotTimestamp,
+      date_added: record.dateAdded,
+      ...buildAttributionsMetadata(record.attributions),
+    },
   })
   if (ghlImportError) {
     console.error(`importGhlContact: failed to append ghl_import event for contact ${contactId}`, ghlImportError)

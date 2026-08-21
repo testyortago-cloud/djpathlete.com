@@ -98,11 +98,22 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       name: parsed.data.parent_name,
     })
 
-    // SMS consent (Lead Engine Stage 4). FIRE AND FORGET — see
-    // app/api/events/[id]/signup/route.ts's identical block for the full
-    // reasoning; this is that route's paid-flow twin.
+    // SMS consent (Lead Engine Stage 4). AWAITED — NOT fire-and-forget like
+    // app/api/events/[id]/signup/route.ts's identical-looking block. That
+    // route has real runway after its own consent call (the two email sends
+    // via Promise.allSettled) for the write to land on before the response
+    // goes out; this route returns its NextResponse on the very next
+    // statement with nothing in between. In a serverless runtime, work
+    // scheduled after the response is handed back is not guaranteed to run
+    // at all — an unawaited write here risks silently dropping a
+    // genuinely-granted consent row. Awaiting is still safe for the "a
+    // consent failure must never fail the checkout" contract: the `.catch`
+    // below means this expression can never reject (`recordEventSignupSmsConsent`
+    // itself only ever throws inside; nothing after the `.catch` handler
+    // does), so awaiting it just adds real latency before the
+    // already-decided response, never a new failure mode.
     if (contactId && parsed.data.parent_phone && parsed.data.sms_consent === true) {
-      void recordEventSignupSmsConsent({ contactId, ip: ipAddress, userAgent }).catch((err) => {
+      await recordEventSignupSmsConsent({ contactId, ip: ipAddress, userAgent }).catch((err) => {
         console.error("[api/events/checkout] sms consent write failed (the signup was saved):", err)
       })
     }
@@ -131,6 +142,8 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
  * precedent (app/api/inquiry/route.ts vs. app/api/funnels/submit/route.ts):
  * each route keeps its own small, private, independently-readable helper
  * rather than a shared abstraction with no divergence to justify it yet.
+ * Only the CALL SITE diverges from the signup route's (`await` here, not
+ * `void` — see the comment above this function's call site above).
  */
 async function recordEventSignupSmsConsent(input: {
   contactId: string

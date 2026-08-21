@@ -86,6 +86,7 @@ import {
   type GhlRecordClassification,
   type ImportOutcome,
 } from "@/lib/lead-engine/import"
+import { maskEmail, maskPhone } from "@/lib/lead-engine/mask"
 
 const SERVICE_APPLICATION_RE = /service.?application/i
 const CLASSES = ["skipped_no_identifier", "dnd_suppression", "importable"] as const
@@ -201,8 +202,13 @@ function runDryRun(contacts: GhlContactRecord[]): void {
       continue
     }
     for (const r of examples[kind]) {
+      // Masked, not raw — a dry-run transcript is exactly the kind of
+      // output that ends up saved in a local report (this is what leaked
+      // real emails/phones before: see lib/lead-engine/mask.ts's header).
+      const maskedEmail = r.email ? maskEmail(r.email) : null
+      const maskedPhone = r.phone ? maskPhone(r.phone) : null
       console.log(
-        `  id=${r.id} email=${JSON.stringify(r.email)} phone=${JSON.stringify(r.phone)} ` +
+        `  id=${r.id} email=${JSON.stringify(maskedEmail)} phone=${JSON.stringify(maskedPhone)} ` +
           `dnd=${r.dnd} tags=${JSON.stringify(r.tags)}`,
       )
     }

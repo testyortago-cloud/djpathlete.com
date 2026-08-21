@@ -118,6 +118,7 @@ import {
   importGhlContact,
   findEmailConsentEvidence,
   classifyGhlRecord,
+  buildAttributionsMetadata,
   EMAIL_CONSENT_TAG_ALLOWLIST,
   type GhlContactRecord,
 } from "@/lib/lead-engine/import"
@@ -413,6 +414,82 @@ describe("importGhlContact", () => {
         (e) => e.kind === "ghl_import" && e.contact_id === "scoped-contact" && e.business_id === BUSINESS_ID,
       )
       expect(ownBusinessImportRows).toHaveLength(1)
+    })
+
+    it("lands the record's raw attributions array in the ghl_import metadata when the export carries one", async () => {
+      const attributions = [
+        { utmSessionSource: "Social media", medium: "instagram", mediumId: "909322955070772", isFirst: true },
+        { utmSessionSource: "Social media", medium: "instagram", mediumId: "909322955070772", isLast: true },
+      ]
+      const record = baseRecord({
+        id: "attributed-ghl-id",
+        email: "attributed@example.com",
+        attributions,
+      })
+
+      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+
+      const importEvent = state.timelineEvents.find((e) => e.kind === "ghl_import")
+      expect(importEvent.metadata.attributions).toEqual(attributions)
+      expect(importEvent.metadata.attributions_truncated).toBeUndefined()
+    })
+
+    it("omits the attributions key entirely from the ghl_import metadata when the record carries none", async () => {
+      const record = baseRecord({ id: "unattributed-ghl-id", email: "unattributed@example.com" })
+
+      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+
+      const importEvent = state.timelineEvents.find((e) => e.kind === "ghl_import")
+      expect("attributions" in importEvent.metadata).toBe(false)
+    })
+
+    it("omits the attributions key when the record's attributions array is present but empty", async () => {
+      const record = baseRecord({ id: "empty-attributions-ghl-id", email: "empty-attr@example.com", attributions: [] })
+
+      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+
+      const importEvent = state.timelineEvents.find((e) => e.kind === "ghl_import")
+      expect("attributions" in importEvent.metadata).toBe(false)
+    })
+  })
+
+  describe("buildAttributionsMetadata", () => {
+    it("returns an empty object (no attributions key) for undefined", () => {
+      expect(buildAttributionsMetadata(undefined)).toEqual({})
+    })
+
+    it("returns an empty object (no attributions key) for an empty array", () => {
+      expect(buildAttributionsMetadata([])).toEqual({})
+    })
+
+    it("passes a small array through untouched, with no truncated flag", () => {
+      const attributions = [{ medium: "instagram", isFirst: true }]
+      expect(buildAttributionsMetadata(attributions)).toEqual({ attributions })
+    })
+
+    it("truncates an array whose serialized size exceeds the 4000-char cap, flags it, and keeps the result under the cap", () => {
+      // Every entry alone serializes well under the cap; enough of them
+      // together blow past it — proving the truncation is size-driven, not
+      // count-driven.
+      const bigAttributions = Array.from({ length: 200 }, (_, i) => ({
+        utmSessionSource: "Social media",
+        medium: "instagram",
+        mediumId: `909322955070772-${i}`,
+        note: "x".repeat(30),
+      }))
+      expect(JSON.stringify(bigAttributions).length).toBeGreaterThan(4000)
+
+      const result = buildAttributionsMetadata(bigAttributions) as {
+        attributions: Array<Record<string, unknown>>
+        attributions_truncated?: true
+      }
+
+      expect(result.attributions_truncated).toBe(true)
+      expect(result.attributions.length).toBeGreaterThan(0)
+      expect(result.attributions.length).toBeLessThan(bigAttributions.length)
+      expect(JSON.stringify(result.attributions).length).toBeLessThanOrEqual(4000)
+      // The kept entries are a front-slice of the original, not reordered.
+      expect(result.attributions).toEqual(bigAttributions.slice(0, result.attributions.length))
     })
   })
 
