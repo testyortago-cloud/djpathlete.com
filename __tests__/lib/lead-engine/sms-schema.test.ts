@@ -13,9 +13,7 @@ describe("00221 — sms config schema", () => {
     const m = sql.match(/status IN \(([^)]+)\)/)
     expect(m).not.toBeNull()
     const statuses = m![1].split(",").map((s) => s.trim().replace(/'/g, ""))
-    expect(statuses.sort()).toEqual(
-      ["delivered", "failed", "queued", "sent", "skipped", "undelivered"].sort(),
-    )
+    expect(statuses.sort()).toEqual(["delivered", "failed", "queued", "sent", "skipped", "undelivered"].sort())
   })
   it("requires a body on sms steps", () => {
     expect(sql).toMatch(/kind <> 'sms' OR body IS NOT NULL/)
