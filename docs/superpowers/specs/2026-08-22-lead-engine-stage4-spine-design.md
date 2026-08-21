@@ -85,7 +85,7 @@ losing the lead is not; a spine failure must never 500 a working form.
 | `/api/contact` | `contact_form` | email, name | already emails the lead — any future sequence on this source opens with wait (00218 audit row) |
 | `/api/newsletter` | `newsletter` | email | makes `newsletter_welcome` enrolable; EMAIL consent row written here (the subscribe action is the consent act; wording = the form's subscribe label, rendered server-side) |
 | `/api/shop/leads` | `lead_magnet` | email | makes `lead_magnet_delivery` enrolable |
-| `/api/inquiry` | `inquiry` | email, phone, name + gclid/gbraid/wbraid/fbclid | phone present → checkbox (§5); keep its existing users-row behavior untouched |
+| `/api/inquiry` | `inquiry` (or `step_up` — see amendment) | email, phone, name + gclid/gbraid/wbraid/fbclid | phone present → checkbox (§5); keep its existing users-row behavior untouched. *Amended at execution (2026-08-22): StepUpInquiryForm posts `form_context: "step_up"` and records source `step_up` — the union member existed unemitted, and folding Step Up into generic `inquiry` would have made its leads permanently untargetable by future sequences.* |
 | event signup | `event_signup` | parent email, phone | audited: opens-with-wait class |
 | shop checkout (Stripe webhook, completed) | `purchase` | email, name | a paying customer is a contact; NO sequence rides this source in this stage |
 | `/api/questionnaire` | `questionnaire` | per plan-time verification | wired only if it is a genuine lead-capture surface; if it is auth-gated like assessments, excluded with the same reasoning, recorded |
