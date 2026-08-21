@@ -52,6 +52,9 @@ export const inquiryFormSchema = z.object({
     .max(200)
     .optional()
     .transform((v) => v || null),
+  /** SMS opt-in checkbox next to the phone field (Lead Engine Stage 4).
+   * Unchecked by default — wire name matches what the checkbox posts. */
+  sms_consent: z.boolean().optional().default(false),
 })
 
 export type InquiryFormData = z.infer<typeof inquiryFormSchema>
