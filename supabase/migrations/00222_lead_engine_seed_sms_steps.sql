@@ -90,7 +90,7 @@ VALUES (
   '00000000-0000-0000-0000-000000000001',
   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'newsletter_welcome'),
   4, 'sms', NULL, NULL,
-  $body${{name}}, thanks for joining the newsletter — expect one useful training idea a week, no filler. Save this number so you know it's us.$body$
+  $body$Hi {{name}} — thanks for joining the newsletter. Expect one useful training idea a week, no filler. Save this number so you know it's us.$body$
 )
 ON CONFLICT (sequence_id, position) DO NOTHING;
 
@@ -153,7 +153,7 @@ VALUES (
   '00000000-0000-0000-0000-000000000001',
   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'cold_lead_re_engagement'),
   4, 'sms', NULL, NULL,
-  $body${{name}}, no pressure — if getting back to training is still on your mind, reply here and we'll find a time to talk.$body$
+  $body$Hi {{name}} — no pressure. If getting back to training is still on your mind, reply here and we'll find a time to talk.$body$
 )
 ON CONFLICT (sequence_id, position) DO NOTHING;
 
@@ -181,11 +181,14 @@ ON CONFLICT (sequence_id, position) DO NOTHING;
 --   "{{name}} — quick text to say the email with next steps is in your
 --   inbox. If texting is easier, reply here any time."
 --
--- Same shift pattern as the three drafts: it would land as position 3 wait
--- + position 4 sms, with the existing stop (currently 5) shifting to 7 —
--- i.e. this sequence has one more content step than the other three, so
--- its stop's old position (5) is higher, but the +2 shift and the "wait
--- then sms, immediately before stop" placement are identical in kind.
+-- Same shift pattern as the three drafts: the new wait lands exactly at the
+-- old stop position (5) and the new sms one after it (6), with the stop
+-- itself shifting from 5 to 7 — i.e. this sequence has one more content
+-- step than the other three, so its stop's old position (5) is higher, but
+-- the +2 shift and the "wait then sms land where the stop used to sit"
+-- placement are identical in kind. Positions 3 and 4 (the existing wait and
+-- email) are NOT touched by this shift at all — they keep their row,
+-- content and position exactly as 00218 seeded them.
 --
 -- RUN-SAFE INSERTION RUNBOOK (execute the day Twilio clears, as its own
 -- reviewed migration or an operator script — not as part of this file):
@@ -197,9 +200,10 @@ ON CONFLICT (sequence_id, position) DO NOTHING;
 --
 --   2. VERIFY no run is mid-window, i.e. every active run is either absent
 --      or sitting at a position that will not be touched by the shift.
---      This sequence's steps after the insertion point (position >= 3)
---      are the ones being renumbered, so any run already there is
---      "mid-window":
+--      Only the stop itself (position 5) is being renumbered — positions 3
+--      and 4 (the existing wait and email) keep their row, content and
+--      position exactly as they are — so any run already sitting at
+--      position 5 is "mid-window":
 --        SELECT count(*) FROM public.sequence_runs
 --        WHERE sequence_id = (
 --          SELECT id FROM public.sequences
@@ -207,9 +211,9 @@ ON CONFLICT (sequence_id, position) DO NOTHING;
 --            AND key = 'new_lead_nurture'
 --        )
 --        AND status = 'active'
---        AND current_position >= 3;
+--        AND current_position >= 5;
 --      This must return 0 before continuing. If it does not, wait for
---      those runs to advance past position 2 (or complete/exit) and check
+--      those runs to advance past position 4 (or complete/exit) and check
 --      again — do not renumber under them.
 --
 --   3. SHIFT + INSERT, same pattern as the three drafts above:
@@ -230,7 +234,7 @@ ON CONFLICT (sequence_id, position) DO NOTHING;
 --          (SELECT id FROM public.sequences
 --           WHERE business_id = '00000000-0000-0000-0000-000000000001'
 --             AND key = 'new_lead_nurture'),
---          3, 'wait', 1440, NULL, NULL
+--          5, 'wait', 1440, NULL, NULL
 --        )
 --        ON CONFLICT (sequence_id, position) DO NOTHING;
 --
@@ -241,7 +245,7 @@ ON CONFLICT (sequence_id, position) DO NOTHING;
 --          (SELECT id FROM public.sequences
 --           WHERE business_id = '00000000-0000-0000-0000-000000000001'
 --             AND key = 'new_lead_nurture'),
---          4, 'sms', NULL, NULL,
+--          6, 'sms', NULL, NULL,
 --          -- body: the authored sms text above, as a $body$-quoted literal
 --        )
 --        ON CONFLICT (sequence_id, position) DO NOTHING;

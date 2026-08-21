@@ -62,10 +62,13 @@ vi.mock("@/lib/supabase", () => ({
       let mode: "select" | "insert" | "update" = "select"
       let payload: Row | null = null
 
+      const inFilters: Array<[string, any[]]> = []
+
       const passesFilters = (row: Row) =>
         filters.every(([col, val]) => row[col] === val) &&
         gteFilters.every(([col, val]) => row[col] >= val) &&
-        ltFilters.every(([col, val]) => row[col] < val)
+        ltFilters.every(([col, val]) => row[col] < val) &&
+        inFilters.every(([col, vals]) => vals.includes(row[col]))
 
       const matched = (): Row[] => {
         let result = rows.filter(passesFilters)
@@ -140,6 +143,10 @@ vi.mock("@/lib/supabase", () => ({
           ltFilters.push([col, val])
           return api
         },
+        in: (col: string, vals: any[]) => {
+          inFilters.push([col, vals])
+          return api
+        },
         order: (col: string, opts?: { ascending?: boolean }) => {
           orderCol = col
           orderAscending = opts?.ascending ?? true
@@ -198,7 +205,8 @@ import {
   exitRunsForContact,
 } from "@/lib/db/sequences"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
-import type { SequenceRunRow } from "@/lib/automation/sequence-tick"
+import { decideStep } from "@/lib/automation/sequence-tick"
+import type { SequenceRunRow, SequenceStepRow } from "@/lib/automation/sequence-tick"
 
 beforeEach(() => {
   store.business_settings = []
@@ -529,6 +537,78 @@ describe("loadRunContext", () => {
     const run = seedRun("run-1", "c-missing", "seq-1") as SequenceRunRow
 
     await expect(loadRunContext(run, now)).rejects.toThrow()
+  })
+
+  // Fix wave (Important, Finding 1): applyDeliveryStatus (lib/db/sequences.ts)
+  // OVERWRITES a message row's status from "sent" to "delivered" (or
+  // "undelivered"/"failed") once Twilio's status callback lands — that's the
+  // whole point of that function. The daily-cap query used to filter
+  // `.eq("status", "sent")`, so the instant a message's Twilio callback
+  // arrived it silently stopped counting toward today's cap, and a sibling
+  // sequence could message the same contact again the same day. The fix
+  // widens the filter to `.in("status", ["sent", "delivered", "undelivered",
+  // "failed"])` — every post-send lifecycle state a message can be in.
+  // Pre-send failures are excluded for free: they never got a `sent_at`, and
+  // the query's `sent_at` bounds already require a value inside today's
+  // window.
+  it("counts a message whose status was overwritten sent -> delivered toward today's daily cap, deferring a sibling sms send", async () => {
+    seedBusinessSettings({ daily_message_cap: 1 })
+    seedContact("c-1", { email: "lead@example.com", phone_e164: "+15551234567" })
+    seedSequence("seq-1", { trigger_source: "funnel_form" })
+    seedSequence("seq-2", { trigger_source: "funnel_form" })
+    // The message that already went out today, on a DIFFERENT sequence run —
+    // its status was overwritten from "sent" to "delivered" by
+    // applyDeliveryStatus once Twilio's callback landed, exactly the
+    // lifecycle transition this test guards.
+    store.sequence_messages.push({
+      id: "msg-delivered",
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_id: "c-1",
+      run_id: "run-1",
+      step_id: "step-1",
+      channel: "sms",
+      status: "delivered",
+      sent_at: "2026-08-18T13:00:00Z",
+      delivered_at: "2026-08-18T13:01:00Z",
+    })
+    store.contact_consents.push({
+      id: "consent-1",
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_id: "c-1",
+      channel: "sms",
+      granted: true,
+      occurred_at: "2026-08-18T00:00:00Z",
+      created_at: "2026-08-18T00:00:00Z",
+    })
+    // The sibling run this test is actually deciding for — a different
+    // sequence, same contact, due to send its own sms step right now.
+    const sibling = seedRun("run-2", "c-1", "seq-2", {
+      enrolled_at: "2026-08-18T10:00:00Z",
+      current_position: 0,
+    }) as SequenceRunRow
+
+    const ctx = await loadRunContext(sibling, now)
+
+    // The bug this guards against: filtering on status === "sent" only would
+    // miss this row entirely, leaving sentAtToday empty and the cap
+    // unenforced.
+    expect(ctx.sentAtToday).toHaveLength(1)
+
+    const smsStep: SequenceStepRow = {
+      id: "step-sibling-sms",
+      position: 0,
+      kind: "sms",
+      wait_minutes: null,
+      subject: null,
+      body: "Hi {{name}}",
+      branch_condition: null,
+      on_true_position: null,
+      on_false_position: null,
+      config: {},
+    }
+    const action = decideStep(sibling, [smsStep], ctx)
+
+    expect(action).toMatchObject({ kind: "defer", reason: "daily_cap" })
   })
 })
 

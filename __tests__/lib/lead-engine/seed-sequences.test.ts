@@ -472,6 +472,29 @@ describe("seed migration 00222 — sms steps for the three draft sequences", () 
     }
   })
 
+  // Mirrors 00218's identical assertion for email steps (Fix wave, Finding
+  // 3): lib/lead-engine/sms.ts substitutes {{name}} with "" verbatim for a
+  // nameless contact, so a body that opens "{{name}}, ..." renders as a
+  // literal leading ", ..." — the character immediately after the token in
+  // the SOURCE COPY must never be a comma, period, or other punctuation mark
+  // that would look broken glued to nothing.
+  it("uses {{name}} for personalisation in its sms bodies, and never right before punctuation that would read badly when it renders empty", () => {
+    const smsSteps = stepRows222.filter((s) => s.kind === "sms")
+    let usesName = false
+    for (const step of smsSteps) {
+      const field = step.body
+      if (!field) continue
+      let idx = field.indexOf("{{name}}")
+      while (idx !== -1) {
+        usesName = true
+        const after = field.slice(idx + "{{name}}".length, idx + "{{name}}".length + 1)
+        expect(/[,.!?;:]/.test(after), `sequence ${step.sequenceKey}: "{{name}}${after}"`).toBe(false)
+        idx = field.indexOf("{{name}}", idx + 1)
+      }
+    }
+    expect(usesName).toBe(true)
+  })
+
   it("touches only the three draft sequences — new_lead_nurture gets no live INSERT or UPDATE", () => {
     const liveKeys = new Set(stepRows222.map((s) => s.sequenceKey))
     for (const stmt of updateStopStatements222) {

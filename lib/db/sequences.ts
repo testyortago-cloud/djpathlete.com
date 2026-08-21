@@ -129,12 +129,21 @@ export async function loadRunContext(
   const timezone = resolveTimezone(contactRow.timezone as string | null, settings.timezone)
   const { start, end } = localDayBounds(now, timezone)
 
+  // Every post-send lifecycle status a message row can carry, NOT just
+  // "sent" — applyDeliveryStatus (below) overwrites "sent" with
+  // "delivered"/"undelivered"/"failed" the moment Twilio's status callback
+  // lands, so a `.eq("status", "sent")` filter here would stop counting a
+  // message toward today's cap the instant it got delivered, letting a
+  // sibling sequence message the same contact again the same day. Pre-send
+  // failures (a message that never left `queued`) are excluded for free:
+  // they never got a `sent_at`, and the `sent_at` bounds below already
+  // require a non-null value inside today's window.
   const { data: sentRows, error: sentErr } = await supabase
     .from("sequence_messages")
     .select("sent_at")
     .eq("contact_id", run.contact_id)
     .eq("business_id", businessId)
-    .eq("status", "sent")
+    .in("status", ["sent", "delivered", "undelivered", "failed"])
     .gte("sent_at", start.toISOString())
     .lt("sent_at", end.toISOString())
   if (sentErr) throw sentErr
