@@ -165,6 +165,14 @@ overwrite `delivered`; unknown message SIDs are logged and dropped, never
 - The plan enumerates every public phone-collecting form by grepping routes
   and components, funnel forms first; each wired form is a separate task
   with its own screenshot.
+- *Amended at execution time (2026-08-21): the enumeration found that only
+  the funnel submit route touches the contact spine today. The inquiry
+  forms (`/api/inquiry`), event signup, and shop address form either never
+  create a contact (nothing to attach consent to) or are not marketing
+  capture. Per the plan's conditional rule — a checkbox that stores
+  nothing is worse than none — Stage 2 ships consent capture on funnel
+  forms only; the remaining forms gain their checkbox in Stage 4, in the
+  same change that wires their routes into `recordContactEvent`.*
 
 ## 7. Seeded SMS copy (00222, data migration)
 
