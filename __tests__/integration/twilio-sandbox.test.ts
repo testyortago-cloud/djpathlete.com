@@ -126,7 +126,7 @@ describe.skipIf(!envPresent)("Twilio sandbox — real wire contract", () => {
     expect(json.message!.length).toBeGreaterThan(0)
   }, 15_000)
 
-  it("From a number the sandbox account doesn't own (+15005550000) -> a documented Twilio error code", async () => {
+  it("From an undocumented number (+15005550000) -> Twilio's 21606 catch-all", async () => {
     const { status, json } = await postMessage({
       To: "+15005551234",
       From: "+15005550000",
@@ -134,14 +134,19 @@ describe.skipIf(!envPresent)("Twilio sandbox — real wire contract", () => {
     })
 
     expect(status).toBe(400)
-    // Twilio documents +15005550000 as a From number the test account never
-    // owns, which its API has surfaced as either 21606 ("the 'From' phone
-    // number is not a valid, SMS-capable inbound phone number currently
-    // owned by your account") or, on some API versions, the more general
-    // 21212 ("Invalid 'From' Phone Number") family — assert against
-    // whichever code Twilio's live sandbox actually returns rather than
-    // pinning one guess that could go stale.
-    expect([21606, 21212]).toContain(json.code)
+    // Twilio's test-credentials magic-number table
+    // (https://www.twilio.com/docs/iam/test-credentials#test-sms-messages)
+    // documents a fixed set of From/To numbers with specific behavior
+    // (+15005550006 valid, +15005550001 invalid). +15005550000 is not one of
+    // the documented magic numbers itself — it's an ordinary-looking number
+    // the test account doesn't own, and Twilio's table routes every such
+    // "all others" From number deterministically to error 21606 ("the
+    // 'From' phone number is not a valid, SMS-capable inbound phone number
+    // currently owned by your account"). 21212 ("Invalid 'From' Phone
+    // Number") is a different, unrelated scenario — it's what Twilio returns
+    // when +15005550001 (the documented INVALID number) is reused as the
+    // From value, not this case — so it does not apply here.
+    expect(json.code).toBe(21606)
     expect(typeof json.message).toBe("string")
     expect(json.message!.length).toBeGreaterThan(0)
   }, 15_000)
