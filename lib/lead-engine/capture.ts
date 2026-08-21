@@ -8,19 +8,26 @@
 
 import { recordContactEvent, type ContactEventSource } from "@/lib/db/contacts"
 
+// POST /api/newsletter has two entry points that do not show the visitor
+// the same thing: components/public/NewsletterForm.tsx has a required
+// checkbox carrying real legal wording naming the business, while
+// components/marketing/blog/InlinePostNewsletterCapture.tsx shows no
+// checkbox at all and posts consent_marketing: true unconditionally. The
+// route tells them apart via the `consent_context` field ("checkbox" |
+// "inline") and quotes each honestly:
+//
+//   - "checkbox" renders lib/lead-engine/newsletter-consent-wording.ts's
+//     `renderNewsletterConsentWording(displayName)` against the business's
+//     actual configured name — the real thing that surface showed.
+//   - "inline", an absent/unrecognized consent_context, AND "checkbox" when
+//     no business name is configured (so the template above has nothing to
+//     fill it with) all fall back to THIS constant: a generic description
+//     of the act itself, never a fabricated or nameless legal sentence.
+//
 // This constant lives in lib/lead-engine, which
 // __tests__/lib/lead-engine/no-brand-literals.test.ts sweeps for a
-// hard-coded brand name. The newsletter form's checkbox
-// (components/public/NewsletterForm.tsx) does carry real legal wording, but
-// it names the business directly, so it cannot be reproduced here without
-// tripping that sweep — and it is not shown on every path that reaches this
-// route anyway: components/marketing/blog/InlinePostNewsletterCapture.tsx
-// posts to the same POST /api/newsletter with no checkbox at all, defaulting
-// consent_marketing to true unconditionally. The one thing genuinely true of
-// every submission this route receives is the act itself — a click on a
-// button labelled "Subscribe" — so that is what this constant states,
-// matching the design's own framing (the subscribe action IS the consent
-// act; wording = the form's subscribe label, rendered server-side).
+// hard-coded brand name — it deliberately names no business, which is why
+// it can serve as the fallback for both surfaces.
 export const NEWSLETTER_CONSENT_WORDING = "Subscribed via the newsletter form (Subscribe button)"
 
 export type CaptureLeadInput = {

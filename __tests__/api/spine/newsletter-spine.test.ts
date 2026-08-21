@@ -22,8 +22,17 @@ const state: {
   consents: Row[]
   sequences: Row[]
   sequenceRuns: Row[]
+  businessSettings: Row | null
   errors: { contactsSelect?: any }
-} = { contacts: [], timelineEvents: [], consents: [], sequences: [], sequenceRuns: [], errors: {} }
+} = {
+  contacts: [],
+  timelineEvents: [],
+  consents: [],
+  sequences: [],
+  sequenceRuns: [],
+  businessSettings: null,
+  errors: {},
+}
 
 function collectionFor(table: string): Row[] | null {
   switch (table) {
@@ -40,6 +49,8 @@ function collectionFor(table: string): Row[] | null {
     default:
       // Unlisted tables (audit_logs, from the route's withAudit fire-and-forget
       // recordAudit call) are inert here — that write is not under test.
+      // business_settings is handled separately below (a singleton row, not
+      // a filtered collection).
       return null
   }
 }
@@ -68,6 +79,9 @@ function makeTable(table: string) {
       return api
     },
     async maybeSingle() {
+      if (table === "business_settings") {
+        return { data: state.businessSettings, error: null }
+      }
       const rows = filterRows()
       return { data: rows[0] ?? null, error: null }
     },
@@ -143,6 +157,7 @@ vi.mock("@/lib/ghl", () => ({ ghlCreateContact: mocks.ghlCreateContact }))
 
 import { POST } from "@/app/api/newsletter/route"
 import { NEWSLETTER_CONSENT_WORDING } from "@/lib/lead-engine/capture"
+import { renderNewsletterConsentWording } from "@/lib/lead-engine/newsletter-consent-wording"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 function jsonRequest(body: unknown, headers: Record<string, string> = {}): NextRequest {
@@ -163,6 +178,7 @@ beforeEach(() => {
   state.consents = []
   state.sequences = []
   state.sequenceRuns = []
+  state.businessSettings = null
   state.errors = {}
   vi.clearAllMocks()
   mocks.addSubscriberWithAttribution.mockResolvedValue({ subscriber_id: "sub-1" })
@@ -185,7 +201,7 @@ describe("POST /api/newsletter — joins the contact spine", () => {
     })
   })
 
-  it("writes a consent row with the exact wording, channel, and ip/user-agent", async () => {
+  it("writes a consent row with the generic wording, channel, and ip/user-agent when consent_context is absent", async () => {
     const res = await post(
       { email: "consent@example.com", consent_marketing: true },
       { "x-forwarded-for": "203.0.113.9", "user-agent": "test-agent/1.0" },
@@ -203,6 +219,66 @@ describe("POST /api/newsletter — joins the contact spine", () => {
       ip_address: "203.0.113.9",
       user_agent: "test-agent/1.0",
     })
+  })
+
+  it("writes zero consent rows when consent_marketing is false — the spine event still fires", async () => {
+    // A configured business name is seeded so this test's only variable is
+    // the consent_marketing gate itself — without it, a missing
+    // business_settings row would make resolveNewsletterConsentWording
+    // throw before recordConsent is ever reached, and the assertion below
+    // would pass for the wrong reason (masking a dropped gate instead of
+    // proving it).
+    state.businessSettings = { business_id: SINGLETON_BUSINESS_ID, display_name: "Acme Coaching" }
+
+    const res = await post({ email: "declined@example.com", consent_marketing: false, consent_context: "checkbox" })
+    expect(res.status).toBe(200)
+
+    // Not ticking the box is not a consent act — absence of consent is a
+    // state, not a bug. The contact is still captured on the spine either way.
+    expect(state.contacts).toHaveLength(1)
+    expect(state.contacts[0].email).toBe("declined@example.com")
+    expect(state.consents).toHaveLength(0)
+  })
+
+  it("writes zero consent rows when consent_marketing is omitted (schema default false)", async () => {
+    const res = await post({ email: "omitted@example.com" })
+    expect(res.status).toBe(200)
+
+    expect(state.contacts).toHaveLength(1)
+    expect(state.consents).toHaveLength(0)
+  })
+
+  it("consent_context 'checkbox' quotes the real checkbox template with the configured business name", async () => {
+    state.businessSettings = { business_id: SINGLETON_BUSINESS_ID, display_name: "Acme Coaching" }
+
+    const res = await post({ email: "checkbox@example.com", consent_marketing: true, consent_context: "checkbox" })
+    expect(res.status).toBe(200)
+
+    expect(state.consents).toHaveLength(1)
+    expect(state.consents[0].wording_shown).toBe(renderNewsletterConsentWording("Acme Coaching"))
+    expect(state.consents[0].wording_shown).not.toBe(NEWSLETTER_CONSENT_WORDING)
+  })
+
+  it("consent_context 'inline' always writes the generic act wording, even with a business name configured", async () => {
+    state.businessSettings = { business_id: SINGLETON_BUSINESS_ID, display_name: "Acme Coaching" }
+
+    const res = await post({ email: "inline@example.com", consent_marketing: true, consent_context: "inline" })
+    expect(res.status).toBe(200)
+
+    expect(state.consents).toHaveLength(1)
+    expect(state.consents[0].wording_shown).toBe(NEWSLETTER_CONSENT_WORDING)
+  })
+
+  it("consent_context 'checkbox' falls back to the generic wording when business_settings.display_name is blank", async () => {
+    // The real seeded default (migration 00212 — NOT NULL DEFAULT ''), not a
+    // missing row: any install nobody has configured yet reads back this way.
+    state.businessSettings = { business_id: SINGLETON_BUSINESS_ID, display_name: "" }
+
+    const res = await post({ email: "blank-name@example.com", consent_marketing: true, consent_context: "checkbox" })
+    expect(res.status).toBe(200)
+
+    expect(state.consents).toHaveLength(1)
+    expect(state.consents[0].wording_shown).toBe(NEWSLETTER_CONSENT_WORDING)
   })
 
   it("never changes the route's response or writes when recordContactEvent throws", async () => {

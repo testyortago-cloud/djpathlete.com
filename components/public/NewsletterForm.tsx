@@ -24,7 +24,7 @@ export function NewsletterForm() {
       const response = await fetch("/api/newsletter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, consent_marketing: consent }),
+        body: JSON.stringify({ email, consent_marketing: consent, consent_context: "checkbox" }),
       })
 
       if (!response.ok) {
@@ -85,8 +85,8 @@ export function NewsletterForm() {
           required
         />
         <span>
-          I consent to receiving marketing emails from DJP Athlete, including the use of my hashed
-          email for personalized advertising on Google. I can opt out at any time.
+          I consent to receiving marketing emails from DJP Athlete, including the use of my hashed email for
+          personalized advertising on Google. I can opt out at any time.
         </span>
       </label>
     </form>
