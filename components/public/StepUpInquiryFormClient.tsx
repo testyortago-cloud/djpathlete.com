@@ -113,6 +113,11 @@ export function StepUpInquiryFormClient({ smsConsentWording }: StepUpInquiryForm
       how_heard: "Step Up For Students page",
       gclid: readCookie("gclid"),
       sms_consent: smsConsent,
+      // This is the one surface that emits "step_up" spine events — the
+      // route maps this to contact_timeline_events.source (and the SMS
+      // consent row's source, if one is filed) instead of the plain
+      // InquiryForm's "inquiry" default.
+      form_context: "step_up" as const,
     }
 
     const result = inquiryFormSchema.safeParse(data)

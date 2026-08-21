@@ -15,8 +15,21 @@ import { captureLead } from "@/lib/lead-engine/capture"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import type { ContactEventSource } from "@/lib/db/contacts"
 
 export const maxDuration = 45
+
+/**
+ * `StepUpInquiryForm` is the one source of `form_context: "step_up"` —
+ * every other inquiry surface (the six plain InquiryForm pages) omits the
+ * field entirely, and the schema default is `undefined`. Both the spine
+ * event (`captureLead`) and the SMS consent row this route may file use the
+ * SAME resolved source, so a step-up submission never shows up as one thing
+ * on the contact timeline and a different thing on its own consent row.
+ */
+function resolveContactSource(formContext: "step_up" | undefined): ContactEventSource {
+  return formContext === "step_up" ? "step_up" : "inquiry"
+}
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
@@ -54,8 +67,10 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       how_heard,
       gclid: submittedGclid,
       sms_consent,
+      form_context,
     } = result.data
     const serviceLabel = SERVICE_LABELS[service]
+    const contactSource = resolveContactSource(form_context)
 
     // Resolve tracking from the djp_attr session rather than trusting the
     // client. `proxy.ts` already recorded every click id server-side, so the
@@ -132,7 +147,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
     // — gclid/gbraid/wbraid/fbclid, all four this route computes today — never
     // re-derived here.
     const contactId = await captureLead({
-      source: "inquiry",
+      source: contactSource,
       email,
       phone,
       name,
@@ -149,7 +164,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
     if (contactId && phone && sms_consent === true) {
       const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null
       const userAgent = request.headers.get("user-agent")
-      void recordInquirySmsConsent({ contactId, ip, userAgent }).catch((err) => {
+      void recordInquirySmsConsent({ contactId, ip, userAgent, source: contactSource }).catch((err) => {
         console.error("Inquiry sms consent write failed (the lead was saved):", err)
       })
     }
@@ -397,11 +412,17 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
  * business name is not a reason to lose it.
  *
  * Mirrors app/api/funnels/submit/route.ts's recordFunnelSmsConsent exactly.
+ *
+ * `source` is the SAME resolved value (`resolveContactSource`) the caller
+ * fed `captureLead` for this request — a step-up submission's consent row
+ * reads "step_up", never a hard-coded "inquiry", so the row agrees with the
+ * contact_timeline_events entry it's evidence for.
  */
 async function recordInquirySmsConsent(input: {
   contactId: string
   ip: string | null
   userAgent: string | null
+  source: ContactEventSource
 }): Promise<void> {
   const settings = await getBusinessSettings()
   if (!hasSmsConsentDisplayName(settings.display_name)) {
@@ -412,7 +433,7 @@ async function recordInquirySmsConsent(input: {
     contactId: input.contactId,
     channel: "sms",
     granted: true,
-    source: "inquiry",
+    source: input.source,
     wordingShown: renderSmsConsentWording(settings.display_name),
     ip: input.ip,
     userAgent: input.userAgent,

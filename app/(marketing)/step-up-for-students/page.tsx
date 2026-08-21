@@ -25,6 +25,12 @@ import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { StepUpInquiryForm } from "@/components/public/StepUpInquiryForm"
 import { getStepUpPageContent } from "@/lib/db/step-up-page"
 
+// See app/(marketing)/assessment/page.tsx for why: this page prerenders
+// statically, so StepUpInquiryForm's SMS consent checkbox decision would
+// otherwise be baked in at build time. Hourly ISR self-heals both
+// directions within an hour instead of never.
+export const revalidate = 3600
+
 export const metadata: Metadata = {
   title: "Step Up For Students Approved Provider | Sports Performance Training",
   description:
@@ -396,8 +402,8 @@ export default async function StepUpForStudentsPage() {
         <div className="max-w-5xl mx-auto flex flex-col lg:flex-row items-center gap-10">
           <blockquote className="flex-1 min-w-0">
             <p className="text-lg sm:text-xl italic text-white leading-relaxed">
-              &ldquo;He initiates a unique approach to his work and the training he provides, which complements what I do
-              and makes me feel right at home as I train towards performance.&rdquo;
+              &ldquo;He initiates a unique approach to his work and the training he provides, which complements what I
+              do and makes me feel right at home as I train towards performance.&rdquo;
             </p>
             <cite className="block mt-4 not-italic text-sm font-medium text-white/60">
               — Wayde van Niekerk, 400m World Record Holder
@@ -547,8 +553,8 @@ export default async function StepUpForStudentsPage() {
               How to Use Your Scholarship — Step by Step
             </h2>
             <p className="text-base sm:text-lg text-muted-foreground leading-relaxed">
-              Most families don&apos;t know this is possible. The ones who figure it out win. Here&apos;s exactly how the
-              process works — simplified so there&apos;s no confusion.
+              Most families don&apos;t know this is possible. The ones who figure it out win. Here&apos;s exactly how
+              the process works — simplified so there&apos;s no confusion.
             </p>
           </FadeIn>
 
@@ -596,8 +602,8 @@ export default async function StepUpForStudentsPage() {
                   Ready to Use Your Scholarship? Let&apos;s Talk.
                 </h2>
                 <p className="text-muted-foreground leading-relaxed mb-6">
-                  Book a free Step Up For Students consultation. We&apos;ll confirm your eligibility, walk you through the
-                  right package for your athlete, and handle the EMA process from there.
+                  Book a free Step Up For Students consultation. We&apos;ll confirm your eligibility, walk you through
+                  the right package for your athlete, and handle the EMA process from there.
                 </p>
                 <div className="space-y-3">
                   <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">

@@ -31,7 +31,7 @@ import { recordContactEvent, type ContactEventSource } from "@/lib/db/contacts"
 export const NEWSLETTER_CONSENT_WORDING = "Subscribed via the newsletter form (Subscribe button)"
 
 export type CaptureLeadInput = {
-  source: string
+  source: ContactEventSource
   email?: string | null
   phone?: string | null
   name?: string | null
@@ -65,7 +65,7 @@ export async function captureLead(input: CaptureLeadInput): Promise<string | nul
       email: input.email,
       phone: input.phone,
       name: input.name,
-      source: input.source as ContactEventSource,
+      source: input.source,
       metadata: { ...(input.metadata ?? {}), ...(input.attribution ?? {}) },
     })
     return contactId

@@ -76,3 +76,21 @@ describe("StepUpInquiryFormClient — SMS consent checkbox", () => {
     expect(body.sms_consent).toBe(false)
   })
 })
+
+describe("StepUpInquiryFormClient — form identity", () => {
+  it('posts form_context: "step_up" — the route maps this to the step_up spine source', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<StepUpInquiryFormClient />)
+    fillRequiredFields()
+    fireEvent.submit(document.querySelector("form")!)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body.form_context).toBe("step_up")
+  })
+})

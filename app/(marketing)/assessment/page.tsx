@@ -11,6 +11,14 @@ import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { Button } from "@/components/ui/button"
 
+// This page prerenders statically, so InquiryForm's SMS consent checkbox
+// decision (getBusinessSettings, read once at render) is otherwise baked in
+// at build time — a later business_settings.display_name change would never
+// surface until the next deploy. Hourly ISR self-heals both directions
+// (name set → checkbox appears; name cleared → checkbox disappears) within
+// an hour instead of never, for a page cheap enough that hourly is safe.
+export const revalidate = 3600
+
 export const metadata: Metadata = {
   title: "Athlete Assessments — Return to Performance",
   description:
@@ -101,12 +109,7 @@ const traditionalProblems = [
   { label: "Power", aside: "without control" },
 ]
 
-const collaborators = [
-  "Physiotherapists",
-  "Surgeons",
-  "Strength & Conditioning coaches",
-  "Team performance staff",
-]
+const collaborators = ["Physiotherapists", "Surgeons", "Strength & Conditioning coaches", "Team performance staff"]
 
 // ──────────────────────────────────────────────────────────────────────────
 // Instrument cards
@@ -212,10 +215,7 @@ export default function AssessmentPage() {
           contrast, white-on-dark copy. The video is a placeholder using the
           clinics footage until a dedicated assessment cut is supplied. */}
       <section className="relative overflow-hidden bg-primary text-primary-foreground">
-        <LocalVideoBackground
-          src="/videos/clinics-hero.mp4"
-          poster="/videos/clinics-hero-poster.jpg"
-        />
+        <LocalVideoBackground src="/videos/clinics-hero.mp4" poster="/videos/clinics-hero-poster.jpg" />
         <div className="absolute inset-0 bg-primary/70" />
         <div className="relative z-10 mx-auto max-w-7xl px-4 md:px-6 pt-20 md:pt-28 pb-20 md:pb-28">
           <div className="max-w-2xl">
@@ -234,9 +234,9 @@ export default function AssessmentPage() {
                 </p>
 
                 <p className="mt-8 max-w-lg text-base leading-7 md:text-lg md:leading-8 text-primary-foreground/80">
-                  Medical clearance is a starting line, not a finish. Competition exposes a different
-                  reality — high-speed chaos, reactive decisions, accumulated fatigue.
-                  Return-to-performance testing closes that gap.
+                  Medical clearance is a starting line, not a finish. Competition exposes a different reality —
+                  high-speed chaos, reactive decisions, accumulated fatigue. Return-to-performance testing closes that
+                  gap.
                 </p>
 
                 {/* Cleared → Ready gauge */}
@@ -327,10 +327,9 @@ export default function AssessmentPage() {
               </div>
               <div>
                 <p className="text-xl leading-9 text-foreground">
-                  <span className="italic text-muted-foreground">&ldquo;Are you healed?&rdquo;</span> is a
-                  clinical milestone.{" "}
-                  <span className="italic text-accent">&ldquo;Are you prepared to perform?&rdquo;</span>{" "}
-                  is a different question entirely — and the only one that matters at kickoff.
+                  <span className="italic text-muted-foreground">&ldquo;Are you healed?&rdquo;</span> is a clinical
+                  milestone. <span className="italic text-accent">&ldquo;Are you prepared to perform?&rdquo;</span> is a
+                  different question entirely — and the only one that matters at kickoff.
                 </p>
 
                 <div className="mt-10 divide-y divide-border border-y border-border">
@@ -358,12 +357,12 @@ export default function AssessmentPage() {
             <FadeIn>
               <div className="relative rounded-sm border border-primary/15 bg-background p-8 md:p-10 h-full">
                 <p className="mt-4 text-xl leading-8 text-primary">
-                  A performance-based assessment process designed to evaluate readiness for high-level sport
-                  after the conclusion of clinical care.
+                  A performance-based assessment process designed to evaluate readiness for high-level sport after the
+                  conclusion of clinical care.
                 </p>
                 <p className="mt-5 text-base leading-7 text-muted-foreground">
-                  My role is to assess movement strategy, force characteristics, load tolerance, and
-                  decision-making under physical stress.
+                  My role is to assess movement strategy, force characteristics, load tolerance, and decision-making
+                  under physical stress.
                 </p>
                 <h3 className="mt-10 font-mono font-bold text-[10px] uppercase tracking-[0.3em] mb-4 text-primary/55">
                   Collaborates with
@@ -386,13 +385,11 @@ export default function AssessmentPage() {
                   <br />
                   Not diagnosis.
                   <br />
-                  <span className="italic font-normal text-muted-foreground">
-                    Not injury management.
-                  </span>
+                  <span className="italic font-normal text-muted-foreground">Not injury management.</span>
                 </p>
                 <p className="mt-6 text-base leading-7 text-muted-foreground">
-                  The goal is alignment — not replacement of medical professionals. This assessment is a
-                  performance layer on top of the clinical work, not a substitute for it.
+                  The goal is alignment — not replacement of medical professionals. This assessment is a performance
+                  layer on top of the clinical work, not a substitute for it.
                 </p>
               </div>
             </FadeIn>
@@ -407,13 +404,12 @@ export default function AssessmentPage() {
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-16">
               <div>
                 <h2 className="font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.02] max-w-xl text-primary">
-                  Measuring what actually{" "}
-                  <span className="italic font-normal text-accent">matters.</span>
+                  Measuring what actually <span className="italic font-normal text-accent">matters.</span>
                 </h2>
               </div>
               <p className="md:max-w-sm text-base leading-7 text-muted-foreground">
-                Industry-grade equipment mapped to the qualities that decide performance — force, speed,
-                control, readiness.
+                Industry-grade equipment mapped to the qualities that decide performance — force, speed, control,
+                readiness.
               </p>
             </div>
           </FadeIn>
@@ -468,8 +464,7 @@ export default function AssessmentPage() {
             <FadeIn direction="left" className="lg:col-span-2">
               <div className="lg:sticky lg:top-28">
                 <h2 className="font-heading text-3xl sm:text-4xl font-semibold tracking-tight text-primary leading-[1.05]">
-                  Find out where you{" "}
-                  <span className="italic font-normal">truly stand.</span>
+                  Find out where you <span className="italic font-normal">truly stand.</span>
                 </h2>
                 <p className="mt-5 text-muted-foreground leading-7">
                   Beyond clearance, beyond guesswork. Book an assessment to begin the process.

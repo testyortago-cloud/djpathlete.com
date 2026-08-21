@@ -159,6 +159,20 @@ describe("POST /api/inquiry — joins the contact spine", () => {
     )
   })
 
+  it("records source step_up when form_context is step_up — StepUpInquiryForm's own identity", async () => {
+    const res = await post({ ...VALID_BODY, form_context: "step_up" })
+    expect(res.status).toBe(200)
+
+    expect(mocks.recordContactEvent).toHaveBeenCalledWith(expect.objectContaining({ source: "step_up" }))
+  })
+
+  it("still records source inquiry when form_context is absent — the plain InquiryForm default", async () => {
+    const res = await post(VALID_BODY)
+    expect(res.status).toBe(200)
+
+    expect(mocks.recordContactEvent).toHaveBeenCalledWith(expect.objectContaining({ source: "inquiry" }))
+  })
+
   it("passes through exactly the four attribution fields the route already resolves — none re-derived", async () => {
     mocks.getAttributionBySession.mockResolvedValue({
       id: "attr-1",
@@ -229,6 +243,17 @@ describe("POST /api/inquiry — SMS consent", () => {
       ip: "203.0.113.9",
       userAgent: "test-agent/1.0",
     })
+  })
+
+  it("consent row's source follows the same step_up mapping as the spine event", async () => {
+    const res = await post(
+      { ...VALID_BODY, sms_consent: true, form_context: "step_up" },
+      { "x-forwarded-for": "203.0.113.9", "user-agent": "test-agent/1.0" },
+    )
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(mocks.recordConsent).toHaveBeenCalledWith(expect.objectContaining({ source: "step_up" }))
   })
 
   it("writes no consent row when sms_consent is false", async () => {

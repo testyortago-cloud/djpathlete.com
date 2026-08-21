@@ -7,9 +7,19 @@ import { decideMerge, type MatchCandidate } from "@/lib/lead-engine/merge"
 import { enrollIfTriggered } from "@/lib/lead-engine/enroll"
 
 export type ContactEventSource =
-  | "funnel_form" | "funnel_checkout" | "contact_form" | "newsletter"
-  | "lead_magnet" | "event_signup" | "shop" | "assessment"
-  | "questionnaire" | "step_up" | "ai_chat"
+  | "funnel_form"
+  | "funnel_checkout"
+  | "contact_form"
+  | "newsletter"
+  | "lead_magnet"
+  | "event_signup"
+  | "shop"
+  | "assessment"
+  | "questionnaire"
+  | "step_up"
+  | "ai_chat"
+  | "inquiry"
+  | "purchase"
 
 export type RecordContactEventInput = {
   email?: string | null

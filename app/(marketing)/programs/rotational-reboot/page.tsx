@@ -1,15 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import {
-  ArrowRight,
-  CheckCircle2,
-  RotateCcw,
-  Target,
-  CalendarDays,
-  Dumbbell,
-  ShieldCheck,
-  Repeat,
-} from "lucide-react"
+import { ArrowRight, CheckCircle2, RotateCcw, Target, CalendarDays, Dumbbell, ShieldCheck, Repeat } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
@@ -25,6 +16,12 @@ import { DJP_AUTHOR_PERSON } from "@/lib/brand/author"
 const PAGE_URL = `${SITE_URL}/programs/rotational-reboot`
 const PRICE = "79.00"
 const REGULAR_PRICE = "249.00"
+
+// See app/(marketing)/assessment/page.tsx for why: this page prerenders
+// statically, so InquiryForm's SMS consent checkbox decision would otherwise
+// be baked in at build time. Hourly ISR self-heals both directions within an
+// hour instead of never.
+export const revalidate = 3600
 
 export const metadata: Metadata = {
   // Layout template appends " | DJP Athlete", so keep the brand out of the title here.
@@ -188,14 +185,12 @@ export default function RotationalRebootPage() {
               Rotational Reboot
             </h1>
             <p className="mt-4 font-heading text-xl font-medium text-primary-foreground/85 sm:text-2xl lg:text-3xl">
-              A 6-week rotational power program for athletes whose sport turns on a fast,
-              well-sequenced rotation.
+              A 6-week rotational power program for athletes whose sport turns on a fast, well-sequenced rotation.
             </p>
             <p className="mt-6 max-w-2xl text-base leading-7 text-primary-foreground/70 sm:text-lg">
-              In tennis, golf, baseball, lacrosse, hockey and soccer, performance comes from rotating
-              the body through your core and hips into the racket, club, stick, bat or ball. This is
-              the block built for exactly that: core-led, deliberately progressed from beginner to
-              moderate intensity, programmed by Darren J Paul, PhD.
+              In tennis, golf, baseball, lacrosse, hockey and soccer, performance comes from rotating the body through
+              your core and hips into the racket, club, stick, bat or ball. This is the block built for exactly that:
+              core-led, deliberately progressed from beginner to moderate intensity, programmed by Darren J Paul, PhD.
             </p>
 
             <div className="mt-9 flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -254,15 +249,12 @@ export default function RotationalRebootPage() {
                 Built for rotational sport, professional and aspiring.
               </h2>
               <p className="mt-5 max-w-md leading-7 text-muted-foreground">
-                If your sport rewards a faster, better-sequenced turn, your training should be built
-                around rotation, not have it bolted on at the end.
+                If your sport rewards a faster, better-sequenced turn, your training should be built around rotation,
+                not have it bolted on at the end.
               </p>
               <ul className="mt-8 flex flex-wrap gap-2">
                 {SPORTS.map((s) => (
-                  <li
-                    key={s}
-                    className="rounded-full bg-primary/10 px-3.5 py-1.5 text-sm font-medium text-primary"
-                  >
+                  <li key={s} className="rounded-full bg-primary/10 px-3.5 py-1.5 text-sm font-medium text-primary">
                     {s}
                   </li>
                 ))}
@@ -293,8 +285,8 @@ export default function RotationalRebootPage() {
                 Control first. Strength next. Speed last.
               </h2>
               <p className="mt-5 leading-7 text-muted-foreground">
-                Six weeks, three phases. Each one earns the next: you build the pattern before you
-                load it, and load it before you ask it to move fast.
+                Six weeks, three phases. Each one earns the next: you build the pattern before you load it, and load it
+                before you ask it to move fast.
               </p>
             </div>
             <ol className="mt-12 grid gap-6 md:grid-cols-3">
@@ -311,8 +303,8 @@ export default function RotationalRebootPage() {
             </ol>
             <p className="mt-8 flex items-center gap-2 text-sm text-muted-foreground">
               <Repeat className="size-4 text-accent" aria-hidden />
-              Roughly 70% of every week is rotational core and trunk work; the other 30% is the legs
-              and arms strength that supports it.
+              Roughly 70% of every week is rotational core and trunk work; the other 30% is the legs and arms strength
+              that supports it.
             </p>
           </FadeIn>
         </div>
@@ -347,19 +339,18 @@ export default function RotationalRebootPage() {
                 <span className="font-mono text-[11px] uppercase tracking-[0.28em] text-accent">Why it works</span>
               </div>
               <p className="mt-5 leading-7 text-primary-foreground/80">
-                Power in rotational sport isn&apos;t made in your arms. It&apos;s made in the floor,
-                routed through your hips and trunk, and delivered late. Most programs train the body
-                in straight lines and hope rotation turns up on its own. It usually doesn&apos;t.
+                Power in rotational sport isn&apos;t made in your arms. It&apos;s made in the floor, routed through your
+                hips and trunk, and delivered late. Most programs train the body in straight lines and hope rotation
+                turns up on its own. It usually doesn&apos;t.
               </p>
               <p className="mt-4 leading-7 text-primary-foreground/80">
-                Rotational Reboot puts the core and the rotational pattern at the center. It builds
-                anti-rotation control first, then rotational strength, then speed: the same order
-                rotational athletes are coached in high-performance settings, written down as a plan
-                you can actually run.
+                Rotational Reboot puts the core and the rotational pattern at the center. It builds anti-rotation
+                control first, then rotational strength, then speed: the same order rotational athletes are coached in
+                high-performance settings, written down as a plan you can actually run.
               </p>
               <blockquote className="mt-6 border-l-2 border-accent pl-5 font-heading text-lg leading-snug text-primary-foreground">
-                &ldquo;Cleared is not the same as ready, and strong is not the same as fast. You build
-                the pattern, you load the pattern, then you let it fly.&rdquo;
+                &ldquo;Cleared is not the same as ready, and strong is not the same as fast. You build the pattern, you
+                load the pattern, then you let it fly.&rdquo;
               </blockquote>
               <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.22em] text-primary-foreground/55">
                 Darren J Paul, PhD
@@ -409,9 +400,8 @@ export default function RotationalRebootPage() {
                 </span>
               </h2>
               <p className="mx-auto mt-4 max-w-xl leading-7 text-primary-foreground/75">
-                One payment, lifetime access to the full 6-week program. Leave your details and we&apos;ll
-                send you everything you need to start, including the secure payment link and your
-                access.
+                One payment, lifetime access to the full 6-week program. Leave your details and we&apos;ll send you
+                everything you need to start, including the secure payment link and your access.
               </p>
             </div>
             <div className="mt-10 rounded-3xl bg-background p-2 text-foreground sm:p-3">

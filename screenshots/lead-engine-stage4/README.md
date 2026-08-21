@@ -6,6 +6,16 @@ Captured 2026-08-21 by driving the real app with Playwright against branch
 in the clone database was written or modified to take these shots (light
 mode, per the task brief).
 
+**Re-taken after task review.** The first capture drew the caption band as a
+fixed overlay on top of the live page, which hid the "How did you hear about
+us?" label and the submit button underneath it. This version captures the
+annotated form and the caption band as two separate images (`sharp`
+composites them vertically) so the band extends the canvas below the form
+instead of covering any of it — nothing in the screenshots below is hidden
+by its own caption anymore. The capture viewport also grew from 900px to
+1000px tall so the submit button is actually in frame on both pages, not
+just no-longer-covered.
+
 | File                        | What it shows                                                                                                                             |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `inquiry-form-camps.png`     | `/camps` — the real "Apply for a spot" `InquiryForm`, phone field, with **no** SMS consent checkbox (see below)                            |
