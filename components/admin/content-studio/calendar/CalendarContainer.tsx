@@ -62,15 +62,15 @@ export function CalendarContainer({
 
   const chipsFiltered = useMemo(() => {
     const postChips = data.chips.filter((c): c is Extract<CalendarChip, { kind: "post" }> => c.kind === "post")
-    const entryChips = data.chips.filter((c) => c.kind === "entry")
+    const otherChips = data.chips.filter((c) => c.kind !== "post")
     const fakePosts = postChips.map((c) => c.raw)
     const { posts: afterFilter } = applyFilters([], fakePosts, filters)
     const kept = new Set(afterFilter.map((p) => p.id))
-    return [...postChips.filter((c) => kept.has(c.id)), ...entryChips]
+    return [...postChips.filter((c) => kept.has(c.id)), ...otherChips]
   }, [data.chips, filters])
 
   async function rescheduleExistingChip(chipId: string, dayKey: string) {
-    const match = chipId.match(/^chip-(post|entry)-(.+)$/)
+    const match = chipId.match(/^chip-(post|entry|blog|newsletter)-(.+)$/)
     if (!match) return
     const kind = match[1]
     const id = match[2]
@@ -79,6 +79,37 @@ export function CalendarContainer({
       // /api/admin/calendar/[id] PATCH doesn't exist yet — Phase 5 will
       // add it. Graceful fallback per the plan.
       toast.info("Calendar-entry reschedule is coming in Phase 5.")
+      return
+    }
+
+    if (kind === "blog" || kind === "newsletter") {
+      const chip = data.chips.find((c) => c.kind === kind && c.id === id)
+      if (!chip || !chip.scheduledAt) {
+        toast.error("Missing scheduled time for this item")
+        return
+      }
+      const next = new Date(`${dayKey}T00:00:00Z`)
+      next.setUTCHours(chip.scheduledAt.getUTCHours(), chip.scheduledAt.getUTCMinutes(), 0, 0)
+      if (next.getTime() <= Date.now()) {
+        toast.error("Cannot reschedule to the past")
+        return
+      }
+      const base = kind === "blog" ? "blog" : "newsletter"
+      const res = await fetch(`/api/admin/${base}/${id}/schedule`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scheduled_at: next.toISOString() }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast.error(body.error ?? "Reschedule failed")
+        return
+      }
+      const label = next.toLocaleString()
+      toast.success(`Moved to ${label}`)
+      const announce = document.getElementById("content-studio-announce")
+      if (announce) announce.textContent = `Moved to ${label}`
+      router.refresh()
       return
     }
 
@@ -100,7 +131,8 @@ export function CalendarContainer({
       body: JSON.stringify({ scheduled_at: next.toISOString() }),
     })
     if (!res.ok) {
-      toast.error("Reschedule failed")
+      const body = await res.json().catch(() => ({}))
+      toast.error(body.error ?? "Reschedule failed")
       return
     }
     const label = next.toLocaleString()
