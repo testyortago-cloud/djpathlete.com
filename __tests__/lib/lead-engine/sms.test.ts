@@ -6,6 +6,7 @@ import {
   renderSequenceSms,
   sendRenderedSequenceSms,
   smsConfigured,
+  smsEnvPresent,
   SmsNotConfiguredError,
   SMS_OPT_OUT_SENTENCE,
 } from "@/lib/lead-engine/sms"
@@ -116,6 +117,32 @@ describe("smsConfigured", () => {
         sms_sender_phone: "+15005550006",
       }),
     ).toBe(true)
+  })
+})
+
+describe("smsEnvPresent", () => {
+  it("is true when all three Twilio env vars are set (the beforeEach default)", () => {
+    expect(smsEnvPresent()).toBe(true)
+  })
+
+  it("is false when TWILIO_ACCOUNT_SID is missing", () => {
+    delete process.env.TWILIO_ACCOUNT_SID
+    expect(smsEnvPresent()).toBe(false)
+  })
+
+  it("is false when TWILIO_MAIN_SID is missing", () => {
+    delete process.env.TWILIO_MAIN_SID
+    expect(smsEnvPresent()).toBe(false)
+  })
+
+  it("is false when TWILIO_CLIENT_SECRET is missing", () => {
+    delete process.env.TWILIO_CLIENT_SECRET
+    expect(smsEnvPresent()).toBe(false)
+  })
+
+  it("is false when a var is whitespace-only", () => {
+    process.env.TWILIO_ACCOUNT_SID = "   "
+    expect(smsEnvPresent()).toBe(false)
   })
 })
 
@@ -241,38 +268,53 @@ describe("sendRenderedSequenceSms", () => {
     )
   })
 
-  it("returns a null provider id without calling fetch when TWILIO_ACCOUNT_SID is missing", async () => {
+  // Fix wave (Important 2, task-3 review): this used to console.warn and
+  // return `{ providerMessageId: null }` without calling fetch — a fail-safe
+  // pattern copied from email.ts's Resend guard. But a caller that then
+  // RECORDS the send (the sequence-tick runner) would call
+  // `markSent(messageId, "twilio", null)` on a message nothing ever
+  // transmitted: a permanent "sent" row for a delivery that never happened.
+  // Throwing instead lets the runner's per-run catch defer the run for a
+  // retry — see `smsEnvPresent()`, which exists so a caller can check this
+  // BEFORE ever claiming a `sequence_messages` row.
+  it("throws naming the missing var, without calling fetch, when TWILIO_ACCOUNT_SID is missing", async () => {
     delete process.env.TWILIO_ACCOUNT_SID
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
     const settings = { ...baseSettings, sms_sender_phone: "+15005550006" }
 
-    const result = await sendRenderedSequenceSms({ to: "+15005550010", text: "hi", settings })
-
-    expect(result.providerMessageId).toBeNull()
+    await expect(sendRenderedSequenceSms({ to: "+15005550010", text: "hi", settings })).rejects.toThrow(
+      /TWILIO_ACCOUNT_SID/,
+    )
     expect(mockFetch).not.toHaveBeenCalled()
-    expect(warnSpy).toHaveBeenCalled()
   })
 
-  it("returns a null provider id without calling fetch when TWILIO_MAIN_SID is missing", async () => {
+  it("throws naming the missing var, without calling fetch, when TWILIO_MAIN_SID is missing", async () => {
     delete process.env.TWILIO_MAIN_SID
-    vi.spyOn(console, "warn").mockImplementation(() => {})
     const settings = { ...baseSettings, sms_sender_phone: "+15005550006" }
 
-    const result = await sendRenderedSequenceSms({ to: "+15005550010", text: "hi", settings })
-
-    expect(result.providerMessageId).toBeNull()
+    await expect(sendRenderedSequenceSms({ to: "+15005550010", text: "hi", settings })).rejects.toThrow(
+      /TWILIO_MAIN_SID/,
+    )
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
-  it("returns a null provider id without calling fetch when TWILIO_CLIENT_SECRET is missing", async () => {
+  it("throws naming the missing var, without calling fetch, when TWILIO_CLIENT_SECRET is missing", async () => {
     delete process.env.TWILIO_CLIENT_SECRET
-    vi.spyOn(console, "warn").mockImplementation(() => {})
     const settings = { ...baseSettings, sms_sender_phone: "+15005550006" }
 
-    const result = await sendRenderedSequenceSms({ to: "+15005550010", text: "hi", settings })
-
-    expect(result.providerMessageId).toBeNull()
+    await expect(sendRenderedSequenceSms({ to: "+15005550010", text: "hi", settings })).rejects.toThrow(
+      /TWILIO_CLIENT_SECRET/,
+    )
     expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it("names every missing var when more than one is absent", async () => {
+    delete process.env.TWILIO_ACCOUNT_SID
+    delete process.env.TWILIO_MAIN_SID
+    const settings = { ...baseSettings, sms_sender_phone: "+15005550006" }
+
+    await expect(sendRenderedSequenceSms({ to: "+15005550010", text: "hi", settings })).rejects.toThrow(
+      /TWILIO_ACCOUNT_SID.*TWILIO_MAIN_SID/,
+    )
   })
 
   it("warns but does not block when the text exceeds 3 GSM-7 segments", async () => {

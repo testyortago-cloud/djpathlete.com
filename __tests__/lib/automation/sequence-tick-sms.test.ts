@@ -11,7 +11,7 @@
 // case except (d) below, whose whole point is a branch decideStep itself
 // never reaches.
 
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 const { timelineInsertSpy } = vi.hoisted(() => ({ timelineInsertSpy: vi.fn() }))
 
@@ -168,6 +168,15 @@ beforeEach(() => {
   // appOrigin() throws when no public origin is configured — pinned here
   // rather than inherited from .env.local, same as the route-level suite.
   process.env.NEXTAUTH_URL = "https://app.example.test"
+  // `smsEnvPresent()` (lib/lead-engine/sms.ts) is real in this suite, not
+  // mocked — it reads process.env directly, same treatment as `smsConfigured`
+  // and `renderSequenceSms`. Pinned present by default so the "configured"
+  // tests below actually exercise the configured path; the env-missing test
+  // deletes one explicitly. Cleared in afterEach, same pattern as
+  // __tests__/lib/lead-engine/sms.test.ts.
+  process.env.TWILIO_ACCOUNT_SID = "AC_test_account"
+  process.env.TWILIO_MAIN_SID = "SK_test_key"
+  process.env.TWILIO_CLIENT_SECRET = "test_secret"
   ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue(CONFIGURED_SETTINGS)
   ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([])
   ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([SMS_STEP])
@@ -182,6 +191,12 @@ beforeEach(() => {
   ;(deferRun as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
   ;(exitRun as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
   ;(failRun as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+})
+
+afterEach(() => {
+  delete process.env.TWILIO_ACCOUNT_SID
+  delete process.env.TWILIO_MAIN_SID
+  delete process.env.TWILIO_CLIENT_SECRET
 })
 
 describe("the sms executor (lib/automation/sequence-tick-runner.ts)", () => {
@@ -227,6 +242,11 @@ describe("the sms executor (lib/automation/sequence-tick-runner.ts)", () => {
     const recordedArg = (recordSend as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(sentArg.text).toBe(recordedArg.bodyRendered)
 
+    // Explicit per task-3 review (Important 2c-ii): providerMessageId can no
+    // longer be null on the success path (sendRenderedSequenceSms now throws
+    // instead of returning null on a missing env, and the DB-configured +
+    // env-present gate is required to reach this branch at all) — markSent
+    // receives the real sid the mocked provider response carried.
     expect(markSent).toHaveBeenCalledWith("msg-sms-a", "twilio", "SM123")
     expect(advanceRun).toHaveBeenCalledWith("r-sms-send", 1)
     expect(failRun).not.toHaveBeenCalled()
@@ -334,5 +354,72 @@ describe("the sms executor (lib/automation/sequence-tick-runner.ts)", () => {
     expect(sendRenderedSequenceSms).not.toHaveBeenCalled()
     expect(advanceRun).not.toHaveBeenCalled()
     expect(failRun).not.toHaveBeenCalled()
+  })
+
+  // Task-3 review, Important 1. appOrigin() used to be evaluated INSIDE the
+  // try, after recordSend had already claimed (run_id, step_id): a thrown
+  // "no public origin configured" error was caught by the local catch and
+  // treated exactly like a rejected provider call — markFailed + failRun,
+  // terminal. That's wrong for an env fault: unlike a provider rejection,
+  // nothing was ever attempted, and the claim is now permanently burned
+  // (recordSend never re-claims a 'failed' row). appOrigin() is now hoisted
+  // ABOVE recordSend, mirroring the email branch, so the throw happens
+  // BEFORE anything is claimed and propagates to runSequenceTick's per-run
+  // catch — deferred for a retry, self-healing once the env is fixed.
+  it("an unset public-origin env throws before recordSend claims anything, and the run is deferred (not failed) via the per-run catch", async () => {
+    delete process.env.NEXTAUTH_URL
+    delete process.env.NEXT_PUBLIC_APP_URL
+    delete process.env.APP_URL
+    const run = makeRun("r-sms-noorigin")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+
+    const summary = await runSequenceTick()
+
+    expect(recordSend).not.toHaveBeenCalled()
+    expect(sendRenderedSequenceSms).not.toHaveBeenCalled()
+    // NOT the terminal path: no message row and no run get marked failed.
+    expect(markFailed).not.toHaveBeenCalled()
+    expect(failRun).not.toHaveBeenCalled()
+    // Deferred with the transient-error reason via the per-run catch —
+    // exactly like any other throw inside processRun (attempt 1 of 5, same
+    // backoff rule the route-level suite pins).
+    expect(deferRun).toHaveBeenCalledWith("r-sms-noorigin", expect.any(Date), "transient_error")
+    expect(summary).toMatchObject({ deferred: 1, failed: 0, sent: 0 })
+  })
+
+  // Task-3 review, Finding 2. DB-configured + Twilio env absent used to
+  // reach the provider path anyway: sendRenderedSequenceSms warned and
+  // returned `{ providerMessageId: null }` without calling fetch, and the
+  // runner recorded that as `markSent(messageId, "twilio", null)` — a
+  // permanent "sent" row for a message nothing ever transmitted. The gate is
+  // now `smsConfigured(settings) && smsEnvPresent()`, and the env-missing
+  // half takes the SAME unconfigured/advance path as a DB-unconfigured
+  // business, but with a distinct timeline reason so an operator can tell
+  // "nobody turned SMS on" apart from "SMS is on, but this deployment's
+  // Twilio keys are missing" — a live-day misconfiguration.
+  it("a DB-configured business with Twilio env absent advances with reason sms_env_missing, never claiming or sending", async () => {
+    delete process.env.TWILIO_ACCOUNT_SID
+    const run = makeRun("r-sms-envmissing")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+
+    const summary = await runSequenceTick()
+
+    expect(summary).toMatchObject({ sent: 0, failed: 0, skipped_sms: 1 })
+    expect(timelineInsertSpy).toHaveBeenCalledWith(
+      "contact_timeline_events",
+      expect.objectContaining({
+        contact_id: "contact-r-sms-envmissing",
+        kind: "sequence_step_unsupported",
+        metadata: expect.objectContaining({
+          run_id: "r-sms-envmissing",
+          step_kind: "sms",
+          reason: "sms_env_missing",
+        }),
+      }),
+    )
+    expect(advanceRun).toHaveBeenCalledWith("r-sms-envmissing", 1)
+    expect(failRun).not.toHaveBeenCalled()
+    expect(recordSend).not.toHaveBeenCalled()
+    expect(sendRenderedSequenceSms).not.toHaveBeenCalled()
   })
 })

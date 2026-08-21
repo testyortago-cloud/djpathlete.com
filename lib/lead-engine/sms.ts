@@ -63,6 +63,28 @@ export function smsConfigured(settings: BusinessSettings): boolean {
 }
 
 /**
+ * True iff all three Twilio credential env vars `sendRenderedSequenceSms`
+ * needs are set and non-blank: `TWILIO_ACCOUNT_SID`, `TWILIO_MAIN_SID`,
+ * `TWILIO_CLIENT_SECRET`.
+ *
+ * `smsConfigured` answers "has a human filled in `business_settings`?";
+ * this answers "does THIS deployment actually have Twilio credentials?" —
+ * two independent gates. A business can be configured in the DB while a
+ * given deployment's env is missing the keys (or vice versa isn't possible,
+ * since the DB is the operator-facing switch). The runner's per-tick gate
+ * is `smsConfigured(settings) && smsEnvPresent()`, and the two failure modes
+ * get distinct timeline reasons (`sms_not_configured` vs `sms_env_missing`)
+ * so an operator can tell them apart.
+ */
+export function smsEnvPresent(): boolean {
+  return (
+    Boolean(process.env.TWILIO_ACCOUNT_SID?.trim()) &&
+    Boolean(process.env.TWILIO_MAIN_SID?.trim()) &&
+    Boolean(process.env.TWILIO_CLIENT_SECRET?.trim())
+  )
+}
+
+/**
  * Preflight for the SMS send path, mirroring `assertSendable` in email.ts.
  * Migration 00221 seeds both `sms_messaging_service_sid` and
  * `sms_sender_phone` as `NOT NULL DEFAULT ''`, so an unconfigured business —
@@ -105,10 +127,18 @@ export function renderSequenceSms(args: { body: string; contactName: string | nu
  * set, else the sender phone — the same either/or the preflight enforces.
  *
  * Missing env (`TWILIO_ACCOUNT_SID`, `TWILIO_MAIN_SID`, `TWILIO_CLIENT_SECRET`)
- * fails safe: console.warn and a null provider id, no fetch call — the same
- * resend-guard pattern as `lib/lead-engine/email.ts:24-34`. A drifted env in
- * production and a test that forgets to mock `fetch` both fail safe instead
- * of reaching the live API.
+ * THROWS naming the missing var(s), rather than warning and returning a null
+ * provider id. It used to fail safe that way (the same resend-guard pattern
+ * as `lib/lead-engine/email.ts:24-34`) but that pattern is wrong for a
+ * caller that then RECORDS the send: the sequence-tick runner would call
+ * `markSent(messageId, "twilio", null)` on a message nothing ever
+ * transmitted — a permanent "sent" row for something that never left this
+ * process. `smsEnvPresent()` exists precisely so a caller can check this
+ * BEFORE claiming a `sequence_messages` row at all, the same way the runner
+ * already checks `smsConfigured(settings)`; this function still throws
+ * defensively for any caller that skips that check (a live env drift or a
+ * test that forgets to mock `fetch` fails loud instead of silently
+ * fabricating a delivery).
  *
  * Credentials authenticate as the API key pair (`TWILIO_MAIN_SID` +
  * `TWILIO_CLIENT_SECRET`), never the account auth token — that token is
@@ -132,8 +162,12 @@ export async function sendRenderedSequenceSms(args: {
   const apiKeySid = process.env.TWILIO_MAIN_SID
   const apiKeySecret = process.env.TWILIO_CLIENT_SECRET
   if (!accountSid || !apiKeySid || !apiKeySecret) {
-    console.warn(`[lead-engine/sms] Twilio env not set — skipping send to "${to}"`)
-    return { providerMessageId: null }
+    const missing = [
+      !accountSid && "TWILIO_ACCOUNT_SID",
+      !apiKeySid && "TWILIO_MAIN_SID",
+      !apiKeySecret && "TWILIO_CLIENT_SECRET",
+    ].filter((v): v is string => Boolean(v))
+    throw new Error(`sendRenderedSequenceSms: Twilio env not set: ${missing.join(", ")}`)
   }
 
   const form = new URLSearchParams()
