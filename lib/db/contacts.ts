@@ -82,7 +82,7 @@ async function updateContact(
   if (error) throw error
 }
 
-type IdentifierConflict = { field: "email" | "phone"; submitted: string; existing: string }
+export type IdentifierConflict = { field: "email" | "phone"; submitted: string; existing: string }
 
 // A public form must never let a submitted identifier silently overwrite a
 // different one already on file — that is how a double-submit or a shared
@@ -117,15 +117,43 @@ function buildIdentifierPatch(
   return { patch, conflicts }
 }
 
-export async function recordContactEvent(
-  input: RecordContactEventInput,
-): Promise<{ contactId: string; created: boolean; merged: boolean }> {
+export type UpsertContactIdentityInput = {
+  email?: string | null
+  phone?: string | null
+  name?: string | null
+  attributionSessionId?: string | null
+  businessId?: string
+}
+
+export type UpsertContactIdentityResult = {
+  contactId: string
+  created: boolean
+  merged: boolean
+  identifierConflicts: IdentifierConflict[]
+}
+
+/**
+ * The identity/merge/upsert core every entry point ultimately needs:
+ * normalise, find who this might already be (`findMatchCandidates`), decide
+ * create/update/merge (`decideMerge`), and write the winning contact row.
+ * Extracted out of `recordContactEvent` so a second, non-enrolling caller —
+ * the GHL import (`lib/lead-engine/import.ts`, `importGhlContact`) — can
+ * reuse the exact same matching and conflict rules without pulling in
+ * anything that makes `recordContactEvent` a *contact event*: this function
+ * writes no timeline row (the caller decides what happened and how to
+ * describe it — "entry_point" for a live submission, "ghl_import" for an
+ * import) and never calls `enrollIfTriggered`. `recordContactEvent` below is
+ * now a thin wrapper around this plus its own timeline writes and the
+ * enrolment attempt — behavior identical to before the extraction, which the
+ * existing `recordContactEvent` suites prove by staying green unmodified.
+ */
+export async function upsertContactIdentity(input: UpsertContactIdentityInput): Promise<UpsertContactIdentityResult> {
   const businessId = input.businessId ?? SINGLETON_BUSINESS_ID
   const email = normaliseEmail(input.email)
   const phone = normalisePhone(input.phone)
 
   if (!email && !phone) {
-    throw new Error("recordContactEvent needs at least one usable identifier (email or phone)")
+    throw new Error("upsertContactIdentity needs at least one usable identifier (email or phone)")
   }
 
   const supabase = getClient()
@@ -178,6 +206,24 @@ export async function recordContactEvent(
       updated_at: new Date().toISOString(),
     })
   }
+
+  return { contactId, created, merged, identifierConflicts }
+}
+
+export async function recordContactEvent(
+  input: RecordContactEventInput,
+): Promise<{ contactId: string; created: boolean; merged: boolean }> {
+  const businessId = input.businessId ?? SINGLETON_BUSINESS_ID
+
+  const { contactId, created, merged, identifierConflicts } = await upsertContactIdentity({
+    email: input.email,
+    phone: input.phone,
+    name: input.name,
+    attributionSessionId: input.attributionSessionId,
+    businessId,
+  })
+
+  const supabase = getClient()
 
   // A timeline row is history, not the record of who this person is. The
   // contact write above already succeeded (or this function would already
