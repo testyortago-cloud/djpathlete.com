@@ -40,13 +40,27 @@ function usageError() {
 
 async function main() {
   const rawArgs = process.argv.slice(2)
-  const dryRun = rawArgs.includes("--dry-run")
-  const [envPath, value] = rawArgs.filter((a) => a !== "--dry-run")
 
-  if (!envPath || !value) {
+  // Strict flag check FIRST, before any positional parsing or file read: an
+  // unrecognized flag (a typo like "--dryrun") must never be silently
+  // absorbed as a discarded positional, which would leave dryRun false and
+  // let a real write proceed on exactly the go-live typo a human is most
+  // likely to make.
+  for (const arg of rawArgs) {
+    if (arg.startsWith("-") && arg !== "--dry-run") {
+      usageError()
+      return
+    }
+  }
+
+  const dryRun = rawArgs.includes("--dry-run")
+  const positional = rawArgs.filter((a) => a !== "--dry-run")
+
+  if (positional.length !== 2) {
     usageError()
     return
   }
+  const [envPath, value] = positional
 
   let field
   if (MESSAGING_SERVICE_SID_RE.test(value)) {
