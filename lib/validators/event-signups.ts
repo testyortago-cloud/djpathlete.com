@@ -15,6 +15,12 @@ export const createEventSignupSchema = z.object({
   waiver_accepted: z
     .boolean()
     .refine((v) => v === true, { message: "You must accept the liability waiver to sign up." }),
+  /** SMS opt-in checkbox next to the parent phone field (Lead Engine Stage 4).
+   * Unchecked by default — wire name matches what the modal posts. Never
+   * persisted on `event_signups` itself; see `CreateSignupDbInput` in
+   * lib/db/event-signups.ts, which strips it the same way it strips
+   * `waiver_accepted`. */
+  sms_consent: z.boolean().optional().default(false),
 })
 
 export type CreateSignupInput = z.infer<typeof createEventSignupSchema>

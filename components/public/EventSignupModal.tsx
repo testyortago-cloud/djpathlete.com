@@ -45,6 +45,21 @@ interface EventSignupModalProps {
    *  back to a short notice and still require the parent to acknowledge — the
    *  server records the consent regardless of which document was shown. */
   waiverContent: string | null
+  /**
+   * The SMS opt-in sentence, already rendered server-side
+   * (`renderSmsConsentWording` fed `business_settings.display_name`) by the
+   * event page's own server component — never built here, so the wording
+   * the parent ticks against is the exact string the signup/checkout route
+   * re-renders into `contact_consents.wording_shown`.
+   *
+   * `undefined` whenever the business has no usable name — a failed
+   * settings read or a blank `display_name` (`hasSmsConsentDisplayName` in
+   * sms-consent-wording.ts) both collapse to the same "no wording" outcome
+   * rather than one of them rendering a checkbox over a sentence with a
+   * hole in it. Either way this renders no checkbox at all — the same "no
+   * pixel, no prop" contract InquiryFormClient's `smsConsentWording` follows.
+   */
+  smsConsentWording?: string
 }
 
 type Phase = "form" | "submitting" | "success" | "at_capacity"
@@ -56,6 +71,7 @@ export function EventSignupModal({
   isWaitlist,
   intent = "paid",
   waiverContent,
+  smsConsentWording,
 }: EventSignupModalProps) {
   const [phase, setPhase] = useState<Phase>("form")
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
@@ -84,6 +100,10 @@ export function EventSignupModal({
       sport: form.get("sport") ? String(form.get("sport")) : null,
       notes: form.get("notes") ? String(form.get("notes")) : null,
       waiver_accepted: waiverAccepted,
+      // Unchecked boxes are simply absent from FormData, so the literal "on"
+      // (the browser default value for a checkbox with no `value` attribute)
+      // is what a tick actually posts — never truthiness of the raw string.
+      sms_consent: form.get("sms_consent") === "on",
     }
 
     const query = waitlist || isWaitlist || forcedWaitlist ? "?waitlist=true" : ""
@@ -219,6 +239,29 @@ export function EventSignupModal({
               <Label htmlFor="parent_phone">Parent phone (optional)</Label>
               <Input id="parent_phone" name="parent_phone" type="tel" />
             </div>
+
+            {/* SMS opt-in checkbox, under the phone field, UNCHECKED by
+                default. `smsConsentWording` is undefined whenever the event
+                page's server component found no usable business name to
+                fetch — a failed settings read and a blank display_name both
+                collapse to no prop, so this renders no checkbox at all
+                rather than one over a sentence with a hole in it. */}
+            {smsConsentWording ? (
+              <label
+                htmlFor="event-sms-consent"
+                className="flex items-start gap-2 text-xs text-muted-foreground leading-relaxed cursor-pointer"
+              >
+                <input
+                  id="event-sms-consent"
+                  name="sms_consent"
+                  type="checkbox"
+                  disabled={phase === "submitting"}
+                  defaultChecked={false}
+                  className="mt-0.5 size-4 accent-primary shrink-0"
+                />
+                <span>{smsConsentWording}</span>
+              </label>
+            ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div>

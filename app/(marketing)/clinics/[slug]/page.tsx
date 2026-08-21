@@ -14,6 +14,8 @@ import { getActiveDocument } from "@/lib/db/legal-documents"
 import { renderLegalContent } from "@/lib/legal-content"
 import { SITE_URL } from "@/lib/constants"
 import { DJP_AUTHOR_PERSON } from "@/lib/brand/author"
+import { getBusinessSettings } from "@/lib/db/businesses"
+import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 
 export const revalidate = 300
 
@@ -52,6 +54,14 @@ export default async function ClinicDetailPage({ params }: { params: Promise<{ s
   const waiverDoc = await getActiveDocument("liability_waiver")
   const waiverContent = waiverDoc?.content ? renderLegalContent(waiverDoc.content) : null
 
+  // THE SMS CONSENT WORDING IS FETCHED SERVER-SIDE — see camps/[slug]/page.tsx's
+  // identical block for the full reasoning (this page is EventSignupCard's
+  // nearest server parent, same as that one).
+  const businessSettings = await getBusinessSettings().catch(() => null)
+  const smsConsentWording = hasSmsConsentDisplayName(businessSettings?.display_name)
+    ? renderSmsConsentWording(businessSettings.display_name)
+    : undefined
+
   const pageUrl = `${SITE_URL}/clinics/${event.slug}`
   const spotsLeft = Math.max(0, event.capacity - event.signup_count)
   const priceUsd = event.price_cents != null ? (event.price_cents / 100).toFixed(2) : undefined
@@ -60,8 +70,7 @@ export default async function ClinicDetailPage({ params }: { params: Promise<{ s
   // This page only renders for published events (others 404 above), so the
   // event is always scheduled here.
   const eventStatusUrl = "https://schema.org/EventScheduled"
-  const availabilityUrl =
-    spotsLeft > 0 ? "https://schema.org/InStock" : "https://schema.org/SoldOut"
+  const availabilityUrl = spotsLeft > 0 ? "https://schema.org/InStock" : "https://schema.org/SoldOut"
 
   // Rich Event schema — gets DJP into Google's event rich results / Maps events
   // and gives AI assistants structured event facts (when, where, price, ages).
@@ -191,12 +200,11 @@ export default async function ClinicDetailPage({ params }: { params: Promise<{ s
                   )}
                 </div>
               </div>
-
             </article>
           </FadeIn>
 
           <aside>
-            <EventSignupCard event={event} waiverContent={waiverContent} />
+            <EventSignupCard event={event} waiverContent={waiverContent} smsConsentWording={smsConsentWording} />
           </aside>
         </div>
       </div>

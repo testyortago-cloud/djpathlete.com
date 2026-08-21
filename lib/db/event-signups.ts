@@ -5,8 +5,11 @@ import type { CreateSignupInput } from "@/lib/validators/event-signups"
 // The DAL persists the athlete/parent fields plus waiver acceptance metadata.
 // `waiver_accepted` from the API schema is just a boolean affirmation — it
 // doesn't get persisted as-is; the server-side waiver document id, timestamp,
-// IP, and user agent are stored instead.
-export type CreateSignupDbInput = Omit<CreateSignupInput, "waiver_accepted">
+// IP, and user agent are stored instead. `sms_consent` is the same shape of
+// thing (Lead Engine Stage 4): a boolean affirmation with no column of its
+// own on `event_signups` — evidence of it is filed separately, as a
+// `contact_consents` row, by whichever route the signup came through.
+export type CreateSignupDbInput = Omit<CreateSignupInput, "waiver_accepted" | "sms_consent">
 
 function getClient() {
   return createServiceRoleClient()

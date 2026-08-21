@@ -15,6 +15,8 @@ import { getEventBySlug, getPublishedEvents } from "@/lib/db/events"
 import { campHasDailyTimes, formatEventTime } from "@/lib/events/format"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { renderLegalContent } from "@/lib/legal-content"
+import { getBusinessSettings } from "@/lib/db/businesses"
+import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { SITE_URL } from "@/lib/constants"
 import { DJP_AUTHOR_PERSON } from "@/lib/brand/author"
 
@@ -54,6 +56,20 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
 
   const waiverDoc = await getActiveDocument("liability_waiver")
   const waiverContent = waiverDoc?.content ? renderLegalContent(waiverDoc.content) : null
+
+  // THE SMS CONSENT WORDING IS FETCHED SERVER-SIDE, using the EXACT same
+  // input (`display_name`) the signup/checkout routes re-render from, so
+  // `contact_consents.wording_shown` reproduces what the parent actually
+  // saw. Fetched HERE, not inside EventSignupCard: that card is a client
+  // component (it owns the modal's open/close state), so this page is its
+  // nearest server parent — same reason `waiverContent` is already fetched
+  // here rather than inside the card. A failed read and a blank name both
+  // degrade to no checkbox, never to a checkbox with broken wording — see
+  // hasSmsConsentDisplayName's own doc comment.
+  const businessSettings = await getBusinessSettings().catch(() => null)
+  const smsConsentWording = hasSmsConsentDisplayName(businessSettings?.display_name)
+    ? renderSmsConsentWording(businessSettings.display_name)
+    : undefined
 
   const pageUrl = `${SITE_URL}/camps/${event.slug}`
   const spotsLeft = Math.max(0, event.capacity - event.signup_count)
@@ -158,9 +174,7 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
                       {formatEventTime(event.end_date ?? event.start_date)} each day.
                     </p>
                   )}
-                  {event.session_schedule && (
-                    <p className="mt-2 text-muted-foreground">{event.session_schedule}</p>
-                  )}
+                  {event.session_schedule && <p className="mt-2 text-muted-foreground">{event.session_schedule}</p>}
                 </div>
               )}
 
@@ -210,12 +224,11 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
                   )}
                 </div>
               </div>
-
             </article>
           </FadeIn>
 
           <aside>
-            <EventSignupCard event={event} waiverContent={waiverContent} />
+            <EventSignupCard event={event} waiverContent={waiverContent} smsConsentWording={smsConsentWording} />
           </aside>
         </div>
       </div>

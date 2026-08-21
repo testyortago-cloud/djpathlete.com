@@ -78,3 +78,73 @@ checkbox on was explicitly out of scope (never write to the clone). The
 placeholder annotation communicates the same thing
 `screenshots/lead-engine-sms/funnel-consent.png` did for the funnel form:
 exactly where the control would sit, and why it doesn't today.
+
+---
+
+# Task 4 — event signup joins the spine: no live event to screenshot it against
+
+Captured 2026-08-21, same setup as Task 3 above: Playwright against the real
+running dev server (`localhost:3050`, branch `feat/lead-engine-stage4-spine`),
+the **dev** Supabase project (`anjvztjiokcgiyhobknq`), light mode. No row in
+the clone database was written or modified to take these shots.
+
+| File                             | What it shows                                                                                             |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `event-detail-404-annotated.png`  | `/camps/hi-performance-soccer-camp` — the real "We couldn't find that page" not-found page, live right now |
+| `camps-coming-soon-annotated.png` | `/camps`'s real "Upcoming sessions" section — the real `EventsComingSoonPanel` empty state, live right now  |
+
+## Why there's no screenshot of the modal itself
+
+The task brief asks for "the modal on a real event page" but, failing that,
+"the closest reachable state, honestly labeled" — this clone needed the
+fallback. Queried directly (`node` against the dev Supabase project):
+
+```
+draft   clinic  /clinics/hi-performance-soccer
+draft   camp    /camps/hi-performance-soccer-camp-copy
+draft   camp    /camps/hi-performance-soccer-camp
+```
+
+All three events seeded in this clone are `status: "draft"`.
+`app/(marketing)/camps/[slug]/page.tsx` and `.../clinics/[slug]/page.tsx`
+both call `notFound()` for anything that isn't `"published"` — that check
+runs *before* `EventSignupCard` (and therefore `EventSignupModal`) is ever
+mounted, so there is no live link anywhere on the site that opens the modal
+right now. `/camps` itself (`camps-coming-soon-annotated.png`) confirms the
+same thing from the other direction: `getPublishedEvents()` returns zero
+rows, so the page renders its real "Coming Soon" empty state instead of any
+`EventCard`.
+
+Flipping one event's `status` to `"published"` would have made the modal
+reachable, but the task brief is explicit: **never write to the clone.** No
+exception was made for a temporary/revertable write — so this is the honest
+closest-reachable state instead of a manufactured one.
+
+Worth noting for whoever eventually does capture the modal live: even with a
+published event, the new SMS consent checkbox specifically would still not
+render in *this* clone, for the same reason Task 3's screenshots show no
+checkbox on the inquiry forms — `business_settings.display_name` is blank
+here (see Task 3's section above), and `EventSignupModal` renders no
+checkbox at all when `smsConsentWording` is `undefined` (same
+`hasSmsConsentDisplayName` gate, now checked in
+`app/(marketing)/camps/[slug]/page.tsx` /
+`app/(marketing)/clinics/[slug]/page.tsx` before the prop is even passed
+down through `EventSignupCard`). Both blockers — no published event, and no
+configured business name — are independent of each other and would each
+need to be resolved before the checkbox can be captured live.
+
+## Two things confirmed live, not assumed
+
+- **The specific draft slug 404s.** `event-detail-404-annotated.png` was
+  captured by navigating straight to a real draft event's own detail URL —
+  not inferred from the DB row's `status` column. (This dev server reports
+  the response as HTTP 200 rather than 404 for this route, confirmed via
+  `curl` — a Next.js/Turbopack dev-mode quirk unrelated to this task — but
+  the rendered page, checked via the body text, is the real not-found page,
+  the same one a visitor hitting any broken link on the site would see.)
+- **The sticky "Apply for coaching" CTA** (`components/public/StickyApplyCTA.tsx`)
+  appears on `/camps` after scrolling past 800px and is not on that
+  component's hide-list for this route — the capture script checked for it
+  (`getByRole("button", { name: "Dismiss" })`) and dismissed it via its own
+  close button before the "Coming Soon" shot, per the task brief, since it
+  can overlap the section being captured.

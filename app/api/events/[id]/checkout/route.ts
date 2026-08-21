@@ -4,6 +4,10 @@ import { getEventById } from "@/lib/db/events"
 import { createEventSignupCheckout } from "@/lib/events/checkout"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { getAttributionBySession } from "@/lib/db/marketing-attribution"
+import { captureLead } from "@/lib/lead-engine/capture"
+import { recordConsent } from "@/lib/db/contact-consents"
+import { getBusinessSettings } from "@/lib/db/businesses"
+import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 
 function getBaseUrl() {
   return process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
@@ -50,11 +54,13 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     //
     // NO `returnUrls`: this route sends the visitor back to the EVENT's own
     // success and cancel pages, which is what the helper defaults to.
+    const ipAddress = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || null
+    const userAgent = request.headers.get("user-agent")
     const outcome = await createEventSignupCheckout({
       event,
       input: parsed.data,
-      ipAddress: request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || null,
-      userAgent: request.headers.get("user-agent"),
+      ipAddress,
+      userAgent,
       tracking,
       baseUrl: getBaseUrl(),
     })
@@ -67,9 +73,82 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       return NextResponse.json({ error }, { status: outcome.status })
     }
 
+    // Join the contact spine (Lead Engine Stage 4). captureLead never throws
+    // (lib/lead-engine/capture.ts swallows its own errors), so a contact-write
+    // failure here can never change this route's response. Read from
+    // `parsed.data`, not a re-fetched row: `createEventSignupCheckout`'s
+    // outcome carries only `sessionUrl`/`signupId`, and the parent fields it
+    // wrote to the signup row are exactly what was validated here.
+    //
+    // Deliberately NOT wired inside `lib/events/checkout.ts` itself, even
+    // though that is where the row is actually inserted: that helper is also
+    // called directly (in-process, bypassing this route) by
+    // app/api/funnels/submit/route.ts for a funnel's own "Register & pay"
+    // step, which already joins the spine under its own source
+    // (`captureContactFromSubmission`, source "funnel_form"). Capturing
+    // there too would double-record a single funnel checkout as two spine
+    // events with two different sources — and could double-enroll it into
+    // two different automations. Wiring at each ROUTE instead means only a
+    // signup this route itself created (i.e. the one EventSignupModal's paid
+    // flow actually posts to) is ever tagged "event_signup".
+    const contactId = await captureLead({
+      source: "event_signup",
+      email: parsed.data.parent_email,
+      phone: parsed.data.parent_phone,
+      name: parsed.data.parent_name,
+    })
+
+    // SMS consent (Lead Engine Stage 4). FIRE AND FORGET — see
+    // app/api/events/[id]/signup/route.ts's identical block for the full
+    // reasoning; this is that route's paid-flow twin.
+    if (contactId && parsed.data.parent_phone && parsed.data.sms_consent === true) {
+      void recordEventSignupSmsConsent({ contactId, ip: ipAddress, userAgent }).catch((err) => {
+        console.error("[api/events/checkout] sms consent write failed (the signup was saved):", err)
+      })
+    }
+
     return NextResponse.json({ sessionUrl: outcome.sessionUrl, signupId: outcome.signupId })
   } catch (err) {
     console.error("[api/events/checkout] unexpected error", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
+}
+
+/**
+ * Writes the SMS consent row for a paid event signup whose parent ticked
+ * the opt-in box next to the phone field before proceeding to Stripe.
+ *
+ * The wording is re-rendered HERE, from `business_settings.display_name`
+ * through the exact same `renderSmsConsentWording` the modal used to show
+ * it — never passed through from the client. MIRRORS THE MODAL'S OWN GATE
+ * (`hasSmsConsentDisplayName`): if `display_name` reads back blank here, no
+ * row is filed, even though `sms_consent` came in `true`. Skipping is
+ * logged, never thrown — the signup and the lead are already saved before
+ * this ever runs.
+ *
+ * A byte-for-byte duplicate of app/api/events/[id]/signup/route.ts's own
+ * copy — deliberately, not shared, matching this codebase's existing
+ * precedent (app/api/inquiry/route.ts vs. app/api/funnels/submit/route.ts):
+ * each route keeps its own small, private, independently-readable helper
+ * rather than a shared abstraction with no divergence to justify it yet.
+ */
+async function recordEventSignupSmsConsent(input: {
+  contactId: string
+  ip: string | null
+  userAgent: string | null
+}): Promise<void> {
+  const settings = await getBusinessSettings()
+  if (!hasSmsConsentDisplayName(settings.display_name)) {
+    console.warn("[api/events/checkout] sms consent skipped: business_settings.display_name is blank")
+    return
+  }
+  await recordConsent({
+    contactId: input.contactId,
+    channel: "sms",
+    granted: true,
+    source: "event_signup",
+    wordingShown: renderSmsConsentWording(settings.display_name),
+    ip: input.ip,
+    userAgent: input.userAgent,
+  })
 }
