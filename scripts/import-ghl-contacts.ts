@@ -9,21 +9,25 @@
  *
  * DRY-RUN IS THE DEFAULT; --execute is the only way to write.
  *
- * WHY THIS IS STRUCTURALLY READ-ONLY IN DRY-RUN, NOT JUST BY CONVENTION:
- * `main()` only ever reads process.env, calls `importGhlContact` (the one
- * function anywhere in this module graph that can create a Supabase
- * client — see `getClient()` in lib/lead-engine/import.ts), or writes
- * import-progress.json, from inside `runExecute()`, and `runExecute()` is
- * only ever called when `--execute` was passed. Dry-run instead calls
- * `classifyGhlRecord` — the pure half of `importGhlContact`'s own decision,
- * exported from lib/lead-engine/import.ts and shared by both — which reads
- * nothing but the record and the (empty, shipped) email-consent allowlist.
+ * WHY DRY-RUN DOESN'T TOUCH A DATABASE (precisely, not "structurally" —
+ * the module graph DOES eagerly load `@/lib/supabase` at import time,
+ * since `importGhlContact` is imported statically up top; that module just
+ * has no top-level side effects of its own today, so loading it costs
+ * nothing): the function that actually CREATES a Supabase client
+ * (`getClient()` in lib/lead-engine/import.ts) is only ever invoked from
+ * inside `importGhlContact`, and `main()` only ever calls
+ * `importGhlContact`, reads process.env, or writes import-progress.json
+ * from inside `runExecute()` — which itself only runs when `--execute` was
+ * passed. Dry-run instead calls `classifyGhlRecord` — the pure half of
+ * `importGhlContact`'s own decision, exported from lib/lead-engine/import.ts
+ * and shared by both — which reads nothing but the record and the (empty,
+ * shipped) email-consent allowlist.
  * Verify this yourself: `grep -n "process.env\|importGhlContact(\|writeFileSync(" scripts/import-ghl-contacts.ts`
  * — every hit is inside `runExecute`. Proven for real, not just argued: the
  * dry-run in task-8-report.md was run pointed at a deliberately
  * NONEXISTENT env-file path and still produced a full report — if it
- * touched the env file or a DB client it would have thrown ENOENT or a
- * connection error instead.
+ * touched the env file or called `getClient()` it would have thrown ENOENT
+ * or a connection error instead.
  *
  * HONEST LIMITATION: dry-run reports outcome-CLASS counts
  * (skipped_no_identifier / dnd_suppression / importable), not
@@ -56,6 +60,12 @@
  * `@/lib/lead-engine/import` under `npx tsx` with zero env vars set
  * succeeds). This script follows that established, simpler convention
  * rather than introducing a second one.
+ *
+ * `tsx` is a pinned `devDependency` in package.json (not relied on via a
+ * bare `npx tsx` cache hit) — `npx` will otherwise resolve it from the
+ * npm registry (or fail offline) on a machine that has never run it
+ * before, which is exactly the machine this script needs to work on at
+ * go-live.
  *
  * RESUMABLE: --execute writes import-progress.json inside the snapshot
  * directory (the ghl ids already processed) and skips them on re-run, so
@@ -207,6 +217,85 @@ function runDryRun(contacts: GhlContactRecord[]): void {
 }
 
 // ---------------------------------------------------------------------
+// The --execute loop itself, made unit-testable by taking its two
+// effectful dependencies (the per-record importer, the progress-persist
+// callback) as injected functions instead of reaching for the real
+// importGhlContact / fs.writeFileSync directly — see
+// __tests__/scripts/import-ghl-contacts.test.ts.
+//
+// Error isolation is the load-bearing property here: one poisoned record
+// (a malformed row, a transient DB hiccup) must not take down the whole
+// run, and must stay retryable on the NEXT run rather than being wrongly
+// marked done. Before this, a thrown error inside the loop propagated
+// straight out of runExecute, killing the process mid-run — and because
+// the poisoned record was never marked done, every identical re-run would
+// walk back up to it and die again at the same place, forever. Now a
+// per-record failure is caught, recorded (with the ghl id and the error
+// message), and the loop moves on; the caller decides how loudly to
+// report it and whether to exit non-zero.
+// ---------------------------------------------------------------------
+
+export type GhlImportFailure = { ghlId: string; error: string }
+
+export type ProcessGhlRecordsResult = {
+  counts: Record<ImportOutcome["kind"], number>
+  mergedCount: number
+  processedThisRun: number
+  skippedAlreadyDone: number
+  failures: GhlImportFailure[]
+  doneIds: Set<string>
+}
+
+export async function processGhlRecords(
+  contacts: GhlContactRecord[],
+  initialDoneIds: ReadonlySet<string>,
+  importOne: (record: GhlContactRecord) => Promise<ImportOutcome>,
+  onProgress: (progress: ImportProgress) => void,
+): Promise<ProcessGhlRecordsResult> {
+  let doneIds = new Set(initialDoneIds)
+  const counts: Record<ImportOutcome["kind"], number> = {
+    created: 0,
+    enriched: 0,
+    suppressed_only: 0,
+    skipped_no_identifier: 0,
+  }
+  const failures: GhlImportFailure[] = []
+  let mergedCount = 0
+  let processedThisRun = 0
+  let skippedAlreadyDone = 0
+
+  for (const record of contacts) {
+    if (isAlreadyImported(doneIds, record.id)) {
+      skippedAlreadyDone++
+      continue
+    }
+
+    let outcome: ImportOutcome
+    try {
+      outcome = await importOne(record)
+    } catch (err) {
+      failures.push({ ghlId: record.id, error: err instanceof Error ? err.message : String(err) })
+      // Deliberately NOT marked done: a failure is retryable, and marking
+      // it done here would make the next run silently skip a record that
+      // was never actually imported.
+      continue
+    }
+
+    counts[outcome.kind]++
+    if (outcome.merged) mergedCount++
+    processedThisRun++
+
+    const progress = withRecordDone(doneIds, record.id)
+    doneIds = new Set(progress.doneIds)
+    // Called after every SUCCESSFUL record, not batched at the end, so a
+    // killed run loses at most the one record in flight.
+    onProgress(progress)
+  }
+
+  return { counts, mergedCount, processedThisRun, skippedAlreadyDone, failures, doneIds }
+}
+
+// ---------------------------------------------------------------------
 // Execute: read the env file, stream records through importGhlContact,
 // persist progress after every record so a killed run is resumable.
 // ---------------------------------------------------------------------
@@ -236,48 +325,40 @@ async function runExecute(
   console.log("project host:", new URL(env.NEXT_PUBLIC_SUPABASE_URL).host)
 
   const progressPath = path.join(snapshotDir, "import-progress.json")
-  let doneIds = parseImportProgress(existsSync(progressPath) ? readFileSync(progressPath, "utf8") : null)
-  console.log(`resuming: ${doneIds.size} record(s) already marked done in ${progressPath}`)
+  const initialDoneIds = parseImportProgress(existsSync(progressPath) ? readFileSync(progressPath, "utf8") : null)
+  console.log(`resuming: ${initialDoneIds.size} record(s) already marked done in ${progressPath}`)
 
-  const counts: Record<ImportOutcome["kind"], number> = {
-    created: 0,
-    enriched: 0,
-    suppressed_only: 0,
-    skipped_no_identifier: 0,
-  }
-  let mergedCount = 0
-  let processedThisRun = 0
-  let skippedAlreadyDone = 0
-
-  for (const record of contacts) {
-    if (isAlreadyImported(doneIds, record.id)) {
-      skippedAlreadyDone++
-      continue
-    }
-
-    const outcome = await importGhlContact(record, {
-      snapshotTimestamp,
-      emailConsentTagAllowlist: EMAIL_CONSENT_TAG_ALLOWLIST,
-    })
-    counts[outcome.kind]++
-    if (outcome.merged) mergedCount++
-    processedThisRun++
-
-    const progress = withRecordDone(doneIds, record.id)
-    doneIds = new Set(progress.doneIds)
-    // Written after every record, not batched at the end, so a killed run
-    // loses at most the one record in flight.
-    writeFileSync(progressPath, JSON.stringify(progress, null, 2))
-  }
+  const result = await processGhlRecords(
+    contacts,
+    initialDoneIds,
+    (record) =>
+      importGhlContact(record, {
+        snapshotTimestamp,
+        emailConsentTagAllowlist: EMAIL_CONSENT_TAG_ALLOWLIST,
+      }),
+    (progress) => writeFileSync(progressPath, JSON.stringify(progress, null, 2)),
+  )
 
   console.log("")
   console.log(
-    `done. processed ${processedThisRun} record(s) this run, skipped ${skippedAlreadyDone} already-done from a prior run.`,
+    `done. processed ${result.processedThisRun} record(s) this run, skipped ${result.skippedAlreadyDone} already-done from a prior run.`,
   )
   for (const kind of ["created", "enriched", "suppressed_only", "skipped_no_identifier"] as const) {
-    console.log(`  ${kind}: ${counts[kind]}`)
+    console.log(`  ${kind}: ${result.counts[kind]}`)
   }
-  console.log(`  merges: ${mergedCount}`)
+  console.log(`  merges: ${result.mergedCount}`)
+
+  if (result.failures.length > 0) {
+    console.log("")
+    console.log("=".repeat(78))
+    console.log(`FAILED: ${result.failures.length} record(s) errored and were NOT marked done — this run is PARTIAL.`)
+    console.log("re-run the same command to retry them; every other record processed this run will be skipped.")
+    for (const failure of result.failures) {
+      console.log(`  ghl_id=${failure.ghlId} error=${JSON.stringify(failure.error)}`)
+    }
+    console.log("=".repeat(78))
+    process.exit(1)
+  }
 }
 
 async function main(): Promise<void> {
