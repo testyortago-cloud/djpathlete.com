@@ -4,6 +4,8 @@ import { addSubscriberWithAttribution } from "@/lib/db/newsletter"
 import { ghlCreateContact } from "@/lib/ghl"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { withAudit } from "@/lib/audit/with-audit"
+import { captureLead, NEWSLETTER_CONSENT_WORDING } from "@/lib/lead-engine/capture"
+import { recordConsent } from "@/lib/db/contact-consents"
 
 const newsletterSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -11,9 +13,7 @@ const newsletterSchema = z.object({
   source: z.string().max(60).optional(),
 })
 
-export const POST = withAudit(
-  { action: "newsletter.subscribed", category: "marketing" },
-  async (request) => {
+export const POST = withAudit({ action: "newsletter.subscribed", category: "marketing" }, async (request) => {
   try {
     const body = await request.json().catch(() => null)
     const result = newsletterSchema.safeParse(body)
@@ -35,6 +35,28 @@ export const POST = withAudit(
       user_agent: userAgent,
     })
 
+    // Join the contact spine. captureLead never throws (lib/lead-engine/capture.ts
+    // swallows its own errors), so a contact-write failure here can never turn
+    // this successful subscribe into an error response. The consent row is
+    // the same best-effort deal: it depends on captureLead having returned a
+    // contactId, and its own failure is caught locally so it cannot either.
+    const contactId = await captureLead({ source: "newsletter", email: result.data.email })
+    if (contactId) {
+      try {
+        await recordConsent({
+          contactId,
+          channel: "email",
+          granted: true,
+          source: "newsletter",
+          wordingShown: NEWSLETTER_CONSENT_WORDING,
+          ip,
+          userAgent,
+        })
+      } catch (consentError) {
+        console.error("[Newsletter] consent record failed:", consentError)
+      }
+    }
+
     // Fire-and-forget GHL sync
     ghlCreateContact({
       email: result.data.email,
@@ -47,5 +69,4 @@ export const POST = withAudit(
     console.error("[Newsletter] Subscription failed:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
-  },
-)
+})
