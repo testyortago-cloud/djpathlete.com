@@ -12,6 +12,7 @@ vi.mock("resend", () => ({
 import {
   assertSendable,
   BusinessNotConfiguredError,
+  emailEnvPresent,
   renderSequenceEmail,
   sendSequenceEmail,
   UNSUBSCRIBE_FOOTER_SENTENCE,
@@ -332,18 +333,60 @@ describe("sendSequenceEmail", () => {
     expect(arg.html).not.toContain("https://x.test/api/u/9")
   })
 
-  it("skips the provider entirely when RESEND_API_KEY is unset", async () => {
+  // Task 1 (2026-08-22-lead-engine-stage4-spine): this used to warn and
+  // return { data: null, error: null } — a "safe" failure indistinguishable
+  // from a successful send to every caller. sendRenderedSequenceEmail
+  // unwrapped that into { providerMessageId: null }, and the sequence-tick
+  // runner then called markSent(messageId, "resend", null): a permanent
+  // "sent" row in sequence_messages for a message nothing ever transmitted,
+  // burning recordSend's one-shot idempotency claim for good. Mirrors
+  // sendRenderedSequenceSms's contract in lib/lead-engine/sms.ts, which
+  // throws for the identical reason.
+  it("throws naming RESEND_API_KEY when unset, rather than skipping the provider silently", async () => {
     delete process.env.RESEND_API_KEY
-    const result = await sendSequenceEmail({
-      to: "lead@example.com",
-      subject: "Hi",
-      body: "Body",
-      unsubscribeUrl: "https://x.test/u/7",
-      contactName: null,
-      settings: settingsA,
-    })
+    await expect(
+      sendSequenceEmail({
+        to: "lead@example.com",
+        subject: "Hi",
+        body: "Body",
+        unsubscribeUrl: "https://x.test/u/7",
+        contactName: null,
+        settings: settingsA,
+      }),
+    ).rejects.toThrow(/RESEND_API_KEY/)
     expect(sendMock).not.toHaveBeenCalled()
-    expect(result.providerMessageId).toBeNull()
+  })
+
+  it("also throws for a whitespace-only RESEND_API_KEY", async () => {
+    process.env.RESEND_API_KEY = "   "
+    await expect(
+      sendSequenceEmail({
+        to: "lead@example.com",
+        subject: "Hi",
+        body: "Body",
+        unsubscribeUrl: "https://x.test/u/14",
+        contactName: null,
+        settings: settingsA,
+      }),
+    ).rejects.toThrow(/RESEND_API_KEY/)
+    expect(sendMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("emailEnvPresent", () => {
+  it("is true when RESEND_API_KEY is set and non-blank", () => {
+    process.env.RESEND_API_KEY = "re_test"
+    expect(emailEnvPresent()).toBe(true)
+  })
+
+  it("is false when RESEND_API_KEY is unset", () => {
+    delete process.env.RESEND_API_KEY
+    expect(emailEnvPresent()).toBe(false)
+  })
+
+  it("is false when RESEND_API_KEY is whitespace only", () => {
+    process.env.RESEND_API_KEY = "   "
+    expect(emailEnvPresent()).toBe(false)
   })
 })
 
