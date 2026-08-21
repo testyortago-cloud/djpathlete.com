@@ -15,6 +15,11 @@
  * sms_repermission (coming in Task 9) is manual-enrolment only and has no trigger_source.
  * Activating it alone sends nothing — no contact will be enrolled.
  *
+ * CONCURRENCY: the update is guarded by `.eq("status", currentStatus)` — if the row's
+ * status changed between the initial read and the write, the update matches zero rows and
+ * the script prints that the row changed underneath us (expected vs actual) and exits 1.
+ * The script then re-selects and prints the persisted row, proving what was written.
+ *
  *   node scripts/activate-sequence.mjs .env newsletter_welcome
  *   node scripts/activate-sequence.mjs .env lead_magnet_delivery
  *   node scripts/activate-sequence.mjs .env newsletter_welcome --pause
@@ -108,13 +113,37 @@ async function main() {
     return
   }
 
-  const { error: updateErr } = await sb.from("sequences").update({ status: targetStatus }).eq("id", sequence.id)
-  if (updateErr) {
-    console.error("update sequences.status:", updateErr.message)
+  const upd = await sb
+    .from("sequences")
+    .update({ status: targetStatus })
+    .eq("id", sequence.id)
+    .eq("status", currentStatus)
+    .select("key, status")
+
+  if (upd.error) {
+    console.error("update sequences.status:", upd.error.message)
     process.exit(1)
   }
 
-  console.log(`sequences.status set: ${JSON.stringify(targetStatus)}`)
+  if (!upd.data || upd.data.length === 0) {
+    // The row's status changed between our initial read and this write.
+    const { data: fresh, error: freshErr } = await sb
+      .from("sequences")
+      .select("status")
+      .eq("id", sequence.id)
+      .maybeSingle()
+    if (freshErr) {
+      console.error("re-read sequences.status:", freshErr.message)
+      process.exit(1)
+    }
+    const actualStatus = fresh?.status ?? "unknown"
+    console.error(
+      `row changed underneath us: expected status ${JSON.stringify(currentStatus)}, actual status ${JSON.stringify(actualStatus)}`,
+    )
+    process.exit(1)
+  }
+
+  console.log("sequences.status set:", JSON.stringify(upd.data))
 }
 
 main().catch((err) => {
