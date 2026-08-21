@@ -11,6 +11,11 @@ const ROOTS = [
   "lib/automation/sequence-tick-runner.ts",
   "lib/db/sequences.ts",
   "supabase/migrations/00218_lead_engine_seed_sequences.sql",
+  // Stage 2 SMS — Task 8's seeded sms copy for the three draft sequences,
+  // plus the new_lead_nurture comment block (the sweep scans raw file text,
+  // comments included, so a brand word hiding in the runbook comment is
+  // caught the same as one in a live INSERT).
+  "supabase/migrations/00222_lead_engine_seed_sms_steps.sql",
   // Stage 1c (pipeline board) — flagged as a gap by both Task 1 and Task 2,
   // left for Task 8 to close.
   "supabase/migrations/00219_lead_engine_pipeline.sql",

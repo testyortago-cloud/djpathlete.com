@@ -179,7 +179,8 @@ function stripOuterParens(tuple: string): string {
 // ---------------------------------------------------------------------------
 
 const sequencesStatement = statements.find((s) => /^INSERT INTO public\.sequences\s*\(/i.test(s.trim()))
-if (!sequencesStatement) throw new Error("no INSERT INTO public.sequences statement found in 00218 — parser or migration drifted")
+if (!sequencesStatement)
+  throw new Error("no INSERT INTO public.sequences statement found in 00218 — parser or migration drifted")
 
 const sequenceRows = extractTuples(valuesSectionOf(sequencesStatement)).map((tuple) => {
   const fields = splitTopLevel(stripOuterParens(tuple), ",")
@@ -197,7 +198,8 @@ const sequenceRows = extractTuples(valuesSectionOf(sequencesStatement)).map((tup
 // ---------------------------------------------------------------------------
 
 const stepStatements = statements.filter((s) => /^INSERT INTO public\.sequence_steps\s*\(/i.test(s.trim()))
-if (stepStatements.length === 0) throw new Error("no INSERT INTO public.sequence_steps statements found in 00218 — parser or migration drifted")
+if (stepStatements.length === 0)
+  throw new Error("no INSERT INTO public.sequence_steps statements found in 00218 — parser or migration drifted")
 
 const stepRows = stepStatements.map((statement) => {
   const tuples = extractTuples(valuesSectionOf(statement))
@@ -205,7 +207,8 @@ const stepRows = stepStatements.map((statement) => {
   const fields = splitTopLevel(stripOuterParens(tuples[0]), ",")
   const [businessId, sequenceIdExpr, position, kind, waitMinutes, subject, body] = fields
   const keyMatch = /key\s*=\s*'([^']+)'/.exec(sequenceIdExpr)
-  if (!keyMatch) throw new Error(`sequence_steps row does not reference its sequence via a key subselect: ${sequenceIdExpr}`)
+  if (!keyMatch)
+    throw new Error(`sequence_steps row does not reference its sequence via a key subselect: ${sequenceIdExpr}`)
   return {
     businessId: unquote(businessId),
     sequenceKey: keyMatch[1],
@@ -277,7 +280,9 @@ describe("seed migration 00218 — the four sequences", () => {
       if (!row.triggerSource || !AUTO_REPLY_SOURCES.has(row.triggerSource)) continue
       const steps = stepsFor(row.key as string)
       expect(steps.length, `sequence ${row.key}`).toBeGreaterThan(0)
-      expect(steps[0].kind, `sequence ${row.key} (trigger_source=${row.triggerSource}) must open with a wait`).toBe("wait")
+      expect(steps[0].kind, `sequence ${row.key} (trigger_source=${row.triggerSource}) must open with a wait`).toBe(
+        "wait",
+      )
     }
     // Sanity: at least one seeded sequence actually exercises this rule —
     // otherwise the assertion above would pass vacuously.
@@ -327,7 +332,10 @@ describe("seed migration 00218 — the four sequences", () => {
         while (idx !== -1) {
           usesName = true
           const after = field.slice(idx + "{{name}}".length, idx + "{{name}}".length + 1)
-          expect(/[,.!?;:]/.test(after), `sequence ${step.sequenceKey} position ${step.position}: "{{name}}${after}"`).toBe(false)
+          expect(
+            /[,.!?;:]/.test(after),
+            `sequence ${step.sequenceKey} position ${step.position}: "{{name}}${after}"`,
+          ).toBe(false)
           idx = field.indexOf("{{name}}", idx + 1)
         }
       }
@@ -342,6 +350,154 @@ describe("seed migration 00218 — the four sequences", () => {
     const FORBIDDEN = [/DJP\s*Athlete/i, /\bDarren\b/i, /darrenjpaul\.com/i]
     for (const re of FORBIDDEN) {
       expect(re.test(rawSql), `matched ${re}`).toBe(false)
+    }
+  })
+})
+
+// =============================================================================
+// Migration 00222 — sms steps seeded into the three DRAFT sequences only.
+// Reuses the tokenizing helpers above; they are generic SQL-subset parsing,
+// not specific to 00218.
+// =============================================================================
+
+const MIGRATION_222_PATH = join(process.cwd(), "supabase/migrations/00222_lead_engine_seed_sms_steps.sql")
+const rawSql222 = readFileSync(MIGRATION_222_PATH, "utf8")
+const cleaned222 = stripSqlComments(rawSql222)
+const statements222 = splitTopLevel(cleaned222, ";")
+
+const DRAFT_KEYS = ["newsletter_welcome", "lead_magnet_delivery", "cold_lead_re_engagement"] as const
+
+const stepInsertStatements222 = statements222.filter((s) => /^INSERT INTO public\.sequence_steps\s*\(/i.test(s.trim()))
+if (stepInsertStatements222.length === 0)
+  throw new Error("no INSERT INTO public.sequence_steps statements found in 00222 — parser or migration drifted")
+
+const stepRows222 = stepInsertStatements222.map((statement) => {
+  const tuples = extractTuples(valuesSectionOf(statement))
+  expect(tuples.length).toBe(1) // one step per INSERT, by construction — same style as 00218
+  const fields = splitTopLevel(stripOuterParens(tuples[0]), ",")
+  const [businessId, sequenceIdExpr, position, kind, waitMinutes, subject, body] = fields
+  const keyMatch = /key\s*=\s*'([^']+)'/.exec(sequenceIdExpr)
+  if (!keyMatch)
+    throw new Error(`sequence_steps row does not reference its sequence via a key subselect: ${sequenceIdExpr}`)
+  return {
+    businessId: unquote(businessId),
+    sequenceKey: keyMatch[1],
+    position: Number(unquote(position)),
+    kind: unquote(kind),
+    waitMinutes: unquote(waitMinutes) === null ? null : Number(unquote(waitMinutes)),
+    subject: unquote(subject),
+    body: unquote(body),
+  }
+})
+
+// The stop-shift UPDATEs. Parsed straight out of `statements222` (already
+// comment-stripped by `stripSqlComments`), so anything living only inside
+// the new_lead_nurture comment block can never appear here.
+const updateStopStatements222 = statements222.filter((s) => /^UPDATE public\.sequence_steps\b/i.test(s.trim()))
+
+/**
+ * Finds the stop-shift UPDATE for `key` and reports (a) whether it uses the
+ * relative `position = position + 2` form the brief requires (never a
+ * hardcoded absolute new position, which would silently disagree with
+ * whatever the row's actual current position is) and (b) the literal old
+ * position it gates on via `WHERE ... position = <n>` — the idempotency
+ * guard: a second run finds the stop already moved off `<n>`, so the WHERE
+ * matches nothing and the UPDATE becomes a no-op.
+ */
+function stopShiftFor(key: string): { oldPosition: number | null; usesRelativeShift: boolean } | null {
+  const stmt = updateStopStatements222.find((s) => new RegExp(`key\\s*=\\s*'${key}'`).test(s))
+  if (!stmt) return null
+  const oldPositionMatch = /\bposition\s*=\s*(\d+)\b/.exec(stmt)
+  const usesRelativeShift = /SET\s+position\s*=\s*position\s*\+\s*2\b/i.test(stmt)
+  return {
+    oldPosition: oldPositionMatch ? Number(oldPositionMatch[1]) : null,
+    usesRelativeShift,
+  }
+}
+
+/** Strips every line that is entirely a `--` comment (after trimming leading whitespace). */
+function stripCommentLines(sql: string): string {
+  return sql
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n")
+}
+
+describe("seed migration 00222 — sms steps for the three draft sequences", () => {
+  it("is actually parsing the file — a guard against a silently empty sweep", () => {
+    expect(stepRows222.length).toBeGreaterThan(0)
+    expect(updateStopStatements222.length).toBeGreaterThan(0)
+  })
+
+  it("inserts exactly one sms step, and only into the three draft sequences", () => {
+    const smsSteps = stepRows222.filter((s) => s.kind === "sms")
+    expect(smsSteps).toHaveLength(3)
+    expect(smsSteps.map((s) => s.sequenceKey).sort()).toEqual([...DRAFT_KEYS].sort())
+  })
+
+  it("shifts each draft sequence's stop by exactly 2 via a relative UPDATE, with the new wait+sms landing exactly where the shift vacated", () => {
+    expect(updateStopStatements222).toHaveLength(3)
+    for (const key of DRAFT_KEYS) {
+      const shift = stopShiftFor(key)
+      expect(shift, `sequence ${key}`).not.toBeNull()
+      expect(
+        shift!.usesRelativeShift,
+        `sequence ${key} must shift via position = position + 2, not a hardcoded absolute position`,
+      ).toBe(true)
+      expect(shift!.oldPosition, `sequence ${key}`).not.toBeNull()
+
+      const waitStep = stepRows222.find((s) => s.sequenceKey === key && s.kind === "wait")
+      const smsStep = stepRows222.find((s) => s.sequenceKey === key && s.kind === "sms")
+      expect(waitStep, `sequence ${key} missing its inserted wait step`).toBeTruthy()
+      expect(smsStep, `sequence ${key} missing its inserted sms step`).toBeTruthy()
+      expect(waitStep!.position, `sequence ${key}: wait step must land exactly at the old stop position`).toBe(
+        shift!.oldPosition,
+      )
+      expect(smsStep!.position, `sequence ${key}: sms step must land exactly one after the wait`).toBe(
+        shift!.oldPosition! + 1,
+      )
+    }
+  })
+
+  it("no sms body contains the word STOP (the renderer appends the opt-out sentence — one source) or a brand word", () => {
+    const FORBIDDEN = [/DJP\s*Athlete/i, /\bDarren\b/i, /darrenjpaul\.com/i]
+    const smsSteps = stepRows222.filter((s) => s.kind === "sms")
+    expect(smsSteps.length).toBeGreaterThan(0)
+    for (const step of smsSteps) {
+      expect(step.body, `sequence ${step.sequenceKey}`).toBeTruthy()
+      expect(/\bSTOP\b/i.test(step.body as string), `sequence ${step.sequenceKey} sms body contains STOP`).toBe(false)
+      for (const re of FORBIDDEN) {
+        expect(re.test(step.body as string), `sequence ${step.sequenceKey} matched ${re}`).toBe(false)
+      }
+    }
+  })
+
+  it("touches only the three draft sequences — new_lead_nurture gets no live INSERT or UPDATE", () => {
+    const liveKeys = new Set(stepRows222.map((s) => s.sequenceKey))
+    for (const stmt of updateStopStatements222) {
+      const m = /key\s*=\s*'([^']+)'/.exec(stmt)
+      if (m) liveKeys.add(m[1])
+    }
+    expect(liveKeys.has("new_lead_nurture")).toBe(false)
+    expect([...liveKeys].sort()).toEqual([...DRAFT_KEYS].sort())
+  })
+
+  it("keeps the new_lead_nurture runbook comment-only — no line outside `--` mentions it", () => {
+    // Deliberately independent of stripSqlComments (which is dollar-quote
+    // aware and already used above): the brief asks specifically for a
+    // simple line-based strip of `--`-prefixed lines, so this test exercises
+    // that exact mechanism against the raw file.
+    const withoutComments = stripCommentLines(rawSql222)
+    expect(withoutComments).not.toMatch(/new_lead_nurture/)
+    // Sanity: the file does discuss new_lead_nurture — inside comments —
+    // otherwise the assertion above would pass vacuously.
+    expect(rawSql222).toMatch(/new_lead_nurture/)
+  })
+
+  it("uses no brand literal anywhere in the file, comments included", () => {
+    const FORBIDDEN = [/DJP\s*Athlete/i, /\bDarren\b/i, /darrenjpaul\.com/i]
+    for (const re of FORBIDDEN) {
+      expect(re.test(rawSql222), `matched ${re}`).toBe(false)
     }
   })
 })
