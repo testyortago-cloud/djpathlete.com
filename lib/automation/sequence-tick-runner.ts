@@ -34,6 +34,7 @@ import {
 } from "@/lib/lead-engine/email"
 import { smsConfigured, smsEnvPresent, renderSequenceSms, sendRenderedSequenceSms } from "@/lib/lead-engine/sms"
 import { unsubscribeUrl, unsubscribeOneClickUrl } from "@/lib/lead-engine/unsubscribe-token"
+import { appOrigin } from "@/lib/lead-engine/origin"
 import { decideStep } from "@/lib/automation/sequence-tick"
 import type { SequenceRunRow } from "@/lib/automation/sequence-tick"
 import {
@@ -113,40 +114,15 @@ function transientBackoffMs(attempts: number): number {
 // recordSend's own 15-minute crashed-attempt reclaim window.
 const SEND_RACE_RETRY_MS = 5 * 60 * 1000
 
-/**
- * The public origin every unsubscribe link and every List-Unsubscribe header
- * in this engine's outbound mail is built from.
- *
- * The chain is NEXTAUTH_URL -> NEXT_PUBLIC_APP_URL -> APP_URL, matching every
- * other email-link builder in this repo (lib/url.ts, lib/email.ts,
- * lib/shop/emails.ts, lib/messaging/email-new-message.ts). It used to read
- * `APP_URL ?? NEXT_PUBLIC_SITE_URL` with a localhost fallback, and both of
- * those reads miss in the runtime this code executes in: .env.example:124
- * states plainly that "Next.js server-side code reads NEXTAUTH_URL; APP_URL is
- * Firebase-side only", and NEXT_PUBLIC_SITE_URL is declared nowhere at all.
- * So every unsubscribe link shipped pointing at http://localhost:3050.
- *
- * THROWS rather than defaulting. A path that mints links for mail leaving the
- * building must fail loudly when it does not know where it lives — a silent
- * localhost default produces a dead unsubscribe link in a real inbox, which is
- * both a CAN-SPAM problem and invisible until someone complains.
- *
- * Exported for __tests__/lib/automation/sequence-tick-origin.test.ts.
- */
-export function appOrigin(): string {
-  const candidates = [process.env.NEXTAUTH_URL, process.env.NEXT_PUBLIC_APP_URL, process.env.APP_URL]
-  // Trimmed-emptiness, not `??`: an env var set to "" is configured-as-blank,
-  // and passing it through would mint a relative "/unsubscribe/<token>" URL
-  // that resolves against the recipient's mail client, not against this app.
-  const explicit = candidates.find((value) => typeof value === "string" && value.trim().length > 0)
-  if (!explicit) {
-    throw new Error(
-      "no public origin configured: set NEXTAUTH_URL (or NEXT_PUBLIC_APP_URL / APP_URL). " +
-        "Refusing to mint unsubscribe links for outbound mail against a localhost default.",
-    )
-  }
-  return explicit.trim().replace(/\/+$/, "")
-}
+// appOrigin() used to live here. It is now lib/lead-engine/origin.ts (see the
+// import above), moved there so app/api/webhooks/twilio/status/route.ts
+// (Task 4) — which needs the exact same origin to reconstruct and verify the
+// URL Twilio signed its status callback against — can use it without pulling
+// in this file's much larger, DB-heavy module graph. Re-exported here so
+// every existing import of `appOrigin` from this module (notably
+// __tests__/lib/automation/sequence-tick-origin.test.ts) keeps working
+// unchanged.
+export { appOrigin }
 
 /**
  * Appends a `contact_timeline_events` row. Deliberately a raw
