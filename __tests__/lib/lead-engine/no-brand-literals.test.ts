@@ -16,6 +16,8 @@ const ROOTS = [
   // comments included, so a brand word hiding in the runbook comment is
   // caught the same as one in a live INSERT).
   "supabase/migrations/00222_lead_engine_seed_sms_steps.sql",
+  // Stage 4, Task 9 — the sms_repermission draft sequence's single email ask.
+  "supabase/migrations/00223_lead_engine_repermission_sequence.sql",
   // Stage 1c (pipeline board) — flagged as a gap by both Task 1 and Task 2,
   // left for Task 8 to close.
   "supabase/migrations/00219_lead_engine_pipeline.sql",
