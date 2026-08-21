@@ -98,7 +98,18 @@ async function flush() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  // resetAllMocks, NOT clearAllMocks: clearAllMocks wipes call history but
+  // leaves any UNCONSUMED `mockRejectedValueOnce`/`mockResolvedValueOnce`
+  // queued on a mock sitting there — if a test queues one and its own route
+  // call never actually reaches the mock (e.g. under a mutation that drops
+  // the call entirely), that leftover once-value survives into whichever
+  // LATER test is first to call the same mock, silently corrupting an
+  // unrelated test's result. recordContactEvent is shared across the
+  // signup-route and checkout-route describe blocks below, so a leak here
+  // can misattribute a regression from one route to the other. resetAllMocks
+  // clears the once-queue too; every default below is re-armed immediately
+  // after, same as before.
+  vi.resetAllMocks()
   mocks.getActiveDocument.mockResolvedValue({ id: "doc-waiver-1" })
   mocks.sendEventSignupReceivedEmail.mockResolvedValue(undefined)
   mocks.sendAdminNewSignupEmail.mockResolvedValue(undefined)
