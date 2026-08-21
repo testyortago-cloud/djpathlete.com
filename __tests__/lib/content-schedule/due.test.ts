@@ -36,11 +36,15 @@ describe("partitionDue", () => {
     expect(partitionDue([r], NOW).missed).toHaveLength(1)
   })
 
-  it("gives a missed row a reason naming how late it was", () => {
+  it("gives a missed row a reason naming how late it was, in plain language rather than a raw ISO string", () => {
     const r = at("2026-08-19T12:00:00.000Z")
     const { missed } = partitionDue([r], NOW)
     expect(missed[0].reason).toMatch(/missed/i)
-    expect(missed[0].reason).toMatch(/2026-08-19/)
+    // Humanised: "Wed 19 Aug 2026 at 12:00 PM UTC" — not the raw
+    // "2026-08-19T12:00:00.000Z" a non-technical coach can't parse at a glance.
+    expect(missed[0].reason).toMatch(/19 Aug 2026/)
+    expect(missed[0].reason).toMatch(/12:00 PM UTC/)
+    expect(missed[0].reason).not.toMatch(/2026-08-19T/)
   })
 
   it("treats a scheduled row with no time as missed, not as a crash", () => {

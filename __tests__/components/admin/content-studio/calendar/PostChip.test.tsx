@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { DndContext } from "@dnd-kit/core"
 import { PostChip } from "@/components/admin/content-studio/calendar/PostChip"
-import { postToChip, type CalendarChip } from "@/lib/content-studio/calendar-chips"
+import { postToChip, newsletterToChip, type CalendarChip } from "@/lib/content-studio/calendar-chips"
 
 const chip: CalendarChip = postToChip(
   {
@@ -55,6 +55,64 @@ describe("<PostChip>", () => {
     render(wrap(<PostChip chip={failed} />))
     fireEvent.mouseEnter(screen.getByRole("button", { name: /failed/i }))
     expect(screen.getByRole("button", { name: /Retry/i })).toBeInTheDocument()
+  })
+
+  describe("a sent newsletter chip is locked — a regression guard for isLocked's drag gate", () => {
+    // PostChip used to carry a LOCAL duplicate of isLocked, which was the
+    // real gate on useDraggable's `disabled` flag; it now calls the shared
+    // lib/content-studio/calendar-chips isLocked. Nothing previously
+    // constructed a kind: "newsletter" / status: "sent" chip and asserted
+    // PostChip's disabled output, so a reintroduced local duplicate (or a
+    // newsletter case it forgot) would ship silently and let a coach drag an
+    // already-sent email to a new date. dnd-kit only spreads
+    // aria-roledescription="draggable" (and the rest of `attributes`) onto
+    // the node when the chip is NOT locked, so that attribute's presence is
+    // a direct, observable proxy for `disabled` here.
+    const sentNewsletter: CalendarChip = newsletterToChip({
+      id: "nl1",
+      subject: "August round-up",
+      preview_text: "",
+      content: "x".repeat(50),
+      status: "sent",
+      scheduled_at: null,
+      sent_at: "2026-04-20T09:00:00Z",
+      sent_count: 120,
+      failed_count: 0,
+      source_blog_post_id: null,
+      author_id: "a",
+      created_at: "",
+      updated_at: "",
+      schedule_failed_reason: null,
+    } as never)
+
+    const scheduledNewsletter: CalendarChip = newsletterToChip({
+      id: "nl2",
+      subject: "September preview",
+      preview_text: "",
+      content: "x".repeat(50),
+      status: "scheduled",
+      scheduled_at: "2026-09-01T07:00:00Z",
+      sent_at: null,
+      sent_count: 0,
+      failed_count: 0,
+      source_blog_post_id: null,
+      author_id: "a",
+      created_at: "",
+      updated_at: "",
+      schedule_failed_reason: null,
+    } as never)
+
+    it("a sent newsletter chip is not draggable", () => {
+      render(wrap(<PostChip chip={sentNewsletter} />))
+      const node = screen.getByRole("button", { name: /^sent /i })
+      expect(node).not.toHaveAttribute("aria-roledescription")
+    })
+
+    it("a scheduled (not yet sent) newsletter chip remains draggable, for contrast", () => {
+      render(wrap(<PostChip chip={scheduledNewsletter} />))
+      const node = screen.getByRole("button", { name: /^scheduled /i })
+      expect(node).toHaveAttribute("aria-roledescription", "draggable")
+    })
   })
 
   it("calendar entries (kind='entry') render with the title", () => {

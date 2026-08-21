@@ -53,4 +53,38 @@ describe("scheduled items in the admin lists", () => {
     )
     expect(screen.getByText(/missed its slot/i)).toBeTruthy()
   })
+
+  describe('a scheduled row offers both "move" and "cancel", not cancel alone', () => {
+    // Regression for: the Schedule button (which opens SchedulePicker,
+    // pre-filled via its `initial` prop with the row's current scheduled_at)
+    // was gated to status === "draft" only. A scheduled row's scheduled_at is
+    // never null, so `initial` was dead code and there was no "move" action —
+    // only Cancel. The spec promised row actions to "cancel or move".
+
+    it("blog list: a scheduled row shows a Move action alongside Cancel schedule", () => {
+      render(
+        <BlogPostList
+          posts={[{ ...basePost, status: "scheduled", scheduled_at: "2026-09-01T07:00:00Z" }] as never}
+        />,
+      )
+      expect(screen.getByTitle(/move to a different time/i)).toBeTruthy()
+      expect(screen.getByTitle(/cancel schedule/i)).toBeTruthy()
+    })
+
+    it("newsletter list: a scheduled row shows a Move action alongside Cancel schedule", () => {
+      render(
+        <NewsletterList
+          newsletters={[{ ...baseNewsletter, status: "scheduled", scheduled_at: "2026-09-01T07:00:00Z" }] as never}
+        />,
+      )
+      expect(screen.getByTitle(/move to a different time/i)).toBeTruthy()
+      expect(screen.getByTitle(/cancel schedule/i)).toBeTruthy()
+    })
+
+    it("a draft row still shows the plain 'Schedule' action, not 'Move'", () => {
+      render(<BlogPostList posts={[{ ...basePost, status: "draft", scheduled_at: null }] as never} />)
+      expect(screen.getByTitle(/^schedule$/i)).toBeTruthy()
+      expect(screen.queryByTitle(/move to a different time/i)).toBeNull()
+    })
+  })
 })

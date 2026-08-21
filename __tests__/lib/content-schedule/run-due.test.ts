@@ -20,12 +20,23 @@ vi.mock("@/lib/db/newsletters", () => ({
 vi.mock("@/lib/blog/publish-post", () => ({ publishBlogPost: (a: unknown) => publishBlogPostMock(a) }))
 vi.mock("@/lib/newsletter/send-newsletter", () => ({
   sendNewsletterNow: (a: unknown) => sendNewsletterNowMock(a),
-  NewsletterNotSendableError: class extends Error {},
+  // Matches the real class's shape (code + message) so `instanceof` and
+  // `.code` both work against the mocked module the same way they do
+  // against the real one.
+  NewsletterNotSendableError: class extends Error {
+    code: string
+    constructor(code: string, message: string) {
+      super(message)
+      this.name = "NewsletterNotSendableError"
+      this.code = code
+    }
+  },
 }))
 vi.mock("@/lib/db/system-settings", () => ({ isCronSkipped: (a: unknown) => isCronSkippedMock(a) }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: (a: unknown) => recordAuditMock(a) }))
 
 import { runContentSchedule } from "@/lib/content-schedule/run-due"
+import { NewsletterNotSendableError } from "@/lib/newsletter/send-newsletter"
 
 const NOW = new Date("2026-08-21T12:00:00.000Z")
 const DUE = "2026-08-21T11:55:00.000Z"
@@ -133,5 +144,72 @@ describe("runContentSchedule", () => {
     listScheduledNewslettersMock.mockResolvedValue([{ id: "n1", scheduled_at: DUE, author_id: "a" }])
     const out = await runContentSchedule({ now: NOW })
     expect(out).toMatchObject({ considered: 2, published: 1, sent: 1, missed: 0, failed: 0 })
+  })
+
+  describe("per-item failure isolation actually holds", () => {
+    it("keeps processing the rest of the batch even when the failure-recording write itself throws", async () => {
+      // b1's publish fails, and then failPost's own updateBlogPost write ALSO
+      // throws (e.g. the row was deleted between load and fire). That must
+      // not abort b2, which is due in the same batch.
+      listScheduledBlogPostsMock.mockResolvedValue([
+        { id: "b1", scheduled_at: DUE, author_id: "a" },
+        { id: "b2", scheduled_at: DUE, author_id: "a" },
+      ])
+      publishBlogPostMock.mockRejectedValueOnce(new Error("boom"))
+      updateBlogPostMock.mockRejectedValueOnce(new Error("row already deleted"))
+      const out = await runContentSchedule({ now: NOW })
+      expect(out.failed).toBe(1)
+      expect(out.published).toBe(1)
+      expect(publishBlogPostMock).toHaveBeenCalledWith({ id: "b2", actorId: "a" })
+    })
+
+    it("keeps recording missed blog posts even when one failPost write throws", async () => {
+      listScheduledBlogPostsMock.mockResolvedValue([
+        { id: "b1", scheduled_at: LONG_AGO, author_id: "a" },
+        { id: "b2", scheduled_at: LONG_AGO, author_id: "a" },
+      ])
+      updateBlogPostMock.mockRejectedValueOnce(new Error("row already deleted"))
+      const out = await runContentSchedule({ now: NOW })
+      expect(out.missed).toBe(2)
+      expect(updateBlogPostMock).toHaveBeenCalledTimes(2)
+      expect(updateBlogPostMock).toHaveBeenCalledWith("b2", expect.objectContaining({ status: "draft" }))
+    })
+
+    it("keeps recording missed newsletters even when one write throws", async () => {
+      listScheduledNewslettersMock.mockResolvedValue([
+        { id: "n1", scheduled_at: LONG_AGO, author_id: "a" },
+        { id: "n2", scheduled_at: LONG_AGO, author_id: "a" },
+      ])
+      updateNewsletterMock.mockRejectedValueOnce(new Error("row already deleted"))
+      const out = await runContentSchedule({ now: NOW })
+      expect(out.missed).toBe(2)
+      expect(updateNewsletterMock).toHaveBeenCalledTimes(2)
+      expect(updateNewsletterMock).toHaveBeenCalledWith("n2", expect.objectContaining({ status: "draft" }))
+    })
+  })
+
+  describe("an already_sent race is reported as what it is, not as a failure", () => {
+    it("does not count it as failed, and does not audit it as missed", async () => {
+      listScheduledNewslettersMock.mockResolvedValue([{ id: "n1", scheduled_at: DUE, author_id: "a" }])
+      sendNewsletterNowMock.mockRejectedValue(
+        new NewsletterNotSendableError("already_sent", "Newsletter has already been sent"),
+      )
+      const out = await runContentSchedule({ now: NOW })
+      expect(out.failed).toBe(0)
+      expect(out.sent).toBe(0)
+      expect(recordAuditMock).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: "content.schedule_missed" }),
+      )
+    })
+
+    it("still counts and audits a genuine send failure as failed (not swallowed by the new branch)", async () => {
+      listScheduledNewslettersMock.mockResolvedValue([{ id: "n1", scheduled_at: DUE, author_id: "a" }])
+      sendNewsletterNowMock.mockRejectedValue(new Error("firestore down"))
+      const out = await runContentSchedule({ now: NOW })
+      expect(out.failed).toBe(1)
+      expect(recordAuditMock).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "content.schedule_missed", outcome: "failure" }),
+      )
+    })
   })
 })

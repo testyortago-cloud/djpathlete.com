@@ -1471,6 +1471,10 @@ async function getContentOverview(): Promise<string> {
 
   const blogPublished = blogs.filter((b) => b.status === "published").length
   const blogDrafts = blogs.filter((b) => b.status === "draft").length
+  // Scheduled posts are neither published nor draft — without this, Published
+  // + Drafts silently undercounts blogs.length whenever anything is queued,
+  // and the coach's assistant states totals that don't add up.
+  const blogScheduled = blogs.filter((b) => b.status === "scheduled").length
   const blogThisMonth = blogs.filter((b) => b.published_at && new Date(b.published_at) >= monthStart).length
 
   const videoByStatus = new Map<string, number>()
@@ -1496,7 +1500,7 @@ async function getContentOverview(): Promise<string> {
     "Content Overview:",
     "",
     "── Blog ──",
-    `Total: ${blogs.length} | Published: ${blogPublished} | Drafts: ${blogDrafts}`,
+    `Total: ${blogs.length} | Published: ${blogPublished} | Scheduled: ${blogScheduled} | Drafts: ${blogDrafts}`,
     `Published this month: ${blogThisMonth}`,
     "",
     "── Videos ──",

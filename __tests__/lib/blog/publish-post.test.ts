@@ -69,6 +69,26 @@ describe("publishBlogPost", () => {
     expect(revalidatePathMock).toHaveBeenCalledWith("/blog/speed-work")
   })
 
+  it("does not re-publish or re-queue side effects for a post that is already published", async () => {
+    // Mirrors sendNewsletterNow's status === "sent" guard. Without this, a
+    // manual Publish click racing the cron double-fires: two
+    // newsletter_from_blog jobs (two duplicate AI drafts) and two
+    // seo_enhance jobs (real API spend).
+    getBlogPostByIdMock.mockResolvedValue({
+      id: "p1",
+      slug: "speed-work",
+      status: "published",
+      published_at: "2026-01-01T00:00:00.000Z",
+      author_id: "author-1",
+    })
+    const result = await publishBlogPost({ id: "p1", actorId: "admin-1" })
+    expect(updateBlogPostMock).not.toHaveBeenCalled()
+    expect(createAiJobMock).not.toHaveBeenCalled()
+    expect(submitUrlToIndexNowMock).not.toHaveBeenCalled()
+    expect(revalidatePathMock).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ id: "p1", slug: "speed-work", published_at: "2026-01-01T00:00:00.000Z" })
+  })
+
   it("still resolves when a fire-and-forget side effect rejects", async () => {
     // These are best-effort. A dead IndexNow endpoint must not strand a post
     // as scheduled-but-unpublished at 7am with nobody watching.

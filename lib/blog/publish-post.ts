@@ -25,6 +25,15 @@ export async function publishBlogPost(args: {
 }): Promise<PublishBlogPostResult> {
   const post = await getBlogPostById(args.id)
 
+  // Mirrors sendNewsletterNow's `status === "sent"` guard. Without it, a
+  // manual Publish click racing the cron (or a second cron tick) double-fires
+  // every side effect below: two newsletter_from_blog jobs (two duplicate AI
+  // drafts) and two seo_enhance jobs (real API spend), for zero benefit since
+  // the post is already live.
+  if (post.status === "published") {
+    return { id: post.id, slug: post.slug, published_at: post.published_at }
+  }
+
   const updated = await updateBlogPost(args.id, {
     status: "published",
     published_at: post.published_at ?? new Date().toISOString(),

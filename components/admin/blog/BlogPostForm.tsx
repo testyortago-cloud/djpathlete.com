@@ -134,7 +134,13 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
       return
     }
 
-    const isPublishing = publish && (!post || post.status === "draft")
+    // Anything not already published still needs to go through the publish
+    // path — including a "scheduled" post, whose Publish click means "go
+    // live right now instead of waiting for the queued time". Only
+    // "status === draft" here would silently skip publishBlogPost's side
+    // effects (published_at stamp, scheduled_at clear, newsletter_from_blog
+    // + seo_enhance jobs) for a scheduled post.
+    const isPublishing = publish && (!post || post.status !== "published")
 
     if (isPublishing) {
       setPublishing(true)
@@ -145,13 +151,21 @@ export function BlogPostForm({ post, authorId, initialPrompt }: BlogPostFormProp
     try {
       if (post) {
         // Update existing post. "Save Draft" (publish=false) forces status to
-        // "draft" so it actually un-publishes a live post; "Update"/"Publish"
-        // (publish=true) forces "published". The /publish endpoint below still
-        // handles the published_at stamp + side-effects on first publish.
+        // "draft" so it actually un-publishes a live post — UNLESS the post is
+        // currently "scheduled", in which case a plain save must leave it
+        // queued (matching the banner above that promises "edits you save
+        // here will be included"); otherwise the queued time survives on a
+        // post silently knocked back to draft, and it never fires.
+        // "Update"/"Publish" (publish=true) forces "published". The /publish
+        // endpoint below still handles the published_at stamp + side-effects
+        // on first publish.
         const res = await fetch(`/api/admin/blog/${post.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...parsed.data, status: publish ? "published" : "draft" }),
+          body: JSON.stringify({
+            ...parsed.data,
+            status: publish ? "published" : post.status === "scheduled" ? "scheduled" : "draft",
+          }),
         })
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))

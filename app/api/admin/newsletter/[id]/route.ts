@@ -41,7 +41,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "Invalid data", details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const updated = await updateNewsletter(id, parsed.data)
+    // Clear any stale "Missed" reason on save — otherwise the badge from a
+    // schedule that failed weeks ago keeps showing on the list even after
+    // the coach fixed the newsletter and saved it again.
+    const updated = await updateNewsletter(id, { ...parsed.data, schedule_failed_reason: null })
     return NextResponse.json(updated)
   } catch (error) {
     console.error("Newsletter PATCH error:", error)

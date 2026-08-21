@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest"
-import { render, screen, within } from "@testing-library/react"
+import { render, screen, within, fireEvent, waitFor } from "@testing-library/react"
 import { NewsletterForm } from "@/components/admin/newsletter/NewsletterForm"
 import { BlogPostForm } from "@/components/admin/blog/BlogPostForm"
 
@@ -140,5 +140,63 @@ describe("scheduled items in the admin editors", () => {
     )
     const statusLine = screen.getByText("Status:").closest("p")
     expect(statusLine ? within(statusLine).getByText("Scheduled") : null).toBeTruthy()
+  })
+
+  // A post with valid excerpt/content so blogPostFormSchema.safeParse actually
+  // passes and handleSave reaches its fetch calls — basePost's "" excerpt/
+  // content are too short to validate, which is fine for the render-only
+  // tests above but would silently no-op these two.
+  const scheduledPost = {
+    ...basePost,
+    excerpt: "A solid off-season plan for building explosive speed safely.",
+    content: "<p>Full post body.</p>",
+    status: "scheduled",
+    scheduled_at: "2026-09-01T07:00:00Z",
+  }
+
+  it('"Save Draft" on a scheduled post keeps it scheduled instead of silently disarming it', async () => {
+    // Regression for: the PATCH body used to hard-code status: publish ? "published" : "draft",
+    // so editing a typo on a queued post wrote status="draft" while leaving
+    // scheduled_at set — it would never fire again, and the banner's promise
+    // ("edits you save here will be included") would be a lie.
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      render(<BlogPostForm post={scheduledPost as never} authorId="a" />)
+      fireEvent.click(screen.getByRole("button", { name: /^save draft$/i }))
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+      const [url, options] = fetchMock.mock.calls[0]
+      expect(url).toBe("/api/admin/blog/b1")
+      expect(options.method).toBe("PATCH")
+      const body = JSON.parse(options.body as string)
+      expect(body.status).toBe("scheduled")
+
+      // And it must NOT have called the publish endpoint.
+      expect(fetchMock).not.toHaveBeenCalledWith("/api/admin/blog/b1/publish", expect.anything())
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('"Publish" on a scheduled post goes through the publish endpoint, not a bare PATCH', async () => {
+    // Regression for: isPublishing = publish && (!post || post.status === "draft")
+    // fell into the "already published" branch for a scheduled post, so it
+    // PATCHed status="published" directly and skipped /publish entirely —
+    // published_at stayed null, scheduled_at was never cleared, and none of
+    // publishBlogPost's side effects (content_calendar flip, newsletter_from_blog,
+    // seo_enhance) ran.
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
+    vi.stubGlobal("fetch", fetchMock)
+    try {
+      render(<BlogPostForm post={scheduledPost as never} authorId="a" />)
+      fireEvent.click(screen.getByRole("button", { name: /^publish$/i }))
+
+      await waitFor(() =>
+        expect(fetchMock).toHaveBeenCalledWith("/api/admin/blog/b1/publish", expect.objectContaining({ method: "POST" })),
+      )
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

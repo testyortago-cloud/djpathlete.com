@@ -9,7 +9,7 @@
 import { listScheduledBlogPosts, updateBlogPost } from "@/lib/db/blog-posts"
 import { listScheduledNewsletters, updateNewsletter } from "@/lib/db/newsletters"
 import { publishBlogPost } from "@/lib/blog/publish-post"
-import { sendNewsletterNow } from "@/lib/newsletter/send-newsletter"
+import { sendNewsletterNow, NewsletterNotSendableError } from "@/lib/newsletter/send-newsletter"
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { recordAudit } from "@/lib/audit/record"
 import { partitionDue } from "@/lib/content-schedule/due"
@@ -65,7 +65,15 @@ export async function runContentSchedule(
       })
     } catch (err) {
       failed++
-      await failPost(post.id, (err as Error).message)
+      // Recording the failure is not itself guaranteed to succeed (the row
+      // can be gone, the DB can be down) — an unguarded throw here would
+      // abort the whole batch and strand every remaining due item for
+      // another five minutes. Log and move on instead.
+      try {
+        await failPost(post.id, (err as Error).message)
+      } catch (recordErr) {
+        console.error(`[content-schedule] failed to record blog post ${post.id} as missed:`, recordErr)
+      }
     }
   }
 
@@ -81,6 +89,15 @@ export async function runContentSchedule(
         metadata: { scheduled_at: newsletter.scheduled_at },
       })
     } catch (err) {
+      if (err instanceof NewsletterNotSendableError && err.code === "already_sent") {
+        // Someone else — the manual Send button, or a second cron tick —
+        // already sent this newsletter between our read and our send
+        // attempt. That is a race won by someone else, not a failure: it
+        // must not count as `failed`, and auditing it as "missed" would say
+        // the opposite of what happened.
+        console.warn(`[content-schedule] newsletter ${newsletter.id} was already sent elsewhere; skipping`)
+        continue
+      }
       failed++
       // Deliberately NOT reverted to draft. sendNewsletterNow marks the row
       // sent before queuing, so a throw may land after the mark — reverting
@@ -100,23 +117,31 @@ export async function runContentSchedule(
 
   for (const { row, reason } of postParts.missed) {
     missed++
-    await failPost(row.id, reason)
+    try {
+      await failPost(row.id, reason)
+    } catch (err) {
+      console.error(`[content-schedule] failed to record blog post ${row.id} as missed:`, err)
+    }
   }
 
   for (const { row, reason } of newsletterParts.missed) {
     missed++
-    await updateNewsletter(row.id, {
-      status: "draft",
-      scheduled_at: null,
-      schedule_failed_reason: reason,
-    })
-    await recordAudit({
-      action: "content.schedule_missed",
-      category: "marketing",
-      target: { type: "newsletter", id: row.id },
-      actor: CRON_ACTOR,
-      metadata: { reason },
-    })
+    try {
+      await updateNewsletter(row.id, {
+        status: "draft",
+        scheduled_at: null,
+        schedule_failed_reason: reason,
+      })
+      await recordAudit({
+        action: "content.schedule_missed",
+        category: "marketing",
+        target: { type: "newsletter", id: row.id },
+        actor: CRON_ACTOR,
+        metadata: { reason },
+      })
+    } catch (err) {
+      console.error(`[content-schedule] failed to record newsletter ${row.id} as missed:`, err)
+    }
   }
 
   return {

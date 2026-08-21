@@ -262,11 +262,11 @@ export function BlogPostList({ posts }: BlogPostListProps) {
                               <Send className="size-4" />
                             </button>
                           ))}
-                        {post.status === "draft" && (
+                        {(post.status === "draft" || post.status === "scheduled") && (
                           <button
                             onClick={() => setSchedulingId(post.id)}
                             className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                            title="Schedule"
+                            title={post.status === "scheduled" ? "Move to a different time" : "Schedule"}
                           >
                             <CalendarClock className="size-4" />
                           </button>

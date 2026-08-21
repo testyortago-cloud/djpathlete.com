@@ -219,11 +219,11 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
                     </DataTableCell>
                     <DataTableCell>
                       <div className="flex items-center justify-end gap-1">
-                        {nl.status === "draft" && (
+                        {(nl.status === "draft" || nl.status === "scheduled") && (
                           <button
                             onClick={() => setSchedulingId(nl.id)}
                             className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                            title="Schedule"
+                            title={nl.status === "scheduled" ? "Move to a different time" : "Schedule"}
                           >
                             <CalendarClock className="size-4" />
                           </button>
