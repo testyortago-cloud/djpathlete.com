@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { FileText, Send, Clock, Sparkles } from "lucide-react"
+import { FileText, Send, Clock, CalendarClock, Sparkles } from "lucide-react"
 import { getBlogPosts } from "@/lib/db/blog-posts"
 import { BlogPageTabs } from "@/components/admin/blog/BlogPageTabs"
 import { BlogJobTracker } from "@/components/admin/blog/BlogJobTracker"
@@ -12,6 +12,7 @@ export default async function BlogPage() {
 
   const total = posts.length
   const published = posts.filter((p) => p.status === "published").length
+  const scheduled = posts.filter((p) => p.status === "scheduled").length
   const drafts = posts.filter((p) => p.status === "draft").length
 
   return (
@@ -23,7 +24,7 @@ export default async function BlogPage() {
       </Suspense>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <div className="bg-white rounded-xl border border-border p-3 sm:p-4 flex items-center gap-3">
           <div className="flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
             <FileText className="size-3.5 sm:size-4 text-primary" />
@@ -41,6 +42,16 @@ export default async function BlogPage() {
           <div>
             <p className="text-[10px] sm:text-xs text-muted-foreground">Published</p>
             <p className="text-lg sm:text-2xl font-semibold text-primary">{published}</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-border p-3 sm:p-4 flex items-center gap-3">
+          <div className="flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <CalendarClock className="size-3.5 sm:size-4 text-primary" />
+          </div>
+          <div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Scheduled</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{scheduled}</p>
           </div>
         </div>
 

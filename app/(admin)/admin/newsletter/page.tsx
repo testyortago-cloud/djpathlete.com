@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Mail, Send, Clock, Users } from "lucide-react"
+import { Mail, Send, Clock, CalendarClock, Users } from "lucide-react"
 import { getNewsletters } from "@/lib/db/newsletters"
 import { getActiveSubscribers } from "@/lib/db/newsletter"
 import { NewsletterList } from "@/components/admin/newsletter/NewsletterList"
@@ -15,6 +15,7 @@ export default async function NewsletterPage() {
 
   const total = newsletters.length
   const sent = newsletters.filter((n) => n.status === "sent").length
+  const scheduled = newsletters.filter((n) => n.status === "scheduled").length
   const drafts = newsletters.filter((n) => n.status === "draft").length
 
   return (
@@ -22,7 +23,7 @@ export default async function NewsletterPage() {
       <h1 className="text-2xl font-semibold text-primary mb-6">Newsletter</h1>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <div className="bg-white rounded-xl border border-border p-3 sm:p-4 flex items-center gap-3">
           <div className="flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
             <Mail className="size-3.5 sm:size-4 text-primary" />
@@ -40,6 +41,16 @@ export default async function NewsletterPage() {
           <div>
             <p className="text-[10px] sm:text-xs text-muted-foreground">Sent</p>
             <p className="text-lg sm:text-2xl font-semibold text-primary">{sent}</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-border p-3 sm:p-4 flex items-center gap-3">
+          <div className="flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <CalendarClock className="size-3.5 sm:size-4 text-primary" />
+          </div>
+          <div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Scheduled</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{scheduled}</p>
           </div>
         </div>
 

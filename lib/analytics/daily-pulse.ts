@@ -91,7 +91,7 @@ export async function buildDailyPulse(options: BuildOptions = {}): Promise<Daily
   return { subject, html, referenceDate, isMondayEdition, payload }
 }
 
-function computePipeline(
+export function computePipeline(
   socialPosts: Awaited<ReturnType<typeof listSocialPosts>>,
   videos: Awaited<ReturnType<typeof listVideoUploads>>,
   blogs: Awaited<ReturnType<typeof getBlogPosts>>,
@@ -115,8 +115,18 @@ function computePipeline(
     return when >= startOfDay && when <= endOfDay
   }).length
   const videosAwaitingTranscription = videos.filter((v) => v.status === "uploaded").length
-  const blogsInDraft = blogs.filter((b) => b.status === "draft").length
-  return { awaitingReview, readyToPublish, scheduledToday, videosAwaitingTranscription, blogsInDraft }
+  const blogsInDraft = blogs.filter((b) => b.status === "draft" && !b.schedule_failed_reason).length
+  const blogsScheduled = blogs.filter((b) => b.status === "scheduled").length
+  const contentMissedSlot = blogs.filter((b) => Boolean(b.schedule_failed_reason)).length
+  return {
+    awaitingReview,
+    readyToPublish,
+    scheduledToday,
+    videosAwaitingTranscription,
+    blogsInDraft,
+    blogsScheduled,
+    contentMissedSlot,
+  }
 }
 
 async function loadTrendingTopics(referenceDate: Date): Promise<DailyTrendingTopic[]> {
