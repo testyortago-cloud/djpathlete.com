@@ -14,6 +14,8 @@ export type BusinessSettings = {
   daily_message_cap: number
   postal_address: string
   sms_help_text: string
+  sms_messaging_service_sid: string
+  sms_sender_phone: string
 }
 
 function getClient() {

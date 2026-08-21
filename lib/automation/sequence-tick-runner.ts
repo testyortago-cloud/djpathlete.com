@@ -32,7 +32,9 @@ import {
   sendRenderedSequenceEmail,
   sendSequenceEmail,
 } from "@/lib/lead-engine/email"
+import { smsConfigured, smsEnvPresent, renderSequenceSms, sendRenderedSequenceSms } from "@/lib/lead-engine/sms"
 import { unsubscribeUrl, unsubscribeOneClickUrl } from "@/lib/lead-engine/unsubscribe-token"
+import { appOrigin } from "@/lib/lead-engine/origin"
 import { decideStep } from "@/lib/automation/sequence-tick"
 import type { SequenceRunRow } from "@/lib/automation/sequence-tick"
 import {
@@ -57,6 +59,37 @@ export type TickSummary = {
   exited: number
   completed: number
   failed: number
+  /**
+   * sms `send` actions that advanced via the unconfigured/env-missing path
+   * (spec §4 amendment) rather than actually sending. Optional/undefined
+   * until the first one happens — see `SmsAvailability` and its use in
+   * `processRun`.
+   */
+  skipped_sms?: number
+}
+
+/**
+ * The sms send path has two independent gates that must BOTH pass before
+ * `processRun` will actually call Twilio:
+ *
+ *  - `smsConfigured(settings)` — has a human filled in `business_settings`
+ *    for this business? (the DB-level switch, spec §4's original concern)
+ *  - `smsEnvPresent()` — does THIS deployment actually have Twilio
+ *    credentials set? (an env-level concern; see the doc comment on
+ *    `smsEnvPresent` in lib/lead-engine/sms.ts)
+ *
+ * `configured` is the overall AND of both — whether `processRun` should
+ * attempt a real send this tick. `reason` is the timeline reason to use on
+ * the unconfigured path and is only meaningful when `configured` is false;
+ * it distinguishes the two failure modes (`sms_not_configured` vs
+ * `sms_env_missing`) so an operator reading the timeline can tell "nobody
+ * has turned SMS on for this business" apart from "SMS is on, but this
+ * deployment's Twilio keys are missing" — a live-day misconfiguration, not
+ * a normal pre-launch state.
+ */
+type SmsAvailability = {
+  configured: boolean
+  reason: "sms_not_configured" | "sms_env_missing"
 }
 
 const DEFAULT_LIMIT = 25
@@ -81,40 +114,15 @@ function transientBackoffMs(attempts: number): number {
 // recordSend's own 15-minute crashed-attempt reclaim window.
 const SEND_RACE_RETRY_MS = 5 * 60 * 1000
 
-/**
- * The public origin every unsubscribe link and every List-Unsubscribe header
- * in this engine's outbound mail is built from.
- *
- * The chain is NEXTAUTH_URL -> NEXT_PUBLIC_APP_URL -> APP_URL, matching every
- * other email-link builder in this repo (lib/url.ts, lib/email.ts,
- * lib/shop/emails.ts, lib/messaging/email-new-message.ts). It used to read
- * `APP_URL ?? NEXT_PUBLIC_SITE_URL` with a localhost fallback, and both of
- * those reads miss in the runtime this code executes in: .env.example:124
- * states plainly that "Next.js server-side code reads NEXTAUTH_URL; APP_URL is
- * Firebase-side only", and NEXT_PUBLIC_SITE_URL is declared nowhere at all.
- * So every unsubscribe link shipped pointing at http://localhost:3050.
- *
- * THROWS rather than defaulting. A path that mints links for mail leaving the
- * building must fail loudly when it does not know where it lives — a silent
- * localhost default produces a dead unsubscribe link in a real inbox, which is
- * both a CAN-SPAM problem and invisible until someone complains.
- *
- * Exported for __tests__/lib/automation/sequence-tick-origin.test.ts.
- */
-export function appOrigin(): string {
-  const candidates = [process.env.NEXTAUTH_URL, process.env.NEXT_PUBLIC_APP_URL, process.env.APP_URL]
-  // Trimmed-emptiness, not `??`: an env var set to "" is configured-as-blank,
-  // and passing it through would mint a relative "/unsubscribe/<token>" URL
-  // that resolves against the recipient's mail client, not against this app.
-  const explicit = candidates.find((value) => typeof value === "string" && value.trim().length > 0)
-  if (!explicit) {
-    throw new Error(
-      "no public origin configured: set NEXTAUTH_URL (or NEXT_PUBLIC_APP_URL / APP_URL). " +
-        "Refusing to mint unsubscribe links for outbound mail against a localhost default.",
-    )
-  }
-  return explicit.trim().replace(/\/+$/, "")
-}
+// appOrigin() used to live here. It is now lib/lead-engine/origin.ts (see the
+// import above), moved there so app/api/webhooks/twilio/status/route.ts
+// (Task 4) — which needs the exact same origin to reconstruct and verify the
+// URL Twilio signed its status callback against — can use it without pulling
+// in this file's much larger, DB-heavy module graph. Re-exported here so
+// every existing import of `appOrigin` from this module (notably
+// __tests__/lib/automation/sequence-tick-origin.test.ts) keeps working
+// unchanged.
+export { appOrigin }
 
 /**
  * Appends a `contact_timeline_events` row. Deliberately a raw
@@ -162,6 +170,7 @@ async function processRun(
   now: Date,
   businessId: string,
   settings: BusinessSettings,
+  smsAvailability: SmsAvailability,
   summary: TickSummary,
 ): Promise<void> {
   const steps = await loadSteps(run.sequence_id)
@@ -171,30 +180,129 @@ async function processRun(
   switch (action.kind) {
     case "send": {
       if (action.channel === "sms") {
-        // No Stage 1b sequence sends SMS (CONTEXT.md's consent regime — SMS
-        // is opt-in and no consent rows exist today) and there is no SMS
-        // sender wired in this codebase yet.
-        //
-        // Spec §6 groups `sms` with `tag`/`stage`: an unsupported kind
-        // records a `sequence_step_unsupported` timeline event and ADVANCES.
-        // This used to failRun instead, which is unreachable today but
-        // permanent the day it is reached — nothing anywhere re-activates a
-        // failed run, so one SMS step would end that contact's whole
-        // sequence. The timeline row is what keeps it "visible, not silent";
-        // nothing here pretends to have sent anything.
-        await writeTimelineEvent({
-          businessId,
-          contactId: run.contact_id,
-          kind: "sequence_step_unsupported",
-          metadata: {
-            run_id: run.id,
-            sequence_id: run.sequence_id,
-            step_id: action.step.id,
-            step_kind: "sms",
-            reason: "no_sms_sender_wired",
-          },
+        if (!smsAvailability.configured) {
+          // Either nobody has configured SMS for this business yet
+          // (`reason: "sms_not_configured"`, the default state per
+          // `lib/lead-engine/sms.ts`'s doc comment on `smsConfigured` —
+          // migration 00221 seeds both columns `NOT NULL DEFAULT ''`), or SMS
+          // IS configured in the DB but this deployment's Twilio credentials
+          // are missing (`reason: "sms_env_missing"`, see `smsEnvPresent` —
+          // a live-day misconfiguration, not a normal pre-launch state).
+          // Either way, spec §6 groups an unsupported channel with
+          // `tag`/`stage`: an unsupported kind records a
+          // `sequence_step_unsupported` timeline event and ADVANCES, the
+          // same "visible, not silent" shape this branch used before any SMS
+          // sender existed at all — see the case-"advance" `unsupported_kind`
+          // arm below for the sibling of this same rule.
+          //
+          // Spec §4 amendment (docs/superpowers/specs/2026-08-21-lead-engine-stage2-sms-design.md):
+          // deliberately NOT a `recordSend` + immediate `skipped` message
+          // row. `recordSend`'s `(run_id, step_id)` claim (lib/db/sequences.ts)
+          // is PERMANENT — the first insert for that pair is the only one
+          // that ever succeeds — so a row written here would block the real
+          // send the day this business's Twilio credentials are set. The
+          // timeline event alone satisfies "visible, not silent"; nothing
+          // here pretends to have sent anything.
+          await writeTimelineEvent({
+            businessId,
+            contactId: run.contact_id,
+            kind: "sequence_step_unsupported",
+            metadata: {
+              run_id: run.id,
+              sequence_id: run.sequence_id,
+              step_id: action.step.id,
+              step_kind: "sms",
+              reason: smsAvailability.reason,
+            },
+          })
+          await advanceRun(run.id, action.step.position + 1)
+          summary.skipped_sms = (summary.skipped_sms ?? 0) + 1
+          return
+        }
+
+        const to = ctx.contact.phone_e164
+        if (!to) {
+          // decideStep already guards this for the sms branch (it returns
+          // "advance" with note "no_phone_number" when contact.phone_e164 is
+          // null), so this should be unreachable — same rationale as the
+          // email branch's `!to` guard just below. Fail loud instead of
+          // calling the provider with an empty recipient.
+          await failRun(run.id, "sms send action reached the runner, but the contact has no phone number")
+          summary.failed += 1
+          return
+        }
+
+        // Hoisted BEFORE recordSend claims (run_id, step_id) — same
+        // placement as the email branch's `appOrigin()` call just below. If
+        // the public-origin env is unset, appOrigin() throws HERE, before
+        // anything is claimed, so the throw propagates out of processRun to
+        // runSequenceTick's per-run catch and the run is DEFERRED for a
+        // retry (self-healing once the env is fixed) rather than recordSend
+        // permanently claiming the row and this branch immediately burning
+        // it via markFailed/failRun. It used to be computed inline inside
+        // the try below, AFTER the claim — that ordering meant the same
+        // throw instead marked the message row (and the run) permanently
+        // failed, with no way back in.
+        const statusCallbackUrl = `${appOrigin()}/api/webhooks/twilio/status`
+
+        // Rendered ONCE, here, before anything is claimed or sent — same
+        // render-once-record-and-deliver-the-same-bytes reasoning as the
+        // email branch below.
+        const rendered = renderSequenceSms({
+          body: action.step.body ?? "",
+          contactName: ctx.contact.name,
         })
+
+        const { claimed, messageId } = await recordSend({
+          runId: run.id,
+          stepId: action.step.id,
+          contactId: run.contact_id,
+          channel: "sms",
+          toIdentifier: to,
+          subject: null,
+          bodyRendered: rendered.text,
+          businessId,
+        })
+
+        if (!claimed) {
+          // Same send-race rationale as the email branch's `!claimed` arm
+          // below.
+          await deferRun(run.id, new Date(now.getTime() + SEND_RACE_RETRY_MS), "send_in_progress")
+          summary.deferred += 1
+          return
+        }
+
+        // THE TRY COVERS THE PROVIDER CALL AND NOTHING ELSE — see the email
+        // branch's identical comment below. A write-back failure after
+        // Twilio has already accepted the message must never downgrade it to
+        // failed.
+        let providerMessageId: string | null = null
+        try {
+          ;({ providerMessageId } = await sendRenderedSequenceSms({
+            to,
+            text: rendered.text,
+            settings,
+            statusCallbackUrl,
+          }))
+        } catch (err) {
+          // The provider itself rejected it: nothing was delivered, so the
+          // message row is genuinely failed. Same idempotency rationale as
+          // the email branch's catch below (recordSend will not re-claim a
+          // 'failed' row, so a retry could never get past its own
+          // idempotency gate and would defer on `send_in_progress` forever).
+          const message = err instanceof Error ? err.message : String(err)
+          await markFailed(messageId as string, message)
+          await failRun(run.id, message)
+          summary.failed += 1
+          return
+        }
+
+        // Past this point the message is OUT — same reasoning as the email
+        // branch below: nothing after this may relabel a delivered message
+        // as failed.
+        await markSent(messageId as string, "twilio", providerMessageId)
         await advanceRun(run.id, action.step.position + 1)
+        summary.sent += 1
         return
       }
 
@@ -430,9 +538,19 @@ export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Pr
   //
   // Settings are also loaded once per tick rather than once per run —
   // lib/lead-engine/email.ts's sendSequenceEmail explicitly supports being
-  // handed them to avoid a redundant read.
+  // handed them to avoid a redundant read. `smsConfigured` is computed from
+  // that same read for the same reason: it is pure and settings do not
+  // change mid-tick, so there is no reason for every sms run in the batch to
+  // recompute it (or, worse, re-read business_settings itself). `smsEnvPresent`
+  // is a second, independent gate — see `SmsAvailability`'s doc comment —
+  // also computed once per tick since env vars don't change mid-tick either.
   const settings = await getBusinessSettings(businessId)
   assertSendable(settings)
+  const smsDbConfigured = smsConfigured(settings)
+  const smsAvailability: SmsAvailability = {
+    configured: smsDbConfigured && smsEnvPresent(),
+    reason: smsDbConfigured ? "sms_env_missing" : "sms_not_configured",
+  }
 
   const runs = await claimDueRuns(limit, claimToken, businessId)
   summary.claimed = runs.length
@@ -440,7 +558,7 @@ export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Pr
 
   for (const run of runs) {
     try {
-      await processRun(run, now, businessId, settings, summary)
+      await processRun(run, now, businessId, settings, smsAvailability, summary)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       const attempts = run.attempts ?? 0

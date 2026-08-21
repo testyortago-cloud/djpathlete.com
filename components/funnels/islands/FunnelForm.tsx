@@ -27,7 +27,7 @@
 // to keep in step. The `data-djp-*` attributes are kept as-is; they are
 // semantic hooks and nothing about them changed.
 
-import { useRef, useState, type FormEvent, type ReactNode } from "react"
+import { Fragment, useRef, useState, type FormEvent, type ReactNode } from "react"
 import type { FunnelFormField } from "@/lib/funnels/islands"
 
 interface FunnelFormProps {
@@ -50,6 +50,22 @@ interface FunnelFormProps {
    * fallback EventSignupModal makes for the same reason.
    */
   waiverHtml?: string | null
+  /**
+   * The SMS opt-in sentence, already rendered server-side (`renderSmsConsentWording`
+   * fed `business_settings.display_name`) by the FormIsland wrapper — never
+   * built here, so the wording the visitor ticks against is the exact string
+   * the submit route re-renders into `contact_consents.wording_shown`.
+   *
+   * `undefined` when the form has no `tel` field (FormIsland does not fetch
+   * business settings for a form that has nothing to attach a phone consent
+   * to), OR when the business has no usable name — a failed settings read
+   * or a blank `display_name` (`hasSmsConsentDisplayName` in
+   * sms-consent-wording.ts) both collapse to the same "no wording" outcome
+   * rather than one of them rendering a checkbox over a sentence with a hole
+   * in it. Either way this renders no checkbox at all, the same "no pixel,
+   * no prop" contract `waiverHtml`/`consentText` already follow.
+   */
+  smsConsentWording?: string
   isPreview: boolean
   /**
    * The builder canvas is editing this page. Stamps `data-edit` anchors and
@@ -91,6 +107,7 @@ export function FunnelForm({
   redirectUrl,
   consentText,
   waiverHtml,
+  smsConsentWording,
   isPreview,
   editable = false,
 }: FunnelFormProps) {
@@ -126,6 +143,14 @@ export function FunnelForm({
       values[field.name] = String(formData.get(field.name) ?? "")
     }
 
+    // Unchecked boxes are simply absent from FormData — `getAll` rather than
+    // `get` because a form with more than one `tel` field renders more than
+    // one checkbox sharing this name, and any one of them being ticked is
+    // consent. Compared against the literal "on" (the browser default value
+    // for a checkbox with no `value` attribute), never truthiness of the
+    // string, since a present-but-empty entry would otherwise read as true.
+    const smsConsent = formData.getAll("sms_consent").some((entry) => entry === "on")
+
     try {
       const response = await fetch("/api/funnels/submit", {
         method: "POST",
@@ -137,6 +162,7 @@ export function FunnelForm({
           values,
           website: String(formData.get("website") ?? ""),
           elapsedMs: Date.now() - mountedAt.current,
+          sms_consent: smsConsent,
         }),
       })
 
@@ -155,7 +181,10 @@ export function FunnelForm({
       // Only https, and only a URL the SERVER produced — this is not owner input,
       // so there is no allowlist to consult, but the scheme check keeps a
       // compromised or mocked response from becoming a javascript: navigation.
-      const body = (await response.clone().json().catch(() => null)) as { sessionUrl?: unknown } | null
+      const body = (await response
+        .clone()
+        .json()
+        .catch(() => null)) as { sessionUrl?: unknown } | null
       if (typeof body?.sessionUrl === "string" && body.sessionUrl.startsWith("https://")) {
         window.location.href = body.sessionUrl
         return
@@ -190,50 +219,73 @@ export function FunnelForm({
   return (
     <form className="djp-form" onSubmit={handleSubmit} noValidate data-djp-form={formKey}>
       {fields.map((field, index) => (
-        <div
-          key={field.name}
-          className="djp-field"
-          data-djp-field={field.name}
-          // The TYPE, so a checkbox row can lay itself out horizontally without
-          // the stylesheet depending on `:has()`. A layout that works only in
-          // browsers with `:has()` support is a layout that silently degrades to
-          // a stacked checkbox on the ones without it.
-          data-djp-field-type={field.type}
-        >
-          <label className="djp-field-label" htmlFor={`${formKey}-${field.name}`}>
-            {/* The anchor wraps the LABEL TEXT, never the <label> element: the
-                required marker is inside it, and `commitText` takes
-                `textContent`, so anchoring the whole thing would save "Email *"
-                as the label and then render a second asterisk beside it. */}
-            <Editable editable={editable} path={`fields.${index}.label`}>
-              {field.label}
-            </Editable>
-            {field.required ? (
-              <span className="djp-req" aria-hidden>
-                {" "}
-                *
-              </span>
+        <Fragment key={field.name}>
+          <div
+            className="djp-field"
+            data-djp-field={field.name}
+            // The TYPE, so a checkbox row can lay itself out horizontally without
+            // the stylesheet depending on `:has()`. A layout that works only in
+            // browsers with `:has()` support is a layout that silently degrades to
+            // a stacked checkbox on the ones without it.
+            data-djp-field-type={field.type}
+          >
+            <label className="djp-field-label" htmlFor={`${formKey}-${field.name}`}>
+              {/* The anchor wraps the LABEL TEXT, never the <label> element: the
+                  required marker is inside it, and `commitText` takes
+                  `textContent`, so anchoring the whole thing would save "Email *"
+                  as the label and then render a second asterisk beside it. */}
+              <Editable editable={editable} path={`fields.${index}.label`}>
+                {field.label}
+              </Editable>
+              {field.required ? (
+                <span className="djp-req" aria-hidden>
+                  {" "}
+                  *
+                </span>
+              ) : null}
+            </label>
+            {field.role === "waiver_accepted" ? (
+              <div className="djp-waiver" data-djp-waiver>
+                {waiverHtml ? (
+                  // The document itself. Server-rendered from `legal_documents`,
+                  // never authored here.
+                  <div dangerouslySetInnerHTML={{ __html: waiverHtml }} />
+                ) : (
+                  <p>
+                    Please read the{" "}
+                    <a href="/liability-waiver" target="_blank" rel="noreferrer">
+                      liability waiver
+                    </a>{" "}
+                    before continuing.
+                  </p>
+                )}
+              </div>
             ) : null}
-          </label>
-          {field.role === "waiver_accepted" ? (
-            <div className="djp-waiver" data-djp-waiver>
-              {waiverHtml ? (
-                // The document itself. Server-rendered from `legal_documents`,
-                // never authored here.
-                <div dangerouslySetInnerHTML={{ __html: waiverHtml }} />
-              ) : (
-                <p>
-                  Please read the{" "}
-                  <a href="/liability-waiver" target="_blank" rel="noreferrer">
-                    liability waiver
-                  </a>{" "}
-                  before continuing.
-                </p>
-              )}
+            {renderControl(field, formKey, editable, index)}
+          </div>
+          {/* THE SMS CONSENT CHECKBOX, under every phone field, UNCHECKED by
+              default. Reuses the exact `.djp-field[data-djp-field-type="checkbox"]`
+              structure an ordinary checkbox field already renders above (label
+              then control, row-reversed by the stylesheet into control-then-label)
+              so it inherits the published funnel CSS with no new rule — no
+              re-publish required for this to reach a live page. `smsConsentWording`
+              is undefined whenever FormIsland found no `tel` field to fetch
+              business settings for, so there is nothing to render. */}
+          {field.type === "tel" && smsConsentWording ? (
+            <div className="djp-field" data-djp-field={`${field.name}_sms_consent`} data-djp-field-type="checkbox">
+              <label className="djp-field-label" htmlFor={`${formKey}-${field.name}-sms-consent`}>
+                {smsConsentWording}
+              </label>
+              <input
+                id={`${formKey}-${field.name}-sms-consent`}
+                name="sms_consent"
+                type="checkbox"
+                className="djp-control"
+                defaultChecked={false}
+              />
             </div>
           ) : null}
-          {renderControl(field, formKey, editable, index)}
-        </div>
+        </Fragment>
       ))}
 
       {/* Honeypot. Hidden from people, irresistible to bots. */}

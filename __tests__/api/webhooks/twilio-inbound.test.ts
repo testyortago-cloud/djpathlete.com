@@ -1,0 +1,544 @@
+// @vitest-environment node
+//
+// Route-level tests for POST /api/webhooks/twilio/inbound — Twilio's inbound
+// SMS webhook, covering the STOP/START/HELP/anything-else compliance flows
+// (spec §5).
+//
+// Same shape as __tests__/api/webhooks/twilio-status.test.ts: signature
+// validation is REAL (node:crypto, Twilio's documented scheme, signed
+// independently of the module under test), and only `@/lib/supabase` is
+// mocked, behind a small in-memory multi-table store — so the actual DAL
+// functions this route calls (`findContactByIdentifiers`, `recordConsent`,
+// `suppress`, `unsuppress`, `exitRunsForContact`, `getBusinessSettings`) all
+// run for real against that store, same rationale as
+// __tests__/app/unsubscribe-token-route.test.ts: a mock of `suppress` itself
+// would prove nothing about its real 23505 idempotency handling, and this
+// route's "STOP with no matched contact still suppresses" behavior depends
+// on that being real too.
+//
+// `@/lib/lead-engine/email` IS mocked (renderSequenceEmail /
+// sendRenderedSequenceEmail as vi.fn()) — the ops-alert email is the one
+// piece of this route that reaches an external provider (Resend) in real
+// code, and this suite asserts the CALL SHAPE (to, includeUnsubscribeFooter:
+// false) rather than re-testing email rendering, which already has its own
+// suite (__tests__/lib/lead-engine/email.test.ts).
+
+import { describe, it, expect, beforeEach, vi } from "vitest"
+import { createHmac } from "node:crypto"
+
+type Row = Record<string, any>
+
+const store: {
+  contacts: Row[]
+  consents: Row[]
+  suppressions: Row[]
+  timeline: Row[]
+  sequenceRuns: Row[]
+  businessSettings: Row[]
+} = { contacts: [], consents: [], suppressions: [], timeline: [], sequenceRuns: [], businessSettings: [] }
+
+const KNOWN_TABLES = new Set([
+  "contacts",
+  "contact_consents",
+  "contact_suppressions",
+  "contact_timeline_events",
+  "sequence_runs",
+  "business_settings",
+])
+
+function collectionFor(table: string): Row[] {
+  switch (table) {
+    case "contacts":
+      return store.contacts
+    case "contact_consents":
+      return store.consents
+    case "contact_suppressions":
+      return store.suppressions
+    case "contact_timeline_events":
+      return store.timeline
+    case "sequence_runs":
+      return store.sequenceRuns
+    case "business_settings":
+      return store.businessSettings
+    default:
+      return []
+  }
+}
+
+// A real (if tiny) fluent query builder — filters accumulate across
+// `.eq()` calls and are applied at the point something awaits the chain
+// (`.then()`) or calls `.maybeSingle()`, exactly like the reference mocks
+// in twilio-status.test.ts and unsubscribe-token-route.test.ts. This matters
+// for the same reason those comments give: a fixed-depth stub would let a
+// mutation that drops a `.eq()` filter (e.g. narrowing suppress's insert or
+// exitRunsForContact's update) pass by coincidence of the mock's shape
+// rather than because the real filter did its job.
+vi.mock("@/lib/supabase", () => ({
+  createServiceRoleClient: () => ({
+    from(table: string) {
+      if (!KNOWN_TABLES.has(table)) throw new Error(`unmocked table: ${table}`)
+
+      const filters: Array<[string, any]> = []
+      let updatePatch: Row | null = null
+      let deleteMode = false
+
+      const applyFilter = (rows: Row[]) => rows.filter((row) => filters.every(([k, v]) => row[k] === v))
+
+      const api: any = {
+        select() {
+          return api
+        },
+        eq(col: string, val: any) {
+          filters.push([col, val])
+          return api
+        },
+        insert(payload: Row) {
+          if (table === "contact_suppressions") {
+            const dupe = collectionFor(table).find(
+              (r) => r.business_id === payload.business_id && r.identifier === payload.identifier,
+            )
+            if (dupe) {
+              return Promise.resolve({
+                data: null,
+                error: {
+                  message: 'duplicate key value violates unique constraint "contact_suppressions_uniq"',
+                  code: "23505",
+                },
+              })
+            }
+          }
+          const row = { id: `row-${collectionFor(table).length + 1}`, ...payload }
+          collectionFor(table).push(row)
+          return Promise.resolve({ data: row, error: null })
+        },
+        update(patch: Row) {
+          updatePatch = patch
+          return api
+        },
+        delete() {
+          deleteMode = true
+          return api
+        },
+        maybeSingle: async () => {
+          const rows = applyFilter(collectionFor(table))
+          return { data: rows[0] ?? null, error: null }
+        },
+        then(resolve: any) {
+          const matched = applyFilter(collectionFor(table))
+          if (deleteMode) {
+            const remaining = collectionFor(table).filter((r) => !matched.includes(r))
+            collectionFor(table).length = 0
+            collectionFor(table).push(...remaining)
+            return resolve({ error: null })
+          }
+          if (updatePatch) {
+            for (const row of matched) Object.assign(row, updatePatch)
+          }
+          return resolve({ data: matched.map((r) => ({ id: r.id })), error: null })
+        },
+      }
+      return api
+    },
+  }),
+}))
+
+vi.mock("@/lib/lead-engine/email", () => ({
+  renderSequenceEmail: vi.fn(() => ({ subject: "New SMS reply", html: "<html></html>", text: "rendered text" })),
+  sendRenderedSequenceEmail: vi.fn().mockResolvedValue({ providerMessageId: "resend-fake-1" }),
+}))
+
+import { renderSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engine/email"
+import { POST } from "@/app/api/webhooks/twilio/inbound/route"
+
+const AUTH_TOKEN = "route_test_auth_token"
+const ORIGIN = "https://app.example.test"
+const PATH = "/api/webhooks/twilio/inbound"
+const BUSINESS = "00000000-0000-0000-0000-000000000001"
+// Real, libphonenumber-js-VALID numbers — not the classic 555-fake-number
+// block. NANP reserves 555-01xx as the only "fictional" exchange range and
+// treats every other 555 number as invalid, so `normalisePhone` (real code,
+// not mocked here) rejects "+15551234567" outright and every contact-match
+// assertion below would silently see `contactId: null`. These are numbers
+// that pass `parsePhoneNumberFromString(...).isValid()` for real.
+const PHONE = "+16176504548" // 617-650-4548
+const CONTACT = "contact-1"
+const OTHER_CONTACT = "contact-2"
+const OTHER_PHONE = "+14158675309" // 415-867-5309
+
+function sign(params: Record<string, string>, authToken = AUTH_TOKEN): string {
+  const url = `${ORIGIN}${PATH}`
+  const sortedKeys = Object.keys(params).sort()
+  const data = url + sortedKeys.map((k) => `${k}${params[k]}`).join("")
+  return createHmac("sha1", authToken).update(data, "utf8").digest("base64")
+}
+
+function inboundRequest(params: Record<string, string>, opts: { signature?: string } = {}): Request {
+  return new Request(`${ORIGIN}${PATH}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "x-twilio-signature": opts.signature ?? sign(params),
+    },
+    body: new URLSearchParams(params).toString(),
+  })
+}
+
+function smsBody(body: string, from = PHONE): Record<string, string> {
+  return { From: from, To: "+15550001111", Body: body, MessageSid: "SMinbound1" }
+}
+
+const SETTINGS = {
+  business_id: BUSINESS,
+  display_name: "Test Business",
+  sender_name: "Test Sender",
+  sender_email: "sender@example.com",
+  reply_to: "ops@example.test",
+  logo_url: null,
+  timezone: "UTC",
+  quiet_hours_start: 0,
+  quiet_hours_end: 24,
+  daily_message_cap: 50,
+  postal_address: "123 Main St",
+  sms_help_text: "Reply STOP to opt out.",
+  sms_messaging_service_sid: "MG123",
+  sms_sender_phone: "+15550001111",
+}
+
+beforeEach(() => {
+  store.contacts = [{ id: CONTACT, business_id: BUSINESS, email: "lead@example.com", phone_e164: PHONE }]
+  store.consents = []
+  store.suppressions = []
+  store.timeline = []
+  store.sequenceRuns = [
+    { id: "run-1", contact_id: CONTACT, status: "active" },
+    { id: "run-2", contact_id: OTHER_CONTACT, status: "active" },
+  ]
+  store.businessSettings = [{ ...SETTINGS }]
+  process.env.TWILIO_AUTH_TOKEN = AUTH_TOKEN
+  process.env.NEXTAUTH_URL = ORIGIN
+  vi.clearAllMocks()
+})
+
+describe("POST /api/webhooks/twilio/inbound — signature gate", () => {
+  it("a bad signature 403s and writes nothing", async () => {
+    const res = await POST(inboundRequest(smsBody("STOP"), { signature: "not-the-right-signature=" }))
+
+    expect(res.status).toBe(403)
+    expect(store.suppressions).toHaveLength(0)
+    expect(store.consents).toHaveLength(0)
+    expect(store.timeline).toHaveLength(0)
+    expect(store.sequenceRuns.every((r) => r.status === "active")).toBe(true)
+  })
+
+  it("a missing TWILIO_AUTH_TOKEN 403s with zero DB access", async () => {
+    delete process.env.TWILIO_AUTH_TOKEN
+    const res = await POST(inboundRequest(smsBody("STOP")))
+
+    expect(res.status).toBe(403)
+    expect(store.suppressions).toHaveLength(0)
+    expect(store.consents).toHaveLength(0)
+    expect(store.timeline).toHaveLength(0)
+  })
+})
+
+describe("POST /api/webhooks/twilio/inbound — STOP", () => {
+  it("suppresses, revokes consent, exits runs, and writes a timeline event — all four, for a matched contact", async () => {
+    const res = await POST(inboundRequest(smsBody("STOP")))
+
+    expect(res.status).toBe(200)
+
+    expect(store.suppressions).toHaveLength(1)
+    expect(store.suppressions[0].identifier).toBe(PHONE.toLowerCase())
+    expect(store.suppressions[0].reason).toBe("sms_stop")
+
+    expect(store.consents).toHaveLength(1)
+    expect(store.consents[0]).toMatchObject({
+      contact_id: CONTACT,
+      channel: "sms",
+      granted: false,
+      source: "sms_inbound",
+      wording_shown: "STOP",
+    })
+
+    const ours = store.sequenceRuns.find((r) => r.id === "run-1")
+    expect(ours?.status).toBe("exited")
+    expect(ours?.exit_reason).toBe("sms_stop")
+    const theirs = store.sequenceRuns.find((r) => r.id === "run-2")
+    expect(theirs?.status).toBe("active")
+
+    expect(store.timeline).toHaveLength(1)
+    expect(store.timeline[0]).toMatchObject({ contact_id: CONTACT, kind: "sms_stop_received" })
+  })
+
+  it("matches case-insensitively", async () => {
+    const res = await POST(inboundRequest(smsBody("Stop")))
+    expect(res.status).toBe(200)
+    expect(store.suppressions).toHaveLength(1)
+    expect(store.consents[0].granted).toBe(false)
+  })
+
+  it("matches with surrounding whitespace, and quotes the RAW (untrimmed) body as consent evidence", async () => {
+    const res = await POST(inboundRequest(smsBody(" STOP ")))
+    expect(res.status).toBe(200)
+    expect(store.suppressions).toHaveLength(1)
+    // The keyword MATCH is on the trimmed/uppercased body, but wording_shown
+    // is the evidence of the act and must quote exactly what arrived,
+    // whitespace included — never the normalised match key.
+    expect(store.consents[0].wording_shown).toBe(" STOP ")
+  })
+
+  it.each(["STOPALL", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"])("recognizes %s as a STOP keyword", async (word) => {
+    const res = await POST(inboundRequest(smsBody(word)))
+    expect(res.status).toBe(200)
+    expect(store.suppressions).toHaveLength(1)
+    expect(store.suppressions[0].reason).toBe("sms_stop")
+  })
+
+  it.each(["Stop.", "STOP!"])(
+    "trailing punctuation does not dodge the keyword — %s is still the full STOP motion",
+    async (word) => {
+      const res = await POST(inboundRequest(smsBody(word)))
+
+      expect(res.status).toBe(200)
+      expect(store.suppressions).toHaveLength(1)
+      expect(store.consents).toHaveLength(1)
+      expect(store.consents[0]).toMatchObject({ granted: false, source: "sms_inbound" })
+      // wording_shown still quotes the raw body, punctuation and all — only
+      // the MATCH strips trailing punctuation, never the evidence.
+      expect(store.consents[0].wording_shown).toBe(word)
+      expect(store.sequenceRuns.find((r) => r.id === "run-1")?.status).toBe("exited")
+      expect(store.timeline[0].kind).toBe("sms_stop_received")
+    },
+  )
+
+  it('"STOP IT" (extra words) is NOT a STOP keyword — it falls through to the anything-else path', async () => {
+    const res = await POST(inboundRequest(smsBody("STOP IT")))
+
+    expect(res.status).toBe(200)
+    expect(store.suppressions).toHaveLength(0)
+    expect(store.consents).toHaveLength(0)
+    // Falls into "anything else": a timeline row IS written (contact matched)
+    // but it must be the generic inbound kind, not a stop.
+    expect(store.timeline).toHaveLength(1)
+    expect(store.timeline[0].kind).toBe("sms_inbound")
+  })
+
+  it("with no matched contact: still suppresses the phone (identifier-keyed) but writes no consent or timeline row", async () => {
+    store.contacts = [] // nobody in this business has this phone number on file
+    const res = await POST(inboundRequest(smsBody("STOP")))
+
+    expect(res.status).toBe(200)
+    expect(store.suppressions).toHaveLength(1)
+    expect(store.suppressions[0].identifier).toBe(PHONE.toLowerCase())
+    // There is no contact_id to attach either row to — contact_consents.contact_id
+    // and contact_timeline_events.contact_id are both NOT NULL, and there is
+    // nobody to exit a sequence run for either.
+    expect(store.consents).toHaveLength(0)
+    expect(store.timeline).toHaveLength(0)
+    expect(store.sequenceRuns.every((r) => r.status === "active")).toBe(true)
+  })
+
+  it("is idempotent — a second STOP does not throw or double-suppress", async () => {
+    await POST(inboundRequest(smsBody("STOP")))
+    const second = await POST(inboundRequest(smsBody("STOP")))
+
+    expect(second.status).toBe(200)
+    expect(store.suppressions).toHaveLength(1)
+    // Consent is an append-only log, like the unsubscribe flow's — a second
+    // revocation event is a legitimate second record.
+    expect(store.consents).toHaveLength(2)
+  })
+
+  // Fix (task review, Finding 1): a suppression keyed on a raw string that
+  // failed E.164 parsing protects nobody — every send path checks
+  // `isSuppressed` against the contact's NORMALISED `phone_e164`, so this
+  // row can never match a future send lookup. Without a matched contact
+  // there is also no timeline row possible. The only remaining way to make
+  // this failure visible is the ops-alert email, same mechanism as the
+  // anything-else path.
+  it("with an unparseable From: suppresses the raw string defensively, but escalates to a human via the ops-alert email — no consent row", async () => {
+    const res = await POST(inboundRequest(smsBody("STOP", "not-a-real-phone")))
+
+    expect(res.status).toBe(200)
+    expect(store.suppressions).toHaveLength(1)
+    expect(store.suppressions[0].identifier).toBe("not-a-real-phone")
+    expect(store.suppressions[0].reason).toBe("sms_stop")
+
+    // No contact matched (the phone never even got a lookup), so no consent
+    // row and no timeline row.
+    expect(store.consents).toHaveLength(0)
+    expect(store.timeline).toHaveLength(0)
+
+    expect(renderSequenceEmail).toHaveBeenCalledTimes(1)
+    const renderArg = (renderSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(renderArg.subject).toBe("SMS STOP needs manual review")
+    expect(renderArg.includeUnsubscribeFooter).toBe(false)
+    expect(renderArg.body).toContain("not-a-real-phone")
+
+    expect(sendRenderedSequenceEmail).toHaveBeenCalledTimes(1)
+    const sendArg = (sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(sendArg.to).toBe(SETTINGS.reply_to)
+    expect(sendArg.includeUnsubscribeFooter).toBe(false)
+  })
+
+  it("a matched STOP (valid phone, real contact) never sends the manual-review alert", async () => {
+    await POST(inboundRequest(smsBody("STOP")))
+    expect(renderSequenceEmail).not.toHaveBeenCalled()
+    expect(sendRenderedSequenceEmail).not.toHaveBeenCalled()
+  })
+
+  it("STOP from a valid but unrecognized phone number does not send the manual-review alert either — the suppression is real and sufficient", async () => {
+    store.contacts = []
+    await POST(inboundRequest(smsBody("STOP")))
+    expect(renderSequenceEmail).not.toHaveBeenCalled()
+    expect(sendRenderedSequenceEmail).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/webhooks/twilio/inbound — START", () => {
+  beforeEach(() => {
+    store.suppressions = [{ id: "sup-1", business_id: BUSINESS, identifier: PHONE.toLowerCase(), reason: "sms_stop" }]
+  })
+
+  it("unsuppresses, grants consent, and writes a timeline event for a matched contact", async () => {
+    const res = await POST(inboundRequest(smsBody("START")))
+
+    expect(res.status).toBe(200)
+    expect(store.suppressions).toHaveLength(0)
+
+    expect(store.consents).toHaveLength(1)
+    expect(store.consents[0]).toMatchObject({
+      contact_id: CONTACT,
+      channel: "sms",
+      granted: true,
+      source: "sms_inbound",
+      wording_shown: "START",
+    })
+
+    expect(store.timeline).toHaveLength(1)
+    expect(store.timeline[0]).toMatchObject({ contact_id: CONTACT, kind: "sms_start_received" })
+
+    // START never touches sequence runs.
+    expect(store.sequenceRuns.every((r) => r.status === "active")).toBe(true)
+  })
+
+  it.each(["UNSTOP", "YES"])("recognizes %s as a START keyword", async (word) => {
+    const res = await POST(inboundRequest(smsBody(word)))
+    expect(res.status).toBe(200)
+    expect(store.suppressions).toHaveLength(0)
+    expect(store.consents[0].granted).toBe(true)
+  })
+
+  it("with no matched contact: still unsuppresses the phone but writes no consent or timeline row", async () => {
+    store.contacts = []
+    const res = await POST(inboundRequest(smsBody("START")))
+
+    expect(res.status).toBe(200)
+    expect(store.suppressions).toHaveLength(0)
+    expect(store.consents).toHaveLength(0)
+    expect(store.timeline).toHaveLength(0)
+  })
+
+  it("unsuppressing an identifier that was never suppressed succeeds (absent row is success)", async () => {
+    store.suppressions = []
+    const res = await POST(inboundRequest(smsBody("START")))
+    expect(res.status).toBe(200)
+    expect(store.suppressions).toHaveLength(0)
+  })
+})
+
+describe("POST /api/webhooks/twilio/inbound — HELP", () => {
+  it("writes only a sms_help_received timeline event for a matched contact", async () => {
+    const res = await POST(inboundRequest(smsBody("HELP")))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline).toHaveLength(1)
+    expect(store.timeline[0]).toMatchObject({ contact_id: CONTACT, kind: "sms_help_received" })
+    expect(store.suppressions).toHaveLength(0)
+    expect(store.consents).toHaveLength(0)
+  })
+
+  it("with no matched contact: writes nothing (no contact_id to attach a timeline row to)", async () => {
+    store.contacts = []
+    const res = await POST(inboundRequest(smsBody("HELP")))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline).toHaveLength(0)
+  })
+})
+
+describe("POST /api/webhooks/twilio/inbound — anything else", () => {
+  it("writes a sms_inbound timeline event with the body in metadata, and sends the ops-alert email, for a matched contact", async () => {
+    const res = await POST(inboundRequest(smsBody("Can I switch my session to Tuesday?")))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline).toHaveLength(1)
+    expect(store.timeline[0]).toMatchObject({ contact_id: CONTACT, kind: "sms_inbound" })
+    expect(store.timeline[0].metadata.body).toBe("Can I switch my session to Tuesday?")
+
+    expect(renderSequenceEmail).toHaveBeenCalledTimes(1)
+    const renderArg = (renderSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(renderArg.includeUnsubscribeFooter).toBe(false)
+    expect(renderArg.subject).toBe("New SMS reply")
+    expect(renderArg.body).toContain(PHONE)
+    expect(renderArg.body).toContain("Can I switch my session to Tuesday?")
+
+    expect(sendRenderedSequenceEmail).toHaveBeenCalledTimes(1)
+    const sendArg = (sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(sendArg.to).toBe(SETTINGS.reply_to)
+    expect(sendArg.includeUnsubscribeFooter).toBe(false)
+  })
+
+  it("caps the stored body at 500 chars in timeline metadata", async () => {
+    const longBody = "x".repeat(600)
+    const res = await POST(inboundRequest(smsBody(longBody)))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline[0].metadata.body).toHaveLength(500)
+    expect(store.timeline[0].metadata.body).toBe(longBody.slice(0, 500))
+  })
+
+  it("with no matched contact: writes no timeline row and sends no alert email", async () => {
+    store.contacts = []
+    const res = await POST(inboundRequest(smsBody("Can I switch my session to Tuesday?")))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline).toHaveLength(0)
+    expect(renderSequenceEmail).not.toHaveBeenCalled()
+    expect(sendRenderedSequenceEmail).not.toHaveBeenCalled()
+  })
+
+  it("a failed ops-alert email is logged but not fatal — the timeline row still lands and the route still 200s", async () => {
+    ;(sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("resend down"))
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const res = await POST(inboundRequest(smsBody("Can I switch my session to Tuesday?")))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline).toHaveLength(1)
+    expect(consoleErrorSpy).toHaveBeenCalled()
+
+    consoleErrorSpy.mockRestore()
+  })
+})
+
+describe("POST /api/webhooks/twilio/inbound — infra faults", () => {
+  it("an unexpected DAL failure 500s so Twilio retries, without leaking the error detail", async () => {
+    // Force findContactByIdentifiers's read to blow up by making the mocked
+    // contacts table's maybeSingle explode via an unknown-table style fault:
+    // simplest real trigger is a business_settings read failure on the
+    // anything-else + matched path, since that is the one branch that reads
+    // a second table after the contact lookup.
+    store.businessSettings = [] // getBusinessSettings throws "row missing" when none is seeded
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const res = await POST(inboundRequest(smsBody("Can I switch my session to Tuesday?")))
+
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body).toEqual({ error: "internal" })
+    expect(consoleErrorSpy).toHaveBeenCalled()
+
+    consoleErrorSpy.mockRestore()
+  })
+})

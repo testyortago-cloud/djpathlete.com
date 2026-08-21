@@ -129,12 +129,21 @@ export async function loadRunContext(
   const timezone = resolveTimezone(contactRow.timezone as string | null, settings.timezone)
   const { start, end } = localDayBounds(now, timezone)
 
+  // Every post-send lifecycle status a message row can carry, NOT just
+  // "sent" — applyDeliveryStatus (below) overwrites "sent" with
+  // "delivered"/"undelivered"/"failed" the moment Twilio's status callback
+  // lands, so a `.eq("status", "sent")` filter here would stop counting a
+  // message toward today's cap the instant it got delivered, letting a
+  // sibling sequence message the same contact again the same day. Pre-send
+  // failures (a message that never left `queued`) are excluded for free:
+  // they never got a `sent_at`, and the `sent_at` bounds below already
+  // require a non-null value inside today's window.
   const { data: sentRows, error: sentErr } = await supabase
     .from("sequence_messages")
     .select("sent_at")
     .eq("contact_id", run.contact_id)
     .eq("business_id", businessId)
-    .eq("status", "sent")
+    .in("status", ["sent", "delivered", "undelivered", "failed"])
     .gte("sent_at", start.toISOString())
     .lt("sent_at", end.toISOString())
   if (sentErr) throw sentErr
@@ -267,6 +276,91 @@ export async function markFailed(messageId: string, error: string): Promise<void
     .update({ status: "failed", error })
     .eq("id", messageId)
   if (dbError) throw dbError
+}
+
+/**
+ * Twilio status callback -> `sequence_messages.status` mapping. `sent`,
+ * `queued` and `accepted` map to nothing (`undefined`): `markSent` already
+ * recorded `status='sent'` at send time, so those callbacks carry no
+ * delivery-lifecycle information this table doesn't already have. Any other
+ * Twilio status this repo doesn't specifically track (e.g. `sending`,
+ * `receiving`) falls through the same way — `applyDeliveryStatus` below
+ * treats an unmapped status as `"ignored"`, never as an error, so a future
+ * Twilio status this code doesn't know about can't turn a webhook into a
+ * throw.
+ */
+const DELIVERY_STATUS_MAP: Record<string, "delivered" | "undelivered" | "failed"> = {
+  delivered: "delivered",
+  undelivered: "undelivered",
+  failed: "failed",
+}
+
+/**
+ * Applies one Twilio status callback to the `sequence_messages` row it
+ * refers to. Called from app/api/webhooks/twilio/status/route.ts once the
+ * request's signature has already been verified — this function does no
+ * verification of its own.
+ *
+ * MONOTONIC: `delivered` is terminal. Once a row is `delivered`, no later
+ * callback of any kind changes it — Twilio callbacks can arrive out of
+ * order, and a `failed`/`undelivered` callback that lands after a
+ * `delivered` one is a stale, superseded report, not new information.
+ * Conversely a `delivered` callback overwrites `sent`, `failed` OR
+ * `undelivered` — a late delivery beats an earlier pessimistic callback,
+ * which is exactly the "arrived out of order" case this whole function
+ * exists to handle correctly.
+ *
+ * THE READ-THEN-WRITE RACE (deliberately not closed by a transaction): two
+ * concurrent callbacks for the same message could both read the row before
+ * either writes. Worst case, both then issue the same idempotent write (e.g.
+ * both apply `delivered`) — never a downgrade, because the UPDATE below
+ * carries its own `.neq("status", "delivered")` guard. That guard is the
+ * real safety property: even a stale in-memory read that thinks the row is
+ * still `sent` cannot un-deliver a row the database already knows is
+ * `delivered`, because the guard is evaluated against the current row at
+ * UPDATE time, not against this function's earlier read. The in-code check
+ * above (skipping the write entirely once `existing.status === "delivered"`)
+ * is a preflight for the common case, not the actual safety mechanism — it
+ * exists to avoid an entirely unnecessary write, not to prevent a downgrade.
+ */
+export async function applyDeliveryStatus(
+  providerMessageId: string,
+  twilioStatus: string,
+): Promise<"updated" | "ignored" | "unknown_message"> {
+  const supabase = getClient()
+
+  const { data: existing, error: readErr } = await supabase
+    .from("sequence_messages")
+    .select("id, status")
+    .eq("provider_message_id", providerMessageId)
+    .eq("provider", "twilio")
+    .maybeSingle()
+  if (readErr) throw readErr
+  if (!existing) return "unknown_message"
+
+  const row = existing as { id: string; status: string }
+  const target = DELIVERY_STATUS_MAP[twilioStatus]
+
+  // Nothing to apply (sent/queued/accepted/unmapped), or the row is already
+  // terminal — either way, no write.
+  if (!target || row.status === "delivered") return "ignored"
+
+  const { error: updateErr } = await supabase
+    .from("sequence_messages")
+    .update({
+      status: target,
+      ...(target === "delivered" ? { delivered_at: new Date().toISOString() } : {}),
+    })
+    .eq("id", row.id)
+    // The in-database guard against the read-then-write race described
+    // above — see the mutation check in task-4-brief.md Step 5, which
+    // removes this filter (and the in-code `row.status === "delivered"`
+    // check above) specifically to prove the monotonic test fails without
+    // it.
+    .neq("status", "delivered")
+  if (updateErr) throw updateErr
+
+  return "updated"
 }
 
 // advanceRun/deferRun/exitRun/completeRun/failRun all clear claimed_at and

@@ -70,10 +70,30 @@ export async function suppress(
   if (error && (error as { code?: string }).code !== "23505") throw error
 }
 
-export async function isSuppressed(
-  identifier: string,
-  businessId: string = SINGLETON_BUSINESS_ID,
-): Promise<boolean> {
+/**
+ * The inverse of `suppress`: deletes the suppression row for the lowercased
+ * identifier, keyed the same way `suppress` writes it. Used by the Twilio
+ * inbound webhook's START/UNSTOP/YES path (a contact who opts back in must
+ * stop being suppressed, symmetrically with how STOP suppresses them).
+ *
+ * Absent row is success, not an error — unlike `suppress`'s insert, a
+ * Postgres DELETE that matches zero rows returns `{ error: null }` on its
+ * own (there is no unique-constraint violation to swallow the way `suppress`
+ * has to for a duplicate insert), so no special-case error-code handling is
+ * needed here to get that idempotency: calling this for an identifier that
+ * was never suppressed, or calling it twice in a row, both succeed silently.
+ */
+export async function unsuppress(identifier: string, businessId: string = SINGLETON_BUSINESS_ID): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("contact_suppressions")
+    .delete()
+    .eq("business_id", businessId)
+    .eq("identifier", identifier.toLowerCase())
+  if (error) throw error
+}
+
+export async function isSuppressed(identifier: string, businessId: string = SINGLETON_BUSINESS_ID): Promise<boolean> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("contact_suppressions")
