@@ -25,13 +25,24 @@ import { appOrigin } from "@/lib/lead-engine/origin"
  * or written to the database. Missing `TWILIO_AUTH_TOKEN` or a bad signature
  * both answer 403 having touched the database not at all.
  *
- * RESPONSE CODE: a request with a VALID signature always answers 200, even
- * when the callback itself is meaningless (`unknown_message`) or a no-op
- * (`ignored`) — Twilio retries any non-2xx response forever, so a poison
- * callback (an unrecognized sid, a status this app doesn't track, a DB
- * hiccup) must never 500 or it retries endlessly for no benefit. The actual
- * outcome is carried in the response body for anyone who wants to look, not
- * in the status code.
+ * RESPONSE CODE: a request with a VALID signature answers 200 for any of
+ * `applyDeliveryStatus`'s three MAPPED outcomes — `updated`, `ignored`, or
+ * `unknown_message` — even when the callback itself is meaningless (an
+ * unrecognized sid) or a no-op (a status this app doesn't track, or a
+ * terminal row). None of those throw, by construction, so retrying them
+ * would just get the exact same answer again; Twilio retries any non-2xx
+ * response forever, so they must never 500. The actual outcome is carried
+ * in the response body for anyone who wants to look, not in the status
+ * code.
+ *
+ * A THROWN exception out of `applyDeliveryStatus` is different: nothing in
+ * its mapped path throws for a bad or unrecognized payload, so a throw here
+ * is by construction an infra fault (a DB read/write failure), not a poison
+ * callback. That case DOES answer 500 — on purpose, so Twilio's own
+ * retry-with-backoff gets a chance to self-heal a transient fault, rather
+ * than this delivery status being silently and permanently lost behind a
+ * false 200. The response body in that case stays generic and never echoes
+ * the underlying error.
  */
 export async function POST(request: Request) {
   const authToken = process.env.TWILIO_AUTH_TOKEN
@@ -69,12 +80,15 @@ export async function POST(request: Request) {
   try {
     outcome = await applyDeliveryStatus(params.MessageSid ?? "", params.MessageStatus ?? "")
   } catch (err) {
-    // Same "never 500 a webhook Twilio retries forever" reasoning as the
-    // response-code doc comment above, extended to an unexpected DB failure:
-    // a transient Supabase error here must not turn into an infinite Twilio
-    // retry loop for a callback that will just fail the same way again.
+    // See the RESPONSE CODE doc comment above: a throw here is an infra
+    // fault, not a poison callback, so unlike the three mapped outcomes
+    // this DOES 500 — Twilio's retry-with-backoff gets a chance to
+    // self-heal a transient DB blip instead of the delivery status being
+    // silently lost forever behind a false 200. The body stays generic —
+    // never `err.message` — so an infra failure detail never leaks through
+    // a public, unauthenticated-by-us-beyond-signature webhook response.
     console.error("[twilio-status-webhook] applyDeliveryStatus failed:", err)
-    return NextResponse.json({ ok: false, error: "internal error, not retried" }, { status: 200 })
+    return NextResponse.json({ error: "internal" }, { status: 500 })
   }
 
   return NextResponse.json({ ok: true, outcome }, { status: 200 })

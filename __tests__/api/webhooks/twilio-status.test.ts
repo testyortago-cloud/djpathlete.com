@@ -34,7 +34,17 @@ type Row = {
   delivered_at: string | null
 }
 
-const { db } = vi.hoisted(() => ({ db: { rows: [] as Row[] } }))
+const { db } = vi.hoisted(() => ({
+  db: {
+    rows: [] as Row[],
+    // Set by exactly one test to simulate a genuine Supabase read failure
+    // (a `{ error }` shape, not a thrown exception — that's what the real
+    // supabase-js client returns on failure) — the infra-fault path
+    // `applyDeliveryStatus` turns into a throw via its `if (readErr) throw
+    // readErr`.
+    forceReadError: null as Error | null,
+  },
+}))
 
 // The `update` chain below is a real (if tiny) fluent query builder, not a
 // fixed-depth stub: each `.eq()`/`.neq()` call returns a builder that is
@@ -82,6 +92,7 @@ vi.mock("@/lib/supabase", () => ({
           eq: (colA: string, valA: string) => ({
             eq: (colB: string, valB: string) => ({
               maybeSingle: async () => {
+                if (db.forceReadError) return { data: null, error: db.forceReadError }
                 const row = db.rows.find(
                   (r) =>
                     (r as unknown as Record<string, unknown>)[colA] === valA &&
@@ -137,6 +148,7 @@ function seedRow(overrides: Partial<Row> = {}): Row {
 
 beforeEach(() => {
   db.rows = []
+  db.forceReadError = null
   process.env.TWILIO_AUTH_TOKEN = AUTH_TOKEN
   process.env.NEXTAUTH_URL = ORIGIN
 })
@@ -231,5 +243,33 @@ describe("POST /api/webhooks/twilio/status", () => {
 
     expect(res.status).toBe(403)
     expect(db.rows.find((r) => r.id === row.id)?.status).toBe("sent")
+  })
+
+  // Fix (task review, Concern 3): a THROWN applyDeliveryStatus failure is,
+  // by construction, an infra fault — nothing in its mapped path
+  // (updated/ignored/unknown_message) throws for a bad or unrecognized
+  // payload. It used to be swallowed into a 200, which means Twilio never
+  // retries and that delivery status is lost permanently behind nothing
+  // more than a console.error. It must 500 instead, so Twilio's own
+  // retry-with-backoff gets a chance to self-heal a transient DB fault —
+  // and the response body must stay generic, never echoing the underlying
+  // error detail through a public webhook response.
+  it("an unexpected applyDeliveryStatus failure 500s so Twilio retries, without leaking the error detail", async () => {
+    const row = seedRow({ status: "sent" })
+    db.forceReadError = new Error("supabase connection reset: dsn=postgres://internal-db-host.internal/prod")
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const res = await POST(statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "delivered" }))
+
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body).toEqual({ error: "internal" })
+    expect(JSON.stringify(body)).not.toContain("supabase connection reset")
+    expect(JSON.stringify(body)).not.toContain("internal-db-host")
+    // The row is untouched — the read never even got far enough to see it.
+    expect(db.rows.find((r) => r.id === row.id)?.status).toBe("sent")
+    expect(consoleErrorSpy).toHaveBeenCalled()
+
+    consoleErrorSpy.mockRestore()
   })
 })
