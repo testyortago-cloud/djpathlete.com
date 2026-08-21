@@ -24,6 +24,10 @@ const ROOTS = [
   "app/api/admin/pipeline/move/route.ts",
   // Task 9 — the campaign-to-revenue surface.
   "app/(admin)/admin/insights/campaign-revenue/page.tsx",
+  // Stage 2 SMS — the Twilio webhooks (Tasks 4-5) don't exist yet; listed
+  // now so they're swept the moment they land. `filesUnder` tolerates a
+  // missing path (`throwIfNoEntry: false`), so this is a no-op until then.
+  "app/api/webhooks/twilio",
 ]
 
 function filesUnder(p: string): string[] {
