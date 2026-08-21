@@ -19,6 +19,12 @@ import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 
+// See app/(marketing)/assessment/page.tsx for why: this page prerenders
+// statically, so InquiryForm's SMS consent checkbox decision would otherwise
+// be baked in at build time. Hourly ISR self-heals both directions within an
+// hour instead of never.
+export const revalidate = 3600
+
 export const metadata: Metadata = {
   title: "In-Person Sports Performance Training, Tampa Bay",
   description:
@@ -127,10 +133,7 @@ export default function InPersonPage() {
       {/* Hero — Video Background */}
       <section className="relative min-h-[70vh] flex items-center justify-center bg-primary overflow-hidden">
         {/* Local MP4 video background — deferred load + fade-in */}
-        <LocalVideoBackground
-          src="/videos/inperson-hero.mp4"
-          poster="/videos/inperson-hero-poster.jpg"
-        />
+        <LocalVideoBackground src="/videos/inperson-hero.mp4" poster="/videos/inperson-hero-poster.jpg" />
         {/* Dark overlay for text readability */}
         <div className="absolute inset-0 bg-primary/70" />
 
@@ -189,8 +192,8 @@ export default function InPersonPage() {
                 Serving athletes across Tampa Bay, Florida.
               </h2>
               <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-                Our facility at <strong>6585 Simons Rd, Zephyrhills, FL 33541</strong> is within driving distance
-                of every major Tampa Bay city. Athletes train here from across the region.
+                Our facility at <strong>6585 Simons Rd, Zephyrhills, FL 33541</strong> is within driving distance of
+                every major Tampa Bay city. Athletes train here from across the region.
               </p>
             </div>
           </FadeIn>
@@ -207,10 +210,7 @@ export default function InPersonPage() {
                 { city: "Riverview, FL", drive: "~40 min" },
                 { city: "St. Petersburg, FL", drive: "~50 min" },
               ].map((loc) => (
-                <li
-                  key={loc.city}
-                  className="rounded-2xl border border-border bg-white px-4 py-3 text-center"
-                >
+                <li key={loc.city} className="rounded-2xl border border-border bg-white px-4 py-3 text-center">
                   <p className="text-sm font-semibold text-primary">{loc.city}</p>
                   <p className="text-xs text-accent uppercase tracking-widest mt-1">{loc.drive}</p>
                 </li>

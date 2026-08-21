@@ -15,6 +15,17 @@ interface EventSignupCardProps {
    *  is configured. Shown inside the signup modal — parents must accept before
    *  submitting either an interest, paid, or waitlist signup. */
   waiverContent: string | null
+  /**
+   * The SMS opt-in sentence, pre-rendered server-side by the event page
+   * (camps/[slug] or clinics/[slug]) and threaded straight through to
+   * EventSignupModal, unchanged. This card is itself a client component, so
+   * it cannot fetch `business_settings.display_name` on its own — the
+   * event page is the nearest SERVER parent in this tree, same reason it
+   * already fetches `waiverContent` up there rather than in here.
+   * `undefined` renders no checkbox at all — see EventSignupModal's own doc
+   * comment for the full "no pixel, no prop" contract.
+   */
+  smsConsentWording?: string
 }
 
 function formatPrice(cents: number | null) {
@@ -23,7 +34,7 @@ function formatPrice(cents: number | null) {
   return dollars % 1 === 0 ? `$${dollars}` : `$${dollars.toFixed(2)}`
 }
 
-export function EventSignupCard({ event, waiverContent }: EventSignupCardProps) {
+export function EventSignupCard({ event, waiverContent, smsConsentWording }: EventSignupCardProps) {
   const [open, setOpen] = useState(false)
   const [intent, setIntent] = useState<"paid" | "interest">("paid")
   const isFull = event.signup_count >= event.capacity
@@ -159,6 +170,7 @@ export function EventSignupCard({ event, waiverContent }: EventSignupCardProps) 
         isWaitlist={isFull}
         intent={intent}
         waiverContent={waiverContent}
+        smsConsentWording={smsConsentWording}
       />
     </>
   )

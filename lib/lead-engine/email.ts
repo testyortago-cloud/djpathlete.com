@@ -18,15 +18,43 @@ import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
 
 const _resendClient = new Resend(process.env.RESEND_API_KEY)
 
-// Mirrors the guard in lib/email.ts: every callsite short-circuits when
-// RESEND_API_KEY is missing, so a drifted env in production and a test that
-// forgets to mock `resend` both fail safe instead of reaching the live API.
+/**
+ * True iff `RESEND_API_KEY` is set and non-blank.
+ *
+ * Mirrors `smsEnvPresent` in lib/lead-engine/sms.ts: `assertSendable`
+ * answers "has a human filled in `business_settings`?" (the DB-level
+ * concern, checked once per tick before any run is claimed); this answers
+ * "does THIS deployment actually have a Resend API key?" — an independent,
+ * env-level concern. The sequence-tick runner's per-tick gate checks this
+ * BEFORE claiming a `sequence_messages` row for a due email step, the same
+ * way it already checks `smsEnvPresent()` for sms — see `EmailAvailability`
+ * in lib/automation/sequence-tick-runner.ts.
+ */
+export function emailEnvPresent(): boolean {
+  return Boolean(process.env.RESEND_API_KEY?.trim())
+}
+
+// Mirrors the guard that used to live here: every callsite short-circuited
+// when RESEND_API_KEY was missing by returning { data: null, error: null } —
+// a "safe" failure indistinguishable from a successful send to every caller.
+// sendRenderedSequenceEmail unwrapped that into { providerMessageId: null },
+// and the sequence-tick runner then called markSent(messageId, "resend",
+// null): a permanent "sent" row in sequence_messages for a message nothing
+// ever transmitted, burning recordSend's one-shot (run_id, step_id) claim
+// for good — the exact failure mode `sendRenderedSequenceSms` in
+// lib/lead-engine/sms.ts documents for the identical pattern it used to
+// share.
+//
+// `emailEnvPresent()` exists precisely so a caller can check this BEFORE
+// claiming a sequence_messages row at all (the runner's EmailAvailability
+// gate); this function still throws defensively for any caller that skips
+// that check — a live env drift or a test that forgets to mock `resend`
+// fails loud instead of silently fabricating a delivery.
 const resend = {
   emails: {
     send: (async (args: Parameters<typeof _resendClient.emails.send>[0]) => {
-      if (!process.env.RESEND_API_KEY) {
-        console.warn(`[lead-engine/email] RESEND_API_KEY not set — skipping "${args.subject}"`)
-        return { data: null, error: null }
+      if (!emailEnvPresent()) {
+        throw new Error(`sendRenderedSequenceEmail: RESEND_API_KEY not set`)
       }
       return _resendClient.emails.send(args)
     }) as typeof _resendClient.emails.send,

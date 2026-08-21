@@ -11,8 +11,25 @@ import { getAttributionBySession, claimAttribution } from "@/lib/db/marketing-at
 import { generateLeadAnalysis, type LeadAnalysisResult } from "@/lib/ai/lead-analysis"
 import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation-log"
 import { MODEL_SONNET } from "@/lib/ai/anthropic"
+import { captureLead } from "@/lib/lead-engine/capture"
+import { recordConsent } from "@/lib/db/contact-consents"
+import { getBusinessSettings } from "@/lib/db/businesses"
+import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import type { ContactEventSource } from "@/lib/db/contacts"
 
 export const maxDuration = 45
+
+/**
+ * `StepUpInquiryForm` is the one source of `form_context: "step_up"` —
+ * every other inquiry surface (the six plain InquiryForm pages) omits the
+ * field entirely, and the schema default is `undefined`. Both the spine
+ * event (`captureLead`) and the SMS consent row this route may file use the
+ * SAME resolved source, so a step-up submission never shows up as one thing
+ * on the contact timeline and a different thing on its own consent row.
+ */
+function resolveContactSource(formContext: "step_up" | undefined): ContactEventSource {
+  return formContext === "step_up" ? "step_up" : "inquiry"
+}
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
@@ -26,9 +43,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: s
   }
 }
 
-export const POST = withAudit(
-  { action: "contact.submitted", category: "marketing" },
-  async (request) => {
+export const POST = withAudit({ action: "contact.submitted", category: "marketing" }, async (request) => {
   try {
     const body = await request.json()
     const result = inquiryFormSchema.safeParse(body)
@@ -40,8 +55,22 @@ export const POST = withAudit(
       )
     }
 
-    const { name, email, phone, service, sport, experience, goals, injuries, how_heard, gclid: submittedGclid } = result.data
+    const {
+      name,
+      email,
+      phone,
+      service,
+      sport,
+      experience,
+      goals,
+      injuries,
+      how_heard,
+      gclid: submittedGclid,
+      sms_consent,
+      form_context,
+    } = result.data
     const serviceLabel = SERVICE_LABELS[service]
+    const contactSource = resolveContactSource(form_context)
 
     // Resolve tracking from the djp_attr session rather than trusting the
     // client. `proxy.ts` already recorded every click id server-side, so the
@@ -71,11 +100,7 @@ export const POST = withAudit(
     const lastName = nameParts.slice(1).join(" ")
 
     let leadUserId: string | null = null
-    const { data: existingUser } = await supabase
-      .from("users")
-      .select("id, phone")
-      .eq("email", email)
-      .maybeSingle()
+    const { data: existingUser } = await supabase.from("users").select("id, phone").eq("email", email).maybeSingle()
 
     if (existingUser) {
       leadUserId = existingUser.id
@@ -113,6 +138,35 @@ export const POST = withAudit(
       await claimAttribution(attribution.id, leadUserId).catch((err) =>
         console.error("Failed to claim attribution for inquiry:", err),
       )
+    }
+
+    // Join the contact spine (Lead Engine Stage 4). captureLead never throws
+    // (lib/lead-engine/capture.ts swallows its own errors), so a contact-write
+    // failure here can never change this route's response or the writes/emails
+    // below. Attribution is passed through exactly as already resolved above
+    // — gclid/gbraid/wbraid/fbclid, all four this route computes today — never
+    // re-derived here.
+    const contactId = await captureLead({
+      source: contactSource,
+      email,
+      phone,
+      name,
+      attribution: { gclid, gbraid, wbraid, fbclid },
+    })
+
+    // SMS consent (Lead Engine Stage 4). FIRE AND FORGET, same reasoning as
+    // recordFunnelSmsConsent (app/api/funnels/submit/route.ts): the lead is
+    // already captured, and a consent-row failure must never turn "we
+    // received your application" into an error for someone who already
+    // handed over their phone number. Only fires when there is a contact to
+    // attach the row to, a phone that was actually submitted, and the box
+    // was actually ticked — an unchecked or absent box writes no row at all.
+    if (contactId && phone && sms_consent === true) {
+      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null
+      const userAgent = request.headers.get("user-agent")
+      void recordInquirySmsConsent({ contactId, ip, userAgent, source: contactSource }).catch((err) => {
+        console.error("Inquiry sms consent write failed (the lead was saved):", err)
+      })
     }
 
     // Notify all admins
@@ -157,7 +211,16 @@ export const POST = withAudit(
           client_id: leadUserId,
           requested_by: firstAdminId,
           status: "pending",
-          input_params: { feature: "lead_inquiry_analysis", name, service, sport, experience, goals, injuries, how_heard },
+          input_params: {
+            feature: "lead_inquiry_analysis",
+            name,
+            service,
+            sport,
+            experience,
+            goals,
+            injuries,
+            how_heard,
+          },
           output_summary: null,
           error_message: null,
           model_used: MODEL_SONNET,
@@ -324,5 +387,55 @@ export const POST = withAudit(
   } catch {
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
   }
-  },
-)
+})
+
+/**
+ * Writes the SMS consent row for an inquiry submission whose visitor ticked
+ * the opt-in box next to the phone field.
+ *
+ * The wording is re-rendered HERE, from `business_settings.display_name`
+ * through the exact same `renderSmsConsentWording` the form used to show it
+ * — never passed through from the client, which cannot be trusted to relay
+ * what it actually rendered, and never a second copy of the sentence, which
+ * could drift from the first. Evidence of consent is what was shown;
+ * re-deriving it from the same inputs is how both sides of that claim stay
+ * provably identical.
+ *
+ * MIRRORS THE FORM'S OWN GATE (`hasSmsConsentDisplayName`, checked before
+ * the checkbox is even shown): if `display_name` reads back blank here, no
+ * row is filed, even though `sms_consent` came in `true`. Without this check
+ * the two reads could disagree — the page rendered when a name was
+ * configured, business_settings went blank before this request landed (or
+ * vice versa) — and the row filed would misrepresent what the checkbox next
+ * to it actually said. Skipping is logged, never thrown: the lead was
+ * already captured by the caller before this ever runs, and a missing
+ * business name is not a reason to lose it.
+ *
+ * Mirrors app/api/funnels/submit/route.ts's recordFunnelSmsConsent exactly.
+ *
+ * `source` is the SAME resolved value (`resolveContactSource`) the caller
+ * fed `captureLead` for this request — a step-up submission's consent row
+ * reads "step_up", never a hard-coded "inquiry", so the row agrees with the
+ * contact_timeline_events entry it's evidence for.
+ */
+async function recordInquirySmsConsent(input: {
+  contactId: string
+  ip: string | null
+  userAgent: string | null
+  source: ContactEventSource
+}): Promise<void> {
+  const settings = await getBusinessSettings()
+  if (!hasSmsConsentDisplayName(settings.display_name)) {
+    console.warn("[inquiry] sms consent skipped: business_settings.display_name is blank")
+    return
+  }
+  await recordConsent({
+    contactId: input.contactId,
+    channel: "sms",
+    granted: true,
+    source: input.source,
+    wordingShown: renderSmsConsentWording(settings.display_name),
+    ip: input.ip,
+    userAgent: input.userAgent,
+  })
+}

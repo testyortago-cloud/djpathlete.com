@@ -4,10 +4,9 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { sendContactFormEmail, sendContactAutoReply } from "@/lib/email"
 import { withAudit } from "@/lib/audit/with-audit"
+import { captureLead } from "@/lib/lead-engine/capture"
 
-export const POST = withAudit(
-  { action: "contact.submitted", category: "marketing" },
-  async (request) => {
+export const POST = withAudit({ action: "contact.submitted", category: "marketing" }, async (request) => {
   try {
     const body = await request.json()
     const result = contactFormSchema.safeParse(body)
@@ -55,6 +54,11 @@ export const POST = withAudit(
         leadUserId = newLead?.id ?? null
       }
     }
+
+    // Join the contact spine. captureLead never throws (lib/lead-engine/capture.ts
+    // swallows its own errors), so a contact-write failure here can never
+    // change this route's response or the writes/emails below.
+    await captureLead({ source: "contact_form", email, name })
 
     // Find all admin users to notify
     const { data: admins, error: adminsError } = await supabase.from("users").select("id").eq("role", "admin")
@@ -116,5 +120,4 @@ export const POST = withAudit(
   } catch {
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
   }
-  },
-)
+})

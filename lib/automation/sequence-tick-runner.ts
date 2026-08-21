@@ -28,6 +28,7 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
 import {
   assertSendable,
+  emailEnvPresent,
   renderSequenceEmail,
   sendRenderedSequenceEmail,
   sendSequenceEmail,
@@ -66,6 +67,13 @@ export type TickSummary = {
    * `processRun`.
    */
   skipped_sms?: number
+  /**
+   * email `send` actions that advanced via the env-missing path (Task 1,
+   * 2026-08-22-lead-engine-stage4-spine) rather than actually sending.
+   * Optional/undefined until the first one happens — see
+   * `EmailAvailability` and its use in `processRun`.
+   */
+  skipped_email?: number
 }
 
 /**
@@ -90,6 +98,23 @@ export type TickSummary = {
 type SmsAvailability = {
   configured: boolean
   reason: "sms_not_configured" | "sms_env_missing"
+}
+
+/**
+ * The email send path's env-level gate, transplanting the SmsAvailability
+ * pattern above (Task 1, 2026-08-22-lead-engine-stage4-spine). Unlike sms,
+ * email has no separate per-business "has a human turned it on" DB switch to
+ * check per run — `assertSendable` already covers that half, once per tick,
+ * BEFORE any run is claimed (see the preflight comment in
+ * `runSequenceTick`). So this is only the env-level concern:
+ * `emailEnvPresent()` (lib/lead-engine/email.ts) — does THIS deployment
+ * actually have a Resend API key? `configured: false` is always the
+ * `email_env_missing` case; there is no `email_not_configured` sibling the
+ * way sms has `sms_not_configured`, because a DB-unconfigured business never
+ * reaches `processRun` at all.
+ */
+type EmailAvailability = {
+  configured: boolean
 }
 
 const DEFAULT_LIMIT = 25
@@ -171,6 +196,7 @@ async function processRun(
   businessId: string,
   settings: BusinessSettings,
   smsAvailability: SmsAvailability,
+  emailAvailability: EmailAvailability,
   summary: TickSummary,
 ): Promise<void> {
   const steps = await loadSteps(run.sequence_id)
@@ -303,6 +329,35 @@ async function processRun(
         await markSent(messageId as string, "twilio", providerMessageId)
         await advanceRun(run.id, action.step.position + 1)
         summary.sent += 1
+        return
+      }
+
+      if (!emailAvailability.configured) {
+        // Same shape as the sms branch's `!smsAvailability.configured` arm
+        // above, checked first for the same reason: spec §6 groups an
+        // unsupported channel with `tag`/`stage`, so a due email step on a
+        // deployment with no Resend key advances with a visible timeline
+        // event instead of stalling the run.
+        //
+        // Deliberately NOT a `recordSend` + immediate `skipped` message
+        // row — recordSend's (run_id, step_id) claim is PERMANENT, so a row
+        // written here would block the real send the moment RESEND_API_KEY
+        // is set. The timeline event alone satisfies "visible, not silent";
+        // nothing here pretends to have sent anything.
+        await writeTimelineEvent({
+          businessId,
+          contactId: run.contact_id,
+          kind: "sequence_step_unsupported",
+          metadata: {
+            run_id: run.id,
+            sequence_id: run.sequence_id,
+            step_id: action.step.id,
+            step_kind: "email",
+            reason: "email_env_missing",
+          },
+        })
+        await advanceRun(run.id, action.step.position + 1)
+        summary.skipped_email = (summary.skipped_email ?? 0) + 1
         return
       }
 
@@ -544,6 +599,9 @@ export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Pr
   // recompute it (or, worse, re-read business_settings itself). `smsEnvPresent`
   // is a second, independent gate — see `SmsAvailability`'s doc comment —
   // also computed once per tick since env vars don't change mid-tick either.
+  // `emailEnvPresent` (Task 1, 2026-08-22-lead-engine-stage4-spine) is the
+  // same env-level gate for email — see `EmailAvailability`'s doc comment
+  // for why it has no DB-configured half to AND against, unlike sms.
   const settings = await getBusinessSettings(businessId)
   assertSendable(settings)
   const smsDbConfigured = smsConfigured(settings)
@@ -551,6 +609,7 @@ export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Pr
     configured: smsDbConfigured && smsEnvPresent(),
     reason: smsDbConfigured ? "sms_env_missing" : "sms_not_configured",
   }
+  const emailAvailability: EmailAvailability = { configured: emailEnvPresent() }
 
   const runs = await claimDueRuns(limit, claimToken, businessId)
   summary.claimed = runs.length
@@ -558,7 +617,7 @@ export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Pr
 
   for (const run of runs) {
     try {
-      await processRun(run, now, businessId, settings, smsAvailability, summary)
+      await processRun(run, now, businessId, settings, smsAvailability, emailAvailability, summary)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       const attempts = run.attempts ?? 0

@@ -51,6 +51,7 @@ import { findContactByIdentifiers } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
+import { captureLead } from "@/lib/lead-engine/capture"
 
 // Lead Engine: `checkout.session.completed` fires for every kind of money
 // this business takes, not just a coaching sale — merch, event tickets, and
@@ -105,6 +106,53 @@ async function tryEnqueueAdsValueAdjustment(session: Stripe.Checkout.Session): P
     })
   } catch (err) {
     console.error("[stripe-webhook] enqueue Google Ads value adjustment failed:", err)
+  }
+}
+
+// Lead Engine Stage 4, Task 5 (spec §4, "shop checkout" row): EVERY completed
+// checkout is a contact event, not only a coaching sale — merch, event
+// tickets, $0 card-on-file setups, memberships, anonymous funnel purchases,
+// external Payment Link checkouts, all of it. A paying human is a contact
+// regardless of what they bought — deliberately NOT gated by
+// NON_COACHING_CHECKOUT_TYPES the way applyPipelineEvent above is (that gate
+// answers "is this a coaching sale for the pipeline board"; this answers "did
+// a real person just hand over money", which is true for every branch below).
+//
+// A paid event signup already gets an event_signup capture at row creation
+// (Task 4); this adds a SECOND, later timeline entry at payment completion —
+// intentional (two real moments on one journey), not a duplicate to dedupe.
+//
+// captureLead (lib/lead-engine/capture.ts) already never throws — it swallows
+// and logs its own write failures. This wrapper still gets its own try/catch,
+// matching how tryEnqueueAdsValueAdjustment just above isolates its side
+// hook: a webhook that processes real money must never fail (and trigger a
+// Stripe retry that replays payment side effects) to fix a contact row.
+// Email resolves the same way the existing Lead Engine block above already
+// resolves it for findContactByIdentifiers — read and reused, not invented.
+// No consent row is written here (a Stripe checkout is not a marketing
+// opt-in), and no sequence rides "purchase" in this stage: recordContactEvent
+// calls enrollIfTriggered unconditionally, which is a no-op whenever no
+// ACTIVE sequence's trigger_source matches the event's source.
+//
+// metadata: { stripe_session_id: session.id } — Stripe delivers webhooks
+// at-least-once (the same "delivered twice" hazard the create-with-outcome
+// branch of applyPipelineEvent above is already guarding against with this
+// exact session id). Without it, a redelivery writes a second, identical
+// contact_timeline_events row with nothing on either row tying it back to
+// which checkout produced it — unreconcilable after the fact. This does not
+// dedupe the row (append-only spine, intentional per Task 4's ruling on the
+// event_signup/purchase overlap); it just makes every row traceable to its
+// session, the same way the sibling pipeline hook already tags itself.
+async function tryCaptureLeadFromCheckout(session: Stripe.Checkout.Session): Promise<void> {
+  try {
+    await captureLead({
+      source: "purchase",
+      email: session.customer_details?.email ?? session.customer_email ?? null,
+      name: session.customer_details?.name ?? null,
+      metadata: { stripe_session_id: session.id },
+    })
+  } catch (err) {
+    console.error("[stripe-webhook] lead capture failed", (err as Error).message)
   }
 }
 
@@ -178,6 +226,13 @@ export async function POST(request: Request) {
         } catch (err) {
           console.error("[stripe-webhook] sequence/pipeline hook failed", (err as Error).message)
         }
+
+        // Lead Engine Stage 4, Task 5: EVERY completed checkout joins the
+        // contact spine — see tryCaptureLeadFromCheckout's doc comment.
+        // Placed BEFORE every metadata-type branch below so it runs
+        // unconditionally, the same way findContactByIdentifiers/
+        // exitRunsForContact above it already do.
+        await tryCaptureLeadFromCheckout(session)
 
         if (session.metadata?.type === "shop_order") {
           await handleShopOrderCheckout(session)

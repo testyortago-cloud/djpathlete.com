@@ -11,6 +11,13 @@
  * flip-lead-engine-on.mjs's only-fill-empty rule and "keeping existing"
  * logging exactly.
  *
+ * A neighboring field in the same row, business_settings.display_name,
+ * gates the SMS consent checkbox on the inquiry forms (Stage 4) — unlike
+ * this script's own writes (read server-side on every request), a
+ * display_name change reaches the five statically-rendered marketing pages
+ * that mount those forms within an hour (revalidate = 3600), not instantly.
+ *
+
  * Run this at the SAME TIME as the new_lead_nurture SMS step insertion:
  * migration 00222 (supabase/migrations/00222_lead_engine_seed_sms_steps.sql)
  * ends with a comment block, "RUN-SAFE INSERTION RUNBOOK", holding the

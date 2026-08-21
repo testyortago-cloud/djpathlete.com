@@ -23,6 +23,7 @@ export function InlinePostNewsletterCapture() {
           email: email.trim(),
           consent_marketing: true,
           source: "blog_inline",
+          consent_context: "inline",
         }),
       })
       if (!res.ok) {

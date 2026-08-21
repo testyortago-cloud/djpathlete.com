@@ -2,16 +2,13 @@ import { NextResponse } from "next/server"
 import { leadFormSchema } from "@/lib/validators/shop-phase2"
 import { getProductById } from "@/lib/db/shop-products"
 import { listFilesForProduct } from "@/lib/db/shop-product-files"
-import {
-  upsertLead,
-  markLeadSynced,
-  markLeadFailed,
-} from "@/lib/db/shop-leads"
+import { upsertLead, markLeadSynced, markLeadFailed } from "@/lib/db/shop-leads"
 import { addContactToAudience } from "@/lib/shop/resend-audience"
 import { sendFreeDownloadEmail } from "@/lib/shop/emails"
 import { isShopDigitalEnabled } from "@/lib/shop/feature-flag"
 import { rateLimit } from "@/lib/shop/rate-limit"
 import { recordAudit } from "@/lib/audit/record"
+import { captureLead } from "@/lib/lead-engine/capture"
 
 export async function POST(req: Request) {
   if (!isShopDigitalEnabled()) {
@@ -31,10 +28,7 @@ export async function POST(req: Request) {
 
   const product = await getProductById(product_id)
   if (!product || product.product_type !== "digital" || !product.digital_is_free) {
-    return NextResponse.json(
-      { error: "not a free digital product" },
-      { status: 404 },
-    )
+    return NextResponse.json({ error: "not a free digital product" }, { status: 404 })
   }
 
   const files = await listFilesForProduct(product.id)
@@ -43,6 +37,13 @@ export async function POST(req: Request) {
   }
 
   const lead = await upsertLead({ product_id, email, ip_address: ip })
+
+  // Join the contact spine as early as the lead itself exists — captureLead
+  // never throws (lib/lead-engine/capture.ts swallows its own errors), so
+  // this can never change what happens next, including a later 502 from the
+  // download email. The delivery is transactional, not marketing consent,
+  // so no consent row is written here.
+  await captureLead({ source: "lead_magnet", email, metadata: { product_id } })
 
   try {
     await sendFreeDownloadEmail({

@@ -1,20 +1,18 @@
 ﻿import type { Metadata } from "next"
 import Link from "next/link"
-import {
-  ArrowRight,
-  ArrowUpRight,
-  ClipboardList,
-  Video,
-  Activity,
-  HeartPulse,
-  MessageCircle,
-} from "lucide-react"
+import { ArrowRight, ArrowUpRight, ClipboardList, Video, Activity, HeartPulse, MessageCircle } from "lucide-react"
 import { JsonLd } from "@/components/shared/JsonLd"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { InquiryForm } from "@/components/public/InquiryForm"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { Button } from "@/components/ui/button"
+
+// See app/(marketing)/assessment/page.tsx for why: this page prerenders
+// statically, so InquiryForm's SMS consent checkbox decision would otherwise
+// be baked in at build time. Hourly ISR self-heals both directions within an
+// hour instead of never.
+export const revalidate = 3600
 
 export const metadata: Metadata = {
   title: "Online Sports Performance Training",
@@ -86,40 +84,35 @@ const components = [
     icon: ClipboardList,
     n: "01",
     title: "Individualised programming",
-    description:
-      "Plans built around your sport, history, and capacity. No templates. No recycled blocks.",
+    description: "Plans built around your sport, history, and capacity. No templates. No recycled blocks.",
     tag: "Fully bespoke",
   },
   {
     icon: Video,
     n: "02",
     title: "Video review",
-    description:
-      "Movement quality, intent, and execution reviewed continuously. Technique is coached, not assumed.",
+    description: "Movement quality, intent, and execution reviewed continuously. Technique is coached, not assumed.",
     tag: "Weekly",
   },
   {
     icon: Activity,
     n: "03",
     title: "Performance testing",
-    description:
-      "Remote diagnostics track readiness, speed qualities, and capacity across training blocks.",
+    description: "Remote diagnostics track readiness, speed qualities, and capacity across training blocks.",
     tag: "Benchmarked",
   },
   {
     icon: HeartPulse,
     n: "04",
     title: "Load & wellness",
-    description:
-      "Fatigue, recovery, and tolerance guide training decisions in real time — not at quarter's end.",
+    description: "Fatigue, recovery, and tolerance guide training decisions in real time — not at quarter's end.",
     tag: "Daily check-in",
   },
   {
     icon: MessageCircle,
     n: "05",
     title: "Direct coaching",
-    description:
-      "You're supported, adjusted, and guided throughout. No DM dead-ends. No auto-replies.",
+    description: "You're supported, adjusted, and guided throughout. No DM dead-ends. No auto-replies.",
     tag: "Coach on-call",
   },
 ]
@@ -152,13 +145,13 @@ export default function OnlinePage() {
                   Online Sports Performance Training for Athletes
                 </h1>
                 <p className="mt-4 font-heading text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-primary-foreground/85">
-                  Remote by <span className="italic font-normal text-accent">design.</span>{" "}
-                  Not by <span className="italic font-normal text-accent">default.</span>
+                  Remote by <span className="italic font-normal text-accent">design.</span> Not by{" "}
+                  <span className="italic font-normal text-accent">default.</span>
                 </p>
 
                 <p className="mt-7 max-w-xl text-base leading-7 text-primary-foreground/75 md:text-lg md:leading-8">
-                  A coach-led online performance system for serious athletes. Programmed, monitored, and
-                  adjusted in real time — built on assessment, not guesswork.
+                  A coach-led online performance system for serious athletes. Programmed, monitored, and adjusted in
+                  real time — built on assessment, not guesswork.
                 </p>
 
                 <div className="mt-10 flex flex-wrap gap-3">
@@ -198,7 +191,6 @@ export default function OnlinePage() {
                   ))}
                 </div>
               </div>
-
             </div>
           </FadeIn>
         </div>
@@ -223,10 +215,7 @@ export default function OnlinePage() {
                 </div>
               ))}
             </div>
-            <div
-              className="marquee-track-slow flex shrink-0 gap-12 whitespace-nowrap pr-12 items-center"
-              aria-hidden
-            >
+            <div className="marquee-track-slow flex shrink-0 gap-12 whitespace-nowrap pr-12 items-center" aria-hidden>
               {[
                 "Programming",
                 "Video review",
@@ -255,12 +244,11 @@ export default function OnlinePage() {
               <div>
                 <div className="text-[11px] uppercase tracking-[0.3em] text-accent">01 · The problem</div>
                 <h2 className="mt-4 font-heading text-3xl sm:text-4xl md:text-5xl font-semibold tracking-tight leading-[1.05] text-primary">
-                  Why most online programs{" "}
-                  <span className="italic font-normal text-accent">fall short.</span>
+                  Why most online programs <span className="italic font-normal text-accent">fall short.</span>
                 </h2>
                 <p className="mt-5 text-muted-foreground leading-7 max-w-md">
-                  Performance isn't built on exercises alone. It's built on informed progression — and these
-                  are the five places most online programs quietly break down.
+                  Performance isn't built on exercises alone. It's built on informed progression — and these are the
+                  five places most online programs quietly break down.
                 </p>
               </div>
 
@@ -270,9 +258,7 @@ export default function OnlinePage() {
                     key={f.n}
                     className="grid grid-cols-[60px_1fr] sm:grid-cols-[80px_1fr_1.2fr] gap-4 sm:gap-8 items-baseline py-6"
                   >
-                    <span className="font-heading text-3xl font-semibold tabular-nums text-accent">
-                      {f.n}
-                    </span>
+                    <span className="font-heading text-3xl font-semibold tabular-nums text-accent">{f.n}</span>
                     <span className="font-heading text-xl md:text-2xl font-semibold tracking-tight text-primary">
                       {f.headline}
                     </span>
@@ -300,12 +286,12 @@ export default function OnlinePage() {
             </h2>
             <div className="mt-10 grid gap-6 sm:grid-cols-2 max-w-3xl">
               <p className="text-lg text-foreground leading-8">
-                Built for athletes who value structure, oversight, and long-term performance. Standards are
-                high. Capacity is limited. Entry is selective.
+                Built for athletes who value structure, oversight, and long-term performance. Standards are high.
+                Capacity is limited. Entry is selective.
               </p>
               <p className="text-lg text-foreground leading-8">
-                If you want automated workouts, this isn't for you. If you want expert-guided performance
-                development, you may qualify.
+                If you want automated workouts, this isn't for you. If you want expert-guided performance development,
+                you may qualify.
               </p>
             </div>
           </FadeIn>
@@ -329,8 +315,8 @@ export default function OnlinePage() {
                 </h2>
               </div>
               <p className="text-primary-foreground/70 leading-7 max-w-md">
-                Integrated pieces that separate this from other online coaching. Each one feeds the next —
-                what you train, what you report, what we adjust.
+                Integrated pieces that separate this from other online coaching. Each one feeds the next — what you
+                train, what you report, what we adjust.
               </p>
             </div>
           </FadeIn>
@@ -345,9 +331,7 @@ export default function OnlinePage() {
                     className="group relative bg-primary p-7 transition-all ring-1 ring-inset ring-transparent hover:ring-accent/40"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-heading text-2xl font-semibold tabular-nums text-accent">
-                        {c.n}
-                      </span>
+                      <span className="font-heading text-2xl font-semibold tabular-nums text-accent">{c.n}</span>
                       <span className="text-[10px] uppercase tracking-[0.25em] text-primary-foreground/55">
                         {c.tag}
                       </span>
@@ -379,9 +363,7 @@ export default function OnlinePage() {
                   Not open enrolment. Every application is reviewed personally within 48 hours.
                 </p>
                 <div className="mt-8 border-l-2 border-accent pl-5 py-2">
-                  <p className="text-[11px] uppercase tracking-[0.3em] text-accent mb-1.5">
-                    Selective entry
-                  </p>
+                  <p className="text-[11px] uppercase tracking-[0.3em] text-accent mb-1.5">Selective entry</p>
                   <p className="text-sm text-muted-foreground leading-6">
                     We only take on athletes we can genuinely help. Fit is mutual.
                   </p>
@@ -405,13 +387,7 @@ export default function OnlinePage() {
         </div>
       </section>
 
-      <ManagedFaqSection
-        pageKey="online"
-        variant="cards"
-        eyebrow="Common questions"
-        title="Online Coaching FAQ"
-      />
-
+      <ManagedFaqSection pageKey="online" variant="cards" eyebrow="Common questions" title="Online Coaching FAQ" />
     </>
   )
 }

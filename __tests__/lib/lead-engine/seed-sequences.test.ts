@@ -524,3 +524,131 @@ describe("seed migration 00222 — sms steps for the three draft sequences", () 
     }
   })
 })
+
+// =============================================================================
+// Migration 00223 — the sms_repermission sequence (Task 9). Reuses the same
+// tokenizing helpers; generic SQL-subset parsing, not specific to 00218/00222.
+// =============================================================================
+
+const MIGRATION_223_PATH = join(process.cwd(), "supabase/migrations/00223_lead_engine_repermission_sequence.sql")
+const rawSql223 = readFileSync(MIGRATION_223_PATH, "utf8")
+const cleaned223 = stripSqlComments(rawSql223)
+const statements223 = splitTopLevel(cleaned223, ";")
+
+const sequencesStatement223 = statements223.find((s) => /^INSERT INTO public\.sequences\s*\(/i.test(s.trim()))
+if (!sequencesStatement223)
+  throw new Error("no INSERT INTO public.sequences statement found in 00223 — parser or migration drifted")
+
+const sequenceRows223 = extractTuples(valuesSectionOf(sequencesStatement223)).map((tuple) => {
+  const fields = splitTopLevel(stripOuterParens(tuple), ",")
+  const [businessId, key, name, description, triggerSource, status] = fields.map(unquote)
+  return { businessId, key, name, description, triggerSource, status }
+})
+
+const stepInsertStatements223 = statements223.filter((s) => /^INSERT INTO public\.sequence_steps\s*\(/i.test(s.trim()))
+if (stepInsertStatements223.length === 0)
+  throw new Error("no INSERT INTO public.sequence_steps statements found in 00223 — parser or migration drifted")
+
+const stepRows223 = stepInsertStatements223.map((statement) => {
+  const tuples = extractTuples(valuesSectionOf(statement))
+  expect(tuples.length).toBe(1) // one step per INSERT, by construction — same style as 00218/00222
+  const fields = splitTopLevel(stripOuterParens(tuples[0]), ",")
+  const [businessId, sequenceIdExpr, position, kind, waitMinutes, subject, body] = fields
+  const keyMatch = /key\s*=\s*'([^']+)'/.exec(sequenceIdExpr)
+  if (!keyMatch)
+    throw new Error(`sequence_steps row does not reference its sequence via a key subselect: ${sequenceIdExpr}`)
+  return {
+    businessId: unquote(businessId),
+    sequenceKey: keyMatch[1],
+    position: Number(unquote(position)),
+    kind: unquote(kind),
+    waitMinutes: unquote(waitMinutes) === null ? null : Number(unquote(waitMinutes)),
+    subject: unquote(subject),
+    body: unquote(body),
+  }
+})
+
+function stepsFor223(key: string) {
+  return stepRows223.filter((s) => s.sequenceKey === key).sort((a, b) => a.position - b.position)
+}
+
+describe("seed migration 00223 — the sms_repermission sequence", () => {
+  it("is actually parsing the file — a guard against a silently empty sweep", () => {
+    expect(sequenceRows223.length).toBeGreaterThan(0)
+    expect(stepRows223.length).toBeGreaterThan(0)
+  })
+
+  it("seeds exactly one sequence, sms_repermission, draft with a NULL trigger_source", () => {
+    expect(sequenceRows223).toHaveLength(1)
+    const [row] = sequenceRows223
+    expect(row.key).toBe("sms_repermission")
+    expect(row.status).toBe("draft")
+    expect(row.triggerSource).toBeNull()
+  })
+
+  it("has exactly two steps — one email at position 0, then stop at position 1", () => {
+    const steps = stepsFor223("sms_repermission")
+    expect(steps).toHaveLength(2)
+    expect(steps[0].position).toBe(0)
+    expect(steps[0].kind).toBe("email")
+    expect(steps[1].position).toBe(1)
+    expect(steps[1].kind).toBe("stop")
+  })
+
+  it("gives the email step the exact subject 'Can we text you?'", () => {
+    const [emailStep] = stepsFor223("sms_repermission")
+    expect(emailStep.subject).toBe("Can we text you?")
+  })
+
+  it("gives the email step a body", () => {
+    const [emailStep] = stepsFor223("sms_repermission")
+    expect(emailStep.body).toBeTruthy()
+  })
+
+  it("uses {{name}} for personalisation, never right before punctuation that would read badly when it renders empty", () => {
+    const [emailStep] = stepsFor223("sms_repermission")
+    let usesName = false
+    for (const field of [emailStep.subject, emailStep.body]) {
+      if (!field) continue
+      let idx = field.indexOf("{{name}}")
+      while (idx !== -1) {
+        usesName = true
+        const after = field.slice(idx + "{{name}}".length, idx + "{{name}}".length + 1)
+        expect(/[,.!?;:]/.test(after), `"{{name}}${after}"`).toBe(false)
+        idx = field.indexOf("{{name}}", idx + 1)
+      }
+    }
+    expect(usesName).toBe(true)
+  })
+
+  // Unlike 00222's sms bodies (where the renderer appends the opt-out
+  // sentence exactly once, so seed copy must NOT contain "STOP"), this is
+  // an EMAIL step — nothing in lib/lead-engine/email.ts appends an
+  // SMS-style opt-out clause, so the consent-ask sentence has to name
+  // STOP/HELP itself, compatibly with renderSmsConsentWording's own clause
+  // ("Reply STOP to opt out, HELP for help.").
+  it("states message/data rates and mentions STOP/HELP, compatible with renderSmsConsentWording's clause", () => {
+    const [emailStep] = stepsFor223("sms_repermission")
+    const body = emailStep.body as string
+    expect(/message and data rates may apply/i.test(body)).toBe(true)
+    expect(/\bSTOP\b/i.test(body)).toBe(true)
+    expect(/\bHELP\b/i.test(body)).toBe(true)
+  })
+
+  it("asks the recipient to reply YES, and never invents a consent-landing-page link", () => {
+    const [emailStep] = stepsFor223("sms_repermission")
+    const body = emailStep.body as string
+    expect(/reply\s+YES/i.test(body)).toBe(true)
+    // No link is offered — this repo has no consent landing page (see this
+    // migration's own header comment). A body carrying "http" or "https"
+    // would mean a URL snuck in despite that finding.
+    expect(/https?:\/\//i.test(body)).toBe(false)
+  })
+
+  it("uses no brand literal anywhere in the file, comments included", () => {
+    const FORBIDDEN = [/DJP\s*Athlete/i, /\bDarren\b/i, /darrenjpaul\.com/i]
+    for (const re of FORBIDDEN) {
+      expect(re.test(rawSql223), `matched ${re}`).toBe(false)
+    }
+  })
+})

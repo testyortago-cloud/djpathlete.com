@@ -73,11 +73,15 @@ export async function createEventSignupCheckout(args: EventCheckoutArgs): Promis
   // does.
   const waiverDoc = await getActiveDocument("liability_waiver")
 
-  // `waiver_accepted` is dropped here, not carried: the column is
-  // `waiver_accepted_at`, derived from the evidence below, and
-  // `CreateSignupDbInput` is `Omit<CreateSignupInput, "waiver_accepted">` for
-  // exactly that reason.
-  const { waiver_accepted: _accepted, ...signupInput } = input
+  // `waiver_accepted` and `sms_consent` are dropped here, not carried:
+  // neither has a column on `event_signups` — the waiver's evidence is the
+  // fields below, and SMS consent evidence is filed separately as a
+  // `contact_consents` row by whichever ROUTE this call came through (see
+  // app/api/events/[id]/checkout/route.ts and
+  // app/api/events/[id]/signup/route.ts). `CreateSignupDbInput` is
+  // `Omit<CreateSignupInput, "waiver_accepted" | "sms_consent">` for exactly
+  // that reason.
+  const { waiver_accepted: _accepted, sms_consent: _smsConsent, ...signupInput } = input
 
   const signup = await createSignup(
     event.id,

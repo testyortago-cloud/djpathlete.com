@@ -79,6 +79,15 @@ vi.mock("@/lib/supabase", () => ({
           payload = p
           return execute()
         },
+        // Added for enrolContactManually's `.select(...).eq(...).eq(...).maybeSingle()`
+        // lookup of a sequence by key — same pattern as
+        // __tests__/db/sequences.test.ts's maybeSingle mock.
+        maybeSingle: async () => {
+          const { data, error } = execute()
+          if (error) return { data: null, error }
+          const arr: Row[] = Array.isArray(data) ? data : data ? [data] : []
+          return { data: arr[0] ?? null, error: null }
+        },
         then: (resolve: (v: { data: any; error: any }) => void, reject?: (e: any) => void) => {
           try {
             resolve(execute())
@@ -93,7 +102,7 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-import { enrollIfTriggered } from "@/lib/lead-engine/enroll"
+import { enrollIfTriggered, enrolContactManually } from "@/lib/lead-engine/enroll"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 function seedSequence(id: string, overrides: Partial<Row> = {}) {
@@ -214,5 +223,178 @@ describe("enrollIfTriggered", () => {
       metadata: { funnel_id: "abc", unrelated: "ignored" },
     })
     expect(match.enrolled).toEqual(["seq-filtered"])
+  })
+
+  // Lead Engine Stage 4, Task 5 (spec §4, "shop checkout" row): "NO sequence
+  // rides purchase in this stage" — a deliberate design choice, not an
+  // accident of no sequence having been seeded yet. Proven here against the
+  // real mechanism rather than only asserted in the Stripe webhook's own
+  // spine test (__tests__/api/spine/purchase-spine.test.ts), which mocks
+  // recordContactEvent — and therefore enrollIfTriggered itself — away.
+  it("does not enrol a 'purchase' source into a sequence triggered by a different source", async () => {
+    seedSequence("seq-newsletter", { trigger_source: "newsletter" })
+
+    const result = await enrollIfTriggered({ contactId: "contact-1", source: "purchase" })
+
+    expect(result.enrolled).toEqual([])
+    expect(store.sequence_runs).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// enrolContactManually — Task 9's manual-only enrolment path. Every
+// `sms_repermission`-shaped sequence in these tests has `trigger_source:
+// null` and is looked up BY KEY, matching how migration 00223 seeds it and
+// how scripts/enrol-repermission.ts will call this function.
+// ---------------------------------------------------------------------------
+
+describe("enrolContactManually", () => {
+  it("enrols a contact into a named active manual sequence", async () => {
+    seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
+
+    const result = await enrolContactManually("contact-1", "sms_repermission")
+
+    expect(result).toEqual({ outcome: "enrolled" })
+    expect(store.sequence_runs).toHaveLength(1)
+    expect(store.sequence_runs[0]).toMatchObject({
+      sequence_id: "seq-repermission",
+      contact_id: "contact-1",
+      business_id: SINGLETON_BUSINESS_ID,
+      current_position: 0,
+    })
+  })
+
+  // The active-sequence check: migration 00223 seeds sms_repermission as
+  // 'draft' on purpose (the "ships loaded, safety on" contract — see the
+  // migration's own header). Nothing may enrol into it until a human runs
+  // scripts/activate-sequence.mjs.
+  it("refuses to enrol into a draft sequence", async () => {
+    seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "draft" })
+
+    const result = await enrolContactManually("contact-1", "sms_repermission")
+
+    expect(result).toEqual({ outcome: "sequence_not_active", status: "draft" })
+    expect(store.sequence_runs).toHaveLength(0)
+  })
+
+  it("refuses to enrol into a paused or archived sequence the same way", async () => {
+    seedSequence("seq-paused", { key: "seq-paused-key", trigger_source: null, status: "paused" })
+
+    const result = await enrolContactManually("contact-1", "seq-paused-key")
+
+    expect(result).toEqual({ outcome: "sequence_not_active", status: "paused" })
+    expect(store.sequence_runs).toHaveLength(0)
+  })
+
+  it("reports sequence_not_found for an unknown key rather than silently no-oping", async () => {
+    const result = await enrolContactManually("contact-1", "does-not-exist")
+
+    expect(result).toEqual({ outcome: "sequence_not_found" })
+    expect(store.sequence_runs).toHaveLength(0)
+  })
+
+  // The duplicate-run guard: a second manual enrolment of the same contact
+  // into the same sequence must no-op, not create a second sequence_runs
+  // row and not throw. This is the exact mechanism
+  // scripts/enrol-repermission.ts relies on to be safely re-runnable.
+  it("no-ops on a second enrolment of the same contact into the same sequence", async () => {
+    seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
+
+    const first = await enrolContactManually("contact-1", "sms_repermission")
+    const second = await enrolContactManually("contact-1", "sms_repermission")
+
+    expect(first).toEqual({ outcome: "enrolled" })
+    expect(second).toEqual({ outcome: "already_enrolled" })
+    expect(store.sequence_runs).toHaveLength(1)
+  })
+
+  it("still enrols a different contact into the same sequence after a duplicate no-op", async () => {
+    seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
+
+    await enrolContactManually("contact-1", "sms_repermission")
+    const result = await enrolContactManually("contact-2", "sms_repermission")
+
+    expect(result).toEqual({ outcome: "enrolled" })
+    expect(store.sequence_runs).toHaveLength(2)
+  })
+
+  // ONE-PER-CONTACT-EVER (Task 9 review, Finding 1): the partial unique
+  // index (sequence_runs_one_active_per_sequence, migration 00216) is
+  // scoped WHERE status = 'active', so a COMPLETED or EXITED prior run does
+  // NOT trip the ordinary duplicate-run guard above — that guard only fires
+  // on the insert's own 23505, and a completed/exited row is not "active"
+  // as far as that index cares. `onePerContact: true` is the separate check
+  // for exactly this gap, load-bearing for a true one-shot ask like
+  // sms_repermission ("one ask, then stop" — migration 00223's own header).
+  it("refuses a second enrolment against a COMPLETED prior run when onePerContact is true", async () => {
+    seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
+    store.sequence_runs.push({
+      id: "prior-run",
+      business_id: SINGLETON_BUSINESS_ID,
+      sequence_id: "seq-repermission",
+      contact_id: "contact-1",
+      status: "completed",
+      current_position: 1,
+    })
+
+    const result = await enrolContactManually("contact-1", "sms_repermission", { onePerContact: true })
+
+    expect(result).toEqual({ outcome: "already_enrolled_once" })
+    // Nothing new was inserted — the prior (completed) row is the only one.
+    expect(store.sequence_runs).toHaveLength(1)
+  })
+
+  it("refuses a second enrolment against an EXITED prior run when onePerContact is true", async () => {
+    seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
+    store.sequence_runs.push({
+      id: "prior-run",
+      business_id: SINGLETON_BUSINESS_ID,
+      sequence_id: "seq-repermission",
+      contact_id: "contact-1",
+      status: "exited",
+      current_position: 0,
+    })
+
+    const result = await enrolContactManually("contact-1", "sms_repermission", { onePerContact: true })
+
+    expect(result).toEqual({ outcome: "already_enrolled_once" })
+    expect(store.sequence_runs).toHaveLength(1)
+  })
+
+  it("allows a fresh enrolment against a completed prior run when onePerContact is left at its default (false)", async () => {
+    // Proves the default really is false, and that leaving it off is what a
+    // legitimate re-engagement-style sequence relies on (see the doc
+    // comment on enrolContactManually).
+    seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
+    store.sequence_runs.push({
+      id: "prior-run",
+      business_id: SINGLETON_BUSINESS_ID,
+      sequence_id: "seq-repermission",
+      contact_id: "contact-1",
+      status: "completed",
+      current_position: 1,
+    })
+
+    const result = await enrolContactManually("contact-1", "sms_repermission")
+
+    expect(result).toEqual({ outcome: "enrolled" })
+    expect(store.sequence_runs).toHaveLength(2)
+  })
+
+  it("does not confuse a completed run of a DIFFERENT sequence for a prior run of this one", async () => {
+    seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
+    seedSequence("seq-other", { key: "seq-other-key", trigger_source: null, status: "active" })
+    store.sequence_runs.push({
+      id: "prior-run-other-sequence",
+      business_id: SINGLETON_BUSINESS_ID,
+      sequence_id: "seq-other",
+      contact_id: "contact-1",
+      status: "completed",
+      current_position: 1,
+    })
+
+    const result = await enrolContactManually("contact-1", "sms_repermission", { onePerContact: true })
+
+    expect(result).toEqual({ outcome: "enrolled" })
   })
 })
