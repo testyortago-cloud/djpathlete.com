@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Save, Send, Loader2, Sparkles } from "lucide-react"
+import { ArrowLeft, Save, Send, Loader2, Sparkles, CalendarClock } from "lucide-react"
 import { toast } from "sonner"
 import { newsletterFormSchema } from "@/lib/validators/newsletter"
 import { BlogEditor } from "../blog/BlogEditor"
@@ -11,6 +11,7 @@ import { NewsletterGenerateDialog } from "./NewsletterGenerateDialog"
 import type { Newsletter } from "@/types/database"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 import { humanizeFieldError, summarizeApiError, type FieldErrors } from "@/lib/errors/humanize"
+import { SchedulePicker } from "@/components/admin/shared/SchedulePicker"
 
 const NEWSLETTER_FIELD_LABELS: Record<string, string> = {
   subject: "Subject",
@@ -32,12 +33,16 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
   const [editorKey, setEditorKey] = useState(0)
   const [formError, setFormError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
+  const [schedulingOpen, setSchedulingOpen] = useState(false)
+  const [scheduleBusy, setScheduleBusy] = useState(false)
+  const [unscheduling, setUnscheduling] = useState(false)
 
   const [subject, setSubject] = useState(newsletter?.subject ?? "")
   const [previewText, setPreviewText] = useState(newsletter?.preview_text ?? "")
   const [content, setContent] = useState(newsletter?.content ?? "")
 
   const isSent = newsletter?.status === "sent"
+  const isScheduled = newsletter?.status === "scheduled"
 
   const buildPayload = useCallback(
     () => ({
@@ -163,6 +168,45 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
     }
   }
 
+  async function handleSchedule(iso: string) {
+    if (!newsletter) return
+    setScheduleBusy(true)
+    try {
+      const res = await fetch(`/api/admin/newsletter/${newsletter.id}/schedule`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scheduled_at: iso }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast.error(body.error ?? "Could not schedule this newsletter")
+        return
+      }
+      toast.success(`Scheduled for ${new Date(iso).toLocaleString()}`)
+      setSchedulingOpen(false)
+      router.refresh()
+    } finally {
+      setScheduleBusy(false)
+    }
+  }
+
+  async function handleCancelSchedule() {
+    if (!newsletter) return
+    setUnscheduling(true)
+    try {
+      const res = await fetch(`/api/admin/newsletter/${newsletter.id}/unschedule`, { method: "POST" })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast.error(body.error ?? "Could not cancel this schedule")
+        return
+      }
+      toast.success("Schedule cancelled")
+      router.refresh()
+    } finally {
+      setUnscheduling(false)
+    }
+  }
+
   function handleAiGenerated(data: { subject: string; preview_text: string; content: string }) {
     setSubject(data.subject)
     setPreviewText(data.preview_text)
@@ -205,6 +249,17 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
               {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
               Save Draft
             </button>
+            {newsletter?.status === "draft" && (
+              <button
+                type="button"
+                onClick={() => setSchedulingOpen(true)}
+                disabled={busy}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-sm font-medium hover:bg-surface transition-colors disabled:opacity-50"
+              >
+                <CalendarClock className="size-4" />
+                Schedule
+              </button>
+            )}
             <button
               type="button"
               onClick={handleSend}
@@ -225,6 +280,24 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
       {(formError || Object.keys(fieldErrors).length > 0) && (
         <div className="mb-4">
           <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={NEWSLETTER_FIELD_LABELS} />
+        </div>
+      )}
+
+      {isScheduled && newsletter && (
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+          <p className="text-sm text-primary">
+            Scheduled to go out on{" "}
+            <span className="font-medium">{new Date(newsletter.scheduled_at!).toLocaleString()}</span>. Edits you save
+            here will be included.
+          </p>
+          <button
+            type="button"
+            onClick={handleCancelSchedule}
+            disabled={unscheduling}
+            className="text-xs text-muted-foreground hover:text-primary underline disabled:opacity-50"
+          >
+            {unscheduling ? "Cancelling…" : "Cancel schedule"}
+          </button>
         </div>
       )}
 
@@ -291,7 +364,9 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
           <div className="rounded-lg border border-border bg-surface/50 p-3 text-xs text-muted-foreground space-y-1">
             <p>
               Status:{" "}
-              <span className="font-medium text-foreground">{newsletter.status === "sent" ? "Sent" : "Draft"}</span>
+              <span className="font-medium text-foreground">
+                {newsletter.status === "sent" ? "Sent" : newsletter.status === "scheduled" ? "Scheduled" : "Draft"}
+              </span>
             </p>
             {newsletter.sent_at && (
               <p>
@@ -320,6 +395,15 @@ export function NewsletterForm({ newsletter, authorId }: NewsletterFormProps) {
         onOpenChange={setGenerateOpen}
         onGenerated={handleAiGenerated}
         hasExistingContent={hasExistingContent}
+      />
+
+      <SchedulePicker
+        open={schedulingOpen}
+        title="Schedule newsletter"
+        initial={newsletter?.scheduled_at}
+        busy={scheduleBusy}
+        onConfirm={handleSchedule}
+        onCancel={() => setSchedulingOpen(false)}
       />
     </div>
   )
