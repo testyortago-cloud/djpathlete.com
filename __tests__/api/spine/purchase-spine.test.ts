@@ -159,15 +159,25 @@ beforeEach(() => {
 })
 
 describe("POST /api/stripe/webhook — checkout.session.completed joins the contact spine", () => {
-  it("a completed checkout with no metadata type still captures a lead with source purchase", async () => {
-    mocks.verifyWebhookSignature.mockReturnValueOnce(eventFor(session({ metadata: {} })))
+  it("a completed checkout with no metadata type still captures a lead with source purchase, tagged with the session id for redelivery reconciliation", async () => {
+    mocks.verifyWebhookSignature.mockReturnValueOnce(eventFor(session({ id: "cs_test_1", metadata: {} })))
 
     const { POST } = await import("@/app/api/stripe/webhook/route")
     const res = await POST(makeReq())
 
     expect(res.status).toBe(200)
     expect(mocks.recordContactEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ source: "purchase", email: "buyer@example.com", name: "Jordan Blake" }),
+      expect.objectContaining({
+        source: "purchase",
+        email: "buyer@example.com",
+        name: "Jordan Blake",
+        // Stripe delivers webhooks at-least-once; without stripe_session_id
+        // on the timeline row, a redelivery writes an indistinguishable
+        // second row with nothing tying it back to which checkout produced
+        // it. This does not dedupe (append-only spine, by design) — it just
+        // makes every row traceable to its session.
+        metadata: expect.objectContaining({ stripe_session_id: "cs_test_1" }),
+      }),
     )
   })
 

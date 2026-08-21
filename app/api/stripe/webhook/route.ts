@@ -133,12 +133,23 @@ async function tryEnqueueAdsValueAdjustment(session: Stripe.Checkout.Session): P
 // opt-in), and no sequence rides "purchase" in this stage: recordContactEvent
 // calls enrollIfTriggered unconditionally, which is a no-op whenever no
 // ACTIVE sequence's trigger_source matches the event's source.
+//
+// metadata: { stripe_session_id: session.id } — Stripe delivers webhooks
+// at-least-once (the same "delivered twice" hazard the create-with-outcome
+// branch of applyPipelineEvent above is already guarding against with this
+// exact session id). Without it, a redelivery writes a second, identical
+// contact_timeline_events row with nothing on either row tying it back to
+// which checkout produced it — unreconcilable after the fact. This does not
+// dedupe the row (append-only spine, intentional per Task 4's ruling on the
+// event_signup/purchase overlap); it just makes every row traceable to its
+// session, the same way the sibling pipeline hook already tags itself.
 async function tryCaptureLeadFromCheckout(session: Stripe.Checkout.Session): Promise<void> {
   try {
     await captureLead({
       source: "purchase",
       email: session.customer_details?.email ?? session.customer_email ?? null,
       name: session.customer_details?.name ?? null,
+      metadata: { stripe_session_id: session.id },
     })
   } catch (err) {
     console.error("[stripe-webhook] lead capture failed", (err as Error).message)
