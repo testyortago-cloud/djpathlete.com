@@ -18,13 +18,13 @@
  * `classifyGhlRecord` never has to ask a database anything. This script has
  * no such file to read from — "which contacts are still eligible for this
  * ask" is a question about the CURRENT state of `contact_timeline_events`,
- * `contact_consents` and `contact_suppressions`, none of which exist
- * outside the database. Candidate discovery IS a read, so dry-run here
- * connects with the env file's credentials and runs the same read queries
- * --execute does — what it does NOT do is call `enrolContactManually` or
- * write a `sequence_runs` row for anyone. Verify this yourself: `grep -n
- * "enrolContactManually(" scripts/enrol-repermission.ts` — the only call
- * site is inside `runExecute`, gated the same way
+ * `contact_consents`, `contact_suppressions` and `sequence_runs`, none of
+ * which exist outside the database. Candidate discovery IS a read, so
+ * dry-run here connects with the env file's credentials and runs the same
+ * read queries --execute does — what it does NOT do is call
+ * `enrolContactManually` or write a `sequence_runs` row for anyone. Verify
+ * this yourself: `grep -n "enrolContactManually(" scripts/enrol-repermission.ts`
+ * — the only call site is inside `runExecute`, gated the same way
  * `scripts/import-ghl-contacts.ts` gates its own writes.
  *
  * WHY .ts VIA `npx tsx`, NOT .mjs — same reasoning as
@@ -37,8 +37,7 @@
  * that could silently drift from the real one. `tsx` is a pinned
  * `devDependency` in package.json.
  *
- * ELIGIBILITY, per the brief: a contact qualifies for this ask when it
- * has —
+ * ELIGIBILITY: a contact qualifies for this ask when it has —
  *   1. an `sms_repermission_candidate` timeline event (this business only),
  *   2. an email address on file (this ask goes out over EMAIL — a contact
  *      with a phone but no email has no channel this sequence can reach
@@ -52,12 +51,35 @@
  *      collapses "no row" and "a false row" into the same answer) —
  *      exactly why this script queries `contact_consents` directly instead
  *      of reusing that helper.
- *   4. its email is NOT in `contact_suppressions` — checking the EMAIL
- *      identifier specifically, not the phone, because this ask is an
- *      email. A phone-side suppression (e.g. an SMS STOP this contact sent
- *      before ever being asked, however unlikely for a freshly-imported
- *      contact) is a real signal too, but it does not block reaching them
- *      by a channel they have not suppressed.
+ *   4. NEITHER identifier suppressed — email OR phone. This ask itself goes
+ *      out over email, so an email-side suppression obviously excludes a
+ *      contact (nothing to send to). But a PHONE-side suppression excludes
+ *      them too, and for a reason specific to what this sequence asks:
+ *      "can we text you?" IS the exact question a prior SMS STOP already
+ *      answered. Continuing to press the question by a different channel
+ *      just because the identifier that said no wasn't the one this email
+ *      happens to use is exactly the appearance of ignoring an opt-out —
+ *      the optics this whole ask exists to avoid, not honor by a loophole.
+ *      This also matches how suppression works everywhere else in this
+ *      codebase: `contact_suppressions` (migration 00215) has no `channel`
+ *      column at all — it is identifier-level, full stop — and
+ *      `isSuppressed()` (lib/db/contact-consents.ts) never takes a channel
+ *      argument either. Checking only the email identifier here would have
+ *      been the one place in the Lead Engine treating suppression as
+ *      channel-scoped; this script does not carve out that exception.
+ *   5. NO existing `sequence_runs` row for `sms_repermission` at all — ANY
+ *      status, not just active. See `enrolContactManually`'s
+ *      `onePerContact` doc comment (lib/lead-engine/enroll.ts) for why the
+ *      ordinary duplicate-run guard alone is not enough for a true one-shot
+ *      ask: it only covers ACTIVE runs, so a contact whose earlier run
+ *      already COMPLETED (they got the email, the sequence stopped, they
+ *      never replied) would otherwise be re-enrollable by a later run of
+ *      this exact script — contradicting migration 00223's own "one ask,
+ *      then stop" design. This script passes `onePerContact: true` to
+ *      `enrolContactManually` as belt-and-braces, but candidate DISCOVERY
+ *      also excludes these contacts up front (rather than relying solely on
+ *      the enrolment-time refusal) so a dry-run's candidate count is
+ *      accurate, not inflated by contacts who would immediately refuse.
  *
  * The eligibility filter (`selectRepermissionCandidates` below) is pure and
  * unit-tested directly — see __tests__/scripts/enrol-repermission.test.ts —
@@ -65,10 +87,31 @@
  * "dry-run and execute can never disagree about who qualifies" guarantee
  * `classifyGhlRecord` gives the import script.
  *
- * SAFE TO RE-RUN: `enrolContactManually`'s duplicate-run guard (23505 on
- * `sequence_runs_one_active_per_sequence`) makes a second --execute pass
- * over the same candidate list a no-op for anyone already enrolled, not a
- * second row or a thrown error.
+ * PREFLIGHT: `business_settings.reply_to` is where a "reply YES" actually
+ * lands (see migration 00223's header for the whole manual-consent-recording
+ * runbook that depends on a human reading that inbox) and `display_name` is
+ * required by `renderSequenceEmail`'s `assertSendable` gate at send time. A
+ * blank `reply_to` would not error anywhere — the email still sends, replies
+ * just go nowhere a human is watching, silently. `main()` checks both before
+ * doing anything else: dry-run prints a loud warning and continues (so it
+ * still reports candidates, useful for planning); `--execute` refuses
+ * outright, exit 1, before enrolling anyone or even running discovery — see
+ * `checkBusinessSettingsForRepermission` below, extracted specifically so
+ * this check is unit-testable without a database.
+ *
+ * SAFE TO RE-RUN, PRECISELY: `enrolContactManually`'s ordinary duplicate-run
+ * guard (23505 on `sequence_runs_one_active_per_sequence`) makes a second
+ * --execute pass a no-op for anyone still ACTIVELY enrolled, and the
+ * `onePerContact: true` + discovery-side exclusion above (eligibility #5)
+ * additionally makes it a no-op for anyone who has EVER had a run of this
+ * sequence, active or finished. Put together: re-running this script only
+ * ever enrols contacts who (a) newly became candidates since the last run
+ * (e.g. a later import batch) or (b) were somehow skipped by an earlier run
+ * that did not reach them (a partial --execute). It will NEVER re-ask a
+ * contact this sequence has already reached once — that is the whole point
+ * of a one-shot ask, and "safe to re-run" now specifically means "re-run
+ * finds only new candidates," not merely "re-run does not crash or double
+ * an active run."
  *
  * SHIPS LOADED, SAFETY ON: migration 00223 seeds `sms_repermission` as
  * `draft`. Until a human runs
@@ -83,6 +126,7 @@ import { pathToFileURL } from "node:url"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { enrolContactManually, type ManualEnrolOutcome } from "@/lib/lead-engine/enroll"
+import { getBusinessSettings } from "@/lib/db/businesses"
 
 const SEQUENCE_KEY = "sms_repermission"
 const CANDIDATE_EVENT_KIND = "sms_repermission_candidate"
@@ -107,6 +151,7 @@ function usageError(): never {
 export type CandidateContactRow = {
   id: string
   email: string | null
+  phoneE164: string | null
   name: string | null
 }
 
@@ -117,22 +162,29 @@ export type RepermissionCandidate = {
 }
 
 /**
- * See this file's header comment for the full eligibility rationale.
- * `suppressedEmails` and the email side of `contacts` are compared
- * lowercased, matching how lib/db/contact-consents.ts's `suppress` /
- * `isSuppressed` always lowercase the identifier they write/read.
+ * See this file's header comment (ELIGIBILITY) for the full rationale
+ * behind each exclusion. `suppressedEmails` and the email side of
+ * `contacts` are compared lowercased, matching how
+ * lib/db/contact-consents.ts's `suppress` / `isSuppressed` always lowercase
+ * the identifier they write/read; `suppressedPhones` is compared as-is
+ * (E.164 phone numbers carry no case).
  */
 export function selectRepermissionCandidates(args: {
   contacts: CandidateContactRow[]
   contactIdsWithSmsConsent: ReadonlySet<string>
+  contactIdsWithPriorRun: ReadonlySet<string>
   suppressedEmails: ReadonlySet<string>
+  suppressedPhones: ReadonlySet<string>
 }): RepermissionCandidate[] {
   const out: RepermissionCandidate[] = []
   for (const contact of args.contacts) {
     const email = contact.email?.trim()
     if (!email) continue
     if (args.contactIdsWithSmsConsent.has(contact.id)) continue
+    if (args.contactIdsWithPriorRun.has(contact.id)) continue
     if (args.suppressedEmails.has(email.toLowerCase())) continue
+    const phone = contact.phoneE164?.trim()
+    if (phone && args.suppressedPhones.has(phone)) continue
     out.push({ contactId: contact.id, email, name: contact.name })
   }
   return out
@@ -156,6 +208,27 @@ export function maskEmail(email: string): string {
 }
 
 // ---------------------------------------------------------------------
+// Preflight — pure, unit-tested directly. See this file's header comment
+// (PREFLIGHT) for why these two fields specifically.
+// ---------------------------------------------------------------------
+
+export type BusinessSettingsPreflightInput = {
+  reply_to: string | null | undefined
+  display_name: string | null | undefined
+}
+
+export type BusinessSettingsPreflightResult = { missing: string[] }
+
+export function checkBusinessSettingsForRepermission(
+  settings: BusinessSettingsPreflightInput,
+): BusinessSettingsPreflightResult {
+  const missing: string[] = []
+  if (!settings.reply_to?.trim()) missing.push("reply_to")
+  if (!settings.display_name?.trim()) missing.push("display_name")
+  return { missing }
+}
+
+// ---------------------------------------------------------------------
 // Discovery — the read side, shared by dry-run and --execute. Reads the
 // database (see this file's header on why that is unavoidable here) but
 // never writes anything.
@@ -176,10 +249,13 @@ async function discoverCandidates(): Promise<RepermissionCandidate[]> {
 
   const { data: contactRows, error: contactErr } = await supabase
     .from("contacts")
-    .select("id, email, name")
+    .select("id, email, phone_e164, name")
     .eq("business_id", SINGLETON_BUSINESS_ID)
     .in("id", candidateContactIds)
   if (contactErr) throw contactErr
+  const contacts = (
+    (contactRows ?? []) as Array<{ id: string; email: string | null; phone_e164: string | null; name: string | null }>
+  ).map((c) => ({ id: c.id, email: c.email, phoneE164: c.phone_e164, name: c.name }) satisfies CandidateContactRow)
 
   const { data: consentRows, error: consentErr } = await supabase
     .from("contact_consents")
@@ -189,12 +265,38 @@ async function discoverCandidates(): Promise<RepermissionCandidate[]> {
   if (consentErr) throw consentErr
   const contactIdsWithSmsConsent = new Set((consentRows ?? []).map((r) => (r as { contact_id: string }).contact_id))
 
+  // Eligibility #5: ANY prior sequence_runs row for sms_repermission, any
+  // status. Looked up by the sequence's own id, not by key, because
+  // sequence_runs carries sequence_id, not sequence_key. A missing sequence
+  // row (migration 00223 not yet applied to this database) means nothing to
+  // exclude against — logged, not thrown, since discovery should still be
+  // able to report candidates against a database mid-rollout.
+  const { data: sequenceRow, error: sequenceErr } = await supabase
+    .from("sequences")
+    .select("id")
+    .eq("business_id", SINGLETON_BUSINESS_ID)
+    .eq("key", SEQUENCE_KEY)
+    .maybeSingle()
+  if (sequenceErr) throw sequenceErr
+  let contactIdsWithPriorRun = new Set<string>()
+  if (sequenceRow) {
+    const { data: priorRunRows, error: priorRunErr } = await supabase
+      .from("sequence_runs")
+      .select("contact_id")
+      .eq("business_id", SINGLETON_BUSINESS_ID)
+      .eq("sequence_id", (sequenceRow as { id: string }).id)
+      .in("contact_id", candidateContactIds)
+    if (priorRunErr) throw priorRunErr
+    contactIdsWithPriorRun = new Set((priorRunRows ?? []).map((r) => (r as { contact_id: string }).contact_id))
+  } else {
+    console.warn(
+      `no sequence found for key "${SEQUENCE_KEY}" — migration 00223 may not have run yet against this database; ` +
+        `skipping the prior-run exclusion (nothing to exclude against)`,
+    )
+  }
+
   const candidateEmails = [
-    ...new Set(
-      ((contactRows ?? []) as CandidateContactRow[])
-        .map((c) => c.email?.trim().toLowerCase())
-        .filter((e): e is string => Boolean(e)),
-    ),
+    ...new Set(contacts.map((c) => c.email?.trim().toLowerCase()).filter((e): e is string => Boolean(e))),
   ]
   let suppressedEmails = new Set<string>()
   if (candidateEmails.length > 0) {
@@ -207,10 +309,26 @@ async function discoverCandidates(): Promise<RepermissionCandidate[]> {
     suppressedEmails = new Set((suppressionRows ?? []).map((r) => (r as { identifier: string }).identifier))
   }
 
+  // Eligibility #4's phone half — see this file's header comment for why a
+  // suppressed phone excludes a contact from this EMAIL ask too.
+  const candidatePhones = [...new Set(contacts.map((c) => c.phoneE164?.trim()).filter((p): p is string => Boolean(p)))]
+  let suppressedPhones = new Set<string>()
+  if (candidatePhones.length > 0) {
+    const { data: phoneSuppressionRows, error: phoneSuppressionErr } = await supabase
+      .from("contact_suppressions")
+      .select("identifier")
+      .eq("business_id", SINGLETON_BUSINESS_ID)
+      .in("identifier", candidatePhones)
+    if (phoneSuppressionErr) throw phoneSuppressionErr
+    suppressedPhones = new Set((phoneSuppressionRows ?? []).map((r) => (r as { identifier: string }).identifier))
+  }
+
   return selectRepermissionCandidates({
-    contacts: (contactRows ?? []) as CandidateContactRow[],
+    contacts,
     contactIdsWithSmsConsent,
+    contactIdsWithPriorRun,
     suppressedEmails,
+    suppressedPhones,
   })
 }
 
@@ -237,12 +355,18 @@ async function runExecute(candidates: RepermissionCandidate[]): Promise<void> {
   const counts: Record<ManualEnrolOutcome["outcome"], number> = {
     enrolled: 0,
     already_enrolled: 0,
+    already_enrolled_once: 0,
     sequence_not_found: 0,
     sequence_not_active: 0,
   }
 
   for (const candidate of candidates) {
-    const outcome = await enrolContactManually(candidate.contactId, SEQUENCE_KEY)
+    // onePerContact: true — belt-and-braces alongside discovery's own
+    // eligibility #5 exclusion (this file's header comment). Discovery
+    // already filtered out anyone with a prior run; this is what makes that
+    // guarantee load-bearing rather than advisory, in case a run started
+    // between discovery and this call.
+    const outcome = await enrolContactManually(candidate.contactId, SEQUENCE_KEY, { onePerContact: true })
     counts[outcome.outcome]++
     const detail = outcome.outcome === "sequence_not_active" ? ` (status=${outcome.status})` : ""
     console.log(`  id=${candidate.contactId} email=${maskEmail(candidate.email)} -> ${outcome.outcome}${detail}`)
@@ -301,6 +425,30 @@ async function main(): Promise<void> {
   process.env.NEXT_PUBLIC_SUPABASE_URL = env.NEXT_PUBLIC_SUPABASE_URL
   process.env.SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY
   console.log("project host:", new URL(env.NEXT_PUBLIC_SUPABASE_URL).host)
+
+  // PREFLIGHT — see this file's header comment. Runs before discovery: a
+  // misconfigured business has nothing worth discovering candidates for
+  // under --execute.
+  const settings = await getBusinessSettings()
+  const preflight = checkBusinessSettingsForRepermission(settings)
+  if (preflight.missing.length > 0) {
+    const fields = preflight.missing.map((f) => `business_settings.${f}`).join(", ")
+    if (execute) {
+      console.error(
+        `refusing to enrol anyone: ${fields} blank. reply_to is where a "reply YES" lands — blank, and every ` +
+          `reply routes nowhere a human is watching. display_name is required by renderSequenceEmail's send-time ` +
+          `preflight. Fill them first: node scripts/flip-lead-engine-on.mjs <env-file> (fills both from ` +
+          `lib/business-info.ts, only if currently empty), then re-run --execute.`,
+      )
+      process.exit(1)
+    } else {
+      console.warn("")
+      console.warn(
+        `[dry-run] WARNING: ${fields} blank. Harmless for a dry-run, but --execute will refuse to enrol anyone ` +
+          `until this is fixed — see node scripts/flip-lead-engine-on.mjs <env-file>.`,
+      )
+    }
+  }
 
   const candidates = await discoverCandidates()
   printCandidateSummary(candidates)
