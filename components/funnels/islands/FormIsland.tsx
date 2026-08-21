@@ -4,7 +4,7 @@
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { renderLegalContent } from "@/lib/legal-content"
 import { getBusinessSettings } from "@/lib/db/businesses"
-import { renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { FunnelForm } from "./FunnelForm"
 import type { FunnelRenderContext } from "./index"
 import type { FunnelFormField } from "@/lib/funnels/islands"
@@ -38,11 +38,20 @@ export async function FormIsland({ props, context }: FormIslandProps) {
   // the page's own data needs. `renderSmsConsentWording` is called with the
   // EXACT same input (`display_name`) the submit route re-renders from, so
   // `contact_consents.wording_shown` reproduces what the visitor actually saw.
-  // A settings-read failure must not break the whole form, so it degrades to
-  // no checkbox rather than a broken page.
-  const smsConsentWording = fields.some((field) => field.type === "tel")
-    ? renderSmsConsentWording((await getBusinessSettings().catch(() => null))?.display_name ?? "")
-    : undefined
+  //
+  // A FAILED READ AND A BLANK NAME BOTH DEGRADE TO NO CHECKBOX, never to a
+  // checkbox with broken wording. `business_settings.display_name` is seeded
+  // `''` on any install nobody has configured yet, and rendering that
+  // straight through would show a visitor "I agree to receive text messages
+  // from about my inquiry" — a sentence that cannot name the business is not
+  // valid consent wording. `hasSmsConsentDisplayName` is the same gate the
+  // submit route checks before filing the consent row, so "the name was
+  // unusable" can never mean one thing here and a different thing there.
+  const businessSettings = fields.some((field) => field.type === "tel")
+    ? await getBusinessSettings().catch(() => null)
+    : null
+  const displayName = businessSettings?.display_name
+  const smsConsentWording = hasSmsConsentDisplayName(displayName) ? renderSmsConsentWording(displayName) : undefined
 
   return (
     <FunnelForm

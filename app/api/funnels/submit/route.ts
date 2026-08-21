@@ -26,7 +26,7 @@ import { recordAudit } from "@/lib/audit/record"
 import { captureContactFromSubmission } from "@/lib/funnels/capture-contact"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
-import { renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 
 /** Bots submit instantly; a person cannot read and fill a form this fast. */
 const MIN_ELAPSED_MS = 1500
@@ -320,8 +320,15 @@ export async function POST(request: Request) {
  * was shown; re-deriving it from the same inputs is how both sides of that
  * claim stay provably identical.
  *
- * Called fire-and-forget from the caller below — see that call site's
- * comment for why.
+ * MIRRORS THE FORM ISLAND'S OWN GATE (`hasSmsConsentDisplayName`, checked
+ * before the checkbox is even shown): if `display_name` reads back blank
+ * here, no row is filed, even though `sms_consent` came in `true`. Without
+ * this check the two reads could disagree — the page rendered when a name
+ * was configured, business_settings went blank before this request landed
+ * (or vice versa) — and the row filed would misrepresent what the checkbox
+ * next to it actually said. Skipping is logged, never thrown: the lead was
+ * already captured by the caller before this ever runs, and a missing
+ * business name is not a reason to lose it.
  */
 async function recordFunnelSmsConsent(input: {
   contactId: string
@@ -329,6 +336,10 @@ async function recordFunnelSmsConsent(input: {
   userAgent: string | null
 }): Promise<void> {
   const settings = await getBusinessSettings()
+  if (!hasSmsConsentDisplayName(settings.display_name)) {
+    console.warn("[funnels/submit] sms consent skipped: business_settings.display_name is blank")
+    return
+  }
   await recordConsent({
     contactId: input.contactId,
     channel: "sms",

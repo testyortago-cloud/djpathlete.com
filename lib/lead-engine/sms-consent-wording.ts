@@ -21,3 +21,26 @@
 export function renderSmsConsentWording(displayName: string): string {
   return `I agree to receive text messages from ${displayName} about my inquiry. Message and data rates may apply. Reply STOP to opt out, HELP for help.`
 }
+
+/**
+ * True only when `displayName` actually names a business — non-blank once
+ * whitespace is trimmed.
+ *
+ * `business_settings.display_name` is seeded `''` (migration 00212 — NOT
+ * NULL DEFAULT `''`), which is the state of any install nobody has
+ * configured yet, including production today. Feeding that straight into
+ * `renderSmsConsentWording` produces "I agree to receive text messages from
+ * about my inquiry." — a sentence that cannot name who is texting is not
+ * consent to anything.
+ *
+ * This is the ONE gate both call sites check, so "blank" and "the settings
+ * read failed" collapse to the same outcome everywhere: the funnel form
+ * island (deciding whether to show the checkbox at all) and the submit
+ * route (deciding whether to file the consent row) must never disagree
+ * about whether a name was usable — a checkbox rendered from one verdict and
+ * a consent row filed from the other is exactly the shown-vs-recorded
+ * mismatch this function exists to rule out.
+ */
+export function hasSmsConsentDisplayName(displayName: string | null | undefined): displayName is string {
+  return Boolean(displayName?.trim())
+}

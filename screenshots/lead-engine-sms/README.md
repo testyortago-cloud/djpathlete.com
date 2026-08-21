@@ -5,9 +5,16 @@ Captured 2026-08-21 by driving the real app with Playwright against branch
 the **dev** Supabase project (`anjvztjiokcgiyhobknq`) — never production. No
 row in the clone database was written or modified to take this shot.
 
-| File                 | What it shows                                                                                                                                       |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `funnel-consent.png` | `/go/test/index` — the real funnel page, real `NodeRenderer` → `FormIsland` → `FunnelForm` render chain, phone field + the new SMS consent checkbox |
+**Re-taken after code review.** The first capture showed the checkbox
+rendered with a malformed sentence ("...from about my inquiry") because
+`business_settings.display_name` is blank in this database. Review flagged
+that as consent evidence with a hole in it; the fix makes a blank or
+unreadable business name suppress the checkbox entirely, and this screenshot
+is from after that fix — see "The fix, and why the shot changed" below.
+
+| File                 | What it shows                                                                                                                                                     |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `funnel-consent.png` | `/go/test/index` — the real funnel page, real `NodeRenderer` → `FormIsland` → `FunnelForm` render chain, phone field with **no** SMS consent checkbox (see below) |
 
 ## Why this is `/go/test/index?preview=1`, not a bare `/go/test/index`
 
@@ -54,16 +61,35 @@ funnel published after this branch's styles.ts (unrelated to Task 6) ships
 would show a properly boxed control; one published before it — like this
 test fixture — won't, and neither will its sibling fields.
 
-## Another pre-existing condition visible in the wording
+## The fix, and why the shot changed
 
 `business_settings.display_name` is seeded `''` in this clone (confirmed via
 `node scripts/dev-db-query.mjs business_settings "business_id,display_name"`),
 same default noted in `screenshots/lead-engine-stage1c/README.md` for the
-pipeline pages. `renderSmsConsentWording` (`lib/lead-engine/sms-consent-wording.ts`)
-has no fallback — its contract in the Task 6 brief is an exact string with
-`{displayName}` substituted, nothing more — so with a blank `display_name` the
-line reads "I agree to receive text messages from about my inquiry." (HTML
-collapses the resulting double space to one, so it isn't as visibly broken as
-the `'s pipeline` bug that README documents, but the sentence still reads as
-missing a name). Filling in `business_settings.display_name` is an ops step,
-not a code fix; flagged here for whoever runs the go-live checklist.
+pipeline pages. The first version of this task fed that straight into
+`renderSmsConsentWording` with no fallback, so the checkbox rendered next to
+"I agree to receive text messages from about my inquiry." — a sentence that
+cannot name who is texting. Code review caught two Medium findings on this:
+the same gap also meant a FAILED `business_settings` read rendered the
+checkbox too (the code substituted `""` and the comment claimed "no
+checkbox" without the code doing that), and — more seriously — a
+successfully-configured business name at page-render time could still go
+blank before the submit request landed (or vice versa), so the row filed
+could carry different wording than what the checkbox actually showed.
+
+**The fix:** `hasSmsConsentDisplayName` (`lib/lead-engine/sms-consent-wording.ts`)
+is now the one gate both sides check. `FormIsland.tsx` shows the checkbox
+only when a settings read succeeds AND `display_name` is non-blank —
+anything else (a failed read, or a blank/whitespace name) renders no
+checkbox at all, the same "no pixel" outcome. The submit route re-checks the
+same thing at write time and skips the consent row (logging why) even if
+`sms_consent` came in `true` — the lead capture is unaffected either way.
+
+This screenshot is from **after** that fix, against the same still-blank
+`display_name` (never written to — this task doesn't touch the clone DB), so
+it now shows the honest state for an unconfigured install: the phone field
+renders, and there is no checkbox beneath it. The annotation marks where the
+checkbox would have appeared. Filling in `business_settings.display_name` is
+still the ops step that turns the checkbox back on; it's just no longer
+possible to collect consent with a name-shaped hole in it while that's
+unset.

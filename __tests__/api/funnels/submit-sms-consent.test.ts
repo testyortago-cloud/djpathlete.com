@@ -152,4 +152,30 @@ describe("POST /api/funnels/submit — SMS consent", () => {
     expect(res.status).toBe(200)
     expect(recordConsent).not.toHaveBeenCalled()
   })
+
+  it("writes no consent row when business_settings.display_name is blank, even though sms_consent is true and phone is present — the lead is still captured", async () => {
+    // A sentence that cannot name the business is not consent to anything —
+    // the same rule the form island applies before it will even show the
+    // checkbox (FormIsland.tsx / hasSmsConsentDisplayName). Checked here too
+    // in case the two reads disagree: a page rendered while a name was
+    // configured, then business_settings went blank before this request
+    // reached the server (or vice versa).
+    getBusinessSettings.mockResolvedValue({ business_id: "biz-1", display_name: "" })
+    const res = await POST(request({ sms_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true })
+    expect(createSubmission).toHaveBeenCalled()
+    expect(recordConsent).not.toHaveBeenCalled()
+  })
+
+  it("writes no consent row when business_settings.display_name is whitespace-only", async () => {
+    getBusinessSettings.mockResolvedValue({ business_id: "biz-1", display_name: "   " })
+    const res = await POST(request({ sms_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(200)
+    expect(recordConsent).not.toHaveBeenCalled()
+  })
 })

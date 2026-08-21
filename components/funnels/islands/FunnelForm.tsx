@@ -58,8 +58,12 @@ interface FunnelFormProps {
    *
    * `undefined` when the form has no `tel` field (FormIsland does not fetch
    * business settings for a form that has nothing to attach a phone consent
-   * to) — that renders no checkbox at all, the same "no pixel, no prop"
-   * contract `waiverHtml`/`consentText` already follow.
+   * to), OR when the business has no usable name — a failed settings read
+   * or a blank `display_name` (`hasSmsConsentDisplayName` in
+   * sms-consent-wording.ts) both collapse to the same "no wording" outcome
+   * rather than one of them rendering a checkbox over a sentence with a hole
+   * in it. Either way this renders no checkbox at all, the same "no pixel,
+   * no prop" contract `waiverHtml`/`consentText` already follow.
    */
   smsConsentWording?: string
   isPreview: boolean
