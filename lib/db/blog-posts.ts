@@ -186,6 +186,19 @@ export async function deleteBlogPost(id: string): Promise<void> {
   if (error) throw error
 }
 
+/** Rows the scheduled-content checker considers. Ordered oldest-first so a
+ *  backlog fires in the order it was queued. */
+export async function listScheduledBlogPosts(): Promise<BlogPost[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("blog_posts")
+    .select("*")
+    .eq("status", "scheduled")
+    .order("scheduled_at", { ascending: true })
+  if (error) throw error
+  return data as BlogPost[]
+}
+
 export async function isSlugTaken(slug: string, excludeId?: string): Promise<boolean> {
   const supabase = getClient()
   let query = supabase.from("blog_posts").select("id").eq("slug", slug)

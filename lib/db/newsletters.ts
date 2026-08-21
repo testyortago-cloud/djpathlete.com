@@ -48,6 +48,18 @@ export async function deleteNewsletter(id: string): Promise<void> {
   if (error) throw error
 }
 
+/** Rows the scheduled-content checker considers. Ordered oldest-first. */
+export async function listScheduledNewsletters(): Promise<Newsletter[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("newsletters")
+    .select("*")
+    .eq("status", "scheduled")
+    .order("scheduled_at", { ascending: true })
+  if (error) throw error
+  return data as Newsletter[]
+}
+
 export async function createDraftFromBlog(params: {
   subject: string
   previewText: string
