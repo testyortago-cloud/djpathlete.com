@@ -95,8 +95,13 @@ existing invariant:
 - **Preflight before claiming** (the `BusinessNotConfiguredError` pattern):
   `runSequenceTick` checks SMS configuration ONCE per tick. When unconfigured
   — production today — sms steps behave exactly as now: **advance with a
-  skipped message row**, reason `sms_not_configured`. Runs never stall and
-  never fail on a channel that cannot exist yet. (Amendment to parent §6's
+  timeline event**, reason `sms_not_configured`. Runs never stall and
+  never fail on a channel that cannot exist yet. *Amended at plan time
+  (2026-08-21): an earlier draft said "skipped message row" — but
+  `recordSend`'s `(run_id, step_id)` claim is permanent, so a message row
+  written while unconfigured would block the real send the day Twilio
+  clears. The timeline event is the visible-not-silent record; no
+  `sequence_messages` row is written on the unconfigured path.* (Amendment to parent §6's
   "unsupported kind" grouping: sms leaves that group the moment the business
   is configured.)
 - When configured: render once, insert the `sequence_messages` row
