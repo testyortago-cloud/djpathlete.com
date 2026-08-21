@@ -88,7 +88,7 @@ losing the lead is not; a spine failure must never 500 a working form.
 | `/api/inquiry` | `inquiry` (or `step_up` — see amendment) | email, phone, name + gclid/gbraid/wbraid/fbclid | phone present → checkbox (§5); keep its existing users-row behavior untouched. *Amended at execution (2026-08-22): StepUpInquiryForm posts `form_context: "step_up"` and records source `step_up` — the union member existed unemitted, and folding Step Up into generic `inquiry` would have made its leads permanently untargetable by future sequences.* |
 | event signup | `event_signup` | parent email, phone | audited: opens-with-wait class |
 | shop checkout (Stripe webhook, completed) | `purchase` | email, name | a paying customer is a contact; NO sequence rides this source in this stage |
-| `/api/questionnaire` | `questionnaire` | per plan-time verification | wired only if it is a genuine lead-capture surface; if it is auth-gated like assessments, excluded with the same reasoning, recorded |
+| `/api/questionnaire` | ~~`questionnaire`~~ EXCLUDED | — | *Ruled at execution (2026-08-22): the route requires `auth()` on GET and POST — an existing-logged-in-user flow, same class as assessments. Not a lead-capture surface; not wired.* |
 
 Rules: identifiers normalise through `normaliseEmail`/`normalisePhone`;
 every write carries attribution when the route has it; `enrollIfTriggered`
