@@ -5,13 +5,14 @@ function getClient() {
   return createServiceRoleClient()
 }
 
-// AI-automation fields added in migrations 00080 & 00084 all have DB defaults or are nullable,
-// so they stay optional on insert while remaining required on read.
+// AI-automation fields added in migrations 00080 & 00084, plus scheduling fields added in
+// 00223, all have DB defaults or are nullable, so they stay optional on insert while
+// remaining required on read.
 type CreateBlogPostInput = Omit<
   BlogPost,
-  "id" | "created_at" | "updated_at" | "source_video_id" | "seo_metadata" | "tavily_research" | "fact_check_status" | "fact_check_details" | "last_refreshed_at" | "refresh_count"
+  "id" | "created_at" | "updated_at" | "source_video_id" | "seo_metadata" | "tavily_research" | "fact_check_status" | "fact_check_details" | "last_refreshed_at" | "refresh_count" | "scheduled_at" | "schedule_failed_reason"
 > &
-  Partial<Pick<BlogPost, "source_video_id" | "seo_metadata" | "tavily_research" | "fact_check_status" | "fact_check_details" | "last_refreshed_at" | "refresh_count">>
+  Partial<Pick<BlogPost, "source_video_id" | "seo_metadata" | "tavily_research" | "fact_check_status" | "fact_check_details" | "last_refreshed_at" | "refresh_count" | "scheduled_at" | "schedule_failed_reason">>
 
 export async function getBlogPosts(status?: BlogPostStatus): Promise<BlogPost[]> {
   const supabase = getClient()
@@ -183,6 +184,19 @@ export async function deleteBlogPost(id: string): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase.from("blog_posts").delete().eq("id", id)
   if (error) throw error
+}
+
+/** Rows the scheduled-content checker considers. Ordered oldest-first so a
+ *  backlog fires in the order it was queued. */
+export async function listScheduledBlogPosts(): Promise<BlogPost[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("blog_posts")
+    .select("*")
+    .eq("status", "scheduled")
+    .order("scheduled_at", { ascending: true })
+  if (error) throw error
+  return data as BlogPost[]
 }
 
 export async function isSlugTaken(slug: string, excludeId?: string): Promise<boolean> {

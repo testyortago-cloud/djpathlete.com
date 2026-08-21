@@ -12,6 +12,8 @@ const basePipeline: DailyBriefPayload["pipeline"] = {
   scheduledToday: 1,
   videosAwaitingTranscription: 4,
   blogsInDraft: 0,
+  blogsScheduled: 0,
+  contentMissedSlot: 0,
 }
 
 function makePayload(overrides: Partial<DailyBriefPayload>): DailyBriefPayload {
@@ -57,6 +59,15 @@ describe("<DailyPulse />", () => {
     expect(html).toContain(">4<") // videosAwaitingTranscription count
   })
 
+  it("renders blog scheduled and missed-slot counters", () => {
+    const html = render(makePayload({
+      pipeline: { ...basePipeline, blogsScheduled: 2, contentMissedSlot: 1 },
+    }))
+    expect(html).toContain("Blog scheduled")
+    expect(html).toContain("Missed their slot")
+    expect(html).toContain("1 missed their scheduled slot")
+  })
+
   it("uses 'Daily Brief' kicker on weekdays", () => {
     const html = render(makePayload({}))
     expect(html).toContain("Daily Brief")
@@ -93,6 +104,8 @@ describe("<DailyPulse />", () => {
         scheduledToday: 0,
         videosAwaitingTranscription: 0,
         blogsInDraft: 0,
+        blogsScheduled: 0,
+        contentMissedSlot: 0,
       },
     }))
     expect(html).toContain("Quiet morning")

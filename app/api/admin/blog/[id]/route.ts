@@ -56,7 +56,10 @@ export const PATCH = withAudit(
         }
       }
 
-      const post = await updateBlogPost(id, parsed.data)
+      // Clear any stale "Missed" reason on save — otherwise the badge from a
+      // schedule that failed weeks ago keeps showing on the list even after
+      // the coach fixed the post and saved it again.
+      const post = await updateBlogPost(id, { ...parsed.data, schedule_failed_reason: null })
 
       // If the post is published, ping IndexNow so search engines re-crawl the
       // updated content. Fire-and-forget — never block the save on this.

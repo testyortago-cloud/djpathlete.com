@@ -42,6 +42,7 @@ const basePulse = {
     pipeline: {
       awaitingReview: 2, readyToPublish: 1, scheduledToday: 0,
       videosAwaitingTranscription: 3, blogsInDraft: 1,
+      blogsScheduled: 0, contentMissedSlot: 0,
     },
     revenueFunnel: null,
     anomalies: null,

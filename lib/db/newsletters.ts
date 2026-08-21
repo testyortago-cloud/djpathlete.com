@@ -20,7 +20,11 @@ export async function getNewsletterById(id: string): Promise<Newsletter> {
 }
 
 export async function createNewsletter(
-  newsletter: Omit<Newsletter, "id" | "created_at" | "updated_at" | "sent_at" | "sent_count" | "failed_count">,
+  newsletter: Omit<
+    Newsletter,
+    | "id" | "created_at" | "updated_at" | "sent_at" | "sent_count" | "failed_count"
+    | "scheduled_at" | "schedule_failed_reason"
+  >,
 ): Promise<Newsletter> {
   const supabase = getClient()
   const { data, error } = await supabase.from("newsletters").insert(newsletter).select().single()
@@ -42,6 +46,18 @@ export async function deleteNewsletter(id: string): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase.from("newsletters").delete().eq("id", id)
   if (error) throw error
+}
+
+/** Rows the scheduled-content checker considers. Ordered oldest-first. */
+export async function listScheduledNewsletters(): Promise<Newsletter[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("newsletters")
+    .select("*")
+    .eq("status", "scheduled")
+    .order("scheduled_at", { ascending: true })
+  if (error) throw error
+  return data as Newsletter[]
 }
 
 export async function createDraftFromBlog(params: {

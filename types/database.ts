@@ -32,8 +32,8 @@ export type WeekPaymentStatus = "not_required" | "pending" | "paid"
 export type BookingStatus = "scheduled" | "completed" | "cancelled" | "no_show"
 export type PaymentStatus = "pending" | "succeeded" | "failed" | "refunded"
 export type NotificationType = "info" | "success" | "warning" | "error"
-export type BlogPostStatus = "draft" | "published"
-export type NewsletterStatus = "draft" | "sent"
+export type BlogPostStatus = "draft" | "scheduled" | "published"
+export type NewsletterStatus = "draft" | "scheduled" | "sent"
 export type BlogCategory = "Performance" | "Recovery" | "Coaching" | "Youth Development"
 export type Gender = "male" | "female" | "other" | "prefer_not_to_say"
 export type ExperienceLevel = "beginner" | "intermediate" | "advanced" | "elite"
@@ -1213,6 +1213,8 @@ export interface BlogPost {
   meta_description: string | null
   author_id: string
   published_at: string | null
+  scheduled_at: string | null
+  schedule_failed_reason: string | null
   created_at: string
   updated_at: string
   source_video_id: string | null
@@ -1286,6 +1288,8 @@ export interface Newsletter {
   content: string
   status: NewsletterStatus
   sent_at: string | null
+  scheduled_at: string | null
+  schedule_failed_reason: string | null
   sent_count: number
   failed_count: number
   source_blog_post_id: string | null
@@ -1646,7 +1650,11 @@ export interface Database {
       }
       newsletters: {
         Row: Newsletter
-        Insert: Omit<Newsletter, "id" | "created_at" | "updated_at" | "sent_at" | "sent_count" | "failed_count">
+        Insert: Omit<
+          Newsletter,
+          | "id" | "created_at" | "updated_at" | "sent_at" | "sent_count" | "failed_count"
+          | "scheduled_at" | "schedule_failed_reason"
+        >
         Update: Partial<Omit<Newsletter, "id" | "created_at">>
       }
     }

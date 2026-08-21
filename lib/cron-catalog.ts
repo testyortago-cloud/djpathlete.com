@@ -19,6 +19,7 @@ export type CronJobName =
   | "sequence-tick"
   | "contact-timeline-retention"
   | "pipeline-reconcile"
+  | "content-schedule"
 
 export interface CronJob {
   name: CronJobName
@@ -226,5 +227,18 @@ export const CRON_CATALOG: readonly CronJob[] = [
     phase: "lead-engine-1c",
     enabledKey: "cron_pipeline_reconcile_enabled",
     defaultEnabled: false,
+  },
+  {
+    name: "content-schedule",
+    label: "Scheduled posts and newsletters",
+    description:
+      "Every five minutes, checks whether any blog post or newsletter you scheduled has reached its time — and publishes or sends it for you. If one is more than a day overdue (for example the site was down), it is put back to draft and flagged instead of going out late.",
+    schedule: "*/5 * * * *",
+    timezone: "UTC",
+    humanSchedule: "Every 5 minutes",
+    firebaseFunction: "contentScheduleCron",
+    phase: "content",
+    enabledKey: "cron_content_schedule_enabled",
+    defaultEnabled: true,
   },
 ] as const

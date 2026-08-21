@@ -1,6 +1,7 @@
 "use client"
 import {
   DataTable,
+  DataTableBadge,
   DataTableCard,
   DataTableCell,
   DataTableHead,
@@ -11,16 +12,17 @@ import {
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Plus, Search, Pencil, Trash2, Send, Loader2 } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, Send, Loader2, CalendarClock, X } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { BlogPost } from "@/types/database"
+import { SchedulePicker } from "@/components/admin/shared/SchedulePicker"
 
 interface BlogPostListProps {
   posts: BlogPost[]
 }
 
-const statusTabs = ["All", "Draft", "Published"] as const
+const statusTabs = ["All", "Draft", "Scheduled", "Published"] as const
 type StatusTab = (typeof statusTabs)[number]
 
 export function BlogPostList({ posts }: BlogPostListProps) {
@@ -31,9 +33,13 @@ export function BlogPostList({ posts }: BlogPostListProps) {
   const [confirmId, setConfirmId] = useState<string | null>(null)
   const [publishingId, setPublishingId] = useState<string | null>(null)
   const [confirmPublishId, setConfirmPublishId] = useState<string | null>(null)
+  const [schedulingId, setSchedulingId] = useState<string | null>(null)
+  const [scheduleBusy, setScheduleBusy] = useState(false)
+  const [unschedulingId, setUnschedulingId] = useState<string | null>(null)
 
   const filtered = posts.filter((p) => {
     if (tab === "Draft" && p.status !== "draft") return false
+    if (tab === "Scheduled" && p.status !== "scheduled") return false
     if (tab === "Published" && p.status !== "published") return false
     if (search) {
       const q = search.toLowerCase()
@@ -74,6 +80,43 @@ export function BlogPostList({ posts }: BlogPostListProps) {
     }
   }
 
+  async function handleSchedule(id: string, iso: string) {
+    setScheduleBusy(true)
+    try {
+      const res = await fetch(`/api/admin/blog/${id}/schedule`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scheduled_at: iso }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast.error(body.error ?? "Could not schedule this post")
+        return
+      }
+      toast.success(`Scheduled for ${new Date(iso).toLocaleString()}`)
+      setSchedulingId(null)
+      router.refresh()
+    } finally {
+      setScheduleBusy(false)
+    }
+  }
+
+  async function handleUnschedule(id: string) {
+    setUnschedulingId(id)
+    try {
+      const res = await fetch(`/api/admin/blog/${id}/unschedule`, { method: "POST" })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast.error(body.error ?? "Could not cancel this schedule")
+        return
+      }
+      toast.success("Schedule cancelled")
+      router.refresh()
+    } finally {
+      setUnschedulingId(null)
+    }
+  }
+
   function formatDate(dateString: string | null) {
     if (!dateString) return "—"
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -82,6 +125,19 @@ export function BlogPostList({ posts }: BlogPostListProps) {
       year: "numeric",
     })
   }
+
+  function formatDateTime(dateString: string | null) {
+    if (!dateString) return "—"
+    return new Date(dateString).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })
+  }
+
+  const schedulingPost = posts.find((p) => p.id === schedulingId) ?? null
 
   return (
     <div>
@@ -145,46 +201,108 @@ export function BlogPostList({ posts }: BlogPostListProps) {
               <DataTableHead align="right">Actions</DataTableHead>
             </DataTableHeader>
             <tbody>
-              {filtered.map((post) => (
-                <DataTableRow key={post.id}>
-                  <DataTableCell>
-                    <div>
-                      <p className="font-medium text-primary line-clamp-1">{post.title}</p>
-                      <p className="text-xs text-muted-foreground line-clamp-1 sm:hidden">
-                        {post.category} · {post.status}
-                      </p>
-                    </div>
-                  </DataTableCell>
-                  <DataTableCell className="hidden sm:table-cell">
-                    <span className="text-xs text-muted-foreground">{post.category}</span>
-                  </DataTableCell>
-                  <DataTableCell className="hidden md:table-cell">
-                    <span
-                      className={cn(
-                        "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
-                        post.status === "published" ? "bg-success/10 text-success" : "bg-warning/10 text-warning",
-                      )}
-                    >
-                      {post.status === "published" ? "Published" : "Draft"}
-                    </span>
-                  </DataTableCell>
-                  <DataTableCell muted className="text-xs hidden lg:table-cell">
-                    {formatDate(post.published_at ?? post.created_at)}
-                  </DataTableCell>
-                  <DataTableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      {post.status === "draft" &&
-                        (confirmPublishId === post.id ? (
+              {filtered.map((post) => {
+                const missed = post.status === "draft" && Boolean(post.schedule_failed_reason)
+                return (
+                  <DataTableRow key={post.id}>
+                    <DataTableCell>
+                      <div>
+                        <p className="font-medium text-primary line-clamp-1">{post.title}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-1 sm:hidden">
+                          {post.category} · {post.status}
+                        </p>
+                        {missed && (
+                          <p className="text-xs text-destructive line-clamp-1">{post.schedule_failed_reason}</p>
+                        )}
+                      </div>
+                    </DataTableCell>
+                    <DataTableCell className="hidden sm:table-cell">
+                      <span className="text-xs text-muted-foreground">{post.category}</span>
+                    </DataTableCell>
+                    <DataTableCell className="hidden md:table-cell">
+                      <div className="flex items-center gap-1.5">
+                        <DataTableBadge
+                          tone={post.status === "published" ? "success" : post.status === "scheduled" ? "info" : "warning"}
+                        >
+                          {post.status === "published" ? "Published" : post.status === "scheduled" ? "Scheduled" : "Draft"}
+                        </DataTableBadge>
+                        {missed && <DataTableBadge tone="danger">Missed</DataTableBadge>}
+                      </div>
+                    </DataTableCell>
+                    <DataTableCell muted className="text-xs hidden lg:table-cell">
+                      {post.status === "scheduled"
+                        ? formatDateTime(post.scheduled_at)
+                        : formatDate(post.published_at ?? post.created_at)}
+                    </DataTableCell>
+                    <DataTableCell>
+                      <div className="flex items-center justify-end gap-1">
+                        {post.status === "draft" &&
+                          (confirmPublishId === post.id ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handlePublish(post.id)}
+                                disabled={publishingId === post.id}
+                                className="px-2 py-1 rounded-md text-xs font-medium bg-success text-white hover:bg-success/90 transition-colors disabled:opacity-50"
+                              >
+                                {publishingId === post.id ? <Loader2 className="size-3 animate-spin" /> : "Publish"}
+                              </button>
+                              <button
+                                onClick={() => setConfirmPublishId(null)}
+                                className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmPublishId(post.id)}
+                              className="p-1.5 rounded-md text-muted-foreground hover:text-success hover:bg-success/10 transition-colors"
+                              title="Publish"
+                            >
+                              <Send className="size-4" />
+                            </button>
+                          ))}
+                        {(post.status === "draft" || post.status === "scheduled") && (
+                          <button
+                            onClick={() => setSchedulingId(post.id)}
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                            title={post.status === "scheduled" ? "Move to a different time" : "Schedule"}
+                          >
+                            <CalendarClock className="size-4" />
+                          </button>
+                        )}
+                        {post.status === "scheduled" && (
+                          <button
+                            onClick={() => handleUnschedule(post.id)}
+                            disabled={unschedulingId === post.id}
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                            title="Cancel schedule"
+                          >
+                            {unschedulingId === post.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <X className="size-4" />
+                            )}
+                          </button>
+                        )}
+                        <Link
+                          href={`/admin/blog/${post.id}/edit`}
+                          className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                          title="Edit"
+                        >
+                          <Pencil className="size-4" />
+                        </Link>
+                        {confirmId === post.id ? (
                           <div className="flex items-center gap-1">
                             <button
-                              onClick={() => handlePublish(post.id)}
-                              disabled={publishingId === post.id}
-                              className="px-2 py-1 rounded-md text-xs font-medium bg-success text-white hover:bg-success/90 transition-colors disabled:opacity-50"
+                              onClick={() => handleDelete(post.id)}
+                              disabled={deletingId === post.id}
+                              className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
                             >
-                              {publishingId === post.id ? <Loader2 className="size-3 animate-spin" /> : "Publish"}
+                              {deletingId === post.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
                             </button>
                             <button
-                              onClick={() => setConfirmPublishId(null)}
+                              onClick={() => setConfirmId(null)}
                               className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
                             >
                               Cancel
@@ -192,53 +310,33 @@ export function BlogPostList({ posts }: BlogPostListProps) {
                           </div>
                         ) : (
                           <button
-                            onClick={() => setConfirmPublishId(post.id)}
-                            className="p-1.5 rounded-md text-muted-foreground hover:text-success hover:bg-success/10 transition-colors"
-                            title="Publish"
+                            onClick={() => setConfirmId(post.id)}
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                            title="Delete"
                           >
-                            <Send className="size-4" />
+                            <Trash2 className="size-4" />
                           </button>
-                        ))}
-                      <Link
-                        href={`/admin/blog/${post.id}/edit`}
-                        className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                        title="Edit"
-                      >
-                        <Pencil className="size-4" />
-                      </Link>
-                      {confirmId === post.id ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleDelete(post.id)}
-                            disabled={deletingId === post.id}
-                            className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
-                          >
-                            {deletingId === post.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
-                          </button>
-                          <button
-                            onClick={() => setConfirmId(null)}
-                            className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmId(post.id)}
-                          className="p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
-                      )}
-                    </div>
-                  </DataTableCell>
-                </DataTableRow>
-              ))}
+                        )}
+                      </div>
+                    </DataTableCell>
+                  </DataTableRow>
+                )
+              })}
             </tbody>
           </DataTable>
         </DataTableCard>
       )}
+
+      <SchedulePicker
+        open={schedulingId !== null}
+        title="Schedule post"
+        initial={schedulingPost?.scheduled_at}
+        busy={scheduleBusy}
+        onConfirm={(iso) => {
+          if (schedulingId) return handleSchedule(schedulingId, iso)
+        }}
+        onCancel={() => setSchedulingId(null)}
+      />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 "use client"
 import {
   DataTable,
+  DataTableBadge,
   DataTableCard,
   DataTableCell,
   DataTableHead,
@@ -11,16 +12,17 @@ import {
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Plus, Search, Pencil, Trash2, Loader2, Eye } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, Loader2, Eye, CalendarClock, X } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { Newsletter } from "@/types/database"
+import { SchedulePicker } from "@/components/admin/shared/SchedulePicker"
 
 interface NewsletterListProps {
   newsletters: Newsletter[]
 }
 
-const statusTabs = ["All", "Draft", "Sent"] as const
+const statusTabs = ["All", "Draft", "Scheduled", "Sent"] as const
 type StatusTab = (typeof statusTabs)[number]
 
 export function NewsletterList({ newsletters }: NewsletterListProps) {
@@ -29,9 +31,13 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
   const [search, setSearch] = useState("")
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [schedulingId, setSchedulingId] = useState<string | null>(null)
+  const [scheduleBusy, setScheduleBusy] = useState(false)
+  const [unschedulingId, setUnschedulingId] = useState<string | null>(null)
 
   const filtered = newsletters.filter((n) => {
     if (tab === "Draft" && n.status !== "draft") return false
+    if (tab === "Scheduled" && n.status !== "scheduled") return false
     if (tab === "Sent" && n.status !== "sent") return false
     if (search) {
       const q = search.toLowerCase()
@@ -57,6 +63,43 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
     }
   }
 
+  async function handleSchedule(id: string, iso: string) {
+    setScheduleBusy(true)
+    try {
+      const res = await fetch(`/api/admin/newsletter/${id}/schedule`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scheduled_at: iso }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast.error(body.error ?? "Could not schedule this newsletter")
+        return
+      }
+      toast.success(`Scheduled for ${new Date(iso).toLocaleString()}`)
+      setSchedulingId(null)
+      router.refresh()
+    } finally {
+      setScheduleBusy(false)
+    }
+  }
+
+  async function handleUnschedule(id: string) {
+    setUnschedulingId(id)
+    try {
+      const res = await fetch(`/api/admin/newsletter/${id}/unschedule`, { method: "POST" })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        toast.error(body.error ?? "Could not cancel this schedule")
+        return
+      }
+      toast.success("Schedule cancelled")
+      router.refresh()
+    } finally {
+      setUnschedulingId(null)
+    }
+  }
+
   function formatDate(dateString: string | null) {
     if (!dateString) return "—"
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -65,6 +108,19 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
       year: "numeric",
     })
   }
+
+  function formatDateTime(dateString: string | null) {
+    if (!dateString) return "—"
+    return new Date(dateString).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    })
+  }
+
+  const schedulingNewsletter = newsletters.find((n) => n.id === schedulingId) ?? null
 
   return (
     <div>
@@ -128,76 +184,116 @@ export function NewsletterList({ newsletters }: NewsletterListProps) {
               <DataTableHead align="right">Actions</DataTableHead>
             </DataTableHeader>
             <tbody>
-              {filtered.map((nl) => (
-                <DataTableRow key={nl.id}>
-                  <DataTableCell>
-                    <div>
-                      <p className="font-medium text-primary line-clamp-1">{nl.subject}</p>
-                      {nl.preview_text && (
-                        <p className="text-xs text-muted-foreground line-clamp-1">{nl.preview_text}</p>
-                      )}
-                    </div>
-                  </DataTableCell>
-                  <DataTableCell className="hidden md:table-cell">
-                    <span
-                      className={cn(
-                        "inline-block px-2 py-0.5 rounded-full text-xs font-medium",
-                        nl.status === "sent" ? "bg-success/10 text-success" : "bg-warning/10 text-warning",
-                      )}
-                    >
-                      {nl.status === "sent" ? "Sent" : "Draft"}
-                    </span>
-                  </DataTableCell>
-                  <DataTableCell muted className="text-xs hidden lg:table-cell">
-                    {nl.status === "sent"
-                      ? `${nl.sent_count} delivered${nl.failed_count ? `, ${nl.failed_count} failed` : ""}`
-                      : "—"}
-                  </DataTableCell>
-                  <DataTableCell muted className="text-xs hidden lg:table-cell">
-                    {formatDate(nl.sent_at ?? nl.created_at)}
-                  </DataTableCell>
-                  <DataTableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      <Link
-                        href={`/admin/newsletter/${nl.id}/edit`}
-                        className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                        title={nl.status === "sent" ? "View" : "Edit"}
-                      >
-                        {nl.status === "sent" ? <Eye className="size-4" /> : <Pencil className="size-4" />}
-                      </Link>
-                      {confirmId === nl.id ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleDelete(nl.id)}
-                            disabled={deletingId === nl.id}
-                            className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
-                          >
-                            {deletingId === nl.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
-                          </button>
-                          <button
-                            onClick={() => setConfirmId(null)}
-                            className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmId(nl.id)}
-                          className="p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                          title="Delete"
+              {filtered.map((nl) => {
+                const missed = nl.status === "draft" && Boolean(nl.schedule_failed_reason)
+                return (
+                  <DataTableRow key={nl.id}>
+                    <DataTableCell>
+                      <div>
+                        <p className="font-medium text-primary line-clamp-1">{nl.subject}</p>
+                        {nl.preview_text && (
+                          <p className="text-xs text-muted-foreground line-clamp-1">{nl.preview_text}</p>
+                        )}
+                        {missed && (
+                          <p className="text-xs text-destructive line-clamp-1">{nl.schedule_failed_reason}</p>
+                        )}
+                      </div>
+                    </DataTableCell>
+                    <DataTableCell className="hidden md:table-cell">
+                      <div className="flex items-center gap-1.5">
+                        <DataTableBadge
+                          tone={nl.status === "sent" ? "success" : nl.status === "scheduled" ? "info" : "warning"}
                         >
-                          <Trash2 className="size-4" />
-                        </button>
-                      )}
-                    </div>
-                  </DataTableCell>
-                </DataTableRow>
-              ))}
+                          {nl.status === "sent" ? "Sent" : nl.status === "scheduled" ? "Scheduled" : "Draft"}
+                        </DataTableBadge>
+                        {missed && <DataTableBadge tone="danger">Missed</DataTableBadge>}
+                      </div>
+                    </DataTableCell>
+                    <DataTableCell muted className="text-xs hidden lg:table-cell">
+                      {nl.status === "sent"
+                        ? `${nl.sent_count} delivered${nl.failed_count ? `, ${nl.failed_count} failed` : ""}`
+                        : "—"}
+                    </DataTableCell>
+                    <DataTableCell muted className="text-xs hidden lg:table-cell">
+                      {nl.status === "scheduled" ? formatDateTime(nl.scheduled_at) : formatDate(nl.sent_at ?? nl.created_at)}
+                    </DataTableCell>
+                    <DataTableCell>
+                      <div className="flex items-center justify-end gap-1">
+                        {(nl.status === "draft" || nl.status === "scheduled") && (
+                          <button
+                            onClick={() => setSchedulingId(nl.id)}
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                            title={nl.status === "scheduled" ? "Move to a different time" : "Schedule"}
+                          >
+                            <CalendarClock className="size-4" />
+                          </button>
+                        )}
+                        {nl.status === "scheduled" && (
+                          <button
+                            onClick={() => handleUnschedule(nl.id)}
+                            disabled={unschedulingId === nl.id}
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                            title="Cancel schedule"
+                          >
+                            {unschedulingId === nl.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <X className="size-4" />
+                            )}
+                          </button>
+                        )}
+                        <Link
+                          href={`/admin/newsletter/${nl.id}/edit`}
+                          className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                          title={nl.status === "sent" ? "View" : "Edit"}
+                        >
+                          {nl.status === "sent" ? <Eye className="size-4" /> : <Pencil className="size-4" />}
+                        </Link>
+                        {confirmId === nl.id ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleDelete(nl.id)}
+                              disabled={deletingId === nl.id}
+                              className="px-2 py-1 rounded-md text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
+                            >
+                              {deletingId === nl.id ? <Loader2 className="size-3 animate-spin" /> : "Delete"}
+                            </button>
+                            <button
+                              onClick={() => setConfirmId(null)}
+                              className="px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:bg-surface transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmId(nl.id)}
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        )}
+                      </div>
+                    </DataTableCell>
+                  </DataTableRow>
+                )
+              })}
             </tbody>
           </DataTable>
         </DataTableCard>
       )}
+
+      <SchedulePicker
+        open={schedulingId !== null}
+        title="Schedule newsletter"
+        initial={schedulingNewsletter?.scheduled_at}
+        busy={scheduleBusy}
+        onConfirm={(iso) => {
+          if (schedulingId) return handleSchedule(schedulingId, iso)
+        }}
+        onCancel={() => setSchedulingId(null)}
+      />
     </div>
   )
 }

@@ -39,6 +39,8 @@ function mkNewsletter(overrides: Partial<Newsletter>): Newsletter {
     content: "",
     status: overrides.status ?? "draft",
     sent_at: overrides.sent_at ?? null,
+    scheduled_at: overrides.scheduled_at ?? null,
+    schedule_failed_reason: overrides.schedule_failed_reason ?? null,
     sent_count: overrides.sent_count ?? 0,
     failed_count: overrides.failed_count ?? 0,
     source_blog_post_id: overrides.source_blog_post_id ?? null,

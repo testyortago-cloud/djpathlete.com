@@ -30,6 +30,8 @@ function summaryLine(p: DailyBriefPayload): string {
   if (p.inboxSla && p.inboxSla.awaitingReplyOver24h > 0)
     bits.push(`${p.inboxSla.awaitingReplyOver24h} inbox >24h`)
   if (p.pipeline.awaitingReview > 0) bits.push(`${p.pipeline.awaitingReview} posts awaiting review`)
+  if (p.pipeline.contentMissedSlot > 0)
+    bits.push(`${p.pipeline.contentMissedSlot} missed their scheduled slot`)
   if (p.revenueFunnel && p.revenueFunnel.adSpendCents > 0)
     bits.push(`$${(p.revenueFunnel.adSpendCents / 100).toFixed(0)} ad spend yesterday`)
   if (p.anomalies && p.anomalies.flags.length > 0)
@@ -227,6 +229,10 @@ export function DailyPulse({ payload }: Props) {
                           </tr>
                           <tr style={{ borderTop: `1px solid ${SECTION_BRAND.border}` }}>
                             <PipelineCell label="Blog drafts" value={payload.pipeline.blogsInDraft} />
+                            <PipelineCell label="Blog scheduled" value={payload.pipeline.blogsScheduled} />
+                          </tr>
+                          <tr style={{ borderTop: `1px solid ${SECTION_BRAND.border}` }}>
+                            <PipelineCell label="Missed their slot" value={payload.pipeline.contentMissedSlot} />
                             <td width="50%" />
                           </tr>
                         </tbody>

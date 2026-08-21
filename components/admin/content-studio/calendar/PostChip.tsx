@@ -6,7 +6,7 @@ import { useState } from "react"
 import { useDraggable } from "@dnd-kit/core"
 import { FileText, Mail, Lightbulb, Instagram, AlertCircle, Zap, ExternalLink, Film } from "lucide-react"
 import { toast } from "sonner"
-import type { CalendarChip } from "@/lib/content-studio/calendar-chips"
+import { isLocked, type CalendarChip } from "@/lib/content-studio/calendar-chips"
 import type { SocialPlatform, CalendarEntryType } from "@/types/database"
 import { PLATFORM_ICONS } from "@/lib/social/platform-ui"
 import { cn } from "@/lib/utils"
@@ -14,6 +14,8 @@ import { PostTypeBadge } from "@/components/admin/content-studio/shared/PostType
 
 function destinationFor(chip: CalendarChip): string {
   if (chip.kind === "post") return `/admin/content/post/${chip.id}`
+  if (chip.kind === "blog") return `/admin/blog/${chip.id}/edit`
+  if (chip.kind === "newsletter") return `/admin/newsletter/${chip.id}/edit`
   const refId = chip.raw.reference_id
   switch (chip.platformOrType) {
     case "blog_post":
@@ -25,6 +27,11 @@ function destinationFor(chip: CalendarChip): string {
     default:
       return "/admin/content"
   }
+}
+
+function kindLabel(chip: CalendarChip): string {
+  if (chip.kind === "post" || chip.kind === "entry") return chip.platformOrType.replace("_", " ")
+  return chip.kind === "blog" ? "blog post" : "newsletter"
 }
 
 const ENTRY_ICONS: Record<CalendarEntryType, typeof FileText> = {
@@ -52,15 +59,22 @@ interface PostChipProps {
 export function PostChip({ chip }: PostChipProps) {
   const router = useRouter()
   const [hovered, setHovered] = useState(false)
-  const isLocked = chip.status === "published"
+  const locked = isLocked(chip)
   const isFailed = chip.kind === "post" && chip.status === "failed"
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `chip-${chip.kind}-${chip.id}`,
     data: { chip },
-    disabled: isLocked,
+    disabled: locked,
   })
 
-  const Icon = chip.kind === "post" ? PLATFORM_ICONS[chip.platformOrType] : ENTRY_ICONS[chip.platformOrType]
+  const Icon =
+    chip.kind === "post"
+      ? PLATFORM_ICONS[chip.platformOrType]
+      : chip.kind === "entry"
+        ? ENTRY_ICONS[chip.platformOrType]
+        : chip.kind === "blog"
+          ? FileText
+          : Mail
 
   const colorClasses =
     chip.kind === "post" ? PLATFORM_COLORS[chip.platformOrType] : "bg-accent/10 text-accent border-accent/30"
@@ -90,18 +104,17 @@ export function PostChip({ chip }: PostChipProps) {
     }
   }
 
-  const ariaLabel =
-    chip.status === "published"
-      ? `Published ${chip.label}`
-      : chip.status === "failed"
-        ? `Failed ${chip.label}`
-        : `Scheduled ${chip.label}`
+  const ariaLabel = locked
+    ? `${chip.kind === "newsletter" ? "Sent" : "Published"} ${chip.label}`
+    : chip.status === "failed"
+      ? `Failed ${chip.label}`
+      : `Scheduled ${chip.label}`
 
   return (
     <div
       ref={setNodeRef}
-      {...(isLocked ? {} : attributes)}
-      {...(isLocked ? {} : listeners)}
+      {...(locked ? {} : attributes)}
+      {...(locked ? {} : listeners)}
       role="button"
       tabIndex={0}
       aria-label={ariaLabel}
@@ -117,9 +130,9 @@ export function PostChip({ chip }: PostChipProps) {
       className={cn(
         "relative rounded border px-1.5 py-1 text-[11px] truncate inline-flex items-center gap-1 cursor-pointer",
         colorClasses,
-        !isLocked && "hover:brightness-95",
+        !locked && "hover:brightness-95",
         isDragging && "opacity-40",
-        isLocked && "opacity-70",
+        locked && "opacity-70",
       )}
     >
       <Icon className="size-3 shrink-0" />
@@ -134,12 +147,18 @@ export function PostChip({ chip }: PostChipProps) {
         >
           <p className="text-xs font-semibold text-primary flex items-center gap-2">
             <Icon className="size-3.5" />
-            {chip.platformOrType.replace("_", " ")}
+            {kindLabel(chip)}
             {chip.kind === "post" && <PostTypeBadge postType={chip.raw.post_type} />}
             <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">{chip.status}</span>
           </p>
           <p className="mt-2 text-sm text-primary line-clamp-4 break-words">
-            {chip.kind === "post" ? chip.raw.content : chip.raw.title}
+            {chip.kind === "post"
+              ? chip.raw.content
+              : chip.kind === "blog"
+                ? chip.raw.excerpt
+                : chip.kind === "newsletter"
+                  ? chip.raw.content
+                  : chip.raw.title}
           </p>
           {chip.kind === "post" && chip.sourceVideoFilename && (
             <p className="mt-2 text-[11px] text-muted-foreground inline-flex items-center gap-1">

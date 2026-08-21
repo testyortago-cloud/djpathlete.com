@@ -29,6 +29,8 @@ export interface DailyContentPipelinePayload {
   scheduledToday: number
   videosAwaitingTranscription: number
   blogsInDraft: number
+  blogsScheduled: number
+  contentMissedSlot: number
 }
 
 export interface DailyRevenueFunnelPayload {

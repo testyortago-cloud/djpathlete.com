@@ -5,6 +5,10 @@ import type {
   ContentCalendarEntry,
   CalendarEntryType,
   CalendarStatus,
+  BlogPost,
+  BlogPostStatus,
+  Newsletter,
+  NewsletterStatus,
 } from "@/types/database"
 
 export interface SocialPostChip {
@@ -31,7 +35,25 @@ export interface CalendarEntryChip {
   raw: ContentCalendarEntry
 }
 
-export type CalendarChip = SocialPostChip | CalendarEntryChip
+export interface BlogPostChip {
+  kind: "blog"
+  id: string
+  label: string
+  scheduledAt: Date | null
+  status: BlogPostStatus
+  raw: BlogPost
+}
+
+export interface NewsletterChip {
+  kind: "newsletter"
+  id: string
+  label: string
+  scheduledAt: Date | null
+  status: NewsletterStatus
+  raw: Newsletter
+}
+
+export type CalendarChip = SocialPostChip | CalendarEntryChip | BlogPostChip | NewsletterChip
 
 export function postToChip(post: SocialPost, sourceVideoFilename: string | null = null): SocialPostChip {
   // For published posts, use published_at as the chip time; otherwise scheduled_at.
@@ -63,8 +85,36 @@ export function entryToChip(entry: ContentCalendarEntry): CalendarEntryChip {
   }
 }
 
+export function blogToChip(post: BlogPost): BlogPostChip {
+  // For published posts, use published_at as the chip time; otherwise scheduled_at.
+  const ref = post.status === "published" && post.published_at ? post.published_at : post.scheduled_at
+  return {
+    kind: "blog",
+    id: post.id,
+    label: post.title,
+    scheduledAt: ref ? new Date(ref) : null,
+    status: post.status,
+    raw: post,
+  }
+}
+
+export function newsletterToChip(nl: Newsletter): NewsletterChip {
+  // For sent newsletters, use sent_at as the chip time; otherwise scheduled_at.
+  const ref = nl.status === "sent" && nl.sent_at ? nl.sent_at : nl.scheduled_at
+  return {
+    kind: "newsletter",
+    id: nl.id,
+    label: nl.subject,
+    scheduledAt: ref ? new Date(ref) : null,
+    status: nl.status,
+    raw: nl,
+  }
+}
+
 export function isLocked(chip: CalendarChip): boolean {
   if (chip.kind === "post") return chip.status === "published"
+  if (chip.kind === "blog") return chip.status === "published"
+  if (chip.kind === "newsletter") return chip.status === "sent"
   return chip.status === "published"
 }
 
