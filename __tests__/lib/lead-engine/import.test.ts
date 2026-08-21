@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const state: {
   rows: any[]
@@ -257,20 +257,20 @@ describe("importGhlContact", () => {
   })
 
   describe("email consent — positive evidence path", () => {
-    // The real allowlist (EMAIL_CONSENT_TAG_ALLOWLIST) is empty — the
-    // finding this task reports is that nothing in tags.json documents
-    // consent. This block proves the WIRING for when it isn't empty,
-    // without changing the shipped default: it pushes a synthetic entry in
-    // and restores the array afterward.
-    afterEach(() => {
-      EMAIL_CONSENT_TAG_ALLOWLIST.length = 0
-    })
-
+    // The real allowlist (EMAIL_CONSENT_TAG_ALLOWLIST) is empty and
+    // readonly — the finding this task reports is that nothing in
+    // tags.json documents consent, and nothing in this file should ever be
+    // able to mutate the shipped default. This block proves the WIRING for
+    // when the allowlist isn't empty by passing a synthetic one through
+    // `ctx.emailConsentTagAllowlist`, which importGhlContact prefers over
+    // the module constant when supplied.
     it("records a consent row citing the matched tag, with wording_shown = the documented citation shape", async () => {
-      EMAIL_CONSENT_TAG_ALLOWLIST.push("verified-opt-in")
       const record = baseRecord({ email: "opted-in@example.com", tags: ["verified-opt-in"] })
 
-      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      const out = await importGhlContact(record, {
+        snapshotTimestamp: SNAPSHOT,
+        emailConsentTagAllowlist: ["verified-opt-in"],
+      })
 
       expect(out.emailConsentImported).toBe(true)
       expect(state.consents).toHaveLength(1)
@@ -287,13 +287,38 @@ describe("importGhlContact", () => {
     })
 
     it("does not record consent when the record has no email to attach it to", async () => {
-      EMAIL_CONSENT_TAG_ALLOWLIST.push("verified-opt-in")
       const record = baseRecord({ email: null, phone: "+16175550188", tags: ["verified-opt-in"] })
 
-      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      const out = await importGhlContact(record, {
+        snapshotTimestamp: SNAPSHOT,
+        emailConsentTagAllowlist: ["verified-opt-in"],
+      })
 
       expect(out.emailConsentImported).toBe(false)
       expect(state.consents).toHaveLength(0)
+    })
+
+    it("skips the consent write (defence in depth) when the email is already suppressed, even with matching evidence", async () => {
+      state.suppressions.push({
+        id: "sup-pre-existing",
+        business_id: BUSINESS_ID,
+        identifier: "already-suppressed@example.com",
+        reason: "unsubscribed",
+      })
+      const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+      const record = baseRecord({ email: "already-suppressed@example.com", tags: ["verified-opt-in"] })
+      const out = await importGhlContact(record, {
+        snapshotTimestamp: SNAPSHOT,
+        emailConsentTagAllowlist: ["verified-opt-in"],
+      })
+
+      expect(out.emailConsentImported).toBe(false)
+      expect(state.consents).toHaveLength(0)
+      expect(consoleWarnSpy).toHaveBeenCalledTimes(1)
+      expect(String(consoleWarnSpy.mock.calls[0][0])).toContain("already suppressed")
+
+      consoleWarnSpy.mockRestore()
     })
   })
 
@@ -339,8 +364,12 @@ describe("importGhlContact", () => {
   })
 
   describe("ghl_import provenance", () => {
-    it("writes a ghl_import row citing the ghl id and snapshot for every non-suppressed record", async () => {
-      const record = baseRecord({ id: "provenance-ghl-id", email: "provenance@example.com" })
+    it("writes a ghl_import row citing the ghl id, snapshot, and dateAdded for every non-suppressed record", async () => {
+      const record = baseRecord({
+        id: "provenance-ghl-id",
+        email: "provenance@example.com",
+        dateAdded: "2026-08-01T12:00:00.000Z",
+      })
 
       const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
 
@@ -348,7 +377,41 @@ describe("importGhlContact", () => {
       expect(importEvents).toHaveLength(1)
       expect(importEvents[0].contact_id).toBe(out.contactId)
       expect(importEvents[0].source).toBe("ghl_import")
-      expect(importEvents[0].metadata).toEqual({ ghl_id: "provenance-ghl-id", snapshot: SNAPSHOT })
+      expect(importEvents[0].metadata).toEqual({
+        ghl_id: "provenance-ghl-id",
+        snapshot: SNAPSHOT,
+        date_added: "2026-08-01T12:00:00.000Z",
+      })
+    })
+
+    it("scopes idempotency to THIS business — a ghl_import row logged under a different business_id does not suppress the write", async () => {
+      // A foreign business's history sharing this contact_id and ghl_id
+      // (unrealistic in this singleton-business app today, but the query
+      // must not rely on that — it filters business_id explicitly).
+      state.rows.push({
+        id: "scoped-contact",
+        business_id: BUSINESS_ID,
+        email: "scoped@example.com",
+        phone_e164: null,
+        created_at: "2020-01-01T00:00:00Z",
+      })
+      state.timelineEvents.push({
+        id: "foreign-business-evt",
+        business_id: "11111111-1111-1111-1111-111111111111",
+        contact_id: "scoped-contact",
+        kind: "ghl_import",
+        source: "ghl_import",
+        metadata: { ghl_id: "scoped-ghl-id", snapshot: SNAPSHOT, date_added: "2020-01-01T00:00:00.000Z" },
+      })
+
+      const record = baseRecord({ id: "scoped-ghl-id", email: "scoped@example.com" })
+      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+
+      expect(out.kind).toBe("enriched")
+      const ownBusinessImportRows = state.timelineEvents.filter(
+        (e) => e.kind === "ghl_import" && e.contact_id === "scoped-contact" && e.business_id === BUSINESS_ID,
+      )
+      expect(ownBusinessImportRows).toHaveLength(1)
     })
   })
 
@@ -382,6 +445,75 @@ describe("importGhlContact", () => {
       const importEvents = state.timelineEvents.filter((e) => e.kind === "ghl_import")
       expect(importEvents).toHaveLength(2)
       expect(importEvents.map((e) => e.metadata.ghl_id).sort()).toEqual(["ghl-id-a", "ghl-id-b"])
+    })
+
+    // The idempotency check used to run per-write-kind: only ghl_import was
+    // deduped, so identifier_conflict, sms_repermission_candidate, and (had
+    // the allowlist ever been non-empty) consent rows all duplicated on
+    // every re-run. The fix hoists ONE alreadyLoggedImport check above every
+    // write and early-returns — this test is the record-level guarantee
+    // that fix makes: not just "ghl_import doesn't duplicate" but "nothing
+    // does".
+    it("writes ZERO new rows of any kind on a second run of the same record", async () => {
+      const record = baseRecord({
+        id: "full-idempotent-ghl-id",
+        email: "full-idempotent@example.com",
+        phone: "+16175550166",
+      })
+
+      const first = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+
+      const rowsAfterFirst = state.rows.length
+      const timelineAfterFirst = state.timelineEvents.length
+      const consentsAfterFirst = state.consents.length
+      const suppressionsAfterFirst = state.suppressions.length
+      expect(timelineAfterFirst).toBeGreaterThan(0) // sanity: the first run actually wrote something
+
+      const second = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+
+      expect(second.kind).toBe("enriched")
+      expect(second.contactId).toBe(first.contactId)
+      expect(second.smsRepermissionCandidate).toBe(true)
+      expect(second.emailConsentImported).toBe(false)
+      expect(state.rows).toHaveLength(rowsAfterFirst)
+      expect(state.timelineEvents).toHaveLength(timelineAfterFirst)
+      expect(state.consents).toHaveLength(consentsAfterFirst)
+      expect(state.suppressions).toHaveLength(suppressionsAfterFirst)
+    })
+  })
+
+  describe("merged — threaded from upsertContactIdentity", () => {
+    it("reports merged: false on a plain create", async () => {
+      const out = await importGhlContact(baseRecord({ email: "plain-create@example.com" }), {
+        snapshotTimestamp: SNAPSHOT,
+      })
+
+      expect(out.merged).toBe(false)
+    })
+
+    it("reports merged: true when the import resolves email and phone to two different existing contacts", async () => {
+      state.rows.push(
+        {
+          id: "older-contact",
+          business_id: BUSINESS_ID,
+          email: "merge-target@example.com",
+          phone_e164: null,
+          created_at: "2020-01-01T00:00:00Z",
+        },
+        {
+          id: "newer-contact",
+          business_id: BUSINESS_ID,
+          email: null,
+          phone_e164: "+16175550177",
+          created_at: "2024-01-01T00:00:00Z",
+        },
+      )
+
+      const record = baseRecord({ email: "merge-target@example.com", phone: "+16175550177" })
+      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+
+      expect(out.merged).toBe(true)
+      expect(out.contactId).toBe("older-contact")
     })
   })
 
