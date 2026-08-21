@@ -20,7 +20,11 @@ export async function getNewsletterById(id: string): Promise<Newsletter> {
 }
 
 export async function createNewsletter(
-  newsletter: Omit<Newsletter, "id" | "created_at" | "updated_at" | "sent_at" | "sent_count" | "failed_count">,
+  newsletter: Omit<
+    Newsletter,
+    | "id" | "created_at" | "updated_at" | "sent_at" | "sent_count" | "failed_count"
+    | "scheduled_at" | "schedule_failed_reason"
+  >,
 ): Promise<Newsletter> {
   const supabase = getClient()
   const { data, error } = await supabase.from("newsletters").insert(newsletter).select().single()
