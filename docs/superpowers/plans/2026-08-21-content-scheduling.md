@@ -31,6 +31,7 @@
 | File | Responsibility |
 |---|---|
 | `supabase/migrations/00223_content_scheduling.sql` | Columns, CHECK constraints, partial indexes, flag row |
+| `lib/content-schedule/flag.ts` | Leaf module: the flag key + its default. Imports nothing. |
 | `lib/content-schedule/due.ts` | Pure: rows + `now` → `{ fire, missed, waiting }`. No I/O. |
 | `lib/content-schedule/run-due.ts` | Loads rows, partitions, dispatches, writes terminal state |
 | `lib/blog/publish-post.ts` | The publish side-effects, extracted from the route |
@@ -560,7 +561,8 @@ describe("publishBlogPost", () => {
   })
 
   it("clears any schedule bookkeeping as it publishes", async () => {
-    const [, updates] = (await publishBlogPost({ id: "p1", actorId: "admin-1" }), updateBlogPostMock.mock.calls[0])
+    await publishBlogPost({ id: "p1", actorId: "admin-1" })
+    const [, updates] = updateBlogPostMock.mock.calls[0]
     expect(updates.scheduled_at).toBeNull()
     expect(updates.schedule_failed_reason).toBeNull()
   })
@@ -929,7 +931,7 @@ git commit -m "refactor(newsletter): one send path, and the double-send guard ke
 ## Task 5: The runner
 
 **Files:**
-- Create: `lib/content-schedule/run-due.ts`
+- Create: `lib/content-schedule/flag.ts`, `lib/content-schedule/run-due.ts`
 - Modify: `lib/db/blog-posts.ts`, `lib/db/newsletters.ts` (add the two list functions)
 - Test: `__tests__/lib/content-schedule/run-due.test.ts`
 
@@ -947,6 +949,12 @@ export interface RunContentScheduleResult {
 }
 export async function runContentSchedule(options?: { now?: Date }): Promise<RunContentScheduleResult>
 ```
+- Also produces:
+```ts
+// lib/content-schedule/flag.ts — a LEAF module, no imports
+export const CONTENT_SCHEDULE_FLAG = "cron_content_schedule_enabled"
+export const CONTENT_SCHEDULE_DEFAULT = true
+```
 - Also produces, in the DAL:
 ```ts
 // lib/db/blog-posts.ts
@@ -955,7 +963,32 @@ export async function listScheduledBlogPosts(): Promise<BlogPost[]>
 export async function listScheduledNewsletters(): Promise<Newsletter[]>
 ```
 
-- [ ] **Step 1: Add the two DAL functions**
+- [ ] **Step 1: Create the flag module**
+
+Create `lib/content-schedule/flag.ts`. It must import **nothing** — it is read
+by the four schedule routes, by the runner, and by the catalogue test, and any
+import here would drag the runner's dependency graph (both DALs and
+`firebase-admin/firestore` at module scope) into every route request. The
+codebase already has this exact pattern in `lib/funnels/checkout/flag.ts`.
+
+```ts
+// lib/content-schedule/flag.ts
+// Leaf module on purpose — imported by routes, the runner, and the catalogue
+// test, so it must stay dependency-free. Mirrors lib/funnels/checkout/flag.ts.
+
+/** system_settings key gating the scheduled-content checker. */
+export const CONTENT_SCHEDULE_FLAG = "cron_content_schedule_enabled"
+
+/**
+ * Value when no settings row exists. TRUE, unlike most new cron flags: a
+ * scheduler whose checker is off is not a dormant feature, it is a UI that
+ * accepts a time and silently does nothing. The /schedule routes refuse while
+ * this is false, so "accepts schedules, never fires them" cannot occur.
+ */
+export const CONTENT_SCHEDULE_DEFAULT = true
+```
+
+- [ ] **Step 2: Add the two DAL functions**
 
 In `lib/db/blog-posts.ts`:
 
@@ -990,7 +1023,7 @@ export async function listScheduledNewsletters(): Promise<Newsletter[]> {
 }
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [ ] **Step 3: Write the failing test**
 
 Create `__tests__/lib/content-schedule/run-due.test.ts`:
 
@@ -1134,12 +1167,12 @@ describe("runContentSchedule", () => {
 })
 ```
 
-- [ ] **Step 3: Run it and confirm it fails**
+- [ ] **Step 4: Run it and confirm it fails**
 
 Run: `npx vitest run __tests__/lib/content-schedule/run-due.test.ts`
 Expected: FAIL — module not found.
 
-- [ ] **Step 4: Implement**
+- [ ] **Step 5: Implement**
 
 Create `lib/content-schedule/run-due.ts`:
 
@@ -1159,8 +1192,7 @@ import { sendNewsletterNow } from "@/lib/newsletter/send-newsletter"
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { recordAudit } from "@/lib/audit/record"
 import { partitionDue } from "@/lib/content-schedule/due"
-
-export const CONTENT_SCHEDULE_FLAG = "cron_content_schedule_enabled"
+import { CONTENT_SCHEDULE_FLAG, CONTENT_SCHEDULE_DEFAULT } from "@/lib/content-schedule/flag"
 
 export interface RunContentScheduleResult {
   skipped?: "paused" | "disabled"
@@ -1181,7 +1213,7 @@ export async function runContentSchedule(
   // Checked BEFORE reading a single row. A switched-off checker must not
   // consume the backlog by declaring it missed — the rows have to survive the
   // flag being flipped back on.
-  const gate = await isCronSkipped({ enabledKey: CONTENT_SCHEDULE_FLAG, defaultEnabled: true })
+  const gate = await isCronSkipped({ enabledKey: CONTENT_SCHEDULE_FLAG, defaultEnabled: CONTENT_SCHEDULE_DEFAULT })
   if (gate.skipped) {
     return { skipped: gate.reason, considered: 0, published: 0, sent: 0, missed: 0, failed: 0 }
   }
@@ -1291,15 +1323,15 @@ async function failPost(id: string, reason: string): Promise<void> {
 }
 ```
 
-- [ ] **Step 5: Run the test**
+- [ ] **Step 6: Run the test**
 
 Run: `npx vitest run __tests__/lib/content-schedule/run-due.test.ts`
 Expected: PASS, 10 tests.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add lib/content-schedule/run-due.ts lib/db/blog-posts.ts lib/db/newsletters.ts __tests__/lib/content-schedule/run-due.test.ts
+git add lib/content-schedule/flag.ts lib/content-schedule/run-due.ts lib/db/blog-posts.ts lib/db/newsletters.ts __tests__/lib/content-schedule/run-due.test.ts
 git commit -m "feat(content-schedule): the checker fires what is due and refuses what is stale"
 ```
 
@@ -1315,7 +1347,7 @@ git commit -m "feat(content-schedule): the checker fires what is due and refuses
 - Test: `__tests__/api/admin/internal/content-schedule-due.test.ts`
 
 **Interfaces:**
-- Consumes: `runContentSchedule` (Task 5)
+- Consumes: `runContentSchedule` (Task 5), `CONTENT_SCHEDULE_FLAG` from `lib/content-schedule/flag.ts`
 - Produces: `POST /api/admin/internal/content-schedule-due` returning `{ ok: true, ...RunContentScheduleResult }`; Firebase export `contentScheduleCron`; `CronJobName` gains `"content-schedule"`.
 
 - [ ] **Step 1: Write the failing route test**
@@ -1535,7 +1567,7 @@ changes nothing:
 
 ```ts
 import { CRON_CATALOG } from "@/lib/cron-catalog"
-import { CONTENT_SCHEDULE_FLAG } from "@/lib/content-schedule/run-due"
+import { CONTENT_SCHEDULE_FLAG } from "@/lib/content-schedule/flag"
 
 it("catalogs the cron under the exact key the runner reads", () => {
   const entry = CRON_CATALOG.find((c) => c.name === "content-schedule")
@@ -1571,7 +1603,7 @@ git commit -m "feat(content-schedule): a five-minute heartbeat, watched so its s
 - Test: `__tests__/api/admin/content-schedule-routes.test.ts`
 
 **Interfaces:**
-- Consumes: `CONTENT_SCHEDULE_FLAG` (Task 5), `getSetting` from `lib/db/system-settings.ts`
+- Consumes: `CONTENT_SCHEDULE_FLAG` + `CONTENT_SCHEDULE_DEFAULT` from `lib/content-schedule/flag.ts` (Task 5 — the LEAF module, never from `run-due.ts`), `getSetting` from `lib/db/system-settings.ts`
 - Produces:
 ```ts
 // lib/content-schedule/validate.ts
@@ -1604,7 +1636,7 @@ Create `lib/content-schedule/validate.ts`:
 // route files so all four reject identically.
 
 import { getSetting } from "@/lib/db/system-settings"
-import { CONTENT_SCHEDULE_FLAG } from "@/lib/content-schedule/run-due"
+import { CONTENT_SCHEDULE_FLAG, CONTENT_SCHEDULE_DEFAULT } from "@/lib/content-schedule/flag"
 
 export type ScheduleRejection = { status: 400 | 409; error: string }
 
@@ -1614,7 +1646,7 @@ export async function validateScheduleRequest(
   // Refuse while the checker is off. Without this the UI would accept a time
   // that nothing will ever act on — the exact failure the flag default is
   // meant to prevent.
-  const enabled = await getSetting<boolean>(CONTENT_SCHEDULE_FLAG, true)
+  const enabled = await getSetting<boolean>(CONTENT_SCHEDULE_FLAG, CONTENT_SCHEDULE_DEFAULT)
   if (!enabled) {
     return {
       ok: false,
@@ -2266,7 +2298,7 @@ git commit -m "feat(content-schedule): the editor says out loud that this one is
 - Test: `__tests__/lib/content-studio/calendar-chips-content.test.ts`
 
 **Interfaces:**
-- Consumes: `listScheduledBlogPosts`, `listScheduledNewsletters` (Task 5); the schedule routes (Task 7)
+- Consumes: `getBlogPosts()` and `getNewsletters()` from the DAL — **not** `listScheduled*`, which returns only `status='scheduled'` while the calendar must also show published/sent items inside the window (see Step 4); the schedule routes (Task 7)
 - Produces:
 ```ts
 export interface BlogPostChip { kind: "blog"; id: string; label: string; scheduledAt: Date | null; status: BlogPostStatus; raw: BlogPost }
@@ -2333,7 +2365,15 @@ export function isLocked(chip: CalendarChip): boolean {
 
 - [ ] **Step 4: Load them in calendar-data**
 
-In `lib/content-studio/calendar-data.ts`, add both to the `Promise.all`, map to chips, apply the same window filter used for social posts, and concatenate into `chips`. Import `listScheduledBlogPosts` / `listScheduledNewsletters` — but note these return only `scheduled` rows, and the calendar also wants **published/sent** ones inside the window. Use `getBlogPosts()` and `getNewsletters()` and filter in memory by window, matching how `listSocialPostsForPipeline()` is already used.
+In `lib/content-studio/calendar-data.ts`, add both to the `Promise.all`, map to
+chips, apply the same window filter used for social posts, and concatenate into
+`chips`.
+
+**Use `getBlogPosts()` and `getNewsletters()`** — filtering by window in memory,
+exactly as `listSocialPostsForPipeline()` is already used a few lines above. Do
+**not** use `listScheduledBlogPosts` / `listScheduledNewsletters` here: those
+return only `status='scheduled'`, and a calendar that hides everything already
+published would show a month emptying out as the month progresses.
 
 - [ ] **Step 5: Make the new chips draggable**
 
