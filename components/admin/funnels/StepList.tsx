@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { PreviewCard } from "./PreviewCard"
+import { previewBasePath } from "@/lib/funnels/preview-path"
 import type { Funnel, FunnelStep } from "@/types/database"
 
 interface StepListProps {
@@ -70,6 +71,7 @@ export function StepList({ funnel, initialSteps }: StepListProps) {
     <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
       {steps.map((step) => {
         const path = `/go/${funnel.slug}${step.is_entry ? "" : `/${step.slug}`}`
+        const draftPath = `${previewBasePath(funnel.slug)}${step.is_entry ? "" : `/${step.slug}`}`
         const published = Boolean(step.published_version_id)
         // SAME VOCABULARY AS THE LIST. This badge used to read "published" the
         // moment a version row existed — while the page could still be
@@ -90,7 +92,11 @@ export function StepList({ funnel, initialSteps }: StepListProps) {
             key={step.id}
             title={step.name}
             subtitle={path}
-            previewUrl={published ? `${path}?preview=1` : null}
+            // A NEVER-PUBLISHED PAGE NOW SHOWS ITS DRAFT. The live route
+            // cannot render one — it reads version rows — so an unpublished
+            // card used to be a grey box even when the page was finished.
+            previewUrl={published ? `${path}?preview=1` : draftPath}
+            previewIsDraft={!published}
             href={`/admin/funnels/${funnel.id}/edit/${step.id}`}
             primaryLabel="Edit"
             publicUrl={live ? path : null}

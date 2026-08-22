@@ -111,6 +111,7 @@ describe("the builder's back link", () => {
         stepId="s1"
         stepName="Landing page"
         publicUrl="/go/free-trial"
+        previewUrl="/preview/free-trial"
         funnelStatus="published"
         funnelKind={kind}
         initialDoc={null}

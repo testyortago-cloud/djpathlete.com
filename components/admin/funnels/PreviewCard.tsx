@@ -14,15 +14,32 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
-import { CalendarRange, ExternalLink, Trash2, Users } from "lucide-react"
+import { CalendarRange, Eye, ExternalLink, Trash2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DataTableBadge, type DataTableBadgeTone } from "@/components/ui/data-table"
 
 export interface PreviewCardProps {
   title: string
   subtitle?: string
-  /** Same-origin path to render in the preview. null = nothing published yet. */
+  /**
+   * Same-origin path to render in the thumbnail. `null` = there is genuinely
+   * nothing to show (no draft AND nothing published).
+   *
+   * THIS USED TO MEAN "the published path, or null", and that was the owner's
+   * complaint: a page they had already written showed a grey "No preview yet"
+   * box on every card in the admin, while the draft it was hiding rendered
+   * perfectly one route away. It now points at `/preview/<slug>` for an
+   * unpublished page and at the live route for a published one.
+   */
   previewUrl: string | null
+  /**
+   * `previewUrl` is a DRAFT (`/preview/…`) rather than the live page.
+   *
+   * Only this adds the "Preview" button — on a published page the thumbnail is
+   * already the real thing, and a second button pointing somewhere else makes
+   * the owner wonder which one is real.
+   */
+  previewIsDraft?: boolean
   /** Where the primary button goes (editor or funnel detail). */
   href: string
   primaryLabel?: string
@@ -102,6 +119,7 @@ export function PreviewCard({
   title,
   subtitle,
   previewUrl,
+  previewIsDraft = false,
   href,
   primaryLabel = "Open",
   publicUrl,
@@ -248,6 +266,14 @@ export function PreviewCard({
           <Button asChild size="sm">
             <Link href={href}>{primaryLabel}</Link>
           </Button>
+          {previewUrl && previewIsDraft ? (
+            <Button asChild variant="outline" size="sm">
+              <a href={previewUrl} target="_blank" rel="noopener noreferrer">
+                <Eye className="size-4" aria-hidden />
+                Preview
+              </a>
+            </Button>
+          ) : null}
           {publicUrl ? (
             <Button asChild variant="outline" size="sm" aria-label={`Open ${title} in a new tab`}>
               <a href={publicUrl} target="_blank" rel="noopener noreferrer">

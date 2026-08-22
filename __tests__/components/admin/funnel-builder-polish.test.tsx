@@ -91,6 +91,7 @@ function baseProps(overrides: Partial<FunnelBuilderProps> = {}): FunnelBuilderPr
     stepId: "step-1",
     stepName: "Landing",
     publicUrl: "/go/summer-camp",
+    previewUrl: "/preview/summer-camp",
     funnelStatus: "published",
     funnelKind: "funnel",
     initialDoc: DOC,

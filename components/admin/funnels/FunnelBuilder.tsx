@@ -61,6 +61,7 @@ import {
   Check,
   ChevronDown,
   ExternalLink,
+  Eye,
   Loader2,
   MessageSquare,
   Monitor,
@@ -125,8 +126,16 @@ export interface FunnelBuilderProps {
   funnelName: string
   stepId: string
   stepName: string
-  /** Where "open the live page" goes. */
+  /** Where "open the live page" goes. 404s until the funnel is published. */
   publicUrl: string
+  /**
+   * Where "open the draft full screen" goes — `/preview/<slug>[/<step>]`.
+   *
+   * ALWAYS PRESENT, unlike `publicUrl`'s usefulness: the whole point is that it
+   * works before anything has been published, which is when the owner most
+   * wants to look at the page on a real screen instead of in a scaled iframe.
+   */
+  previewUrl: string
   /**
    * `funnels.status`. Publishing a PAGE and taking the FUNNEL live are two
    * separate actions, and the public `/go/` route serves only `published`
@@ -1907,6 +1916,16 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
             v{publishedVersion} live
           </span>
         ) : null}
+
+        {/* BEFORE "Live page", because the draft is the thing being worked on
+            and the live page is the reference. On a funnel that has never been
+            published this is the only one of the two that goes anywhere. */}
+        <Button asChild variant="ghost" size="sm">
+          <a href={props.previewUrl} target="_blank" rel="noopener noreferrer">
+            <Eye className="size-4" aria-hidden />
+            Preview
+          </a>
+        </Button>
 
         <Button asChild variant="ghost" size="sm">
           <a href={props.publicUrl} target="_blank" rel="noopener noreferrer">
