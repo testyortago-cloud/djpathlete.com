@@ -80,6 +80,32 @@ interface FunnelFormProps {
    * chat could change it.
    */
   editable?: boolean
+  /**
+   * This page is the full-screen DRAFT preview, so the form is usable but
+   * harmless: it posts to `/api/funnels/preview-submit`, which validates
+   * against the draft and writes nothing. See `FunnelRenderContext.testRun`.
+   */
+  testRun?: boolean
+}
+
+/**
+ * What the live page would have done next, as reported by the preview endpoint.
+ *
+ * Only `redirect` is ACTED on — that is the funnel walk. A checkout and an
+ * external URL are both places the owner cannot come back from mid-test, so the
+ * server describes them instead and the panel below says so.
+ */
+type TestRunOutcome =
+  | { kind: "message" }
+  | { kind: "redirect"; href: string }
+  | { kind: "external"; href: string }
+  | { kind: "checkout"; label: string }
+  | { kind: "no-draft"; stepName: string }
+
+interface TestRunBody {
+  outcome?: TestRunOutcome
+  /** Field LABELS and what was typed, in the order the form asks. */
+  captured?: Array<{ label: string; value: string }>
 }
 
 type Status = "idle" | "submitting" | "done" | "error"
@@ -110,9 +136,14 @@ export function FunnelForm({
   smsConsentWording,
   isPreview,
   editable = false,
+  testRun = false,
 }: FunnelFormProps) {
   const [status, setStatus] = useState<Status>("idle")
   const [error, setError] = useState<string | null>(null)
+  const [testRunResult, setTestRunResult] = useState<{
+    outcome: TestRunOutcome
+    captured: Array<{ label: string; value: string }>
+  } | null>(null)
   // Time-to-submit: bots post instantly. Captured on mount, checked server-side.
   const mountedAt = useRef<number>(Date.now())
 
@@ -128,7 +159,13 @@ export function FunnelForm({
     // there the click really was someone trying the form.
     if (editable) return
 
-    if (isPreview) {
+    // ORDER MATTERS AND IS TESTED. `editable` above still wins — the first
+    // click of a double-click to rename the button IS a submit, and answering
+    // it reads as the edit having failed. `testRun` then overrides the plain
+    // preview refusal below, which every OTHER preview surface still relies on:
+    // the builder's iframe and `/go?preview=1` must keep refusing outright.
+    const endpoint = testRun ? "/api/funnels/preview-submit" : "/api/funnels/submit"
+    if (isPreview && !testRun) {
       setError("This is a preview — submissions are disabled.")
       setStatus("error")
       return
@@ -152,7 +189,7 @@ export function FunnelForm({
     const smsConsent = formData.getAll("sms_consent").some((entry) => entry === "on")
 
     try {
-      const response = await fetch("/api/funnels/submit", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -170,6 +207,33 @@ export function FunnelForm({
         const body = (await response.json().catch(() => null)) as { error?: string } | null
         setError(body?.error ?? "Something went wrong. Please try again.")
         setStatus("error")
+        return
+      }
+
+      // A TEST RUN NEVER REACHES THE BRANCHES BELOW. There is no Stripe session
+      // to follow and no real success to report — the server has already said
+      // what the live page WOULD have done, and the panel renders that.
+      if (testRun) {
+        const result = (await response
+          .clone()
+          .json()
+          .catch(() => null)) as TestRunBody | null
+        const outcome: TestRunOutcome = result?.outcome ?? { kind: "message" }
+        if (outcome.kind === "redirect") {
+          // The SERVER produced this href, already rewritten onto the preview
+          // base. Same rule as `sessionUrl` below: never navigate to a URL the
+          // client assembled. A string replace on `redirectUrl` here would be a
+          // second copy of `livePathToPreview` for this file to drift from.
+          //
+          // The scheme check is re-applied anyway: two cheap checks beat one on
+          // a line that navigates.
+          if (outcome.href.startsWith("/") && !outcome.href.startsWith("//")) {
+            window.location.href = outcome.href
+            return
+          }
+        }
+        setTestRunResult({ outcome, captured: result?.captured ?? [] })
+        setStatus("done")
         return
       }
 
@@ -212,6 +276,7 @@ export function FunnelForm({
     return (
       <div className="djp-form-success" data-djp-form-state="success" role="status">
         {successMessage}
+        {testRunResult ? <TestRunPanel {...testRunResult} /> : null}
       </div>
     )
   }
@@ -400,4 +465,76 @@ function renderControl(field: FunnelFormField, formKey: string, editable: boolea
     )
   }
   return <input {...shared} type={field.type} />
+}
+
+
+/**
+ * What a test submission did, and — more usefully — what the LIVE page would
+ * have done instead.
+ *
+ * WRITTEN FOR A COACH, NOT A DEVELOPER. Every sentence here was read aloud
+ * first. No "payload", no "endpoint", no "record", no "persist" — the audience
+ * is the person who runs the camp, and a word they have not been taught is a
+ * word that makes them think something is broken.
+ *
+ * It sits INSIDE the success message rather than replacing it, because the
+ * message is the thing being tested: the owner needs to see their own wording
+ * exactly as a visitor would, and then be told it was not real.
+ */
+function TestRunPanel({
+  outcome,
+  captured,
+}: {
+  outcome: TestRunOutcome
+  captured: Array<{ label: string; value: string }>
+}) {
+  return (
+    <div
+      data-djp-test-run
+      className="djp-test-run mt-4 rounded-lg border border-[var(--warning)]/40 bg-[var(--warning)]/10 p-4 text-left"
+    >
+      <p className="font-heading text-sm">This was a test run</p>
+
+      {outcome.kind === "external" ? (
+        <p className="font-body mt-1 text-sm">
+          On the real page this would send you to{" "}
+          <a className="underline" href={outcome.href} target="_blank" rel="noopener noreferrer">
+            {outcome.href}
+          </a>
+          .
+        </p>
+      ) : null}
+
+      {outcome.kind === "checkout" ? (
+        <p className="font-body mt-1 text-sm">
+          On the real page this would start a checkout for “{outcome.label}”. No payment was set up.
+        </p>
+      ) : null}
+
+      {outcome.kind === "no-draft" ? (
+        <p className="font-body mt-1 text-sm">
+          This form sends people to “{outcome.stepName}” next, but that page has no draft yet — so there is
+          nothing to show. Write it in the builder, then try again.
+        </p>
+      ) : null}
+
+      {captured.length > 0 ? (
+        <>
+          <p className="font-body mt-3 text-xs text-muted-foreground">What you filled in:</p>
+          <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            {captured.map((entry, index) => (
+              <Fragment key={index}>
+                <dt className="font-body text-xs text-muted-foreground">{entry.label}</dt>
+                <dd className="font-mono text-xs">{entry.value}</dd>
+              </Fragment>
+            ))}
+          </dl>
+        </>
+      ) : null}
+
+      <p className="font-body mt-3 text-xs text-muted-foreground">
+        Nothing was saved. No one was emailed or texted.
+      </p>
+    </div>
+  )
 }

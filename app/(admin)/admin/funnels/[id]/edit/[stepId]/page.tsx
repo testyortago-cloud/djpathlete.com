@@ -38,6 +38,7 @@ import { creationPrompt } from "@/lib/funnels/creation-prompt"
 import { FunnelBuilder } from "@/components/admin/funnels/FunnelBuilder"
 import { renderDocForPublish } from "@/components/admin/funnels/builder/publish-actions"
 import type { BuilderMessage, CompileSummary } from "@/components/admin/funnels/builder/types"
+import { previewBasePath } from "@/lib/funnels/preview-path"
 
 export const metadata = { title: "Edit page" }
 
@@ -158,6 +159,7 @@ export async function FunnelBuilderScreen({
   if (correctBase !== base) redirect(`/admin/${correctBase}/${funnel.id}/edit/${step.id}`)
 
   const publicUrl = `/go/${funnel.slug}${step.is_entry ? "" : `/${step.slug}`}`
+  const previewUrl = `${previewBasePath(funnel.slug)}${step.is_entry ? "" : `/${step.slug}`}`
   const funnelBasePath = `/go/${funnel.slug}`
 
   // Neither read is allowed to take the editor down: a transcript that cannot
@@ -296,6 +298,7 @@ export async function FunnelBuilderScreen({
       stepId={step.id}
       stepName={step.name}
       publicUrl={publicUrl}
+      previewUrl={previewUrl}
       funnelStatus={funnel.status}
       funnelKind={funnel.kind}
       initialDoc={initial.doc}

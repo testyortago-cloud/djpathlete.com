@@ -39,6 +39,23 @@ export interface FunnelRenderContext {
    * byte-identical to what it was before this existed.
    */
   editable?: boolean
+  /**
+   * A TEST RUN. Set ONLY by the full-screen draft preview (/preview/<slug>):
+   * the form posts to `/api/funnels/preview-submit`, which reads the DRAFT's
+   * field list and writes nothing at all — no submission row, no lead, no
+   * contact, no consent row, no email, no Stripe session.
+   *
+   * IT DOES NOT REPLACE `isPreview`, it overrides it. Every other preview
+   * surface — the builder's iframe, `/go?preview=1` — still relies on
+   * `isPreview` to refuse a submission outright, and this flag is absent
+   * there BY OMISSION, so those pages are byte-identical to what they were.
+   *
+   * A BOOLEAN AND NOT A BASE PATH. The redirect that walks the funnel is
+   * rewritten SERVER-side by the preview-submit route, which already knows the
+   * slug; carrying a base path here as well would be a second copy of
+   * `livePathToPreview` for the client to drift from.
+   */
+  testRun?: boolean
 }
 
 type Props = Record<string, unknown>

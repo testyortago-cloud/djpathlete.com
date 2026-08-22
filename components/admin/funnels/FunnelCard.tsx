@@ -36,6 +36,7 @@ import { Settings2 } from "lucide-react"
 import { funnelConnections, type Connection, type StepWithDoc } from "@/lib/funnels/connections"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { Funnel, FunnelStep } from "@/types/database"
+import { previewBasePath } from "@/lib/funnels/preview-path"
 
 export interface FunnelCardProps {
   funnel: Funnel
@@ -187,7 +188,11 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete }: FunnelCardPro
         subtitle={path}
         // The FUNNEL's face is its entry page. A funnel whose entry is unbuilt
         // shows "No preview yet" at the funnel level, which is honest.
-        previewUrl={entryPublished ? `${path}?preview=1` : null}
+        // A funnel with an unbuilt entry still has no face, so `null` survives
+        // for that case — but one whose entry is WRITTEN and merely unpublished
+        // now shows it.
+        previewUrl={entryPublished ? `${path}?preview=1` : entry ? previewBasePath(funnel.slug) : null}
+        previewIsDraft={!entryPublished && Boolean(entry)}
         href={entry ? `/admin/funnels/${funnel.id}/edit/${entry.id}` : `/admin/funnels/${funnel.id}`}
         primaryLabel="Open"
         publicUrl={live ? path : null}

@@ -128,6 +128,7 @@ function baseProps(overrides: Partial<FunnelBuilderProps> = {}): FunnelBuilderPr
     stepId: STEP_ID,
     stepName: "Landing",
     publicUrl: "/go/free-trial-week",
+    previewUrl: "/preview/summer-camp",
     // A DRAFT FUNNEL, because that is the state the owner publishes from: the
     // whole complaint is that taking a funnel live used to be a second act on
     // a second screen.

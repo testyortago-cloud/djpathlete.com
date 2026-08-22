@@ -147,6 +147,7 @@ function baseProps(overrides: Partial<FunnelBuilderProps> = {}): FunnelBuilderPr
     stepId: "step-1",
     stepName: "Landing",
     publicUrl: "/go/summer-camp",
+    previewUrl: "/preview/summer-camp",
     // Default to a LIVE funnel so the existing gate tests keep testing the
     // gate. A draft funnel is a legitimate thing to warn about, and it has its
     // own tests below — but it must not silently become the baseline, or every

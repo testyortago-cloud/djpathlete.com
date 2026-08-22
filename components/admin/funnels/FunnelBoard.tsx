@@ -40,6 +40,7 @@ import { RenameDialog } from "./RenameDialog"
 import type { DataTableBadgeTone } from "@/components/ui/data-table"
 import type { Funnel, FunnelStep, FunnelKind } from "@/types/database"
 import { adminFunnelHref, adminStepHref } from "@/lib/funnels/admin-path"
+import { previewBasePath } from "@/lib/funnels/preview-path"
 
 /**
  * The owner's own funnels, for the examples modal.
@@ -217,6 +218,7 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
           {visible.map((page) => {
             const { step, funnel } = page
             const path = `/go/${funnel.slug}${step.is_entry ? "" : `/${step.slug}`}`
+            const draftPath = `${previewBasePath(funnel.slug)}${step.is_entry ? "" : `/${step.slug}`}`
             const published = Boolean(step.published_version_id)
             const live = published && funnel.status === "published"
             const badge: { label: string; tone: DataTableBadgeTone } = live
@@ -261,7 +263,8 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
                     publicPath={path}
                   />
                 }
-                previewUrl={published ? `${path}?preview=1` : null}
+                previewUrl={published ? `${path}?preview=1` : draftPath}
+                previewIsDraft={!published}
                 // Straight to the canvas. That is the only reason to click.
                 href={adminStepHref(funnel.kind, funnel.id, step.id)}
                 primaryLabel="Open"

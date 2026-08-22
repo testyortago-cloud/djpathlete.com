@@ -95,6 +95,22 @@ Five non-content-engine watchdogs surface under `/admin/insights/*`. Each follow
 
 Plan + reconciliation notes live in `docs/superpowers/plans/2026-05-16-broader-automations.md`.
 
+## Funnel & landing-page previews
+
+Three routes render a funnel page, and they are NOT interchangeable:
+
+| Route | Reads | Who | Notes |
+|---|---|---|---|
+| `/go/<slug>[/<step>]` | published version rows | public | `?preview=1` lets admin/staff see an unpublished FUNNEL, but still only published version rows — it cannot show a draft |
+| `/funnel-preview/<stepId>` | `funnel_steps.project_data` (draft) | admin/staff | the builder's iframe. Keyed by step id, carries `?edit=1` for the canvas |
+| `/preview/<slug>[/<step>]` | `funnel_steps.project_data` (draft) | admin/staff | full screen, in its own tab. Mirrors `/go`'s path shape so `funnelBasePath` alone walks the funnel in draft |
+
+- **One shared renderer.** Both draft routes call `renderDraftPreview` in [lib/funnels/preview-render.ts](lib/funnels/preview-render.ts), which runs the same `loadCatalogues → resolveDoc → publishGate → reassemble → compileFunnelStep` sequence publish runs. Never hand-roll a second copy: preview and publish disagreeing about one document is this subsystem's worst failure mode.
+- **Base-path rewriting is the whole trick.** `renderCtaTarget`'s `step` case builds `` `${ctx.funnelBasePath}/${stepSlug}` ``, so passing `previewBasePath(slug)` rewrites every in-funnel button with no renderer change. Helpers in [lib/funnels/preview-path.ts](lib/funnels/preview-path.ts).
+- **Test runs write nothing.** `/preview` sets `FunnelRenderContext.testRun`, which points the form at `/api/funnels/preview-submit`. That route validates against the DRAFT (the live route can't — `getPublishedFormConfig` is null before publish) and performs **zero writes**: no submission row, lead, contact, consent row, email or Stripe session. An `is_test` column was considered and rejected — `funnel_submissions` has seven read sites plus the attribution join. A test asserts the route's source contains no write path.
+- **Only the form island can write.** `checkout`, `event` and `booking` islands are pure `<Link>` navigation, so a preview cannot spend money; clicking one simply leaves the preview.
+- **Gates fail closed and answer 404**, never a redirect — `middleware.ts` covers only `/admin/*` and `/client/*`, so these routes gate themselves.
+
 ## Audit Logs
 
 Append-only trail of mutations, auth events, automation runs, and billing webhooks in `audit_logs` (migration `00152_audit_logs.sql`). Eleven categories: `auth | admin_write | admin_read_sensitive | client_action | support | commerce | billing | marketing | compliance | automation | system`.

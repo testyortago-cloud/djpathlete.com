@@ -58,6 +58,7 @@ export async function FormIsland({ props, context }: FormIslandProps) {
       funnelId={context.funnelId}
       stepId={context.stepId}
       isPreview={context.isPreview}
+      testRun={context.testRun}
       formKey={String(props.formKey ?? "optin")}
       fields={fields}
       submitLabel={String(props.submitLabel ?? "Submit")}
