@@ -104,7 +104,18 @@ export async function POST(request: Request) {
   // exist — anything the browser sent that the form does not declare is
   // discarded rather than echoed back, or the panel would show the owner a
   // field their page does not have.
-  const captured: Record<string, string> = {}
+  //
+  // CAPTURED CARRIES THE FIELD'S **LABEL**, NOT ITS NAME. `field.name` is
+  // `athlete_name` / `parent_name` — a column name, and the audience for this
+  // panel is the coach who runs the camp. Showing them the wire name is the
+  // same mistake as showing them a raw timestamp: it reads as something being
+  // broken. The label is the word already on screen next to the box they typed
+  // in, so it is also the word that lets them check the right field captured
+  // the right value.
+  //
+  // An ARRAY, not an object, so the panel lists fields in the order the form
+  // asks for them and two fields sharing a label cannot collide.
+  const captured: Array<{ label: string; value: string }> = []
   for (const field of fields) {
     const value = (values[field.name] ?? "").trim()
     if (field.required && value.length === 0) {
@@ -113,7 +124,7 @@ export async function POST(request: Request) {
     if (field.type === "email" && value.length > 0 && !z.string().email().safeParse(value).success) {
       return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 })
     }
-    if (value.length > 0) captured[field.name] = value
+    if (value.length > 0) captured.push({ label: field.label, value })
   }
 
   return NextResponse.json({ ok: true, outcome: await outcomeFor(props), captured })

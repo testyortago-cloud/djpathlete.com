@@ -104,7 +104,8 @@ type TestRunOutcome =
 
 interface TestRunBody {
   outcome?: TestRunOutcome
-  captured?: Record<string, string>
+  /** Field LABELS and what was typed, in the order the form asks. */
+  captured?: Array<{ label: string; value: string }>
 }
 
 type Status = "idle" | "submitting" | "done" | "error"
@@ -141,7 +142,7 @@ export function FunnelForm({
   const [error, setError] = useState<string | null>(null)
   const [testRunResult, setTestRunResult] = useState<{
     outcome: TestRunOutcome
-    captured: Record<string, string>
+    captured: Array<{ label: string; value: string }>
   } | null>(null)
   // Time-to-submit: bots post instantly. Captured on mount, checked server-side.
   const mountedAt = useRef<number>(Date.now())
@@ -231,7 +232,7 @@ export function FunnelForm({
             return
           }
         }
-        setTestRunResult({ outcome, captured: result?.captured ?? {} })
+        setTestRunResult({ outcome, captured: result?.captured ?? [] })
         setStatus("done")
         return
       }
@@ -485,9 +486,8 @@ function TestRunPanel({
   captured,
 }: {
   outcome: TestRunOutcome
-  captured: Record<string, string>
+  captured: Array<{ label: string; value: string }>
 }) {
-  const entries = Object.entries(captured)
   return (
     <div
       data-djp-test-run
@@ -518,14 +518,14 @@ function TestRunPanel({
         </p>
       ) : null}
 
-      {entries.length > 0 ? (
+      {captured.length > 0 ? (
         <>
           <p className="font-body mt-3 text-xs text-muted-foreground">What you filled in:</p>
           <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-            {entries.map(([key, value]) => (
-              <Fragment key={key}>
-                <dt className="font-body text-xs text-muted-foreground">{key}</dt>
-                <dd className="font-mono text-xs">{value}</dd>
+            {captured.map((entry, index) => (
+              <Fragment key={index}>
+                <dt className="font-body text-xs text-muted-foreground">{entry.label}</dt>
+                <dd className="font-mono text-xs">{entry.value}</dd>
               </Fragment>
             ))}
           </dl>

@@ -136,7 +136,29 @@ describe("validation matches the live route", () => {
     // the live route.
     const response = await post({ ...GOOD, values: { ...GOOD.values, injected: "x" } })
     const body = await response.json()
-    expect(body.captured).toEqual({ name: "Jane", email: "jane@example.com" })
+    expect(body.captured).toEqual([
+      { label: "Name", value: "Jane" },
+      { label: "Email", value: "jane@example.com" },
+    ])
+  })
+
+  it("reports the field's LABEL, never its wire name", async () => {
+    // MUTANT KILLED: keying `captured` by `field.name`. That shipped once and
+    // the SCREENSHOT caught it, not a test: the panel showed a coach
+    // `athlete_name` / `parent_name`, which is a column name and reads as
+    // something being broken. Nothing in the unit suite disagreed, because
+    // nothing asserted which of the two strings came back.
+    const body = await (await post(GOOD)).json()
+    const labels = body.captured.map((c: { label: string }) => c.label)
+    expect(labels).toEqual(["Name", "Email"])
+    expect(JSON.stringify(body.captured)).not.toMatch(/_/)
+  })
+
+  it("keeps the order the form asks in", async () => {
+    // An object would order by insertion too, but an array also survives two
+    // fields sharing a label, which an object silently collapses.
+    const body = await (await post(GOOD)).json()
+    expect(Array.isArray(body.captured)).toBe(true)
   })
 
   it("404s a form key the draft does not contain", async () => {

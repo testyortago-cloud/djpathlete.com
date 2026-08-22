@@ -92,12 +92,15 @@ describe("FunnelForm submit routing", () => {
 describe("what a test run reports", () => {
   it("shows what would have been captured, and that nothing was saved", async () => {
     mock(fetch).mockResolvedValue(
-      jsonResponse({ ok: true, outcome: { kind: "message" }, captured: { email: "a@b.com" } }),
+      jsonResponse({ ok: true, outcome: { kind: "message" }, captured: [{ label: "Email", value: "a@b.com" }] }),
     )
     renderForm({ testRun: true })
     submit("a@b.com")
     await waitFor(() => expect(screen.getByText(/nothing was saved/i)).toBeInTheDocument())
     expect(screen.getByText("a@b.com")).toBeInTheDocument()
+    // MUTANT KILLED: rendering the wire name. The panel is read by a coach, and
+    // `email` the column is not `Email` the label they typed next to.
+    expect(screen.getByText("Email")).toBeInTheDocument()
   })
 
   it("reports an external redirect instead of following it", async () => {
@@ -134,7 +137,7 @@ describe("what a test run reports", () => {
 
   it("speaks to a coach, not a developer", async () => {
     mock(fetch).mockResolvedValue(
-      jsonResponse({ ok: true, outcome: { kind: "message" }, captured: { email: "a@b.com" } }),
+      jsonResponse({ ok: true, outcome: { kind: "message" }, captured: [{ label: "Email", value: "a@b.com" }] }),
     )
     renderForm({ testRun: true })
     submit("a@b.com")
