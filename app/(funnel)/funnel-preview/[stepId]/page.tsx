@@ -59,12 +59,15 @@
 import { notFound } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { NodeRenderer } from "@/components/funnels/NodeRenderer"
-import { FUNNEL_ROOT_ID, compileFunnelStep } from "@/lib/funnels/compile"
-import { getDraft } from "@/lib/db/funnel-builder"
-import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
-import { reassemble } from "@/lib/funnels/sections/doc"
+import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile"
+import { getFunnelById, getStep } from "@/lib/db/funnels"
 import { CANVAS_EDIT_CSS } from "@/lib/funnels/sections/edit-css"
-import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
+// THE SEQUENCE ITSELF NOW LIVES IN lib/funnels/preview-render.ts, shared with
+// the full-screen preview at /preview/<slug>. It was extracted rather than
+// copied for the reason this file's header already gives: two renderings of the
+// same document is the failure mode, and a second hand-rolled copy of
+// resolve -> gate -> reassemble -> compile is exactly that.
+import { renderDraftPreview } from "@/lib/funnels/preview-render"
 
 /**
  * A draft is by definition not ready to be indexed, and this URL is reachable
@@ -143,17 +146,30 @@ export default async function FunnelDraftPreviewPage({ params, searchParams }: P
   // whole reason the canvas is this route rather than a second, client-side
   // drawing of the same document. `?edit=1` is safe to be a query string
   // because this route is already admin-gated above and because the flag cannot
-  // reach `/go` or a version row: `reassemble`'s `editable` defaults to false
-  // and only this call site ever sets it.
+  // reach `/go`, a version row, or the slug-addressed full-screen preview:
+  // `reassemble`'s `editable` defaults to false and only this call site ever
+  // sets it.
   const { edit } = await searchParams
   const editable = edit === "1"
-  const [draft, step] = await Promise.all([getDraft(stepId), getStep(stepId)])
-  if (!draft || !step) notFound()
+
+  const step = await getStep(stepId)
+  if (!step) notFound()
 
   const funnel = await getFunnelById(step.funnel_id)
   if (!funnel) notFound()
 
-  if (draft.docInvalid) {
+  // `/go/<slug>` and NOT the preview base. This route is the builder's iframe:
+  // its links must read the way the published page's links read, because the
+  // owner is judging the page, not walking it. The full-screen preview passes
+  // `/preview/<slug>` to the same function and gets a walkable draft instead.
+  const result = await renderDraftPreview({
+    stepId,
+    funnelId: funnel.id,
+    funnelBasePath: `/go/${funnel.slug}`,
+    editable,
+  })
+
+  if (result.kind === "doc-invalid") {
     return (
       <PreviewNotice
         title="This page can't be previewed"
@@ -166,7 +182,7 @@ export default async function FunnelDraftPreviewPage({ params, searchParams }: P
     )
   }
 
-  if (!draft.doc) {
+  if (result.kind === "no-draft") {
     return (
       <PreviewNotice
         title="Nothing to preview yet"
@@ -175,67 +191,24 @@ export default async function FunnelDraftPreviewPage({ params, searchParams }: P
     )
   }
 
-  // THE SAME RESOLUTION PUBLISH RUNS, so the preview cannot disagree with it
-  // about the same document. `loadCatalogues` and `resolveDoc` both throw
-  // (a truncated recognition read; a corrupt document) and BOTH throws are
-  // caught here rather than either 500ing a page whose whole job is "let me
-  // look at my draft" — the unresolved document is still worth rendering, and
-  // the banner says publishing will refuse it, which is exactly what both
-  // publish gates do on the same throw.
-  let docToRender = draft.doc
-  let gateBlockers: string[] = []
-  try {
-    // Both reads are inside the same try, so either failing lands in the catch
-    // below — which already tells the owner publishing will refuse the page
-    // until its links can be checked. That is the honest answer here; `null`
-    // would quietly claim the step links were fine.
-    const [catalogues, pages] = await Promise.all([
-      loadCatalogues(),
-      listSteps(funnel.id).then((rows) => rows.map((row) => ({ slug: row.slug, name: row.name }))),
-    ])
-    const resolution = resolveDoc(draft.doc, catalogues, pages)
-    docToRender = resolution.doc
-    gateBlockers = publishGate(resolution).blockers
-  } catch (error) {
-    gateBlockers = [
-      "This page's links could not be checked, so publishing will refuse it until they can be: " +
-        (error as Error).message,
-    ]
+  if (result.kind === "render-failed") {
+    return <PreviewNotice title="This page can't be rendered" lines={[result.message]} />
   }
 
-  // `reassemble` re-parses the document and throws on a bad one. `getDraft`
-  // has already parsed it with the same schema, so this cannot legitimately
-  // fire — but an uncaught throw in a server component is a 500 error page for
-  // an owner who only wanted to look at their draft, and "here is what is
-  // wrong with it" is strictly more useful.
-  let rendered
-  try {
-    rendered = reassemble(docToRender, { funnelBasePath: `/go/${funnel.slug}`, editable })
-  } catch (error) {
-    return <PreviewNotice title="This page can't be rendered" lines={[(error as Error).message]} />
-  }
-
-  const compiled = compileFunnelStep({ html: rendered.html, css: rendered.css })
-
-  if (!compiled.ok) {
-    return (
-      <PreviewNotice
-        title="This page can't be compiled"
-        lines={[...rendered.problems.map((p) => p.message), ...compiled.errors.map((e) => e.message)]}
-      />
-    )
+  if (result.kind === "compile-failed") {
+    return <PreviewNotice title="This page can't be compiled" lines={result.problems} />
   }
 
   const page = (
     <div id={FUNNEL_ROOT_ID}>
       {/* Scoped by the compiler — every selector is prefixed with this id. */}
-      {compiled.css ? <style dangerouslySetInnerHTML={{ __html: compiled.css }} /> : null}
+      {result.css ? <style dangerouslySetInnerHTML={{ __html: result.css }} /> : null}
       {/* AFTER the page's own stylesheet, so selection chrome wins at equal
           specificity. Not scoped to the funnel root: `djp-selected` is added to
           the <section> elements themselves, which are inside it anyway. */}
       {editable ? <style dangerouslySetInnerHTML={{ __html: CANVAS_EDIT_CSS }} /> : null}
       <NodeRenderer
-        nodes={compiled.nodes}
+        nodes={result.nodes}
         context={{
           funnelId: funnel.id,
           funnelSlug: funnel.slug,
@@ -245,6 +218,10 @@ export default async function FunnelDraftPreviewPage({ params, searchParams }: P
           // must not create a real lead, a real checkout session or a real
           // event registration — the page is not published, so anything it
           // submits is noise in the owner's real data.
+          //
+          // NO `testRun` HERE, deliberately. That is the full-screen preview's
+          // affordance: this frame is sandboxed without `allow-forms`, and the
+          // owner on the canvas is editing the page, not testing it.
           isPreview: true,
           // The same flag `reassemble` got, for the parts of the page
           // `reassemble` cannot reach. An island's insides are built here, at
@@ -262,12 +239,11 @@ export default async function FunnelDraftPreviewPage({ params, searchParams }: P
   // route's own chrome in it — the preview is supposed to look exactly like the
   // published page. The banner is added ONLY when there is something publish
   // would reject; see `PreviewBlockedBanner`.
-  const problems = [...rendered.problems.map((p) => p.message), ...gateBlockers]
-  if (problems.length === 0) return page
+  if (result.problems.length === 0) return page
 
   return (
     <>
-      <PreviewBlockedBanner problems={problems} />
+      <PreviewBlockedBanner problems={result.problems} />
       {page}
     </>
   )
