@@ -1652,8 +1652,14 @@ export interface Database {
         Row: Newsletter
         Insert: Omit<
           Newsletter,
-          | "id" | "created_at" | "updated_at" | "sent_at" | "sent_count" | "failed_count"
-          | "scheduled_at" | "schedule_failed_reason"
+          | "id"
+          | "created_at"
+          | "updated_at"
+          | "sent_at"
+          | "sent_count"
+          | "failed_count"
+          | "scheduled_at"
+          | "schedule_failed_reason"
         >
         Update: Partial<Omit<Newsletter, "id" | "created_at">>
       }
@@ -3323,4 +3329,51 @@ export interface FunnelSubmission {
   status: FunnelLeadStatus
   notes: string | null
   status_changed_at: string | null
+}
+
+// --- Lead Engine Stage 3: the public chat assistant (00227) ------------------
+// Spec: docs/superpowers/specs/2026-08-23-lead-engine-stage3-chat-design.md §3
+
+/** One visitor's chat session. `ip_hash` is sha256(ip + salt) — never the raw address. */
+export interface ChatConversation {
+  id: string
+  business_id: string
+  contact_id: string | null
+  status: "open" | "closed"
+  ip_hash: string
+  user_agent: string | null
+  landing_path: string | null
+  attribution_session_id: string | null
+  message_count: number
+  tokens_used: number
+  escalated_at: string | null
+  captured_at: string | null
+  last_activity_at: string
+  created_at: string
+}
+
+/**
+ * One turn. `fact_set` is the typed facts the validator checked this reply
+ * against, kept per message so a blocked turn can be explained afterwards.
+ * `verdict` is null on a user message; `short_circuit` means the model was
+ * never called.
+ *
+ * Not to be confused with the unrelated `ChatMessage` in
+ * `lib/validators/ai-chat.ts`, which is the admin program-builder's transcript
+ * shape. Import one or the other, never both unaliased.
+ */
+export interface ChatMessage {
+  id: string
+  business_id: string
+  conversation_id: string
+  role: "user" | "assistant"
+  content: string
+  fact_set: Record<string, unknown>
+  cards: unknown[]
+  verdict: "ok" | "blocked" | "short_circuit" | null
+  violations: unknown[]
+  tokens_input: number | null
+  tokens_output: number | null
+  model: string | null
+  created_at: string
 }

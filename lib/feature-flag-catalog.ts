@@ -8,6 +8,7 @@
 // depends on it, never the reverse.
 
 import { FUNNEL_CHECKOUT_DEFAULT, FUNNEL_CHECKOUT_FLAG } from "@/lib/funnels/checkout/flag"
+import { CHAT_ASSISTANT_FLAG, CHAT_ASSISTANT_FLAG_DEFAULT } from "@/lib/lead-engine/chat/constants"
 
 export interface FeatureFlag {
   key: string
@@ -17,6 +18,26 @@ export interface FeatureFlag {
 }
 
 export const FEATURE_FLAG_CATALOG: readonly FeatureFlag[] = [
+  {
+    // Same discipline as the funnel flag above: the key and the default are
+    // IMPORTED, never retyped. Four surfaces read them — the marketing
+    // launcher, /ask, POST /api/ask and POST /api/ask/capture — and a switch
+    // here that flipped a row none of them read would look like it worked.
+    //
+    // REGISTERED BECAUSE THE ALTERNATIVE WAS A HAND-WRITTEN DATABASE ROW.
+    // `toggle-cron` rejects any key outside this catalog and CRON_CATALOG, so
+    // without this entry the only way to launch the assistant — or to KILL it —
+    // was to write system_settings by hand. For a public surface that collects
+    // free text from strangers, the off switch has to be reachable by the
+    // person who needs it at the time they need it.
+    key: CHAT_ASSISTANT_FLAG,
+    label: "Chat assistant",
+    description:
+      "Shows the 'Ask a question' launcher on the public site and opens the /ask page. The assistant answers " +
+      "only from what is published here — FAQs, the public programme, camps and clinics — and hands over to a " +
+      "person when it cannot. It stores what visitors type, so leave it off until you are ready for that. Off by default.",
+    defaultEnabled: CHAT_ASSISTANT_FLAG_DEFAULT,
+  },
   {
     // THE KEY AND THE DEFAULT ARE IMPORTED, NEVER RETYPED. Both the submit route
     // and the programs checkout route read `FUNNEL_CHECKOUT_FLAG` and pass

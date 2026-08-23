@@ -243,6 +243,28 @@ export const AUDIT_ACTIONS = [
   { slug: "athletes_page.update", category: "marketing", description: "Athletes page content updated" },
   { slug: "step_up_page.update", category: "marketing", description: "Step Up For Students page content updated" },
 
+  // public chat assistant. Conversation starts and ordinary turns are
+  // deliberately NOT audited — that is high-volume traffic and `chat_messages`
+  // IS the record, the same rule already applied to per-set workout logs and
+  // to individual coach messages above. Only the four events an operator or an
+  // auditor would go looking for get a row.
+  { slug: "chat.lead_captured", category: "marketing", description: "Chat assistant captured a lead" },
+  { slug: "chat.escalated", category: "marketing", description: "Chat assistant handed a conversation to a person" },
+  {
+    // compliance, not marketing: this row is the evidence that the assistant
+    // tried to say something the database could not support and was stopped.
+    // It is the honesty control's own record, and it is the one an operator
+    // would be asked to produce.
+    slug: "chat.reply_blocked",
+    category: "compliance",
+    description: "Chat assistant reply blocked by the output validator",
+  },
+  {
+    slug: "chat.transcript_viewed",
+    category: "admin_read_sensitive",
+    description: "Admin opened a chat transcript",
+  },
+
   // compliance — consents + GDPR + legal
   {
     slug: "consent.granted",

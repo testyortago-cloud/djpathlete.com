@@ -41,6 +41,20 @@ const ROOTS = [
   // now so they're swept the moment they land. `filesUnder` tolerates a
   // missing path (`throwIfNoEntry: false`), so this is a no-op until then.
   "app/api/webhooks/twilio",
+  // Stage 3 — the chat assistant. `lib/lead-engine/chat/*` is already covered
+  // recursively by the `lib/lead-engine` root at the top; these are the
+  // surfaces that live OUTSIDE it. They are swept for the same reason the
+  // rest of the Lead Engine is: this feature answers strangers in the
+  // business's own voice, and a hardcoded operator name here would be a
+  // second, un-migratable copy of an identity that `getBusinessSettings()`
+  // already owns. The two API routes and the migration are included because
+  // the sweep reads raw file text — a brand word in a route's comment block
+  // or in a seeded SQL string is caught exactly like one in live copy.
+  "app/api/ask",
+  "app/(marketing)/ask",
+  "components/public/AskPanel.tsx",
+  "components/public/AskCards.tsx",
+  "supabase/migrations/00227_lead_engine_chat.sql",
 ]
 
 function filesUnder(p: string): string[] {
@@ -69,5 +83,23 @@ describe("the Lead Engine carries no brand literal", () => {
     // is the null-vs-empty distinction: "found nothing" and "looked at
     // nothing" must not be the same result.
     expect(filesUnder("lib/lead-engine").length).toBeGreaterThan(3)
+  })
+
+  it("every root still resolves — the guard above only ever covered one of them", () => {
+    // THE DEFECT THIS EXISTS FOR. `filesUnder` uses `throwIfNoEntry: false` and
+    // returns [] for a path that has moved, and the guard above checked exactly
+    // ONE root. So renaming any other file silently removed it from the sweep.
+    //
+    // Proven, not theorised: renaming components/public/AskCards.tsx to
+    // ask-cards.tsx, updating its one import, and planting the operator's real
+    // name in visitor-facing copy inside the consult card left all 959 tests
+    // green — with the brand literal rendering on the public chat surface.
+    //
+    // PRE_REGISTERED holds paths deliberately listed before they exist, which
+    // the ROOTS comments already do for work not yet landed. Anything else that
+    // stops resolving is a file that moved and took its coverage with it.
+    const PRE_REGISTERED = new Set(["app/api/webhooks/twilio"])
+    const vanished = ROOTS.filter((root) => !PRE_REGISTERED.has(root) && filesUnder(root).length === 0)
+    expect(vanished).toEqual([])
   })
 })

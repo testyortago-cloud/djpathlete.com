@@ -1666,6 +1666,142 @@ export async function sendContactFormEmail({
   }
 }
 
+/** One turn of a public chat transcript, as `sendChatEscalationEmail` needs it. */
+export type ChatEscalationTurn = {
+  role: "user" | "assistant"
+  content: string
+  created_at: string
+}
+
+/**
+ * The chat assistant has run out of things the database can answer and has
+ * handed the conversation to a person. This is the message that person reads.
+ *
+ * Built on `sendContactFormEmail`'s shape, with three deliberate departures:
+ *
+ *  1. **One destination, no CC.** It goes to whatever `business_settings.reply_to`
+ *     the caller resolved, because that is the mailbox `/admin/inbox` is already
+ *     connected to. Adding the hardcoded `ADMIN_CC` would be a second recipient
+ *     nobody configured, for a message that can contain a stranger's phone
+ *     number typed into a public box.
+ *  2. **No `replyTo`.** The visitor is anonymous. There may be no address to
+ *     reply to at all, and guessing one would put the operator's answer in front
+ *     of the wrong person.
+ *  3. **It reports whether it delivered.** The Resend wrapper at the top of this
+ *     file returns a SUCCESS shape when `RESEND_API_KEY` is missing, so "no
+ *     exception" is not "somebody was told". The caller decides what a visitor is
+ *     promised on the strength of this flag, so it has to be the truth.
+ *
+ * Every string below except the labels is text an anonymous visitor typed, so
+ * all of it goes through `escapeHtml`. This is the only place that happens in
+ * the escalation path.
+ */
+export async function sendChatEscalationEmail({
+  to,
+  conversationId,
+  summary,
+  transcript,
+  landingPath,
+  contactId,
+}: {
+  to: string
+  conversationId: string
+  summary: string
+  transcript: ChatEscalationTurn[]
+  landingPath?: string | null
+  contactId?: string | null
+}): Promise<{ delivered: boolean }> {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn(`[email] RESEND_API_KEY not set — skipping chat escalation for conversation ${conversationId}`)
+    return { delivered: false }
+  }
+
+  const baseUrl = getBaseUrl()
+  const transcriptHtml =
+    transcript.length === 0
+      ? `<p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:14px; color:#a09b94; font-style:italic;">
+           No messages were recorded on this conversation.
+         </p>`
+      : transcript
+          .map(
+            (turn) => `
+      <tr>
+        <td style="padding:0 0 18px;">
+          <p style="margin:0 0 4px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
+            ${turn.role === "user" ? "Visitor" : "Assistant"}
+          </p>
+          <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.7; white-space:pre-wrap;">
+            ${escapeHtml(turn.content)}
+          </p>
+        </td>
+      </tr>`,
+          )
+          .join("")
+
+  const html = emailLayout(`
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          ${sectionLabel("Chat Handover")}
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            Someone asked for a person
+          </p>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            The website assistant could not answer this from what it is allowed to see, so it handed the conversation
+            over. The visitor has been told a person will follow up.
+          </p>
+
+          ${infoCard([
+            { label: "Conversation", value: escapeHtml(conversationId) },
+            { label: "Started on", value: escapeHtml(landingPath ?? "unknown page") },
+            { label: "Contact record", value: contactId ? escapeHtml(contactId) : "none — visitor stayed anonymous" },
+          ])}
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px; background-color:#faf9f7; border-radius:2px; border-left:3px solid #C49B7A;">
+            <tr>
+              <td style="padding:24px 28px;">
+                <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
+                  What they wanted
+                </p>
+                <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8; white-space:pre-wrap;">
+                  ${escapeHtml(summary)}
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <p style="margin:32px 0 12px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:10px; font-weight:600; color:#a09b94; text-transform:uppercase; letter-spacing:2px;">
+            Full transcript
+          </p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            ${transcriptHtml}
+          </table>
+
+          ${ctaButton(`${baseUrl}/admin/chat/${encodeURIComponent(conversationId)}`, "Open this conversation")}
+
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject: `[Chat] Someone asked for a person — ${conversationId.slice(0, 8)}`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send chat escalation email:", error)
+    throw new Error(`Failed to send chat escalation email: ${error.message}`)
+  }
+
+  return { delivered: true }
+}
+
 const PRIORITY_STYLES: Record<LeadAnalysisResult["priority"], { bg: string; color: string; label: string }> = {
   high: { bg: "#dcfce7", color: "#166534", label: "High Priority" },
   medium: { bg: "#fef3c7", color: "#92400e", label: "Medium Priority" },

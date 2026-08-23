@@ -55,9 +55,19 @@ const PAPER = "#FFFFFF"
  *        boundingBox() values multiplied by the deviceScaleFactor used for
  *        the capture — see captureAnnotated() in the capture script, which
  *        does that for you.
+ * @param {number} [opts.scale]
+ *        Overrides the type/marker scale, which otherwise assumes the capture
+ *        was authored at 1440 CSS px wide. A PHONE capture breaks that
+ *        assumption: 414 CSS px at deviceScaleFactor 3 is a 1242px-wide image
+ *        of a small screen, and deriving the scale from the width alone would
+ *        draw 15px captions and 16px marker discs over UI rendered at 3x —
+ *        legible only if you zoom in, which is exactly what a burned-in
+ *        annotation exists to avoid. Pass the scale that matches the CAPTURE's
+ *        own device pixel ratio instead. Nothing is ever resized either way,
+ *        so this cannot upscale the screenshot.
  */
 export async function annotate(src, out, opts) {
-  const { title, subtitle = "", markers = [] } = opts
+  const { title, subtitle = "", markers = [], scale: scaleOverride } = opts
   const meta = await sharp(src).metadata()
   const W = meta.width
   const H = meta.height
@@ -65,7 +75,7 @@ export async function annotate(src, out, opts) {
 
   // The band is sized from the real wrapped caption text, so a long caption
   // grows the band instead of overflowing it.
-  const scale = W / 1440 // captures are authored at 1440 CSS px wide
+  const scale = scaleOverride ?? W / 1440 // captures are authored at 1440 CSS px wide
   const pad = Math.round(28 * scale)
   const titleSize = Math.round(30 * scale)
   const subSize = Math.round(19 * scale)
