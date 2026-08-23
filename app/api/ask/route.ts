@@ -31,6 +31,10 @@
 //      never called — not called and then discarded, not called with a warning
 //      appended. A model that is never asked cannot answer, and that is the
 //      only version of this property that a prompt cannot be talked out of.
+//      It classifies the TURN, not the message: "I have a question about my
+//      knee." then "It hurts when I squat." is one injury question split in
+//      two, and each half on its own is innocent. So the prior turn is read
+//      before this line rather than after it, and the pair is classified.
 //
 //   6. THE TURN, BUFFERED WHOLE, THEN VALIDATED, THEN RETURNED. You cannot
 //      validate prose you have already put on somebody's screen. So the loop
@@ -83,7 +87,7 @@ import {
 import { runEscalation } from "@/lib/lead-engine/chat/escalate"
 import { groundedValuesFor } from "@/lib/lead-engine/chat/facts"
 import { buildSystemPrompt } from "@/lib/lead-engine/chat/prompt"
-import { classifyRisk } from "@/lib/lead-engine/chat/risk"
+import { classifyTurn } from "@/lib/lead-engine/chat/risk"
 import {
   CHAT_TOOLS,
   createToolExecutor,
@@ -99,6 +103,17 @@ import { askRequestSchema } from "@/lib/validators/chat"
 // row nothing can look up by name.
 import type { AuditAction } from "@/lib/audit/actions"
 import type { ChatConversation, ChatMessage } from "@/types/database"
+
+/**
+ * One turn can be four sequential model calls — `MAX_TOOL_ROUNDS` lookups and
+ * then the answer — and the platform's default budget is shorter than that.
+ * Every sibling AI route in this app sets one, and this route has the worse
+ * failure: a timeout kills the invocation AFTER the tokens are spent and
+ * BEFORE the assistant turn is written, so the spend lands on the bill and
+ * `chat_conversations.tokens_used` never sees it. The per-conversation token
+ * cap then guards against a number it cannot read.
+ */
+export const maxDuration = 120
 
 const BLOCKED_AUDIT_ACTION: AuditAction = "chat.reply_blocked"
 
@@ -325,7 +340,25 @@ export async function POST(request: Request) {
   // ── 5. The risk classifier, BEFORE the model exists in this function ─────
   // Everything below this line that could reach a model is inside the
   // `risk === "none"` path, by return rather than by condition.
-  const risk = classifyRisk(message)
+  //
+  // The transcript is read HERE, above the classifier, and handed to the model
+  // call below rather than read twice. The classifier needs it: a visitor who
+  // splits one injury question over two turns — "I have a question about my
+  // knee.", then "It hurts when I squat." — sends two messages that are each
+  // innocent on their own, and the model would receive the first as history
+  // while answering the second. Only the immediately preceding turn is used;
+  // see `classifyTurn`.
+  //
+  // A conversation this request is starting has no history, so nothing is read
+  // for it — the row does not exist yet either.
+  let prior: ChatMessage[] = []
+  try {
+    if (conversation) prior = await listMessages(conversation.id)
+  } catch (err) {
+    return failed("could not load the conversation", err)
+  }
+
+  const risk = classifyTurn(message, lastVisitorMessage(prior))
 
   try {
     // The row is created here rather than at the top so a 400 or a 429 never
@@ -370,11 +403,10 @@ export async function POST(request: Request) {
   let modelMessages: Array<{ role: "user" | "assistant"; content: string }>
   try {
     settings = await getBusinessSettings(conversation.business_id)
-    // Prior turns are read BEFORE this one is written, and this one is
+    // `prior` was read above, BEFORE this turn is written, and this one is
     // appended to the array explicitly. Reading after the write would work
     // too, right up until a replica lagged and the model was handed a
     // conversation with no question in it.
-    const prior = await listMessages(conversationId)
     modelMessages = [...toModelMessages(prior), { role: "user" as const, content: message }]
     await appendMessage({ conversationId, role: "user", content: message })
   } catch (err) {
@@ -492,6 +524,21 @@ export async function POST(request: Request) {
   const cards: Card[] = visitorSafeCards(outcome.cards)
 
   return NextResponse.json({ conversationId, reply, cards, verdict: "ok" })
+}
+
+/**
+ * The last thing the VISITOR said, and nothing the assistant said back.
+ *
+ * The classifier reads it as context for the message in front of it. Feeding
+ * it an assistant turn instead would classify this route's own refusal copy —
+ * which names injuries, because it is a refusal to discuss one — and every
+ * conversation would short-circuit itself for good after the first one.
+ */
+function lastVisitorMessage(rows: ChatMessage[]): string | null {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].role === "user") return rows[i].content
+  }
+  return null
 }
 
 /**

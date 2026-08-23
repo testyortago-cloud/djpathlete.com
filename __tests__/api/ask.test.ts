@@ -97,7 +97,7 @@ import {
   REFUSAL_BLOCKED,
   REFUSAL_INJURY,
 } from "@/lib/lead-engine/chat/constants"
-import { ESCALATION_FLAGGED_NOTE } from "@/app/api/ask/route"
+import { ESCALATION_FLAGGED_NOTE, maxDuration } from "@/app/api/ask/route"
 
 const SALT = "test-salt-for-the-ask-route"
 const CONVERSATION_ID = "6f7a1b2c-3333-4444-8555-666677778888"
@@ -407,6 +407,44 @@ describe("POST /api/ask — the risk classifier", () => {
     expect(appended("assistant")[0].content).toBe(REFUSAL_INJURY)
     expect(appended("assistant")[0].verdict).toBe("short_circuit")
   })
+
+  // The cheapest way around a classifier that sees one message is to send it
+  // two. Neither half is an injury question; together they are the only kind
+  // of question this control exists to stop, and by the time the second one
+  // arrives the model has the first one in its history.
+  it("never calls the model for a question split across two turns", async () => {
+    h.getConversation.mockResolvedValue(conversation({ message_count: 2 }))
+    h.listMessages.mockResolvedValue([
+      storedMessage({ id: "m1", role: "user", content: "I have a question about my knee." }),
+      storedMessage({ id: "m2", role: "assistant", content: "Sure — what would you like to know?", verdict: "ok" }),
+    ])
+
+    const res = await POST(req({ conversationId: CONVERSATION_ID, message: "It hurts when I squat." }))
+    const body = await res.json()
+
+    expect(h.runWithTools).not.toHaveBeenCalled()
+    expect(body.reply).toBe(REFUSAL_INJURY)
+    expect(body.verdict).toBe("short_circuit")
+  })
+
+  // …and the other direction, because a route that pasted the whole transcript
+  // in front of every message would short-circuit a conversation for good the
+  // moment anyone mentioned a knee. Only the message immediately before counts.
+  it("does not short-circuit a later, unrelated turn in the same conversation", async () => {
+    h.getConversation.mockResolvedValue(conversation({ message_count: 4 }))
+    h.listMessages.mockResolvedValue([
+      storedMessage({ id: "m1", role: "user", content: "my knee hurts when I squat" }),
+      storedMessage({ id: "m2", role: "assistant", content: REFUSAL_INJURY, verdict: "short_circuit" }),
+      storedMessage({ id: "m3", role: "user", content: "fair enough. do you run camps in July?" }),
+      storedMessage({ id: "m4", role: "assistant", content: "We do — here are the dates.", verdict: "ok" }),
+    ])
+
+    const res = await POST(req({ conversationId: CONVERSATION_ID, message: "how much are they?" }))
+    const body = await res.json()
+
+    expect(h.runWithTools).toHaveBeenCalled()
+    expect(body.verdict).toBe("ok")
+  })
 })
 
 describe("POST /api/ask — hostile input", () => {
@@ -621,6 +659,18 @@ describe("POST /api/ask — the handover", () => {
     expect(res.status).toBe(200)
     expect(body.verdict).toBe("ok")
     expect(body.reply).toContain("Here's what I found")
+  })
+})
+
+describe("POST /api/ask — the route's own runtime config", () => {
+  it("pins the serverless timeout, because a timeout here spends tokens nothing counts", () => {
+    // MUTANT: dropping the `maxDuration` export. One turn can be four
+    // sequential model calls, which is longer than the platform's default
+    // budget. The kill lands AFTER the tokens are spent and BEFORE the
+    // assistant turn is written, so the spend is real, `tokens_used` never
+    // moves, and the per-conversation token cap guards a number that stopped
+    // counting — in production only, where nothing in this suite can see it.
+    expect(maxDuration).toBe(120)
   })
 })
 
