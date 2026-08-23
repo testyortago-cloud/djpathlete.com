@@ -165,19 +165,35 @@ beforeEach(() => {
  * Walks the element tree the page returns and joins every string it renders.
  *
  * Sync function components are CALLED rather than skipped — the page splits
- * its five states into one small component each, and a walker that only
+ * its six states into one small component each, and a walker that only
  * followed `props.children` would read every one of them as empty and pass
  * vacuously — the "found nothing / looked at nothing" trap
  * no-brand-literals.test.ts guards itself against. Every negative assertion
  * below is therefore paired with a positive one on the same render, so an
  * empty walk fails rather than passes.
+ *
+ * One component cannot be called this way: `AgreeButton` is a client
+ * component and calls `useFormStatus`, which needs React's real render to be
+ * in progress and throws outside one. It is walked as a labelled leaf rather
+ * than swallowed, so a component that starts throwing for some OTHER reason
+ * shows up in the collected text instead of disappearing into an empty
+ * string. Its own behaviour has its own suite
+ * (__tests__/app/sms-consent-agree-button.test.tsx).
  */
 function collectText(node: any): string {
   if (node === null || node === undefined || typeof node === "boolean") return ""
   if (typeof node === "string" || typeof node === "number") return String(node)
   if (Array.isArray(node)) return node.map(collectText).join(" ")
   if (typeof node === "object" && node.type) {
-    if (typeof node.type === "function") return collectText(node.type(node.props))
+    if (typeof node.type === "function") {
+      let rendered
+      try {
+        rendered = node.type(node.props)
+      } catch {
+        return `[uncallable:${node.type.name || "anonymous"}]`
+      }
+      return collectText(rendered)
+    }
     return collectText(node.props?.children)
   }
   return ""
@@ -231,6 +247,17 @@ describe("a GET on the consent page writes NOTHING", () => {
     const el = await renderPage(token, { done: "1" })
     expect(store.consents).toEqual([])
     expect(collectText(el)).toContain(WORDING)
+  })
+
+  it("puts the ask behind the pending-aware button, not a plain submit", async () => {
+    const token = signSmsConsentToken(CONTACT, BUSINESS)
+    const shown = collectText(await renderPage(token))
+
+    expect(shown).toContain(WORDING)
+    // A plain <Button> is callable and would have contributed "I agree" to the
+    // walk. The label is the walker saying it met a client component instead —
+    // which is the whole point: only that one can disable itself mid-press.
+    expect(shown).toContain("[uncallable:AgreeButton]")
   })
 
   it("shows the exact sentence the write will later file", async () => {
@@ -376,6 +403,19 @@ describe("a phone that already said STOP", () => {
     expect(shown).not.toContain(WORDING)
   })
 
+  it("does not promise the emails carry on — a suppression exits every run, email steps included", async () => {
+    // `loadRunContext` (lib/db/sequences.ts) sets `isSuppressed` from EITHER
+    // identifier, and `decideStep` exits the run on that flag before it ever
+    // looks at the step kind. So a suppressed phone stops this engine's
+    // automatic EMAILS too, and "Our emails are not affected. Those carry on
+    // as before." was simply false.
+    const token = signSmsConsentToken(CONTACT, BUSINESS)
+    const shown = collectText(await renderPage(token))
+    expect(shown).not.toMatch(/emails are not affected/i)
+    expect(shown).not.toMatch(/carry on as before/i)
+    expect(shown).toMatch(/also stops the automatic emails/i)
+  })
+
   it("still refuses after a YES that was later followed by a STOP", async () => {
     // The realistic shape: they agreed once, changed their mind by text, and
     // then tapped the old email link again. `hasConsent` reads the most
@@ -401,6 +441,74 @@ describe("a phone that already said STOP", () => {
     const outcome = await confirmSmsConsent(token)
     expect(outcome).toMatchObject({ ok: false, reason: "phone_suppressed" })
     expect(store.consents).toHaveLength(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The suppression gate has to ask the SAME question the send path asks.
+//
+// `loadRunContext` (lib/db/sequences.ts, ~lines 118-127) sets `isSuppressed`
+// from EITHER identifier — "Check whichever identifiers this contact actually
+// has; either one being suppressed suppresses the whole run" — and
+// `decideStep` exits the run on that flag on its very first line. A gate here
+// that looked only at the phone therefore showed the ask, took the press,
+// filed a granted consent row and said "You are all set. We can now send you
+// text messages." to somebody the engine would never send anything to.
+//
+// One unsubscribe is enough to put her there, and the re-permission email
+// carries an unsubscribe footer of its own — so a corporate mail scanner
+// GETting every link in that message is a way to acquire the row without her
+// doing anything at all.
+describe("an email address that already unsubscribed", () => {
+  beforeEach(() => {
+    store.suppressions = [{ business_id: BUSINESS, identifier: EMAIL, reason: "unsubscribe" }]
+  })
+
+  it("records no consent and returns a suppressed outcome", async () => {
+    const token = signSmsConsentToken(CONTACT, BUSINESS)
+    const outcome = await confirmSmsConsent(token)
+
+    expect(outcome).toMatchObject({ ok: false, reason: "email_suppressed" })
+    expect(store.consents).toEqual([])
+    expect(store.timeline).toEqual([])
+    expect(recordAudit).not.toHaveBeenCalled()
+  })
+
+  it("does not show the ask — a button that cannot work is worse than no button", async () => {
+    const token = signSmsConsentToken(CONTACT, BUSINESS)
+    const shown = collectText(await renderPage(token))
+
+    expect(shown).not.toContain(WORDING)
+    expect(shown).not.toMatch(/all set/i)
+  })
+
+  it("says so in plain words, and does not send her off to text START", async () => {
+    // START clears a PHONE suppression. Hers is on her email address, so that
+    // instruction would waste her time and still leave her blocked.
+    const token = signSmsConsentToken(CONTACT, BUSINESS)
+    const shown = collectText(await renderPage(token))
+
+    expect(shown).toMatch(/unsubscribed/i)
+    expect(shown).not.toMatch(/\bSTART\b/)
+  })
+
+  it("still refuses after a POST, not only on the page", async () => {
+    const token = signSmsConsentToken(CONTACT, BUSINESS)
+    await submit(token)
+    expect(store.consents).toEqual([])
+    expect(store.timeline).toEqual([])
+  })
+
+  it("answers the phone case when BOTH are suppressed — a texted STOP is the stronger signal", async () => {
+    store.suppressions.push({ business_id: BUSINESS, identifier: PHONE, reason: "sms_stop" })
+    const token = signSmsConsentToken(CONTACT, BUSINESS)
+    expect(await confirmSmsConsent(token)).toMatchObject({ ok: false, reason: "phone_suppressed" })
+  })
+
+  it("matches on a differently-cased address, because contact_suppressions is stored lowercased", async () => {
+    store.contacts = [{ id: CONTACT, business_id: BUSINESS, email: EMAIL.toUpperCase(), phone_e164: PHONE }]
+    const token = signSmsConsentToken(CONTACT, BUSINESS)
+    expect(await readSmsConsentState(token)).toMatchObject({ state: "email_suppressed" })
   })
 })
 

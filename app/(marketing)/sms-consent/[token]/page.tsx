@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
-import { Button } from "@/components/ui/button"
 import { readSmsConsentState } from "@/lib/lead-engine/sms-consent"
 import { confirmSmsConsentAction } from "./actions"
+import { AgreeButton } from "./agree-button"
 
 // Never statically cached: what this page shows depends on rows that change
 // (a consent row, a suppression row) and on a per-contact token.
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic"
 /**
  * The page a contact lands on from the "can we text you?" email.
  *
- * THIS PAGE DOES NOT WRITE. It reads the token's state and renders one of five
+ * THIS PAGE DOES NOT WRITE. It reads the token's state and renders one of six
  * things. The consent row is written only by the server action behind the
  * "I agree" button (./actions.ts) — because mail scanners GET every link in an
  * inbound message, and a page that recorded consent on render would let a
@@ -47,6 +47,7 @@ export default async function SmsConsentPage({
         {resolved.state === "ask" && <Ask token={token} wording={resolved.wording} />}
         {resolved.state === "already_consented" && <Confirmed justConfirmed={justConfirmed} />}
         {resolved.state === "phone_suppressed" && <Stopped />}
+        {resolved.state === "email_suppressed" && <Unsubscribed />}
         {resolved.state === "wording_unavailable" && <Unavailable />}
       </div>
     </div>
@@ -54,10 +55,23 @@ export default async function SmsConsentPage({
 }
 
 /**
- * The ask. `wording` is the exact sentence `confirmSmsConsent` files as
- * `contact_consents.wording_shown`, handed over by the same
- * `readSmsConsentState` call the write re-runs — never a second copy of the
- * sentence written out here, which could drift from the one on the row.
+ * The ask. `wording` is not written out here as a second copy of the sentence
+ * — it comes from `renderSmsConsentWording`, the one function of the one
+ * column that also produces what gets filed.
+ *
+ * WHAT THE PAGE DOES NOT HAND OVER, AND WHY. `confirmSmsConsent` re-runs
+ * `readSmsConsentState` and files the sentence THAT call produces. It does not
+ * accept the sentence from this form, and must not: `wording_shown` is a claim
+ * about what a person saw, and a claim a client can supply is a claim the
+ * client can author. That would leave the compliance record saying whatever a
+ * crafted POST said it should.
+ *
+ * The price is a real, narrow drift window. If `business_settings.display_name`
+ * is edited between this render and the press, the row names the business as it
+ * is at POST time rather than as it appeared on screen. That is a settings edit
+ * landing inside one person's page visit — rare, self-correcting, and it still
+ * files a truthful sentence about a real business. A hidden field would close
+ * it by reopening the much larger hole above, so it stays open on purpose.
  */
 function Ask({ token, wording }: { token: string; wording: string }) {
   return (
@@ -71,11 +85,16 @@ function Ask({ token, wording }: { token: string; wording: string }) {
         {wording}
       </p>
 
+      {/*
+        The token is the ONLY field. Nothing the reader's browser sends decides
+        what gets recorded — see this component's doc comment. The button is a
+        client component purely so it can disable itself while the press is in
+        flight; a double tap on a slow connection would otherwise file the same
+        agreement twice.
+      */}
       <form action={confirmSmsConsentAction}>
         <input type="hidden" name="token" value={token} />
-        <Button type="submit" size="lg" className="w-full">
-          I agree
-        </Button>
+        <AgreeButton />
       </form>
 
       <p className="text-muted-foreground mt-6 text-sm">
@@ -116,6 +135,14 @@ function Confirmed({ justConfirmed }: { justConfirmed: boolean }) {
  * in an email does not overrule a message sent from the phone, and no consent
  * row is written on this branch — so this page must not say "you're all set"
  * to somebody who would stay blocked. It says what actually works instead.
+ *
+ * The last line used to read "Our emails are not affected. Those carry on as
+ * before." That was false, and this is where it was found out: a suppression
+ * on EITHER identifier sets `isSuppressed` in `loadRunContext`
+ * (lib/db/sequences.ts), and `decideStep` exits the run on that flag before it
+ * looks at the step kind at all. A texted STOP therefore stops this engine's
+ * automatic emails too. Saying otherwise put a promise on the page that the
+ * send path had no intention of keeping.
  */
 function Stopped() {
   return (
@@ -128,7 +155,44 @@ function Stopped() {
         To start texts again, send the word START in a text to the number our texts came from. It has to be done by
         text, from your phone, so that we know the request is really from you.
       </p>
-      <p className="text-muted-foreground text-sm">Our emails are not affected. Those carry on as before.</p>
+      <p className="text-muted-foreground text-sm">
+        That STOP also stops the automatic emails we send you, not only the texts. If you would like those back, reply
+        to any email you already have from us and a person will sort it out.
+      </p>
+    </div>
+  )
+}
+
+/**
+ * The honest answer to somebody whose EMAIL ADDRESS is suppressed.
+ *
+ * Same mechanism as `Stopped`, reached from the other side: `loadRunContext`
+ * checks both identifiers and either one exits the run, so an unsubscribed
+ * address blocks the texts every bit as completely as a texted STOP does.
+ * Filing a consent row here and saying "you are all set" would be a promise
+ * nothing can keep.
+ *
+ * It does NOT say "text START". That clears a phone suppression; hers is on
+ * her email address, so following it would cost her a text message and leave
+ * her exactly as blocked. There is no self-serve way back from an unsubscribe
+ * in this codebase, so the page hands her to a person — the same answer
+ * `Unavailable` gives, for the same reason.
+ */
+function Unsubscribed() {
+  return (
+    <div className="text-center">
+      <h1 className="font-heading mb-4 text-2xl font-semibold text-primary">We cannot turn texts on here</h1>
+      <p className="text-muted-foreground mb-3">
+        Our records show you unsubscribed from our messages. We have kept that, so this page has not changed anything
+        and nothing has been recorded.
+      </p>
+      <p className="text-muted-foreground mb-3">
+        That covers our texts as well as our emails. Saying yes on this page would not actually let us text you, so we
+        are not going to pretend otherwise.
+      </p>
+      <p className="text-muted-foreground text-sm">
+        If you have changed your mind, reply to any email you already have from us and a person will sort it out.
+      </p>
     </div>
   )
 }

@@ -45,6 +45,27 @@
 // regardless of any consent row written here. Telling somebody "you're all
 // set" while they stay blocked would be a straight lie. This returns a
 // distinct outcome instead, and the page says: text START.
+//
+// ---------------------------------------------------------------------------
+// AND NEITHER IS A PRIOR UNSUBSCRIBE — BOTH IDENTIFIERS, NOT JUST THE PHONE
+// ---------------------------------------------------------------------------
+// `contact_suppressions` is keyed by IDENTIFIER, not by contact, and a contact
+// has two of them. `loadRunContext` (lib/db/sequences.ts, ~lines 118-127)
+// checks BOTH and treats either hit as suppressing the WHOLE run — "either one
+// being suppressed suppresses the whole run" — after which `decideStep`
+// (lib/automation/sequence-tick.ts) exits the run on its very first line,
+// before it has even looked at what kind of step it was on.
+//
+// So a suppressed EMAIL address blocks the texts just as completely as a
+// suppressed phone number does. This gate has to ask the same question the
+// send path asks, or it hands back "You are all set. We can now send you text
+// messages." to somebody who will never receive one — the exact lie the
+// paragraph above exists to refuse, arrived at from the other side.
+//
+// It is not a corner case. One unsubscribe puts a person there, and the
+// re-permission email that carries this very link carries an unsubscribe
+// footer too — so a corporate mail scanner GETting every URL in that message
+// can create the suppression row without the contact touching anything.
 
 import { verifySmsConsentToken } from "@/lib/lead-engine/sms-consent-token"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
@@ -69,6 +90,7 @@ export type SmsConsentState =
   | { state: "invalid_token" }
   | { state: "contact_not_found" }
   | { state: "phone_suppressed"; contactId: string; businessId: string }
+  | { state: "email_suppressed"; contactId: string; businessId: string }
   | { state: "already_consented"; contactId: string; businessId: string }
   | { state: "wording_unavailable"; contactId: string; businessId: string }
   | { state: "ask"; contactId: string; businessId: string; wording: string }
@@ -77,16 +99,24 @@ export type SmsConsentOutcome =
   | { ok: true; contactId: string; businessId: string; wording: string }
   | {
       ok: false
-      reason: "invalid_token" | "contact_not_found" | "phone_suppressed" | "already_consented" | "wording_unavailable"
+      reason:
+        | "invalid_token"
+        | "contact_not_found"
+        | "phone_suppressed"
+        | "email_suppressed"
+        | "already_consented"
+        | "wording_unavailable"
     }
 
-type ContactLookup = { found: true; phone: string | null } | { found: false }
+type ContactLookup = { found: true; phone: string | null; email: string | null } | { found: false }
 
 async function loadContact(contactId: string, businessId: string): Promise<ContactLookup> {
   const supabase = createServiceRoleClient()
   const { data, error } = await supabase
+    // BOTH identifiers, because the suppression gate below checks both — same
+    // two columns `loadRunContext` selects for the same decision.
     .from("contacts")
-    .select("phone_e164")
+    .select("phone_e164, email")
     // BOTH keys. A token carries the business id as well as the contact id,
     // and looking up by contact id alone would let a token signed for one
     // business reach another's contact row.
@@ -95,7 +125,8 @@ async function loadContact(contactId: string, businessId: string): Promise<Conta
     .maybeSingle()
   if (error) throw error
   if (!data) return { found: false }
-  return { found: true, phone: (data as { phone_e164: string | null }).phone_e164 }
+  const row = data as { phone_e164: string | null; email: string | null }
+  return { found: true, phone: row.phone_e164, email: row.email }
 }
 
 async function recordSmsConsentTimelineEvent(contactId: string, businessId: string): Promise<void> {
@@ -126,6 +157,12 @@ async function recordSmsConsentTimelineEvent(contactId: string, businessId: stri
  *      does not need to be asked again, and does not need the sentence.
  *   3. the wording last, because it is the only step that can fail on
  *      configuration rather than on the contact.
+ *
+ * Within step 1, the PHONE is checked before the email. Both block equally
+ * (see the header), so the order is not about correctness but about which
+ * true thing to say when both are suppressed: a texted STOP came from the
+ * handset itself and is the stronger, more specific signal, and "text START"
+ * is the more useful instruction than "you unsubscribed".
  */
 export async function readSmsConsentState(token: string): Promise<SmsConsentState> {
   const verified = verifySmsConsentToken(token)
@@ -135,11 +172,18 @@ export async function readSmsConsentState(token: string): Promise<SmsConsentStat
   const contact = await loadContact(contactId, businessId)
   if (!contact.found) return { state: "contact_not_found" }
 
-  // No phone on file is not a blocker. Suppression is keyed by identifier, so
-  // there is nothing to check, and consent is keyed by CONTACT — someone who
-  // agrees before a number is on file has still agreed.
+  // A missing identifier is not a blocker, it is simply nothing to check —
+  // suppression is keyed by identifier, and consent is keyed by CONTACT, so
+  // someone who agrees before a number is on file has still agreed. What IS a
+  // blocker is either identifier being suppressed: that is exactly the test
+  // `loadRunContext` applies before every send, and a gate that asked a
+  // narrower question would file consent for somebody nothing can reach.
   if (contact.phone && (await isSuppressed(contact.phone, businessId))) {
     return { state: "phone_suppressed", contactId, businessId }
+  }
+
+  if (contact.email && (await isSuppressed(contact.email, businessId))) {
+    return { state: "email_suppressed", contactId, businessId }
   }
 
   if (await hasConsent(contactId, "sms")) {
@@ -167,14 +211,32 @@ export async function readSmsConsentState(token: string): Promise<SmsConsentStat
  *
  * NEVER call this from a GET. See the header.
  *
- * IDEMPOTENT BY REFUSAL, not by append. `processUnsubscribe` treats a repeat
- * visit as a legitimate second append-only revocation record, and for a
- * revocation that is right — each one is a person saying "stop" again. A
- * repeat here is different: every row is legal evidence of an AGREEMENT, and a
- * double tap, a back-button resubmit or a retried request did not produce two
- * agreements. `already_consented` is therefore refused rather than recorded,
- * and the page shows the same confirmation either way, so a second press
- * neither throws nor duplicates.
+ * IDEMPOTENT BY REFUSAL FOR A REPEAT, NOT FOR A RACE. `processUnsubscribe`
+ * treats a repeat visit as a legitimate second append-only revocation record,
+ * and for a revocation that is right — each one is a person saying "stop"
+ * again. A repeat here is different: every row is legal evidence of an
+ * AGREEMENT, and a back-button resubmit or a retried request did not produce
+ * two agreements. So `already_consented` is refused rather than recorded, and
+ * the page shows the same confirmation either way.
+ *
+ * That check is `hasConsent` followed by an insert, and there is nothing
+ * behind it. `contact_consents` carries no unique constraint and deliberately
+ * should not: one person legitimately holds many rows there (agreed, revoked,
+ * agreed again), so a constraint that made a second row impossible would break
+ * the revocation path this table exists for. The consequence is honest and
+ * worth stating: two presses that OVERLAP both read "no consent yet" and both
+ * insert. What is guaranteed is a repeat that arrives after the first write
+ * has landed; what is not is two that arrive together.
+ *
+ * The narrow window that actually happens — the impatient second tap on a slow
+ * connection, where a server-component form gives no sign the first one landed
+ * — is closed at the button, which disables itself while the press is in
+ * flight (app/(marketing)/sms-consent/[token]/agree-button.tsx). That is a UI
+ * guard, not a lock: it does nothing before hydration, with JavaScript off, or
+ * across two tabs. If duplicate grants ever show up in the data, a partial
+ * unique index on (contact_id, channel) WHERE granted is where to look next —
+ * it was not added here because nothing has yet shown it is needed, and a
+ * constraint on a compliance log is not a change to make on speculation.
  *
  * The wording is re-derived HERE, from `business_settings`, rather than being
  * accepted from the form — the same rule `recordFunnelSmsConsent` follows in
@@ -182,6 +244,15 @@ export async function readSmsConsentState(token: string): Promise<SmsConsentStat
  * actually rendered, and `contact_consents.wording_shown` is a claim about
  * what the person SAW. Deriving both the shown sentence and the filed sentence
  * from one function of one column is what makes that claim provable.
+ *
+ * RE-DERIVED means exactly that: this is a second call, at POST time, not the
+ * value the page rendered. If `business_settings.display_name` is edited in
+ * between, the filed sentence names the business as it is now rather than as
+ * it appeared on screen. That window is one settings edit landing inside one
+ * page visit, and it still files a truthful sentence about a real business.
+ * The alternative — a hidden field carrying the rendered sentence — closes it
+ * by handing authorship of the compliance record to the client, which is the
+ * far bigger hole and the reason this function reads the column itself.
  *
  * Returns an outcome rather than calling `notFound()` or redirecting itself:
  * the caller is a server action that knows where to send the reader, and this

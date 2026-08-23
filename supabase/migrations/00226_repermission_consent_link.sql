@@ -44,10 +44,46 @@
 -- already got the reply-YES version still has a working instruction, and the
 -- inbox runbook in 00223 still handles their reply.
 --
--- STATUS IS UNTOUCHED. The sequence stays `draft` with a NULL trigger_source,
--- exactly as 00223 left it: nothing enrols and no copy reaches a real person
--- until a human reviews it AND runs
--- `node scripts/activate-sequence.mjs <env-file> sms_repermission`.
+-- STATUS IS NOT UNTOUCHED IN PRODUCTION, AND THIS HEADER USED TO SAY IT WAS.
+--
+-- The UPDATE below does not write `sequences.status` — it touches one
+-- `sequence_steps` row and nothing else. What was wrong was the conclusion
+-- drawn from that: "the sequence stays `draft` ... nothing enrols and no copy
+-- reaches a real person until a human reviews it AND runs
+-- `node scripts/activate-sequence.mjs <env-file> sms_repermission`."
+--
+-- That describes a FRESH database. It has not described production since
+-- 2026-08-22, when a human did exactly those two things: `sms_repermission`
+-- was activated and 73 contacts were enrolled and mailed the 00223 copy
+-- (docs/lead-engine-status-2026-08-23.md — 90 imported records carry a phone,
+-- 73 of those also carry an email, and the ask goes out by email). On that
+-- database this file edits the live copy of an ACTIVE sequence. The reason it
+-- still reaches nobody new is that the sequence is one email then `stop` and
+-- those 73 runs are finished — not that a safety catch is holding.
+--
+-- What DOES remain true of every database: `trigger_source` is NULL, so
+-- nothing can auto-enrol into this sequence no matter its status.
+-- `enrolContactManually` invoked by a human is the only path that creates a
+-- run for it.
+--
+-- RELEASE ORDER: DEPLOY THE CODE FIRST, THEN APPLY THIS FILE.
+--
+-- The copy written below is understood only by the NEW renderer.
+-- `{{sms_consent_url}}` means "substitute the per-contact link" to a build
+-- carrying the placeholder handling in lib/lead-engine/email.ts, and means
+-- nothing at all to the build before it. If this migration lands while the old
+-- bundle is still serving, an email step rendering in that window mails the
+-- literal `{{sms_consent_url}}` to a person as visible template syntax — and
+-- `sequence_messages.body_rendered` freezes those bytes as the record of what
+-- was sent, so it cannot be tidied up afterwards. The hazard runs backwards
+-- too: rolling the code back after this file is applied puts the old renderer
+-- in front of the new copy again.
+--
+-- The practical exposure is small. One email then `stop`, 73 runs completed on
+-- 22 August, nothing auto-enrolling, so there should be no pending run for the
+-- tick to pick up in that window. "Should be" is not "cannot", and the
+-- ordering costs nothing: ship the code, confirm it is live, then apply this
+-- file. Only the reverse order has a failure mode.
 --
 -- COPY RULES (unchanged from 00223): plain text; no brand literal (swept by
 -- __tests__/lib/lead-engine/no-brand-literals.test.ts and asserted again in
