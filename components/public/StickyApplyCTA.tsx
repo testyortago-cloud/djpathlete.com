@@ -2,9 +2,10 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ArrowRight, MessageCircle, X } from "lucide-react"
 
+import type { AskConfig } from "@/app/api/ask/config/route"
 import { AskPanel } from "@/components/public/AskPanel"
 
 const HIDE_ON_PATHS = ["/contact", "/online", "/in-person", "/assessment"]
@@ -22,21 +23,31 @@ const HIDE_ON_PATH_PREFIXES = [
 const SHOW_AFTER_SCROLL_PX = 800
 const DISMISS_KEY = "djp.stickyCta.dismissed"
 
+/** Type-only import above, so this is a URL string and never a server module in the bundle. */
+const ASK_CONFIG_URL = "/api/ask/config"
+
+/** Nothing has answered yet, or something answered badly. Either way: no launcher, no name. */
+const CLOSED: AskConfig = { enabled: false, displayName: "" }
+
 interface StickyApplyCTAProps {
   /**
-   * `system_settings.chat_assistant_enabled`, read by the marketing layout —
-   * the same key and the same default (`CHAT_ASSISTANT_FLAG_DEFAULT`, false)
-   * that `/ask`, `POST /api/ask` and `POST /api/ask/capture` all read. It is a
-   * prop rather than a fetch because this is a client component; a launcher
-   * that renders while the routes answer 404 is a dead button, and one that
-   * renders when nobody has switched the feature on is worse.
+   * OPTIONAL OVERRIDE, and the marketing layout deliberately does not pass it.
+   *
+   * It used to: the layout read `chat_assistant_enabled` on the server and
+   * threaded it down here. But that layout wraps the whole public site and its
+   * pages are statically generated, so the answer was frozen into each page at
+   * build time — switching the assistant OFF could not take this button down
+   * until the next deploy. Anything that passes this prop must therefore be a
+   * surface that is genuinely re-rendered per request; everything else should
+   * leave it undefined and let the component ask `GET /api/ask/config`.
    */
   askEnabled?: boolean
   /**
-   * `business_settings.display_name`, threaded through to the panel so the
-   * details card can ask `hasChatConsentDisplayName` — the same gate
-   * `/api/ask/capture` asks before it will file a consent row. `''` in
-   * production, and `''` is also what a failed settings read degrades to.
+   * `business_settings.display_name`, same override rule. It reaches the details
+   * card, which asks `hasChatConsentDisplayName` — the exact gate
+   * `/api/ask/capture` asks before it will file a consent row. A stale copy here
+   * means the visitor reads one business name while `wording_shown` records
+   * another.
    */
   displayName?: string
 }
@@ -53,12 +64,24 @@ interface StickyApplyCTAProps {
  * The scroll threshold, the dismiss and both hide lists are untouched;
  * __tests__/components/public/StickyApplyCTA.test.tsx pins all three and
  * passed against this file before the launcher existed.
+ *
+ * WHERE THE LAUNCHER'S ANSWER COMES FROM. Not from the page: see `askEnabled`
+ * above. It is fetched from `/api/ask/config` — but LAZILY, only once the bar
+ * is on screen. This component renders on every marketing page and the launcher
+ * only appears after 800px of scroll, so a request on mount would be a request
+ * per page load for a button most visitors never see.
+ *
+ * The fetch FAILS CLOSED at every step — a rejected request, a non-2xx status,
+ * a body that is not the shape expected — because this button opens a public box
+ * that collects free text from strangers, and "we could not tell" is not "yes".
  */
-export function StickyApplyCTA({ askEnabled = false, displayName = "" }: StickyApplyCTAProps = {}) {
+export function StickyApplyCTA({ askEnabled, displayName }: StickyApplyCTAProps = {}) {
   const pathname = usePathname()
   const [visible, setVisible] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const [askOpen, setAskOpen] = useState(false)
+  const [fetched, setFetched] = useState<AskConfig>(CLOSED)
+  const requested = useRef(false)
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -72,13 +95,49 @@ export function StickyApplyCTA({ askEnabled = false, displayName = "" }: StickyA
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
-  if (dismissed) return null
-  if (HIDE_ON_PATHS.includes(pathname)) return null
-  if (HIDE_ON_PATH_PREFIXES.some((p) => pathname.startsWith(p))) return null
+  const overridden = askEnabled !== undefined
+  const hiddenHere =
+    HIDE_ON_PATHS.includes(pathname) || HIDE_ON_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
   // `askOpen` holds the bar mounted while a conversation is open. Without it,
   // scrolling back up mid-question unmounts the panel and the conversation
   // with it — the visitor's own scrolling would throw their question away.
-  if (!visible && !askOpen) return null
+  const showBar = !dismissed && !hiddenHere && (visible || askOpen)
+
+  useEffect(() => {
+    // `requested` is a ref, and it is set BEFORE the await: the bar mounts and
+    // unmounts with the scroll position, so anything keyed on state alone
+    // fetches once per flick of the wheel.
+    if (overridden || !showBar || requested.current) return
+    requested.current = true
+
+    // AND NO CLEANUP THAT CANCELS IT. `showBar` is a dependency and it flips
+    // with the scroll position, so a cleanup here fires whenever the visitor
+    // scrolls back up — mid-flight, on the ONE request this component ever
+    // makes. Discarding it leaves the launcher off for the rest of the page
+    // for someone who did nothing but scroll up and down. There is nothing to
+    // race: the answer is the same whenever it arrives, and `setFetched` on an
+    // unmounted component is a no-op.
+    void (async () => {
+      try {
+        const response = await fetch(ASK_CONFIG_URL, { cache: "no-store" })
+        // A body that says `enabled:true` under a 500 is still an error page.
+        if (!response.ok) return
+        const body = (await response.json()) as Partial<AskConfig> | null
+        setFetched({
+          enabled: body?.enabled === true,
+          displayName: typeof body?.displayName === "string" ? body.displayName : "",
+        })
+      } catch {
+        // Offline, blocked, a parse error, a route that does not exist yet:
+        // every one of them leaves the feature shut. Silent on purpose — the
+        // visitor asked for none of this and there is nothing for them to do.
+      }
+    })()
+  }, [overridden, showBar])
+
+  const config: AskConfig = overridden ? { enabled: askEnabled, displayName: displayName ?? "" } : fetched
+
+  if (!showBar) return null
 
   const handleDismiss = () => {
     sessionStorage.setItem(DISMISS_KEY, "1")
@@ -91,11 +150,11 @@ export function StickyApplyCTA({ askEnabled = false, displayName = "" }: StickyA
         role="region"
         aria-label="Apply for coaching"
         className={`fixed bottom-4 right-4 left-4 sm:left-auto sm:bottom-6 sm:right-6 z-50 ml-auto sm:ml-0 ${
-          askEnabled ? "max-w-xl" : "max-w-md"
+          config.enabled ? "max-w-xl" : "max-w-md"
         }`}
       >
         <div className="flex items-center gap-2 rounded-full bg-primary text-primary-foreground shadow-lg ring-1 ring-primary-foreground/10 backdrop-blur-sm px-2 py-2 sm:py-2 sm:pl-5 sm:pr-2">
-          <span className={`hidden text-sm font-medium pr-2 ${askEnabled ? "lg:inline" : "sm:inline"}`}>
+          <span className={`hidden text-sm font-medium pr-2 ${config.enabled ? "lg:inline" : "sm:inline"}`}>
             Limited 1-on-1 capacity.
           </span>
           <Link
@@ -105,7 +164,7 @@ export function StickyApplyCTA({ askEnabled = false, displayName = "" }: StickyA
             Apply for coaching
             <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
           </Link>
-          {askEnabled ? (
+          {config.enabled ? (
             <button
               type="button"
               onClick={() => setAskOpen((open) => !open)}
@@ -130,9 +189,9 @@ export function StickyApplyCTA({ askEnabled = false, displayName = "" }: StickyA
 
       {/* Docked on desktop, a full-screen sheet on mobile — the bar itself
           spans the width of a phone, so there is no room beside it. */}
-      {askEnabled && askOpen ? (
+      {config.enabled && askOpen ? (
         <div className="fixed inset-0 z-[60] sm:inset-auto sm:bottom-24 sm:right-6 sm:h-[min(70vh,560px)] sm:w-[380px]">
-          <AskPanel variant="panel" displayName={displayName} onClose={() => setAskOpen(false)} />
+          <AskPanel variant="panel" displayName={config.displayName} onClose={() => setAskOpen(false)} />
         </div>
       ) : null}
     </>

@@ -19,7 +19,7 @@
 // Spec: docs/superpowers/specs/2026-08-23-lead-engine-stage3-chat-design.md §6.1
 import { readFileSync } from "fs"
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { StickyApplyCTA } from "@/components/public/StickyApplyCTA"
@@ -79,10 +79,23 @@ function bar() {
   return screen.queryByRole("region", { name: "Apply for coaching" })
 }
 
+/**
+ * The launcher's on/off switch is fetched, not baked in — so a component
+ * rendered with no props WILL reach for `/api/ask/config`. Every test gets a
+ * fetch that refuses, both so nothing in this suite can touch the network and
+ * so "no launcher" is the honest resting state; the tests that care stub a
+ * real answer over the top.
+ */
 beforeEach(() => {
   pathname = VISIBLE_PATH
   sessionStorage.clear()
   setScroll(0)
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => {
+      throw new Error("no fetch stubbed for this test")
+    }),
+  )
 })
 
 afterEach(() => {
@@ -181,13 +194,13 @@ describe("StickyApplyCTA — behaviour that shipped before the chat launcher", (
 // `left-4 right-4` on mobile, so a bubble would collide on one and be entirely
 // covered on the other (spec §1.3).
 describe("StickyApplyCTA — the Ask launcher", () => {
-  it("does not offer the launcher when the assistant is switched off", () => {
+  it("does not offer the launcher until something says the assistant is on", () => {
     setScroll(900)
     render(<StickyApplyCTA />)
 
-    // The default is OFF and matches CHAT_ASSISTANT_FLAG_DEFAULT. A launcher
-    // that renders while the routes answer 404 is a dead button; one that
-    // renders when nobody has turned the feature on is worse.
+    // Nothing has answered yet, and the resting state is OFF. A launcher that
+    // renders while the routes answer 404 is a dead button; one that renders
+    // when nobody has turned the feature on is worse.
     expect(screen.queryByRole("button", { name: "Ask a question" })).toBeNull()
     // ...and the bar it lives in is untouched.
     expect(screen.getByRole("link", { name: /apply for coaching/i })).toBeInTheDocument()
@@ -264,5 +277,207 @@ describe("StickyApplyCTA — the Ask launcher", () => {
     await openPanelAndAskForDetails("Bay Performance")
 
     expect(screen.getByRole("checkbox", { name: renderChatMarketingWording("Bay Performance") })).toBeInTheDocument()
+  })
+})
+
+// ── Where the launcher's answer comes from ───────────────────────────────────
+//
+// It used to come from `app/(marketing)/layout.tsx` as a prop, read on the
+// server. That layout wraps the whole public site and those pages are
+// STATICALLY GENERATED — `initialRevalidateSeconds: false` on /faq,
+// /testimonials, /philosophy, /services, /glossary, /education, /contact,
+// /athletes/*, /privacy-policy, /terms-of-service and /sports — so the answer
+// was frozen at build time. Switching the assistant OFF could not take this
+// button down: the visitor still saw it, opened it, typed their question, and
+// got an error back from a route that had correctly gated itself.
+//
+// So the browser asks `GET /api/ask/config` instead, and every test below is
+// about not undoing that. Each names the mutant it kills.
+describe("StickyApplyCTA — the launcher asks the server, not the page", () => {
+  const CONFIG_URL = "/api/ask/config"
+  const TURN_URL = "/api/ask"
+
+  type Answer = { ok?: boolean; status?: number; body?: unknown; reject?: boolean }
+
+  /** A fetch that answers by URL, so a test can say one thing about the config and another about a turn. */
+  function stubFetch(answers: Record<string, Answer>) {
+    const fetchMock = vi.fn(async (input: unknown) => {
+      const url = String(input)
+      const answer = answers[url]
+      if (!answer) throw new Error(`no stub for ${url}`)
+      if (answer.reject) throw new TypeError("Failed to fetch")
+      return {
+        ok: answer.ok ?? true,
+        status: answer.status ?? 200,
+        json: async () => answer.body,
+      } as unknown as Response
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    return fetchMock
+  }
+
+  function config(body: unknown, init: Omit<Answer, "body"> = {}) {
+    return stubFetch({ [CONFIG_URL]: { ...init, body } })
+  }
+
+  /** The config lands in a microtask after the request; let React apply it. */
+  async function settle(fetchMock: ReturnType<typeof vi.fn>) {
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    await act(async () => {})
+  }
+
+  function launcher() {
+    return screen.queryByRole("button", { name: "Ask a question" })
+  }
+
+  it("asks for nothing until the bar is actually on screen", async () => {
+    const fetchMock = config({ enabled: true, displayName: "" })
+    render(<StickyApplyCTA />)
+
+    // MUTANT: fetch on mount. This component is on EVERY marketing page, and
+    // the launcher it configures only appears after 800px of scroll — a
+    // request per page load buys a button most visitors never see.
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    scrollTo(900)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(CONFIG_URL, expect.anything()))
+  })
+
+  it("asks once, however much the visitor scrolls", async () => {
+    const fetchMock = config({ enabled: true, displayName: "" })
+    render(<StickyApplyCTA />)
+
+    scrollTo(900)
+    scrollTo(0)
+    scrollTo(1200)
+    scrollTo(50)
+    scrollTo(2000)
+
+    // MUTANT: drop the "already asked" guard. The bar mounts and unmounts with
+    // the scroll position, so a per-appearance fetch is a request per flick.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+  })
+
+  it("never asks on a route where the bar cannot appear", () => {
+    const fetchMock = config({ enabled: true, displayName: "" })
+    pathname = "/contact"
+    setScroll(900)
+    render(<StickyApplyCTA />)
+
+    // /contact already hosts an apply form, so the bar is suppressed there —
+    // and a request for a button that is not going to render is pure waste.
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("shows the launcher when the server says the assistant is on", async () => {
+    config({ enabled: true, displayName: "" })
+    setScroll(900)
+    render(<StickyApplyCTA />)
+
+    // The kill switch now works without a deploy in BOTH directions; this is
+    // the "on" one, and it is the control for the "off" tests below.
+    expect(await screen.findByRole("button", { name: "Ask a question" })).toBeInTheDocument()
+  })
+
+  it("leaves the launcher off when the server says the assistant is off", async () => {
+    const fetchMock = config({ enabled: false, displayName: "" })
+    setScroll(900)
+    render(<StickyApplyCTA />)
+    await settle(fetchMock)
+
+    // MUTANT: render the launcher regardless of the answer. This is the
+    // emergency stop — the previous build baked `askEnabled":true` into pages
+    // that could not be told otherwise without a redeploy.
+    expect(launcher()).toBeNull()
+    expect(screen.getByRole("link", { name: /apply for coaching/i })).toBeInTheDocument()
+  })
+
+  it("stays closed when the config request fails outright", async () => {
+    const fetchMock = config(undefined, { reject: true })
+    setScroll(900)
+    render(<StickyApplyCTA />)
+    await settle(fetchMock)
+
+    // MUTANT: `catch { setEnabled(true) }`, or no catch at all. "We could not
+    // tell" is not "yes" — a request that never arrived must not open a public
+    // box that collects free text from strangers.
+    expect(launcher()).toBeNull()
+    expect(screen.getByRole("link", { name: /apply for coaching/i })).toBeInTheDocument()
+  })
+
+  it("stays closed when the config request answers an error with a body", async () => {
+    // The body SAYS yes. Anything that parses it without looking at the status
+    // opens the feature off the back of an error page.
+    const fetchMock = config({ enabled: true, displayName: "" }, { ok: false, status: 500 })
+    setScroll(900)
+    render(<StickyApplyCTA />)
+    await settle(fetchMock)
+
+    // MUTANT: drop the `response.ok` check.
+    expect(launcher()).toBeNull()
+  })
+
+  it("applies an answer that lands while the bar is scrolled out of view", async () => {
+    // FOUND BY MUTATION, not by reasoning. The bar mounts and unmounts with the
+    // scroll position, so an effect cleanup keyed on that is a cleanup that
+    // fires mid-flight — and this component asks exactly once. Throwing the
+    // answer away leaves the launcher off for the rest of the page, for a
+    // visitor who did nothing worse than scroll up and back down.
+    let land!: () => void
+    const inFlight = new Promise<void>((resolve) => {
+      land = resolve
+    })
+    const fetchMock = vi.fn(async () => {
+      await inFlight
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ enabled: true, displayName: "" }),
+      } as unknown as Response
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(<StickyApplyCTA />)
+    scrollTo(900)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    scrollTo(0)
+    await act(async () => {
+      land()
+    })
+    scrollTo(900)
+
+    expect(await screen.findByRole("button", { name: "Ask a question" })).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("takes the business name from the server too, so the consent tick names it", async () => {
+    // THE STALE-NAME BUG. The card renders the marketing wording from this
+    // name and /api/ask/capture re-renders it from a FRESH read before filing
+    // `wording_shown`. While the name was baked into a static page, a renamed
+    // business meant the visitor read one sentence and the record kept another.
+    const fetchMock = stubFetch({
+      [CONFIG_URL]: { body: { enabled: true, displayName: "Bay Performance" } },
+      [TURN_URL]: {
+        body: {
+          conversationId: "3f1b7c5e-1111-4222-8333-444444444444",
+          reply: "Leave your details and someone will come back to you.",
+          cards: [{ kind: "capture", reason: "so a coach can come back to you" }],
+          verdict: "ok",
+        },
+      },
+    })
+
+    setScroll(900)
+    render(<StickyApplyCTA />)
+    fireEvent.click(await screen.findByRole("button", { name: "Ask a question" }))
+    fireEvent.change(screen.getByLabelText("Your question"), { target: { value: "Can someone call me?" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    await screen.findByLabelText("Your name")
+
+    // MUTANT: hardcode `displayName=""` into the panel. The card would then
+    // draw no tick at all, which is the state a BLANK name is supposed to mean.
+    expect(screen.getByRole("checkbox", { name: renderChatMarketingWording("Bay Performance") })).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith(CONFIG_URL, expect.anything())
   })
 })

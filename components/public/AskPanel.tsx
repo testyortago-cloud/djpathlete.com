@@ -38,6 +38,7 @@
 // Spec: docs/superpowers/specs/2026-08-23-lead-engine-stage3-chat-design.md
 //       §6.1, §6.2
 
+import Link from "next/link"
 import { useEffect, useRef, useState } from "react"
 import { SendHorizonal, X } from "lucide-react"
 
@@ -70,6 +71,30 @@ const AT_CAP = "We've covered a lot in this conversation. Start a new one and I'
 
 /** The turn cannot be streamed — it has to be validated whole — so this stands in for tokens arriving. */
 const THINKING = "Looking that up…"
+
+/**
+ * THE ONLY THING ON THIS SURFACE THAT SAYS WHAT HAPPENS TO WHAT THE VISITOR
+ * TYPES. It is a box on a public page that invites free text from strangers,
+ * and people bring it exactly what you would expect: a parent describing a
+ * child's knee. Before this line the panel said one thing — "Answers come from
+ * what's published on this site" — which is about the ANSWER, not about their
+ * message. Nothing said the message is kept, that a person here reads it, or
+ * that it is sent to an outside model vendor to be answered.
+ *
+ * Three rules it is written to:
+ *
+ *   * PLAIN WORDS. The reader is a parent on a phone, not an engineer. No
+ *     "third party", no "data", no "processing", no "retention".
+ *   * NO OVERCLAIM. It does not say the privacy policy covers chat, because it
+ *     does not: the active legal documents contain no mention of chat,
+ *     assistants, transcripts or automated replies. The link is a pointer to
+ *     the policy that exists, not a promise about what is in it. If chat is
+ *     ever written into that document, THIS is the sentence to revisit.
+ *   * NO BUSINESS NAME. This file is inside the Lead Engine's brand sweep, and
+ *     the operator's identity is a value (`displayName`), never a literal.
+ */
+const PRIVACY_NOTICE =
+  "What you type here is saved, and a person from the team may read it later. It's also sent to an outside company whose software writes the replies."
 
 let turnSeq = 0
 function nextId(): string {
@@ -252,40 +277,56 @@ export function AskPanel({ displayName, variant = "page", onClose }: AskPanelPro
         <div ref={endRef} />
       </div>
 
-      <form
-        onSubmit={(event) => {
-          event.preventDefault()
-          void send()
-        }}
-        className="flex items-end gap-2 border-t border-border px-3 py-3"
-      >
-        <textarea
-          aria-label="Your question"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault()
-              void send()
-            }
+      <div className="border-t border-border">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            void send()
           }}
-          rows={1}
-          // The same ceiling the route enforces, so a long paste is trimmed
-          // where the visitor can see it rather than rejected after the trip.
-          maxLength={MAX_MESSAGE_CHARS}
-          disabled={atCap}
-          placeholder="Ask about coaching, camps or getting started"
-          className="max-h-32 min-h-10 flex-1 resize-none rounded-2xl border border-input bg-background px-3.5 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring disabled:opacity-60"
-        />
-        <button
-          type="submit"
-          disabled={atCap || pending || draft.trim().length === 0}
-          className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          className="flex items-end gap-2 px-3 pt-3"
         >
-          <SendHorizonal className="size-4" aria-hidden="true" />
-          <span className="sr-only">Send</span>
-        </button>
-      </form>
+          <textarea
+            aria-label="Your question"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault()
+                void send()
+              }
+            }}
+            rows={1}
+            // The same ceiling the route enforces, so a long paste is trimmed
+            // where the visitor can see it rather than rejected after the trip.
+            maxLength={MAX_MESSAGE_CHARS}
+            disabled={atCap}
+            placeholder="Ask about coaching, camps or getting started"
+            className="max-h-32 min-h-10 flex-1 resize-none rounded-2xl border border-input bg-background px-3.5 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring disabled:opacity-60"
+          />
+          <button
+            type="submit"
+            disabled={atCap || pending || draft.trim().length === 0}
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            <SendHorizonal className="size-4" aria-hidden="true" />
+            <span className="sr-only">Send</span>
+          </button>
+        </form>
+
+        {/* Beside the composer, not in the transcript above it: the transcript
+            scrolls, and this has to still be there on the tenth turn. */}
+        <p className="px-3.5 pb-3 pt-2 text-xs leading-relaxed text-muted-foreground">
+          {PRIVACY_NOTICE}{" "}
+          <Link
+            href="/privacy-policy"
+            // A new tab, so reading it does not throw the conversation away.
+            target="_blank"
+            className="underline underline-offset-2 transition-colors hover:text-foreground"
+          >
+            Read our privacy policy.
+          </Link>
+        </p>
+      </div>
     </div>
   )
 }

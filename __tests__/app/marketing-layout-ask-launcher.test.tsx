@@ -1,22 +1,32 @@
 // __tests__/app/marketing-layout-ask-launcher.test.tsx
 //
-// `StickyApplyCTA` is a client component, so it cannot read `system_settings`
-// or `business_settings` itself. This layout is its nearest server parent and
-// is where both reads happen — which makes it the place the two fail-closed
-// rules actually live:
+// THE MARKETING LAYOUT READS NOTHING. That is the whole test.
 //
-//   * A settings OUTAGE must not switch a feature on. The flag degrades to
-//     `CHAT_ASSISTANT_FLAG_DEFAULT` (false), so the launcher does not render
-//     while `/api/ask` is answering 404.
-//   * A failed business-settings read and a blank `display_name` must produce
-//     the SAME value, because `hasChatConsentDisplayName` collapses them to
-//     one verdict downstream — and `/api/ask/capture` reaches that same
-//     verdict independently before it will file a consent row.
+// It used to read `chat_assistant_enabled` and `business_settings.display_name`
+// and thread both into `StickyApplyCTA` as props. The layout wraps the ENTIRE
+// public site, and every page under it is statically generated — the branch's
+// own `.next/prerender-manifest.json` reports `initialRevalidateSeconds: false`
+// for /faq, /testimonials, /philosophy, /services, /glossary, /education,
+// /contact, /athletes/*, /privacy-policy, /terms-of-service and /sports. So
+// both values were baked into each page at build time and never re-read. One
+// build baked two different answers: `faq.rsc` carried `askEnabled":false`
+// while `testimonials.rsc` carried `askEnabled":true`.
 //
-// `getSetting` is mocked, so "change the default" is invisible to any
-// assertion on the output — the arguments are asserted instead.
+// Three bugs came out of that one read:
 //
-// Each test names the mutant it kills.
+//   * The kill switch needed a deploy. Off could not take the launcher down —
+//     the visitor still saw "Ask a question", opened it, typed, and got an
+//     error back from a route that had correctly gated itself.
+//   * Two uncached database reads on every marketing page render.
+//   * A stale consent name. The details card renders the marketing wording
+//     from this value while /api/ask/capture re-renders it from a FRESH read,
+//     so a renamed business meant the visitor read one name and `wording_shown`
+//     recorded another — for as long as the page's build lasted.
+//
+// The launcher now asks `GET /api/ask/config` from the browser instead. So the
+// assertions here are absences, and each names the mutant it kills.
+
+import { readFileSync } from "fs"
 
 import { describe, expect, it, vi, beforeEach } from "vitest"
 
@@ -29,56 +39,46 @@ vi.mock("@/components/Footer", () => ({ Footer: () => null }))
 import MarketingLayout from "@/app/(marketing)/layout"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { getSetting } from "@/lib/db/system-settings"
-import { CHAT_ASSISTANT_FLAG, CHAT_ASSISTANT_FLAG_DEFAULT } from "@/lib/lead-engine/chat/constants"
 
-const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
-
-async function renderLayout(): Promise<string> {
-  return JSON.stringify(await MarketingLayout({ children: null }))
-}
+const SOURCE = readFileSync("app/(marketing)/layout.tsx", "utf8")
 
 beforeEach(() => {
   vi.resetAllMocks()
 })
 
-describe("the marketing layout feeds the chat launcher", () => {
-  it("threads the flag and the business name down to the sticky bar", async () => {
-    mock(getSetting).mockResolvedValue(true)
-    mock(getBusinessSettings).mockResolvedValue({ display_name: "Bay Performance" })
+describe("the marketing layout", () => {
+  it("reads nothing from the database while rendering every public page", () => {
+    const tree = MarketingLayout({ children: null })
 
-    const tree = await renderLayout()
-
-    expect(getSetting).toHaveBeenCalledWith(CHAT_ASSISTANT_FLAG, CHAT_ASSISTANT_FLAG_DEFAULT)
-    expect(tree).toContain('"askEnabled":true')
-    expect(tree).toContain('"displayName":"Bay Performance"')
+    // MUTANT: put either read back. Both are uncached, both run on every
+    // marketing page render, and both get frozen into the static output.
+    expect(getSetting).not.toHaveBeenCalled()
+    expect(getBusinessSettings).not.toHaveBeenCalled()
+    expect(tree).toBeTruthy()
   })
 
-  it("leaves the launcher off when the assistant is switched off", async () => {
-    mock(getSetting).mockResolvedValue(false)
-    mock(getBusinessSettings).mockResolvedValue({ display_name: "Bay Performance" })
-
-    expect(await renderLayout()).toContain('"askEnabled":false')
+  it("is not async, so it cannot be awaiting a read at all", () => {
+    // The strongest form of the assertion above: a synchronous function has
+    // nowhere to put an `await`, and a promise returned here would be a read
+    // whose call the spies above could still miss (a lazily-imported DAL, a
+    // fetch, a cached wrapper).
+    expect(MarketingLayout({ children: null })).not.toBeInstanceOf(Promise)
+    expect(SOURCE).not.toMatch(/export default async function/)
   })
 
-  it("fails closed when the flag cannot be read at all", async () => {
-    mock(getSetting).mockRejectedValue(new Error("connection reset"))
-    mock(getBusinessSettings).mockResolvedValue({ display_name: "Bay Performance" })
-
-    // Not "we could not tell, so assume yes". `null` and `[]` are different
-    // answers, and so are "off" and "unreadable" — but only one of them is
-    // safe to guess.
-    expect(await renderLayout()).toContain('"askEnabled":false')
-    expect(CHAT_ASSISTANT_FLAG_DEFAULT).toBe(false)
+  it("imports no data-access module", () => {
+    // MUTANT: read the flag through a helper instead. The spies above only see
+    // the two modules they mock; this sees any of them.
+    expect(SOURCE).not.toMatch(/from "@\/lib\/db\//)
   })
 
-  it("degrades a failed business-settings read to a blank name, not to a broken page", async () => {
-    mock(getSetting).mockResolvedValue(true)
-    mock(getBusinessSettings).mockRejectedValue(new Error("connection reset"))
+  it("bakes no answer about the assistant into the page", () => {
+    // MUTANT: `<StickyApplyCTA askEnabled={true} />`, or a hardcoded name. A
+    // literal in the layout is baked into the static HTML exactly as the read
+    // was, and is just as impossible to switch off without a deploy.
+    const rendered = JSON.stringify(MarketingLayout({ children: null }))
 
-    const tree = await renderLayout()
-    // Same value a genuinely blank `display_name` produces, so the consent
-    // tick decision is identical in both — one verdict, as designed.
-    expect(tree).toContain('"displayName":""')
-    expect(tree).toContain('"askEnabled":true')
+    expect(rendered).not.toContain("askEnabled")
+    expect(rendered).not.toContain("displayName")
   })
 })

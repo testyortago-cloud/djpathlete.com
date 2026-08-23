@@ -421,3 +421,75 @@ describe("the confirmation reports what the SERVER filed, not what was ticked", 
     expect(screen.getByText(CONFIRMATION)).toBeInTheDocument()
   })
 })
+
+// ── What the visitor is told before they type ────────────────────────────────
+//
+// THE DEFECT THESE EXIST FOR. The panel's entire disclosure was one line:
+// "Answers come from what's published on this site." Nothing about the message
+// being kept, nothing about a person reading it, nothing about it leaving for
+// an outside company's model, and no link to the privacy policy — which the
+// registration form has carried for months. A reviewer checked the ACTIVE
+// legal documents in the dev clone: across all three, the words "chat",
+// "assistant", "transcript" and "automated" appear zero times.
+//
+// That is on a box deliberately designed to invite free text, on a public
+// page, from strangers — including a parent typing about a child's injury.
+// So the notice is not decoration and it is not marketing copy: it is the only
+// thing on screen that says what happens to what they type.
+//
+// The tests pin the SUBSTANCE, not the sentence — reword it freely, but it
+// must still say it is kept, that a person may read it, and that it leaves.
+describe("AskPanel — what happens to what you type", () => {
+  /** The sentence the privacy link lives in. */
+  function notice(): HTMLElement {
+    const link = screen.getByRole("link", { name: /privacy policy/i })
+    const sentence = link.closest("p")
+    if (!sentence) throw new Error("the privacy link is not inside a sentence")
+    return sentence
+  }
+
+  it("says the message is kept, that a person may read it, and that it leaves", () => {
+    render(<AskPanel displayName={DISPLAY_NAME} />)
+
+    // Before a single word is typed. A disclosure that only appears after the
+    // visitor has already sent something is not a disclosure.
+    const text = notice().textContent ?? ""
+    expect(text).toMatch(/saved/i)
+    expect(text).toMatch(/may read/i)
+    // MUTANT: drop the third-party sentence. The message goes to a model
+    // vendor, and nothing else on this surface says so.
+    expect(text).toMatch(/outside company/i)
+  })
+
+  it("links the privacy policy, the way the registration form does", () => {
+    render(<AskPanel displayName={DISPLAY_NAME} />)
+
+    expect(screen.getByRole("link", { name: /privacy policy/i })).toHaveAttribute("href", "/privacy-policy")
+  })
+
+  it("keeps the notice beside the box you type in", () => {
+    render(<AskPanel displayName={DISPLAY_NAME} />)
+
+    // MUTANT: move it into the scrolling transcript. A few turns in, the
+    // visitor scrolls it off screen and never sees it again — at exactly the
+    // point they are typing the most.
+    expect(notice().parentElement?.querySelector("textarea")).toBeTruthy()
+  })
+
+  it("shows it on the docked panel too, not only the full page", () => {
+    // The sticky bar's panel is where most visitors meet this feature.
+    render(<AskPanel displayName={DISPLAY_NAME} variant="panel" />)
+
+    expect(notice().textContent ?? "").toMatch(/saved/i)
+  })
+
+  it("claims nothing about the policy covering chat, because it does not yet", () => {
+    render(<AskPanel displayName={DISPLAY_NAME} />)
+
+    // The active legal documents do not mention chat at all. "Read our privacy
+    // policy" points at it; "our privacy policy explains how chat messages are
+    // handled" would be a promise this business has not written down.
+    const text = notice().textContent ?? ""
+    expect(text).not.toMatch(/policy (explains|covers|describes)/i)
+  })
+})
