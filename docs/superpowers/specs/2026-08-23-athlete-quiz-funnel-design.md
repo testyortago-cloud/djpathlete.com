@@ -125,6 +125,13 @@ which is how the router question is stored), `position`, `prompt`,
 One question kind: single choice. Nothing in the export is anything else, and
 a `kind` column with one legal value is a column that lies about its options.
 
+**`position` is global across the quiz, not per branch.** The walk is every
+question ordered by `position`, filtered to `branch_id IS NULL OR branch_id =
+<the walked branch>`. That is what lets the router sit at position 1, the
+shared segmentation questions at 10–40, the branch's own questions at 50–80,
+and the closing question at 90 — with no ordering column per branch and no
+join to sequence them.
+
 ### 1.4 `quiz_options`
 
 `id`, `question_id`, `position`, `label`, `weight` (numeric, default 0),
@@ -267,8 +274,15 @@ Blockers:
 
 Warnings (do not block):
 
-- Every weight on a question is identical — the question cannot affect the
-  score, which is legal but is probably a mistake.
+- Every weight on a question is identical **and non-zero** — the question
+  cannot change the percentage but does inflate both halves of it, which is
+  almost always a mistake.
+
+**All-zero is the documented way to mark a question as segmentation-only.**
+"Where are you based?" and "What's your sport's primary demand?" are not
+preparedness questions; they carry weight 0 on every option, contribute 0 to
+`max_score`, and therefore cannot move the tier. That is deliberate and the
+gate stays quiet about it.
 - A profile no option votes for.
 
 ### 2.3 Preview
@@ -533,9 +547,21 @@ did not throw" is not "somebody was told".
 
 ## 6. Seeding the RPI quiz
 
-The seed migration (number claimed at implementation time, per §8) inserts one quiz, four branches, five
-profiles, four tier bands, the router, and the per-branch questions, all
-`ON CONFLICT (…) DO NOTHING` — the same idempotent style as `00218`.
+The seed is a **typed TypeScript module**, `lib/quizzes/seed/rpi-athlete-quiz.ts`,
+upserted by a small script — not raw SQL in a migration.
+
+> **AMENDMENT.** §6 originally said "seed migration", following `00218`'s
+> precedent for sequences. That is the wrong shape here for one reason: a SQL
+> seed cannot be run through `quizGate`. A typed module can, and a unit test
+> asserting `quizGate(RPI_ATHLETE_QUIZ).ok === true` means the seed physically
+> cannot ship in a state the activation gate would reject. A seed the gate
+> validates in CI beats a seed that is merely idempotent.
+
+The upsert is keyed on `(business_id, key)` for the quiz and on the stable
+`key` of every child row, so re-running it is safe and does NOT clobber edits
+Darren has made in the editor: existing rows are left alone, missing ones are
+inserted. Re-seeding is additive, never destructive — the alternative loses a
+morning's copy editing to a careless re-run.
 
 ### 6.1 The mapping, and the one thing that does not fit
 
@@ -546,12 +572,22 @@ profiles, four tier bands, the router, and the per-branch questions, all
 | C. young athlete building toward something serious | `aspiring_pro` |
 | D. parent or coach looking for the right system | `parent_coach` |
 
-**`score_rotational` has no router option.** There are four branch score
-fields in the export and four router options, but "rotational" is not one of
-the four things the router asks about, and this business has a
-`/programs/rotational-reboot` product. The likeliest explanation is that
-rotational was a separate mini-quiz or a sub-score, not an archetype. It is
-seeded as a **profile vote target**, not a branch, and flagged for Darren.
+**`score_rotational` is a separate quiz, and the extraction proved it.**
+Four fields named `Q1 answer:` … `Q4 answer:` carry a self-contained
+four-question set — how often rotation feels disconnected, which area takes
+the load, how much rotational work per week, and *"Which describes you?"*
+whose five options are the five RPI profiles verbatim. That is the Rotational
+Reboot mini-quiz, not an archetype of this one.
+
+Two consequences:
+
+1. **The profile is answered, not inferred.** The vote mechanism in §1.9
+   handles it with no special case: all five votes sit on that one question's
+   five options. The question is carried into the RPI quiz as a common
+   question so the RPI result has a profile to report.
+2. **The rotational mini-quiz is a second quiz**, buildable in the editor with
+   no new code. It is NOT seeded here — it is a separate product funnel and
+   seeding it uninvited would put a quiz on Darren's list he did not ask for.
 
 ### 6.2 The seeded scoring, stated as invented
 
