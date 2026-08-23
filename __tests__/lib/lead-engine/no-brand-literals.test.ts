@@ -18,6 +18,12 @@ const ROOTS = [
   "supabase/migrations/00222_lead_engine_seed_sms_steps.sql",
   // Stage 4, Task 9 — the sms_repermission draft sequence's single email ask.
   "supabase/migrations/00223_lead_engine_repermission_sequence.sql",
+  // The same ask, rewritten to offer the consent link 00223 could not offer,
+  // plus the public page that link lands on. The page is copy a contact
+  // reads while deciding whether to trust this business with their phone
+  // number — the last place a hardcoded operator brand belongs.
+  "supabase/migrations/00226_repermission_consent_link.sql",
+  "app/(marketing)/sms-consent",
   // Stage 1c (pipeline board) — flagged as a gap by both Task 1 and Task 2,
   // left for Task 8 to close.
   "supabase/migrations/00219_lead_engine_pipeline.sql",

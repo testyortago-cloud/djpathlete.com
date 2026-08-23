@@ -73,6 +73,35 @@ export const UNSUBSCRIBE_FOOTER_SENTENCE =
   "If you no longer want to receive these emails, you can unsubscribe at any time."
 
 /**
+ * The literal token a sequence step's stored `body` carries where the
+ * per-contact SMS consent link belongs. Substituted here, at render time,
+ * from the URL the caller supplies.
+ *
+ * The seed copy cannot hold the real URL and never could: the token is signed
+ * per CONTACT (lib/lead-engine/sms-consent-token.ts) and the origin is per
+ * DEPLOYMENT (lib/lead-engine/origin.ts), while `sequence_steps.body` is one
+ * flat text column shared by every recipient. Same split as the unsubscribe
+ * URL — this function stays pure, and the caller (the sequence-tick runner)
+ * mints the URL.
+ *
+ * Migration 00226 puts this placeholder into the `sms_repermission` step body.
+ */
+export const SMS_CONSENT_URL_PLACEHOLDER = "{{sms_consent_url}}"
+
+/**
+ * The link text shown in the HTML part where the placeholder sits.
+ *
+ * A short phrase rather than the raw URL, following the footer's own
+ * `<a ...>Unsubscribe</a>`: a signed token is ~120 characters of base64url
+ * and reads as noise in an inbox. The plain-text part still carries the bare
+ * URL, because a text/plain reader has nothing to click.
+ *
+ * Not a brand string, and it must not become one —
+ * `__tests__/lib/lead-engine/no-brand-literals.test.ts` sweeps this file.
+ */
+const SMS_CONSENT_LINK_LABEL = "Yes, you can text me"
+
+/**
  * Thrown by `assertSendable` when `business_settings` has not been filled in.
  *
  * Carries `missing` so a caller can name the fields rather than restate the
@@ -150,6 +179,13 @@ export function renderSequenceEmail(args: {
   body: string
   /** Required whenever the unsubscribe footer is rendered (the default). */
   unsubscribeUrl?: string
+  /**
+   * The per-contact SMS consent page URL. Required only when `body` actually
+   * contains `SMS_CONSENT_URL_PLACEHOLDER`; ignored otherwise, so a body
+   * without the placeholder renders byte-for-byte the same whether this is
+   * passed or not.
+   */
+  smsConsentUrl?: string
   contactName: string | null
   /**
    * Defaults to TRUE. Every message this engine sends to a CONTACT is a
@@ -165,7 +201,7 @@ export function renderSequenceEmail(args: {
    */
   includeUnsubscribeFooter?: boolean
 }): { subject: string; html: string; text: string } {
-  const { settings, unsubscribeUrl, contactName } = args
+  const { settings, unsubscribeUrl, smsConsentUrl, contactName } = args
   const includeUnsubscribeFooter = args.includeUnsubscribeFooter !== false
   if (includeUnsubscribeFooter && !unsubscribeUrl) {
     // An empty href does not satisfy CAN-SPAM. A caller that forgot the URL
@@ -176,12 +212,36 @@ export function renderSequenceEmail(args: {
   const subject = substituteName(args.subject, contactName)
   const body = substituteName(args.body, contactName)
 
+  const wantsSmsConsentUrl = body.includes(SMS_CONSENT_URL_PLACEHOLDER)
+  if (wantsSmsConsentUrl && !smsConsentUrl) {
+    // The two alternatives are shipping `{{sms_consent_url}}` to a real
+    // person as visible template syntax, or rendering a link that points
+    // nowhere on the one page whose entire job is recording that they agreed.
+    // Both are worse than a loud failure — and the runner always supplies the
+    // URL, so this is unreachable from the send path.
+    throw new Error("renderSequenceEmail: body contains {{sms_consent_url}} but no smsConsentUrl was supplied")
+  }
+
+  // Substituted AFTER escaping, not before, and only in the HTML part.
+  // escapeHtml leaves `{` and `}` alone, so the placeholder survives it
+  // intact — which means the anchor below is the only unescaped markup in an
+  // otherwise fully escaped paragraph, and its href still runs through the
+  // very same escapeHtml the unsubscribe href uses. Substituting the raw URL
+  // BEFORE escaping would render it as visible text instead of a link.
+  const withSmsConsentLink = (escaped: string): string =>
+    wantsSmsConsentUrl
+      ? escaped.replaceAll(
+          SMS_CONSENT_URL_PLACEHOLDER,
+          `<a href="${escapeHtml(smsConsentUrl as string)}" style="color:#0E3F50; text-decoration:underline;">${SMS_CONSENT_LINK_LABEL}</a>`,
+        )
+      : escaped
+
   const bodyParagraphsHtml = body
     .split(/\n{2,}/)
     .filter((para) => para.length > 0)
     .map(
       (para) =>
-        `<p style="margin:0 0 18px; white-space:pre-line; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">${escapeHtml(para)}</p>`,
+        `<p style="margin:0 0 18px; white-space:pre-line; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">${withSmsConsentLink(escapeHtml(para))}</p>`,
     )
     .join("\n")
 
@@ -245,8 +305,13 @@ export function renderSequenceEmail(args: {
 </html>
 `.trim()
 
+  // The text/plain part gets the bare URL: there is nothing to click in a
+  // plain-text reader, so the label would leave that reader with no way to
+  // reach the page at all.
+  const bodyText = wantsSmsConsentUrl ? body.replaceAll(SMS_CONSENT_URL_PLACEHOLDER, smsConsentUrl as string) : body
+
   const text = [
-    body,
+    bodyText,
     "",
     "---",
     settings.display_name,

@@ -282,3 +282,66 @@ describe("the email env-availability gate (lib/automation/sequence-tick-runner.t
     expect(failRun).not.toHaveBeenCalled()
   })
 })
+
+// Migration 00226 puts the literal `{{sms_consent_url}}` into the
+// `sms_repermission` step body. `renderSequenceEmail` is pure and cannot mint
+// the URL itself — the token is per-contact and the origin is per-deployment —
+// so the runner has to supply it, exactly as it already does for the
+// unsubscribe URL. This suite is where that thread is provable end to end:
+// `renderSequenceEmail` is REAL here (only the Resend network call is mocked),
+// and `@/lib/lead-engine/sms-consent-token` is deliberately NOT mocked, so the
+// URL that lands in the sent bytes is a genuinely signed one.
+describe("the sms consent link the runner threads into an email body", () => {
+  const CONSENT_STEP: SequenceStepRow = {
+    ...EMAIL_STEP,
+    id: "step-email-consent",
+    subject: "Can we text you?",
+    body: "Hi {{name}}\n\n{{sms_consent_url}}\n\nThanks.",
+  }
+
+  it("substitutes a real signed URL that verifies back to this run's contact", async () => {
+    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([CONSENT_STEP])
+    const run = makeRun("r-consent")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+
+    await runSequenceTick()
+
+    const sentArg = sendMock.mock.calls[0][0]
+    expect(sentArg.text).not.toContain("{{sms_consent_url}}")
+    expect(sentArg.html).not.toContain("{{sms_consent_url}}")
+
+    const match = /https:\/\/app\.example\.test\/sms-consent\/([\w.-]+)/.exec(sentArg.text as string)
+    expect(match, "the plain-text part carries the consent URL").toBeTruthy()
+
+    const { verifySmsConsentToken } = await import("@/lib/lead-engine/sms-consent-token")
+    expect(verifySmsConsentToken(match![1])).toEqual({
+      valid: true,
+      contactId: "contact-r-consent",
+      businessId: "00000000-0000-0000-0000-000000000001",
+    })
+  })
+
+  it("records the substituted bytes on the message row, not the raw template", async () => {
+    // `body_rendered` must hold what the person received. A row storing
+    // `{{sms_consent_url}}` would leave no way to answer which link a given
+    // contact was actually sent.
+    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([CONSENT_STEP])
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-consent-2")])
+
+    await runSequenceTick()
+
+    const arg = (recordSend as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(arg.bodyRendered).toContain("/sms-consent/")
+    expect(arg.bodyRendered).not.toContain("{{sms_consent_url}}")
+  })
+
+  it("leaves a body with no placeholder untouched", async () => {
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-plain")])
+
+    await runSequenceTick()
+
+    const sentArg = sendMock.mock.calls[0][0]
+    expect(sentArg.text).not.toContain("/sms-consent/")
+    expect(sentArg.html).not.toContain("/sms-consent/")
+  })
+})
