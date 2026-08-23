@@ -56,6 +56,15 @@ Every task's requirements implicitly include this section.
 - **`ChatMessage` is a name collision.** `lib/validators/ai-chat.ts` already exports a `ChatMessage` (the admin program-builder transcript shape). Nothing re-exports both today, but **Task 11's transcript UI is where this bites** — import the row type from `@/types/database` explicitly and alias if both are ever needed in one file.
 - **`message_count` is re-derived from an exact `COUNT`**, not incremented, because PostgREST cannot express `col = col + 1` and a read-then-write increment loses updates — and that counter is what caps conversation length on an unauthenticated endpoint. `tokens_used` does increment and may undercount by one turn under a genuine race; that is a spend ceiling with slack, not a correctness boundary. Do not "simplify" the count back to an increment.
 
+**From Task 6 (`tools.ts` / `prompt.ts` / `consent-wording.ts`, landed):**
+
+- **`Card` is defined and exported from `lib/lead-engine/chat/tools.ts`.** The plan used the name without ever defining it. **Task 10 must import that type, not declare a parallel shape** — if the client invents its own card shape, "renders only values the server sent" stops being enforceable. Kinds: `programme`, `event`, `capture`, `consult`.
+- **Cards carry integer cents, never a formatted string.** Task 10 formats with `Intl.NumberFormat` over the server's integer. No money value is ever re-derived from prose.
+- **Every retrieval tool returns a designed sentence when it finds nothing**, not just the events one. An empty array reads to a model as permission to fall back on what it knows; an explicit "you do not know the answer" does not.
+- **`escalate` keeps the FIRST summary** if called twice. The sentence written when the model decided to hand over is the honest reason; a late call overwriting it is how an injected summary would reach the internal email. Task 9's one-per-conversation cap should agree with this.
+- **An unknown tool name throws**, so the loop reports a failed lookup rather than handing the model `""` — which would read as "found nothing".
+- **Lint:** `npx eslint` cannot run standalone (ESLint 10 wants a flat config; this repo still has the Next-style one). `npm run lint` is the only entry point.
+
 **From environment reconnaissance (verified, read-only):**
 
 - **`business_settings.reply_to` is `""` in the dev clone**, as is `display_name`. Task 9's escalation must therefore degrade honestly: mark the conversation escalated (that is the durable record), treat the email as best-effort, and never let the visitor be told "someone will be in touch" on the strength of a send that could not happen. Whether production is also blank is an OPEN question — production is unreachable from this environment.
