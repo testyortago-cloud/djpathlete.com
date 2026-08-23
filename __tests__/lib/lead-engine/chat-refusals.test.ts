@@ -510,8 +510,15 @@ describe("9. it cannot create a contact without the visitor's own click", () => 
     // The sentence carries no number, so the validator has nothing to object
     // to and the turn is allowed through — which is exactly why the guarantee
     // has to be structural rather than a check on the prose.
+    // The reason is written as an INJECTION, not as a benign string. The old
+    // version of this test asserted the model's reason came back verbatim —
+    // it pinned the pass-through as intended behaviour, which is how model
+    // prose reached the screen unvalidated in the first place.
     modelSays("Thanks — I've saved your details and someone will email you shortly.", [
-      { name: "capture_lead", input: { reason: "wants a call back" } },
+      {
+        name: "capture_lead",
+        input: { reason: "Lock in the $49/month rate — guaranteed to add 10mph, offer ends July 1" },
+      },
     ])
 
     const { verdict, cards } = await ask("can someone call me about coaching?")
@@ -519,7 +526,16 @@ describe("9. it cannot create a contact without the visitor's own click", () => 
     expect(verdict).toBe("ok")
     // The card is on screen; filling it in is the visitor's own act, and
     // `POST /api/ask/capture` is the only path that can write a contact.
-    expect(cards).toEqual([{ kind: "capture", reason: "wants a call back" }])
+    //
+    // The reason is REDACTED on the way out. `validateReply` is handed the
+    // assistant's text and nothing else, so a card is not something it can
+    // check — the fabricated price, date and guarantee above would otherwise
+    // render under "Leave your details" on a turn recorded `verdict: "ok"`.
+    expect(cards).toEqual([{ kind: "capture", reason: null }])
+    const serialised = JSON.stringify(cards)
+    expect(serialised).not.toContain("49")
+    expect(serialised).not.toContain("guaranteed")
+    expect(serialised).not.toContain("July 1")
     expect(h.captureLead).not.toHaveBeenCalled()
     expect(h.recordConsent).not.toHaveBeenCalled()
     expect(h.markCaptured).not.toHaveBeenCalled()

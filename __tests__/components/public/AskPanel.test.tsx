@@ -97,7 +97,9 @@ describe("AskPanel — the details card and its consent", () => {
     fetchMock.mockResolvedValue(
       ok({
         reply: "I can pass this to a coach. Leave your details below and someone will come back to you.",
-        cards: [{ kind: "capture", reason: "so a coach can come back to you" }],
+        // Server-redacted: the route nulls a capture card's reason before it
+        // ever reaches the client (visitorSafeCards).
+        cards: [{ kind: "capture", reason: null }],
       }),
     )
 
@@ -109,8 +111,10 @@ describe("AskPanel — the details card and its consent", () => {
     expect(screen.getByLabelText("Email address")).toBeInTheDocument()
     expect(screen.getByLabelText("Phone number")).toBeInTheDocument()
 
-    // The model's own words for why it asked, shown back.
-    expect(screen.getByText(/so a coach can come back to you/)).toBeInTheDocument()
+    // FIXED SERVER COPY, never the model's own words. `reason` is a tool
+    // argument the validator never sees, so it is redacted server-side and the
+    // card carries a sentence this codebase wrote.
+    expect(screen.getByText(/Leave your name and a way to reach you/i)).toBeInTheDocument()
 
     // Both sentences EXACTLY as the resolver renders them — the marketing one
     // is what `/api/ask/capture` re-renders to file as `wording_shown`, so a
@@ -128,7 +132,9 @@ describe("AskPanel — the details card and its consent", () => {
     fetchMock.mockResolvedValue(
       ok({
         reply: "Leave your details and someone will come back to you.",
-        cards: [{ kind: "capture", reason: "so a coach can come back to you" }],
+        // Server-redacted: the route nulls a capture card's reason before it
+        // ever reaches the client (visitorSafeCards).
+        cards: [{ kind: "capture", reason: null }],
       }),
     )
 

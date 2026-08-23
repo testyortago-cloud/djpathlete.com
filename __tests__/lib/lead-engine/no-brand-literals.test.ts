@@ -84,4 +84,22 @@ describe("the Lead Engine carries no brand literal", () => {
     // nothing" must not be the same result.
     expect(filesUnder("lib/lead-engine").length).toBeGreaterThan(3)
   })
+
+  it("every root still resolves — the guard above only ever covered one of them", () => {
+    // THE DEFECT THIS EXISTS FOR. `filesUnder` uses `throwIfNoEntry: false` and
+    // returns [] for a path that has moved, and the guard above checked exactly
+    // ONE root. So renaming any other file silently removed it from the sweep.
+    //
+    // Proven, not theorised: renaming components/public/AskCards.tsx to
+    // ask-cards.tsx, updating its one import, and planting the operator's real
+    // name in visitor-facing copy inside the consult card left all 959 tests
+    // green — with the brand literal rendering on the public chat surface.
+    //
+    // PRE_REGISTERED holds paths deliberately listed before they exist, which
+    // the ROOTS comments already do for work not yet landed. Anything else that
+    // stops resolving is a file that moved and took its coverage with it.
+    const PRE_REGISTERED = new Set(["app/api/webhooks/twilio"])
+    const vanished = ROOTS.filter((root) => !PRE_REGISTERED.has(root) && filesUnder(root).length === 0)
+    expect(vanished).toEqual([])
+  })
 })
