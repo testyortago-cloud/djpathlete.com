@@ -26,6 +26,7 @@
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
+import { MAX_MESSAGES_PER_CONVERSATION } from "@/lib/lead-engine/chat/constants"
 import type { ChatConversation, ChatMessage } from "@/types/database"
 
 function getClient() {
@@ -240,4 +241,258 @@ export async function markCaptured(id: string, contactId: string): Promise<void>
     .eq("id", id)
 
   if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// THE ADMIN LIST — /admin/chat
+// ---------------------------------------------------------------------------
+//
+// Reading the conversations as a LIST, which is a different question from the
+// ones above: those serve one live turn on a public endpoint, these serve an
+// operator scanning what the assistant has been saying.
+//
+// TWO THINGS ARE DELIBERATE HERE.
+//
+//  1. THE LIST SELECTS NAMED COLUMNS, NOT `*`, and `ip_hash`, `user_agent` and
+//     `attribution_session_id` are not among them. A list surface is the wrong
+//     place to widen the amount of visitor data being pulled out of the table
+//     by default — the same rule `lib/db/contacts-list.ts` states for the
+//     contact spine. The hash is a join key for the rate limiter, not
+//     something an operator reads.
+//
+//  2. "BLOCKED" IS A PROPERTY OF THE MESSAGES, NOT OF THE CONVERSATION, so it
+//     costs a second query. It is deliberately NOT an embedded `!inner` filter
+//     for the reason `countRecentMessagesByIp` above spells out: if the
+//     embedded filter ever stops restricting the parent rows, the failure is
+//     silent and wrong rather than loud.
+
+/** What the toolbar can narrow the list to. Spec §6.3. */
+export type ChatListFilter = "all" | "escalated" | "captured" | "blocked"
+
+/**
+ * One row of the admin list.
+ *
+ * `blocked_count` is derived rather than stored: the honesty control's own
+ * record lives on the messages, and a denormalised counter on the parent would
+ * be a second source of truth for the one number this feature is judged on.
+ */
+export interface ChatConversationListRow {
+  id: string
+  created_at: string
+  last_activity_at: string
+  message_count: number
+  tokens_used: number
+  landing_path: string | null
+  escalated_at: string | null
+  captured_at: string | null
+  contact_id: string | null
+  blocked_count: number
+}
+
+export interface ChatListFilters {
+  show: ChatListFilter
+  /** 1-based, already validated. */
+  page: number
+}
+
+const LIST_SELECT_COLUMNS =
+  "id, created_at, last_activity_at, message_count, tokens_used, landing_path, escalated_at, captured_at, contact_id"
+
+const SHOW_VALUES = new Set<string>(["all", "escalated", "captured", "blocked"])
+
+/** 999 pages of 25 is 24,975 conversations — far past anything this holds. */
+const MAX_PAGE = 999
+
+/**
+ * Turns raw URL strings into filters, discarding anything that is not one of
+ * the shapes this page defined.
+ *
+ * Lives in the DAL rather than in the page so the rejection is unit-testable
+ * without rendering a server component, and so there is exactly one answer to
+ * "what does `?show=junk` do" — the same arrangement `parseContactFilters`
+ * uses. A junk filter narrows to nothing there; here it falls back to `all`,
+ * because "show me everything" is the obviously right answer to an unreadable
+ * filter and an empty list would read as "the assistant has never run".
+ */
+export function parseChatFilters(raw: { show?: string; page?: string }): ChatListFilters {
+  const requested = raw.show ?? ""
+  const show = (SHOW_VALUES.has(requested) ? requested : "all") as ChatListFilter
+
+  let page = 1
+  const rawPage = raw.page ?? ""
+  if (/^\d{1,3}$/.test(rawPage)) {
+    const requestedPage = Number(rawPage)
+    if (requestedPage >= 1 && requestedPage <= MAX_PAGE) page = requestedPage
+  }
+
+  return { show, page }
+}
+
+/**
+ * The four chainable methods this list needs from a PostgREST query builder,
+ * declared structurally rather than imported — the repo drops the `Database`
+ * generic (see `lib/supabase.ts`), so the real builder type is wide enough
+ * that threading it through a generic helper costs more casts than it prevents.
+ */
+interface ChatFilterable {
+  eq(column: string, value: unknown): ChatFilterable
+  not(column: string, operator: string, value: unknown): ChatFilterable
+  in(column: string, values: unknown[]): ChatFilterable
+}
+
+/**
+ * ONE place, used by the list read AND by the count — so a filter that narrows
+ * the table cannot narrow the count differently, which is how a page ends up
+ * reporting "12 conversations" above a list of 3.
+ *
+ * `blockedIds` is passed in rather than fetched here because fetching it is
+ * async and this has to stay usable from both callers without either of them
+ * forgetting to apply it.
+ */
+function applyChatFilter<T>(query: T, show: ChatListFilter, blockedIds: string[]): T {
+  let q = query as ChatFilterable
+  q = q.eq("business_id", SINGLETON_BUSINESS_ID)
+  if (show === "escalated") q = q.not("escalated_at", "is", null)
+  if (show === "captured") q = q.not("captured_at", "is", null)
+  if (show === "blocked") q = q.in("id", blockedIds)
+  return q as T
+}
+
+/** PostgREST silently caps a `.select()` at ~1000 rows. Never assume otherwise. */
+const POSTGREST_ROW_CAP = 1000
+
+/**
+ * How many pages of blocked-message ids we are willing to walk before giving
+ * up. 20 × 1000 is 20,000 blocked replies inside the retention window — a
+ * number that would itself be the emergency, not this query.
+ */
+const MAX_BLOCKED_ID_PAGES = 20
+
+/**
+ * Every conversation that has at least one blocked reply in it.
+ *
+ * Walked in pages rather than read in one shot, and it THROWS rather than
+ * returning a short list if it runs past the ceiling. A truncated list here
+ * would be worse than an error: the page would render as "these are the
+ * conversations where the assistant was stopped", quietly missing some — and
+ * the whole point of the blocked filter is that it is complete.
+ */
+async function blockedConversationIds(supabase: ReturnType<typeof createServiceRoleClient>): Promise<string[]> {
+  const ids = new Set<string>()
+
+  for (let page = 0; page < MAX_BLOCKED_ID_PAGES; page++) {
+    const from = page * POSTGREST_ROW_CAP
+    const { data, error } = await supabase
+      .from("chat_messages")
+      .select("conversation_id")
+      .eq("business_id", SINGLETON_BUSINESS_ID)
+      .eq("verdict", "blocked")
+      .order("created_at", { ascending: false })
+      .range(from, from + POSTGREST_ROW_CAP - 1)
+
+    if (error) throw new Error(`blockedConversationIds: ${error.message}`)
+
+    const rows = (data ?? []) as Array<{ conversation_id: string }>
+    for (const row of rows) ids.add(row.conversation_id)
+    if (rows.length < POSTGREST_ROW_CAP) return [...ids]
+  }
+
+  throw new Error(
+    `blockedConversationIds: more than ${MAX_BLOCKED_ID_PAGES * POSTGREST_ROW_CAP} blocked replies are on file. ` +
+      "Refusing to answer with a truncated list — a partial 'these are the blocked conversations' is worse than an error.",
+  )
+}
+
+/**
+ * How many conversation ids to ask about in one blocked-count query.
+ *
+ * A conversation cannot hold more than `MAX_MESSAGES_PER_CONVERSATION`
+ * messages, so 25 ids can match at most 500 rows — comfortably inside
+ * PostgREST's 1000-row ceiling however big the caller's page size is. That
+ * arithmetic is the reason this cannot silently under-count.
+ */
+const BLOCKED_COUNT_CHUNK = Math.max(1, Math.floor(POSTGREST_ROW_CAP / MAX_MESSAGES_PER_CONVERSATION / 2))
+
+/** Blocked replies per conversation, for the rows actually on screen. */
+async function blockedCountsFor(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  ids: string[],
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>()
+  if (ids.length === 0) return counts
+
+  for (let start = 0; start < ids.length; start += BLOCKED_COUNT_CHUNK) {
+    const chunk = ids.slice(start, start + BLOCKED_COUNT_CHUNK)
+    const { data, error } = await supabase
+      .from("chat_messages")
+      .select("conversation_id")
+      .eq("business_id", SINGLETON_BUSINESS_ID)
+      .eq("verdict", "blocked")
+      .in("conversation_id", chunk)
+
+    if (error) throw new Error(`blockedCountsFor: ${error.message}`)
+
+    for (const row of (data ?? []) as Array<{ conversation_id: string }>) {
+      counts.set(row.conversation_id, (counts.get(row.conversation_id) ?? 0) + 1)
+    }
+  }
+
+  return counts
+}
+
+export interface ListChatConversationsInput {
+  show?: ChatListFilter
+  limit?: number
+  offset?: number
+}
+
+/**
+ * One page of conversations, most recently active first.
+ *
+ * Throws rather than returning `[]`. "The read failed" and "nobody has used
+ * the assistant" are different answers, and the admin page deliberately does
+ * not catch this — see app/(admin)/admin/chat/page.tsx.
+ */
+export async function listChatConversations(
+  input: ListChatConversationsInput = {},
+): Promise<ChatConversationListRow[]> {
+  const supabase = getClient()
+  const show = input.show ?? "all"
+  const limit = Math.min(input.limit ?? 25, POSTGREST_ROW_CAP)
+  const offset = input.offset ?? 0
+
+  const blockedIds = show === "blocked" ? await blockedConversationIds(supabase) : []
+  if (show === "blocked" && blockedIds.length === 0) return []
+
+  const base = supabase.from("chat_conversations").select(LIST_SELECT_COLUMNS)
+  const filtered = applyChatFilter(base, show, blockedIds)
+  const { data, error } = await (filtered as typeof base)
+    .order("last_activity_at", { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (error) throw new Error(`listChatConversations: ${error.message}`)
+
+  const rows = (data ?? []) as Array<Omit<ChatConversationListRow, "blocked_count">>
+  const counts = await blockedCountsFor(
+    supabase,
+    rows.map((row) => row.id),
+  )
+
+  return rows.map((row) => ({ ...row, blocked_count: counts.get(row.id) ?? 0 }))
+}
+
+/** How many conversations match, for the footer count and the pager. */
+export async function countChatConversations(input: { show?: ChatListFilter } = {}): Promise<number> {
+  const supabase = getClient()
+  const show = input.show ?? "all"
+
+  const blockedIds = show === "blocked" ? await blockedConversationIds(supabase) : []
+  if (show === "blocked" && blockedIds.length === 0) return 0
+
+  const base = supabase.from("chat_conversations").select("id", { count: "exact", head: true })
+  const filtered = applyChatFilter(base, show, blockedIds)
+  const { count, error } = await (filtered as typeof base)
+
+  if (error) throw new Error(`countChatConversations: ${error.message}`)
+  return count ?? 0
 }

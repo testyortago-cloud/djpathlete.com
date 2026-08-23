@@ -42,6 +42,7 @@ import {
   BookOpen,
   Kanban,
   UsersRound,
+  MessagesSquare,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { canAccessPath, type PermissionActor } from "@/lib/permissions/registry"
@@ -77,6 +78,10 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: Permi
         { label: "Products", href: "/admin/marketing/products", icon: Package },
         { label: "Landing Pages", href: "/admin/pages", icon: LayoutTemplate },
         { label: "Funnels", href: "/admin/funnels", icon: Workflow },
+        // Lead Engine Stage 3: the public chat assistant. Registered here
+        // rather than left URL-only — the pipeline board shipped URL-only once
+        // and had to be fixed for exactly that reason (see admin-nav.test.ts).
+        { label: "Chat assistant", href: "/admin/chat", icon: MessagesSquare },
         { label: "SEO Console", href: "/admin/integrations/gsc", icon: Search },
         { label: "SEO Memos", href: "/admin/seo-agent/memos", icon: Workflow },
         { label: "Team & Permissions", href: "/admin/team", icon: Users2 },
@@ -93,6 +98,10 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: Permi
         { label: "Products", href: "/admin/marketing/products", icon: Package },
         { label: "Landing Pages", href: "/admin/pages", icon: LayoutTemplate },
         { label: "Funnels", href: "/admin/funnels", icon: Workflow },
+        // Lead Engine Stage 3: the public chat assistant. Registered here
+        // rather than left URL-only — the pipeline board shipped URL-only once
+        // and had to be fixed for exactly that reason (see admin-nav.test.ts).
+        { label: "Chat assistant", href: "/admin/chat", icon: MessagesSquare },
         { label: "SEO Console", href: "/admin/integrations/gsc", icon: Search },
         { label: "SEO Memos", href: "/admin/seo-agent/memos", icon: Workflow },
         { label: "Team & Permissions", href: "/admin/team", icon: Users2 },

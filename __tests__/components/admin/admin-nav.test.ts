@@ -94,6 +94,17 @@ describe("getAdminNav", () => {
     }
   })
 
+  // Same defect class as the pipeline board below: an admin page reachable
+  // only by typing its URL is a page nobody discovers. /admin/chat is the
+  // only place a blocked reply can be read, so it has to be findable.
+  it("registers the chat assistant list in the Marketing section, under both content flags", () => {
+    for (const contentStudioEnabled of [false, true]) {
+      const nav = getAdminNav({ contentStudioEnabled })
+      const marketing = nav.groupedSections.find((s) => s.title === "Marketing")
+      expect(marketing?.items.some((i) => i.href === "/admin/chat")).toBe(true)
+    }
+  })
+
   // Final review, Important 2: the Lead Engine pipeline board was URL-only —
   // reachable, but not registered anywhere in the sidebar, so a person
   // navigating the app had no way to discover it.
