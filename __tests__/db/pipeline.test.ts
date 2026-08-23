@@ -240,8 +240,18 @@ import {
   DEFAULT_PIPELINE_KEY,
 } from "@/lib/db/pipeline"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
+import { REBOOKING_SUPPRESSION_DAYS } from "@/lib/lead-engine/pipeline-move"
 
 const DAY_MS = 86_400_000
+
+/**
+ * A manual close recent enough that `decideMove` still suppresses a
+ * re-booking. Derived from the window rather than written as a literal
+ * number of days: a hardcoded "5 days ago" is inside a 30-day window and
+ * outside a 3-day one, so the day the constant ever moves, a test written to
+ * prove a refusal quietly starts proving a creation — and stays green.
+ */
+const INSIDE_SUPPRESSION_WINDOW = () => new Date(Date.now() - (REBOOKING_SUPPRESSION_DAYS / 2) * DAY_MS).toISOString()
 
 beforeEach(() => {
   store.pipelines = []
@@ -937,7 +947,7 @@ describe("applyPipelineEvent", () => {
   it("records a refused event with refused_reason and does not move the card", async () => {
     seedBoard()
     seedContact("c-1")
-    const recentClose = new Date(Date.now() - 5 * DAY_MS).toISOString()
+    const recentClose = INSIDE_SUPPRESSION_WINDOW()
     seedOpportunity("opp-1", "c-1", {
       stage_id: "stage-lost",
       outcome: "lost",
