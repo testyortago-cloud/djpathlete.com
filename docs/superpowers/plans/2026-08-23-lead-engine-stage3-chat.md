@@ -65,6 +65,16 @@ Every task's requirements implicitly include this section.
 - **An unknown tool name throws**, so the loop reports a failed lookup rather than handing the model `""` — which would read as "found nothing".
 - **Lint:** `npx eslint` cannot run standalone (ESLint 10 wants a flat config; this repo still has the Next-style one). `npm run lint` is the only entry point.
 
+**From Task 9 (`escalate.ts`, audit slugs, `sendChatEscalationEmail`, landed):**
+
+- **A send that does not throw is NOT a send that happened.** `lib/email.ts:17-25` short-circuits when `RESEND_API_KEY` is unset and returns `{ data: null, error: null }` — a _success_ shape. `sendChatEscalationEmail` therefore returns `{ delivered: boolean }`, and `runEscalation` maps `delivered: false` to `notice: "not_configured"`.
+- **Task 7 must use the returned `notice` to decide what the visitor is promised.** On `not_configured` or `failed`, "someone will be in touch" is not backed by a sent message. The escalation is still on the record and still shows in `/admin/chat`, so say that instead of promising a reply nobody received.
+- **`escalateSummary` is OPTIONAL** — the model can request escalation without writing a sentence — but `runEscalation` requires `summary: string`. **Task 7 needs a fallback summary.**
+- **`/api/ask` is the only place `runEscalation` can be called from**, because the tool executor deliberately performs no write.
+- **`toHaveBeenCalled()` is too weak for an ordering property.** The plan's escalation test passed with `markEscalated` moved to run LAST — the exact ordering the task forbids. Use `invocationCallOrder`. Same family as the `toContainEqual` hole: if the property is about _when_ or _how many_, a bare called-check cannot see it.
+- **`sendContactFormEmail` is not a wholesale template.** It CCs a hardcoded address and sets `replyTo` to the submitter. Neither transfers: spec §5.3 names exactly one destination, and a chat visitor is anonymous and may have no address, so a guessed `replyTo` puts the operator's answer in front of the wrong person.
+- **`contact_timeline_events.contact_id` is `NOT NULL`**, so "no contact → no timeline row" is forced by the schema rather than chosen.
+
 **From environment reconnaissance (verified, read-only):**
 
 - **`business_settings.reply_to` is `""` in the dev clone**, as is `display_name`. Task 9's escalation must therefore degrade honestly: mark the conversation escalated (that is the durable record), treat the email as best-effort, and never let the visitor be told "someone will be in touch" on the strength of a send that could not happen. Whether production is also blank is an OPEN question — production is unreachable from this environment.
