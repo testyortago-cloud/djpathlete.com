@@ -118,7 +118,15 @@ turn, validates it, and only then responds.
 This is the single largest consequence of choosing an output validator, and it is why
 this stage adds a new **non-streaming** `runWithTools` to `lib/ai/` rather than porting
 `streamWithTools` from `functions/src/ai/anthropic.ts`. The widget shows a typing
-indicator carrying the tool labels ("checking camp dates…") so the wait is legible.
+indicator so the wait is legible.
+
+**Corrected during implementation.** This section originally promised the indicator
+would carry the tool labels ("checking camp dates…"). That is incoherent with the
+non-streaming design it appears in: the route returns nothing until the whole turn is
+finished, so there is no moment at which the client could know a camp lookup is
+happening. Cycling plausible tool labels on a timer would be a fabricated detail — the
+exact failure this feature exists to prevent, in the one place nobody would check.
+The indicator is one fixed line.
 
 `functions/` has `rootDir: "src"` and cannot import from `lib/`, so the existing tool
 loop is unreachable from a Next.js route regardless — but the non-streaming requirement
@@ -480,8 +488,21 @@ is a flaky build.
 - Targeted suites plus `npm run build`. Not the full suite.
 - `npx prettier --write` on every touched file.
 - Annotated real-app screenshots in `screenshots/lead-engine-stage3/`, driven by
-  Playwright against the running app, both light and dark on the public surfaces
-  (admin is light-only), including the empty-camps state and a blocked turn.
+  Playwright against the running app, including the empty-camps state and a blocked
+  turn.
+
+  **Light only, and that is a finding rather than a shortcut.** This section first
+  asked for light and dark on the public surfaces. Measured during implementation:
+  the app has no working dark mode. `globals.css` declares
+  `@custom-variant dark (&:is(.dark *))` and a `.dark` block, but **nothing ever
+  applies the class** — no theme provider, and `components/public/*.tsx` contains
+  zero `dark:` utilities. There is no dark rendering to photograph.
+
+  Related trap for whoever does wire a toggle: `--surface`, `--success`, `--warning`
+  and `--error` are declared on `:root` ONLY and are not redefined under `.dark`, so
+  every surface painted `bg-surface` — the house table chrome included — goes
+  light-on-light the moment a theme lands.
+
 - No `Co-Authored-By` or AI attribution anywhere.
 - No push, merge or deploy without Darren's explicit go-ahead.
 
