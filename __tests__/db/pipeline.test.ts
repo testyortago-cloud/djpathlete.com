@@ -892,27 +892,55 @@ describe("applyPipelineEvent", () => {
       seedBoard()
       seedContact("c-1")
       opportunitiesHasSourceEventId = false
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {})
 
-      const { decision, opportunityId } = await applyPipelineEvent({
+      try {
+        const { decision, opportunityId } = await applyPipelineEvent({
+          contactId: "c-1",
+          event: { kind: "payment", amountCents: 12000, currency: "usd", occurredAt: new Date() },
+          metadata: { stripe_session_id: "cs_pre_migration" },
+        })
+
+        expect(decision.kind).toBe("create")
+        expect(opportunityId).not.toBeNull()
+        expect(store.opportunities).toHaveLength(1)
+        const row = store.opportunities[0]
+        expect(row.outcome).toBe("won")
+        expect(row.value_cents).toBe(12000)
+        // The retry dropped the field entirely rather than sending a null for a
+        // column PostgREST cannot see.
+        expect("source_event_id" in row).toBe(false)
+        // And the sale is still traceable: the stage event carries the session
+        // id regardless of the column, which is what the pre-check reads back.
+        // The marker beside it is the point — see the next assertion.
+        expect(stageEventsFor(opportunityId as string)[0].metadata).toEqual({
+          stripe_session_id: "cs_pre_migration",
+          source_event_id_claimed: false,
+        })
+        // Degrading QUIETLY is the failure this guards against. The return
+        // value on this path is identical to the protected one, so without a
+        // log line and a queryable marker the only symptom of the protection
+        // being off is duplicated revenue noticed weeks later.
+        expect(errors).toHaveBeenCalledWith(
+          expect.stringContaining("duplicate-sale protection is OFF"),
+          expect.objectContaining({ sourceEventId: "cs_pre_migration" }),
+        )
+      } finally {
+        errors.mockRestore()
+      }
+    })
+
+    it("leaves the marker OFF when the column is present, so its absence keeps meaning something", async () => {
+      seedBoard()
+      seedContact("c-1")
+
+      const { opportunityId } = await applyPipelineEvent({
         contactId: "c-1",
         event: { kind: "payment", amountCents: 12000, currency: "usd", occurredAt: new Date() },
-        metadata: { stripe_session_id: "cs_pre_migration" },
+        metadata: { stripe_session_id: "cs_normal" },
       })
 
-      expect(decision.kind).toBe("create")
-      expect(opportunityId).not.toBeNull()
-      expect(store.opportunities).toHaveLength(1)
-      const row = store.opportunities[0]
-      expect(row.outcome).toBe("won")
-      expect(row.value_cents).toBe(12000)
-      // The retry dropped the field entirely rather than sending a null for a
-      // column PostgREST cannot see.
-      expect("source_event_id" in row).toBe(false)
-      // And the sale is still traceable: the stage event carries the session
-      // id regardless of the column, which is what the pre-check reads back.
-      expect(stageEventsFor(opportunityId as string)[0].metadata).toEqual({
-        stripe_session_id: "cs_pre_migration",
-      })
+      expect(stageEventsFor(opportunityId as string)[0].metadata).toEqual({ stripe_session_id: "cs_normal" })
     })
 
     /**

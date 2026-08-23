@@ -599,9 +599,23 @@ export async function applyPipelineEvent(input: {
       // the identical row minus the field it cannot know about — the sale
       // must land either way, and without the column there is nothing to
       // claim, so nothing was claimed.
+      //
+      // AND SAY SO, LOUDLY. Taking this path silently would be the worst
+      // shape available here: the double-Won protection is off, the return
+      // value is byte-identical to the protected path, and the only way
+      // anyone finds out is by noticing duplicated revenue weeks later. It is
+      // meant to last one deploy; if it is still firing after that, 00225 did
+      // not reach this database and somebody has to know.
       let claimedSourceEventId = sourceEventId
+      let claimDegraded = false
       if (insertResult.error && sourceEventId && isMissingColumnError(insertResult.error)) {
         claimedSourceEventId = null
+        claimDegraded = true
+        console.error(
+          "[pipeline] opportunities.source_event_id is missing — duplicate-sale protection is OFF for this write. " +
+            "Migration 00225 has not reached this database (or PostgREST's schema cache is stale).",
+          { sourceEventId, contactId: input.contactId },
+        )
         insertResult = await insertOpportunity(opportunityRow)
       }
 
@@ -626,7 +640,11 @@ export async function applyPipelineEvent(input: {
         fromStageId: null,
         toStageId: toStage.id,
         trigger: writtenTrigger(decision.trigger),
-        metadata: input.metadata,
+        // The marker is added ONLY on the degraded path, so its absence keeps
+        // meaning what it means on every card written before 00225 existed.
+        // A log line scrolls away; this makes "which sales were recorded while
+        // the protection was off" a query somebody can actually run afterwards.
+        metadata: claimDegraded ? { ...(input.metadata ?? {}), source_event_id_claimed: false } : input.metadata,
       })
 
       await recordAudit({
