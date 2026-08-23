@@ -263,3 +263,43 @@ describe("a number the visitor supplied is not a fabrication", () => {
     expect(v.some((x) => x.rule === "ungrounded_date")).toBe(true)
   })
 })
+
+describe("a promise the assistant REFUSES to make is not a promise", () => {
+  /**
+   * Caught in a real blocked turn, not theorised. The assistant wrote
+   * "I also can't promise or guarantee results like making a team — every
+   * athlete is different", and it was blocked as `promised_outcome —
+   * guarantee`: the pattern matched the bare word and nothing looked left of it.
+   *
+   * That is the worst shape a validator can take. It punishes the single most
+   * correct sentence the assistant can produce, replaces it with a refusal the
+   * visitor did not need, and inflates the blocked-turn count.
+   */
+  it.each([
+    "I also can't promise or guarantee results like making a team.",
+    "I cannot guarantee you'll make the team.",
+    "We don't guarantee results.",
+    "There's no guarantee that happens.",
+    "I won't promise you anything I can't back up.",
+    "Nothing here is guaranteed.",
+  ])("allows %j", (text) => {
+    expect(validateReply(text, GROUNDED)).toEqual([])
+  })
+
+  it.each(["We guarantee you will make the team.", "Results are guaranteed.", "I promise you results."])(
+    "still blocks the real thing: %j",
+    (text) => {
+      expect(validateReply(text, GROUNDED).some((v) => v.rule === "promised_outcome")).toBe(true)
+    },
+  )
+
+  it("does not let a negation earlier in the sentence license a later promise", () => {
+    // The window is short on purpose: a negation twenty words back governs a
+    // different clause.
+    const v = validateReply(
+      "We don't offer refunds on the programme, and you will gain real speed from the very first block of work.",
+      GROUNDED,
+    )
+    expect(v.some((x) => x.rule === "promised_outcome")).toBe(true)
+  })
+})

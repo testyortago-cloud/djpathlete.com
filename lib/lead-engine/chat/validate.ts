@@ -343,6 +343,38 @@ const SOFT_OUTCOME_VERBS =
 const SUPERLATIVE =
   "best|cheapest|fastest|strongest|greatest|top|leading|premier|number\\s+one|#\\s?1|most\\s+(?:effective|affordable|advanced|trusted|experienced|qualified)|unmatched|unrivall?ed"
 
+/**
+ * Words that turn a promise into its refusal.
+ *
+ * *** THE DEFECT THIS EXISTS FOR, CAUGHT IN A REAL BLOCKED TURN. *** The
+ * assistant wrote:
+ *
+ *   "I also CAN'T PROMISE OR GUARANTEE results like making a team — every
+ *    athlete is different, and that depends on a lot of factors outside of
+ *    coaching."
+ *
+ * — which is the assistant declining to promise an outcome, i.e. exactly the
+ * behaviour this rule exists to produce. It was blocked as
+ * `promised_outcome — guarantee`, because the pattern matches the bare word and
+ * nothing looked left of it.
+ *
+ * That is the worst shape a validator can take: it punishes the honest answer,
+ * replaces it with a refusal the visitor did not need, and inflates the
+ * blocked-turn count that §4.3 calls a real operational signal. A model that is
+ * refusing correctly must not be treated as a model that is promising.
+ *
+ * The window is deliberately SHORT — a negation three words to the left governs
+ * the verb; one twenty words back is a different clause ("we don't do refunds,
+ * and you will gain 5mph" must still block).
+ */
+const NEGATION_BEFORE =
+  /\b(?:can(?:'|’)?t|cannot|can\s+not|won(?:'|’)?t|will\s+not|don(?:'|’)?t|do\s+not|doesn(?:'|’)?t|never|no|nothing|unable\s+to|not)\b[^.!?]{0,24}$/i
+
+/** True when the match sits inside a refusal rather than a promise. */
+function isNegated(text: string, index: number): boolean {
+  return NEGATION_BEFORE.test(text.slice(0, index))
+}
+
 const PROMISED_OUTCOME_PATTERNS: RegExp[] = [
   /\bguarantee(?:s|d|ing)?\b/i,
   /\b(?:i|we)\s+promise\b/i,
@@ -558,7 +590,12 @@ export function validateReply(
   //    ever about not double-counting a numeric claim.
   for (const re of PROMISED_OUTCOME_PATTERNS) {
     const match = text.match(re)
-    if (match) violations.push({ rule: "promised_outcome", found: match[0].trim() })
+    // A promise the assistant is REFUSING to make is not a promise. See
+    // NEGATION_BEFORE — this was blocking "I can't promise or guarantee
+    // results", the single most correct sentence the assistant can produce.
+    if (match && match.index !== undefined && !isNegated(text, match.index)) {
+      violations.push({ rule: "promised_outcome", found: match[0].trim() })
+    }
   }
 
   const mentionsInjury = INJURY_TERMS_RE.test(text)
