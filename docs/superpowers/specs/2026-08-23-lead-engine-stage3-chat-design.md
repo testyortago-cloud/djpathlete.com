@@ -146,10 +146,28 @@ asserting it up front.
 ### 2.3 Feature flag
 
 `chat_assistant_enabled` in `system_settings`, default **false**, per the house
-per-feature convention. Off means the launcher does not render, `/ask` returns
+per-feature convention. Off means the launcher does not render, `/ask` calls
 `notFound()`, and `/api/ask` returns **404** — not 403. Matching the funnel preview
 routes: these are public routes that gate themselves, and a gate that fails closed
 answers 404, never a redirect.
+
+**Measured against a production build, 2026-08-23 — one half of that is not true,
+and it is not this branch's doing.** `/api/ask` and `/api/ask/capture` return a real 404. `/ask` renders the marketing not-found page but serves it with **HTTP 200** — a
+soft 404.
+
+The gate itself is sound: the response carries zero panel markup (no `<textarea>`,
+no `<form>`, no composer, no send control), so the assistant is genuinely
+unreachable. Only the status line is wrong.
+
+The cause is pre-existing and repo-wide, verified on clean `main` at `e4970016`:
+an unmatched URL 404s correctly, but `notFound()` thrown from inside a rendered
+page returns 200 — the response has already begun streaming by the time it throws.
+`/blog/<bad-slug>` and `/camps/<bad-slug>` behave identically today. Fixing it
+touches every marketing route and belongs in its own ticket, not here.
+
+`/ask` carries `robots: { index: false }`, so its own soft 404 is not an indexing
+risk. **`/blog/*` and `/camps/*` do not, and theirs is** — worth raising, because
+soft 404s are exactly what a search engine penalises on a marketing site.
 
 ---
 
