@@ -367,3 +367,57 @@ describe("AskPanel — what it sends, and what it does when it is refused", () =
     expect(container.innerHTML).toContain("&lt;img src=x onerror=alert(1)&gt;")
   })
 })
+
+describe("the confirmation reports what the SERVER filed, not what was ticked", () => {
+  /**
+   * WHY THIS EXISTS. `AskCards` sets its confirmation state from
+   * `body.marketingConsentRecorded`, and nothing tested it. Replacing that with
+   * the local tick — `setMarketingRecorded(marketingConsent)` — left every
+   * suite green.
+   *
+   * That mutation is not hypothetical. `business_settings.display_name` is `''`
+   * in production and in the dev clone, and `hasChatConsentDisplayName` makes
+   * the capture route refuse to file a consent row in that state. So
+   * `marketingConsentRecorded` is FALSE for every capture today. Under the
+   * mutation, every visitor who ticked the box would be told they will be
+   * emailed about camps while no `contact_consents` row exists anywhere —
+   * precisely the shown-vs-filed mismatch the one-resolver design rules out,
+   * on the one surface nobody had tested.
+   */
+  const CONFIRMATION = /hear about coaching|unsubscribe/i
+
+  async function captureWith(recorded: boolean) {
+    fetchMock.mockResolvedValueOnce(
+      ok({ reply: "Leave your details below.", cards: [{ kind: "capture", reason: null }] as Card[] }),
+    )
+    render(<AskPanel displayName={DISPLAY_NAME} />)
+    await ask("can someone call me?")
+
+    fireEvent.change(await screen.findByLabelText("Your name"), { target: { value: "Jordan Vale" } })
+    fireEvent.change(screen.getByLabelText("Email address"), { target: { value: "jordan@example.com" } })
+    // The visitor DOES tick the box in both cases. The server's answer is the
+    // only thing that differs.
+    fireEvent.click(screen.getByRole("checkbox"))
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, marketingConsentRecorded: recorded }),
+    } as Response)
+    const submit = screen
+      .getAllByRole("button")
+      .find((b) => (b as HTMLButtonElement).type === "submit" && !/^Send$/i.test(b.textContent ?? ""))
+    fireEvent.click(submit as HTMLElement)
+    await waitFor(() => expect(screen.getByText(/someone has your details now/i)).toBeInTheDocument())
+  }
+
+  it("stays silent about marketing when the server did NOT file a consent row", async () => {
+    await captureWith(false)
+    expect(lastBodyTo("/api/ask/capture").marketingConsent).toBe(true)
+    expect(screen.queryByText(CONFIRMATION)).toBeNull()
+  })
+
+  it("confirms marketing only when the server says it filed one", async () => {
+    await captureWith(true)
+    expect(screen.getByText(CONFIRMATION)).toBeInTheDocument()
+  })
+})
