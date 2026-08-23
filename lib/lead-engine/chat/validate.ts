@@ -174,6 +174,13 @@ function normaliseDate(raw: string): string {
 
 const BARE_NUMBER_RE = /\d[\d,]*(?:\.\d+)?/g
 
+/**
+ * A numeral carrying a percent sign. Extracted before bare numerals so it is
+ * never waived by SMALL_NUMBER_CEILING — see the reasoning at step 3 of
+ * validateReply().
+ */
+const PERCENT_RE = /(\d[\d,]*(?:\.\d+)?)\s*%/g
+
 // ---------------------------------------------------------------------------
 // Prose rules
 // ---------------------------------------------------------------------------
@@ -280,7 +287,21 @@ export function validateReply(text: string, grounded: string[]): Violation[] {
     remaining = stripMatches(remaining, re, (m) => onDate(m[0]))
   }
 
-  // 3. Whatever numerals are left are ordinary numbers.
+  // 3. Percentages, removed like currency and for the same reason: the
+  //    SMALL_NUMBER_CEILING below exists so ordinary prose counts ("2 things
+  //    worth knowing") are possible, and a percentage is NEVER that. Nobody
+  //    writes "there are 3% things to know" — a percentage is always a claim,
+  //    so it is checked at every magnitude. Without this, "athletes get 5%
+  //    faster" is waived by the ceiling and slips past the promised-outcome
+  //    patterns too, because "get" is deliberately not one of their verbs.
+  remaining = stripMatches(remaining, PERCENT_RE, (m) => {
+    const cleaned = normalise(m[1])
+    if (!groundedSet.has(cleaned)) {
+      violations.push({ rule: "ungrounded_number", found: cleaned })
+    }
+  })
+
+  // 4. Whatever numerals are left are ordinary numbers.
   for (const match of remaining.matchAll(BARE_NUMBER_RE)) {
     const cleaned = normalise(match[0])
     if (groundedSet.has(cleaned)) continue

@@ -86,10 +86,10 @@ describe("chat facts never leak a private programme", () => {
         payment_type: "one_time",
       },
       {
-        name: "Jai Tennis Beast Mode",
+        name: "Private Plan — Athlete A",
         is_active: true,
         is_public: false,
-        price_cents: 48000,
+        price_cents: 31200,
         duration_weeks: 8,
         sessions_per_week: 3,
         payment_type: "one_time",
@@ -113,10 +113,10 @@ describe("chat facts never leak a private programme", () => {
         payment_type: "one_time",
       },
       {
-        name: "Ellen the English Ego",
+        name: "Private Plan — Athlete B",
         is_active: true,
         is_public: false,
-        price_cents: 48000,
+        price_cents: 31200,
         duration_weeks: 8,
         sessions_per_week: 3,
         payment_type: "one_time",
@@ -124,8 +124,8 @@ describe("chat facts never leak a private programme", () => {
     ]
     const grounded = groundedValuesFor(await listPublicProgrammes(), SETTINGS)
     expect(grounded).toContain("79")
-    expect(grounded).not.toContain("480")
-    expect(grounded).not.toContain("48000")
+    expect(grounded).not.toContain("312")
+    expect(grounded).not.toContain("31200")
   })
 })
 
@@ -199,6 +199,58 @@ describe("chat facts do not reach for the convenient function", () => {
     const src = readFileSync("lib/lead-engine/chat/facts.ts", "utf8")
     for (const forbidden of ["@/lib/db/programs", "@/lib/db/events", "@/lib/db/faqs", "@/lib/db/testimonials"]) {
       expect(src).not.toContain(forbidden)
+    }
+  })
+})
+
+describe("groundedValues cannot be tricked by a unit confusion", () => {
+  it("never grounds the RAW CENTS form of a price", async () => {
+    // Guards lib/lead-engine/chat/facts.ts moneyForms(). If "7900" were
+    // grounded, an assistant writing "$7900" for a $79.00 programme would pass
+    // the output validator — a hundredfold error wearing the authority of a
+    // database-backed fact. Without this test the omission is invisible:
+    // restoring String(cents) breaks nothing else in this file.
+    const { listPublicProgrammes, groundedValuesFor } = await import("@/lib/lead-engine/chat/facts")
+    rows = [
+      {
+        name: "Public Programme",
+        is_active: true,
+        is_public: true,
+        price_cents: 7900,
+        duration_weeks: 6,
+        sessions_per_week: 3,
+        payment_type: "one_time",
+      },
+    ]
+    const grounded = groundedValuesFor(await listPublicProgrammes(), SETTINGS)
+    expect(grounded).toContain("79")
+    expect(grounded).toContain("79.00")
+    expect(grounded).not.toContain("7900")
+  })
+})
+
+describe("date forms cover the shapes a model actually writes", () => {
+  it("grounds Sept, day-first-with-year and numeric dates, so the validator cannot block the truth", async () => {
+    // Under-generating here does not merely lose a nicety: the validator
+    // recognises the reply as carrying a date, finds no grounded form, and
+    // discards an ACCURATE answer as a fabrication.
+    const { listPublicEvents, groundedValuesFor } = await import("@/lib/lead-engine/chat/facts")
+    rows = [
+      {
+        title: "Camp",
+        type: "camp",
+        status: "published",
+        start_date: "2026-09-01T12:00:00Z",
+        end_date: "2026-09-03T12:00:00Z",
+        location_name: "Field",
+        price_cents: 16500,
+        capacity: 12,
+        signup_count: 0,
+      },
+    ]
+    const grounded = groundedValuesFor(await listPublicEvents(), SETTINGS)
+    for (const form of ["september 1", "sep 1", "sept 1", "1 september 2026", "9/1/2026"]) {
+      expect(grounded).toContain(form)
     }
   })
 })

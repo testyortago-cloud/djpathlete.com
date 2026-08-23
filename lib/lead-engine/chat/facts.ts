@@ -115,7 +115,12 @@ function moneyForms(cents: number | null): string[] {
   if (cents == null) return []
   const dollars = cents / 100
   const whole = String(Math.round(dollars))
-  return [whole, dollars.toFixed(2), String(cents), `$${whole}`, `$${dollars.toFixed(2)}`]
+  // The RAW CENTS FORM IS DELIBERATELY ABSENT. Seeding "7900" here would ground
+  // the literal string 7900, so an assistant writing "$7900" for a $79.00
+  // programme would pass the validator — a hundredfold error reading as a
+  // database-backed fact. No model writes a price in cents, so nothing
+  // legitimate is lost by leaving it out.
+  return [whole, dollars.toFixed(2), `$${whole}`, `$${dollars.toFixed(2)}`]
 }
 
 /**
@@ -130,13 +135,23 @@ function dateForms(iso: string): string[] {
   const short = d.toLocaleString("en-US", { month: "short", timeZone: "UTC" })
   const day = String(d.getUTCDate())
   const year = String(d.getUTCFullYear())
+  // Every shape below is a form a model actually writes. UNDER-GENERATING HERE
+  // MAKES THE VALIDATOR BLOCK THE TRUTH: the reply is recognised as carrying a
+  // date, no grounded form matches it, and an accurate answer is discarded as a
+  // fabrication. The last three were added after exactly that — "Sept. 1",
+  // "1 September 2026" and "9/1/2026" were all being reported as ungrounded
+  // dates for a camp whose start date the tools had just returned.
+  const m = String(d.getUTCMonth() + 1)
   return [
     iso,
     iso.slice(0, 10),
     `${month} ${day}`,
     `${short} ${day}`,
+    `Sept ${day}`,
     `${day} ${month}`,
     `${month} ${day}, ${year}`,
+    `${day} ${month} ${year}`,
+    `${m}/${day}/${year}`,
     day,
     year,
   ]

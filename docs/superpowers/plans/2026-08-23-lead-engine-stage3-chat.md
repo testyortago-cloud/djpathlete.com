@@ -15,7 +15,7 @@
 Every task's requirements implicitly include this section.
 
 - **A prompt instruction is not a control.** If a forbidden thing is only discouraged in the system prompt, the task is not done. Parent spec §11.
-- **`programs` has TWO visibility columns.** `is_active` alone is not public — 39 of 40 active rows are named clients' personal plans with their prices. Never call `getPrograms()`, `getEvents()`, `listFaqsForPage()` or `getTestimonials()` from chat code.
+- **`programs` has TWO visibility columns.** `is_active` alone is not public — 39 of 40 active rows are individual clients' personal plans, named after the athletes, each carrying what that client paid. Never call `getPrograms()`, `getEvents()`, `listFaqsForPage()` or `getTestimonials()` from chat code.
 - **No brand literals under `lib/lead-engine/`.** `__tests__/lib/lead-engine/no-brand-literals.test.ts` recurses that directory and rejects `/DJP\s*Athlete/i`, `/\bDarren\b/i`, `/darrenjpaul\.com/i` — comments included. Business identity comes from `getBusinessSettings()` as a parameter.
 - **Audit actions are a closed set.** New events mean new rows in `lib/audit/actions.ts`; `AuditAction` derives from that array.
 - **Admin UI is light-only** and every list composes `components/ui/data-table.tsx`. Never hand-roll a `<table>`.
@@ -407,10 +407,10 @@ describe("chat facts never leak a private programme", () => {
         payment_type: "one_time",
       },
       {
-        name: "Jai Tennis Beast Mode",
+        name: "Private Plan — Athlete A",
         is_active: true,
         is_public: false,
-        price_cents: 48000,
+        price_cents: 31200,
         duration_weeks: 8,
         sessions_per_week: 3,
         payment_type: "one_time",
@@ -434,10 +434,10 @@ describe("chat facts never leak a private programme", () => {
         payment_type: "one_time",
       },
       {
-        name: "Ellen the English Ego",
+        name: "Private Plan — Athlete B",
         is_active: true,
         is_public: false,
-        price_cents: 48000,
+        price_cents: 31200,
         duration_weeks: 8,
         sessions_per_week: 3,
         payment_type: "one_time",
@@ -445,8 +445,8 @@ describe("chat facts never leak a private programme", () => {
     ]
     const grounded = groundedValuesFor(await listPublicProgrammes(), SETTINGS)
     expect(grounded).toContain("79")
-    expect(grounded).not.toContain("480")
-    expect(grounded).not.toContain("48000")
+    expect(grounded).not.toContain("312")
+    expect(grounded).not.toContain("31200")
   })
 })
 

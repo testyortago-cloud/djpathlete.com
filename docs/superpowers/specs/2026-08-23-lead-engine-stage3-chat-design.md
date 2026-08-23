@@ -33,9 +33,13 @@ Measured against the dev clone:
 | `is_active = true`                      | 40    |
 | `is_active = true AND is_public = true` | **1** |
 
-The other 39 are individual clients' personal training plans, named after the athletes:
-`Jai Tennis Beast Mode` ($480.00), `Miles the Baller`, `Abi's Performance Program`
-($142.50), `Ava the Animal!` ($240.00), `Ellen the English Ego` ($480.00).
+The other 39 are individual clients' personal training plans. Each is named
+after the athlete it belongs to — in several cases a child's first name — and
+each carries what that client paid. The specific names and figures are
+deliberately NOT reproduced here: this document argues that such data must not
+reach people who should not see it, and a committed file is exactly such a
+place. Anyone who needs to see them can run the query in §1.5 against the
+clone.
 
 An assistant wired to the obvious DAL would disclose **a named client's personal
 programme and what they paid** to any anonymous visitor. That is a privacy incident, not
@@ -238,16 +242,28 @@ or the assistant could not state its own opening hours.
 
 Three rules against the reply text:
 
-| Claim extracted                                        | Rule                                     | Violation           |
-| ------------------------------------------------------ | ---------------------------------------- | ------------------- |
-| Currency (`$79`, `79 dollars`, `seventy-nine dollars`) | must be in `groundedValues`              | `ungrounded_price`  |
-| Date (`July 24`, `2026-07-24`, `24 July 2026`)         | must be in `groundedValues`              | `ungrounded_date`   |
-| Any other numeral                                      | must be in `groundedValues`, **or** ≤ 10 | `ungrounded_number` |
+| Claim extracted                                        | Rule                                                  | Violation           |
+| ------------------------------------------------------ | ----------------------------------------------------- | ------------------- |
+| Currency (`$79`, `79 dollars`, `seventy-nine dollars`) | must be in `groundedValues`                           | `ungrounded_price`  |
+| Date (`July 24`, `2026-07-24`, `24 July 2026`)         | must be in `groundedValues`                           | `ungrounded_date`   |
+| Percentage (`30%`, `5%`)                               | must be in `groundedValues` — **no magnitude waiver** | `ungrounded_number` |
+| Any other numeral                                      | must be in `groundedValues`, **or** ≤ 10              | `ungrounded_number` |
 
 The ≤ 10 allowlist exists because small counts appear in ordinary prose ("a couple of
 options", "3 things to know") and would otherwise make the assistant unable to speak. It
 cannot leak a price: a price claim is currency-shaped and is caught by the first rule
 regardless of magnitude, so `$5` is checked, not waived.
+
+**Amended 2026-08-23, after implementation.** Percentages are extracted before the
+numeral rule and checked at every magnitude, exactly like currency. The original
+sentence waived any numeral ≤ 10, which let "athletes get 5% faster" through — and the
+promised-outcome patterns do not catch it either, because `get` is deliberately not one
+of their verbs (it would block "you will get an email confirmation"). A percentage is
+always a claim, never a prose count; nobody writes "there are 3% things to know".
+
+This is a spec amendment made by the spec's author, with the reasoning recorded — not a
+mid-run ruling overriding a spec sentence. That distinction has cost this repo a
+Critical before.
 
 Plus a promised-outcome detector (`guarantee`, `you will gain/add/improve`, `promise
 you`, `results are guaranteed`) and a residual injury-advice detector as defence in depth
