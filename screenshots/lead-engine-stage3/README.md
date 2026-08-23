@@ -129,3 +129,40 @@ public set read from the database and aborts the run rather than capture a
 single non-public name. It passed on every turn in this run. `assertWorkingTreeClean`
 refuses to capture at all while `app/`, `lib/` or `components/` differ from
 `HEAD`, for the same reason — and it fired for real on the first attempt.
+
+---
+
+## Re-taken after the review fixes — and one thing changed
+
+These were re-captured after the whole-branch review landed its fixes. Two notes
+that matter more than the pictures.
+
+**No reply was blocked on the re-run.** Four attempts, all answered honestly by
+the real model, and the harness reported that rather than manufacturing a block.
+That is not a gap — it is the fixes working. The block captured on the first run
+was `ungrounded_number — 14`, produced when the visitor said _"my son is 14"_ and
+the assistant answered _"for 14-year-olds"_. Echoing back a number the visitor
+themselves supplied is not a fabrication, and that false positive has since been
+fixed. Shots `07` and `09` therefore show the closest reachable state, captioned
+as such.
+
+**`10-admin-transcript-blocked.png` is a genuine block**, from a conversation
+still on record: a real `promised_outcome` violation, with the stopped sentence,
+the reason, and the evidence it was checked against.
+
+**And looking at that shot found a defect no test had.** The blocked sentence was:
+
+> "I also **can't promise or guarantee** results like making a team — every
+> athlete is different, and that depends on a lot of factors outside of coaching."
+
+The assistant was _refusing_ to promise an outcome — exactly the behaviour the
+rule exists to produce — and was blocked for containing the word "guarantee",
+because nothing looked to the left of the match. That is the worst shape a
+validator can take: it punishes the most correct sentence the assistant can
+write. Fixed, with a deliberately short negation window, mutation-proven in both
+directions. The screenshot is left as it was taken, because it is the evidence.
+
+**Two cosmetic things visible and not fixed:** the model sometimes emits literal
+markdown (`**Rotational Reboot**` renders with asterisks — the panel has no
+markdown pass, deliberately), and on the phone the composer placeholder clips
+mid-word.

@@ -103,6 +103,29 @@ clean `main`): `/blog/<bad-slug>` and `/camps/<bad-slug>` do the same.
 
 ---
 
+## Two defects the screenshots found that the tests did not
+
+Both were caught by opening a PNG and reading it, after the whole suite was green.
+
+**The assistant was blocked for refusing to promise.** A captured turn reads _"I
+also can't promise or guarantee results like making a team — every athlete is
+different"_ — the assistant declining an outcome, which is exactly the behaviour
+the rule exists to produce — and it was blocked for containing "guarantee",
+because nothing looked left of the match. It punished the most correct sentence
+the assistant can write and handed the visitor a refusal they did not need.
+Fixed with a short negation window, proven in both directions.
+
+**A number the visitor supplied was treated as invented.** Visitor: _"my son is
+14"_. Assistant: _"what's available for 14-year-olds"_. Blocked. "My child is N"
+is about as common an opening as this business gets, so a large share of honest
+turns were being discarded. Visitor numbers now ground ordinary counts — never
+prices, never dates, or "I heard it's $500" would make $500 a grounded answer.
+
+Both are the same lesson: unit tests written from a guard's own perspective see
+the true positives. Driving the real app is what surfaces the false ones.
+
+---
+
 ## Found in passing — not this branch's to fix
 
 Each is real, each has evidence, none is folded in.
