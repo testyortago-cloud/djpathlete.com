@@ -75,6 +75,16 @@ Every task's requirements implicitly include this section.
 - **`sendContactFormEmail` is not a wholesale template.** It CCs a hardcoded address and sets `replyTo` to the submitter. Neither transfers: spec §5.3 names exactly one destination, and a chat visitor is anonymous and may have no address, so a guessed `replyTo` puts the operator's answer in front of the wrong person.
 - **`contact_timeline_events.contact_id` is `NOT NULL`**, so "no contact → no timeline row" is forced by the schema rather than chosen.
 
+**From Task 8 (`app/api/ask/capture/route.ts`, landed):**
+
+- **`lib/validators/chat.ts` EXISTS** (committed `e88ba40f`) with `askCaptureSchema`. Add to it; never recreate it.
+- **The flag key lives in `lib/lead-engine/chat/constants.ts`** as `CHAT_ASSISTANT_FLAG` / `CHAT_ASSISTANT_FLAG_DEFAULT`. **Task 10's launcher and `/ask` page must import these**, not retype the literal — a route defaulting open while the widget defaults closed is a public endpoint nobody knows is open.
+- **A mocked `getSetting` makes "change the default" an untestable mutation.** Assert the arguments instead: `expect(getSetting).toHaveBeenCalledWith(CHAT_ASSISTANT_FLAG, false)`.
+- **Status codes:** unknown conversation → 404; second capture on one conversation → 409; `captureLead` returning `null` → 500; failed conversation READ → 500, deliberately distinct from the 404. Saying "saved" over a write that did not happen is the one lie this feature exists to avoid.
+- **Blank strings are absent, not invalid.** The details card renders both an email and a phone input, so the untouched one posts `""` and `z.string().email()` rejects it — a perfectly good phone-only submission would 400. `blankToUndefined` preprocesses both. **Task 10's form does not need to work around this.**
+- **`npm run lint` DOES NOT WORK in this repo.** `next lint` was removed in Next 16 and it fails with "Invalid project directory". `tsc --noEmit` plus `npm run build` is the entire gate. Do not spend time on lint.
+- The consent row carries raw `ip_address` / `user_agent`, matching `recordFunnelSmsConsent` and the newsletter route — a consent row is evidence, and that is part of the evidence. The hash-only rule applies to `chat_conversations`, which that route never writes.
+
 **From environment reconnaissance (verified, read-only):**
 
 - **`business_settings.reply_to` is `""` in the dev clone**, as is `display_name`. Task 9's escalation must therefore degrade honestly: mark the conversation escalated (that is the durable record), treat the email as best-effort, and never let the visitor be told "someone will be in touch" on the strength of a send that could not happen. Whether production is also blank is an OPEN question — production is unreachable from this environment.
