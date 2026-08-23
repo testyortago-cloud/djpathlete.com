@@ -519,3 +519,46 @@ export async function exitRunsForContact(contactId: string, reason: string): Pro
   if (error) throw error
   return (data ?? []).length
 }
+
+/**
+ * One row per sequence, for a human to pick from.
+ *
+ * `status` and `trigger_source` are part of the row rather than a detail a
+ * caller can skip, because together they are the two things a person choosing
+ * a sequence by hand actually needs to know:
+ *
+ *   - `status` — every sequence in this repo is SEEDED `draft` on purpose
+ *     (migrations 00218 and 00223 both open with the reason), and
+ *     `enrolContactManually` refuses a sequence that is not `active`. A picker
+ *     that showed only a name would let someone select four contacts, click
+ *     enrol, and be told afterwards that nothing happened. Showing the status
+ *     turns that into something they knew before they clicked.
+ *   - `trigger_source` — NULL means "manual enrolment only" (migration 00216's
+ *     own comment), i.e. this surface is the ONLY way anyone ever gets into it.
+ *     A non-NULL source means the sequence also enrols people automatically,
+ *     which is worth knowing before adding more by hand.
+ *
+ * Deliberately NOT filtered to `status = 'active'`: that would render an empty
+ * picker today, on a database where every seeded sequence is a draft, and an
+ * empty picker reads as a broken feature rather than as an unactivated one.
+ */
+export interface SequenceSummary {
+  id: string
+  key: string
+  name: string
+  status: string
+  trigger_source: string | null
+}
+
+export async function listSequences(businessId: string = SINGLETON_BUSINESS_ID): Promise<SequenceSummary[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("sequences")
+    .select("id, key, name, status, trigger_source")
+    .eq("business_id", businessId)
+    .order("name", { ascending: true })
+  // Throws rather than returning []: an empty picker for a failed read would
+  // tell the operator this business has no sequences, which is not true.
+  if (error) throw new Error(`listSequences: ${error.message}`)
+  return (data ?? []) as SequenceSummary[]
+}
