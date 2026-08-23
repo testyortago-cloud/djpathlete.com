@@ -377,6 +377,30 @@ The client holds an opaque `conversationId` and nothing else. History is loaded
 server-side. A client that posts its own transcript cannot invent a prior **assistant**
 turn — "you already quoted me $5" — and have the model honour it.
 
+### 7.1a A blocked turn is replayed as the refusal, not as its content
+
+Added during implementation, and it closes a hole the original design had.
+
+A blocked turn is persisted with the text the model actually wrote, because an
+operator explaining the block needs to see it. But when the NEXT turn is assembled,
+that row is replayed to the model as `REFUSAL_BLOCKED` — never as its content.
+
+Otherwise the model's own invented price returns to it as something it apparently
+said, and the following turn quotes it. That second turn asserts nothing new, so
+the validator has nothing to catch: the fabrication launders itself through
+conversation history, which is the one path the output check cannot see.
+
+### 7.1b A conversation id is a bearer token, and that is accepted
+
+Anyone holding a `conversationId` can continue that conversation; the row is not
+bound to the `ip_hash` that created it. This is deliberate: binding it would break
+every visitor who changes network mid-conversation, which on mobile is common.
+
+The exposure is bounded by three things — the id is a v4 UUID and therefore not
+guessable, the response returns only the new turn and never the transcript, and the
+per-conversation caps apply to whoever is holding it. What a stolen id buys is the
+ability to continue someone's chat, not to read it.
+
 ### 7.2 Limits are DB-backed
 
 `lib/shop/rate-limit.ts` is an in-memory `Map`, which on Vercel is per-lambda and
