@@ -254,3 +254,165 @@ describe("date forms cover the shapes a model actually writes", () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Review findings 3, 4, 7 and 8.
+// ---------------------------------------------------------------------------
+
+/** A camp that is NOT in September — the whole point of the first block below. */
+const JULY_CAMP = {
+  title: "Camp",
+  type: "camp",
+  status: "published",
+  start_date: "2026-07-24T12:00:00Z",
+  end_date: "2026-07-26T12:00:00Z",
+  location_name: "Field",
+  price_cents: 16500,
+  capacity: 12,
+  signup_count: 0,
+}
+
+describe("the Sept form belongs to September and to no other month", () => {
+  it("does not ground 'sept 24' for a camp that starts 24 July", async () => {
+    // THE DEFECT. `Sept ${day}` was emitted unconditionally, so a July camp
+    // grounded "sept 24" — and an assistant writing "The camp starts Sept 24"
+    // passed the validator while the card beside it said 24 July.
+    //
+    // The test that was here could not see this: its fixture was a SEPTEMBER
+    // camp, which makes "sept 1" correct whether the form is conditional or
+    // not. A fixture that makes the expectation trivially true proves nothing.
+    const { listPublicEvents, groundedValuesFor } = await import("@/lib/lead-engine/chat/facts")
+    rows = [JULY_CAMP]
+    const grounded = groundedValuesFor(await listPublicEvents(), SETTINGS)
+    expect(grounded).not.toContain("sept 24")
+    // The honest July forms are all still there, so this is not passing by
+    // grounding nothing at all.
+    for (const form of ["july 24", "jul 24", "24 july", "24 july 2026", "7/24/2026"]) {
+      expect(grounded).toContain(form)
+    }
+  })
+
+  it("still grounds 'sept 1' for a camp that really does start in September", async () => {
+    const { listPublicEvents, groundedValuesFor } = await import("@/lib/lead-engine/chat/facts")
+    rows = [
+      {
+        ...JULY_CAMP,
+        start_date: "2026-09-01T12:00:00Z",
+        end_date: "2026-09-03T12:00:00Z",
+      },
+    ]
+    const grounded = groundedValuesFor(await listPublicEvents(), SETTINGS)
+    expect(grounded).toContain("sept 1")
+  })
+})
+
+describe("a price that is not a whole number of dollars", () => {
+  it("never grounds the rounded dollar for a price ending in cents", async () => {
+    // THE DEFECT. `String(Math.round(dollars))` grounded "80" for a 7950-cent
+    // programme, so "It's $80." passed the validator for a $79.50 programme.
+    // Every price fixture in this branch was a whole number of dollars, which
+    // is why nothing saw it.
+    const { listPublicProgrammes, groundedValuesFor } = await import("@/lib/lead-engine/chat/facts")
+    rows = [
+      {
+        name: "Public Programme",
+        is_active: true,
+        is_public: true,
+        price_cents: 7950,
+        duration_weeks: 6,
+        sessions_per_week: 3,
+        payment_type: "one_time",
+      },
+    ]
+    const grounded = groundedValuesFor(await listPublicProgrammes(), SETTINGS)
+    // `normalise()` strips the dollar sign on BOTH sides of the comparison, so
+    // the grounded list holds "80", never "$80" — asserting the absence of
+    // "$80" would be trivially true and would prove nothing.
+    expect(grounded).not.toContain("80")
+    expect(grounded).not.toContain("79")
+    // The true form survives, so the fix is not "ground nothing".
+    expect(grounded).toContain("79.50")
+  })
+
+  it("still grounds the bare dollar for a whole-dollar price", async () => {
+    const { listPublicProgrammes, groundedValuesFor } = await import("@/lib/lead-engine/chat/facts")
+    rows = [
+      {
+        name: "Public Programme",
+        is_active: true,
+        is_public: true,
+        price_cents: 7900,
+        duration_weeks: 6,
+        sessions_per_week: 3,
+        payment_type: "one_time",
+      },
+    ]
+    const grounded = groundedValuesFor(await listPublicProgrammes(), SETTINGS)
+    expect(grounded).toContain("79")
+    expect(grounded).toContain("79.00")
+  })
+})
+
+describe("an FAQ is public only on a page the public can open", () => {
+  it("never returns an FAQ hung off an unannounced event's page key", async () => {
+    // `lib/validators/faq.ts` admits `event/<id>` page keys, and the clone
+    // holds three DRAFT events. `status='published'` alone is therefore not
+    // the site's visibility rule: a published FAQ about an unannounced camp is
+    // invisible on the site and would have been read out to strangers here.
+    //
+    // The mock filters only on the `.eq()` calls the code makes, and the code
+    // makes none for `page_key` here — so the event row IS handed back, and
+    // the assertion proves the module dropped it rather than the mock.
+    const { searchPublicFaqs } = await import("@/lib/lead-engine/chat/facts")
+    rows = [
+      { question: "How much is the camp?", answer: "Camp pricing", status: "published", page_key: "faq" },
+      {
+        question: "How much is the secret camp?",
+        answer: "Camp pricing for the unannounced one",
+        status: "published",
+        page_key: "event/8f1c2d3e-0000-4000-8000-000000000001",
+      },
+    ]
+    const facts = (await searchPublicFaqs("camp pricing")) as Array<{ question: string }>
+    expect(facts.map((f) => f.question)).toEqual(["How much is the camp?"])
+  })
+
+  it("does not even ask the database when the caller names a page key the public cannot open", async () => {
+    const { searchPublicFaqs } = await import("@/lib/lead-engine/chat/facts")
+    rows = [
+      {
+        question: "How much is the secret camp?",
+        answer: "Camp pricing",
+        status: "published",
+        page_key: "event/8f1c2d3e-0000-4000-8000-000000000001",
+      },
+    ]
+    const facts = await searchPublicFaqs("camp pricing", "event/8f1c2d3e-0000-4000-8000-000000000001")
+    expect(facts).toEqual([])
+    // `applied` is the proof that the SHORT CIRCUIT fired and not merely the
+    // row filter downstream of it: narrowing a request must never widen the
+    // query behind it into a scan of every published FAQ.
+    expect(applied).toEqual([])
+  })
+
+  it("still returns the published FAQs on a page the public CAN open", async () => {
+    const { searchPublicFaqs } = await import("@/lib/lead-engine/chat/facts")
+    rows = [{ question: "How much is the camp?", answer: "Camp pricing", status: "published", page_key: "faq" }]
+    const facts = (await searchPublicFaqs("camp pricing", "faq")) as Array<{ question: string }>
+    expect(facts.map((f) => f.question)).toEqual(["How much is the camp?"])
+  })
+})
+
+describe("numbers the visitor supplied", () => {
+  it("collects the visitor's own numerals, and nothing else", async () => {
+    const { visitorNumerals } = await import("@/lib/lead-engine/chat/facts")
+    expect(visitorNumerals(["my son is 14", "he trains 3 days a week"])).toEqual(expect.arrayContaining(["14", "3"]))
+  })
+
+  it("does not collect a currency amount the visitor typed", async () => {
+    // A visitor can supply their child's age. They cannot supply your prices:
+    // "I heard it's $500" must not make $500 a grounded answer.
+    const { visitorNumerals } = await import("@/lib/lead-engine/chat/facts")
+    expect(visitorNumerals(["I heard it's $500 a month"])).not.toContain("500")
+  })
+})

@@ -31,6 +31,11 @@
 // business identity arrives as a `BusinessSettings` parameter.
 import { createServiceRoleClient } from "@/lib/supabase"
 
+// The page registry, NOT a data-access layer: a pure list of the marketing
+// routes that exist, with no I/O of its own. It is imported because an FAQ's
+// visibility is not `status='published'` alone — see PUBLIC_FAQ_PAGE_KEYS.
+import { STATIC_FAQ_PAGES } from "@/lib/faq/pages"
+
 // Type-only: erased at compile time, so no data-access module is pulled in at
 // runtime by naming this type.
 import type { BusinessSettings } from "@/lib/db/businesses"
@@ -80,6 +85,27 @@ const MAX_TESTIMONIALS = 6
 const MIN_QUERY_TERM_CHARS = 3
 
 /**
+ * THE PAGE KEYS A STRANGER CAN ACTUALLY OPEN.
+ *
+ * `status = 'published'` is not the site's visibility rule for an FAQ — it is
+ * only half of it. An FAQ row is visible exactly on the ONE page its
+ * `page_key` names, and `lib/validators/faq.ts` admits `event/<id>` keys
+ * alongside the static routes. Events have their own `status`, and the dev
+ * clone holds three DRAFT ones: a published FAQ hung off an unannounced camp
+ * is invisible everywhere on the site, and reading it out here would announce
+ * the camp to any anonymous visitor.
+ *
+ * So retrieval is scoped to the static marketing routes, which are public by
+ * construction. Event FAQs are excluded outright rather than joined against
+ * `events.status`: the assistant already learns about published camps through
+ * `listPublicEvents()`, so nothing answerable is lost, and a second visibility
+ * rule that has to agree with a first one is the failure mode this whole file
+ * exists to avoid.
+ */
+const PUBLIC_FAQ_PAGE_KEYS: string[] = STATIC_FAQ_PAGES.map((p) => p.key)
+const PUBLIC_FAQ_PAGE_KEY_SET = new Set(PUBLIC_FAQ_PAGE_KEYS)
+
+/**
  * The ONE spelling every value is compared in, on BOTH sides of the validator.
  * Lower-cased, `$` and thousands commas stripped, trimmed — so `$1,200`, `1200`
  * and `$1200` are one value rather than three near-misses.
@@ -114,13 +140,23 @@ function numericTokens(text: string): string[] {
 function moneyForms(cents: number | null): string[] {
   if (cents == null) return []
   const dollars = cents / 100
-  const whole = String(Math.round(dollars))
+  const forms = [dollars.toFixed(2), `$${dollars.toFixed(2)}`]
+  // THE WHOLE-DOLLAR FORM IS ONLY EMITTED FOR A WHOLE-DOLLAR PRICE. It used to
+  // be `String(Math.round(dollars))`, unconditionally — so a 7950-cent
+  // programme grounded "80", and an assistant answering "It's $80." for a
+  // $79.50 programme passed the validator with a price the database never
+  // held. Every price fixture in this branch happened to be a round number of
+  // dollars, which is exactly why no test could see it.
+  if (cents % 100 === 0) {
+    const whole = String(cents / 100)
+    forms.push(whole, `$${whole}`)
+  }
   // The RAW CENTS FORM IS DELIBERATELY ABSENT. Seeding "7900" here would ground
   // the literal string 7900, so an assistant writing "$7900" for a $79.00
   // programme would pass the validator — a hundredfold error reading as a
   // database-backed fact. No model writes a price in cents, so nothing
   // legitimate is lost by leaving it out.
-  return [whole, dollars.toFixed(2), `$${whole}`, `$${dollars.toFixed(2)}`]
+  return forms
 }
 
 /**
@@ -142,12 +178,11 @@ function dateForms(iso: string): string[] {
   // "1 September 2026" and "9/1/2026" were all being reported as ungrounded
   // dates for a camp whose start date the tools had just returned.
   const m = String(d.getUTCMonth() + 1)
-  return [
+  const forms = [
     iso,
     iso.slice(0, 10),
     `${month} ${day}`,
     `${short} ${day}`,
-    `Sept ${day}`,
     `${day} ${month}`,
     `${month} ${day}, ${year}`,
     `${day} ${month} ${year}`,
@@ -155,6 +190,48 @@ function dateForms(iso: string): string[] {
     day,
     year,
   ]
+  // "Sept" IS SEPTEMBER'S ALONE. It was emitted for every month, so a camp on
+  // 24 July grounded "sept 24" — and an assistant writing "The camp starts
+  // Sept 24" sailed through the validator while the card beside it said 24
+  // July. Over-generating here is not the harmless direction after all: an
+  // extra form does not merely fail to block a fabrication, it MANUFACTURES a
+  // grounded value for a date the database never held.
+  if (d.getUTCMonth() === 8) forms.push(`Sept ${day}`)
+  return forms
+}
+
+/**
+ * Numerals the VISITOR put into the conversation, which the output validator
+ * accepts back in the reply — for the bare-numeral rule and nothing else.
+ *
+ * Echoing a fact the visitor just supplied is not a fabrication; it is the most
+ * ordinary thing a conversation does. A real blocked turn: the visitor said
+ * "my son is 14", asked what ages are coached, and the honest reply — "what's
+ * available for 14-year-olds" — was discarded whole as ungrounded_number 14.
+ *
+ * THE LIMIT IS THE POINT. A visitor can supply their child's age. They cannot
+ * supply your prices or your dates: "I heard it's $500" followed by "so how
+ * much is it?" must not make $500 a grounded answer. So any digit run the
+ * visitor wrote in a currency or date shape is DROPPED here, and the validator
+ * additionally keeps these values away from its currency, date and percentage
+ * rules — two independent guards, because this one is the easy one to defeat
+ * by rephrasing.
+ */
+export function visitorNumerals(messages: string[]): string[] {
+  const out: string[] = []
+  for (const message of messages) {
+    // Blank out anything currency- or date-shaped BEFORE reading the digits,
+    // so "$500", "500 dollars", "9/1/2026" and "2026-09-01" contribute nothing.
+    const cleaned = message
+      .replace(/[$£€]\s?\d[\d,]*(?:\.\d{1,2})?/g, " ")
+      .replace(/\d[\d,]*(?:\.\d{1,2})?\s*(?:dollars?|bucks?|usd|quid|euros?|pounds?|grand|k)\b/gi, " ")
+      .replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ")
+      .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, " ")
+      .replace(/\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/gi, " ")
+      .replace(/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/gi, " ")
+    out.push(...numericTokens(cleaned))
+  }
+  return unique(out)
 }
 
 /**
@@ -171,6 +248,10 @@ function dateForms(iso: string): string[] {
  * keys, which is why retrieval is page-key aware at all.
  */
 export async function searchPublicFaqs(query: string, pageKey?: string): Promise<Fact[]> {
+  // A caller naming a key the public cannot open gets nothing, rather than the
+  // whole published set — narrowing a request must never widen the answer.
+  if (pageKey && !PUBLIC_FAQ_PAGE_KEY_SET.has(pageKey)) return []
+
   const supabase = getClient()
   let q = supabase.from("faqs").select("question, answer, page_key").eq("status", "published")
   if (pageKey) q = q.eq("page_key", pageKey)
@@ -182,7 +263,14 @@ export async function searchPublicFaqs(query: string, pageKey?: string): Promise
       .split(/[^a-z0-9.]+/)
       .filter((t) => t.length >= MIN_QUERY_TERM_CHARS),
   )
-  const rows = (data ?? []) as Array<{ question: string; answer: string; page_key: string }>
+  // THE GATE. Applied to the rows that came back rather than pushed into the
+  // query: `page_key` is the only column that carries the rule, the list is
+  // short, and a filter here is the one every caller passes through — the
+  // unscoped lookup included, which is the one that would otherwise sweep up
+  // an unannounced camp's FAQ.
+  const rows = (data ?? [])
+    .filter((r) => PUBLIC_FAQ_PAGE_KEY_SET.has((r as { page_key: string }).page_key))
+    .map((r) => r as { question: string; answer: string; page_key: string })
 
   const scored = rows.map((row) => {
     const question = normalise(row.question)
