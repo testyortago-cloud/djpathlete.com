@@ -28,6 +28,20 @@ Every task's requirements implicitly include this section.
 - **Never push, merge or deploy.** Commit to `feat/lead-engine-stage3` only.
 - **`null` and `[]` are different answers.** A failed read must never render as "there is nothing". Let read failures propagate on admin pages.
 
+## Findings from completed tasks — read these, they change later tasks
+
+**From Task 5 (`lib/ai/tool-loop.ts`, landed):**
+
+- **Tools are NOT executed on the final round.** When the model asks for tools in the last permitted round, `runWithTools` records the calls, sets `stoppedOnRoundLimit`, and breaks _without_ running them — there is no round left in which the model could read the answers. **Task 7:** on a round-limit turn, `toolCalls` says what the model _wanted_, but the executor's accumulated facts and cards do **not** include that last round. Never rely on an `escalate` or `capture_lead` intent arriving from a cut-off round. The route treats round-limit as a blocked turn, which is consistent with this.
+- **`text` accumulates across all rounds**, joined by a blank line — not just the final round's. So an intermediate "let me look that up" preamble reaches the visitor. That is safe (all of it is validated) and reads naturally, but Task 7 must not assume `text` is a single round's output.
+- **The client is constructed locally**, not imported from `lib/ai/anthropic.ts`, so a public unauthenticated route does not drag `@ai-sdk/anthropic`, `ai` and `p-retry` into its bundle. Do not "tidy" this into a shared import.
+- **Test-mock wart to avoid copying:** `__tests__/lib/ai/tool-loop.test.ts` names its hoisted `vi.mock` spy `create`, not the house `mockCreate` prefix. It works only because every import of the module under test is dynamic and inside a test body. If you copy that file's shape and switch to a static top-level import, it fails with a TDZ error.
+
+**From environment reconnaissance (verified, read-only):**
+
+- **`business_settings.reply_to` is `""` in the dev clone**, as is `display_name`. Task 9's escalation must therefore degrade honestly: mark the conversation escalated (that is the durable record), treat the email as best-effort, and never let the visitor be told "someone will be in touch" on the strength of a send that could not happen. Whether production is also blank is an OPEN question — production is unreachable from this environment.
+- **tsc baseline 251** was re-measured on clean `main` at `e4970016`, not taken from a doc. Expect the count to read HIGH mid-wave while peers' tests exist before their implementations; attribute by file rather than trusting the number.
+
 ---
 
 ## File Structure
