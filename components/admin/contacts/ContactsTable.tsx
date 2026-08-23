@@ -26,13 +26,18 @@
 // invisible AND harmless — the alternative is a request that enrols people the
 // operator cannot see on the page they are looking at.
 //
+// AND THE SELECTION DOES NOT SPAN PAGES. Harmless is not the same as honest: a
+// tick that survives off-page stops agreeing with the "N contacts ticked"
+// counter and comes back to life when the operator pages back. Changing page
+// clears the ticks, and the footer says so beside the buttons that do it.
+//
 // Light-only, like the rest of the admin: `.dark` is a class variant these
 // components were never built against.
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Mail, Phone, Search, Send, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, Mail, Phone, Search, Send, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DataTable,
@@ -58,8 +63,19 @@ import {
 
 export interface ContactsTableProps {
   contacts: ContactListRow[]
+  /** Every contact matching the filters, not just the ones on this page. */
   total: number
+  /** 1-based, already validated by `parseContactFilters`. */
+  page: number
+  /** Rows per page, so this component can work out the first and last row numbers. */
+  pageSize: number
   sequences: SequenceSummary[]
+  /**
+   * The FILTERS only — `page` is deliberately not one of them. Every filter
+   * change rebuilds the query string from this object, so a page number living
+   * in here would survive a narrowing search and leave the operator on page 2
+   * of a one-page result.
+   */
   filters: { search: string; has: string; days: string }
 }
 
@@ -104,18 +120,52 @@ export function ContactsTable(props: ContactsTableProps) {
     if (selectAllRef.current) selectAllRef.current.indeterminate = someOnPageSelected
   }, [someOnPageSelected])
 
+  // PAGING CLEARS THE TICKS, and the footer says so out loud.
+  //
+  // An off-page tick was never dangerous — only the rows on screen are ever
+  // posted, see this file's header — but it was not honest either. It survived
+  // invisibly, the "N contacts ticked" counter stopped agreeing with it, and
+  // paging back resurrected a selection made minutes and two pages ago. A
+  // selection that spans pages the operator cannot see is exactly the thing
+  // this table's checkboxes exist to prevent, so it does not span them.
+  //
+  // Only the PAGE does this, not a filter change: narrowing the list in place
+  // is a person refining what is in front of them, and the visible ticks they
+  // already made should survive it.
+  const pageRef = useRef(props.page)
+  useEffect(() => {
+    if (pageRef.current === props.page) return
+    pageRef.current = props.page
+    setSelected(new Set())
+    setResult(null)
+  }, [props.page])
+
   const chosen = props.sequences.find((sequence) => sequence.key === sequenceKey) ?? null
 
   const setParam = useCallback(
     (updates: Record<string, string>) => {
       const params = new URLSearchParams()
-      const next = { ...props.filters, ...updates }
+      // `props.filters` carries no page, so any filter change lands on page 1
+      // and only an explicit `{ page }` update moves off it.
+      const next: Record<string, string> = { ...props.filters, ...updates }
       for (const [key, value] of Object.entries(next)) {
         if (value && value !== "all") params.set(key, value)
       }
       startTransition(() => router.push(`/admin/contacts?${params.toString()}`))
     },
     [props.filters, router],
+  )
+
+  const lastPage = Math.max(1, Math.ceil(props.total / props.pageSize))
+  const firstRow = (props.page - 1) * props.pageSize + 1
+  const lastRow = firstRow + props.contacts.length - 1
+  const goToPage = useCallback(
+    (page: number) => {
+      // Page 1 is the default, so it stays out of the URL — a shared link reads
+      // as the filter it is, not as the filter plus its first page.
+      setParam({ page: page <= 1 ? "" : String(page) })
+    },
+    [setParam],
   )
 
   const toggle = useCallback((id: string) => {
@@ -162,11 +212,23 @@ export function ContactsTable(props: ContactsTableProps) {
       })
       const body = (await response.json().catch(() => null)) as {
         tally?: EnrolTally
+        failedContactIds?: string[]
         sequenceStatus?: string | null
         error?: string
       } | null
 
-      if (!response.ok || !body?.tally) {
+      // THE TALLY IS READ BEFORE THE STATUS CODE, on purpose.
+      //
+      // The route answers 500 when a batch enrolled nobody and something threw,
+      // so `withAudit` records a failure and the 24h-failure strip on
+      // /admin/audit-logs can see it — but it sends the tally back with it,
+      // because the server WAS reached and the tally is the true story. Checking
+      // `response.ok` first would throw that away and print "could not reach the
+      // server", which is the one thing that definitely did not happen.
+      //
+      // A 400 or a 403 carries an `error` and no tally, so those still land in
+      // the branch below and show the server's own words.
+      if (!body?.tally) {
         const message = body?.error ?? "Could not reach the server. Nobody was enrolled."
         setResult({ tone: "error", headline: message })
         toast.error(message)
@@ -187,7 +249,24 @@ export function ContactsTable(props: ContactsTableProps) {
       else if (message.tone === "warning") toast.warning(message.headline)
       else toast.error(message.headline)
 
-      if (message.tone !== "error") setSelected(new Set())
+      // WHAT STAYS TICKED IS WHATEVER STILL NEEDS DOING.
+      //
+      //   * Contacts that threw come back by id, and are re-ticked on their
+      //     own. "3 contacts could not be enrolled — try those again" used to
+      //     be an instruction nobody could follow: the response carried counts,
+      //     the audit row carries no ids by design, no row on the page was
+      //     marked as failed, and this line then cleared every tick. Retrying
+      //     three of ten meant re-ticking all ten and enrolling the seven that
+      //     had already worked. Now the three are ticked and the button is one
+      //     click away. `describeEnrolResult` says so in as many words, so the
+      //     wording and this line have to stay wired together.
+      //   * A whole-batch refusal — a draft sequence — keeps the selection,
+      //     because the next step is to switch the sequence on and press Enrol
+      //     again with the same people.
+      //   * Anything else clears, so a finished job does not look unfinished.
+      const failedIds = body.failedContactIds ?? []
+      if (failedIds.length > 0) setSelected(new Set(failedIds))
+      else if (message.tone !== "error") setSelected(new Set())
       startTransition(() => router.refresh())
     } catch {
       const message = "Could not reach the server. Nobody was enrolled."
@@ -350,9 +429,23 @@ export function ContactsTable(props: ContactsTableProps) {
         <tbody>
           {props.contacts.length === 0 ? (
             <DataTableEmpty colSpan={5}>
-              {hasFilter
-                ? "No contacts match these filters."
-                : "No contacts yet. They appear here the moment someone fills in a form on a published page."}
+              {/* A page past the end is its own answer, and it has a next step.
+                  Without this it read as "no contacts match these filters",
+                  which is the opposite of true when the footer above it is
+                  counting 166 of them. */}
+              {props.page > 1 ? (
+                <>
+                  There is nothing on page {props.page}.{" "}
+                  <button type="button" className="underline underline-offset-2" onClick={() => goToPage(1)}>
+                    Go back to the first page
+                  </button>
+                  .
+                </>
+              ) : hasFilter ? (
+                "No contacts match these filters."
+              ) : (
+                "No contacts yet. They appear here the moment someone fills in a form on a published page."
+              )}
             </DataTableEmpty>
           ) : (
             props.contacts.map((contact) => {
@@ -406,12 +499,50 @@ export function ContactsTable(props: ContactsTableProps) {
         </tbody>
       </DataTable>
 
-      <DataTableFooter>
+      <DataTableFooter className="flex-wrap gap-3">
         <span className="text-sm text-muted-foreground">
           {props.total === 1 ? "1 contact" : `${props.total.toLocaleString()} contacts`}
-          {props.contacts.length < props.total ? ` · showing ${props.contacts.length}` : ""}
+          {/* WHICH rows these are, not just how many of them. "showing 100"
+              on page 2 of 166 is true and useless — the operator needs to know
+              they are looking at 101 onwards. */}
+          {props.contacts.length < props.total && props.contacts.length > 0
+            ? ` · showing ${firstRow.toLocaleString()}–${lastRow.toLocaleString()} of ${props.total.toLocaleString()}`
+            : ""}
           {navigating ? " · updating…" : ""}
         </span>
+
+        {lastPage > 1 ? (
+          <span className="flex items-center gap-2 text-sm text-muted-foreground">
+            {/* Said where the buttons are, because it is the button that does
+                it. A rule the operator only discovers by losing a selection is
+                not a rule, it is a trap. */}
+            <span className="text-xs">Ticks clear when you change page.</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Previous page"
+              disabled={props.page <= 1 || navigating}
+              onClick={() => goToPage(props.page - 1)}
+            >
+              <ChevronLeft className="size-4" aria-hidden />
+              Back
+            </Button>
+            <span className="tabular-nums">
+              Page {props.page} of {lastPage}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Next page"
+              disabled={props.page >= lastPage || navigating}
+              onClick={() => goToPage(props.page + 1)}
+            >
+              Next
+              <ChevronRight className="size-4" aria-hidden />
+            </Button>
+          </span>
+        ) : null}
+
         <span className="flex items-center gap-2 text-sm text-muted-foreground">
           Sequences
           {props.sequences.length === 0 ? (

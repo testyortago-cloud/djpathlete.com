@@ -29,6 +29,12 @@
 // Letting the first bad row 500 the request would leave the operator with no
 // idea which of their selection went through — and every enrolment before the
 // throw would already be committed.
+//
+// CAUGHT IS NOT THE SAME AS IGNORED, though. Each caught error is logged with
+// its contact id, and a batch that enrolled NOBODY while something threw
+// answers 500 rather than 200, so `withAudit` records it as a failure and the
+// 24h-failure strip on /admin/audit-logs can see it. The response body carries
+// the tally either way. Both rules are argued at the return statement.
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
@@ -61,6 +67,11 @@ export const POST = withAudit(
     // mirrors the contact table is a second copy of the personal data with a
     // different retention rule attached to it. "Who was enrolled" is already
     // answerable from `sequence_runs`, whose rows this action created.
+    //
+    // NAMED FIELDS, NEVER `...body`. The response now also carries
+    // `failedContactIds` so the screen can re-tick exactly the ones that threw,
+    // and that list must not follow it into the audit row. Spreading the whole
+    // body here would put it there the day it was added, silently.
     metadata: async (_request, response) => {
       const body = (await response.json().catch(() => null)) as {
         tally?: EnrolTally
@@ -95,6 +106,13 @@ export const POST = withAudit(
     // work" — see `describeEnrolResult` in lib/lead-engine/manual-enrol.ts for
     // why that distinction is the whole point of this surface's error path.
     let sequenceStatus: string | null = null
+    // WHICH contacts threw, not just how many. Counts alone made the screen's
+    // "try those again" an instruction nobody could follow: no row on the page
+    // is marked as failed and the audit row deliberately holds no ids, so
+    // retrying three of ten meant re-ticking all ten. These ids go back to the
+    // admin who supplied them one moment earlier — they are NOT allowed into
+    // the audit metadata above, which stays counts and a sequence key.
+    const failedContactIds: string[] = []
 
     for (const contactId of parsed.contactIds) {
       try {
@@ -103,20 +121,56 @@ export const POST = withAudit(
         })
         tally[outcome.outcome] += 1
         if (outcome.outcome === "sequence_not_active") sequenceStatus = outcome.status
-      } catch {
-        // Swallowed ON PURPOSE, per contact. See this file's header: the
-        // alternative is a 500 that tells the operator nothing about which of
-        // their selection was already committed.
+      } catch (error) {
+        // NOT re-thrown, per contact. See this file's header: the alternative is
+        // a 500 that tells the operator nothing about which of their selection
+        // was already committed.
+        //
+        // But it IS logged. This catch used to be a bare `} catch {` with no
+        // binding, so a broken enrol path — Supabase down, an RLS or schema
+        // break — produced a hundred failures and left the reason nowhere at
+        // all: not in the response, not in the audit row, not in a log.
+        console.error(`[sequences/enrol] contact ${contactId} failed to enrol into ${parsed.sequenceKey}:`, error)
         tally.failed += 1
+        failedContactIds.push(contactId)
       }
     }
 
-    return NextResponse.json({
-      ok: true,
-      sequenceKey: parsed.sequenceKey,
-      requested: parsed.contactIds.length,
-      tally,
-      sequenceStatus,
-    })
+    // A batch that added NOBODY and hit at least one real database error is a
+    // failed request, and must be recorded as one.
+    //
+    // `classifyOutcome` in lib/audit/with-audit.ts maps every 2xx to
+    // `outcome: "success"`, so the old unconditional 200 wrote a hundred broken
+    // enrolments into `audit_logs` looking like a hundred good ones — and the
+    // 24h-failure strip at the top of /admin/audit-logs, the one thing that
+    // surfaces a silent breakage to somebody who is not already looking, stayed
+    // quiet. Metadata counts alone would not have fixed that: they only help a
+    // person who has already opened the row.
+    //
+    // A batch that enrolled somebody stays 200 even with failures in it — real
+    // people are in the sequence and will be emailed, so it is not a failed
+    // request; the `failed` count rides along in the audit metadata instead.
+    // And a whole batch refused by a draft sequence stays 200 too: nothing
+    // threw, and calling this product's own seeded state an outage would fire
+    // the failure strip every time somebody tried the first thing they try.
+    //
+    // THE BODY IS THE SAME EITHER WAY. The tally is what the screen has to say
+    // something true about, and "could not reach the server" is not it — see
+    // the `body?.tally` check in components/admin/contacts/ContactsTable.tsx,
+    // which reads the tally before it reads the status.
+    const nothingWorked = tally.enrolled === 0 && tally.failed > 0
+
+    return NextResponse.json(
+      {
+        ok: !nothingWorked,
+        ...(nothingWorked ? { error: "Every contact in this batch failed to enrol." } : {}),
+        sequenceKey: parsed.sequenceKey,
+        requested: parsed.contactIds.length,
+        tally,
+        failedContactIds,
+        sequenceStatus,
+      },
+      { status: nothingWorked ? 500 : 200 },
+    )
   },
 )

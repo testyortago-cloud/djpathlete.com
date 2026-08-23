@@ -207,6 +207,56 @@ describe("describeEnrolResult says what actually happened", () => {
     expect(result.detail?.toLowerCase()).toContain("could not")
   })
 
+  it("someone pausing the sequence MID-BATCH is not reported as 'nobody was enrolled'", () => {
+    // MUTANT: testing `sequence_not_active > 0` before `enrolled`. A batch is up
+    // to 100 separate round trips and every one of them re-reads the sequence,
+    // so pausing it half way through — the documented way to stop a send that
+    // is going wrong — splits the tally in two. The old branch order then told
+    // the coach "Nobody was enrolled. Nothing was sent, and nobody was added",
+    // while 30 sequence_runs rows sat in the database waiting to fire the
+    // moment anyone un-paused it.
+    const result = describeEnrolResult({
+      tally: tally({ enrolled: 30, sequence_not_active: 70 }),
+      sequenceName: "Cold Lead Re-Engagement",
+      sequenceStatus: "paused",
+    })
+    expect(result.tone).toBe("warning")
+    expect(result.headline).toContain("30 contacts")
+    expect(result.headline.toLowerCase()).not.toContain("nobody")
+    // BOTH numbers, plainly. 30 people are in it; 70 are not.
+    expect(result.detail).toContain("70")
+    expect(result.detail?.toLowerCase()).toContain("paused")
+    expect(`${result.headline} ${result.detail ?? ""}`.toLowerCase()).not.toContain("nothing was sent")
+  })
+
+  it("the same for a sequence deleted mid-batch", () => {
+    // MUTANT: testing `sequence_not_found > 0` before `enrolled`, same shape.
+    const result = describeEnrolResult({
+      tally: tally({ enrolled: 8, sequence_not_found: 2 }),
+      sequenceName: "Ghost",
+      sequenceStatus: null,
+    })
+    expect(result.tone).toBe("warning")
+    expect(result.headline).toContain("8 contacts")
+    expect(result.headline.toLowerCase()).not.toContain("nobody")
+    expect(result.detail).toContain("2")
+    expect(result.detail?.toLowerCase()).toContain("removed")
+  })
+
+  it("tells the operator the failed ones are still ticked, rather than 'try those again'", () => {
+    // The response carries counts, the audit row deliberately carries no contact
+    // ids, and no row on screen is marked as failed — so "try those again" used
+    // to mean "re-tick all ten and hope". The component now re-ticks exactly the
+    // ones that threw, and this sentence is what tells the coach that.
+    const result = describeEnrolResult({
+      tally: tally({ enrolled: 7, failed: 3 }),
+      sequenceName: "X",
+      sequenceStatus: null,
+    })
+    expect(result.detail?.toLowerCase()).toContain("still ticked")
+    expect(result.detail?.toLowerCase()).not.toContain("try those again")
+  })
+
   it("a sequence that no longer exists says so", () => {
     const result = describeEnrolResult({
       tally: tally({ sequence_not_found: 3 }),

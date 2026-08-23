@@ -153,12 +153,31 @@ function contacts(n: number): string {
  *
  * Order of precedence is deliberate:
  *
- *   1. `sequence_not_active` / `sequence_not_found` first. These are decided
- *      ONCE, for the whole batch, by the sequence itself — every contact gets
- *      the same answer — so they are a statement about the sequence, not about
- *      the people, and they are the only ones that carry a next step.
+ *   1. `sequence_not_active` / `sequence_not_found` first, BUT ONLY WHEN
+ *      NOBODY GOT IN. See below — this guard is the whole difference between a
+ *      true sentence and a false one.
  *   2. Then whether anyone was actually added.
  *   3. Then the skips and failures, as detail.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY `tally.enrolled === 0` GUARDS THE FIRST TWO BRANCHES
+ * ---------------------------------------------------------------------------
+ * These two outcomes LOOK like they are decided once for the whole batch, and
+ * usually they are. They are not decided once in fact: the route calls
+ * `enrolContactManually` per contact, up to a hundred times, and every one of
+ * those calls re-reads the sequence row. Someone pausing the sequence half way
+ * through a send — which is the documented way to stop a send that is going
+ * wrong — therefore splits the tally in two, e.g.
+ * `{ enrolled: 30, sequence_not_active: 70 }`.
+ *
+ * Reported without the guard, that batch said "Nobody was enrolled … Nothing
+ * was sent, and nobody was added." Thirty `sequence_runs` rows existed at that
+ * moment and would fire the instant anyone un-paused the sequence. The tone was
+ * `error`, which also kept the selection, so the obvious next move — press
+ * Enrol again — came back `already_enrolled` and confirmed the wrong belief.
+ *
+ * So: those two branches now speak only for a batch where genuinely nobody got
+ * in. A mixed batch falls through and says BOTH numbers out loud.
  */
 export function describeEnrolResult(args: {
   tally: EnrolTally
@@ -168,21 +187,22 @@ export function describeEnrolResult(args: {
 }): EnrolResultMessage {
   const { tally, sequenceName } = args
 
-  if (tally.sequence_not_active > 0) {
-    // Say the status out loud rather than "not active": "draft" and "paused"
-    // mean different things to the person deciding what to do next.
-    const status = args.sequenceStatus ?? "not switched on"
-    const article = status === "draft" ? "still a draft" : status === "paused" ? "paused" : `set to "${status}"`
+  // Say the status out loud rather than "not active": "draft" and "paused"
+  // mean different things to the person deciding what to do next.
+  const status = args.sequenceStatus ?? "not switched on"
+  const wasStatus = status === "draft" ? "still a draft" : status === "paused" ? "paused" : `set to "${status}"`
+
+  if (tally.enrolled === 0 && tally.sequence_not_active > 0) {
     return {
       tone: "error",
-      headline: `Nobody was enrolled — "${sequenceName}" is ${article}.`,
+      headline: `Nobody was enrolled — "${sequenceName}" is ${wasStatus}.`,
       detail:
         "A sequence only starts sending once someone switches it on. Nothing was sent, and nobody was added. " +
         "Switch this sequence on first, then enrol these contacts again.",
     }
   }
 
-  if (tally.sequence_not_found > 0) {
+  if (tally.enrolled === 0 && tally.sequence_not_found > 0) {
     return {
       tone: "error",
       headline: `Nobody was enrolled — "${sequenceName}" no longer exists.`,
@@ -190,21 +210,42 @@ export function describeEnrolResult(args: {
     }
   }
 
-  const skipped: string[] = []
+  // Whole sentences, joined with a space. One idea each.
+  const also: string[] = []
   if (tally.already_enrolled > 0) {
-    skipped.push(`${contacts(tally.already_enrolled)} were already in it, so nothing changed for them`)
+    also.push(`${contacts(tally.already_enrolled)} were already in it, so nothing changed for them.`)
   }
   if (tally.already_enrolled_once > 0) {
-    skipped.push(`${contacts(tally.already_enrolled_once)} had been in it before, so they were skipped`)
+    also.push(`${contacts(tally.already_enrolled_once)} had been in it before, so they were skipped.`)
+  }
+  if (tally.sequence_not_active > 0) {
+    // Only reachable with `enrolled > 0` — the mid-batch pause described above.
+    also.push(
+      `${contacts(tally.sequence_not_active)} were not added, because "${sequenceName}" was ${wasStatus} by the time their turn came.`,
+      `Switch it on, then enrol those again.`,
+    )
+  }
+  if (tally.sequence_not_found > 0) {
+    also.push(
+      `${contacts(tally.sequence_not_found)} were not added, because "${sequenceName}" was removed part way through.`,
+      `Reload the page and check the sequence is still there.`,
+    )
   }
   if (tally.failed > 0) {
-    skipped.push(`${contacts(tally.failed)} could not be enrolled — try those again`)
+    // "Try those again" used to be an impossible instruction: the response
+    // carries counts, the audit row carries no ids on purpose, and no row on
+    // the page was marked as failed, so the only way to retry three of ten was
+    // to re-tick all ten. The route now hands back which ones threw and
+    // ContactsTable re-ticks exactly those — this sentence is what tells the
+    // coach that, and it is only true while that stays wired up.
+    also.push(`${contacts(tally.failed)} could not be enrolled. They are still ticked, so you can try them again.`)
   }
-  const detail = skipped.length > 0 ? `${skipped.join(". ")}.` : undefined
+  const detail = also.length > 0 ? also.join(" ") : undefined
 
   if (tally.enrolled > 0) {
+    const partial = tally.failed > 0 || tally.sequence_not_active > 0 || tally.sequence_not_found > 0
     return {
-      tone: tally.failed > 0 ? "warning" : "success",
+      tone: partial ? "warning" : "success",
       headline: `Enrolled ${contacts(tally.enrolled)} into "${sequenceName}".`,
       detail,
     }

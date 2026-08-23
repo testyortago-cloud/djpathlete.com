@@ -33,12 +33,22 @@ export const metadata = { title: "Contacts" }
 export const dynamic = "force-dynamic"
 
 /**
- * How many rows the page holds before the footer says "showing N of M".
+ * How many rows one page holds.
  *
  * The same number as `MAX_ENROL_BATCH` (lib/lead-engine/manual-enrol.ts), and
  * not by coincidence: it means "tick the select-all box and enrol everyone on
  * this page" is exactly the biggest batch the API will accept, so the operator
  * can never assemble a selection that gets refused.
+ *
+ * WHICH MAKES THE PAGER PART OF THE FEATURE, not decoration. Until it existed
+ * this page passed `limit` and never an `offset`, so the hundred newest
+ * contacts were the only hundred that could ever be ticked — and production
+ * already holds 166 imported ones. Neither filter reached the rest: `days`
+ * only sets a `gte` lower bound, so it cannot select OLDER rows, and all 166
+ * imports share a single `created_at`, so no day count splits them either.
+ * (Search did reach any individually-named contact, because `applyFilters`
+ * runs before `.range(...)` — the window has always been over the filtered
+ * set, not over the table.)
  */
 const PAGE_SIZE = 100
 
@@ -55,17 +65,19 @@ export default async function AdminContactsPage({
     return (Array.isArray(value) ? value[0] : value) ?? ""
   }
 
-  const raw = { search: read("search"), has: read("has"), days: read("days") }
+  const raw = { search: read("search"), has: read("has"), days: read("days"), page: read("page") }
 
   // EVERY searchParam is validated before it reaches the DAL — `has` against a
-  // fixed set, `days` against a digit pattern. `parseContactFilters` owns both
-  // (lib/db/contacts-list.ts) so the rejection is unit-testable without
-  // rendering this component, and so a junk `?days=` narrows to nothing rather
-  // than throwing on an Invalid Date.
+  // fixed set, `days` and `page` against digit patterns. `parseContactFilters`
+  // owns all three (lib/db/contacts-list.ts) so the rejection is unit-testable
+  // without rendering this component, and so a junk `?days=` narrows to nothing
+  // rather than throwing on an Invalid Date.
   const filters = parseContactFilters(raw)
 
   const [contacts, total, sequences] = await Promise.all([
-    listContacts({ ...filters, limit: PAGE_SIZE }),
+    // The page number is turned into an offset HERE and not in the DAL, because
+    // this is the only file that knows the page size — see PAGE_SIZE above.
+    listContacts({ ...filters, limit: PAGE_SIZE, offset: (filters.page - 1) * PAGE_SIZE }),
     countContacts(filters),
     listSequences(),
   ])
@@ -88,7 +100,19 @@ export default async function AdminContactsPage({
         </div>
       </div>
 
-      <ContactsTable contacts={contacts} total={total} sequences={sequences} filters={raw} />
+      <ContactsTable
+        contacts={contacts}
+        total={total}
+        page={filters.page}
+        pageSize={PAGE_SIZE}
+        sequences={sequences}
+        // The FILTERS only. `page` is passed separately and on purpose: the
+        // table rebuilds the query string from this object whenever a filter
+        // changes, so anything in here survives that change. A page number that
+        // survived a narrowing search would leave the operator on page 2 of a
+        // one-page result, looking at an empty table.
+        filters={{ search: raw.search, has: raw.has, days: raw.days }}
+      />
     </div>
   )
 }

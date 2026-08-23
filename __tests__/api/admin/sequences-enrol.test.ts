@@ -198,12 +198,80 @@ describe("POST /api/admin/sequences/enrol — the work", () => {
     expect(json.tally.failed).toBe(1)
   })
 
-  it("reports every contact as failed when every single one throws, still 200 with a tally", async () => {
-    enrolContactManuallyMock.mockRejectedValue(new Error("db down"))
-    const res = await POST(req({ contactIds: ["c1", "c2"], sequenceKey: "k" }) as never, NO_PARAMS)
+  it("LOGS the reason a contact failed, with the id, instead of swallowing it", async () => {
+    // MUTANT: `} catch { tally.failed += 1 }` — no binding at all. The route
+    // answered 200, the audit row said "success", and NOTHING anywhere held the
+    // reason. A schema or RLS break would have looked exactly like a quiet
+    // no-op.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      enrolContactManuallyMock
+        .mockResolvedValueOnce({ outcome: "enrolled" })
+        .mockRejectedValueOnce(new Error("connection reset"))
+
+      await POST(req({ contactIds: ["c1", "c2"], sequenceKey: "k" }) as never, NO_PARAMS)
+
+      expect(errorSpy).toHaveBeenCalled()
+      const logged = errorSpy.mock.calls.map((args) => args.map((a) => String(a)).join(" ")).join(" | ")
+      expect(logged).toContain("c2")
+      expect(logged).toContain("connection reset")
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it("hands back WHICH contacts failed, so the screen can re-tick exactly those", async () => {
+    // MUTANT: returning counts only. "3 contacts could not be enrolled — try
+    // those again" is an impossible instruction when nothing on the page says
+    // which three. These ids are being returned to the admin who supplied them
+    // one moment earlier, which is why they are safe HERE and still banned from
+    // the audit row.
+    enrolContactManuallyMock
+      .mockResolvedValueOnce({ outcome: "enrolled" })
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce({ outcome: "enrolled" })
+      .mockRejectedValueOnce(new Error("boom"))
+
+    const res = await POST(req({ contactIds: ["c1", "c2", "c3", "c4"], sequenceKey: "k" }) as never, NO_PARAMS)
     expect(res.status).toBe(200)
     const json = await res.json()
+    expect(json.failedContactIds).toEqual(["c2", "c4"])
     expect(json.tally.failed).toBe(2)
+  })
+
+  it("answers a NON-2xx when the batch enrolled nobody and something threw", async () => {
+    // MUTANT: `return NextResponse.json({...})` with no status. `withAudit`
+    // classifies 200 as `outcome: "success"`, so a completely broken enrol path
+    // — Supabase down, an RLS or schema break — wrote a hundred failures into
+    // the audit trail as successes and the 24h-failure strip on
+    // /admin/audit-logs never fired.
+    enrolContactManuallyMock.mockRejectedValue(new Error("db down"))
+    const res = await POST(req({ contactIds: ["c1", "c2"], sequenceKey: "k" }) as never, NO_PARAMS)
+    expect(res.status).toBeGreaterThanOrEqual(500)
+
+    // The tally still comes back, because the screen has something true to say
+    // about it and "could not reach the server" is not it.
+    const json = await res.json()
+    expect(json.tally.failed).toBe(2)
+    expect(json.failedContactIds).toEqual(["c1", "c2"])
+  })
+
+  it("a batch that enrolled SOMEBODY stays 200, even with failures in it", async () => {
+    // The other half of the rule. A partial success is not a failed request:
+    // people are in the sequence and will be emailed, and the failure count
+    // rides along on the audit row.
+    enrolContactManuallyMock.mockResolvedValueOnce({ outcome: "enrolled" }).mockRejectedValueOnce(new Error("boom"))
+    const res = await POST(req({ contactIds: ["c1", "c2"], sequenceKey: "k" }) as never, NO_PARAMS)
+    expect(res.status).toBe(200)
+  })
+
+  it("a whole batch refused by a DRAFT sequence is not a server failure", async () => {
+    // Nothing threw — the sequence simply is not switched on, which is the
+    // FIRST thing a real user hits here. A 500 would call the product's own
+    // seeded state an outage.
+    enrolContactManuallyMock.mockResolvedValue({ outcome: "sequence_not_active", status: "draft" })
+    const res = await POST(req({ contactIds: ["c1", "c2"], sequenceKey: "k" }) as never, NO_PARAMS)
+    expect(res.status).toBe(200)
   })
 })
 
@@ -240,6 +308,48 @@ describe("POST /api/admin/sequences/enrol — the audit row", () => {
     expect(serialized).not.toContain("contact-aaa")
     expect(serialized).not.toContain("contact-bbb")
     expect(serialized).not.toContain("@")
+  })
+
+  it("records a FAILURE, not a success, when the whole batch threw", async () => {
+    // MUTANT: 200 on a total failure. `classifyOutcome` in
+    // lib/audit/with-audit.ts maps any 2xx to "success", so a hundred broken
+    // enrolments landed in the audit trail looking like a hundred good ones and
+    // the 24h-failure strip stayed quiet.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      enrolContactManuallyMock.mockRejectedValue(new Error("db down"))
+      await POST(req({ contactIds: ["contact-aaa", "contact-bbb"], sequenceKey: "k" }) as never, NO_PARAMS)
+
+      const call = recordAuditMock.mock.calls.at(-1)?.[0] as {
+        outcome: string
+        metadata?: Record<string, unknown>
+      }
+      expect(call.outcome).toBe("failure")
+      // The row still says how big the damage was.
+      expect(call.metadata).toMatchObject({ requested: 2, failed: 2, enrolled: 0 })
+      // …and STILL names nobody, even though the response body now carries the
+      // failed ids for the screen to re-tick.
+      const serialized = JSON.stringify(call.metadata ?? {})
+      expect(serialized).not.toContain("contact-aaa")
+      expect(serialized).not.toContain("contact-bbb")
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it("keeps failedContactIds out of the audit metadata on a partial failure too", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      enrolContactManuallyMock.mockResolvedValueOnce({ outcome: "enrolled" }).mockRejectedValueOnce(new Error("boom"))
+      await POST(req({ contactIds: ["contact-aaa", "contact-bbb"], sequenceKey: "k" }) as never, NO_PARAMS)
+
+      const call = recordAuditMock.mock.calls.at(-1)?.[0] as { outcome: string; metadata?: Record<string, unknown> }
+      expect(call.outcome).toBe("success")
+      expect(call.metadata).toMatchObject({ failed: 1, enrolled: 1 })
+      expect(JSON.stringify(call.metadata ?? {})).not.toContain("contact-bbb")
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 
   it("records a denied outcome for a non-admin without naming anyone", async () => {

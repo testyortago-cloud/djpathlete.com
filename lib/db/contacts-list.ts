@@ -130,6 +130,29 @@ export function contactSearchClause(term: string | undefined): string | null {
 const HAS_VALUES = new Set(["email", "phone"])
 
 /**
+ * The highest page number a URL may name. 999 pages of 100 is 99,900 contacts —
+ * far past anything this business will hold — and the cap exists to stop
+ * `?page=99999999` turning into a `.range()` PostgREST has to seek past.
+ */
+const MAX_PAGE = 999
+
+/**
+ * Filters plus the page of them being asked for.
+ *
+ * `page` is 1-based and deliberately NOT an offset: an offset needs the page
+ * size, and the page size is the caller's business — app/(admin)/admin/contacts
+ * sets it to `MAX_ENROL_BATCH` so a select-all is exactly the biggest legal
+ * batch. So this returns the page number and the call site multiplies it out.
+ *
+ * `applyFilters` never reads it, which matters: a stray `page` reaching the
+ * query builder would become a filter on a column `contacts` does not have.
+ */
+export interface ContactPageFilters extends ContactFilters {
+  /** 1-based, already validated. */
+  page: number
+}
+
+/**
  * Turns raw URL strings into filters, DISCARDING anything that is not one of
  * the shapes this page defined.
  *
@@ -141,9 +164,19 @@ const HAS_VALUES = new Set(["email", "phone"])
  * `Number("junk")` is `NaN`, `new Date(Date.now() - NaN)` is an Invalid Date,
  * and `.toISOString()` on one THROWS. An unvalidated day count means a single
  * hand-edited URL renders the admin error boundary instead of a contact list.
+ *
+ * `page` is validated the same way and falls back to 1 rather than being
+ * rejected, because a junk page number has an obvious right answer — the first
+ * page — where a junk `days` does not. A negative or zero page would produce a
+ * negative `.range()` start, which PostgREST answers with a 400.
  */
-export function parseContactFilters(raw: { search?: string; has?: string; days?: string }): ContactFilters {
-  const filters: ContactFilters = {}
+export function parseContactFilters(raw: {
+  search?: string
+  has?: string
+  days?: string
+  page?: string
+}): ContactPageFilters {
+  const filters: ContactPageFilters = { page: 1 }
 
   const search = (raw.search ?? "").trim().slice(0, MAX_SEARCH_LENGTH)
   if (search.length > 0) filters.search = search
@@ -158,6 +191,12 @@ export function parseContactFilters(raw: { search?: string; has?: string; days?:
   if (/^\d{1,4}$/.test(days)) {
     const count = Number(days)
     if (count > 0) filters.since = new Date(Date.now() - count * 86_400_000).toISOString()
+  }
+
+  const page = raw.page ?? ""
+  if (/^\d{1,3}$/.test(page)) {
+    const number = Number(page)
+    if (number >= 1 && number <= MAX_PAGE) filters.page = number
   }
 
   return filters
