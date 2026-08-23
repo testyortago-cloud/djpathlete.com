@@ -82,3 +82,6 @@ render-worker/public/walkthrough/*.mp4
 .promo-take/
 # narration WAVs are deterministic output of synth-walkthrough-narration.mjs
 render-worker/public/walkthrough/audio/
+
+# GHL export dumps (contact PII + consent records — never commit)
+ghl-export/
