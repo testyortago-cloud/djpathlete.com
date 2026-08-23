@@ -39,19 +39,27 @@ than as an error case.
 | `05-consent-confirmed.png` | After pressing "I agree" |
 | `06-consent-stopped.png` | Someone who already texted STOP — no button, and the honest reason |
 | `07-consent-not-ready.png` | The business has no name on file, so there is no sentence to agree to |
+| `08-consent-unsubscribed.png` | Someone who unsubscribed by email — also refused, and told why |
 
 The sentence in `04` is the exact string filed as `contact_consents.wording_shown`.
 The page never hands its own copy to the write, so the two cannot drift apart.
 
+`08` exists because of a review finding. Suppression is held against the
+address *or* the number and either one stops every message, but the page
+originally asked only about the number — so somebody who had unsubscribed was
+shown "You are all set" while the engine would have refused every send. Three
+of the eight shots here are a refusal, which is the point: this page's job is
+to be believable, and a page that only ever says yes is not.
+
 ## What the capture run touched, and put back
 
-Three states cannot be reached by driving the interface, so the script sets
-them up on the clone and reverses every one in a `finally` block: a business
-with its display name filled in, two contacts carrying phone numbers, and a
-suppression row standing in for a past STOP. Verified afterwards — display
-name back to blank, both contacts gone, suppression gone, contact count back
-to its original 10.
+Four states cannot be reached by driving the interface, so the script sets them
+up on the clone and reverses every one in a `finally` block: a business with
+its display name filled in, three contacts carrying phone numbers, a
+suppression row standing in for a past STOP, and another standing in for an
+unsubscribe. Verified afterwards — display name back to blank, all three
+contacts gone, both suppressions gone, contact count back to its original 10.
 
-That is why `01`–`03` read "12 contacts": the two temporary ones were present
-at the moment of capture. Their phone numbers are what make the Phone column
-worth looking at, since the seeded clone contacts carry none.
+That is why `01`–`03` read "12 contacts": two of the temporary ones were
+present at the moment of capture. Their phone numbers are what make the Phone
+column worth looking at, since the seeded clone contacts carry none.

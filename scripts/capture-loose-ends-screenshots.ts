@@ -187,6 +187,7 @@ async function main(): Promise<void> {
   // all back whether we finish or throw.
   const madeContactIds: string[] = []
   const madePhones: string[] = []
+  const madeSuppressions: string[] = []
   let displayNameSet = false
 
   try {
@@ -223,9 +224,12 @@ async function main(): Promise<void> {
 
     const agreePhone = "+15550100411"
     const stoppedPhone = "+15550100422"
+    const unsubEmail = "nadia.f+shot@example.test"
+    const unsubPhone = "+15550100433"
     for (const [name, email, phone] of [
       ["Rosa Delgado", "rosa.delgado+shot@example.test", agreePhone],
       ["Theo Marchand", "theo.marchand+shot@example.test", stoppedPhone],
+      ["Nadia Farouk", unsubEmail, unsubPhone],
     ] as const) {
       const [row] = (await rest("contacts", {
         method: "POST",
@@ -234,14 +238,23 @@ async function main(): Promise<void> {
       madeContactIds.push(row.id)
       madePhones.push(phone)
     }
-    const [agreeContact, stoppedContact] = madeContactIds
+    const [agreeContact, stoppedContact, unsubContact] = madeContactIds
 
-    // The STOP is the only way to reach the refusal state, and no UI here
-    // sends one.
+    // Neither of these can be reached by driving the interface. A STOP arrives
+    // over SMS from a handset; an unsubscribe is a suppression keyed on the
+    // EMAIL address, and it is the one that used to be missed — the page
+    // checked the phone only, so an unsubscribed contact was told "you are all
+    // set" while the engine would refuse every send.
     await rest("contact_suppressions", {
       method: "POST",
       body: JSON.stringify({ business_id: BIZ, identifier: stoppedPhone, reason: "sms_stop" }),
     })
+    madeSuppressions.push(stoppedPhone)
+    await rest("contact_suppressions", {
+      method: "POST",
+      body: JSON.stringify({ business_id: BIZ, identifier: unsubEmail, reason: "unsubscribed" }),
+    })
+    madeSuppressions.push(unsubEmail)
 
     // ---- the consent ask --------------------------------------------------
     await page.goto(smsConsentUrl(APP, agreeContact, BIZ), { waitUntil: "networkidle" })
@@ -282,6 +295,22 @@ async function main(): Promise<void> {
           page,
           "h1",
           "A STOP came from their own handset; a tapped link in an email is a weaker signal, so it cannot undo one. Telling them they are all set while they stayed blocked would simply be a lie.",
+        ),
+      ],
+    )
+
+    // ---- the person who unsubscribed from the emails ----------------------
+    await page.goto(smsConsentUrl(APP, unsubContact, BIZ), { waitUntil: "networkidle" })
+    await shoot(
+      page,
+      "08-consent-unsubscribed",
+      "Someone who unsubscribed is not offered a button either",
+      "/sms-consent/<token> · light",
+      [
+        await markerAt(
+          page,
+          "h1",
+          "Suppression is held against the address or the number, and either one stops every message. This page used to ask only about the number, so somebody who had unsubscribed was told they were all set while nothing would ever be sent.",
         ),
       ],
     )
@@ -366,8 +395,8 @@ async function main(): Promise<void> {
       await rest(`sequence_runs?contact_id=eq.${id}`, { method: "DELETE" }).catch(() => [])
       await rest(`contacts?id=eq.${id}`, { method: "DELETE" }).catch(() => [])
     }
-    for (const phone of madePhones) {
-      await rest(`contact_suppressions?identifier=eq.${encodeURIComponent(phone)}`, { method: "DELETE" }).catch(
+    for (const identifier of [...madeSuppressions, ...madePhones]) {
+      await rest(`contact_suppressions?identifier=eq.${encodeURIComponent(identifier)}`, { method: "DELETE" }).catch(
         () => [],
       )
     }
