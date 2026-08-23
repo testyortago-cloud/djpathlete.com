@@ -16,12 +16,19 @@
 // route's "STOP with no matched contact still suppresses" behavior depends
 // on that being real too.
 //
-// `@/lib/lead-engine/email` IS mocked (renderSequenceEmail /
-// sendRenderedSequenceEmail as vi.fn()) — the ops-alert email is the one
-// piece of this route that reaches an external provider (Resend) in real
-// code, and this suite asserts the CALL SHAPE (to, includeUnsubscribeFooter:
-// false) rather than re-testing email rendering, which already has its own
-// suite (__tests__/lib/lead-engine/email.test.ts).
+// `@/lib/lead-engine/email` is SPIED, not stubbed. `sendRenderedSequenceEmail`
+// is a plain vi.fn() — it is the one piece of this route that reaches an
+// external provider (Resend) in real code, and this suite asserts the CALL
+// SHAPE (to, includeUnsubscribeFooter: false) rather than re-testing delivery.
+// `renderSequenceEmail` is a vi.fn() that DELEGATES to the real one. It has to
+// be: this route hands the renderer a body built out of a lead's own words,
+// and the renderer treats its `body` as a TEMPLATE — it substitutes
+// `{{name}}` and it THROWS on `{{sms_consent_url}}` when no URL was supplied.
+// A canned stub that returns a fixed object cannot fail that way, so it would
+// have reported the "a reply quoting template syntax" suite below as passing
+// while the real route 500'd. Rendering itself still has its own suite
+// (__tests__/lib/lead-engine/email.test.ts); what is being pinned here is that
+// this route survives the real renderer's guards.
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { createHmac } from "node:crypto"
@@ -142,10 +149,16 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-vi.mock("@/lib/lead-engine/email", () => ({
-  renderSequenceEmail: vi.fn(() => ({ subject: "New SMS reply", html: "<html></html>", text: "rendered text" })),
-  sendRenderedSequenceEmail: vi.fn().mockResolvedValue({ providerMessageId: "resend-fake-1" }),
-}))
+vi.mock("@/lib/lead-engine/email", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/lead-engine/email")>()
+  return {
+    ...actual,
+    renderSequenceEmail: vi.fn((args: Parameters<typeof actual.renderSequenceEmail>[0]) =>
+      actual.renderSequenceEmail(args),
+    ),
+    sendRenderedSequenceEmail: vi.fn().mockResolvedValue({ providerMessageId: "resend-fake-1" }),
+  }
+})
 
 import { renderSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engine/email"
 import { POST } from "@/app/api/webhooks/twilio/inbound/route"
@@ -516,6 +529,100 @@ describe("POST /api/webhooks/twilio/inbound — anything else", () => {
 
     expect(res.status).toBe(200)
     expect(store.timeline).toHaveLength(1)
+    expect(consoleErrorSpy).toHaveBeenCalled()
+
+    consoleErrorSpy.mockRestore()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Regression, and the reason it is not a theoretical one.
+//
+// The operator alert quotes a lead's own words straight into the email body,
+// and `renderSequenceEmail` treats `body` as a TEMPLATE: it substitutes
+// `{{name}}`, and it THROWS on `{{sms_consent_url}}` unless a URL is supplied.
+// This route has no URL to supply and should not have one — the consent link
+// is signed for a CONTACT and belongs in mail sent TO that contact, never in
+// an internal notification about them.
+//
+// Migration 00226 mails that placeholder's rendered link to real people, so
+// the literal coming back is an ordinary thing for a suspicious or confused
+// reader to do: quote it, forward it, or retype it while asking "is this
+// really you?". Before the fix, that text made the render throw OUTSIDE the
+// alert's own try/catch. The webhook answered 500, the operator never saw the
+// reply, and Twilio retried the same poison payload forever (an 11200 in its
+// logs). None of the four outcomes this route documents is allowed to fail
+// that way: a poison body is a 200, only an infra fault is a 500.
+describe("POST /api/webhooks/twilio/inbound — a reply that quotes template syntax", () => {
+  it("does not 500, and the operator still gets the alert", async () => {
+    const res = await POST(inboundRequest(smsBody("is this really you? {{sms_consent_url}}")))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline).toHaveLength(1)
+    expect(store.timeline[0].kind).toBe("sms_inbound")
+    // The timeline row is the RECORD and quotes the raw bytes untouched.
+    expect(store.timeline[0].metadata.body).toBe("is this really you? {{sms_consent_url}}")
+    expect(sendRenderedSequenceEmail).toHaveBeenCalledTimes(1)
+  })
+
+  it("leaves the operator able to read what was actually sent", async () => {
+    await POST(inboundRequest(smsBody("what is {{sms_consent_url}} supposed to be?")))
+
+    const sendArg = (sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(sendArg.rendered.text).toContain("sms_consent_url")
+    expect(sendArg.rendered.text).toContain("supposed to be?")
+  })
+
+  it("mints no consent link — a lead must not be able to talk this route into one", async () => {
+    await POST(inboundRequest(smsBody("{{sms_consent_url}}")))
+
+    const sendArg = (sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    // "Yes, you can text me" is the anchor text renderSequenceEmail uses
+    // wherever it DOES substitute the placeholder. Its absence is the proof
+    // that nothing was substituted here.
+    expect(sendArg.rendered.html).not.toContain("Yes, you can text me")
+    expect(sendArg.rendered.html).not.toContain("/sms-consent/")
+  })
+
+  it("does not silently eat a {{name}} the lead typed, either", async () => {
+    // Same class of bug, quieter: substituteName falls back to "" for a
+    // nameless contact, so an un-defanged {{name}} would vanish out of the
+    // quoted text and the operator would read a sentence with a hole in it.
+    await POST(inboundRequest(smsBody("do you address me as {{name}} in these?")))
+
+    const sendArg = (sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(sendArg.rendered.text).toContain("name")
+    expect(sendArg.rendered.text).toContain("do you address me as")
+    expect(sendArg.rendered.text).toContain("in these?")
+  })
+
+  it("covers the STOP manual-review alert too, whose From is quoted the same way", async () => {
+    // `From` is Twilio's field, not the sender's, but alphanumeric sender IDs
+    // put arbitrary text in it and this is the one alert that exists because
+    // a compliance opt-out could NOT be honored. Losing it is the worst of
+    // the two losses.
+    const res = await POST(inboundRequest(smsBody("STOP", "{{sms_consent_url}}")))
+
+    expect(res.status).toBe(200)
+    expect(sendRenderedSequenceEmail).toHaveBeenCalledTimes(1)
+    const sendArg = (sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(sendArg.rendered.subject).toBe("SMS STOP needs manual review")
+  })
+
+  it("treats a render that throws for any other reason as a lost alert, not a lost webhook", async () => {
+    // Belt and braces on top of the defanging above: the alert step is
+    // log-not-fatal in full, render included, so a future guard added to
+    // renderSequenceEmail cannot reintroduce this same 500.
+    ;(renderSequenceEmail as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw new Error("renderer exploded")
+    })
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const res = await POST(inboundRequest(smsBody("Can I switch my session to Tuesday?")))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline).toHaveLength(1)
+    expect(sendRenderedSequenceEmail).not.toHaveBeenCalled()
     expect(consoleErrorSpy).toHaveBeenCalled()
 
     consoleErrorSpy.mockRestore()

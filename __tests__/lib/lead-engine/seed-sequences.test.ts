@@ -652,3 +652,134 @@ describe("seed migration 00223 — the sms_repermission sequence", () => {
     }
   })
 })
+
+// =============================================================================
+// Migration 00226 — the re-permission ask starts offering a link.
+//
+// 00223's assertions above are still true OF 00223, and stay: the file on disk
+// is what they read. But the row it seeds is superseded at migration time by
+// the UPDATE this suite covers, so 00226's body is the copy a contact
+// actually receives from here on. The two suites together are the whole story:
+// what was shipped, and what replaced it.
+//
+// An UPDATE, not an INSERT, so the tuple parser above does not apply — the
+// copy is pulled straight out of its dollar-quoted literals instead.
+// =============================================================================
+
+const MIGRATION_226_PATH = join(process.cwd(), "supabase/migrations/00226_repermission_consent_link.sql")
+const rawSql226 = readFileSync(MIGRATION_226_PATH, "utf8")
+const cleaned226 = stripSqlComments(rawSql226)
+const statements226 = splitTopLevel(cleaned226, ";").filter((s) => s.trim().length > 0)
+
+const updateStatement226 = statements226.find((s) => /^UPDATE\s+public\.sequence_steps\b/i.test(s.trim()))
+if (!updateStatement226)
+  throw new Error("no UPDATE public.sequence_steps statement found in 00226 — parser or migration drifted")
+
+function dollarQuotedField(statement: string, column: string): string {
+  const re = new RegExp(`\\b${column}\\s*=\\s*\\$([a-zA-Z0-9_]*)\\$`, "i")
+  const open = re.exec(statement)
+  if (!open) throw new Error(`no dollar-quoted ${column} assignment found in the 00226 UPDATE`)
+  const tag = `$${open[1]}$`
+  const start = open.index + open[0].length
+  const end = statement.indexOf(tag, start)
+  if (end === -1) throw new Error(`unterminated dollar-quoted ${column} in the 00226 UPDATE`)
+  return statement.slice(start, end)
+}
+
+const body226 = dollarQuotedField(updateStatement226, "body")
+
+describe("migration 00226 — the sms_repermission ask offers a tappable link", () => {
+  it("is actually parsing the file — a guard against a silently empty sweep", () => {
+    expect(body226.length).toBeGreaterThan(100)
+  })
+
+  it("reaches exactly the sms_repermission email step, by key and position", () => {
+    // Never by a hardcoded uuid: the sequence row's id is generated at insert
+    // time, and 00223 is `ON CONFLICT DO NOTHING`, so the id differs per
+    // database. The key is the stable handle.
+    expect(/key\s*=\s*'sms_repermission'/i.test(updateStatement226)).toBe(true)
+    expect(/position\s*=\s*0/i.test(updateStatement226)).toBe(true)
+  })
+
+  it("changes only that one step — no INSERT, no DELETE, no second UPDATE", () => {
+    expect(statements226.filter((s) => /^UPDATE\b/i.test(s.trim()))).toHaveLength(1)
+    expect(statements226.some((s) => /^(INSERT|DELETE|DROP|ALTER)\b/i.test(s.trim()))).toBe(false)
+  })
+
+  it("carries the {{sms_consent_url}} placeholder exactly once", () => {
+    const hits = body226.match(/\{\{sms_consent_url\}\}/g) ?? []
+    expect(hits).toHaveLength(1)
+  })
+
+  it("never hardcodes a URL — the origin is per-deployment and the token per-contact", () => {
+    // A literal link here is the dead link 00223's header refused to ship,
+    // just with an extra step: it would point at the wrong host on every
+    // deployment and carry no token at all.
+    expect(/https?:\/\//i.test(body226)).toBe(false)
+  })
+
+  it("keeps the A2P compliance wording — rates, STOP and HELP", () => {
+    expect(/message and data rates may apply/i.test(body226)).toBe(true)
+    expect(/\bSTOP\b/.test(body226)).toBe(true)
+    expect(/\bHELP\b/.test(body226)).toBe(true)
+  })
+
+  it("keeps the reply-YES fallback, so the email still works if the link does not", () => {
+    expect(/reply\s+YES/i.test(body226)).toBe(true)
+  })
+
+  it("never puts {{name}} immediately before punctuation", () => {
+    // substituteName falls back to "" for a nameless contact, so "Hi {{name}},"
+    // renders "Hi ,". Same rule 00218, 00222 and 00223 all follow.
+    let usesName = false
+    let idx = body226.indexOf("{{name}}")
+    while (idx !== -1) {
+      usesName = true
+      const after = body226.slice(idx + "{{name}}".length, idx + "{{name}}".length + 1)
+      expect(/[,.!?;:]/.test(after), `"{{name}}${after}"`).toBe(false)
+      idx = body226.indexOf("{{name}}", idx + 1)
+    }
+    expect(usesName).toBe(true)
+  })
+
+  it("uses no brand literal anywhere in the file, comments included", () => {
+    const FORBIDDEN = [/DJP\s*Athlete/i, /\bDarren\b/i, /darrenjpaul\.com/i]
+    for (const re of FORBIDDEN) {
+      expect(re.test(rawSql226), `matched ${re}`).toBe(false)
+    }
+  })
+
+  it("renders through renderSequenceEmail into a real link and no leftover template syntax", async () => {
+    // The end-to-end check that the placeholder this migration writes is the
+    // one the renderer actually substitutes. A typo in either half is
+    // invisible to both files on their own.
+    const { renderSequenceEmail } = await import("@/lib/lead-engine/email")
+    const { text, html } = renderSequenceEmail({
+      settings: {
+        business_id: "00000000-0000-0000-0000-000000000001",
+        display_name: "Acme Fitness",
+        sender_name: "Acme Team",
+        sender_email: "hello@acme.test",
+        reply_to: "support@acme.test",
+        logo_url: null,
+        timezone: "UTC",
+        quiet_hours_start: 8,
+        quiet_hours_end: 21,
+        daily_message_cap: 3,
+        postal_address: "123 Acme Way",
+        sms_help_text: "",
+        sms_messaging_service_sid: "",
+        sms_sender_phone: "",
+      },
+      subject: "Can we text you?",
+      body: body226,
+      unsubscribeUrl: "https://acme.test/unsubscribe/tok",
+      smsConsentUrl: "https://acme.test/sms-consent/tok",
+      contactName: "Marissa",
+    })
+    expect(text).toContain("https://acme.test/sms-consent/tok")
+    expect(html).toContain('href="https://acme.test/sms-consent/tok"')
+    expect(text).not.toContain("{{")
+    expect(html).not.toContain("{{")
+  })
+})

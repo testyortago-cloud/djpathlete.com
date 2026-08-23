@@ -27,6 +27,76 @@ function nextId(prefix: string) {
   return `${prefix}-${seqCounter}`
 }
 
+/**
+ * Whether the in-memory `opportunities` table knows about migration 00225's
+ * `source_event_id` column.
+ *
+ * Flipped to `false` by one test to reproduce the deploy window this repo has
+ * been bitten by before: Vercel and the migration race on merge to main, so
+ * for a few minutes the new code runs against the OLD table. PostgREST
+ * refuses an INSERT that names a column its schema cache has never heard of,
+ * and the failure mode is a Stripe webhook that 500s on every delivery —
+ * strictly worse than the race being fixed.
+ */
+let opportunitiesHasSourceEventId = true
+
+type PgError = { code: string; message: string; details: string | null; hint: string | null }
+
+function uniqueViolation(constraint: string): PgError {
+  return {
+    code: "23505",
+    message: `duplicate key value violates unique constraint "${constraint}"`,
+    details: null,
+    hint: null,
+  }
+}
+
+/**
+ * The `opportunities` constraints that actually exist in Postgres, enforced
+ * by this store so a test can prove something about them.
+ *
+ * This is the whole point of the race test below: a store that accepts every
+ * insert is green whether or not `lib/db/pipeline.ts` claims the source id
+ * atomically, which is exactly the "test that cannot fail" trap this repo has
+ * already shipped once. Both indexes are transcribed from the migrations
+ * rather than paraphrased:
+ *
+ *  - 00219 `opportunities_one_open_per_contact_pipeline`
+ *      UNIQUE (contact_id, pipeline_id) WHERE outcome IS NULL
+ *      — note it is NOT scoped by business_id, matching the real index.
+ *  - 00225 `opportunities_source_event_uniq`
+ *      UNIQUE (business_id, source_event_id) WHERE source_event_id IS NOT NULL
+ */
+function constraintViolation(table: string, payload: Row, rows: Row[]): PgError | null {
+  if (table !== "opportunities") return null
+
+  if (!opportunitiesHasSourceEventId && "source_event_id" in payload) {
+    // PostgREST's schema-cache miss on a write. Nothing is inserted.
+    return {
+      code: "PGRST204",
+      message: "Could not find the 'source_event_id' column of 'opportunities' in the schema cache",
+      details: null,
+      hint: null,
+    }
+  }
+
+  if (
+    payload.source_event_id != null &&
+    rows.some((r) => r.business_id === payload.business_id && r.source_event_id === payload.source_event_id)
+  ) {
+    return uniqueViolation("opportunities_source_event_uniq")
+  }
+
+  if (
+    payload.outcome == null &&
+    rows.some((r) => r.outcome == null && r.contact_id === payload.contact_id && r.pipeline_id === payload.pipeline_id)
+  ) {
+    return uniqueViolation("opportunities_one_open_per_contact_pipeline")
+  }
+
+  return null
+}
+
 // NOTE ON THE MOCK: copied (structure verbatim) from __tests__/db/sequences.ts's
 // harness. The trap this project has hit twice is a `.eq()` that returns the
 // query object without recording the filter, so every query resolves to
@@ -72,6 +142,8 @@ vi.mock("@/lib/supabase", () => ({
 
       const doInsert = (): { data: any; error: any } => {
         const p = payload as Row
+        const violation = constraintViolation(String(table), p, rows)
+        if (violation) return { data: null, error: violation }
         const row: Row = {
           ...p,
           id: p.id ?? nextId(String(table)),
@@ -168,8 +240,18 @@ import {
   DEFAULT_PIPELINE_KEY,
 } from "@/lib/db/pipeline"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
+import { REBOOKING_SUPPRESSION_DAYS } from "@/lib/lead-engine/pipeline-move"
 
 const DAY_MS = 86_400_000
+
+/**
+ * A manual close recent enough that `decideMove` still suppresses a
+ * re-booking. Derived from the window rather than written as a literal
+ * number of days: a hardcoded "5 days ago" is inside a 30-day window and
+ * outside a 3-day one, so the day the constant ever moves, a test written to
+ * prove a refusal quietly starts proving a creation — and stays green.
+ */
+const INSIDE_SUPPRESSION_WINDOW = () => new Date(Date.now() - (REBOOKING_SUPPRESSION_DAYS / 2) * DAY_MS).toISOString()
 
 beforeEach(() => {
   store.pipelines = []
@@ -179,6 +261,7 @@ beforeEach(() => {
   store.contacts = []
   store.audit_logs = []
   seqCounter = 0
+  opportunitiesHasSourceEventId = true
 })
 
 // ---------------------------------------------------------------------------
@@ -649,10 +732,250 @@ describe("applyPipelineEvent", () => {
     expect(store.opportunities).toHaveLength(1)
   })
 
+  // -------------------------------------------------------------------------
+  // Migration 00225 — opportunities.source_event_id.
+  //
+  // The metadata pre-check above is a SELECT, then an INSERT into
+  // opportunities, then an INSERT into opportunity_stage_events: three
+  // round-trips, no transaction. Two Stripe deliveries of the same checkout
+  // session that interleave inside that gap both read "no duplicate" and both
+  // create a card — two Won cards for one sale, double-counted in the
+  // campaign revenue report. These tests drive that interleaving for real
+  // (Promise.all over the actual entry point, not the helper) and pin the
+  // claim to the same INSERT as the effect.
+  // -------------------------------------------------------------------------
+  describe("source_event_id claims the sale in the same insert (00225)", () => {
+    /**
+     * Two concurrent create-with-outcome calls for one checkout session.
+     *
+     * `Promise.all` over `applyPipelineEvent` interleaves them in lockstep —
+     * both resolve the board, both read `current === null`, and both clear
+     * the metadata pre-check (neither has written a stage event yet) before
+     * either reaches the insert. That is the exact window the pre-check
+     * cannot close, reproduced through the real code path.
+     */
+    it("mints exactly ONE card when two deliveries of the same session race", async () => {
+      seedBoard()
+      seedContact("c-1")
+
+      const payment = {
+        kind: "payment" as const,
+        amountCents: 120000,
+        currency: "usd",
+        occurredAt: new Date(),
+      }
+      const [first, second] = await Promise.all([
+        applyPipelineEvent({ contactId: "c-1", event: payment, metadata: { stripe_session_id: "cs_race_1" } }),
+        applyPipelineEvent({ contactId: "c-1", event: payment, metadata: { stripe_session_id: "cs_race_1" } }),
+      ])
+
+      expect(store.opportunities).toHaveLength(1)
+      expect(store.opportunities[0].source_event_id).toBe("cs_race_1")
+
+      const kinds = [first.decision.kind, second.decision.kind].sort()
+      expect(kinds).toEqual(["create", "noop"])
+
+      const loser = first.decision.kind === "noop" ? first : second
+      expect(loser.decision).toEqual({ kind: "noop", reason: "duplicate_source_id" })
+      expect(loser.opportunityId).toBeNull()
+
+      // The winner's card is a real, complete Won row — the loser did not
+      // half-write anything over it.
+      const won = store.opportunities[0]
+      expect(won.outcome).toBe("won")
+      expect(won.value_cents).toBe(120000)
+      // ...and exactly one stage event, so the revenue report counts one sale.
+      expect(store.opportunity_stage_events).toHaveLength(1)
+    })
+
+    /**
+     * The column is opt-in, exactly like the metadata pre-check it backs up.
+     * A caller that passes no source id gets today's behaviour unchanged —
+     * the partial index says `WHERE source_event_id IS NOT NULL`, so two null
+     * rows never collide. Pinning this stops the fix from quietly becoming a
+     * global "one Won card per contact ever" rule.
+     */
+    it("still allows two cards when the caller passes no source id at all", async () => {
+      seedBoard()
+      seedContact("c-1")
+
+      const payment = {
+        kind: "payment" as const,
+        amountCents: 5000,
+        currency: "usd",
+        occurredAt: new Date(),
+      }
+      const [first, second] = await Promise.all([
+        applyPipelineEvent({ contactId: "c-1", event: payment }),
+        applyPipelineEvent({ contactId: "c-1", event: payment }),
+      ])
+
+      expect(first.decision.kind).toBe("create")
+      expect(second.decision.kind).toBe("create")
+      expect(store.opportunities).toHaveLength(2)
+      expect(store.opportunities.every((o) => o.source_event_id == null)).toBe(true)
+    })
+
+    it("claims a reconciler payment replay under payment_id", async () => {
+      seedBoard()
+      seedContact("c-1")
+
+      await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 9900, currency: "usd", occurredAt: new Date() },
+        source: "reconciler",
+        metadata: { payment_id: "pay-42" },
+      })
+
+      expect(store.opportunities[0].source_event_id).toBe("pay-42")
+    })
+
+    it("claims a reconciler booking replay under booking_id", async () => {
+      seedBoard()
+      seedContact("c-1")
+
+      await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
+        source: "reconciler",
+        metadata: { booking_id: "bk-42" },
+      })
+
+      expect(store.opportunities[0].source_event_id).toBe("bk-42")
+    })
+
+    // Assert WHICH id was chosen, not merely that one was. No caller passes
+    // two of these today, so the order is a determinism guarantee rather than
+    // a live tie-break — but "whatever Object.keys happened to yield first"
+    // is not a guarantee, and a second card hangs on it.
+    it("prefers the checkout session id over the reconciler's ids", async () => {
+      seedBoard()
+      seedContact("c-1")
+
+      await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 9900, currency: "usd", occurredAt: new Date() },
+        metadata: { payment_id: "pay-7", booking_id: "bk-7", stripe_session_id: "cs_wins" },
+      })
+
+      expect(store.opportunities[0].source_event_id).toBe("cs_wins")
+    })
+
+    // Non-string metadata is not an id. Left null rather than coerced: every
+    // coerced value would collide with every other coerced value under a
+    // UNIQUE index, so `String(undefined)` would refuse a second, unrelated
+    // sale outright.
+    it("ignores a non-string source id", async () => {
+      seedBoard()
+      seedContact("c-1")
+
+      await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 9900, currency: "usd", occurredAt: new Date() },
+        metadata: { stripe_session_id: 12345, amount_refunded: 0 },
+      })
+
+      expect(store.opportunities).toHaveLength(1)
+      expect(store.opportunities[0].source_event_id == null).toBe(true)
+    })
+
+    /**
+     * THE deploy-window test. Migrations and the Vercel build race on merge
+     * to main, so this code will run for a few minutes against an
+     * `opportunities` table with no `source_event_id` column. PostgREST
+     * answers PGRST204 to an INSERT naming a column it does not know — which,
+     * unhandled, is a Stripe webhook that 500s on every single delivery for
+     * as long as the window lasts. That is a worse outcome than the race
+     * being fixed, so the sale must still land, just without the claim.
+     */
+    it("still records the sale when the 00225 column has not landed yet", async () => {
+      seedBoard()
+      seedContact("c-1")
+      opportunitiesHasSourceEventId = false
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+
+      try {
+        const { decision, opportunityId } = await applyPipelineEvent({
+          contactId: "c-1",
+          event: { kind: "payment", amountCents: 12000, currency: "usd", occurredAt: new Date() },
+          metadata: { stripe_session_id: "cs_pre_migration" },
+        })
+
+        expect(decision.kind).toBe("create")
+        expect(opportunityId).not.toBeNull()
+        expect(store.opportunities).toHaveLength(1)
+        const row = store.opportunities[0]
+        expect(row.outcome).toBe("won")
+        expect(row.value_cents).toBe(12000)
+        // The retry dropped the field entirely rather than sending a null for a
+        // column PostgREST cannot see.
+        expect("source_event_id" in row).toBe(false)
+        // And the sale is still traceable: the stage event carries the session
+        // id regardless of the column, which is what the pre-check reads back.
+        // The marker beside it is the point — see the next assertion.
+        expect(stageEventsFor(opportunityId as string)[0].metadata).toEqual({
+          stripe_session_id: "cs_pre_migration",
+          source_event_id_claimed: false,
+        })
+        // Degrading QUIETLY is the failure this guards against. The return
+        // value on this path is identical to the protected one, so without a
+        // log line and a queryable marker the only symptom of the protection
+        // being off is duplicated revenue noticed weeks later.
+        expect(errors).toHaveBeenCalledWith(
+          expect.stringContaining("duplicate-sale protection is OFF"),
+          expect.objectContaining({ sourceEventId: "cs_pre_migration" }),
+        )
+      } finally {
+        errors.mockRestore()
+      }
+    })
+
+    it("leaves the marker OFF when the column is present, so its absence keeps meaning something", async () => {
+      seedBoard()
+      seedContact("c-1")
+
+      const { opportunityId } = await applyPipelineEvent({
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 12000, currency: "usd", occurredAt: new Date() },
+        metadata: { stripe_session_id: "cs_normal" },
+      })
+
+      expect(stageEventsFor(opportunityId as string)[0].metadata).toEqual({ stripe_session_id: "cs_normal" })
+    })
+
+    /**
+     * A unique violation is not automatically "someone else claimed this
+     * source id" — `opportunities_one_open_per_contact_pipeline` raises the
+     * same 23505, and that one means a genuine concurrency fault the
+     * reconciler counts as `failed` and logs. Swallowing every 23505 into a
+     * silent noop would hide it.
+     *
+     * The competing open card is seeded under a DIFFERENT business_id, which
+     * is not a contrivance: 00219's open-card index is keyed on
+     * (contact_id, pipeline_id) with no business_id, while
+     * `readMostRecentOpportunity` does filter by business — so this row is
+     * invisible to the read and still fatal to the insert.
+     */
+    it("rethrows a unique violation that did NOT come from the source-id claim", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-other-tenant", "c-1", { business_id: "biz-2", outcome: null })
+
+      await expect(
+        applyPipelineEvent({
+          contactId: "c-1",
+          event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
+          source: "reconciler",
+          metadata: { booking_id: "bk-99" },
+        }),
+      ).rejects.toMatchObject({ code: "23505" })
+    })
+  })
+
   it("records a refused event with refused_reason and does not move the card", async () => {
     seedBoard()
     seedContact("c-1")
-    const recentClose = new Date(Date.now() - 5 * DAY_MS).toISOString()
+    const recentClose = INSIDE_SUPPRESSION_WINDOW()
     seedOpportunity("opp-1", "c-1", {
       stage_id: "stage-lost",
       outcome: "lost",

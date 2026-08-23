@@ -188,7 +188,11 @@ export const AUDIT_ACTIONS = [
   { slug: "newsletter.scheduled", category: "marketing", description: "Newsletter scheduled to send later" },
   { slug: "newsletter.schedule_cancelled", category: "marketing", description: "Newsletter schedule cancelled" },
   { slug: "newsletter.sent_on_schedule", category: "marketing", description: "Newsletter sent by the scheduler" },
-  { slug: "content.schedule_missed", category: "marketing", description: "Scheduled item missed its slot and returned to draft" },
+  {
+    slug: "content.schedule_missed",
+    category: "marketing",
+    description: "Scheduled item missed its slot and returned to draft",
+  },
   { slug: "lead_magnet.downloaded", category: "marketing", description: "Lead magnet downloaded" },
   { slug: "event_signup.created", category: "marketing", description: "Public event signup" },
   { slug: "event_signup.cancelled", category: "marketing", description: "Event signup cancelled" },
@@ -258,6 +262,26 @@ export const AUDIT_ACTIONS = [
     slug: "marketing.unsubscribed",
     category: "compliance",
     description: "Sequence unsubscribe processed — consent revoked and the address suppressed",
+  },
+  {
+    // The mirror image of `marketing.unsubscribed` above, and categorised the
+    // same way for the same reason: written by an UNAUTHENTICATED public URL,
+    // and it GRANTS permission to text a person rather than revoking it. That
+    // direction is the one a carrier or a regulator asks about, so "who agreed,
+    // to what wording, from which address, and when" has to be answerable from
+    // the audit trail on its own.
+    slug: "marketing.sms_consent_confirmed",
+    category: "compliance",
+    description: "Contact confirmed SMS consent from a signed link — consent recorded",
+  },
+  {
+    // admin_write, not compliance: enrolling someone into a sequence is an
+    // operational act on the marketing engine, not a consent record. The
+    // consent that permits the sending already exists (or does not) on
+    // contact_consents, and this action neither creates nor alters it.
+    slug: "sequence.contacts_enrolled",
+    category: "admin_write",
+    description: "Admin enrolled one or more contacts into a sequence by hand",
   },
   {
     slug: "legal_document.published",

@@ -120,6 +120,36 @@ function capBody(body: string): string {
   return body.length > TIMELINE_BODY_CAP ? body.slice(0, TIMELINE_BODY_CAP) : body
 }
 
+/**
+ * Quotes text an outsider wrote — the message body, the `From` field — into an
+ * operator-alert email body WITHOUT it being read as a template.
+ *
+ * `renderSequenceEmail` treats its `body` as a template on purpose: that is how
+ * a sequence step's stored copy gets `{{name}}` and `{{sms_consent_url}}`
+ * filled in. Neither placeholder means anything in an operator alert. There is
+ * no contact NAME (these render with `contactName: null`), and there is no
+ * consent URL to supply: that link is signed for a CONTACT and belongs only in
+ * mail sent TO them, never in an internal notification ABOUT them.
+ *
+ * Left alone, both misfire on quoted text. `{{name}}` would be substituted
+ * away to "" — the operator reads a sentence with a hole in it. Worse,
+ * `{{sms_consent_url}}` with no URL supplied makes the renderer THROW
+ * (lib/lead-engine/email.ts), and migration 00226 mails that placeholder's
+ * rendered link to real people, so getting the literal back — quoted,
+ * forwarded, or retyped by someone asking "is this really you?" — is an
+ * ordinary thing for a lead to do. That throw used to 500 this webhook, which
+ * cost the operator the very alert the block exists to send and left Twilio
+ * retrying a payload no retry could fix.
+ *
+ * The defang is minimal and deliberately visible: only the opening brace pair
+ * is split, so the operator still reads essentially what arrived. The verbatim
+ * bytes are on the timeline row either way — that is the record; this email is
+ * the notification.
+ */
+function quoteForOperatorAlert(text: string): string {
+  return text.replaceAll("{{", "{ {")
+}
+
 export async function POST(request: Request) {
   const authToken = process.env.TWILIO_AUTH_TOKEN
   if (!authToken) {
@@ -216,7 +246,9 @@ export async function POST(request: Request) {
           const rendered = renderSequenceEmail({
             settings,
             subject: "SMS STOP needs manual review",
-            body: `An SMS STOP request could not be automatically honored because the sender's number could not be parsed as a phone number.\n\nFrom: ${rawFrom}`,
+            body: quoteForOperatorAlert(
+              `An SMS STOP request could not be automatically honored because the sender's number could not be parsed as a phone number.\n\nFrom: ${rawFrom}`,
+            ),
             contactName: null,
             includeUnsubscribeFooter: false,
           })
@@ -284,15 +316,24 @@ export async function POST(request: Request) {
       // satisfies "visible", and this webhook's 200 to Twilio must not
       // depend on a Resend hiccup for a side-channel notification to
       // someone else.
+      //
+      // The RENDER is inside that try as well, and has to be. It is handed a
+      // body built out of a lead's own words, and `renderSequenceEmail` throws
+      // on some of them (see `quoteForOperatorAlert`). Defanging stops the one
+      // throw we know about; keeping the render inside the catch is what stops
+      // the next one from turning a poison text message into a 500 and an
+      // endless Twilio retry. `getBusinessSettings` stays OUTSIDE: a settings
+      // read that fails is an infra fault, and a 500 there is the correct,
+      // retryable answer.
       const settings = await getBusinessSettings()
-      const rendered = renderSequenceEmail({
-        settings,
-        subject: "New SMS reply",
-        body: `From: ${rawFrom}\n\n${rawBody}`,
-        contactName: null,
-        includeUnsubscribeFooter: false,
-      })
       try {
+        const rendered = renderSequenceEmail({
+          settings,
+          subject: "New SMS reply",
+          body: quoteForOperatorAlert(`From: ${rawFrom}\n\n${rawBody}`),
+          contactName: null,
+          includeUnsubscribeFooter: false,
+        })
         await sendRenderedSequenceEmail({
           to: settings.reply_to,
           rendered,

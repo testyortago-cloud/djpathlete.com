@@ -196,8 +196,19 @@ vi.mock("@/lib/supabase", () => ({
 import { runPipelineReconcile, PIPELINE_RECONCILE_WINDOW_DAYS } from "@/lib/automation/pipeline-reconcile"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { DEFAULT_PIPELINE_KEY } from "@/lib/db/pipeline"
+import { REBOOKING_SUPPRESSION_DAYS } from "@/lib/lead-engine/pipeline-move"
 
 const DAY_MS = 86_400_000
+
+/**
+ * A manual close recent enough that `decideMove` still suppresses the
+ * re-booking this reconciler would otherwise replay. Derived from the window
+ * rather than written as a literal number of days: a hardcoded "5 days ago"
+ * is inside a 30-day window and outside a 3-day one, so the day the constant
+ * ever moves, a test written to prove the reconciler does NOT resurrect a
+ * human's close quietly starts proving that it does — and stays green.
+ */
+const INSIDE_SUPPRESSION_WINDOW = () => new Date(Date.now() - (REBOOKING_SUPPRESSION_DAYS / 2) * DAY_MS).toISOString()
 
 beforeEach(() => {
   store.pipelines = []
@@ -531,7 +542,7 @@ describe("runPipelineReconcile", () => {
   it("does not resurrect a card a human closed", async () => {
     seedBoard()
     seedContact("c-1", { email: "lead@example.com" })
-    const recentClose = new Date(Date.now() - 5 * DAY_MS).toISOString()
+    const recentClose = INSIDE_SUPPRESSION_WINDOW()
     seedOpportunity("opp-1", "c-1", {
       stage_id: "stage-lost",
       outcome: "lost",
@@ -616,10 +627,10 @@ describe("runPipelineReconcile", () => {
     seedContact("c-a", { email: "a@example.com" })
     seedBooking("bk-a", { contact_email: "a@example.com", status: "scheduled" })
 
-    // Contact B: human-closed 'lost' 10 days ago, rebooking inside the
-    // 30-day suppression window — refused, and current never changes.
+    // Contact B: human-closed 'lost' recently enough to still be inside the
+    // suppression window, rebooking — refused, and current never changes.
     seedContact("c-b", { email: "b@example.com" })
-    const recentClose = new Date(Date.now() - 10 * DAY_MS).toISOString()
+    const recentClose = INSIDE_SUPPRESSION_WINDOW()
     seedOpportunity("opp-b", "c-b", {
       stage_id: "stage-lost",
       outcome: "lost",

@@ -15,6 +15,25 @@ const STAGES: StageRow[] = [
 ]
 
 const NOW = new Date("2026-08-19T12:00:00Z")
+const DAY_MS = 86_400_000
+
+/**
+ * A close recent enough to still be inside the re-booking suppression window,
+ * and one old enough to be outside it — both derived from
+ * REBOOKING_SUPPRESSION_DAYS rather than written as literal dates.
+ *
+ * The window's length is a confirmed product decision (spec §13, confirmed
+ * 2026-08-19) and is not in question here. What matters is that the two tests
+ * below keep testing OPPOSITE SIDES of it: a hardcoded "9 days ago" is inside
+ * a 30-day window and outside a 7-day one, so the day the number ever moves,
+ * the test written to rule out a re-booking quietly starts asserting that one
+ * is allowed — and passes while doing it.
+ *
+ * Half the window, so it tracks whatever value the constant takes rather than
+ * one particular value.
+ */
+const INSIDE_WINDOW = new Date(NOW.getTime() - (REBOOKING_SUPPRESSION_DAYS / 2) * DAY_MS)
+const PAST_WINDOW = new Date(NOW.getTime() - (REBOOKING_SUPPRESSION_DAYS + 1) * DAY_MS)
 
 function ctx(over: Partial<MoveContext> = {}): MoveContext {
   return { now: NOW, stages: STAGES, current: null, ...over }
@@ -130,16 +149,15 @@ describe("decideMove — a human's close is final (spec §2.4)", () => {
 
   it("refuses a new card when they re-book inside the suppression window", () => {
     const d = decideMove(
-      ctx({ current: closedAt("lost", "manual", "2026-08-10T12:00:00Z") }), // 9 days
+      ctx({ current: closedAt("lost", "manual", INSIDE_WINDOW.toISOString()) }),
       { kind: "booking", status: "scheduled", occurredAt: NOW },
     )
     expect(d).toEqual({ kind: "refuse", reason: "suppressed_after_manual_lost" })
   })
 
   it("allows a new card once the suppression window has passed", () => {
-    const past = new Date(NOW.getTime() - (REBOOKING_SUPPRESSION_DAYS + 1) * 86400000)
     const d = decideMove(
-      ctx({ current: closedAt("lost", "manual", past.toISOString()) }),
+      ctx({ current: closedAt("lost", "manual", PAST_WINDOW.toISOString()) }),
       { kind: "booking", status: "scheduled", occurredAt: NOW },
     )
     expect(d.kind).toBe("create")

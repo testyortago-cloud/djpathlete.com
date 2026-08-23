@@ -274,6 +274,89 @@ describe("renderSequenceEmail with includeUnsubscribeFooter: false", () => {
   })
 })
 
+// Migration 00226 rewrites the `sms_repermission` step body to offer a tappable
+// consent link, stored in the flat `sequence_steps.body` column as the literal
+// placeholder `{{sms_consent_url}}`. The seed copy cannot hold the real URL:
+// the token is per-contact, and the origin is per-deployment. So the renderer
+// substitutes it, and the runner supplies it — exactly the split that already
+// keeps `renderSequenceEmail` pure for the unsubscribe URL.
+describe("renderSequenceEmail and the {{sms_consent_url}} placeholder", () => {
+  const BODY = "Tap to say yes:\n\n{{sms_consent_url}}\n\nThanks."
+  const URL = "https://x.test/sms-consent/abc.def"
+
+  it("replaces the placeholder in the plain-text part with the real URL", () => {
+    const { text } = renderSequenceEmail({
+      settings: settingsA,
+      subject: "Can we text you?",
+      body: BODY,
+      unsubscribeUrl: "https://x.test/u/30",
+      smsConsentUrl: URL,
+      contactName: null,
+    })
+    expect(text).toContain(URL)
+    expect(text).not.toContain("{{sms_consent_url}}")
+  })
+
+  it("renders it as a real anchor in the html, with the href escaped", () => {
+    const { html } = renderSequenceEmail({
+      settings: settingsA,
+      subject: "Can we text you?",
+      body: BODY,
+      unsubscribeUrl: "https://x.test/u/31",
+      smsConsentUrl: "https://x.test/sms-consent/a&b",
+      contactName: null,
+    })
+    // The href goes through the same escapeHtml the unsubscribe href uses —
+    // a token is base64url so it cannot contain `&` today, but an origin with
+    // a query string could, and an unescaped `&` silently truncates the href.
+    expect(html).toContain('href="https://x.test/sms-consent/a&amp;b"')
+    expect(html).not.toContain("{{sms_consent_url}}")
+  })
+
+  it("leaves a body that does not mention the placeholder completely unchanged", () => {
+    const plain = {
+      settings: settingsA,
+      subject: "Hi",
+      body: "Nothing to substitute here.\n\nSecond paragraph.",
+      unsubscribeUrl: "https://x.test/u/32",
+      contactName: "Marissa" as string | null,
+    }
+    const without = renderSequenceEmail(plain)
+    const withUrl = renderSequenceEmail({ ...plain, smsConsentUrl: URL })
+    expect(withUrl).toEqual(without)
+    expect(withUrl.html).not.toContain(URL)
+  })
+
+  it("refuses to render a body that carries the placeholder with no URL supplied", () => {
+    // The alternative is shipping `{{sms_consent_url}}` as visible template
+    // syntax to a real person, or an anchor pointing nowhere. Both are worse
+    // than a loud failure the runner can never actually reach — it always
+    // passes the URL.
+    expect(() =>
+      renderSequenceEmail({
+        settings: settingsA,
+        subject: "Can we text you?",
+        body: BODY,
+        unsubscribeUrl: "https://x.test/u/33",
+        contactName: null,
+      }),
+    ).toThrow(/sms_consent_url/i)
+  })
+
+  it("substitutes {{name}} and the URL in the same body", () => {
+    const { text } = renderSequenceEmail({
+      settings: settingsA,
+      subject: "Hi {{name}}",
+      body: "Hi {{name}}\n\n{{sms_consent_url}}",
+      unsubscribeUrl: "https://x.test/u/34",
+      smsConsentUrl: URL,
+      contactName: "Marissa",
+    })
+    expect(text).toContain("Hi Marissa")
+    expect(text).toContain(URL)
+  })
+})
+
 describe("sendSequenceEmail", () => {
   it("sets List-Unsubscribe and List-Unsubscribe-Post headers, from and replyTo from settings", async () => {
     const result = await sendSequenceEmail({

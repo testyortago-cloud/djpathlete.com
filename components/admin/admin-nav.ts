@@ -41,6 +41,7 @@ import {
   Ban,
   BookOpen,
   Kanban,
+  UsersRound,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { canAccessPath, type PermissionActor } from "@/lib/permissions/registry"
@@ -122,6 +123,13 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: Permi
           // Lead Engine Stage 1c: the sales pipeline board — where a lead
           // becomes a client. Final review, Important 2: was URL-only.
           { label: "Pipeline", href: "/admin/pipeline", icon: Kanban },
+          // Beside Pipeline because they are the same subsystem: this is the
+          // list of people the pipeline draws its cards from, and the only
+          // surface that can put one of them into a sequence by hand. Distinct
+          // from Clients, which is `users` — people who can log in and be
+          // billed. Contacts is `contacts`: marketing and consent, including
+          // the ~90 imported rows that have a phone number and no login.
+          { label: "Contacts", href: "/admin/contacts", icon: UsersRound },
           { label: "Clients", href: "/admin/clients", icon: Users },
           { label: "Schedule", href: "/admin/schedule", icon: CalendarClock },
           { label: "Programs", href: "/admin/programs", icon: ClipboardList },

@@ -35,6 +35,7 @@ import {
 } from "@/lib/lead-engine/email"
 import { smsConfigured, smsEnvPresent, renderSequenceSms, sendRenderedSequenceSms } from "@/lib/lead-engine/sms"
 import { unsubscribeUrl, unsubscribeOneClickUrl } from "@/lib/lead-engine/unsubscribe-token"
+import { smsConsentUrl } from "@/lib/lead-engine/sms-consent-token"
 import { appOrigin } from "@/lib/lead-engine/origin"
 import { decideStep } from "@/lib/automation/sequence-tick"
 import type { SequenceRunRow } from "@/lib/automation/sequence-tick"
@@ -377,6 +378,15 @@ async function processRun(
       // The header URI must accept a POST (RFC 8058); the footer link is
       // followed by a browser. Two paths, one token, one flow.
       const oneClickUrl = unsubscribeOneClickUrl(origin, run.contact_id, businessId)
+      // Minted for EVERY email step, not only the `sms_repermission` one:
+      // `renderSequenceEmail` uses it solely where the stored body contains
+      // `{{sms_consent_url}}`, and a body without the placeholder renders
+      // identically whether this is passed or not. Deciding here which
+      // sequences "should" get one would mean this runner had to know which
+      // copy carries the placeholder — and the copy is explicitly meant to be
+      // edited in the database, so it would be wrong the first time anyone
+      // did. Signing a token costs one HMAC.
+      const consentUrl = smsConsentUrl(origin, run.contact_id, businessId)
 
       // Rendered ONCE, here, before anything is claimed or sent. The same
       // bytes are then both recorded and delivered.
@@ -393,6 +403,7 @@ async function processRun(
         subject: action.step.subject ?? "",
         body: action.step.body ?? "",
         unsubscribeUrl: unsubUrl,
+        smsConsentUrl: consentUrl,
         contactName: ctx.contact.name,
       })
 
