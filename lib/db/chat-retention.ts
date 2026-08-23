@@ -45,6 +45,21 @@ import type { SupabaseClient } from "@supabase/supabase-js"
  * nobody acts on is not worth the round trip.
  */
 export async function pruneChatConversations(supabase: SupabaseClient, days: number): Promise<number> {
+  // `days` COMES FROM A HAND-EDITED system_settings ROW, so it is validated
+  // rather than trusted. `getSetting<number>` returns raw jsonb: a `0` would
+  // put the cutoff at now() and delete every conversation including the one
+  // being had right now, and a `"90"` typed as a string makes the arithmetic
+  // NaN, so `new Date(NaN).toISOString()` throws inside the cron.
+  //
+  // It refuses rather than clamping. A retention window nobody meant is a
+  // destructive operation, and the honest response to "I cannot tell how long
+  // you meant to keep this" is to delete nothing and say so — the cron records
+  // the message and the operator fixes the row.
+  if (typeof days !== "number" || !Number.isFinite(days) || days < 1) {
+    throw new Error(
+      `pruneChatConversations: chat_retention_days must be a number of at least 1, got ${JSON.stringify(days)}`,
+    )
+  }
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
   const { count, error } = await supabase.from("chat_conversations").delete({ count: "exact" }).lt("created_at", cutoff)
   // A REAL `Error`, not the raw PostgREST object the house DAL usually

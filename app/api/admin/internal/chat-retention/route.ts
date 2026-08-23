@@ -15,7 +15,16 @@
 // loses records it had not finished reading. It ships off; turning it on is a
 // decision someone makes, once, on purpose.
 //
-// THE FUNCTION THAT CALLS THIS IS NOT DEPLOYED YET, and that is why
+// CORRECTED AFTER REVIEW: THE FUNCTION THAT CALLS THIS *WILL* BE DEPLOYED BY
+// THE MERGE ITSELF. `.github/workflows/deploy-functions.yml` fires on any push
+// to main touching `functions/**`, and this branch edits
+// `functions/src/index.ts`, so `chatRetentionCron` goes live with the merge —
+// it is not a separate manual step, as this comment previously claimed.
+//
+// Nothing breaks: `cron_chat_retention_enabled` defaults false, so this route
+// returns `{skipped:"disabled"}` BEFORE `logCronStart`, leaving no `cron_runs`
+// row and nothing for the health watchdog to see. The ordering that still
+// matters is the other two steps —
 // `chatRetentionCron` is NOT in the automation-health scanner's expected list.
 // A cron on that list with no `cron_runs` history alerts every single day for
 // a job nobody broke, which teaches an operator to ignore the one alert that

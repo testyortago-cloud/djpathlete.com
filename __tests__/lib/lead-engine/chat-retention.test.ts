@@ -251,3 +251,34 @@ describe("POST /api/admin/internal/chat-retention", () => {
     expect(h.logCronEnd).not.toHaveBeenCalledWith(expect.anything(), "run-1", "success", expect.anything())
   })
 })
+
+describe("the retention window is validated, because it is hand-typed", () => {
+  // chat_retention_days has no admin UI writer that constrains it, so the value
+  // arrives as raw jsonb from a row a person edited. Deleting everything
+  // because someone typed 0 is not a retention policy.
+  it.each([
+    [0, "zero would delete the conversation currently being had"],
+    [-1, "negative puts the cutoff in the future"],
+    ["90", "a string makes the arithmetic NaN and toISOString throw inside the cron"],
+    [null, "an absent value must not read as 'delete everything'"],
+    [Number.NaN, "NaN reaches toISOString as an invalid date"],
+  ])("refuses %j — %s", async (days) => {
+    const { pruneChatConversations } = await import("@/lib/db/chat-retention")
+    const supabase = {
+      from: () => {
+        throw new Error("must not reach the database")
+      },
+    }
+    await expect(pruneChatConversations(supabase as never, days as never)).rejects.toThrow(
+      /chat_retention_days must be a number of at least 1/,
+    )
+  })
+
+  it("still prunes on a sane window", async () => {
+    const { pruneChatConversations } = await import("@/lib/db/chat-retention")
+    const lt = vi.fn().mockResolvedValue({ count: 3, error: null })
+    const supabase = { from: () => ({ delete: () => ({ lt }) }) }
+    await expect(pruneChatConversations(supabase as never, 90)).resolves.toBe(3)
+    expect(lt).toHaveBeenCalledTimes(1)
+  })
+})
