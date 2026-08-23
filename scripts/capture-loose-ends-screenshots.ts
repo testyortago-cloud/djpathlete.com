@@ -21,8 +21,9 @@
 // that has already texted STOP -- so it sets them up, captures, and puts
 // every one of them back in a finally block. Nothing here touches production.
 
-import { readFileSync, mkdirSync } from "node:fs"
-import { chromium, type Page, type BrowserContext } from "playwright"
+import { readFileSync, mkdirSync, readdirSync, existsSync } from "node:fs"
+import { join } from "node:path"
+import { chromium, type Page, type BrowserContext, type Browser } from "playwright"
 import { annotate } from "./_annotate-lib.mjs"
 
 type Marker = { x: number; y: number; caption: string }
@@ -81,15 +82,83 @@ async function markerAt(page: Page, selector: string, caption: string): Promise<
   if ((await el.count()) === 0) throw new Error(`MARKER TARGET NOT FOUND: ${selector}`)
   const box = await el.boundingBox()
   if (!box) throw new Error(`MARKER TARGET NOT VISIBLE (zero box): ${selector}`)
-  return { x: (box.x + 16) * DSF, y: (box.y + 16) * DSF, caption }
+  // Centred ON the element's top-left corner, so the disc straddles the edge
+  // and sits half outside. Nudging it inwards instead parks it squarely over
+  // the first word of the very label the number is pointing at, which is how
+  // the first run produced a marker covering a filter's text.
+  return { x: box.x * DSF, y: box.y * DSF, caption }
+}
+
+/**
+ * Hides two things that would otherwise sit on top of the feature:
+ *
+ *  - `nextjs-portal`, the dev-server's own indicator. It exists only because
+ *    this is `next dev` and never appears in production, so leaving it in
+ *    would put something in the picture that no user can ever see.
+ *  - the messaging dock, which floats over the bottom-right corner of every
+ *    admin page and covers the table's own footer. Real product chrome, but
+ *    not the subject here.
+ *
+ * Injected into the page, never edited into the components: the screenshot has
+ * to be of the real screen as it really ships, and changing app code to take a
+ * nicer picture of it makes the picture a lie.
+ */
+async function hideFloatingChrome(page: Page): Promise<void> {
+  await page.addStyleTag({
+    content: `nextjs-portal, [aria-label="Messages"], [aria-label^="Messages,"] { display: none !important; }`,
+  })
 }
 
 async function shoot(page: Page, name: string, title: string, subtitle: string, markers: Marker[]): Promise<void> {
   mkdirSync(OUT, { recursive: true })
+  await hideFloatingChrome(page)
   const raw = `${OUT}/.raw-${name}.png`
   await page.screenshot({ path: raw })
   const r = await annotate(raw, `${OUT}/${name}.png`, { title, subtitle, markers })
   console.log(`  ${name}.png  ${r.width}x${r.height}`)
+}
+
+/**
+ * Launches Chromium, tolerating the browser-revision drift that bites every
+ * time this repo's Playwright is upgraded.
+ *
+ * `chromium.launch()` wants the headless SHELL matching the installed
+ * Playwright exactly — `chromium_headless_shell-<rev>` — and that revision is
+ * frequently absent even when the cache holds two perfectly good newer ones,
+ * because `npx playwright install` is scoped per project and per version. The
+ * failure ("Executable doesn't exist at …") reads like a broken machine rather
+ * than a version mismatch, which is how it costs an hour.
+ *
+ * So: try the expected build, and on failure fall back to the newest shell
+ * actually present. A shell one or two revisions off renders this app's CSS
+ * identically — this is a screenshot, not a browser-compat test — and taking a
+ * capture with it beats blocking on a several-hundred-megabyte download.
+ *
+ * It reports which build it used rather than swallowing the substitution,
+ * because a silent fallback is how you end up puzzling over a rendering
+ * difference you were never told about.
+ */
+async function launchChromium(): Promise<Browser> {
+  try {
+    return await chromium.launch()
+  } catch (err) {
+    const cache = join(process.env.HOME ?? "", "Library/Caches/ms-playwright")
+    const shells = existsSync(cache)
+      ? readdirSync(cache)
+          .filter((d) => d.startsWith("chromium_headless_shell-"))
+          .sort((a, b) => Number(b.split("-")[1]) - Number(a.split("-")[1]))
+      : []
+    for (const shell of shells) {
+      const exe = join(cache, shell, "chrome-headless-shell-mac-arm64", "chrome-headless-shell")
+      if (!existsSync(exe)) continue
+      console.log(`  playwright's own build is missing; falling back to ${shell}`)
+      return await chromium.launch({ executablePath: exe })
+    }
+    throw new Error(
+      `no usable chromium found. Original error: ${(err as Error).message.split("\n")[0]}\n` +
+        `Run: npx playwright install chromium chromium-headless-shell`,
+    )
+  }
 }
 
 async function signInAsAdmin(ctx: BrowserContext): Promise<void> {
@@ -111,7 +180,7 @@ async function signInAsAdmin(ctx: BrowserContext): Promise<void> {
 async function main(): Promise<void> {
   const { smsConsentUrl } = await import("../lib/lead-engine/sms-consent-token")
 
-  const browser = await chromium.launch()
+  const browser = await launchChromium()
   const ctx = await browser.newContext({ viewport: { width: WIDTH, height: 1080 }, deviceScaleFactor: DSF })
 
   // Everything this run changes on the clone, so the finally block can put it
