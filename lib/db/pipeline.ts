@@ -18,6 +18,7 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { recordAudit } from "@/lib/audit/record"
+import { isPgUniqueViolation } from "@/lib/supabase-errors"
 import {
   decideMove,
   stalenessOf,
@@ -322,6 +323,99 @@ async function hasMatchingStageEventMetadata(
   })
 }
 
+/**
+ * The metadata keys that can carry the id of the EXTERNAL event a card is
+ * created from, in the order they are consulted. Migration 00225 puts that id
+ * on `opportunities.source_event_id` under a partial unique index, so the
+ * claim and the card are the same INSERT.
+ *
+ * Derived here, in exactly one place, so the value written to the column and
+ * the value a later delivery collides against can never drift apart.
+ *
+ * Order, and why:
+ *
+ *  1. `stripe_session_id` — the only key a live webhook passes
+ *     (app/api/stripe/webhook/route.ts) and the only one that can actually
+ *     race, because Stripe redelivers concurrently. One checkout session is
+ *     one purchase forever, which is the same reason 00208 made it
+ *     `funnel_checkout_grants`' natural key.
+ *  2. `booking_id`, then 3. `payment_id` — the reconciler's two keys
+ *     (lib/automation/pipeline-reconcile.ts), in the order its own two loops
+ *     run.
+ *
+ * No caller passes more than one of these, so the order is a determinism
+ * guarantee rather than a live tie-break — but "whichever key the object
+ * happened to enumerate first" is not a guarantee, and a duplicate Won card
+ * hangs on it.
+ *
+ * Deliberately NOT here: `stripe_charge_id`, which refunds pass. A refund
+ * takes the `amend` branch and never creates a card, and a charge id is not
+ * one-shot for creation the way a session id is — claiming it would refuse a
+ * later, legitimate card. Refund idempotency is `highestRecordedRefundAmount`'s
+ * job and stays there.
+ */
+const SOURCE_EVENT_ID_KEYS = ["stripe_session_id", "booking_id", "payment_id"] as const
+
+function deriveSourceEventId(metadata: Record<string, unknown> | undefined): string | null {
+  if (!metadata) return null
+  for (const key of SOURCE_EVENT_ID_KEYS) {
+    const value = metadata[key]
+    if (typeof value === "string" && value.length > 0) return value
+  }
+  return null
+}
+
+/**
+ * True when a write was refused because PostgREST does not know a column the
+ * payload named.
+ *
+ * This exists for ONE deploy: migrations and the Vercel build race on merge
+ * to main, so for a few minutes this code runs against an `opportunities`
+ * table that predates 00225. Unhandled, that is a Stripe webhook answering
+ * 500 to every delivery — strictly worse than the race being fixed, and it
+ * would trigger Stripe's own retries on top. Code-based, per the header of
+ * lib/supabase-errors.ts: PGRST204 is PostgREST's schema-cache miss on a
+ * write, 42703 is Postgres' own undefined_column for the versions that
+ * surface it directly.
+ *
+ * Kept local rather than added to lib/supabase-errors.ts on purpose: it is a
+ * transitional guard, and the call site below should be deleted once 00225 is
+ * live everywhere — a shared export invites permanent reuse of a temporary
+ * tolerance.
+ */
+function isMissingColumnError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null || !("code" in err)) return false
+  const code = (err as { code?: string }).code
+  return code === "PGRST204" || code === "42703"
+}
+
+/**
+ * Whether an opportunity row already carries this `source_event_id`.
+ *
+ * Called only after a 23505, to answer WHICH unique index refused the insert
+ * without parsing the error message. Two can fire on this table:
+ * `opportunities_source_event_uniq` (00225 — another delivery of the same
+ * external event already recorded this sale) and
+ * `opportunities_one_open_per_contact_pipeline` (00219 — the contact gained
+ * an open card between the read and the insert). Only the first is a
+ * duplicate delivery; the second is a genuine concurrency fault that must
+ * keep throwing, so the reconciler counts it in `failed` and logs the row id
+ * instead of silently reporting success.
+ */
+async function sourceEventIdIsClaimed(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  businessId: string,
+  sourceEventId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("opportunities")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("source_event_id", sourceEventId)
+  if (error) throw error
+  return ((data ?? []) as Row[]).length > 0
+}
+
 async function insertStageEvent(
   supabase: ReturnType<typeof createServiceRoleClient>,
   args: {
@@ -440,6 +534,16 @@ export async function applyPipelineEvent(input: {
       // in `metadata` (the Stripe webhook passes `{ stripe_session_id }`),
       // and if a stage event already carries that same id, this call is a
       // duplicate delivery of a sale already recorded, not a new one.
+      //
+      // This check is a SELECT taken before the INSERT, so it closes the
+      // SEQUENTIAL redelivery case (the common one) without ever reaching an
+      // error path — but it cannot close the CONCURRENT one, where both
+      // deliveries read it before either has written anything. Migration
+      // 00225's `source_event_id` claim on the insert below is the backstop
+      // underneath it, not a replacement for it: this check also covers the
+      // `close`/`amend` branches, which the column does not touch at all
+      // (they update an existing row rather than creating one), and removing
+      // it would change what the reconciler sees.
       if (decision.outcome && input.metadata) {
         const duplicate = await hasMatchingStageEventMetadata(supabase, businessId, input.metadata)
         if (duplicate) {
@@ -465,25 +569,56 @@ export async function applyPipelineEvent(input: {
         ? { outcome: decision.outcome, closed_at: now.toISOString(), closed_trigger: decision.trigger }
         : { outcome: null, closed_at: null, closed_trigger: null }
 
-      const { data: inserted, error: insertErr } = await supabase
-        .from("opportunities")
-        .insert({
-          business_id: businessId,
-          pipeline_id: pipelineId,
-          contact_id: input.contactId,
-          stage_id: toStage.id,
-          entered_stage_at: now.toISOString(),
-          value_cents: decision.valueCents ?? null,
-          currency: decision.currency ?? "usd",
-          // Copied at creation, never again — spec: first touch is a
-          // property of when the deal began.
-          source_session_id: contactRow.first_touch_session_id ?? null,
-          ...closureFields,
-        })
-        .select("id")
-        .single()
-      if (insertErr) throw insertErr
-      const opportunityId = (inserted as Row).id as string
+      const opportunityRow: Row = {
+        business_id: businessId,
+        pipeline_id: pipelineId,
+        contact_id: input.contactId,
+        stage_id: toStage.id,
+        entered_stage_at: now.toISOString(),
+        value_cents: decision.valueCents ?? null,
+        currency: decision.currency ?? "usd",
+        // Copied at creation, never again — spec: first touch is a
+        // property of when the deal began.
+        source_session_id: contactRow.first_touch_session_id ?? null,
+        ...closureFields,
+      }
+
+      // One statement is the claim AND the effect. `source_event_id` carries
+      // a partial unique index (00225), so of two concurrent deliveries of
+      // the same external event exactly one insert succeeds — decided by
+      // Postgres, not by application timing — and a failed insert claims
+      // nothing, so the sale stays retryable.
+      const sourceEventId = deriveSourceEventId(input.metadata)
+      const insertOpportunity = (row: Row) => supabase.from("opportunities").insert(row).select("id").single()
+
+      let insertResult = await insertOpportunity(
+        sourceEventId ? { ...opportunityRow, source_event_id: sourceEventId } : opportunityRow,
+      )
+
+      // The one deploy where this code is ahead of its migration. Retry with
+      // the identical row minus the field it cannot know about — the sale
+      // must land either way, and without the column there is nothing to
+      // claim, so nothing was claimed.
+      let claimedSourceEventId = sourceEventId
+      if (insertResult.error && sourceEventId && isMissingColumnError(insertResult.error)) {
+        claimedSourceEventId = null
+        insertResult = await insertOpportunity(opportunityRow)
+      }
+
+      if (
+        insertResult.error &&
+        claimedSourceEventId &&
+        isPgUniqueViolation(insertResult.error) &&
+        (await sourceEventIdIsClaimed(supabase, businessId, claimedSourceEventId))
+      ) {
+        // The other delivery won. Same answer the pre-check above returns for
+        // the sequential case, deliberately including `opportunityId: null` —
+        // one duplicate delivery, one shape, whichever guard caught it.
+        return { decision: { kind: "noop", reason: "duplicate_source_id" }, opportunityId: null }
+      }
+
+      if (insertResult.error) throw insertResult.error
+      const opportunityId = (insertResult.data as Row).id as string
 
       await insertStageEvent(supabase, {
         businessId,
