@@ -256,7 +256,7 @@ describe("the retention window is validated, because it is hand-typed", () => {
   // chat_retention_days has no admin UI writer that constrains it, so the value
   // arrives as raw jsonb from a row a person edited. Deleting everything
   // because someone typed 0 is not a retention policy.
-  it.each([
+  it.each<[unknown, string]>([
     [0, "zero would delete the conversation currently being had"],
     [-1, "negative puts the cutoff in the future"],
     ["90", "a string makes the arithmetic NaN and toISOString throw inside the cron"],
