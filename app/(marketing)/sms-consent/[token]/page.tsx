@@ -28,10 +28,10 @@ export default async function SmsConsentPage({
   searchParams,
 }: {
   params: Promise<{ token: string }>
-  searchParams?: Promise<Record<string, string | string[] | undefined>>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { token } = await params
-  const query = searchParams ? await searchParams : {}
+  const query = await searchParams
   const justConfirmed = query.done === "1"
 
   const resolved = await readSmsConsentState(token)
