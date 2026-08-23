@@ -416,3 +416,63 @@ describe("numbers the visitor supplied", () => {
     expect(visitorNumerals(["I heard it's $500 a month"])).not.toContain("500")
   })
 })
+
+describe("a price must come from money, not from any number in an FAQ", () => {
+  /**
+   * Observed in a REAL captured turn. The grounded values for a question about
+   * group sizes included `6585` and `33541` — the street number and postcode
+   * out of a "what areas do you serve?" FAQ answer. Either would have let a
+   * reply saying "it's $6585" pass the currency rule, which is a fabricated
+   * price wearing the authority of a database-backed fact.
+   *
+   * `groundedValuesFor` stays permissive on purpose, so the assistant is not
+   * blocked for quoting its own source material. The CURRENCY rule reads this
+   * narrower list instead.
+   */
+  const ADDRESS_FAQ = {
+    kind: "faq" as const,
+    question: "What areas do you serve for in-person training?",
+    answer: "Our facility is at 6585 Simons Rd, Zephyrhills, FL 33541 — serving the greater Tampa Bay area.",
+    pageKey: "faq",
+  }
+
+  it("does not let a street number or a postcode ground a price", async () => {
+    const { groundedMoneyFor, groundedValuesFor } = await import("@/lib/lead-engine/chat/facts")
+
+    // Still grounded as ordinary numbers — the assistant may read its address out.
+    const all = groundedValuesFor([ADDRESS_FAQ], SETTINGS)
+    expect(all).toContain("6585")
+    expect(all).toContain("33541")
+
+    // But neither is money.
+    const money = groundedMoneyFor([ADDRESS_FAQ])
+    expect(money).not.toContain("6585")
+    expect(money).not.toContain("33541")
+  })
+
+  it("still grounds a price that an FAQ actually states as money", async () => {
+    const { groundedMoneyFor } = await import("@/lib/lead-engine/chat/facts")
+    const priced = {
+      kind: "faq" as const,
+      question: "How much are group sessions?",
+      answer: "Group sessions start at $85 per athlete.",
+      pageKey: "faq",
+    }
+    const money = groundedMoneyFor([priced])
+    expect(money).toContain("85")
+    expect(money).toContain("85.00")
+  })
+
+  it("grounds a programme's own price from its column", async () => {
+    const { groundedMoneyFor } = await import("@/lib/lead-engine/chat/facts")
+    const programme = {
+      kind: "programme" as const,
+      name: "Public Programme",
+      priceCents: 7900,
+      durationWeeks: 6,
+      sessionsPerWeek: 3,
+      paymentType: "one_time",
+    }
+    expect(groundedMoneyFor([programme])).toContain("79")
+  })
+})

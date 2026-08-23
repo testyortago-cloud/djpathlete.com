@@ -461,6 +461,63 @@ function valuesForSettings(settings: BusinessSettings): string[] {
  * validator sees. Both paths run through `valuesForFact`, so a fact can never
  * ground one thing here and another thing there.
  */
+/**
+ * Money-shaped values ONLY, for the validator's currency rule.
+ *
+ * WHY THIS IS SEPARATE FROM `groundedValuesFor`. That list is deliberately
+ * permissive: it carries every digit run found in an FAQ answer or a
+ * testimonial, so the assistant is not blocked for quoting its own source
+ * material. That is right for counting things and wrong for prices, because a
+ * published FAQ answer contains numbers that are not money — a street number, a
+ * postcode, a phone number, a year.
+ *
+ * Observed in a real captured turn: the grounded values included `6585` and
+ * `33541`, the street number and postcode out of a "where do you train?" FAQ.
+ * A reply saying "it's $6585" would have passed the currency rule on the
+ * strength of an address. That is a fabricated price wearing the authority of a
+ * database-backed fact, which is the one thing §4.3 exists to make impossible.
+ *
+ * So money comes from money: a `price_cents` column, or an amount that was
+ * written AS money in the prose (`$79`, `79 dollars`). A bare number in an FAQ
+ * still grounds a count; it no longer grounds a price.
+ */
+function moneyTokensInProse(text: string): string[] {
+  const out: string[] = []
+  for (const m of text.matchAll(/\$\s?([\d,]+(?:\.\d{1,2})?)/g)) out.push(...moneyFormsFromAmount(m[1]))
+  for (const m of text.matchAll(/\b([\d,]+(?:\.\d{1,2})?)\s*(?:dollars?|usd)\b/gi)) {
+    out.push(...moneyFormsFromAmount(m[1]))
+  }
+  return out
+}
+
+/** Every spelling of an amount already written in dollars. */
+function moneyFormsFromAmount(raw: string): string[] {
+  const value = Number(raw.replace(/,/g, ""))
+  if (!Number.isFinite(value)) return []
+  return moneyForms(Math.round(value * 100))
+}
+
+function moneyValuesForFact(fact: Fact): string[] {
+  switch (fact.kind) {
+    case "faq":
+      return [...moneyTokensInProse(fact.question), ...moneyTokensInProse(fact.answer)]
+    case "programme":
+    case "event":
+      return moneyForms(fact.priceCents)
+    case "testimonial":
+      return moneyTokensInProse(fact.quote)
+  }
+}
+
+/**
+ * The ONLY values the validator's currency rule will accept. See
+ * `moneyTokensInProse` for why this is not just a subset of
+ * `groundedValuesFor`.
+ */
+export function groundedMoneyFor(facts: Fact[]): string[] {
+  return unique(facts.flatMap(moneyValuesForFact).map(normalise))
+}
+
 export function groundedValuesFor(facts: Fact[], settings: BusinessSettings): string[] {
   return unique([...facts.flatMap(valuesForFact).map(normalise), ...valuesForSettings(settings)])
 }

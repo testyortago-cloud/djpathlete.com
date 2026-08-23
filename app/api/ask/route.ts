@@ -85,7 +85,7 @@ import {
   REFUSAL_INJURY,
 } from "@/lib/lead-engine/chat/constants"
 import { runEscalation } from "@/lib/lead-engine/chat/escalate"
-import { groundedValuesFor, visitorNumerals } from "@/lib/lead-engine/chat/facts"
+import { groundedMoneyFor, groundedValuesFor, visitorNumerals } from "@/lib/lead-engine/chat/facts"
 import { buildSystemPrompt } from "@/lib/lead-engine/chat/prompt"
 import { classifyTurn } from "@/lib/lead-engine/chat/risk"
 import {
@@ -449,7 +449,12 @@ export async function POST(request: Request) {
   // answer to their own next question. A visitor can tell you their age; they
   // cannot tell you your prices.
   const stated = visitorNumerals(modelMessages.filter((m) => m.role === "user").map((m) => m.content))
-  const violations = validateReply(text, grounded, stated)
+  // Money is checked against money. `grounded` carries every digit run out of an
+  // FAQ answer so the assistant can quote its own source material — but a real
+  // turn grounded a street number and a postcode that way, either of which would
+  // have let a fabricated price through the currency rule.
+  const groundedMoney = groundedMoneyFor(outcome.facts)
+  const violations = validateReply(text, grounded, stated, groundedMoney)
 
   const recorded: unknown[] = [...violations]
   // The model asked for lookups it never got to read, so whatever it wrote was

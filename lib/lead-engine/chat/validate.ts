@@ -452,8 +452,24 @@ function applyThousands(cleaned: string, unit: string | undefined): string {
  *                 but a visitor cannot supply a price or a date.
  * @returns `[]` for a clean reply. Any non-empty result blocks the turn.
  */
-export function validateReply(text: string, grounded: string[], visitorNumbers: string[] = []): Violation[] {
+export function validateReply(
+  text: string,
+  grounded: string[],
+  visitorNumbers: string[] = [],
+  groundedMoney?: string[],
+): Violation[] {
   const groundedSet = new Set(grounded.map(normalise))
+  // MONEY IS CHECKED AGAINST MONEY. `grounded` deliberately carries every digit
+  // run found in an FAQ answer, so the assistant can quote its own source
+  // material — but a published FAQ contains numbers that are not prices. A real
+  // turn grounded `6585` and `33541`, a street number and a postcode out of a
+  // "where do you train?" answer, either of which would have let "$6585" pass
+  // as a database-backed price.
+  //
+  // When the caller supplies the money-only list, the currency rule uses it and
+  // nothing else. It is optional so existing callers keep their behaviour
+  // rather than silently tightening; the route always passes it.
+  const moneySet = groundedMoney ? new Set(groundedMoney.map(normalise)) : groundedSet
   // THE VISITOR'S OWN NUMERALS REACH STEP 5 AND NOTHING ELSE. They are never
   // added to `groundedSet`, because a value in that set grounds prices, dates
   // and percentages alike — and a visitor who types "I heard it's $500" must
@@ -468,7 +484,7 @@ export function validateReply(text: string, grounded: string[], visitorNumbers: 
   // 1. Currency FIRST, and each match is removed from the text. A price is a
   //    price whatever its magnitude — SMALL_NUMBER_CEILING never sees it.
   const onAmount = (cleaned: string) => {
-    if (!moneyForms(cleaned).some((form) => groundedSet.has(normalise(form)))) {
+    if (!moneyForms(cleaned).some((form) => moneySet.has(normalise(form)))) {
       violations.push({ rule: "ungrounded_price", found: cleaned })
     }
   }

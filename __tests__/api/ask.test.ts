@@ -747,3 +747,59 @@ describe("POST /api/ask — numbers the visitor supplied", () => {
     expect(body.reply).not.toContain("500")
   })
 })
+
+describe("POST /api/ask — a price must come from money", () => {
+  /**
+   * Observed in a REAL captured turn: the grounded values for a question about
+   * group sizes carried `6585` and `33541`, the street number and postcode out
+   * of a "what areas do you serve?" FAQ. Either would have let a reply saying
+   * "it's $6585" pass the currency rule — a fabricated price wearing the
+   * authority of a database-backed fact.
+   *
+   * The narrower money list existed and was tested BEFORE this test, and
+   * nothing proved the ROUTE used it: swapping the currency rule back onto the
+   * permissive list left every suite green. This asserts the wiring.
+   */
+  const ADDRESS_FAQ = {
+    kind: "faq" as const,
+    question: "What areas do you serve for in-person training?",
+    answer: "Our facility is at 6585 Simons Rd, Zephyrhills, FL 33541 — serving the greater Tampa Bay area.",
+    pageKey: "faq",
+  } as unknown as Fact
+
+  it("blocks a price that only matches a street number in an FAQ", async () => {
+    h.getConversation.mockResolvedValue(conversation())
+    h.outcome = { facts: [ADDRESS_FAQ], cards: [], wantsCapture: false, wantsEscalate: false }
+    h.runWithTools.mockResolvedValue({
+      text: "In-person coaching is $6585.",
+      toolCalls: [],
+      tokensInput: 10,
+      tokensOutput: 5,
+      stoppedOnRoundLimit: false,
+    })
+
+    const res = await POST(req({ conversationId: CONVERSATION_ID, message: "how much is in person?" }))
+    const body = await res.json()
+
+    expect(body.verdict).toBe("blocked")
+    expect(body.reply).not.toContain("6585")
+  })
+
+  it("still lets the assistant read the address out — the number is grounded, just not as money", async () => {
+    h.getConversation.mockResolvedValue(conversation())
+    h.outcome = { facts: [ADDRESS_FAQ], cards: [], wantsCapture: false, wantsEscalate: false }
+    h.runWithTools.mockResolvedValue({
+      text: "We train at 6585 Simons Rd, Zephyrhills, FL 33541.",
+      toolCalls: [],
+      tokensInput: 10,
+      tokensOutput: 5,
+      stoppedOnRoundLimit: false,
+    })
+
+    const res = await POST(req({ conversationId: CONVERSATION_ID, message: "where are you?" }))
+    const body = await res.json()
+
+    expect(body.verdict).toBe("ok")
+    expect(body.reply).toContain("6585")
+  })
+})
