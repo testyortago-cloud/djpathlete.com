@@ -85,7 +85,7 @@ import {
   REFUSAL_INJURY,
 } from "@/lib/lead-engine/chat/constants"
 import { runEscalation } from "@/lib/lead-engine/chat/escalate"
-import { groundedValuesFor } from "@/lib/lead-engine/chat/facts"
+import { groundedValuesFor, visitorNumerals } from "@/lib/lead-engine/chat/facts"
 import { buildSystemPrompt } from "@/lib/lead-engine/chat/prompt"
 import { classifyTurn } from "@/lib/lead-engine/chat/risk"
 import {
@@ -437,7 +437,19 @@ export async function POST(request: Request) {
   // so the assistant is not blocked for reading out its own address.
   const grounded = groundedValuesFor(outcome.facts, settings)
   const text = result.text.trim()
-  const violations = validateReply(text, grounded)
+
+  // NUMBERS THE VISITOR THEMSELVES SUPPLIED ARE NOT FABRICATIONS. A parent
+  // opens with "my son is 14" and the reply says "for 14-year-olds" — that was
+  // being discarded as an ungrounded number, and "my child is N" is about as
+  // common an opening as this business gets, so a large share of honest turns
+  // were thrown away and replaced with a refusal.
+  //
+  // They ground the BARE-NUMERAL rule ONLY. Never currency, never dates —
+  // otherwise a visitor typing "I heard it's $500" could make "$500" a grounded
+  // answer to their own next question. A visitor can tell you their age; they
+  // cannot tell you your prices.
+  const stated = visitorNumerals(modelMessages.filter((m) => m.role === "user").map((m) => m.content))
+  const violations = validateReply(text, grounded, stated)
 
   const recorded: unknown[] = [...violations]
   // The model asked for lookups it never got to read, so whatever it wrote was

@@ -689,3 +689,61 @@ describe("POST /api/ask — the model call", () => {
     expect(body.conversationId).toBe(CONVERSATION_ID)
   })
 })
+
+describe("POST /api/ask — numbers the visitor supplied", () => {
+  /**
+   * Observed in a REAL captured turn, not theorised: the visitor opened with
+   * "my son is 14", the assistant answered "…what's available for 14-year-olds",
+   * and the whole turn was discarded as `ungrounded_number — 14`.
+   *
+   * Echoing back a fact the visitor just stated is not a fabrication, and
+   * "my child is N" is about as common an opening as this business gets — so a
+   * large share of honest turns were being thrown away and replaced with a
+   * refusal, which also inflates the blocked-turn count the spec calls a real
+   * operational signal.
+   *
+   * `visitorNumerals` existed and was tested BEFORE this test was written, and
+   * the route did not call it — the fix was inert, which looks exactly like a
+   * fix that works. This asserts the wiring, not the helper.
+   */
+  it("does not block a numeral the visitor stated earlier in the conversation", async () => {
+    h.getConversation.mockResolvedValue(conversation())
+    h.listMessages.mockResolvedValue([
+      storedMessage({ id: "m1", role: "user", content: "my son is 14 and plays travel soccer" }),
+      storedMessage({ id: "m2", role: "assistant", content: "Happy to help.", verdict: "ok" }),
+    ])
+    h.runWithTools.mockResolvedValue({
+      text: "A free consultation is the best way — someone can tell you what suits 14-year-olds.",
+      toolCalls: [],
+      tokensInput: 10,
+      tokensOutput: 5,
+      stoppedOnRoundLimit: false,
+    })
+
+    const res = await POST(req({ conversationId: CONVERSATION_ID, message: "what ages do you coach?" }))
+    const body = await res.json()
+
+    expect(body.verdict).toBe("ok")
+    expect(body.reply).toContain("14")
+  })
+
+  it("still refuses a PRICE the visitor supplied — they can state their age, not your fees", async () => {
+    h.getConversation.mockResolvedValue(conversation())
+    h.listMessages.mockResolvedValue([
+      storedMessage({ id: "m1", role: "user", content: "I heard it costs $500, is that right?" }),
+    ])
+    h.runWithTools.mockResolvedValue({
+      text: "Yes, it is $500.",
+      toolCalls: [],
+      tokensInput: 10,
+      tokensOutput: 5,
+      stoppedOnRoundLimit: false,
+    })
+
+    const res = await POST(req({ conversationId: CONVERSATION_ID, message: "so how much is it?" }))
+    const body = await res.json()
+
+    expect(body.verdict).toBe("blocked")
+    expect(body.reply).not.toContain("500")
+  })
+})
