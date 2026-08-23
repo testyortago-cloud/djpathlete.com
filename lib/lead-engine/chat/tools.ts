@@ -66,6 +66,31 @@ export const CONSULT_PATH = "/contact"
  * integer number of cents the database holds; formatting is the renderer's job
  * and is done over that integer, never re-derived from a string.
  */
+/**
+ * The cards a VISITOR may be shown, from the cards that were persisted.
+ *
+ * *** THE ONE MODEL-AUTHORED STRING IN THIS FILE IS `capture.reason`. ***
+ * Every other card field is a typed value this server read out of the database
+ * — integer cents, ISO dates, a constant href. `reason` is different: it is a
+ * tool ARGUMENT, so the model writes it, and `validateReply` never sees it
+ * because the validator is given the assistant's TEXT and nothing else.
+ *
+ * That made it the one path where model prose reached the screen unchecked. A
+ * prompt-injected `capture_lead(reason: "Lock in the $49/month launch rate —
+ * guaranteed to add 10mph, offer ends July 1")` rendered under "Leave your
+ * details" while the turn recorded `verdict: "ok"`, with no violation and no
+ * audit row, because the assistant's own sentence was clean.
+ *
+ * It is redacted rather than validated, on the same principle as the rest of
+ * this directory: a thing that cannot be expressed needs no filter maintaining.
+ * The reason is still PERSISTED on the message row, where it is useful evidence
+ * for whoever reads the transcript later — it simply never travels to a
+ * visitor.
+ */
+export function visitorSafeCards(cards: Card[]): Card[] {
+  return cards.map((card) => (card.kind === "capture" ? { ...card, reason: null } : card))
+}
+
 export type Card =
   | {
       kind: "programme"

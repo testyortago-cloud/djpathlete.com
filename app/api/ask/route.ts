@@ -84,7 +84,13 @@ import { runEscalation } from "@/lib/lead-engine/chat/escalate"
 import { groundedValuesFor } from "@/lib/lead-engine/chat/facts"
 import { buildSystemPrompt } from "@/lib/lead-engine/chat/prompt"
 import { classifyRisk } from "@/lib/lead-engine/chat/risk"
-import { CHAT_TOOLS, createToolExecutor, type Card, type ToolOutcome } from "@/lib/lead-engine/chat/tools"
+import {
+  CHAT_TOOLS,
+  createToolExecutor,
+  visitorSafeCards,
+  type Card,
+  type ToolOutcome,
+} from "@/lib/lead-engine/chat/tools"
 import { validateReply } from "@/lib/lead-engine/chat/validate"
 import { askRequestSchema } from "@/lib/validators/chat"
 
@@ -473,10 +479,17 @@ export async function POST(request: Request) {
     if (note) reply = `${reply}\n\n${note}`
   }
 
-  // The cards are the server's own typed values — integer cents, ISO dates —
-  // never prose the model typed. Formatting is the renderer's job, over the
-  // integer, so no money value on screen is ever re-derived from a sentence.
-  const cards: Card[] = outcome.cards
+  // The cards a visitor sees are the server's own typed values — integer cents,
+  // ISO dates — never prose the model typed. That was ASSERTED here before it
+  // was true: `capture.reason` is a tool argument, so the model writes it, and
+  // the validator only ever sees the assistant's text. `visitorSafeCards`
+  // redacts it. Formatting is the renderer's job, over the integer, so no money
+  // value on screen is ever re-derived from a sentence.
+  //
+  // The unredacted cards are what was persisted above, deliberately: the reason
+  // is evidence for whoever reads the transcript, and only the visitor-facing
+  // copy needs to be free of it.
+  const cards: Card[] = visitorSafeCards(outcome.cards)
 
   return NextResponse.json({ conversationId, reply, cards, verdict: "ok" })
 }

@@ -237,7 +237,14 @@ function CaptureCard({
   return (
     <form onSubmit={onSubmit} className={CARD_SHELL}>
       <p className="text-sm font-medium">Leave your details</p>
-      {card.reason ? <p className="mt-1 text-sm text-muted-foreground">{card.reason}</p> : null}
+      {/* `card.reason` is DELIBERATELY NOT RENDERED. It is the one model-authored
+          string on any card, and the output validator never sees card fields —
+          only the assistant's text. The route already redacts it via
+          visitorSafeCards(); this is the second lock, so a future change to the
+          response shape cannot quietly put model prose back on the screen. */}
+      <p className="mt-1 text-sm text-muted-foreground">
+        Leave your name and a way to reach you, and someone will get back to you.
+      </p>
 
       <div className="mt-3 space-y-3">
         <label className="block text-sm">

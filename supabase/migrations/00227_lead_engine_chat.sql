@@ -55,3 +55,35 @@ CREATE INDEX IF NOT EXISTS idx_chat_conversations_activity
   ON public.chat_conversations (last_activity_at DESC);
 CREATE INDEX IF NOT EXISTS idx_chat_conversations_escalated
   ON public.chat_conversations (escalated_at DESC) WHERE escalated_at IS NOT NULL;
+
+-- ── Row level security ──────────────────────────────────────────────────────
+--
+-- WITHOUT THIS, BOTH TABLES ARE WORLD-READABLE AND WORLD-WRITABLE. Supabase
+-- grants `anon` full DML on a public-schema table whose RLS is off, and
+-- NEXT_PUBLIC_SUPABASE_ANON_KEY ships inside the browser bundle. Measured on
+-- the dev clone before this block existed: the anon key returned every row of
+-- both tables, while `contacts`, `contact_consents` and `faqs` — which do
+-- enable RLS — returned nothing.
+--
+-- These two tables hold the most personal text this subsystem touches: whatever
+-- a stranger typed into a public box, including the injury and medical
+-- questions the risk classifier persists verbatim before it declines to answer
+-- them. They also hold the counters the rate limits read (`message_count`,
+-- `tokens_used`) and the `escalated_at` / `captured_at` flags that cap
+-- escalation emails and lead capture — so an open UPDATE is not only a
+-- disclosure, it resets every cap the design relies on.
+--
+-- It would also have reopened the history-laundering hole §7.1a closes: an
+-- anon INSERT of a row with role='assistant' and verdict='ok' is replayed to
+-- the model as something it said, because only 'blocked' rows are rewritten.
+--
+-- Service role only, matching 00212 / 00213 / 00214 / 00215. Nothing in the
+-- app reads these tables with the anon key — every access goes through
+-- lib/db/chat.ts, which uses createServiceRoleClient() — so this costs nothing.
+ALTER TABLE public.chat_conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chat_messages      ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access on chat_conversations"
+  ON public.chat_conversations FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "Service role full access on chat_messages"
+  ON public.chat_messages FOR ALL TO service_role USING (true) WITH CHECK (true);

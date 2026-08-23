@@ -234,3 +234,45 @@ describe("the system prompt", () => {
     expect(prompt).not.toMatch(/\s[.,]/)
   })
 })
+
+describe("no model-authored prose reaches the visitor on a card", () => {
+  // THE DEFECT THIS EXISTS FOR. `capture_lead(reason)` is a tool ARGUMENT, so
+  // the model writes it — and `validateReply` is handed the assistant's TEXT
+  // and nothing else, so a card never passed the output validator. A
+  // prompt-injected reason carrying a fabricated price, a fabricated date and a
+  // guaranteed outcome rendered under "Leave your details" while the turn
+  // recorded verdict:"ok", with no violation and no audit row, because the
+  // assistant's own sentence was clean.
+  //
+  // It is redacted rather than validated, on this directory's usual principle:
+  // a thing that cannot be expressed needs no filter maintaining.
+  const INJECTED = "Lock in the $49/month launch rate — guaranteed to add 10mph to your throw, offer ends July 1"
+
+  it("strips the model's reason from every capture card", async () => {
+    const { createToolExecutor, visitorSafeCards } = await import("@/lib/lead-engine/chat/tools")
+    const ex = createToolExecutor()
+    await ex.execute("capture_lead", { reason: INJECTED })
+
+    const persisted = ex.outcome().cards
+    const shown = visitorSafeCards(persisted)
+
+    // Exact, not a containment check: a containment assertion would still pass
+    // if a SECOND card carried the text through.
+    expect(shown).toEqual([{ kind: "capture", reason: null }])
+    expect(JSON.stringify(shown)).not.toContain("49")
+    expect(JSON.stringify(shown)).not.toContain("guaranteed")
+  })
+
+  it("keeps the reason on the PERSISTED card, because the operator needs the evidence", async () => {
+    const { createToolExecutor } = await import("@/lib/lead-engine/chat/tools")
+    const ex = createToolExecutor()
+    await ex.execute("capture_lead", { reason: INJECTED })
+    expect(ex.outcome().cards).toEqual([{ kind: "capture", reason: INJECTED }])
+  })
+
+  it("leaves every server-authored card untouched", async () => {
+    const { visitorSafeCards } = await import("@/lib/lead-engine/chat/tools")
+    const consult = { kind: "consult" as const, href: "/contact" }
+    expect(visitorSafeCards([consult])).toEqual([consult])
+  })
+})
