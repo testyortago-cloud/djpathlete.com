@@ -85,6 +85,14 @@ Every task's requirements implicitly include this section.
 - **`npm run lint` DOES NOT WORK in this repo.** `next lint` was removed in Next 16 and it fails with "Invalid project directory". `tsc --noEmit` plus `npm run build` is the entire gate. Do not spend time on lint.
 - The consent row carries raw `ip_address` / `user_agent`, matching `recordFunnelSmsConsent` and the newsletter route — a consent row is evidence, and that is part of the evidence. The hash-only rule applies to `chat_conversations`, which that route never writes.
 
+**From Task 11 (`/admin/chat`, landed):**
+
+- **`fact_set` has TWO shapes, not one.** A model turn writes `{ facts, groundedValues }`; a short-circuit writes `{ risk }`. A renderer assuming the first shows an empty evidence panel on every injury refusal.
+- **A new admin page must be registered in `components/admin/admin-nav.ts`**, under both content-studio flag states, or it ships URL-only. `admin-nav.test.ts` already carries a regression test for this exact defect from when the pipeline board did it.
+- **"blocked" is not a column** — it lives on `chat_messages.verdict`, so filtering costs a second query. The walk THROWS past 20 pages rather than returning a short list: a truncated "these are the blocked conversations" is the one answer that page must never give.
+- **Task 12's verification command is incomplete.** It must also run `__tests__/components/admin/ChatTranscript.test.tsx` and `__tests__/lib/lead-engine/chat-admin-list.test.ts`.
+- There is no `/admin/contacts/[id]` route, and the contacts search matches name/email/phone but never an id — so a "see the contact this created" link would find nobody. Do not add one.
+
 **From environment reconnaissance (verified, read-only):**
 
 - **`business_settings.reply_to` is `""` in the dev clone**, as is `display_name`. Task 9's escalation must therefore degrade honestly: mark the conversation escalated (that is the durable record), treat the email as best-effort, and never let the visitor be told "someone will be in touch" on the strength of a send that could not happen. Whether production is also blank is an OPEN question — production is unreachable from this environment.
@@ -1469,7 +1477,7 @@ Nine tests, one per spec §8 category, each driving the real route with the mode
 - [ ] **Step 5: Run the targeted suites, `npm run build`, and the tsc count**
 
 ```bash
-npx vitest run __tests__/lib/lead-engine/ __tests__/api/ask.test.ts __tests__/api/ask-capture.test.ts __tests__/lib/ai/tool-loop.test.ts __tests__/components/public/ __tests__/components/admin/ChatTable.test.tsx
+npx vitest run __tests__/lib/lead-engine/ __tests__/api/ask.test.ts __tests__/api/ask-capture.test.ts __tests__/lib/ai/tool-loop.test.ts __tests__/lib/email-chat-escalation.test.ts __tests__/components/public/ __tests__/components/admin/ChatTable.test.tsx __tests__/components/admin/ChatTranscript.test.tsx __tests__/components/admin/admin-nav.test.ts
 npm run build
 npx tsc --noEmit 2>&1 | grep -cE "error TS"
 ```
