@@ -30,6 +30,20 @@ import type { ContactEventSource } from "@/lib/db/contacts"
  */
 export const CHAT_MODEL = MODEL_HAIKU
 
+/**
+ * The one `system_settings` key that turns the whole assistant on, per the
+ * house per-feature convention. Default FALSE, and the default lives beside
+ * the key so no caller can pick a different one: the launcher, `/ask` and both
+ * API routes must agree, and a route that defaults to `true` while the widget
+ * defaults to `false` is a public endpoint nobody knows is open.
+ *
+ * Off means 404, never 403 and never a redirect. `middleware.ts` covers only
+ * `/admin/*` and `/client/*`, so these routes gate themselves, and a gate that
+ * fails closed answers "there is nothing here".
+ */
+export const CHAT_ASSISTANT_FLAG = "chat_assistant_enabled"
+export const CHAT_ASSISTANT_FLAG_DEFAULT = false
+
 export const MAX_MESSAGES_PER_CONVERSATION = 20
 export const MAX_TOKENS_PER_CONVERSATION = 40_000
 export const MAX_CONVERSATIONS_PER_IP_PER_HOUR = 5
