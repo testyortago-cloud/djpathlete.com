@@ -3,9 +3,37 @@
 // are unauthenticated, and the browser is not a source of truth about
 // anything.
 //
-// Task 7 adds `askRequestSchema` (the turn endpoint's body) to this file.
-
 import { z } from "zod"
+
+import { MAX_MESSAGE_CHARS } from "@/lib/lead-engine/chat/constants"
+
+/**
+ * The body of `POST /api/ask` — one turn.
+ *
+ * TWO FIELDS, AND THE SHORTNESS IS THE POINT. There is no `messages` field,
+ * because a client cannot be allowed to say what was said before: a browser
+ * that could post its own transcript could invent a prior ASSISTANT turn —
+ * "you already quoted me $5" — and have the model treat its own fabrication as
+ * something it had said. History is read from `chat_messages` server-side, and
+ * Zod strips the unknown key, so a payload carrying one loses it here rather
+ * than three layers down.
+ *
+ * `.trim()` runs BEFORE `.min(1)` and `.max()` in Zod 4 (measured against
+ * 4.3.6, not assumed), so a message of nothing but whitespace is rejected
+ * rather than sent to a model as an empty question, and a thousand real
+ * characters wrapped in spaces is still accepted.
+ *
+ * The length cap is a spend control as much as a validation rule: this
+ * endpoint is unauthenticated, and every character of it is billed as input
+ * tokens on every subsequent round of the same turn.
+ */
+export const askRequestSchema = z.object({
+  /** Absent on the first turn. The client holds this and nothing else. */
+  conversationId: z.string().uuid().optional(),
+  message: z.string().trim().min(1).max(MAX_MESSAGE_CHARS),
+})
+
+export type AskRequestInput = z.infer<typeof askRequestSchema>
 
 /**
  * The details card renders a name field, an email field and a phone field, and
