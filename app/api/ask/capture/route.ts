@@ -13,6 +13,32 @@
 // /api/* is NOT covered by middleware.ts, so this route gates itself — and a
 // public gate that fails closed answers 404, never a redirect.
 //
+// THE THROTTLE, AND WHY THIS ROUTE OF ALL OF THEM NEEDS ONE
+//
+//   `captureLead` reaches `recordContactEvent` → `upsertContactIdentity`, and
+//   that write is NOT additive. On a matched existing contact it overwrites
+//   the stored name, and when a submitted email matches one contact while the
+//   submitted phone matches another it merges the pair and deletes one of
+//   them. That behaviour is shared with `/api/funnels/submit` and
+//   `/api/newsletter` and is not this file's to change — but this file is a
+//   NEW unauthenticated front door to it, and it opened with nothing in the
+//   way except a conversation id whose `captured_at` was still null.
+//
+//   So the shape is `/api/ask`'s, deliberately, because two public doors into
+//   the same subsystem disagreeing about their own limits is how one of them
+//   becomes the way in: a free in-memory pre-filter, then a count in the
+//   database keyed on the SALTED hash of the origin. The pre-filter sheds a
+//   flood a single warm instance sees; the count is the actual control,
+//   because an instance is one of many and its Map dies with it.
+//
+//   THE ARGUMENT FOR THE CEILING. A capture is legitimate only for a
+//   conversation the same origin started, one capture per conversation, and
+//   `/api/ask` already caps an origin at `MAX_CONVERSATIONS_PER_IP_PER_HOUR`
+//   new conversations an hour. So that is the most leads an origin can
+//   honestly be about to file in an hour, and it is therefore the ceiling
+//   here too — derived from that constant rather than typed again, so raising
+//   one raises the other and the reasoning above stays true.
+//
 // THE CONSENT DISCIPLINE, WHICH IS COPIED FROM app/api/funnels/submit/route.ts
 //
 //   The wording filed on the consent row is RE-RENDERED HERE, server-side,
@@ -40,15 +66,22 @@
 //
 // Spec: docs/superpowers/specs/2026-08-23-lead-engine-stage3-chat-design.md §5.1
 
+import { createHash } from "crypto"
 import { NextResponse } from "next/server"
 import { getSetting } from "@/lib/db/system-settings"
-import { getConversation, markCaptured } from "@/lib/db/chat"
+import { countRecentConversationsByIp, getConversation, markCaptured } from "@/lib/db/chat"
 import { captureLead } from "@/lib/lead-engine/capture"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { recordAudit } from "@/lib/audit/record"
+import { rateLimit } from "@/lib/shop/rate-limit"
 import { askCaptureSchema } from "@/lib/validators/chat"
-import { CHAT_ASSISTANT_FLAG, CHAT_ASSISTANT_FLAG_DEFAULT, CHAT_LEAD_SOURCE } from "@/lib/lead-engine/chat/constants"
+import {
+  CHAT_ASSISTANT_FLAG,
+  CHAT_ASSISTANT_FLAG_DEFAULT,
+  CHAT_LEAD_SOURCE,
+  MAX_CONVERSATIONS_PER_IP_PER_HOUR,
+} from "@/lib/lead-engine/chat/constants"
 import { hasChatConsentDisplayName, renderChatMarketingWording } from "@/lib/lead-engine/chat/consent-wording"
 
 // Type-only, so the closed audit taxonomy is checked at compile time rather
@@ -57,6 +90,57 @@ import { hasChatConsentDisplayName, renderChatMarketingWording } from "@/lib/lea
 import type { AuditAction } from "@/lib/audit/actions"
 
 const CAPTURE_AUDIT_ACTION: AuditAction = "chat.lead_captured"
+
+const HOUR_MS = 60 * 60 * 1000
+
+/**
+ * THIS BELONGS IN `lib/lead-engine/chat/constants.ts` beside the limits
+ * `/api/ask` reads, and should move there — it is here only because that file
+ * is being edited on another lane as this is written. Nothing else reads it,
+ * so the move is a cut and paste plus an import.
+ *
+ * DERIVED rather than typed again: see the header. An origin cannot
+ * legitimately file more leads in an hour than it could have started
+ * conversations to file them from, and `/api/ask` is what caps that — so
+ * raising one raises the other and the argument stays true.
+ */
+const MAX_CAPTURES_PER_IP_PER_HOUR = MAX_CONVERSATIONS_PER_IP_PER_HOUR
+
+/**
+ * The one origin identifier this subsystem keeps, hashed exactly as
+ * `/api/ask` hashes it — a copy of that function, because it is not exported
+ * and that route is on another lane. Both belong in a shared helper beside the
+ * constants above; two copies of a privacy rule is two things that can drift.
+ *
+ * THE SALT IS NOT OPTIONAL AND ITS ABSENCE IS NOT A DEGRADED MODE. An unsalted
+ * digest of an address is reversible by brute force — the whole IPv4 space is
+ * 4.3 billion strings — so falling back to one would write rows that look
+ * privacy-preserving and are not, silently, forever. Throwing means the
+ * endpoint is broken in an obvious way instead of leaking in a subtle one.
+ */
+function hashIp(ip: string): string {
+  const salt = process.env.CHAT_IP_SALT
+  if (!salt || salt.trim().length === 0) {
+    throw new Error(
+      "CHAT_IP_SALT is not set. The chat assistant will not hash a visitor's address without it — an unsalted hash of an IPv4 address is reversible by brute force.",
+    )
+  }
+  return createHash("sha256").update(`${ip}${salt}`).digest("hex")
+}
+
+/**
+ * The first hop only, as every other public route in this app reads it. The
+ * hops after it are our own proxies, and taking the whole header would hand
+ * one visitor a fresh identity — and a fresh budget — every time an edge
+ * region changed.
+ *
+ * `null` when the header is absent. The consent row files that as-is, and the
+ * limiter collapses it to one shared bucket: those requests then throttle each
+ * other rather than nobody, which is the safe direction.
+ */
+function clientIp(request: Request): string | null {
+  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null
+}
 
 /**
  * Every rejection reads back to a visitor who has just typed their name in.
@@ -69,6 +153,7 @@ const COPY = {
   invalid: "Please add your name, and either an email address or a phone number.",
   unknownConversation: "That conversation has expired. Start a new one and I'll pick it up from there.",
   alreadyCaptured: "I already have your details for this conversation — someone will be in touch.",
+  tooFast: "There have been a lot of requests from your connection just now. Give it a minute and try that again.",
   failed: "Something went wrong saving your details. Please try again.",
 } as const
 
@@ -91,7 +176,55 @@ export async function POST(request: Request) {
   }
   const { conversationId, name, email, phone, marketingConsent } = parsed.data
 
-  // 3. The conversation. A FAILED READ IS NOT AN ABSENT ROW: `getConversation`
+  // 3. The origin, as a SALTED hash and never an address. Only the limiter
+  //    sees the hash; the raw address below it is for the consent row alone.
+  const ip = clientIp(request)
+  const ipHash = hashIp(ip ?? "unknown")
+  const userAgent = request.headers.get("user-agent")
+
+  // 4. THE LIMITS, in front of the only write path in this feature that can
+  //    create — or merge, or rename, or delete — a contact. See the header.
+  //
+  //    The pre-filter first, because it costs nothing and because the flood
+  //    this route actually attracts is a repeat POST of one conversation id:
+  //    without it, every one of those buys a database read on its way to the
+  //    409 below.
+  if (!rateLimit(`ask-capture:${ipHash}`, MAX_CAPTURES_PER_IP_PER_HOUR, HOUR_MS).ok) {
+    return NextResponse.json({ error: COPY.tooFast }, { status: 429 })
+  }
+
+  //    Then the count, which is the control that survives an instance dying.
+  //
+  //    THE KNOWN EDGE, AND WHY IT IS THE RIGHT WAY ROUND. This counts
+  //    conversations STARTED, not leads filed — the count that would fit
+  //    exactly is `countRecentCapturesByIp`, and adding it to `lib/db/chat.ts`
+  //    is out of this change's lane. So an origin sitting on its fifth
+  //    conversation of the hour is refused the capture as well. Nothing is
+  //    lost when that happens: `captured_at` is untouched, the conversation
+  //    stays open, and the same submission works once the window rolls. The
+  //    other way round — waving it through — spends a contact merge.
+  //
+  //    A FAILED READ IS NOT A ZERO: `countRecentConversationsByIp` throws
+  //    rather than reporting "nobody has asked yet", and a limiter that cannot
+  //    read its own counter must not wave a contact merge through. It is a 500
+  //    and the visitor is invited to try again — the same answer this route
+  //    gives every other read it cannot complete.
+  try {
+    if (
+      (await countRecentConversationsByIp(ipHash, new Date(Date.now() - HOUR_MS).toISOString())) >=
+      MAX_CAPTURES_PER_IP_PER_HOUR
+    ) {
+      return NextResponse.json({ error: COPY.tooFast }, { status: 429 })
+    }
+  } catch (err) {
+    const e = err as { message?: unknown } | null | undefined
+    console.error("[ask/capture] could not read the origin's recent conversation count", {
+      message: typeof e?.message === "string" ? e.message : undefined,
+    })
+    return NextResponse.json({ error: COPY.failed }, { status: 500 })
+  }
+
+  // 5. The conversation. A FAILED READ IS NOT AN ABSENT ROW: `getConversation`
   //    throws on a read error and returns null only for "no such row", so the
   //    two answers stay apart. Reporting an outage as "that conversation has
   //    expired" would tell the visitor to start again into the same outage.
@@ -110,17 +243,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: COPY.unknownConversation }, { status: 404 })
   }
 
-  // 4. One capture per conversation. Checked against `captured_at` — the
+  // 6. One capture per conversation. Checked against `captured_at` — the
   //    timestamp `markCaptured` writes — rather than against `contact_id`,
   //    because that is the column that records the ACT rather than its result.
   if (conversation.captured_at !== null) {
     return NextResponse.json({ error: COPY.alreadyCaptured }, { status: 409 })
   }
 
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null
-  const userAgent = request.headers.get("user-agent")
-
-  // 5. THE CONTACT. Always, regardless of the marketing tick: they asked to be
+  // 7. THE CONTACT. Always, regardless of the marketing tick: they asked to be
   //    contacted about their own question, and that is the record which
   //    justifies a person replying to them.
   //
@@ -144,10 +274,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: COPY.failed }, { status: 500 })
   }
 
-  // 6. The link back to the conversation. Best effort, deliberately: the
+  // 8. The link back to the conversation. Best effort, deliberately: the
   //    contact above is the durable record and it already exists, so a failure
   //    here must not turn a saved lead into an error the visitor sees. It is
-  //    logged loudly because it is also what makes step 4 hold.
+  //    logged loudly because it is also what makes step 6 hold.
   try {
     await markCaptured(conversationId, contactId)
   } catch (err) {
@@ -157,7 +287,7 @@ export async function POST(request: Request) {
     })
   }
 
-  // 7. The consent row — only for an actual consent act, and only when the
+  // 9. The consent row — only for an actual consent act, and only when the
   //    sentence can name who is doing the emailing. See the file header.
   const marketingConsentRecorded =
     marketingConsent === true ? await fileMarketingConsent({ contactId, ip, userAgent }) : false

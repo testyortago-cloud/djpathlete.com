@@ -278,17 +278,104 @@ describe("runEscalation", () => {
     await expect(runEscalation({ conversationId: "c1", summary: "s" })).rejects.toThrow("supabase down")
   })
 
-  it("clamps a runaway summary rather than rejecting the whole escalation", async () => {
+  it("hands the operator the whole summary by email, however long it is", async () => {
     h.getConversation.mockResolvedValue(conversation({ contact_id: "contact-7" }))
 
     const out = await runEscalation({ conversationId: "c1", summary: "x".repeat(5_000) })
 
     expect(out).toMatchObject({ ok: true })
-    const row = h.inserts.find((i) => i.table === "contact_timeline_events")!.row
-    const stored = (row.metadata as { summary: string }).summary
-    expect(stored.length).toBeLessThanOrEqual(500)
-    // The EMAIL still carries the whole thing — the clamp is a storage limit,
-    // not a censor.
+    // The email is a notification to one operator that is read and deleted.
+    // It is the ONE place the whole summary is allowed to go, so it is not
+    // truncated on the way out.
     expect(h.sendChatEscalationEmail.mock.calls[0][0].summary).toHaveLength(5_000)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WHAT THE LONG-RETENTION TABLES ARE ALLOWED TO KEEP
+// ---------------------------------------------------------------------------
+//
+// Three tables hold something about a handover, and they do NOT expire
+// together:
+//
+//   chat_messages             chat_retention_days             90
+//   audit_logs                audit_log_retention_days       365
+//   contact_timeline_events   contact_timeline_retention_days 365
+//
+// The transcript — the visitor's actual words — belongs in the 90-day one,
+// which is also the one with an admin surface built over it. `/api/ask` builds
+// the escalation summary from the visitor's own message when the assistant did
+// not write one, so a summary IS visitor text in the common case: a parent
+// asking about their child's knee, quoted verbatim.
+//
+// Copying that into either 365-day table gives the most sensitive sentence in
+// the feature the LONGEST life of anything in it, in tables the retention
+// design never claimed to cover, and `lib/audit/scrub.ts` will not save us —
+// it redacts `password|token|secret|api_key` and nothing else.
+//
+// So both long-lived rows record THAT a handover happened and carry the ids
+// needed to go and read it. `/admin/chat/<conversation_id>` renders the
+// transcript already.
+describe("runEscalation — the visitor's words stay in the 90-day table", () => {
+  /** Deliberately the shape /api/ask falls back to: the visitor's raw message. */
+  const VISITOR_WORDS = "my daughter tore her ACL on Saturday and I want to know if she can still train"
+  const SUMMARY = `The assistant handed this over. The visitor asked: ${VISITOR_WORDS}`
+
+  it("keeps the visitor's words out of audit_logs, and carries the ids instead", async () => {
+    h.getConversation.mockResolvedValue(conversation({ contact_id: "contact-7" }))
+
+    await runEscalation({ conversationId: "c1", summary: SUMMARY })
+
+    expect(JSON.stringify(h.recordAudit.mock.calls)).not.toContain(VISITOR_WORDS)
+
+    // Asserted as an EXACT object rather than as an absence: a test that only
+    // says "no summary key" passes just as happily for a row that quietly
+    // renamed the field, and a test that says "some metadata came back" cannot
+    // tell the ids from the prose.
+    const arg = h.recordAudit.mock.calls[0][0]
+    expect(arg.metadata).toEqual({
+      business_id: SETTINGS.business_id,
+      notice: "sent",
+      contact_id: "contact-7",
+      timeline_event: true,
+    })
+    // The pointer to where the words DO live, for the 90 days they live there.
+    expect(arg.target).toEqual({ type: "chat_conversation", id: "c1" })
+  })
+
+  it("keeps the visitor's words out of contact_timeline_events, and carries the conversation id instead", async () => {
+    h.getConversation.mockResolvedValue(conversation({ contact_id: "contact-7" }))
+
+    await runEscalation({ conversationId: "c1", summary: SUMMARY })
+
+    const row = h.inserts.find((i) => i.table === "contact_timeline_events")!.row
+    expect(JSON.stringify(row)).not.toContain(VISITOR_WORDS)
+    expect(row.metadata).toEqual({ conversation_id: "c1" })
+    // The row still says what happened and where it came from.
+    expect(row).toMatchObject({ kind: CHAT_ESCALATION_TIMELINE_KIND, source: "ai_chat", contact_id: "contact-7" })
+  })
+
+  it("logs the code and message of a failed timeline insert, never the row PostgREST echoed back", async () => {
+    h.getConversation.mockResolvedValue(conversation({ contact_id: "contact-7" }))
+    // A real PostgREST constraint violation: `details` quotes the failing row
+    // back at you, which is how visitor text reaches a log even when the
+    // insert never landed.
+    h.insertError = {
+      code: "23514",
+      message: "new row violates check constraint",
+      details: `Failing row contains (c1, contact-7, chat_escalated, ${VISITOR_WORDS}).`,
+      hint: "Check the metadata column.",
+    }
+
+    const out = await runEscalation({ conversationId: "c1", summary: SUMMARY })
+
+    expect(out).toMatchObject({ ok: true, timelineEvent: false })
+    const logged = JSON.stringify(vi.mocked(console.error).mock.calls)
+    expect(logged).not.toContain(VISITOR_WORDS)
+    expect(logged).not.toContain("Check the metadata column.")
+    // And it is not silent about the failure either — the operator still gets
+    // the two fields that identify which constraint refused it.
+    expect(logged).toContain("23514")
+    expect(logged).toContain("new row violates check constraint")
   })
 })

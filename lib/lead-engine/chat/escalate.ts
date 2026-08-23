@@ -20,6 +20,29 @@
 //      — or a `business_settings.reply_to` that was never filled in — must not
 //      be able to swallow the fact that somebody asked for help.
 //
+// WHAT THE DURABLE ROWS ARE ALLOWED TO SAY
+//
+// Three tables hold something about a handover, and they do NOT expire
+// together:
+//
+//   chat_messages             chat_retention_days              90
+//   audit_logs                audit_log_retention_days        365
+//   contact_timeline_events   contact_timeline_retention_days 365
+//
+// `summary` is model-authored prose in the good case and THE VISITOR'S OWN
+// MESSAGE in the common one — the caller falls back to it when the assistant
+// asks for a person without writing a sentence. A visitor who is handed over
+// is very often one who asked about an injury, so that sentence is the most
+// sensitive thing this feature holds.
+//
+// So it is EMAILED and it is NOT STORED. Copying it into either 365-day table
+// would give it the longest life of anything in the feature, in tables the
+// retention design was never written about, and `lib/audit/scrub.ts` would not
+// catch it — that scrubber redacts `password|token|secret|api_key` and nothing
+// else. Both durable rows therefore record THAT a handover happened and carry
+// the ids to go and read it; the words themselves stay in `chat_messages`,
+// which is the table with the 90-day window and the admin transcript over it.
+//
 // That second point is measured, not defensive: `business_settings.reply_to`
 // is the EMPTY STRING in the dev clone, and whether production matches could
 // not be checked from this environment. An unconfigured reply-to is therefore
@@ -47,17 +70,6 @@ export const CHAT_ESCALATION_TIMELINE_KIND = "chat_escalated"
 
 const ESCALATION_AUDIT_ACTION: AuditAction = "chat.escalated"
 
-/**
- * How long a stored summary may be.
- *
- * The summary is model-authored prose, and `audit_logs` metadata is capped at
- * 8KB by the scrubber. It is CLAMPED rather than rejected: a validation error
- * here would throw away an escalation that has already been written, which is
- * the opposite of what this file is for. The email carries the whole thing —
- * the clamp is a storage limit, not a censor.
- */
-const MAX_STORED_SUMMARY = 500
-
 /** What happened to the person on the other end of the handover. */
 export type EscalationNotice =
   /** A message left this process for a real address. */
@@ -78,13 +90,13 @@ export type EscalationOutcome =
 
 export interface RunEscalationInput {
   conversationId: string
-  /** What the visitor wanted, in the assistant's words. */
+  /**
+   * What the visitor wanted, in the assistant's words — or, when it did not
+   * write any, in the visitor's own. EMAILED TO THE OPERATOR AND NEVER
+   * STORED: see the header. Nothing downstream of here may put it in a row.
+   */
   summary: string
   businessId?: string
-}
-
-function clampSummary(summary: string): string {
-  return summary.length <= MAX_STORED_SUMMARY ? summary : `${summary.slice(0, MAX_STORED_SUMMARY - 1)}…`
 }
 
 /**
@@ -95,12 +107,17 @@ function clampSummary(summary: string): string {
  * and swallowed, the same contract `recordContactEvent` follows: history is
  * not the record of what happened here — `escalated_at` is, and it is already
  * written by the time this runs.
+ *
+ * THE ROW CARRIES NO SUMMARY, ON PURPOSE. `kind` already says a handover
+ * happened and `conversation_id` says which one, which is everything anybody
+ * reading this contact's history needs in order to open the transcript. The
+ * words live in `chat_messages` for 90 days; this table keeps them for 365.
+ * See the file header.
  */
 async function writeTimelineEvent(args: {
   businessId: string
   contactId: string
   conversationId: string
-  summary: string
 }): Promise<boolean> {
   const { error } = await createServiceRoleClient()
     .from("contact_timeline_events")
@@ -109,13 +126,23 @@ async function writeTimelineEvent(args: {
       contact_id: args.contactId,
       kind: CHAT_ESCALATION_TIMELINE_KIND,
       source: CHAT_LEAD_SOURCE,
-      metadata: { conversation_id: args.conversationId, summary: args.summary },
+      metadata: { conversation_id: args.conversationId },
     })
 
   if (error) {
+    // Never log the raw error object, the same rule the send failure below
+    // states. A PostgREST constraint violation echoes the failing row back in
+    // `details` and advice about it in `hint`, and Vercel's logs are the
+    // destination — so a row this insert never even landed can still put the
+    // conversation on a log line. `code` and `message` identify which
+    // constraint refused it and carry nothing from the payload.
+    const e = error as { code?: unknown; message?: unknown } | null | undefined
     console.error(
       `[chat-escalate] timeline event failed for contact ${args.contactId} (conversation ${args.conversationId})`,
-      error,
+      {
+        code: typeof e?.code === "string" ? e.code : undefined,
+        message: typeof e?.message === "string" ? e.message : undefined,
+      },
     )
     return false
   }
@@ -151,12 +178,7 @@ export async function runEscalation(input: RunEscalationInput): Promise<Escalati
 
   let timelineEvent = false
   if (contactId) {
-    timelineEvent = await writeTimelineEvent({
-      businessId,
-      contactId,
-      conversationId,
-      summary: clampSummary(summary),
-    })
+    timelineEvent = await writeTimelineEvent({ businessId, contactId, conversationId })
   }
 
   let notice: EscalationNotice = "failed"
@@ -201,9 +223,10 @@ export async function runEscalation(input: RunEscalationInput): Promise<Escalati
   //
   // Actor `system`: nobody is signed in. This runs from an unauthenticated
   // public endpoint, and passing an explicit actor also keeps `recordAudit`
-  // from reaching for a NextAuth session that cannot exist. No visitor text
-  // beyond the clamped summary, and no IP — `ip_hash` on the conversation row
-  // is the only origin identifier this subsystem keeps.
+  // from reaching for a NextAuth session that cannot exist. NO VISITOR TEXT AT
+  // ALL and no IP: `target` names the conversation, and that is the pointer to
+  // the transcript for as long as the transcript exists. `ip_hash` on the
+  // conversation row is the only origin identifier this subsystem keeps.
   await recordAudit({
     action: ESCALATION_AUDIT_ACTION,
     category: "marketing",
@@ -215,7 +238,6 @@ export async function runEscalation(input: RunEscalationInput): Promise<Escalati
       notice,
       contact_id: contactId,
       timeline_event: timelineEvent,
-      summary: clampSummary(summary),
     },
   })
 

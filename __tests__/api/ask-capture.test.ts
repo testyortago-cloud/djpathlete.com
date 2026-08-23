@@ -35,6 +35,7 @@ import type { ChatConversation } from "@/types/database"
 const h = vi.hoisted(() => ({
   getSetting: vi.fn(),
   getConversation: vi.fn(),
+  countRecentConversationsByIp: vi.fn(),
   markCaptured: vi.fn(),
   captureLead: vi.fn(),
   recordConsent: vi.fn(),
@@ -43,17 +44,36 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock("@/lib/db/system-settings", () => ({ getSetting: h.getSetting }))
-vi.mock("@/lib/db/chat", () => ({ getConversation: h.getConversation, markCaptured: h.markCaptured }))
+vi.mock("@/lib/db/chat", () => ({
+  getConversation: h.getConversation,
+  countRecentConversationsByIp: h.countRecentConversationsByIp,
+  markCaptured: h.markCaptured,
+}))
 vi.mock("@/lib/lead-engine/capture", () => ({ captureLead: h.captureLead }))
 vi.mock("@/lib/db/contact-consents", () => ({ recordConsent: h.recordConsent }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: h.getBusinessSettings }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: h.recordAudit }))
 
+import { createHash } from "crypto"
+
 import { POST } from "@/app/api/ask/capture/route"
 import { askCaptureSchema } from "@/lib/validators/chat"
 import { renderChatMarketingWording } from "@/lib/lead-engine/chat/consent-wording"
+import { MAX_CONVERSATIONS_PER_IP_PER_HOUR } from "@/lib/lead-engine/chat/constants"
 
 const CONVERSATION_ID = "8c3a1f5e-1111-4222-8333-444455556666"
+
+const SALT = "test-salt"
+const HOUR_MS = 60 * 60 * 1000
+
+/**
+ * A FRESH ORIGIN FOR EVERY TEST, because the in-memory pre-filter's Map lives
+ * in the module and outlives the test that filled it. Sharing one address
+ * across the file would make the sixth test in source order start 429ing for
+ * reasons that have nothing to do with what it is asserting.
+ */
+let ipCounter = 0
+let currentIp = ""
 
 const SETTINGS: BusinessSettings = {
   business_id: "00000000-0000-0000-0000-000000000001",
@@ -92,12 +112,15 @@ function conversation(over: Partial<ChatConversation> = {}): ChatConversation {
   }
 }
 
-function req(body: Record<string, unknown>): Request {
+function req(body: Record<string, unknown>, ip: string = currentIp): Request {
   return new Request("http://localhost/api/ask/capture", {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-forwarded-for": "203.0.113.9, 70.41.3.18",
+      // Two hops, so the test also pins that only the FIRST is read. Taking
+      // the whole header would give one visitor a new identity — and a fresh
+      // budget — every time an edge region changed.
+      "x-forwarded-for": `${ip}, 70.41.3.18`,
       "user-agent": "Mozilla/5.0 (probe)",
     },
     body: JSON.stringify(body),
@@ -121,8 +144,12 @@ beforeEach(() => {
   // clearAllMocks and reappears in a later test, which misattributes the
   // failure to whichever test happens to run next.
   vi.resetAllMocks()
+  ipCounter += 1
+  currentIp = `203.0.113.${ipCounter}`
+  vi.stubEnv("CHAT_IP_SALT", SALT)
   h.getSetting.mockResolvedValue(true)
   h.getConversation.mockResolvedValue(conversation())
+  h.countRecentConversationsByIp.mockResolvedValue(0)
   h.markCaptured.mockResolvedValue(undefined)
   h.captureLead.mockResolvedValue("contact-1")
   h.recordConsent.mockResolvedValue(undefined)
@@ -307,6 +334,106 @@ describe("POST /api/ask/capture — the only contact-write path", () => {
     expect(serialised).not.toContain("jordan.vale@example.com")
     expect(serialised).not.toContain("Jordan Vale")
     expect(serialised).not.toContain("555-0142")
-    expect(serialised).not.toContain("203.0.113.9")
+    expect(serialised).not.toContain(currentIp)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// THE THROTTLE
+// ---------------------------------------------------------------------------
+//
+// `/api/ask` pre-filters in memory and then counts in the database. This route
+// did neither, on the one path in the feature that can write to the contact
+// spine — and that spine's write is not additive: `upsertContactIdentity`
+// renames a matched contact and, when a submitted email matches one contact
+// while the phone matches another, merges the two and deletes one of them.
+//
+// A rate limit does not fix that behaviour (it is shared with
+// `/api/funnels/submit` and `/api/newsletter` and is not this branch's to
+// change). What it fixes is that this was a brand new unauthenticated front
+// door to it with nothing in the way.
+describe("POST /api/ask/capture — the throttle in front of the contact spine", () => {
+  it("sheds a flood in memory before it costs a database read", async () => {
+    const FLOOD_IP = "198.51.100.7"
+
+    for (let i = 0; i < MAX_CONVERSATIONS_PER_IP_PER_HOUR; i++) {
+      expect((await POST(req(submission(), FLOOD_IP))).status).toBe(200)
+    }
+
+    const readsBefore = h.getConversation.mock.calls.length
+    const countsBefore = h.countRecentConversationsByIp.mock.calls.length
+
+    const res = await POST(req(submission(), FLOOD_IP))
+
+    expect(res.status).toBe(429)
+    expect(h.captureLead).toHaveBeenCalledTimes(MAX_CONVERSATIONS_PER_IP_PER_HOUR)
+    // WHERE it stopped, not just that it stopped: the pre-filter exists to
+    // cost nothing, so a refused request must not have reached the database at
+    // all. A test that only checked the status would pass just as well for a
+    // limiter that ran after both reads.
+    expect(h.getConversation.mock.calls.length).toBe(readsBefore)
+    expect(h.countRecentConversationsByIp.mock.calls.length).toBe(countsBefore)
+  })
+
+  it("counts the origin in the database too, keyed on the salted hash and an hour of it", async () => {
+    await POST(req(submission()))
+
+    expect(h.countRecentConversationsByIp).toHaveBeenCalledTimes(1)
+    const [hash, sinceIso] = h.countRecentConversationsByIp.mock.calls[0]
+
+    // The exact digest, not "a string came back". An unsalted sha256 of an
+    // IPv4 address is walkable in seconds, so which hash it is IS the property.
+    expect(hash).toBe(createHash("sha256").update(`${currentIp}${SALT}`).digest("hex"))
+    expect(hash).not.toContain(currentIp)
+
+    const elapsed = Date.now() - Date.parse(sinceIso as string)
+    expect(elapsed).toBeGreaterThanOrEqual(HOUR_MS - 5_000)
+    expect(elapsed).toBeLessThanOrEqual(HOUR_MS + 5_000)
+  })
+
+  it("429s on the database count even from an origin this instance has never seen", async () => {
+    // The in-memory Map dies with the lambda and one instance is one of many,
+    // so the count is the control and the pre-filter is only ever a discount.
+    h.countRecentConversationsByIp.mockResolvedValue(MAX_CONVERSATIONS_PER_IP_PER_HOUR)
+
+    const res = await POST(req(submission()))
+
+    expect(res.status).toBe(429)
+    expect(h.captureLead).not.toHaveBeenCalled()
+    expect(h.recordConsent).not.toHaveBeenCalled()
+    // Refused before the conversation was even looked up.
+    expect(h.getConversation).not.toHaveBeenCalled()
+  })
+
+  it("does not report a failed limit read as a refusal, nor wave it through", async () => {
+    // "Nobody has asked yet" and "we could not tell" are different answers to
+    // a rate limiter, and only one of them means it is safe to write.
+    h.countRecentConversationsByIp.mockRejectedValue(new Error("PGRST connection reset"))
+
+    const res = await POST(req(submission()))
+
+    expect(res.status).toBe(500)
+    expect(h.captureLead).not.toHaveBeenCalled()
+  })
+
+  it("refuses to run at all when CHAT_IP_SALT is unset, rather than keying on a reversible hash", async () => {
+    // The same hard failure `/api/ask` takes. A quiet fallback to an unsalted
+    // digest is invisible in every row it writes, so there is not one.
+    vi.stubEnv("CHAT_IP_SALT", "")
+
+    await expect(POST(req(submission()))).rejects.toThrow(/CHAT_IP_SALT/)
+    expect(h.captureLead).not.toHaveBeenCalled()
+  })
+
+  it("checks the flag before it reads a header or hashes anything", async () => {
+    // Flag first is the file's stated order. With the flag off, a missing salt
+    // must not be able to turn a soft 404 into a 500 that says the feature is
+    // there after all.
+    h.getSetting.mockResolvedValue(false)
+    vi.stubEnv("CHAT_IP_SALT", "")
+
+    const res = await POST(req(submission()))
+
+    expect(res.status).toBe(404)
   })
 })
