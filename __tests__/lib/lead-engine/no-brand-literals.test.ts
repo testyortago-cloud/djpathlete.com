@@ -41,6 +41,20 @@ const ROOTS = [
   // now so they're swept the moment they land. `filesUnder` tolerates a
   // missing path (`throwIfNoEntry: false`), so this is a no-op until then.
   "app/api/webhooks/twilio",
+  // Stage 3 — the chat assistant. `lib/lead-engine/chat/*` is already covered
+  // recursively by the `lib/lead-engine` root at the top; these are the
+  // surfaces that live OUTSIDE it. They are swept for the same reason the
+  // rest of the Lead Engine is: this feature answers strangers in the
+  // business's own voice, and a hardcoded operator name here would be a
+  // second, un-migratable copy of an identity that `getBusinessSettings()`
+  // already owns. The two API routes and the migration are included because
+  // the sweep reads raw file text — a brand word in a route's comment block
+  // or in a seeded SQL string is caught exactly like one in live copy.
+  "app/api/ask",
+  "app/(marketing)/ask",
+  "components/public/AskPanel.tsx",
+  "components/public/AskCards.tsx",
+  "supabase/migrations/00227_lead_engine_chat.sql",
 ]
 
 function filesUnder(p: string): string[] {

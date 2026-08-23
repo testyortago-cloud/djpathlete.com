@@ -2520,3 +2520,71 @@ export const messagingNotifyCron = onSchedule(
     }
   },
 )
+
+// ─── Chat Retention (daily 03:45 UTC) ───────────────────────────────────────
+// Lead Engine Stage 3. Deletes chat_conversations older than
+// system_settings.chat_retention_days (default 90); chat_messages go with them
+// by ON DELETE CASCADE (migration 00227). A chat transcript is free text a
+// stranger typed into a public box — a child's name, an injury, what they can
+// afford — beside an ip_hash and a user agent, and nothing reads it after a
+// few weeks.
+//
+// Gated by system_settings.cron_chat_retention_enabled, DEFAULT FALSE.
+// Deliberately the opposite of contactTimelineRetentionCron next door: that
+// job scrubs rows it leaves in place, this one deletes records. A destructive
+// job that switches itself on the moment the code lands is how a business
+// loses records it had not finished reading.
+//
+// A DELEGATOR, NOT A TWIN. contactTimelineRetentionCron does its work here and
+// keeps a second copy of the operation under functions/src/lib/ because
+// functions/ cannot import from lib/. This one POSTs the internal route
+// instead, so pruneChatConversations exists exactly once and there is no pair
+// of files to drift apart. The route owns logCronStart/logCronEnd under
+// "chatRetentionCron", so this function must NOT log cron_runs itself
+// (single-owner rule) — and timeoutSeconds must stay >= that route's
+// maxDuration (120), which __tests__/lib/cron-delegator-timeout-contract.test.ts
+// pins.
+//
+// 03:45 UTC is clear of auditLogRetentionCron (03:00), gscSyncCron (03:15) and
+// contactTimelineRetentionCron (03:30); all four touch disjoint tables anyway.
+//
+// NOT IN THE AUTOMATION-HEALTH EXPECTED LIST, on purpose and until it is
+// actually deployed. That scanner alerts on a cron with no recent successful
+// cron_runs row, so listing an undeployed function would raise a critical
+// every single day for a job nobody broke — and an operator who learns to
+// ignore that subsystem's alerts is worse off than one who has no alert.
+// Deploying this function, flipping the flag, and adding it to the expected
+// list are three steps of one handover item.
+export const chatRetentionCron = onSchedule(
+  {
+    schedule: "45 3 * * *",
+    timeZone: "Etc/UTC",
+    timeoutSeconds: 120,
+    memory: "256MiB",
+    region: "us-central1",
+    secrets: [internalCronToken, appUrl],
+  },
+  async () => {
+    const baseUrl = process.env.APP_URL
+    const token = process.env.INTERNAL_CRON_TOKEN
+    if (!baseUrl || !token) {
+      console.error("[chatRetentionCron] APP_URL or INTERNAL_CRON_TOKEN missing — abort")
+      return
+    }
+    try {
+      const res = await fetch(`${baseUrl}/api/admin/internal/chat-retention`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: "{}",
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        console.error("[chatRetentionCron]", res.status, body)
+        return
+      }
+      console.log("[chatRetentionCron]", res.status, body)
+    } catch (err) {
+      console.error("[chatRetentionCron] failed:", err)
+    }
+  },
+)
