@@ -56,7 +56,14 @@ export function campHasDailyTimes(event: Pick<Event, "type" | "start_date" | "en
  * Camp:   "Jul 13 – Jul 17, 2026 · 9:00 AM – 11:00 AM daily"
  *         (date-only range when no daily times are set)
  */
-export function formatEventWhen(event: Event, style: DateStyle = "short") {
+export function formatEventWhen(
+  // Narrowed from `Event` to the three fields this actually reads, so the chat
+  // assistant's event card can call the SAME formatter from a `Card` rather
+  // than growing a second one. Two date formatters is two answers to "when is
+  // the camp", and the UTC pinning above is exactly the part a copy forgets.
+  event: Pick<Event, "type" | "start_date" | "end_date">,
+  style: DateStyle = "short",
+) {
   if (event.type === "clinic") {
     const datePart = formatDate(event.start_date, style)
     const startTime = formatEventTime(event.start_date)
