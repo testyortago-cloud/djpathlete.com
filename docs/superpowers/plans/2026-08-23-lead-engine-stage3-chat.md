@@ -37,6 +37,25 @@ Every task's requirements implicitly include this section.
 - **The client is constructed locally**, not imported from `lib/ai/anthropic.ts`, so a public unauthenticated route does not drag `@ai-sdk/anthropic`, `ai` and `p-retry` into its bundle. Do not "tidy" this into a shared import.
 - **Test-mock wart to avoid copying:** `__tests__/lib/ai/tool-loop.test.ts` names its hoisted `vi.mock` spy `create`, not the house `mockCreate` prefix. It works only because every import of the module under test is dynamic and inside a test body. If you copy that file's shape and switch to a static top-level import, it fails with a TDZ error.
 
+**From Task 2 (`lib/lead-engine/chat/facts.ts`, landed):**
+
+- **Do NOT validate against `FactSet.groundedValues`.** It covers only what the lookups returned; the business-settings half is missing, because `mergeFacts` has no settings to hand. **Task 7 must call `groundedValuesFor(set.facts, settings)` immediately before validating** and pass that. Both paths run through one internal `valuesForFact`, so they cannot drift.
+- **Numerals inside FAQ and testimonial prose are grounded.** A published FAQ answer containing "$85" is a database-backed fact, so an assistant quoting it accurately must not be blocked as a fabricator. Same for numbers inside a programme name or event title.
+- **`normalise()` is exported from `facts.ts`** and `validate.ts` imports it. The plan asked for both "no imports beyond types" and "the same `normalise()` the facts layer uses"; those conflict, and two drifting copies of that rule would show up as the assistant being blocked for quoting its own database.
+- **A no-match FAQ query returns `[]`**, not the top 6 by arbitrary rank. Handing the model unrelated FAQs is how an assistant answers with something that merely sounds adjacent.
+- **`CHAT_LEAD_SOURCE` is typed `ContactEventSource`** via a type-only import, so a rename of that union stops compiling instead of silently rotting.
+
+**Client data must not spread into source control — the stage's own thesis, applied to us:**
+
+- Task 2's fixtures and this plan's earlier draft carried REAL client programme names and real prices (first names of what are likely minors, plus what they paid). This branch exists to stop exactly that data reaching people who should not see it, and committing it into git — where it is permanent, greppable and about to be pushed — is the same leak by a slower route. **Scrub every real client name and price from the spec, the plan and the tests**, keeping the load-bearing facts: 40 rows `is_active`, exactly 1 also `is_public`, and the shape of the hazard. Invented names make the hazard just as concrete. The one PUBLIC programme (`Rotational Reboot`, 7900) is genuinely public and may stay.
+
+**From Task 1 (migration 00227 + `lib/db/chat.ts`, landed):**
+
+- **Never pass a `.sql` file to `npx prettier --write`.** It exits 2 with "No parser could be inferred" — `.prettierrc` has `"plugins": []`, no SQL plugin is installed, and no migration in this repo is prettier-formatted. Format the TS files only. Every later task's prettier command must exclude `.sql`.
+- **`scripts/migrations/apply.mjs` does not work against the dev clone.** The clone has no `public.repo_migrations`, so the applier hard-stops before applying anything. 00227 was applied through the Management API `/database/query` endpoint directly. Later tasks needing a migration must do the same, or someone must baseline the clone's ledger — which is a decision above any single task.
+- **`ChatMessage` is a name collision.** `lib/validators/ai-chat.ts` already exports a `ChatMessage` (the admin program-builder transcript shape). Nothing re-exports both today, but **Task 11's transcript UI is where this bites** — import the row type from `@/types/database` explicitly and alias if both are ever needed in one file.
+- **`message_count` is re-derived from an exact `COUNT`**, not incremented, because PostgREST cannot express `col = col + 1` and a read-then-write increment loses updates — and that counter is what caps conversation length on an unauthenticated endpoint. `tokens_used` does increment and may undercount by one turn under a genuine race; that is a spend ceiling with slack, not a correctness boundary. Do not "simplify" the count back to an increment.
+
 **From environment reconnaissance (verified, read-only):**
 
 - **`business_settings.reply_to` is `""` in the dev clone**, as is `display_name`. Task 9's escalation must therefore degrade honestly: mark the conversation escalated (that is the durable record), treat the email as best-effort, and never let the visitor be told "someone will be in touch" on the strength of a send that could not happen. Whether production is also blank is an OPEN question — production is unreachable from this environment.
