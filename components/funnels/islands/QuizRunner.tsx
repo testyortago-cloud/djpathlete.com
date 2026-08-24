@@ -314,7 +314,22 @@ export function QuizRunner({
   if (!current) return null
 
   const answered = answers[current.id]
-  const progress = walk.length > 0 ? Math.round((index / walk.length) * 100) : 0
+
+  /**
+   * THE TOTAL IS UNKNOWABLE UNTIL THE ROUTER IS ANSWERED, so it is not shown.
+   *
+   * Found by looking at a screenshot, not by a test: before branching, the
+   * walk is the six shared questions, so the counter read "Question 1 of 6".
+   * The moment the visitor picked an archetype it became "Question 2 of 13".
+   * Being told a quiz is six questions long, answering one, and then being
+   * told it is thirteen is worse than not being given a number at all.
+   *
+   * Every unit test here asserts WHICH question is shown and none of them
+   * looked at the counter, which is exactly the class of false-positive a
+   * guard's own tests structurally cannot see.
+   */
+  const totalKnown = branchId !== null
+  const progress = totalKnown && walk.length > 0 ? Math.round((index / walk.length) * 100) : 0
 
   return (
     <div className="djp-quiz">
@@ -323,7 +338,7 @@ export function QuizRunner({
         <div className="djp-quiz-progress-bar" style={{ width: `${progress}%` }} />
       </div>
       <p className="djp-quiz-step">
-        Question {index + 1} of {walk.length}
+        {totalKnown ? `Question ${index + 1} of ${walk.length}` : `Question ${index + 1}`}
       </p>
       <h3 className="djp-quiz-prompt">{current.prompt}</h3>
       {current.helpText ? <p className="djp-quiz-help">{current.helpText}</p> : null}

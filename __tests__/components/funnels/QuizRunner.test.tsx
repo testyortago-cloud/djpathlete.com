@@ -80,6 +80,26 @@ describe("QuizRunner — the walk", () => {
     expect(screen.queryByText("Which describes you?")).toBeNull()
   })
 
+  it("1b. does not promise a TOTAL before the router is answered", () => {
+    // FOUND BY LOOKING AT A SCREENSHOT, not by a test. Before branching the
+    // walk is the shared questions only, so this read "Question 1 of 6"; one
+    // click later it read "Question 2 of 13". Being told a quiz is six
+    // questions, answering one, and then being told it is thirteen is worse
+    // than not being given a number.
+    //
+    // Every other test in this file asserts WHICH question is shown. None of
+    // them looked at the counter — the false positive a guard's own tests
+    // structurally cannot see.
+    renderRunner()
+    start()
+    expect(screen.getByText("Question 1")).toBeTruthy()
+    expect(screen.queryByText(/Question 1 of/)).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: "I am an Alpha" }))
+    // Once the branch is known the total is real, so it is shown.
+    expect(screen.getByText("Question 2 of 2")).toBeTruthy()
+  })
+
   it("2. goes back to the previous question with the previous answer still selected", () => {
     renderRunner()
     start()

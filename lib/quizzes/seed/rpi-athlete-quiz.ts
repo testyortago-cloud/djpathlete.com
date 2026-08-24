@@ -51,7 +51,17 @@ export interface SeedQuiz {
   resultHeadline: string
   branches: { key: string; name: string; description: string | null; position: number }[]
   profiles: { key: string; name: string; description: string; position: number }[]
-  tiers: { key: string; position: number; minScore: number; maxScore: number; headline: string; body: string }[]
+  tiers: {
+    key: string
+    position: number
+    minScore: number
+    maxScore: number
+    headline: string
+    body: string
+    /** EVERY tier gets one. A result with no next step is a dead end. */
+    ctaLabel: string
+    ctaHref: string
+  }[]
   questions: SeedQuestion[]
 }
 
@@ -162,10 +172,10 @@ export const RPI_ATHLETE_QUIZ: SeedQuiz = {
   // Higher is better, so RED IS THE MOST URGENT. That is why Red and Orange
   // are the tiers that alert and open a pipeline card.
   tiers: [
-    { key: "red", position: 1, minScore: 0, maxScore: 39, headline: "Large gaps worth addressing now", body: "Several of the things that decide whether your body holds up are missing. That is fixable, and it is worth knowing which ones." },
-    { key: "orange", position: 2, minScore: 40, maxScore: 59, headline: "Real gaps, and they are findable", body: "You have a base to work from, but there are clear holes that will keep costing you until they are identified." },
-    { key: "yellow", position: 3, minScore: 60, maxScore: 79, headline: "Mostly holding up", body: "The foundation is largely there. What is left is the specific work that separates consistent from exceptional." },
-    { key: "green", position: 4, minScore: 80, maxScore: 100, headline: "Well prepared", body: "You are doing most of the right things. The value now is in precision — finding the small asymmetries that still cost output." },
+    { key: "red", position: 1, minScore: 0, maxScore: 39, headline: "Large gaps worth addressing now", body: "Several of the things that decide whether your body holds up are missing. That is fixable, and it is worth knowing which ones.", ctaLabel: "Book a call with Darren", ctaHref: "/contact" },
+    { key: "orange", position: 2, minScore: 40, maxScore: 59, headline: "Real gaps, and they are findable", body: "You have a base to work from, but there are clear holes that will keep costing you until they are identified.", ctaLabel: "Book a call with Darren", ctaHref: "/contact" },
+    { key: "yellow", position: 3, minScore: 60, maxScore: 79, headline: "Mostly holding up", body: "The foundation is largely there. What is left is the specific work that separates consistent from exceptional.", ctaLabel: "See the training options", ctaHref: "/online" },
+    { key: "green", position: 4, minScore: 80, maxScore: 100, headline: "Well prepared", body: "You are doing most of the right things. The value now is in precision — finding the small asymmetries that still cost output.", ctaLabel: "See what an assessment covers", ctaHref: "/assessment" },
   ],
 
   questions: [
@@ -490,8 +500,8 @@ export function toDefinition(seed: SeedQuiz): QuizDefinition {
     maxScore: tier.maxScore,
     headline: tier.headline,
     body: tier.body,
-    ctaLabel: null,
-    ctaHref: null,
+    ctaLabel: tier.ctaLabel,
+    ctaHref: tier.ctaHref,
   }))
 
   const profiles: QuizProfile[] = seed.profiles.map((profile) => ({

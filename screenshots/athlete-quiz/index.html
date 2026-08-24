@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Athlete Quiz — nine screens</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin:0; background:#f6f7f8; color:#16202a;
+         font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  header { background:#0E3F50; color:#fff; padding:32px 40px; }
+  header h1 { margin:0; font-size:26px; }
+  header p { margin:10px 0 0; max-width:70ch; color:#cfe0e6; }
+  main { padding:32px 40px 64px; max-width:1400px; }
+  figure { margin:0 0 40px; background:#fff; border:1px solid #e3e6e8; border-radius:12px; overflow:hidden; }
+  figure img { width:100%; display:block; }
+  figcaption { padding:14px 18px; border-top:1px solid #e3e6e8; font-size:14px; }
+  figcaption b { display:block; font-size:15px; margin-bottom:4px; }
+  .note { background:#fff5e6; border:1px solid #f0d9b5; border-radius:10px; padding:16px 18px; margin:0 0 32px; }
+  .note h2 { margin:0 0 8px; font-size:16px; }
+  .note li { margin-bottom:6px; }
+  code { background:#eef1f3; padding:1px 5px; border-radius:4px; font-size:13px; }
+</style>
+<header>
+  <h1>The Athlete Quiz — nine screens</h1>
+  <p>Driven through the real app on the real routes: the published funnel at <code>/go/athlete-quiz</code> and the
+     admin at <code>/admin/funnels/quizzes</code>. Not a harness, not a storybook. Light only — this app has no
+     working dark mode.</p>
+</header>
+<main>
+  <div class="note">
+    <h2>Three defects these screenshots found, under a fully green suite</h2>
+    <ol>
+      <li><b>The question counter promised a total it could not know.</b> Before the router was answered the walk
+        was the six shared questions, so it read “Question 1 of 6”; one click later, “Question 2 of 13”. Every unit
+        test asserted <em>which</em> question was shown and none looked at the counter.</li>
+      <li><b>A Red result had no call to action.</b> The most urgent tier gave the athlete nowhere to go, because
+        the seed left <code>ctaLabel</code> null on every tier.</li>
+      <li><b>“Active” and “cannot be activated yet” appeared together.</b> Editing a live quiz is deliberately
+        allowed — blocking it would make a broken one impossible to repair — so the wording now says the quiz is
+        LIVE and these changes would break it.</li>
+    </ol>
+  </div>
+
+  <figure><img src="01-intro-annotated.png" alt="The published funnel">
+    <figcaption><b>1 · The published funnel</b>The quiz is a block on a real page, with the funnel's own hero above and footer below.</figcaption></figure>
+  <figure><img src="02-router-annotated.png" alt="The router question">
+    <figcaption><b>2 · The router</b>Four archetypes, lifted verbatim from the GHL export. “Question 1” — no total is promised yet.</figcaption></figure>
+  <figure><img src="03-branch-question-annotated.png" alt="A branch question">
+    <figcaption><b>3 · The branch decides what follows</b>Now the total is real: Question 2 of 13. A Rebuilder sees a different thirteen.</figcaption></figure>
+  <figure><img src="04-gate-annotated.png" alt="The gate">
+    <figcaption><b>4 · The gate</b>Asked only after the last question. Every answer is already saved, so a drop-off here is still a known lead.</figcaption></figure>
+  <figure><img src="05-result-red-annotated.png" alt="A Red result">
+    <figcaption><b>5 · A Red result</b>Higher is better, so Red is the most urgent. Opens a pipeline card, emails the operator, and now offers a next step.</figcaption></figure>
+  <figure><img src="06-result-green-annotated.png" alt="A Green result">
+    <figcaption><b>6 · A Green result</b>Well prepared. No card and no alert — the board is a work queue, not a list of everyone.</figcaption></figure>
+  <figure><img src="07-admin-list-annotated.png" alt="The quizzes list">
+    <figcaption><b>7 · The quizzes list</b>The house DataTable. Started and completed side by side; the gap is the drop-off.</figcaption></figure>
+  <figure><img src="08-editor-questions-annotated.png" alt="The editor">
+    <figcaption><b>8 · The editor</b>A tab per branch plus Everyone. Label, weight, routing and profile vote per option.</figcaption></figure>
+  <figure><img src="09-editor-blocked-annotated.png" alt="Activate blocked by the gate">
+    <figcaption><b>9 · The gate, shown not hidden</b>Activate is disabled and the reasons are listed. The save route runs the same check.</figcaption></figure>
+</main>

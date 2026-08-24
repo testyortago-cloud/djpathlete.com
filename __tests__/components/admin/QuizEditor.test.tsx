@@ -133,6 +133,17 @@ describe("QuizEditor", () => {
     expect((screen.getByRole("button", { name: "Activate" }) as HTMLButtonElement).disabled).toBe(false)
   })
 
+  it("3d. says something DIFFERENT when the broken quiz is already live", () => {
+    // Found by looking at a screenshot: an active quiz with a failing gate
+    // showed "Active" and "cannot be activated yet" together, which reads as
+    // a contradiction and buries the real problem. Editing a live quiz is
+    // deliberately allowed — blocking it would make a broken one impossible
+    // to repair — so the wording is the only protection.
+    render(<QuizEditor initial={{ ...broken(), status: "active" }} />)
+    expect(screen.getByText(/LIVE and these changes would break it/)).toBeTruthy()
+    expect(screen.queryByText(/cannot be activated yet/)).toBeNull()
+  })
+
   it("4. reordering writes new position values, not just a new array order", async () => {
     render(<QuizEditor initial={healthy()} />)
     openQuestions()

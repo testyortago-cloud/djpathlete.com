@@ -191,10 +191,21 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
         </div>
       ) : null}
 
-      {/* THE REASON, NOT A SILENT DISABLE. */}
+      {/* THE REASON, NOT A SILENT DISABLE.
+          AND IT SAYS SOMETHING DIFFERENT WHEN THE QUIZ IS ALREADY LIVE.
+          Found by looking at a screenshot: the editor showed "Active" and
+          "cannot be activated yet" side by side, which reads as a
+          contradiction and buries the thing that actually matters. Editing is
+          deliberately NOT blocked on a live quiz — that would make a broken
+          one impossible to repair — so the only protection is saying plainly
+          that this one is serving visitors right now and would fail them. */}
       {!gate.ok ? (
         <div className="rounded-lg border border-error/40 bg-error/5 px-4 py-3 text-sm">
-          <p className="font-semibold">This quiz cannot be activated yet:</p>
+          <p className="font-semibold">
+            {quiz.status === "active"
+              ? "This quiz is LIVE and these changes would break it for visitors:"
+              : "This quiz cannot be activated yet:"}
+          </p>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             {gate.blockers.map((blocker) => (
               <li key={blocker}>{blocker}</li>
