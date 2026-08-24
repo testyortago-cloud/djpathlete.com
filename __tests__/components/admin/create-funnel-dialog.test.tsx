@@ -422,3 +422,35 @@ describe("CreateFunnelDialog — the quiz template", () => {
     expect(fetchMock.mock.calls.some((args) => String(args[0]).includes("/api/admin/quizzes"))).toBe(false)
   })
 })
+
+describe("CreateFunnelDialog — where a quiz funnel lands", () => {
+  it("opens the quiz, not the page builder", async () => {
+    global.fetch = vi.fn(async (url: string) => {
+      if (String(url).includes("/api/admin/quizzes")) {
+        return { ok: true, status: 200, json: async () => ({ quizzes: [] }) }
+      }
+      return {
+        ok: true,
+        status: 201,
+        json: async () => ({ funnel: { id: "f9" }, entryStepId: "s9", quizId: "quiz-9" }),
+      }
+    }) as unknown as typeof fetch
+
+    open()
+    pick(/run a quiz/i)
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: "Rotational Reboot Check" } })
+    await screen.findByLabelText(/copy questions from/i)
+    fireEvent.click(screen.getByRole("button", { name: /create funnel/i }))
+    // MUTANT KILLED: route to the builder anyway. The owner lands on a page
+    // that is already written, and never sees the questions that are not.
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/admin/funnels/quizzes/quiz-9"))
+  })
+
+  it("still opens the page builder for every other template", async () => {
+    open()
+    pick(/capture leads/i)
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: "Free Trial Week" } })
+    fireEvent.click(screen.getByRole("button", { name: /create funnel/i }))
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/admin/funnels/f9/edit/s9?start=1"))
+  })
+})

@@ -110,7 +110,13 @@ export const POST = withAudit(
         steps: plannedSteps,
         created_by: session.user.id,
       })
-      return NextResponse.json({ funnel, entryStepId }, { status: 201 })
+      // `quizId` ONLY WHEN ONE WAS MADE. The dialog routes into the quiz
+      // editor rather than the page builder for a quiz funnel: the page is
+      // already written, and what is unwritten is the twelve questions.
+      return NextResponse.json(
+        { funnel, entryStepId, ...(createdQuizId ? { quizId: createdQuizId } : {}) },
+        { status: 201 },
+      )
     } catch (error) {
       if (createdQuizId) {
         // Best effort, and logged when it fails: an orphan draft quiz is a

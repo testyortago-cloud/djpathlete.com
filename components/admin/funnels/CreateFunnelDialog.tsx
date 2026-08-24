@@ -314,6 +314,8 @@ export function CreateFunnelDialog({
       const body = (await response.json()) as {
         funnel?: { id: string }
         entryStepId?: string
+        /** Present only for the quiz template. See below. */
+        quizId?: string
         error?: string
       }
       if (!response.ok || !body.funnel) {
@@ -330,7 +332,14 @@ export function CreateFunnelDialog({
       // sequence was; with a template they have, and the list would only show
       // them what they just typed. Steps 2..N draft themselves when opened.
       router.push(
-        body.entryStepId
+        // A QUIZ FUNNEL GOES TO THE QUIZ, NOT THE PAGE BUILDER. Its page is
+        // already written — hero, quiz, footer — so the builder has nothing to
+        // do that matters, while every question on it is still somebody else's
+        // words. (`?start=1` would be harmless either way: the auto-draft guard
+        // is `draft.doc === null`, and this step has a document.)
+        body.quizId
+          ? `/admin/funnels/quizzes/${body.quizId}`
+          : body.entryStepId
           ? `/admin/funnels/${body.funnel.id}/edit/${body.entryStepId}?start=1`
           : `/admin/funnels/${body.funnel.id}`,
       )
