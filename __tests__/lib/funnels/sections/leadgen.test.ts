@@ -19,7 +19,7 @@ import { SECTION_CSS, THEME_CSS } from "@/lib/funnels/sections/styles"
 import { CANVAS_EDIT_CSS } from "@/lib/funnels/sections/edit-css"
 import { renderSection } from "@/lib/funnels/sections/render"
 import { SECTION_BUILDER_BLOCK_A, LEADGEN_RULES } from "@/lib/funnels/sections/prompt"
-import { SECTION_REGISTRY, type Section } from "@/lib/funnels/sections/registry"
+import { SECTION_KINDS, SECTION_REGISTRY, type Section } from "@/lib/funnels/sections/registry"
 
 const ALL_CSS = [THEME_CSS, ...Object.values(SECTION_CSS)].join("\n")
 
@@ -242,8 +242,15 @@ describe("the prompt teaches page craft, not just the schema", () => {
     // `not.toContain("nine")` also matches "six to nine sections", which is
     // page-craft copy about page LENGTH and has nothing to do with the
     // registry — an assertion that broad fails on prose it was never about.
-    expect(SECTION_BUILDER_BLOCK_A).toContain("## The 10 section kinds")
-    expect(SECTION_BUILDER_BLOCK_A).toContain("kind: one of the 10 below")
+    //
+    // DERIVED, not hand-typed. This assertion previously pinned the literal
+    // "10" — which made the test itself the stale hardcoded number it exists
+    // to prevent, and it went red the moment `quiz` became the 11th kind.
+    // Deriving keeps the real property: a count HARDCODED IN THE PROMPT still
+    // fails here, which is the only thing this was ever guarding.
+    const n = SECTION_KINDS.length
+    expect(SECTION_BUILDER_BLOCK_A).toContain(`## The ${n} section kinds`)
+    expect(SECTION_BUILDER_BLOCK_A).toContain(`kind: one of the ${n} below`)
     expect(SECTION_BUILDER_BLOCK_A).not.toContain("nine section kinds")
     expect(SECTION_BUILDER_BLOCK_A).not.toContain("one of the nine")
   })

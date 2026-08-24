@@ -36,6 +36,7 @@ import {
   type PricingSectionProps,
   type FaqSectionProps,
   type FormSectionProps,
+  type QuizSectionProps,
   type ProofSectionProps,
   type CtaSectionProps,
   type FooterSectionProps,
@@ -852,6 +853,45 @@ function renderFooterSection(section: Section, ctx: RenderContext): string {
 // Dispatch
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// quiz — the `quiz` island, wrapped in optional heading copy.
+//
+// The section carries NO questions. `quizId` is a pointer; the questions,
+// weights, bands and result copy live in the database, which is what lets a
+// weight edit take effect on every page showing the quiz with no re-publish.
+// ---------------------------------------------------------------------------
+
+function renderQuizSection(section: Section, ctx: RenderContext): string {
+  const props = SECTION_REGISTRY.quiz.propsSchema.parse(section.props) as QuizSectionProps
+  const parts: string[] = [sectionOpenTag(section, ctx)]
+  parts.push(`<div class="djp-quiz-head">`)
+  parts.push(optionalText(ctx, "h2", "djp-hd", "heading", props.heading, "Add a heading"))
+  parts.push(optionalText(ctx, "p", "djp-sub", "sub", props.sub, "Add a supporting line"))
+  parts.push(`</div>`)
+  parts.push(
+    liveFeedNote(
+      ctx,
+      "The questions, scoring and result copy are pulled live from the quiz itself, so they " +
+        "cannot be retyped here — edit them under Quizzes in the admin. This section chooses " +
+        "which quiz to show.",
+    ),
+  )
+  // renderIslandIfValid, not renderIsland: a quizId that is GUID-shaped but not
+  // RFC 9562 conformant would otherwise reach an island whose schema rejects
+  // it, and `island_props_invalid` is fatal — taking the WHOLE page down
+  // rather than this one block. Same reasoning as the CTA islands.
+  parts.push(
+    renderIslandIfValid(
+      "quiz",
+      { quizId: props.quizId, submitLabel: props.submitLabel, consentText: props.consentText },
+      props.submitLabel,
+      "primary",
+    ),
+  )
+  parts.push(`</section>`)
+  return parts.join("")
+}
+
 const SECTION_RENDERERS: Record<SectionKind, (section: Section, ctx: RenderContext) => string> = {
   hero: renderHeroSection,
   proof: renderProofSection,
@@ -861,6 +901,7 @@ const SECTION_RENDERERS: Record<SectionKind, (section: Section, ctx: RenderConte
   pricing: renderPricingSection,
   faq: renderFaqSection,
   form: renderFormSection,
+  quiz: renderQuizSection,
   cta: renderCtaSection,
   footer: renderFooterSection,
 }

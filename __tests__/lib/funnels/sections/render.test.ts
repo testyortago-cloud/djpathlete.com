@@ -343,6 +343,12 @@ function styledNodes(root: Element, rules: StyleRule[]): StyledNode[] {
 
 /** Props that populate EVERY optional text field, so no class goes unrendered. */
 const TONE_PROPS_BY_KIND: Record<SectionKind, Record<string, unknown>> = {
+  quiz: {
+    heading: "Find what is limiting you",
+    sub: "Three minutes, and you get a readout.",
+    quizId: "f15ef258-3f0a-494b-a8c9-deb2de7b2aa9",
+    submitLabel: "See my result",
+  },
   proof: {
     heading: "Coached by someone who has done it",
     items: [
@@ -622,6 +628,24 @@ const SECTION_TONES = ["default", "muted", "accent", "dark"] as const
  * `reassemble()` call exercises the whole surface at once — including the
  * per-kind CSS selection, which is part of what decides the cascade.
  */
+/**
+ * `pageDoc` puts EVERY (kind, variant) pair in ONE document, and
+ * `sectionDocSchema` caps a document at 24 sections. Those two facts are on a
+ * collision course: adding the 11th kind (`quiz`) took the count to exactly
+ * the cap.
+ *
+ * Asserted separately so the next person to add a kind or a variant gets this
+ * sentence instead of a raw Zod "Too big: expected array to have <=24 items"
+ * thrown from inside sixteen unrelated contrast cases. When it fires, split
+ * `pageDoc` into chunks of 24 rather than raising the product's cap.
+ */
+it("keeps every (kind, variant) pair inside the document cap", () => {
+  expect(
+    toneCases().length,
+    "pageDoc exceeds sectionDocSchema's 24-section cap — chunk pageDoc, do not raise the cap",
+  ).toBeLessThanOrEqual(24)
+})
+
 function pageDoc(theme: SectionDocTheme, tone: (typeof SECTION_TONES)[number]): SectionDoc {
   return {
     v: 1,
@@ -1185,6 +1209,7 @@ const MINIMAL_PROPS_BY_KIND: Record<SectionKind, Record<string, unknown>> = {
   pricing: { plans: [{ name: "Starter", price: "$99", features: ["x"], cta: urlCta }] },
   faq: { source: "live", pageKey: "home" },
   form: { formKey: "optin", fields: [{ name: "email", label: "Email", type: "email" }] },
+  quiz: { quizId: "f15ef258-3f0a-494b-a8c9-deb2de7b2aa9" },
   cta: { headline: "Ready?", cta: bookingCta },
   footer: { businessName: "DJP", lines: [], links: [] },
 }

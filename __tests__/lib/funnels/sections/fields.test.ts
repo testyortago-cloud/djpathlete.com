@@ -85,6 +85,12 @@ function fixtureFor(kind: SectionKind, override: Record<string, unknown> = {}): 
       links: [{ label: "Privacy", target: { kind: "url", href: "/privacy" } }],
       legal: "All rights reserved.",
     },
+    quiz: {
+      heading: "Find your gaps",
+      sub: "Three minutes.",
+      quizId: "f15ef258-3f0a-494b-a8c9-deb2de7b2aa9",
+      submitLabel: "See my result",
+    },
   }
   return {
     id: "x1",
