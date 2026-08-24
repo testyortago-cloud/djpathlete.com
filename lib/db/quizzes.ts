@@ -204,6 +204,38 @@ export async function listQuizzes(): Promise<QuizListRow[]> {
   }))
 }
 
+export interface QuizAttemptCounts {
+  total: number
+  completed: number
+}
+
+/**
+ * Attempts per quiz, split by whether they finished.
+ *
+ * BOTH NUMBERS, not just the completed one. The gap between them IS the
+ * drop-off — the whole reason progress is written at all — and a list showing
+ * only completions would make an abandoned quiz look like an unused one.
+ *
+ * One read, counted in memory: there are a handful of quizzes and PostgREST
+ * has no GROUP BY, so a per-quiz count query would be N round trips to avoid
+ * an array walk.
+ */
+export async function getQuizAttemptCounts(): Promise<Record<string, QuizAttemptCounts>> {
+  const { data, error } = await getClient()
+    .from("quiz_attempts")
+    .select("quiz_id, status")
+    .eq("business_id", SINGLETON_BUSINESS_ID)
+  if (error) throw error
+  const out: Record<string, QuizAttemptCounts> = {}
+  for (const row of (data ?? []) as Row[]) {
+    const key = str(row.quiz_id)
+    const entry = (out[key] ??= { total: 0, completed: 0 })
+    entry.total++
+    if (str(row.status) === "completed") entry.completed++
+  }
+  return out
+}
+
 export interface QuizAttemptRow {
   id: string
   quizId: string
