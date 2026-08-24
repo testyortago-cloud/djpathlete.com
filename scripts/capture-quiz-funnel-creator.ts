@@ -95,6 +95,11 @@ async function markerAt(
   if (view && (box.y > view.height || box.y + box.height < 0)) {
     throw new Error(`MARKER TARGET OFF SCREEN: ${selector} at y=${Math.round(box.y)}`)
   }
+  // Straddling the corner only reads well when the corner is a BORDER. On a
+  // left-aligned run of text the top-left corner is the first character, and a
+  // disc centred there covers the word it is pointing at — the first review of
+  // these shots had markers reading "veryone" and "stion 7". A nudge of about
+  // one disc radius puts the disc just outside the text, still touching it.
   return {
     x: Math.round((box.x + (nudge.x ?? 0)) * DSF),
     y: Math.round((box.y + (nudge.y ?? 0)) * DSF),
@@ -171,9 +176,9 @@ async function main() {
     await page.getByLabel(/copy questions from/i).waitFor()
     await page.waitForTimeout(400)
     await shoot(page, "01-create-dialog", "Making a quiz funnel is picking a template", "/admin/funnels · New funnel · light", [
-      await markerAt(page, page.getByRole("radio", { name: /run a quiz/i }), '"Run a quiz" sits alongside the other kinds of funnel. Before this, a quiz could only be put on a page by calling an endpoint by hand.', { x: 6, y: 6 }),
-      await markerAt(page, "#funnel-quiz", '"Copy questions from" is the only extra thing it asks. Your new quiz starts as a copy of this one, and you can change every question afterwards.', { x: 6, y: 6 }),
-      await markerAt(page, '[data-testid="step-row"]', "One step, not three. The questions, the details form and the result are all parts of this single page.", { x: 6, y: 6 }),
+      await markerAt(page, page.getByRole("radio", { name: /run a quiz/i }), '"Run a quiz" sits alongside the other kinds of funnel. Before this, a quiz could only be put on a page by calling an endpoint by hand.', { x: -20, y: 4 }),
+      await markerAt(page, "#funnel-quiz", '"Copy questions from" is the only extra thing it asks. Your new quiz starts as a copy of this one, and you can change every question afterwards.', { x: -20, y: 4 }),
+      await markerAt(page, '[data-testid="step-row"]', "One step, not three. The questions, the details form and the result are all parts of this single page.", { x: -20, y: 4 }),
     ])
 
     await page.getByRole("button", { name: /create funnel/i }).click()
@@ -197,9 +202,9 @@ async function main() {
     await page.getByRole("button", { name: "Questions" }).click()
     await page.waitForTimeout(400)
     await shoot(page, "02-cloned-questions", "It lands on the questions, and they are already there", `/admin/funnels/quizzes/… · light`, [
-      await markerAt(page, 'nav[aria-label="Question groups"]', "A tab per group. “Everyone” holds the first question, which decides which set of questions the rest of the quiz comes from.", { x: 6, y: 6 }),
-      await markerAt(page, '[data-testid="live-questions"] input', "Every question came across from the copy — the first question, the four groups and all their answers. Rewrite them into your own words.", { x: 6, y: 6 }),
-      await markerAt(page, page.getByLabel(/routes to/i).first(), "The answers still point at this quiz's own groups, not at the one it was copied from.", { x: 6, y: 6 }),
+      await markerAt(page, 'nav[aria-label="Question groups"]', "A tab per group. “Everyone” holds the first question, which decides which set of questions the rest of the quiz comes from.", { x: -20, y: 4 }),
+      await markerAt(page, '[data-testid="live-questions"] input', "Every question came across from the copy — the first question, the four groups and all their answers. Rewrite them into your own words.", { x: -20, y: 4 }),
+      await markerAt(page, page.getByLabel(/routes to/i).first(), "The answers still point at this quiz's own groups, not at the one it was copied from.", { x: -20, y: 4 }),
     ])
 
     // -----------------------------------------------------------------------
@@ -214,9 +219,9 @@ async function main() {
     await page.getByRole("button", { name: /add a question/i }).scrollIntoViewIfNeeded()
     await page.waitForTimeout(400)
     await shoot(page, "03-question-added", "A new question starts switched off", "/admin/funnels/quizzes/… · light", [
-      await markerAt(page, 'text=/not live yet/i', "Nobody taking the quiz sees it yet. That way a half-written question can never reach somebody part-way through.", { x: 6, y: 6 }),
-      await markerAt(page, page.getByRole("button", { name: /turn this question on/i }).last(), "Write the question and its two answers, then choose “Turn it on” to start showing it to people.", { x: 6, y: 6 }),
-      await markerAt(page, page.getByRole("button", { name: /add a question/i }), "Adding and removing questions is new. Until now the editor could only change the wording of the ones that were already there.", { x: 6, y: 6 }),
+      await markerAt(page, 'text=/not live yet/i', "Nobody taking the quiz sees it yet. That way a half-written question can never reach somebody part-way through.", { x: -20, y: 4 }),
+      await markerAt(page, page.getByRole("button", { name: /turn this question on/i }).last(), "Write the question and its two answers, then choose “Turn it on” to start showing it to people.", { x: -20, y: 4 }),
+      await markerAt(page, page.getByRole("button", { name: /add a question/i }), "Adding and removing questions is new. Until now the editor could only change the wording of the ones that were already there.", { x: -20, y: 4 }),
     ])
 
     await page.getByRole("button", { name: "Save" }).click()
@@ -231,8 +236,24 @@ async function main() {
     // -----------------------------------------------------------------------
     // 4. Publish it, and take the quiz for real, at the real URL.
     // -----------------------------------------------------------------------
-    await page.getByRole("button", { name: /activate/i }).first().click()
-    await page.waitForTimeout(2000)
+    // ACTIVATE, AND CHECK IT TOOK. The publish gate refuses a page whose quiz
+    // is still a draft — "Section quiz1: quiz … is draft, not active" — so an
+    // unasserted click here surfaces two steps later as "the funnel did not go
+    // live", naming the wrong thing.
+    await page.getByRole("button", { name: /^activate$/i }).first().click()
+    let quizStatus = ""
+    for (let i = 0; i < 20; i += 1) {
+      await page.waitForTimeout(1000)
+      const { data: row } = await supabase.from("quizzes").select("status").eq("id", quizId).maybeSingle()
+      quizStatus = String((row as { status: string } | null)?.status ?? "")
+      if (quizStatus === "active") break
+    }
+    if (quizStatus !== "active") {
+      const text = (await page.locator("body").innerText()).replace(/\n+/g, " · ")
+      console.error(`  page says: ${text.slice(0, 800)}`)
+      throw new Error(`the quiz did not activate (status=${quizStatus})`)
+    }
+    console.log("  quiz is active")
 
     // PUBLISH FROM THE BUILDER. "Publish" means two things in this product:
     // the builder's Publish compiles the page AND takes the whole funnel live,
@@ -295,20 +316,43 @@ async function main() {
     await pub.goto(`${APP}/go/${slug}`, { waitUntil: "networkidle" })
     await pub.waitForTimeout(800)
     await shoot(pub, "04-public-page", "The funnel, at its real address, running the copied quiz", `/go/${slug} · public`, [
-      await markerAt(pub, "h1", "The page creation wrote: a heading, the quiz, a footer. Nothing was drafted by hand.", { x: 6, y: 6 }),
-      await markerAt(pub, "button, a[href^='#']", "The quiz below is the copy this funnel made. Editing a question changes this page immediately — there is nothing to re-publish.", { x: 6, y: 6 }),
+      await markerAt(pub, "h1", "The page creation wrote: a heading, the quiz, a footer. Nothing was drafted by hand.", { x: -20, y: 4 }),
+      await markerAt(pub, "button, a[href^='#']", "The quiz below is the copy this funnel made. Editing a question changes this page immediately — there is nothing to re-publish.", { x: -20, y: 4 }),
     ])
 
-    // Answer the first question — a REAL attempt, which is what makes the
-    // retirement in shot 6 real rather than staged.
-    const firstAnswer = pub.locator("button").filter({ hasText: /athlete|coming back|young|parent|coach/i }).first()
-    if ((await firstAnswer.count()) > 0) {
-      await firstAnswer.click()
-      await pub.waitForTimeout(1200)
-      await shoot(pub, "05-quiz-walk", "Somebody takes it, and their answers are saved as they go", `/go/${slug} · public`, [
-        await markerAt(pub, "button", "Answering the first question decides which set of questions comes next.", { x: 6, y: 6 }),
-      ])
+    // THE QUIZ OPENS ON ITS INTRO, not on a question — `QuizRunner` shows the
+    // quiz's own introHeadline and a Start button first. Answering before
+    // pressing Start finds nothing, which is why the first two runs took no
+    // attempt and the refusal below never fired.
+    await pub.getByRole("button", { name: /^start$/i }).first().click()
+    await pub.waitForTimeout(1500)
+    const firstAnswer = pub
+      .locator("button")
+      .filter({ hasText: /athlete|coming back|young|parent|coach/i })
+      .first()
+    if ((await firstAnswer.count()) === 0) {
+      throw new Error("the quiz did not reach its first question — no attempt, so nothing below is real")
     }
+    await shoot(pub, "05-quiz-walk", "Somebody takes it, and their answers are saved as they go", `/go/${slug} · public`, [
+      await markerAt(pub, firstAnswer, "Answering the first question decides which set of questions the rest of the quiz comes from.", { x: -20, y: 4 }),
+    ])
+    await firstAnswer.click()
+    await pub.waitForTimeout(2500)
+
+    // The attempt has to exist before the editor is asked to remove what it
+    // named, or the refusal below is a screenshot of nothing happening.
+    let attempts = 0
+    for (let i = 0; i < 15; i += 1) {
+      const { count } = await supabase
+        .from("quiz_attempts")
+        .select("id", { count: "exact", head: true })
+        .eq("quiz_id", quizId)
+      attempts = count ?? 0
+      if (attempts > 0) break
+      await pub.waitForTimeout(1000)
+    }
+    if (attempts === 0) throw new Error("no quiz attempt was recorded — the refusal below would be staged")
+    console.log(`  ${attempts} real attempt(s) recorded`)
     await visitor.close()
 
     // -----------------------------------------------------------------------
@@ -322,7 +366,7 @@ async function main() {
     await page.getByRole("button", { name: "Save" }).click()
     await page.waitForTimeout(2500)
     await shoot(page, "06-answered-option-refused", "An answer somebody has already picked cannot just vanish", "/admin/funnels/quizzes/… · light", [
-      await markerAt(page, 'text=/already picked/i', "Their result was worked out from this answer. Removing it would leave the report unable to say what they chose.", { x: 6, y: 6 }),
+      await markerAt(page, 'text=/already picked/i', "Their result was worked out from this answer. Removing it would leave the report unable to say what they chose.", { x: -20, y: 4 }),
     ])
 
     await page.reload({ waitUntil: "networkidle" })
@@ -332,7 +376,7 @@ async function main() {
     await page.getByRole("button", { name: "Save" }).click()
     await page.waitForTimeout(2500)
     await shoot(page, "07-retired", "Remove the whole question and it is retired instead", "/admin/funnels/quizzes/… · light", [
-      await markerAt(page, 'text=/retired rather than removed|taken offline/i', "Nobody taking the quiz is shown it any more, and the results people already got are kept exactly as they were.", { x: 6, y: 6 }),
+      await markerAt(page, 'text=/retired rather than removed|taken offline/i', "Nobody taking the quiz is shown it any more, and the results people already got are kept exactly as they were.", { x: -20, y: 4 }),
     ])
 
     await page.waitForTimeout(300)
@@ -341,8 +385,8 @@ async function main() {
       await retired.scrollIntoViewIfNeeded()
       await page.waitForTimeout(300)
       await shoot(page, "08-retired-group", "Retired questions keep their wording, and can come back", "/admin/funnels/quizzes/… · light", [
-        await markerAt(page, '[data-testid="retired-questions"] h2', "Kept out of the way rather than deleted, so your reports can still say what was asked.", { x: 6, y: 6 }),
-        await markerAt(page, page.getByRole("button", { name: /bring this question back/i }).first(), "One button puts it back in front of people.", { x: 6, y: 6 }),
+        await markerAt(page, '[data-testid="retired-questions"] h2', "Kept out of the way rather than deleted, so your reports can still say what was asked.", { x: -20, y: 4 }),
+        await markerAt(page, page.getByRole("button", { name: /bring this question back/i }).first(), "One button puts it back in front of people.", { x: -20, y: 4 }),
       ])
     }
 
@@ -354,20 +398,17 @@ async function main() {
   } finally {
     await browser.close()
     if (args.includes("--clean") && funnelId) {
-      // Only ever the rows this run created, and only on the clone.
-      await supabaseCleanup(supabase, funnelId, quizId)
+      // Only ever the rows this run created, and only on the clone. Inline
+      // rather than a helper: `ReturnType<typeof createClient>` and the value
+      // `createClient(url, key)` actually returns are different generic
+      // instantiations, so passing the client to a typed parameter does not
+      // compile. The DAL solves the same problem by dropping the `Database`
+      // generic and casting at the call site.
+      if (quizId) await supabase.from("quizzes").delete().eq("id", quizId)
+      await supabase.from("funnels").delete().eq("id", funnelId)
+      console.log("  cleaned up the funnel and quiz this run created")
     }
   }
-}
-
-async function supabaseCleanup(
-  supabase: ReturnType<typeof createClient>,
-  funnelId: string,
-  quizId: string,
-): Promise<void> {
-  if (quizId) await supabase.from("quizzes").delete().eq("id", quizId)
-  if (funnelId) await supabase.from("funnels").delete().eq("id", funnelId)
-  console.log("  cleaned up the funnel and quiz this run created")
 }
 
 main().catch((error) => {
