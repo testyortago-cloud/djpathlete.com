@@ -328,3 +328,97 @@ describe("<CreateFunnelDialog> — after creating", () => {
     expect(screen.getByRole("button", { name: /create funnel/i })).toBeDisabled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// The quiz picker.
+// Spec: docs/superpowers/specs/2026-08-24-quiz-funnel-creator-design.md §1, §2
+// ---------------------------------------------------------------------------
+
+describe("CreateFunnelDialog — the quiz template", () => {
+  const PICKER = /copy questions from/i
+
+  function fillName(value: string) {
+    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value } })
+  }
+
+  it("shows the picker only for the quiz template", async () => {
+    open()
+    pick(/capture leads/i)
+    expect(screen.queryByLabelText(PICKER)).toBeNull()
+    pick(/run a quiz/i)
+    expect(await screen.findByLabelText(PICKER)).toBeTruthy()
+  })
+
+  it("offers the built-in even when there are no quizzes yet", async () => {
+    // MUTANT KILLED: build the options from the fetched list alone. On a
+    // database with no quizzes — every database before the seed script has been
+    // run — the picker is empty and a quiz funnel cannot be created at all.
+    global.fetch = vi.fn(async (url: string) => {
+      if (String(url).includes("/api/admin/quizzes")) {
+        return { ok: true, status: 200, json: async () => ({ quizzes: [] }) }
+      }
+      return { ok: true, status: 201, json: async () => ({ funnel: { id: "f9" }, entryStepId: "s9" }) }
+    }) as unknown as typeof fetch
+
+    open()
+    pick(/run a quiz/i)
+    const picker = await screen.findByLabelText(PICKER)
+    await waitFor(() => expect(within(picker).getAllByRole("option").length).toBeGreaterThan(0))
+    expect(within(picker).getByRole("option", { name: /the original/i })).toBeTruthy()
+  })
+
+  it("lists the quizzes that do exist, alongside the original", async () => {
+    global.fetch = vi.fn(async (url: string) => {
+      if (String(url).includes("/api/admin/quizzes")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ quizzes: [{ id: "quiz-1", name: "Rotational Reboot", status: "active" }] }),
+        }
+      }
+      return { ok: true, status: 201, json: async () => ({ funnel: { id: "f9" }, entryStepId: "s9" }) }
+    }) as unknown as typeof fetch
+
+    open()
+    pick(/run a quiz/i)
+    const picker = await screen.findByLabelText(PICKER)
+    await waitFor(() => expect(within(picker).getAllByRole("option").length).toBe(2))
+    expect(within(picker).getByRole("option", { name: /rotational reboot/i })).toBeTruthy()
+  })
+
+  it("sends copyFrom with the create", async () => {
+    open()
+    pick(/run a quiz/i)
+    fillName("Rotational Reboot Check")
+    await screen.findByLabelText(PICKER)
+    fireEvent.click(screen.getByRole("button", { name: /create funnel/i }))
+    // MUTANT KILLED: omit `quiz` from the body. The server refuses the quiz
+    // template with no quiz, so the owner meets a validation error on a field
+    // the dialog did fill in.
+    await waitFor(() => expect(createBody().quiz).toEqual({ copyFrom: "builtin:rpi" }))
+  })
+
+  it("sends no quiz for any other template", async () => {
+    open()
+    pick(/capture leads/i)
+    fillName("Free Trial Week")
+    fireEvent.click(screen.getByRole("button", { name: /create funnel/i }))
+    // The server refuses a quiz on a template that does not ask for one, so
+    // sending it anyway is a 400 on a funnel that should have been created.
+    await waitFor(() => expect(createBody().quiz).toBeUndefined())
+  })
+
+  it("does not spend a request on the quiz list for other templates", async () => {
+    // AN EVENT FUNNEL, not a lead-capture one. `leads` fetches nothing at all,
+    // so "no quizzes request" would be true there with the effect's guard
+    // deleted — the assertion would pin nothing. `event` fetches its offers,
+    // which proves the effects ran and that this one chose not to fire.
+    open()
+    pick(/fill an event or camp/i)
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((args) => String(args[0]).includes("/offers"))).toBe(true),
+    )
+    expect(fetchMock.mock.calls.some((args) => String(args[0]).includes("/api/admin/quizzes"))).toBe(false)
+  })
+})
