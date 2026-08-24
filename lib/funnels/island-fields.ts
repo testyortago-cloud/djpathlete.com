@@ -87,4 +87,13 @@ export const ISLAND_TRAITS: Record<IslandName, IslandTrait[]> = {
     { name: "pageKey", label: "FAQ page key", type: "text" },
     { name: "limit", label: "How many", type: "number" },
   ],
+  // `quizId` is a plain text input rather than a select: the inspector is a
+  // pure description with no data access, and every other id-taking island
+  // (checkout.productId, event.eventId) does the same. The editor's own quiz
+  // list is where an owner copies the id from.
+  quiz: [
+    { name: "quizId", label: "Quiz ID", type: "text" },
+    { name: "submitLabel", label: "Button label", type: "text" },
+    { name: "consentText", label: "Consent line", type: "text" },
+  ],
 }
