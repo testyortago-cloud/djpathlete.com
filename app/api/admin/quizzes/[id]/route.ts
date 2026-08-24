@@ -16,7 +16,12 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
-import { getQuizDefinition, saveQuizDefinition } from "@/lib/db/quizzes"
+import {
+  QuizAnsweredOptionError,
+  getQuizDefinition,
+  getQuizDefinitionForEditor,
+  saveQuizDefinition,
+} from "@/lib/db/quizzes"
 import { quizGate } from "@/lib/quizzes/gate"
 
 export const runtime = "nodejs"
@@ -94,6 +99,58 @@ const bodySchema = z.object({
     )
     .max(50)
     .optional(),
+
+  // -------------------------------------------------------------------------
+  // Structural edits. Every id is a uuid the EDITOR minted, so the shapes below
+  // are `.min(1)`/required where the update siblings above are `.optional()`:
+  // an insert has no existing row to fall back to.
+  // -------------------------------------------------------------------------
+  addQuestions: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        branchId: z.string().uuid().nullable(),
+        position: z.number().int().min(0).max(10_000),
+        prompt: z.string().min(1).max(500),
+        helpText: z.string().max(500).nullable(),
+        isActive: z.boolean(),
+        // TWO IS THE FLOOR, matching the gate's own "fewer than two options"
+        // blocker. Accepting zero would let the editor create a question that
+        // can never be switched on, whose only symptom is a blocker naming a
+        // question the owner cannot see how to fix.
+        options: z
+          .array(
+            z.object({
+              id: z.string().uuid(),
+              position: z.number().int().min(0).max(10_000),
+              label: z.string().min(1).max(300),
+              weight: z.number().min(0).max(100),
+              routesToBranchId: z.string().uuid().nullable(),
+              profileId: z.string().uuid().nullable(),
+            }),
+          )
+          .min(2)
+          .max(20),
+      }),
+    )
+    .max(100)
+    .optional(),
+  addOptions: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        questionId: z.string().uuid(),
+        position: z.number().int().min(0).max(10_000),
+        label: z.string().min(1).max(300),
+        weight: z.number().min(0).max(100),
+        routesToBranchId: z.string().uuid().nullable(),
+        profileId: z.string().uuid().nullable(),
+      }),
+    )
+    .max(200)
+    .optional(),
+  deleteQuestionIds: z.array(z.string().uuid()).max(100).optional(),
+  deleteOptionIds: z.array(z.string().uuid()).max(200).optional(),
 })
 
 function notFound() {
@@ -126,15 +183,33 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   // change did not yet satisfy the gate would be its own bug — and the quiz
   // simply stays draft.
   const { status: _requestedStatus, ...quizWithoutStatus } = body.quiz ?? {}
-  await saveQuizDefinition({
-    quizId: id,
-    quiz: quizWithoutStatus,
-    questions: body.questions,
-    options: body.options,
-    tiers: body.tiers,
-    profiles: body.profiles,
-    branches: body.branches,
-  })
+  let retiredQuestionIds: string[] = []
+  try {
+    const outcome = await saveQuizDefinition({
+      quizId: id,
+      quiz: quizWithoutStatus,
+      questions: body.questions,
+      options: body.options,
+      tiers: body.tiers,
+      profiles: body.profiles,
+      branches: body.branches,
+      addQuestions: body.addQuestions,
+      addOptions: body.addOptions,
+      deleteQuestionIds: body.deleteQuestionIds,
+      deleteOptionIds: body.deleteOptionIds,
+    })
+    retiredQuestionIds = outcome.retiredQuestionIds
+  } catch (error) {
+    // 400 CARRYING THE REASON, not a 500. The save was refused because
+    // somebody has already picked that answer — a fact the owner can act on,
+    // and one they cannot discover any other way. Matched on the class rather
+    // than a message string; `saveQuizDefinition` writes nothing before it
+    // throws this, so there is no half-applied save to explain.
+    if (error instanceof QuizAnsweredOptionError) {
+      return NextResponse.json({ error: error.message, optionIds: error.optionIds }, { status: 400 })
+    }
+    throw error
+  }
 
   const after = await getQuizDefinition(id)
   if (!after) return notFound()
@@ -154,5 +229,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     await saveQuizDefinition({ quizId: id, quiz: { status: body.quiz.status } })
   }
 
-  return NextResponse.json({ ok: true, gate })
+  // THE EDITOR'S READ, not the public one. `getQuizDefinition` filters out
+  // inactive questions, so returning it here would make a question that was
+  // just retired vanish with no way back, and a question added switched-off
+  // disappear the moment it was saved. The gate above still runs against the
+  // public read, because the gate is a statement about the WALK.
+  const forEditor = await getQuizDefinitionForEditor(id)
+  return NextResponse.json({ ok: true, gate, quiz: forEditor, retiredQuestionIds })
 }

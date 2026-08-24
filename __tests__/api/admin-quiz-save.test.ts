@@ -65,12 +65,20 @@ function broken(): QuizDefinition {
 const auth = vi.fn()
 const getQuizDefinition = vi.fn()
 const saveQuizDefinition = vi.fn()
+const getQuizDefinitionForEditor = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => auth() }))
-vi.mock("@/lib/db/quizzes", () => ({
-  getQuizDefinition: (...a: unknown[]) => getQuizDefinition(...a),
-  saveQuizDefinition: (...a: unknown[]) => saveQuizDefinition(...a),
-}))
+vi.mock("@/lib/db/quizzes", async () => {
+  // The error class stays REAL: the route matches on `instanceof`, and a stub
+  // would make that branch pass or fail for the wrong reason.
+  const actual = await vi.importActual<typeof import("@/lib/db/quizzes")>("@/lib/db/quizzes")
+  return {
+    QuizAnsweredOptionError: actual.QuizAnsweredOptionError,
+    getQuizDefinition: (...a: unknown[]) => getQuizDefinition(...a),
+    getQuizDefinitionForEditor: (...a: unknown[]) => getQuizDefinitionForEditor(...a),
+    saveQuizDefinition: (...a: unknown[]) => saveQuizDefinition(...a),
+  }
+})
 
 async function patch(body: unknown, id = QUIZ_ID) {
   const { PATCH } = await import("@/app/api/admin/quizzes/[id]/route")
@@ -88,7 +96,11 @@ beforeEach(() => {
   vi.resetAllMocks()
   auth.mockResolvedValue({ user: { role: "admin" } })
   getQuizDefinition.mockResolvedValue(healthy())
-  saveQuizDefinition.mockResolvedValue(undefined)
+  getQuizDefinitionForEditor.mockResolvedValue(healthy())
+  // The real contract. `saveQuizDefinition` returns what it retired, and the
+  // route reads it — a mock resolving `undefined` would crash the route for a
+  // reason the real function never produces.
+  saveQuizDefinition.mockResolvedValue({ retiredQuestionIds: [] })
 })
 
 describe("PATCH /api/admin/quizzes/[id]", () => {
