@@ -48,6 +48,11 @@ describe("island traits cover their island's settings", () => {
     booking: { label: "Book a call", href: "/contact" },
     testimonials: { limit: 3, featuredOnly: true },
     faq: { pageKey: "camps", limit: 6 },
+    quiz: {
+      quizId: "33333333-3333-4333-8333-333333333333",
+      submitLabel: "See my result",
+      consentText: "We'll email your readout.",
+    },
   }
 
   it.each(ISLAND_NAMES)("every trait of %s edits a prop its schema knows", (name) => {

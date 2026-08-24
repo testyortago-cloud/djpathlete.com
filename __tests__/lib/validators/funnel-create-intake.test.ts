@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest"
 import { createFunnelSchema } from "@/lib/validators/funnel"
 import { MAX_FUNNEL_STEPS } from "@/lib/funnels/templates"
+import { BUILTIN_QUIZ_SOURCE } from "@/lib/quizzes/sources"
 
 const base = { name: "Camp 2026", slug: "camp-2026", kind: "funnel" as const }
 const eventOffer = { kind: "event" as const, ref: "Summer Camp 2026" }
@@ -301,5 +302,70 @@ describe("createFunnelSchema — landing pages, which have no template", () => {
     expect(
       createFunnelSchema.safeParse({ ...page, notify_emails: ["a@b.com"] }).success,
     ).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The quiz ask — the first REQUIRED one in this file.
+// Spec: docs/superpowers/specs/2026-08-24-quiz-funnel-creator-design.md §2
+// ---------------------------------------------------------------------------
+
+describe("createFunnelSchema — the quiz", () => {
+  const quizFunnel = { ...base, template: "quiz" as const, steps: [{ name: "Quiz", slug: "index" }] }
+
+  it("refuses a quiz on a template that does not ask for one", () => {
+    // MUTANT KILLED: accept it anyway. A lead-capture funnel would be created
+    // carrying a cloned quiz nothing on its pages ever renders — a quiz on the
+    // list with no way to reach it.
+    const result = createFunnelSchema.safeParse({
+      ...base,
+      template: "leads",
+      steps: [{ name: "Signup", slug: "index" }],
+      quiz: { copyFrom: BUILTIN_QUIZ_SOURCE },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("refuses the quiz template with no quiz at all", () => {
+    // MUTANT KILLED: drop this half and treat `quiz` like every other ask.
+    // The funnel is created carrying a section whose quizId is "", which fails
+    // quizIslandSchema at PUBLISH — so the owner writes the whole page and
+    // finds out at the end that it cannot go live.
+    expect(createFunnelSchema.safeParse(quizFunnel).success).toBe(false)
+  })
+
+  it("names the field it is refusing, so the dialog can point at it", () => {
+    const result = createFunnelSchema.safeParse(quizFunnel)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues.some((issue) => issue.path.join(".") === "quiz")).toBe(true)
+    }
+  })
+
+  it("accepts the quiz template with the built-in source", () => {
+    const result = createFunnelSchema.safeParse({ ...quizFunnel, quiz: { copyFrom: BUILTIN_QUIZ_SOURCE } })
+    expect(result.success).toBe(true)
+  })
+
+  it("accepts the quiz template with an existing quiz's id", () => {
+    const result = createFunnelSchema.safeParse({
+      ...quizFunnel,
+      quiz: { copyFrom: "5f2b7c1e-0000-4000-8000-000000000001" },
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("refuses an empty copyFrom rather than treating it as no quiz", () => {
+    const result = createFunnelSchema.safeParse({ ...quizFunnel, quiz: { copyFrom: "" } })
+    expect(result.success).toBe(false)
+  })
+
+  it("still answers cleanly for an empty steps array", () => {
+    // Zod 4 runs superRefine EVEN WHEN the inner schema already failed, so
+    // every refinement in this file that indexes an array needs its guard.
+    // Without one this is a 500 from inside the validator, not a 400.
+    expect(() =>
+      createFunnelSchema.safeParse({ ...base, template: "quiz", steps: [], quiz: { copyFrom: BUILTIN_QUIZ_SOURCE } }),
+    ).not.toThrow()
   })
 })

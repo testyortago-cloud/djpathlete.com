@@ -17,7 +17,7 @@
 // the section registry table + CtaTarget).
 
 import { z } from "zod"
-import { formIslandSchema, SAFE_LINK } from "@/lib/funnels/islands"
+import { formIslandSchema, quizIslandSchema, SAFE_LINK } from "@/lib/funnels/islands"
 
 // ---------------------------------------------------------------------------
 // SectionDoc / Section — the data model (plan §1a, lines 58-83, copied
@@ -191,6 +191,7 @@ export const SECTION_KINDS = [
   "pricing",
   "faq",
   "form",
+  "quiz",
   "cta",
   "footer",
 ] as const
@@ -406,6 +407,33 @@ export const formSectionPropsSchema = z.intersection(
 export type FormSectionProps = z.infer<typeof formSectionPropsSchema>
 
 // ---------------------------------------------------------------------------
+// quiz — `heading?`/`sub?` PLUS `quizIslandSchema` VERBATIM. Imported, not
+// restated, for the same reason `form` imports `formIslandSchema`: this kind
+// renders as the `quiz` island, so its props must accept exactly what the
+// island component reads, or the two silently drift.
+//
+// THIS KIND IS WHY THE ISLAND IS REACHABLE AT ALL. `reassemble` builds page
+// HTML only from `doc.sections` and page CSS only from the kinds a doc uses,
+// so an island with no section kind emitting it can never appear on a page.
+// The design assumed adding to ISLAND_NAMES was sufficient; it is not.
+// ---------------------------------------------------------------------------
+
+// ONE variant, like `faq`. A second was declared briefly and removed: nothing
+// in QUIZ_CSS distinguished it from `boxed`, so it was a choice the owner could
+// make that changed nothing on the page. Add `band` the day it has styling.
+const QUIZ_VARIANTS = ["boxed"] as const
+
+export const quizSectionPropsSchema = z.intersection(
+  z.object({
+    heading: z.string().max(120).optional(),
+    sub: z.string().max(300).optional(),
+  }),
+  quizIslandSchema,
+)
+
+export type QuizSectionProps = z.infer<typeof quizSectionPropsSchema>
+
+// ---------------------------------------------------------------------------
 // cta
 // ---------------------------------------------------------------------------
 
@@ -475,6 +503,7 @@ const testimonialSchema = buildSectionSchema("testimonial", TESTIMONIAL_VARIANTS
 const pricingSchema = buildSectionSchema("pricing", PRICING_VARIANTS, pricingPropsSchema)
 const faqSchema = buildSectionSchema("faq", FAQ_VARIANTS, faqPropsSchema)
 const formSchema = buildSectionSchema("form", FORM_VARIANTS, formSectionPropsSchema)
+const quizSchema = buildSectionSchema("quiz", QUIZ_VARIANTS, quizSectionPropsSchema)
 const ctaSchema = buildSectionSchema("cta", CTA_VARIANTS, ctaPropsSchema)
 const footerSchema = buildSectionSchema("footer", FOOTER_VARIANTS, footerPropsSchema)
 
@@ -579,6 +608,24 @@ const formDef: SectionDef<"form"> = {
   schema: formSchema,
 }
 
+const quizDef: SectionDef<"quiz"> = {
+  kind: "quiz",
+  label: "Quiz",
+  // KEPT SHORT DELIBERATELY. Every description here is inlined into
+  // SECTION_BUILDER_BLOCK_A, which is a frozen cached prefix under a size
+  // ceiling that `prompt.test.ts` guards — and that ceiling is ALREADY
+  // breached at this branch's base (17033 against 17000, with ten kinds).
+  // Adding an eleventh kind cannot be an excuse to make it worse, so this
+  // says only the one thing a model can get wrong.
+  description:
+    "A scored, branching quiz. Renders as the `quiz` island. " +
+    "NEVER WRITE quizId — only the owner can supply it, an invented one cannot publish, " +
+    "and that failure takes the whole turn down. Keep any quizId already present.",
+  variants: QUIZ_VARIANTS,
+  propsSchema: quizSectionPropsSchema,
+  schema: quizSchema,
+}
+
 const ctaDef: SectionDef<"cta"> = {
   kind: "cta",
   label: "Call to action",
@@ -606,6 +653,7 @@ export const SECTION_REGISTRY: Record<SectionKind, SectionDef> = {
   pricing: pricingDef,
   faq: faqDef,
   form: formDef,
+  quiz: quizDef,
   cta: ctaDef,
   footer: footerDef,
 }
@@ -632,6 +680,7 @@ export const sectionSchema = z.discriminatedUnion("kind", [
   pricingSchema,
   faqSchema,
   formSchema,
+  quizSchema,
   ctaSchema,
   footerSchema,
 ])

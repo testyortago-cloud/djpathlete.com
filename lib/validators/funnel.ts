@@ -106,6 +106,22 @@ const offerSchema = z.object({
   ref: z.string().min(1).max(120),
 })
 
+/**
+ * Which quiz a new quiz funnel copies its questions from.
+ *
+ * ONE FIELD, because the quiz's name is not a second question: the clone is
+ * named after the funnel. `copyFrom` is either a `quizzes.id` or the sentinel
+ * `BUILTIN_QUIZ_SOURCE` — deliberately NOT `z.uuid()`, because the built-in
+ * blueprint is a typed module rather than a row, and requiring a uuid here
+ * would make "Run a quiz" unusable on a database that has no quizzes yet.
+ *
+ * The route resolves it and refuses a uuid naming a quiz that does not exist;
+ * this schema only bounds the string.
+ */
+const quizCreateSchema = z.object({
+  copyFrom: z.string().min(1).max(120),
+})
+
 export const createFunnelSchema = z
   .object({
     slug: slugSchema.refine((s) => !RESERVED_FUNNEL_SLUGS.has(s), "That slug is reserved"),
@@ -120,6 +136,7 @@ export const createFunnelSchema = z
     template: templateIdSchema.nullable().optional(),
     audience: z.string().max(300).nullable().optional(),
     offer: offerSchema.nullable().optional(),
+    quiz: quizCreateSchema.nullable().optional(),
     starts_at: z.string().datetime().nullable().optional(),
     ends_at: z.string().datetime().nullable().optional(),
     auto_offline_at_end: z.boolean().optional(),
@@ -183,6 +200,28 @@ export const createFunnelSchema = z
           message: "That offer is from the wrong catalogue.",
         })
       }
+    }
+
+    if (value.quiz && !asks("quiz")) {
+      ctx.addIssue({ code: "custom", path: ["quiz"], message: "This kind of funnel has no quiz." })
+    }
+    // ---------------------------------------------------------------------
+    // THE ONLY REQUIRED ASK IN THIS FILE, and it is required for a reason the
+    // others are not.
+    //
+    // An event funnel with no dates is a funnel somebody dates later; the
+    // field is simply empty. A quiz funnel with no quiz is not empty — its
+    // entry step carries a `quiz` section whose `quizId` is "", which fails
+    // `quizIslandSchema` at PUBLISH. So the owner would create the funnel,
+    // write the page, and discover at the last step that it cannot go live,
+    // with nothing telling them why. Refusing here costs one message.
+    //
+    // Note the shape: `asks("quiz")` and not `value.template === "quiz"`. The
+    // rule stays a statement about the registry, like every other rule here,
+    // so a second quiz-bearing template inherits it without a second edit.
+    // ---------------------------------------------------------------------
+    if (!value.quiz && asks("quiz")) {
+      ctx.addIssue({ code: "custom", path: ["quiz"], message: "Pick a quiz to copy questions from." })
     }
 
     if (value.notify_emails?.length && !asks("notify")) {

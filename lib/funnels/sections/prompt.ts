@@ -316,6 +316,33 @@ function uuidPaths(node: JsonNode, path: string, out: string[]): void {
   }
 }
 
+/**
+ * KINDS AND ISLANDS THE PAGE BUILDER IS NOT OFFERED, and why that is a design
+ * decision rather than a saving.
+ *
+ * `quiz` is a section the model CANNOT author correctly. Its only required
+ * prop is `quizId`, a uuid naming a row that already exists, which only the
+ * owner can supply from the builder — and the publish gate REFUSES a page
+ * whose quiz is missing, not active, or unable to score. So every quiz section
+ * the model could write is a page that cannot publish, and a rejected batch
+ * fails the owner's whole turn. Describing it in the prompt buys nothing and
+ * spends real budget.
+ *
+ * AND THE BUDGET IS THE POINT. `SECTION_BUILDER_BLOCK_A` is a frozen cached
+ * prefix under a size ceiling `prompt.test.ts` enforces, and at ec3acb16 it
+ * measured 16,929 against 17,000 — SEVENTY-ONE characters of headroom. The
+ * quiz section's own block is ~407 characters and its island line ~104. Adding
+ * them silently put the block 440 over.
+ *
+ * Excluded HERE, in the prompt, and nowhere else: the registry, the compiler,
+ * the renderer and the publish gate all still know about `quiz` in full. This
+ * list only decides what the model is told it may write.
+ */
+export const NOT_OFFERED_TO_THE_BUILDER: ReadonlySet<string> = new Set(["quiz"])
+
+const OFFERED_SECTIONS = SECTION_LIST.filter((def) => !NOT_OFFERED_TO_THE_BUILDER.has(def.kind))
+const OFFERED_ISLANDS = ISLAND_LIST.filter((island) => !NOT_OFFERED_TO_THE_BUILDER.has(island.name))
+
 const UUID_FIELD_PATHS: string[] = SECTION_LIST.flatMap((def) => {
   const found: string[] = []
   uuidPaths(toJson(def.propsSchema), "", found)
@@ -344,9 +371,9 @@ function kindEntry(def: (typeof SECTION_LIST)[number]): string {
   ].join("\n")
 }
 
-const KINDS_BLOCK = SECTION_LIST.map(kindEntry).join("\n\n")
+const KINDS_BLOCK = OFFERED_SECTIONS.map(kindEntry).join("\n\n")
 
-const ISLANDS_BLOCK = ISLAND_LIST.map((island) => `- ${island.name} (${island.label}) — ${island.description}`).join(
+const ISLANDS_BLOCK = OFFERED_ISLANDS.map((island) => `- ${island.name} (${island.label}) — ${island.description}`).join(
   "\n",
 )
 
@@ -609,7 +636,7 @@ SectionDoc = {
 
 Section = {
   id: ${SECTION_ID_SIGNATURE},
-  kind: one of the ${SECTION_LIST.length} below,
+  kind: one of the ${OFFERED_SECTIONS.length} below,
   variant: constrained per kind,
   style: ${signature(sectionStyleSchema, "  ")},
   props: the kind's own shape
@@ -654,7 +681,7 @@ ${
     : `No field in the document takes a UUID. If one ever appears, omit it.`
 }
 
-## The ${SECTION_LIST.length} section kinds
+## The ${OFFERED_SECTIONS.length} section kinds
 
 ${KINDS_BLOCK}
 

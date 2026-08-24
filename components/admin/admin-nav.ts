@@ -28,6 +28,7 @@ import {
   Layers,
   Target,
   Search,
+  ListChecks,
   Workflow,
   Compass,
   Users2,
@@ -78,6 +79,11 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: Permi
         { label: "Products", href: "/admin/marketing/products", icon: Package },
         { label: "Landing Pages", href: "/admin/pages", icon: LayoutTemplate },
         { label: "Funnels", href: "/admin/funnels", icon: Workflow },
+        // Same defect class the two comments below name: the Athlete Quiz
+        // screen was URL-only on its first pass. A quiz is a database entity
+        // the funnel block points at by id, so it has no home under a funnel —
+        // without this line the only way to reach it is to type the URL.
+        { label: "Quizzes", href: "/admin/funnels/quizzes", icon: ListChecks },
         // Lead Engine Stage 3: the public chat assistant. Registered here
         // rather than left URL-only — the pipeline board shipped URL-only once
         // and had to be fixed for exactly that reason (see admin-nav.test.ts).
@@ -98,6 +104,11 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: Permi
         { label: "Products", href: "/admin/marketing/products", icon: Package },
         { label: "Landing Pages", href: "/admin/pages", icon: LayoutTemplate },
         { label: "Funnels", href: "/admin/funnels", icon: Workflow },
+        // Same defect class the two comments below name: the Athlete Quiz
+        // screen was URL-only on its first pass. A quiz is a database entity
+        // the funnel block points at by id, so it has no home under a funnel —
+        // without this line the only way to reach it is to type the URL.
+        { label: "Quizzes", href: "/admin/funnels/quizzes", icon: ListChecks },
         // Lead Engine Stage 3: the public chat assistant. Registered here
         // rather than left URL-only — the pipeline board shipped URL-only once
         // and had to be fixed for exactly that reason (see admin-nav.test.ts).

@@ -50,6 +50,13 @@ function baseDoc(overrides: Partial<SectionDoc> = {}): SectionDoc {
 function fullPageSections(): Section[] {
   return [
     {
+      id: "qz1",
+      kind: "quiz",
+      variant: "boxed",
+      style: {},
+      props: { heading: "Find your gaps", sub: "Three minutes.", quizId: "f15ef258-3f0a-494b-a8c9-deb2de7b2aa9" },
+    },
+    {
       id: "hero1",
       kind: "hero",
       variant: "centered",

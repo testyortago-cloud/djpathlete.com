@@ -16,7 +16,11 @@ import {
   FORM_FIELD_ROLES,
   formIslandSchema,
   checkoutIslandSchema,
+  quizIslandSchema,
+  ISLAND_NAMES,
+  ISLANDS,
 } from "@/lib/funnels/islands"
+import { ISLAND_TRAITS } from "@/lib/funnels/island-fields"
 
 describe("formIslandSchema redirectUrl", () => {
   const base = {
@@ -243,5 +247,66 @@ describe("the field-role contract", () => {
     const { createEventSignupSchema } = await import("@/lib/validators/event-signups")
     const signupKeys = Object.keys(createEventSignupSchema.shape)
     for (const role of FORM_FIELD_ROLES) expect(signupKeys).toContain(role)
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// quiz — the seventh island
+// ---------------------------------------------------------------------------
+//
+// The block references a quiz BY ID rather than embedding its questions.
+// That is the whole reason editing a weight takes effect everywhere with no
+// re-publish: the page holds a pointer, not a copy.
+//
+// Spec: docs/superpowers/specs/2026-08-23-athlete-quiz-funnel-design.md §3.1
+describe("quizIslandSchema", () => {
+  const QUIZ_ID = "f15ef258-3f0a-494b-a8c9-deb2de7b2aa9"
+
+  it("accepts a fully configured quiz block", () => {
+    const parsed = quizIslandSchema.safeParse({
+      quizId: QUIZ_ID,
+      submitLabel: "Show me my readout",
+      consentText: "We'll email your result.",
+    })
+    expect(parsed.success).toBe(true)
+  })
+
+  it("rejects a quizId that is not a uuid — a key or a slug points at nothing", () => {
+    expect(quizIslandSchema.safeParse({ quizId: "rpi_athlete_quiz" }).success).toBe(false)
+    expect(quizIslandSchema.safeParse({ quizId: "" }).success).toBe(false)
+  })
+
+  it("defaults submitLabel, so a freshly dropped block has a usable button", () => {
+    const parsed = quizIslandSchema.safeParse({ quizId: QUIZ_ID })
+    expect(parsed.success).toBe(true)
+    expect(parsed.success && parsed.data.submitLabel).toBe("See my result")
+  })
+
+  it("accepts the shipped default props unchanged", () => {
+    // The defaults are what the editor writes when the block is dropped. If
+    // they do not parse, every new block is born invalid — and the failure
+    // would surface at publish time, far from the cause.
+    expect(quizIslandSchema.safeParse({ ...ISLANDS.quiz.defaultProps, quizId: QUIZ_ID }).success).toBe(true)
+  })
+
+  it("is registered in ISLAND_NAMES and ISLANDS", () => {
+    expect(ISLAND_NAMES).toContain("quiz")
+    expect(ISLANDS.quiz.name).toBe("quiz")
+    expect(ISLANDS.quiz.schema).toBe(quizIslandSchema)
+  })
+
+  it("offers a trait for every settable prop, asserted against the SCHEMA not a list", () => {
+    // Agreement with the real schema, in the style of the FORM_FIELD_ROLES
+    // test above: a prop the schema accepts but the inspector cannot set is a
+    // setting the owner can never reach, and only the schema knows the set.
+    const shape = Object.keys((quizIslandSchema as unknown as { shape: Record<string, unknown> }).shape)
+    const traits = ISLAND_TRAITS.quiz.map((t) => t.name)
+    for (const prop of shape) expect(traits).toContain(prop)
+  })
+
+  it("offers no trait for a prop the schema would reject", () => {
+    const shape = Object.keys((quizIslandSchema as unknown as { shape: Record<string, unknown> }).shape)
+    for (const trait of ISLAND_TRAITS.quiz) expect(shape).toContain(trait.name)
   })
 })

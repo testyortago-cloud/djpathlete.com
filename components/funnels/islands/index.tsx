@@ -12,6 +12,7 @@ import { EventIsland } from "./EventIsland"
 import { BookingIsland } from "./BookingIsland"
 import { TestimonialsIsland } from "./TestimonialsIsland"
 import { FaqIsland } from "./FaqIsland"
+import { QuizIsland } from "./QuizIsland"
 
 /** What an island needs to know about the page it is standing on. */
 export interface FunnelRenderContext {
@@ -78,6 +79,8 @@ export function renderIsland(
       return <TestimonialsIsland props={props} />
     case "faq":
       return <FaqIsland props={props} />
+    case "quiz":
+      return <QuizIsland props={props} context={context} />
     default: {
       // Exhaustiveness: adding an island to the registry without adding it here
       // becomes a compile error rather than a silently blank page.

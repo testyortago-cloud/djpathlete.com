@@ -115,9 +115,11 @@ import {
   ctaWithLabelSchema,
   faqPropsSchema,
   formSectionPropsSchema,
+  quizSectionPropsSchema,
   sectionDocSchema,
   type CtaTarget,
   type CtaWithLabel,
+  type QuizSectionProps,
   type Section,
   type SectionDoc,
 } from "@/lib/funnels/sections/registry"
@@ -136,6 +138,8 @@ import {
   listAllProducts as listAllSessionPackProducts,
 } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
+import { getQuizDefinition, listQuizzes } from "@/lib/db/quizzes"
+import { quizGate } from "@/lib/quizzes/gate"
 // The FAQ page keys that actually have rows. Not a CTA and not a uuid, but the
 // same failure class — see `UnknownFaqKey` below.
 import { getFaqCountsByPage } from "@/lib/db/faqs"
@@ -232,6 +236,27 @@ export interface Catalogues {
    * this field closes.
    */
   faqPageKeys: string[]
+  /**
+   * Every quiz, with enough to answer all three publish questions without a
+   * second read: does it exist, is it active, and can it score?
+   *
+   * `gateBlocker` IS ONLY POPULATED FOR ACTIVE QUIZZES. A draft is already
+   * blocked by `not_active` before the gate could matter, and gating one costs
+   * six queries — running them to produce a reason nobody will see would make
+   * every builder turn slower for nothing. `null` here therefore means "the
+   * gate passed OR was not consulted", and only the active branch reads it.
+   *
+   * REQUIRED, never optional, for the same reason `faqPageKeys` is: an
+   * optional field lets a caller that forgot it skip the check silently.
+   */
+  quizzes: QuizCatalogueEntry[]
+}
+
+export interface QuizCatalogueEntry {
+  id: string
+  status: string
+  /** The gate's own FIRST blocker, so the owner is told what to go and fix. */
+  gateBlocker: string | null
 }
 
 /**
@@ -494,6 +519,27 @@ export async function loadCatalogues(): Promise<Catalogues> {
     events: offerEvents,
   })
 
+  // ONLY ACTIVE QUIZZES ARE GATED. Assembling one definition costs six
+  // queries, and a draft is already blocked by `not_active` before the gate
+  // could matter — running them to produce a reason nobody will read would
+  // make every builder turn slower for nothing. Concurrent, like the reads
+  // above, so this adds one round trip rather than one per quiz.
+  const quizRows = await listQuizzes()
+  const gated = await Promise.all(
+    quizRows.map(async (row): Promise<QuizCatalogueEntry> => {
+      if (row.status !== "active") return { id: row.id, status: row.status, gateBlocker: null }
+      const definition = await getQuizDefinition(row.id)
+      // A row that vanished between the list and this read is reported as a
+      // quiz that cannot score, not as one that passes. Failing closed here
+      // costs a blocked publish; failing open ships a page that collects
+      // answers into nothing.
+      if (!definition) return { id: row.id, status: row.status, gateBlocker: "the quiz could not be read" }
+      const gate = quizGate(definition)
+      return { id: row.id, status: row.status, gateBlocker: gate.ok ? null : (gate.blockers[0] ?? "it failed its checks") }
+    }),
+  )
+  const quizzes: QuizCatalogueEntry[] = gated
+
   return {
     recognition: unionCatalogues(
       toCatalogue({ programs: allPrograms, sessionPacks: allPacks, events: allEvents }),
@@ -503,6 +549,7 @@ export async function loadCatalogues(): Promise<Catalogues> {
     // Sorted so the blocker message and the prompt's Block B list the keys in
     // the same order the owner sees them in /admin/marketing/faqs.
     faqPageKeys: Object.keys(faqCounts).sort(),
+    quizzes,
   }
 }
 
@@ -668,6 +715,18 @@ export interface UnknownFaqKey {
  * WORK — must not be told they have a broken id and sent looking for a mistake
  * they did not make.
  */
+export interface UnresolvedQuiz {
+  sectionId: string
+  quizId: string
+  /**
+   * `missing`    — the id names no quiz at all (a typo, or a deleted row).
+   * `not_active` — the quiz exists but is draft or archived; `detail` is the status.
+   * `gate_failed`— active, but `quizGate` refuses it; `detail` is its first blocker.
+   */
+  reason: "missing" | "not_active" | "gate_failed"
+  detail?: string
+}
+
 export interface UnsellableCheckout {
   sectionId: string
   eventId: string
@@ -700,6 +759,11 @@ export interface ResolveResult {
   brokenStepLinks: BrokenStepLink[]
   /** NON-EMPTY MEANS PUBLISH IS BLOCKED. See `publishGate()`. */
   unknownFaqKeys: UnknownFaqKey[]
+  /**
+   * NON-EMPTY MEANS PUBLISH IS BLOCKED. A page that asks twelve questions and
+   * then cannot score them is worse than a page that never asked.
+   */
+  unresolvedQuizzes: UnresolvedQuiz[]
   /**
    * NON-EMPTY MEANS PUBLISH IS BLOCKED. Forms that take payment for a camp that
    * cannot take payment. See `publishGate()`.
@@ -1063,6 +1127,7 @@ export function resolveDoc(
   const danglingAnchors: DanglingAnchor[] = []
   const brokenStepLinks: BrokenStepLink[] = []
   const unknownFaqKeys: UnknownFaqKey[] = []
+  const unresolvedQuizzes: UnresolvedQuiz[] = []
   const unsellableCheckouts: UnsellableCheckout[] = []
   const soldOutCheckouts: SoldOutCheckout[] = []
 
@@ -1100,6 +1165,34 @@ export function resolveDoc(
           // `resolveDoc` never mutates the catalogue and neither should a
           // caller.
           candidates: catalogues.faqPageKeys,
+        })
+      }
+    }
+
+    // QUIZZES THAT CANNOT SCORE. Beside the FAQ check above for the same
+    // stated reason: all three ask "does this owner-written value name
+    // something this server can actually find?".
+    //
+    // Narrowed through the registry's own schema, never a cast — same rule the
+    // FAQ branch follows.
+    if (section.kind === "quiz") {
+      const quizProps = quizSectionPropsSchema.parse(section.props) as QuizSectionProps
+      const entry = catalogues.quizzes.find((candidate) => candidate.id === quizProps.quizId)
+      if (!entry) {
+        unresolvedQuizzes.push({ sectionId: section.id, quizId: quizProps.quizId, reason: "missing" })
+      } else if (entry.status !== "active") {
+        unresolvedQuizzes.push({
+          sectionId: section.id,
+          quizId: quizProps.quizId,
+          reason: "not_active",
+          detail: entry.status,
+        })
+      } else if (entry.gateBlocker !== null) {
+        unresolvedQuizzes.push({
+          sectionId: section.id,
+          quizId: quizProps.quizId,
+          reason: "gate_failed",
+          detail: entry.gateBlocker,
         })
       }
     }
@@ -1238,6 +1331,7 @@ export function resolveDoc(
     danglingAnchors,
     brokenStepLinks,
     unknownFaqKeys,
+    unresolvedQuizzes,
     unsellableCheckouts,
     soldOutCheckouts,
   }
@@ -1350,10 +1444,25 @@ function describeBrokenStepLink(entry: BrokenStepLink): string {
  * it renders as nothing at all, so unlike the anchor there is no visible tell
  * for the owner to notice. See `UnknownFaqKey`.
  */
+function describeUnresolvedQuiz(entry: UnresolvedQuiz): string {
+  const where = `Section ${entry.sectionId}`
+  switch (entry.reason) {
+    case "missing":
+      return `${where}: no quiz with id ${entry.quizId} exists. Pick one in the block's settings.`
+    case "not_active":
+      return `${where}: quiz ${entry.quizId} is ${entry.detail}, not active. Activate it before publishing a page that uses it.`
+    case "gate_failed":
+      return `${where}: quiz ${entry.quizId} cannot score answers yet — ${entry.detail}`
+  }
+}
+
 export function publishGate(result: ResolveResult): PublishGate {
   const blockers = [
     ...result.unresolved.map(describeUnresolved),
     ...result.unknownFaqKeys.map(describeUnknownFaqKey),
+    // BLOCKS. A page that collects twelve answers it cannot score fails the
+    // visitor at the last step, after they have spent the three minutes.
+    ...result.unresolvedQuizzes.map(describeUnresolvedQuiz),
     // BLOCKS, unlike the dangling anchors below. A dead in-page anchor scrolls
     // nowhere on a page that is otherwise fine; a dead step link is a 404 on a
     // page the owner is paying to send traffic to.

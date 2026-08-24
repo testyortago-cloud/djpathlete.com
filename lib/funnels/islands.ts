@@ -1,7 +1,7 @@
 // lib/funnels/islands.ts — the island registry.
 //
 // A free-form canvas emits HTML, which cannot express anything interactive.
-// The six things funnel pages need to actually DO are "islands": the canvas
+// The seven things funnel pages need to actually DO are "islands": the canvas
 // drops a placeholder element carrying `data-djp-island` + `data-djp-props`,
 // the publish compiler validates those props against the schema here, and the
 // public renderer swaps in a real React component.
@@ -13,7 +13,7 @@
 import { z } from "zod"
 import { CTA_VARIANTS } from "@/lib/funnels/cta-class"
 
-export const ISLAND_NAMES = ["form", "checkout", "event", "booking", "testimonials", "faq"] as const
+export const ISLAND_NAMES = ["form", "checkout", "event", "booking", "testimonials", "faq", "quiz"] as const
 
 export type IslandName = (typeof ISLAND_NAMES)[number]
 
@@ -390,6 +390,30 @@ export const faqIslandSchema = z.object({
 })
 
 // ---------------------------------------------------------------------------
+// quiz
+// ---------------------------------------------------------------------------
+
+/**
+ * A scored, branching quiz.
+ *
+ * THE BLOCK HOLDS A POINTER, NOT A COPY. `quizId` references a row in
+ * `quizzes`; the questions, weights, bands and result copy all live in the
+ * database. That is what makes editing a weight take effect on every page
+ * showing the quiz, immediately, with no re-publish — and it is why a funnel
+ * cannot publish against a quiz that would fail its activation gate (see
+ * `unresolvedQuizzes` in the publish gate).
+ *
+ * There is deliberately no `questions` prop. Embedding them would make the
+ * published page a stale copy the editor could not reach.
+ */
+export const quizIslandSchema = z.object({
+  quizId: z.string().uuid(),
+  submitLabel: z.string().min(1).max(60).optional().default("See my result"),
+  /** Shown beside the details form the quiz gates its result behind. */
+  consentText: z.string().max(300).optional(),
+})
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -454,6 +478,16 @@ export const ISLANDS: Record<IslandName, IslandDef> = {
     description: "Pulls live from the faqs table for a chosen page key.",
     schema: faqIslandSchema,
     defaultProps: { pageKey: "", limit: 6 },
+  },
+  quiz: {
+    name: "quiz",
+    label: "Quiz",
+    description: "A scored, branching quiz. Sorts the visitor into an archetype and emails them a result.",
+    schema: quizIslandSchema,
+    // quizId is intentionally blank: there is no sensible default quiz, and a
+    // blank one fails the schema, so the block cannot be published until the
+    // owner has picked one. Failing at publish is the point.
+    defaultProps: { quizId: "", submitLabel: "See my result" },
   },
 }
 

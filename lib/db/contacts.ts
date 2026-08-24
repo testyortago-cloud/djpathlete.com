@@ -20,6 +20,10 @@ export type ContactEventSource =
   | "ai_chat"
   | "inquiry"
   | "purchase"
+  // NO MIGRATION NEEDED. `contact_timeline_events.source` is plain
+  // `text NOT NULL` with no CHECK constraint (00214_lead_engine_timeline.sql),
+  // so this union is the only place the set is enforced.
+  | "quiz"
 
 export type RecordContactEventInput = {
   email?: string | null

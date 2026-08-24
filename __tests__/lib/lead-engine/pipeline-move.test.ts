@@ -282,3 +282,61 @@ describe("stalenessOf", () => {
     expect(stalenessOf(noThresh, "2020-01-01T00:00:00Z", NOW)).toBe("fresh")
   })
 })
+
+// ---------------------------------------------------------------------------
+// quiz_result — a Red result is a deal, a Green one is a newsletter subscriber
+// ---------------------------------------------------------------------------
+//
+// Higher scores are better, so RED IS THE MOST URGENT: large gaps, worth a
+// conversation now. Green means well-prepared, which is a good outcome for the
+// athlete and not a deal for anyone — opening a card on it would fill the
+// board with people who do not need the service and bury the ones who do.
+//
+// Spec: docs/superpowers/specs/2026-08-23-athlete-quiz-funnel-design.md §5.3
+describe("decideMove — quiz_result", () => {
+  const quiz = (tier: string) => ({ kind: "quiz_result" as const, tier, occurredAt: NOW })
+
+  it("1. does nothing for green", () => {
+    expect(decideMove(ctx(), quiz("green"))).toEqual({ kind: "noop", reason: "quiz_tier_not_actionable" })
+  })
+
+  it("2. does nothing for yellow", () => {
+    expect(decideMove(ctx(), quiz("yellow"))).toEqual({ kind: "noop", reason: "quiz_tier_not_actionable" })
+  })
+
+  it("3. opens a card in the first open stage for red", () => {
+    expect(decideMove(ctx(), quiz("red"))).toEqual({
+      kind: "create",
+      toStageKey: "consult_booked",
+      trigger: "quiz",
+    })
+  })
+
+  it("3b. opens a card for orange too", () => {
+    expect(decideMove(ctx(), quiz("orange"))).toMatchObject({ kind: "create", trigger: "quiz" })
+  })
+
+  it("4. leaves an OPEN card alone — the quiz does not disturb a live deal", () => {
+    expect(decideMove(ctx({ current: openAt("consulted") }), quiz("red"))).toEqual({
+      kind: "noop",
+      reason: "already_open",
+    })
+  })
+
+  it("5. refuses inside the Lost suppression window, reusing the existing rule", () => {
+    const current = closedAt("lost", "manual", INSIDE_WINDOW.toISOString())
+    expect(decideMove(ctx({ current }), quiz("red"))).toEqual({
+      kind: "refuse",
+      reason: "suppressed_after_manual_lost",
+    })
+  })
+
+  it("6. opens a card once the suppression window has expired", () => {
+    const current = closedAt("lost", "manual", PAST_WINDOW.toISOString())
+    expect(decideMove(ctx({ current }), quiz("red"))).toMatchObject({ kind: "create", trigger: "quiz" })
+  })
+
+  it("treats an unknown tier as not actionable, rather than guessing", () => {
+    expect(decideMove(ctx(), quiz("chartreuse"))).toEqual({ kind: "noop", reason: "quiz_tier_not_actionable" })
+  })
+})

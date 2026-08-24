@@ -743,6 +743,30 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-faq .djp-faq-details > summary::after { c
 // ---------------------------------------------------------------------------
 
 export const FORM_CSS = `
+/* THE TEST-RUN PILL LIVES HERE, NOT IN QUIZ_CSS, AND THE DIFFERENCE IS REAL.
+   djp-test-run is emitted by FunnelForm.tsx -- the FORM island -- and
+   reassemble ships only the CSS of the kinds a document actually USES
+   (doc.ts: usedKinds.map(kind => SECTION_CSS[kind])). Parked under quiz, a
+   page with a form and no quiz emitted the class with no rule behind it: an
+   unstyled pill on a live page, with a green suite, because leadgen.test.ts
+   joins EVERY kind's CSS rather than the page's own.
+
+   That is precisely the failure the leadgen suite exists to catch, and its
+   header says this subsystem has already produced it three times. Caught in
+   review by a second pair of eyes, not by the test. */
+${ROOT} .djp-test-run {
+  display: inline-block;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--warning);
+  color: var(--foreground);
+  margin-bottom: 1rem;
+}
+
 ${ROOT} .djp-s-form { max-width: 34rem; }
 ${ROOT} .djp-s-form.djp-v-boxed {
   background: var(--surface);
@@ -1071,6 +1095,115 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-proof.djp-v-stats .djp-proof-item:first-c
 `.trim()
 
 /** One CSS string per kind — `doc.ts` pulls only the kinds a doc actually uses. */
+/**
+ * quiz — the wrapper the `quiz` island sits in, plus every class QuizRunner
+ * emits.
+ *
+ * Scoped `${ROOT} .djp-s-quiz …` like every other kind: the per-kind class is
+ * the scoping hook, and a rule that omits it leaks into the rest of the page.
+ *
+ * The runner's own classes are covered here because `leadgen.test.ts` asserts
+ * every `djp-` class an island component emits has a rule behind it. Markup
+ * with no stylesheet is perfectly valid and completely unstyled, which is how
+ * a live campaign page once shipped with browser-default form controls.
+ */
+export const QUIZ_CSS = `
+${ROOT} .djp-s-quiz .djp-quiz-head { margin-bottom: 1.5rem; }
+${ROOT} .djp-s-quiz .djp-quiz { max-width: 44rem; margin-inline: auto; text-align: left; }
+${ROOT} .djp-s-quiz .djp-quiz-progress {
+  height: 0.25rem;
+  border-radius: 999px;
+  background: var(--surface);
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+${ROOT} .djp-s-quiz .djp-quiz-progress-bar { height: 100%; background: var(--accent); transition: width 0.25s ease; }
+${ROOT} .djp-s-quiz .djp-quiz-step {
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  margin-bottom: 0.5rem;
+}
+${ROOT} .djp-s-quiz .djp-quiz-prompt {
+  font-size: 1.375rem;
+  line-height: 1.3;
+  margin: 0 0 1.25rem;
+  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+}
+${ROOT} .djp-s-quiz .djp-quiz-help { font-size: 0.9375rem; color: var(--muted-foreground); margin: -0.75rem 0 1.25rem; }
+${ROOT} .djp-s-quiz .djp-quiz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+${ROOT} .djp-s-quiz .djp-quiz-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--surface);
+  border-radius: var(--radius);
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+${ROOT} .djp-s-quiz .djp-quiz-option:hover { border-color: var(--accent); }
+${ROOT} .djp-s-quiz .djp-quiz-option[aria-pressed="true"] { border-color: var(--accent); background: var(--surface); }
+${ROOT} .djp-s-quiz .djp-quiz-nav { display: flex; gap: 0.75rem; align-items: center; }
+${ROOT} .djp-s-quiz .djp-quiz-back {
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--muted-foreground);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+${ROOT} .djp-s-quiz .djp-quiz-gate { display: flex; flex-direction: column; gap: 0.875rem; max-width: 26rem; }
+${ROOT} .djp-s-quiz .djp-quiz-field { display: flex; flex-direction: column; gap: 0.375rem; }
+${ROOT} .djp-s-quiz .djp-quiz-label { font-size: 0.875rem; font-weight: 600; }
+${ROOT} .djp-s-quiz .djp-quiz-input {
+  padding: 0.6875rem 0.875rem;
+  border: 1px solid var(--surface);
+  border-radius: var(--radius);
+  font: inherit;
+  background: var(--background);
+  color: inherit;
+}
+${ROOT} .djp-s-quiz .djp-quiz-consent {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--muted-foreground);
+}
+${ROOT} .djp-s-quiz .djp-quiz-error { font-size: 0.875rem; color: var(--error); }
+${ROOT} .djp-s-quiz .djp-quiz-result { text-align: left; }
+${ROOT} .djp-s-quiz .djp-quiz-tier {
+  display: inline-block;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--surface);
+  margin-bottom: 0.75rem;
+}
+${ROOT} .djp-s-quiz .djp-quiz-score { font-size: 3rem; line-height: 1; font-weight: 800; margin: 0 0 0.25rem; }
+${ROOT} .djp-s-quiz .djp-quiz-scale { font-size: 0.8125rem; color: var(--muted-foreground); margin: 0 0 1.25rem; }
+${ROOT} .djp-s-quiz .djp-quiz-profile { padding: 1rem; border-radius: var(--radius); background: var(--surface); margin: 1.25rem 0; }
+${ROOT} .djp-s-quiz .djp-quiz-profile-name { font-weight: 700; margin: 0 0 0.25rem; }
+${ROOT} .djp-s-quiz .djp-quiz-profile-body { margin: 0; color: var(--muted-foreground); }
+`.trim()
+
 export const SECTION_CSS: Record<SectionKind, string> = {
   hero: HERO_CSS,
   proof: PROOF_CSS,
@@ -1080,6 +1213,7 @@ export const SECTION_CSS: Record<SectionKind, string> = {
   pricing: PRICING_CSS,
   faq: FAQ_CSS,
   form: FORM_CSS,
+  quiz: QUIZ_CSS,
   cta: CTA_CSS,
   footer: FOOTER_CSS,
 }

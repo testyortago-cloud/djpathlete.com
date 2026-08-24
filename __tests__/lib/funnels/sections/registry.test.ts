@@ -598,8 +598,10 @@ describe("SECTION_REGISTRY", () => {
     // The literal count is still pinned rather than derived: this assertion's
     // job is to make ADDING a kind a deliberate, reviewed act — a kind that
     // appears without anyone touching this line is a kind nobody decided on.
-    // It went 9 -> 10 when `proof` was added.
-    expect(SECTION_KINDS.length).toBe(10)
+    // It went 9 -> 10 when `proof` was added, and 10 -> 11 when `quiz` was:
+    // the kind that puts the scored Athlete Quiz island on a page. An island
+    // with no section kind emitting it can never appear on a page at all.
+    expect(SECTION_KINDS.length).toBe(11)
   })
 
   it("does not register a nav kind (landing pages remove exits, not add them)", () => {
@@ -626,6 +628,7 @@ const MINIMAL_VALID_PROPS: Record<SectionKind, Record<string, unknown>> = {
   pricing: { plans: [{ name: "Starter", price: "$99", features: ["x"], cta: labeledUrlCta }] },
   faq: { source: "live", pageKey: "home" },
   form: { formKey: "optin", fields: [{ name: "email", label: "Email", type: "email" }] },
+  quiz: { quizId: "f15ef258-3f0a-494b-a8c9-deb2de7b2aa9" },
   cta: { headline: "Ready?", cta: labeledBookingCta },
   footer: { businessName: "DJP", lines: [], links: [] },
   proof: { items: [{ value: "12 years", label: "coaching" }, { value: "500+", label: "athletes trained" }] },

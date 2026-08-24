@@ -32,6 +32,7 @@ import {
   buildTurnMessage,
   buildResultSchema,
   type BuilderCatalogueInput,
+  NOT_OFFERED_TO_THE_BUILDER,
 } from "@/lib/funnels/sections/prompt"
 import {
   SECTION_BUILDER_HISTORY_TURNS,
@@ -338,13 +339,36 @@ describe("Block A is built once, at module load", () => {
 // ---------------------------------------------------------------------------
 
 describe("every registry entry reaches the prompt", () => {
-  it.each(SECTION_KINDS)("kind %s is described", (kind) => {
+  // ...EXCEPT the ones deliberately withheld. `quiz` is the only member today:
+  // its required prop is a uuid naming a row that must already exist, which
+  // only the owner can supply, and the publish gate refuses a page whose quiz
+  // is missing or cannot score — so every quiz section the model could write
+  // is a page that cannot publish, and a rejected batch fails the owner's
+  // whole turn.
+  //
+  // The list is IMPORTED, not restated: a kind quietly dropped from the prompt
+  // must fail one of these, and it only stops failing when someone adds it to
+  // the exported set on purpose.
+  const OFFERED = SECTION_KINDS.filter((k) => !NOT_OFFERED_TO_THE_BUILDER.has(k))
+
+  it("withholds only kinds the model could not author correctly", () => {
+    expect([...NOT_OFFERED_TO_THE_BUILDER]).toEqual(["quiz"])
+    // And the withheld one is genuinely absent, not merely unlisted.
+    expect(SECTION_BUILDER_BLOCK_A).not.toContain("### quiz")
+    expect(SECTION_BUILDER_BLOCK_A).not.toContain("- quiz (Quiz)")
+  })
+
+  it("counts the kinds it offers, not the kinds that exist", () => {
+    expect(SECTION_BUILDER_BLOCK_A).toContain(`## The ${OFFERED.length} section kinds`)
+  })
+
+  it.each(OFFERED)("kind %s is described", (kind) => {
     const def = SECTION_REGISTRY[kind]
     expect(SECTION_BUILDER_BLOCK_A).toContain(`### ${kind}`)
     expect(SECTION_BUILDER_BLOCK_A).toContain(def.description)
   })
 
-  it.each(SECTION_KINDS)("every variant of %s is offered UNDER THAT KIND'S OWN ENTRY", (kind) => {
+  it.each(OFFERED)("every variant of %s is offered UNDER THAT KIND'S OWN ENTRY", (kind) => {
     // A kind whose variants were dropped reads as "pick anything" and the
     // model invents one, which `z.enum` then rejects — killing the batch.
     //
@@ -359,7 +383,7 @@ describe("every registry entry reaches the prompt", () => {
     }
   })
 
-  it.each(ISLAND_LIST.map((island) => [island.name, island] as const))(
+  it.each(ISLAND_LIST.filter((i) => !NOT_OFFERED_TO_THE_BUILDER.has(i.name)).map((island) => [island.name, island] as const))(
     "island %s is named IN the islands block",
     (_name, island) => {
       // Fix round 1, M3: the first spelling was `toContain(name)` over the

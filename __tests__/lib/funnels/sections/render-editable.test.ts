@@ -160,10 +160,25 @@ const FIXTURES: Record<(typeof SECTION_KINDS)[number], Section> = {
       legal: "All rights reserved.",
     },
   },
+  quiz: {
+    id: "qz1",
+    kind: "quiz",
+    variant: "boxed",
+    style: {},
+    props: {
+      heading: "Find what is limiting you",
+      sub: "Three minutes, and you get a readout.",
+      quizId: "f15ef258-3f0a-494b-a8c9-deb2de7b2aa9",
+      submitLabel: "See my result",
+    },
+  },
 }
 
 /** Every path the inspector and inline editing must be able to reach. */
 const TEXT_PATHS: Record<(typeof SECTION_KINDS)[number], string[]> = {
+  // The quiz section owns only its heading copy. The questions live in the
+  // database behind `quizId`, so there is no authored text to anchor there.
+  quiz: ["heading", "sub"],
   hero: ["eyebrow", "headline", "sub", "primaryCta.label", "secondaryCta.label"],
   proof: ["heading", "items.0.value", "items.0.label", "items.1.value", "items.1.label"],
   bullets: ["heading", "intro", "items.0.title", "items.0.body", "items.1.title"],

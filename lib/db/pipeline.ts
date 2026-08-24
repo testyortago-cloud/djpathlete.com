@@ -354,7 +354,7 @@ async function hasMatchingStageEventMetadata(
  * later, legitimate card. Refund idempotency is `highestRecordedRefundAmount`'s
  * job and stays there.
  */
-const SOURCE_EVENT_ID_KEYS = ["stripe_session_id", "booking_id", "payment_id"] as const
+const SOURCE_EVENT_ID_KEYS = ["stripe_session_id", "booking_id", "payment_id", "quiz_attempt_id"] as const
 
 function deriveSourceEventId(metadata: Record<string, unknown> | undefined): string | null {
   if (!metadata) return null

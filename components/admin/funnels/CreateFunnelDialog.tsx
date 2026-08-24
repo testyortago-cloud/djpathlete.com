@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dialog"
 import { slugify } from "@/lib/funnels/slug"
 import { FUNNEL_TEMPLATES, getTemplate, type FunnelTemplate } from "@/lib/funnels/templates"
+import { BUILTIN_QUIZ_SOURCE, BUILTIN_QUIZ_LABEL } from "@/lib/quizzes/sources"
 import { RESERVED_FUNNEL_SLUGS, FUNNEL_SLUG_PATTERN } from "@/lib/validators/funnel"
 import type { CreatePlan } from "@/lib/funnels/ai-plan"
 import { StepPlanEditor, stepPlanErrors, type PlannedStep } from "./StepPlanEditor"
@@ -80,12 +81,32 @@ export function CreateFunnelDialog({
   const [autoOffline, setAutoOffline] = useState(false)
   const [notify, setNotify] = useState("")
   const [offers, setOffers] = useState<Offer[]>([])
+  const [quizSource, setQuizSource] = useState<string>(BUILTIN_QUIZ_SOURCE)
+  const [quizzes, setQuizzes] = useState<{ id: string; name: string }[]>([])
   const [offersError, setOffersError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
 
   const template = getTemplate(templateId) ?? DEFAULT_TEMPLATE
-  const asks = (ask: "audience" | "offer" | "dates" | "notify") =>
+  const asks = (ask: "audience" | "offer" | "dates" | "notify" | "quiz") =>
     (template.asks as readonly string[]).includes(ask)
+
+  const asksQuiz = asks("quiz")
+
+  /**
+   * THE BUILT-IN IS ALWAYS FIRST, and it is not one of the fetched rows.
+   *
+   * Building this list from the fetched quizzes alone would leave the picker
+   * empty on any database that has no quizzes — which is every database before
+   * the seed script has been run — and "Run a quiz" would be a template nobody
+   * could use until they opened a terminal.
+   */
+  const quizSources = useMemo(
+    () => [
+      { value: BUILTIN_QUIZ_SOURCE, label: BUILTIN_QUIZ_LABEL },
+      ...quizzes.map((quiz) => ({ value: quiz.id, label: `Copy of ${quiz.name}` })),
+    ],
+    [quizzes],
+  )
 
   const effectiveSlug = slugTouched ? slug : slugify(name)
 
@@ -128,6 +149,33 @@ export function CreateFunnelDialog({
       cancelled = true
     }
   }, [open, template.offerKind])
+
+  // The quiz list, and ONLY for a template that asks — same rule as the offer
+  // picker above. A `leads` funnel must not spend a request on a control it
+  // will not render.
+  //
+  // A FAILED FETCH IS NOT FATAL HERE, because the built-in is not in this list:
+  // it is a sentinel the picker always offers, so the control still works and
+  // the owner can still create a quiz funnel from the original.
+  useEffect(() => {
+    if (!open || !asksQuiz) {
+      setQuizzes([])
+      return
+    }
+    let cancelled = false
+    fetch("/api/admin/quizzes")
+      .then(async (response) => {
+        const body = (await response.json()) as { quizzes?: { id: string; name: string }[] }
+        if (cancelled) return
+        setQuizzes(response.ok && body.quizzes ? body.quizzes : [])
+      })
+      .catch(() => {
+        if (!cancelled) setQuizzes([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, asksQuiz])
 
   function selectTemplate(next: FunnelTemplate) {
     setTemplateId(next.value)
@@ -258,11 +306,16 @@ export function CreateFunnelDialog({
           ...(asks("dates") && asInstant(endsAt) ? { ends_at: asInstant(endsAt) } : {}),
           ...(asks("dates") && autoOffline ? { auto_offline_at_end: true } : {}),
           ...(asks("notify") && recipients.length ? { notify_emails: recipients } : {}),
+          // Sent ONLY when the template asks. The server refuses a quiz on a
+          // template that has none, and refuses the quiz template without one.
+          ...(asksQuiz ? { quiz: { copyFrom: quizSource } } : {}),
         }),
       })
       const body = (await response.json()) as {
         funnel?: { id: string }
         entryStepId?: string
+        /** Present only for the quiz template. See below. */
+        quizId?: string
         error?: string
       }
       if (!response.ok || !body.funnel) {
@@ -279,7 +332,14 @@ export function CreateFunnelDialog({
       // sequence was; with a template they have, and the list would only show
       // them what they just typed. Steps 2..N draft themselves when opened.
       router.push(
-        body.entryStepId
+        // A QUIZ FUNNEL GOES TO THE QUIZ, NOT THE PAGE BUILDER. Its page is
+        // already written — hero, quiz, footer — so the builder has nothing to
+        // do that matters, while every question on it is still somebody else's
+        // words. (`?start=1` would be harmless either way: the auto-draft guard
+        // is `draft.doc === null`, and this step has a document.)
+        body.quizId
+          ? `/admin/funnels/quizzes/${body.quizId}`
+          : body.entryStepId
           ? `/admin/funnels/${body.funnel.id}/edit/${body.entryStepId}?start=1`
           : `/admin/funnels/${body.funnel.id}`,
       )
@@ -415,6 +475,28 @@ export function CreateFunnelDialog({
             </div>
           ) : null}
 
+          {asksQuiz ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="funnel-quiz">Copy questions from</Label>
+              <select
+                id="funnel-quiz"
+                value={quizSource}
+                onChange={(event) => setQuizSource(event.target.value)}
+                className="h-9 w-full rounded-md border border-border bg-transparent px-3 text-sm"
+              >
+                {quizSources.map((source) => (
+                  <option key={source.value} value={source.value}>
+                    {source.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Your new quiz starts as a copy of this one. You can change every question, answer and
+                score afterwards — the original is left alone.
+              </p>
+            </div>
+          ) : null}
+
           {asks("dates") ? (
             <div className="space-y-1.5">
               <div className="grid grid-cols-2 gap-2">
@@ -490,13 +572,21 @@ export function CreateFunnelDialog({
               id="funnel-description"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="Registration flow for the summer camp: signup, payment, confirmation."
+              placeholder={
+                asksQuiz
+                  ? "A short check for rotational athletes: how the body moves through a turn, not training history."
+                  : "Registration flow for the summer camp: signup, payment, confirmation."
+              }
               rows={3}
               maxLength={500}
             />
             <p className="text-xs text-muted-foreground">
-              Optional. Used to write the first draft of every step, so the more you say the closer
-              they land.
+              {asksQuiz
+                ? // A QUIZ FUNNEL'S PAGE IS WRITTEN AT CREATION, so the usual sentence — "used to
+                  // write the first draft of every step" — is simply false here. Saying it anyway
+                  // teaches the owner that this field does something it does not.
+                  "Optional. A note to yourself about who this quiz is for. The page is already written, so nothing is drafted from it."
+                : "Optional. Used to write the first draft of every step, so the more you say the closer they land."}
             </p>
           </div>
         </div>

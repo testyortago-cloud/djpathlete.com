@@ -1802,6 +1802,92 @@ export async function sendChatEscalationEmail({
   return { delivered: true }
 }
 
+/**
+ * Tells the operator a Red or Orange quiz result just came in.
+ *
+ * IT REPORTS WHETHER IT DELIVERED, for the same reason
+ * `sendChatEscalationEmail` above does: the Resend wrapper at the top of this
+ * file returns a SUCCESS shape when `RESEND_API_KEY` is missing, so "no
+ * exception" is not "somebody was told". The caller writes that flag onto the
+ * attempt, and the admin surface shows the honest state — an attempt marked
+ * `sent` when nothing left the building is worse than one marked `failed`,
+ * because nobody goes looking for it.
+ *
+ * Every visitor-typed string goes through `escapeHtml`.
+ */
+export async function sendQuizAlertEmail({
+  to,
+  name,
+  email,
+  phone,
+  score,
+  tierKey,
+  tierHeadline,
+  branchName,
+  profileName,
+  attemptId,
+}: {
+  to: string
+  name: string
+  email: string
+  phone?: string | null
+  score: number
+  tierKey: string
+  tierHeadline: string
+  branchName: string | null
+  profileName: string | null
+  attemptId: string
+}): Promise<{ delivered: boolean }> {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn(`[email] RESEND_API_KEY not set — skipping quiz alert for attempt ${attemptId}`)
+    return { delivered: false }
+  }
+
+  const html = emailLayout(`
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="padding:48px 48px 52px;">
+
+          ${sectionLabel("Athlete Quiz")}
+
+          <p style="margin:0 0 8px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#0E3F50;">
+            ${escapeHtml(name)} scored ${score} out of 100
+          </p>
+
+          <p style="margin:0 0 28px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:15px; color:#5c5750; line-height:1.8;">
+            ${escapeHtml(tierHeadline)}. Lower scores mean larger gaps, so this one is worth a conversation soon.
+          </p>
+
+          ${infoCard([
+            { label: "Name", value: escapeHtml(name) },
+            { label: "Email", value: escapeHtml(email) },
+            { label: "Mobile", value: phone ? escapeHtml(phone) : "not given" },
+            { label: "Result", value: `${escapeHtml(tierKey)} — ${score}/100` },
+            { label: "Archetype", value: branchName ? escapeHtml(branchName) : "not sorted" },
+            { label: "Profile", value: profileName ? escapeHtml(profileName) : "none" },
+            { label: "Attempt", value: escapeHtml(attemptId) },
+          ])}
+
+        </td>
+      </tr>
+    </table>
+  `)
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to,
+    subject: `[Quiz] ${name} scored ${score}/100 — ${tierKey}`,
+    html,
+  })
+
+  if (error) {
+    console.error("Failed to send quiz alert email:", { message: error.message })
+    return { delivered: false }
+  }
+
+  return { delivered: true }
+}
+
 const PRIORITY_STYLES: Record<LeadAnalysisResult["priority"], { bg: string; color: string; label: string }> = {
   high: { bg: "#dcfce7", color: "#166534", label: "High Priority" },
   medium: { bg: "#fef3c7", color: "#92400e", label: "Medium Priority" },

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiz funnel creator — review sheet</title>
+<style>
+  :root { --ink:#12303a; --muted:#5b6b73; --line:#dfe5e8; --accent:#c2703c; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:0 0 6rem; font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--ink); background:#fbfbfa; }
+  header { padding:3rem 2rem 1.5rem; max-width:1100px; margin:0 auto; }
+  h1 { font-size:1.9rem; margin:0 0 .4rem; letter-spacing:-.01em; }
+  .sub { color:var(--muted); margin:0 0 1.4rem; }
+  .note { max-width:1100px; margin:0 auto 2rem; padding:1rem 1.2rem; border-left:3px solid var(--accent); background:#fff; }
+  .note p { margin:.4rem 0; }
+  main { max-width:1100px; margin:0 auto; padding:0 2rem; }
+  figure { margin:0 0 3.5rem; }
+  figcaption { padding:.9rem 0 1rem; border-bottom:1px solid var(--line); }
+  .n { display:inline-block; min-width:1.6rem; font-weight:700; color:var(--accent); }
+  .t { font-weight:600; }
+  .where { color:var(--muted); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.85rem; }
+  img { width:100%; height:auto; display:block; border:1px solid var(--line); background:#fff; }
+  ul { margin:.5rem 0 0; padding-left:1.2rem; color:var(--muted); }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.85em; background:#eef2f4; padding:.1em .35em; border-radius:3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Creating a quiz funnel — review sheet</h1>
+  <p class="sub">Branch <code>feat/quiz-funnel-creator</code> · captured against the dev clone on 2026-08-24</p>
+</header>
+
+<div class="note">
+  <p><strong>Every screen was reached by driving the product.</strong> Nothing here was seeded, hand-written, or mounted in a preview harness. The funnel was made through the create dialog, the quiz is the clone that creation produced, the page was published through the builder, and the attempt behind the retirement is a real walk of <code>/go/&lt;slug&gt;</code>.</p>
+  <p>Re-run with <code>npx tsx scripts/capture-quiz-funnel-creator.ts .env.local</code> (dev server on 3050). The script refuses any project that is not the dev clone, and it asserts the funnel actually went live rather than photographing whatever is on screen — the first run of it produced a beautifully annotated 404.</p>
+  <p><strong>Light only.</strong> <code>.dark</code> is a class variant the admin components were never built against; there is no toggle and no second rendering to photograph.</p>
+</div>
+
+<main>
+  <figure>
+    <img src="01-create-dialog.png" alt="The New funnel dialog with Run a quiz selected and the Copy questions from picker showing">
+    <figcaption>
+      <span class="n">1.</span> <span class="t">Making a quiz funnel is picking a template</span><br>
+      <span class="where">/admin/funnels · New funnel</span>
+      <ul>
+        <li>“Run a quiz” sits alongside the other six kinds of funnel.</li>
+        <li>“Copy questions from” is the only extra field. It always offers the built-in original, so this works on a database with no quizzes at all.</li>
+        <li>One step, not three — the questions, the details form and the result are all parts of the single page.</li>
+      </ul>
+    </figcaption>
+  </figure>
+
+  <figure>
+    <img src="02-cloned-questions.png" alt="The quiz editor showing the cloned questions, four branch tabs and the reconstructed-scoring banner">
+    <figcaption>
+      <span class="n">2.</span> <span class="t">It lands on the questions, and they are already there</span><br>
+      <span class="where">/admin/funnels/quizzes/&lt;id&gt;</span>
+      <ul>
+        <li>The whole structure came across: the router, four groups, 33 questions, 131 answers.</li>
+        <li>Every routed answer points at <em>this</em> quiz's groups. Verified in the database as well as on screen.</li>
+        <li>The reconstructed-scoring banner is inherited deliberately — the copy carries the invented weights, so it carries the warning.</li>
+      </ul>
+    </figcaption>
+  </figure>
+
+  <figure>
+    <img src="03-question-added.png" alt="A newly added question showing the not-live-yet label, two placeholder options and a Turn it on button">
+    <figcaption>
+      <span class="n">3.</span> <span class="t">A new question starts switched off</span><br>
+      <span class="where">/admin/funnels/quizzes/&lt;id&gt;</span>
+      <ul>
+        <li>“Question 7 — not live yet”. Nobody taking the quiz sees it until it is turned on, so a half-written question cannot reach somebody part-way through.</li>
+        <li>It arrives with two answers, matching the gate's own floor for a live question.</li>
+        <li>Adding and removing questions is the new half of this work; the editor could previously only reword what was already there.</li>
+      </ul>
+    </figcaption>
+  </figure>
+
+  <figure>
+    <img src="04-public-page.png" alt="The published funnel at its public URL, running the cloned quiz">
+    <figcaption>
+      <span class="n">4.</span> <span class="t">The funnel, at its real address, running the copied quiz</span><br>
+      <span class="where">/go/&lt;slug&gt; · public</span>
+      <ul>
+        <li>The page creation wrote — hero, quiz, footer — published through the builder's own Publish.</li>
+        <li>Editing a question changes this page immediately. The funnel block references the quiz by id, so there is nothing to re-publish.</li>
+      </ul>
+    </figcaption>
+  </figure>
+
+  <figure>
+    <img src="05-quiz-walk.png" alt="A visitor answering the first question of the published quiz">
+    <figcaption>
+      <span class="n">5.</span> <span class="t">Somebody takes it, and their answers are saved as they go</span><br>
+      <span class="where">/go/&lt;slug&gt; · public</span>
+      <ul>
+        <li>This is a real attempt against the real route — it is what makes the refusal and the retirement below genuine rather than staged.</li>
+      </ul>
+    </figcaption>
+  </figure>
+
+  <figure>
+    <img src="06-answered-option-refused.png" alt="The editor refusing to delete an answer somebody has already picked">
+    <figcaption>
+      <span class="n">6.</span> <span class="t">An answer somebody has already picked cannot just vanish</span><br>
+      <span class="where">/admin/funnels/quizzes/&lt;id&gt;</span>
+      <ul>
+        <li>Their result was worked out from this answer. Removing it would leave a report unable to say what they chose.</li>
+        <li>The save is refused before anything is written, so no other edit in the same sitting is half-applied.</li>
+      </ul>
+    </figcaption>
+  </figure>
+
+  <figure>
+    <img src="07-retired.png" alt="The editor reporting that a question was retired rather than removed">
+    <figcaption>
+      <span class="n">7.</span> <span class="t">Remove the whole question and it is retired instead</span><br>
+      <span class="where">/admin/funnels/quizzes/&lt;id&gt;</span>
+      <ul>
+        <li>Nobody taking the quiz is shown it any more, and the results people already got are kept exactly as they were.</li>
+        <li>A question nobody has answered is deleted outright — the rule only protects what somebody actually chose.</li>
+      </ul>
+    </figcaption>
+  </figure>
+
+  <figure>
+    <img src="08-retired-group.png" alt="The retired group at the foot of the questions tab, with a Bring it back button">
+    <figcaption>
+      <span class="n">8.</span> <span class="t">Retired questions keep their wording, and can come back</span><br>
+      <span class="where">/admin/funnels/quizzes/&lt;id&gt;</span>
+      <ul>
+        <li>Kept out of the way rather than deleted, so reports can still say what was asked.</li>
+        <li>This group is the reason the editor needed a read of its own: the public one filters inactive questions out, so a retirement would otherwise be invisible to the person who made it.</li>
+      </ul>
+    </figcaption>
+  </figure>
+</main>
+</body>
+</html>
