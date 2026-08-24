@@ -10,13 +10,15 @@
 // ORDER OF WRITES, AND IT MATTERS (spec §4.3):
 //   1. score (pure, no I/O)
 //   2. complete the attempt row
-//   3. recordContactEvent — creates/merges the contact, writes the timeline
+//   3. createSubmission — the lead on the funnel, so a completion appears
+//      under that funnel's Leads beside its form fills
+//   4. recordContactEvent — creates/merges the contact, writes the timeline
 //      row, and calls enrollIfTriggered itself
-//   4. recordConsent, if a tick was shown and ticked
-//   5. pipeline + operator alert, both non-fatally
-//   6. return the result
+//   5. recordConsent, if a tick was shown and ticked
+//   6. pipeline + operator alert, both non-fatally
+//   7. return the result
 //
-// THE VISITOR'S RESULT IS RETURNED EVEN IF 3-5 THROW. They answered twelve
+// THE VISITOR'S RESULT IS RETURNED EVEN IF 3-6 THROW. They answered twelve
 // questions; a failure in our marketing plumbing is not their problem.
 //
 // NEVER LOG A RAW POSTGREST ERROR. `error.details` embeds the literal email
@@ -29,6 +31,10 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { completeAttempt, getAttempt, getQuizDefinition, setAttemptAlert } from "@/lib/db/quizzes"
+import { createSubmission } from "@/lib/db/funnels"
+import { quizAnswerPayload } from "@/lib/quizzes/answer-payload"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
+import { recordAudit } from "@/lib/audit/record"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { sendQuizAlert, shouldAlert } from "@/lib/quizzes/alert"
 import { recordContactEvent } from "@/lib/db/contacts"
@@ -78,6 +84,17 @@ const bodySchema = z.object({
   website: z.string().optional(),
   elapsedMs: z.number().optional(),
   attributionSessionId: z.string().max(120).nullish(),
+  /**
+   * WHERE THE QUIZ WAS TAKEN. `FunnelRenderContext` has carried these to every
+   * island since the registry existed; `QuizIsland` passes them to the runner
+   * and the runner posts them.
+   *
+   * BOTH OPTIONAL. A quiz island can stand on a page that is not a funnel
+   * step, and a page published before this shipped posts neither. Absent means
+   * no submission is written -- see the handoff.
+   */
+  funnelId: z.string().uuid().optional(),
+  stepId: z.string().uuid().optional(),
 })
 
 export async function POST(request: Request) {
@@ -158,6 +175,70 @@ async function handoff(input: {
   const { body, definition, result, ip, request } = input
   const correlation = { attemptId: body.attemptId, quizId: body.quizId }
 
+  // ONE ANSWER TO "WHICH VISIT WAS THIS", shared by the lead and the contact
+  // below. The client may send it explicitly; otherwise it is read from the
+  // same cookie /api/funnels/submit reads, so a quiz taken on a funnel page
+  // joins first-touch reporting exactly as a form fill on that page does.
+  const sessionId = body.attributionSessionId ?? parseAttrCookie(request.headers.get("cookie")) ?? null
+
+  // 3. THE LEAD ON THE FUNNEL.
+  //
+  // The Leads screen reads `funnel_submissions`, and until this existed a
+  // finished quiz wrote a contact, a consent row, a timeline event and a
+  // pipeline card but no submission -- so somebody who answered every question
+  // never appeared under the funnel that asked them.
+  //
+  // FIRST IN THE HANDOFF, and individually guarded like everything else here:
+  // the lead is the thing this route exists to capture, and it should not be
+  // lost because the contact spine or the mailer had a bad minute.
+  //
+  // NO FUNNEL, NO ROW. `funnel_submissions.funnel_id` is NOT NULL and there is
+  // no honest value to invent for a quiz that was not taken on a funnel page.
+  //
+  // `lead_user_id` STAYS NULL, and is not passed at all. The form path mints a
+  // `users` row with status 'lead'; the quiz feeds the newer contact spine
+  // through `recordContactEvent` below. Minting a second identity from a
+  // second path is a merge problem, not a feature.
+  if (body.funnelId && body.stepId) {
+    try {
+      await createSubmission({
+        funnel_id: body.funnelId,
+        step_id: body.stepId,
+        // WHICH quiz, in the column that answers "which form". As far as the
+        // inbox is concerned the quiz IS the form on that page; `kind` is what
+        // says it was a quiz rather than one.
+        form_key: definition.key,
+        kind: "quiz",
+        quiz_attempt_id: body.attemptId,
+        name: body.name,
+        email: body.email,
+        phone: body.phone ?? null,
+        // WHAT THEY WERE ASKED AND WHAT THEY PICKED. Not the score: that is on
+        // the attempt this row points at, and 00204 defines `payload` as the
+        // visitor's own answers.
+        payload: quizAnswerPayload(definition, input.answers),
+        attribution_session_id: sessionId,
+        ip_address: ip === "unknown" ? null : ip,
+        user_agent: request.headers.get("user-agent"),
+      })
+      recordAudit({
+        action: "funnel.submission_received",
+        category: "marketing",
+        actor: { id: null, email: body.email, role: "anonymous" },
+        metadata: { funnel_id: body.funnelId, form_key: definition.key, kind: "quiz" },
+      })
+    } catch (error) {
+      // A DUPLICATE IS NOT A FAILURE. The partial unique index on
+      // `quiz_attempt_id` is what makes one completion one lead, so a
+      // resubmitted attempt reaching it means the row is already there.
+      if ((error as { code?: string }).code === "23505") {
+        console.info("[quiz/submit] lead already recorded for this attempt", correlation)
+      } else {
+        logFailure("createSubmission", error, correlation)
+      }
+    }
+  }
+
   let contactId: string | null = null
   try {
     const contact = await recordContactEvent({
@@ -165,7 +246,7 @@ async function handoff(input: {
       phone: body.phone ?? null,
       name: body.name,
       source: "quiz",
-      attributionSessionId: body.attributionSessionId ?? null,
+      attributionSessionId: sessionId,
       // The shape four sequences filter on. `branch` is the contract — see
       // quiz_branches.key — so renaming it silently stops enrolment.
       metadata: {
