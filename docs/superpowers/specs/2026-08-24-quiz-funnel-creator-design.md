@@ -292,6 +292,26 @@ scanning it in JS. That is a full read of one column for one quiz, which is
 cheap at today's volumes and honest about being O(attempts); a jsonb GIN index
 is the fix the day it stops being.
 
+### The editor needs its own read
+
+**Found while planning, and it silently defeats both halves above.**
+`getQuizDefinition` filters out inactive questions — the `.filter((row) =>
+row.is_active !== false)` inside `assemble`. The editor page reads through it.
+So a question added inactive vanishes on reload, and a question retired by the
+rule above vanishes with no way back. Neither failure says anything.
+
+So `lib/db/quizzes.ts` gains `getQuizDefinitionForEditor`, identical except
+that it keeps inactive questions, and the editor page and the PATCH route's
+response read through it. `getQuizDefinition` is left exactly as it is: its
+filter is what stops the public walk offering a retired question, and that is a
+safety property, not an inconvenience.
+
+**Named, not parameterised.** An options bag on the existing function would let
+a caller on the public path reach inactive questions by forgetting an argument.
+
+`quizGate` does its own `isActive` filtering, so handing it the wider
+definition changes no verdict.
+
 ### Adding
 
 - **A question** is appended at `max(position) + 1` globally (positions are
