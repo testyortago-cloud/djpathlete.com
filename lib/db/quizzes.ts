@@ -24,6 +24,7 @@ import type {
   QuizOption,
   QuizProfile,
   QuizQuestion,
+  QuizStatus,
   QuizTier,
 } from "@/lib/quizzes/types"
 
@@ -202,6 +203,128 @@ export async function listQuizzes(): Promise<QuizListRow[]> {
     seedMarker: strOrNull(row.seed_marker),
     updatedAt: strOrNull(row.updated_at),
   }))
+}
+
+export interface QuizSaveInput {
+  quizId: string
+  quiz?: {
+    name?: string
+    status?: QuizStatus
+    introHeadline?: string
+    introBody?: string
+    gateHeadline?: string
+    gateBody?: string
+    resultHeadline?: string
+    /** Set null to clear the "reconstructed, unverified" banner. */
+    seedMarker?: string | null
+  }
+  questions?: { id: string; position?: number; prompt?: string; helpText?: string | null; isActive?: boolean }[]
+  options?: { id: string; label?: string; weight?: number; routesToBranchId?: string | null; profileId?: string | null }[]
+  tiers?: { id: string; minScore?: number; maxScore?: number; headline?: string; body?: string; ctaLabel?: string | null; ctaHref?: string | null }[]
+  profiles?: { id: string; name?: string; description?: string; position?: number }[]
+  branches?: { id: string; name?: string; description?: string | null; position?: number }[]
+}
+
+/**
+ * Applies an editor save.
+ *
+ * UPDATES ONLY — no inserts, no deletes. The editor edits an existing quiz;
+ * adding and removing questions is a bigger piece of work with its own
+ * ordering and orphan questions, and a half-built version of it here would
+ * let a save silently drop an option a live page is already showing.
+ *
+ * Every child update is scoped by BOTH its own id and its parent, so a
+ * payload naming a row from another quiz writes nothing rather than editing
+ * someone else's page.
+ */
+export async function saveQuizDefinition(input: QuizSaveInput): Promise<void> {
+  const supabase = getClient()
+  const { quizId } = input
+
+  if (input.quiz && Object.keys(input.quiz).length > 0) {
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+    const q = input.quiz
+    if (q.name !== undefined) patch.name = q.name
+    if (q.status !== undefined) patch.status = q.status
+    if (q.introHeadline !== undefined) patch.intro_headline = q.introHeadline
+    if (q.introBody !== undefined) patch.intro_body = q.introBody
+    if (q.gateHeadline !== undefined) patch.gate_headline = q.gateHeadline
+    if (q.gateBody !== undefined) patch.gate_body = q.gateBody
+    if (q.resultHeadline !== undefined) patch.result_headline = q.resultHeadline
+    if (q.seedMarker !== undefined) patch.seed_marker = q.seedMarker
+    const { error } = await supabase
+      .from("quizzes")
+      .update(patch)
+      .eq("id", quizId)
+      .eq("business_id", SINGLETON_BUSINESS_ID)
+    if (error) throw error
+  }
+
+  for (const question of input.questions ?? []) {
+    const patch: Record<string, unknown> = {}
+    if (question.position !== undefined) patch.position = question.position
+    if (question.prompt !== undefined) patch.prompt = question.prompt
+    if (question.helpText !== undefined) patch.help_text = question.helpText
+    if (question.isActive !== undefined) patch.is_active = question.isActive
+    if (Object.keys(patch).length === 0) continue
+    const { error } = await supabase.from("quiz_questions").update(patch).eq("id", question.id).eq("quiz_id", quizId)
+    if (error) throw error
+  }
+
+  if ((input.options ?? []).length > 0) {
+    // Options hang off questions, not the quiz, so the ownership check is a
+    // read of this quiz's question ids rather than a column on the row.
+    const { data: owned, error: readError } = await supabase.from("quiz_questions").select("id").eq("quiz_id", quizId)
+    if (readError) throw readError
+    const ownedIds = new Set((owned ?? []).map((row) => str((row as Row).id)))
+    for (const option of input.options ?? []) {
+      const patch: Record<string, unknown> = {}
+      if (option.label !== undefined) patch.label = option.label
+      if (option.weight !== undefined) patch.weight = option.weight
+      if (option.routesToBranchId !== undefined) patch.routes_to_branch_id = option.routesToBranchId
+      if (option.profileId !== undefined) patch.profile_id = option.profileId
+      if (Object.keys(patch).length === 0) continue
+      const { error } = await supabase
+        .from("quiz_options")
+        .update(patch)
+        .eq("id", option.id)
+        .in("question_id", [...ownedIds])
+      if (error) throw error
+    }
+  }
+
+  for (const tier of input.tiers ?? []) {
+    const patch: Record<string, unknown> = {}
+    if (tier.minScore !== undefined) patch.min_score = tier.minScore
+    if (tier.maxScore !== undefined) patch.max_score = tier.maxScore
+    if (tier.headline !== undefined) patch.headline = tier.headline
+    if (tier.body !== undefined) patch.body = tier.body
+    if (tier.ctaLabel !== undefined) patch.cta_label = tier.ctaLabel
+    if (tier.ctaHref !== undefined) patch.cta_href = tier.ctaHref
+    if (Object.keys(patch).length === 0) continue
+    const { error } = await supabase.from("quiz_tiers").update(patch).eq("id", tier.id).eq("quiz_id", quizId)
+    if (error) throw error
+  }
+
+  for (const profile of input.profiles ?? []) {
+    const patch: Record<string, unknown> = {}
+    if (profile.name !== undefined) patch.name = profile.name
+    if (profile.description !== undefined) patch.description = profile.description
+    if (profile.position !== undefined) patch.position = profile.position
+    if (Object.keys(patch).length === 0) continue
+    const { error } = await supabase.from("quiz_profiles").update(patch).eq("id", profile.id).eq("quiz_id", quizId)
+    if (error) throw error
+  }
+
+  for (const branch of input.branches ?? []) {
+    const patch: Record<string, unknown> = {}
+    if (branch.name !== undefined) patch.name = branch.name
+    if (branch.description !== undefined) patch.description = branch.description
+    if (branch.position !== undefined) patch.position = branch.position
+    if (Object.keys(patch).length === 0) continue
+    const { error } = await supabase.from("quiz_branches").update(patch).eq("id", branch.id).eq("quiz_id", quizId)
+    if (error) throw error
+  }
 }
 
 export interface QuizAttemptCounts {
