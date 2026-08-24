@@ -107,7 +107,10 @@ describe("FUNNEL_TEMPLATES", () => {
   })
 
   it("asks nothing it has no field for", () => {
-    const known = new Set(["audience", "offer", "dates", "notify"])
+    // `quiz` joined this list when the quiz template did. The guard is the
+    // point: an ask with no field is a question the dialog never renders and
+    // the validator silently ignores, and this test is what stops one landing.
+    const known = new Set(["audience", "offer", "dates", "notify", "quiz"])
     for (const template of FUNNEL_TEMPLATES) {
       for (const ask of template.asks) expect(known.has(ask), `${template.value}/${ask}`).toBe(true)
     }
@@ -167,5 +170,47 @@ describe("templateAsks", () => {
     expect(templateAsks("leads", "dates")).toBe(false)
     expect(templateAsks("program", "offer")).toBe(true)
     expect(templateAsks("booking", "offer")).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The quiz template — added by the quiz-funnel-creator work.
+// Spec: docs/superpowers/specs/2026-08-24-quiz-funnel-creator-design.md §2
+// ---------------------------------------------------------------------------
+
+describe("the quiz template", () => {
+  const quiz = FUNNEL_TEMPLATES.find((template) => template.value === "quiz")!
+
+  it("exists, so the create dialog can offer it", () => {
+    expect(quiz).toBeTruthy()
+  })
+
+  it("is one step, and that step is the front door", () => {
+    // MUTANT: add a thank-you step. The intro, the details gate and the result
+    // are all states of the quiz island inside the one page, so a second step
+    // is a page a visitor never reaches.
+    expect(quiz.steps).toHaveLength(1)
+    expect(quiz.steps[0].slug).toBe("index")
+  })
+
+  it("asks for a quiz, and for nothing that has no reader", () => {
+    expect(asksOf(quiz)).toContain("quiz")
+    // The Red/Orange operator alert goes to business settings' reply_to, not
+    // to a funnel's notify_emails, so asking here would store an address that
+    // nothing on the quiz path ever reads.
+    expect(asksOf(quiz)).not.toContain("notify")
+    expect(asksOf(quiz)).not.toContain("offer")
+    expect(quiz.offerKind).toBeNull()
+  })
+
+  it("gives its step no goal, because every FunnelGoal names a CTA target", () => {
+    // A quiz is not a CTA target. What the step is for is written on the step
+    // itself, as a `quiz` section naming its quiz.
+    expect(quiz.steps[0].goal).toBeNull()
+  })
+
+  it("is the only template that asks for a quiz", () => {
+    const asking = FUNNEL_TEMPLATES.filter((template) => asksOf(template).includes("quiz"))
+    expect(asking.map((template) => template.value)).toEqual(["quiz"])
   })
 })

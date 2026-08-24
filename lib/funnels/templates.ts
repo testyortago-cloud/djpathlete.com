@@ -37,7 +37,12 @@ export const MAX_FUNNEL_STEPS = 10
  */
 export const ENTRY_STEP_SLUG = "index"
 
-export type TemplateAsk = "audience" | "offer" | "dates" | "notify"
+/**
+ * `quiz` is the first REQUIRED ask. Every other member here is optional — an
+ * event funnel with no dates is a funnel somebody dates later — and
+ * `createFunnelSchema` enforces the difference. See §2 of the design.
+ */
+export type TemplateAsk = "audience" | "offer" | "dates" | "notify" | "quiz"
 
 export interface TemplateStep {
   name: string
@@ -135,6 +140,30 @@ export const FUNNEL_TEMPLATES = [
     // No `notify`: the booking flow owns its own confirmations, and no step
     // here has goal `leads`.
     asks: ["audience"],
+    offerKind: null,
+  },
+  {
+    value: "quiz",
+    label: "Run a quiz",
+    hint: "Questions, a score, a routed result",
+    // ONE STEP, NOT THREE. The intro, the details gate and the result are all
+    // states of the quiz island inside this single page — `QuizRunner` walks
+    // them in the browser and never navigates. A `thank-you` step here would
+    // be a whole page nobody ever reaches.
+    //
+    // ITS GOAL IS NULL, AND THAT IS NOT AN OVERSIGHT. `FUNNEL_GOALS` is
+    // documented as a list where every value except `leads` names a CTA target
+    // `lib/funnels/sections/registry.ts` already resolves, so adding `quiz` to
+    // `FunnelGoal` would put a value into an enum whose whole contract is that
+    // it resolves to something. What this step is for is written where it
+    // belongs: on the step, as a `quiz` section naming its quiz. Creation
+    // writes that document — this is the one template whose page arrives
+    // already built.
+    steps: [{ name: "Quiz", slug: ENTRY_STEP_SLUG, goal: null }],
+    // No `notify`: the Red/Orange operator alert is sent by lib/quizzes/alert.ts
+    // to business settings' `reply_to`, not to a funnel's `notify_emails`, so
+    // asking would store an address nothing on this path reads.
+    asks: ["audience", "quiz"],
     offerKind: null,
   },
   {
