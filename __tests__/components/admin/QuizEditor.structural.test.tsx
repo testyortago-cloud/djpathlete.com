@@ -335,3 +335,26 @@ describe("QuizEditor — when an edit takes the quiz offline", () => {
     expect(await screen.findByText(/no router question/i)).toBeTruthy()
   })
 })
+
+describe("QuizEditor — a new question the server will actually accept", () => {
+  it("gives it a prompt, because an empty one is refused", async () => {
+    // MUTANT KILLED: `prompt: ""`. The route requires min(1), so the save is
+    // refused with "Invalid save." — and it takes down every other edit made
+    // in the same sitting. This is exactly what the first capture run hit.
+    render(<QuizEditor initial={definition()} />)
+    openQuestions()
+    fireEvent.click(screen.getByRole("button", { name: /add a question/i }))
+    save()
+    await waitFor(() => expect(body().addQuestions[0].prompt.length).toBeGreaterThan(0))
+  })
+
+  it("gives its options labels too", async () => {
+    render(<QuizEditor initial={definition()} />)
+    openQuestions()
+    fireEvent.click(screen.getByRole("button", { name: /add a question/i }))
+    save()
+    await waitFor(() =>
+      expect(body().addQuestions[0].options.every((o: { label: string }) => o.label.length > 0)).toBe(true),
+    )
+  })
+})

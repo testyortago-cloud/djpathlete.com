@@ -102,7 +102,12 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
           // POSITION IS GLOBAL ACROSS THE QUIZ, not per branch, so the max is
           // taken over every question rather than over the visible ones.
           position: q.questions.reduce((max, question) => Math.max(max, question.position), 0) + 10,
-          prompt: "",
+          // A PLACEHOLDER, NOT A BLANK. The save route requires a prompt of at
+          // least one character — an empty one is refused, and it takes the
+          // whole save down with it, including every unrelated edit the owner
+          // made in the same sitting. Found by driving the real editor: the
+          // first capture run got "Invalid save." and nothing else.
+          prompt: "New question",
           helpText: null,
           // SWITCHED OFF. The walk skips inactive questions, so a half-typed
           // one cannot reach a visitor even while the quiz is live — and the

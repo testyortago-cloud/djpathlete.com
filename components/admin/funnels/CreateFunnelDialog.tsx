@@ -572,13 +572,21 @@ export function CreateFunnelDialog({
               id="funnel-description"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
-              placeholder="Registration flow for the summer camp: signup, payment, confirmation."
+              placeholder={
+                asksQuiz
+                  ? "A short check for rotational athletes: how the body moves through a turn, not training history."
+                  : "Registration flow for the summer camp: signup, payment, confirmation."
+              }
               rows={3}
               maxLength={500}
             />
             <p className="text-xs text-muted-foreground">
-              Optional. Used to write the first draft of every step, so the more you say the closer
-              they land.
+              {asksQuiz
+                ? // A QUIZ FUNNEL'S PAGE IS WRITTEN AT CREATION, so the usual sentence — "used to
+                  // write the first draft of every step" — is simply false here. Saying it anyway
+                  // teaches the owner that this field does something it does not.
+                  "Optional. A note to yourself about who this quiz is for. The page is already written, so nothing is drafted from it."
+                : "Optional. Used to write the first draft of every step, so the more you say the closer they land."}
             </p>
           </div>
         </div>

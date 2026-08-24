@@ -454,3 +454,22 @@ describe("CreateFunnelDialog — where a quiz funnel lands", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/admin/funnels/f9/edit/s9?start=1"))
   })
 })
+
+describe("CreateFunnelDialog — what 'Describe it' claims", () => {
+  it("does not tell a quiz funnel that its description drafts the page", async () => {
+    // MUTANT KILLED: one sentence for every template. A quiz funnel's page is
+    // written at creation, so "used to write the first draft of every step"
+    // teaches the owner that this field does something it does not.
+    open()
+    pick(/run a quiz/i)
+    await screen.findByLabelText(/copy questions from/i)
+    expect(screen.queryByText(/first draft of every step/i)).toBeNull()
+    expect(screen.getByText(/page is already written/i)).toBeTruthy()
+  })
+
+  it("keeps the original sentence everywhere else", async () => {
+    open()
+    pick(/capture leads/i)
+    expect(screen.getByText(/first draft of every step/i)).toBeTruthy()
+  })
+})
