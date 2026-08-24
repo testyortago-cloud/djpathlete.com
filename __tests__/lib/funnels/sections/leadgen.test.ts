@@ -24,7 +24,7 @@ import { SECTION_KINDS, SECTION_REGISTRY, type Section } from "@/lib/funnels/sec
 const ALL_CSS = [THEME_CSS, ...Object.values(SECTION_CSS)].join("\n")
 
 /** Every island that renders inside a compiled funnel page. */
-const ISLAND_FILES = ["FunnelForm.tsx", "TestimonialsIsland.tsx", "FaqIsland.tsx"]
+const ISLAND_FILES = ["FunnelForm.tsx", "TestimonialsIsland.tsx", "FaqIsland.tsx", "QuizRunner.tsx"]
 
 function islandSource(file: string): string {
   return fs.readFileSync(path.join(process.cwd(), "components", "funnels", "islands", file), "utf8")
