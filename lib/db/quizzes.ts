@@ -384,6 +384,26 @@ export async function createQuizFrom(input: { source: QuizDefinition; name: stri
   return { id: quizId, key }
 }
 
+/**
+ * Deletes a quiz and everything hanging off it.
+ *
+ * ONE DELETE IS THE WHOLE JOB: all five child tables reach `quizzes` by a
+ * foreign key declared `ON DELETE CASCADE` in migration 00228, so naming the
+ * children here would be a second statement of a rule the schema already
+ * makes. `quiz_attempts` cascades too — which is why this is only ever called
+ * on a clone that has just been made and cannot have been taken by anybody.
+ *
+ * Scoped by `business_id` like every other write in this file.
+ */
+export async function deleteQuiz(quizId: string): Promise<void> {
+  const { error } = await getClient()
+    .from("quizzes")
+    .delete()
+    .eq("id", quizId)
+    .eq("business_id", SINGLETON_BUSINESS_ID)
+  if (error) throw error
+}
+
 export interface QuizSaveInput {
   quizId: string
   quiz?: {

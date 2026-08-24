@@ -83,7 +83,24 @@ export interface CreateFunnelInput {
    * exactly the single entry step it got before, named by `kind` the way the
    * 2026-08-12 split named it.
    */
-  steps?: { name: string; slug: string; goal: FunnelGoal | null }[]
+  steps?: {
+    name: string
+    slug: string
+    goal: FunnelGoal | null
+    /**
+     * The step's page, written at creation instead of left blank for the AI
+     * page builder.
+     *
+     * SERVER-DERIVED ONLY. `createStepPlanSchema` does not accept a document,
+     * so no request can hand one in — the quiz template's route builds it from
+     * `buildQuizFunnelDoc`. A client-supplied `SectionDoc` would walk straight
+     * past everything the section grammar exists to enforce.
+     *
+     * Absent rather than null when unused, so every other template's step row
+     * is byte for byte the row it has always been.
+     */
+    projectData?: unknown
+  }[]
 }
 
 /**
@@ -168,6 +185,7 @@ export async function createFunnel(
         ...(intake ? { goal: step.goal ?? null } : {}),
         position: index,
         is_entry: index === 0,
+        ...(step.projectData !== undefined ? { project_data: step.projectData } : {}),
       })),
     )
     .select("id, slug")
