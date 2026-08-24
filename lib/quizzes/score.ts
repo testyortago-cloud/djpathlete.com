@@ -85,6 +85,32 @@ function normalise(raw: number, max: number): number {
   return Math.round((raw / max) * 100)
 }
 
+/**
+ * The answers worth STORING: every one whose question is really in this quiz
+ * and whose option really belongs to that question, de-duplicated with the
+ * last one winning.
+ *
+ * `scoreQuiz` already ignores a forged answer when it scores, so this is not
+ * about the number. It is about what lands in `quiz_attempts.answers` — a row
+ * an operator reads, a report counts, and a future re-score would trust. A
+ * dropped answer must never be stored just because it could not have moved
+ * the total.
+ *
+ * Pure, so the progress and submit routes share one definition of "valid"
+ * rather than each growing their own.
+ */
+export function sanitiseAnswers(definition: QuizDefinition, answers: QuizAnswer[]): QuizAnswer[] {
+  const questions = new Map(definition.questions.filter((q) => q.isActive).map((q) => [q.id, q]))
+  const kept = new Map<string, string>()
+  for (const answer of answers) {
+    const question = questions.get(answer.questionId)
+    if (!question) continue
+    if (!question.options.some((option) => option.id === answer.optionId)) continue
+    kept.set(answer.questionId, answer.optionId)
+  }
+  return [...kept].map(([questionId, optionId]) => ({ questionId, optionId }))
+}
+
 export function scoreQuiz(definition: QuizDefinition, answers: QuizAnswer[]): QuizScoreResult {
   const branchId = branchFromAnswers(definition, answers)
   const walk = walkedQuestions(definition, branchId)

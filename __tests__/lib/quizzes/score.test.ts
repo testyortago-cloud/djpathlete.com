@@ -7,7 +7,7 @@
 //
 // Spec: docs/superpowers/specs/2026-08-23-athlete-quiz-funnel-design.md §4.4
 import { describe, it, expect } from "vitest"
-import { scoreQuiz, walkedQuestions } from "@/lib/quizzes/score"
+import { sanitiseAnswers, scoreQuiz, walkedQuestions } from "@/lib/quizzes/score"
 import type { QuizDefinition, QuizOption, QuizQuestion } from "@/lib/quizzes/types"
 
 function option(id: string, questionId: string, position: number, extra: Partial<QuizOption> = {}): QuizOption {
@@ -293,5 +293,40 @@ describe("scoreQuiz — the percentage is rounded, not truncated", () => {
     expect(result.rawScore).toBe(1)
     expect(result.maxScore).toBe(3)
     expect(result.score).toBe(33)
+  })
+})
+
+describe("sanitiseAnswers — what is worth STORING", () => {
+  it("keeps an answer whose option really belongs to its question", () => {
+    const kept = sanitiseAnswers(DEF, [{ questionId: "a1", optionId: "a1-best" }])
+    expect(kept).toEqual([{ questionId: "a1", optionId: "a1-best" }])
+  })
+
+  it("drops an answer to a question that is not in this quiz", () => {
+    expect(sanitiseAnswers(DEF, [{ questionId: "not-a-question", optionId: "a1-best" }])).toEqual([])
+  })
+
+  it("drops an option that belongs to a DIFFERENT question", () => {
+    // scoreQuiz already refuses to count this. The point here is that it must
+    // not be STORED either: quiz_attempts.answers is read by an operator and
+    // counted by a report, and "it could not have moved the score" is not a
+    // reason to keep a forged row.
+    expect(sanitiseAnswers(DEF, [{ questionId: "a1", optionId: "b1-best" }])).toEqual([])
+  })
+
+  it("keeps the LAST answer when a question is answered twice", () => {
+    const kept = sanitiseAnswers(DEF, [
+      { questionId: "a1", optionId: "a1-best" },
+      { questionId: "a1", optionId: "a1-worst" },
+    ])
+    expect(kept).toEqual([{ questionId: "a1", optionId: "a1-worst" }])
+  })
+
+  it("drops an answer to an INACTIVE question", () => {
+    const withInactive: QuizDefinition = {
+      ...DEF,
+      questions: DEF.questions.map((q) => (q.id === "a1" ? { ...q, isActive: false } : q)),
+    }
+    expect(sanitiseAnswers(withInactive, [{ questionId: "a1", optionId: "a1-best" }])).toEqual([])
   })
 })
