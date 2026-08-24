@@ -16,6 +16,7 @@
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
+import { slugify } from "@/lib/funnels/slug"
 import type {
   QuizAlertStatus,
   QuizAnswer,
@@ -95,7 +96,7 @@ function toProfile(row: Row): QuizProfile {
  * in insertion order scores a different branch walk, and "the database usually
  * returns them in order" is not a guarantee.
  */
-async function assemble(quizRow: Row): Promise<QuizDefinition> {
+async function assemble(quizRow: Row, opts: { includeInactive?: boolean } = {}): Promise<QuizDefinition> {
   const supabase = getClient()
   const quizId = str(quizRow.id)
 
@@ -110,7 +111,7 @@ async function assemble(quizRow: Row): Promise<QuizDefinition> {
   }
 
   const questionRows = ((questionsRes.data ?? []) as Row[])
-    .filter((row) => row.is_active !== false)
+    .filter((row) => opts.includeInactive === true || row.is_active !== false)
     .sort((a, b) => num(a.position) - num(b.position))
 
   const questionIds = questionRows.map((row) => str(row.id))
@@ -179,6 +180,33 @@ export async function getQuizDefinitionByKey(key: string): Promise<QuizDefinitio
   return assemble(data as Row)
 }
 
+/**
+ * The editor's read. IDENTICAL TO `getQuizDefinition` EXCEPT THAT IT KEEPS
+ * INACTIVE QUESTIONS, and that one difference is the entire reason it exists.
+ *
+ * A retired question is invisible to `getQuizDefinition` by design — the walk
+ * must never offer one. But invisible IN THE EDITOR means the owner cannot see
+ * what they retired or bring it back, and a newly added question (which
+ * arrives switched off, so a half-typed question cannot reach a visitor)
+ * disappears the moment the page reloads. Both failures are silent: the row is
+ * in the table, the save reported success, and the screen simply does not show
+ * it.
+ *
+ * NAMED RATHER THAN PARAMETERISED. An options bag on `getQuizDefinition` would
+ * let a caller on the public path reach inactive questions by forgetting an
+ * argument, and that path is the one where being wrong shows a visitor a
+ * question nobody meant to ask.
+ *
+ * `quizGate` filters `isActive` itself, so handing it this wider definition
+ * changes no verdict.
+ */
+export async function getQuizDefinitionForEditor(quizId: string): Promise<QuizDefinition | null> {
+  const { data, error } = await getClient().from("quizzes").select("*").eq("id", quizId).maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  return assemble(data as Row, { includeInactive: true })
+}
+
 export interface QuizListRow {
   id: string
   key: string
@@ -203,6 +231,157 @@ export async function listQuizzes(): Promise<QuizListRow[]> {
     seedMarker: strOrNull(row.seed_marker),
     updatedAt: strOrNull(row.updated_at),
   }))
+}
+
+/**
+ * A free `key` for a new quiz. `quizzes` carries `UNIQUE (business_id, key)`,
+ * and a collision here is a Postgres 500 at the exact moment the owner clicks
+ * Create — so the suffix is derived before the insert rather than retried
+ * after it.
+ */
+async function uniqueQuizKey(supabase: ReturnType<typeof getClient>, base: string): Promise<string> {
+  const { data, error } = await supabase.from("quizzes").select("key").eq("business_id", SINGLETON_BUSINESS_ID)
+  if (error) throw error
+  const taken = new Set(((data ?? []) as Row[]).map((row) => str(row.key)))
+  if (!taken.has(base)) return base
+  for (let n = 2; n < 1000; n += 1) {
+    const candidate = `${base}-${n}`
+    if (!taken.has(candidate)) return candidate
+  }
+  throw new Error("createQuizFrom: could not derive a free key")
+}
+
+/**
+ * Inserts `rows` mapped through `toRow`, and returns old-id → new-id.
+ *
+ * THE NEW IDS ARE MINTED HERE, NOT READ BACK FROM `RETURNING`. Postgres does
+ * not promise that a multi-row insert returns in VALUES order — `createFunnel`
+ * in lib/db/funnels.ts carries the same warning, having been bitten by it — and
+ * a mapping built from a mis-ordered RETURNING would attach every option to
+ * the wrong question while inserting the right number of rows.
+ */
+async function insertMapped<T extends { id: string }>(
+  supabase: ReturnType<typeof getClient>,
+  table: string,
+  rows: readonly T[],
+  toRow: (row: T) => Row,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  const payload: Row[] = []
+  for (const row of rows) {
+    const newId = globalThis.crypto.randomUUID()
+    map.set(row.id, newId)
+    payload.push({ id: newId, ...toRow(row) })
+  }
+  if (payload.length === 0) return map
+  const { error } = await supabase.from(table).insert(payload)
+  if (error) throw new Error(`createQuizFrom(${table}): ${error.message}`)
+  return map
+}
+
+/**
+ * Inserts a NEW quiz that is a copy of `source`.
+ *
+ * IT TAKES A DEFINITION, NOT A SOURCE ID, so one function serves both things
+ * the create dialog offers: a quiz already in the database
+ * (`getQuizDefinition`) and the built-in blueprint
+ * (`toDefinition(RPI_ATHLETE_QUIZ)`, which is in no table at all). It performs
+ * no read of its own to discover what it is copying, which is also what keeps
+ * it testable without a fixture quiz.
+ *
+ * THE REMAPPING IS THE WHOLE JOB. Questions carry `branch_id`; options carry
+ * `routes_to_branch_id` and `profile_id`. Letting any of the three through
+ * unmapped is not a loud failure — every row inserts and the counts are right —
+ * it produces a clone whose own branches are unreachable, which surfaces only
+ * when somebody tries to activate it and the gate says so.
+ *
+ * A COPY FROM `getQuizDefinition` LEAVES RETIRED QUESTIONS BEHIND, because
+ * that read filters them out. That is the wanted behaviour: a new quiz should
+ * not start life carrying questions its source had already withdrawn.
+ *
+ * Spec: docs/superpowers/specs/2026-08-24-quiz-funnel-creator-design.md §3
+ */
+export async function createQuizFrom(input: { source: QuizDefinition; name: string }): Promise<{ id: string; key: string }> {
+  const supabase = getClient()
+  // `slugify` caps at 80 and can return "" for a name with no letters or
+  // digits in it; "quiz" is a key, not a label, so a fallback is honest.
+  const key = await uniqueQuizKey(supabase, slugify(input.name) || "quiz")
+  const quizId = globalThis.crypto.randomUUID()
+
+  const { error: quizError } = await supabase.from("quizzes").insert({
+    id: quizId,
+    business_id: SINGLETON_BUSINESS_ID,
+    key,
+    name: input.name,
+    // A COPY IS A DRAFT, even from an active source. Going live stays a
+    // deliberate act that runs the gate — otherwise copying a live quiz puts
+    // one in front of visitors under whatever name the funnel happened to have.
+    status: "draft",
+    intro_headline: input.source.introHeadline,
+    intro_body: input.source.introBody,
+    gate_headline: input.source.gateHeadline,
+    gate_body: input.source.gateBody,
+    result_headline: input.source.resultHeadline,
+    // CARRIED, NOT CLEARED. The marker means "these numbers were reconstructed,
+    // not recovered", and it drives the editor's banner. A copy inherits the
+    // invented weights and cutoffs, so it inherits the warning; clearing it
+    // here would launder a guess into a decision. It clears the way it always
+    // did — the first time a human saves the quiz.
+    seed_marker: input.source.seedMarker,
+  })
+  if (quizError) throw new Error(`createQuizFrom(quizzes): ${quizError.message}`)
+
+  const branchIds = await insertMapped(supabase, "quiz_branches", input.source.branches, (branch) => ({
+    quiz_id: quizId,
+    // Child keys are unique PER QUIZ, so they are kept verbatim. Note that
+    // branch keys are a contract the archetype sequences filter on: a clone
+    // enrols into the same sequences as its source, deliberately.
+    key: branch.key,
+    name: branch.name,
+    description: branch.description,
+    position: branch.position,
+  }))
+  const profileIds = await insertMapped(supabase, "quiz_profiles", input.source.profiles, (profile) => ({
+    quiz_id: quizId,
+    key: profile.key,
+    name: profile.name,
+    description: profile.description,
+    position: profile.position,
+  }))
+  const questionIds = await insertMapped(supabase, "quiz_questions", input.source.questions, (question) => ({
+    quiz_id: quizId,
+    branch_id: question.branchId ? (branchIds.get(question.branchId) ?? null) : null,
+    position: question.position,
+    prompt: question.prompt,
+    help_text: question.helpText,
+    is_active: question.isActive,
+  }))
+  await insertMapped(
+    supabase,
+    "quiz_options",
+    input.source.questions.flatMap((question) => question.options),
+    (option) => ({
+      question_id: questionIds.get(option.questionId),
+      position: option.position,
+      label: option.label,
+      weight: option.weight,
+      routes_to_branch_id: option.routesToBranchId ? (branchIds.get(option.routesToBranchId) ?? null) : null,
+      profile_id: option.profileId ? (profileIds.get(option.profileId) ?? null) : null,
+    }),
+  )
+  await insertMapped(supabase, "quiz_tiers", input.source.tiers, (tier) => ({
+    quiz_id: quizId,
+    key: tier.key,
+    position: tier.position,
+    min_score: tier.minScore,
+    max_score: tier.maxScore,
+    headline: tier.headline,
+    body: tier.body,
+    cta_label: tier.ctaLabel,
+    cta_href: tier.ctaHref,
+  }))
+
+  return { id: quizId, key }
 }
 
 export interface QuizSaveInput {
