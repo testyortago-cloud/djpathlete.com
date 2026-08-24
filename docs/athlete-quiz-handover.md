@@ -78,7 +78,7 @@ app is what surfaces the false ones.
 
 ---
 
-## Five things you should know
+## Six things you should know
 
 **1. Every number in the seeded quiz is invented.** The GHL export contains the
 201 custom-field definitions, so the prompts and option labels are verbatim. All
@@ -87,13 +87,26 @@ and the routing rules are gone.** What is seeded is a documented, defensible
 default, marked by `SEED_MARKER` so the list and the editor both say so on
 screen. Correcting them is Darren's, and the marker clears when he saves.
 
-**2. The plan's own test could not fail.** It specified "a perfect walk scores
+**2. The quiz is deliberately WITHHELD from the AI page builder.**
+`NOT_OFFERED_TO_THE_BUILDER` in `prompt.ts` excludes it from `KINDS_BLOCK` and
+`ISLANDS_BLOCK` — and nowhere else: the registry, compiler, renderer and
+publish gate all still know about it in full. Two reasons, and the first is
+sufficient on its own. The model CANNOT author a quiz section correctly: its
+only required prop is a uuid naming a row that must already exist, and the
+publish gate refuses an invented one, so every quiz section it could write is a
+page that cannot publish and a rejected batch fails the owner's whole turn. The
+second is budget: `SECTION_BUILDER_BLOCK_A` is a frozen cached prefix with a
+17,000-character ceiling, it measured **16,929 at `ec3acb16` — 71 characters of
+headroom** — and the quiz kind plus its island line cost ~511. With the
+exclusion the block sits at **16,948**, still under.
+
+**3. The plan's own test could not fail.** It specified "a perfect walk scores
 100" to catch a weight typo. That is tautological — the best walk picks each
 question's max-weight option and `maxScore` sums those same weights, so it is
 `max/max` by construction. Replaced by a test asserting the 3/2/1/0 ladder
 directly, which is the only thing that kills a `3→2` typo.
 
-**3. The design was wrong about how an island reaches a page.** It says adding
+**4. The design was wrong about how an island reaches a page.** It says adding
 `quiz` to `ISLAND_NAMES` "offers it in the builder automatically". It does not:
 `reassemble` builds page HTML only from `doc.sections`, so an island with no
 section kind emitting it can never appear. `quiz` is now the eleventh section
@@ -102,11 +115,11 @@ kind. Note the union has NO exhaustiveness check — `sectionSchema` is a
 clean and fails at runtime. Every other per-kind table is a `Record<SectionKind, …>`
 and caught its own omission at compile time.
 
-**4. Editing a live quiz can break it.** The gate blocks activation, not editing —
+**5. Editing a live quiz can break it.** The gate blocks activation, not editing —
 that is deliberate, since blocking edits would make a broken quiz unfixable. The
 protection is the wording in the editor, not a refusal.
 
-**5. Four sequences are seeded as drafts with placeholder copy**, and every body
+**6. Four sequences are seeded as drafts with placeholder copy**, and every body
 says "PLACEHOLDER COPY — not reviewed" in its first line, so a flip made without
 a copy pass is visible in the inbox rather than only in a migration comment.
 
@@ -114,15 +127,12 @@ a copy pass is visible in the inbox rather than only in a migration comment.
 
 ## Found in passing — not this branch's to fix
 
-1. **The AI page-builder prompt is over its size ceiling, and was before this
-   branch.** `prompt.test.ts` asserts `SECTION_BUILDER_BLOCK_A` stays under
-   17,000 characters; at this branch's base it is **17,033** with ten kinds.
-   Adding an eleventh cannot get under it. The quiz description is written short
-   for that reason, but the block now sits at 17,440. Compacting prose I did not
-   author is a separate change.
-2. **`funnel-island-traits.test.ts` has one pre-existing failure** (`form.eventId`),
-   confirmed at base by stashing. The plan's "pre-existing failures" note omits
-   both this and the prompt ceiling; the Stage 3 handover had the first one right.
+1. **`funnel-island-traits.test.ts` has one pre-existing failure**
+   (`form.eventId`), confirmed at a detached worktree on `ec3acb16` and
+   independently by a second session. The plan's "pre-existing failures" note
+   omits it; the Stage 3 handover had it right. Fourteen tests across four
+   component suites fail identically at base — SetupPanel (7), report-shell,
+   receipt-row-editor and this one.
 3. **`@dnd-kit` is not used by the funnel step builder**, though the plan cites it
    as precedent. Question reordering uses buttons instead — keyboard-operable for
    free, and directly testable.
@@ -165,8 +175,18 @@ a copy pass is visible in the inbox rather than only in a migration comment.
   `maxScore`, `profileId`, `seedMarker`, the profile keys and the tier copy are
   all absent from the HTML. `routesToBranchId` is present, as designed.
 - **Nine annotated screenshots**, driven through the real app on the real routes.
-- **Pre-existing failures, confirmed identical at base:** `prompt.test.ts` size
-  ceiling (1) and `funnel-island-traits.test.ts` (1).
+- **Pre-existing failures, measured in a DETACHED WORKTREE at `ec3acb16`**, not
+  by stashing on top of this branch: 14 tests across 4 component suites —
+  SetupPanel (7), report-shell, receipt-row-editor and funnel-island-traits —
+  fail identically at base and here.
+
+  An earlier draft of this document claimed the prompt size ceiling was also
+  pre-existing, at 17,033. **That was wrong.** The measurement was taken with
+  this branch's own island commit already on HEAD; at a genuinely clean base the
+  block is 16,929 with 71 characters of headroom, and the ceiling breach was
+  introduced here. A second session caught it. The lesson is in the journal:
+  stashing uncommitted work does not give you the base when HEAD already carries
+  fifteen of your own commits.
 
 **Every test in this branch was mutated before it was believed** — roughly 90
 mutations across scoring, the gate, the public shape, the seed, the section kind,

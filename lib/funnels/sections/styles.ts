@@ -743,6 +743,30 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-faq .djp-faq-details > summary::after { c
 // ---------------------------------------------------------------------------
 
 export const FORM_CSS = `
+/* THE TEST-RUN PILL LIVES HERE, NOT IN QUIZ_CSS, AND THE DIFFERENCE IS REAL.
+   djp-test-run is emitted by FunnelForm.tsx -- the FORM island -- and
+   reassemble ships only the CSS of the kinds a document actually USES
+   (doc.ts: usedKinds.map(kind => SECTION_CSS[kind])). Parked under quiz, a
+   page with a form and no quiz emitted the class with no rule behind it: an
+   unstyled pill on a live page, with a green suite, because leadgen.test.ts
+   joins EVERY kind's CSS rather than the page's own.
+
+   That is precisely the failure the leadgen suite exists to catch, and its
+   header says this subsystem has already produced it three times. Caught in
+   review by a second pair of eyes, not by the test. */
+${ROOT} .djp-test-run {
+  display: inline-block;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--warning);
+  color: var(--foreground);
+  margin-bottom: 1rem;
+}
+
 ${ROOT} .djp-s-form { max-width: 34rem; }
 ${ROOT} .djp-s-form.djp-v-boxed {
   background: var(--surface);
@@ -1178,20 +1202,6 @@ ${ROOT} .djp-s-quiz .djp-quiz-scale { font-size: 0.8125rem; color: var(--muted-f
 ${ROOT} .djp-s-quiz .djp-quiz-profile { padding: 1rem; border-radius: var(--radius); background: var(--surface); margin: 1.25rem 0; }
 ${ROOT} .djp-s-quiz .djp-quiz-profile-name { font-weight: 700; margin: 0 0 0.25rem; }
 ${ROOT} .djp-s-quiz .djp-quiz-profile-body { margin: 0; color: var(--muted-foreground); }
-/* Emitted by FunnelForm.tsx since the draft-preview work with no rule behind
-   it, which is why leadgen.test.ts has been red on main. Fixed here. */
-${ROOT} .djp-test-run {
-  display: inline-block;
-  padding: 0.25rem 0.625rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  background: var(--warning);
-  color: var(--foreground);
-  margin-bottom: 1rem;
-}
 `.trim()
 
 export const SECTION_CSS: Record<SectionKind, string> = {

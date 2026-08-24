@@ -18,7 +18,8 @@ import { describe, expect, it } from "vitest"
 import { SECTION_CSS, THEME_CSS } from "@/lib/funnels/sections/styles"
 import { CANVAS_EDIT_CSS } from "@/lib/funnels/sections/edit-css"
 import { renderSection } from "@/lib/funnels/sections/render"
-import { SECTION_BUILDER_BLOCK_A, LEADGEN_RULES } from "@/lib/funnels/sections/prompt"
+import { reassemble } from "@/lib/funnels/sections/doc"
+import { SECTION_BUILDER_BLOCK_A, LEADGEN_RULES, NOT_OFFERED_TO_THE_BUILDER } from "@/lib/funnels/sections/prompt"
 import { SECTION_KINDS, SECTION_REGISTRY, type Section } from "@/lib/funnels/sections/registry"
 
 const ALL_CSS = [THEME_CSS, ...Object.values(SECTION_CSS)].join("\n")
@@ -40,6 +41,48 @@ function emittedClasses(source: string): string[] {
   }
   return [...out]
 }
+
+/**
+ * THE SUITE ABOVE JOINS EVERY KIND'S CSS; A PAGE DOES NOT.
+ *
+ * `ALL_CSS` is `[THEME_CSS, ...Object.values(SECTION_CSS)]`, but `reassemble`
+ * ships only the kinds a document actually uses
+ * (doc.ts: `usedKinds.map(kind => SECTION_CSS[kind])`). So a rule parked under
+ * the WRONG kind satisfies every assertion above while shipping nothing to the
+ * page that needs it — an unstyled element on a live page, with a green suite.
+ *
+ * That happened: `djp-test-run` is emitted by FunnelForm (the FORM island) and
+ * was briefly defined in `SECTION_CSS.quiz`. A form page with no quiz section
+ * emitted the class with no rule behind it. Caught in review, not by the suite.
+ *
+ * This asserts against the CSS a REAL DOCUMENT ships, which is the only version
+ * of the question a visitor experiences.
+ */
+describe("the CSS a page actually ships, not the CSS every kind defines", () => {
+  it("ships the form island's own classes for a form-only page", () => {
+    const doc = {
+      v: 1 as const,
+      engine: "sections" as const,
+      theme: { tone: "light" as const, accent: "accent" as const, radius: "soft" as const },
+      sections: [
+        {
+          id: "f1",
+          kind: "form" as const,
+          variant: "boxed",
+          style: {},
+          props: { formKey: "optin", fields: [{ name: "email", label: "Email", type: "email" as const }] },
+        },
+      ],
+    }
+    const { css } = reassemble(doc)
+    for (const cls of emittedClasses(islandSource("FunnelForm.tsx"))) {
+      expect(
+        css.includes(`.${cls}`) || CANVAS_EDIT_CSS.includes(`.${cls}`),
+        `${cls} is emitted by FunnelForm but a form-only page ships no rule for it`,
+      ).toBe(true)
+    }
+  })
+})
 
 describe("every class an island emits is a class the stylesheet defines", () => {
   it.each(ISLAND_FILES)("%s", (file) => {
@@ -248,7 +291,9 @@ describe("the prompt teaches page craft, not just the schema", () => {
     // to prevent, and it went red the moment `quiz` became the 11th kind.
     // Deriving keeps the real property: a count HARDCODED IN THE PROMPT still
     // fails here, which is the only thing this was ever guarding.
-    const n = SECTION_KINDS.length
+    // The prompt counts what it OFFERS, not what the registry holds: `quiz`
+    // is deliberately withheld (see NOT_OFFERED_TO_THE_BUILDER).
+    const n = SECTION_KINDS.filter((k) => !NOT_OFFERED_TO_THE_BUILDER.has(k)).length
     expect(SECTION_BUILDER_BLOCK_A).toContain(`## The ${n} section kinds`)
     expect(SECTION_BUILDER_BLOCK_A).toContain(`kind: one of the ${n} below`)
     expect(SECTION_BUILDER_BLOCK_A).not.toContain("nine section kinds")
