@@ -36,6 +36,22 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [serverBlockers, setServerBlockers] = useState<string[] | null>(null)
+  // ---------------------------------------------------------------------
+  // WHAT THIS SAVE WILL INSERT AND DELETE.
+  //
+  // `quiz` above is the state the owner is looking at. These two say how it
+  // differs from the server's — which is not derivable from `quiz` alone,
+  // because a removed row is simply absent from it and a new row looks exactly
+  // like an existing one.
+  //
+  // A ROW ADDED AND REMOVED BEFORE SAVING NEVER EXISTED: `removeQuestion`
+  // takes it out of `newIds` rather than putting it into `deletedIds`, so the
+  // server is never asked to delete a uuid it has never seen.
+  // ---------------------------------------------------------------------
+  const [newQuestionIds, setNewQuestionIds] = useState<Set<string>>(() => new Set())
+  const [newOptionIds, setNewOptionIds] = useState<Set<string>>(() => new Set())
+  const [deletedQuestionIds, setDeletedQuestionIds] = useState<Set<string>>(() => new Set())
+  const [deletedOptionIds, setDeletedOptionIds] = useState<Set<string>>(() => new Set())
 
   // Recomputed on every edit, so the reason a quiz cannot go live updates as
   // the operator fixes it rather than at save time.
@@ -54,6 +70,115 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
           : { ...question, options: question.options.map((o) => (o.id === optionId ? { ...o, ...patch } : o)) },
       ),
     }))
+  }
+
+  /** A fresh id, minted here so the row can be rendered and referenced at once. */
+  function mintId(): string {
+    return globalThis.crypto.randomUUID()
+  }
+
+  function addQuestion() {
+    const id = mintId()
+    const options = [1, 2].map((position) => ({
+      id: mintId(),
+      questionId: id,
+      position,
+      label: `Option ${position}`,
+      weight: 0,
+      routesToBranchId: null,
+      profileId: null,
+    }))
+    setQuiz((q) => ({
+      ...q,
+      questions: [
+        ...q.questions,
+        {
+          id,
+          quizId: q.id,
+          // The group the owner is looking at. Adding to the shared set while
+          // they are looking at a branch puts the question somewhere they did
+          // not ask for and will not find.
+          branchId: branchTab === EVERYONE ? null : branchTab,
+          // POSITION IS GLOBAL ACROSS THE QUIZ, not per branch, so the max is
+          // taken over every question rather than over the visible ones.
+          position: q.questions.reduce((max, question) => Math.max(max, question.position), 0) + 10,
+          prompt: "",
+          helpText: null,
+          // SWITCHED OFF. The walk skips inactive questions, so a half-typed
+          // one cannot reach a visitor even while the quiz is live — and the
+          // gate ignores it, so it cannot block an activation either.
+          isActive: false,
+          options,
+        },
+      ],
+    }))
+    setNewQuestionIds((ids) => new Set(ids).add(id))
+    setNewOptionIds((ids) => {
+      const next = new Set(ids)
+      for (const option of options) next.add(option.id)
+      return next
+    })
+  }
+
+  function removeQuestion(questionId: string) {
+    setQuiz((q) => ({ ...q, questions: q.questions.filter((question) => question.id !== questionId) }))
+    setNewQuestionIds((ids) => {
+      if (!ids.has(questionId)) {
+        // It exists on the server, so the server has to be told.
+        setDeletedQuestionIds((deleted) => new Set(deleted).add(questionId))
+        return ids
+      }
+      const next = new Set(ids)
+      next.delete(questionId)
+      return next
+    })
+  }
+
+  function addOption(questionId: string) {
+    const id = mintId()
+    setQuiz((q) => ({
+      ...q,
+      questions: q.questions.map((question) =>
+        question.id !== questionId
+          ? question
+          : {
+              ...question,
+              options: [
+                ...question.options,
+                {
+                  id,
+                  questionId,
+                  position: question.options.reduce((max, option) => Math.max(max, option.position), 0) + 1,
+                  label: "New answer",
+                  weight: 0,
+                  routesToBranchId: null,
+                  profileId: null,
+                },
+              ],
+            },
+      ),
+    }))
+    setNewOptionIds((ids) => new Set(ids).add(id))
+  }
+
+  function removeOption(questionId: string, optionId: string) {
+    setQuiz((q) => ({
+      ...q,
+      questions: q.questions.map((question) =>
+        question.id !== questionId
+          ? question
+          : { ...question, options: question.options.filter((option) => option.id !== optionId) },
+      ),
+    }))
+    setNewOptionIds((ids) => {
+      if (!ids.has(optionId)) {
+        setDeletedOptionIds((deleted) => new Set(deleted).add(optionId))
+        return ids
+      }
+      const next = new Set(ids)
+      next.delete(optionId)
+      return next
+    })
   }
 
   /**
@@ -106,22 +231,68 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
             resultHeadline: quiz.resultHeadline,
             ...(nextStatus ? { status: nextStatus } : {}),
           },
-          questions: quiz.questions.map((q) => ({
-            id: q.id,
-            position: q.position,
-            prompt: q.prompt,
-            helpText: q.helpText,
-            isActive: q.isActive,
-          })),
-          options: quiz.questions.flatMap((q) =>
-            q.options.map((o) => ({
-              id: o.id,
-              label: o.label,
-              weight: o.weight,
-              routesToBranchId: o.routesToBranchId,
-              profileId: o.profileId,
+          // EXISTING ROWS ONLY in the update lists. A new row is carried by
+          // `addQuestions` / `addOptions` with its final values already on it,
+          // so sending it here as well would ask the server to update a row it
+          // has only just inserted.
+          questions: quiz.questions
+            .filter((q) => !newQuestionIds.has(q.id))
+            .map((q) => ({
+              id: q.id,
+              position: q.position,
+              prompt: q.prompt,
+              helpText: q.helpText,
+              isActive: q.isActive,
             })),
+          options: quiz.questions.flatMap((q) =>
+            q.options
+              .filter((o) => !newOptionIds.has(o.id))
+              .map((o) => ({
+                id: o.id,
+                label: o.label,
+                weight: o.weight,
+                routesToBranchId: o.routesToBranchId,
+                profileId: o.profileId,
+              })),
           ),
+          addQuestions: quiz.questions
+            .filter((q) => newQuestionIds.has(q.id))
+            .map((q) => ({
+              id: q.id,
+              branchId: q.branchId,
+              position: q.position,
+              prompt: q.prompt,
+              helpText: q.helpText,
+              isActive: q.isActive,
+              options: q.options.map((o) => ({
+                id: o.id,
+                position: o.position,
+                label: o.label,
+                weight: o.weight,
+                routesToBranchId: o.routesToBranchId,
+                profileId: o.profileId,
+              })),
+            })),
+          // A new option on an EXISTING question. One on a new question travels
+          // inside `addQuestions` above, and sending it twice would insert it
+          // twice.
+          addOptions: quiz.questions
+            .filter((q) => !newQuestionIds.has(q.id))
+            .flatMap((q) =>
+              q.options
+                .filter((o) => newOptionIds.has(o.id))
+                .map((o) => ({
+                  id: o.id,
+                  questionId: q.id,
+                  position: o.position,
+                  label: o.label,
+                  weight: o.weight,
+                  routesToBranchId: o.routesToBranchId,
+                  profileId: o.profileId,
+                })),
+            ),
+          deleteQuestionIds: [...deletedQuestionIds],
+          deleteOptionIds: [...deletedOptionIds],
           tiers: quiz.tiers.map((t) => ({
             id: t.id,
             minScore: t.minScore,
@@ -141,8 +312,32 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
         setMessage(json.error ?? "Could not save.")
         return
       }
-      if (nextStatus) setQuiz((q) => ({ ...q, status: nextStatus }))
-      setMessage("Saved.")
+      // ADOPT WHAT THE SERVER SENT BACK, rather than keeping local state. It
+      // is the editor's own read, so it carries the questions this save just
+      // retired — which local state cannot know about, having asked for a
+      // delete. Falling back to local state keeps a save working against an
+      // older server that does not return it.
+      const saved = json as { quiz?: QuizDefinition; retiredQuestionIds?: string[] }
+      if (saved.quiz) setQuiz(saved.quiz)
+      else if (nextStatus) setQuiz((q) => ({ ...q, status: nextStatus }))
+
+      // THE PENDING SETS ARE CLEARED ONLY ON SUCCESS. On a refusal they stay,
+      // so the owner sees the reason AND still has the change they made —
+      // clearing them would silently revert the edit and make the next save a
+      // no-op nobody could explain.
+      setNewQuestionIds(new Set())
+      setNewOptionIds(new Set())
+      setDeletedQuestionIds(new Set())
+      setDeletedOptionIds(new Set())
+
+      const retired = saved.retiredQuestionIds ?? []
+      setMessage(
+        retired.length === 0
+          ? "Saved."
+          : retired.length === 1
+            ? "Saved. That question has answers, so it was retired rather than removed — nobody is shown it any more, and the results people already got are kept."
+            : `Saved. ${retired.length} of those questions have answers, so they were retired rather than removed — nobody is shown them any more, and the results people already got are kept.`,
+      )
       router.refresh()
     } catch {
       setMessage("Could not save.")
@@ -151,10 +346,21 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
     }
   }
 
-  const visibleQuestions = quiz.questions
+  const questionsInGroup = quiz.questions
     .filter((q) => (branchTab === EVERYONE ? q.branchId === null : q.branchId === branchTab))
     .slice()
     .sort((a, b) => a.position - b.position)
+
+  // NOT LIVE YET AND RETIRED ARE BOTH INACTIVE, AND THEY ARE NOT THE SAME
+  // THING. A question just added is switched off so a half-typed one cannot
+  // reach a visitor — it belongs with the questions the owner is working on. A
+  // question the server retired is switched off because somebody has already
+  // answered it, and it belongs out of the way.
+  //
+  // Sorting only on `isActive` puts a brand new question in a group headed
+  // "Retired", which is both wrong and alarming.
+  const visibleQuestions = questionsInGroup.filter((q) => q.isActive || newQuestionIds.has(q.id))
+  const retiredQuestions = questionsInGroup.filter((q) => !q.isActive && !newQuestionIds.has(q.id))
 
   return (
     <div className="space-y-6">
@@ -303,17 +509,26 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
             ))}
           </nav>
 
+          <div data-testid="live-questions" className="space-y-4">
           {visibleQuestions.length === 0 ? (
             <p className="text-sm text-muted-foreground">No questions in this group.</p>
           ) : (
             visibleQuestions.map((question, index) => (
               <div key={question.id} className="rounded-lg border border-border p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <Field
-                    label={`Question ${index + 1}`}
-                    value={question.prompt}
-                    onChange={(v) => patchQuestion(question.id, { prompt: v })}
-                  />
+                  <div className="flex-1">
+                    <Field
+                      label={question.isActive ? `Question ${index + 1}` : `Question ${index + 1} — not live yet`}
+                      value={question.prompt}
+                      onChange={(v) => patchQuestion(question.id, { prompt: v })}
+                    />
+                    {!question.isActive ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Nobody taking the quiz sees this yet. Write it, then choose &ldquo;Turn it
+                        on&rdquo;.
+                      </p>
+                    ) : null}
+                  </div>
                   <div className="flex shrink-0 gap-1 pt-6">
                     <button
                       type="button"
@@ -332,6 +547,33 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
                       className="rounded border border-border px-2 py-1 text-xs disabled:opacity-40"
                     >
                       ↓
+                    </button>
+                    {!question.isActive ? (
+                      <button
+                        type="button"
+                        aria-label={`Turn this question on: "${question.prompt}"`}
+                        onClick={() => patchQuestion(question.id, { isActive: true })}
+                        className="rounded border border-border px-2 py-1 text-xs hover:bg-surface/50"
+                      >
+                        Turn it on
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        aria-label={`Turn this question off: "${question.prompt}"`}
+                        onClick={() => patchQuestion(question.id, { isActive: false })}
+                        className="rounded border border-border px-2 py-1 text-xs hover:bg-surface/50"
+                      >
+                        Turn it off
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      aria-label={`Remove this question: "${question.prompt}"`}
+                      onClick={() => removeQuestion(question.id)}
+                      className="rounded border border-border px-2 py-1 text-xs text-error hover:bg-surface/50"
+                    >
+                      Remove
                     </button>
                   </div>
                 </div>
@@ -382,12 +624,65 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
                           </option>
                         ))}
                       </select>
+                      <button
+                        type="button"
+                        aria-label={`Remove this answer: "${option.label}"`}
+                        onClick={() => removeOption(question.id, option.id)}
+                        className="justify-self-start rounded border border-border px-2 py-1 text-xs text-error hover:bg-surface/50 sm:col-span-4"
+                      >
+                        Remove this answer
+                      </button>
                     </li>
                   ))}
                 </ul>
+                <button
+                  type="button"
+                  aria-label={`Add an answer to "${question.prompt}"`}
+                  onClick={() => addOption(question.id)}
+                  className="mt-2 rounded border border-border px-3 py-1.5 text-xs hover:bg-surface/50"
+                >
+                  Add an answer
+                </button>
               </div>
             ))
           )}
+          </div>
+
+          <button
+            type="button"
+            onClick={addQuestion}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface/50"
+          >
+            Add a question
+          </button>
+          <p className="text-xs text-muted-foreground">
+            A new question starts switched off, so nobody taking the quiz sees it until you choose
+            &ldquo;Turn it on&rdquo;. That way a half-written question can never reach somebody
+            part-way through.
+          </p>
+
+          {retiredQuestions.length > 0 ? (
+            <section data-testid="retired-questions" className="space-y-2 rounded-lg border border-dashed border-border p-4">
+              <h2 className="text-sm font-medium text-muted-foreground">Retired</h2>
+              <p className="text-xs text-muted-foreground">
+                People have already answered these, so their wording is kept for your reports. Nobody
+                taking the quiz is shown them.
+              </p>
+              {retiredQuestions.map((question) => (
+                <div key={question.id} className="flex items-center justify-between gap-3 rounded border border-border p-3">
+                  <span className="text-sm">{question.prompt}</span>
+                  <button
+                    type="button"
+                    aria-label={`Bring this question back: "${question.prompt}"`}
+                    onClick={() => patchQuestion(question.id, { isActive: true })}
+                    className="shrink-0 rounded border border-border px-3 py-1.5 text-xs hover:bg-surface/50"
+                  >
+                    Bring it back
+                  </button>
+                </div>
+              ))}
+            </section>
+          ) : null}
         </section>
       ) : null}
 
