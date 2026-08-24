@@ -422,23 +422,194 @@ export interface QuizSaveInput {
   tiers?: { id: string; minScore?: number; maxScore?: number; headline?: string; body?: string; ctaLabel?: string | null; ctaHref?: string | null }[]
   profiles?: { id: string; name?: string; description?: string; position?: number }[]
   branches?: { id: string; name?: string; description?: string | null; position?: number }[]
+  /** New questions, each arriving with its own options. Ids are minted by the editor. */
+  addQuestions?: {
+    id: string
+    branchId: string | null
+    position: number
+    prompt: string
+    helpText: string | null
+    isActive: boolean
+    options: { id: string; position: number; label: string; weight: number; routesToBranchId: string | null; profileId: string | null }[]
+  }[]
+  /** New options on questions that already exist. */
+  addOptions?: {
+    id: string
+    questionId: string
+    position: number
+    label: string
+    weight: number
+    routesToBranchId: string | null
+    profileId: string | null
+  }[]
+  deleteQuestionIds?: string[]
+  deleteOptionIds?: string[]
 }
 
 /**
- * Applies an editor save.
+ * Thrown when a save asks to delete an option somebody has already picked.
  *
- * UPDATES ONLY — no inserts, no deletes. The editor edits an existing quiz;
- * adding and removing questions is a bigger piece of work with its own
- * ordering and orphan questions, and a half-built version of it here would
- * let a save silently drop an option a live page is already showing.
- *
- * Every child update is scoped by BOTH its own id and its parent, so a
- * payload naming a row from another quiz writes nothing rather than editing
- * someone else's page.
+ * ITS OWN CLASS so the route can turn it into a 400 that names the option,
+ * rather than matching on a message string. A refusal the owner cannot act on
+ * is the same as a crash.
  */
-export async function saveQuizDefinition(input: QuizSaveInput): Promise<void> {
+export class QuizAnsweredOptionError extends Error {
+  constructor(public readonly optionIds: string[], message: string) {
+    super(message)
+    this.name = "QuizAnsweredOptionError"
+  }
+}
+
+/**
+ * Which of this quiz's questions and options anybody has actually answered.
+ *
+ * A FULL READ OF ONE COLUMN FOR ONE QUIZ, scanned in JS. `quiz_attempts.answers`
+ * is jsonb with no foreign keys, so there is nothing to join against. This is
+ * O(attempts) and honest about it; a jsonb GIN index is the fix the day the
+ * volume makes it one. Callers only pay for it when something is being deleted.
+ *
+ * SCOPED BY quiz_id. Scanning every attempt would let another quiz's answers
+ * protect a row nobody here ever picked, and the owner could never remove it.
+ */
+async function answeredIds(
+  supabase: ReturnType<typeof getClient>,
+  quizId: string,
+): Promise<{ questions: Set<string>; options: Set<string> }> {
+  const { data, error } = await supabase.from("quiz_attempts").select("answers").eq("quiz_id", quizId)
+  if (error) throw error
+  const questions = new Set<string>()
+  const options = new Set<string>()
+  for (const row of (data ?? []) as Row[]) {
+    const answers = Array.isArray(row.answers) ? (row.answers as unknown[]) : []
+    for (const answer of answers) {
+      if (!answer || typeof answer !== "object") continue
+      const { questionId, optionId } = answer as { questionId?: unknown; optionId?: unknown }
+      if (typeof questionId === "string") questions.add(questionId)
+      if (typeof optionId === "string") options.add(optionId)
+    }
+  }
+  return { questions, options }
+}
+
+/**
+ * Applies an editor save: refuse-checks, then inserts, then updates, then
+ * deletes.
+ *
+ * THE RULE: NOTHING ANYBODY HAS ANSWERED IS EVER DESTROYED.
+ *
+ * Answers live in `quiz_attempts.answers`, a jsonb array with NO foreign keys,
+ * so the database will happily let a delete orphan them. What protects a past
+ * RESULT is that `raw_score`, `max_score` and `score` are frozen on the attempt
+ * — a structural edit can never rewrite what somebody was told in March. What
+ * is NOT protected is naming: a report mapping an answer back to its prompt
+ * finds a hole.
+ *
+ *   question, never answered → deleted, with its options
+ *   question, answered       → RETIRED (is_active = false), and reported back
+ *   option,   never picked   → deleted
+ *   option,   picked         → the whole save is REFUSED, naming it
+ *
+ * THE ASYMMETRY IS DELIBERATE. A question has a retired state the rest of the
+ * system already honours: the walk skips inactive questions and `quizGate`
+ * ignores them, which is why a retirement cannot break a live quiz. An option
+ * has no such column, and adding one to `quiz_options` for this alone would
+ * buy a state nothing else understands.
+ *
+ * THE REFUSE-CHECK RUNS BEFORE ANY WRITE. Refusing halfway would leave the
+ * editor and the database disagreeing about a save the owner was told failed.
+ *
+ * ORDERING: inserts first, so a row added in this save can be edited by the
+ * same save; deletes last, so a refusal costs nothing already written.
+ *
+ * Every insert and every delete is scoped to `quizId` the same way every
+ * update already is, so a payload naming another quiz's row writes nothing
+ * rather than editing somebody else's page.
+ *
+ * Spec: docs/superpowers/specs/2026-08-24-quiz-funnel-creator-design.md §5
+ */
+export async function saveQuizDefinition(input: QuizSaveInput): Promise<{ retiredQuestionIds: string[] }> {
   const supabase = getClient()
   const { quizId } = input
+  const deleteQuestionIds = input.deleteQuestionIds ?? []
+  const deleteOptionIds = input.deleteOptionIds ?? []
+  const retiredQuestionIds: string[] = []
+
+  // Only paid for when something is being deleted — see `answeredIds`.
+  const answered =
+    deleteQuestionIds.length > 0 || deleteOptionIds.length > 0
+      ? await answeredIds(supabase, quizId)
+      : { questions: new Set<string>(), options: new Set<string>() }
+
+  const refusedOptionIds = deleteOptionIds.filter((id) => answered.options.has(id))
+  if (refusedOptionIds.length > 0) {
+    throw new QuizAnsweredOptionError(
+      refusedOptionIds,
+      refusedOptionIds.length === 1
+        ? "Somebody has already picked that answer, so it cannot be removed. Remove the whole question instead — it will be retired, and their result is kept."
+        : "Somebody has already picked some of those answers, so they cannot be removed. Remove the whole question instead — it will be retired, and their results are kept.",
+    )
+  }
+
+  // ---------------------------------------------------------------------
+  // Inserts.
+  // ---------------------------------------------------------------------
+  // Read once, and only when a path actually needs it: every option write and
+  // every question delete is scoped through this set.
+  const needsOwnership =
+    (input.addQuestions ?? []).length > 0 ||
+    (input.addOptions ?? []).length > 0 ||
+    (input.options ?? []).length > 0 ||
+    deleteQuestionIds.length > 0 ||
+    deleteOptionIds.length > 0
+  const ownedQuestionIds = needsOwnership ? await questionIdsOf(supabase, quizId) : new Set<string>()
+
+  for (const question of input.addQuestions ?? []) {
+    const { error } = await supabase.from("quiz_questions").insert({
+      id: question.id,
+      // FROM `quizId`, NEVER FROM THE PAYLOAD. A question whose parent came
+      // from the request body could be inserted into somebody else's quiz.
+      quiz_id: quizId,
+      branch_id: question.branchId,
+      position: question.position,
+      prompt: question.prompt,
+      help_text: question.helpText,
+      is_active: question.isActive,
+    })
+    if (error) throw error
+    ownedQuestionIds.add(question.id)
+    if (question.options.length > 0) {
+      const { error: optionError } = await supabase.from("quiz_options").insert(
+        question.options.map((option) => ({
+          id: option.id,
+          question_id: question.id,
+          position: option.position,
+          label: option.label,
+          weight: option.weight,
+          routes_to_branch_id: option.routesToBranchId,
+          profile_id: option.profileId,
+        })),
+      )
+      if (optionError) throw optionError
+    }
+  }
+
+  // Options hang off questions, not the quiz, so ownership is a read of this
+  // quiz's question ids — the same check the update path already performs.
+  const newOptions = (input.addOptions ?? []).filter((option) => ownedQuestionIds.has(option.questionId))
+  if (newOptions.length > 0) {
+    const { error } = await supabase.from("quiz_options").insert(
+      newOptions.map((option) => ({
+        id: option.id,
+        question_id: option.questionId,
+        position: option.position,
+        label: option.label,
+        weight: option.weight,
+        routes_to_branch_id: option.routesToBranchId,
+        profile_id: option.profileId,
+      })),
+    )
+    if (error) throw error
+  }
 
   if (input.quiz && Object.keys(input.quiz).length > 0) {
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
@@ -472,10 +643,10 @@ export async function saveQuizDefinition(input: QuizSaveInput): Promise<void> {
 
   if ((input.options ?? []).length > 0) {
     // Options hang off questions, not the quiz, so the ownership check is a
-    // read of this quiz's question ids rather than a column on the row.
-    const { data: owned, error: readError } = await supabase.from("quiz_questions").select("id").eq("quiz_id", quizId)
-    if (readError) throw readError
-    const ownedIds = new Set((owned ?? []).map((row) => str((row as Row).id)))
+    // read of this quiz's question ids rather than a column on the row. That
+    // read is `ownedQuestionIds` above, taken once and shared with the insert
+    // and delete paths — it used to be taken again here.
+    const ownedIds = ownedQuestionIds
     for (const option of input.options ?? []) {
       const patch: Record<string, unknown> = {}
       if (option.label !== undefined) patch.label = option.label
@@ -524,6 +695,57 @@ export async function saveQuizDefinition(input: QuizSaveInput): Promise<void> {
     const { error } = await supabase.from("quiz_branches").update(patch).eq("id", branch.id).eq("quiz_id", quizId)
     if (error) throw error
   }
+
+  // ---------------------------------------------------------------------
+  // Deletes. LAST, so a refusal above costs nothing already written, and so
+  // an edit earlier in the same save still lands.
+  // ---------------------------------------------------------------------
+  for (const optionId of deleteOptionIds) {
+    // Scoped through this quiz's questions, not by option id alone.
+    const { error } = await supabase
+      .from("quiz_options")
+      .delete()
+      .eq("id", optionId)
+      .in("question_id", [...ownedQuestionIds])
+    if (error) throw error
+  }
+
+  for (const questionId of deleteQuestionIds) {
+    // NOT THIS QUIZ'S QUESTION: nothing happens, quietly. The delete below is
+    // scoped by `quiz_id` and would no-op anyway — but the OPTION delete is
+    // keyed on `question_id`, which is not, so without this guard a
+    // hand-crafted payload could strip another quiz's answers off its page.
+    if (!ownedQuestionIds.has(questionId)) continue
+
+    if (answered.questions.has(questionId)) {
+      // RETIRED, NOT DELETED. The walk skips inactive questions and the gate
+      // ignores them, so this withdraws it from every visitor while leaving a
+      // report able to say what was asked.
+      const { error } = await supabase
+        .from("quiz_questions")
+        .update({ is_active: false })
+        .eq("id", questionId)
+        .eq("quiz_id", quizId)
+      if (error) throw error
+      retiredQuestionIds.push(questionId)
+      continue
+    }
+    // Options first, and explicitly rather than trusting a cascade: an orphan
+    // option row is invisible rather than harmless.
+    const { error: optionError } = await supabase.from("quiz_options").delete().eq("question_id", questionId)
+    if (optionError) throw optionError
+    const { error } = await supabase.from("quiz_questions").delete().eq("id", questionId).eq("quiz_id", quizId)
+    if (error) throw error
+  }
+
+  return { retiredQuestionIds }
+}
+
+/** This quiz's question ids — the ownership check the option paths share. */
+async function questionIdsOf(supabase: ReturnType<typeof getClient>, quizId: string): Promise<Set<string>> {
+  const { data, error } = await supabase.from("quiz_questions").select("id").eq("quiz_id", quizId)
+  if (error) throw error
+  return new Set(((data ?? []) as Row[]).map((row) => str(row.id)))
 }
 
 export interface QuizAttemptCounts {
