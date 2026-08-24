@@ -31,7 +31,24 @@ GoHighLevel switch-over.
 |---|---|---|
 | 1 | **Seed a quiz** — `npx tsx scripts/seed-athlete-quiz.ts .env.prod --execute --allow-non-clone` | The RPI quiz as 32 questions and 129 options. Additive and idempotent: it never overwrites an edit. |
 | 2 | **Activate it** in `/admin/funnels/quizzes` | It cannot activate until `quizGate` passes. The blockers are listed on screen. |
-| 3 | **Put the block on a page** and publish | The publish gate refuses a page whose quiz is missing, draft, or cannot score. |
+| 3 | **Put the block on a page** — `POST /api/admin/quizzes/<id>/add-to-step` with `{ stepId }` — and publish | The publish gate refuses a page whose quiz is missing, draft, or cannot score. |
+
+**On step 3, and read this before assuming a button exists.** A section can only
+be ORIGINATED two ways in this app: the AI page builder emits `set_page` /
+`add_section`, or something hand-builds an op for
+`PUT /api/admin/funnels/steps/<stepId>/edit`. **The builder UI itself only ever
+emits `update_section` and `move_section` — there is no add-a-section palette
+for any kind, and that predates this branch.**
+
+`quiz` is deliberately withheld from the builder prompt, so the model is not an
+origination path for it either. `POST /api/admin/quizzes/<id>/add-to-step` is
+therefore the handle: admin-only, it reuses the inspector's exact write path
+(`applyOps` grammar, `appendTurn` compare-and-swap, an `inspector` turn in the
+transcript) and prefills the one thing the model could never know — which quiz.
+
+**It has no UI yet.** Calling it is a one-liner from the browser console or
+curl; wiring a button into the quizzes list is a small follow-up and is on the
+open list below.
 
 Nothing else is required. There is no feature flag and no env var: a quiz that is
 not active renders nothing, and a page with no quiz block is unaffected.
@@ -150,7 +167,11 @@ a copy pass is visible in the inbox rather than only in a migration comment.
    switch-over is parallel-run then disable, not a cutover.
 4. **The tier CTAs** — currently `/contact` for Red and Orange, `/online` for
    Yellow, `/assessment` for Green.
-5. **The Rotational Reboot mini-quiz** is a SECOND quiz, buildable in the editor
+5. **A button for `add-to-step`.** The route exists and is tested; nothing in the
+   admin calls it yet. Until then the quiz goes onto a page by calling that
+   endpoint directly. Worth pairing with the broader gap it exposed: this app
+   has no add-a-section UI for ANY kind.
+6. **The Rotational Reboot mini-quiz** is a SECOND quiz, buildable in the editor
    with no new code. It is deliberately not seeded: it is a separate product
    funnel and seeding it uninvited would put a quiz on the list nobody asked for.
 
