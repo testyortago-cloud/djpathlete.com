@@ -225,7 +225,27 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     )
   }
 
-  if (body.quiz?.status !== undefined) {
+  // -------------------------------------------------------------------------
+  // A LIVE QUIZ THAT THIS EDIT JUST BROKE IS TAKEN OFFLINE.
+  //
+  // The gate used to run on ACTIVATION only, which was survivable while the
+  // editor could merely reword things. It is not survivable now: retiring the
+  // router of a quiz that is ALREADY live would sail straight through, and the
+  // published page would go on collecting answers it can no longer score —
+  // exactly the failure `lib/quizzes/gate.ts` says it exists to prevent, moved
+  // from the editor to in front of a lead.
+  //
+  // DEACTIVATE RATHER THAN REFUSE. Refusing would mean either losing the edit
+  // or leaving a broken quiz live, and neither is a thing to do to somebody
+  // who was in the middle of working. Taking it offline keeps their change,
+  // stops the damage, and hands them the blockers.
+  // -------------------------------------------------------------------------
+  const wasActive = existing.status === "active"
+  const staysActive = body.quiz?.status === undefined ? wasActive : body.quiz.status === "active"
+  const deactivated = staysActive && !wantsActive && !gate.ok
+  if (deactivated) {
+    await saveQuizDefinition({ quizId: id, quiz: { status: "draft" } })
+  } else if (body.quiz?.status !== undefined) {
     await saveQuizDefinition({ quizId: id, quiz: { status: body.quiz.status } })
   }
 
@@ -235,5 +255,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   // disappear the moment it was saved. The gate above still runs against the
   // public read, because the gate is a statement about the WALK.
   const forEditor = await getQuizDefinitionForEditor(id)
-  return NextResponse.json({ ok: true, gate, quiz: forEditor, retiredQuestionIds })
+  return NextResponse.json({
+    ok: true,
+    gate,
+    quiz: forEditor,
+    retiredQuestionIds,
+    deactivated,
+    ...(deactivated ? { blockers: gate.blockers } : {}),
+  })
 }

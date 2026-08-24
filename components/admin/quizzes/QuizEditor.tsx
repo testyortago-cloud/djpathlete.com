@@ -317,7 +317,12 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
       // retired — which local state cannot know about, having asked for a
       // delete. Falling back to local state keeps a save working against an
       // older server that does not return it.
-      const saved = json as { quiz?: QuizDefinition; retiredQuestionIds?: string[] }
+      const saved = json as {
+        quiz?: QuizDefinition
+        retiredQuestionIds?: string[]
+        deactivated?: boolean
+        blockers?: string[]
+      }
       if (saved.quiz) setQuiz(saved.quiz)
       else if (nextStatus) setQuiz((q) => ({ ...q, status: nextStatus }))
 
@@ -329,6 +334,17 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
       setNewOptionIds(new Set())
       setDeletedQuestionIds(new Set())
       setDeletedOptionIds(new Set())
+
+      // TAKEN OFFLINE BY THIS EDIT. Said first and said plainly, because it is
+      // the only outcome here that changes what visitors see, and the blockers
+      // are shown alongside so the way back is on the same screen.
+      if (saved.deactivated) {
+        setServerBlockers(saved.blockers ?? null)
+        setMessage(
+          "Saved — but this change means the quiz can no longer be scored, so it has been taken offline. Nobody is being shown it. Fix the points below and choose Activate to put it back.",
+        )
+        return
+      }
 
       const retired = saved.retiredQuestionIds ?? []
       setMessage(

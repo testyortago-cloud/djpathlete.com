@@ -313,3 +313,25 @@ describe("QuizEditor — after the save", () => {
     expect(within(retired).getByText("A question somebody already answered")).toBeTruthy()
   })
 })
+
+describe("QuizEditor — when an edit takes the quiz offline", () => {
+  it("says so plainly, and shows what to fix", async () => {
+    // MUTANT KILLED: report "Saved." and drop the blockers. The quiz stops
+    // taking answers, the owner is told everything went fine, and the only
+    // evidence is a status pill they were not looking at.
+    saveResponse = {
+      ok: true,
+      gate: { ok: false, blockers: ["There is no router question: no shared question routes to a branch."], warnings: [] },
+      quiz: definition(),
+      retiredQuestionIds: [],
+      deactivated: true,
+      blockers: ["There is no router question: no shared question routes to a branch."],
+    }
+    render(<QuizEditor initial={definition()} />)
+    openQuestions()
+    fireEvent.click(screen.getAllByRole("button", { name: /remove this question/i })[0])
+    save()
+    expect(await screen.findByText(/taken offline/i)).toBeTruthy()
+    expect(await screen.findByText(/no router question/i)).toBeTruthy()
+  })
+})

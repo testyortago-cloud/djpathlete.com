@@ -221,3 +221,56 @@ describe("PATCH /api/admin/quizzes/[id] — structural edits", () => {
     expect(res.status).toBe(400)
   })
 })
+
+describe("PATCH /api/admin/quizzes/[id] — editing a quiz that is already live", () => {
+  function live(): QuizDefinition {
+    const definition = healthy()
+    definition.status = "active"
+    return definition
+  }
+
+  it("takes a live quiz offline when the edit leaves it unscoreable", async () => {
+    // THE HOLE THIS CLOSES. The gate ran only on ACTIVATION, so retiring the
+    // router of a quiz that is already live sailed straight through — and the
+    // published page went on collecting answers it could no longer score.
+    // Structural editing makes that a click rather than a curiosity.
+    //
+    // MUTANT KILLED: gate on `wantsActive` alone.
+    getQuizDefinition.mockResolvedValueOnce(live()).mockResolvedValueOnce(noRouter())
+    const res = await patch({ deleteQuestionIds: [Q_ROUTER] })
+    expect(res.status).toBe(200)
+    const json = await res.json()
+    expect(json.deactivated).toBe(true)
+    expect(json.blockers.join(" | ")).toMatch(/router/i)
+    expect(saveQuizDefinition).toHaveBeenLastCalledWith({ quizId: QUIZ_ID, quiz: { status: "draft" } })
+  })
+
+  it("keeps the edit itself — being taken offline is not losing your work", async () => {
+    getQuizDefinition.mockResolvedValueOnce(live()).mockResolvedValueOnce(noRouter())
+    await patch({ quiz: { name: "Renamed" }, deleteQuestionIds: [Q_ROUTER] })
+    expect(saveQuizDefinition.mock.calls[0][0]).toMatchObject({ quiz: { name: "Renamed" } })
+  })
+
+  it("leaves a live quiz alone when the edit keeps it scoreable", async () => {
+    getQuizDefinition.mockResolvedValue(live())
+    const res = await patch({ questions: [{ id: Q_A1, prompt: "Reworded" }] })
+    const json = await res.json()
+    // MUTANT KILLED: deactivate whenever the quiz is live. Every save would
+    // take the page offline, and rewording a question would cost a visitor.
+    expect(json.deactivated).toBeFalsy()
+    const statusWrites = saveQuizDefinition.mock.calls.filter(
+      (call) => (call[0] as { quiz?: { status?: string } })?.quiz?.status,
+    )
+    expect(statusWrites).toHaveLength(0)
+  })
+
+  it("does not deactivate a quiz that was already a draft", async () => {
+    getQuizDefinition.mockResolvedValueOnce(healthy()).mockResolvedValueOnce(noRouter())
+    const res = await patch({ deleteQuestionIds: [Q_ROUTER] })
+    const json = await res.json()
+    // A draft is already offline. Writing status: draft over it would be a
+    // pointless write and a message about something that did not happen.
+    expect(json.deactivated).toBeFalsy()
+    expect(saveQuizDefinition.mock.calls.filter((c) => (c[0] as { quiz?: { status?: string } })?.quiz?.status)).toHaveLength(0)
+  })
+})
