@@ -3312,6 +3312,19 @@ export type FunnelLeadStatus = "new" | "contacted" | "signed_up"
 
 export const FUNNEL_LEAD_STATUSES: readonly FunnelLeadStatus[] = ["new", "contacted", "signed_up"]
 
+/**
+ * What produced a submission (00230). Every row that predates it is a `form`,
+ * which is exactly what those rows are.
+ *
+ * A COLUMN AND NOT "quiz_attempt_id IS NOT NULL": reading a nullable pointer
+ * as a type discriminator makes "the attempt could not be linked" read as "this
+ * was a form fill", and the row that would be mislabelled is the one something
+ * already went wrong for.
+ */
+export type FunnelSubmissionKind = "form" | "quiz"
+
+export const FUNNEL_SUBMISSION_KINDS: readonly FunnelSubmissionKind[] = ["form", "quiz"]
+
 export interface FunnelSubmission {
   id: string
   funnel_id: string
@@ -3329,6 +3342,10 @@ export interface FunnelSubmission {
   status: FunnelLeadStatus
   notes: string | null
   status_changed_at: string | null
+  /** 00230. A quiz completion is a lead too, and reads differently in the inbox. */
+  kind: FunnelSubmissionKind
+  /** 00230. The completed attempt. The score lives THERE, never copied here. */
+  quiz_attempt_id: string | null
 }
 
 // --- Lead Engine Stage 3: the public chat assistant (00227) ------------------

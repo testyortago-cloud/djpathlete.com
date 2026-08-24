@@ -2,11 +2,14 @@ import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { getFunnelById, listSteps } from "@/lib/db/funnels"
+import { getQuizAttemptCounts, getQuizzesByIds } from "@/lib/db/quizzes"
+import { quizUsesInSteps } from "@/lib/funnels/quiz-refs"
 import { getSetting } from "@/lib/db/system-settings"
 import { formatRunWindow } from "@/lib/funnels/run-window"
 import { FunnelStatusControl } from "@/components/admin/funnels/FunnelStatusControl"
 import { StepList } from "@/components/admin/funnels/StepList"
 import { AddStepDialog } from "@/components/admin/funnels/AddStepDialog"
+import { FunnelQuizPanel, type FunnelQuizPanelItem } from "@/components/admin/funnels/FunnelQuizPanel"
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -45,6 +48,30 @@ export async function FunnelDetailScreen({ id, base }: { id: string; base: "page
   if (correctBase !== base) redirect(`/admin/${correctBase}/${funnel.id}`)
 
   const steps = await listSteps(id)
+
+  // THE QUIZ THIS FUNNEL USES, read out of the pages it has already loaded.
+  //
+  // A quiz block holds a POINTER, not a copy, which is what lets one weight
+  // edit reach every page showing it with no re-publish -- and it is also why
+  // nothing on this screen used to say the quiz existed. The panel is the way
+  // back from the funnel to the quiz it asks.
+  //
+  // BOTH READS FAIL SOFT. The step list is the reason this screen exists, and
+  // losing it because the quizzes table was unreachable would trade the whole
+  // screen for a panel.
+  const quizUses = quizUsesInSteps(steps)
+  const [quizRows, attemptCounts] = await Promise.all([
+    quizUses.length > 0 ? getQuizzesByIds(quizUses.map((use) => use.quizId)).catch(() => []) : [],
+    quizUses.length > 0
+      ? getQuizAttemptCounts().catch(() => ({}) as Awaited<ReturnType<typeof getQuizAttemptCounts>>)
+      : ({} as Awaited<ReturnType<typeof getQuizAttemptCounts>>),
+  ])
+  const quizItems: FunnelQuizPanelItem[] = quizUses.map((use) => ({
+    quizId: use.quizId,
+    stepName: use.stepName,
+    quiz: quizRows.find((row) => row.id === use.quizId) ?? null,
+    attempts: attemptCounts[use.quizId] ?? { total: 0, completed: 0 },
+  }))
 
   const runWindow = formatRunWindow(funnel.starts_at, funnel.ends_at)
   const offerLabel =
@@ -131,6 +158,8 @@ export async function FunnelDetailScreen({ id, base }: { id: string; base: "page
           <FunnelStatusControl funnelId={funnel.id} status={funnel.status} kind={funnel.kind} />
         </div>
       </div>
+
+      <FunnelQuizPanel items={quizItems} />
 
       <StepList funnel={funnel} initialSteps={steps} />
     </div>

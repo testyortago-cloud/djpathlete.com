@@ -56,6 +56,13 @@ function flatten(row: JoinedRow): FunnelLead {
   const { funnels, funnel_steps, ...submission } = row
   return {
     ...submission,
+    // NORMALISED, not trusted. A row read from the pre-00230 schema carries no
+    // `kind` at all -- and every one of those rows IS a form fill. A row with
+    // anything else in the column cannot have come from this app. Either way
+    // the answer here is the honest one, and `FunnelLead.kind` is never
+    // undefined for a caller to have to think about.
+    kind: submission.kind === "quiz" ? "quiz" : "form",
+    quiz_attempt_id: submission.quiz_attempt_id ?? null,
     funnel_name: funnels?.name ?? null,
     funnel_slug: funnels?.slug ?? null,
     step_name: funnel_steps?.name ?? null,
@@ -127,6 +134,46 @@ export async function listLeads(filters: LeadFilters = {}): Promise<FunnelLead[]
 
   if (error) throw new Error(`listLeads: ${error.message}`)
   return ((data ?? []) as JoinedRow[]).map(flatten)
+}
+
+/** What a quiz lead scored. The keys are the quiz's own, not display copy. */
+export interface QuizLeadOutcome {
+  score: number | null
+  tierKey: string | null
+  profileKey: string | null
+}
+
+/**
+ * The results behind a page of quiz leads, keyed by attempt id.
+ *
+ * A SECOND QUERY RATHER THAN AN EMBEDDED JOIN, deliberately. PostgREST rejects
+ * an embed naming a column the schema does not have yet, and migrations race
+ * deploys on merge to main -- an embed would take the WHOLE leads screen down
+ * for the one deploy in which 00230 has not landed. A separate read has
+ * nothing to fail on: before the migration no row carries an attempt id, so
+ * there are no ids to ask about and no query is made.
+ *
+ * The score is READ here and never copied onto the submission, so there is one
+ * answer to "what did they score" rather than two that can drift apart.
+ */
+export async function getQuizOutcomesForLeads(attemptIds: string[]): Promise<Record<string, QuizLeadOutcome>> {
+  if (attemptIds.length === 0) return {}
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("quiz_attempts")
+    .select("id, score, tier_key, profile_key")
+    .in("id", attemptIds)
+  if (error) throw new Error(`getQuizOutcomesForLeads: ${error.message}`)
+
+  const out: Record<string, QuizLeadOutcome> = {}
+  for (const row of (data ?? []) as Record<string, unknown>[]) {
+    out[String(row.id)] = {
+      score: typeof row.score === "number" ? row.score : null,
+      tierKey: typeof row.tier_key === "string" ? row.tier_key : null,
+      profileKey: typeof row.profile_key === "string" ? row.profile_key : null,
+    }
+  }
+  return out
 }
 
 /** How many leads match, for pagination and for the header count. */

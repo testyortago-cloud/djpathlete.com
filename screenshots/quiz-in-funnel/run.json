@@ -1,0 +1,28 @@
+{
+  "app": "http://localhost:3051",
+  "project": "anjvztjiokcgiyhobknq",
+  "liveFunnel": {
+    "id": "3109f9aa-c90f-4520-be29-e0953d4a9ce1",
+    "slug": "athlete-quiz",
+    "stepId": "8d75b423-dfa5-4452-bf31-0ddd2733c3d1"
+  },
+  "madeFunnelId": "5c4ccb68-5948-415b-96e8-52c3fb9a90e6",
+  "madeQuizId": "0503db81-22d3-46e5-b5e3-96268fac3bfe",
+  "lead": {
+    "id": "ce79ad2a-6806-4a46-b7da-8d8d9bf1ed11",
+    "email": "quiz-lead-check+542732@example.com",
+    "kind": "quiz",
+    "answers": 13
+  },
+  "attempt": {
+    "id": "85334c66-0134-450e-9613-d197d04eedd0",
+    "score": 100,
+    "tier": "green"
+  },
+  "previewWroteNothing": {
+    "subsBefore": 1,
+    "subsAfter": 1,
+    "attemptsBefore": 26,
+    "attemptsAfter": 26
+  }
+}

@@ -234,6 +234,36 @@ export async function listQuizzes(): Promise<QuizListRow[]> {
 }
 
 /**
+ * The quizzes named by a set of ids, for a screen that already knows WHICH
+ * quizzes it needs -- the funnel settings panel reads the ids out of the
+ * funnel's own pages and asks for exactly those.
+ *
+ * An empty input asks nothing: PostgREST's `.in()` with an empty list is a
+ * round trip that can only answer "none".
+ *
+ * A missing id is simply ABSENT from the result, and the caller renders that
+ * absence -- a block pointing at a deleted quiz is a real state, and the
+ * person who can fix it is the one looking at this screen.
+ */
+export async function getQuizzesByIds(ids: string[]): Promise<QuizListRow[]> {
+  if (ids.length === 0) return []
+  const { data, error } = await getClient()
+    .from("quizzes")
+    .select("id, key, name, status, seed_marker, updated_at")
+    .eq("business_id", SINGLETON_BUSINESS_ID)
+    .in("id", ids)
+  if (error) throw error
+  return ((data ?? []) as Row[]).map((row) => ({
+    id: str(row.id),
+    key: str(row.key),
+    name: str(row.name),
+    status: str(row.status),
+    seedMarker: strOrNull(row.seed_marker),
+    updatedAt: strOrNull(row.updated_at),
+  }))
+}
+
+/**
  * A free `key` for a new quiz. `quizzes` carries `UNIQUE (business_id, key)`,
  * and a collision here is a Postgres 500 at the exact moment the owner clicks
  * Create — so the suffix is derived before the insert rather than retried

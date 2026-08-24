@@ -28,6 +28,7 @@ import { ChevronDown, ChevronRight, Download, Mail, Phone, Search, X } from "luc
 import { Button } from "@/components/ui/button"
 import {
   DataTable,
+  DataTableBadge,
   DataTableCard,
   DataTableCell,
   DataTableEmpty,
@@ -37,7 +38,7 @@ import {
   DataTableRow,
   DataTableToolbar,
 } from "@/components/ui/data-table"
-import type { FunnelLead } from "@/lib/db/funnel-leads"
+import type { FunnelLead, QuizLeadOutcome } from "@/lib/db/funnel-leads"
 import type { FunnelLeadStatus } from "@/types/database"
 
 const STATUS_LABEL: Record<FunnelLeadStatus, string> = {
@@ -78,6 +79,15 @@ export interface LeadsBoardProps {
   }
   /** Where "export" points, already carrying the active filter. */
   exportHref: string
+  /**
+   * What the quiz leads ON THIS PAGE scored, keyed by attempt id.
+   *
+   * Read separately by the page and passed in, rather than joined onto the
+   * lead: the score lives on `quiz_attempts` and copying it onto the
+   * submission would be a second answer to "what did they score". Optional,
+   * and an absent entry renders as "could not be read" rather than as a zero.
+   */
+  quizOutcomes?: Record<string, QuizLeadOutcome>
 }
 
 export function LeadsBoard(props: LeadsBoardProps) {
@@ -238,7 +248,7 @@ export function LeadsBoard(props: LeadsBoardProps) {
             <DataTableEmpty colSpan={6}>
               {hasFilter
                 ? "No leads match these filters."
-                : "No leads yet. They appear here the moment someone submits a form on a published page."}
+                : "No leads yet. They appear here the moment someone submits a form or finishes a quiz on a published page."}
             </DataTableEmpty>
           ) : (
             leads.map((lead) => {
@@ -250,6 +260,7 @@ export function LeadsBoard(props: LeadsBoardProps) {
                   isOpen={isOpen}
                   onToggle={() => setExpanded(isOpen ? null : lead.id)}
                   onPatch={patch}
+                  outcome={lead.quiz_attempt_id ? props.quizOutcomes?.[lead.quiz_attempt_id] : undefined}
                 />
               )
             })
@@ -273,6 +284,7 @@ function LeadRows({
   isOpen,
   onToggle,
   onPatch,
+  outcome,
 }: {
   lead: FunnelLead
   isOpen: boolean
@@ -282,6 +294,8 @@ function LeadRows({
     body: { status?: FunnelLeadStatus; notes?: string },
     previous: Partial<FunnelLead>,
   ) => Promise<void>
+  /** Present only for a quiz lead whose attempt could be read. */
+  outcome?: QuizLeadOutcome
 }) {
   const [notes, setNotes] = useState(lead.notes ?? "")
 
@@ -305,6 +319,16 @@ function LeadRows({
         <DataTableCell muted>
           {lead.funnel_name ?? "—"}
           {lead.step_name ? <span className="text-xs"> · {lead.step_name}</span> : null}
+          {/* WITHOUT OPENING THE ROW. A quiz completion and a form fill are
+              both leads and both belong in this list, but they are not the
+              same thing to act on -- one of them answered thirty-two
+              questions. `info` rather than `success`: it is a fact about the
+              lead, not a state that has been dealt with. */}
+          {lead.kind === "quiz" ? (
+            <DataTableBadge tone="info" className="mt-1">
+              Quiz
+            </DataTableBadge>
+          ) : null}
         </DataTableCell>
         <DataTableCell className="font-medium text-foreground">{lead.name ?? "—"}</DataTableCell>
         <DataTableCell>
@@ -350,7 +374,25 @@ function LeadRows({
           <td colSpan={6} className="px-4 py-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">What they wrote</h3>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {lead.kind === "quiz" ? "What they answered" : "What they wrote"}
+                </h3>
+                {lead.kind === "quiz" ? (
+                  <p className="mt-1.5 text-sm text-foreground">
+                    {outcome ? (
+                      <>
+                        Scored <strong className="font-semibold">{outcome.score ?? "—"}</strong>
+                        {outcome.tierKey ? <> · {humanise(outcome.tierKey)}</> : null}
+                        {outcome.profileKey ? <> · {humanise(outcome.profileKey)}</> : null}
+                      </>
+                    ) : (
+                      // HONEST ABOUT THE GAP rather than showing a zero. The
+                      // outcome read fails soft, and a lead with a missing
+                      // score is still a person to call.
+                      <span className="text-muted-foreground">Their result could not be read.</span>
+                    )}
+                  </p>
+                ) : null}
                 <AnswerList payload={lead.payload} />
               </div>
               <div>

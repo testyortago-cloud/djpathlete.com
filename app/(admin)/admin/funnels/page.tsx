@@ -41,6 +41,16 @@ export default async function FunnelsScreen() {
             Multi-step sequences sharing one address.{" "}
             <Link href="/admin/funnels/guide" className="underline underline-offset-2 hover:text-primary">
               How funnels work
+            </Link>{" "}
+            ·{" "}
+            {/* A quiz is edited from the funnel that uses it — every funnel's
+                own screen lists its quiz. This link is the way to the ones no
+                funnel uses YET, so that taking "Quizzes" out of the sidebar
+                cannot leave a quiz reachable only by typing its URL. That is
+                the exact defect the sidebar line was added to fix, and it
+                would have come straight back. */}
+            <Link href="/admin/funnels/quizzes" className="underline underline-offset-2 hover:text-primary">
+              All quizzes
             </Link>
           </p>
         </div>

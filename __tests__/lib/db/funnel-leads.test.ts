@@ -132,3 +132,42 @@ describe("listLeads and countLeads narrow identically", () => {
     expect(ops.range).toEqual([0, 999])
   })
 })
+
+describe("what a row becomes on the way out", () => {
+  it("reads a row from the pre-00230 schema as a form fill, not as undefined", () => {
+    // Migrations and deploys race on merge to main. For one deploy this code
+    // reads rows that have no `kind` column at all -- and every one of those
+    // rows IS a form fill. Passing `undefined` up would put the inbox's quiz
+    // badge one truthiness check away from appearing on all of them.
+    listResult = {
+      data: [{ id: "lead-1", funnel_id: "f1", step_id: "s1", payload: {}, funnels: null, funnel_steps: null }],
+      error: null,
+    }
+    return listLeads().then((leads) => {
+      expect(leads[0].kind).toBe("form")
+      expect(leads[0].quiz_attempt_id).toBeNull()
+    })
+  })
+
+  it("keeps a quiz completion's kind and the attempt it points at", () => {
+    listResult = {
+      data: [
+        {
+          id: "lead-2",
+          funnel_id: "f1",
+          step_id: "s1",
+          payload: {},
+          kind: "quiz",
+          quiz_attempt_id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+          funnels: null,
+          funnel_steps: null,
+        },
+      ],
+      error: null,
+    }
+    return listLeads().then((leads) => {
+      expect(leads[0].kind).toBe("quiz")
+      expect(leads[0].quiz_attempt_id).toBe("aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa")
+    })
+  })
+})

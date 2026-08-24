@@ -1,0 +1,67 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Quiz in the funnel — what was verified</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0 auto; max-width: 1100px; padding: 2rem 1.5rem 4rem; color: #16323f; }
+  h1 { font-size: 1.9rem; margin-bottom: .25rem; }
+  .sub { color: #5b7280; margin-top: 0; }
+  .facts { background: #f6f7f8; border: 1px solid #e3e6e8; border-radius: 10px; padding: 1rem 1.25rem; margin: 1.5rem 0 2.5rem; }
+  .facts code { font-size: .85em; }
+  figure { margin: 0 0 3rem; }
+  img { width: 100%; height: auto; border: 1px solid #e3e6e8; border-radius: 10px; display: block; }
+  figcaption { margin-top: .6rem; color: #44606d; line-height: 1.55; }
+</style>
+<h1>Quiz in the funnel — what was verified</h1>
+<p class="sub">Every frame is the real app on its real route, driven by
+<code>scripts/capture-quiz-in-funnel.ts</code>. The callouts are burned into each PNG.</p>
+
+<div class="facts">
+  <p><b>Measured on the dev copy</b> (<code>anjvztjiokcgiyhobknq</code>), not asserted in a mock:</p>
+  <ul>
+    <li>The completed quiz left submission <code>ce79ad2a-6806-4a46-b7da-8d8d9bf1ed11</code> — <code>kind = quiz</code>,
+        on funnel <code>3109f9aa-c90f-4520-be29-e0953d4a9ce1</code>, step <code>8d75b423-dfa5-4452-bf31-0ddd2733c3d1</code>,
+        carrying <b>13 answers</b> and pointing at attempt <code>85334c66-0134-450e-9613-d197d04eedd0</code>.</li>
+    <li>That attempt scored <b>100</b> (green). The score is NOT copied onto the lead.</li>
+    <li><code>lead_user_id</code> is null: the quiz feeds the contact spine, not a second identity.</li>
+    <li>Completing the same quiz on <code>/preview/athlete-quiz</code> changed nothing —
+        submissions 1 → 1,
+        attempts 26 → 26.</li>
+  </ul>
+</div>
+
+    <figure>
+      <a href="01-page-offers-its-quiz.png"><img src="01-page-offers-its-quiz.png" alt="The quiz is reached from the page that runs it"></a>
+      <figcaption><b>1. The quiz is reached from the page that runs it</b><br>/admin/pages. The Athlete Quiz card carries a <strong>Quiz</strong> button. Its href was asserted in the DOM before the shot, and followed afterwards.</figcaption>
+    </figure>
+    <figure>
+      <a href="02-quiz-editor.png"><img src="02-quiz-editor.png" alt="And the button lands on the real editor"></a>
+      <figcaption><b>2. And the button lands on the real editor</b><br>The button was clicked, not just read. This is the editor for the quiz that page runs.</figcaption>
+    </figure>
+    <figure>
+      <a href="03-funnel-lists-its-quiz.png"><img src="03-funnel-lists-its-quiz.png" alt="A funnel that uses a quiz lists it on the funnel's own screen"></a>
+      <figcaption><b>3. A funnel that uses a quiz lists it on the funnel's own screen</b><br>This funnel was made through the real create dialog on /admin/funnels during the run. The panel names the quiz, its status, and how many people started and finished it.</figcaption>
+    </figure>
+    <figure>
+      <a href="04-the-real-quiz-page.png"><img src="04-the-real-quiz-page.png" alt="The quiz at its real public address"></a>
+      <figcaption><b>4. The quiz at its real public address</b><br>/go/athlete-quiz, published, as a visitor gets it. Everything after this frame is a real walk of that page.</figcaption>
+    </figure>
+    <figure>
+      <a href="05-the-details-gate.png"><img src="05-the-details-gate.png" alt="At the end it asks who they are"></a>
+      <figcaption><b>5. At the end it asks who they are</b><br>Thirteen questions were answered for real before this appeared.</figcaption>
+    </figure>
+    <figure>
+      <a href="06-their-result.png"><img src="06-their-result.png" alt="They get their result"></a>
+      <figcaption><b>6. They get their result</b><br>Scored on the server from the answers. The browser is never given the weights.</figcaption>
+    </figure>
+    <figure>
+      <a href="07-leads-inbox.png"><img src="07-leads-inbox.png" alt="It arrives in Leads, marked as a quiz"></a>
+      <figcaption><b>7. It arrives in Leads, marked as a quiz</b><br>The row that did not exist before this change. The <strong>Quiz</strong> tag is what tells it from a form fill.</figcaption>
+    </figure>
+    <figure>
+      <a href="08-what-they-answered.png"><img src="08-what-they-answered.png" alt="Open it and you see what they answered"></a>
+      <figcaption><b>8. Open it and you see what they answered</b><br>Score, tier and archetype read from the attempt; every question and answer from the submission's payload.</figcaption>
+    </figure>
+    <figure>
+      <a href="09-preview-writes-nothing.png"><img src="09-preview-writes-nothing.png" alt="The same quiz in preview scores, and records nothing"></a>
+      <figcaption><b>9. The same quiz in preview scores, and records nothing</b><br>Completed on /preview/athlete-quiz. The table was counted before and after: unchanged.</figcaption>
+    </figure>

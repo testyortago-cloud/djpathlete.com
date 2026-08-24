@@ -105,19 +105,45 @@ describe("getAdminNav", () => {
     }
   })
 
-  // THIRD TIME. The pipeline board was URL-only, /admin/chat was URL-only, and
-  // the Athlete Quiz screen was URL-only on its first pass too. A quiz is a
-  // database entity the funnel block points at by id — it is not nested under
-  // any one funnel — so there is no page an owner would stumble onto it from.
-  it("registers the Quizzes screen in the Marketing section", () => {
+  // THIS TEST USED TO ASSERT THE OPPOSITE, and its reason was sound at the
+  // time: "a quiz is a database entity the funnel block points at by id — it
+  // is not nested under any one funnel — so there is no page an owner would
+  // stumble onto it from." That premise is what changed. Every funnel's own
+  // screen now lists the quiz it uses (FunnelQuizPanel), and the funnels board
+  // links to the full list, so the quiz is reached from the thing it belongs
+  // to instead of from a sidebar entry that made it look like a sibling of
+  // Funnels.
+  //
+  // THE GUARANTEE THE OLD TEST PROTECTED IS NOT DROPPED, it moved: the test
+  // below reads the funnels board and fails if that door is ever closed. A
+  // quiz no funnel uses yet would otherwise be reachable only by typing a URL,
+  // which is the defect the deleted sidebar line existed to fix.
+  it("does NOT carry a top-level Quizzes item — a quiz is reached from its funnel", () => {
     for (const contentStudioEnabled of [false, true]) {
       const nav = getAdminNav({ contentStudioEnabled })
-      const marketing = nav.groupedSections.find((s) => s.title === "Marketing")
       expect(
-        marketing?.items.some((i) => i.href === "/admin/funnels/quizzes"),
-        `Quizzes missing from Marketing when contentStudioEnabled=${contentStudioEnabled}`,
-      ).toBe(true)
+        getAllHrefs(nav),
+        `Quizzes is back in the sidebar when contentStudioEnabled=${contentStudioEnabled}`,
+      ).not.toContain("/admin/funnels/quizzes")
     }
+  })
+
+  it("keeps Funnels in the sidebar, which is the door a quiz is now behind", () => {
+    for (const contentStudioEnabled of [false, true]) {
+      const nav = getAdminNav({ contentStudioEnabled })
+      expect(getAllHrefs(nav)).toContain("/admin/funnels")
+    }
+  })
+
+  it("and the funnels board still links to the full list of quizzes", () => {
+    // Read as SOURCE because the board is a server component that queries the
+    // database to render. `href="` is part of the match on purpose: the file
+    // also carries a comment explaining this link, and a bare path search
+    // would be satisfied by the prose that describes the link rather than by
+    // the link.
+    const fs = require("node:fs") as typeof import("node:fs")
+    const board = fs.readFileSync("app/(admin)/admin/funnels/page.tsx", "utf8")
+    expect(board).toContain('href="/admin/funnels/quizzes"')
   })
 
   // Final review, Important 2: the Lead Engine pipeline board was URL-only —

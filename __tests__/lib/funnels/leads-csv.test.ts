@@ -26,6 +26,8 @@ function lead(overrides: Partial<FunnelLead> = {}): FunnelLead {
     created_at: "2026-08-11T09:00:00.000Z",
     status: "new",
     notes: null,
+    kind: "form",
+    quiz_attempt_id: null,
     funnel_name: "Waitlist",
     funnel_slug: "waitlist",
     step_name: "Landing",
@@ -117,5 +119,30 @@ describe("leadsCsvFilename", () => {
     // MUTANT: `.toISOString()` on an invalid Date THROWS, which would turn a
     // clock problem into a failed download.
     expect(leadsCsvFilename(new Date("nonsense"))).toBe("funnel-leads-export.csv")
+  })
+})
+
+describe("form fills and quiz completions in one file", () => {
+  it("carries a Type column, so a row says which it was", () => {
+    // The inbox distinguishes them with a badge. A spreadsheet that did not
+    // would have the two kinds of lead looking identical the moment anyone
+    // exported them, which is where the follow-up actually happens.
+    const csv = leadsToCsv([lead(), lead({ id: "lead-2", kind: "quiz", quiz_attempt_id: "attempt-1" })])
+    const [header, formRow, quizRow] = csv.split("\n")
+    const typeIndex = header.split(",").indexOf("Type")
+    expect(typeIndex).toBeGreaterThan(-1)
+    // The INDEX, not just the presence of the word: a header column and a body
+    // value that drift apart is exactly the failure this file exists to catch.
+    expect(formRow.split(",")[typeIndex]).toBe("Form")
+    expect(quizRow.split(",")[typeIndex]).toBe("Quiz")
+  })
+
+  it("keeps a quiz taker's answers in the same union of answer columns", () => {
+    const csv = leadsToCsv([
+      lead({ payload: { sport: "Soccer" } }),
+      lead({ id: "lead-2", kind: "quiz", payload: { "How many sessions a week?": "Three or four" } }),
+    ])
+    expect(csv.split("\n")[0]).toContain("How many sessions a week?")
+    expect(csv).toContain("Three or four")
   })
 })
