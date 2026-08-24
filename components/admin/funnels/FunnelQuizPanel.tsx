@@ -53,7 +53,7 @@ export function FunnelQuizPanel({ items }: { items: FunnelQuizPanelItem[] }) {
         <DataTableToolbar>
           <p className="text-sm text-muted-foreground">
             {items.length === 1 ? "This funnel uses a quiz." : `This funnel uses ${items.length} quizzes.`} Editing it
-            changes every page that shows it, straight away -- there is nothing to re-publish.
+            changes every page that shows it, straight away — there is nothing to re-publish.
           </p>
         </DataTableToolbar>
 
