@@ -63,11 +63,22 @@ const completeAttempt = vi.fn()
 const recordContactEvent = vi.fn()
 const recordConsent = vi.fn()
 const getBusinessSettings = vi.fn()
+const setAttemptAlert = vi.fn()
+const applyPipelineEvent = vi.fn()
+const sendQuizAlert = vi.fn()
 
 vi.mock("@/lib/db/quizzes", () => ({
   getQuizDefinition: (...a: unknown[]) => getQuizDefinition(...a),
   getAttempt: (...a: unknown[]) => getAttempt(...a),
   completeAttempt: (...a: unknown[]) => completeAttempt(...a),
+  setAttemptAlert: (...a: unknown[]) => setAttemptAlert(...a),
+}))
+vi.mock("@/lib/db/pipeline", () => ({ applyPipelineEvent: (...a: unknown[]) => applyPipelineEvent(...a) }))
+// `shouldAlert` is NOT mocked — it is the pure rule deciding red/orange, and
+// stubbing it would make "a green result does not alert" assert nothing.
+vi.mock("@/lib/quizzes/alert", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/quizzes/alert")>()),
+  sendQuizAlert: (...a: unknown[]) => sendQuizAlert(...a),
 }))
 vi.mock("@/lib/db/contacts", () => ({ recordContactEvent: (...a: unknown[]) => recordContactEvent(...a) }))
 vi.mock("@/lib/db/contact-consents", () => ({ recordConsent: (...a: unknown[]) => recordConsent(...a) }))
@@ -107,7 +118,10 @@ beforeEach(() => {
   completeAttempt.mockResolvedValue(undefined)
   recordContactEvent.mockResolvedValue({ contactId: CONTACT_ID, created: true, merged: false })
   recordConsent.mockResolvedValue(undefined)
-  getBusinessSettings.mockResolvedValue({ display_name: "DJP Athlete" })
+  getBusinessSettings.mockResolvedValue({ display_name: "DJP Athlete", reply_to: "darren@example.com" })
+  setAttemptAlert.mockResolvedValue(undefined)
+  applyPipelineEvent.mockResolvedValue({ decision: { kind: "noop", reason: "x" }, opportunityId: null })
+  sendQuizAlert.mockResolvedValue({ delivered: true })
 })
 
 describe("POST /api/quiz/submit", () => {
@@ -259,6 +273,59 @@ describe("POST /api/quiz/submit", () => {
     expect(logged).toContain("23505")
     expect(logged).not.toContain("sam@example.com")
     expect(logged).not.toContain("details")
+    spy.mockRestore()
+  })
+
+  it("14.1. alerts on a red result and not on a green one", async () => {
+    await post()
+    expect(sendQuizAlert).toHaveBeenCalledTimes(1)
+
+    sendQuizAlert.mockClear()
+    await post({ answers: [{ questionId: Q_ROUTER, optionId: O_TO_A }, { questionId: Q_A1, optionId: O_BEST }] })
+    expect(sendQuizAlert).not.toHaveBeenCalled()
+  })
+
+  it("14.2. records alert_status failed when the mailer did not deliver", async () => {
+    // NOT "sent". lib/email.ts returns a success shape with no API key, so an
+    // attempt marked sent when nothing left the building is worse than one
+    // marked failed — nobody goes looking for it.
+    sendQuizAlert.mockResolvedValue({ delivered: false })
+    await post()
+    expect(setAttemptAlert).toHaveBeenCalledWith({ attemptId: ATTEMPT_ID, status: "failed" })
+  })
+
+  it("14.3. records sent when it really was delivered", async () => {
+    await post()
+    expect(setAttemptAlert).toHaveBeenCalledWith({ attemptId: ATTEMPT_ID, status: "sent" })
+  })
+
+  it("14.4. an alert failure does not change the visitor's response", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+    sendQuizAlert.mockRejectedValue(new Error("smtp is down"))
+    const res = await post()
+    expect(res.status).toBe(200)
+    expect((await res.json()).score).toBe(0)
+    expect(setAttemptAlert).toHaveBeenCalledWith({ attemptId: ATTEMPT_ID, status: "failed" })
+    spy.mockRestore()
+  })
+
+  it("13. hands the pipeline a quiz_result carrying the attempt id, so a replay cannot open two cards", async () => {
+    await post()
+    expect(applyPipelineEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contactId: CONTACT_ID,
+        event: expect.objectContaining({ kind: "quiz_result", tier: "red" }),
+        metadata: expect.objectContaining({ quiz_attempt_id: ATTEMPT_ID }),
+      }),
+    )
+  })
+
+  it("13b. a pipeline failure does not change the visitor's response", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {})
+    applyPipelineEvent.mockRejectedValue(new Error("pipeline is down"))
+    const res = await post()
+    expect(res.status).toBe(200)
+    expect(spy.mock.calls.map((c) => String(c[0])).join(" | ")).toContain("applyPipelineEvent failed")
     spy.mockRestore()
   })
 

@@ -15,7 +15,7 @@ export type StageKind = "open" | "won" | "lost"
 // through). Omitting it here was a type lie: the CHECK constraint on
 // opportunities.closed_trigger already allows it and 00220 already writes
 // it (final review, Minor).
-export type MoveTrigger = "booking" | "payment" | "manual" | "reconciler" | "merge"
+export type MoveTrigger = "booking" | "payment" | "manual" | "reconciler" | "merge" | "quiz"
 export type Staleness = "fresh" | "amber" | "red"
 
 export type StageRow = {
@@ -73,6 +73,11 @@ export type PipelineEvent =
   // charge), not an incremental delta; `decideMove` computes the delta itself
   // against `MoveContext.previouslyRefundedCents`.
   | { kind: "refund"; amountRefundedCents: number; occurredAt: Date }
+  /**
+   * A completed quiz. `tier` is the tier KEY, and higher scores are better —
+   * so `red` is the most urgent, not the least.
+   */
+  | { kind: "quiz_result"; tier: string; occurredAt: Date }
 
 export type MoveDecision =
   | { kind: "create"; toStageKey: string; trigger: MoveTrigger; outcome?: "won" | "lost"; valueCents?: number; currency?: string; reason?: string }
@@ -165,6 +170,43 @@ export function decideMove(ctx: MoveContext, event: PipelineEvent): MoveDecision
     const valueCents = Math.max(0, priorValue - delta)
     const outcomeReason = valueCents === 0 ? "refunded" : "partially_refunded"
     return { kind: "amend", valueCents, outcomeReason, trigger: "payment" }
+  }
+
+  // --- quiz_result ---
+  //
+  // A RED RESULT IS A DEAL; A GREEN ONE IS A NEWSLETTER SUBSCRIBER. Higher
+  // scores are better, so Red and Orange are the two that mean "large or real
+  // gaps, worth a conversation now". Opening a card on Green would fill the
+  // board with athletes who are already well-prepared and bury the ones who
+  // are not — the board is a work queue, and a work queue everyone is on is
+  // a work queue nobody reads.
+  if (event.kind === "quiz_result") {
+    if (event.tier !== "red" && event.tier !== "orange") {
+      // An unknown tier lands here too, deliberately: a renamed band should
+      // stop creating cards, not guess that it might be urgent.
+      return { kind: "noop", reason: "quiz_tier_not_actionable" }
+    }
+    if (current && current.outcome == null) {
+      // A live deal is further along than a quiz result can know about. The
+      // quiz never drags a Consulted card backwards or re-opens work in flight.
+      return { kind: "noop", reason: "already_open" }
+    }
+    if (current?.outcome != null) {
+      // The SAME rule as a re-booking, reused rather than restated: a human
+      // who ruled this person out recently does not get overruled by a form.
+      if (humanClosed && current.outcome === "lost" && current.closed_at) {
+        const age = now.getTime() - new Date(current.closed_at).getTime()
+        if (age < REBOOKING_SUPPRESSION_DAYS * DAY_MS) {
+          return { kind: "refuse", reason: "suppressed_after_manual_lost" }
+        }
+      }
+    }
+    const firstOpen = stages
+      .filter((stage) => stage.kind === "open")
+      .slice()
+      .sort((a, b) => a.position - b.position)[0]
+    if (!firstOpen) return { kind: "noop", reason: "no_open_stage" }
+    return { kind: "create", toStageKey: firstOpen.key, trigger: "quiz" }
   }
 
   // --- booking ---

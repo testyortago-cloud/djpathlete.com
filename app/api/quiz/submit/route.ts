@@ -28,7 +28,9 @@
 
 import { NextResponse } from "next/server"
 import { z } from "zod"
-import { completeAttempt, getAttempt, getQuizDefinition } from "@/lib/db/quizzes"
+import { completeAttempt, getAttempt, getQuizDefinition, setAttemptAlert } from "@/lib/db/quizzes"
+import { applyPipelineEvent } from "@/lib/db/pipeline"
+import { sendQuizAlert, shouldAlert } from "@/lib/quizzes/alert"
 import { recordContactEvent } from "@/lib/db/contacts"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
@@ -178,6 +180,48 @@ async function handoff(input: {
     contactId = contact.contactId
   } catch (error) {
     logFailure("recordContactEvent", error, correlation)
+  }
+
+  // 5a. THE PIPELINE. Red and Orange open a card; Green and Yellow do not.
+  // `decideMove` owns that rule — this route only reports what happened.
+  if (contactId) {
+    try {
+      await applyPipelineEvent({
+        contactId,
+        event: { kind: "quiz_result", tier: result.tierKey ?? "", occurredAt: new Date() },
+        // Carries the attempt id so a replay of the same completion cannot
+        // open a second card — `SOURCE_EVENT_ID_KEYS` reads this key.
+        metadata: { quiz_attempt_id: body.attemptId, quiz_key: definition.key, tier: result.tierKey },
+      })
+    } catch (error) {
+      logFailure("applyPipelineEvent", error, correlation)
+    }
+  }
+
+  // 5b. THE OPERATOR ALERT, and the honest record of whether it went.
+  if (shouldAlert(result.tierKey)) {
+    try {
+      const settings = await getBusinessSettings()
+      const { delivered } = await sendQuizAlert({
+        to: settings.reply_to ?? "",
+        definition,
+        attemptId: body.attemptId,
+        name: body.name,
+        email: body.email,
+        phone: body.phone ?? null,
+        score: result.score,
+        tierKey: result.tierKey,
+        profileKey: result.profileKey,
+        branchKey: result.branchKey,
+      })
+      // "The send did not throw" is not "somebody was told". The flag the
+      // mailer returns is what lands on the attempt, so /admin/quizzes can
+      // show an alert that never left the building as exactly that.
+      await setAttemptAlert({ attemptId: body.attemptId, status: delivered ? "sent" : "failed" })
+    } catch (error) {
+      logFailure("sendQuizAlert", error, correlation)
+      await setAttemptAlert({ attemptId: body.attemptId, status: "failed" }).catch(() => {})
+    }
   }
 
   if (contactId && body.smsConsent && body.phone) {
