@@ -1,0 +1,223 @@
+// POST /api/quiz/submit — the turn that scores.
+//
+// THE BROWSER'S NUMBER IS NEVER CONSULTED. The route re-reads the quiz from
+// the database and recomputes everything through `scoreQuiz`. A `score` key in
+// the request body is not rejected, not sanitised, and not read — there is
+// nowhere in this file that reads one, which is why a forged one cannot
+// matter. A test sends `score: 100` with worst-case answers and asserts both
+// the response and the stored row carry the computed value.
+//
+// ORDER OF WRITES, AND IT MATTERS (spec §4.3):
+//   1. score (pure, no I/O)
+//   2. complete the attempt row
+//   3. recordContactEvent — creates/merges the contact, writes the timeline
+//      row, and calls enrollIfTriggered itself
+//   4. recordConsent, if a tick was shown and ticked
+//   5. pipeline + operator alert, both non-fatally
+//   6. return the result
+//
+// THE VISITOR'S RESULT IS RETURNED EVEN IF 3-5 THROW. They answered twelve
+// questions; a failure in our marketing plumbing is not their problem.
+//
+// NEVER LOG A RAW POSTGREST ERROR. `error.details` embeds the literal email
+// address on a unique violation, and the house DAL convention rethrows a raw
+// object that is not `instanceof Error` — which the standard cron shell writes
+// out as the literal string "[object Object]".
+//
+// Spec: docs/superpowers/specs/2026-08-23-athlete-quiz-funnel-design.md §4.3
+
+import { NextResponse } from "next/server"
+import { z } from "zod"
+import { completeAttempt, getAttempt, getQuizDefinition } from "@/lib/db/quizzes"
+import { recordContactEvent } from "@/lib/db/contacts"
+import { recordConsent } from "@/lib/db/contact-consents"
+import { getBusinessSettings } from "@/lib/db/businesses"
+import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { sanitiseAnswers, scoreQuiz } from "@/lib/quizzes/score"
+import type { QuizDefinition } from "@/lib/quizzes/types"
+
+export const runtime = "nodejs"
+
+/** Bots submit instantly; a person cannot read and answer a quiz this fast. */
+const MIN_ELAPSED_MS = 1500
+
+const RATE_LIMIT_WINDOW_MS = 60_000
+const RATE_LIMIT_MAX = 5
+const recentByIp = new Map<string, number[]>()
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now()
+  const hits = (recentByIp.get(ip) ?? []).filter((t) => now - t < RATE_LIMIT_WINDOW_MS)
+  hits.push(now)
+  recentByIp.set(ip, hits)
+  if (recentByIp.size > 5000) recentByIp.clear()
+  return hits.length > RATE_LIMIT_MAX
+}
+
+/** `code` and `message` only. Never the raw object — see the header. */
+function logFailure(step: string, error: unknown, correlation: Record<string, string | null>): void {
+  const shaped =
+    error instanceof Error
+      ? { message: error.message }
+      : { code: (error as { code?: string })?.code ?? null, message: (error as { message?: string })?.message ?? null }
+  console.error(`[quiz/submit] ${step} failed`, { ...correlation, ...shaped })
+}
+
+const answerSchema = z.object({ questionId: z.string().uuid(), optionId: z.string().uuid() })
+
+const bodySchema = z.object({
+  quizId: z.string().uuid(),
+  attemptId: z.string().uuid(),
+  answers: z.array(answerSchema).max(200),
+  name: z.string().min(1).max(120),
+  email: z.string().email().max(200),
+  phone: z.string().max(40).optional(),
+  smsConsent: z.boolean().optional().default(false),
+  website: z.string().optional(),
+  elapsedMs: z.number().optional(),
+  attributionSessionId: z.string().max(120).nullish(),
+})
+
+export async function POST(request: Request) {
+  let body: z.infer<typeof bodySchema>
+  try {
+    const parsed = bodySchema.safeParse(await request.json())
+    if (!parsed.success) return NextResponse.json({ error: "Invalid submission." }, { status: 400 })
+    body = parsed.data
+  } catch {
+    return NextResponse.json({ error: "Invalid submission." }, { status: 400 })
+  }
+
+  // Honeypot. 200 so the bot has no signal it was caught.
+  if (body.website && body.website.length > 0) return NextResponse.json({ ok: true })
+  if (typeof body.elapsedMs === "number" && body.elapsedMs < MIN_ELAPSED_MS) {
+    return NextResponse.json({ ok: true })
+  }
+
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown"
+  if (isRateLimited(ip)) {
+    return NextResponse.json({ error: "Too many submissions. Please try again shortly." }, { status: 429 })
+  }
+
+  const definition = await getQuizDefinition(body.quizId)
+  if (!definition || definition.status !== "active") {
+    return NextResponse.json({ error: "Not found." }, { status: 404 })
+  }
+
+  const attempt = await getAttempt(body.attemptId)
+  if (!attempt || attempt.quizId !== body.quizId) {
+    return NextResponse.json({ error: "Not found." }, { status: 404 })
+  }
+
+  // 1. SCORE. Pure, no I/O, and the only source of the numbers below.
+  const answers = sanitiseAnswers(definition, body.answers)
+  const result = scoreQuiz(definition, answers)
+
+  // 2. COMPLETE THE ATTEMPT. Before the contact write, so a visitor who
+  // reloads cannot be scored twice into the pipeline.
+  try {
+    await completeAttempt({
+      attemptId: body.attemptId,
+      branchId: result.branchId,
+      answers,
+      rawScore: result.rawScore,
+      maxScore: result.maxScore,
+      score: result.score,
+      tierKey: result.tierKey,
+      profileKey: result.profileKey,
+      contactId: null,
+    })
+  } catch (error) {
+    logFailure("completeAttempt", error, { attemptId: body.attemptId, quizId: body.quizId })
+    return NextResponse.json({ error: "Could not save your answers." }, { status: 500 })
+  }
+
+  // 3-5. EVERYTHING BELOW IS NON-FATAL.
+  await handoff({ body, definition, result, answers, ip, request }).catch((error: unknown) => {
+    logFailure("handoff", error, { attemptId: body.attemptId, quizId: body.quizId })
+  })
+
+  return NextResponse.json(presentResult(definition, result))
+}
+
+/**
+ * Everything after the score is saved. Detached, and every step inside it is
+ * individually guarded, so no single marketing failure costs the visitor the
+ * result they spent three minutes earning.
+ */
+async function handoff(input: {
+  body: z.infer<typeof bodySchema>
+  definition: QuizDefinition
+  result: ReturnType<typeof scoreQuiz>
+  answers: { questionId: string; optionId: string }[]
+  ip: string
+  request: Request
+}): Promise<void> {
+  const { body, definition, result, ip, request } = input
+  const correlation = { attemptId: body.attemptId, quizId: body.quizId }
+
+  let contactId: string | null = null
+  try {
+    const contact = await recordContactEvent({
+      email: body.email,
+      phone: body.phone ?? null,
+      name: body.name,
+      source: "quiz",
+      attributionSessionId: body.attributionSessionId ?? null,
+      // The shape four sequences filter on. `branch` is the contract — see
+      // quiz_branches.key — so renaming it silently stops enrolment.
+      metadata: {
+        quiz_key: definition.key,
+        branch: result.branchKey,
+        tier: result.tierKey,
+        profile: result.profileKey,
+        score: result.score,
+        attempt_id: body.attemptId,
+      },
+    })
+    contactId = contact.contactId
+  } catch (error) {
+    logFailure("recordContactEvent", error, correlation)
+  }
+
+  if (contactId && body.smsConsent && body.phone) {
+    try {
+      const settings = await getBusinessSettings()
+      // MIRRORS THE ISLAND'S OWN GATE. A blank display name means the checkbox
+      // was never shown, so filing a row would misrepresent what the visitor
+      // saw. Skipped and logged, never thrown — the lead is already captured.
+      if (!hasSmsConsentDisplayName(settings.display_name)) {
+        console.warn("[quiz/submit] sms consent skipped: business_settings.display_name is blank")
+      } else {
+        await recordConsent({
+          contactId,
+          channel: "sms",
+          granted: true,
+          source: "quiz",
+          // Re-rendered here from the same function the island used, never
+          // relayed from the client: evidence of consent is what was SHOWN.
+          wordingShown: renderSmsConsentWording(settings.display_name),
+          ip,
+          userAgent: request.headers.get("user-agent"),
+        })
+      }
+    } catch (error) {
+      logFailure("recordConsent", error, correlation)
+    }
+  }
+}
+
+/** The visitor-facing shape. Carries no weight and no raw total. */
+function presentResult(definition: QuizDefinition, result: ReturnType<typeof scoreQuiz>) {
+  const tier = definition.tiers.find((candidate) => candidate.key === result.tierKey) ?? null
+  const profile = definition.profiles.find((candidate) => candidate.key === result.profileKey) ?? null
+  const branch = definition.branches.find((candidate) => candidate.key === result.branchKey) ?? null
+  return {
+    score: result.score,
+    tier: tier
+      ? { key: tier.key, headline: tier.headline, body: tier.body, ctaLabel: tier.ctaLabel, ctaHref: tier.ctaHref }
+      : null,
+    profile: profile ? { key: profile.key, name: profile.name, description: profile.description } : null,
+    branch: branch ? { key: branch.key, name: branch.name } : null,
+  }
+}
