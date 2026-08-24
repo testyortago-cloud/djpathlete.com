@@ -872,8 +872,8 @@ function renderQuizSection(section: Section, ctx: RenderContext): string {
     liveFeedNote(
       ctx,
       "The questions, scoring and result copy are pulled live from the quiz itself, so they " +
-        "cannot be retyped here — edit them under Quizzes in the admin. This section chooses " +
-        "which quiz to show.",
+        "cannot be retyped here — open the quiz from this funnel's own screen. This section " +
+        "chooses which quiz to show.",
     ),
   )
   // renderIslandIfValid, not renderIsland: a quizId that is GUID-shaped but not
