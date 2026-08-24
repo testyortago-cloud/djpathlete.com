@@ -66,6 +66,7 @@ const auth = vi.fn()
 const getQuizDefinition = vi.fn()
 const saveQuizDefinition = vi.fn()
 const getQuizDefinitionForEditor = vi.fn()
+const getAnsweredQuestionIds = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => auth() }))
 vi.mock("@/lib/db/quizzes", async () => {
@@ -76,6 +77,7 @@ vi.mock("@/lib/db/quizzes", async () => {
     QuizAnsweredOptionError: actual.QuizAnsweredOptionError,
     getQuizDefinition: (...a: unknown[]) => getQuizDefinition(...a),
     getQuizDefinitionForEditor: (...a: unknown[]) => getQuizDefinitionForEditor(...a),
+    getAnsweredQuestionIds: (...a: unknown[]) => getAnsweredQuestionIds(...a),
     saveQuizDefinition: (...a: unknown[]) => saveQuizDefinition(...a),
   }
 })
@@ -96,6 +98,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   auth.mockResolvedValue({ user: { role: "admin" } })
   getQuizDefinition.mockResolvedValue(healthy())
+  getAnsweredQuestionIds.mockResolvedValue([])
   getQuizDefinitionForEditor.mockResolvedValue(healthy())
   // The real contract. `saveQuizDefinition` returns what it retired, and the
   // route reads it — a mock resolving `undefined` would crash the route for a

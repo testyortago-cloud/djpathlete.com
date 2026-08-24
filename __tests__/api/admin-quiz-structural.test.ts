@@ -85,6 +85,7 @@ function noRouter(): QuizDefinition {
 const auth = vi.fn()
 const getQuizDefinition = vi.fn()
 const getQuizDefinitionForEditor = vi.fn()
+const getAnsweredQuestionIds = vi.fn()
 const saveQuizDefinition = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => auth() }))
@@ -97,6 +98,7 @@ vi.mock("@/lib/db/quizzes", async () => {
     QuizAnsweredOptionError: actual.QuizAnsweredOptionError,
     getQuizDefinition: (...a: unknown[]) => getQuizDefinition(...a),
     getQuizDefinitionForEditor: (...a: unknown[]) => getQuizDefinitionForEditor(...a),
+    getAnsweredQuestionIds: (...a: unknown[]) => getAnsweredQuestionIds(...a),
     saveQuizDefinition: (...a: unknown[]) => saveQuizDefinition(...a),
   }
 })
@@ -130,6 +132,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   auth.mockResolvedValue({ user: { role: "admin" } })
   getQuizDefinition.mockResolvedValue(healthy())
+  getAnsweredQuestionIds.mockResolvedValue([])
   getQuizDefinitionForEditor.mockResolvedValue(withRetired())
   saveQuizDefinition.mockResolvedValue({ retiredQuestionIds: [] })
 })

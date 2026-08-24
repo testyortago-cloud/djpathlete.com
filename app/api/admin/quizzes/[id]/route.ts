@@ -18,6 +18,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import {
   QuizAnsweredOptionError,
+  getAnsweredQuestionIds,
   getQuizDefinition,
   getQuizDefinitionForEditor,
   saveQuizDefinition,
@@ -255,10 +256,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   // disappear the moment it was saved. The gate above still runs against the
   // public read, because the gate is a statement about the WALK.
   const forEditor = await getQuizDefinitionForEditor(id)
+  // Sent every time, not only after a retirement: the editor re-derives which
+  // inactive questions are retired from this, and a stale list would relabel a
+  // question the owner just turned off.
+  const answeredQuestionIds = await getAnsweredQuestionIds(id).catch(() => [] as string[])
   return NextResponse.json({
     ok: true,
     gate,
     quiz: forEditor,
+    answeredQuestionIds,
     retiredQuestionIds,
     deactivated,
     ...(deactivated ? { blockers: gate.blockers } : {}),

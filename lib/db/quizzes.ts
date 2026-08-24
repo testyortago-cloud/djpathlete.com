@@ -404,6 +404,21 @@ export async function deleteQuiz(quizId: string): Promise<void> {
   if (error) throw error
 }
 
+/**
+ * Which of this quiz's questions somebody has actually answered.
+ *
+ * THE EDITOR NEEDS THIS TO TELL TWO INACTIVE QUESTIONS APART. A question that
+ * was retired (somebody answered it, so it was withdrawn rather than deleted)
+ * and a question that was added and never turned on are both `is_active =
+ * false`, and filing the second under a heading reading "Retired" is a lie the
+ * owner has no way to check. Within one editing session the editor knows which
+ * rows it just created; after a reload it does not, and this is the answer.
+ */
+export async function getAnsweredQuestionIds(quizId: string): Promise<string[]> {
+  const { questions } = await answeredIds(getClient(), quizId)
+  return [...questions]
+}
+
 export interface QuizSaveInput {
   quizId: string
   quiz?: {

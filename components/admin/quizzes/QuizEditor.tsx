@@ -28,7 +28,17 @@ const PANELS: { key: Panel; label: string }[] = [
 
 const EVERYONE = "__everyone__"
 
-export function QuizEditor({ initial }: { initial: QuizDefinition }) {
+export function QuizEditor({
+  initial,
+  initialAnsweredQuestionIds = [],
+}: {
+  initial: QuizDefinition
+  /**
+   * Which questions somebody has actually answered. Only these can be
+   * "retired"; any other inactive question was simply never turned on.
+   */
+  initialAnsweredQuestionIds?: string[]
+}) {
   const router = useRouter()
   const [quiz, setQuiz] = useState<QuizDefinition>(initial)
   const [panel, setPanel] = useState<Panel>("details")
@@ -48,6 +58,9 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
   // takes it out of `newIds` rather than putting it into `deletedIds`, so the
   // server is never asked to delete a uuid it has never seen.
   // ---------------------------------------------------------------------
+  const [answeredQuestionIds, setAnsweredQuestionIds] = useState<Set<string>>(
+    () => new Set(initialAnsweredQuestionIds),
+  )
   const [newQuestionIds, setNewQuestionIds] = useState<Set<string>>(() => new Set())
   const [newOptionIds, setNewOptionIds] = useState<Set<string>>(() => new Set())
   const [deletedQuestionIds, setDeletedQuestionIds] = useState<Set<string>>(() => new Set())
@@ -206,7 +219,7 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
       // to do nothing, and the walk order changes anyway.
       const siblings = q.questions
         .filter((x) => (branchTab === EVERYONE ? x.branchId === null : x.branchId === branchTab))
-        .filter((x) => x.isActive || newQuestionIds.has(x.id))
+        .filter((x) => x.isActive || !answeredQuestionIds.has(x.id))
         .slice()
         .sort((a, b) => a.position - b.position)
       const i = siblings.findIndex((x) => x.id === questionId)
@@ -329,11 +342,13 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
       // older server that does not return it.
       const saved = json as {
         quiz?: QuizDefinition
+        answeredQuestionIds?: string[]
         retiredQuestionIds?: string[]
         deactivated?: boolean
         blockers?: string[]
       }
       if (saved.quiz) setQuiz(saved.quiz)
+      if (saved.answeredQuestionIds) setAnsweredQuestionIds(new Set(saved.answeredQuestionIds))
       else if (nextStatus) setQuiz((q) => ({ ...q, status: nextStatus }))
 
       // THE PENDING SETS ARE CLEARED ONLY ON SUCCESS. On a refusal they stay,
@@ -349,7 +364,11 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
       // the only outcome here that changes what visitors see, and the blockers
       // are shown alongside so the way back is on the same screen.
       if (saved.deactivated) {
-        setServerBlockers(saved.blockers ?? null)
+        // NOT `setServerBlockers`. That panel is headed "The server refused this
+        // activation", and nobody tried to activate anything — they removed a
+        // question. The panel above it already lists the same blockers, because
+        // the client gate recomputes them from the definition just adopted, so
+        // setting this would duplicate the list under a false heading.
         setMessage(
           "Saved — but this change means the quiz can no longer be scored, so it has been taken offline. Nobody is being shown it. Fix the points below and choose Activate to put it back.",
         )
@@ -378,15 +397,17 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
     .sort((a, b) => a.position - b.position)
 
   // NOT LIVE YET AND RETIRED ARE BOTH INACTIVE, AND THEY ARE NOT THE SAME
-  // THING. A question just added is switched off so a half-typed one cannot
-  // reach a visitor — it belongs with the questions the owner is working on. A
-  // question the server retired is switched off because somebody has already
-  // answered it, and it belongs out of the way.
+  // THING. A question is retired when somebody has already answered it, so it
+  // was withdrawn rather than deleted. A question that is merely switched off —
+  // just added, or turned off by hand — is still the owner's to work on.
   //
-  // Sorting only on `isActive` puts a brand new question in a group headed
-  // "Retired", which is both wrong and alarming.
-  const visibleQuestions = questionsInGroup.filter((q) => q.isActive || newQuestionIds.has(q.id))
-  const retiredQuestions = questionsInGroup.filter((q) => !q.isActive && !newQuestionIds.has(q.id))
+  // `newQuestionIds` alone was not enough: it is empty after a reload, so a
+  // question added yesterday and never turned on came back filed under a
+  // heading reading "Retired". Only the answers can tell the two apart, which
+  // is why the server sends `answeredQuestionIds`.
+  const isRetired = (id: string) => answeredQuestionIds.has(id)
+  const visibleQuestions = questionsInGroup.filter((q) => q.isActive || !isRetired(q.id))
+  const retiredQuestions = questionsInGroup.filter((q) => !q.isActive && isRetired(q.id))
 
   return (
     <div className="space-y-6">

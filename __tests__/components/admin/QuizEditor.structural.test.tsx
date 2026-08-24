@@ -193,7 +193,7 @@ describe("QuizEditor — removing", () => {
 
 describe("QuizEditor — retired questions", () => {
   it("shows a retired question apart from the live ones, and says so", async () => {
-    render(<QuizEditor initial={withRetired()} />)
+    render(<QuizEditor initial={withRetired()} initialAnsweredQuestionIds={[Q_RETIRED]} />)
     openQuestions()
     expect(screen.getByText(/retired/i)).toBeTruthy()
     expect(screen.getByText("A question somebody already answered")).toBeTruthy()
@@ -202,14 +202,14 @@ describe("QuizEditor — retired questions", () => {
   it("does not number a retired question among the live ones", async () => {
     // MUTANT KILLED: render inactive questions inline. "Question 2" becomes
     // one nobody is being asked, and the numbering stops matching the walk.
-    render(<QuizEditor initial={withRetired()} />)
+    render(<QuizEditor initial={withRetired()} initialAnsweredQuestionIds={[Q_RETIRED]} />)
     openQuestions()
     const live = screen.getByTestId("live-questions")
     expect(within(live).queryByText("A question somebody already answered")).toBeNull()
   })
 
   it("brings one back", async () => {
-    render(<QuizEditor initial={withRetired()} />)
+    render(<QuizEditor initial={withRetired()} initialAnsweredQuestionIds={[Q_RETIRED]} />)
     openQuestions()
     fireEvent.click(screen.getByRole("button", { name: /bring this question back/i }))
     save()
@@ -219,7 +219,7 @@ describe("QuizEditor — retired questions", () => {
   })
 
   it("says what happened when the server retired instead of deleting", async () => {
-    saveResponse = { ...saveResponse, retiredQuestionIds: [Q_ROUTER], quiz: withRetired() }
+    saveResponse = { ...saveResponse, retiredQuestionIds: [Q_ROUTER], quiz: withRetired(), answeredQuestionIds: [Q_RETIRED] }
     render(<QuizEditor initial={definition()} />)
     openQuestions()
     fireEvent.click(screen.getAllByRole("button", { name: /remove this question/i })[0])
@@ -267,7 +267,7 @@ describe("QuizEditor — not live yet is not the same as retired", () => {
     // appears under a heading reading "Retired", which is both wrong and
     // alarming — and its Remove button is then in the wrong group, which is
     // how this was found.
-    render(<QuizEditor initial={withRetired()} />)
+    render(<QuizEditor initial={withRetired()} initialAnsweredQuestionIds={[Q_RETIRED]} />)
     openQuestions()
     fireEvent.click(screen.getByRole("button", { name: /add a question/i }))
     const live = screen.getByTestId("live-questions")
@@ -303,7 +303,7 @@ describe("QuizEditor — after the save", () => {
     // state asked for a DELETE, so it has already dropped the question — the
     // owner is told it was retired and then cannot see it anywhere. Only the
     // server's own editor read knows it is still there.
-    saveResponse = { ...saveResponse, retiredQuestionIds: [Q_ROUTER], quiz: withRetired() }
+    saveResponse = { ...saveResponse, retiredQuestionIds: [Q_ROUTER], quiz: withRetired(), answeredQuestionIds: [Q_RETIRED] }
     render(<QuizEditor initial={definition()} />)
     openQuestions()
     expect(screen.queryByTestId("retired-questions")).toBeNull()
@@ -319,11 +319,19 @@ describe("QuizEditor — when an edit takes the quiz offline", () => {
     // MUTANT KILLED: report "Saved." and drop the blockers. The quiz stops
     // taking answers, the owner is told everything went fine, and the only
     // evidence is a status pill they were not looking at.
+    // The definition the server sends back is the one it just wrote: the router
+    // retired. Returning a healthy quiz here would let the assertion below pass
+    // against a screen the owner can never actually see.
+    const afterRetiring = withRetired()
+    afterRetiring.questions = afterRetiring.questions.map((q) =>
+      q.id === Q_ROUTER ? { ...q, isActive: false } : q,
+    )
     saveResponse = {
       ok: true,
       gate: { ok: false, blockers: ["There is no router question: no shared question routes to a branch."], warnings: [] },
-      quiz: definition(),
-      retiredQuestionIds: [],
+      quiz: afterRetiring,
+      answeredQuestionIds: [Q_ROUTER, Q_RETIRED],
+      retiredQuestionIds: [Q_ROUTER],
       deactivated: true,
       blockers: ["There is no router question: no shared question routes to a branch."],
     }
@@ -332,7 +340,11 @@ describe("QuizEditor — when an edit takes the quiz offline", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /remove this question/i })[0])
     save()
     expect(await screen.findByText(/taken offline/i)).toBeTruthy()
+    // The blockers reach the owner through the client gate panel, which
+    // recomputes them from the definition just adopted.
     expect(await screen.findByText(/no router question/i)).toBeTruthy()
+    // And NOT a second time under a heading about an activation nobody asked for.
+    expect(screen.queryByText(/server refused this activation/i)).toBeNull()
   })
 })
 
@@ -366,7 +378,7 @@ describe("QuizEditor — reordering around a retired question", () => {
     // the arrow appears to do nothing and the walk order changes anyway.
     const quiz = withRetired() // Q_RETIRED is at position 20, between 10 and 50
     quiz.questions[1].branchId = null // put the second live question in this group
-    render(<QuizEditor initial={quiz} />)
+    render(<QuizEditor initial={quiz} initialAnsweredQuestionIds={[Q_RETIRED]} />)
     openQuestions()
     const live = screen.getByTestId("live-questions")
     fireEvent.click(within(live).getAllByRole("button", { name: /move .* earlier/i })[1])
@@ -379,5 +391,50 @@ describe("QuizEditor — reordering around a retired question", () => {
       expect(second.position).toBe(10)
       expect(router.position).toBe(50)
     })
+  })
+})
+
+describe("QuizEditor — a question saved but never turned on", () => {
+  function neverTurnedOn(): QuizDefinition {
+    const quiz = withRetired()
+    // Same shape as the retired one — inactive — but NOBODY has answered it.
+    quiz.questions.push({
+      id: "77777777-7777-4777-8777-777777777771",
+      quizId: QUIZ_ID, branchId: null, position: 60,
+      prompt: "New question", helpText: null, isActive: false,
+      options: [
+        { id: "77777777-7777-4777-8777-777777777772", questionId: "77777777-7777-4777-8777-777777777771", position: 1, label: "Option 1", weight: 0, routesToBranchId: null, profileId: null },
+        { id: "77777777-7777-4777-8777-777777777773", questionId: "77777777-7777-4777-8777-777777777771", position: 2, label: "Option 2", weight: 0, routesToBranchId: null, profileId: null },
+      ],
+    })
+    return quiz
+  }
+
+  it("is not filed under Retired after a reload", async () => {
+    // MUTANT KILLED: classify on `newQuestionIds` alone. That set is empty on a
+    // fresh page load, so a question added yesterday and never turned on comes
+    // back under a heading reading "Retired" — a claim the owner cannot check
+    // and that is simply false.
+    render(<QuizEditor initial={neverTurnedOn()} initialAnsweredQuestionIds={[Q_RETIRED]} />)
+    openQuestions()
+    const retired = screen.getByTestId("retired-questions")
+    expect(within(retired).queryByText("New question")).toBeNull()
+    const live = screen.getByTestId("live-questions")
+    expect(within(live).getByDisplayValue("New question")).toBeTruthy()
+  })
+
+  it("still files the answered one under Retired", async () => {
+    render(<QuizEditor initial={neverTurnedOn()} initialAnsweredQuestionIds={[Q_RETIRED]} />)
+    openQuestions()
+    const retired = screen.getByTestId("retired-questions")
+    expect(within(retired).getByText("A question somebody already answered")).toBeTruthy()
+  })
+
+  it("offers to turn it on rather than to bring it back", async () => {
+    // "Bring it back" is for something withdrawn. This was never out there.
+    render(<QuizEditor initial={neverTurnedOn()} initialAnsweredQuestionIds={[Q_RETIRED]} />)
+    openQuestions()
+    const live = screen.getByTestId("live-questions")
+    expect(within(live).getByRole("button", { name: /turn this question on: "New question"/i })).toBeTruthy()
   })
 })
