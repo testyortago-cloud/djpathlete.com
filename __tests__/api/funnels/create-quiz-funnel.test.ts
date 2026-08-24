@@ -63,6 +63,14 @@ const quizBody = {
   quiz: { copyFrom: BUILTIN_QUIZ_SOURCE },
 }
 
+/**
+ * The route context Next hands a non-dynamic route. `withAudit` types its
+ * handler as `(request, context)`, so the real POST takes two arguments even
+ * though this one reads none of the second — passing it keeps the call honest
+ * against the type rather than casting the arity away.
+ */
+const NO_PARAMS = { params: Promise.resolve({}) }
+
 /** The step plan `createFunnel` was actually handed. */
 function plannedSteps(): { name: string; slug: string; projectData?: unknown }[] {
   return (createFunnelMock.mock.calls[0]?.[0] as { steps?: never[] } | undefined)?.steps ?? []
@@ -83,7 +91,7 @@ beforeEach(() => {
 describe("POST /api/admin/funnels — the quiz template", () => {
   it("writes the page onto the entry step in the same insert as the step", async () => {
     const { POST } = await import("@/app/api/admin/funnels/route")
-    const res = await POST(post(quizBody))
+    const res = await POST(post(quizBody), NO_PARAMS)
     expect(res.status).toBe(201)
 
     const entry = plannedSteps()[0]
@@ -96,7 +104,7 @@ describe("POST /api/admin/funnels — the quiz template", () => {
 
   it("points the page at the quiz it just created, not at the one it copied", async () => {
     const { POST } = await import("@/app/api/admin/funnels/route")
-    await POST(post(quizBody))
+    await POST(post(quizBody), NO_PARAMS)
 
     const doc = sectionDocSchema.parse(plannedSteps()[0].projectData)
     const section = doc.sections.find((s) => s.kind === "quiz")!
@@ -105,13 +113,13 @@ describe("POST /api/admin/funnels — the quiz template", () => {
 
   it("names the clone after the funnel", async () => {
     const { POST } = await import("@/app/api/admin/funnels/route")
-    await POST(post(quizBody))
+    await POST(post(quizBody), NO_PARAMS)
     expect(createQuizFromMock.mock.calls[0][0]).toMatchObject({ name: "Rotational Reboot Check" })
   })
 
   it("copies the built-in blueprint without going to the database for it", async () => {
     const { POST } = await import("@/app/api/admin/funnels/route")
-    await POST(post(quizBody))
+    await POST(post(quizBody), NO_PARAMS)
     // MUTANT: treat the sentinel as an id. `getQuizDefinition("builtin:rpi")`
     // finds nothing, so a fresh database can never make a quiz funnel.
     expect(getQuizDefinitionMock).not.toHaveBeenCalled()
@@ -121,14 +129,14 @@ describe("POST /api/admin/funnels — the quiz template", () => {
   it("reads an existing quiz when one is named", async () => {
     getQuizDefinitionMock.mockResolvedValue({ id: EXISTING_QUIZ_ID, questions: [], branches: [], tiers: [], profiles: [] })
     const { POST } = await import("@/app/api/admin/funnels/route")
-    await POST(post({ ...quizBody, quiz: { copyFrom: EXISTING_QUIZ_ID } }))
+    await POST(post({ ...quizBody, quiz: { copyFrom: EXISTING_QUIZ_ID } }), NO_PARAMS)
     expect(getQuizDefinitionMock).toHaveBeenCalledWith(EXISTING_QUIZ_ID)
   })
 
   it("refuses a copyFrom naming a quiz that does not exist, before creating anything", async () => {
     getQuizDefinitionMock.mockResolvedValue(null)
     const { POST } = await import("@/app/api/admin/funnels/route")
-    const res = await POST(post({ ...quizBody, quiz: { copyFrom: EXISTING_QUIZ_ID } }))
+    const res = await POST(post({ ...quizBody, quiz: { copyFrom: EXISTING_QUIZ_ID } }), NO_PARAMS)
     // MUTANT: carry on with a null source. `createQuizFrom` throws on a null
     // definition and the owner gets a 500 with no idea which field was wrong.
     expect(res.status).toBe(400)
@@ -139,7 +147,7 @@ describe("POST /api/admin/funnels — the quiz template", () => {
   it("still writes the page when the body sends no step plan", async () => {
     const { name, slug, kind, template, quiz } = quizBody
     const { POST } = await import("@/app/api/admin/funnels/route")
-    const res = await POST(post({ name, slug, kind, template, quiz }))
+    const res = await POST(post({ name, slug, kind, template, quiz }), NO_PARAMS)
     expect(res.status).toBe(201)
     // MUTANT: map over `body.steps ?? []`. With no plan the map is empty,
     // `createFunnel` falls back to its own unnamed entry step, and the quiz
@@ -151,7 +159,7 @@ describe("POST /api/admin/funnels — the quiz template", () => {
   it("deletes the clone it just made when the funnel insert fails", async () => {
     createFunnelMock.mockRejectedValue(new Error("insert exploded"))
     const { POST } = await import("@/app/api/admin/funnels/route")
-    const res = await POST(post(quizBody))
+    const res = await POST(post(quizBody), NO_PARAMS)
     expect(res.status).toBe(500)
     // MUTANT: drop the compensating delete. The quizzes list gains a draft
     // nobody asked for, and nothing on it says where it came from.
@@ -162,7 +170,7 @@ describe("POST /api/admin/funnels — the quiz template", () => {
     createFunnelMock.mockRejectedValue(new Error("insert exploded"))
     deleteQuizMock.mockRejectedValue(new Error("cleanup exploded"))
     const { POST } = await import("@/app/api/admin/funnels/route")
-    const res = await POST(post(quizBody))
+    const res = await POST(post(quizBody), NO_PARAMS)
     // An orphan quiz is a smaller problem than the one already being reported,
     // so the cleanup's own failure must not replace it.
     expect(res.status).toBe(500)
@@ -183,6 +191,7 @@ describe("POST /api/admin/funnels — every other template", () => {
           { name: "Thank you", slug: "thank-you" },
         ],
       }),
+      NO_PARAMS,
     )
     expect(res.status).toBe(201)
     expect(createQuizFromMock).not.toHaveBeenCalled()
@@ -200,7 +209,7 @@ describe("POST /api/admin/funnels — every other template", () => {
 
   it("does not pass the quiz intake through to the funnel row", async () => {
     const { POST } = await import("@/app/api/admin/funnels/route")
-    await POST(post(quizBody))
+    await POST(post(quizBody), NO_PARAMS)
     // `funnels` has no `quiz` column. Spreading `parsed.data` straight through
     // is how a PATCH carrying `offer` once reached Postgres and 500'd.
     expect(createFunnelMock.mock.calls[0][0]).not.toHaveProperty("quiz")
