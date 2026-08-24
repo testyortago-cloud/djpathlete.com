@@ -366,6 +366,43 @@ describe("AskPanel — what it sends, and what it does when it is refused", () =
     expect(container.querySelector("img")).toBeNull()
     expect(container.innerHTML).toContain("&lt;img src=x onerror=alert(1)&gt;")
   })
+
+  it("renders the model's markdown as formatting rather than as punctuation", async () => {
+    // MUTANT KILLED: rendering the reply as bare text nodes, which is what
+    // shipped. This is the reply of a real turn, verbatim — the visitor read
+    // the asterisks and the hyphens.
+    fetchMock.mockResolvedValue(
+      ok({
+        reply:
+          "Are you looking for:\n\n- **One-on-one coaching** or **group sessions**?\n- In-person training or online coaching?\n\nWe have **Rotational Reboot**, a 6-week programme.",
+      }),
+    )
+
+    const { container } = render(<AskPanel displayName={DISPLAY_NAME} />)
+    await ask("what should I do")
+
+    await screen.findByText(/Are you looking for/)
+    expect(screen.getByText("Rotational Reboot").tagName).toBe("STRONG")
+    expect(container.querySelectorAll("li")).toHaveLength(2)
+    // The delimiters themselves are gone from the screen, which is the whole
+    // complaint — a reply is not allowed to show its own markup characters.
+    expect(container.textContent).not.toContain("**")
+    expect(container.textContent).toContain("One-on-one coaching")
+  })
+
+  it("shows a link's words without giving the model somewhere to send anyone", async () => {
+    // MUTANT KILLED: rendering a model-authored href as an anchor. The ways
+    // forward on this surface are the server's cards, whose targets are
+    // constants in tools.ts.
+    fetchMock.mockResolvedValue(ok({ reply: "Try [our other site](https://not-us.example.com/pay)." }))
+
+    const { container } = render(<AskPanel displayName={DISPLAY_NAME} />)
+    await ask("where do I pay")
+
+    await screen.findByText(/our other site/)
+    expect(container.innerHTML).not.toContain("not-us.example.com")
+    expect([...container.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual(["/privacy-policy"])
+  })
 })
 
 describe("the confirmation reports what the SERVER filed, not what was ticked", () => {

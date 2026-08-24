@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Ask panel — markdown formatting and the missing CTA</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 48px 32px 96px; background: #f6f7f8; color: #16303a;
+         font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  .lede { color: #5c6b70; margin: 0 0 36px; max-width: 70ch; }
+  section { background: #fff; border: 1px solid #e2e6e8; border-radius: 14px; padding: 24px; margin: 0 0 28px; }
+  h2 { font-size: 19px; margin: 0 0 4px; }
+  .meta { color: #5c6b70; font-size: 14px; margin: 0 0 16px; }
+  img { display: block; width: 100%; height: auto; border: 1px solid #e2e6e8; border-radius: 8px; }
+  code { background: #eef1f2; padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+  ul { margin: 10px 0 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .note { background: #fff8e8; border: 1px solid #f0e0b8; border-radius: 10px; padding: 16px 20px; }
+</style>
+<main>
+  <h1>Ask panel — the assistant's markdown, and the CTA that wasn't there</h1>
+  <p class="lede">
+    Two bugs from one reported turn: the assistant's <code>**bold**</code> and hyphen lists reached the
+    visitor as punctuation, and a reply that offered a next step left nothing on screen to act on.
+    Every shot below is the real app on a real route, driven with Playwright against the dev clone and
+    the real model. Annotations are burned into each PNG.
+  </p>
+
+  <section>
+    <h2>01 — Before</h2>
+    <p class="meta">screenshots/ask-panel-markdown/01-before-raw-markdown.png · /ask · Chromium 1100×1100 @2x</p>
+    <img src="01-before-raw-markdown.png" alt="The /ask page showing the assistant's reply with literal asterisks around the programme name.">
+  </section>
+
+  <section>
+    <h2>02 — After, same reply</h2>
+    <p class="meta">
+      screenshots/ask-panel-markdown/02-after-formatted.png · the same <code>/api/ask</code> response
+      byte for byte, replayed so the only variable is the renderer.
+    </p>
+    <img src="02-after-formatted.png" alt="The same reply with the programme name in bold and no asterisks.">
+  </section>
+
+  <section>
+    <h2>03 — A live turn: the reported question, both fixes</h2>
+    <p class="meta">screenshots/ask-panel-markdown/03-bullets-and-the-added-cta.png · real model, real lookups</p>
+    <img src="03-bullets-and-the-added-cta.png" alt="A live reply with a real bulleted list and a Book a consultation card the model did not ask for.">
+  </section>
+
+  <section>
+    <h2>04 — The docked panel, in place</h2>
+    <p class="meta">screenshots/ask-panel-markdown/04-the-docked-panel-in-place.png · marketing home page, opened from the sticky bar</p>
+    <img src="04-the-docked-panel-in-place.png" alt="The chat panel docked over the real marketing home page, with bold rendering correctly.">
+  </section>
+
+  <section class="note">
+    <h2>What is not shown, and why</h2>
+    <ul>
+      <li>
+        <strong>No dark-mode pair.</strong> The public site has no theme provider — nothing ever puts
+        <code>.dark</code> on the document — so a visitor cannot reach a dark version of this surface.
+        The panel's tokens are already chosen to survive one if it is ever added.
+      </li>
+      <li>
+        <strong>No failure state shot.</strong> The panel's refusal and rate-limit copy are plain
+        sentences that never carried markdown; they are unchanged by this work and covered by the
+        existing suite.
+      </li>
+      <li>
+        <strong>The flag.</strong> <code>chat_assistant_enabled</code> had no row in the dev clone, so
+        <code>/api/ask</code> answered 404. It was set to <code>true</code> for these captures and the
+        row removed afterwards, restoring the exact prior state.
+      </li>
+    </ul>
+  </section>
+</main>

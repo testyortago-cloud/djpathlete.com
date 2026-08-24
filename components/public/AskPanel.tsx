@@ -18,9 +18,14 @@
 //     file's header.
 //
 //   * It does not put the model's text through anything that can execute it.
-//     The reply is rendered as text nodes; there is no markdown pass and no
-//     `dangerouslySetInnerHTML`, because the one string on this page that a
-//     stranger can influence is the one the model wrote.
+//     The reply IS parsed as markdown now — the model writes `**bold**` and
+//     hyphenated lists whether or not it is asked to, and the panel was putting
+//     that punctuation on screen — but through AskMarkdown.tsx, which turns it
+//     into a closed set of typed shapes and renders those as elements with the
+//     model's text in React children. No markdown library, no HTML string, no
+//     `dangerouslySetInnerHTML`, and no model-authored href: a `[label](url)`
+//     keeps its label and loses its address, because the ways forward on this
+//     surface are the server's cards, not somewhere the model chose.
 //
 // WHY THERE IS NO TOOL-BY-TOOL TYPING INDICATOR. `lib/lead-engine/chat/tools.ts`
 // exports `TOOL_LABELS`, and the plan asked for them here — but `POST /api/ask`
@@ -43,6 +48,7 @@ import { useEffect, useRef, useState } from "react"
 import { SendHorizonal, X } from "lucide-react"
 
 import { AskCard } from "@/components/public/AskCards"
+import { AskMarkdown } from "@/components/public/AskMarkdown"
 import { MAX_MESSAGE_CHARS, MAX_MESSAGES_PER_CONVERSATION } from "@/lib/lead-engine/chat/constants"
 import type { Card } from "@/lib/lead-engine/chat/tools"
 
@@ -224,15 +230,8 @@ export function AskPanel({ displayName, variant = "page", onClose }: AskPanelPro
           ) : (
             <div key={turn.id} className="space-y-3">
               <div className="max-w-[92%] space-y-2 rounded-2xl rounded-bl-sm bg-muted px-3.5 py-2 text-sm leading-relaxed">
-                {/* Text nodes only. No markdown pass, no innerHTML. */}
-                {turn.text
-                  .split(/\n{2,}/)
-                  .filter((para) => para.trim().length > 0)
-                  .map((para, index) => (
-                    <p key={index} className="whitespace-pre-wrap">
-                      {para}
-                    </p>
-                  ))}
+                {/* Parsed to typed shapes, then to elements. No innerHTML. */}
+                <AskMarkdown text={turn.text} />
               </div>
               {turn.cards.map((card, index) => (
                 <AskCard
