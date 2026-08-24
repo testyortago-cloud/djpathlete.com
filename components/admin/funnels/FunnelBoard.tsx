@@ -23,7 +23,7 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Settings2 } from "lucide-react"
+import { ListChecks, Settings2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { FUNNEL_GOALS } from "@/lib/validators/funnel"
@@ -74,6 +74,18 @@ interface FunnelBoardProps {
   funnels: Funnel[]
   /** funnel id -> submission count */
   leadCounts: Record<string, number>
+  /**
+   * step id -> the quiz that step's page runs.
+   *
+   * KEYED BY STEP, NOT BY FUNNEL. A funnel's third page can run a quiz while
+   * its first does not, and a funnel-keyed map would put the button on both.
+   *
+   * IT IS HERE BECAUSE A LANDING PAGE HAS NO DETAIL SCREEN. `/admin/pages/<id>`
+   * redirects to this list by design, so the funnel settings screen's quiz
+   * panel cannot reach a page's quiz -- and every other control a landing page
+   * needs moved onto this card for exactly the same reason.
+   */
+  quizByStepId?: Record<string, { id: string; name: string }>
 }
 
 /**
@@ -97,7 +109,7 @@ export function cardTitle(page: BoardPage): string {
   return titlesTheFunnelRow(page) ? page.funnel.name : page.step.name
 }
 
-export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardProps) {
+export function FunnelBoard({ kind, pages, funnels, leadCounts, quizByStepId }: FunnelBoardProps) {
   const router = useRouter()
   const [query, setQuery] = useState("")
   const [funnelFilter, setFunnelFilter] = useState<string>("all")
@@ -283,6 +295,20 @@ export function FunnelBoard({ kind, pages, funnels, leadCounts }: FunnelBoardPro
                 deleteLabel={step.is_entry ? `Delete ${funnel.name}` : `Delete ${step.name}`}
                 secondaryAction={
                   <>
+                    {/* THE QUIZ THIS PAGE RUNS, reached from the page that
+                        runs it. A quiz block holds a POINTER, so the quiz has
+                        no home of its own under a funnel -- and it used to be
+                        reachable only from a top-level sidebar screen, which
+                        made it look like a sibling of Funnels rather than part
+                        of one. */}
+                    {quizByStepId?.[step.id] ? (
+                      <Button asChild variant="outline" size="sm" title={`Edit ${quizByStepId[step.id].name}`}>
+                        <Link href={`/admin/funnels/quizzes/${quizByStepId[step.id].id}`}>
+                          <ListChecks className="size-4" />
+                          Quiz
+                        </Link>
+                      </Button>
+                    ) : null}
                     {/* GO LIVE FROM HERE. Publishing a PAGE writes a version;
                         only the FUNNEL's status makes /go/<slug> reachable, and
                         that toggle used to live one navigation away on the

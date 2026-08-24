@@ -9,6 +9,8 @@
 import Link from "next/link"
 import { LayoutTemplate } from "lucide-react"
 import { listFunnels, listSteps, getSubmissionCountsByFunnel } from "@/lib/db/funnels"
+import { getQuizzesByIds } from "@/lib/db/quizzes"
+import { quizUsesInSteps } from "@/lib/funnels/quiz-refs"
 import { FunnelBoard, type BoardPage } from "@/components/admin/funnels/FunnelBoard"
 
 export const metadata = { title: "Landing pages" }
@@ -24,6 +26,26 @@ export default async function LandingPagesScreen() {
   const pages: BoardPage[] = funnels.flatMap((funnel, index) =>
     stepsPerFunnel[index].map((step) => ({ step, funnel })),
   )
+
+  // THE QUIZ EACH PAGE RUNS, so it can be opened from the page that runs it.
+  //
+  // A LANDING PAGE HAS NO DETAIL SCREEN -- `/admin/pages/<id>` redirects here
+  // by design -- so the funnel settings screen's quiz panel cannot reach a
+  // page's quiz. This board IS the screen for a page, which is why go-live,
+  // convert and delete all live on the card too.
+  //
+  // FAILS SOFT. The list of pages is the reason this screen exists; losing it
+  // because the quizzes table was unreachable would trade the screen for a
+  // button.
+  const quizUses = quizUsesInSteps(pages.map(({ step }) => step))
+  const quizRows = quizUses.length > 0 ? await getQuizzesByIds(quizUses.map((use) => use.quizId)).catch(() => []) : []
+  const quizByStepId: Record<string, { id: string; name: string }> = {}
+  for (const use of quizUses) {
+    const quiz = quizRows.find((row) => row.id === use.quizId)
+    // A block pointing at a deleted quiz offers no button: there is nothing to
+    // open, and a link to a 404 is worse than no link.
+    if (quiz) quizByStepId[use.stepId] = { id: quiz.id, name: quiz.name }
+  }
 
   return (
     <div>
@@ -42,7 +64,13 @@ export default async function LandingPagesScreen() {
         </div>
       </div>
 
-      <FunnelBoard kind="page" pages={pages} funnels={funnels} leadCounts={leadCounts} />
+      <FunnelBoard
+        kind="page"
+        pages={pages}
+        funnels={funnels}
+        leadCounts={leadCounts}
+        quizByStepId={quizByStepId}
+      />
     </div>
   )
 }
