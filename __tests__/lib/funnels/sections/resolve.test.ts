@@ -128,7 +128,10 @@ function lists(overrides: Partial<Catalogue>): Catalogue {
 const FAQ_KEYS = ["camps", "training"]
 
 function catalogue(overrides: Partial<Catalogue> = {}, faqPageKeys: string[] = FAQ_KEYS): Catalogues {
-  return { recognition: lists(overrides), offer: lists(overrides), faqPageKeys }
+  // `quizzes: []` is the safe default: a doc with no quiz section does not
+  // care, and one WITH a quiz section reports it "missing" rather than
+  // quietly passing. Tests that need a real quiz spread this and override.
+  return { recognition: lists(overrides), offer: lists(overrides), faqPageKeys, quizzes: [] }
 }
 
 function docOf(sections: Section[]): SectionDoc {
@@ -694,6 +697,7 @@ describe("resolveDoc — the recognition / offer split", () => {
       recognition: lists({}),
       offer: lists({ event: [] }),
       faqPageKeys: FAQ_KEYS,
+      quizzes: [],
     }
     const doc = docOf([hero({ primaryCta: eventCta(EVENT_CAMP) })])
 
@@ -726,6 +730,7 @@ describe("resolveDoc — the recognition / offer split", () => {
       }),
       offer: lists({ program: [{ id: PROGRAM_COMEBACK, name: "Comeback Code" }] }),
       faqPageKeys: FAQ_KEYS,
+      quizzes: [],
     }
     const doc = docOf([
       // Positive control in the SAME doc: a name that IS in the offer set
@@ -764,6 +769,7 @@ describe("resolveDoc — the recognition / offer split", () => {
       }),
       offer: lists({ event: [{ id: EVENT_CAMP, name: "Summer Camp" }] }),
       faqPageKeys: FAQ_KEYS,
+      quizzes: [],
     }
 
     const result = resolveDoc(docOf([hero({ primaryCta: eventCta("Kettlebell Jamboree") })]), cat)
@@ -788,6 +794,7 @@ describe("resolveDoc — the recognition / offer split", () => {
 
     const after: Catalogues = {
       recognition: before.recognition,
+      quizzes: before.quizzes,
       offer: { ...before.offer, event: [] },
       faqPageKeys: before.faqPageKeys,
     }
@@ -1310,6 +1317,9 @@ interface DalRows {
   offerEvents: EventRow[]
   /** What `getFaqCountsByPage` returns: page_key -> row count, unsorted. */
   faqCounts: Record<string, number>
+  quizzes: { id: string; status: string }[]
+  /** When true, `getQuizDefinition` answers null — the row vanished mid-read. */
+  quizDefinitionMissing: boolean
 }
 
 const DEFAULT_DAL_ROWS: DalRows = {
@@ -1330,11 +1340,17 @@ const DEFAULT_DAL_ROWS: DalRows = {
   offerEvents: [{ id: "event-published", title: "Published Event" }],
   // Deliberately NOT in alphabetical order, so "sorted" is observable.
   faqCounts: { training: 4, camps: 2 },
+  quizzes: [
+    { id: "quiz-active", status: "active" },
+    { id: "quiz-draft", status: "draft" },
+  ],
+  quizDefinitionMissing: false,
 }
 
 async function stubDal(overrides: Partial<DalRows> = {}) {
   const rows: DalRows = { ...DEFAULT_DAL_ROWS, ...overrides }
   const getEventsCalls: (EventFilters | undefined)[] = []
+  const quizDefinitionCalls: string[] = []
   const publishedEventsCalls: (EventFilters | undefined)[] = []
 
   vi.resetModules()
@@ -1359,14 +1375,25 @@ async function stubDal(overrides: Partial<DalRows> = {}) {
   vi.doMock("@/lib/db/faqs", () => ({
     getFaqCountsByPage: async () => rows.faqCounts,
   }))
+  // Two quizzes, one active one draft, so "the draft was gated anyway" and
+  // "the active one was not gated" are both visible. `getQuizDefinition` MUST
+  // NOT be called for the draft — asserted below.
+  vi.doMock("@/lib/db/quizzes", () => ({
+    listQuizzes: async () => rows.quizzes,
+    getQuizDefinition: async (id: string) => {
+      quizDefinitionCalls.push(id)
+      if (rows.quizDefinitionMissing) return null
+      return { id, key: "k", name: "n", status: "active", branches: [], questions: [], tiers: [], profiles: [] }
+    },
+  }))
 
   const { loadCatalogues } = await import("@/lib/funnels/sections/resolve")
-  return { loadCatalogues, getEventsCalls, publishedEventsCalls }
+  return { loadCatalogues, getEventsCalls, publishedEventsCalls, quizDefinitionCalls }
 }
 
 async function loadCataloguesWithStubbedDal(overrides: Partial<DalRows> = {}) {
-  const { loadCatalogues, getEventsCalls, publishedEventsCalls } = await stubDal(overrides)
-  return { catalogues: await loadCatalogues(), getEventsCalls, publishedEventsCalls }
+  const { loadCatalogues, getEventsCalls, publishedEventsCalls, quizDefinitionCalls } = await stubDal(overrides)
+  return { catalogues: await loadCatalogues(), getEventsCalls, publishedEventsCalls, quizDefinitionCalls }
 }
 
 describe("loadCatalogues", () => {
@@ -1375,7 +1402,19 @@ describe("loadCatalogues", () => {
     vi.doUnmock("@/lib/db/session-pack-products")
     vi.doUnmock("@/lib/db/events")
     vi.doUnmock("@/lib/db/faqs")
+    vi.doUnmock("@/lib/db/quizzes")
     vi.resetModules()
+  })
+
+  it("fails CLOSED when an active quiz cannot be read at all", async () => {
+    // MUTANT: `if (!definition) return { …, gateBlocker: null }`. A row that
+    // vanishes between the list read and the definition read must be reported
+    // as a quiz that cannot score, never as one that passes. Failing closed
+    // costs a blocked publish; failing open ships a page that collects twelve
+    // answers into nothing, and the owner finds out from a visitor.
+    const { catalogues } = await loadCataloguesWithStubbedDal({ quizDefinitionMissing: true })
+    const active = catalogues.quizzes.find((q) => q.id === "quiz-active")
+    expect(active?.gateBlocker).toBeTruthy()
   })
 
   it("builds the RECOGNITION event list from getEvents({}) — every event ever, whatever its status", async () => {
@@ -1551,7 +1590,7 @@ describe("loadCatalogues", () => {
     // exports and not from the identically-named `listActiveProducts` in
     // `lib/db/shop-products.ts`. Whole-object `toEqual` on both sets, so an
     // extra or missing key fails too.
-    const { catalogues } = await loadCataloguesWithStubbedDal()
+    const { catalogues, quizDefinitionCalls } = await loadCataloguesWithStubbedDal()
 
     expect(catalogues).toEqual({
       recognition: {
@@ -1578,7 +1617,31 @@ describe("loadCatalogues", () => {
         event: [{ id: "event-published", name: "Published Event", priced: false, soldOut: false }],
       },
       faqPageKeys: ["camps", "training"],
+      // Both quizzes appear, and the two `gateBlocker` values differ for the
+      // reason that matters: the ACTIVE one was really run through `quizGate`
+      // — the stub hands back a definition with no questions, and that is the
+      // gate's own sentence about it, not a canned string — while the DRAFT
+      // one was never gated at all, so its null means "not consulted".
+      //
+      // Asserting the real blocker rather than null is deliberate: a null here
+      // would also pass if `loadCatalogues` never called the gate.
+      quizzes: [
+        {
+          id: "quiz-active",
+          status: "active",
+          gateBlocker: "There is no router question: no shared question routes to a branch.",
+        },
+        { id: "quiz-draft", status: "draft", gateBlocker: null },
+      ],
     })
+    // ONLY ACTIVE QUIZZES ARE GATED, and this is where that is pinned rather
+    // than merely intended. Assembling one definition costs six queries; a
+    // draft is blocked by `not_active` before its gate result could be read,
+    // so gating it would slow every builder turn to produce a string nobody
+    // sees. MUTANT: drop the `status !== "active"` early return and this list
+    // gains "quiz-draft".
+    expect(quizDefinitionCalls).toEqual(["quiz-active"])
+
     // This `toEqual` is also what kills the lazy form of the offer-into-
     // recognition merge: a `[...recognition, ...offer]` CONCAT (no dedupe by
     // id) would put "Active Program"/"Active Pack"/"Published Event" in each
@@ -1763,7 +1826,7 @@ function eventCatalogue(entry: Partial<CatalogueEntry> | null, opts: { knownButN
   const recognition = lists({
     event: row === null && opts.knownButNotOffered ? [{ id: EVENT_CAMP, name: "Summer Camp" }] : row === null ? [] : [row],
   })
-  return { recognition, offer, faqPageKeys: FAQ_KEYS }
+  return { recognition, offer, faqPageKeys: FAQ_KEYS, quizzes: [] }
 }
 
 describe("publishGate on a form that takes payment", () => {
@@ -1824,5 +1887,85 @@ describe("publishGate on a form that takes payment", () => {
     ;(section.props as Record<string, unknown>).successMode = "message"
     const gate = publishGate(resolveDoc(docOf([section]), eventCatalogue({ priced: false })))
     expect(gate.ok).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// unresolvedQuizzes — a page that cannot score the answers it collects
+// ---------------------------------------------------------------------------
+//
+// A page that asks twelve questions and then cannot score them is worse than
+// a page that never asked: the visitor has spent three minutes and gets
+// nothing, and the lead is lost at the last step rather than the first.
+//
+// Spec: docs/superpowers/specs/2026-08-23-athlete-quiz-funnel-design.md §3.2
+describe("unresolvedQuizzes", () => {
+  const GOOD_QUIZ = "f15ef258-3f0a-494b-a8c9-deb2de7b2aa9"
+  const DRAFT_QUIZ = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"
+  const BROKEN_QUIZ = "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb"
+  const UNKNOWN_QUIZ = "cccccccc-3333-4333-8333-cccccccccccc"
+
+  const QUIZZES = [
+    { id: GOOD_QUIZ, status: "active", gateBlocker: null },
+    { id: DRAFT_QUIZ, status: "draft", gateBlocker: null },
+    { id: BROKEN_QUIZ, status: "active", gateBlocker: 'Branch "beta" is unreachable: no router option routes to it.' },
+  ]
+
+  function quizCatalogue(): Catalogues {
+    return { ...catalogue(), quizzes: QUIZZES }
+  }
+
+  function quizSection(quizId: string): Section {
+    return {
+      id: "qz1",
+      kind: "quiz",
+      variant: "boxed",
+      style: {},
+      props: { heading: "Find your gaps", quizId },
+    } as Section
+  }
+
+  it("blocks publish when the quizId names no quiz, and the message names the id", () => {
+    const result = resolveDoc(docOf([quizSection(UNKNOWN_QUIZ)]), quizCatalogue())
+    expect(result.unresolvedQuizzes).toEqual([{ sectionId: "qz1", quizId: UNKNOWN_QUIZ, reason: "missing" }])
+    const gate = publishGate(result)
+    expect(gate.ok).toBe(false)
+    expect(gate.blockers.join(" | ")).toContain(UNKNOWN_QUIZ)
+  })
+
+  it("blocks publish on a draft quiz, naming the status", () => {
+    const result = resolveDoc(docOf([quizSection(DRAFT_QUIZ)]), quizCatalogue())
+    expect(result.unresolvedQuizzes).toEqual([
+      { sectionId: "qz1", quizId: DRAFT_QUIZ, reason: "not_active", detail: "draft" },
+    ])
+    expect(publishGate(result).ok).toBe(false)
+  })
+
+  it("blocks publish on a quiz that cannot score, carrying the gate's own reason", () => {
+    const result = resolveDoc(docOf([quizSection(BROKEN_QUIZ)]), quizCatalogue())
+    expect(result.unresolvedQuizzes[0].reason).toBe("gate_failed")
+    // The gate's OWN first blocker, not a generic "this quiz is broken": the
+    // owner has to be told which thing to go and fix.
+    expect(publishGate(result).blockers.join(" | ")).toContain("unreachable")
+  })
+
+  it("lets an active quiz that passes its gate publish", () => {
+    const result = resolveDoc(docOf([quizSection(GOOD_QUIZ)]), quizCatalogue())
+    expect(result.unresolvedQuizzes).toEqual([])
+    expect(publishGate(result).ok).toBe(true)
+  })
+
+  it("reports one entry per quiz section, not one per document", () => {
+    const doc = docOf([
+      { ...quizSection(UNKNOWN_QUIZ), id: "qza" } as Section,
+      { ...quizSection(DRAFT_QUIZ), id: "qzb" } as Section,
+    ])
+    const result = resolveDoc(doc, quizCatalogue())
+    expect(result.unresolvedQuizzes.map((q) => q.sectionId)).toEqual(["qza", "qzb"])
+  })
+
+  it("is empty on a document with no quiz section at all", () => {
+    const result = resolveDoc(docOf([hero({ primaryCta: urlCta })]), quizCatalogue())
+    expect(result.unresolvedQuizzes).toEqual([])
   })
 })
