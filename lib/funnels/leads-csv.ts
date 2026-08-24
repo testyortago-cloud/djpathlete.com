@@ -8,7 +8,13 @@
 import type { FunnelLead } from "@/lib/db/funnel-leads"
 
 /** Fixed columns, in the order a human reads them. */
-const COLUMNS = ["Captured at", "Page", "Step", "Name", "Email", "Phone", "Status", "Notes"] as const
+//
+// `Type` says whether a row is a form fill or a completed quiz -- the same
+// distinction the inbox shows as a badge, so a spreadsheet and the screen do
+// not disagree. The SCORE is deliberately not a column: it lives on
+// `quiz_attempts` and the export route does not read that table, and a column
+// that was empty for every row would be worse than no column at all.
+const COLUMNS = ["Captured at", "Page", "Step", "Type", "Name", "Email", "Phone", "Status", "Notes"] as const
 
 /**
  * One CSV field.
@@ -55,6 +61,7 @@ export function leadsToCsv(leads: FunnelLead[]): string {
         lead.created_at,
         lead.funnel_name ?? "",
         lead.step_name ?? "",
+        lead.kind === "quiz" ? "Quiz" : "Form",
         lead.name ?? "",
         lead.email ?? "",
         lead.phone ?? "",

@@ -1,7 +1,13 @@
 import { Users } from "lucide-react"
 import Link from "next/link"
 import { listFunnels } from "@/lib/db/funnels"
-import { countLeads, countLeadsByStatus, listLeads, type LeadFilters } from "@/lib/db/funnel-leads"
+import {
+  countLeads,
+  countLeadsByStatus,
+  getQuizOutcomesForLeads,
+  listLeads,
+  type LeadFilters,
+} from "@/lib/db/funnel-leads"
 import { LeadsBoard } from "@/components/admin/funnels/LeadsBoard"
 import type { FunnelLeadStatus } from "@/types/database"
 
@@ -62,6 +68,16 @@ export default async function FunnelLeadsPage({
     listFunnels().catch(() => []),
   ])
 
+  // THE RESULTS BEHIND THE QUIZ LEADS ON THIS PAGE, and only them.
+  //
+  // Fails soft: a lead whose score cannot be read is still a person to call,
+  // and taking the whole inbox down over a missing number would be the wrong
+  // trade. A page with no quiz leads on it makes no query at all.
+  const attemptIds = leads
+    .map((lead) => lead.quiz_attempt_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0)
+  const quizOutcomes = attemptIds.length > 0 ? await getQuizOutcomesForLeads(attemptIds).catch(() => ({})) : {}
+
   const exportParams = new URLSearchParams()
   for (const [key, value] of Object.entries({ funnelId, status: statusParam, days, search })) {
     if (value) exportParams.set(key, value)
@@ -73,11 +89,11 @@ export default async function FunnelLeadsPage({
         <div>
           <h1 className="text-2xl font-semibold text-primary">Leads</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Everyone who filled in a form on a{" "}
+            Everyone who filled in a form or finished a quiz on a{" "}
             <Link href="/admin/pages" className="underline underline-offset-2 hover:text-primary">
               landing page
             </Link>
-            . They also appear under Clients as leads — the answers they gave are only here.
+            . They also appear under Contacts — the answers they gave are only here.
           </p>
         </div>
         <div className="flex size-12 items-center justify-center rounded-lg bg-accent/10">
@@ -92,6 +108,7 @@ export default async function FunnelLeadsPage({
         funnels={funnels.map((funnel) => ({ id: funnel.id, name: funnel.name }))}
         filters={{ funnelId, status: statusParam, days, search }}
         exportHref={`/api/admin/funnels/leads/export?${exportParams.toString()}`}
+        quizOutcomes={quizOutcomes}
       />
     </div>
   )
