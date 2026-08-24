@@ -15,32 +15,37 @@ const QUIZ_ID = "5f2b7c1e-0000-4000-8000-000000000001"
 
 describe("buildQuizFunnelDoc", () => {
   it("validates against the section grammar", () => {
-    const result = sectionDocSchema.safeParse(buildQuizFunnelDoc({ quizId: QUIZ_ID, heading: "The Athlete Quiz" }))
+    const result = sectionDocSchema.safeParse(buildQuizFunnelDoc({ quizId: QUIZ_ID }))
     expect(result.success).toBe(true)
   })
 
   it("points the quiz section at the quiz it was given", () => {
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, heading: "The Athlete Quiz" })
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
     const quiz = doc.sections.find((section) => section.kind === "quiz")
     expect(quiz).toBeTruthy()
     expect((quiz!.props as { quizId: string }).quizId).toBe(QUIZ_ID)
   })
 
-  it("anchors the hero CTA to a section that is actually on the page", () => {
-    // MUTANT: change the anchor's sectionId to "quiz". A hero pointing at a
-    // section id the page does not contain is a dead button on a live page,
-    // which is a failure this repo has already shipped once.
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, heading: "x" })
-    const hero = doc.sections.find((section) => section.kind === "hero")!
-    const target = (hero.props as { primaryCta: { target: { kind: string; sectionId?: string } } }).primaryCta.target
-    expect(target.kind).toBe("anchor")
-    expect(doc.sections.map((section) => section.id)).toContain(target.sectionId)
+  it("puts NO second opening above the quiz", () => {
+    // MUTANT KILLED: add a hero back. That is the bug this page shipped with —
+    // measured at 1440x900 the document was 1038px in a 900px viewport, so the
+    // quiz was already on screen and the hero's "Start the quiz" scrolled 138px
+    // and started nothing. Three headings, two buttons, one of them a decoy.
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    expect(doc.sections.map((section) => section.kind)).not.toContain("hero")
   })
 
-  it("puts the owner's own heading on the page, not a fixed one", () => {
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, heading: "Rotational Reboot" })
-    const hero = doc.sections.find((section) => section.kind === "hero")!
-    expect((hero.props as { headline: string }).headline).toBe("Rotational Reboot")
+  it("carries no button of its own, so the only one on the page is the quiz's", () => {
+    // MUTANT KILLED: put a CTA anywhere on this document. Starting the quiz is
+    // a state inside the island — no link or anchor can reach it — so any
+    // button this page adds is decoration that looks like the way in.
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    expect(JSON.stringify(doc)).not.toMatch(/"primaryCta"|"secondaryCta"|"anchor"/)
+  })
+
+  it("opens on the quiz", () => {
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    expect(doc.sections[0].kind).toBe("quiz")
   })
 
   it("still validates at the longest name the create validator will accept", () => {
@@ -48,20 +53,30 @@ describe("buildQuizFunnelDoc", () => {
     // the longest name that can reach here fits. Pinned because a prose cap
     // rejecting a whole payload is a failure this repo has paid for before:
     // the document is built AFTER the quiz has already been inserted.
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, heading: "x".repeat(FUNNEL_NAME_MAX_LENGTH) })
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
     expect(sectionDocSchema.safeParse(doc).success).toBe(true)
   })
 
   it("does not repeat the heading on the quiz section itself", () => {
     // The island renders the quiz's own `introHeadline`, so a section heading
     // here would be the third heading on a page with three sections.
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, heading: "Rotational Reboot" })
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
     const quiz = doc.sections.find((section) => section.kind === "quiz")!
     expect((quiz.props as { heading?: string }).heading).toBeUndefined()
   })
 
-  it("orders the page so the quiz is reachable by scrolling, not only by the button", () => {
-    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID, heading: "x" })
-    expect(doc.sections.map((section) => section.kind)).toEqual(["hero", "quiz", "footer"])
+  it("is the quiz and a footer, and nothing else", () => {
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    expect(doc.sections.map((section) => section.kind)).toEqual(["quiz", "footer"])
+  })
+
+  it("tints the ground rather than repainting it", () => {
+    // MUTANT KILLED: `tone: "dark"`. The band would repaint, but the quiz's own
+    // controls set `color: var(--foreground)` and `background: var(--background)`
+    // outright, so the answers would be unreadable on it. `muted` changes the
+    // background only.
+    const doc = buildQuizFunnelDoc({ quizId: QUIZ_ID })
+    const quiz = doc.sections.find((section) => section.kind === "quiz")!
+    expect((quiz.style as { tone?: string }).tone).toBe("muted")
   })
 })

@@ -1108,8 +1108,33 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-proof.djp-v-stats .djp-proof-item:first-c
  * a live campaign page once shipped with browser-default form controls.
  */
 export const QUIZ_CSS = `
+/* THE QUIZ IS THE PAGE, so the section carries the fold rather than sitting in
+   it. Without this the document came to ~1000px in a 900px viewport and the
+   rest of the screen was the browser's own white -- which read, correctly, as
+   an unfinished page.
+   NO BACKTICKS IN THESE COMMENTS: this whole block is a template literal, and
+   one closes it. That is why every other comment in this file writes bare
+   class names and uses -- instead of an em dash. */
+/* GRID, NOT FLEX. A flex section is a ROW by default, so the section heading
+   block and the island became two columns and the card sat off to the right.
+   Grid keeps one column and align-content centres it vertically. */
+${ROOT} .djp-s-quiz { min-height: 78vh; display: grid; align-content: center; }
+
+/* A CARD, because the boxed variant was a variant in name only -- there was no
+   rule behind it, so the quiz sat directly on the band with nothing marking
+   where it began. A white card on the section's tinted ground is what separates
+   the thing you answer from the page it is printed on. */
+${ROOT} .djp-s-quiz .djp-quiz {
+  max-width: 44rem;
+  margin-inline: auto;
+  text-align: left;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--djp-radius, 0.6rem) * 1.5);
+  padding: clamp(1.5rem, 4vw, 3rem);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 32px -12px rgb(0 0 0 / 0.12);
+}
 ${ROOT} .djp-s-quiz .djp-quiz-head { margin-bottom: 1.5rem; }
-${ROOT} .djp-s-quiz .djp-quiz { max-width: 44rem; margin-inline: auto; text-align: left; }
 ${ROOT} .djp-s-quiz .djp-quiz-progress {
   height: 0.25rem;
   border-radius: 999px;

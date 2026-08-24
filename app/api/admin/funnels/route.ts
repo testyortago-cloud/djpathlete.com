@@ -80,7 +80,7 @@ export const POST = withAudit(
 
       const clone = await createQuizFrom({ source, name: funnelIntake.name })
       createdQuizId = clone.id
-      const page = buildQuizFunnelDoc({ quizId: clone.id, heading: funnelIntake.name })
+      const page = buildQuizFunnelDoc({ quizId: clone.id })
 
       // FROM THE TEMPLATE WHEN THE BODY SENDS NO PLAN. `createFunnel` falls
       // back to a single unnamed entry step, and mapping over an absent plan
