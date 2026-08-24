@@ -53,6 +53,11 @@ export async function QuizIsland({ props, context }: QuizIslandProps) {
       smsConsentWording={smsConsentWording}
       isPreview={context.isPreview}
       testRun={context.testRun === true}
+      // The context has carried these since the island registry existed, and
+      // this component simply never passed them on -- which is why a finished
+      // quiz could not become a lead on the funnel it was taken on.
+      funnelId={context.funnelId}
+      stepId={context.stepId}
     />
   )
 }

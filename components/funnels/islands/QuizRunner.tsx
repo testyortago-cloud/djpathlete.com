@@ -36,6 +36,14 @@ interface QuizRunnerProps {
   isPreview?: boolean
   /** `/preview/<slug>`: score for real, write nothing. */
   testRun?: boolean
+  /**
+   * WHERE THIS QUIZ IS STANDING. `FunnelRenderContext` carries both to every
+   * island; posting them is what lets a completion be filed as a lead on the
+   * funnel that asked. Absent when the quiz is not on a funnel page, and the
+   * route then writes no submission rather than inventing a funnel.
+   */
+  funnelId?: string
+  stepId?: string
 }
 
 type Phase = "intro" | "questions" | "gate" | "result"
@@ -47,6 +55,8 @@ export function QuizRunner({
   smsConsentWording,
   isPreview = false,
   testRun = false,
+  funnelId,
+  stepId,
 }: QuizRunnerProps) {
   const [phase, setPhase] = useState<Phase>("intro")
   const [index, setIndex] = useState(0)
@@ -162,6 +172,12 @@ export function QuizRunner({
             : {
                 quizId: definition.id,
                 attemptId,
+                // THE TEST-RUN BRANCH ABOVE MUST NOT GAIN THESE. Its route
+                // accepts `{quizId, answers}` and writes nothing at all; a
+                // funnel id in that body is the first half of a preview that
+                // files leads.
+                funnelId,
+                stepId,
                 answers: Object.entries(answers).map(([questionId, optionId]) => ({ questionId, optionId })),
                 name,
                 email,
