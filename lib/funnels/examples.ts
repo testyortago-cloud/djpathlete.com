@@ -94,6 +94,21 @@ export const FUNNEL_EXAMPLES = [
       "It states what the call is NOT. Naming the sales-pitch fear out loud is what gets it booked.",
   },
   {
+    template: "quiz",
+    name: "Rotational Reboot Check",
+    slug: "rotational-reboot-check",
+    steps: planOf("quiz"),
+    audience: "Rotational athletes — baseball, golf, tennis — who feel something is off but cannot name it",
+    // A QUIZ FUNNEL'S PAGE IS WRITTEN AT CREATION, so unlike every other
+    // example here this `description` does not seed a page build. It is still
+    // the most useful field: it is what the owner should be thinking about
+    // while they rewrite the copied questions in the quiz editor.
+    description:
+      "A short check for rotational athletes. The questions are about how the body moves through a turn, not about training history. The result names one thing to work on and offers an assessment — it does not try to sell a programme to somebody who has not been assessed.",
+    whyItWorks:
+      "It copies a quiz that already scores and routes, so the only work left is the wording — and the wording is the part only the coach can do.",
+  },
+  {
     template: "scratch",
     name: "Coach Referral",
     slug: "coach-referral",
