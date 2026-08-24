@@ -364,7 +364,9 @@ async function main() {
 
     await page.getByRole("button", { name: /remove this answer/i }).first().click()
     await page.getByRole("button", { name: "Save" }).click()
-    await page.waitForTimeout(2500)
+    const refusal = page.locator("text=/already picked|Could not save|Invalid save/i")
+    await refusal.first().waitFor({ timeout: 30_000 })
+    await page.waitForTimeout(600)
     await shoot(page, "06-answered-option-refused", "An answer somebody has already picked cannot just vanish", "/admin/funnels/quizzes/… · light", [
       await markerAt(page, 'text=/already picked/i', "Their result was worked out from this answer. Removing it would leave the report unable to say what they chose.", { x: -20, y: 4 }),
     ])
@@ -374,7 +376,13 @@ async function main() {
     await page.waitForTimeout(400)
     await page.getByRole("button", { name: /remove this question/i }).first().click()
     await page.getByRole("button", { name: "Save" }).click()
-    await page.waitForTimeout(2500)
+    // WAIT FOR THE MESSAGE, not for a number. The save runs a delete, a re-read
+    // and the gate, and how long that takes is not a constant — a fixed sleep
+    // photographs the screen before the sentence arrives.
+    const retireOutcome = page.locator("text=/retired rather than removed|taken offline|Could not save|Invalid save/i")
+    await retireOutcome.first().waitFor({ timeout: 30_000 })
+    console.log(`  retire says: ${(await retireOutcome.first().innerText()).slice(0, 110)}`)
+    await page.waitForTimeout(600)
     await shoot(page, "07-retired", "Remove the whole question and it is retired instead", "/admin/funnels/quizzes/… · light", [
       await markerAt(page, 'text=/retired rather than removed|taken offline/i', "Nobody taking the quiz is shown it any more, and the results people already got are kept exactly as they were.", { x: -20, y: 4 }),
     ])

@@ -200,8 +200,13 @@ export function QuizEditor({ initial }: { initial: QuizDefinition }) {
    */
   function move(questionId: string, direction: -1 | 1) {
     setQuiz((q) => {
+      // THE LIST THE OWNER CAN SEE, not every question in the group. A retired
+      // question is in this branch and is not rendered, so counting it here
+      // would let ↑ swap positions with something invisible — the arrow appears
+      // to do nothing, and the walk order changes anyway.
       const siblings = q.questions
         .filter((x) => (branchTab === EVERYONE ? x.branchId === null : x.branchId === branchTab))
+        .filter((x) => x.isActive || newQuestionIds.has(x.id))
         .slice()
         .sort((a, b) => a.position - b.position)
       const i = siblings.findIndex((x) => x.id === questionId)

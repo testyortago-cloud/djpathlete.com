@@ -358,3 +358,26 @@ describe("QuizEditor — a new question the server will actually accept", () => 
     )
   })
 })
+
+describe("QuizEditor — reordering around a retired question", () => {
+  it("swaps with the question the owner can actually see", async () => {
+    // MUTANT KILLED: count every question in the group. The retired one sits
+    // between these two in `position`, so ↑ swaps with something invisible —
+    // the arrow appears to do nothing and the walk order changes anyway.
+    const quiz = withRetired() // Q_RETIRED is at position 20, between 10 and 50
+    quiz.questions[1].branchId = null // put the second live question in this group
+    render(<QuizEditor initial={quiz} />)
+    openQuestions()
+    const live = screen.getByTestId("live-questions")
+    fireEvent.click(within(live).getAllByRole("button", { name: /move .* earlier/i })[1])
+    save()
+    await waitFor(() => {
+      const sent = body().questions as { id: string; position: number }[]
+      const router = sent.find((q) => q.id === Q_ROUTER)!
+      const second = sent.find((q) => q.id === Q_A1)!
+      // They exchanged positions with each other, not with the retired one.
+      expect(second.position).toBe(10)
+      expect(router.position).toBe(50)
+    })
+  })
+})
