@@ -105,6 +105,21 @@ describe("getAdminNav", () => {
     }
   })
 
+  // THIRD TIME. The pipeline board was URL-only, /admin/chat was URL-only, and
+  // the Athlete Quiz screen was URL-only on its first pass too. A quiz is a
+  // database entity the funnel block points at by id — it is not nested under
+  // any one funnel — so there is no page an owner would stumble onto it from.
+  it("registers the Quizzes screen in the Marketing section", () => {
+    for (const contentStudioEnabled of [false, true]) {
+      const nav = getAdminNav({ contentStudioEnabled })
+      const marketing = nav.groupedSections.find((s) => s.title === "Marketing")
+      expect(
+        marketing?.items.some((i) => i.href === "/admin/funnels/quizzes"),
+        `Quizzes missing from Marketing when contentStudioEnabled=${contentStudioEnabled}`,
+      ).toBe(true)
+    }
+  })
+
   // Final review, Important 2: the Lead Engine pipeline board was URL-only —
   // reachable, but not registered anywhere in the sidebar, so a person
   // navigating the app had no way to discover it.
