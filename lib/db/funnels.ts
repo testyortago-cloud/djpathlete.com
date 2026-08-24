@@ -13,6 +13,7 @@ import type {
   FunnelStep,
   FunnelStepVersion,
   FunnelSubmission,
+  FunnelSubmissionKind,
   FunnelStatus,
   FunnelKind,
   FunnelGoal,
@@ -518,31 +519,77 @@ export interface CreateSubmissionInput {
   ip_address?: string | null
   user_agent?: string | null
   lead_user_id?: string | null
+  /** 00230. Omitted means a form fill, which is what every caller before it was. */
+  kind?: FunnelSubmissionKind
+  /** 00230. The completed quiz attempt this lead came from. */
+  quiz_attempt_id?: string | null
+}
+
+/** The two columns 00230 added. Named once, for the retry below. */
+const POST_00230_COLUMNS = ["kind", "quiz_attempt_id"] as const
+
+/**
+ * PostgREST's "column not in the schema cache".
+ *
+ * The message is checked as well as the code because PostgREST has renumbered
+ * this before -- the same belt-and-braces pair `lib/db/lead-inquiries.ts` uses
+ * for the 00211 click ids.
+ */
+function isPre00230SchemaError(error: { code?: string; message?: string }): boolean {
+  if (error.code === "PGRST204") return true
+  return POST_00230_COLUMNS.some((column) => (error.message ?? "").includes(`'${column}'`))
 }
 
 export async function createSubmission(
   input: CreateSubmissionInput,
 ): Promise<FunnelSubmission> {
   const supabase = getClient()
-  const { data, error } = await supabase
+  const row = {
+    funnel_id: input.funnel_id,
+    step_id: input.step_id,
+    form_key: input.form_key,
+    email: input.email ?? null,
+    name: input.name ?? null,
+    phone: input.phone ?? null,
+    payload: input.payload,
+    attribution_session_id: input.attribution_session_id ?? null,
+    ip_address: input.ip_address ?? null,
+    user_agent: input.user_agent ?? null,
+    lead_user_id: input.lead_user_id ?? null,
+    kind: input.kind ?? "form",
+    quiz_attempt_id: input.quiz_attempt_id ?? null,
+  }
+
+  const { data, error } = await supabase.from("funnel_submissions").insert(row).select("*").single()
+  if (!error) return data as FunnelSubmission
+
+  // MIGRATIONS AND DEPLOYS RACE ON MERGE TO MAIN. For one deploy this code can
+  // be running against the pre-00230 schema, where PostgREST rejects the WHOLE
+  // insert over two columns it has never heard of. Losing the label on a quiz
+  // lead is a cosmetic problem; losing the lead is not, so the retry drops
+  // only the new columns and keeps every answer.
+  if (!isPre00230SchemaError(error)) {
+    // THE CODE TRAVELS WITH THE MESSAGE. The house DAL convention throws a raw
+    // PostgREST object, which the standard cron shell writes out as the literal
+    // string "[object Object]" -- and a caller that needs to tell a duplicate
+    // (23505, the unique index on quiz_attempt_id, meaning the lead is already
+    // filed) from a real failure has nothing to read.
+    throw Object.assign(new Error(`createSubmission: ${error.message}`), { code: error.code })
+  }
+
+  const legacy = { ...row } as Record<string, unknown>
+  for (const column of POST_00230_COLUMNS) delete legacy[column]
+  console.warn("[funnels] funnel_submissions is pre-00230; the lead was kept without its kind")
+
+  const { data: retried, error: retryError } = await supabase
     .from("funnel_submissions")
-    .insert({
-      funnel_id: input.funnel_id,
-      step_id: input.step_id,
-      form_key: input.form_key,
-      email: input.email ?? null,
-      name: input.name ?? null,
-      phone: input.phone ?? null,
-      payload: input.payload,
-      attribution_session_id: input.attribution_session_id ?? null,
-      ip_address: input.ip_address ?? null,
-      user_agent: input.user_agent ?? null,
-      lead_user_id: input.lead_user_id ?? null,
-    })
+    .insert(legacy)
     .select("*")
     .single()
-  if (error) throw new Error(`createSubmission: ${error.message}`)
-  return data as FunnelSubmission
+  if (retryError) {
+    throw Object.assign(new Error(`createSubmission: ${retryError.message}`), { code: retryError.code })
+  }
+  return retried as FunnelSubmission
 }
 
 /**

@@ -38,6 +38,8 @@ function lead(over: Partial<FunnelLead> = {}): FunnelLead {
     status: "new",
     notes: null,
     status_changed_at: null,
+    kind: "form",
+    quiz_attempt_id: null,
     funnel_name: "TEST",
     funnel_slug: "test",
     step_name: "Landing page",

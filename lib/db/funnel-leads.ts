@@ -56,6 +56,13 @@ function flatten(row: JoinedRow): FunnelLead {
   const { funnels, funnel_steps, ...submission } = row
   return {
     ...submission,
+    // NORMALISED, not trusted. A row read from the pre-00230 schema carries no
+    // `kind` at all -- and every one of those rows IS a form fill. A row with
+    // anything else in the column cannot have come from this app. Either way
+    // the answer here is the honest one, and `FunnelLead.kind` is never
+    // undefined for a caller to have to think about.
+    kind: submission.kind === "quiz" ? "quiz" : "form",
+    quiz_attempt_id: submission.quiz_attempt_id ?? null,
     funnel_name: funnels?.name ?? null,
     funnel_slug: funnels?.slug ?? null,
     step_name: funnel_steps?.name ?? null,
