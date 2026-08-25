@@ -31,12 +31,15 @@ import { AlertTriangle, ArrowRight, CircleDot } from "lucide-react"
 import { PreviewCard } from "./PreviewCard"
 import { RenameDialog } from "./RenameDialog"
 import { FunnelGoLiveButton } from "./FunnelGoLiveButton"
+import { ConvertToFunnelDialog } from "./ConvertToFunnelDialog"
+import { FUNNEL_GOALS } from "@/lib/validators/funnel"
 import { Button } from "@/components/ui/button"
 import { ListChecks, Settings2 } from "lucide-react"
 import { funnelConnections, type Connection, type StepWithDoc } from "@/lib/funnels/connections"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { Funnel, FunnelStep } from "@/types/database"
 import { previewBasePath } from "@/lib/funnels/preview-path"
+import { adminFunnelHref } from "@/lib/funnels/admin-path"
 
 /**
  * THE QUIZ EACH STEP RUNS, keyed by step id, or an empty object.
@@ -197,6 +200,16 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete, quizByStepId = 
     [ordered, quizByStepId],
   )
 
+  // `funnel.kind` IS THE FACT, never the screen's. A row's own kind decides how
+  // it is administered, so a landing page listed anywhere still behaves like
+  // one -- which is what lets both boards share this card at all.
+  const isPage = funnel.kind === "page"
+
+  // A FUNNEL HAS NO SINGLE GOAL -- its steps do -- so naming one on the
+  // container would invent a fact. A landing page IS one page, so its goal is
+  // the page's goal and worth showing.
+  const goalLabel = isPage ? FUNNEL_GOALS.find((option) => option.value === funnel.goal)?.label : undefined
+
   const entryPublished = Boolean(entry?.published_version_id)
   const live = entryPublished && funnel.status === "published"
   const badge = live
@@ -224,6 +237,7 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete, quizByStepId = 
         publicUrl={live ? path : null}
         badgeLabel={badge.label}
         badgeTone={badge.tone}
+        goalLabel={goalLabel}
         description={funnel.description}
         leadCount={leadCount}
         leadsHref={`/admin/funnels/leads?funnelId=${funnel.id}`}
@@ -238,7 +252,7 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete, quizByStepId = 
             <RenameDialog
               name={funnel.name}
               endpoint={`/api/admin/funnels/${funnel.id}`}
-              noun="funnel"
+              noun={isPage ? "landing page" : "funnel"}
               publicPath={path}
             />
           </span>
@@ -261,17 +275,35 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete, quizByStepId = 
               </Button>
             ) : null}
             <FunnelGoLiveButton funnelId={funnel.id} status={funnel.status} kind={funnel.kind} canGoLive={entryPublished} />
-            <Button asChild variant="outline" size="sm" aria-label={`${funnel.name} settings`}>
-              <Link href={`/admin/funnels/${funnel.id}`}>
-                <Settings2 className="size-4" />
-              </Link>
-            </Button>
+            {/* A PAGE OUTGROWS ITSELF the moment it needs a thank-you or an
+                upsell step. Explicit, never derived from the step count:
+                deriving it would move a live page between screens with no
+                warning and no undo. */}
+            {isPage ? <ConvertToFunnelDialog funnelId={funnel.id} funnelName={funnel.name} /> : null}
+            {/* FUNNEL ONLY, AND THIS IS THE SHARP EDGE OF SHARING ONE CARD.
+                `/admin/pages/<id>` redirects to the list by design, so this
+                button on a landing page is a control whose only outcome is a
+                bounce back to the screen the owner is already looking at --
+                the exact dead end that redirect was added to remove. */}
+            {isPage ? null : (
+              <Button asChild variant="outline" size="sm" aria-label={`${funnel.name} settings`}>
+                <Link href={adminFunnelHref(funnel.kind, funnel.id)}>
+                  <Settings2 className="size-4" />
+                </Link>
+              </Button>
+            )}
           </>
         }
         extra={
-          // A funnel with no steps at all — `listSteps` degrades to `[]` on a
-          // failed read — would otherwise render an empty bordered box.
-          ordered.length === 0 ? null : (
+          // TWO OR MORE, NOT "ANY". A one-step row's single step IS this card,
+          // so a bordered box repeating the card's own title is the "emptier
+          // copy" problem the landing-page detail screen was deleted over. It
+          // lands identically on a one-step FUNNEL -- a quiz funnel is exactly
+          // that -- so the COUNT decides here, never the kind.
+          //
+          // It also still covers the original case: a funnel with no steps at
+          // all, which `listSteps` produces when a read fails.
+          ordered.length < 2 ? null : (
           <div data-testid="funnel-step-list" className="rounded-lg border border-border bg-surface/30 p-2">
             <ol className="space-y-1.5">
               {ordered.map((step, index) => {
