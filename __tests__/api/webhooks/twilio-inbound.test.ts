@@ -649,3 +649,70 @@ describe("POST /api/webhooks/twilio/inbound — infra faults", () => {
     consoleErrorSpy.mockRestore()
   })
 })
+
+// ---------------------------------------------------------------------------
+// The response CONTRACT, as Twilio actually enforces it.
+//
+// These exist because 27 tests covered this route and every one of them
+// passed while production logged error 12300 on every STOP and START:
+// "Invalid Content-Type: application/json supplied". They all asserted
+// res.status and the database side effects. None asserted what Twilio
+// parses, which is the body and its content type.
+//
+// A status assertion cannot fail on this bug: the route answered 200 the
+// whole time. Only a content-type assertion can.
+// ---------------------------------------------------------------------------
+describe("POST /api/webhooks/twilio/inbound — Twilio response contract", () => {
+  // Every handled branch, not just one: the JSON bug was uniform across all
+  // four returns, so a single-branch test would have been green on a route
+  // that was still three-quarters broken.
+  const HANDLED_BRANCHES: Array<{ label: string; body: string; outcome: string }> = [
+    { label: "STOP", body: "STOP", outcome: "stop" },
+    { label: "START", body: "START", outcome: "start" },
+    { label: "HELP", body: "HELP", outcome: "help" },
+    { label: "anything else", body: "Can I move my session?", outcome: "inbound" },
+  ]
+
+  for (const branch of HANDLED_BRANCHES) {
+    it(`${branch.label} answers TwiML, never JSON — the 12300 regression`, async () => {
+      const res = await POST(inboundRequest(smsBody(branch.body)))
+
+      expect(res.status).toBe(200)
+
+      const contentType = res.headers.get("content-type") ?? ""
+      // The exact string Twilio rejected. Asserted directly so the failure
+      // message names the bug rather than a mismatched MIME type.
+      expect(contentType).not.toContain("application/json")
+      expect(contentType).toContain("text/xml")
+
+      const text = await res.text()
+      expect(text).toContain("<Response>")
+      // Empty on purpose: spec §5 puts the HELP/STOP reply text on Messaging
+      // Service configuration. A <Message> here would mean this route had
+      // started originating replies, which its doc comment forbids.
+      expect(text).not.toContain("<Message>")
+    })
+  }
+
+  it("carries the outcome on a header, so the branch stays visible without a JSON body", async () => {
+    const res = await POST(inboundRequest(smsBody("STOP")))
+    expect(res.headers.get("x-twilio-inbound-outcome")).toBe("stop")
+    expect(res.headers.get("x-twilio-inbound-matched")).toBe("true")
+  })
+
+  it("distinguishes matched from unmatched on the header", async () => {
+    const res = await POST(inboundRequest(smsBody("STOP", "+15559998888")))
+    expect(res.headers.get("x-twilio-inbound-outcome")).toBe("stop")
+    expect(res.headers.get("x-twilio-inbound-matched")).toBe("false")
+  })
+
+  // The 403 and 500 paths deliberately stay JSON. Twilio treats any non-2xx
+  // as a failure regardless of content type, and the two distinct 403 bodies
+  // are the diagnostic that revealed production had no Twilio env vars set.
+  it("keeps the diagnostic JSON on the rejection paths", async () => {
+    const res = await POST(inboundRequest(smsBody("STOP"), { signature: "wrong" }))
+    expect(res.status).toBe(403)
+    expect(res.headers.get("content-type")).toContain("application/json")
+    expect(await res.json()).toEqual({ error: "invalid signature" })
+  })
+})
