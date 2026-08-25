@@ -39,7 +39,7 @@ import { funnelConnections, type Connection, type StepWithDoc } from "@/lib/funn
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { Funnel, FunnelStep } from "@/types/database"
 import { previewBasePath } from "@/lib/funnels/preview-path"
-import { adminFunnelHref } from "@/lib/funnels/admin-path"
+import { adminFunnelHref, adminStepHref } from "@/lib/funnels/admin-path"
 
 /**
  * THE QUIZ EACH STEP RUNS, keyed by step id, or an empty object.
@@ -232,7 +232,12 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete, quizByStepId = 
         // now shows it.
         previewUrl={entryPublished ? `${path}?preview=1` : entry ? previewBasePath(funnel.slug) : null}
         previewIsDraft={!entryPublished && Boolean(entry)}
-        href={entry ? `/admin/funnels/${funnel.id}/edit/${entry.id}` : `/admin/funnels/${funnel.id}`}
+        // BUILT FROM THE ROW'S KIND, never written out. Both routes serve a
+        // page — the funnels one redirects — so a hardcoded `/admin/funnels`
+        // still WORKS and still lights up the wrong sidebar tab, which is the
+        // whole defect `adminFunnelBase` was added to fix. This is invisible
+        // until the pages board renders this card, which it now does.
+        href={entry ? adminStepHref(funnel.kind, funnel.id, entry.id) : adminFunnelHref(funnel.kind, funnel.id)}
         primaryLabel="Open"
         publicUrl={live ? path : null}
         badgeLabel={badge.label}
@@ -318,7 +323,7 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete, quizByStepId = 
                             click away; collapsing to a funnel card must not
                             cost that. */}
                         <Link
-                          href={`/admin/funnels/${funnel.id}/edit/${step.id}`}
+                          href={adminStepHref(funnel.kind, funnel.id, step.id)}
                           data-testid="step-name"
                           title={step.name}
                           className="truncate text-xs text-primary hover:underline"

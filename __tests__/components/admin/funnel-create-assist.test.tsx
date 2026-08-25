@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react"
 import { CreateFunnelDialog } from "@/components/admin/funnels/CreateFunnelDialog"
-import { deriveOwnExamples } from "@/components/admin/funnels/FunnelBoard"
+import { ownExamplesFromGroups } from "@/components/admin/funnels/own-examples"
 import { FUNNEL_EXAMPLES } from "@/lib/funnels/examples"
 import type { Funnel, FunnelStep } from "@/types/database"
 
@@ -263,30 +263,34 @@ describe("Examples", () => {
   })
 })
 
-describe("deriveOwnExamples", () => {
+// RETARGETED FROM `deriveOwnExamples`, which lived on the deleted
+// `FunnelBoard` and existed only to regroup that board's flat page list back
+// into funnels. With one card per funnel there is nothing to regroup, so the
+// grouped form -- `ownExamplesFromGroups`, which the funnels board already used
+// -- is the only one left. The GUARANTEES are unchanged: steps ordered by
+// position, most-stepped funnel first, live only when published.
+describe("ownExamplesFromGroups", () => {
   const funnel = (over: Partial<Funnel> & { id: string }): Funnel =>
     ({ name: over.id, status: "draft", template: null, ...over }) as Funnel
   const step = (id: string, name: string, position: number): FunnelStep =>
     ({ id, name, position }) as FunnelStep
 
-  it("groups pages back into one entry per funnel", () => {
+  it("reports one entry per funnel, with its step names", () => {
     const f = funnel({ id: "f1", name: "Camp" })
-    const result = deriveOwnExamples([
-      { funnel: f, step: step("s1", "Details", 0) },
-      { funnel: f, step: step("s2", "Register", 1) },
+    const result = ownExamplesFromGroups([
+      { funnel: f, steps: [step("s1", "Details", 0), step("s2", "Register", 1)] },
     ])
     expect(result).toHaveLength(1)
     expect(result[0].stepNames).toEqual(["Details", "Register"])
   })
 
   it("orders steps by position, not by arrival", () => {
-    // MUTANT KILLED: trusting the array order. The board flat-maps pages and
-    // nothing promises they arrive sorted, so "Payment → Details" would be
+    // MUTANT KILLED: trusting the array order. `listSteps` orders by position,
+    // but nothing in the TYPE promises it, so "Payment → Details" would be
     // shown as the shape to copy.
     const f = funnel({ id: "f1" })
-    const result = deriveOwnExamples([
-      { funnel: f, step: step("s2", "Register", 1) },
-      { funnel: f, step: step("s1", "Details", 0) },
+    const result = ownExamplesFromGroups([
+      { funnel: f, steps: [step("s2", "Register", 1), step("s1", "Details", 0)] },
     ])
     expect(result[0].stepNames).toEqual(["Details", "Register"])
   })
@@ -294,18 +298,17 @@ describe("deriveOwnExamples", () => {
   it("puts the most-stepped funnel first", () => {
     const big = funnel({ id: "big" })
     const small = funnel({ id: "small" })
-    const result = deriveOwnExamples([
-      { funnel: small, step: step("a", "Only", 0) },
-      { funnel: big, step: step("b", "One", 0) },
-      { funnel: big, step: step("c", "Two", 1) },
+    const result = ownExamplesFromGroups([
+      { funnel: small, steps: [step("a", "Only", 0)] },
+      { funnel: big, steps: [step("b", "One", 0), step("c", "Two", 1)] },
     ])
     expect(result[0].id).toBe("big")
   })
 
   it("reports live only for a published funnel", () => {
-    const result = deriveOwnExamples([
-      { funnel: funnel({ id: "f1", status: "published" }), step: step("s", "A", 0) },
-      { funnel: funnel({ id: "f2", status: "draft" }), step: step("t", "B", 0) },
+    const result = ownExamplesFromGroups([
+      { funnel: funnel({ id: "f1", status: "published" }), steps: [step("s", "A", 0)] },
+      { funnel: funnel({ id: "f2", status: "draft" }), steps: [step("t", "B", 0)] },
     ])
     expect(result.find((entry) => entry.id === "f1")!.live).toBe(true)
     expect(result.find((entry) => entry.id === "f2")!.live).toBe(false)

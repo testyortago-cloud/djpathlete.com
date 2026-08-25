@@ -91,7 +91,19 @@ export function FunnelList({ funnels, leadCounts, quizByStepId = {}, kind = "fun
   }, [funnels, query])
 
   async function handleDelete(funnel: Funnel) {
-    if (!window.confirm(`Delete "${funnel.name}" and all of its pages? This cannot be undone.`)) return
+    // WHICH WORD DESCRIBES WHAT VANISHED COMES FROM THE ROW, not the request.
+    // A landing page IS a `funnels` row, so it is deleted through the same
+    // endpoint a funnel is -- and a message written from the endpoint tells an
+    // owner on the landing pages screen that a "funnel" has gone, naming a
+    // thing they have never seen. `funnel.kind` decides the vocabulary.
+    //
+    // "and all of its pages" is likewise a funnel's sentence: a landing page
+    // holds exactly one page, which is itself.
+    const isPage = funnel.kind === "page"
+    const question = isPage
+      ? `Delete the "${funnel.name}" landing page? This cannot be undone.`
+      : `Delete "${funnel.name}" and all of its pages? This cannot be undone.`
+    if (!window.confirm(question)) return
     try {
       const response = await fetch(`/api/admin/funnels/${funnel.id}`, { method: "DELETE" })
       if (!response.ok) {
@@ -99,7 +111,7 @@ export function FunnelList({ funnels, leadCounts, quizByStepId = {}, kind = "fun
         toast.error(body?.error ?? "Could not delete the funnel.")
         return
       }
-      toast.success("Funnel deleted.")
+      toast.success(isPage ? "Landing page deleted." : "Funnel deleted.")
       router.refresh()
     } catch {
       toast.error("Could not delete the funnel.")
