@@ -1,0 +1,74 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Quizzes as cards — what was verified</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0 auto; max-width: 1100px; padding: 2rem 1.5rem 4rem; color: #16323f; }
+  h1 { font-size: 1.9rem; margin-bottom: .25rem; }
+  .sub { color: #5b7280; margin-top: 0; }
+  .facts { background: #f6f7f8; border: 1px solid #e3e6e8; border-radius: 10px; padding: 1rem 1.25rem; margin: 1.5rem 0 2.5rem; }
+  .facts code { font-size: .85em; }
+  .caveat { background: #fdf6ec; border: 1px solid #eadfcc; border-radius: 10px; padding: 1rem 1.25rem; margin: 0 0 2.5rem; }
+  figure { margin: 0 0 3rem; }
+  img { width: 100%; height: auto; border: 1px solid #e3e6e8; border-radius: 10px; display: block; }
+  figcaption { margin-top: .6rem; color: #44606d; line-height: 1.55; }
+</style>
+<h1>Quizzes as cards — what was verified</h1>
+<p class="sub">Every frame is the real app on its real route, driven by
+<code>scripts/capture-quizzes-as-cards.ts</code>. The callouts are burned into each PNG.</p>
+
+<div class="facts">
+  <p><b>Measured on the dev copy</b> (<code>anjvztjiokcgiyhobknq</code>), asserted in the DOM before each shot:</p>
+  <ul>
+    <li><b>No table.</b> <code>page.locator("table").count() === 0</code>, and two
+        <code>[data-testid="quiz-card"]</code> elements present. Checked first, because a table with
+        rounded corners photographs like a card at thumbnail size.</li>
+    <li><b>The preview follows the funnels board's rule.</b> The seeded quiz sits on a published page and frames
+        <code>/go/athlete-quiz?preview=1</code>; the quiz created during the run sits on an unpublished page and frames
+        <code>/preview/quiz-card-check-394730</code>. Both read out of the iframe's <code>src</code>.</li>
+    <li><b>The badge is the quiz's status, not the funnel's.</b> <code>active</code> on the seeded quiz,
+        <code>draft</code> on the new one — whose funnel is also a draft, so only a correct implementation
+        distinguishes them.</li>
+    <li><b>Both buttons were followed, not just read.</b> <code>Open</code> reaches the question editor;
+        the button beside it reaches the page builder for the step the quiz sits on. Neither landed on a 404.</li>
+    <li><b>The second quiz was made through the real New funnel dialog</b> — template <em>Run a quiz</em> — and
+        deleted again at the end of the run. A hand-written row would prove nothing about the screen an owner gets.</li>
+  </ul>
+</div>
+
+<div class="caveat">
+  <p><b>Two things these shots show that are NOT this change:</b></p>
+  <ul>
+    <li>The new quiz carries <b>Unverified scoring</b> because <code>createQuizFrom</code> copies
+        <code>seed_marker</code> from whatever it clones, and the default source is the reconstructed
+        blueprint. Pre-existing, and arguably right — a clone of unverified weights is still unverified.</li>
+    <li>The draft card's thumbnail shows the preview's own strip, <em>"This page previews, but publishing
+        will refuse it — the quiz is draft, not active."</em> That is the publish gate reporting itself
+        correctly, and it is why a draft quiz still draws in a preview at all.</li>
+  </ul>
+  <p><b>Not photographed:</b> a quiz on no page (the <em>No preview yet</em> state) and the failed-read
+     state. Both are covered by unit tests; producing either on screen would have meant writing to the
+     database rather than using the product.</p>
+</div>
+
+<figure>
+  <a href="01-quizzes-as-cards.png"><img src="01-quizzes-as-cards.png" alt="Every quiz gets the same card a funnel gets"></a>
+  <figcaption><b>1. Every quiz gets the same card a funnel gets</b><br>
+  <code>/admin/funnels/quizzes</code>. Two real quizzes in the two real states: active on a live page,
+  draft on an unpublished one. The thumbnails are live same-origin renders of the funnel pages, not
+  screenshots — the same mechanism the funnels board uses.</figcaption>
+</figure>
+
+<figure>
+  <a href="02-open-goes-to-the-questions.png"><img src="02-open-goes-to-the-questions.png" alt="Open takes you straight to the questions"></a>
+  <figcaption><b>2. Open takes you straight to the questions</b><br>
+  The button was clicked, not just read. <code>Open</code> goes to the quiz editor rather than to the page,
+  because the questions are what needs your words — the page around them is already written.</figcaption>
+</figure>
+
+<figure>
+  <a href="03-and-the-page-that-runs-it.png"><img src="03-and-the-page-that-runs-it.png" alt="The button beside it opens the page the quiz sits on"></a>
+  <figcaption><b>3. The button beside it opens the page the quiz sits on</b><br>
+  The same page shown in the card's thumbnail, now open in the builder with the quiz as one block on it.
+  The href is built by <code>adminStepHref</code> from the funnel's <em>kind</em>, so a landing page goes to
+  <code>/admin/pages/…</code> rather than to a funnel screen that would redirect straight back to the list.</figcaption>
+</figure>
