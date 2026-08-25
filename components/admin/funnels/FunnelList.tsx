@@ -27,7 +27,7 @@ import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
-import { FunnelCard } from "./FunnelCard"
+import { FunnelCard, type QuizByStepId } from "./FunnelCard"
 import { CreateFunnelDialog } from "./CreateFunnelDialog"
 import { ownExamplesFromGroups } from "./own-examples"
 import { BoardEmptyState } from "./BoardEmptyState"
@@ -42,9 +42,18 @@ interface FunnelListProps {
   funnels: FunnelWithSteps[]
   /** Submission counts keyed by funnel id. */
   leadCounts: Record<string, number>
+  /**
+   * The quiz each step runs, for the whole board. Defaults to none.
+   *
+   * THERE IS NO QUIZZES SCREEN ANY MORE, and this prop is why: a quiz is
+   * something a funnel RUNS, not a thing the product has beside funnels. It
+   * reaches the card that runs one and renders nothing on every other card, so
+   * a customer with no quizzes never meets the word.
+   */
+  quizByStepId?: QuizByStepId
 }
 
-export function FunnelList({ funnels, leadCounts }: FunnelListProps) {
+export function FunnelList({ funnels, leadCounts, quizByStepId = {} }: FunnelListProps) {
   const router = useRouter()
   const [query, setQuery] = useState("")
 
@@ -122,6 +131,7 @@ export function FunnelList({ funnels, leadCounts }: FunnelListProps) {
               funnel={funnel}
               steps={steps}
               leadCount={leadCounts[funnel.id] ?? 0}
+              quizByStepId={quizByStepId}
               onDelete={() => handleDelete(funnel)}
             />
           ))}

@@ -32,11 +32,27 @@ import { PreviewCard } from "./PreviewCard"
 import { RenameDialog } from "./RenameDialog"
 import { FunnelGoLiveButton } from "./FunnelGoLiveButton"
 import { Button } from "@/components/ui/button"
-import { Settings2 } from "lucide-react"
+import { ListChecks, Settings2 } from "lucide-react"
 import { funnelConnections, type Connection, type StepWithDoc } from "@/lib/funnels/connections"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { Funnel, FunnelStep } from "@/types/database"
 import { previewBasePath } from "@/lib/funnels/preview-path"
+
+/**
+ * THE QUIZ EACH STEP RUNS, keyed by step id, or an empty object.
+ *
+ * KEYED BY STEP AND NOT BY FUNNEL, because a `quiz` block lives on a PAGE and a
+ * funnel has several. The map handed down is the whole board's, so a card must
+ * look up only its own steps -- offering a neighbouring card's quiz is the bug
+ * this shape makes obvious.
+ *
+ * ABSENT MEANS ABSENT, and that is the white-label requirement stated as a
+ * type. A quiz is not something this product HAS alongside funnels; it is
+ * something a funnel can run, like taking a payment. A customer whose work has
+ * no quizzes in it must never meet the word -- so there is no empty state, no
+ * disabled button and no placeholder here, only a control that does not render.
+ */
+export type QuizByStepId = Record<string, { id: string; name: string }>
 
 export interface FunnelCardProps {
   funnel: Funnel
@@ -44,6 +60,8 @@ export interface FunnelCardProps {
   steps: FunnelStep[]
   leadCount: number
   onDelete: () => void | Promise<void>
+  /** The whole board's map. This card reads only its own steps out of it. */
+  quizByStepId?: QuizByStepId
 }
 
 /**
@@ -116,7 +134,7 @@ function StepExits({ exits, isLast, nameBySlug }: { exits: Connection[]; isLast:
   )
 }
 
-export function FunnelCard({ funnel, steps, leadCount, onDelete }: FunnelCardProps) {
+export function FunnelCard({ funnel, steps, leadCount, onDelete, quizByStepId = {} }: FunnelCardProps) {
   // MEMOISED, and not as a micro-optimisation. `FunnelList` owns the search
   // box, so every keystroke re-renders every card — and without this, each one
   // re-runs `sectionDocSchema.safeParse` over every step's FULL page document.
@@ -171,6 +189,14 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete }: FunnelCardPro
   // unreachable, and if the entry has never been compiled a published funnel
   // serves nothing. Either way "live" would be the true thing about the
   // database and the false thing about the world.
+  // THIS FUNNEL'S OWN STEPS ONLY. `ordered` is already position-sorted, so the
+  // first step running a quiz wins -- matching `quizUsesInSteps`, which the
+  // server used to build the map.
+  const quizOnThisFunnel = useMemo(
+    () => ordered.map((step) => quizByStepId[step.id]).find(Boolean) ?? null,
+    [ordered, quizByStepId],
+  )
+
   const entryPublished = Boolean(entry?.published_version_id)
   const live = entryPublished && funnel.status === "published"
   const badge = live
@@ -219,6 +245,21 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete }: FunnelCardPro
         }
         secondaryAction={
           <>
+            {/* THE QUIZ THIS FUNNEL RUNS, reached from the funnel that runs it.
+                A quiz block holds a POINTER, so the quiz has no home of its own
+                -- and it used to be reachable only from a separate list screen,
+                which made it look like a sibling of Funnels rather than part of
+                one. The owner's report, four times: "it should live in the
+                funnel". The first step that runs one wins; a funnel showing the
+                same quiz twice is one quiz to edit. */}
+            {quizOnThisFunnel ? (
+              <Button asChild variant="outline" size="sm" title={`Edit ${quizOnThisFunnel.name}`}>
+                <Link href={`/admin/funnels/quizzes/${quizOnThisFunnel.id}`}>
+                  <ListChecks className="size-4 shrink-0" aria-hidden />
+                  Quiz
+                </Link>
+              </Button>
+            ) : null}
             <FunnelGoLiveButton funnelId={funnel.id} status={funnel.status} kind={funnel.kind} canGoLive={entryPublished} />
             <Button asChild variant="outline" size="sm" aria-label={`${funnel.name} settings`}>
               <Link href={`/admin/funnels/${funnel.id}`}>

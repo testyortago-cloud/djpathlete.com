@@ -4,7 +4,7 @@
 // 00203), or null. It must answer "no quizzes" for the last two rather than
 // throw on the funnel's own screen.
 import { describe, expect, it } from "vitest"
-import { quizPlacements, quizUsesInSteps, type QuizPlacementStep } from "@/lib/funnels/quiz-refs"
+import { quizUsesInSteps } from "@/lib/funnels/quiz-refs"
 
 const QUIZ_A = "f15ef258-3f0a-494b-a8c9-deb2de7b2aa9"
 const QUIZ_B = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"
@@ -80,98 +80,5 @@ describe("quizUsesInSteps", () => {
     expect(quizUsesInSteps([{ id: "step-1", name: "Broken", project_data: broken }])).toEqual([
       { quizId: QUIZ_A, stepId: "step-1", stepName: "Broken" },
     ])
-  })
-})
-
-// ---------------------------------------------------------------------------
-// `quizPlacements` — the SAME walk read the other way round.
-//
-// `quizUsesInSteps` answers "which quizzes does this funnel use?" for one
-// funnel's settings screen. The quizzes SCREEN needs the inverse — "which page
-// shows this quiz?" — because a quiz has no page of its own, so the only thing
-// it can show a preview of is the funnel page running it.
-// ---------------------------------------------------------------------------
-
-const FUNNEL_A = "11111111-1111-4111-8111-111111111111"
-const FUNNEL_B = "22222222-2222-4222-8222-222222222222"
-
-function placementStep(over: Partial<QuizPlacementStep> = {}): QuizPlacementStep {
-  return {
-    id: "step-1",
-    name: "Quiz",
-    slug: "index",
-    is_entry: true,
-    funnel_id: FUNNEL_A,
-    published_version_id: null,
-    project_data: doc([quizSection("q1", QUIZ_A)]),
-    ...over,
-  }
-}
-
-describe("quizPlacements", () => {
-  it("maps a quiz id to the step and funnel whose page shows it", () => {
-    const placements = quizPlacements([placementStep()])
-    expect(placements.get(QUIZ_A)).toEqual({
-      quizId: QUIZ_A,
-      funnelId: FUNNEL_A,
-      stepId: "step-1",
-      stepName: "Quiz",
-      stepSlug: "index",
-      isEntry: true,
-      published: false,
-    })
-  })
-
-  it("reports a step carrying a published version as published", () => {
-    // This is the whole reason the column is read: the card's preview points at
-    // the LIVE route for a published page and at the draft route otherwise,
-    // which is the identical rule the funnels board follows.
-    const placements = quizPlacements([placementStep({ published_version_id: "ver-1" })])
-    expect(placements.get(QUIZ_A)?.published).toBe(true)
-  })
-
-  it("keeps the FIRST step when two pages show the same quiz", () => {
-    // A quiz block holds a pointer, so one quiz can legitimately appear on two
-    // pages. The card needs one page to preview, and the first in the given
-    // order is the one the caller sorted to the front.
-    const placements = quizPlacements([
-      placementStep({ id: "step-1", name: "Entry", slug: "index" }),
-      placementStep({ id: "step-2", name: "Retake", slug: "retake", is_entry: false }),
-    ])
-    expect(placements.get(QUIZ_A)?.stepId).toBe("step-1")
-    expect(placements.size).toBe(1)
-  })
-
-  it("keeps each quiz separately when different pages show different quizzes", () => {
-    const placements = quizPlacements([
-      placementStep({ id: "step-1", funnel_id: FUNNEL_A, project_data: doc([quizSection("q1", QUIZ_A)]) }),
-      placementStep({ id: "step-2", funnel_id: FUNNEL_B, project_data: doc([quizSection("q1", QUIZ_B)]) }),
-    ])
-    expect(placements.get(QUIZ_A)?.funnelId).toBe(FUNNEL_A)
-    expect(placements.get(QUIZ_B)?.funnelId).toBe(FUNNEL_B)
-  })
-
-  it("has no entry for a quiz no page shows", () => {
-    // NOT an error and not a zero-value placement. "This quiz is on no page" is
-    // what the card renders as "No preview yet", and an entry pointing at a
-    // funnel that does not show it would build a preview URL for the wrong page.
-    const placements = quizPlacements([placementStep({ project_data: doc([heroSection()]) })])
-    expect(placements.has(QUIZ_A)).toBe(false)
-    expect(placements.size).toBe(0)
-  })
-
-  it("survives a legacy GrapesJS blob and a step nobody has built", () => {
-    // Same three shapes `project_data` holds across the table. The quizzes
-    // screen must not 500 because one old page predates 00203.
-    const placements = quizPlacements([
-      placementStep({ id: "step-1", project_data: { pages: [{ component: "<div/>" }] } }),
-      placementStep({ id: "step-2", project_data: null }),
-    ])
-    expect(placements.size).toBe(0)
-  })
-
-  it("ignores a quizId that is not a uuid", () => {
-    const placements = quizPlacements([placementStep({ project_data: doc([quizSection("q1", "not-a-uuid")]) })])
-    expect(placements.size).toBe(0)
   })
 })

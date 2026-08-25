@@ -262,7 +262,14 @@ export function PreviewCard({
           )
         ) : null}
 
-        <div className="mt-auto flex items-center gap-2">
+        {/* WRAPS, AND THAT IS LOAD-BEARING. The number of controls on a card is
+            not fixed — go-live, preview, open-public, convert, settings, delete,
+            and now the quiz on a funnel that runs one. A non-wrapping row silently
+            pushes the LAST controls out through `overflow-hidden` on the card, which
+            is how adding the quiz button made settings and delete disappear from a
+            quiz funnel's card. Seen in a screenshot, invisible to every test:
+            jsdom has no layout. */}
+        <div className="mt-auto flex flex-wrap items-center gap-2">
           <Button asChild size="sm">
             <Link href={href}>{primaryLabel}</Link>
           </Button>
