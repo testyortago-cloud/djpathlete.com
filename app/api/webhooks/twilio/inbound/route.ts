@@ -85,6 +85,48 @@ const STOP_KEYWORDS = new Set(["STOP", "STOPALL", "UNSUBSCRIBE", "CANCEL", "END"
 const START_KEYWORDS = new Set(["START", "UNSTOP", "YES"])
 const HELP_KEYWORDS = new Set(["HELP"])
 
+/**
+ * Empty TwiML — the ONLY body Twilio accepts on a handled inbound message.
+ *
+ * Twilio's messaging webhook parses the response as TwiML and rejects any
+ * other content type outright with error 12300 ("Invalid Content-Type:
+ * application/json supplied"). This route used to answer `NextResponse.json`
+ * on all four success paths, so in production every STOP and START logged a
+ * 12300 and Twilio discarded the response. The DB writes still happened —
+ * 12300 is Twilio refusing our REPLY, not our processing failing — but any
+ * future attempt to answer the sender through TwiML would have been silently
+ * dropped, which on the opt-out surface is the expensive kind of broken.
+ *
+ * Twenty-seven tests covered this route and all of them passed, because every
+ * one asserted `res.status` and the database side effects and not one asserted
+ * the content type. The contract the tests pinned was not the contract Twilio
+ * enforces.
+ *
+ * `<Response/>` is deliberately EMPTY: it means "received, nothing to say
+ * back", which preserves this route's documented no-auto-reply rule (see the
+ * doc comment above — spec §5 puts the HELP and STOP replies on Messaging
+ * Service configuration, not here). Putting reply text in here instead would
+ * move a compliance decision out of the console and into code silently.
+ */
+const TWIML_EMPTY = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
+
+/**
+ * The handled-outcome response. The outcome string moves to a header rather
+ * than a JSON body: Twilio ignores unknown headers, so this keeps the
+ * which-branch-fired signal that the JSON body used to carry (in logs, and
+ * for tests) without feeding Twilio a body it rejects.
+ */
+function handled(outcome: "stop" | "start" | "help" | "inbound", matched: boolean) {
+  return new NextResponse(TWIML_EMPTY, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/xml; charset=utf-8",
+      "X-Twilio-Inbound-Outcome": outcome,
+      "X-Twilio-Inbound-Matched": String(matched),
+    },
+  })
+}
+
 const TIMELINE_SOURCE = "twilio_inbound_webhook"
 const TIMELINE_BODY_CAP = 500
 
@@ -262,7 +304,7 @@ export async function POST(request: Request) {
           console.error("[twilio-inbound-webhook] STOP manual-review alert failed:", err)
         }
       }
-      return NextResponse.json({ ok: true, outcome: "stop", matched: Boolean(contactId) }, { status: 200 })
+      return handled("stop", Boolean(contactId))
     }
 
     if (START_KEYWORDS.has(upper)) {
@@ -281,7 +323,7 @@ export async function POST(request: Request) {
           metadata: { body: capBody(rawBody), from: rawFrom },
         })
       }
-      return NextResponse.json({ ok: true, outcome: "start", matched: Boolean(contactId) }, { status: 200 })
+      return handled("start", Boolean(contactId))
     }
 
     if (HELP_KEYWORDS.has(upper)) {
@@ -292,7 +334,7 @@ export async function POST(request: Request) {
           metadata: { body: capBody(rawBody), from: rawFrom },
         })
       }
-      return NextResponse.json({ ok: true, outcome: "help", matched: Boolean(contactId) }, { status: 200 })
+      return handled("help", Boolean(contactId))
     }
 
     // Anything else: visible-not-silent timeline row, plus an ops-alert
@@ -344,7 +386,7 @@ export async function POST(request: Request) {
         console.error("[twilio-inbound-webhook] ops-alert email failed:", err)
       }
     }
-    return NextResponse.json({ ok: true, outcome: "inbound", matched: Boolean(contactId) }, { status: 200 })
+    return handled("inbound", Boolean(contactId))
   } catch (err) {
     console.error("[twilio-inbound-webhook] processing failed:", err)
     return NextResponse.json({ error: "internal" }, { status: 500 })
