@@ -32,8 +32,8 @@ import { appOrigin } from "@/lib/lead-engine/origin"
  * terminal row). None of those throw, by construction, so retrying them
  * would just get the exact same answer again; Twilio retries any non-2xx
  * response forever, so they must never 500. The actual outcome is carried
- * in the response body for anyone who wants to look, not in the status
- * code.
+ * on the `X-Twilio-Status-Outcome` response HEADER for anyone who wants to
+ * look, not in the status code and not in the body -- see TWIML_EMPTY.
  *
  * A THROWN exception out of `applyDeliveryStatus` is different: nothing in
  * its mapped path throws for a bad or unrecognized payload, so a throw here
@@ -44,6 +44,13 @@ import { appOrigin } from "@/lib/lead-engine/origin"
  * false 200. The response body in that case stays generic and never echoes
  * the underlying error.
  */
+/**
+ * Empty TwiML. Mirrors app/api/webhooks/twilio/inbound/route.ts -- see the
+ * long rationale on that route's TWIML_EMPTY. Empty because a status callback
+ * has nobody to reply to: it reports on a message this app already sent.
+ */
+const TWIML_EMPTY = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
+
 export async function POST(request: Request) {
   const authToken = process.env.TWILIO_AUTH_TOKEN
   if (!authToken) {
@@ -91,5 +98,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "internal" }, { status: 500 })
   }
 
-  return NextResponse.json({ ok: true, outcome }, { status: 200 })
+  // Empty TwiML, matching the inbound webhook. Twilio parses a webhook
+  // response as TwiML and answers a JSON body with error 12300 ("Invalid
+  // Content-Type: application/json supplied") -- which is exactly what this
+  // route's twin was doing in production until 2026-08-25.
+  //
+  // HONESTY ABOUT THE EVIDENCE: unlike the inbound route, this one was NOT
+  // observed producing a 12300. A delivered test message on 2026-08-25 fired
+  // this callback and logged no alert, so Twilio appears to tolerate JSON on
+  // a status callback where it rejects it on an inbound message. This change
+  // is therefore consistency and future-proofing, not a fix for a measured
+  // fault. TwiML is never WRONG for a Twilio webhook, so aligning the twins
+  // costs nothing and removes a latent difference between two routes that
+  // are meant to mirror each other.
+  return new NextResponse(TWIML_EMPTY, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/xml; charset=utf-8",
+      "X-Twilio-Status-Outcome": outcome,
+    },
+  })
 }

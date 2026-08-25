@@ -160,7 +160,7 @@ describe("POST /api/webhooks/twilio/status", () => {
     const res = await POST(statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "delivered" }))
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ outcome: "updated" })
+    expect(res.headers.get("x-twilio-status-outcome")).toBe("updated")
     expect(db.rows.find((r) => r.id === row.id)?.status).toBe("delivered")
   })
 
@@ -170,7 +170,7 @@ describe("POST /api/webhooks/twilio/status", () => {
     const res = await POST(statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "failed" }))
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ outcome: "ignored" })
+    expect(res.headers.get("x-twilio-status-outcome")).toBe("ignored")
     expect(db.rows.find((r) => r.id === row.id)?.status).toBe("delivered")
   })
 
@@ -180,7 +180,7 @@ describe("POST /api/webhooks/twilio/status", () => {
     const res = await POST(statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "undelivered" }))
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ outcome: "ignored" })
+    expect(res.headers.get("x-twilio-status-outcome")).toBe("ignored")
     expect(db.rows.find((r) => r.id === row.id)?.status).toBe("delivered")
   })
 
@@ -190,7 +190,7 @@ describe("POST /api/webhooks/twilio/status", () => {
     const res = await POST(statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "failed" }))
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ outcome: "updated" })
+    expect(res.headers.get("x-twilio-status-outcome")).toBe("updated")
     expect(db.rows.find((r) => r.id === row.id)?.status).toBe("failed")
   })
 
@@ -200,7 +200,7 @@ describe("POST /api/webhooks/twilio/status", () => {
     const res = await POST(statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "delivered" }))
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ outcome: "updated" })
+    expect(res.headers.get("x-twilio-status-outcome")).toBe("updated")
     expect(db.rows.find((r) => r.id === row.id)?.status).toBe("delivered")
   })
 
@@ -208,7 +208,7 @@ describe("POST /api/webhooks/twilio/status", () => {
     const res = await POST(statusRequest({ MessageSid: "SM-does-not-exist", MessageStatus: "delivered" }))
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ outcome: "unknown_message" })
+    expect(res.headers.get("x-twilio-status-outcome")).toBe("unknown_message")
   })
 
   it("a sent/queued/accepted callback is ignored without touching the row (we already recorded sent at send time)", async () => {
@@ -217,7 +217,7 @@ describe("POST /api/webhooks/twilio/status", () => {
     const res = await POST(statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "queued" }))
 
     expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({ outcome: "ignored" })
+    expect(res.headers.get("x-twilio-status-outcome")).toBe("ignored")
     expect(db.rows.find((r) => r.id === row.id)?.status).toBe("sent")
   })
 
@@ -271,5 +271,54 @@ describe("POST /api/webhooks/twilio/status", () => {
     expect(consoleErrorSpy).toHaveBeenCalled()
 
     consoleErrorSpy.mockRestore()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Response contract, mirroring the inbound webhook's suite.
+//
+// This route was NOT observed producing a 12300 -- a delivered test message on
+// 2026-08-25 fired this callback and logged no Twilio alert, so status
+// callbacks appear to tolerate JSON where inbound messages do not. These tests
+// pin TwiML anyway, because the two routes are meant to mirror each other and
+// TwiML is never wrong for a Twilio webhook. Pinning it stops the twins
+// drifting apart again.
+// ---------------------------------------------------------------------------
+describe("POST /api/webhooks/twilio/status — Twilio response contract", () => {
+  it("answers TwiML, never JSON", async () => {
+    const row = seedRow({ status: "sent" })
+    const res = await POST(statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "delivered" }))
+
+    expect(res.status).toBe(200)
+    const contentType = res.headers.get("content-type") ?? ""
+    expect(contentType).not.toContain("application/json")
+    expect(contentType).toContain("text/xml")
+
+    const text = await res.text()
+    expect(text).toContain("<Response>")
+    // A status callback reports on a message this app already sent -- there is
+    // nobody to reply to, so a <Message> here would text a lead at random.
+    expect(text).not.toContain("<Message>")
+  })
+
+  it("carries the outcome on a header now that the body is TwiML", async () => {
+    const row = seedRow({ status: "sent" })
+    const res = await POST(statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "delivered" }))
+    expect(res.headers.get("x-twilio-status-outcome")).toBe("updated")
+  })
+
+  it("still answers TwiML for an unrecognised sid, which must not 500", async () => {
+    const res = await POST(statusRequest({ MessageSid: "SM-does-not-exist", MessageStatus: "delivered" }))
+    expect(res.status).toBe(200)
+    expect(res.headers.get("content-type") ?? "").toContain("text/xml")
+    expect(res.headers.get("x-twilio-status-outcome")).toBe("unknown_message")
+  })
+
+  it("keeps the diagnostic JSON on the rejection path", async () => {
+    const res = await POST(
+      statusRequest({ MessageSid: "SM1", MessageStatus: "delivered" }, { signature: "wrong" }),
+    )
+    expect(res.status).toBe(403)
+    expect(res.headers.get("content-type") ?? "").toContain("application/json")
   })
 })
