@@ -4,20 +4,30 @@
  *
  *   npx tsx scripts/seed-athlete-quiz-funnel.ts                 # dry run, dev clone
  *   npx tsx scripts/seed-athlete-quiz-funnel.ts --execute
+ *   npx tsx scripts/seed-athlete-quiz-funnel.ts .env.prod --execute --allow-non-clone
  *
- * DRY-RUN IS THE DEFAULT and it REFUSES ANY PROJECT THAT IS NOT THE DEV CLONE.
- * This publishes a public page; doing that to production by fat-fingering an
- * env path is a live URL nobody asked for.
+ * DRY-RUN IS THE DEFAULT, and it DEFAULTS TO THE DEV CLONE, refusing any other
+ * project unless `--allow-non-clone` is passed as well — the same convention as
+ * `scripts/seed-athlete-quiz.ts`. This publishes a PUBLIC page, so reaching
+ * production must take a deliberate second flag rather than a mistyped env path.
  *
  * It runs the REAL publish sequence — `reassemble` then `compileFunnelStep` —
  * rather than hand-writing a node tree, because a screenshot of a page built a
  * different way from the real one proves nothing about the real one.
+ *
+ * AND IT NO LONGER HAND-WRITES THE DOCUMENT EITHER. It used to carry its own
+ * copy, complete with a hero whose "Start the quiz" button scrolled 138px and
+ * started nothing — starting is a state inside the island, and no anchor can
+ * reach it. That was measured on the real page at 1440x900 and removed from
+ * `lib/funnels/quiz-funnel-doc.ts` in 1d2cd052, but this second copy survived,
+ * so running this script would have republished the broken page over the fixed
+ * one with every test still green. One definition, imported.
  */
 import { readFileSync } from "node:fs"
 import { createClient } from "@supabase/supabase-js"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import { compileFunnelStep } from "@/lib/funnels/compile"
-import type { SectionDoc } from "@/lib/funnels/sections/registry"
+import { buildQuizFunnelDoc } from "@/lib/funnels/quiz-funnel-doc"
 
 const CLONE_REF = "anjvztjiokcgiyhobknq"
 const SLUG = "athlete-quiz"
@@ -31,50 +41,10 @@ function loadEnv(path: string): Record<string, string> {
   return out
 }
 
-function doc(quizId: string): SectionDoc {
-  return {
-    v: 1,
-    engine: "sections",
-    theme: { tone: "light", accent: "accent", radius: "soft" },
-    sections: [
-      {
-        id: "hero1",
-        kind: "hero",
-        variant: "centered",
-        style: {},
-        props: {
-          eyebrow: "Three minutes",
-          headline: "What is quietly limiting your performance?",
-          sub: "Answer a few questions about your sport and how your body is holding up, and get a readout of where the gaps are.",
-          primaryCta: { label: "Start the quiz", target: { kind: "anchor", sectionId: "quiz1" } },
-        },
-      },
-      {
-        id: "quiz1",
-        kind: "quiz",
-        variant: "boxed",
-        style: {},
-        props: {
-          heading: "The Athlete Quiz",
-          sub: "Built from the same profile we use in a full assessment.",
-          quizId,
-          submitLabel: "See my result",
-        },
-      },
-      {
-        id: "foot1",
-        kind: "footer",
-        variant: "simple",
-        style: {},
-        props: { businessName: "DJP Athlete", lines: ["Tampa Bay, FL"], links: [], legal: "All rights reserved." },
-      },
-    ],
-  }
-}
-
 async function main() {
   const args = process.argv.slice(2)
   const execute = args.includes("--execute")
+  const allowNonClone = args.includes("--allow-non-clone")
   const envPath = args.filter((a) => !a.startsWith("--"))[0] ?? ".env.local"
   const env = loadEnv(envPath)
   const url = env.NEXT_PUBLIC_SUPABASE_URL
@@ -84,9 +54,14 @@ async function main() {
   const ref = new URL(url).host.split(".")[0]
   console.log(`project : ${ref}${ref === CLONE_REF ? "  (dev clone)" : "  (NOT the clone)"}`)
   console.log(`mode    : ${execute ? "EXECUTE" : "dry run"}`)
-  if (ref !== CLONE_REF) {
-    console.error("REFUSING: this script publishes a public page and only ever targets the dev clone.")
+  if (ref !== CLONE_REF && !allowNonClone) {
+    console.error("REFUSING: this script publishes a PUBLIC page. Pass --allow-non-clone to target this project.")
     process.exit(1)
+  }
+  if (ref !== CLONE_REF && execute) {
+    // SAY IT OUT LOUD. The difference between the two modes here is a live URL
+    // on somebody's real website.
+    console.log(`\n!! PUBLISHING A PUBLIC PAGE ON ${ref} — /go/${SLUG} will be reachable by anyone.\n`)
   }
 
   const sb = createClient(url, key, { auth: { persistSession: false } })
@@ -100,7 +75,7 @@ async function main() {
   if (!quiz) throw new Error("rpi_athlete_quiz is not seeded — run scripts/seed-athlete-quiz.ts first")
   console.log(`quiz    : ${quiz.id} (${quiz.status})`)
 
-  const built = doc(quiz.id as string)
+  const built = buildQuizFunnelDoc({ quizId: quiz.id as string })
   const { html, css } = reassemble(built)
   const compiled = compileFunnelStep({ html, css })
   // CompileResult is a discriminated union: `ok: false` carries only fatal
