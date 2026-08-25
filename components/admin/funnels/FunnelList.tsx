@@ -29,9 +29,10 @@ import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { FunnelCard, type QuizByStepId } from "./FunnelCard"
 import { CreateFunnelDialog } from "./CreateFunnelDialog"
+import { CreatePageDialog } from "./CreatePageDialog"
 import { ownExamplesFromGroups } from "./own-examples"
 import { BoardEmptyState } from "./BoardEmptyState"
-import type { Funnel, FunnelStep } from "@/types/database"
+import type { Funnel, FunnelStep, FunnelKind } from "@/types/database"
 
 export interface FunnelWithSteps {
   funnel: Funnel
@@ -51,9 +52,21 @@ interface FunnelListProps {
    * a customer with no quizzes never meets the word.
    */
   quizByStepId?: QuizByStepId
+  /**
+   * Which board this is: the copy, the create dialog and the empty state.
+   *
+   * AND NOTHING ABOUT HOW A CARD BEHAVES. A row's own `funnel.kind` decides
+   * that, so a landing page listed anywhere still behaves like one -- which is
+   * what makes sharing this component safe rather than merely shorter.
+   *
+   * DEFAULTS TO `"funnel"`. Every caller that predates `/admin/pages` moving
+   * here omits it, and a default of `"page"` would have turned the funnels
+   * board into a pages board in silence.
+   */
+  kind?: FunnelKind
 }
 
-export function FunnelList({ funnels, leadCounts, quizByStepId = {} }: FunnelListProps) {
+export function FunnelList({ funnels, leadCounts, quizByStepId = {}, kind = "funnel" }: FunnelListProps) {
   const router = useRouter()
   const [query, setQuery] = useState("")
 
@@ -99,14 +112,15 @@ export function FunnelList({ funnels, leadCounts, quizByStepId = {} }: FunnelLis
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search funnels and pages…"
+          placeholder={kind === "page" ? "Search pages…" : "Search funnels and pages…"}
           className="sm:max-w-xs"
         />
         <div className="flex flex-1 gap-2 sm:justify-end">
-          <CreateFunnelDialog
-            takenSlugs={funnels.map(({ funnel }) => funnel.slug)}
-            ownExamples={ownExamples}
-          />
+          {kind === "page" ? (
+            <CreatePageDialog takenSlugs={funnels.map(({ funnel }) => funnel.slug)} />
+          ) : (
+            <CreateFunnelDialog takenSlugs={funnels.map(({ funnel }) => funnel.slug)} ownExamples={ownExamples} />
+          )}
         </div>
       </div>
 
@@ -117,7 +131,7 @@ export function FunnelList({ funnels, leadCounts, quizByStepId = {} }: FunnelLis
         // explanation was a silent regression. A no-MATCHES result is a
         // different thing and keeps its one line.
         funnels.length === 0 ? (
-          <BoardEmptyState kind="funnel" />
+          <BoardEmptyState kind={kind} />
         ) : (
           <div className="rounded-xl border border-dashed border-border bg-surface/30 px-4 py-16 text-center text-muted-foreground">
             Nothing matches that search.
