@@ -7,6 +7,7 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { hasIntakeColumns } from "@/lib/db/funnel-schema-support"
 import { ENTRY_STEP_SLUG } from "@/lib/funnels/templates"
 import { compileFunnelStep } from "@/lib/funnels/compile"
+import type { QuizPlacementStep } from "@/lib/funnels/quiz-refs"
 import type { CompileError, FunnelNode } from "@/lib/funnels/compile/types"
 import type {
   Funnel,
@@ -285,6 +286,36 @@ export async function listSteps(funnelId: string): Promise<FunnelStep[]> {
     .order("position", { ascending: true })
   if (error) throw new Error(`listSteps: ${error.message}`)
   return (data ?? []) as FunnelStep[]
+}
+
+/**
+ * Every step in the app, for a screen that starts from something OTHER than a
+ * funnel and has to find the page showing it — today, the quizzes screen.
+ *
+ * A WHOLE-TABLE READ, DELIBERATELY. A quiz block names its quiz inside
+ * `project_data`, which Postgres cannot index for this question and PostgREST
+ * cannot filter on, so "which page shows quiz X?" is answerable only by walking
+ * the documents. Doing that per quiz would be one full scan per row on the
+ * screen; doing it once and inverting the result in memory
+ * (`quizPlacements`) is one.
+ *
+ * ONLY THE COLUMNS THE WALK NEEDS. `select("*")` would pull every page's
+ * compiled HTML alongside its document, and this read exists to answer one
+ * small question about all of them.
+ *
+ * ORDERED SO THE FIRST MATCH IS THE RIGHT ONE. `quizPlacements` keeps the first
+ * step it sees for a quiz, so entry pages must come before child steps — a quiz
+ * on both the entry and a retake page should preview the entry.
+ */
+export async function listStepsWithDocuments(): Promise<QuizPlacementStep[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("funnel_steps")
+    .select("id, funnel_id, name, slug, is_entry, position, project_data, published_version_id")
+    .order("is_entry", { ascending: false })
+    .order("position", { ascending: true })
+  if (error) throw new Error(`listStepsWithDocuments: ${error.message}`)
+  return (data ?? []) as QuizPlacementStep[]
 }
 
 export async function getStep(id: string): Promise<FunnelStep | null> {
