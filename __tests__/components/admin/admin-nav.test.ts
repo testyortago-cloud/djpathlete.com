@@ -105,19 +105,30 @@ describe("getAdminNav", () => {
     }
   })
 
-  // THIS TEST USED TO ASSERT THE OPPOSITE, and its reason was sound at the
-  // time: "a quiz is a database entity the funnel block points at by id — it
-  // is not nested under any one funnel — so there is no page an owner would
-  // stumble onto it from." That premise is what changed. Every funnel's own
-  // screen now lists the quiz it uses (FunnelQuizPanel), and the funnels board
-  // links to the full list, so the quiz is reached from the thing it belongs
-  // to instead of from a sidebar entry that made it look like a sibling of
-  // Funnels.
+  // THIS BLOCK HAS BEEN REWRITTEN TWICE, and both times the PREMISE moved
+  // rather than the guarantee.
   //
-  // THE GUARANTEE THE OLD TEST PROTECTED IS NOT DROPPED, it moved: the test
-  // below reads the funnels board and fails if that door is ever closed. A
-  // quiz no funnel uses yet would otherwise be reachable only by typing a URL,
-  // which is the defect the deleted sidebar line existed to fix.
+  // 1. Originally there was a top-level "Quizzes" sidebar item, on the reason
+  //    that a quiz is pointed at by id and nested under no one funnel, so
+  //    nothing would lead you to it.
+  // 2. Then the sidebar item went and the funnels board carried an "All
+  //    quizzes" link to a list screen, so the quiz was reached from Funnels.
+  // 3. Now the list screen is gone too, and this is why: a quiz is not a thing
+  //    this product HAS beside funnels, it is something a funnel RUNS. A
+  //    standing list made it a permanent top-level concept for every customer,
+  //    including the ones being white-labelled who have no quizzes at all.
+  //
+  // THE GUARANTEE IS UNCHANGED THROUGHOUT: a quiz must never be reachable only
+  // by typing its URL. What secures it now is the control on the card of the
+  // funnel that runs it, so the test reads the board for that wiring. Delete
+  // the wiring and this fails, exactly as deleting the sidebar item used to.
+  //
+  // What made dropping the LIST safe is that a quiz cannot come into existence
+  // without a funnel: `POST /api/admin/funnels` with the quiz template creates
+  // the pair in one call and deletes the quiz if the funnel insert fails. The
+  // one way to reach an unreferenced quiz is BACKWARDS — `deleteFunnel` leaves
+  // the quiz behind — and that hole is tracked separately. A list screen
+  // signposted it; it never fixed it.
   it("does NOT carry a top-level Quizzes item — a quiz is reached from its funnel", () => {
     for (const contentStudioEnabled of [false, true]) {
       const nav = getAdminNav({ contentStudioEnabled })
@@ -135,15 +146,25 @@ describe("getAdminNav", () => {
     }
   })
 
-  it("and the funnels board still links to the full list of quizzes", () => {
+  it("and the funnels board hands each card the quiz its funnel runs", () => {
     // Read as SOURCE because the board is a server component that queries the
-    // database to render. `href="` is part of the match on purpose: the file
-    // also carries a comment explaining this link, and a bare path search
-    // would be satisfied by the prose that describes the link rather than by
-    // the link.
+    // database to render.
+    //
+    // MATCHED ON THE PROP WIRING, not on the word "quiz". The file also carries
+    // a long comment explaining why there is no list any more, and a bare word
+    // search would be satisfied by the prose that describes the decision rather
+    // than by the code that implements it.
     const fs = require("node:fs") as typeof import("node:fs")
     const board = fs.readFileSync("app/(admin)/admin/funnels/page.tsx", "utf8")
-    expect(board).toContain('href="/admin/funnels/quizzes"')
+    expect(board, "the board must build the step -> quiz map").toContain("quizUsesInSteps(")
+    expect(board, "and hand it to the list").toContain("quizByStepId={quizByStepId}")
+  })
+
+  it("and no longer links to a quizzes list, because there is not one", () => {
+    // `href="` is part of the match on purpose, for the same prose reason.
+    const fs = require("node:fs") as typeof import("node:fs")
+    const board = fs.readFileSync("app/(admin)/admin/funnels/page.tsx", "utf8")
+    expect(board).not.toContain('href="/admin/funnels/quizzes"')
   })
 
   // Final review, Important 2: the Lead Engine pipeline board was URL-only —

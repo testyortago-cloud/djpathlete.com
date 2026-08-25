@@ -1,0 +1,64 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>The quiz lives in the funnel — what was verified</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0 auto; max-width: 1100px; padding: 2rem 1.5rem 4rem; color: #16323f; }
+  h1 { font-size: 1.9rem; margin-bottom: .25rem; }
+  .sub { color: #5b7280; margin-top: 0; }
+  .facts { background: #f6f7f8; border: 1px solid #e3e6e8; border-radius: 10px; padding: 1rem 1.25rem; margin: 1.5rem 0 2rem; }
+  .caveat { background: #fdf6ec; border: 1px solid #eadfcc; border-radius: 10px; padding: 1rem 1.25rem; margin: 0 0 2.5rem; }
+  code { font-size: .85em; }
+  figure { margin: 0 0 3rem; }
+  img { width: 100%; height: auto; border: 1px solid #e3e6e8; border-radius: 10px; display: block; }
+  figcaption { margin-top: .6rem; color: #44606d; line-height: 1.55; }
+</style>
+<h1>The quiz lives in the funnel — what was verified</h1>
+<p class="sub">Every frame is the real app on its real route, driven by
+<code>scripts/capture-quiz-on-the-funnel-card.ts</code>. The callouts are burned into each PNG.</p>
+
+<div class="facts">
+  <p><b>Measured on the dev copy</b> (<code>anjvztjiokcgiyhobknq</code>), asserted in the DOM before each shot:</p>
+  <ul>
+    <li><b>No quizzes screen, and no link to one.</b> <code>a[href="/admin/funnels/quizzes"]</code> count is zero
+        on the funnels board.</li>
+    <li><b>The retired URL forwards.</b> Navigating to <code>/admin/funnels/quizzes</code> ends on
+        <code>/admin/funnels</code> — a bookmark gets the screen that replaced it, not a 404.</li>
+    <li><b>The quiz is on its funnel's card</b>, located <em>by href</em> and then clicked. It reaches the
+        question editor; no 404.</li>
+    <li><b>A funnel with no quiz never says the word.</b> The second card's entire
+        <code>textContent</code> is scanned against <code>/quiz/i</code> and must not match. This is the
+        white-label requirement as an assertion — and an absence assertion needs a presence control, which
+        is why both cards are in the same frame.</li>
+    <li><b>The quiz funnel was made through the real New funnel dialog</b> — template <em>Run a quiz</em> —
+        and deleted again at the end of the run.</li>
+  </ul>
+</div>
+
+<div class="caveat">
+  <p><b>One real hole, deliberately left open and not fixed here.</b></p>
+  <p><code>deleteFunnel</code> deletes only the funnel row — it leaves the quiz behind. With no list screen,
+     such a quiz is reachable only by typing its URL. It is not reachable <em>forwards</em>: a quiz cannot be
+     created without a funnel, because <code>POST /api/admin/funnels</code> with the quiz template creates the
+     pair in one call and deletes the quiz if the funnel insert fails. So the leak needs someone to delete a
+     quiz funnel first, and production currently has no quizzes at all.</p>
+  <p>Closing it means deleting quizzes when their last funnel goes — destructive, and it needs an explicit
+     decision, not a quiet one. The old list screen signposted this hole; it never fixed it, and it cost every
+     customer a permanent top-level concept in exchange.</p>
+</div>
+
+<figure>
+  <a href="01-the-quiz-lives-in-its-funnel.png"><img src="01-the-quiz-lives-in-its-funnel.png" alt="The quiz lives in the funnel that runs it"></a>
+  <figcaption><b>1. The quiz lives in the funnel that runs it</b><br>
+  <code>/admin/funnels</code>. Left: a funnel running a quiz, carrying a <strong>Quiz</strong> control beside
+  its own. Right: a funnel that runs none, whose card does not mention one — no disabled button, no empty
+  slot, no explanation. The header links to <em>How funnels work</em> and nothing else.</figcaption>
+</figure>
+
+<figure>
+  <a href="02-and-opens-the-questions.png"><img src="02-and-opens-the-questions.png" alt="And it opens the questions"></a>
+  <figcaption><b>2. And it opens the questions</b><br>
+  The control was clicked, not just read. <code>/admin/funnels/quizzes/&lt;id&gt;</code> — the editor for one
+  quiz — is the only screen a quiz has of its own. It keeps that URL rather than nesting under a funnel
+  because two funnels can point at one quiz, so <code>/admin/funnels/&lt;id&gt;/quiz</code> would be a lie
+  about ownership.</figcaption>
+</figure>

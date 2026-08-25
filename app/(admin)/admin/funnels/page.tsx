@@ -4,6 +4,8 @@
 import Link from "next/link"
 import { Workflow } from "lucide-react"
 import { listFunnels, listSteps, getSubmissionCountsByFunnel } from "@/lib/db/funnels"
+import { getQuizzesByIds } from "@/lib/db/quizzes"
+import { quizUsesInSteps } from "@/lib/funnels/quiz-refs"
 import { FunnelList, type FunnelWithSteps } from "@/components/admin/funnels/FunnelList"
 
 export const metadata = { title: "Funnels" }
@@ -32,25 +34,49 @@ export default async function FunnelsScreen() {
     steps: stepsPerFunnel[index],
   }))
 
+  // THE QUIZ EACH FUNNEL RUNS, so it is reached from the funnel that runs it.
+  //
+  // THERE IS NO QUIZZES SCREEN. A quiz is not a sibling of a funnel; it is
+  // something a funnel can run, the way a funnel can take a payment. That is a
+  // white-label requirement as much as a tidiness one -- a customer whose work
+  // has no quizzes must never meet the word -- so the only quiz surface is a
+  // control on the card of a funnel that actually has one.
+  //
+  // Read from the steps ALREADY LOADED above: `project_data` holds the pointer,
+  // so no extra query answers this. A FAILED quiz read degrades to no button
+  // rather than taking the board down -- losing the whole funnels screen
+  // because the quizzes table was unreachable would trade the screen for a
+  // button. Same rule the landing-pages board follows.
+  const quizUses = quizUsesInSteps(stepsPerFunnel.flat())
+  const quizRows = quizUses.length > 0 ? await getQuizzesByIds(quizUses.map((use) => use.quizId)).catch(() => []) : []
+  const quizByStepId: Record<string, { id: string; name: string }> = {}
+  for (const use of quizUses) {
+    const quiz = quizRows.find((row) => row.id === use.quizId)
+    // A block pointing at a deleted quiz offers no button: there is nothing to
+    // open, and a dead link is worse than no link.
+    if (quiz) quizByStepId[use.stepId] = { id: quiz.id, name: quiz.name }
+  }
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-primary">Funnels</h1>
           <p className="mt-1 text-sm text-muted-foreground">
+            {/* NO "ALL QUIZZES" LINK, AND NO SCREEN BEHIND IT. It used to sit
+                here so that a quiz no funnel used yet was not reachable only by
+                URL. That was solving the wrong problem: a quiz cannot come into
+                existence without a funnel — `POST /api/admin/funnels` with the
+                quiz template creates the pair in one call, and deletes the quiz
+                if the funnel insert fails — so "a quiz no funnel uses" is not a
+                state the product can reach forwards. It is reachable BACKWARDS,
+                by deleting a funnel, because `deleteFunnel` leaves the quiz
+                behind. That is a real hole and it is tracked; a list screen was
+                a signpost to it, not a fix, and it cost every customer a
+                permanent top-level concept they may have no use for. */}
             Multi-step sequences sharing one address.{" "}
             <Link href="/admin/funnels/guide" className="underline underline-offset-2 hover:text-primary">
               How funnels work
-            </Link>{" "}
-            ·{" "}
-            {/* A quiz is edited from the funnel that uses it — every funnel's
-                own screen lists its quiz. This link is the way to the ones no
-                funnel uses YET, so that taking "Quizzes" out of the sidebar
-                cannot leave a quiz reachable only by typing its URL. That is
-                the exact defect the sidebar line was added to fix, and it
-                would have come straight back. */}
-            <Link href="/admin/funnels/quizzes" className="underline underline-offset-2 hover:text-primary">
-              All quizzes
             </Link>
           </p>
         </div>
@@ -59,7 +85,7 @@ export default async function FunnelsScreen() {
         </div>
       </div>
 
-      <FunnelList funnels={withSteps} leadCounts={leadCounts} />
+      <FunnelList funnels={withSteps} leadCounts={leadCounts} quizByStepId={quizByStepId} />
     </div>
   )
 }
