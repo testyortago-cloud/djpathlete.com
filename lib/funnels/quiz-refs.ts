@@ -59,3 +59,32 @@ export function quizUsesInSteps(steps: QuizRefStep[]): QuizUse[] {
 
   return out
 }
+
+/**
+ * Step id -> the quiz that step's page shows. THE SAME WALK, WITHOUT THE DEDUPE.
+ *
+ * `quizUsesInSteps` collapses a repeated quiz to one entry, which is right when
+ * the question is "which quizzes does this funnel use?" — a quiz shown twice is
+ * still one quiz to edit. A BOARD asks the opposite question, once per card, and
+ * the deduped answer silently loses one of them: two funnels sharing a quiz get
+ * ONE entry, attributed to whichever step came first in the flattened list, so
+ * the other card renders no Quiz button and — worse — no warning that deleting
+ * its funnel reaches a quiz.
+ *
+ * FOUND BY DRIVING THE REAL APP. Both boards read correct-looking code and the
+ * flaw only appears once a quiz is genuinely shared, which no fixture happened
+ * to do.
+ *
+ * A step showing more than one quiz keeps the FIRST, matching `quizUsesInSteps`:
+ * one card carries one such control.
+ */
+export function quizIdByStep(steps: QuizRefStep[]): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const step of steps) {
+    // Per step, so the dedupe inside `quizUsesInSteps` can only ever collapse
+    // repeats WITHIN one step — which is the behaviour wanted here.
+    const [first] = quizUsesInSteps([step])
+    if (first) out.set(step.id, first.quizId)
+  }
+  return out
+}

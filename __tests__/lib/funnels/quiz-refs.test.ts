@@ -4,7 +4,7 @@
 // 00203), or null. It must answer "no quizzes" for the last two rather than
 // throw on the funnel's own screen.
 import { describe, expect, it } from "vitest"
-import { quizUsesInSteps } from "@/lib/funnels/quiz-refs"
+import { quizUsesInSteps, quizIdByStep } from "@/lib/funnels/quiz-refs"
 
 const QUIZ_A = "f15ef258-3f0a-494b-a8c9-deb2de7b2aa9"
 const QUIZ_B = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"
@@ -80,5 +80,52 @@ describe("quizUsesInSteps", () => {
     expect(quizUsesInSteps([{ id: "step-1", name: "Broken", project_data: broken }])).toEqual([
       { quizId: QUIZ_A, stepId: "step-1", stepName: "Broken" },
     ])
+  })
+})
+
+// `quizIdByStep` — the SAME walk without the dedupe, for a per-step map.
+//
+// `quizUsesInSteps` answers "which quizzes does this funnel use?" and collapses
+// a repeat, which is right for a list of quizzes to edit. A BOARD needs the
+// opposite: every step that shows a quiz, including two steps showing the same
+// one. Using the deduped answer there attributes a shared quiz to whichever
+// step happened to come first and leaves the other card with nothing — no Quiz
+// button, and no warning that deleting its funnel touches a quiz.
+//
+// Found by driving the real app, not by reading the code.
+describe("quizIdByStep", () => {
+  it("maps every step that shows a quiz", () => {
+    const map = quizIdByStep([
+      { id: "step-1", name: "Entry", project_data: doc([quizSection("q1", QUIZ_A)]) },
+      { id: "step-2", name: "Other", project_data: doc([quizSection("q1", QUIZ_B)]) },
+    ])
+    expect(map.get("step-1")).toBe(QUIZ_A)
+    expect(map.get("step-2")).toBe(QUIZ_B)
+  })
+
+  it("KEEPS BOTH steps when two funnels share one quiz", () => {
+    // The regression this exists for. `quizUsesInSteps` returns one entry here.
+    const steps = [
+      { id: "step-a", name: "Funnel A entry", project_data: doc([quizSection("q1", QUIZ_A)]) },
+      { id: "step-b", name: "Funnel B entry", project_data: doc([quizSection("q1", QUIZ_A)]) },
+    ]
+    expect(quizUsesInSteps(steps)).toHaveLength(1)
+    const map = quizIdByStep(steps)
+    expect(map.get("step-a")).toBe(QUIZ_A)
+    expect(map.get("step-b")).toBe(QUIZ_A)
+    expect(map.size).toBe(2)
+  })
+
+  it("omits a step that shows no quiz", () => {
+    const map = quizIdByStep([{ id: "step-1", name: "Plain", project_data: doc([heroSection()]) }])
+    expect(map.size).toBe(0)
+  })
+
+  it("survives a legacy GrapesJS blob and an unbuilt step", () => {
+    const map = quizIdByStep([
+      { id: "step-1", name: "Legacy", project_data: { pages: [{ component: "<div/>" }] } },
+      { id: "step-2", name: "Unbuilt", project_data: null },
+    ])
+    expect(map.size).toBe(0)
   })
 })

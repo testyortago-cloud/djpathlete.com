@@ -287,6 +287,28 @@ export async function listSteps(funnelId: string): Promise<FunnelStep[]> {
   return (data ?? []) as FunnelStep[]
 }
 
+/**
+ * Every step's DOCUMENT, for the one question that has to be asked across the
+ * whole app: "does anything still point at this quiz?"
+ *
+ * A `quiz` block names its quiz inside `project_data`, which Postgres cannot
+ * index for this and PostgREST cannot filter on, so the only way to answer is
+ * to walk the documents. There is exactly one caller -- the funnel DELETE
+ * route -- and it calls this ONLY when the funnel being deleted actually ran a
+ * quiz, which is rare. A funnel with no quiz pays nothing.
+ *
+ * ONLY THE COLUMNS THE WALK NEEDS. `select("*")` would pull every page's
+ * compiled HTML alongside its document.
+ */
+export async function listStepDocuments(): Promise<
+  { id: string; funnel_id: string; name: string; project_data: unknown }[]
+> {
+  const supabase = getClient()
+  const { data, error } = await supabase.from("funnel_steps").select("id, funnel_id, name, project_data")
+  if (error) throw new Error(`listStepDocuments: ${error.message}`)
+  return (data ?? []) as { id: string; funnel_id: string; name: string; project_data: unknown }[]
+}
+
 export async function getStep(id: string): Promise<FunnelStep | null> {
   const supabase = getClient()
   const { data, error } = await supabase.from("funnel_steps").select("*").eq("id", id).maybeSingle()

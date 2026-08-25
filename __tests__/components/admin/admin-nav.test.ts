@@ -156,7 +156,11 @@ describe("getAdminNav", () => {
     // than by the code that implements it.
     const fs = require("node:fs") as typeof import("node:fs")
     const board = fs.readFileSync("app/(admin)/admin/funnels/page.tsx", "utf8")
-    expect(board, "the board must build the step -> quiz map").toContain("quizUsesInSteps(")
+    // `quizIdByStep`, NOT `quizUsesInSteps`: the deduped helper collapses a
+    // quiz shared by two funnels to one entry, leaving the second card with no
+    // Quiz button and no delete warning. Named exactly so this cannot silently
+    // regress to the helper that looks equivalent and is not.
+    expect(board, "the board must build the step -> quiz map").toContain("quizIdByStep(")
     expect(board, "and hand it to the list").toContain("quizByStepId={quizByStepId}")
   })
 

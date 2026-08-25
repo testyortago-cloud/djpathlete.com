@@ -118,9 +118,12 @@ describe("FunnelList, deleting", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })))
   })
 
-  async function deleteTheOnlyCard(kind: "page" | "funnel") {
+  async function deleteTheOnlyCard(
+    kind: "page" | "funnel",
+    quizByStepId: Record<string, { id: string; name: string; attempts?: number }> = {},
+  ) {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true)
-    render(<FunnelList kind={kind} funnels={rows(kind)} leadCounts={{}} />)
+    render(<FunnelList kind={kind} funnels={rows(kind)} leadCounts={{}} quizByStepId={quizByStepId} />)
     fireEvent.click(screen.getByLabelText(/^Delete /))
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
     return {
@@ -147,5 +150,44 @@ describe("FunnelList, deleting", () => {
     expect(told).toBe("Funnel deleted.")
     expect(asked).toContain("all of its pages")
     expect(url).toContain("/api/admin/funnels/f1")
+  })
+
+  // WHAT A DELETE TAKES WITH IT HAS TO BE SAID BEFORE IT HAPPENS.
+  //
+  // `quiz_attempts.quiz_id` is ON DELETE CASCADE, so removing a quiz destroys
+  // every answer recorded against it -- and that is the last copy, because
+  // `funnel_submissions` cascades away with the funnel itself. An owner
+  // clicking a bin icon cannot be expected to know that.
+  it("says the quiz goes too, and how many answers go with it", async () => {
+    const { asked } = await deleteTheOnlyCard("funnel", {
+      s1: { id: "q1", name: "Athlete Quiz (RPI)", attempts: 26 },
+    })
+    expect(asked).toContain("Athlete Quiz (RPI)")
+    expect(asked).toContain("26")
+  })
+
+  it("does not mention answers when nobody has taken it", async () => {
+    // "along with the 0 answers people have recorded" is noise on the common
+    // case -- a quiz made, abandoned, and deleted the same afternoon.
+    const { asked } = await deleteTheOnlyCard("funnel", {
+      s1: { id: "q1", name: "Athlete Quiz (RPI)", attempts: 0 },
+    })
+    expect(asked).toContain("Athlete Quiz (RPI)")
+    expect(asked).not.toMatch(/\b0\b/)
+  })
+
+  it("says nothing about a quiz when the funnel runs none", async () => {
+    // The presence control for both assertions above.
+    const { asked } = await deleteTheOnlyCard("funnel")
+    expect(asked).not.toMatch(/quiz/i)
+  })
+
+  it("does not warn about another card's quiz", async () => {
+    // The map is the whole board's, keyed by step. A neighbouring funnel's quiz
+    // must not appear in this funnel's confirmation.
+    const { asked } = await deleteTheOnlyCard("funnel", {
+      "some-other-step": { id: "q1", name: "Athlete Quiz (RPI)", attempts: 26 },
+    })
+    expect(asked).not.toMatch(/quiz/i)
   })
 })

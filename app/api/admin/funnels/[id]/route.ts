@@ -3,7 +3,9 @@ import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { updateFunnelSchema } from "@/lib/validators/funnel"
-import { getFunnelById, updateFunnel, deleteFunnel, listSteps } from "@/lib/db/funnels"
+import { getFunnelById, updateFunnel, deleteFunnel, listSteps, listStepDocuments } from "@/lib/db/funnels"
+import { deleteQuiz } from "@/lib/db/quizzes"
+import { quizUsesInSteps } from "@/lib/funnels/quiz-refs"
 
 export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -139,7 +141,34 @@ export const DELETE = withAudit(
     }
     const { id } = await ctx.params
     try {
+      // READ THE PAGES FIRST. `funnel_steps.funnel_id` is ON DELETE CASCADE, so
+      // once the funnel row goes its steps go with it -- and the quiz pointer
+      // lives inside those steps' documents. After the delete there is nothing
+      // left to ask.
+      //
+      // Degrades to "no quizzes" rather than blocking the delete: a funnel the
+      // owner asked to remove should not survive because one read failed.
+      const quizUses = await listSteps(id)
+        .then(quizUsesInSteps)
+        .catch((error) => {
+          console.error("[DELETE /api/admin/funnels/:id] could not read steps for quiz cleanup", error)
+          return []
+        })
+
       await deleteFunnel(id)
+
+      // A QUIZ IS NOT PART OF THE FUNNEL ROW. Its block holds a POINTER, which
+      // is what lets one weight edit take effect on every page showing it -- and
+      // the cost is that deleting the funnel used to leave the quiz behind,
+      // reachable only by typing its URL now that there is no quizzes list.
+      //
+      // NARROW ON PURPOSE. `quiz_attempts.quiz_id` is ON DELETE CASCADE, so this
+      // destroys every answer, score and tier recorded against the quiz, and it
+      // is the last copy -- `funnel_submissions` cascaded away with the funnel.
+      // So a quiz ANY remaining page still points at is left alone, and the
+      // owner is told what goes before they confirm (see FunnelList).
+      if (quizUses.length > 0) await cleanUpOrphanedQuizzes(quizUses.map((use) => use.quizId))
+
       return NextResponse.json({ ok: true })
     } catch (error) {
       console.error("[DELETE /api/admin/funnels/:id]", error)
@@ -147,3 +176,39 @@ export const DELETE = withAudit(
     }
   },
 )
+
+/**
+ * Deletes each of `quizIds` that no remaining page points at.
+ *
+ * BEST EFFORT, AND LOGGED. The funnel row has already gone by the time this
+ * runs, so throwing would answer 500 to an owner whose delete DID happen --
+ * telling them nothing worked when most of it did. An orphaned quiz is a
+ * nuisance; a delete the owner believes failed and repeats is worse. Same call
+ * the create path makes when it has to undo a half-made quiz funnel.
+ */
+async function cleanUpOrphanedQuizzes(quizIds: string[]): Promise<void> {
+  // ONE GUARD PER FAILURE MODE, and deliberately not a single try wrapping both.
+  // A try around the whole body catches the scan AND the deletes, so either
+  // guard alone satisfies "a failure here does not 500" -- and a test asserting
+  // it stays green when either is removed, pinning neither. The scan failing
+  // and a delete failing are different events with different messages, so they
+  // get different handlers.
+  let remaining: Awaited<ReturnType<typeof listStepDocuments>>
+  try {
+    remaining = await listStepDocuments()
+  } catch (error) {
+    // Cannot tell whether anything still points at these quizzes, so touch
+    // none of them. Failing closed here is the safe direction: the cost is an
+    // orphan, and the alternative is deleting a quiz another funnel is using.
+    console.error("[DELETE /api/admin/funnels/:id] could not check for orphaned quizzes", error)
+    return
+  }
+
+  const stillUsed = new Set(quizUsesInSteps(remaining).map((use) => use.quizId))
+  for (const quizId of quizIds) {
+    if (stillUsed.has(quizId)) continue
+    await deleteQuiz(quizId).catch((error) =>
+      console.error("[DELETE /api/admin/funnels/:id] orphaned quiz", quizId, error),
+    )
+  }
+}

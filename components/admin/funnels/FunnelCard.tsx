@@ -55,7 +55,7 @@ import { adminFunnelHref, adminStepHref } from "@/lib/funnels/admin-path"
  * no quizzes in it must never meet the word -- so there is no empty state, no
  * disabled button and no placeholder here, only a control that does not render.
  */
-export type QuizByStepId = Record<string, { id: string; name: string }>
+export type QuizByStepId = Record<string, { id: string; name: string; attempts?: number }>
 
 export interface FunnelCardProps {
   funnel: Funnel

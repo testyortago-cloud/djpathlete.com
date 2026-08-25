@@ -16,8 +16,8 @@
 import Link from "next/link"
 import { LayoutTemplate } from "lucide-react"
 import { listFunnels, listSteps, getSubmissionCountsByFunnel } from "@/lib/db/funnels"
-import { getQuizzesByIds } from "@/lib/db/quizzes"
-import { quizUsesInSteps } from "@/lib/funnels/quiz-refs"
+import { getQuizAttemptCounts, getQuizzesByIds } from "@/lib/db/quizzes"
+import { quizIdByStep } from "@/lib/funnels/quiz-refs"
 import { FunnelList, type FunnelWithSteps } from "@/components/admin/funnels/FunnelList"
 
 export const metadata = { title: "Landing pages" }
@@ -45,14 +45,30 @@ export default async function LandingPagesScreen() {
   // FAILS SOFT. The list of pages is the reason this screen exists; losing it
   // because the quizzes table was unreachable would trade the screen for a
   // button.
-  const quizUses = quizUsesInSteps(stepsPerFunnel.flat())
-  const quizRows = quizUses.length > 0 ? await getQuizzesByIds(quizUses.map((use) => use.quizId)).catch(() => []) : []
-  const quizByStepId: Record<string, { id: string; name: string }> = {}
-  for (const use of quizUses) {
-    const quiz = quizRows.find((row) => row.id === use.quizId)
+  // PER STEP, NOT `quizUsesInSteps`. That helper dedupes across everything it
+  // is given, so two funnels sharing one quiz yield ONE entry and the second
+  // card loses its Quiz button and its delete warning. Demonstrated against the
+  // running app, not guessed.
+  const quizByStep = quizIdByStep(stepsPerFunnel.flat())
+  const quizIds = [...new Set(quizByStep.values())]
+  const quizRows = quizIds.length > 0 ? await getQuizzesByIds(quizIds).catch(() => []) : []
+  // HOW MANY PEOPLE HAVE ANSWERED IT, for the delete confirmation. Deleting a
+  // quiz cascades `quiz_attempts`, and that is the last copy of those answers --
+  // `funnel_submissions` cascades away with the funnel itself. The owner is
+  // told the number before the irreversible part, so a failed count degrades to
+  // no number rather than to a wrong one.
+  const attemptCounts: Awaited<ReturnType<typeof getQuizAttemptCounts>> =
+    quizIds.length > 0
+      ? await getQuizAttemptCounts().catch(() => ({}) as Awaited<ReturnType<typeof getQuizAttemptCounts>>)
+      : {}
+  const quizByStepId: Record<string, { id: string; name: string; attempts?: number }> = {}
+  for (const [stepId, quizId] of quizByStep) {
+    const quiz = quizRows.find((row) => row.id === quizId)
     // A block pointing at a deleted quiz offers no button: there is nothing to
     // open, and a link to a 404 is worse than no link.
-    if (quiz) quizByStepId[use.stepId] = { id: quiz.id, name: quiz.name }
+    if (quiz) {
+      quizByStepId[stepId] = { id: quiz.id, name: quiz.name, attempts: attemptCounts[quiz.id]?.total }
+    }
   }
 
   return (

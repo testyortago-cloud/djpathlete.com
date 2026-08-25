@@ -90,7 +90,33 @@ export function FunnelList({ funnels, leadCounts, quizByStepId = {}, kind = "fun
     })
   }, [funnels, query])
 
-  async function handleDelete(funnel: Funnel) {
+  /**
+   * The sentence warning what ELSE a delete takes, or "".
+   *
+   * A quiz is not part of the funnel row -- its block holds a pointer -- so the
+   * server removes a quiz whose last funnel is going. `quiz_attempts.quiz_id`
+   * is ON DELETE CASCADE, which means every answer recorded against that quiz
+   * goes with it, and it is the LAST copy: `funnel_submissions` cascades away
+   * with the funnel itself. An owner clicking a bin icon cannot be expected to
+   * know any of that, so it is said out loud before the irreversible part.
+   *
+   * HEDGED ON PURPOSE. Whether another funnel also points at this quiz is a
+   * question only the server can answer -- this board sees one `kind` at a
+   * time, and a quiz can legitimately be shared between a page and a funnel.
+   * The server is the authority and leaves a shared quiz alone; the wording
+   * says so rather than promising a deletion that may not happen.
+   */
+  function quizWarning(steps: FunnelStep[]): string {
+    const quiz = steps.map((step) => quizByStepId[step.id]).find(Boolean)
+    if (!quiz) return ""
+    const answers =
+      quiz.attempts && quiz.attempts > 0
+        ? `, along with the ${quiz.attempts} ${quiz.attempts === 1 ? "answer" : "answers"} people have recorded on it`
+        : ""
+    return `\n\nThe quiz "${quiz.name}" is deleted too${answers} — unless another funnel also uses it.`
+  }
+
+  async function handleDelete(funnel: Funnel, steps: FunnelStep[]) {
     // WHICH WORD DESCRIBES WHAT VANISHED COMES FROM THE ROW, not the request.
     // A landing page IS a `funnels` row, so it is deleted through the same
     // endpoint a funnel is -- and a message written from the endpoint tells an
@@ -100,10 +126,10 @@ export function FunnelList({ funnels, leadCounts, quizByStepId = {}, kind = "fun
     // "and all of its pages" is likewise a funnel's sentence: a landing page
     // holds exactly one page, which is itself.
     const isPage = funnel.kind === "page"
-    const question = isPage
-      ? `Delete the "${funnel.name}" landing page? This cannot be undone.`
-      : `Delete "${funnel.name}" and all of its pages? This cannot be undone.`
-    if (!window.confirm(question)) return
+    const opening = isPage
+      ? `Delete the "${funnel.name}" landing page?`
+      : `Delete "${funnel.name}" and all of its pages?`
+    if (!window.confirm(`${opening}${quizWarning(steps)}\n\nThis cannot be undone.`)) return
     try {
       const response = await fetch(`/api/admin/funnels/${funnel.id}`, { method: "DELETE" })
       if (!response.ok) {
@@ -158,7 +184,7 @@ export function FunnelList({ funnels, leadCounts, quizByStepId = {}, kind = "fun
               steps={steps}
               leadCount={leadCounts[funnel.id] ?? 0}
               quizByStepId={quizByStepId}
-              onDelete={() => handleDelete(funnel)}
+              onDelete={() => handleDelete(funnel, steps)}
             />
           ))}
         </div>
