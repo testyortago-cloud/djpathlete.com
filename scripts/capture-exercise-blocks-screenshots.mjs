@@ -229,11 +229,23 @@ try {
     await markerOn(page, deadbugCard.locator("text=Modified deadb"), "\"Modified deadbug\" — one of the three exercises the coach reported turning up in every generated day.", { dy: 40 }),
   ])
 
+  // ── 1b. The Blocked panel — the Exercise Pool's shape, inverted ─────────
+  await page.getByRole("button", { name: "Blocked", exact: true }).click()
+  await page.waitForTimeout(2500)
+  await shoot(page, "02-blocked-panel", "The blocklist is shaped like the Exercise Pool", "The same anatomy the coach already knows — search on top, the list below, click to add", [
+    await markerOn(page, page.getByRole("heading", { name: "Blocked" }), "Red and ⊘ where the pool is accent and a spark. They are opposite lists, so opening one closes the other — two of them side by side is how you add to the wrong one."),
+    await markerOn(page, page.getByPlaceholder("Search exercises..."), "Search the whole library and click a row to block it, exactly the way the pool works."),
+    await markerOn(page, page.getByRole("button", { name: "Victor only" }), "Each block is studio-wide or for this client alone, chosen before you click."),
+    await markerOn(page, page.locator("text=in this program or any other"), "The one line that separates it from the pool: the pool is this program only and dies with the tab, a block is permanent and applies everywhere."),
+  ])
+  await page.getByRole("button", { name: "Blocked", exact: true }).click()
+  await page.waitForTimeout(800)
+
   // ── 2. The dialog, with both scopes ─────────────────────────────────────
   const blockBtn = deadbugCard.getByTitle("Block from AI generation")
   await blockBtn.click({ force: true })
   await page.waitForTimeout(900)
-  await shoot(page, "02-block-dialog", "Blocking is scoped, and says what it will not do", "The program is assigned to Victor Okonjo, so both scopes are offered", [
+  await shoot(page, "03-block-dialog", "Blocking is scoped, and says what it will not do", "The program is assigned to Victor Okonjo, so both scopes are offered", [
     await markerOn(page, page.locator("text=stays in your library"), "The copy says plainly that the exercise stays in the library and stays in programs already built. The button sits beside a delete, so it would otherwise read as one."),
     await markerOn(page, page.getByText(/For Victor .*only/), "\"For every client\" is the default. \"For Victor Okonjo only\" appears only when the program has an assigned client."),
     await markerOn(page, page.locator("#block-reason"), "An optional reason — this is what the review list shows back, weeks later, when nobody remembers why."),
@@ -258,7 +270,7 @@ try {
   await page.waitForTimeout(700)
   await page.getByRole("button", { name: "Block", exact: true }).click()
   await page.waitForTimeout(1500)
-  await shoot(page, "03-starvation-warning", "Blocking the last of a movement pattern says so, before you walk away", "carry holds only four exercises in a 917-exercise library, and three of those are mis-tagged", [
+  await shoot(page, "04-starvation-warning", "Blocking the last of a movement pattern says so, before you walk away", "carry holds only four exercises in a 917-exercise library, and three of those are mis-tagged", [
     await markerOn(page, page.locator("text=last usable"), "The block already succeeded — and the dialog holds open on this warning instead of closing into a toast. A coach who blocks the last carry needs to read it now, not discover it weeks later when carries quietly stopped appearing."),
     await markerOn(page, page.getByRole("button", { name: "Got it" }), "Generation does not break. Days that ask for a carry are re-routed onto the nearest movement pattern that still has exercises in it.", { place: "center", dx: 40 }),
   ])
@@ -272,7 +284,7 @@ try {
   await page.waitForTimeout(3000)
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
   await page.waitForTimeout(800)
-  await shoot(page, "04-studio-list", "Every studio-wide block, reviewable and reversible", "/admin/settings/ai-policy — beside the disallowed-techniques policy it belongs with", [
+  await shoot(page, "05-studio-list", "Every studio-wide block, reviewable and reversible", "/admin/settings/ai-policy — beside the disallowed-techniques policy it belongs with", [
     await markerOn(page, page.locator("text=Blocked exercises"), "Every studio-wide block, with the reason it was made and the date. A list you could only add to would narrow generation with no way to find out why."),
     await markerOn(page, page.getByRole("button", { name: /unblock/i }), "Unblock puts the exercise straight back in front of the AI on the very next generation."),
     await markerOn(page, page.locator("text=Mis-tagged as a carry"), "Three of the four exercises tagged as a \"carry\" are not carries at all. That mis-tagging is the reason Suitcase carry had no competition."),
@@ -289,7 +301,7 @@ try {
   const heading = page.locator("text=Blocked for").first()
   if (await heading.count()) await heading.scrollIntoViewIfNeeded()
   await page.waitForTimeout(800)
-  await shoot(page, "05-client-list", "A block can belong to one client alone", "Victor Okonjo's client screen, straight after his questionnaire and injury notes", [
+  await shoot(page, "06-client-list", "A block can belong to one client alone", "Victor Okonjo's client screen, straight after his questionnaire and injury notes", [
     await markerOn(page, page.getByText(/Blocked for Victor/), "\"Blocked for Victor\" — this exercise is off the table for him and for nobody else. It sits where the injury notes that usually motivated it already live."),
     await markerOn(page, page.locator("text=Aggravates his shoulder"), "The reason travels with the block, so the next person to look knows why it is there."),
   ])
