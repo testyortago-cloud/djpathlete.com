@@ -31,6 +31,7 @@ import {
 } from "./exercise-context.js"
 import { getCoachRecentUsageFromFn, getClientRecentUsageFromFn, recordUsageFromFn, getClientFavoriteExerciseIds } from "./usage-history.js"
 import { getCoachPolicyFromFn, formatCoachPolicyAsInstructions } from "./coach-policy.js"
+import { getBlockedExerciseIdsFromFn } from "../lib/exercise-blocks.js"
 import { extractInstructionIntent, resolveIntentToExerciseIds } from "./instruction-intent.js"
 import { getExercisesForAI } from "./program-chat-tools.js"
 import {
@@ -59,6 +60,7 @@ import {
   buildExerciseRows,
   dedupeSkeletonDaysInPlace,
   remapUncoveredSlotPatterns,
+  planExclusions,
   buildPoolPatternSection,
 } from "./shared-helpers.js"
 
@@ -342,7 +344,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     await onProgress?.("Analyzing client profile", 1, 5)
     console.log("[orchestrator:sync] Running Agent 1 + exercise fetch...")
     const favoritesEnabled = await getSetting<boolean>("exercise_favorites_ai_enabled", true)
-    const [agent1Result, allExercises, coachUsage, clientUsage, favoriteIds, instructionIntent] = await Promise.all([
+    const [agent1Result, allExercises, coachUsage, clientUsage, favoriteIds, instructionIntent, blockedIds] =
+      await Promise.all([
       callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, {
         model: MODEL_SONNET,
         cacheSystemPrompt: true,
@@ -363,6 +366,10 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         : Promise.resolve(new Set<string>()),
       // Runs in parallel with Agent 1, so it costs no extra wall-clock.
       extractInstructionIntent(combinedInstructions),
+      getBlockedExerciseIdsFromFn(requestedBy, request.client_id ?? null).catch((e) => {
+        console.warn("[orchestrator:sync] blocklist fetch failed:", e instanceof Error ? e.message : e)
+        return new Set<string>()
+      }),
     ])
     tokenUsage.agent1 = agent1Result.tokens_used
     tokenUsage.cache_creation += agent1Result.cache_creation_tokens ?? 0
@@ -597,14 +604,31 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       client_difficulty: profile?.experience_level ?? "beginner",
     })
 
-    // Strict pool: coerce architect-planned patterns the pool can't fill onto
-    // the nearest pattern it CAN, so a small curated pool never dead-ends the
-    // selector (mirrors the week-orchestrator).
-    if (poolActive) {
-      const remaps = remapUncoveredSlotPatterns(skeleton.weeks, compressed)
+    // Fold the instruction-parsed bans and the coach's persistent blocklist into
+    // one hard-prune set, and keep what survives it. Mirrors the week
+    // orchestrator; see planExclusions for why the ordering matters.
+    //
+    // There is no cross-day exclusion here — a full program generation builds
+    // every day at once, so day-to-day variety is the selector's job.
+    const { excludeIds, candidates: candidatesAfterExclusions } = planExclusions({
+      candidates: compressed,
+      crossDayExcludeIds: [],
+      instructionBannedIds: intentResolution.bannedIds,
+      blockedIds,
+      poolActive,
+    })
+    console.log(
+      `[orchestrator:sync] excludeIds: ${excludeIds.size} ids hard-pruned (${blockedIds.size} blocked)`,
+    )
+
+    // Coerce architect-planned patterns the surviving candidates can't fill onto
+    // the nearest pattern they CAN, so a small curated pool — or the coach's
+    // blocklist — never dead-ends the selector.
+    if (poolActive || blockedIds.size > 0) {
+      const remaps = remapUncoveredSlotPatterns(skeleton.weeks, candidatesAfterExclusions)
       if (remaps.length > 0) {
         console.log(
-          `[orchestrator:sync] Strict pool: remapped ${remaps.length} slot pattern(s) to pool coverage:`,
+          `[orchestrator:sync] Remapped ${remaps.length} slot pattern(s) to available coverage:`,
           remaps.map((r) => `${r.slot_id} ${r.from}→${r.to}`).join(", "),
         )
       }
@@ -616,7 +640,7 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       clientUsage,
       preferredIds,
       favoriteIds,
-      excludeIds: intentResolution.bannedIds,
+      excludeIds,
       // The generation-log id is unique per run and already persisted, so two
       // identical requests diverge while any single run stays reproducible.
       seed: log.id,
