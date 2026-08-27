@@ -77,6 +77,8 @@ interface DayColumnProps {
   onAddExercise: (day: number) => void
   onEditExercise: (pe: ProgramExerciseWithExercise) => void
   onRemoveExercise: (pe: ProgramExerciseWithExercise) => void
+  /** Block the exercise from AI generation — distinct from removing it here. */
+  onBlockExercise?: (pe: ProgramExerciseWithExercise) => void
   onDuplicateExercise?: (pe: ProgramExerciseWithExercise) => void
   onDuplicateGroup?: (exercises: ProgramExerciseWithExercise[]) => void
   onGenerateDay?: (day: number) => void
@@ -89,6 +91,7 @@ export function DayColumn({
   onAddExercise,
   onEditExercise,
   onRemoveExercise,
+  onBlockExercise,
   onDuplicateExercise,
   onDuplicateGroup,
   onGenerateDay,
@@ -155,6 +158,7 @@ export function DayColumn({
                     programExercise={slot.exercise}
                     onEdit={() => onEditExercise(slot.exercise)}
                     onRemove={() => onRemoveExercise(slot.exercise)}
+                    onBlock={onBlockExercise ? () => onBlockExercise(slot.exercise) : undefined}
                     onDuplicate={onDuplicateExercise ? () => onDuplicateExercise(slot.exercise) : undefined}
                   />
                 )
@@ -190,6 +194,7 @@ export function DayColumn({
                       programExercise={pe}
                       onEdit={() => onEditExercise(pe)}
                       onRemove={() => onRemoveExercise(pe)}
+                      onBlock={onBlockExercise ? () => onBlockExercise(pe) : undefined}
                       onDuplicate={onDuplicateExercise ? () => onDuplicateExercise(pe) : undefined}
                     />
                   ))}

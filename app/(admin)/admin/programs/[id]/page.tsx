@@ -58,7 +58,16 @@ export default async function ProgramBuilderPage({ params }: { params: Promise<{
   )
 
   const assignmentInfo = activeAssignment
-    ? { assignmentId: activeAssignment.id, clientId: activeAssignment.user_id }
+    ? {
+        assignmentId: activeAssignment.id,
+        clientId: activeAssignment.user_id,
+        // Labels the per-client option in the block dialog. Falls back to
+        // "this client" in the dialog when the client is not in `clients`.
+        clientName: (() => {
+          const c = clients.find((client) => client.id === activeAssignment.user_id)
+          return c ? `${c.first_name} ${c.last_name}`.trim() : undefined
+        })(),
+      }
     : null
 
   return (

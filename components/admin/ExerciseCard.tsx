@@ -2,7 +2,7 @@
 
 import { forwardRef } from "react"
 import Image from "next/image"
-import { GripVertical, Pencil, Trash2, Copy } from "lucide-react"
+import { GripVertical, Pencil, Trash2, Copy, Ban } from "lucide-react"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,8 @@ interface ExerciseCardProps {
   onEdit: () => void
   onRemove: () => void
   onDuplicate?: () => void
+  /** Block this exercise from AI generation. Absent on the drag overlay. */
+  onBlock?: () => void
   /** If true, render as a static (non-sortable) card for the drag overlay */
   isOverlay?: boolean
 }
@@ -36,7 +38,7 @@ const CATEGORY_BORDER_COLORS: Record<string, string> = {
   relative_strength: "border-l-primary",
 }
 
-export function ExerciseCard({ programExercise, onEdit, onRemove, onDuplicate, isOverlay }: ExerciseCardProps) {
+export function ExerciseCard({ programExercise, onEdit, onRemove, onDuplicate, onBlock, isOverlay }: ExerciseCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: programExercise.id,
     data: { dayOfWeek: programExercise.day_of_week },
@@ -126,6 +128,17 @@ export function ExerciseCard({ programExercise, onEdit, onRemove, onDuplicate, i
         {onDuplicate && (
           <Button variant="ghost" size="icon-xs" onClick={onDuplicate} title="Duplicate exercise">
             <Copy className="size-3.5" />
+          </Button>
+        )}
+        {onBlock && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={onBlock}
+            title="Block from AI generation"
+            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+          >
+            <Ban className="size-3.5" />
           </Button>
         )}
         <Button

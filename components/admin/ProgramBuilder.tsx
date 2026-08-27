@@ -30,6 +30,7 @@ import { Layers, DollarSign, Info, Copy } from "lucide-react"
 import { sourceWeekForDisplay } from "@/lib/program-weeks"
 import { WeekSelector } from "@/components/admin/WeekSelector"
 import { DayColumn } from "@/components/admin/DayColumn"
+import { BlockExerciseDialog } from "@/components/admin/BlockExerciseDialog"
 import { AddExerciseDialog } from "@/components/admin/AddExerciseDialog"
 import { EditExerciseDialog } from "@/components/admin/EditExerciseDialog"
 import { ExerciseCard } from "@/components/admin/ExerciseCard"
@@ -44,6 +45,8 @@ type ProgramExerciseWithExercise = ProgramExercise & { exercises: Exercise }
 interface AssignmentInfo {
   assignmentId: string
   clientId: string
+  /** Used to label the per-client option in the block dialog. */
+  clientName?: string
 }
 
 interface ProgramBuilderProps {
@@ -79,6 +82,7 @@ export function ProgramBuilder({
   const [addDialogDay, setAddDialogDay] = useState(1)
   const [editTarget, setEditTarget] = useState<ProgramExerciseWithExercise | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ProgramExerciseWithExercise | null>(null)
+  const [blockTarget, setBlockTarget] = useState<ProgramExerciseWithExercise | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
 
   // Duplicate week dialog
@@ -905,6 +909,7 @@ export function ProgramBuilder({
                   onAddExercise={handleAddExercise}
                   onEditExercise={setEditTarget}
                   onRemoveExercise={setDeleteTarget}
+                  onBlockExercise={setBlockTarget}
                   onDuplicateExercise={handleDuplicateInPlace}
                   onDuplicateGroup={handleDuplicateGroupInPlace}
                   onGenerateDay={handleGenerateDay}
@@ -1226,6 +1231,23 @@ export function ProgramBuilder({
           router.refresh()
         }}
       />
+
+      {/* Block an exercise from AI generation. Deliberately does NOT remove the
+          row or refresh the program — a block never touches an existing day. */}
+      {blockTarget && (
+        <BlockExerciseDialog
+          open={!!blockTarget}
+          onOpenChange={(open) => {
+            if (!open) setBlockTarget(null)
+          }}
+          exerciseId={blockTarget.exercises.id}
+          exerciseName={blockTarget.exercises.name}
+          movementPattern={blockTarget.exercises.movement_pattern ?? null}
+          clientId={assignmentInfo?.clientId}
+          clientName={assignmentInfo?.clientName}
+          onBlocked={() => {}}
+        />
+      )}
     </div>
   )
 }
