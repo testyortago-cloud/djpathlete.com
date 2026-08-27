@@ -24,6 +24,7 @@ import {
 } from "./usage-history.js"
 import { getSupabase } from "../lib/supabase.js"
 import { getSetting } from "../lib/system-settings.js"
+import { getBlockedExerciseIdsFromFn } from "../lib/exercise-blocks.js"
 import {
   getProgramById,
   getClientProfile,
@@ -39,6 +40,7 @@ import {
   buildExerciseRows,
   dedupeSkeletonDaysInPlace,
   resolveCrossDayExcludeIds,
+  planExclusions,
   filterCandidateEquipment,
   findUncoveredPatterns,
   remapUncoveredSlotPatterns,
@@ -431,7 +433,7 @@ export async function generateWeekSync(
   await updateJobProgress("fetching_context", 1, "Loading program data & client logs")
 
   const favoritesEnabled = await getSetting<boolean>("exercise_favorites_ai_enabled", true)
-  const [program, existingExercises, fullLibrary, coachPolicy, coachUsage, clientUsage, favoriteIds] =
+  const [program, existingExercises, fullLibrary, coachPolicy, coachUsage, clientUsage, favoriteIds, blockedIds] =
     await Promise.all([
       getProgramById(request.program_id),
       getProgramExercises(request.program_id),
@@ -447,9 +449,13 @@ export async function generateWeekSync(
       favoritesEnabled && request.client_id
         ? getClientFavoriteExerciseIds(request.client_id).catch(() => new Set<string>())
         : Promise.resolve(new Set<string>()),
+      getBlockedExerciseIdsFromFn(requestedBy, request.client_id ?? null).catch((e) => {
+        console.warn("[week-orchestrator] blocklist fetch failed:", e instanceof Error ? e.message : e)
+        return new Set<string>()
+      }),
     ])
   console.log(
-    `[week-orchestrator] policy: ${coachPolicy ? "loaded" : "none"}, coach usage: ${coachUsage.size}, client usage: ${clientUsage.size}`,
+    `[week-orchestrator] policy: ${coachPolicy ? "loaded" : "none"}, coach usage: ${coachUsage.size}, client usage: ${clientUsage.size}, blocked: ${blockedIds.size}`,
   )
 
   // Exercise Pool — preferred (default) biases the AI toward the coach's
@@ -885,14 +891,9 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
     }
   }
 
-  // A strict pool that matched no usable exercises is a dead end — fail with an
-  // actionable message instead of letting the selector run on an empty library
-  // and silently persisting a blank day/week.
-  if (poolActive && exercisesForSelection.length === 0) {
-    throw new Error(
-      `Exercise Pool matched no usable exercises for ${isSingleDay ? targetDayName : `Week ${newWeekNumber}`}: the pool selections may reference removed exercises, or every pool exercise is excluded for this client (injury filter). Update the pool or switch it to Preferred mode.`,
-    )
-  }
+  // NOTE: the strict-pool "no usable exercises" guard used to sit here. It now
+  // lives below the excludeIds union, because blocks can empty a pool that this
+  // point in the pipeline still sees as populated.
 
   // Build dedup context from exercises within DEDUP_CONTEXT_WINDOW_WEEKS of the
   // target week (both directions, so filling an earlier blank week still sees
@@ -907,24 +908,47 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
 
   // Cross-day variety exclusion — relaxed in strict pool mode so a small curated
   // pool can recur across days instead of being starved to one or two candidates.
-  // Cross-day variety exclusions, plus anything the coach explicitly banned.
-  const excludeIds = new Set([
-    ...resolveCrossDayExcludeIds(priorContext, VARIETY_ROLES, poolActive),
-    ...intentResolution.bannedIds,
-  ])
+  // Cross-day variety exclusions, plus anything the coach explicitly banned in
+  // this run's instructions, plus the persistent blocklist.
+  //
+  // Blocks are NOT relaxed for strict pool mode the way cross-day exclusion is.
+  // A block is an explicit standing instruction from the coach and outranks the
+  // pool: the pool says "prefer these", a block says "never this".
+  const { excludeIds, candidates: candidatesAfterExclusions, poolExhausted } = planExclusions({
+    candidates: exercisesForSelection,
+    crossDayExcludeIds: resolveCrossDayExcludeIds(priorContext, VARIETY_ROLES, poolActive),
+    instructionBannedIds: intentResolution.bannedIds,
+    blockedIds,
+    poolActive,
+  })
   console.log(
-    `[week-orchestrator] excludeIds: ${excludeIds.size} ids hard-pruned from candidate library${poolActive ? " (cross-day exclusion relaxed for strict pool)" : ""}`,
+    `[week-orchestrator] excludeIds: ${excludeIds.size} ids hard-pruned from candidate library (${blockedIds.size} blocked)${poolActive ? " (cross-day exclusion relaxed for strict pool; blocks are not)" : ""}`,
   )
 
-  // In strict pool mode, coerce any slot pattern the pool can't fill onto the
-  // nearest pattern it CAN — the architect plans from split conventions and can
-  // demand patterns (carry, locomotion, …) a small curated pool simply lacks.
-  // Without this the generation hard-fails even though the coach's pool is fine.
-  if (poolActive) {
-    const remaps = remapUncoveredSlotPatterns(skeleton.weeks, exercisesForSelection)
+  // A strict pool that matched no usable exercises is a dead end — fail with an
+  // actionable message instead of letting the selector run on an empty library
+  // and silently persisting a blank day/week.
+  //
+  // Measured AFTER excludeIds, because blocks can empty a pool that the pool
+  // filter alone left populated.
+  if (poolExhausted) {
+    throw new Error(
+      `Exercise Pool matched no usable exercises for ${isSingleDay ? targetDayName : `Week ${newWeekNumber}`}: ` +
+        `the pool selections may reference removed exercises, every pool exercise may be blocked, or all are ` +
+        `excluded for this client (injury filter). Update the pool, remove a block, or switch it to Preferred mode.`,
+    )
+  }
+
+  // Coerce any slot pattern the surviving candidates can't fill onto the nearest
+  // pattern they CAN. The architect plans from split conventions and can demand
+  // patterns (carry, locomotion, …) that a small curated pool — or the coach's
+  // blocklist — has emptied. Without this the generation hard-fails even though
+  // the coach's setup is fine.
+  if (poolActive || blockedIds.size > 0) {
+    const remaps = remapUncoveredSlotPatterns(skeleton.weeks, candidatesAfterExclusions)
     if (remaps.length > 0) {
       console.log(
-        `[week-orchestrator] Strict pool: remapped ${remaps.length} slot pattern(s) to pool coverage:`,
+        `[week-orchestrator] Remapped ${remaps.length} slot pattern(s) to available coverage:`,
         remaps.map((r) => `${r.slot_id} ${r.from}→${r.to}`).join(", "),
       )
     }

@@ -238,6 +238,67 @@ export function resolveCrossDayExcludeIds(
   return buildExcludeIdSet(priorContext, slotRolesInScope)
 }
 
+// ─── Exclusion planning ───────────────────────────────────────────────────
+
+export interface ExclusionPlanInput<T extends { id: string }> {
+  /** The candidate library at the point exclusions are applied. */
+  candidates: T[]
+  /** Cross-day variety exclusions — already relaxed for strict pool upstream. */
+  crossDayExcludeIds: Iterable<string>
+  /** Exercises the coach named as exclusions in THIS run's instructions. */
+  instructionBannedIds: Iterable<string>
+  /** The coach's persistent blocklist — studio-wide plus this client's. */
+  blockedIds: Iterable<string>
+  poolActive: boolean
+}
+
+export interface ExclusionPlan<T extends { id: string }> {
+  /** The hard-prune set handed to the exercise filter. */
+  excludeIds: Set<string>
+  /**
+   * What the selector will actually be able to choose from. Generic so the
+   * caller keeps the full exercise shape — the starvation re-route downstream
+   * reads `movement_pattern` off these, and an `{ id }`-only type would silently
+   * hand it objects with no pattern at all.
+   */
+  candidates: T[]
+  /** True when a strict pool has been emptied by exclusions — a dead end. */
+  poolExhausted: boolean
+}
+
+/**
+ * Fold the three exclusion sources into one hard-prune set and report what
+ * survives it.
+ *
+ * This exists as its own function because the ORDER of these operations is the
+ * load-bearing part and it was wrong before the blocklist arrived:
+ *
+ * - The strict-pool "no usable exercises" guard used to measure the library
+ *   BEFORE exclusions, so a pool emptied by exclusions passed the guard and
+ *   died later with a much worse error.
+ * - The starvation re-route was likewise handed the pre-exclusion library, so
+ *   it could not see the empty pattern it exists to absorb.
+ *
+ * Blocks are deliberately NOT relaxed for strict pool mode the way cross-day
+ * variety exclusion is. A block is an explicit standing instruction from the
+ * coach and outranks the pool: the pool says "prefer these", a block says
+ * "never this". Relaxing blocks under a pool would silently reinstate the
+ * exercise the coach went out of their way to ban.
+ */
+export function planExclusions<T extends { id: string }>(input: ExclusionPlanInput<T>): ExclusionPlan<T> {
+  const excludeIds = new Set<string>([
+    ...input.crossDayExcludeIds,
+    ...input.instructionBannedIds,
+    ...input.blockedIds,
+  ])
+  const candidates = input.candidates.filter((e) => !excludeIds.has(e.id))
+  return {
+    excludeIds,
+    candidates,
+    poolExhausted: input.poolActive && candidates.length === 0,
+  }
+}
+
 // ─── Candidate Equipment / Pattern-Coverage Helpers ───────────────────────
 
 import type { CompressedExercise } from "./types.js"
