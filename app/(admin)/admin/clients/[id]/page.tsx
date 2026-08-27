@@ -85,6 +85,8 @@ import { listActiveMembershipPlans } from "@/lib/db/membership-plans"
 import type { RecurringSession, UserPaymentMethod, ClientMembership, MembershipPlan } from "@/types/database"
 import { listFavoritesByClient } from "@/lib/db/exercise-favorites"
 import { getExercises } from "@/lib/db/exercises"
+import { listClientBlocks } from "@/lib/db/exercise-blocks"
+import { BlockedExercisesCard } from "@/components/admin/BlockedExercisesCard"
 import { ClientFavoriteExercisesPanel } from "@/components/admin/favorites/ClientFavoriteExercisesPanel"
 import { LeadInquiryPanel } from "@/components/admin/clients/LeadInquiryPanel"
 import { ClientDetailHeader } from "./ClientDetailHeader"
@@ -650,6 +652,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     favorites,
     allExercises,
     leadInquiry,
+    clientBlocks,
   ] = await Promise.all([
     getProfileByUserId(id),
     getAssignments(id),
@@ -661,6 +664,8 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     listFavoritesByClient(id).catch(() => []),
     getExercises().catch(() => []),
     getLeadInquiryByUserId(id).catch(() => null),
+    // Never let a blocklist read failure take down the client screen.
+    listClientBlocks(session.user.id, id).catch(() => []),
   ])
 
   const packSummary = summarizeClientPacks(packs, new Date())
@@ -901,6 +906,14 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         />
         <ProfileSection profile={profile} />
         <QuestionnaireSection profile={profile} />
+
+        {/* Reads as the continuation of Injuries & Limitations above, which is
+            usually what motivated a per-client block. */}
+        <BlockedExercisesCard
+          blocks={clientBlocks}
+          scopeLabel={`Blocked for ${user.first_name}`}
+          emptyHint="No exercises blocked for this client."
+        />
 
         {/* Assessment Results Link */}
         <div className="bg-white rounded-xl border border-border p-6">
