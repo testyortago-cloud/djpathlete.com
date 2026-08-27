@@ -26,10 +26,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Layers, DollarSign, Info, Copy } from "lucide-react"
+import { Layers, DollarSign, Info, Copy, Ban } from "lucide-react"
 import { sourceWeekForDisplay } from "@/lib/program-weeks"
 import { WeekSelector } from "@/components/admin/WeekSelector"
 import { DayColumn } from "@/components/admin/DayColumn"
+import { BlockExerciseDialog } from "@/components/admin/BlockExerciseDialog"
+import { BlockedExercisePanel } from "@/components/admin/BlockedExercisePanel"
 import { AddExerciseDialog } from "@/components/admin/AddExerciseDialog"
 import { EditExerciseDialog } from "@/components/admin/EditExerciseDialog"
 import { ExerciseCard } from "@/components/admin/ExerciseCard"
@@ -44,6 +46,8 @@ type ProgramExerciseWithExercise = ProgramExercise & { exercises: Exercise }
 interface AssignmentInfo {
   assignmentId: string
   clientId: string
+  /** Used to label the per-client option in the block dialog. */
+  clientName?: string
 }
 
 interface ProgramBuilderProps {
@@ -79,6 +83,10 @@ export function ProgramBuilder({
   const [addDialogDay, setAddDialogDay] = useState(1)
   const [editTarget, setEditTarget] = useState<ProgramExerciseWithExercise | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ProgramExerciseWithExercise | null>(null)
+  const [blockTarget, setBlockTarget] = useState<ProgramExerciseWithExercise | null>(null)
+  // Mutually exclusive with the pool: two opposite lists open side by side is
+  // exactly how a coach adds an exercise to the wrong one.
+  const [blockedOpen, setBlockedOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
   // Duplicate week dialog
@@ -834,7 +842,12 @@ export function ProgramBuilder({
           variant={poolOpen ? "default" : "outline"}
           size="sm"
           className="gap-1.5 shrink-0"
-          onClick={() => setPoolOpen(!poolOpen)}
+          onClick={() => {
+            setPoolOpen((open) => {
+              if (!open) setBlockedOpen(false)
+              return !open
+            })
+          }}
         >
           <Layers className="size-3.5" />
           Exercise Pool
@@ -845,6 +858,20 @@ export function ProgramBuilder({
               {poolExercises.length}
             </span>
           )}
+        </Button>
+        <Button
+          variant={blockedOpen ? "destructive" : "outline"}
+          size="sm"
+          className="gap-1.5 shrink-0"
+          onClick={() => {
+            setBlockedOpen((open) => {
+              if (!open) setPoolOpen(false)
+              return !open
+            })
+          }}
+        >
+          <Ban className="size-3.5" />
+          Blocked
         </Button>
       </div>
 
@@ -895,7 +922,7 @@ export function ProgramBuilder({
         <div className="flex gap-4">
           <div className="flex-1 min-w-0">
             <div
-              className={`grid grid-cols-1 md:grid-cols-2 ${poolOpen ? "lg:grid-cols-2 xl:grid-cols-3" : "lg:grid-cols-3 xl:grid-cols-4"} gap-4`}
+              className={`grid grid-cols-1 md:grid-cols-2 ${poolOpen || blockedOpen ? "lg:grid-cols-2 xl:grid-cols-3" : "lg:grid-cols-3 xl:grid-cols-4"} gap-4`}
             >
               {[1, 2, 3, 4, 5, 6, 7].map((day) => (
                 <DayColumn
@@ -905,6 +932,7 @@ export function ProgramBuilder({
                   onAddExercise={handleAddExercise}
                   onEditExercise={setEditTarget}
                   onRemoveExercise={setDeleteTarget}
+                  onBlockExercise={setBlockTarget}
                   onDuplicateExercise={handleDuplicateInPlace}
                   onDuplicateGroup={handleDuplicateGroupInPlace}
                   onGenerateDay={handleGenerateDay}
@@ -919,6 +947,14 @@ export function ProgramBuilder({
               poolExercises={poolExercises}
               onPoolChange={setPoolExercises}
               onClose={() => setPoolOpen(false)}
+            />
+          )}
+          {blockedOpen && (
+            <BlockedExercisePanel
+              allExercises={exercises}
+              clientId={assignmentInfo?.clientId}
+              clientName={assignmentInfo?.clientName}
+              onClose={() => setBlockedOpen(false)}
             />
           )}
         </div>
@@ -1226,6 +1262,23 @@ export function ProgramBuilder({
           router.refresh()
         }}
       />
+
+      {/* Block an exercise from AI generation. Deliberately does NOT remove the
+          row or refresh the program — a block never touches an existing day. */}
+      {blockTarget && (
+        <BlockExerciseDialog
+          open={!!blockTarget}
+          onOpenChange={(open) => {
+            if (!open) setBlockTarget(null)
+          }}
+          exerciseId={blockTarget.exercises.id}
+          exerciseName={blockTarget.exercises.name}
+          movementPattern={blockTarget.exercises.movement_pattern ?? null}
+          clientId={assignmentInfo?.clientId}
+          clientName={assignmentInfo?.clientName}
+          onBlocked={() => {}}
+        />
+      )}
     </div>
   )
 }

@@ -38,6 +38,8 @@ export const AUDIT_ACTIONS = [
   { slug: "exercise.created", category: "admin_write", description: "Exercise created" },
   { slug: "exercise.updated", category: "admin_write", description: "Exercise updated" },
   { slug: "exercise.deleted", category: "admin_write", description: "Exercise deleted" },
+  { slug: "exercise_block.added", category: "admin_write", description: "Exercise blocked from AI generation" },
+  { slug: "exercise_block.removed", category: "admin_write", description: "Exercise unblocked for AI generation" },
   { slug: "blog_post.created", category: "admin_write", description: "Blog post created" },
   { slug: "blog_post.updated", category: "admin_write", description: "Blog post updated" },
   { slug: "blog_post.deleted", category: "admin_write", description: "Blog post deleted" },

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Exercise blocklist — annotated review</title>
+<style>
+  :root { --ink:#12333d; --muted:#5b6b73; --accent:#c8763c; --paper:#fbf9f6; --line:#e4ded6; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink);
+         font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+         line-height:1.55; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 48px 24px 96px; }
+  h1 { font-size: 2rem; margin: 0 0 .25rem; }
+  .lede { color: var(--muted); margin: 0 0 2rem; max-width: 62ch; }
+  .meta { display:flex; flex-wrap:wrap; gap:.5rem 1.25rem; font-size:.85rem; color:var(--muted);
+          border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:.9rem 0; margin-bottom:2.5rem; }
+  figure { margin: 0 0 3.5rem; }
+  figure img { width:100%; height:auto; display:block; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  figcaption { margin-top:.75rem; font-size:.9rem; color:var(--muted); }
+  figcaption strong { color: var(--ink); }
+  .n { display:inline-flex; align-items:center; justify-content:center; width:1.55em; height:1.55em;
+       border-radius:50%; background:var(--accent); color:#fff; font-weight:700; font-size:.8rem; margin-right:.5rem; }
+  .note { background:#fff; border:1px solid var(--line); border-left:3px solid var(--accent);
+          border-radius:8px; padding:1rem 1.15rem; margin:0 0 2.5rem; font-size:.92rem; }
+  .note p { margin:.4rem 0; }
+  code { background:#fff; border:1px solid var(--line); border-radius:4px; padding:.1em .35em; font-size:.9em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Exercise blocklist — annotated review</h1>
+  <p class="lede">Six screenshots of the real app on its real routes, captured by
+    <code>scripts/capture-exercise-blocks-screenshots.mjs</code>. Every callout is burned into the PNG,
+    so each file stands on its own.</p>
+
+  <div class="meta">
+    <span><strong>Date</strong> 2026-08-28</span>
+    <span><strong>Branch</strong> worktree-exercise-blocklist</span>
+    <span><strong>Captured at</strong> 1440&nbsp;CSS px × DSF&nbsp;2 = 2880&nbsp;px native</span>
+    <span><strong>Theme</strong> light only</span>
+    <span><strong>Data</strong> dev clone</span>
+  </div>
+
+  <div class="note">
+    <p><strong>Light only is deliberate.</strong> The admin components were never built against the
+      <code>.dark</code> class variant — forcing it breaks existing pages — so there is no second
+      rendering to capture.</p>
+    <p><strong>The dev clone was left exactly as found.</strong> The five block rows this run created
+      were removed again in a <code>finally</code>; the run reports
+      <code>0 remain in exercise_blocks</code>. Nothing touched production.</p>
+  </div>
+
+  <figure>
+    <img src="01-block-button.png" alt="The program builder with an exercise card hovered, showing the block button">
+    <figcaption>
+      <strong>01 · The block button lives on the exercise card.</strong>
+      Week 1 · Monday of “Ellen the English Ego”.
+      <span class="n">1</span>Hovering reveals ⊘ Block beside Edit and Remove.
+      <span class="n">2</span>The card is a deadbug — one of the three exercises Darren named.
+    </figcaption>
+  </figure>
+
+  <figure>
+    <img src="02-blocked-panel.png" alt="The Blocked side panel open in the program builder, shaped like the Exercise Pool">
+    <figcaption>
+      <strong>02 · The blocklist is shaped like the Exercise Pool.</strong>
+      Same anatomy — search on top, list below, click a row to act.
+      <span class="n">1</span>Red and ⊘ where the pool is accent and a spark; opening one closes the other.
+      <span class="n">2</span>Search the whole library.
+      <span class="n">3</span>Studio-wide or this client alone, chosen before you click.
+      <span class="n">4</span>The line that separates it from the pool: a block is permanent and applies everywhere.
+    </figcaption>
+  </figure>
+
+  <figure>
+    <img src="03-block-dialog.png" alt="The block dialog with both scope options and a reason field">
+    <figcaption>
+      <strong>03 · Blocking is scoped, and says what it will not do.</strong>
+      <span class="n">1</span>The copy states the exercise stays in the library and in programs already built.
+      <span class="n">2</span>“For every client” is the default; “For Victor Okonjo only” appears because
+      this program has an assigned client.
+      <span class="n">3</span>An optional reason, shown back in the review lists.
+    </figcaption>
+  </figure>
+
+  <figure>
+    <img src="04-starvation-warning.png" alt="The dialog holding open on the last-usable-carry warning">
+    <figcaption>
+      <strong>04 · Blocking the last of a movement pattern says so.</strong>
+      Only four exercises in the 917-exercise library are tagged <code>carry</code>, and three are mis-tagged.
+      <span class="n">1</span>The block succeeded and the dialog holds open on the warning rather than
+      closing into a toast.
+      <span class="n">2</span>Generation does not break — the slot is re-routed to a covered pattern.
+    </figcaption>
+  </figure>
+
+  <figure>
+    <img src="05-studio-list.png" alt="The blocked exercises table on the AI policy settings page">
+    <figcaption>
+      <strong>05 · Every studio-wide block, reviewable and reversible.</strong>
+      <code>/admin/settings/ai-policy</code>, below the technique policy it belongs with.
+      <span class="n">1</span>Exercise, movement pattern, reason and date.
+      <span class="n">2</span>Unblock returns it to the AI on the next generation.
+      <span class="n">3</span>The three mis-tagged “carries” are visible here — the library problem this
+      feature deliberately does not fix.
+    </figcaption>
+  </figure>
+
+  <figure>
+    <img src="06-client-list.png" alt="The per-client blocked list on Victor Okonjo's client screen">
+    <figcaption>
+      <strong>06 · A block can belong to one client alone.</strong>
+      Victor Okonjo’s screen, straight after his questionnaire and injury notes.
+      <span class="n">1</span>“Blocked for Victor” — this exercise is off the table for him and nobody else.
+      <span class="n">2</span>The reason travels with the block.
+    </figcaption>
+  </figure>
+
+</div>
+</body>
+</html>

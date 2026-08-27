@@ -3,7 +3,9 @@ import Link from "next/link"
 import { ArrowLeft, Brain, CheckCircle2, Ban, Sparkles } from "lucide-react"
 import { auth } from "@/lib/auth"
 import { getCoachPolicy } from "@/lib/db/coach-ai-policy"
+import { listStudioBlocks } from "@/lib/db/exercise-blocks"
 import { AiPolicyForm } from "@/components/admin/ai-policy-form"
+import { BlockedExercisesCard } from "@/components/admin/BlockedExercisesCard"
 import { redirect } from "next/navigation"
 
 export const metadata: Metadata = { title: "AI Program Policy — DJP Athlete Admin" }
@@ -12,6 +14,7 @@ export default async function AiPolicyPage() {
   const session = await auth()
   if (!session?.user?.id || session.user.role !== "admin") redirect("/login")
   const policy = await getCoachPolicy(session.user.id)
+  const blocks = await listStudioBlocks(session.user.id)
 
   const disallowedCount = policy?.disallowed_techniques?.length ?? 0
   const preferredCount = policy?.preferred_techniques?.length ?? 0
@@ -43,7 +46,7 @@ export default async function AiPolicyPage() {
       </div>
 
       {/* Active policy summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <div className="bg-white rounded-xl border border-border p-3 sm:p-4 flex items-center gap-3">
           <div className="flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
             <Ban className="size-3.5 sm:size-4 text-destructive" />
@@ -84,9 +87,26 @@ export default async function AiPolicyPage() {
             <p className="text-lg sm:text-2xl font-semibold text-primary">{hasNotes ? "Yes" : "—"}</p>
           </div>
         </div>
+        <div className="bg-white rounded-xl border border-border p-3 sm:p-4 flex items-center gap-3">
+          <div className="flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-lg bg-destructive/10">
+            <Ban className="size-3.5 sm:size-4 text-destructive" />
+          </div>
+          <div>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">Blocked</p>
+            <p className="text-lg sm:text-2xl font-semibold text-primary">{blocks.length}</p>
+          </div>
+        </div>
       </div>
 
       <AiPolicyForm initialPolicy={policy} />
+
+      <div className="mt-6">
+        <BlockedExercisesCard
+          blocks={blocks}
+          scopeLabel="Blocked exercises"
+          emptyHint="No exercises blocked. Use the ⊘ on an exercise in a program to block one."
+        />
+      </div>
     </div>
   )
 }
