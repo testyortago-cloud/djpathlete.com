@@ -1,0 +1,107 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Attendance arrangements — review sheet</title>
+<style>
+  :root { --ink:#0f2b38; --muted:#5b7280; --line:#e3e8ec; --accent:#c8763c; }
+  body { margin:0; padding:48px 40px 96px; background:#f7f9fa; color:var(--ink);
+         font:16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .wrap { max-width:1180px; margin:0 auto; }
+  h1 { font-size:30px; margin:0 0 6px; letter-spacing:-.01em; }
+  .sub { color:var(--muted); margin:0 0 28px; }
+  .box { background:#fff; border:1px solid var(--line); border-radius:12px; padding:20px 24px; margin:0 0 32px; }
+  .box h2 { font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px; }
+  .box p { margin:0 0 10px; }
+  .box p:last-child { margin-bottom:0; }
+  figure { margin:0 0 40px; }
+  figcaption { display:flex; gap:12px; align-items:baseline; margin:0 0 10px; }
+  .n { flex:none; width:26px; height:26px; border-radius:50%; background:var(--accent); color:#fff;
+       font-size:14px; font-weight:700; display:grid; place-items:center; }
+  .t { font-weight:650; font-size:18px; }
+  .d { color:var(--muted); }
+  img { width:100%; height:auto; display:block; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  code { background:#eef2f4; padding:1px 6px; border-radius:5px; font-size:14px; }
+  ul { margin:8px 0 0; padding-left:20px; } li { margin:4px 0; }
+</style>
+<div class="wrap">
+  <h1>Attendance arrangements</h1>
+  <p class="sub">Clients coached in person whom a partner facility bills through its own system.
+     Captured against the real admin app on the dev clone, 29 Aug 2026.</p>
+
+  <div class="box">
+    <h2>What these shots prove</h2>
+    <p><strong>A client with no pack can be checked in.</strong> Every arrangement below was created through
+       the real dialog on the real client page, and every check-in is a real click on the real button.
+       Nothing was seeded.</p>
+    <p><strong>The check-in burned no credit.</strong> The <code>session_checkins</code> row is read back out of
+       the database by the capture script and asserted field by field:
+       <code>credit_delta = 0</code>, <code>client_package_id = null</code>, <code>method = coach_tap</code>.
+       The script fails if any of those is wrong.</p>
+    <p><strong>Nothing reached the books.</strong> An arrangement has no price and never touches
+       <code>client_packages</code>, so the bookkeeping income adapter, the renewal-reminder cron and Stripe
+       never see it.</p>
+  </div>
+
+  <figure>
+    <figcaption><span class="n">1</span><span><span class="t">Before anything is set up</span>
+      <span class="d">— &ldquo;Attendance only&rdquo; is always present in Sessions &amp; Billing, so the option is discoverable
+      rather than hidden behind a client who already has one.</span></span></figcaption>
+    <img src="01-no-arrangement.png" alt="Client detail page with an empty Attendance only section">
+  </figure>
+
+  <figure>
+    <figcaption><span class="n">2</span><span><span class="t">Starting one</span>
+      <span class="d">— one question that matters: who bills this client. The dialog says plainly that nothing
+      will be charged.</span></span></figcaption>
+    <img src="02-start-dialog.png" alt="The start arrangement dialog">
+  </figure>
+
+  <figure>
+    <figcaption><span class="n">3</span><span><span class="t">The arrangement exists</span>
+      <span class="d">— the facility, the start date, a month counter at zero, and an empty ledger ready to fill.</span></span></figcaption>
+    <img src="03-arrangement-active.png" alt="An active attendance arrangement with no sessions yet">
+  </figure>
+
+  <figure>
+    <figcaption><span class="n">4</span><span><span class="t">The Check in button appears</span>
+      <span class="d">— note &ldquo;No packs yet&rdquo; in Session Packs directly above it. Previously this button
+      showed only for a client holding pack credits, so this client could not have been checked in at all.</span></span></figcaption>
+    <img src="04-check-in-button.png" alt="Check in button present for a client with no packs">
+  </figure>
+
+  <figure>
+    <figcaption><span class="n">5</span><span><span class="t">One tap — attendance recorded</span>
+      <span class="d">— the counter moves to 1 and the session lands on the ledger. No credit was deducted,
+      because there was none to deduct.</span></span></figcaption>
+    <img src="05-after-check-in.png" alt="The arrangement after a check-in, showing one attended session">
+  </figure>
+
+  <figure>
+    <figcaption><span class="n">6</span><span><span class="t">The monthly total</span>
+      <span class="d">— every client on an arrangement, who bills them, and the count to check the facility's
+      invoice against. Any month can be selected.</span></span></figcaption>
+    <img src="06-monthly-rollup.png" alt="The monthly attendance roll-up page">
+  </figure>
+
+  <div class="box">
+    <h2>Decisions worth knowing about</h2>
+    <ul>
+      <li><strong>Coach tap only.</strong> The QR roster and the personal check-in link still refuse an
+          arrangement client. This ledger is your evidence of work done at someone else's facility, so you
+          record it — a client forgetting to tap would quietly undercount you. One flag flips it later.</li>
+      <li><strong>A pack always wins.</strong> If a client has pack credits, those burn first and attendance
+          is not recorded. Starting an arrangement for someone holding a pack warns you about exactly this.</li>
+      <li><strong>No facility entity.</strong> &ldquo;Billed by&rdquo; is free text. A facilities table is
+          speculative until there is a second one.</li>
+      <li><strong>Ending an arrangement keeps its history.</strong> Sessions already recorded stay on the
+          client and still count on the month they happened in — including a month the arrangement ended
+          part-way through.</li>
+    </ul>
+  </div>
+
+  <div class="box">
+    <h2>Re-running this</h2>
+    <p><code>PORT=3050 npm run dev</code>, then
+       <code>APP=http://localhost:3050 npx tsx scripts/capture-attendance-arrangements.ts .env.local</code>.
+       Add <code>--clean</code> to remove the arrangements and check-ins it created.</p>
+  </div>
+</div>

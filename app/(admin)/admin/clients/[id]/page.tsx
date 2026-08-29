@@ -65,6 +65,9 @@ import { EditAssignmentButton } from "@/components/admin/EditAssignmentButton"
 import { ClientSessionsPanel } from "@/components/admin/clients/ClientSessionsPanel"
 import { ClientCheckinButton } from "@/components/admin/packs/ClientCheckinButton"
 import { loadClientPacksView, summarizeClientPacks } from "@/lib/services/client-packs-view"
+import { getActiveArrangementForClient } from "@/lib/db/attendance-arrangements"
+import { listCheckinsForArrangement } from "@/lib/db/session-checkins"
+import { monthOf } from "@/lib/services/attendance-view"
 import { getLeadInquiryByUserId } from "@/lib/db/lead-inquiries"
 import QRCode from "qrcode"
 import { signPersonalCheckinToken } from "@/lib/qr/checkin-token"
@@ -653,6 +656,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     allExercises,
     leadInquiry,
     clientBlocks,
+    arrangement,
   ] = await Promise.all([
     getProfileByUserId(id),
     getAssignments(id),
@@ -666,9 +670,20 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     getLeadInquiryByUserId(id).catch(() => null),
     // Never let a blocklist read failure take down the client screen.
     listClientBlocks(session.user.id, id).catch(() => []),
+    // A client billed by a partner facility: no pack, attendance only. Never let
+    // a read failure here take down the client screen.
+    getActiveArrangementForClient(id).catch(() => null),
   ])
 
   const packSummary = summarizeClientPacks(packs, new Date())
+
+  // The arrangement's own ledger, and this calendar month's count — the number
+  // the coach checks against the facility's invoice.
+  const arrangementCheckins = arrangement ? await listCheckinsForArrangement(arrangement.id).catch(() => []) : []
+  const thisMonth = monthOf(new Date())
+  const sessionsThisMonth = arrangementCheckins.filter(
+    (c) => !c.voided && monthOf(c.session_date) === thisMonth,
+  ).length
 
   // Personal (stable) check-in link + QR for this client — no daily QR to print.
   let personalCheckinUrl: string | null = null
@@ -850,7 +865,11 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
 
       {/* Quick Actions */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <ClientCheckinButton clientUserId={id} hasActiveCredits={packSummary.hasActiveCredits} />
+        <ClientCheckinButton
+          clientUserId={id}
+          hasActiveCredits={packSummary.hasActiveCredits}
+          hasArrangement={!!arrangement}
+        />
         {personalCheckinQr && personalCheckinUrl && (
           <PersonalCheckinLinkDialog
             qrDataUrl={personalCheckinQr}
@@ -903,6 +922,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           currentPayerId={currentPayerId}
           payerCandidates={payerCandidates}
           payer={payer}
+          arrangement={arrangement}
+          arrangementCheckins={arrangementCheckins}
+          sessionsThisMonth={sessionsThisMonth}
         />
         <ProfileSection profile={profile} />
         <QuestionnaireSection profile={profile} />

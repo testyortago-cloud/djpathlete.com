@@ -352,6 +352,23 @@ export const AUDIT_ACTIONS = [
   { slug: "pack.auto_renew_failed", category: "commerce", description: "Pack auto-renewal charge failed" },
   { slug: "pack.auto_renew_enabled", category: "commerce", description: "Auto-renew turned on for a pack" },
   { slug: "pack.auto_renew_disabled", category: "commerce", description: "Auto-renew turned off for a pack" },
+
+  // attendance arrangements (00234) — coached here, billed by a partner facility
+  {
+    slug: "attendance.arrangement_started",
+    category: "admin_write",
+    description: "Attendance arrangement started for a client (no pack, billed elsewhere)",
+  },
+  {
+    slug: "attendance.arrangement_ended",
+    category: "admin_write",
+    description: "Attendance arrangement ended",
+  },
+  {
+    slug: "attendance.checkin",
+    category: "client_action",
+    description: "Attendance recorded for an arrangement client; no credit deducted",
+  },
   { slug: "session.slot_created", category: "admin_write", description: "Recurring session slot created" },
   { slug: "session.slot_updated", category: "admin_write", description: "Recurring session slot updated" },
   { slug: "session.attended", category: "client_action", description: "Scheduled session marked attended" },

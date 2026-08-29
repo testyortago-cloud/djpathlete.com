@@ -17,8 +17,10 @@ import {
   createCheckin,
   getCheckinById,
   recentNonVoidedForPackage,
+  recentNonVoidedForArrangement,
   voidCheckin,
 } from "@/lib/db/session-checkins"
+import { getActiveArrangementForClient } from "@/lib/db/attendance-arrangements"
 import { handleCheckinProgramAdvance, handleVoidProgramRevert } from "@/lib/services/program-progression"
 import { attemptPackRenewal } from "@/lib/services/pack-renewal"
 
@@ -141,15 +143,67 @@ export interface CheckInInput {
   now: Date
   idempotencyWindowMs?: number
   sessionDate?: string
+  /**
+   * Allow falling back to an attendance arrangement when the client has no pack.
+   * Defaults to FALSE, so the self-serve doors (QR roster, personal link) keep
+   * refusing — this ledger is the coach's own evidence of work done at a partner
+   * facility, and a client who forgets to tap would silently undercount him.
+   * Only the admin coach-tap route opts in.
+   */
+  allowUnmetered?: boolean
 }
 
 export interface CheckInResult {
   ok: boolean
   reason?: "no_credits" | "duplicate"
   checkin?: SessionCheckin
+  /** Credits left on the pack. Absent for an unmetered check-in — there is no
+   *  balance to report, which is the whole point of the arrangement. */
   remaining?: number
   packageId?: string
   programCompleted?: boolean
+  /** True when this landed against an attendance arrangement, not a pack. */
+  unmetered?: boolean
+  arrangementId?: string
+}
+
+/**
+ * Record attendance for a client on an active arrangement: a ledger row that
+ * burns no credit (`credit_delta: 0`, no pack). Shares session_checkins with the
+ * paid path so a client's training history stays one list, and the monthly count
+ * the coach reconciles against the facility's invoice is one query.
+ *
+ * Never CASes anything — there is no balance to lose a race over — but keeps the
+ * same idempotency window, so a double-tap at the door is still one session.
+ */
+async function checkInUnmetered(input: CheckInInput, sinceIso: string): Promise<CheckInResult> {
+  const arrangement = await getActiveArrangementForClient(input.clientUserId)
+  if (!arrangement) return { ok: false, reason: "no_credits" }
+
+  const recent = await recentNonVoidedForArrangement(arrangement.id, sinceIso)
+  if (recent) {
+    return { ok: true, reason: "duplicate", checkin: recent, unmetered: true, arrangementId: arrangement.id }
+  }
+
+  const checkin = await createCheckin({
+    client_package_id: null,
+    arrangement_id: arrangement.id,
+    client_user_id: input.clientUserId,
+    checked_in_at: input.now.toISOString(),
+    session_date: input.sessionDate ?? input.now.toISOString().slice(0, 10),
+    method: input.method,
+    credit_delta: 0,
+    voided: false,
+    voided_reason: null,
+    voided_by: null,
+    voided_at: null,
+    calendar_event_id: null,
+    workout_session_id: null,
+    created_by: input.createdBy,
+    notes: null,
+  })
+
+  return { ok: true, checkin, unmetered: true, arrangementId: arrangement.id }
 }
 
 /**
@@ -165,7 +219,14 @@ export async function checkInClient(input: CheckInInput): Promise<CheckInResult>
   // Re-read + retry on a lost CAS so a concurrent check-in can't double-deduct.
   for (let attempt = 0; attempt < 2; attempt++) {
     const pkg = await getActivePackageForClient(input.clientUserId, input.now.toISOString())
-    if (!pkg) return { ok: false, reason: "no_credits" }
+    if (!pkg) {
+      // No pack. A client on an attendance arrangement is coached here but billed
+      // by a partner facility, so there is nothing to deduct — record attendance
+      // instead. Pack first, arrangement second: if they ever DO buy a pack, the
+      // credits they paid for burn before the free attendance path is considered.
+      if (input.allowUnmetered) return await checkInUnmetered(input, since)
+      return { ok: false, reason: "no_credits" }
+    }
 
     const recent = await recentNonVoidedForPackage(pkg.id, since)
     if (recent) {
@@ -182,6 +243,7 @@ export async function checkInClient(input: CheckInInput): Promise<CheckInResult>
 
     const checkin = await createCheckin({
       client_package_id: pkg.id,
+      arrangement_id: null,
       client_user_id: input.clientUserId,
       checked_in_at: input.now.toISOString(),
       session_date: input.sessionDate ?? input.now.toISOString().slice(0, 10),
@@ -247,6 +309,9 @@ export async function voidCheckinAndRestore(input: {
   if (checkin.voided) return { ok: false, reason: "already_voided" }
 
   await voidCheckin(input.checkinId, { voided_by: input.voidedBy, voided_reason: input.reason })
+
+  // An attendance check-in never took a credit, so the void is the whole undo.
+  if (checkin.client_package_id === null) return { ok: true }
 
   // Pack may have been deleted (FK cascade would also remove the checkin, so this
   // is rare) — if it's gone, the void stands and there's nothing to restore.

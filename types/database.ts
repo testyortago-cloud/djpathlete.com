@@ -2939,7 +2939,12 @@ export interface ClientPackage {
 
 export interface SessionCheckin {
   id: string
-  client_package_id: string
+  /** Null for an attendance-only check-in, which burns no credit. Exactly one
+   *  of client_package_id / arrangement_id is set (DB CHECK, 00234). */
+  client_package_id: string | null
+  /** Set instead of client_package_id when the client is on an attendance
+   *  arrangement (billed by a partner facility, no pack here). */
+  arrangement_id: string | null
   client_user_id: string
   checked_in_at: string
   session_date: string
@@ -2954,6 +2959,30 @@ export interface SessionCheckin {
   created_by: string | null
   notes: string | null
   created_at: string
+}
+
+// ─── Attendance arrangements (00234) ─────────────────────────────────────────
+
+export type AttendanceArrangementStatus = "active" | "ended"
+
+/**
+ * A client coached in person whom a partner facility bills through its OWN
+ * system. There is no pack and no money on this side — only attendance, so the
+ * coach has his own count to check against the facility's invoice.
+ */
+export interface AttendanceArrangement {
+  id: string
+  client_user_id: string
+  /** Free text, e.g. the facility's name. Shown as the "who bills this" reminder. */
+  label: string | null
+  session_type: string
+  status: AttendanceArrangementStatus
+  started_on: string
+  ended_on: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
 }
 
 // ─── Recurring in-person sessions (00175) ────────────────────────────────────

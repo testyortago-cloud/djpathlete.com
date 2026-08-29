@@ -7,21 +7,26 @@ import { Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 /**
- * Prominent one-tap check-in for a client's active session pack. Lives in the
- * client detail Quick Actions row. Renders nothing when the client has no active
- * credits (nothing to deduct) — selling a pack is the path to create some.
+ * Prominent one-tap check-in. Lives in the client detail Quick Actions row.
+ *
+ * Renders when the client has something to check in AGAINST: active pack credits
+ * to deduct, or an attendance arrangement (coached here, billed by a partner
+ * facility, so nothing is deducted). With neither, there is nothing to record
+ * and the button stays hidden — sell a pack or start an arrangement first.
  */
 export function ClientCheckinButton({
   clientUserId,
   hasActiveCredits,
+  hasArrangement = false,
 }: {
   clientUserId: string
   hasActiveCredits: boolean
+  hasArrangement?: boolean
 }) {
   const router = useRouter()
   const [busy, setBusy] = useState(false)
 
-  if (!hasActiveCredits) return null
+  if (!hasActiveCredits && !hasArrangement) return null
 
   async function checkIn() {
     setBusy(true)
@@ -37,6 +42,9 @@ export function ClientCheckinButton({
         return
       }
       if (data.reason === "duplicate") toast.info("Already checked in recently")
+      // An attendance check-in has no balance to report — saying "0 left" would
+      // read as a problem when nothing was ever going to be deducted.
+      else if (data.unmetered) toast.success("Checked in — attendance recorded")
       else toast.success(`Checked in — ${data.remaining} left`)
       router.refresh()
     } catch {

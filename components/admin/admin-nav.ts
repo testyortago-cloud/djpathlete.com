@@ -36,6 +36,7 @@ import {
   UserSquare,
   GraduationCap,
   Ticket,
+  Building2,
   CalendarClock,
   Repeat,
   Ban,
@@ -141,6 +142,10 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: Permi
           { label: "Contacts", href: "/admin/contacts", icon: UsersRound },
           { label: "Clients", href: "/admin/clients", icon: Users },
           { label: "Schedule", href: "/admin/schedule", icon: CalendarClock },
+          // Clients coached here but billed by a partner facility. Sits beside
+          // Schedule, not under Business: no money moves through it, and it is
+          // the coach's own count to check the facility's invoice against.
+          { label: "Attendance", href: "/admin/attendance", icon: Building2 },
           { label: "Programs", href: "/admin/programs", icon: ClipboardList },
           { label: "Exercises", href: "/admin/exercises", icon: Dumbbell },
           { label: "Form Reviews", href: "/admin/form-reviews", icon: Video },

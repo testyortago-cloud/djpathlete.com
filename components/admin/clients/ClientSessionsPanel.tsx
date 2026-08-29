@@ -2,11 +2,19 @@ import type React from "react"
 import { CalendarClock } from "lucide-react"
 import { StandingSlotsPanel } from "@/components/admin/schedule/StandingSlotsPanel"
 import { ClientPackagesPanel } from "@/components/admin/packs/ClientPackagesPanel"
+import { AttendanceArrangementPanel } from "@/components/admin/attendance/AttendanceArrangementPanel"
 import { MembershipPanel } from "@/components/admin/billing/MembershipPanel"
 import { SavedCardPanel } from "@/components/admin/billing/SavedCardPanel"
 import { BillingPayerControl, type PayerCandidate } from "@/components/admin/billing/BillingPayerControl"
 import type { PackWithCheckins } from "@/lib/services/client-packs-view"
-import type { RecurringSession, UserPaymentMethod, ClientMembership, MembershipPlan } from "@/types/database"
+import type {
+  RecurringSession,
+  UserPaymentMethod,
+  ClientMembership,
+  MembershipPlan,
+  AttendanceArrangement,
+  SessionCheckin,
+} from "@/types/database"
 
 /**
  * One "Sessions & Billing" card that gathers everything session/money-related for
@@ -29,6 +37,9 @@ export function ClientSessionsPanel({
   currentPayerId,
   payerCandidates,
   payer,
+  arrangement,
+  arrangementCheckins,
+  sessionsThisMonth,
 }: {
   clientUserId: string
   packs: PackWithCheckins[]
@@ -44,6 +55,10 @@ export function ClientSessionsPanel({
   currentPayerId: string | null
   payerCandidates: PayerCandidate[]
   payer: { name: string; card: UserPaymentMethod | null } | null
+  /** Non-null when this client is coached here but billed by a partner facility. */
+  arrangement: AttendanceArrangement | null
+  arrangementCheckins: SessionCheckin[]
+  sessionsThisMonth: number
 }) {
   const sections: React.ReactNode[] = []
   if (showStandingSlots) {
@@ -59,6 +74,20 @@ export function ClientSessionsPanel({
   }
   // Session packs are always available.
   sections.push(<ClientPackagesPanel key="packs" clientUserId={clientUserId} initialPacks={packs} bare />)
+  // Directly under packs, because it answers the same question the coach came
+  // here to ask — "how does this client pay?" — with the other answer: they
+  // don't, someone else bills them. Always rendered, so the option to start one
+  // is discoverable rather than hidden behind a client who already has one.
+  sections.push(
+    <AttendanceArrangementPanel
+      key="attendance"
+      clientUserId={clientUserId}
+      arrangement={arrangement}
+      checkins={arrangementCheckins}
+      sessionsThisMonth={sessionsThisMonth}
+      bare
+    />,
+  )
   if (showMemberships) {
     sections.push(
       <MembershipPanel key="membership" clientUserId={clientUserId} membership={membership} plans={membershipPlans} bare />,

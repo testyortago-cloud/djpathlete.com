@@ -447,6 +447,12 @@ export const PATH_PERMISSIONS: readonly PathRule[] = [
   { prefix: "/api/admin/strategy", permission: "seo" },
   { prefix: "/api/admin/indexnow", permission: "seo" },
 
+  // Attendance arrangements: a coaching record, NOT a money surface. Nothing is
+  // charged and nothing reaches the books, so it is gated with the schedule the
+  // sessions belong to rather than with commerce.
+  { prefix: "/admin/attendance", permission: "schedule" },
+  { prefix: "/api/admin/attendance-arrangements", permission: "schedule" },
+
   { prefix: "/admin/inbox", permission: "leads" },
   { prefix: "/api/admin/inbox", permission: "leads" },
   { prefix: "/api/admin/leads", permission: "leads" },
