@@ -248,9 +248,36 @@ function slotGroupKey(slot: ExerciseSlot): string {
 const MIN_EXERCISES = 30
 const MIN_PER_PATTERN = 8 // Guarantee at least 8 exercises per core movement pattern
 
-function getMaxExercises(librarySize: number): number {
-  // Scale: 15% of library, clamped between 80 and 200
-  return Math.max(80, Math.min(200, Math.round(librarySize * 0.15)))
+/**
+ * How many candidates to hand the selector.
+ *
+ * Sized off the library AND the number of slots being filled. Library size
+ * alone (15%, floor 80) is fine for a 20-slot week but starves a big one: a
+ * 6-day x 12-slot week against a 408-exercise library got 15% = 61 -> floor 80,
+ * i.e. 8 spare candidates for 72 slots. Every slot must hold a DIFFERENT
+ * exercise, so once a duplicate had to be repaired there was nothing left
+ * matching that slot's movement pattern and dedupAssignmentsInPlace substituted
+ * across patterns — a chest press became split squat jumps. Measured
+ * 2026-08-31: 27 of 72 slots swapped that way.
+ *
+ * SPARES_PER_SLOT is what gives the deduper somewhere to go. Still clamped, so
+ * a very large week cannot blow up the selector prompt, and never more than the
+ * library actually holds.
+ */
+const SPARES_PER_SLOT = 2.5
+
+export function getMaxExercises(librarySize: number, totalSlots = 0): number {
+  const byLibrary = Math.round(librarySize * 0.15)
+  const bySlots = Math.round(totalSlots * SPARES_PER_SLOT)
+  return Math.min(librarySize, Math.max(80, Math.min(300, Math.max(byLibrary, bySlots))))
+}
+
+/** Total exercise slots the skeleton asks for, across every week and day. */
+export function countSkeletonSlots(skeleton: ProgramSkeleton): number {
+  return skeleton.weeks.reduce(
+    (sum, w) => sum + w.days.reduce((ds, d) => ds + d.slots.length, 0),
+    0,
+  )
 }
 
 // ─── Pattern-balanced guarantee ─────────────────────────────────────────────
@@ -370,7 +397,7 @@ export function scoreAndFilterExercises(
 
   const isPool = options?.poolActive ?? false
   // When pool is active, keep ALL pool exercises — don't cap. The coach selected them.
-  const maxExercises = isPool ? exercises.length : getMaxExercises(exercises.length)
+  const maxExercises = isPool ? exercises.length : getMaxExercises(exercises.length, countSkeletonSlots(skeleton))
 
   const slotGroups = new Map<string, ExerciseSlot>()
   for (const week of skeleton.weeks) {
@@ -462,7 +489,7 @@ export async function semanticFilterExercises(
 ): Promise<CompressedExercise[]> {
   const supabase = getSupabase()
   const isPool = options?.poolActive ?? false
-  const maxExercises = isPool ? exercises.length : getMaxExercises(exercises.length)
+  const maxExercises = isPool ? exercises.length : getMaxExercises(exercises.length, countSkeletonSlots(skeleton))
 
   const difficulty =
     analysis.training_age_category === "novice"
