@@ -173,9 +173,12 @@ async function main(): Promise<void> {
     await page.waitForTimeout(4000)
 
     const cards = page.locator('[data-testid="funnel-card"]')
+    // AT LEAST the page this run just made. It used to demand two, back when
+    // the dev copy's Athlete Quiz was still kind=page; that row is a funnel
+    // now, so this board legitimately holds only what the run creates.
     must(
-      (await cards.count()) >= 2,
-      `expected at least 2 cards on /admin/pages, found ${await cards.count()} — is this rendering the shared card at all?`,
+      (await cards.count()) >= 1,
+      `expected at least 1 card on /admin/pages, found ${await cards.count()} — is this rendering the shared card at all?`,
     )
     const made = cardFor(page, PAGE_NAME)
     must((await made.count()) > 0, `no card for "${PAGE_NAME}"`)
@@ -198,8 +201,16 @@ async function main(): Promise<void> {
       openHref.startsWith(`/admin/pages/${madePageId}/edit/`),
       `a page card's Open points at ${openHref} — a /admin/funnels link works and lights the wrong sidebar tab`,
     )
-    must((await page.getByPlaceholder("Search pages…").count()) > 0, "the pages board does not search pages")
-    console.log(`  /admin/pages: shared card, goal badge, no settings link, Open -> ${openHref}`)
+    must((await page.getByPlaceholder("Search landing pages…").count()) > 0, "the pages board does not search landing pages")
+
+    // NO CONVERT CONTROL, BY THE OWNER'S RULING (2026-08-31): a landing page
+    // never becomes a funnel. The Open link asserted above is the presence
+    // control proving the card rendered before this absence is believed.
+    must(
+      (await made.getByRole("button", { name: /convert/i }).count()) === 0,
+      "a landing page card still offers Convert, which was removed",
+    )
+    console.log(`  /admin/pages: shared card, goal badge, no settings link, no Convert, Open -> ${openHref}`)
 
     await shoot(
       page,
@@ -209,7 +220,8 @@ async function main(): Promise<void> {
       [
         await markerAt(page, goalBadge, "What this page is for. Only a landing page shows this — a funnel's steps each have their own job.", { x: -22, y: 4 }),
         await markerAt(page, openLink, "Open goes to /admin/pages/…, so the Landing Pages tab stays lit while you edit.", { x: 18, y: -22 }),
-        await markerAt(page, page.getByPlaceholder("Search pages…"), "The screen still speaks its own language, even though both screens now share one card.", { x: 210, y: 18 }),
+        await markerAt(page, page.getByPlaceholder("Search landing pages…"), "The screen speaks only its own language: it searches landing pages, and nothing here mentions funnels.", { x: 210, y: 18 }),
+        await markerAt(page, made.getByRole("link", { name: "Open" }).first(), "No Convert button on the card any more. A landing page never becomes a funnel — a job with stages is built as a funnel from the start.", { x: 150, y: 16 }),
       ],
     )
 
@@ -231,9 +243,19 @@ async function main(): Promise<void> {
     // AND IT DOES HAVE A SETTINGS SCREEN.
     const gear = firstFunnel.locator('a[href^="/admin/funnels/"]').filter({ hasNotText: /.+/ }).first()
     must((await gear.count()) > 0, "a funnel card offers no way to its settings screen")
-    must((await page.getByPlaceholder("Search funnels and pages…").count()) > 0, "the funnels board lost its placeholder")
+    must((await page.getByPlaceholder("Search funnels and their pages…").count()) > 0, "the funnels board lost its placeholder")
     must((await page.getByRole("button", { name: "New funnel" }).count()) > 0, "no New funnel button")
-    console.log("  /admin/funnels: same card, no goal badge, settings link present")
+    must(
+      (await page.getByRole("button", { name: /convert/i }).count()) === 0,
+      "the funnels board offers a Convert control, which no kind has",
+    )
+    // The chrome-level "no borrowed vocabulary" guarantee is pinned by
+    // funnel-list-kind.test.tsx on the EMPTY board, where every word is the
+    // app's own. It cannot be asserted here on a whole live page: a step the
+    // owner NAMED "Landing page" (the dev copy's Test funnel has one) renders
+    // legitimately inside a card's step list, and a text sweep cannot tell
+    // the owner's nouns from the app's.
+    console.log("  /admin/funnels: same card, no goal badge, no Convert, settings link present")
 
     await shoot(
       page,
