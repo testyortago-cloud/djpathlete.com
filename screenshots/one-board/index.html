@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>One board, two screens — what was verified</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0 auto; max-width: 1100px; padding: 2rem 1.5rem 4rem; color: #16323f; }
+  h1 { font-size: 1.9rem; margin-bottom: .25rem; }
+  .sub { color: #5b7280; margin-top: 0; }
+  .facts { background: #f6f7f8; border: 1px solid #e3e6e8; border-radius: 10px; padding: 1rem 1.25rem; margin: 1.5rem 0 2rem; }
+  .caveat { background: #fdf6ec; border: 1px solid #eadfcc; border-radius: 10px; padding: 1rem 1.25rem; margin: 0 0 2.5rem; }
+  code { font-size: .85em; }
+  figure { margin: 0 0 3rem; }
+  img { width: 100%; height: auto; border: 1px solid #e3e6e8; border-radius: 10px; display: block; }
+  figcaption { margin-top: .6rem; color: #44606d; line-height: 1.55; }
+</style>
+<h1>One board, two screens — what was verified</h1>
+<p class="sub">Both frames are the real app on its real route, driven by
+<code>scripts/capture-one-board.ts</code>. The callouts are burned into each PNG.</p>
+
+<div class="facts">
+  <p><b>Asserted in the DOM before each shot</b>, on the dev copy (<code>anjvztjiokcgiyhobknq</code>):</p>
+  <ul>
+    <li><b>One card, both screens.</b> <code>/admin/pages</code> renders
+        <code>[data-testid="funnel-card"]</code> — the funnels board's own card. That is the change.</li>
+    <li><b>The goal badge is page-only.</b> Present on the landing page card, and
+        <code>getByText("Capture leads").count() === 0</code> on the funnels board. Asserted in both
+        directions across the two shots, because an absence proves nothing without the presence.</li>
+    <li><b>The ⚙ settings link is funnel-only.</b> Neither
+        <code>a[href="/admin/pages/&lt;id&gt;"]</code> nor <code>a[href="/admin/funnels/&lt;id&gt;"]</code>
+        appears on a landing page card; a funnel card has one.</li>
+    <li><b>The sidebar tab stays right.</b> A page card's <em>Open</em> must start
+        <code>/admin/pages/&lt;id&gt;/edit/</code>. Both routes serve a page — the funnels one redirects —
+        so a wrong link <em>works</em> and merely lights the wrong tab. That is the defect
+        <code>adminFunnelBase</code> exists to prevent, and the one this merge nearly reintroduced.</li>
+    <li><b>Each screen keeps its own words.</b> "Search pages…" / "Search funnels and pages…",
+        "New landing page" / "New funnel".</li>
+    <li><b>The landing page in shot 1 was made through the real dialog</b> and deleted at the end of the
+        run. The dev copy's own page carries <code>goal: null</code> and so cannot show the badge —
+        asserting against data that cannot answer would have proved nothing.</li>
+  </ul>
+</div>
+
+<div class="caveat">
+  <p><b>Two bugs the merge exposed</b>, both found by retargeting the deleted board's tests rather than
+     deleting them:</p>
+  <ul>
+    <li><code>FunnelCard</code> hardcoded <code>/admin/funnels/&lt;id&gt;/edit/&lt;step&gt;</code>. Invisible
+        until the pages board rendered this card.</li>
+    <li><code>FunnelList</code>'s delete said <em>"Funnel deleted."</em> and asked about
+        <em>"all of its pages"</em>. A landing page IS a funnels row, so it goes through the same endpoint,
+        and a message written from the endpoint names a thing the owner has never seen. This had already
+        shipped once and been fixed on the old board; the fix now lives where it survives the board being
+        replaced.</li>
+  </ul>
+  <p><b>Not changed, on purpose:</b> there is no migration. <code>funnels.kind</code> stays. The model —
+     one table, one shape, one renderer, one flag — was already sound; the confusion was two components
+     that drifted.</p>
+</div>
+
+<figure>
+  <a href="01-landing-pages-on-the-shared-card.png"><img src="01-landing-pages-on-the-shared-card.png" alt="Landing pages drawn by the funnels board's own card"></a>
+  <figcaption><b>1. Landing pages, drawn by the funnels board's own card</b><br>
+  <code>/admin/pages</code>. Two real landing pages: one just created (goal badge, never published) and the
+  seeded Athlete Quiz (live, carrying its Quiz button). Neither offers a settings screen, and neither draws
+  a step-list box — a one-step row's single step <em>is</em> the card.</figcaption>
+</figure>
+
+<figure>
+  <a href="02-funnels-on-the-same-card.png"><img src="02-funnels-on-the-same-card.png" alt="Funnels drawn by the same card"></a>
+  <figcaption><b>2. Funnels, drawn by the same card — behaving as funnels</b><br>
+  <code>/admin/funnels</code>. The same component, drawing a two-step funnel: its steps are listed inside
+  the card with what leads where, there is no goal badge, and the ⚙ settings button is present. What
+  changed between these two frames is the row being drawn, not the screen it is on.</figcaption>
+</figure>

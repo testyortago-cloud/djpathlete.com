@@ -1,6 +1,13 @@
-// The landing pages screen. Its twin at /admin/funnels renders the same board
-// with kind="funnel"; the only differences are the filter, the title and the
-// vocabulary the board picks up from `kind`.
+// The landing pages screen. Its twin at /admin/funnels renders THE SAME
+// COMPONENT with kind="funnel"; the differences are the filter, the title and
+// the vocabulary the board picks up from `kind`.
+//
+// It used to render `FunnelBoard`, a second board that drew one card per PAGE
+// while /admin/funnels drew one per FUNNEL. Two components meant two places for
+// a control to live, and a control could exist on one and not the other -- the
+// quiz button did exactly that for a day. A landing page holds exactly one
+// step, so per-page and per-funnel are the same card here and nothing is lost
+// by standardising on the one that serves both.
 //
 // NOTE: this path is new, so it needed an entry in lib/permissions/registry.ts.
 // Unmapped admin paths are denied by default — a screen added without its
@@ -9,9 +16,9 @@
 import Link from "next/link"
 import { LayoutTemplate } from "lucide-react"
 import { listFunnels, listSteps, getSubmissionCountsByFunnel } from "@/lib/db/funnels"
-import { getQuizzesByIds } from "@/lib/db/quizzes"
-import { quizUsesInSteps } from "@/lib/funnels/quiz-refs"
-import { FunnelBoard, type BoardPage } from "@/components/admin/funnels/FunnelBoard"
+import { getQuizAttemptCounts, getQuizzesByIds } from "@/lib/db/quizzes"
+import { quizIdByStep } from "@/lib/funnels/quiz-refs"
+import { FunnelList, type FunnelWithSteps } from "@/components/admin/funnels/FunnelList"
 
 export const metadata = { title: "Landing pages" }
 
@@ -23,9 +30,10 @@ export default async function LandingPagesScreen() {
     Promise.all(funnels.map((funnel) => listSteps(funnel.id).catch(() => []))),
   ])
 
-  const pages: BoardPage[] = funnels.flatMap((funnel, index) =>
-    stepsPerFunnel[index].map((step) => ({ step, funnel })),
-  )
+  const withSteps: FunnelWithSteps[] = funnels.map((funnel, index) => ({
+    funnel,
+    steps: stepsPerFunnel[index],
+  }))
 
   // THE QUIZ EACH PAGE RUNS, so it can be opened from the page that runs it.
   //
@@ -37,14 +45,30 @@ export default async function LandingPagesScreen() {
   // FAILS SOFT. The list of pages is the reason this screen exists; losing it
   // because the quizzes table was unreachable would trade the screen for a
   // button.
-  const quizUses = quizUsesInSteps(pages.map(({ step }) => step))
-  const quizRows = quizUses.length > 0 ? await getQuizzesByIds(quizUses.map((use) => use.quizId)).catch(() => []) : []
-  const quizByStepId: Record<string, { id: string; name: string }> = {}
-  for (const use of quizUses) {
-    const quiz = quizRows.find((row) => row.id === use.quizId)
+  // PER STEP, NOT `quizUsesInSteps`. That helper dedupes across everything it
+  // is given, so two funnels sharing one quiz yield ONE entry and the second
+  // card loses its Quiz button and its delete warning. Demonstrated against the
+  // running app, not guessed.
+  const quizByStep = quizIdByStep(stepsPerFunnel.flat())
+  const quizIds = [...new Set(quizByStep.values())]
+  const quizRows = quizIds.length > 0 ? await getQuizzesByIds(quizIds).catch(() => []) : []
+  // HOW MANY PEOPLE HAVE ANSWERED IT, for the delete confirmation. Deleting a
+  // quiz cascades `quiz_attempts`, and that is the last copy of those answers --
+  // `funnel_submissions` cascades away with the funnel itself. The owner is
+  // told the number before the irreversible part, so a failed count degrades to
+  // no number rather than to a wrong one.
+  const attemptCounts: Awaited<ReturnType<typeof getQuizAttemptCounts>> =
+    quizIds.length > 0
+      ? await getQuizAttemptCounts().catch(() => ({}) as Awaited<ReturnType<typeof getQuizAttemptCounts>>)
+      : {}
+  const quizByStepId: Record<string, { id: string; name: string; attempts?: number }> = {}
+  for (const [stepId, quizId] of quizByStep) {
+    const quiz = quizRows.find((row) => row.id === quizId)
     // A block pointing at a deleted quiz offers no button: there is nothing to
     // open, and a link to a 404 is worse than no link.
-    if (quiz) quizByStepId[use.stepId] = { id: quiz.id, name: quiz.name }
+    if (quiz) {
+      quizByStepId[stepId] = { id: quiz.id, name: quiz.name, attempts: attemptCounts[quiz.id]?.total }
+    }
   }
 
   return (
@@ -64,13 +88,7 @@ export default async function LandingPagesScreen() {
         </div>
       </div>
 
-      <FunnelBoard
-        kind="page"
-        pages={pages}
-        funnels={funnels}
-        leadCounts={leadCounts}
-        quizByStepId={quizByStepId}
-      />
+      <FunnelList kind="page" funnels={withSteps} leadCounts={leadCounts} quizByStepId={quizByStepId} />
     </div>
   )
 }

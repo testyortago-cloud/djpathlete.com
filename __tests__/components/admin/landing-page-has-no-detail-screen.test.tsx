@@ -16,7 +16,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen } from "@testing-library/react"
-import { FunnelBoard } from "@/components/admin/funnels/FunnelBoard"
+import { FunnelList } from "@/components/admin/funnels/FunnelList"
 import type { Funnel, FunnelStep } from "@/types/database"
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
@@ -67,12 +67,7 @@ function detailLinks(container: HTMLElement): string[] {
 describe("the landing page board", () => {
   it("has no link to a landing page's own detail screen", () => {
     const { container } = render(
-      <FunnelBoard
-        kind="page"
-        pages={[{ step: step(), funnel: funnel() }]}
-        funnels={[funnel()]}
-        leadCounts={{}}
-      />,
+      <FunnelList kind="page" funnels={[{ funnel: funnel(), steps: [step()] }]} leadCounts={{}} />,
     )
 
     // Asserted on the HREF, not on the icon. The ⚙ carries no accessible name,
@@ -86,10 +81,9 @@ describe("the landing page board", () => {
 
   it("still links a FUNNEL to its step list", () => {
     const { container } = render(
-      <FunnelBoard
+      <FunnelList
         kind="funnel"
-        pages={[{ step: step(), funnel: funnel({ kind: "funnel", goal: null }) }]}
-        funnels={[funnel({ kind: "funnel", goal: null })]}
+        funnels={[{ funnel: funnel({ kind: "funnel", goal: null }), steps: [step()] }]}
         leadCounts={{}}
       />,
     )

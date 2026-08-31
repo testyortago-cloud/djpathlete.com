@@ -1,11 +1,18 @@
 // The split is the whole feature, and it lives here. A board that renders the
 // same chrome for both kinds would look done and be exactly the thing the owner
 // complained about.
+//
+// RETARGETED FROM `FunnelBoard`, WHICH IS DELETED. Both screens render
+// `FunnelList` now. Not one assertion below changed: the guarantees are about
+// what the two boards must never share -- vocabulary, the goal badge, the
+// create dialog, and above all WHICH WRITE go-live fires -- and merging the two
+// components is exactly the moment those are most likely to be lost. Retargeted
+// rather than deleted for that reason.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { toast } from "sonner"
-import { FunnelBoard } from "@/components/admin/funnels/FunnelBoard"
+import { FunnelList } from "@/components/admin/funnels/FunnelList"
 import type { Funnel, FunnelStep } from "@/types/database"
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
@@ -68,11 +75,11 @@ async function deleteTheOnlyCard() {
   }
 }
 
-describe("<FunnelBoard kind='page'>", () => {
+describe("the landing pages board", () => {
   it("offers the landing page dialog, not a bare input", () => {
     // MUTANT KILLED: leaving the inline "New landing page name" input in place,
     // which is the control this whole feature replaces.
-    render(<FunnelBoard kind="page" pages={[]} funnels={[]} leadCounts={{}} />)
+    render(<FunnelList kind="page" funnels={[]} leadCounts={{}} />)
     expect(screen.getByRole("button", { name: /new landing page/i })).toBeInTheDocument()
     expect(screen.queryByPlaceholderText(/new landing page name/i)).not.toBeInTheDocument()
   })
@@ -80,16 +87,13 @@ describe("<FunnelBoard kind='page'>", () => {
   it("teaches the flow when there is nothing yet", () => {
     // MUTANT KILLED: the old one-line "No landing pages yet." empty state,
     // which told a first-time owner nothing about what this screen makes.
-    render(<FunnelBoard kind="page" pages={[]} funnels={[]} leadCounts={{}} />)
+    render(<FunnelList kind="page" funnels={[]} leadCounts={{}} />)
     expect(screen.getByText(/one focused page/i)).toBeInTheDocument()
   })
 
   it("shows the goal badge on a page card", () => {
     render(
-      <FunnelBoard
-        kind="page"
-        pages={[{ step: step(), funnel: funnel() }]}
-        funnels={[funnel()]}
+      <FunnelList kind="page" funnels={[{ funnel: funnel(), steps: [step()] }]}
         leadCounts={{}}
       />,
     )
@@ -105,7 +109,7 @@ describe("<FunnelBoard kind='page'>", () => {
     // assertion is here to pin that the endpoint is unchanged: the wording is
     // the bug, and "fixing" it by deleting something else would be worse.
     render(
-      <FunnelBoard kind="page" pages={[{ step: step(), funnel: funnel() }]} funnels={[funnel()]} leadCounts={{}} />,
+      <FunnelList kind="page" funnels={[{ funnel: funnel(), steps: [step()] }]} leadCounts={{}} />,
     )
 
     const { asked, told, url } = await deleteTheOnlyCard()
@@ -122,10 +126,7 @@ describe("<FunnelBoard kind='page'>", () => {
     // planner" could be satisfied by routing EVERYTHING through it — a second
     // code path with no second page to justify it.
     const fetchMock = goLiveOnTheOnlyCard(
-      <FunnelBoard
-        kind="page"
-        pages={[{ step: step(), funnel: funnel({ status: "draft" }) }]}
-        funnels={[funnel({ status: "draft" })]}
+      <FunnelList kind="page" funnels={[{ funnel: funnel({ status: "draft" }), steps: [step()] }]}
         leadCounts={{}}
       />,
     )
@@ -135,15 +136,12 @@ describe("<FunnelBoard kind='page'>", () => {
   })
 })
 
-describe("<FunnelBoard kind='funnel'>", () => {
+describe("the funnels board", () => {
   it("uses funnel vocabulary and hides the goal badge", () => {
     // MUTANT KILLED: reusing the page copy on the funnels screen — the two
     // screens would be indistinguishable, which is the original complaint.
     render(
-      <FunnelBoard
-        kind="funnel"
-        pages={[{ step: step(), funnel: funnel({ kind: "funnel", goal: null }) }]}
-        funnels={[funnel({ kind: "funnel", goal: null })]}
+      <FunnelList kind="funnel" funnels={[{ funnel: funnel({ kind: "funnel", goal: null }), steps: [step()] }]}
         leadCounts={{}}
       />,
     )
@@ -152,7 +150,7 @@ describe("<FunnelBoard kind='funnel'>", () => {
   })
 
   it("says something funnel-shaped when empty", () => {
-    render(<FunnelBoard kind="funnel" pages={[]} funnels={[]} leadCounts={{}} />)
+    render(<FunnelList kind="funnel" funnels={[]} leadCounts={{}} />)
     expect(screen.getByText(/more than one step/i)).toBeInTheDocument()
   })
 
@@ -162,7 +160,7 @@ describe("<FunnelBoard kind='funnel'>", () => {
     // defect pointed the other way, on the screen where the funnel wording is
     // the correct one.
     const f = funnel({ kind: "funnel", goal: null })
-    render(<FunnelBoard kind="funnel" pages={[{ step: step(), funnel: f }]} funnels={[f]} leadCounts={{}} />)
+    render(<FunnelList kind="funnel" funnels={[{ funnel: f, steps: [step()] }]} leadCounts={{}} />)
 
     const { asked, told } = await deleteTheOnlyCard()
     expect(told).toBe("Funnel deleted.")
@@ -177,7 +175,7 @@ describe("<FunnelBoard kind='funnel'>", () => {
     // whose own buttons 404. This board was the third doorway onto that write.
     const f = funnel({ kind: "funnel", goal: null, status: "draft" })
     const fetchMock = goLiveOnTheOnlyCard(
-      <FunnelBoard kind="funnel" pages={[{ step: step(), funnel: f }]} funnels={[f]} leadCounts={{}} />,
+      <FunnelList kind="funnel" funnels={[{ funnel: f, steps: [step()] }]} leadCounts={{}} />,
     )
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     expect(String(fetchMock.mock.calls[0][0])).toBe("/api/admin/funnels/f1/publish")

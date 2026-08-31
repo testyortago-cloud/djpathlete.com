@@ -8,7 +8,7 @@
 // that reason -- go live, convert, delete. The quiz is the next one.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen } from "@testing-library/react"
-import { FunnelBoard } from "@/components/admin/funnels/FunnelBoard"
+import { FunnelList } from "@/components/admin/funnels/FunnelList"
 import type { Funnel, FunnelStep } from "@/types/database"
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
@@ -47,12 +47,15 @@ const step = (over: Partial<FunnelStep> = {}): FunnelStep =>
     ...over,
   }) as FunnelStep
 
+// RENDERS `FunnelList` NOW, not the deleted `FunnelBoard`. The guarantee is
+// unchanged -- a page running a quiz offers it from the card -- and only the
+// component that has to keep it has moved. Retargeted rather than deleted:
+// dropping a test whose premise changed is how a guarantee silently lapses.
 function board(quizByStepId: Record<string, { id: string; name: string }> = {}) {
   return render(
-    <FunnelBoard
+    <FunnelList
       kind="page"
-      pages={[{ step: step(), funnel: funnel() }]}
-      funnels={[funnel()]}
+      funnels={[{ funnel: funnel(), steps: [step()] }]}
       leadCounts={{ f1: 3 }}
       quizByStepId={quizByStepId}
     />,
@@ -66,7 +69,7 @@ beforeEach(() => vi.clearAllMocks())
 // button's EXACT accessible name -- otherwise "the quiz is offered" would be
 // satisfied by the page's title and the button could be deleted with the suite
 // still green.
-describe("FunnelBoard and the quiz a page runs", () => {
+describe("the landing pages board and the quiz a page runs", () => {
   it("offers the quiz on the card of the page that runs it", () => {
     board({ s1: { id: QUIZ_ID, name: "Athlete Quiz (RPI)" } })
     const link = screen.getByRole("link", { name: "Quiz" })

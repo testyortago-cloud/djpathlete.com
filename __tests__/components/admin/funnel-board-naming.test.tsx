@@ -9,10 +9,17 @@
 // Every assertion below is paired with its opposite on the funnels board, since
 // "always show the funnel's name" and "never show it" are both wrong and each
 // would pass a one-sided test.
+//
+// RETARGETED FROM `FunnelBoard`, WHICH IS DELETED. Both screens render
+// `FunnelList` now: one card per FUNNEL, with a multi-step funnel's steps
+// listed inside it. The naming guarantees survive that unchanged -- a landing
+// page is still titled with the owner's name, a funnel's step names are still
+// not collapsed into the container's -- so those assertions are retargeted
+// verbatim. Two blocks did NOT survive, and each says why where it stood.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react"
-import { FunnelBoard } from "@/components/admin/funnels/FunnelBoard"
+import { FunnelList } from "@/components/admin/funnels/FunnelList"
 import type { Funnel, FunnelStep } from "@/types/database"
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
@@ -71,7 +78,7 @@ describe("what a card is called", () => {
   it("titles a landing page with the owner's name, not the step row's placeholder", () => {
     // MUTANT KILLED: `title={step.name}`, which is what shipped.
     render(
-      <FunnelBoard kind="page" pages={[{ step: step(), funnel: funnel() }]} funnels={[funnel()]} leadCounts={{}} />,
+      <FunnelList kind="page" funnels={[{ funnel: funnel(), steps: [step()] }]} leadCounts={{}} />,
     )
 
     const card = screen.getByRole("link", { name: "Free Trial Week" })
@@ -86,13 +93,17 @@ describe("what a card is called", () => {
     // named individually and would all collapse to the container's name.
     const f = funnel({ kind: "funnel", goal: null })
     render(
-      <FunnelBoard
+      <FunnelList
         kind="funnel"
-        pages={[
-          { step: step({ id: "s1", name: "Step 1" }), funnel: f },
-          { step: step({ id: "s2", name: "Book a call", slug: "book", is_entry: false }), funnel: f },
+        funnels={[
+          {
+            funnel: f,
+            steps: [
+              step({ id: "s1", name: "Step 1" }),
+              step({ id: "s2", name: "Book a call", slug: "book", is_entry: false, position: 1 }),
+            ],
+          },
         ]}
-        funnels={[f]}
         leadCounts={{}}
       />,
     )
@@ -102,82 +113,21 @@ describe("what a card is called", () => {
   })
 })
 
-describe("the filter chips", () => {
-  it("do not turn one-page-per-funnel names into categories", () => {
-    // MUTANT KILLED: `multiPageFunnels.length > 1`, which is what shipped: with
-    // two landing pages it rendered two chips, each filtering to a single card
-    // already on screen, labelled with the name that belongs to that card.
-    const a = funnel({ id: "f1", name: "Free Trial Week", slug: "free-trial" })
-    const b = funnel({ id: "f2", name: "Summer Camp", slug: "summer-camp" })
-    render(
-      <FunnelBoard
-        kind="page"
-        pages={[
-          { step: step({ id: "s1", funnel_id: "f1" }), funnel: a },
-          { step: step({ id: "s2", funnel_id: "f2" }), funnel: b },
-        ]}
-        funnels={[a, b]}
-        leadCounts={{}}
-      />,
-    )
-
-    expect(screen.queryByRole("button", { name: /^all \(/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: /free trial week \(/i })).not.toBeInTheDocument()
-    // Both cards are still listed — "no chips" must not mean "no rows".
-    expect(screen.getByRole("link", { name: "Free Trial Week" })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Summer Camp" })).toBeInTheDocument()
-  })
-
-  it("still group a funnel that genuinely holds several pages", () => {
-    // MUTANT KILLED: deleting the chips outright. On the funnels board the
-    // grouping is real information — a funnel has many steps.
-    const a = funnel({ id: "f1", kind: "funnel", name: "Trial Funnel", goal: null })
-    const b = funnel({ id: "f2", kind: "funnel", name: "Camp Funnel", slug: "camp", goal: null })
-    render(
-      <FunnelBoard
-        kind="funnel"
-        pages={[
-          { step: step({ id: "s1", name: "Step 1" }), funnel: a },
-          { step: step({ id: "s2", name: "Book", slug: "book", is_entry: false }), funnel: a },
-          { step: step({ id: "s3", name: "Step 1", funnel_id: "f2" }), funnel: b },
-        ]}
-        funnels={[a, b]}
-        leadCounts={{}}
-      />,
-    )
-
-    expect(screen.getByRole("button", { name: "All (3)" })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Trial Funnel (2)" }))
-    expect(screen.getByRole("link", { name: "Book" })).toBeInTheDocument()
-    expect(screen.queryByRole("link", { name: "Camp Funnel · /go/camp" })).not.toBeInTheDocument()
-  })
-
-  it("stop filtering when the chips themselves stop being shown", () => {
-    // MUTANT KILLED: hiding the chip row while `funnelFilter` keeps applying.
-    // Deleting the second page of a funnel drops the board below the threshold,
-    // and a filter with no visible control is a board silently hiding rows.
-    const a = funnel({ id: "f1", kind: "funnel", name: "Trial Funnel", goal: null })
-    const b = funnel({ id: "f2", kind: "funnel", name: "Camp Funnel", slug: "camp", goal: null })
-    const withChild = { step: step({ id: "s2", name: "Book", slug: "book", is_entry: false }), funnel: a }
-    const entryA = { step: step({ id: "s1", name: "Step 1" }), funnel: a }
-    const entryB = { step: step({ id: "s3", name: "Camp step", funnel_id: "f2" }), funnel: b }
-
-    const { rerender } = render(
-      <FunnelBoard kind="funnel" pages={[entryA, withChild, entryB]} funnels={[a, b]} leadCounts={{}} />,
-    )
-    fireEvent.click(screen.getByRole("button", { name: "Trial Funnel (2)" }))
-    expect(screen.queryByRole("link", { name: "Camp step" })).not.toBeInTheDocument()
-
-    rerender(<FunnelBoard kind="funnel" pages={[entryA, entryB]} funnels={[a, b]} leadCounts={{}} />)
-    expect(screen.queryByRole("button", { name: /^all \(/i })).not.toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Camp step" })).toBeInTheDocument()
-  })
-})
+// REMOVED: the three "filter chips" tests.
+//
+// The chips grouped cards BY FUNNEL, and `FunnelList` has none -- one card per
+// funnel IS the grouping, so a chip could only filter to a card already on
+// screen. Their own guarantee ("do not turn one-page-per-funnel names into
+// categories") is now satisfied by construction rather than by a conditional,
+// and `FunnelList`'s header records why the chips went.
+//
+// Kept as a note rather than silently dropped: three deleted tests with no
+// explanation is indistinguishable from three tests lost in a refactor.
 
 describe("renaming from the card", () => {
   it("writes a landing page's new name to the FUNNEL row", async () => {
     render(
-      <FunnelBoard kind="page" pages={[{ step: step(), funnel: funnel() }]} funnels={[funnel()]} leadCounts={{}} />,
+      <FunnelList kind="page" funnels={[{ funnel: funnel(), steps: [step()] }]} leadCounts={{}} />,
     )
 
     const { url, body } = await rename("Free Trial Week", "Spring Trial")
@@ -185,30 +135,25 @@ describe("renaming from the card", () => {
     expect(body).toEqual({ name: "Spring Trial" })
   })
 
-  it("writes a funnel page's new name to the STEP row", async () => {
-    // MUTANT KILLED: sending every rename to `/api/admin/funnels/<id>`. That
-    // renames the whole funnel from a card showing one of its steps — the card
-    // would appear to do nothing and the container would silently change.
-    const f = funnel({ kind: "funnel", goal: null })
-    render(
-      <FunnelBoard
-        kind="funnel"
-        pages={[{ step: step({ id: "s2", name: "Book a call", slug: "book", is_entry: false }), funnel: f }]}
-        funnels={[f]}
-        leadCounts={{}}
-      />,
-    )
-
-    const { url, body } = await rename("Book a call", "Book a consult")
-    expect(url).toBe("/api/admin/funnels/steps/s2")
-    expect(body).toEqual({ name: "Book a consult" })
-  })
+  // REMOVED: "writes a funnel page's new name to the STEP row".
+  //
+  // It tested a per-STEP rename pencil on a per-STEP card, and there are no
+  // per-step cards any more -- `FunnelList` draws one card per FUNNEL, whose
+  // pencil renames the funnel row (asserted above). A funnel's step is renamed
+  // in the builder, which owns `/api/admin/funnels/steps/<id>`.
+  //
+  // It was already testing unreachable code before this change:
+  // `FunnelBoard`'s `kind === "funnel"` branches had not been rendered by any
+  // screen since /admin/funnels moved to `FunnelList`. Deleted rather than
+  // retargeted because there is no surface left that should fire that write,
+  // and a test kept alive against a component nothing renders is worse than no
+  // test -- it reads as coverage.
 
   it("promises the address does not move, and sends no slug", async () => {
     // A rename that also moved /go/<slug> would break every link already handed
     // out. The dialog says so, and the request has to agree with the promise.
     render(
-      <FunnelBoard kind="page" pages={[{ step: step(), funnel: funnel() }]} funnels={[funnel()]} leadCounts={{}} />,
+      <FunnelList kind="page" funnels={[{ funnel: funnel(), steps: [step()] }]} leadCounts={{}} />,
     )
     fireEvent.click(screen.getByRole("button", { name: "Rename Free Trial Week" }))
     const dialog = await screen.findByRole("dialog")
@@ -225,7 +170,7 @@ describe("renaming from the card", () => {
     // MUTANT KILLED: a client-side bound copied as `>= 1`. The schema's minimum
     // is imported, so this cannot drift into a 400 the dialog said was fine.
     render(
-      <FunnelBoard kind="page" pages={[{ step: step(), funnel: funnel() }]} funnels={[funnel()]} leadCounts={{}} />,
+      <FunnelList kind="page" funnels={[{ funnel: funnel(), steps: [step()] }]} leadCounts={{}} />,
     )
     fireEvent.click(screen.getByRole("button", { name: "Rename Free Trial Week" }))
     fireEvent.change(await screen.findByLabelText(/^name$/i), { target: { value: "x" } })
