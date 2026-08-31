@@ -51,10 +51,17 @@ describe("createFunnelSchema", () => {
 })
 
 describe("updateFunnelSchema", () => {
-  it("accepts kind so Convert to funnel can PATCH it", () => {
-    // MUTANT KILLED: forgetting kind here — Convert would 400 with a generic
-    // "Invalid request" and no clue which field was refused.
-    expect(updateFunnelSchema.safeParse({ kind: "funnel" }).success).toBe(true)
+  it("strips kind — the update path cannot carry a kind change", () => {
+    // INVERTED 2026-08-31: this used to assert kind was accepted, for the
+    // Convert-to-funnel dialog. That control is gone — landing pages and
+    // funnels never turn into each other — so the schema no longer carries
+    // the field, and even a caller that bypassed the route's explicit 400
+    // could not smuggle a kind through the parsed shape. (The 400 itself is
+    // pinned in patch-route.test.ts; this pins the second, independent layer.)
+    const parsed = updateFunnelSchema.safeParse({ kind: "funnel", name: "Still valid" })
+    expect(parsed.success).toBe(true)
+    expect(parsed.data).not.toHaveProperty("kind")
+    expect(parsed.data).toHaveProperty("name", "Still valid")
   })
 
   it("accepts goal so a page's purpose can be changed later", () => {

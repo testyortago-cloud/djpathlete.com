@@ -24,7 +24,7 @@ const SECTIONS: Section[] = [
     body: [
       "A landing page is one page with one job — capture a lead, sell a program, fill a camp. It lives at /go/<url> and that is the whole thing.",
       "A funnel is more than one page in order, sharing one address: a signup page at /go/<url>, then a payment step at /go/<url>/pay, then a confirmation. Use one when a visitor has to move through stages.",
-      "Start with a landing page. If it later needs a second step, open its card and choose Convert to funnel — the address does not change and the page stays live.",
+      "They are separate things: a landing page never turns into a funnel, and a funnel never collapses into a page. If a job needs stages, build it as a funnel from the start.",
     ],
   },
   {

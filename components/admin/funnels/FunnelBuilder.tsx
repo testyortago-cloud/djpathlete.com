@@ -1399,7 +1399,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
    * A LANDING PAGE GOES BACK TO THE LIST, NOT TO ITS OWN DETAIL SCREEN. A
    * landing page is one page, so `/admin/pages/<id>` shows a single card that
    * repeats the card the list already shows — and every control that was once
-   * only there (go live, public URL, delete, convert to funnel) now lives on
+   * only there (go live, public URL, delete) now lives on
    * the list card. Leaving the editor onto it meant a second, emptier copy of
    * the screen the owner was trying to get back to.
    *

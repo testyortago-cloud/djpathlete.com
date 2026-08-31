@@ -130,81 +130,46 @@ describe("PATCH /api/admin/funnels/[id]", () => {
   })
 
   // -------------------------------------------------------------------------
-  // `kind` IS PATCHABLE BY THIS SAME ROUTE, so it is a door in the guard above
-  // rather than a fact about the row. Both directions are closed below.
+  // `kind` IS FROZEN AT CREATION. Until 2026-08-31 this route accepted
+  // `{kind:"funnel"}` for the Convert-to-funnel dialog, which made `kind` a
+  // door in the publish guard (demote to "page", then publish ungated). The
+  // owner ruled the concepts never cross, the dialog is gone, and any body
+  // that so much as NAMES kind is refused before the schema can strip it.
   // -------------------------------------------------------------------------
 
-  it("refuses to demote a funnel to a page, closing the two-step publish bypass", async () => {
-    // STEP ONE of the bypass. `{kind:"page"}` carries no status, so the
-    // publish guard never runs; the row would simply become a "page"...
-    const demote = await PATCH(patch({ kind: "page" }) as never, ctx as never)
-
-    // MUTANT: gating only on `parsed.data.status === "published"`. Without
-    // this refusal the demotion succeeds, and STEP TWO below publishes a
-    // funnel — every page ungated — in a second, individually legal request.
-    expect(demote.status).toBe(400)
+  it("refuses a kind change in either direction, and writes NOTHING", async () => {
+    // MUTANT: deleting the raw-body `"kind" in body` check. The schema no
+    // longer parses `kind`, so without the check Zod STRIPS the field and the
+    // route answers 200 for a conversion that silently did not happen — the
+    // worst possible answer for a caller that still believes in convert.
+    for (const kind of ["funnel", "page"]) {
+      const response = await PATCH(patch({ kind }) as never, ctx as never)
+      expect(response.status).toBe(400)
+      const body = await response.json()
+      expect(body.error).toContain("kind it was created with")
+    }
     expect(mock(updateFunnel)).not.toHaveBeenCalled()
-
-    // STEP TWO, proving the sequence is what was closed and not just one call.
-    // The row is still `kind: "funnel"` precisely because step one wrote
-    // nothing, so the existing guard sees a funnel and refuses.
-    const publish = await PATCH(patch({ status: "published" }) as never, ctx as never)
-    expect(publish.status).toBe(400)
-    expect(mock(updateFunnel)).not.toHaveBeenCalled()
+    // The refusal needs no row: it is about the request, not the funnel.
+    expect(mock(getFunnelById)).not.toHaveBeenCalled()
   })
 
-  it("refuses to demote and publish in ONE request", async () => {
-    // MUTANT: `(parsed.data.kind ?? funnel.kind) === "funnel"` — reading the
-    // INCOMING kind in place of the stored one. It looks like the fix for the
-    // two-step sequence and is strictly worse: this body then reads "page",
-    // sails past the guard, and publishes a funnel ungated in a single
-    // request — a hole that does not exist today.
+  it("refuses kind even when it rides along with a publish, before any write", async () => {
+    // The old two-step bypass compressed to one request. The kind refusal
+    // fires first — the row is never read, nothing is written, and the
+    // stored kind stays the only kind there is.
     const response = await PATCH(patch({ kind: "page", status: "published" }) as never, ctx as never)
 
     expect(response.status).toBe(400)
-    const body = await response.json()
-    expect(body.error).toContain("published as a whole")
     expect(mock(updateFunnel)).not.toHaveBeenCalled()
   })
 
-  it("refuses to promote a page and publish it in ONE request", async () => {
-    mock(getFunnelById).mockResolvedValue(PAGE_ROW)
+  it("still applies a kindless update untouched — the refusal is not a blanket 400", async () => {
+    // PRESENCE CONTROL for the two refusals above: a body that never names
+    // kind sails through, proving the check inspects the key rather than
+    // refusing this route's writes wholesale.
+    const response = await PATCH(patch({ description: "Updated" }) as never, ctx as never)
 
-    // MUTANT: gating on the STORED kind alone. The row is a "page" on the way
-    // in, so a stored-kind-only check lets this through — and what it lets
-    // through is a row that is a FUNNEL by the time the write lands, published
-    // without any of its pages having been gated.
-    const response = await PATCH(patch({ kind: "funnel", status: "published" }) as never, ctx as never)
-
-    expect(response.status).toBe(400)
-    expect(mock(updateFunnel)).not.toHaveBeenCalled()
-  })
-
-  it("still promotes a page to a funnel, which is what ConvertToFunnelDialog sends", async () => {
-    mock(getFunnelById).mockResolvedValue(PAGE_ROW)
-
-    const response = await PATCH(patch({ kind: "funnel" }) as never, ctx as never)
-
-    // MUTANT (the third assertion below, on its own): widening the outer
-    // condition from `incomingKind === "page"` to `incomingKind !== undefined`
-    // so that ANY `kind` change is inspected. Verified: with that widening,
-    // the response is still 200 and `updateFunnel` is still called with
-    // `{kind:"funnel"}` (`getFunnelById` is mocked to `PAGE_ROW`, so nothing
-    // downstream refuses) — only the read that should not have happened does.
-    // These first two assertions exist to pin the promotion's outward
-    // behavior, not to help kill this mutant.
-    //
-    // VERIFIED, and the first version of this comment was WRONG. It claimed
-    // the mutant was "refusing every kind change", i.e. flipping the INNER
-    // `if (incomingKind === "page" && ...)` to `if (incomingKind !== undefined)`.
-    // That mutant SURVIVES: the inner branch sits behind an outer condition
-    // this body does not satisfy, so it never runs and the promotion succeeds
-    // anyway. Only widening the OUTER condition reaches this path.
     expect(response.status).toBe(200)
-    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { kind: "funnel" })
-    // This is the half that kills the widened-outer mutant on its own: a
-    // promotion has no status to gate, so the read is work that can only add a
-    // failure mode.
-    expect(mock(getFunnelById)).not.toHaveBeenCalled()
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { description: "Updated" })
   })
 })

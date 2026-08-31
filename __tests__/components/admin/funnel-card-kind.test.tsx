@@ -78,13 +78,21 @@ describe("FunnelCard, per kind of row", () => {
     expect(screen.queryByLabelText("Free Trial settings")).toBeNull()
   })
 
-  it("offers Convert to funnel on a landing page", () => {
+  it("offers no Convert control on a landing page", () => {
+    // INVERTED 2026-08-31. This test used to pin the Convert button's
+    // PRESENCE on a page card. The owner ruled that landing pages and funnels
+    // are separate things that never turn into each other ("there is no such
+    // thing as convert"), so the guarantee is now absence — on both kinds.
+    // The rename control is the presence check proving the card rendered at
+    // all, without which the absence below passes vacuously.
     card(funnel({ kind: "page" }))
-    expect(screen.getByRole("button", { name: /convert/i })).toBeTruthy()
+    expect(screen.getByLabelText("Rename Free Trial")).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /convert/i })).toBeNull()
   })
 
-  it("offers no Convert control on something that is already a funnel", () => {
+  it("offers no Convert control on a funnel either", () => {
     card(funnel({ kind: "funnel" }))
+    expect(screen.getByLabelText("Rename Free Trial")).toBeTruthy()
     expect(screen.queryByRole("button", { name: /convert/i })).toBeNull()
   })
 

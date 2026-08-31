@@ -292,7 +292,6 @@ export const updateFunnelSchema = z.object({
   name: nameSchema.optional(),
   description: z.string().max(500).nullable().optional(),
   status: z.enum(["draft", "published", "archived"]).optional(),
-  kind: kindSchema.optional(),
   goal: goalSchema.nullable().optional(),
   audience: z.string().max(300).nullable().optional(),
   offer: offerSchema.nullable().optional(),
