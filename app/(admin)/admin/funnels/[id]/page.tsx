@@ -145,9 +145,9 @@ export async function FunnelDetailScreen({ id, base }: { id: string; base: "page
           ) : null}
         </div>
         <div className="flex items-center gap-2">
-          {/* Funnels only. A landing page is single-page by definition — the
-              way to give it a second step is Convert to funnel, which says so
-              explicitly rather than letting the page drift into being one. */}
+          {/* Funnels only. A landing page is single-page by definition and
+              never becomes a funnel — a job that needs stages is built as a
+              funnel from the start, so only a funnel can grow a step. */}
           {funnel.kind === "funnel" ? (
             <AddStepDialog
               funnelId={funnel.id}

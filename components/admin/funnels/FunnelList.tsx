@@ -150,7 +150,7 @@ export function FunnelList({ funnels, leadCounts, quizByStepId = {}, kind = "fun
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder={kind === "page" ? "Search pages…" : "Search funnels and pages…"}
+          placeholder={kind === "page" ? "Search landing pages…" : "Search funnels and their pages…"}
           className="sm:max-w-xs"
         />
         <div className="flex flex-1 gap-2 sm:justify-end">

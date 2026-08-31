@@ -26,7 +26,7 @@ export function BoardEmptyState({ kind }: { kind: FunnelKind }) {
         }
       : {
           title: "No funnels yet",
-          body: "A funnel is more than one step in order — a landing page, then a booking step, then a thank-you — all sharing one address.",
+          body: "A funnel is more than one step in order — a signup page, then a booking step, then a thank-you — all sharing one address.",
           steps: [
             "Create the funnel and name its first step",
             "Describe it — the builder drafts the first page, then the rest follow on their own",

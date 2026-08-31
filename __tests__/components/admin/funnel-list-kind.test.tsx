@@ -49,14 +49,17 @@ const step = (over: Partial<FunnelStep> = {}): FunnelStep =>
 const rows = (kind: "page" | "funnel"): FunnelWithSteps[] => [{ funnel: funnel({ kind }), steps: [step()] }]
 
 describe("FunnelList, per board", () => {
-  it("searches pages on the pages board", () => {
+  it("searches landing pages on the pages board", () => {
     render(<FunnelList kind="page" funnels={rows("page")} leadCounts={{}} />)
-    expect(screen.getByPlaceholderText("Search pages…")).toBeTruthy()
+    expect(screen.getByPlaceholderText("Search landing pages…")).toBeTruthy()
   })
 
-  it("searches funnels and pages on the funnels board", () => {
+  it("searches funnels and THEIR pages on the funnels board", () => {
+    // "their" is load-bearing: the funnels board's search also matches step
+    // names, and the old wording ("funnels and pages") read as if it searched
+    // the OTHER board's landing pages too.
     render(<FunnelList kind="funnel" funnels={rows("funnel")} leadCounts={{}} />)
-    expect(screen.getByPlaceholderText("Search funnels and pages…")).toBeTruthy()
+    expect(screen.getByPlaceholderText("Search funnels and their pages…")).toBeTruthy()
   })
 
   it("offers New landing page on the pages board, and not New funnel", () => {
@@ -72,12 +75,23 @@ describe("FunnelList, per board", () => {
   })
 
   it("uses the landing-page empty state on an empty pages board", () => {
-    // MATCHED ON THE HEADING, not on the words "landing page" anywhere in the
-    // block. The FUNNEL empty state explains a funnel as "a landing page, then
-    // a booking step, then a thank-you" -- so a loose match is satisfied by the
-    // prose that describes the other kind.
+    // MATCHED ON THE HEADING. A loose "landing page" match was once satisfied
+    // by the funnel empty state's own prose, which used the words to describe
+    // a funnel's first step; that wording is gone (see the absence test
+    // below), but the heading stays the honest anchor.
     render(<FunnelList kind="page" funnels={[]} leadCounts={{}} />)
     expect(screen.getByText("No landing pages yet")).toBeTruthy()
+  })
+
+  it("never says 'landing page' anywhere on the funnels board", () => {
+    // THE OWNER'S RULING, 2026-08-31: the two screens are separate things and
+    // neither borrows the other's vocabulary. The funnel empty state used to
+    // describe a funnel as "a landing page, then a booking step" -- the one
+    // place the pages noun leaked across. The heading is the presence control
+    // proving the board rendered before the absence is believed.
+    render(<FunnelList kind="funnel" funnels={[]} leadCounts={{}} />)
+    expect(screen.getByText("No funnels yet")).toBeTruthy()
+    expect(screen.queryByText(/landing page/i)).toBeNull()
   })
 
   it("uses the funnel empty state on an empty funnels board", () => {
@@ -93,7 +107,7 @@ describe("FunnelList, per board", () => {
     // Every caller that predates /admin/pages moving here omits the prop. A
     // default of "page" would silently turn the funnels board into a pages one.
     render(<FunnelList funnels={rows("funnel")} leadCounts={{}} />)
-    expect(screen.getByPlaceholderText("Search funnels and pages…")).toBeTruthy()
+    expect(screen.getByPlaceholderText("Search funnels and their pages…")).toBeTruthy()
   })
 })
 

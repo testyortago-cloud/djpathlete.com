@@ -33,6 +33,21 @@ export const PATCH = withAudit(
     const { id } = await ctx.params
 
     const body = await request.json().catch(() => null)
+
+    // `kind` IS SET AT CREATION AND NEVER CHANGES. The Convert-to-funnel
+    // control was removed on the owner's ruling that landing pages and
+    // funnels are separate things which never turn into each other. The
+    // schema below no longer carries the field, and Zod would silently STRIP
+    // it — reporting success for a change that did not happen — so a body
+    // naming it is refused out loud instead. Checked on the RAW body, before
+    // parsing, precisely because the parsed shape can no longer see it.
+    if (body !== null && typeof body === "object" && "kind" in body) {
+      return NextResponse.json(
+        { error: "A landing page or funnel keeps the kind it was created with. Neither converts into the other." },
+        { status: 400 },
+      )
+    }
+
     const parsed = updateFunnelSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 })
@@ -71,50 +86,22 @@ export const PATCH = withAudit(
        * 409 (nothing here conflicts with concurrent state).
        */
       /**
-       * `kind` IS ITSELF PATCHABLE HERE, WHICH MAKES IT A DOOR IN THE GUARD.
-       *
-       * Gating on the stored `funnel.kind` alone left a two-request bypass
-       * wide open: `PATCH {kind:"page"}` demotes the row, then
-       * `PATCH {status:"published"}` reads back "page" and publishes the
-       * funnel ungated — the exact split above, reached in two individually
-       * legal requests. Gating on the INCOMING kind alone is no better and
-       * fails faster: `PATCH {kind:"page", status:"published"}` would then
-       * publish a funnel in ONE request, and that body is refused today.
-       *
-       * So both directions are closed, and they need different rules:
-       *
-       *   - PUBLISHING is refused if the row is a funnel by EITHER account.
-       *     A stored funnel cannot be published, and neither can a page being
-       *     promoted in the same body (`{kind:"funnel", status:"published"}`),
-       *     which would otherwise become a live funnel whose pages were never
-       *     gated.
-       *   - DEMOTING a stored funnel to a page is refused outright. Nothing in
-       *     the product does it — `ConvertToFunnelDialog` is the only `kind`
-       *     PATCH there is and it only goes page → funnel — and on a row with
-       *     several steps it is not a meaningful edit, it is the first half of
-       *     the bypass above.
-       *
-       * PROMOTION IS STILL ALLOWED, on its own: `{kind:"funnel"}` with no
-       * status never reads the row and never refuses.
+       * `kind` NEVER REACHES THIS POINT — the body-level refusal above runs
+       * before parsing, and the schema no longer carries the field. That is
+       * what closed the old two-request publish bypass (demote the row to
+       * "page", then publish it ungated): with `kind` frozen at creation, the
+       * STORED kind is the only kind there is, so gating on it is complete.
        */
-      const incomingKind = parsed.data.kind
-      if (parsed.data.status === "published" || incomingKind === "page") {
+      if (parsed.data.status === "published") {
         const funnel = await getFunnelById(id)
         if (!funnel) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-        if (parsed.data.status === "published" && (funnel.kind === "funnel" || incomingKind === "funnel")) {
+        if (funnel.kind === "funnel") {
           return NextResponse.json(
             {
               error:
                 "A funnel is published as a whole. Use POST /api/admin/funnels/:id/publish, which gates every page before any of them go live.",
             },
-            { status: 400 },
-          )
-        }
-
-        if (incomingKind === "page" && funnel.kind === "funnel") {
-          return NextResponse.json(
-            { error: "A funnel cannot be turned back into a single page." },
             { status: 400 },
           )
         }

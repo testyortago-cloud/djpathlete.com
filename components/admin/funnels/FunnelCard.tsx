@@ -31,7 +31,6 @@ import { AlertTriangle, ArrowRight, CircleDot } from "lucide-react"
 import { PreviewCard } from "./PreviewCard"
 import { RenameDialog } from "./RenameDialog"
 import { FunnelGoLiveButton } from "./FunnelGoLiveButton"
-import { ConvertToFunnelDialog } from "./ConvertToFunnelDialog"
 import { FUNNEL_GOALS } from "@/lib/validators/funnel"
 import { Button } from "@/components/ui/button"
 import { ListChecks, Settings2 } from "lucide-react"
@@ -280,11 +279,6 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete, quizByStepId = 
               </Button>
             ) : null}
             <FunnelGoLiveButton funnelId={funnel.id} status={funnel.status} kind={funnel.kind} canGoLive={entryPublished} />
-            {/* A PAGE OUTGROWS ITSELF the moment it needs a thank-you or an
-                upsell step. Explicit, never derived from the step count:
-                deriving it would move a live page between screens with no
-                warning and no undo. */}
-            {isPage ? <ConvertToFunnelDialog funnelId={funnel.id} funnelName={funnel.name} /> : null}
             {/* FUNNEL ONLY, AND THIS IS THE SHARP EDGE OF SHARING ONE CARD.
                 `/admin/pages/<id>` redirects to the list by design, so this
                 button on a landing page is a control whose only outcome is a

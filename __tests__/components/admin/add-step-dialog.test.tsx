@@ -1,7 +1,7 @@
 // Without this control the funnel half of the split is a promise the app
-// cannot keep: "Convert to funnel" says the page "gains multi-step ordering",
-// and until now nothing in the UI could add a second step. POST
-// /api/admin/funnels/steps has existed since 00202 with no caller.
+// cannot keep: the funnels screen presents a funnel as a multi-step sequence
+// the owner can grow, and until now nothing in the UI could add the step.
+// POST /api/admin/funnels/steps has existed since 00202 with no caller.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"

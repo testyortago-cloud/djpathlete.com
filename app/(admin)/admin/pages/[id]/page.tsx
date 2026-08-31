@@ -23,7 +23,7 @@ export default async function LandingPageDetail({ params }: { params: Promise<{ 
   // A LANDING PAGE HAS NO DETAIL SCREEN. The shared screen is a step list, and
   // a landing page is one step by definition, so this URL rendered a single
   // card repeating the one `/admin/pages` already shows. Its controls — go
-  // live, public URL, convert to funnel, delete — all moved onto that card, so
+  // live, public URL, delete — all moved onto that card, so
   // the list IS the screen and this address is only ever somewhere to pass
   // through: an old bookmark, an open tab, a link written before the split.
   //

@@ -5,8 +5,8 @@
 // POST /api/admin/funnels/steps has existed since 00202 with no caller, and its
 // own comment says the funnel/step split is pointless without it. That was
 // survivable while every funnel held exactly one page. It stopped being
-// survivable when "Convert to funnel" started telling the owner their page
-// "gains multi-step ordering" — a sentence the app could not honour.
+// survivable once the funnels screen presented funnels as multi-step
+// sequences the owner could grow — with no way in the UI to add the step.
 
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
