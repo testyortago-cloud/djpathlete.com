@@ -52,11 +52,17 @@ export function buildAlreadySelectedSection(picked: PickedExercise[]): string {
 }
 
 /**
- * How many days may be selected concurrently after the first. Bounded because
- * every day is a large model call: too many at once trades a timeout for rate
- * limiting, and `callAgent`'s retry then spends the wall-clock we just saved.
+ * How many days may be selected concurrently after the first. 6 covers a whole
+ * training week in one round, so a 6-day week costs two rounds rather than
+ * three — measured 267s at 6 vs 325s at 4 on the same shape, with no rate
+ * limiting across three runs. Still bounded: every day is a large model call,
+ * and too many at once trades a timeout for 429s, which `callAgent`'s retry
+ * then pays for in the wall-clock we were trying to save.
+ *
+ * Tunable per-environment via the `ai_day_selection_concurrency` system
+ * setting — lower it if the shared Anthropic quota starts returning 429s.
  */
-export const DEFAULT_DAY_CONCURRENCY = 4
+export const DEFAULT_DAY_CONCURRENCY = 6
 
 /**
  * Groups day indexes into the rounds they should run in.
