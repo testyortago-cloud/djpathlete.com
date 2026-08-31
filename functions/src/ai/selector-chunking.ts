@@ -51,6 +51,41 @@ export function buildAlreadySelectedSection(picked: PickedExercise[]): string {
   )
 }
 
+/**
+ * How many days may be selected concurrently after the first. 6 covers a whole
+ * training week in one round, so a 6-day week costs two rounds rather than
+ * three — measured 267s at 6 vs 325s at 4 on the same shape, with no rate
+ * limiting across three runs. Still bounded: every day is a large model call,
+ * and too many at once trades a timeout for 429s, which `callAgent`'s retry
+ * then pays for in the wall-clock we were trying to save.
+ *
+ * Tunable per-environment via the `ai_day_selection_concurrency` system
+ * setting — lower it if the shared Anthropic quota starts returning 429s.
+ */
+export const DEFAULT_DAY_CONCURRENCY = 6
+
+/**
+ * Groups day indexes into the rounds they should run in.
+ *
+ * The first day always runs on its own. Two reasons, both load-bearing:
+ * writing the shared prompt-cache prefix once means every later day reads it
+ * instead of paying for its own cache write, and the first day's picks seed the
+ * "already selected this week" AVOID list the parallel days share. The rest run
+ * `concurrency` at a time.
+ *
+ * Sequential selection is what made a 6-day week miss its 450s budget on
+ * 2026-08-31 (Lea J Athlete, week 4, died on day 4 of 6).
+ */
+export function planDayBatches(dayCount: number, concurrency: number): number[][] {
+  if (dayCount <= 0) return []
+  const batches: number[][] = [[0]]
+  const step = Math.max(1, concurrency)
+  for (let i = 1; i < dayCount; i += step) {
+    batches.push(Array.from({ length: Math.min(step, dayCount - i) }, (_, k) => i + k))
+  }
+  return batches
+}
+
 /** Concatenate per-day results into one week-shaped assignment. */
 export function mergeAssignments(chunks: ExerciseAssignment[]): ExerciseAssignment {
   return {

@@ -48,11 +48,13 @@ import {
 } from "./shared-helpers.js"
 import type { ProfileAnalysis } from "./types.js"
 import {
+  DEFAULT_DAY_CONCURRENCY,
   SELECTOR_CHUNK_THRESHOLD,
   buildAlreadySelectedSection,
   dayLabel,
   dayScopedSkeleton,
   mergeAssignments,
+  planDayBatches,
   shouldChunkSelector,
   type PickedExercise,
 } from "./selector-chunking.js"
@@ -1151,28 +1153,57 @@ Output the JSON for this single target week. technique_plan and difficulty_ceili
       `[week-orchestrator] ${totalSlots} slots > ${SELECTOR_CHUNK_THRESHOLD} — chunking the selector across ${selectionWeek.days.length} days`,
     )
     const nameById = new Map(filtered.map((e) => [e.id, e.name] as const))
+    const days = selectionWeek.days
     const picked: PickedExercise[] = []
-    const chunks: ExerciseAssignment[] = []
-    for (let i = 0; i < selectionWeek.days.length; i++) {
-      const day = selectionWeek.days[i]
-      const label = `${dayLabel(day.day_of_week)} (day ${i + 1} of ${selectionWeek.days.length})`
+    const chunkByDay = new Array<ExerciseAssignment>(days.length)
+
+    // Days after the first run concurrently. They are independent model calls —
+    // the only thing the sequential version gave them was each other's picks in
+    // the AVOID list, and within-week duplicates are already verified after the
+    // merge and repaired by dedupAssignmentsInPlace. Trading that hint for a
+    // ~3x shorter wall-clock is what keeps a 5-6 day week inside its budget.
+    const concurrency = Math.max(
+      1,
+      await getSetting<number>("ai_day_selection_concurrency", DEFAULT_DAY_CONCURRENCY),
+    )
+    const batches = planDayBatches(days.length, concurrency)
+    console.log(
+      `[week-orchestrator] Selecting ${days.length} days in ${batches.length} round(s) (concurrency ${concurrency})`,
+    )
+
+    for (const batch of batches) {
+      const labels = batch.map((i) => `${dayLabel(days[i].day_of_week)} (day ${i + 1} of ${days.length})`)
       await updateJobProgress(
         "selecting_exercises",
         4,
-        `Selecting exercises — ${label}, ${day.slots.length} slots`,
+        batch.length === 1
+          ? `Selecting exercises — ${labels[0]}, ${days[batch[0]].slots.length} slots`
+          : `Selecting exercises — ${labels.length} days at once (${labels.map((l) => l.split(" (")[0]).join(", ")})`,
       )
-      const scoped = dayScopedSkeleton(skeleton, day)
-      const chunk = await runSelectorPass(scoped, scoped.weeks[0], buildAlreadySelectedSection(picked), label)
-      chunks.push(chunk)
-      for (const a of chunk.assignments) {
-        picked.push({
-          exercise_id: a.exercise_id,
-          exercise_name: nameById.get(a.exercise_id) ?? null,
-          day_of_week: day.day_of_week,
-        })
-      }
+
+      // Snapshot the AVOID list once per round: every day in a round starts
+      // from the same known picks, and none can see its own round-mates.
+      const alreadySection = buildAlreadySelectedSection(picked)
+      const results = await Promise.all(
+        batch.map((dayIndex, k) => {
+          const scoped = dayScopedSkeleton(skeleton, days[dayIndex])
+          return runSelectorPass(scoped, scoped.weeks[0], alreadySection, labels[k])
+        }),
+      )
+
+      batch.forEach((dayIndex, k) => {
+        chunkByDay[dayIndex] = results[k]
+        for (const a of results[k].assignments) {
+          picked.push({
+            exercise_id: a.exercise_id,
+            exercise_name: nameById.get(a.exercise_id) ?? null,
+            day_of_week: days[dayIndex].day_of_week,
+          })
+        }
+      })
     }
-    assignment = mergeAssignments(chunks)
+
+    assignment = mergeAssignments(chunkByDay)
   } else {
     assignment = await runSelectorPass(skeleton, skeleton.weeks[0], "", "")
   }

@@ -186,4 +186,94 @@ describe("handleAiJobCompleted", () => {
     await handleAiJobCompleted(event as never)
     expect(mocks.set).not.toHaveBeenCalled()
   })
+
+  // ── Program-generation continuation chain ──────────────────────────────────
+  // A full program is generated one week per invocation (540s ceiling), so the
+  // orchestrator hands the weeks it could not reach to week_generation jobs
+  // that chain themselves. See ai/generation-continuation.ts.
+
+  const continuationJob = (completedWeek: number, finalWeek: number) => ({
+    type: "week_generation",
+    status: "completed",
+    input: {
+      request: {
+        program_id: "prog-1",
+        client_id: "client-1",
+        admin_instructions: "12 exercises, 5 days",
+        target_week_number: completedWeek,
+        pool_exercise_ids: null,
+        pool_mode: "preferred",
+        ignore_profile: false,
+      },
+      requestedBy: "coach-1",
+      // Nulled on every intermediate link; the durable address lives on the
+      // continuation block below.
+      notify_email: null,
+      continuation: {
+        final_week: finalWeek,
+        origin: "program_generation",
+        origin_log_id: "log-1",
+        notify_email: "coach@example.com",
+      },
+    },
+    result: { new_week_number: completedWeek, exercises_added: 60 },
+    userId: "user-7",
+  })
+
+  it("enqueues the next week when a continuation week completes", async () => {
+    const event = makeEvent({ type: "week_generation", status: "processing" }, continuationJob(2, 4))
+    await handleAiJobCompleted(event as never)
+
+    expect(mocks.set).toHaveBeenCalledTimes(1)
+    const written = mocks.set.mock.calls[0][0] as {
+      type: string
+      input: { request: Record<string, unknown>; notify_email: string | null }
+    }
+    expect(written.type).toBe("week_generation")
+    expect(written.input.request.target_week_number).toBe(3)
+    expect(written.input.request.program_id).toBe("prog-1")
+    // The coach's instructions must survive every link or later weeks drift.
+    expect(written.input.request.admin_instructions).toBe("12 exercises, 5 days")
+  })
+
+  it("stops the chain after the final week", async () => {
+    const event = makeEvent({ type: "week_generation", status: "processing" }, continuationJob(4, 4))
+    await handleAiJobCompleted(event as never)
+    expect(mocks.set).not.toHaveBeenCalled()
+  })
+
+  it("emails only on the final week of the chain", async () => {
+    // Week 3 of 4 is queued silently...
+    await handleAiJobCompleted(
+      makeEvent({ type: "week_generation", status: "processing" }, continuationJob(2, 4)) as never,
+    )
+    expect((mocks.set.mock.calls[0][0] as { input: { notify_email: string | null } }).input.notify_email).toBeNull()
+
+    mocks.set.mockClear()
+    // ...and week 4 of 4 carries the address.
+    await handleAiJobCompleted(
+      makeEvent({ type: "week_generation", status: "processing" }, continuationJob(3, 4)) as never,
+    )
+    expect((mocks.set.mock.calls[0][0] as { input: { notify_email: string | null } }).input.notify_email).toBe(
+      "coach@example.com",
+    )
+  })
+
+  it("does NOT chain an ordinary week_generation job the coach ran by hand", async () => {
+    // No continuation block — this is the "generate week" button, which must
+    // stay a single week and never start queueing more.
+    const job = continuationJob(2, 4) as { input: Record<string, unknown> }
+    delete job.input.continuation
+    const event = makeEvent({ type: "week_generation", status: "processing" }, job)
+    await handleAiJobCompleted(event as never)
+    expect(mocks.set).not.toHaveBeenCalled()
+  })
+
+  it("does NOT chain when the completed week is missing from the result", async () => {
+    const job = continuationJob(2, 4) as { result: Record<string, unknown> }
+    job.result = { exercises_added: 0 }
+    const event = makeEvent({ type: "week_generation", status: "processing" }, job)
+    await handleAiJobCompleted(event as never)
+    expect(mocks.set).not.toHaveBeenCalled()
+  })
 })

@@ -3,6 +3,21 @@ import { getDatabase } from "firebase-admin/database"
 import { generateProgramSync } from "./ai/orchestrator.js"
 import type { AiGenerationRequest, AssessmentContext } from "./ai/orchestrator.js"
 import { notifyJobCompleted, notifyJobFailed } from "./lib/notify-job-done.js"
+import { createDeadline, DeadlineExceededError } from "./lib/deadline.js"
+
+/**
+ * Wall-clock budget for the orchestration, strictly inside the function's
+ * `timeoutSeconds` (540s — the hard Eventarc ceiling for event-triggered gen2
+ * functions; see index.ts programGeneration). The ~90s gap leaves live
+ * container time to record the outcome and email the coach; a hard platform
+ * kill skips all of that and wedges the job in "processing" forever.
+ *
+ * A program is built one week at a time and cannot be finished in one
+ * invocation past ~3 weeks, so blowing this budget is NOT a failure: the
+ * orchestrator saves every week it finished and queues the rest (see
+ * ai/generation-continuation.ts).
+ */
+const PROGRAM_GENERATION_BUDGET_MS = 450_000 // 7.5 min
 
 /** Write real-time status to RTDB so the client can listen for instant updates */
 async function updateRtdb(jobId: string, data: Record<string, unknown>) {
@@ -49,6 +64,8 @@ export async function handleProgramGeneration(jobId: string): Promise<void> {
     notify_email?: string | null
   }
 
+  const deadline = createDeadline(PROGRAM_GENERATION_BUDGET_MS, "Program generation")
+
   try {
     console.log(`[program-generation] Starting for job ${jobId}`)
     const result = await generateProgramSync(
@@ -57,6 +74,9 @@ export async function handleProgramGeneration(jobId: string): Promise<void> {
       input.assessmentContext,
       input.logId,
       jobId,
+      undefined,
+      deadline,
+      input.notify_email ?? null,
     )
 
     const resultPayload = {
@@ -71,6 +91,7 @@ export async function handleProgramGeneration(jobId: string): Promise<void> {
       token_usage: result.token_usage,
       duration_ms: result.duration_ms,
       retries: result.retries,
+      partial: result.partial ?? null,
     }
 
     // Write result to Firestore (permanent record)
@@ -84,6 +105,28 @@ export async function handleProgramGeneration(jobId: string): Promise<void> {
     await updateRtdb(jobId, { status: "completed", result: resultPayload })
 
     console.log(`[program-generation] Job ${jobId} completed — program_id: ${result.program_id}`)
+
+    // A partial run emails nothing here: the continuation chain is still
+    // building the remaining weeks and its last link sends the one "ready"
+    // message. Two emails for one program reads as a bug to the coach.
+    if (result.partial) {
+      console.log(
+        `[program-generation] Job ${jobId} saved ${result.partial.weeks_completed}/${result.partial.total_weeks} weeks; week ${result.partial.next_week} continues as job ${result.partial.continuation_job_id ?? "NONE"}`,
+      )
+      if (!result.partial.continuation_job_id) {
+        // The chain never started, so nothing else will finish this program or
+        // tell the coach about it. This is the one partial case worth an email.
+        await notifyJobFailed({
+          notify_email: input.notify_email,
+          programId: result.program_id,
+          jobLabel: "Full program",
+          error:
+            `Saved weeks 1-${result.partial.weeks_completed} of ${result.partial.total_weeks}, but the follow-up job could not be queued. ` +
+            `Open the program and use "Generate week" from week ${result.partial.next_week} to finish it.`,
+        })
+      }
+      return
+    }
 
     await notifyJobCompleted({
       notify_email: input.notify_email,
@@ -108,7 +151,14 @@ export async function handleProgramGeneration(jobId: string): Promise<void> {
       ],
     })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error"
+    let errorMessage = error instanceof Error ? error.message : "Unknown error"
+    // Reaching here with a blown budget means not even the first week finished,
+    // so nothing was saved. Say what the coach can actually change.
+    if (error instanceof DeadlineExceededError) {
+      errorMessage +=
+        " No week could be completed, so nothing was saved. Retry with fewer" +
+        " exercises per session, fewer sessions per week, or a smaller exercise pool."
+    }
     console.error(`[program-generation] Job ${jobId} failed:`, errorMessage)
 
     await jobRef.update({
@@ -126,5 +176,9 @@ export async function handleProgramGeneration(jobId: string): Promise<void> {
       jobLabel: "Full program",
       error: errorMessage,
     })
+  } finally {
+    // Release the timer on every path — a live timer could otherwise abort a
+    // reused container's next invocation.
+    deadline.dispose()
   }
 }

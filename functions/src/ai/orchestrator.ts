@@ -44,6 +44,12 @@ import {
   type WeekAssignment,
 } from "./dedup-verify.js"
 import { retrieveSimilarContext, formatRagContext, buildRagAugmentedPrompt, embedConversationMessage } from "./rag.js"
+import { isAbortError, type Deadline } from "../lib/deadline.js"
+import {
+  buildWeekContinuationInput,
+  canFitAnotherWeek,
+  type ContinuationMeta,
+} from "./generation-continuation.js"
 import { getSupabase } from "../lib/supabase.js"
 import { getSetting } from "../lib/system-settings.js"
 import {
@@ -149,9 +155,57 @@ async function createGenerationLog(params: Record<string, unknown>) {
   return data
 }
 
+async function updateProgram(id: string, updates: Record<string, unknown>) {
+  const supabase = getSupabase()
+  const { error } = await supabase.from("programs").update(updates).eq("id", id)
+  if (error) throw new Error(`Failed to update program: ${error.message}`)
+}
+
 async function updateGenerationLog(id: string, updates: Record<string, unknown>) {
   const supabase = getSupabase()
   await supabase.from("ai_generation_log").update(updates).eq("id", id)
+}
+
+/**
+ * Queues the first link of the continuation chain — the next unbuilt week.
+ * Never throws: the weeks already generated are saved either way, and losing
+ * the follow-up job must degrade to "coach finishes it by hand", not to
+ * "the whole run reports failure".
+ */
+async function enqueueWeekContinuation(
+  seed: Parameters<typeof buildWeekContinuationInput>[0],
+  targetWeek: number,
+  continuation: ContinuationMeta,
+  requestedBy: string,
+  userId: string | null,
+  parentJobId: string | null,
+): Promise<string | null> {
+  try {
+    const { getFirestore, FieldValue } = await import("firebase-admin/firestore")
+    const db = getFirestore()
+    const jobRef = db.collection("ai_jobs").doc()
+    await jobRef.set({
+      type: "week_generation",
+      status: "pending",
+      input: buildWeekContinuationInput(seed, targetWeek, continuation, requestedBy),
+      result: null,
+      error: null,
+      userId,
+      parentJobId,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    })
+    console.log(
+      `[orchestrator:sync] Queued continuation week ${targetWeek}/${continuation.final_week} as job ${jobRef.id}`,
+    )
+    return jobRef.id
+  } catch (e) {
+    console.error(
+      "[orchestrator:sync] Failed to queue continuation job:",
+      e instanceof Error ? e.message : e,
+    )
+    return null
+  }
 }
 
 async function saveConversationBatch(messages: Array<Record<string, unknown>>) {
@@ -176,6 +230,16 @@ export async function generateProgramSync(
   existingLogId?: string,
   firebaseJobId?: string,
   onProgress?: PipelineProgressCallback,
+  /**
+   * Optional wall-clock budget. When supplied, every model call is abortable,
+   * each expensive stage is gated on the time left, and a run that cannot build
+   * every week stops cleanly and hands the rest to a continuation chain rather
+   * than being hard-killed with all its work discarded (see lib/deadline.ts and
+   * ai/generation-continuation.ts).
+   */
+  deadline?: Deadline,
+  /** Address for the single "your program is ready" email at the end of a chain. */
+  notifyEmail?: string | null,
 ): Promise<OrchestrationResult> {
   console.log("[orchestrator:sync] Starting generateProgramSync", {
     client_id: request.client_id ?? "none",
@@ -344,11 +408,13 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     await onProgress?.("Analyzing client profile", 1, 5)
     console.log("[orchestrator:sync] Running Agent 1 + exercise fetch...")
     const favoritesEnabled = await getSetting<boolean>("exercise_favorites_ai_enabled", true)
+    deadline?.assertLive("profile analyzer")
     const [agent1Result, allExercises, coachUsage, clientUsage, favoriteIds, instructionIntent, blockedIds] =
       await Promise.all([
       callAgent<ProfileAnalysis>(augmentedAgent1Prompt, agent1UserMessage, profileAnalysisSchema, {
         model: MODEL_SONNET,
         cacheSystemPrompt: true,
+        signal: deadline?.signal,
       }),
       getExercisesForAI(),
       getCoachRecentUsageFromFn(requestedBy, 60).catch((e) => {
@@ -534,11 +600,12 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     const agent2UserMessage = `Profile Analysis:\n${JSON.stringify(analysis)}\n\nTraining Parameters:\n- Duration: ${request.duration_weeks} weeks\n- Sessions per week: ${request.sessions_per_week}\n- Session length: ${request.session_minutes ?? 60} minutes\n- Split type: ${analysis.recommended_split}\n- Periodization: ${analysis.recommended_periodization}\n- Goals: ${request.goals.join(", ")}${coachInstructionsSection}${buildPoolPatternSection(compressed, poolActive)}`
 
     console.log("[orchestrator:sync] Running Agent 2 (program architect)...")
+    deadline?.assertLive("program architect")
     const agent2Result = await callAgent<ProgramSkeleton>(
       PROGRAM_ARCHITECT_PROMPT,
       agent2UserMessage,
       programSkeletonSchema,
-      { model: MODEL_OPUS, cacheSystemPrompt: true },
+      { model: MODEL_OPUS, cacheSystemPrompt: true, signal: deadline?.signal },
     )
     tokenUsage.agent2 = agent2Result.tokens_used
     tokenUsage.cache_creation += agent2Result.cache_creation_tokens ?? 0
@@ -685,7 +752,73 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     // Build an exercise ID set for quick lookup to strip hallucinated IDs
     const exerciseIdSet = new Set(compressed.map((e) => e.id))
 
-    for (const week of skeleton.weeks) {
+    // ── Incremental persistence ────────────────────────────────────────────
+    // Every finished week is written to the program as soon as it lands, and
+    // the program row itself is created on the first one. Before this, the
+    // program was only created after the LAST week, so a run that ran out of
+    // time — routine past ~3 weeks against the 540s ceiling — threw away every
+    // week it had already paid for. See ai/generation-continuation.ts.
+    const { slotLookup, slotDetailsLookup } = buildSlotLookups(skeleton.weeks)
+    const weekDurationsMs: number[] = []
+    let createdProgramId: string | null = null
+    let budgetExhausted = false
+
+    const programCategory = deriveProgramCategory(request.goals)
+    const programDifficulty = mapDifficulty(profile?.experience_level ?? null)
+    const goalsLabel = request.goals
+      .map((g) => g.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()))
+      .join(" & ")
+    const splitLabel = skeleton.split_type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    const programName = request.client_id
+      ? `${clientName}'s ${request.duration_weeks}-Week ${goalsLabel} Program`
+      : `${request.duration_weeks}-Week ${goalsLabel} Program`
+
+    // Created lazily, on the first week that actually produced exercises, so a
+    // failure or cancellation before then still leaves no empty shell program
+    // in the coach's list — exactly as it behaved before.
+    async function ensureProgram(): Promise<string> {
+      if (createdProgramId) return createdProgramId
+      const created = await createProgram({
+        name: programName,
+        description: `A ${request.duration_weeks}-week ${splitLabel.toLowerCase()} program designed for ${goalsLabel.toLowerCase()}, training ${request.sessions_per_week}x per week. ${skeleton.notes}`,
+        category: [programCategory],
+        difficulty: programDifficulty,
+        tier: request.tier ?? "premium",
+        duration_weeks: request.duration_weeks,
+        sessions_per_week: request.sessions_per_week,
+        split_type: skeleton.split_type,
+        periodization: skeleton.periodization,
+        is_public: request.is_public ?? false,
+        is_ai_generated: true,
+        // Validation and token totals are only known once the run ends; the
+        // final update below rewrites this whole object.
+        ai_generation_params: {
+          request,
+          generation_state: { status: "in_progress", total_weeks: skeleton.weeks.length },
+        },
+        is_active: true,
+        created_by: requestedBy,
+        price_cents: request.price_cents ?? null,
+      })
+      createdProgramId = created.id as string
+      console.log(`[orchestrator:sync] Program ${createdProgramId} created — committing weeks as they finish`)
+      return createdProgramId
+    }
+
+    // Labelled so an abort raised deep in the retry loop can leave BOTH loops
+    // without discarding the weeks already committed.
+    let abortError: unknown = null
+    weekLoop: for (const week of skeleton.weeks) {
+      // Stop before starting a week there is no time to finish: a week aborted
+      // mid-flight costs its whole spend and produces nothing.
+      if (deadline && !canFitAnotherWeek(deadline.remainingMs(), weekDurationsMs)) {
+        console.log(
+          `[orchestrator:sync] Budget too short for week ${week.week_number} (${Math.round(deadline.remainingMs() / 1000)}s left) — handing the rest to a continuation chain`,
+        )
+        budgetExhausted = true
+        break
+      }
+      const weekStartedAt = Date.now()
       const weekNum = week.week_number
       const weekSkeleton = extractWeekSkeleton(skeleton.weeks, weekNum)
       if (!weekSkeleton) continue
@@ -767,13 +900,22 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         // Variable suffix — only present on retries (attempt > 0).
         const agent3VariableSuffix = `${feedbackSection}${dedupFeedback}${withinWeekFeedback}`.trim() || "Begin."
 
+        // Outside the model call: a spent budget must end the run, not become
+        // another attempt that cannot possibly finish.
+        try {
+          deadline?.assertLive(`exercise selector — week ${weekNum} (attempt ${attempt + 1}/${MAX_RETRIES + 1})`)
+        } catch (expired) {
+          abortError = expired
+          budgetExhausted = true
+          break weekLoop
+        }
         try {
           console.log(`[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1}/${MAX_RETRIES + 1}...`)
           const agent3Result: AgentCallResult<ExerciseAssignment> = await callAgent<ExerciseAssignment>(
             EXERCISE_SELECTOR_PROMPT,
             agent3VariableSuffix,
             exerciseAssignmentSchema,
-            { cacheSystemPrompt: true, cachedUserPrefix: agent3StablePrefix },
+            { cacheSystemPrompt: true, cachedUserPrefix: agent3StablePrefix, signal: deadline?.signal },
           )
           tokenUsage.agent3 += agent3Result.tokens_used
           tokenUsage.cache_creation += agent3Result.cache_creation_tokens ?? 0
@@ -882,6 +1024,15 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           console.log(`[orchestrator:sync] Week ${weekNum} retrying...`)
           retries++
         } catch (agentError) {
+          // An abort is terminal — retrying would spend wall-clock that is
+          // already gone, which is the exact failure the deadline prevents.
+          // Leave the whole loop so the weeks already committed are kept and
+          // the rest can be handed to a continuation chain.
+          if (isAbortError(agentError)) {
+            abortError = agentError
+            budgetExhausted = true
+            break weekLoop
+          }
           console.error(
             `[orchestrator:sync] Week ${weekNum} attempt ${attempt + 1} error:`,
             agentError instanceof Error ? agentError.message : agentError,
@@ -920,8 +1071,17 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
         )
       }
 
+      // Commit this week before starting the next one. Everything written here
+      // survives a later timeout, a crash, or a cancellation.
+      const weekProgramId = await ensureProgram()
+      const weekRows = buildExerciseRows(weekAssignment.assignments, slotLookup, slotDetailsLookup, weekProgramId)
+      await bulkAddExercisesToProgram(weekRows)
+
       completedWeeksSync.push({ week_number: weekNum, assignments: weekAssignment.assignments })
-      console.log(`[orchestrator:sync] Week ${weekNum} complete`)
+      weekDurationsMs.push(Date.now() - weekStartedAt)
+      console.log(
+        `[orchestrator:sync] Week ${weekNum} complete — ${weekRows.length} exercises saved in ${Math.round((Date.now() - weekStartedAt) / 1000)}s`,
+      )
 
       await updateJobProgress(
         "selecting_exercises",
@@ -931,17 +1091,32 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       await onProgress?.("Selecting exercises", 3, 5, `Week ${weekNum}/${skeleton.weeks.length} done`)
     }
 
+    // Ran out of time before a single week landed: nothing was saved, so this
+    // is an ordinary failure. Rethrow the original abort — it names the stage.
+    if (budgetExhausted && completedWeeksSync.length === 0) {
+      throw abortError ?? new Error("Program generation ran out of time before any week could be built")
+    }
+
     // Merge all week assignments
     const allAssignmentsSync = completedWeeksSync.flatMap((w) => w.assignments)
     const assignment: ExerciseAssignment = { assignments: allAssignmentsSync, substitution_notes: [] }
 
+    // Weeks the budget did not reach are continued in their own jobs, so
+    // validation and the dedup report must only cover what was actually built —
+    // measuring the full skeleton would report every unbuilt week as missing.
+    const builtWeekNumbers = new Set(completedWeeksSync.map((w) => w.week_number))
+    const isPartial = completedWeeksSync.length < skeleton.weeks.length
+    const builtSkeleton: ProgramSkeleton = isPartial
+      ? { ...skeleton, weeks: skeleton.weeks.filter((w) => builtWeekNumbers.has(w.week_number)) }
+      : skeleton
+
     // Full-program dedup report
-    const syncRepetitionReport = analyzeFullProgramRepetition(completedWeeksSync, skeleton.weeks)
+    const syncRepetitionReport = analyzeFullProgramRepetition(completedWeeksSync, builtSkeleton.weeks)
     console.log(`[orchestrator:sync] Full program repetition: ${syncRepetitionReport.summary}`)
 
     // Full-program validation
     const validation = validateProgram(
-      skeleton,
+      builtSkeleton,
       assignment,
       analysis,
       compressed,
@@ -1000,28 +1175,60 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       `${assignment.assignments.length} exercises — ${validation.pass ? "all checks passed" : `${finalWarnings.length} warnings`}`,
     )
 
-    // Create program
-    const programCategory = deriveProgramCategory(request.goals)
-    const programDifficulty = mapDifficulty(profile?.experience_level ?? null)
-    const goalsLabel = request.goals
-      .map((g) => g.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()))
-      .join(" & ")
-    const splitLabel = skeleton.split_type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    // The program and every finished week are already saved — the loop commits
+    // as it goes. All that remains is stamping the run's verdict onto the row.
+    const program = { id: await ensureProgram() }
 
-    const program = await createProgram({
-      name: request.client_id
-        ? `${clientName}'s ${request.duration_weeks}-Week ${goalsLabel} Program`
-        : `${request.duration_weeks}-Week ${goalsLabel} Program`,
-      description: `A ${request.duration_weeks}-week ${splitLabel.toLowerCase()} program designed for ${goalsLabel.toLowerCase()}, training ${request.sessions_per_week}x per week. ${skeleton.notes}`,
-      category: [programCategory],
-      difficulty: programDifficulty,
-      tier: request.tier ?? "premium",
-      duration_weeks: request.duration_weeks,
-      sessions_per_week: request.sessions_per_week,
-      split_type: skeleton.split_type,
-      periodization: skeleton.periodization,
-      is_public: request.is_public ?? false,
-      is_ai_generated: true,
+    await updateJobProgress("saving_program", 7, `Saving program with ${assignment.assignments.length} exercises`)
+    await onProgress?.("Saving program", 5, 5)
+
+    // Hand any weeks the budget did not reach to a chain of week_generation
+    // jobs, each getting its own fresh 540s (see ai/generation-continuation.ts).
+    let partial: OrchestrationResult["partial"]
+    if (isPartial) {
+      const lastBuiltWeek = Math.max(...completedWeeksSync.map((w) => w.week_number))
+      const nextWeek = lastBuiltWeek + 1
+      // Never point a continuation past the program's own length: the week
+      // orchestrator only FILLS a week within duration_weeks and would append a
+      // brand-new week beyond it.
+      const finalWeek = Math.min(skeleton.weeks.length, request.duration_weeks)
+      const continuation: ContinuationMeta = {
+        final_week: finalWeek,
+        origin: "program_generation",
+        origin_job_id: firebaseJobId ?? null,
+        origin_log_id: log.id,
+        notify_email: notifyEmail ?? null,
+      }
+      const continuationJobId =
+        nextWeek <= finalWeek
+          ? await enqueueWeekContinuation(
+              {
+                program_id: program.id,
+                client_id: request.client_id ?? null,
+                admin_instructions: combinedInstructions || null,
+                pool_exercise_ids: request.pool_exercise_ids ?? null,
+                pool_mode: request.pool_mode ?? "preferred",
+                ignore_profile: request.ignore_profile ?? false,
+              },
+              nextWeek,
+              continuation,
+              requestedBy,
+              requestedBy,
+              firebaseJobId ?? null,
+            )
+          : null
+      partial = {
+        weeks_completed: completedWeeksSync.length,
+        total_weeks: skeleton.weeks.length,
+        next_week: nextWeek,
+        continuation_job_id: continuationJobId,
+      }
+      console.log(
+        `[orchestrator:sync] Partial run: ${completedWeeksSync.length}/${skeleton.weeks.length} weeks saved; week ${nextWeek} queued as ${continuationJobId ?? "NOTHING (enqueue failed)"}`,
+      )
+    }
+
+    await updateProgram(program.id, {
       ai_generation_params: {
         request,
         analysis_summary: {
@@ -1037,21 +1244,14 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
           issues: validation.issues,
         },
         token_usage: tokenUsage,
+        generation_state: {
+          status: isPartial ? "continuing" : "complete",
+          weeks_completed: completedWeeksSync.length,
+          total_weeks: skeleton.weeks.length,
+          ...(partial ? { next_week: partial.next_week, continuation_job_id: partial.continuation_job_id } : {}),
+        },
       },
-      is_active: true,
-      created_by: requestedBy,
-      price_cents: request.price_cents ?? null,
     })
-
-    // Insert exercises
-    const { slotLookup, slotDetailsLookup } = buildSlotLookups(skeleton.weeks)
-
-    await updateJobProgress("saving_program", 7, `Saving program with ${assignment.assignments.length} exercises`)
-    await onProgress?.("Saving program", 5, 5)
-
-    const exerciseRows = buildExerciseRows(assignment.assignments, slotLookup, slotDetailsLookup, program.id)
-
-    await bulkAddExercisesToProgram(exerciseRows)
 
     // Update log
     const durationMs = Date.now() - startTime
@@ -1067,11 +1267,21 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       completed_at: new Date().toISOString(),
       output_summary: {
         program_id: program.id,
-        program_name: program.name,
+        program_name: programName,
         exercises_assigned: assignment.assignments.length,
         validation_pass: validation.pass,
         warnings: validation.issues.filter((i) => i.type === "warning").length,
         retries,
+        // A partial run IS a success: the weeks below are saved and the rest are
+        // queued. Recorded so the log can be told apart from a complete run.
+        ...(partial
+          ? {
+              partial: true,
+              weeks_completed: partial.weeks_completed,
+              total_weeks: partial.total_weeks,
+              continuation_job_id: partial.continuation_job_id,
+            }
+          : {}),
         cache_creation_tokens: tokenUsage.cache_creation,
         cache_read_tokens: tokenUsage.cache_read,
         // What the coach's instructions actually did to the candidate library.
@@ -1096,8 +1306,8 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
     )
 
     // Record exercise usage for future variety enforcement (fire-and-forget, never blocks)
-    const programId = program.id
-    if (programId) {
+    const usageProgramId = program.id
+    if (usageProgramId) {
       const slotToDayMap = new Map<string, number>()
       for (const week of skeleton.weeks) {
         for (const day of week.days) {
@@ -1114,14 +1324,14 @@ IMPORTANT: Only select exercises with difficulty_score <= ${assessmentContext.ma
       recordUsageFromFn({
         coach_id: requestedBy,
         client_id: request.client_id ?? null,
-        program_id: programId,
+        program_id: usageProgramId,
         rows: usageRows,
       }).catch((e) =>
         console.warn("[orchestrator:sync] recordUsage failed (non-blocking):", e instanceof Error ? e.message : e),
       )
     }
 
-    return { program_id: program.id, validation, token_usage: tokenUsage, duration_ms: durationMs, retries }
+    return { program_id: program.id, validation, token_usage: tokenUsage, duration_ms: durationMs, retries, partial }
   } catch (error) {
     const durationMs = Date.now() - startTime
     tokenUsage.total = tokenUsage.agent1 + tokenUsage.agent2 + tokenUsage.agent3
