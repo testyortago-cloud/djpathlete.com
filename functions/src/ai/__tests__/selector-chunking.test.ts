@@ -6,6 +6,7 @@ import {
   dayScopedSkeleton,
   mergeAssignments,
   shouldChunkSelector,
+  planDayBatches,
 } from "../selector-chunking.js"
 
 describe("shouldChunkSelector", () => {
@@ -78,5 +79,39 @@ describe("dayLabel", () => {
     expect(dayLabel(1)).toBe("Monday")
     expect(dayLabel(7)).toBe("Sunday")
     expect(dayLabel(9)).toBe("Day 9")
+  })
+})
+
+describe("planDayBatches", () => {
+  it("runs the first day alone, then the rest together", () => {
+    // Day 1 alone is deliberate: it writes the shared prompt-cache prefix that
+    // every later day reads, and its picks seed the cross-day AVOID list. Firing
+    // all six at once would miss the cache six times and cost six cache writes.
+    expect(planDayBatches(6, 8)).toEqual([[0], [1, 2, 3, 4, 5]])
+  })
+
+  it("splits the parallel remainder to respect the concurrency cap", () => {
+    expect(planDayBatches(6, 2)).toEqual([[0], [1, 2], [3, 4], [5]])
+  })
+
+  it("degrades to fully sequential at concurrency 1", () => {
+    expect(planDayBatches(4, 1)).toEqual([[0], [1], [2], [3]])
+  })
+
+  it("handles a single day", () => {
+    expect(planDayBatches(1, 4)).toEqual([[0]])
+  })
+
+  it("returns nothing for no days rather than an empty batch", () => {
+    expect(planDayBatches(0, 4)).toEqual([])
+  })
+
+  it("never drops or duplicates a day", () => {
+    for (const days of [2, 3, 5, 7]) {
+      for (const cap of [1, 2, 3, 8]) {
+        const flat = planDayBatches(days, cap).flat()
+        expect([...flat].sort((a, b) => a - b)).toEqual(Array.from({ length: days }, (_, i) => i))
+      }
+    }
   })
 })

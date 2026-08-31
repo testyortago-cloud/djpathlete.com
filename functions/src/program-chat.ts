@@ -11,7 +11,21 @@ import {
   embedConversationMessage,
 } from "./ai/rag.js"
 import { getSupabase } from "./lib/supabase.js"
+import { createDeadline } from "./lib/deadline.js"
 import pRetry from "p-retry"
+
+/**
+ * Wall-clock budget for one chat turn, strictly inside the function's 540s
+ * `timeoutSeconds` (see index.ts programChat). It starts when the turn does, so
+ * by the time the coach's "build it" lands on generate_program the budget
+ * already reflects the conversation that preceded it.
+ *
+ * Before this, a generation started from chat had no budget at all: the two
+ * runs on 2026-08-24 were hard-killed at 540s mid-generation, the catch block
+ * never ran, and the job sat in "streaming" until the stale-job reaper marked
+ * it failed 45 minutes later. Every completed week was discarded.
+ */
+const PROGRAM_CHAT_BUDGET_MS = 450_000 // 7.5 min
 
 // ─── Transient error detection ────────────────────────────────────────────────
 
@@ -301,6 +315,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
   const startTime = Date.now()
   const userId = input.userId
   const sessionId = input.session_id ?? `program-chat-${userId}-${Date.now()}`
+  const deadline = createDeadline(PROGRAM_CHAT_BUDGET_MS, "Program generation")
 
   try {
     const recentMessages = input.messages.slice(-20)
@@ -555,13 +570,41 @@ export async function handleProgramChat(jobId: string): Promise<void> {
                 }
 
                 try {
-                  const genResult = await generateProgramSync(args, userId, undefined, undefined, jobId, onProgress)
+                  const genResult = await generateProgramSync(
+                    args,
+                    userId,
+                    undefined,
+                    undefined,
+                    jobId,
+                    onProgress,
+                    deadline,
+                    null,
+                  )
+                  // A partial run saved real weeks and queued the rest. Say so
+                  // plainly — the model relays this to the coach, and "created
+                  // successfully" would be a lie about a half-built program.
+                  const partialSummary = genResult.partial
+                    ? `Weeks 1-${genResult.partial.weeks_completed} of ${genResult.partial.total_weeks} are built and saved. ` +
+                      `The remaining weeks are being generated in the background, starting at week ${genResult.partial.next_week}` +
+                      (genResult.partial.continuation_job_id
+                        ? "; they will appear on the program as each one finishes."
+                        : ", but the follow-up job could not be queued — use “Generate week” on the program to finish it.")
+                    : null
+
                   toolResult = {
                     success: true,
                     program_id: genResult.program_id,
                     validation_pass: genResult.validation.pass,
                     duration_ms: genResult.duration_ms,
-                    summary: `Program created successfully (${genResult.duration_ms}ms).`,
+                    ...(genResult.partial
+                      ? {
+                          partial: true,
+                          weeks_completed: genResult.partial.weeks_completed,
+                          total_weeks: genResult.partial.total_weeks,
+                          next_week: genResult.partial.next_week,
+                        }
+                      : {}),
+                    summary: partialSummary ?? `Program created successfully (${genResult.duration_ms}ms).`,
                   }
 
                   await chunksRef.doc(String(chunkIndex++).padStart(6, "0")).set({
@@ -571,6 +614,7 @@ export async function handleProgramChat(jobId: string): Promise<void> {
                       programId: genResult.program_id,
                       validationPass: genResult.validation.pass,
                       durationMs: genResult.duration_ms,
+                      partial: genResult.partial ?? null,
                     },
                     createdAt: FieldValue.serverTimestamp(),
                   })
@@ -741,5 +785,9 @@ export async function handleProgramChat(jobId: string): Promise<void> {
       error: errorMessage,
       updatedAt: FieldValue.serverTimestamp(),
     })
+  } finally {
+    // Release the timer on every path — a live timer could otherwise abort a
+    // reused container's next invocation.
+    deadline.dispose()
   }
 }

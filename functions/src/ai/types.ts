@@ -171,6 +171,20 @@ export interface OrchestrationResult {
   }
   duration_ms: number
   retries: number
+  /**
+   * Present when the run ran out of wall-clock before every planned week was
+   * built. The weeks listed as done ARE saved on the program; the rest were
+   * handed to a chain of week_generation jobs (see ai/generation-continuation.ts).
+   * Absent on a run that finished everything in one invocation.
+   */
+  partial?: {
+    weeks_completed: number
+    total_weeks: number
+    /** First week the continuation chain will build. */
+    next_week: number
+    /** Null when the follow-up job could not be queued. */
+    continuation_job_id: string | null
+  }
 }
 
 // ─── Database-adjacent types ────────────────────────────────────────────────
