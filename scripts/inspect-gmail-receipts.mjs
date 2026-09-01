@@ -17,6 +17,8 @@ const KEYS = [
   "bookkeeping_gmail_receipt_label",
   "bookkeeping_gmail_receipt_forwarders",
   "bookkeeping_gmail_receipt_forwarders_since",
+  "bookkeeping_gmail_receipt_query",
+  "bookkeeping_gmail_receipt_query_window_days",
   "bookkeeping_gmail_scannable_mimes",
   "bookkeeping_gmail_settled_message_ids",
   "bookkeeping_gmail_unreadable_message_ids",
