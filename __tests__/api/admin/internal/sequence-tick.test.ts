@@ -415,6 +415,38 @@ describe("POST /api/admin/internal/sequence-tick", () => {
       expect(markFailed).not.toHaveBeenCalled()
       expect(markSent).not.toHaveBeenCalled()
     })
+
+    it("reports the tick itself FAILED when the provider blocked it", async () => {
+      // Deferring instead of destroying fixes the damage but would remove the
+      // alarm with it. A batch half blocked by a provider misconfiguration is
+      // not a healthy tick, so it must reach automation-health-scanner.
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-rejected")])
+      ;(sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new SequenceSendError(
+          "sendSequenceEmail failed: The darrenjpaul.com domain is not verified.",
+          { providerErrorName: "validation_error", statusCode: 403 },
+        ),
+      )
+
+      await POST(makeRequest())
+
+      expect(logCronEnd).toHaveBeenCalledWith(
+        expect.anything(),
+        "run-1",
+        "failed",
+        expect.objectContaining({ message: expect.stringContaining("1 configuration fault") }),
+      )
+    })
+
+    it("still reports success when nothing was blocked", async () => {
+      // The presence control. Without it, the assertion above passes just as
+      // well for a route that marks EVERY tick failed.
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-ok")])
+
+      await POST(makeRequest())
+
+      expect(logCronEnd).toHaveBeenCalledWith(expect.anything(), "run-1", "success", expect.anything())
+    })
   })
 
   // Fix wave (Important 9). recordSend was handed action.step.subject /
