@@ -3,8 +3,14 @@ import {
   rowFromEmailDocument,
   SCAN_INCOMPLETE_MESSAGE,
   buildForwarderQuery,
+  buildReceiptQuery,
   bucketEmailReceiptRows,
   GMAIL_RECEIPT_FORWARDERS_KEY,
+  GMAIL_RECEIPT_QUERY_KEY,
+  GMAIL_RECEIPT_QUERY_WINDOW_KEY,
+  DEFAULT_GMAIL_RECEIPT_QUERY,
+  DEFAULT_GMAIL_RECEIPT_QUERY_WINDOW_DAYS,
+  MAX_GMAIL_RECEIPT_QUERY_WINDOW_DAYS,
 } from "@/lib/bookkeeping/email-receipts"
 import { newReceiptRow, type ReceiptBatchRow } from "@/lib/bookkeeping/receipt-batch"
 import type { BookkeepingAccount, BookkeepingDocument } from "@/types/database"
@@ -142,6 +148,57 @@ describe("buildForwarderQuery", () => {
 
   it("exports the settings key the migration seeds", () => {
     expect(GMAIL_RECEIPT_FORWARDERS_KEY).toBe("bookkeeping_gmail_receipt_forwarders")
+  })
+})
+
+describe("buildReceiptQuery", () => {
+  const D = DEFAULT_GMAIL_RECEIPT_QUERY_WINDOW_DAYS
+
+  it("appends the bounds the poller always applies to the coach's search", () => {
+    expect(buildReceiptQuery("subject:invoice", 45)).toBe(
+      "subject:invoice -in:sent -in:chats newer_than:45d",
+    )
+  })
+
+  it("returns null for a blank or non-string query so the source is simply off", () => {
+    expect(buildReceiptQuery("")).toBeNull()
+    expect(buildReceiptQuery("   ")).toBeNull()
+    expect(buildReceiptQuery(null)).toBeNull()
+    expect(buildReceiptQuery(undefined)).toBeNull()
+    expect(buildReceiptQuery(42)).toBeNull()
+    expect(buildReceiptQuery(["subject:invoice"])).toBeNull()
+  })
+
+  it("falls back to the default window when the stored one is absent or not a usable number", () => {
+    for (const bad of [undefined, null, 0, -5, Number.NaN, "30", {}]) {
+      expect(buildReceiptQuery("subject:invoice", bad)).toBe(
+        `subject:invoice -in:sent -in:chats newer_than:${D}d`,
+      )
+    }
+  })
+
+  it("caps the window so a settings typo cannot walk years of mailbox history", () => {
+    expect(buildReceiptQuery("subject:invoice", 9999)).toBe(
+      `subject:invoice -in:sent -in:chats newer_than:${MAX_GMAIL_RECEIPT_QUERY_WINDOW_DAYS}d`,
+    )
+  })
+
+  it("still appends its own window when the stored query carries a date bound of its own", () => {
+    // Gmail ANDs the clauses, so the tighter one wins — this source can never
+    // become unbounded no matter what is stored.
+    expect(buildReceiptQuery("subject:invoice after:2020/01/01", 45)).toBe(
+      "subject:invoice after:2020/01/01 -in:sent -in:chats newer_than:45d",
+    )
+  })
+
+  it("ships a SUBJECT-scoped default — a body-wide one ingests every email that merely says 'receipt'", () => {
+    expect(DEFAULT_GMAIL_RECEIPT_QUERY.startsWith("subject:")).toBe(true)
+    expect(DEFAULT_GMAIL_RECEIPT_QUERY).toContain("invoice")
+  })
+
+  it("exports the settings keys the migration seeds", () => {
+    expect(GMAIL_RECEIPT_QUERY_KEY).toBe("bookkeeping_gmail_receipt_query")
+    expect(GMAIL_RECEIPT_QUERY_WINDOW_KEY).toBe("bookkeeping_gmail_receipt_query_window_days")
   })
 })
 

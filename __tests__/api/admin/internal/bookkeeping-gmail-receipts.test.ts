@@ -50,6 +50,7 @@ import {
 import {
   GMAIL_UNREADABLE_IDS_KEY, GMAIL_SCANNABLE_MIMES_KEY, GMAIL_MESSAGE_ATTEMPTS_KEY,
   GMAIL_RECEIPT_FORWARDERS_KEY, GMAIL_RECEIPT_FORWARDERS_SINCE_KEY,
+  GMAIL_RECEIPT_QUERY_KEY, GMAIL_RECEIPT_QUERY_WINDOW_KEY,
 } from "@/lib/bookkeeping/email-receipts"
 import { SCANNABLE_MIMES, MAX_ATTACHMENT_BYTES, MAX_BODY_BYTES } from "@/lib/bookkeeping/receipt-attachments"
 
@@ -695,6 +696,63 @@ describe("POST /api/admin/internal/bookkeeping-gmail-receipts", () => {
     const res2 = await POST(makeRequest() as never)
     expect((await res2.json()).skipped).toBe(1)
     expect(ingestReceiptDocument).not.toHaveBeenCalled()
+  })
+
+  it("vendor watch: a third source lists mail nobody labelled or forwarded, counted separately", async () => {
+    // The case that motivated it: no label in the mailbox, nothing forwarded,
+    // and an invoice sitting in the inbox from a vendor.
+    settings[GMAIL_RECEIPT_QUERY_KEY] = "subject:invoice"
+    settings[GMAIL_RECEIPT_QUERY_WINDOW_KEY] = 45
+    ;(listLabels as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: "INBOX", name: "INBOX" }])
+    ;(listMessages as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, opts: { q?: string }) =>
+      opts.q ? { messages: [{ id: "m1", threadId: "t1" }] } : { messages: [] },
+    )
+    const res = await POST(makeRequest() as never)
+    const json = await res.json()
+    const qCall = (listMessages as ReturnType<typeof vi.fn>).mock.calls.find((c) => c[1]?.q)
+    expect(qCall?.[1].q).toBe("subject:invoice -in:sent -in:chats newer_than:45d")
+    expect(json.fetch_status).toBe("ok")
+    expect(json.query_listed).toBe(1)
+    expect(json.forwarder_listed).toBe(0)
+    expect(json.ingested).toBe(1)
+  })
+
+  it("lists the label and the forwarders BEFORE the broad vendor watch so a wide net cannot starve them", async () => {
+    // Listing stops early once there are more unsettled ids than one run can
+    // consume, so whichever source is listed LAST is the one that gets starved.
+    // The narrow, deliberate sources must go first.
+    settings[GMAIL_RECEIPT_FORWARDERS_KEY] = ["yortago@gmail.com"]
+    settings[GMAIL_RECEIPT_QUERY_KEY] = "subject:invoice"
+    ;(listMessages as ReturnType<typeof vi.fn>).mockResolvedValue({ messages: [] })
+    await POST(makeRequest() as never)
+    const calls = (listMessages as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[1])
+    expect(calls[0].labelIds).toEqual(["L1"])
+    expect(calls[1].q).toContain("from:yortago@gmail.com")
+    expect(calls[2].q).toBe("subject:invoice -in:sent -in:chats newer_than:45d")
+  })
+
+  it("one listing source failing degrades that source only — the others still deliver", async () => {
+    // A raw Gmail query comes from settings, so a typo can 400 the API. That
+    // must not take down the label and forwarder sources with it.
+    settings[GMAIL_RECEIPT_QUERY_KEY] = "subject:((("
+    ;(listMessages as ReturnType<typeof vi.fn>).mockImplementation(async (_t: string, opts: { q?: string }) => {
+      if (opts.q) throw new Error("[400] Invalid query")
+      return { messages: [{ id: "m1", threadId: "t1" }] }
+    })
+    const res = await POST(makeRequest() as never)
+    const json = await res.json()
+    expect(res.status).toBe(200)
+    expect(json.fetch_status).toBe("ok")
+    expect(json.ingested).toBe(1) // the label source still delivered
+    expect(json.listing_failures).toEqual([expect.stringContaining("Invalid query")])
+  })
+
+  it("no label, no forwarders and no vendor watch → degraded, because now there are three ways to have none", async () => {
+    settings[GMAIL_RECEIPT_QUERY_KEY] = ""
+    ;(listLabels as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: "INBOX", name: "INBOX" }])
+    const res = await POST(makeRequest() as never)
+    expect(await res.json()).toMatchObject({ fetch_status: "degraded", fetch_detail: "label_not_found" })
+    expect(listMessages).not.toHaveBeenCalled()
   })
 
   it("label missing but forwarders configured → still runs (label_missing noted, not degraded)", async () => {
