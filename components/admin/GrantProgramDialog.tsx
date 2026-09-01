@@ -10,10 +10,11 @@
 // "set your password" email. Dismissing this dialog is a normal outcome — the
 // deal stays won and nothing is created.
 //
-// The programs offered are priced products only. Sixty-eight programs are
-// active in production and fifty of those are individual athletes' personal
-// plans, named after them; offering those here would make granting somebody
-// else's private plan a plausible mis-click. See `listGrantablePrograms`.
+// The programs offered are the ones with a price. Sixty-eight are active in
+// production and only eighteen are billable; the rest are drafts and templates
+// nobody has sold. Most of those eighteen are named after the athlete they
+// were built for, because that is what this coach sells — so a person's name
+// in this list is correct. See `listGrantablePrograms`.
 
 import { useEffect, useState } from "react"
 import { toast } from "sonner"

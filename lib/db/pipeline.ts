@@ -1056,18 +1056,23 @@ export async function readContactIdentity(
 /**
  * The programs a coach can actually hand somebody after winning a deal.
  *
- * FILTERED ON `stripe_price_id`, NOT ON `is_active`, and the difference is not
- * cosmetic. 68 programs are active on production and only 18 carry a price —
- * the other 50-odd are individual athletes' personal plans, named after them.
- * A picker built on `is_active` would offer a coach fifty other people's
- * private training plans as things to grant, sorted next to the real products,
- * and granting one would be a plausible mis-click rather than an obvious
- * mistake.
+ * FILTERED ON `stripe_price_id`, NOT ON `is_active`. 68 programs are active on
+ * production and only 18 carry a price; the other 50 are drafts and templates
+ * that were never billable, and offering them would pad the list with things
+ * nobody has ever sold.
  *
- * `is_public` alone is the opposite error: exactly ONE program is public, so
- * the picker would be empty of almost everything that is genuinely sold.
+ * WHAT THIS FILTER DOES *NOT* DO — and an earlier version of this comment
+ * claimed it did. It does not separate catalogue products from individual
+ * athletes' plans, because on this data that distinction does not exist:
+ * exactly ONE priced program ("Rotational Reboot") is public, and the other
+ * seventeen are bespoke plans named after the athlete they were built for,
+ * each with its own Stripe subscription or one-time price. That IS the
+ * business — the coach sells bespoke plans — so a named plan in this list is
+ * correct, not a leak.
  *
- * A price is the honest test of "this is a thing we sell".
+ * The real hazard is therefore picking the WRONG athlete's plan out of
+ * eighteen similar names, which is a case for search in the picker rather than
+ * for a narrower query here. Noted, not built.
  */
 export async function listGrantablePrograms(): Promise<
   Array<{ id: string; name: string; price_cents: number | null }>

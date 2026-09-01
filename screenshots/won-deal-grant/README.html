@@ -1,0 +1,81 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Won deal → athlete account</title>
+<style>
+  body { font: 15px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1100px; margin: 40px auto; padding: 0 24px; color: #1a1a1a; }
+  h1 { font-size: 28px; margin-bottom: 4px; }
+  .sub { color: #666; margin-top: 0; }
+  figure { margin: 32px 0; }
+  img { width: 100%; border: 1px solid #ddd; border-radius: 8px; }
+  figcaption { color: #555; font-size: 14px; margin-top: 8px; }
+  .note { background: #fff8e6; border-left: 3px solid #d79a2b; padding: 12px 16px; margin: 24px 0; }
+  code { background: #f4f4f4; padding: 1px 5px; border-radius: 3px; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #eee; font-size: 14px; vertical-align: top; }
+  th { color: #666; font-weight: 600; }
+</style>
+
+<h1>Won deal → athlete account</h1>
+<p class="sub">Captured 2026-09-01 from the real app at <code>/admin/pipeline</code>, driven with Playwright against the dev clone. Annotations are burned into the PNGs.</p>
+
+<div class="note">
+  <strong>The subject was chosen, not taken at random.</strong> Priya Raman's card has
+  <code>source_session_id = null</code>, so it exercises the grant branch. A card that reached Won
+  through checkout is refused by design — it is already provisioned — and picking one of those would
+  have quietly demonstrated the other branch with nothing on screen looking wrong.
+</div>
+
+<figure>
+  <img src="01-pipeline-board.png" alt="The pipeline board with Priya Raman in Consult Booked">
+  <figcaption><strong>01 — before.</strong> The real board, real seeded deals. Priya Raman sits in Consult Booked.</figcaption>
+</figure>
+
+<figure>
+  <img src="02-which-program.png" alt="The prompt asking which program the athlete bought">
+  <figcaption><strong>02 — the new surface.</strong> Dropping the card on Won opens one question. Nothing is created until it is answered; "Not now" leaves the deal won and the athlete without an account, which is a normal outcome.</figcaption>
+</figure>
+
+<h2>What the run asserted</h2>
+<table>
+  <tr><th>Assertion</th><th>Result</th></tr>
+  <tr><td>The card is on the real board</td><td>pass</td></tr>
+  <tr><td>Dropping on Won opens the prompt</td><td>pass</td></tr>
+  <tr><td>The prompt names the athlete</td><td>pass — "Set Priya Raman up with their program?"</td></tr>
+  <tr><td>The picker offers priced programs only</td><td>pass — 16 offered, matching the 16 priced rows on the clone</td></tr>
+  <tr><td>The clone is left as it was found</td><td>pass — card restored to Consult Booked, verified by read-back</td></tr>
+</table>
+
+<h2>A correction worth reading</h2>
+<p>
+  The first take's caption claimed the picker shows "priced products only — never another athlete's
+  own plan". <strong>That was false, and only looking at the image caught it.</strong> The list is
+  full of names: <em>Abi's Performance Program</em>, <em>Jen's booty build and body tone</em>,
+  <em>Josh aka Superman</em>.
+</p>
+<p>
+  Checking the data settled it: of the 18 priced programs on production, exactly <strong>one</strong>
+  (<em>Rotational Reboot</em>) is a catalogue product. The other seventeen are bespoke plans named
+  after the athlete they were built for, each with its own Stripe subscription or one-time price.
+  That <em>is</em> the business — so a person's name in this list is correct, not a leak, and the
+  filter (<code>stripe_price_id IS NOT NULL</code>) is doing the right job: it drops the 50 unpriced
+  drafts and templates nobody has ever sold.
+</p>
+<p>
+  The real hazard is therefore picking the <strong>wrong athlete's</strong> plan out of eighteen
+  similar names. That is a case for a search box in the picker. <strong>Noted, not built</strong> —
+  it is a product decision, not a bug.
+</p>
+
+<h2>What is not shown</h2>
+<p>
+  The run stops at the prompt and never clicks <em>Give them access</em>. That would create a real
+  account and attempt a real invite email. The granting itself is covered by
+  <code>__tests__/lib/funnels/checkout/grant-manual.test.ts</code> — 10 tests, 4 mutants run and
+  killed.
+</p>
+
+<p style="color:#888;font-size:13px;margin-top:40px">
+  Reproduce: <code>npm run dev</code>, then
+  <code>APP=http://localhost:3050 npx tsx scripts/capture-won-deal-grant.ts .env.local</code>.
+  The harness refuses to run against anything but the dev clone.
+</p>
