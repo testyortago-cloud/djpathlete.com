@@ -698,7 +698,18 @@ git commit -m "feat(lead-engine): a hand-run repair for runs a provider fault de
 
 ---
 
-### Task 6: An athlete account when a deal is won
+### Task 6: NOT STARTED — surface verified, work is real (status 2026-09-01)
+
+Unlike Task 7 this one **is** implementable as written. Verified tonight:
+`components/admin/pipeline-board.tsx` renders the board, a drop into Won POSTs
+`/api/admin/pipeline/move`, and `stageKind === "won"` is already a branch in
+the card. The grant machinery it reuses is all present.
+
+It was not started because it is a multi-hour build (migration, DAL, pure
+logic, route, dialog, tests) and is **not on the critical path** — the engine
+sends without it. Start here next session.
+
+### Task 6 (specification): An athlete account when a deal is won
 
 Prompted, never automatic. A Won card can mean a cash deal, a camp, or an unpriced plan, so the safe reading of a dragged card is "ask".
 
@@ -831,7 +842,32 @@ git commit -m "feat(pipeline): a won deal can hand the athlete their account"
 
 ---
 
-### Task 7: The quiz's injury answers reach the panel
+### Task 7: BLOCKED — the panel cannot reach the data (discovered 2026-09-01)
+
+**Do not attempt this task as written.** It assumes `LeadInquiryPanel` can be
+handed the quiz's injury answers. It cannot, and the reason is structural:
+
+- The panel renders only on `/admin/clients/[id]`, which is keyed on a **user**.
+- A quiz attempt is keyed on **`contact_id`**.
+- The join between them is `contacts.user_id`, which is **null on all 168 rows
+  in production**. Nothing writes it — the same inert link the spec lists as
+  out of scope in §8, and the reason the pipeline reconciler has never repaired
+  a dropped payment webhook.
+- `/admin/contacts` is a **list with no detail screen**, so there is no
+  contact-keyed surface to put this on either.
+
+So the work is not "add a prop". It is either populating `contacts.user_id`
+(a separate, larger job with its own correctness questions about matching
+people by email and phone) or building a contact detail screen (not specified,
+and a bigger change than the thing it would host).
+
+**Both are the owner's call, not a session's.** Reopen §4 of the spec before
+writing any code here.
+
+What remains true from §4 regardless: **no Airtable integration is built, and
+none should be.**
+
+### Task 7 (original, retained for when the blocker is resolved): The quiz's injury answers reach the panel
 
 **Files:**
 - Modify: `components/admin/clients/LeadInquiryPanel.tsx`
