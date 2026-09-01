@@ -1,50 +1,59 @@
 # Lead Engine — the steps a human runs
 
 **Status 2026-09-01, after the owner's "merge push then continue to step 2":
-steps 1 and 2 are DONE except for one blocked redeploy. Steps 3 onward are not.**
+steps 1, 2 and 3 are DONE and verified. Step 4 is the next action, and it is
+a decision, not a command.**
 
 | Step | State |
 |---|---|
-| 1. Merge + deploy | **done** — main `774421cd`, migration 00235 applied to prod and read back, Vercel deploy Ready |
+| 1. Merge + deploy | **done** — main `774421cd`, migration 00235 applied to prod and read back, deploy Ready |
 | 2a. `business_settings.sender_email` | **done** — now `noreply@send.darrenjpaul.com`, confirmed by RETURNING |
-| 2b. `RESEND_FROM_EMAIL` | **set** in Production, Preview and Development — but **NOT yet live** |
-| 2c. Redeploy so 2b takes effect | **BLOCKED** — the sandbox refused `vercel redeploy` twice |
-| 3 onward | not started |
+| 2b. `RESEND_FROM_EMAIL` | **done** — Production, Preview and Development |
+| 2c. Redeploy so 2b takes effect | **done** — `djpathlete-e6q5flff0`, aliased to www.darrenjpaul.com |
+| 3. Prove a real email sends | **done, with a control** — see below |
+| 4 onward | **not started — step 4 is yours** |
 
-**What this means right now.** The Lead Engine reads its From address from the
-DATABASE (`lib/lead-engine/email.ts` builds it from `settings.sender_email`), so
-**the Lead Engine's sending is already fixed** — no deploy needed. The ~38
-senders in `lib/email.ts` read the ENV var, so **transactional email (password
-resets, invites, notifications) is still sending as the unverified apex** until
-somebody redeploys.
+## Step 3 was proved with a control, not just a green send
 
-To finish 2c, run this yourself or hit Redeploy in the Vercel dashboard:
+Both calls made against the live Resend account with the production key:
 
-```bash
-vercel redeploy https://djpathlete-euspncmy5-darren-pauls-projects.vercel.app --yes
-```
+| From | Result |
+|---|---|
+| `noreply@send.darrenjpaul.com` (new) | accepted, `last_event: delivered` |
+| `noreply@darrenjpaul.com` (old) | **403** `The darrenjpaul.com domain is not verified` |
+
+The control returns the exact error string that destroyed the 73 runs on 31
+August, which is what makes the first row mean something: the change is what
+fixed it, not something incidental. Sent to `delivered@resend.dev`, Resend's own
+test address, so no real person received anything.
+
+Worth noting for the code as well: the control's shape — `statusCode: 403`,
+`name: "validation_error"` — is exactly what `classifySendFault` now reads as a
+CONFIGURATION fault. So a repeat of this misconfiguration would defer the runs,
+not destroy them.
+
+## What is left, and step 4 is a decision only you can make
 
 Read `docs/superpowers/specs/2026-09-01-lead-engine-last-mile-design.md` for why
 each one exists. This file is only the order and the commands.
 
 ---
 
-## Before anything: what is true right now
+## What is true right now
 
 | | |
 |---|---|
+| `business_settings.sender_email` | `noreply@send.darrenjpaul.com` — **verified, sends** |
+| `RESEND_FROM_EMAIL` | the same, live since deploy `djpathlete-e6q5flff0` |
 | `cron_sequence_tick_enabled` | `true` — the tick IS running every 5 minutes |
-| `sms_repermission` | `active`, and all **73 runs are `failed`** |
-| Why they failed | `sender_email` is `noreply@darrenjpaul.com`; the only domain verified at Resend is `send.darrenjpaul.com` |
-| Successful sends, ever | **zero** |
+| `sequence_runs` | **73 rows, all `failed`** — nothing else exists, so nothing is due and nothing sends |
+| Successful sends by the engine | still **zero** — the 73 have to be repaired first (step 5) |
 | `chat_assistant_enabled` | `false` |
 | Quiz result sequences | four, all `draft`, all still carrying `PLACEHOLDER COPY` |
 
-The branch is committed and green but **not merged and not deployed.**
-
 ---
 
-## Step 1 — merge and deploy the branch
+## Step 1 — merge and deploy the branch — DONE
 
 The repair in step 3 is safe without it, but the fault that caused the damage is
 still live until this ships: any provider misconfiguration destroys runs again.
