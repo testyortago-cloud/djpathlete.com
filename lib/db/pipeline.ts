@@ -1001,3 +1001,84 @@ export async function readBoard(
     return { stage, cards }
   })
 }
+
+/**
+ * The four facts `grantWonOpportunity` needs about a card before it will hand
+ * anyone an account: does it exist, is it won, whose is it, and did it already
+ * come through checkout.
+ *
+ * `source_session_id` is the one that stops a double grant across the two
+ * paths. A card that reached Won through Stripe was already provisioned under
+ * the session's own idempotency key, and the ledger cannot see a manual grant
+ * of the same deal as a duplicate — the two key on different columns by
+ * design (00235). So the check has to happen before the grant, here.
+ */
+export async function readOpportunityForGrant(opportunityId: string): Promise<{
+  id: string
+  outcome: "won" | "lost" | null
+  contact_id: string | null
+  source_session_id: string | null
+} | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("opportunities")
+    .select("id, outcome, contact_id, source_session_id")
+    .eq("id", opportunityId)
+    .maybeSingle()
+  // A read that fails is NOT "no such card". Throwing here is what stops the
+  // caller treating an outage as a refusal — and, worse, a retry as a fresh
+  // grant.
+  if (error) throw new Error(`opportunities read failed: ${error.message}`)
+  if (!data) return null
+  const row = data as { id: string; outcome: "won" | "lost" | null; contact_id: string | null; source_session_id: string | null }
+  return row
+}
+
+/**
+ * Where to send the invite. Null email is a refusal upstream, never a guess —
+ * an account nobody can be told about helps no one.
+ */
+export async function readContactIdentity(
+  contactId: string,
+): Promise<{ email: string | null; name: string | null } | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("email, name")
+    .eq("id", contactId)
+    .maybeSingle()
+  if (error) throw new Error(`contacts read failed: ${error.message}`)
+  if (!data) return null
+  const row = data as { email: string | null; name: string | null }
+  return { email: row.email, name: row.name }
+}
+
+/**
+ * The programs a coach can actually hand somebody after winning a deal.
+ *
+ * FILTERED ON `stripe_price_id`, NOT ON `is_active`, and the difference is not
+ * cosmetic. 68 programs are active on production and only 18 carry a price —
+ * the other 50-odd are individual athletes' personal plans, named after them.
+ * A picker built on `is_active` would offer a coach fifty other people's
+ * private training plans as things to grant, sorted next to the real products,
+ * and granting one would be a plausible mis-click rather than an obvious
+ * mistake.
+ *
+ * `is_public` alone is the opposite error: exactly ONE program is public, so
+ * the picker would be empty of almost everything that is genuinely sold.
+ *
+ * A price is the honest test of "this is a thing we sell".
+ */
+export async function listGrantablePrograms(): Promise<
+  Array<{ id: string; name: string; price_cents: number | null }>
+> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("programs")
+    .select("id, name, price_cents")
+    .eq("is_active", true)
+    .not("stripe_price_id", "is", null)
+    .order("name")
+  if (error) throw new Error(`programs read failed: ${error.message}`)
+  return (data ?? []) as Array<{ id: string; name: string; price_cents: number | null }>
+}

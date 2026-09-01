@@ -22,6 +22,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { GrantProgramDialog } from "@/components/admin/GrantProgramDialog"
 import {
   DndContext,
   PointerSensor,
@@ -39,6 +40,11 @@ import type { Staleness } from "@/lib/lead-engine/pipeline-move"
 
 interface PipelineBoardProps {
   columns: BoardColumn[]
+  /**
+   * The programs a won deal can hand over — priced products only, never the
+   * athletes' own named plans. See `listGrantablePrograms`.
+   */
+  grantablePrograms: Array<{ id: string; name: string; price_cents: number | null }>
 }
 
 // `stage.name` (the configured column, e.g. "Consult Booked") is the real
@@ -156,8 +162,12 @@ function PipelineColumn({ stage, cards }: { stage: BoardColumn["stage"]; cards: 
   )
 }
 
-export function PipelineBoard({ columns: initialColumns }: PipelineBoardProps) {
+export function PipelineBoard({ columns: initialColumns, grantablePrograms }: PipelineBoardProps) {
   const [columns, setColumns] = useState(initialColumns)
+  // The card a coach just dropped on Won, waiting on "which program?". Null
+  // means no prompt is open. Winning a deal does NOT grant anything on its
+  // own — see the dialog's own note.
+  const [grantFor, setGrantFor] = useState<{ id: string; label: string } | null>(null)
   const router = useRouter()
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -202,6 +212,17 @@ export function PipelineBoard({ columns: initialColumns }: PipelineBoardProps) {
         throw new Error(body.error || "Move failed")
       }
       toast.success(`Moved to ${toColumn.stage.name || stageLabel(toStageKey)}`)
+
+      // WON IS A QUESTION, NOT AN INSTRUCTION. A won card can be a cash deal,
+      // a camp, or a plan nobody has priced, so the prompt asks which program
+      // was bought instead of guessing from the card's value. Nothing is
+      // created until the coach answers — dismissing this leaves the deal won
+      // and the athlete without an account, which is a perfectly normal
+      // outcome and not an error.
+      if (toColumn.stage.kind === "won") {
+        setGrantFor({ id: card.id, label: card.contactName || "this athlete" })
+      }
+
       router.refresh()
     } catch (err) {
       setColumns(previous)
@@ -218,6 +239,12 @@ export function PipelineBoard({ columns: initialColumns }: PipelineBoardProps) {
           <PipelineColumn key={col.stage.id} stage={col.stage} cards={col.cards} />
         ))}
       </div>
+      <GrantProgramDialog
+        target={grantFor}
+        programs={grantablePrograms}
+        onClose={() => setGrantFor(null)}
+        onGranted={() => router.refresh()}
+      />
     </DndContext>
   )
 }

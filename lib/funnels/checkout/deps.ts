@@ -13,7 +13,11 @@ import { getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assign
 import { createPasswordResetToken } from "@/lib/db/password-reset-tokens"
 import { sendLeadInviteEmail, sendFunnelPurchaseFailureAlert } from "@/lib/email"
 import { getBaseUrl } from "@/lib/url"
-import { hasProcessedCheckoutSession, recordCheckoutGrant } from "@/lib/db/funnel-checkout-grants"
+import {
+  hasProcessedCheckoutSession,
+  hasGrantedOpportunity,
+  recordCheckoutGrant,
+} from "@/lib/db/funnel-checkout-grants"
 import { grantProgramAccess } from "@/lib/funnels/checkout/grant-program"
 import type { GrantDeps } from "@/lib/funnels/checkout/grant"
 
@@ -134,6 +138,43 @@ export function buildGrantDeps(context: {
         productId: purchase.productId,
         stage,
         error,
+      })
+    },
+  }
+}
+
+/**
+ * The same ports as `buildGrantDeps`, with the ledger keyed on the pipeline
+ * card instead of a Stripe session.
+ *
+ * ONLY THE TWO LEDGER FUNCTIONS DIFFER. Everything else — find or create the
+ * client, assign the program, send the invite, alert on a failure — is reused
+ * by delegation, so a coach marking a deal Won and a buyer paying at Stripe
+ * cannot end up with different rules about who gets access to what.
+ *
+ * `funnel_id` / `step_id` / `lead_id` are null: this purchase came from a
+ * conversation, not a page, and inventing an attribution for it would put a
+ * lie in the revenue reporting.
+ */
+export function buildManualGrantDeps(context: { opportunityId: string }): GrantDeps {
+  const base = buildGrantDeps({ funnelId: null, stepId: null, leadId: null })
+  return {
+    ...base,
+    hasProcessed: hasGrantedOpportunity,
+    recordProcessed: async ({ userId, purchase, accountCreated }) => {
+      await recordCheckoutGrant({
+        // Not stripe_session_id: the CHECK in 00235 refuses a row that sets
+        // both, and a column named for Stripe must never hold something that
+        // is not a Stripe id.
+        opportunity_id: context.opportunityId,
+        user_id: userId,
+        email: purchase.email,
+        product_kind: purchase.productKind,
+        product_id: purchase.productId,
+        funnel_id: null,
+        step_id: null,
+        lead_id: null,
+        account_created: accountCreated,
       })
     },
   }
