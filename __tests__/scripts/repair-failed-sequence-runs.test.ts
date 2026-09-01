@@ -21,7 +21,7 @@ const ARGS = { sequenceKey: "sms_repermission", errorPattern: "domain is not ver
 
 describe("selectRepairable", () => {
   it("selects a run matching all three predicates", () => {
-    expect(selectRepairable([RUN], ARGS).map((r) => r.id)).toEqual(["run-1"])
+    expect(selectRepairable([RUN], ARGS).map((r: { id: string }) => r.id)).toEqual(["run-1"])
   })
 
   it("skips a run that is not failed", () => {
