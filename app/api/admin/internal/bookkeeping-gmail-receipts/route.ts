@@ -30,7 +30,8 @@ import {
   GMAIL_SETTLED_IDS_KEY, GMAIL_UNREADABLE_IDS_KEY, GMAIL_SCANNABLE_MIMES_KEY,
   GMAIL_MESSAGE_ATTEMPTS_KEY, GMAIL_RECEIPT_LABEL_KEY, GMAIL_RECEIPTS_CRON_KEY,
   DEFAULT_GMAIL_RECEIPT_LABEL, buildForwarderQuery, GMAIL_RECEIPT_FORWARDERS_KEY,
-  GMAIL_RECEIPT_FORWARDERS_SINCE_KEY,
+  GMAIL_RECEIPT_FORWARDERS_SINCE_KEY, buildReceiptQuery, GMAIL_RECEIPT_QUERY_KEY,
+  GMAIL_RECEIPT_QUERY_WINDOW_KEY,
 } from "@/lib/bookkeeping/email-receipts"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -146,9 +147,15 @@ export async function POST(request: NextRequest) {
       await getSetting<unknown>(GMAIL_RECEIPT_FORWARDERS_KEY, []),
       await getSetting<unknown>(GMAIL_RECEIPT_FORWARDERS_SINCE_KEY, null),
     )
-    // Degraded ONLY when NEITHER source exists — a missing label with a
-    // configured forwarder watch is a note, not an outage.
-    if (!label && !forwarderQuery) {
+    // Vendor watch: mail that is neither labelled nor forwarded — an invoice a
+    // vendor sends straight to the coach. Empty setting ⇒ source off.
+    const receiptQuery = buildReceiptQuery(
+      await getSetting<unknown>(GMAIL_RECEIPT_QUERY_KEY, ""),
+      await getSetting<unknown>(GMAIL_RECEIPT_QUERY_WINDOW_KEY, null),
+    )
+    // Degraded ONLY when NO source at all exists — a missing label with a
+    // configured forwarder or vendor watch is a note, not an outage.
+    if (!label && !forwarderQuery && !receiptQuery) {
       const detail = { fetch_status: "degraded", fetch_detail: "label_not_found", label: labelName }
       await logCronEnd(supabase, runId, "success", detail)
       return NextResponse.json({ ok: true, ...detail })
@@ -199,37 +206,56 @@ export async function POST(request: NextRequest) {
     // and the forwarder watch (Decision B-2). Bounded twice ACROSS BOTH: stop
     // as soon as we have more unsettled ids than one run can consume, and
     // hard-stop at MAX_LIST_PAGES total.
-    const sources: Array<{ labelIds?: string[]; q?: string }> = []
-    if (label) sources.push({ labelIds: [label.id] })
-    if (forwarderQuery) sources.push({ q: forwarderQuery })
+    const sources: Array<{ kind: "label" | "forwarder" | "query"; labelIds?: string[]; q?: string }> = []
+    if (label) sources.push({ kind: "label", labelIds: [label.id] })
+    if (forwarderQuery) sources.push({ kind: "forwarder", q: forwarderQuery })
+    // The vendor watch is listed LAST on purpose. Listing stops as soon as more
+    // unsettled ids are seen than one run can consume, so whichever source is
+    // listed last is the one that starves — and this is by far the broadest.
+    if (receiptQuery) sources.push({ kind: "query", q: receiptQuery })
 
     const messageIds: string[] = []
     const listedIds = new Set<string>()
+    const listingFailures: string[] = []
     let pages = 0
     let unsettledSeen = 0
     let forwarderListed = 0
+    let queryListed = 0
     listing: for (const [sourceIndex, source] of sources.entries()) {
+      const { kind, ...listOpts } = source
       let pageToken: string | undefined
-      do {
-        const page = await listMessages(accessToken, { ...source, pageToken })
-        for (const m of page.messages ?? []) {
-          if (listedIds.has(m.id)) continue
-          listedIds.add(m.id)
-          messageIds.push(m.id)
-          if (source.q) forwarderListed++
-          if (!settled.has(m.id)) unsettledSeen++
-        }
-        pageToken = page.nextPageToken
-        pages++
-        if (unsettledSeen > MAX_MESSAGES_PER_RUN) {
-          more_pending = true
-          break listing
-        }
-        if (pages >= MAX_LIST_PAGES) {
-          if (pageToken || sourceIndex < sources.length - 1) more_pending = true
-          break listing
-        }
-      } while (pageToken)
+      // Per-source isolation, the same reflex as the per-message and
+      // per-attachment isolation below: the vendor watch carries a RAW Gmail
+      // query out of settings, so one typo 400s the API. That must cost this
+      // source its run, never the label and forwarder sources theirs — and it
+      // must be recorded rather than swallowed into a clean-looking success.
+      try {
+        do {
+          const page = await listMessages(accessToken, { ...listOpts, pageToken })
+          for (const m of page.messages ?? []) {
+            if (listedIds.has(m.id)) continue
+            listedIds.add(m.id)
+            messageIds.push(m.id)
+            if (kind === "forwarder") forwarderListed++
+            if (kind === "query") queryListed++
+            if (!settled.has(m.id)) unsettledSeen++
+          }
+          pageToken = page.nextPageToken
+          pages++
+          if (unsettledSeen > MAX_MESSAGES_PER_RUN) {
+            more_pending = true
+            break listing
+          }
+          if (pages >= MAX_LIST_PAGES) {
+            if (pageToken || sourceIndex < sources.length - 1) more_pending = true
+            break listing
+          }
+        } while (pageToken)
+      } catch (listErr) {
+        const msg = listErr instanceof Error ? listErr.message : String(listErr)
+        listingFailures.push(`${kind}: ${msg}`)
+        console.error(`[bookkeeping-gmail-receipts] ${kind} listing failed:`, listErr)
+      }
     }
 
     /** Settle + reset the retry counter. */
@@ -453,8 +479,10 @@ export async function POST(request: NextRequest) {
       oversized_attachments: oversizedAttachments,
       needs_manual_upload: needsManualUpload,
       unreadable_backlog: unreadable.size,
-      poisoned, reconsidered, ingested, body_ingested: bodyIngested, forwarder_listed: forwarderListed, failed,
+      poisoned, reconsidered, ingested, body_ingested: bodyIngested, forwarder_listed: forwarderListed,
+      query_listed: queryListed, failed,
       ...(failures.length > 0 ? { failures } : {}),
+      ...(listingFailures.length > 0 ? { listing_failures: listingFailures } : {}),
       more_pending,
     }
     if (ingested + bodyIngested > 0) {

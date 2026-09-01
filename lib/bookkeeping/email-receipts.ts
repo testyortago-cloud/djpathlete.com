@@ -57,6 +57,53 @@ export function buildForwarderQuery(stored: unknown, since?: unknown): string | 
   return `(${clauses.join(" OR ")}) -in:sent${sinceClause}`
 }
 
+/** Vendor-mail watch (2026-09-01). A third listing source: a Gmail search the
+ *  poller runs alongside the label and the forwarder watch.
+ *
+ *  WHY IT EXISTS: the forwarder watch (B-2) assumed receipts arrive at a
+ *  forwarding account and reach the coach's inbox from there, so both its
+ *  clauses key on a forwarder ADDRESS. An invoice a vendor sends STRAIGHT to
+ *  the coach matches neither, carries no label, and is invisible — which is
+ *  exactly what happened: `label_missing` on every run since the poller went
+ *  live, so the label source had never supplied a message, and the forwarder
+ *  query had matched nothing new for two weeks while invoices kept arriving.
+ *  This source needs nothing done to the mailbox, which is the point. */
+export const GMAIL_RECEIPT_QUERY_KEY = "bookkeeping_gmail_receipt_query"
+/** Rolling window for the vendor watch, in days. A number, not a date: a fixed
+ *  `after:` (the forwarder watch's shape) silently widens forever as it ages,
+ *  and this source is far broader than a named-address one. */
+export const GMAIL_RECEIPT_QUERY_WINDOW_KEY = "bookkeeping_gmail_receipt_query_window_days"
+
+/** Subject-scoped ON PURPOSE. The poller ingests the BODY of any listed message
+ *  that has no usable attachment, so a body-wide search would file every email
+ *  that merely mentions a receipt as a receipt — real documents, real AI spend
+ *  and a review board nobody can triage. A vendor invoice names itself in the
+ *  subject line. */
+export const DEFAULT_GMAIL_RECEIPT_QUERY =
+  'subject:(invoice OR receipt OR "payment received" OR "payment confirmation" OR "your order")'
+export const DEFAULT_GMAIL_RECEIPT_QUERY_WINDOW_DAYS = 45
+/** Cap on the stored window. Not a style rule — MAX_MESSAGES_PER_RUN is 25/hour,
+ *  so a mistyped window is paid for one review-board row at a time for weeks. */
+export const MAX_GMAIL_RECEIPT_QUERY_WINDOW_DAYS = 365
+
+/** Gmail search for the vendor watch, or null when the setting is blank (the
+ *  off switch). Unlike the forwarder key this one is DELIBERATELY raw Gmail
+ *  query syntax — that is the whole feature — so it is not validated for
+ *  injection. What is enforced is the part that must never be negotiable:
+ *  `-in:sent -in:chats` and a bounded `newer_than:`, appended AFTER whatever is
+ *  stored. Gmail ANDs the clauses, so a stored date bound narrows it further
+ *  and can never widen it. */
+export function buildReceiptQuery(stored: unknown, windowDays?: unknown): string | null {
+  if (typeof stored !== "string") return null
+  const query = stored.trim()
+  if (query === "") return null
+  const days =
+    typeof windowDays === "number" && Number.isFinite(windowDays) && windowDays >= 1
+      ? Math.min(Math.floor(windowDays), MAX_GMAIL_RECEIPT_QUERY_WINDOW_DAYS)
+      : DEFAULT_GMAIL_RECEIPT_QUERY_WINDOW_DAYS
+  return `${query} -in:sent -in:chats newer_than:${days}d`
+}
+
 /** Triage buckets for the email-receipts board. One row lands in exactly one
  *  column; priority attention > duplicates > review, because a failed or
  *  low-confidence read needs the human regardless of whether it also looks
