@@ -59,13 +59,13 @@ const COLUMNS: BoardColumn[] = [
 
 describe("<PipelineBoard>", () => {
   it("renders the configured stage name, not a key-derived label", () => {
-    render(<PipelineBoard columns={COLUMNS} />)
+    render(<PipelineBoard columns={COLUMNS} grantablePrograms={[]} />)
     expect(screen.getByText("Discovery Call")).toBeInTheDocument()
     expect(screen.queryByText("Consult Booked")).not.toBeInTheDocument()
   })
 
   it("still renders a plain key-derived label when name and key would coincide", () => {
-    render(<PipelineBoard columns={COLUMNS} />)
+    render(<PipelineBoard columns={COLUMNS} grantablePrograms={[]} />)
     expect(screen.getByText("Won")).toBeInTheDocument()
   })
 })

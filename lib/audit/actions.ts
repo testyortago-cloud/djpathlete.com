@@ -308,6 +308,25 @@ export const AUDIT_ACTIONS = [
     description: "Admin enrolled one or more contacts into a sequence by hand",
   },
   {
+    // `commerce`, not `admin_write`: this creates an account and grants a paid
+    // program off the back of a deal somebody closed. It belongs with the
+    // money, beside pipeline.opportunity_won.
+    slug: "pipeline.opportunity_granted",
+    category: "commerce",
+    description: "Admin granted a program to the athlete behind a won pipeline card",
+  },
+  {
+    // Written by scripts/repair-failed-sequence-runs.mjs, never by a route.
+    // `automation` rather than `admin_write` because the thing being repaired
+    // is the engine's own bookkeeping, not a decision about a person: the
+    // runs were destroyed by a provider misconfiguration (2026-08-31, 73 of
+    // them) and are being put back where the tick left them. Nothing about
+    // anyone's consent or enrolment changes.
+    slug: "sequence.runs_repaired",
+    category: "automation",
+    description: "Runs destroyed by a provider configuration fault were reset to active by hand",
+  },
+  {
     slug: "legal_document.published",
     category: "compliance",
     description: "New version of a legal document published",

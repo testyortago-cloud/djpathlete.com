@@ -7,7 +7,14 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 
 export interface FunnelCheckoutGrantRow {
-  stripe_session_id: string
+  /**
+   * Exactly one of these two is set — the database enforces it with a CHECK
+   * (`num_nonnulls(...) = 1`, migration 00235), not just this comment.
+   * `stripe_session_id` for a checkout, `opportunity_id` for a grant made by
+   * hand from a won pipeline card.
+   */
+  stripe_session_id?: string | null
+  opportunity_id?: string | null
   user_id: string
   email: string
   product_kind: "program"
@@ -52,6 +59,26 @@ export async function hasProcessedCheckoutSession(sessionId: string): Promise<bo
  * first", which is exactly the outcome wanted. Reporting it as a failure would
  * raise a paid-but-not-delivered alert about a purchase that was delivered.
  */
+/**
+ * Has this pipeline card already been granted?
+ *
+ * The manual sibling of `hasProcessedCheckoutSession`, and it inherits that
+ * function's posture exactly: it THROWS rather than returning false when the
+ * table cannot be read, because being unable to check is not permission to
+ * risk a second account and a second "set your password" email to somebody
+ * who has already set one.
+ */
+export async function hasGrantedOpportunity(opportunityId: string): Promise<boolean> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from("funnel_checkout_grants")
+    .select("id")
+    .eq("opportunity_id", opportunityId)
+    .maybeSingle()
+  if (error) throw new Error(`funnel_checkout_grants read failed: ${error.message}`)
+  return data !== null
+}
+
 export async function recordCheckoutGrant(row: FunnelCheckoutGrantRow): Promise<void> {
   const supabase = createServiceRoleClient()
   const { error } = await supabase.from("funnel_checkout_grants").insert(row)

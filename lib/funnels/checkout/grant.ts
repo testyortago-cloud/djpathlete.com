@@ -34,10 +34,21 @@
 
 export type FunnelProductKind = "program"
 
-/** What the webhook knows about a completed anonymous checkout. */
+/** What a caller knows about a purchase to be granted. */
 export interface FunnelPurchase {
-  /** Stripe checkout session id. The idempotency key for the whole operation. */
-  sessionId: string
+  /**
+   * THE IDEMPOTENCY KEY FOR THE WHOLE OPERATION, and the only thing this
+   * module does with it is hand it back to `hasProcessed` / `recordProcessed`.
+   * It was called `sessionId` while Stripe checkout was the only caller; the
+   * name was renamed rather than a second copy of this sequence being written
+   * for the manual path, because the grant rules — find or create the client,
+   * assign, record, invite — must not be able to drift between the flow that
+   * took money at Stripe and the flow where a coach marked a deal won.
+   *
+   * Checkout passes the Stripe checkout session id. A won pipeline card passes
+   * its opportunity id. Both are "one of these, forever".
+   */
+  idempotencyKey: string
   email: string
   name: string | null
   productKind: FunnelProductKind
@@ -62,9 +73,9 @@ export interface GrantDeps {
    * took the money the one flow that skips the unpaid-access check.
    */
   assignProgram: (input: { programId: string; userId: string }) => Promise<{ skipped: boolean }>
-  hasProcessed: (sessionId: string) => Promise<boolean>
+  hasProcessed: (idempotencyKey: string) => Promise<boolean>
   recordProcessed: (input: {
-    sessionId: string
+    idempotencyKey: string
     userId: string
     purchase: FunnelPurchase
     accountCreated: boolean
@@ -98,7 +109,7 @@ export async function grantFunnelPurchase(
   //    a slow response grants a second program and sends a second "set your
   //    password" email to someone who has already set one.
   try {
-    if (await deps.hasProcessed(purchase.sessionId)) {
+    if (await deps.hasProcessed(purchase.idempotencyKey)) {
       return {
         ok: true,
         outcome: "already_processed",
@@ -152,7 +163,7 @@ export async function grantFunnelPurchase(
   // 4. See the header: recorded AFTER the grant so a failure here is retryable.
   try {
     await deps.recordProcessed({
-      sessionId: purchase.sessionId,
+      idempotencyKey: purchase.idempotencyKey,
       userId: client.id,
       purchase,
       accountCreated,

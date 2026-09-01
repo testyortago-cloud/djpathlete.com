@@ -1426,7 +1426,7 @@ async function handleFunnelPurchaseCheckout(session: Stripe.Checkout.Session) {
   const leadId = session.metadata?.leadId || null
   const result = await grantFunnelPurchase(
     {
-      sessionId: session.id,
+      idempotencyKey: session.id,
       email,
       name: session.customer_details?.name ?? null,
       productKind: "program",

@@ -97,6 +97,7 @@ import {
   REFUSAL_BLOCKED,
   REFUSAL_INJURY,
 } from "@/lib/lead-engine/chat/constants"
+import { CONSULT_PATH } from "@/lib/lead-engine/chat/tools"
 import { ESCALATION_FLAGGED_NOTE, maxDuration } from "@/app/api/ask/route"
 
 const SALT = "test-salt-for-the-ask-route"
@@ -347,7 +348,9 @@ describe("POST /api/ask — the output validator", () => {
 
     expect(body.verdict).toBe("ok")
     expect(body.reply).toBe("That one is $79 — the card beside this has the details.")
-    expect(body.cards).toEqual(h.outcome.cards)
+    // The lookup's card, untouched — plus the way forward the route adds when
+    // the model did not ask for one. See the way-forward block below.
+    expect(body.cards[0]).toEqual(PROGRAMME_CARD)
     expect(appended("assistant")[0].verdict).toBe("ok")
   })
 
@@ -801,5 +804,135 @@ describe("POST /api/ask — a price must come from money", () => {
 
     expect(body.verdict).toBe("ok")
     expect(body.reply).toContain("6585")
+  })
+})
+
+/**
+ * THE VISITOR IS ALWAYS LEFT SOMEWHERE TO GO.
+ *
+ * The bug these pin: a real turn ended "would you like to book a
+ * consultation?" and put nothing on screen to book with, because the model
+ * wrote the offer instead of calling `book_consult`. Told plainly in the
+ * system prompt to call the tool as it writes the offer, it still wrote the
+ * offer alone on the next run — which is the ordinary reason a prompt is not
+ * a control in this feature. The route adds the card itself.
+ *
+ * Each test names the mutant it kills.
+ */
+describe("POST /api/ask — the way forward", () => {
+  it("adds the consultation link when the turn produced no way forward at all", async () => {
+    // MUTANT KILLED: leaving the CTA to the model. This is the shipped bug —
+    // a reply with an answer, an invitation, and nothing to act on.
+    h.runWithTools.mockResolvedValue(toolResult({ text: "Would you like to book a consultation?" }))
+
+    const res = await POST(req({ message: "what should I do?" }))
+    const body = await res.json()
+
+    expect(body.verdict).toBe("ok")
+    expect(body.cards).toEqual([{ kind: "consult", href: CONSULT_PATH }])
+  })
+
+  it("adds it beside a lookup's own cards, without disturbing them", async () => {
+    // MUTANT KILLED: replacing the turn's cards rather than appending. The
+    // price card is the whole reason the reply is allowed to mention a price.
+    h.outcome = { facts: [PROGRAMME_FACT], cards: [PROGRAMME_CARD], wantsCapture: false, wantsEscalate: false }
+    h.runWithTools.mockResolvedValue(toolResult({ text: "There is one programme — see the card." }))
+
+    const res = await POST(req({ message: "how much?" }))
+    const body = await res.json()
+
+    expect(body.cards).toEqual([PROGRAMME_CARD, { kind: "consult", href: CONSULT_PATH }])
+  })
+
+  it("does not add a second one when the model called book_consult itself", async () => {
+    // MUTANT KILLED: appending unconditionally, which shows the same button
+    // twice under one reply.
+    const consult: Card = { kind: "consult", href: CONSULT_PATH }
+    h.outcome = { facts: [], cards: [consult], wantsCapture: false, wantsEscalate: false }
+    h.runWithTools.mockResolvedValue(toolResult({ text: "Here is where you can arrange one." }))
+
+    const res = await POST(req({ message: "can I book?" }))
+    const body = await res.json()
+
+    expect(body.cards).toEqual([consult])
+  })
+
+  it("leaves a details form to stand as the way forward on its own", async () => {
+    // MUTANT KILLED: treating only `consult` as a way forward. The capture
+    // form is the OTHER thing a visitor can act on, and putting a
+    // "book a consultation" link under "leave your details" offers two front
+    // doors for one question.
+    h.outcome = {
+      facts: [],
+      cards: [{ kind: "capture", reason: "wants a callback" }],
+      wantsCapture: true,
+      wantsEscalate: false,
+    }
+    h.runWithTools.mockResolvedValue(toolResult({ text: "Leave your details and someone will get in touch." }))
+
+    const res = await POST(req({ message: "can someone call me?" }))
+    const body = await res.json()
+
+    // `reason` is redacted on the way out — that is visitorSafeCards, tested
+    // elsewhere — so the assertion is on the kinds.
+    expect(body.cards.map((c: Card) => c.kind)).toEqual(["capture"])
+  })
+
+  it("offers it once per conversation, not once per turn", async () => {
+    // MUTANT KILLED: adding it on every turn, which hands a visitor eight
+    // questions in the same button eight times.
+    h.getConversation.mockResolvedValue(conversation({ message_count: 2 }))
+    h.listMessages.mockResolvedValue([
+      storedMessage({ id: "m1", role: "user", content: "how much?" }),
+      storedMessage({
+        id: "m2",
+        role: "assistant",
+        content: "Here is where you can arrange one.",
+        verdict: "ok",
+        cards: [{ kind: "consult", href: CONSULT_PATH }],
+      }),
+    ])
+    h.runWithTools.mockResolvedValue(toolResult({ text: "Anything else I can look up?" }))
+
+    const res = await POST(req({ conversationId: CONVERSATION_ID, message: "and where are you?" }))
+    const body = await res.json()
+
+    expect(body.cards).toEqual([])
+  })
+
+  it("records the card it added, so the transcript matches what the visitor saw", async () => {
+    // MUTANT KILLED: adding the card to the response only. Whoever reads the
+    // conversation in /admin/chat afterwards must see the button that was on
+    // screen, or a support conversation about "the link you sent me" has no
+    // link in it.
+    h.runWithTools.mockResolvedValue(toolResult({ text: "Would you like to book a consultation?" }))
+
+    await POST(req({ message: "what should I do?" }))
+
+    expect(appended("assistant")[0].cards).toEqual([{ kind: "consult", href: CONSULT_PATH }])
+  })
+
+  it("does not add one to a turn the validator blocked", async () => {
+    // MUTANT KILLED: adding it before the validator. "I can't answer that
+    // accurately" with a booking button under it is the mixed message the
+    // blocked path deliberately avoids — it drops the turn's cards entirely.
+    h.runWithTools.mockResolvedValue(toolResult({ text: "It's $499 a month." }))
+
+    const res = await POST(req({ message: "how much?" }))
+    const body = await res.json()
+
+    expect(body.verdict).toBe("blocked")
+    expect(body.cards).toEqual([])
+  })
+
+  it("does not add one to an injury refusal, which never reaches the model", async () => {
+    // MUTANT KILLED: adding it on the short-circuit path. That reply already
+    // says a person will pick it up; a booking link beside it reads as a way
+    // to pay for the answer they were just refused.
+    const res = await POST(req({ message: "my shoulder hurts when I throw, what should I do?" }))
+    const body = await res.json()
+
+    expect(body.reply).toBe(REFUSAL_INJURY)
+    expect(body.cards).toEqual([])
   })
 })

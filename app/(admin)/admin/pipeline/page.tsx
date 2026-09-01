@@ -11,7 +11,7 @@
 // visibly different from a board with zero cards.
 
 import { requireAdmin } from "@/lib/auth-helpers"
-import { readBoard } from "@/lib/db/pipeline"
+import { readBoard, listGrantablePrograms } from "@/lib/db/pipeline"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { possessiveName } from "@/lib/lead-engine/business-copy"
 import { PipelineBoard } from "@/components/admin/pipeline-board"
@@ -22,7 +22,11 @@ export const dynamic = "force-dynamic"
 export default async function PipelinePage() {
   await requireAdmin()
 
-  const [columns, business] = await Promise.all([readBoard(), getBusinessSettings()])
+  const [columns, business, grantablePrograms] = await Promise.all([
+    readBoard(),
+    getBusinessSettings(),
+    listGrantablePrograms(),
+  ])
   const name = possessiveName(business.display_name)
 
   return (
@@ -34,7 +38,7 @@ export default async function PipelinePage() {
           the deal; dropping a closed card back on an open stage reopens it.
         </p>
       </div>
-      <PipelineBoard columns={columns} />
+      <PipelineBoard columns={columns} grantablePrograms={grantablePrograms} />
     </div>
   )
 }

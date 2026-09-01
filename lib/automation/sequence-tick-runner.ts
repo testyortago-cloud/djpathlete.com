@@ -28,6 +28,8 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
 import {
   assertSendable,
+  classifySendFault,
+  SequenceSendError,
   emailEnvPresent,
   renderSequenceEmail,
   sendRenderedSequenceEmail,
@@ -61,6 +63,16 @@ export type TickSummary = {
   exited: number
   completed: number
   failed: number
+  /**
+   * Runs deferred because the PROVIDER was misconfigured, not because
+   * anything about the contact was wrong. Counted apart from `deferred`
+   * because it is the one deferral that means a human must act: it repeats
+   * every tick until somebody fixes the setting, and once MAX_ATTEMPTS is
+   * reached it starts failing runs for real. The route reports a tick with a
+   * non-zero count as FAILED — a silent defer is a worse bug than a loud
+   * failure, because nobody finds out either way.
+   */
+  config_faults?: number
   /**
    * sms `send` actions that advanced via the unconfigured/env-missing path
    * (spec §4 amendment) rather than actually sending. Optional/undefined
@@ -127,6 +139,17 @@ const DEFAULT_LIMIT = 25
  * claims.
  */
 const MAX_ATTEMPTS = 5
+
+/**
+ * The floor on a configuration fault's defer, and it is NOT a tuning knob.
+ *
+ * `recordSend` re-claims a crashed attempt only once the queued row is older
+ * than `RECLAIM_WINDOW_MS` (15 minutes, lib/db/sequences.ts). A retry landing
+ * inside that window finds its own row too young, gets `claimed: false`, and
+ * burns the tick deferring on `send_in_progress` instead of retrying the send.
+ * 20 > 15, with room for clock skew between this process and the database.
+ */
+const CONFIG_FAULT_MIN_DEFER_MS = 20 * 60 * 1000
 const TRANSIENT_BACKOFF_BASE_MS = 5 * 60 * 1000
 const TRANSIENT_BACKOFF_MAX_MS = 60 * 60 * 1000
 
@@ -449,11 +472,31 @@ async function processRun(
           oneClickUrl,
         }))
       } catch (err) {
-        // The provider itself rejected it: nothing was delivered, so the
-        // message row is genuinely failed. failRun (rather than a retry) is
-        // deliberate — recordSend will not re-claim a message row in status
-        // 'failed', so a retried run could never get past its own idempotency
-        // gate and would defer on `send_in_progress` forever.
+        // WHOSE FAULT IS THIS — the recipient's, or the configuration's?
+        //
+        // RECIPIENT is the case this catch was written for: the provider
+        // rejected this address, nothing was delivered, and a retry would be
+        // rejected identically. The message row is genuinely failed, and
+        // failRun rather than a retry is deliberate — recordSend will not
+        // re-claim a message row in status 'failed', so a retried run could
+        // never get past its own idempotency gate and would defer on
+        // `send_in_progress` forever.
+        //
+        // CONFIGURATION is the opposite case, and it used to be handled as if
+        // it were this one. It fails every run in the batch identically and
+        // self-heals the moment somebody fixes the setting — so nothing is
+        // marked failed. The row is left `queued`, which is simply true
+        // (nothing was delivered), and the throw is re-raised for
+        // runSequenceTick's per-run catch to defer with the backoff that
+        // already exists. recordSend's crashed-attempt path then re-claims the
+        // row once RECLAIM_WINDOW_MS has passed, which is what
+        // CONFIG_FAULT_MIN_DEFER_MS exists to guarantee.
+        //
+        // This is exactly what all 73 sms_repermission runs needed on
+        // 2026-08-31 and did not get: one unverified sending domain marked
+        // every one of them permanently failed inside ten minutes.
+        if (classifySendFault(err) === "configuration") throw err
+
         const message = err instanceof Error ? err.message : String(err)
         await markFailed(messageId as string, message)
         await failRun(run.id, message)
@@ -639,8 +682,17 @@ export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Pr
       )
       try {
         if (retryable) {
-          await deferRun(run.id, new Date(now.getTime() + transientBackoffMs(attempts)), TRANSIENT_ERROR_DEFER_REASON)
+          // A configuration fault waits out recordSend's reclaim window, so
+          // the retry can actually re-claim its own queued row rather than
+          // bouncing on `send_in_progress`. Everything else keeps the
+          // existing backoff untouched.
+          const isConfigFault = err instanceof SequenceSendError && classifySendFault(err) === "configuration"
+          const backoffMs = isConfigFault
+            ? Math.max(transientBackoffMs(attempts), CONFIG_FAULT_MIN_DEFER_MS)
+            : transientBackoffMs(attempts)
+          await deferRun(run.id, new Date(now.getTime() + backoffMs), TRANSIENT_ERROR_DEFER_REASON)
           summary.deferred += 1
+          if (isConfigFault) summary.config_faults = (summary.config_faults ?? 0) + 1
         } else {
           await failRun(run.id, message)
           summary.failed += 1

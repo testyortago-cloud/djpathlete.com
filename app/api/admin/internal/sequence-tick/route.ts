@@ -34,6 +34,29 @@ export async function POST(request: NextRequest) {
   const runId = await logCronStart(supabase, "sequenceTickCron")
   try {
     const summary = await runSequenceTick()
+
+    // A CONFIGURATION FAULT IS INVISIBLE FROM THE OUTSIDE. The runs defer, the
+    // route answers 200, and nothing sends — which is the 31 August failure
+    // wearing a quieter face. Before the fault-classification change those 73
+    // runs were destroyed loudly; deferring instead fixes the damage but would
+    // remove the alarm along with it, and nobody found out either way.
+    //
+    // So a tick that recorded even one configuration fault reports FAILED,
+    // even when other runs in the same batch sent successfully: a batch half
+    // blocked by a provider misconfiguration is not a healthy tick.
+    // automation-health-scanner (daily 08:00 UTC, emails on `critical`)
+    // already lists this cron, so this is the line that reaches a human.
+    //
+    // The reason carries the provider's own sentence. A cron reason of
+    // "[object Object]" is a failure nobody can act on.
+    if ((summary.config_faults ?? 0) > 0) {
+      await logCronEnd(supabase, runId, "failed", {
+        message: `${summary.config_faults} configuration fault(s): the email provider rejected every attempt. Nothing sent; runs deferred, not lost.`,
+        ...summary,
+      })
+      return NextResponse.json({ ok: true, ...summary })
+    }
+
     await logCronEnd(supabase, runId, "success", summary)
     return NextResponse.json({ ok: true, ...summary })
   } catch (err) {
