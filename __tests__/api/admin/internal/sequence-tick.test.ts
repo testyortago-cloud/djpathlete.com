@@ -68,7 +68,7 @@ vi.mock("@/lib/db/sequences", async (importOriginal) => ({
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { logCronStart, logCronEnd } from "@/lib/db/cron-runs"
 import { getBusinessSettings } from "@/lib/db/businesses"
-import { sendSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engine/email"
+import { sendSequenceEmail, sendRenderedSequenceEmail, SequenceSendError } from "@/lib/lead-engine/email"
 import { unsubscribeUrl, unsubscribeOneClickUrl } from "@/lib/lead-engine/unsubscribe-token"
 import {
   claimDueRuns,
@@ -374,16 +374,45 @@ describe("POST /api/admin/internal/sequence-tick", () => {
       expect(deferRun).toHaveBeenCalledWith("r-delivered2", expect.any(Date), "transient_error")
     })
 
-    it("still marks the message failed when the PROVIDER is the thing that failed", async () => {
+    // RETARGETED 2026-09-01, not deleted. This used to be one test asserting
+    // that ANY provider throw marks the message failed, with the fixture
+    // `new Error("Resend rejected the sender")`. That fixture describes a
+    // rejected SENDER — a configuration fault — while asserting the terminal
+    // path, and on 2026-08-31 that exact combination destroyed all 73
+    // sms_repermission runs. The behaviour it pinned is the behaviour the
+    // fault-classification change deliberately splits in two, so the test
+    // splits with it: one case per branch, each able to fail on its own.
+    it("still marks the message failed when the RECIPIENT is the thing that failed", async () => {
       ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-rejected")])
       ;(sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mockRejectedValue(
-        new Error("Resend rejected the sender"),
+        new SequenceSendError("sendSequenceEmail failed: Invalid `to` field.", {
+          providerErrorName: "invalid_to_address",
+          statusCode: 422,
+        }),
       )
 
       const res = await POST(makeRequest())
 
       expect(await res.json()).toMatchObject({ failed: 1, sent: 0 })
-      expect(markFailed).toHaveBeenCalledWith("msg-1", expect.stringContaining("Resend rejected"))
+      expect(markFailed).toHaveBeenCalledWith("msg-1", expect.stringContaining("Invalid `to` field"))
+      expect(markSent).not.toHaveBeenCalled()
+    })
+
+    it("does NOT mark the message failed when the CONFIGURATION is the thing that failed", async () => {
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-rejected")])
+      ;(sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new SequenceSendError(
+          "sendSequenceEmail failed: The darrenjpaul.com domain is not verified.",
+          { providerErrorName: "validation_error", statusCode: 403 },
+        ),
+      )
+
+      const res = await POST(makeRequest())
+
+      // The row stays `queued` and the run stays recoverable. Marking it
+      // failed is what left 73 people unreachable without a hand-run repair.
+      expect(await res.json()).toMatchObject({ failed: 0, config_faults: 1 })
+      expect(markFailed).not.toHaveBeenCalled()
       expect(markSent).not.toHaveBeenCalled()
     })
   })
