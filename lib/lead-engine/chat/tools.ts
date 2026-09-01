@@ -91,6 +91,51 @@ export function visitorSafeCards(cards: Card[]): Card[] {
   return cards.map((card) => (card.kind === "capture" ? { ...card, reason: null } : card))
 }
 
+/**
+ * A card the visitor can DO something with: the details form, or the link to
+ * the page where a consultation is arranged. The other two kinds are read-only
+ * — a price, a date — and leave the conversation where it was.
+ */
+function isWayForward(card: { kind?: unknown } | null | undefined): boolean {
+  return card?.kind === "capture" || card?.kind === "consult"
+}
+
+/** Whether a turn already on the record put one of those on screen. Over the persisted JSON, so it is `unknown[]`. */
+export function cardsOfferWayForward(cards: unknown[] | null | undefined): boolean {
+  return Array.isArray(cards) && cards.some((card) => isWayForward(card as { kind?: unknown }))
+}
+
+/**
+ * A CTA THE MODEL FORGOT TO ASK FOR.
+ *
+ * *** THIS IS A CONTROL, AND IT EXISTS BECAUSE THE PROMPT IS NOT ONE. ***
+ * `book_consult` puts the only clickable next step on this surface, and the
+ * model calls it unreliably: three real turns, three different outcomes — one
+ * ending "would you like to book a consultation?" with nothing beside it to
+ * book with, one calling `capture_lead` correctly, one asking a clarifying
+ * question and offering nothing at all. Told plainly in the system prompt to
+ * call the tool as it writes the offer, it still wrote the offer alone. A
+ * visitor who has just been given an answer and an invitation, and has nothing
+ * to click, is the whole feature failing at its last inch.
+ *
+ * So the way forward is not left to the model. When a turn produced neither
+ * kind, the server adds the consultation link itself.
+ *
+ * WHY THIS IS SAFE TO ADD SERVER-SIDE. `consult` is the one card with no
+ * model-authored field at all: its single value is `CONSULT_PATH`, a constant
+ * three lines up. Adding it can no more put an unvalidated string on screen
+ * than rendering the panel's own header can. Contrast `capture`, whose
+ * `reason` the model writes — which is why THAT card is never conjured here,
+ * only redacted above.
+ *
+ * The caller decides whether the conversation has had one already; this
+ * function only answers "does THIS turn leave the visitor somewhere to go?".
+ */
+export function withWayForward(cards: Card[]): Card[] {
+  if (cards.some(isWayForward)) return cards
+  return [...cards, { kind: "consult", href: CONSULT_PATH }]
+}
+
 export type Card =
   | {
       kind: "programme"

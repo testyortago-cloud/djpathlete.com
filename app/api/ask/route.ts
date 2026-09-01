@@ -90,8 +90,10 @@ import { buildSystemPrompt } from "@/lib/lead-engine/chat/prompt"
 import { classifyTurn } from "@/lib/lead-engine/chat/risk"
 import {
   CHAT_TOOLS,
+  cardsOfferWayForward,
   createToolExecutor,
   visitorSafeCards,
+  withWayForward,
   type Card,
   type ToolOutcome,
 } from "@/lib/lead-engine/chat/tools"
@@ -512,8 +514,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ conversationId, reply: REFUSAL_BLOCKED, cards: [], verdict: "blocked" })
   }
 
+  // THE VISITOR IS ALWAYS LEFT SOMEWHERE TO GO. `withWayForward` adds the
+  // consultation link when the turn produced neither it nor the details form —
+  // see its header in tools.ts for why the model cannot be trusted with the
+  // one clickable thing on this surface. Once per conversation: `prior` is the
+  // record of what earlier turns actually put on screen, so a visitor eight
+  // questions in is not handed the same button eight times. A turn where the
+  // model DID call the tool keeps its own card either way; this only ever adds.
+  const offeredAlready = prior.some((row) => cardsOfferWayForward(row.cards))
+  const shown: Card[] = offeredAlready ? outcome.cards : withWayForward(outcome.cards)
+
   try {
-    await appendMessage({ ...persist, verdict: "ok", cards: outcome.cards as unknown[] })
+    // `shown`, not `outcome.cards`: the row is what the visitor saw. A
+    // transcript that omits a button someone clicked is a support conversation
+    // that goes wrong.
+    await appendMessage({ ...persist, verdict: "ok", cards: shown as unknown[] })
   } catch (err) {
     return failed("could not record the turn", err)
   }
@@ -538,7 +553,7 @@ export async function POST(request: Request) {
   // The unredacted cards are what was persisted above, deliberately: the reason
   // is evidence for whoever reads the transcript, and only the visitor-facing
   // copy needs to be free of it.
-  const cards: Card[] = visitorSafeCards(outcome.cards)
+  const cards: Card[] = visitorSafeCards(shown)
 
   return NextResponse.json({ conversationId, reply, cards, verdict: "ok" })
 }
