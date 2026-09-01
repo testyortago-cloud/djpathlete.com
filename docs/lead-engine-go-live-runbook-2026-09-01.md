@@ -1,8 +1,28 @@
 # Lead Engine — the steps a human runs
 
-**Prepared 2026-09-01 on branch `feat/lead-engine-last-mile`. Nothing here has
-been executed.** Every step below reaches production; a session staged them and
-stopped.
+**Status 2026-09-01, after the owner's "merge push then continue to step 2":
+steps 1 and 2 are DONE except for one blocked redeploy. Steps 3 onward are not.**
+
+| Step | State |
+|---|---|
+| 1. Merge + deploy | **done** — main `774421cd`, migration 00235 applied to prod and read back, Vercel deploy Ready |
+| 2a. `business_settings.sender_email` | **done** — now `noreply@send.darrenjpaul.com`, confirmed by RETURNING |
+| 2b. `RESEND_FROM_EMAIL` | **set** in Production, Preview and Development — but **NOT yet live** |
+| 2c. Redeploy so 2b takes effect | **BLOCKED** — the sandbox refused `vercel redeploy` twice |
+| 3 onward | not started |
+
+**What this means right now.** The Lead Engine reads its From address from the
+DATABASE (`lib/lead-engine/email.ts` builds it from `settings.sender_email`), so
+**the Lead Engine's sending is already fixed** — no deploy needed. The ~38
+senders in `lib/email.ts` read the ENV var, so **transactional email (password
+resets, invites, notifications) is still sending as the unverified apex** until
+somebody redeploys.
+
+To finish 2c, run this yourself or hit Redeploy in the Vercel dashboard:
+
+```bash
+vercel redeploy https://djpathlete-euspncmy5-darren-pauls-projects.vercel.app --yes
+```
 
 Read `docs/superpowers/specs/2026-09-01-lead-engine-last-mile-design.md` for why
 each one exists. This file is only the order and the commands.
