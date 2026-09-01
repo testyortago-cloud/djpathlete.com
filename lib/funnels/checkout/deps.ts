@@ -99,9 +99,9 @@ export function buildGrantDeps(context: {
 
     hasProcessed: hasProcessedCheckoutSession,
 
-    recordProcessed: async ({ sessionId, userId, purchase, accountCreated }) => {
+    recordProcessed: async ({ idempotencyKey, userId, purchase, accountCreated }) => {
       await recordCheckoutGrant({
-        stripe_session_id: sessionId,
+        stripe_session_id: idempotencyKey,
         user_id: userId,
         email: purchase.email,
         product_kind: purchase.productKind,
@@ -127,7 +127,7 @@ export function buildGrantDeps(context: {
 
     alertFailure: async ({ purchase, stage, error }) => {
       await sendFunnelPurchaseFailureAlert({
-        stripeSessionId: purchase.sessionId,
+        stripeSessionId: purchase.idempotencyKey,
         buyerEmail: purchase.email,
         buyerName: purchase.name,
         productKind: purchase.productKind,

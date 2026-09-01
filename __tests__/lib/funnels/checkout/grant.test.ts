@@ -16,7 +16,7 @@ import {
 } from "@/lib/funnels/checkout/grant"
 
 const purchase: FunnelPurchase = {
-  sessionId: "cs_test_123",
+  idempotencyKey: "cs_test_123",
   email: "jordan@example.com",
   name: "Jordan",
   productKind: "program",
@@ -127,7 +127,7 @@ describe("Stripe replaying the webhook", () => {
     const d = deps()
     await grantFunnelPurchase(purchase, d)
     expect(d.hasProcessed).toHaveBeenCalledWith("cs_test_123")
-    expect(d.recordProcessed).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "cs_test_123" }))
+    expect(d.recordProcessed).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: "cs_test_123" }))
   })
 
   it("refuses to proceed when the ledger cannot be read", async () => {
@@ -159,7 +159,7 @@ describe("paid but not delivered", () => {
 
     expect(result).toMatchObject({ ok: false, stage: "grant" })
     expect(d.alertFailure).toHaveBeenCalledWith(
-      expect.objectContaining({ stage: "grant", purchase: expect.objectContaining({ sessionId: "cs_test_123" }) }),
+      expect.objectContaining({ stage: "grant", purchase: expect.objectContaining({ idempotencyKey: "cs_test_123" }) }),
     )
   })
 
