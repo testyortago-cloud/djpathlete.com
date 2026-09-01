@@ -143,6 +143,77 @@ export function assertSendable(settings: BusinessSettings): void {
   if (missing.length > 0) throw new BusinessNotConfiguredError(missing)
 }
 
+/**
+ * A provider rejection that KEEPS ITS SHAPE.
+ *
+ * This used to be a bare `Error` carrying only `error.message`, so everything
+ * downstream saw prose and nothing else. You cannot tell an unverified
+ * sending domain from an undeliverable mailbox out of prose — and on
+ * 2026-08-31 that cost all 73 `sms_repermission` runs, because a typo in one
+ * settings field was handled as though 73 separate mailboxes had each
+ * refused.
+ *
+ * `assertSendable` above cannot prevent that class of failure however much it
+ * is widened: whether a domain is verified is a fact held at the PROVIDER,
+ * not in this database. So the shape survives the throw instead, and
+ * `classifySendFault` reads it.
+ *
+ * THE MESSAGE FORMAT IS DELIBERATELY UNCHANGED (`sendSequenceEmail failed: …`).
+ * `sequence_runs.last_error` rows already in production start with it, and so
+ * do assertions in the route-level suite.
+ */
+export class SequenceSendError extends Error {
+  readonly providerErrorName: string | null
+  readonly statusCode: number | null
+
+  constructor(message: string, meta: { providerErrorName: string | null; statusCode: number | null }) {
+    super(message)
+    this.name = "SequenceSendError"
+    this.providerErrorName = meta.providerErrorName
+    this.statusCode = meta.statusCode
+  }
+}
+
+/**
+ * Faults that belong to THIS RECIPIENT and would fail identically on a retry.
+ * Deliberately short — see `classifySendFault` for why the absent cases are
+ * the safe ones to be missing.
+ */
+const RECIPIENT_FAULT_NAMES = new Set(["invalid_to_address", "invalid_recipient"])
+
+/**
+ * Whose fault is this — the configuration's, or the recipient's?
+ *
+ * *** THE DEFAULT IS "configuration", AND THAT IS THE POINT. ***
+ *
+ * A configuration fault (unverified domain, revoked key, suspended account,
+ * exhausted quota, provider 5xx) fails every run in the batch identically and
+ * self-heals the moment somebody fixes the setting. A recipient fault belongs
+ * to one address and will fail the same way forever.
+ *
+ * Getting this backwards is NOT symmetric, which is why the default leans the
+ * way it does:
+ *
+ *   - A recipient fault misread as configuration costs five deferred retries
+ *     and then fails terminally anyway, because MAX_ATTEMPTS bounds it.
+ *   - A configuration fault misread as a recipient fault DESTROYS THE
+ *     CAMPAIGN. `recordSend` will not re-claim a `sequence_messages` row in
+ *     status 'failed', so those runs have no way back in without a hand-run
+ *     database repair. That is the 31 August failure exactly.
+ *
+ * So the recipient list is short and explicit, and everything unrecognised —
+ * including every error Resend has not shipped yet — takes the bounded path.
+ */
+export function classifySendFault(err: unknown): "configuration" | "recipient" {
+  if (!(err instanceof SequenceSendError)) return "configuration"
+  if (err.providerErrorName && RECIPIENT_FAULT_NAMES.has(err.providerErrorName)) return "recipient"
+  // 422 is "we understood the request and refused this value". It is the
+  // recipient's fault only when the value refused IS the recipient — a 422
+  // naming the `from` address is a configuration fault wearing the same code.
+  if (err.statusCode === 422 && /\bto\b|recipient/i.test(err.message)) return "recipient"
+  return "configuration"
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -370,7 +441,15 @@ export async function sendRenderedSequenceEmail(args: {
   })
 
   if (error) {
-    throw new Error(`sendSequenceEmail failed: ${error.message}`)
+    // The shape is preserved, not just the sentence — see SequenceSendError.
+    // Resend's error object carries `name` (e.g. "validation_error") and
+    // `statusCode`; both used to be discarded here, which left
+    // classifySendFault nothing to read but prose.
+    const meta = error as { name?: string; statusCode?: number }
+    throw new SequenceSendError(`sendSequenceEmail failed: ${error.message}`, {
+      providerErrorName: meta.name ?? null,
+      statusCode: meta.statusCode ?? null,
+    })
   }
 
   return { providerMessageId: data?.id ?? null }
