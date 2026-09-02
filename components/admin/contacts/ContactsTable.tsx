@@ -35,6 +35,7 @@
 // components were never built against.
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { ChevronLeft, ChevronRight, Mail, Phone, Search, Send, X } from "lucide-react"
@@ -63,6 +64,8 @@ import {
 
 export interface ContactsTableProps {
   contacts: ContactListRow[]
+  /** Tags per contact id. A plain object, not a Map — this crosses the server boundary. */
+  tagsByContact?: Record<string, string[]>
   /** Every contact matching the filters, not just the ones on this page. */
   total: number
   /** 1-based, already validated by `parseContactFilters`. */
@@ -462,7 +465,49 @@ export function ContactsTable(props: ContactsTableProps) {
                       className="size-4 rounded border-border accent-primary"
                     />
                   </DataTableCell>
-                  <DataTableCell className="font-medium text-foreground">{contact.name ?? "—"}</DataTableCell>
+                  <DataTableCell className="font-medium text-foreground">
+                    {/* TWO TARGETS IN ONE ROW, AND THEIR NAMES MUST NOT OVERLAP.
+                        The checkbox beside this is labelled `Select ${label}`.
+                        Playwright's `name` matcher is a SUBSTRING match, so a
+                        link named plainly "Sam Athlete" would also be matched
+                        by a query for the checkbox's name and vice versa. The
+                        visually-hidden suffix gives the link an accessible name
+                        ("Sam Athlete — open contact record") that neither
+                        contains nor is contained by the checkbox's, while still
+                        beginning with the visible text so it satisfies WCAG
+                        2.5.3 Label in Name.
+
+                        prefetch={false} IS NOT AN OPTIMISATION. Opening this
+                        page writes a `contact.viewed` audit row, and the page is
+                        `force-dynamic`. Left to prefetch, Next would render it
+                        on hover or as rows enter the viewport, filling the
+                        sensitive-read trail with views nobody performed — which
+                        is worse than having no trail at all. */}
+                    <Link
+                      href={`/admin/contacts/${contact.id}`}
+                      prefetch={false}
+                      className="rounded-sm underline-offset-2 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    >
+                      {contact.name ?? "View record"}
+                      <span className="sr-only"> — open contact record</span>
+                    </Link>
+                    {/* Tags live under the name rather than in their own column:
+                        a sixth column would push the phone and date off a laptop
+                        screen, and the empty-state colSpan={5} would have to
+                        change with it. */}
+                    {(props.tagsByContact?.[contact.id] ?? []).length > 0 ? (
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        {(props.tagsByContact?.[contact.id] ?? []).map((tag) => (
+                          <span
+                            key={tag}
+                            className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null}
+                  </DataTableCell>
                   <DataTableCell>
                     {contact.email ? (
                       <a

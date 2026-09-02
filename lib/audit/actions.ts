@@ -199,6 +199,18 @@ export const AUDIT_ACTIONS = [
   { slug: "event_signup.created", category: "marketing", description: "Public event signup" },
   { slug: "event_signup.cancelled", category: "marketing", description: "Event signup cancelled" },
   { slug: "contact.submitted", category: "marketing", description: "Public contact form submitted" },
+
+  // contact record (Full Engine phase 1)
+  //
+  // `contact.viewed` is admin_read_sensitive rather than admin_read on purpose,
+  // and it is the same call app/(admin)/admin/chat/[id]/page.tsx made for a chat
+  // transcript. Opening this screen is not "looked at a list" — it is reading
+  // one named person's entire history in one place: every form they filled in,
+  // the text messages they sent, what they paid, and the calls they booked. Who
+  // read that is worth keeping for the same reason a client's medical note is.
+  { slug: "contact.viewed", category: "admin_read_sensitive", description: "Contact record opened (admin)" },
+  { slug: "contact.tag_added", category: "admin_write", description: "Tag added to a contact (admin)" },
+  { slug: "contact.tag_removed", category: "admin_write", description: "Tag removed from a contact (admin)" },
   { slug: "funnel.submission_received", category: "marketing", description: "Funnel page form submitted" },
   { slug: "funnel.created", category: "admin_write", description: "Funnel created (admin)" },
   { slug: "funnel.updated", category: "admin_write", description: "Funnel or step updated (admin)" },

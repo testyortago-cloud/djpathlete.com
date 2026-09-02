@@ -40,6 +40,13 @@
 -- Task 1's report already verified both live, with before/after row counts
 -- and a re-pointed contact_consents row respectively.)
 --
+-- Scenarios 13-14 were added by Full Engine phase 1, covering the SEVENTH
+-- cascading child, contact_tags (migration 00237), re-pointed by 00238:
+--  13. Overlapping tags -> survivor holds the union, exactly once, and the
+--      merge does not abort on contact_tags_unique.
+--  14. Disjoint tags -> the loser's tag really moves (the presence control
+--      for 13, which would otherwise pass with the re-point broken).
+--
 -- Scenarios 7-12 were added by Stage 1c Task 2, covering the sixth cascading
 -- child (opportunities) and the first_touch_session_id "earliest wins" rule:
 --   7. Loser has an open opportunity, survivor has none -> the survivor owns
@@ -590,6 +597,101 @@ BEGIN
   END IF;
 
   RAISE NOTICE 'SCENARIO 12 PASSED: missing marketing_attribution row fell back to contacts.created_at without crashing';
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- SCENARIO 13 — contact_tags, THE OVERLAPPING CASE (the one that breaks).
+--
+-- contact_tags.contact_id is ON DELETE CASCADE, making it the seventh child
+-- this function must re-point before deleting the loser. Verified as a real
+-- failure before migration 00238 was written: the loser's unique tag was
+-- silently destroyed.
+--
+-- The overlap is what makes it more than a bare UPDATE. contact_tags_unique
+-- UNIQUE (contact_id, tag) rejects moving a tag the survivor already holds,
+-- which would abort the WHOLE merge on a duplicate-key error — and therefore
+-- the lead capture that triggered it. Postgres has no ON CONFLICT on UPDATE,
+-- so 00238 guards with NOT EXISTS instead.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_business uuid := '00000000-0000-0000-0000-000000000001';
+  v_survivor uuid;
+  v_loser    uuid;
+  v_tags     text;
+  v_count    int;
+BEGIN
+  INSERT INTO public.contacts (business_id, email, created_at)
+    VALUES (v_business, 'scenario13-survivor@example.com', now() - interval '30 days')
+    RETURNING id INTO v_survivor;
+  INSERT INTO public.contacts (business_id, phone_e164, created_at)
+    VALUES (v_business, '+16175551013', now() - interval '2 days')
+    RETURNING id INTO v_loser;
+
+  INSERT INTO public.contact_tags (business_id, contact_id, tag) VALUES
+    (v_business, v_survivor, 'shared-tag'),
+    (v_business, v_survivor, 'survivor-only'),
+    (v_business, v_loser,    'shared-tag'),
+    (v_business, v_loser,    'loser-only');
+
+  PERFORM public.merge_contacts(v_survivor, v_loser, v_business, 'scenario13_overlapping_tags');
+
+  SELECT string_agg(tag, ',' ORDER BY tag), count(*) INTO v_tags, v_count
+    FROM public.contact_tags WHERE contact_id = v_survivor;
+
+  IF v_tags IS DISTINCT FROM 'loser-only,shared-tag,survivor-only' THEN
+    RAISE EXCEPTION 'SCENARIO 13 FAILED: survivor tags = %, expected loser-only,shared-tag,survivor-only', v_tags;
+  END IF;
+  IF v_count <> 3 THEN
+    RAISE EXCEPTION 'SCENARIO 13 FAILED: survivor has % tag rows, expected 3 (the shared tag was duplicated)', v_count;
+  END IF;
+
+  -- DELIBERATELY NOT ASSERTING "no rows still point at the loser". That check
+  -- CANNOT FAIL, and a test that cannot fail is worse than no test because it
+  -- reads as coverage: contact_tags cascades on contacts(id), so the function's
+  -- closing DELETE removes any un-repointed row before this block resumes.
+  -- The assertions that actually bite are above -- the count of 3 fails if the
+  -- overlap duplicated, and the tag list fails if the loser's unique tag was
+  -- cascaded away instead of carried.
+
+  RAISE NOTICE 'SCENARIO 13 PASSED: overlapping tags merged to the union, exactly once';
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- SCENARIO 14 — contact_tags with NO overlap. The PRESENCE CONTROL for 13.
+--
+-- Scenario 13 asserts a union. If the re-point were broken for everybody, the
+-- survivor would still hold its own two tags and a careless reading of 13
+-- could pass. This one proves a tag MOVES at all.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_business uuid := '00000000-0000-0000-0000-000000000001';
+  v_survivor uuid;
+  v_loser    uuid;
+  v_tags     text;
+BEGIN
+  INSERT INTO public.contacts (business_id, email, created_at)
+    VALUES (v_business, 'scenario14-survivor@example.com', now() - interval '30 days')
+    RETURNING id INTO v_survivor;
+  INSERT INTO public.contacts (business_id, phone_e164, created_at)
+    VALUES (v_business, '+16175551014', now() - interval '2 days')
+    RETURNING id INTO v_loser;
+
+  INSERT INTO public.contact_tags (business_id, contact_id, tag) VALUES
+    (v_business, v_survivor, 'keeps-mine'),
+    (v_business, v_loser,    'moves-over');
+
+  PERFORM public.merge_contacts(v_survivor, v_loser, v_business, 'scenario14_disjoint_tags');
+
+  SELECT string_agg(tag, ',' ORDER BY tag) INTO v_tags
+    FROM public.contact_tags WHERE contact_id = v_survivor;
+
+  IF v_tags IS DISTINCT FROM 'keeps-mine,moves-over' THEN
+    RAISE EXCEPTION 'SCENARIO 14 FAILED: survivor tags = %, expected keeps-mine,moves-over', v_tags;
+  END IF;
+
+  RAISE NOTICE 'SCENARIO 14 PASSED: a disjoint tag was carried to the survivor';
 END $$;
 
 ROLLBACK;
