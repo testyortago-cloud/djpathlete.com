@@ -70,6 +70,12 @@ const PUBLIC_PROGRAMME = {
 
 beforeEach(() => {
   rowsByTable = {}
+  // The booking provider is a separate concern (chat-slots.test.ts). These
+  // tests are about the UNCONFIGURED path by construction, whatever
+  // .env.local happens to hold.
+  delete process.env.CALENDLY_API_TOKEN
+  delete process.env.CALENDLY_EVENT_TYPE_URI
+  delete process.env.CALENDLY_SCHEDULING_URL
 })
 
 describe("no tool the model can call has a write path", () => {

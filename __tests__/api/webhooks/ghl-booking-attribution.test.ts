@@ -1,3 +1,9 @@
+// @vitest-environment node
+//
+// Pinned to node (Full Engine phase 2): these suites drive route handlers with
+// Request/Response and never touch a DOM, and every jsdom suite in this repo
+// currently fails to start (ERR_REQUIRE_ESM in html-encoding-sniffer). Without
+// this line the file reports "no tests" rather than red.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mocks = vi.hoisted(() => ({

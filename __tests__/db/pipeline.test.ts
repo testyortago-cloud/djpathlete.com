@@ -623,6 +623,10 @@ describe("applyPipelineEvent", () => {
     expect(decision.kind).toBe("close")
     const row = store.opportunities[0]
     expect(row.outcome).toBe("won")
+    // WHY the card closed. decideMove has always named it; this column (00219)
+    // was never written on the close path until the Calendly acceptance run
+    // asserted `lost / booking_cancelled` and found `lost / null`.
+    expect(row.outcome_reason).toBe("payment_received")
     expect(row.closed_at).not.toBeNull()
     expect(row.closed_trigger).toBe("payment")
     expect(row.stage_id).toBe("stage-won")
@@ -632,6 +636,24 @@ describe("applyPipelineEvent", () => {
     const won = store.audit_logs.find((a) => a.action === "pipeline.opportunity_won")
     expect(won).toBeDefined()
     expect(won?.category).toBe("commerce")
+  })
+
+  it("closes lost with outcome_reason booking_cancelled when an open card's consult is cancelled", async () => {
+    seedBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+    const { decision } = await applyPipelineEvent({
+      contactId: "c-1",
+      event: { kind: "booking", status: "cancelled", occurredAt: new Date() },
+    })
+
+    expect(decision.kind).toBe("close")
+    const row = store.opportunities[0]
+    expect(row.outcome).toBe("lost")
+    expect(row.outcome_reason).toBe("booking_cancelled")
+    expect(row.closed_trigger).toBe("booking")
+    expect(row.stage_id).toBe("stage-lost")
   })
 
   // Controller ruling C3: a `create` decision that ALSO carries an outcome

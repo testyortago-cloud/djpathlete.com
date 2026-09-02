@@ -1,0 +1,48 @@
+{
+  "created_at": "2026-09-03T15:04:10.000000Z",
+  "created_by": "https://api.calendly.com/users/CALENDLYUSER0001",
+  "event": "invitee.created",
+  "payload": {
+    "cancel_url": "https://calendly.com/cancellations/INVITEE00000001",
+    "created_at": "2026-09-03T15:04:09.812000Z",
+    "email": "priya.raman+seed@example.test",
+    "event": "https://api.calendly.com/scheduled_events/SCHEDEVENT0001",
+    "first_name": "Priya",
+    "last_name": "Raman",
+    "name": "Priya Raman",
+    "new_invitee": null,
+    "old_invitee": null,
+    "questions_and_answers": [],
+    "reschedule_url": "https://calendly.com/reschedulings/INVITEE00000001",
+    "rescheduled": false,
+    "status": "active",
+    "text_reminder_number": "+1 617-650-4548",
+    "timezone": "America/New_York",
+    "tracking": {
+      "utm_campaign": null,
+      "utm_source": "website-assistant",
+      "utm_medium": "chat",
+      "utm_content": "gclid:TeSt_gclid-123",
+      "utm_term": "conv:0f3b2e9a-6c1d-4f0e-9b7a-2c4d6e8f0a1b",
+      "salesforce_uuid": null
+    },
+    "updated_at": "2026-09-03T15:04:09.812000Z",
+    "uri": "https://api.calendly.com/scheduled_events/SCHEDEVENT0001/invitees/INVITEE00000001",
+    "scheduled_event": {
+      "uri": "https://api.calendly.com/scheduled_events/SCHEDEVENT0001",
+      "name": "Consultation",
+      "status": "active",
+      "start_time": "2026-09-08T14:00:00.000000Z",
+      "end_time": "2026-09-08T14:30:00.000000Z",
+      "event_type": "https://api.calendly.com/event_types/EVENTTYPE000001",
+      "location": { "type": "outbound_call", "location": "+1 617-650-4548" },
+      "invitees_counter": { "total": 1, "active": 1, "limit": 1 },
+      "created_at": "2026-09-03T15:04:09.000000Z",
+      "updated_at": "2026-09-03T15:04:09.000000Z",
+      "event_memberships": [
+        { "user": "https://api.calendly.com/users/CALENDLYUSER0001", "user_email": "coach@example.test", "user_name": "Coach" }
+      ],
+      "event_guests": []
+    }
+  }
+}

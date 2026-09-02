@@ -532,6 +532,14 @@ export interface Booking {
   gbraid: string | null
   wbraid: string | null
   fbclid: string | null
+  /**
+   * Migration 00239. The Calendly scheduled_event URI for a booking that came
+   * through the Calendly webhook; null on every GoHighLevel row. Partial-unique.
+   */
+  calendly_event_uri: string | null
+  /** The invitee's own Calendly links, shown as row actions on /admin/bookings. Null for GHL rows. */
+  reschedule_url: string | null
+  cancel_url: string | null
 }
 
 export interface Payment {

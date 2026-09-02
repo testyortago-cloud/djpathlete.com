@@ -60,6 +60,8 @@ import { NextResponse } from "next/server"
 import { runWithTools } from "@/lib/ai/tool-loop"
 import { recordAudit } from "@/lib/audit/record"
 import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
+import { getAttributionBySession } from "@/lib/db/marketing-attribution"
+import { readContactIdentity } from "@/lib/db/pipeline"
 import {
   appendMessage,
   countRecentConversationsByIp,
@@ -94,6 +96,7 @@ import {
   createToolExecutor,
   visitorSafeCards,
   withWayForward,
+  type ExecutorContext,
   type Card,
   type ToolOutcome,
 } from "@/lib/lead-engine/chat/tools"
@@ -415,7 +418,12 @@ export async function POST(request: Request) {
     return failed("could not load the conversation", err)
   }
 
-  const executor = createToolExecutor()
+  // What the tools may know about this visitor that the model is never asked
+  // for: who they are (the contact the details card wrote, for prefilling the
+  // booking page), which ad brought them (for the booking's conversion), and
+  // the zone times are spoken in. Each read degrades to "unknown" on its own
+  // — a failed lookup here must cost the prefill, never the turn.
+  const executor = createToolExecutor(await executorContextFor(conversation, settings))
 
   let result
   try {
@@ -522,7 +530,7 @@ export async function POST(request: Request) {
   // questions in is not handed the same button eight times. A turn where the
   // model DID call the tool keeps its own card either way; this only ever adds.
   const offeredAlready = prior.some((row) => cardsOfferWayForward(row.cards))
-  const shown: Card[] = offeredAlready ? outcome.cards : withWayForward(outcome.cards)
+  const shown: Card[] = offeredAlready ? outcome.cards : withWayForward(outcome.cards, outcome.consultHref)
 
   try {
     // `shown`, not `outcome.cards`: the row is what the visitor saw. A
@@ -597,4 +605,46 @@ function failed(context: string, err: unknown) {
   const e = err as { message?: unknown } | null | undefined
   console.error(`[ask] ${context}`, { message: typeof e?.message === "string" ? e.message : undefined })
   return NextResponse.json({ error: COPY.failed }, { status: 500 })
+}
+
+/**
+ * The executor's view of this visitor. See `ExecutorContext` in tools.ts for
+ * why none of this may come from the model.
+ *
+ * Each read is wrapped on its own: the contact read failing must not lose the
+ * click ids, and neither failing may lose the turn. Logged, because a silent
+ * null here is a booking that quietly lands on a duplicate contact.
+ */
+async function executorContextFor(
+  conversation: ChatConversation,
+  settings: BusinessSettings,
+): Promise<ExecutorContext> {
+  let visitor: ExecutorContext["visitor"] = null
+  if (conversation.contact_id) {
+    try {
+      visitor = await readContactIdentity(conversation.contact_id)
+    } catch (err) {
+      console.error(`[ask] could not read contact ${conversation.contact_id} for prefill`, (err as Error).message)
+    }
+  }
+
+  let tracking: ExecutorContext["tracking"] = { conversationId: conversation.id }
+  if (conversation.attribution_session_id) {
+    try {
+      const attribution = await getAttributionBySession(conversation.attribution_session_id)
+      if (attribution) {
+        tracking = {
+          conversationId: conversation.id,
+          gclid: attribution.gclid ?? null,
+          gbraid: attribution.gbraid ?? null,
+          wbraid: attribution.wbraid ?? null,
+          fbclid: attribution.fbclid ?? null,
+        }
+      }
+    } catch (err) {
+      console.error(`[ask] could not read attribution for conversation ${conversation.id}`, (err as Error).message)
+    }
+  }
+
+  return { timezone: settings.timezone, visitor, tracking }
 }

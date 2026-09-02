@@ -692,6 +692,14 @@ export async function applyPipelineEvent(input: {
 
       const patch: Row = {
         outcome: decision.outcome,
+        // decideMove names WHY the card closed (`payment_received`,
+        // `booking_cancelled`, `booking_no_show`); this column existed for it
+        // since 00219 and was never written on this path — found by the
+        // Calendly acceptance run asserting a cancelled consult reads as
+        // `lost / booking_cancelled` and finding `lost / null`. The refund
+        // branch below already writes it; the merge function writes
+        // `merged_into_survivor`. This branch was the gap.
+        outcome_reason: decision.reason,
         closed_at: now.toISOString(),
         closed_trigger: decision.trigger,
         stage_id: toStage.id,

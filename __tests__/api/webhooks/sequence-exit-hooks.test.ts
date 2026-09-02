@@ -1,3 +1,9 @@
+// @vitest-environment node
+//
+// Pinned to node (Full Engine phase 2): these suites drive route handlers with
+// Request/Response and never touch a DOM, and every jsdom suite in this repo
+// currently fails to start (ERR_REQUIRE_ESM in html-encoding-sniffer). Without
+// this line the file reports "no tests" rather than red.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // ─── Shared mocks: lib/db/contacts + lib/db/sequences ───────────────────────
@@ -353,5 +359,106 @@ describe("GHL booking webhook — sequence exit on booking", () => {
     )
     expect(completedRes.status).toBe(201)
     expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-8", "booking")
+  })
+})
+
+// ─── Calendly booking webhook — the SECOND caller of lib/bookings/ingest.ts ──
+//
+// The GHL block above, retargeted through the Calendly envelope. Same mocks,
+// same expectations: a scheduled booking exits the contact's active runs, a
+// cancellation does not, and the reschedule-cancel does not either.
+
+import { buildSignatureHeader } from "@/lib/calendly/signature"
+import { readFileSync } from "fs"
+
+const CALENDLY_KEY = "sequence-exit-signing-key"
+const CALENDLY_FIXTURE = JSON.parse(readFileSync("__tests__/fixtures/calendly/invitee-created.json", "utf8"))
+
+function makeCalendlyReq(event: "invitee.created" | "invitee.canceled", payloadOverrides: Record<string, unknown> = {}): Request {
+  const raw = JSON.stringify({ ...CALENDLY_FIXTURE, event, payload: { ...CALENDLY_FIXTURE.payload, ...payloadOverrides } })
+  return new Request("http://localhost/api/webhooks/calendly", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "calendly-webhook-signature": buildSignatureHeader({
+        rawBody: raw,
+        signingKey: CALENDLY_KEY,
+        timestampSeconds: Math.floor(Date.now() / 1000),
+      }),
+    },
+    body: raw,
+  })
+}
+
+describe("Calendly booking webhook — sequence exit on booking", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.CALENDLY_WEBHOOK_SIGNING_KEY = CALENDLY_KEY
+    delete process.env.CALENDLY_EVENT_TYPE_URI
+
+    bookingsSelectMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+    bookingsInsert = vi.fn().mockReturnValue({
+      select: () => ({ single: vi.fn().mockResolvedValue({ data: { id: "bk-cal-1" }, error: null }) }),
+    })
+    bookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
+
+    findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    exitRunsForContactMock.mockReset().mockResolvedValue(0)
+  })
+
+  it("exits active runs when an invitee is created", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-cal-3")
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(makeCalendlyReq("invitee.created"))
+
+    expect(res.status).toBe(201)
+    expect(findContactByIdentifiersMock).toHaveBeenCalledWith(
+      expect.objectContaining({ email: "priya.raman+seed@example.test", phone: "+16176504548" }),
+    )
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-cal-3", "booking")
+  })
+
+  it("does not fail the webhook when the contact cannot be resolved", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce(null)
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(makeCalendlyReq("invitee.created"))
+
+    expect(res.status).toBe(201)
+    expect(exitRunsForContactMock).not.toHaveBeenCalled()
+  })
+
+  it("does not fail the webhook when exitRunsForContact throws", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-cal-4")
+    exitRunsForContactMock.mockRejectedValueOnce(new Error("db exploded"))
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(makeCalendlyReq("invitee.created"))
+
+    expect(res.status).toBe(201)
+    expect(consoleErrorSpy).toHaveBeenCalled()
+    consoleErrorSpy.mockRestore()
+  })
+
+  it("does not exit sequences when the invitee cancels", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-cal-5")
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(makeCalendlyReq("invitee.canceled", { status: "canceled" }))
+
+    expect(res.status).toBe(201)
+    expect(exitRunsForContactMock).not.toHaveBeenCalled()
+  })
+
+  it("does not exit sequences on the cancel half of a reschedule either", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-cal-6")
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(makeCalendlyReq("invitee.canceled", { status: "canceled", rescheduled: true }))
+
+    expect(res.status).toBe(201)
+    expect(exitRunsForContactMock).not.toHaveBeenCalled()
   })
 })
