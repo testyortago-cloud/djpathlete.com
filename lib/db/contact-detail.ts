@@ -55,6 +55,7 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { normaliseEmail, normalisePhone } from "@/lib/lead-engine/identity"
 import { maskEmail, maskPhone } from "@/lib/lead-engine/mask"
+import { isMissingTagsTable } from "@/lib/db/contact-tags"
 
 function getClient() {
   return createServiceRoleClient()
@@ -566,7 +567,20 @@ export async function getContactDetail(contact: ContactRecord): Promise<ContactD
   if (eventsRes.error) throw new Error(`getContactDetail events: ${eventsRes.error.message}`)
   if (consentsRes.error) throw new Error(`getContactDetail consents: ${consentsRes.error.message}`)
   if (runsRes.error) throw new Error(`getContactDetail runs: ${runsRes.error.message}`)
-  if (tagsRes.error) throw new Error(`getContactDetail tags: ${tagsRes.error.message}`)
+
+  // The tags leg gets the SAME one-deploy tolerance the list read has, and for
+  // the same reason — see isMissingTagsTable in lib/db/contact-tags.ts. The rest
+  // of this record (the history, the consent evidence, the money) does not
+  // depend on contact_tags existing, so losing the whole screen over a table
+  // that is minutes away from being created is the wrong trade. Every other
+  // error on this leg still throws.
+  let tagsMissing = false
+  if (tagsRes.error && isMissingTagsTable(tagsRes.error)) {
+    console.warn("getContactDetail: contact_tags does not exist yet (migration 00237 pending); rendering without tags")
+    tagsMissing = true
+  } else if (tagsRes.error) {
+    throw new Error(`getContactDetail tags: ${tagsRes.error.message}`)
+  }
 
   // PAYMENTS ONLY EXIST FOR A CONTACT THAT REACHED A USER. `contacts.user_id`
   // is null for most leads, and a null here means "no account", not "no money":
@@ -647,7 +661,7 @@ export async function getContactDetail(contact: ContactRecord): Promise<ContactD
     consents: (consentsRes.data ?? []) as ConsentRow[],
     suppressions,
     runs,
-    tags: ((tagsRes.data ?? []) as { tag: string }[]).map((row) => row.tag),
+    tags: tagsMissing ? [] : ((tagsRes.data ?? []) as { tag: string }[]).map((row) => row.tag),
     bookingsWindowFull,
     timelineWindowFull: events.length >= TIMELINE_WINDOW,
   }

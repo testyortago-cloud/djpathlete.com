@@ -212,6 +212,7 @@ try {
     "One person's whole history, on one page",
     "/admin/contacts/aaaaaaaa-0000-4000-8000-000000000001 — Maya Sorensen",
     [
+      await markerOn(page, page.getByRole("button", { name: "Add to a sequence" }), "The one action on this screen: put THIS person into a sequence. It posts to the same route the list's bulk button uses, so the wording for \"that sequence is still a draft\" is identical on both screens.", { place: "left", dx: -6 }),
       await markerOn(page, page.getByText("coaching-lead").first(), "Tags. Added and removed here, stored in their own table so they survive two records being merged together.", { place: "left", dx: -6 }),
       await markerOn(page, page.getByRole("heading", { name: "Permission to contact them" }), "What they agreed to, per channel, with the exact words they were shown at the time. This is the column with legal weight.", { dx: -6 }),
       await markerOn(page, page.getByRole("heading", { name: "Do-not-contact list" }), "Kept SEPARATE from consent on purpose. They agreed to texts in July and then texted STOP in August — both are true, and one \"subscribed: yes/no\" could not say so.", { dx: -6 }),

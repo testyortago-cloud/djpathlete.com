@@ -81,7 +81,7 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-import { addTag, listTags, removeTag, tagsForContacts } from "@/lib/db/contact-tags"
+import { addTag, isMissingTagsTable, listTags, removeTag, tagsForContacts } from "@/lib/db/contact-tags"
 import { MAX_TAG_LENGTH, normaliseTag } from "@/lib/contacts/tag-format"
 
 const A = "11111111-1111-1111-1111-111111111111"
@@ -215,7 +215,46 @@ describe("listTags", () => {
   })
 })
 
+describe("isMissingTagsTable — the one-deploy schema tolerance", () => {
+  // MEASURED, NOT ASSUMED. PostgREST resolves table names against its schema
+  // cache before the query reaches Postgres, so a missing table comes back as
+  // PGRST205 and never as Postgres's 42P01. A guard written against 42P01 alone
+  // would never fire, and the deploy-race outage it exists to prevent would
+  // happen anyway.
+  it("recognises PostgREST's missing-table code", () => {
+    expect(isMissingTagsTable({ code: "PGRST205", message: "Could not find the table 'public.contact_tags'" })).toBe(true)
+  })
+
+  it("also recognises Postgres's undefined_table, for paths that skip the cache", () => {
+    expect(isMissingTagsTable({ code: "42P01" })).toBe(true)
+  })
+
+  it("does NOT swallow anything else — a permissions error is a real failure", () => {
+    expect(isMissingTagsTable({ code: "42501", message: "permission denied" })).toBe(false)
+    expect(isMissingTagsTable({ code: "23505" })).toBe(false)
+    expect(isMissingTagsTable(null)).toBe(false)
+    expect(isMissingTagsTable(undefined)).toBe(false)
+    expect(isMissingTagsTable({})).toBe(false)
+  })
+
+  // The message mentions the table by name, which is exactly the kind of string
+  // a sloppier guard would match on. Code only.
+  it("does not match on the message text alone", () => {
+    expect(isMissingTagsTable({ code: "42501", message: "Could not find the table 'public.contact_tags'" })).toBe(false)
+  })
+})
+
 describe("tagsForContacts", () => {
+  it("degrades to an empty map when contact_tags does not exist yet", async () => {
+    store.failWith = { code: "PGRST205", message: "Could not find the table 'public.contact_tags' in the schema cache" }
+    await expect(tagsForContacts([A, B], BUSINESS)).resolves.toEqual(new Map())
+  })
+
+  it("still THROWS on any other read failure — the tolerance is one code wide", async () => {
+    store.failWith = { code: "42501", message: "permission denied" }
+    await expect(tagsForContacts([A, B], BUSINESS)).rejects.toThrow(/permission denied/)
+  })
+
   // The per-row walk matters: a deduping helper reads identically at the call
   // site and silently drops one of two contacts that share a tag value.
   it("keeps both contacts when they share a tag", async () => {

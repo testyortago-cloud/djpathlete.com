@@ -42,6 +42,43 @@ export interface ContactTag {
   created_by: string | null
 }
 
+/**
+ * Is this error "the contact_tags table does not exist yet"?
+ *
+ * ------------------------------------------------------------------------
+ * A DELIBERATE, TEMPORARY EXCEPTION TO "null AND [] ARE DIFFERENT ANSWERS".
+ * ------------------------------------------------------------------------
+ * Everywhere else in this file a failed read THROWS, because "the read broke"
+ * and "this contact has no tags" must not look the same. This one error code is
+ * the exception, and .github/workflows/apply-migrations.yml says why in its own
+ * header: migrations apply on push to main via a path-filtered Action while
+ * Vercel builds the same push, and NOTHING SEQUENCES THE TWO. "Keep migrations
+ * additive and let code tolerate the old schema for one deploy."
+ *
+ * Without this, the deploy that lands before 00237 applies takes out
+ * /admin/contacts -- a page that works today and has nothing to do with tags --
+ * because its tag read throws into the admin error boundary. lib/db/funnel-leads.ts
+ * restructured around exactly this hazard for exactly this screen.
+ *
+ * THE CODE IS PGRST205, NOT 42P01. Measured, not assumed: PostgREST resolves
+ * table names against its own schema cache before the query reaches Postgres, so
+ * a missing table comes back as
+ *   { code: "PGRST205", message: "Could not find the table 'public.x' in the
+ *     schema cache" }
+ * and never as Postgres's undefined_table. A guard written against 42P01 would
+ * never fire and the outage would happen anyway. 42P01 is matched too, for the
+ * paths that reach Postgres directly (an RPC, or a stale cache), but PGRST205 is
+ * the one that actually does the work here.
+ *
+ * REMOVE THIS once 00237 is confirmed applied to production. It is scaffolding
+ * for one deploy, not a permanent softening -- and while it stands, every OTHER
+ * error still throws.
+ */
+export function isMissingTagsTable(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code
+  return code === "PGRST205" || code === "42P01"
+}
+
 /** Every tag on one contact, alphabetical so the pills do not reorder between renders. */
 export async function listTags(contactId: string, businessId: string = SINGLETON_BUSINESS_ID): Promise<ContactTag[]> {
   const supabase = getClient()
@@ -145,6 +182,13 @@ export async function tagsForContacts(
     .eq("business_id", businessId)
     .in("contact_id", contactIds)
     .order("tag", { ascending: true })
+  // See isMissingTagsTable: the ONE error this read may swallow, and only until
+  // 00237 has landed in production. A contact list that renders without pills is
+  // a degraded page; a contact list that renders the error boundary is an outage.
+  if (error && isMissingTagsTable(error)) {
+    console.warn("tagsForContacts: contact_tags does not exist yet (migration 00237 pending); rendering without tags")
+    return byContact
+  }
   if (error) throw new Error(`tagsForContacts: ${error.message}`)
 
   for (const row of (data ?? []) as { contact_id: string; tag: string }[]) {

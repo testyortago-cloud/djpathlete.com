@@ -32,6 +32,7 @@ import { notFound } from "next/navigation"
 import { requireAdmin } from "@/lib/auth-helpers"
 import { recordAudit } from "@/lib/audit/record"
 import { getContactById, getContactDetail } from "@/lib/db/contact-detail"
+import { listSequences } from "@/lib/db/sequences"
 import { ContactDetail } from "@/components/admin/contacts/ContactDetail"
 
 export const metadata = { title: "Contact" }
@@ -48,7 +49,10 @@ export default async function AdminContactDetailPage({ params }: { params: Promi
   const contact = await getContactById(id)
   if (!contact) notFound()
 
-  const detail = await getContactDetail(contact)
+  // The sequence list powers the header's "Add to a sequence" action. Read here
+  // rather than inside the island so the picker is populated on first paint and
+  // the browser makes no extra round trip for it.
+  const [detail, sequences] = await Promise.all([getContactDetail(contact), listSequences()])
 
   await recordAudit({
     action: "contact.viewed",
@@ -73,5 +77,5 @@ export default async function AdminContactDetailPage({ params }: { params: Promi
     },
   })
 
-  return <ContactDetail data={detail} />
+  return <ContactDetail data={detail} sequences={sequences} />
 }

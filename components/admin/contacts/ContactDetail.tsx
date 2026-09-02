@@ -41,6 +41,8 @@ import {
   type DataTableBadgeTone,
 } from "@/components/ui/data-table"
 import { ContactTags } from "@/components/admin/contacts/ContactTags"
+import { ContactEnrol } from "@/components/admin/contacts/ContactEnrol"
+import type { SequenceSummary } from "@/lib/db/sequences"
 import {
   BOOKINGS_WINDOW,
   TIMELINE_WINDOW,
@@ -93,7 +95,7 @@ function SectionHeading({ icon, title, hint }: { icon: React.ReactNode; title: s
   )
 }
 
-export function ContactDetail({ data }: { data: ContactDetailData }) {
+export function ContactDetail({ data, sequences = [] }: { data: ContactDetailData; sequences?: SequenceSummary[] }) {
   const { contact, timeline, consents, suppressions, runs, tags } = data
 
   const displayName = contact.name ?? contact.email ?? contact.phone_e164 ?? "Contact"
@@ -116,7 +118,13 @@ export function ContactDetail({ data }: { data: ContactDetailData }) {
 
       {/* Header */}
       <div className="mb-6 rounded-xl border border-border bg-white p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold text-primary">{displayName}</h1>
+        {/* Name on the left, the one ACTION on the right — the layout the design
+            sketch specifies:
+              ┌─ Jane Smith ──────────────── [ Add to a sequence ] ─┐ */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h1 className="text-2xl font-semibold text-primary">{displayName}</h1>
+          <ContactEnrol contactId={contact.id} contactLabel={displayName} sequences={sequences} />
+        </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
           {contact.email ? (
