@@ -133,6 +133,69 @@ function unique(values: string[]): string[] {
 }
 
 /**
+ * THE ONE SPELLING OF A CLOCK TIME, on both sides of the validator: "9:00 AM"
+ * → "9:00am", "4 P.M." → "4pm", "19:30" → "19:30", "09:00" → "9:00". Lower-
+ * cased, dots and spaces removed, no leading zero on the hour, minutes kept
+ * only when written. A time is grounded when this form of it is in the set.
+ *
+ * TWIN in validate.ts (`normaliseClock`), deliberately duplicated the way
+ * `normalise` is: that module must not import this one. `chat-validate.test.ts`
+ * pins the two against each other.
+ */
+export function normaliseClock(raw: string): string {
+  const m = raw
+    .toLowerCase()
+    .replace(/[\s.]/g, "")
+    .match(/^(\d{1,2})(?::(\d{2}))?(am|pm)?$/)
+  if (!m) return normalise(raw)
+  return `${Number(m[1])}${m[2] ? `:${m[2]}` : ""}${m[3] ?? ""}`
+}
+
+/** "9:00 AM", "4pm", "4 p.m." — a clock time with a period. Twin of validate.ts's CLOCK_PERIOD_RE. */
+const CLOCK_PERIOD_RE = /\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?(?![a-z])/gi
+/** "19:30", "9:00" — a clock time written with a colon and no period. Twin of validate.ts's CLOCK_COLON_RE. */
+const CLOCK_COLON_RE = /\b(\d{1,2}):(\d{2})\b/g
+
+/**
+ * Every clock time written in a piece of prose, in the one spelling. An FAQ
+ * that says "sessions run 4:00 PM to 6:00 PM" grounds "4:00pm" and "6:00pm",
+ * so the assistant can quote its own source. Without this the validator's
+ * time rule would block the truth.
+ */
+export function clockTokens(text: string): string[] {
+  const out: string[] = []
+  let rest = text
+  rest = rest.replace(CLOCK_PERIOD_RE, (m) => {
+    out.push(normaliseClock(m))
+    return " "
+  })
+  rest.replace(CLOCK_COLON_RE, (m) => {
+    out.push(normaliseClock(m))
+    return " "
+  })
+  return out
+}
+
+/**
+ * The clock forms of an EVENT datetime, which is stored as wall-clock UTC (see
+ * lib/events/format.ts): a camp that starts 09:00 UTC-wall-clock grounds
+ * "9:00am", "9am", "9:00". Midnight is "no daily time set" in this schema and
+ * grounds nothing.
+ */
+function eventClockForms(iso: string): string[] {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return []
+  const h24 = d.getUTCHours()
+  const mm = String(d.getUTCMinutes()).padStart(2, "0")
+  if (h24 === 0 && mm === "00") return []
+  const period = h24 >= 12 ? "pm" : "am"
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12
+  const forms = [`${h12}:${mm}${period}`, `${h24}:${mm}`, `${h12}:${mm}`]
+  if (mm === "00") forms.push(`${h12}${period}`)
+  return forms
+}
+
+/**
  * Every digit run in a piece of free text, so a number the database itself
  * wrote — a price inside an FAQ answer, "6" inside a programme's name — counts
  * as grounded when the assistant repeats it. Without this the assistant would
@@ -505,27 +568,36 @@ export async function listPublicTestimonials(): Promise<Fact[]> {
 function valuesForFact(fact: Fact): string[] {
   switch (fact.kind) {
     case "faq":
-      // The row's own prose is the source, so a number inside it is grounded.
-      return [...numericTokens(fact.question), ...numericTokens(fact.answer)]
+      // The row's own prose is the source, so a number (or a time) inside it is grounded.
+      return [
+        ...numericTokens(fact.question),
+        ...numericTokens(fact.answer),
+        ...clockTokens(fact.question),
+        ...clockTokens(fact.answer),
+      ]
     case "programme":
       return [
         ...moneyForms(fact.priceCents),
         String(fact.durationWeeks),
         String(fact.sessionsPerWeek),
         ...numericTokens(fact.name),
+        ...clockTokens(fact.name),
       ]
     case "event":
       return [
         ...moneyForms(fact.priceCents),
         ...dateForms(fact.startDate),
-        ...(fact.endDate ? dateForms(fact.endDate) : []),
+        ...eventClockForms(fact.startDate),
+        ...(fact.endDate ? [...dateForms(fact.endDate), ...eventClockForms(fact.endDate)] : []),
         String(fact.capacity),
         String(fact.spotsLeft),
         ...numericTokens(fact.title),
         ...numericTokens(fact.locationName),
+        ...clockTokens(fact.title),
+        ...clockTokens(fact.locationName),
       ]
     case "testimonial":
-      return numericTokens(fact.quote)
+      return [...numericTokens(fact.quote), ...clockTokens(fact.quote)]
     case "slot":
       return slotForms(fact.startAt, fact.timezone)
   }

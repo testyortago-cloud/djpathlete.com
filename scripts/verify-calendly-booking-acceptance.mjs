@@ -309,6 +309,13 @@ try {
   check("still exactly one card, open, in Consult Booked", opps4.length === 1 && opps4[0].outcome === null && opps4[0].stage?.key === "consult_booked", JSON.stringify(opps4))
   const run4 = await row("run", db.from("sequence_runs").select("status").eq("id", DEMO_RUN).maybeSingle())
   check("the sequence run stays exited", run4?.status === "exited")
+  // Review finding 3: a moved booking is one booking. The bidder must see one
+  // conversion, and the admin one "New Call Booked", not two of each.
+  const booking2 = await row("b2", db.from("bookings").select("id").eq("calendly_event_uri", eventUri2).maybeSingle())
+  const uploads4 = await row("uploads", db.from("google_ads_conversion_uploads").select("id").in("source_id", [booking.id, booking2.id]))
+  check("…and still exactly ONE ads conversion across both rows (the reschedule did not double-count)", uploads4.length === 1, `${uploads4.length} uploads`)
+  const audit4 = await row("audit", db.from("audit_logs").select("action").eq("target_id", booking2.id))
+  check("…the new row is audited as booking.rescheduled, not booking.created", audit4.length === 1 && audit4[0].action === "booking.rescheduled", JSON.stringify(audit4))
 
   // ---- 8. a real cancellation --------------------------------------------------------
   console.log("\n8. the visitor cancels outright")
@@ -330,6 +337,15 @@ try {
   check("the row is cancelled with the reason", b5?.status === "cancelled" && /Something came up/.test(b5?.notes ?? ""), JSON.stringify(b5))
   const opps5 = await row("opps", db.from("opportunities").select("outcome, outcome_reason").eq("contact_id", DEMO_CONTACT))
   check("the card closes LOST with reason booking_cancelled", opps5.length === 1 && opps5[0].outcome === "lost" && opps5[0].outcome_reason === "booking_cancelled", JSON.stringify(opps5))
+
+  // ---- 8b. a late retry of the ORIGINAL create, after everything above -----------------
+  console.log("\n8b. Calendly retries the very first invitee.created, long after the booking was cancelled")
+  const d6 = await deliverCalendlyWebhook(APP, created, SIGNING_KEY)
+  check("the stale create → 200 (acknowledged so the retries stop)", d6.status === 200, `${d6.status} ${JSON.stringify(d6.body)}`)
+  const b6 = await row("b6", db.from("bookings").select("status, notes").eq("calendly_event_uri", eventUri).maybeSingle())
+  check("the original row is STILL cancelled, note intact", b6?.status === "cancelled" && /Rescheduled via Calendly/.test(b6?.notes ?? ""), JSON.stringify(b6))
+  const opps6 = await row("opps", db.from("opportunities").select("outcome").eq("contact_id", DEMO_CONTACT))
+  check("no second card was opened — still one, still lost", opps6.length === 1 && opps6[0].outcome === "lost", JSON.stringify(opps6))
 
   // ---- 9. what is refused ------------------------------------------------------------
   console.log("\n9. what the webhook refuses")

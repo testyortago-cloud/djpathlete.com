@@ -699,6 +699,29 @@ describe("Calendly booking webhook — pipeline", () => {
     expect(bookingsUpdateEq).toHaveBeenCalledWith("id", "bk-cal-existing")
   })
 
+  // Review finding 2: Calendly retries a delivery that timed out. If the
+  // booking has been cancelled in the meantime, the retried invitee.created
+  // must not open a second card or flip the row back to scheduled.
+  it("a late retry of invitee.created after the booking was cancelled touches neither the card nor the row", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    bookingsSelectMaybeSingle.mockResolvedValueOnce({
+      data: { id: "bk-cal-cancelled", status: "cancelled", booking_date: "2026-09-08T14:00:00.000000Z" },
+      error: null,
+    })
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-cal-late")
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(makeCalendlyReq("invitee.created"))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true, action: "updated" })
+    expect(applyPipelineEventMock).not.toHaveBeenCalled()
+    expect(exitRunsForContactMock).not.toHaveBeenCalled()
+    expect(bookingsUpdateEq).not.toHaveBeenCalled()
+    expect(bookingsInsert).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
   it("does not fail the webhook when applyPipelineEvent throws", async () => {
     findContactByIdentifiersMock.mockResolvedValueOnce("contact-cal-throws")
     applyPipelineEventMock.mockRejectedValueOnce(new Error("board exploded"))

@@ -166,9 +166,16 @@ describe("book_consult with a provider configured", () => {
     expect(validateReply("The first free time is Tuesday, September 8 at 10:00 AM — pick a button to book it.", grounded)).toEqual([])
     expect(validateReply("There is also Wednesday, September 9 at 7:30 PM.", grounded)).toEqual([])
 
-    // A time that came from nowhere. 45 is above the small-number ceiling, and September 12 was never returned.
-    const bad = validateReply("How about Saturday, September 12 at 3:45 PM?", grounded)
-    expect(bad.map((v) => v.rule)).toEqual(expect.arrayContaining(["ungrounded_date", "ungrounded_number"]))
+    // A time that came from nowhere ON A REAL DATE. The first version of this
+    // test used "September 12 at 3:45 PM" and was tripping on the date and the
+    // bare 45, not on the time — a fake time on a real date passed. Every digit
+    // in 9:00 AM is under the small-number ceiling; only the time rule sees it.
+    expect(validateReply("How about Tuesday, September 8 at 9:00 AM?", grounded)).toEqual([{ rule: "ungrounded_time", found: "9:00am" }])
+    expect(validateReply("I can do 4 PM on Tuesday, September 8.", grounded)).toEqual([{ rule: "ungrounded_time", found: "4pm" }])
+    // Recombination is NOT caught: the validator grounds tokens, not tuples, so
+    // a real time on the wrong real day passes — the same limitation dates and
+    // prices already have. Stated here so nobody claims otherwise.
+    expect(validateReply("Wednesday, September 8 at 7:30 PM.", grounded)).toEqual([])
   })
 
   it("an empty week is a consult card and copy that says nothing is free", async () => {

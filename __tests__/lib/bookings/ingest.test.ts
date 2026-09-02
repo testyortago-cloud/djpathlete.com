@@ -244,3 +244,80 @@ describe("the row each source writes", () => {
     })
   })
 })
+
+describe("stale redelivery of a 'created' event (review finding 2)", () => {
+  const cancelledRow = { id: "bk-old", status: "cancelled", booking_date: "2026-09-08T14:00:00.000Z" }
+
+  it("with ignoreIfTerminal, a scheduled delivery for a cancelled row is acknowledged and changes NOTHING", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    selectMaybeSingle.mockResolvedValueOnce({ data: cancelledRow, error: null })
+    findContactByIdentifiersMock.mockResolvedValueOnce("c-1")
+
+    const result = await ingestBooking(input({ ignoreIfTerminal: true }))
+
+    expect(result).toEqual({ action: "updated", bookingId: "bk-old" })
+    expect(updateEq).not.toHaveBeenCalled() // the row stays cancelled, note intact
+    expect(applyPipelineEventMock).not.toHaveBeenCalled() // no second card
+    expect(exitRunsForContactMock).not.toHaveBeenCalled()
+    expect(enqueueBookingConversionMock).not.toHaveBeenCalled()
+    expect(recordAuditMock).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it("without ignoreIfTerminal (a GoHighLevel status change) the old behaviour stands: the row is updated and the consequences run", async () => {
+    selectMaybeSingle.mockResolvedValueOnce({ data: cancelledRow, error: null })
+    findContactByIdentifiersMock.mockResolvedValueOnce("c-1")
+
+    const result = await ingestBooking(input({ source: "ghl", key: { column: "ghl_appointment_id", value: "a-1" } }))
+
+    expect(result.action).toBe("updated")
+    expect(updateEq).toHaveBeenCalledWith("id", "bk-old")
+    expect(applyPipelineEventMock).toHaveBeenCalled()
+  })
+
+  it("ignoreIfTerminal does not swallow a genuine cancel of a scheduled row", async () => {
+    selectMaybeSingle.mockResolvedValueOnce({ data: { ...cancelledRow, status: "scheduled" }, error: null })
+    findContactByIdentifiersMock.mockResolvedValueOnce("c-1")
+    await ingestBooking(input({ status: "cancelled", ignoreIfTerminal: false }))
+    expect(updateEq).toHaveBeenCalledWith("id", "bk-old")
+    expect(applyPipelineEventMock).toHaveBeenCalledWith(expect.objectContaining({ event: expect.objectContaining({ status: "cancelled" }) }))
+  })
+})
+
+describe("what counts as a NEW booking (review findings 3 and 4)", () => {
+  it("the create half of a reschedule writes the row and moves the card but fires no second conversion or notification, and audits as rescheduled", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("c-1")
+    const result = await ingestBooking(
+      input({
+        clickIds: { gclid: "g-1", gbraid: null, wbraid: null, fbclid: null },
+        rescheduledFrom: "https://api.calendly.com/scheduled_events/E0/invitees/I0",
+      }),
+    )
+    expect(result.action).toBe("created")
+    expect(applyPipelineEventMock).toHaveBeenCalledWith(expect.objectContaining({ event: expect.objectContaining({ status: "scheduled" }) }))
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("c-1", "booking")
+    expect(enqueueBookingConversionMock).not.toHaveBeenCalled()
+    expect(notificationsInsert).not.toHaveBeenCalled()
+    expect(recordAuditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "booking.rescheduled",
+        metadata: expect.objectContaining({ rescheduled_from: "https://api.calendly.com/scheduled_events/E0/invitees/I0" }),
+      }),
+    )
+  })
+
+  it("a first-seen CANCELLED row (create lost, or webhook registered late) gets no conversion and no 'New Call Booked'", async () => {
+    const result = await ingestBooking(input({ status: "cancelled", clickIds: { gclid: "g-1", gbraid: null, wbraid: null, fbclid: null } }))
+    expect(result.action).toBe("created")
+    expect(enqueueBookingConversionMock).not.toHaveBeenCalled()
+    expect(notificationsInsert).not.toHaveBeenCalled()
+    expect(recordAuditMock).toHaveBeenCalledWith(expect.objectContaining({ action: "booking.created", metadata: expect.objectContaining({ status: "cancelled" }) }))
+  })
+
+  it("an ordinary scheduled first booking still converts and notifies (the control)", async () => {
+    await ingestBooking(input({ clickIds: { gclid: "g-1", gbraid: null, wbraid: null, fbclid: null } }))
+    expect(enqueueBookingConversionMock).toHaveBeenCalledTimes(1)
+    expect(notificationsInsert).toHaveBeenCalledTimes(1)
+  })
+})

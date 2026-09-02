@@ -127,6 +127,15 @@ if (registerOrigin) {
     console.log(`  CALENDLY_WEBHOOK_SIGNING_KEY=${signingKey}\n`)
   }
   const url = `${registerOrigin.replace(/\/$/, "")}/api/webhooks/calendly`
+  // A second run must not register a duplicate: Calendly would sign the new
+  // subscription's deliveries with THIS key while the app still checks the
+  // old one, and every delivery from it would 403 until Calendly gave up.
+  const already = subs.status === 200 ? (subs.body.collection ?? []).find((s) => s.callback_url === url && s.state === "active") : null
+  if (already && !args.includes("--force")) {
+    console.log(`Already registered: ${already.uri} → ${url} (${(already.events ?? []).join(",")}). Nothing created.`)
+    console.log("  Pass --force to register another anyway (you will then need to delete one).")
+    process.exit(0)
+  }
   const created = await calendly("/webhook_subscriptions", {
     method: "POST",
     body: JSON.stringify({

@@ -73,11 +73,19 @@ afterEach(() => {
 })
 
 describe("the signature gate", () => {
-  it("answers 403 before reading the body when no signing key is configured", async () => {
+  it("answers 403 BEFORE reading the body when no signing key is configured", async () => {
     delete process.env.CALENDLY_WEBHOOK_SIGNING_KEY
-    const res = await post(signedRequest(envelope()))
+    // The claim in the route's header is "403 before the body is read"; a test
+    // that only checks the status passes with request.text() moved above the
+    // key check. So every body reader on the request is spied. (A first
+    // version used a ReadableStream whose pull() recorded — undici pulls it
+    // while constructing the Request, so it observed nothing about the route.)
+    const req = signedRequest(envelope())
+    const readers = (["text", "json", "arrayBuffer", "formData", "blob"] as const).map((name) => vi.spyOn(req, name))
+    const res = await post(req)
     expect(res.status).toBe(403)
     expect(await res.json()).toEqual({ error: "calendly not configured" })
+    for (const reader of readers) expect(reader).not.toHaveBeenCalled()
     expect(ingestBookingMock).not.toHaveBeenCalled()
   })
 
@@ -191,6 +199,12 @@ describe("invitee.created", () => {
     expect(ingestBookingMock.mock.calls[0][0].clickIds).toEqual({ gclid: null, gbraid: null, wbraid: null, fbclid: null })
   })
 
+  it("marks invitee.created as an immutable event (ignoreIfTerminal) so a late retry cannot reopen a cancelled booking", async () => {
+    await post(signedRequest(envelope()))
+    expect(ingestBookingMock.mock.calls[0][0].ignoreIfTerminal).toBe(true)
+    expect(ingestBookingMock.mock.calls[0][0].rescheduledFrom).toBeNull()
+  })
+
   it("answers 200 updated on a redelivery (the ingest found the row)", async () => {
     ingestBookingMock.mockResolvedValueOnce({ action: "updated", bookingId: "bk-cal-1" })
     const res = await post(signedRequest(envelope()))
@@ -239,12 +253,20 @@ describe("invitee.canceled", () => {
     expect(input.notes).toBe("Rescheduled via Calendly → https://api.calendly.com/scheduled_events/SCHEDEVENT0002/invitees/INVITEE00000002")
   })
 
-  it("the create half of a reschedule is an ordinary scheduled booking that remembers where it came from", async () => {
+  it("the create half of a reschedule is a scheduled booking that names the invitee it replaces", async () => {
     await post(signedRequest(envelope({}, { old_invitee: "https://api.calendly.com/scheduled_events/SCHEDEVENT0000/invitees/INVITEE00000000" })))
     const input = ingestBookingMock.mock.calls[0][0]
     expect(input.status).toBe("scheduled")
     expect(input.rescheduled).toBe(false)
+    expect(input.rescheduledFrom).toBe("https://api.calendly.com/scheduled_events/SCHEDEVENT0000/invitees/INVITEE00000000")
     expect(input.notes).toMatch(/^Rescheduled via Calendly from /)
+  })
+
+  it("the cancel half never carries rescheduledFrom or ignoreIfTerminal", async () => {
+    await post(signedRequest(envelope({ event: "invitee.canceled" }, { status: "canceled", rescheduled: true })))
+    const input = ingestBookingMock.mock.calls[0][0]
+    expect(input.rescheduledFrom).toBeNull()
+    expect(input.ignoreIfTerminal).toBe(false)
   })
 })
 
@@ -263,6 +285,16 @@ describe("what it does not handle", () => {
     const res = await post(
       signedRequest(envelope({}, { scheduled_event: { ...FIXTURE.payload.scheduled_event, event_type: "https://api.calendly.com/event_types/OTHER" } })),
     )
+    expect(res.status).toBe(200)
+    expect((await res.json()).ignored).toBe(true)
+    expect(ingestBookingMock).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it("fails CLOSED: a delivery with no event_type while one is configured is ignored", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const { event_type: _dropped, ...withoutType } = FIXTURE.payload.scheduled_event
+    const res = await post(signedRequest(envelope({}, { scheduled_event: withoutType })))
     expect(res.status).toBe(200)
     expect((await res.json()).ignored).toBe(true)
     expect(ingestBookingMock).not.toHaveBeenCalled()

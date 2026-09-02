@@ -180,10 +180,12 @@ export async function POST(request: Request) {
 
   // Only the consult event type is a booking here. Other event types on the
   // same account are somebody else's business — acknowledged, not ingested.
+  // FAILS CLOSED: a delivery with no event_type at all, while one is
+  // configured, is not proven to be a consult and is ignored too.
   const consultEventType = process.env.CALENDLY_EVENT_TYPE_URI?.trim()
-  if (consultEventType && data.scheduled_event.event_type && data.scheduled_event.event_type !== consultEventType) {
-    console.warn(`[calendly-webhook] ignoring event type ${data.scheduled_event.event_type}`)
-    return NextResponse.json({ ignored: true, event_type: data.scheduled_event.event_type }, { status: 200 })
+  if (consultEventType && data.scheduled_event.event_type !== consultEventType) {
+    console.warn(`[calendly-webhook] ignoring event type ${data.scheduled_event.event_type ?? "(none)"}`)
+    return NextResponse.json({ ignored: true, event_type: data.scheduled_event.event_type ?? null }, { status: 200 })
   }
 
   const cancelled = envelope.data.event === "invitee.canceled"
@@ -216,6 +218,14 @@ export async function POST(request: Request) {
         cancel_url: data.cancel_url ?? null,
       },
       rescheduled,
+      // The create half of a reschedule names the invitee it replaces; the
+      // ingest then skips the conversion and the notification (already counted
+      // when first booked) and audits it as a reschedule.
+      rescheduledFrom: cancelled ? null : (data.old_invitee ?? null),
+      // invitee.created is an immutable "it happened" event. If the row is
+      // already cancelled, this is a retry of a delivery that timed out, and
+      // must not reopen the card.
+      ignoreIfTerminal: !cancelled,
       actor: "calendly",
       auditSource: "calendly_webhook",
       auditMetadata: {

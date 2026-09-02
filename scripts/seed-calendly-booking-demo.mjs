@@ -14,11 +14,18 @@
  *
  * IDS. Never `aaaaaaaa-0000-4000-8000-…` — those are the phase-1 demo contacts
  * and were destroyed once already by a script that assumed they were
- * placeholders. Everything here uses the prefix `ca1e0d1e-0002-4000-8000-`
- * and is deleted BY THAT PREFIX, so a re-run starts clean and nothing else can
- * be caught by the delete.
+ * placeholders. Every row this script OWNS uses the prefix
+ * `ca1e0d1e-0002-4000-8000-` and is deleted by id.
  *
- * IDEMPOTENT. Delete-by-prefix, then insert. Safe to re-run.
+ * WHAT ELSE THE CLEAR TOUCHES, so nobody is surprised (all dev clone only):
+ *   - bookings whose calendly_event_uri starts with the acceptance run's
+ *     `…/scheduled_events/DEMO-` prefix, and their conversion uploads — the
+ *     webhook wrote those, so they carry its key, not the id prefix;
+ *   - every LOCAL chat conversation from the last hour (the rate-limit
+ *     bucket, see clearPrevious), whoever started it on this machine;
+ *   - `system_settings.chat_assistant_enabled` is set TRUE and never set back.
+ *
+ * IDEMPOTENT. Clear, then insert. Safe to re-run.
  *
  * Run: node scripts/seed-calendly-booking-demo.mjs
  */

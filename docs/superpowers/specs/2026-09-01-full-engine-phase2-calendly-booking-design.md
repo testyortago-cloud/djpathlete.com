@@ -402,3 +402,42 @@ Grouping `chat_conversations` by `ip_hash` is how the real bucket was found.)
 The seed now clears every local spelling's rows (and only those) on the dev
 clone; the process-local pre-filter in `lib/shop/rate-limit.ts` resets with the
 dev server. Neither matters in production, where every visitor has an address.
+
+### 8.10 Review findings, and what changed (2026-09-03)
+
+An independent review of the finished branch found nine things; three would
+have shipped bugs. All nine are fixed and pinned.
+
+1. **The validator had no clock-time rule.** "9:00 AM" reached the bare-numeral
+   step as `9` and `00`, both under the small-number ceiling, so the assistant
+   could name a time nobody looked up — the exact thing decision 6 forbids. The
+   test that claimed to cover it was tripping on the DATE beside the time.
+   `validate.ts` now extracts clock times (`9:00 AM`, `4pm`, `19:30`) before the
+   numeral step and checks them whole, as `ungrounded_time`; FAQ/testimonial
+   prose and event datetimes ground the times they contain so the truth is not
+   blocked. The visitor's own numerals do NOT ground a time — a visitor cannot
+   supply availability. Recombination (a real time on the wrong real day) is
+   not caught: the validator grounds tokens, not tuples, as it always has for
+   dates and prices; stated in the test rather than claimed otherwise.
+2. **A late retry of `invitee.created` after a cancel reopened the card.**
+   Calendly retries deliveries that time out; the ingest ran the pipeline
+   consequence before reading the row, so a retried create after a cancel made
+   a second open card and flipped the row back to `scheduled`. The ingest now
+   reads by key first and, for an immutable "created" event
+   (`ignoreIfTerminal`, set only by the Calendly adapter), acknowledges a
+   delivery for a terminal row without touching anything. GHL status changes
+   keep their old behaviour.
+3. **The create half of a reschedule fired a second ads conversion and a second
+   "New Call Booked".** The adapter now passes `rescheduledFrom` (the replaced
+   invitee); the ingest skips the conversion and the notification for it and
+   audits `booking.rescheduled`. A first-seen CANCELLED row (create lost, or
+   webhook registered late) likewise converts and notifies nothing.
+4. Minor: event-type filter fails closed when `event_type` is absent; the
+   "403 before the body is read" test now spies the request's body readers
+   (a stream-pull probe observed nothing — undici pulls at construction);
+   the setup script refuses to register a duplicate subscription; the seed's
+   docstring says exactly what its clear touches.
+
+Acceptance grew from 58 to 63 checks (one conversion across a reschedule;
+`booking.rescheduled` on the new row; a stale create after a cancel leaves the
+row cancelled and the card lost).

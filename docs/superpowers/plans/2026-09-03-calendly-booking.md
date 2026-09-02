@@ -114,4 +114,4 @@ export async function ingestBooking(input: BookingIngestInput): Promise<{ action
 - [x] Targeted suites green; mutation sweep on the ingest (exit, pipeline, enqueue, 23505 path, rescheduled skip) and on the signature (tolerance, digest).
 - [x] Subagent code review of the diff; fix findings.
 - [x] JOURNAL.md entry (newest first, `[Feature build-out]`, mistakes + lessons). Not staged.
-- [ ] Commit(s) on the branch. Stop before merging.
+- [x] Commit(s) on the branch (`f3809b43` + review follow-up). Stop before merging.

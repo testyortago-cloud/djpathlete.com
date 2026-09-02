@@ -76,6 +76,24 @@ export type BookingIngestInput = {
    * exit nor the pipeline sees it — the paired create carries the booking on.
    */
   rescheduled?: boolean
+  /**
+   * The CREATE half of a reschedule: the invitee URI this booking replaces.
+   * The row and the card are real (the cancel half left the card alone, so
+   * this is what carries the booking forward) but the Google Ads conversion
+   * and the "New Call Booked" notification are not — the person booked once
+   * and moved it, and counting that twice is a lie to the bidder and to the
+   * admin. Audited as `booking.rescheduled`, never `booking.created`.
+   */
+  rescheduledFrom?: string | null
+  /**
+   * True when this delivery is an immutable "it was created" event rather than
+   * a state change — Calendly's invitee.created. If the row already exists in a
+   * terminal state (cancelled, no_show, completed) the delivery is a LATE
+   * REDELIVERY of something that has since been undone, and applying it would
+   * flip the row back to scheduled and open a second card. GoHighLevel sends
+   * status changes for one appointment id and leaves this false.
+   */
+  ignoreIfTerminal?: boolean
   /** Audit actor email, e.g. "ghl" or "calendly". */
   actor: string
   /** Audit metadata `source`, e.g. "ghl_webhook" or "calendly_webhook". */
@@ -94,10 +112,31 @@ type ExistingRow = { id: string; status: string | null; booking_date: string | n
 
 const PG_UNIQUE_VIOLATION = "23505"
 
+/** A booking in one of these states is over; a later "created" for it is stale. */
+const TERMINAL_STATUSES = new Set(["cancelled", "no_show", "completed"])
+
+/** Only a booking that is going to HAPPEN converts or is worth telling the admin about. */
+function isLive(status: BookingStatus): boolean {
+  return status === "scheduled" || status === "completed"
+}
+
 /** The one place a booking becomes its four consequences. */
 export async function ingestBooking(input: BookingIngestInput): Promise<BookingIngestResult> {
   const supabase = createServiceRoleClient()
   const log = `[booking-ingest:${input.source}]`
+
+  // Read by the vendor key FIRST, so a stale redelivery can be recognised
+  // before any consequence runs. (The GHL route read after the consequences;
+  // for a plain status change the order makes no difference.)
+  const existing = input.key ? await readByKey(supabase, input.key) : null
+
+  if (existing && input.ignoreIfTerminal && input.status === "scheduled" && TERMINAL_STATUSES.has(existing.status ?? "")) {
+    // Calendly retried an invitee.created that timed out, and the booking has
+    // since been cancelled. Applying it would reopen the card and flip the row
+    // back to scheduled. Acknowledged (so the retries stop) and left alone.
+    console.warn(`${log} stale "created" for ${input.key?.value}: row is already ${existing.status}; ignored`)
+    return { action: "updated", bookingId: existing.id }
+  }
 
   // Lead Engine: neither the sequence exit nor the pipeline card move may
   // ever fail a booking webhook — catch, log, keep going to the normal
@@ -156,13 +195,10 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
   // Upsert by the vendor key if present (so status updates and redeliveries
   // don't create duplicates). NOT a PostgREST .upsert(): the Calendly key's
   // unique index is PARTIAL, and ON CONFLICT cannot infer a partial index
-  // without repeating its predicate, which PostgREST has no syntax for. Read,
-  // then update or insert — and let 23505 below catch the race.
-  if (input.key) {
-    const existing = await readByKey(supabase, input.key)
-    if (existing) {
-      return updateExisting(supabase, input, existing)
-    }
+  // without repeating its predicate, which PostgREST has no syntax for. Read
+  // (done above), then update or insert — and let 23505 below catch the race.
+  if (existing) {
+    return updateExisting(supabase, input, existing)
   }
 
   // Insert new booking
@@ -207,10 +243,11 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
 
   const bookingId = (insertedBooking as { id?: string } | null)?.id ?? null
 
-  // Audit booking creation (system actor = the vendor's webhook).
+  // Audit the new row (system actor = the vendor's webhook). A row that is the
+  // create half of a reschedule is a moved booking, not a new one.
   if (bookingId) {
     await recordAudit({
-      action: "booking.created",
+      action: input.rescheduledFrom ? "booking.rescheduled" : "booking.created",
       category: "commerce",
       outcome: "success",
       actor: { id: null, email: input.actor, role: "system" },
@@ -219,16 +256,23 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
         ...(input.auditMetadata ?? {}),
         status: input.status,
         source: input.auditSource,
+        ...(input.rescheduledFrom ? { rescheduled_from: input.rescheduledFrom } : {}),
       },
       request: input.request,
     })
   }
 
+  // A conversion and a notification are for a booking that is going to HAPPEN
+  // and has not been counted before. A first-seen cancellation (the create was
+  // lost, or the webhook was registered after the booking) is neither, and the
+  // create half of a reschedule was already counted when it was first booked.
+  const countsAsNew = isLive(input.status) && !input.rescheduledFrom
+
   // Phase 1.5c — enqueue an offline conversion upload to Google Ads.
   // No-ops silently when there's no gclid/gbraid/wbraid OR no active
   // 'booking_created' conversion action configured. Wrapped in try/catch
   // so a Google Ads enqueue failure can't break the booking webhook.
-  if (bookingId) {
+  if (bookingId && countsAsNew) {
     try {
       await enqueueBookingConversion({
         booking_id: bookingId,
@@ -243,7 +287,7 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
   }
 
   // Notify admins
-  const { data: admins } = await supabase.from("users").select("id").eq("role", "admin")
+  const { data: admins } = countsAsNew ? await supabase.from("users").select("id").eq("role", "admin") : { data: null }
 
   if (admins && admins.length > 0) {
     const bookingDate = new Date(input.bookingDate).toLocaleString("en-US", {
