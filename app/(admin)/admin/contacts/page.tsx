@@ -27,6 +27,7 @@ import Link from "next/link"
 import { requireAdmin } from "@/lib/auth-helpers"
 import { countContacts, listContacts, parseContactFilters } from "@/lib/db/contacts-list"
 import { listSequences } from "@/lib/db/sequences"
+import { tagsForContacts } from "@/lib/db/contact-tags"
 import { ContactsTable } from "@/components/admin/contacts/ContactsTable"
 
 export const metadata = { title: "Contacts" }
@@ -82,6 +83,12 @@ export default async function AdminContactsPage({
     listSequences(),
   ])
 
+  // ONE round trip for every row's tags, not one per row. Read AFTER the list
+  // because it is keyed on the ids that came back — and a Map cannot cross the
+  // server/client boundary, so it is handed over as a plain object.
+  const tagMap = await tagsForContacts(contacts.map((contact) => contact.id))
+  const tagsByContact = Object.fromEntries(tagMap)
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -102,6 +109,7 @@ export default async function AdminContactsPage({
 
       <ContactsTable
         contacts={contacts}
+        tagsByContact={tagsByContact}
         total={total}
         page={filters.page}
         pageSize={PAGE_SIZE}

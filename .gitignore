@@ -85,3 +85,6 @@ render-worker/public/walkthrough/audio/
 
 # GHL export dumps (contact PII + consent records — never commit)
 ghl-export/
+
+# Raw screenshot captures — intermediates, before annotate() burns the callouts in.
+screenshots/**/.raw-*.png
