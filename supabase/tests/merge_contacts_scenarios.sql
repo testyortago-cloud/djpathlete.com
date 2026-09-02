@@ -619,7 +619,6 @@ DECLARE
   v_survivor uuid;
   v_loser    uuid;
   v_tags     text;
-  v_count    int;
 BEGIN
   INSERT INTO public.contacts (business_id, email, created_at)
     VALUES (v_business, 'scenario13-survivor@example.com', now() - interval '30 days')
@@ -636,25 +635,31 @@ BEGIN
 
   PERFORM public.merge_contacts(v_survivor, v_loser, v_business, 'scenario13_overlapping_tags');
 
-  SELECT string_agg(tag, ',' ORDER BY tag), count(*) INTO v_tags, v_count
+  SELECT string_agg(tag, ',' ORDER BY tag) INTO v_tags
     FROM public.contact_tags WHERE contact_id = v_survivor;
 
   IF v_tags IS DISTINCT FROM 'loser-only,shared-tag,survivor-only' THEN
     RAISE EXCEPTION 'SCENARIO 13 FAILED: survivor tags = %, expected loser-only,shared-tag,survivor-only', v_tags;
   END IF;
-  IF v_count <> 3 THEN
-    RAISE EXCEPTION 'SCENARIO 13 FAILED: survivor has % tag rows, expected 3 (the shared tag was duplicated)', v_count;
-  END IF;
+  -- TWO ASSERTIONS DELIBERATELY OMITTED, both because they CANNOT FAIL. A test
+  -- that cannot fail is worse than no test: it reads as coverage.
+  --
+  --   * "survivor has exactly 3 tag rows". contact_tags_unique UNIQUE
+  --     (contact_id, tag) makes a duplicate impossible at the database level, so
+  --     given the string_agg above matched, the count is necessarily 3. The
+  --     constraint is what prevents duplication here, not this scenario -- and
+  --     the constraint is verified by reading it back after the migration, which
+  --     is the right place for it.
+  --   * "no rows still point at the loser". contact_tags cascades on
+  --     contacts(id), so the function's closing DELETE removes any un-repointed
+  --     row before this block resumes.
+  --
+  -- What DOES bite is above, and it is two things: the tag list fails if the
+  -- loser's unique tag was cascaded away instead of carried, and the merge
+  -- raising 23505 (which is what a bare UPDATE without the NOT EXISTS guard
+  -- would do against the unique constraint) aborts this whole block.
 
-  -- DELIBERATELY NOT ASSERTING "no rows still point at the loser". That check
-  -- CANNOT FAIL, and a test that cannot fail is worse than no test because it
-  -- reads as coverage: contact_tags cascades on contacts(id), so the function's
-  -- closing DELETE removes any un-repointed row before this block resumes.
-  -- The assertions that actually bite are above -- the count of 3 fails if the
-  -- overlap duplicated, and the tag list fails if the loser's unique tag was
-  -- cascaded away instead of carried.
-
-  RAISE NOTICE 'SCENARIO 13 PASSED: overlapping tags merged to the union, exactly once';
+  RAISE NOTICE 'SCENARIO 13 PASSED: overlapping tags merged to the union, without aborting';
 END $$;
 
 -- ---------------------------------------------------------------------------
