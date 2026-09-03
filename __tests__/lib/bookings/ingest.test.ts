@@ -66,7 +66,7 @@ vi.mock("@/lib/supabase", () => ({
           },
         }
       }
-      if (table === "users") return { select: () => ({ eq: () => Promise.resolve({ data: [{ id: "admin-1" }], error: null }) }) }
+      if (table === "business_members") return { select: () => ({ eq: () => Promise.resolve({ data: [{ user_id: "admin-1" }], error: null }) }) }
       if (table === "notifications") return { insert: notificationsInsert }
       throw new Error(`unmocked table ${table}`)
     },
