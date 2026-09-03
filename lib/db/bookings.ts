@@ -13,18 +13,33 @@ function getClient() {
  * is the honest way to say "the singleton's host" without hard-coding a uuid
  * that only exists because a backfill created it.
  *
- * Returns null rather than throwing: a missing host row must not fail a booking
- * webhook, and host_id is nullable until 00243.
+ * Returns null rather than throwing on a read failure — a throw here would
+ * 500 the booking webhook for what might be a transient read, which is worse
+ * than proceeding without a host. But since migration 00243, `bookings.host_id`
+ * is NOT NULL: a null return now means the insert that follows WILL fail with
+ * 23502 (not_null_violation), and the console.error below is the only
+ * diagnostic that survives — without it, "the table doesn't exist" and "there
+ * really is no host row yet" are indistinguishable from the 23502 alone.
+ * PostgREST resolves a read failure rather than throwing (same as the
+ * business_members fan-out read in lib/bookings/ingest.ts), so `error` is
+ * checked explicitly here instead of relying on a try/catch that would never
+ * fire. Phase 2 removes this function's only two call sites in favour of the
+ * host on the coach_calendar_connections row the delivery matched, which
+ * makes this whole read (and its failure mode) go away.
  */
 export async function singletonHostId(): Promise<string | null> {
   const supabase = getClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("booking_hosts")
     .select("id")
     .eq("business_id", SINGLETON_BUSINESS_ID)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle()
+  if (error) {
+    console.error(`[booking-hosts] singletonHostId read failed (${error.code} ${error.message})`)
+    return null
+  }
   return (data as { id: string } | null)?.id ?? null
 }
 
