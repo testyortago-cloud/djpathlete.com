@@ -1602,10 +1602,17 @@ what the API would refuse is the same bug facing the other way."
 
 ---
 
-## Task 6: Migration 00245 and member invitation
+## Task 6: Migration 00245, member invitation, and closing the compat hole
+
+> **Added after Task 3's review.** Task 3 left one finding deliberately open, and this task is where it closes. `resolveAdminTenant`'s compatibility branch keys on "this user has zero `business_members` rows" and cannot distinguish *predates multi-tenancy* from *membership just revoked* — so **offboarding a coach by deleting their membership row PROMOTES them to the singleton**, the operator's own tenant. It could not be fixed in Task 3 without locking out every platform teammate invited through `/admin/team`, because that path writes no membership row either. This task makes membership universal, and only then removes the branch. Steps 11–13 below.
+>
+> **It also fixes a live production regression.** Nothing in the deployed build writes `business_members` — the only non-comment references are two reads. Phase 0 changed the "New Call Booked" fan-out from *every `role='admin'` user* to *this business's members* (`lib/bookings/ingest.ts:501-514`) and shipped it with no writer, so `members` is always `[]` and `if (members && members.length > 0)` is always false. **Booking notifications currently reach nobody**, and that is not masked by the absent `CALENDLY_*` env vars: the GHL booking webhook — the calendar actually live today — calls the same `ingestBooking` (`app/api/webhooks/ghl-booking/route.ts:3,124`). Step 11's backfill is what restores them.
 
 **Files:**
 - Create: `supabase/migrations/00245_team_invites_business.sql`
+- Create: `supabase/migrations/00246_backfill_business_members.sql`
+- Modify: `lib/tenancy/resolve.ts` (remove the compat branch — step 13)
+- Modify: `app/api/public/invite/[token]/claim/route.ts` (platform-staff membership — step 12)
 - Modify: `lib/db/team-invites.ts`
 - Modify: `app/api/public/invite/[token]/claim/route.ts`
 - Create: `lib/db/business-members.ts`
@@ -1919,11 +1926,87 @@ Expected: all PASS with non-zero counts. Any failure here is this task's to fix,
 
 `components/admin/businesses/BusinessMembersCard.tsx` — the house data-table primitives, columns Name · Email · Role · Added, plus an "Invite a coach" dialog with email + role + the existing permission checkboxes. Copy for a non-programmer: "Invite a coach", "They'll get a link that works for 7 days."
 
+- [ ] **Step 11: Backfill membership for every existing teammate (migration 00246)**
+
+Confirm the number is free (`ls supabase/migrations/ | tail -3` → last should be `00245_team_invites_business.sql`), then:
+
+```sql
+-- supabase/migrations/00246_backfill_business_members.sql
+-- Phase 1: membership becomes UNIVERSAL, so its ABSENCE can mean "no access".
+--
+-- WHY THIS EXISTS. resolveAdminTenant's compatibility branch keys on "zero
+-- business_members rows" and falls back to the singleton. That branch cannot
+-- tell "predates multi-tenancy" from "membership just revoked", so OFFBOARDING
+-- a coach -- deleting their row -- would PROMOTE them to the singleton, the
+-- operator's own tenant with every contact, pipeline card and booking in it.
+-- Giving every existing teammate a real row lets the branch be deleted, after
+-- which absence means exactly one thing: no access.
+--
+-- IT ALSO REVIVES A DEAD NOTIFICATION. lib/bookings/ingest.ts:501-514 fans the
+-- "New Call Booked" email out to this business's members. Nothing has ever
+-- written business_members, so that read returns [] and the notification has
+-- reached NOBODY since phase 0 merged -- including for the GHL calendar, which
+-- is the one actually taking bookings today. These rows are its first writer.
+--
+-- SAFE AGAINST THE OLD BUILD. This only INSERTS rows into a table whose only
+-- deployed readers are that fan-out (which currently finds nothing and will now
+-- find the right people) and the new resolver. It adds no column and no
+-- constraint, so the previous build cannot violate anything.
+--
+-- 'owner' for admins, 'staff' for everyone else: business_members.role is
+-- (owner|coach|staff) per 00240, and it is NOT users.role -- an `editor` is a
+-- platform teammate whose business membership is 'staff'.
+
+insert into public.business_members (business_id, user_id, role)
+select '00000000-0000-0000-0000-000000000001',
+       u.id,
+       case when u.role = 'admin' then 'owner' else 'staff' end
+  from public.users u
+ where u.role in ('admin', 'staff', 'editor')
+on conflict (business_id, user_id) do nothing;
+```
+
+Apply to the dev clone and read back:
+
+```sql
+select bm.role, count(*) from public.business_members bm
+ where bm.business_id = '00000000-0000-0000-0000-000000000001' group by bm.role order by bm.role;
+select count(*) as teammates_without_membership
+  from public.users u
+  left join public.business_members bm
+    on bm.user_id = u.id and bm.business_id = '00000000-0000-0000-0000-000000000001'
+ where u.role in ('admin','staff','editor') and bm.user_id is null;
+```
+
+Expected: at least one `owner` row, and `teammates_without_membership = 0`. **If it is not 0, STOP** — step 13 removes the fallback those users depend on, and removing it while any teammate lacks a row locks them out of the admin entirely.
+
+- [ ] **Step 12: The `/admin/team` invite path writes a membership row too**
+
+In `app/api/public/invite/[token]/claim/route.ts`, the membership insert added in step 7 fires only when `invite.business_id` is present. A plain platform-staff invite has none, so it would create a user with no membership — re-opening the hole step 11 just closed. Extend it:
+
+```ts
+// Every teammate gets a membership row, because ABSENCE of one now means "no
+// access" (the compatibility branch is gone). A business-scoped invite names
+// its business; a plain /admin/team invite is platform staff on the singleton.
+const membershipBusinessId = invite.business_id ?? SINGLETON_BUSINESS_ID
+const membershipRole = invite.business_id ? ((invite.business_role ?? "coach") as BusinessMemberRole) : "staff"
+await addBusinessMember(membershipBusinessId, newUser.id, membershipRole)
+if (membershipRole === "coach") await linkHostToUser(membershipBusinessId, newUser.id)
+```
+
+Add a test asserting a **business-less** invite still produces a singleton `staff` membership. Without it, step 13 silently locks out every future teammate.
+
+- [ ] **Step 13: Remove the compatibility branch from `lib/tenancy/resolve.ts`**
+
+In `allowedSet`, delete the `if (ids.length === 0) { ...singleton... }` block so an empty membership list falls through to `activeBusinessesByIds([])` → `[]` → `select()` throws `NoAccessibleBusinessError`. Replace the old comment with one recording why absence is now trustworthy: migration 00246 backfilled every existing teammate, and both invite paths write a row, so zero rows means no access rather than "predates multi-tenancy".
+
+Update the Task 3 test `"falls back to the singleton when it has no membership rows"` — **retarget it, do not delete it**. It becomes `"throws NoAccessibleBusinessError when it has no membership rows"`. Then mutate: restore the singleton fallback and confirm the retargeted test fails.
+
 - [ ] **Step 10: Verify and commit**
 
 ```bash
 npx tsc --noEmit 2>&1 | grep -c 'error TS'
-npx vitest run __tests__/db/business-members.test.ts $(grep -rln 'invite' __tests__ | tr '\n' ' ')
+npx vitest run __tests__/db/business-members.test.ts __tests__/lib/tenancy/resolve.test.ts $(grep -rln 'invite' __tests__ | tr '\n' ' ')
 ```
 
 Expected: `251`; all pass with non-zero counts.
@@ -2096,6 +2179,23 @@ export async function selectBusiness(businessId: string) {
 ```
 
 `components/admin/BusinessSwitcher.tsx` — a small `<select>` (or the shadcn `Select`) of `choices`, calling `selectBusiness`. In `app/(admin)/admin/layout.tsx`, resolve the tenant and render it **only when `choices.length > 1`**, so a coach with one business sees nothing.
+
+**The layout MUST catch `NoAccessibleBusinessError`.** Task 3's review established that `select()` no longer invents a business id when the allowed set is empty — it throws. The admin layout wraps every admin page, so an uncaught throw there is a 500 on every screen at once. Catch it and redirect to `NO_ACCESS_PATH` (`/admin/no-access`), which already exists and is the house pattern for a signed-in user with nothing to show:
+
+```tsx
+let tenant: ResolvedTenant | null = null
+try {
+  tenant = await resolveAdminTenant()
+} catch (err) {
+  // An empty allowed set is a real state -- a coach whose only business was
+  // paused, or a revoked membership. The resolver refuses to invent an id
+  // rather than handing out the singleton, so this is the intended landing.
+  if (err instanceof NoAccessibleBusinessError) redirect(NO_ACCESS_PATH)
+  throw err
+}
+```
+
+Add a test asserting the redirect happens rather than the error escaping. **Include a presence control** — a caller WITH an accessible business must still render the layout — or the test passes just as well when nothing renders at all.
 
 - [ ] **Step 8: Verify and commit**
 
