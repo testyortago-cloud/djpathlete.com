@@ -482,23 +482,37 @@ async function runPostWriteEffects(
   // broadcast waiting for a second business. 00240's backfill made every current
   // admin an owner of the singleton, so this is behaviour-identical today.
   //
-  // Wrapped in try/catch, same shape and spirit as the ads conversion above:
-  // `business_members` arrives in migration 00240, which lives on this same
-  // unmerged branch, and migrations apply via a GitHub Action on push to main
-  // that races the Vercel build for that same push — nothing sequences the
-  // two (the workflow's own header at .github/workflows/apply-migrations.yml
-  // says so). In the window where the code is live and the table is not yet,
-  // an unguarded read here throws, this function propagates it, and the
-  // booking webhook answers 500. Calendly retries a non-2xx with exponential
-  // back-off for 24 hours and then DISABLES the webhook subscription, which
-  // must be recreated by hand — a coach silently stops receiving bookings. A
-  // booking must never fail because a notification could not be sent.
-  try {
-    const { data: members } = countsAsNew
-      ? await ctx.supabase.from("business_members").select("user_id").eq("business_id", input.businessId)
-      : { data: null }
+  // PostgREST never THROWS on a missing table: postgrest-js sets
+  // shouldThrowOnError = false and even converts fetch failures into a
+  // returned object (node_modules/@supabase/postgrest-js/src/PostgrestBuilder.ts
+  // :212,227). A pre-00240 database — the deploy-race window where this code
+  // is live and migration 00240 hasn't landed yet — RESOLVES this read as
+  // { data: null, error: { code: "42P01", ... } }; a try/catch around it
+  // would never fire. readByKey already knows this about this exact race (it
+  // inspects error.code rather than relying on a throw), so this read is
+  // checked the same explicit way rather than trusted to a catch.
+  const { data: members, error: membersError } = countsAsNew
+    ? await ctx.supabase.from("business_members").select("user_id").eq("business_id", input.businessId)
+    : { data: null, error: null }
 
-    if (members && members.length > 0) {
+  if (membersError) {
+    // Logged, not swallowed: a missing business_members table during the
+    // migration/deploy race, or any other read failure, must not fail the
+    // booking webhook — but it also must not vanish silently.
+    console.error(
+      `${ctx.log} business_members read failed (${membersError.code} ${membersError.message}); skipping the "New Call Booked" notification`,
+    )
+    return
+  }
+
+  if (members && members.length > 0) {
+    // Wrapped in try/catch: business_settings.timezone is per-coach free
+    // text — there is no CHECK constraint validating it against the IANA
+    // database — and toLocaleString THROWS a RangeError on an invalid zone.
+    // That is what this catch actually guards against, not the missing-table
+    // case above (PostgREST resolves that one; it never throws). A booking
+    // must never fail because a notification could not be formatted or sent.
+    try {
       // The FOURTH timezone. This string was built with toLocaleString and no
       // timeZone, i.e. the server process zone — and TZ is a reserved Vercel
       // environment variable, so the project cannot even choose it. A missing
@@ -520,9 +534,9 @@ async function runPostWriteEffects(
       }))
 
       await ctx.supabase.from("notifications").insert(notifications)
+    } catch (notifyErr) {
+      console.error(`${ctx.log} New Call Booked notification failed:`, notifyErr)
     }
-  } catch (notifyErr) {
-    console.error(`${ctx.log} business_members notification fan-out failed:`, notifyErr)
   }
 }
 

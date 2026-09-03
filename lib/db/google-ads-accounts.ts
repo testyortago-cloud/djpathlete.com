@@ -18,12 +18,20 @@ export async function listGoogleAdsAccounts(): Promise<GoogleAdsAccount[]> {
 }
 
 /**
- * `businessId` defaults to the singleton because four existing callers
- * (lib/ads/agent.ts twice, lib/ads/ga4-audiences.ts, and the value-adjustment
- * path in lib/ads/conversions.ts) pre-date multi-tenancy and are correct with
- * it. New callers pass one. The default-parameter idiom stays on EXISTING DAL
- * functions for one migration and is removed caller by caller; a NEW function
- * that defaults the tenant is how the next leak ships.
+ * `businessId` defaults to the singleton because five existing callers in the
+ * Next.js runtime (lib/ads/agent.ts twice, lib/ads/ga4-audiences.ts, the
+ * value-adjustment path in lib/ads/conversions.ts, and
+ * app/api/admin/ads/diagnose/route.ts) pre-date multi-tenancy and are correct
+ * with it. New callers pass one. The default-parameter idiom stays on
+ * EXISTING DAL functions for one migration and is removed caller by caller; a
+ * NEW function that defaults the tenant is how the next leak ships.
+ *
+ * functions/src/ads/dal.ts:getActiveGoogleAdsAccounts is a SEPARATE Firebase
+ * twin of this function, not a caller of it (functions/ cannot import from
+ * lib/ — see CLAUDE.md), and it applies NO business filter at all. Safe today
+ * only because every account is still on the singleton (see
+ * upsertGoogleAdsAccount below); it becomes a cross-tenant leak the day a
+ * second business has an account and nobody has updated that twin.
  */
 export async function getActiveGoogleAdsAccounts(
   businessId: string = SINGLETON_BUSINESS_ID,
@@ -47,6 +55,23 @@ export interface UpsertGoogleAdsAccountInput {
   connected_at?: string | null
 }
 
+/**
+ * SINGLETON-ONLY BY CONSTRUCTION: this function never takes or writes a
+ * business_id, and matches an existing row on customer_id alone. Every
+ * OAuth-discovered account therefore lands on the column default
+ * (SINGLETON_BUSINESS_ID), which is exactly why getActiveGoogleAdsAccounts
+ * above can filter by business_id today and still find every account —
+ * there is only one business that has any. That also means
+ * enqueueBookingConversion returns null, permanently and silently, for
+ * every OTHER business: a lookup keyed on a column this function never
+ * writes just returns empty, which reads exactly like "nothing to do".
+ * Correct for this phase (a business with no configured account is meant
+ * to enqueue nothing) but NOT a general per-tenant write path. Giving a
+ * second business its own Google Ads account requires this function to
+ * take a business_id, write it on insert, and match on
+ * (customer_id, business_id) rather than customer_id alone — phase-1 scope,
+ * not implemented here.
+ */
 export async function upsertGoogleAdsAccount(
   account: UpsertGoogleAdsAccountInput,
 ): Promise<GoogleAdsAccount> {

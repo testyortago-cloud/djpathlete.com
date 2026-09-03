@@ -34,6 +34,7 @@ let insertSingle: ReturnType<typeof vi.fn>
 let updateEq: ReturnType<typeof vi.fn>
 let notificationsInsert: ReturnType<typeof vi.fn>
 let businessMembersEq: ReturnType<typeof vi.fn>
+let businessSettingsMaybeSingle: ReturnType<typeof vi.fn>
 let lastInsertedRow: Record<string, unknown> | null = null
 // Records every .eq() applied to a `bookings` SELECT, in call order, so a
 // test can assert the PREDICATE readByKey applies — not merely that a row
@@ -68,6 +69,7 @@ vi.mock("@/lib/supabase", () => ({
         }
       }
       if (table === "business_members") return { select: () => ({ eq: businessMembersEq }) }
+      if (table === "business_settings") return { select: () => ({ eq: () => ({ maybeSingle: businessSettingsMaybeSingle }) }) }
       if (table === "notifications") return { insert: notificationsInsert }
       throw new Error(`unmocked table ${table}`)
     },
@@ -107,6 +109,11 @@ beforeEach(() => {
   updateEq = vi.fn().mockResolvedValue({ error: null })
   notificationsInsert = vi.fn(async () => ({ data: null, error: null }))
   businessMembersEq = vi.fn().mockResolvedValue({ data: [{ user_id: "admin-1" }], error: null })
+  // No settings row by default: getBusinessSettings throws "row missing",
+  // caught by ingest.ts's own `.catch(() => null)`, and the notification
+  // falls back to UTC — same default as an unmocked business_settings table,
+  // but without the "unmocked table" noise for tests that don't care.
+  businessSettingsMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
   findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
   exitRunsForContactMock.mockReset().mockResolvedValue(0)
   applyPipelineEventMock.mockReset().mockResolvedValue({ decision: { kind: "noop", reason: "t" }, opportunityId: null })
@@ -189,23 +196,64 @@ describe("the create path", () => {
     err.mockRestore()
   })
 
-  it("does not fail the booking when the business_members read throws (migration 00241/00240 deploy-race window)", async () => {
-    // Regression: commit 10ce9d05 swapped the notification fan-out's source
-    // from `users` (always present) to `business_members` (arrives in
-    // migration 00240) with no try/catch around it. Migrations apply via a
-    // GitHub Action on push to main that races the Vercel build for the same
-    // push, so there is a real window where this code is live and the table
-    // is not — a Calendly webhook would 500, and Calendly disables a webhook
-    // subscription after 24 hours of non-2xx retries. This pins that a
-    // notification failure can never take the booking webhook down with it.
+  it("does not fail the booking when the business_members read RESOLVES with an error (migration 00241/00240 deploy-race window)", async () => {
+    // Regression, corrected mechanism (review round 1 finding): commit
+    // 10ce9d05 swapped the notification fan-out's source from `users`
+    // (always present) to `business_members` (arrives in migration 00240)
+    // with no error check. The first fix round wrapped this in a try/catch
+    // and assumed a missing table THROWS — it does not. postgrest-js sets
+    // shouldThrowOnError = false, so a pre-00240 database resolves this read
+    // as { data: null, error: { code: "42P01", ... } }. A try/catch around a
+    // call that never throws is decorative; the code must check `error`
+    // explicitly, the same way readByKey already does for its own
+    // deploy-race columns. This pins that shape: the error is inspected, the
+    // booking still succeeds, and the failure is logged rather than
+    // vanishing silently.
     const err = vi.spyOn(console, "error").mockImplementation(() => {})
-    businessMembersEq.mockRejectedValueOnce(new Error('relation "business_members" does not exist'))
+    businessMembersEq.mockResolvedValueOnce({
+      data: null,
+      error: { code: "42P01", message: 'relation "business_members" does not exist' },
+    })
+    const result = await ingestBooking(input())
+    expect(result.action).toBe("created")
+    expect(notificationsInsert).not.toHaveBeenCalled()
+    expect(err).toHaveBeenCalledWith(expect.stringContaining("business_members read failed"))
+    err.mockRestore()
+  })
+
+  it("does not fail the booking when business_settings.timezone is not a valid IANA zone (toLocaleString throws a RangeError)", async () => {
+    // The try/catch around the notification-formatting step earns its place
+    // for THIS reason, not the missing-table story above: timezone is
+    // per-coach free text with no CHECK constraint against the IANA
+    // database, and toLocaleString throws a RangeError on an invalid zone —
+    // verified directly: `new Date().toLocaleString("en-US", { timeZone:
+    // "Not/AZone" })` throws "RangeError: Invalid time zone specified".
+    const err = vi.spyOn(console, "error").mockImplementation(() => {})
+    businessSettingsMaybeSingle.mockResolvedValueOnce({
+      data: {
+        business_id: SINGLETON_BUSINESS_ID,
+        display_name: "DJP Athlete",
+        sender_name: "Darren",
+        sender_email: "darren@example.test",
+        reply_to: "darren@example.test",
+        logo_url: null,
+        timezone: "Not/AZone",
+        quiet_hours_start: 8,
+        quiet_hours_end: 20,
+        daily_message_cap: 50,
+        postal_address: "",
+        sms_help_text: "",
+        sms_messaging_service_sid: "",
+        sms_sender_phone: "",
+      },
+      error: null,
+    })
     const result = await ingestBooking(input())
     expect(result.action).toBe("created")
     expect(notificationsInsert).not.toHaveBeenCalled()
     expect(err).toHaveBeenCalledWith(
-      expect.stringContaining("business_members notification fan-out failed"),
-      expect.anything(),
+      expect.stringContaining("New Call Booked notification failed"),
+      expect.any(RangeError),
     )
     err.mockRestore()
   })
