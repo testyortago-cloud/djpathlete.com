@@ -92,7 +92,7 @@ export async function processUnsubscribe(token: string): Promise<UnsubscribeOutc
     await suppress(contact.email, "unsubscribed", businessId)
   }
 
-  await exitRunsForContact(contactId, "unsubscribed")
+  await exitRunsForContact(contactId, "unsubscribed", businessId)
   await recordUnsubscribeTimelineEvent(contactId, businessId)
 
   // Spec §13. This is an UNAUTHENTICATED public URL that revokes consent and

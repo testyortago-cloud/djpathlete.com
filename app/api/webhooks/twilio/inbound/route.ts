@@ -262,7 +262,7 @@ export async function POST(request: Request) {
           source: "sms_inbound",
           wordingShown: rawBody,
         })
-        await exitRunsForContact(contactId, "sms_stop")
+        await exitRunsForContact(contactId, "sms_stop", SINGLETON_BUSINESS_ID)
         await writeTimelineEvent({
           contactId,
           kind: "sms_stop_received",

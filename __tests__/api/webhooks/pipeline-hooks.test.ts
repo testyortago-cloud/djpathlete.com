@@ -5,6 +5,7 @@
 // currently fails to start (ERR_REQUIRE_ESM in html-encoding-sniffer). Without
 // this line the file reports "no tests" rather than red.
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 // ─── Shared mocks: lib/db/contacts + lib/db/sequences + lib/db/pipeline ─────
 //
@@ -238,7 +239,7 @@ describe("Stripe webhook — pipeline", () => {
     const res = await POST(makeStripeReq())
 
     expect(res.status).toBe(200)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-shop-1", "payment")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-shop-1", "payment", SINGLETON_BUSINESS_ID)
     expect(applyPipelineEventMock).not.toHaveBeenCalled()
     expect(handleShopOrderCheckoutMock).toHaveBeenCalled() // dispatch still runs — only the card is gated
   })
@@ -253,7 +254,7 @@ describe("Stripe webhook — pipeline", () => {
     const res = await POST(makeStripeReq())
 
     expect(res.status).toBe(200)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-savecard-1", "payment")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-savecard-1", "payment", SINGLETON_BUSINESS_ID)
     expect(applyPipelineEventMock).not.toHaveBeenCalled()
   })
 
@@ -265,7 +266,7 @@ describe("Stripe webhook — pipeline", () => {
     const res = await POST(makeStripeReq())
 
     expect(res.status).toBe(200)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-coaching-1", "payment")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-coaching-1", "payment", SINGLETON_BUSINESS_ID)
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-coaching-1",
       event: { kind: "payment", amountCents: 30000, currency: "usd", occurredAt: expect.any(Date) },

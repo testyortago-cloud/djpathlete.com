@@ -5,6 +5,7 @@
 // currently fails to start (ERR_REQUIRE_ESM in html-encoding-sniffer). Without
 // this line the file reports "no tests" rather than red.
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 // ─── Shared mocks: lib/db/contacts + lib/db/sequences ───────────────────────
 //
@@ -161,7 +162,7 @@ describe("Stripe webhook — sequence exit on payment", () => {
     const res = await POST(makeStripeReq())
 
     expect(res.status).toBe(200)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-1", "payment")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-1", "payment", SINGLETON_BUSINESS_ID)
   })
 
   it("resolves by user_id in preference to email", async () => {
@@ -248,7 +249,7 @@ describe("GHL booking webhook — sequence exit on booking", () => {
     expect(findContactByIdentifiersMock).toHaveBeenCalledWith(
       expect.objectContaining({ email: "lead@example.com", phone: "+16176504548" }),
     )
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-3", "booking")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-3", "booking", SINGLETON_BUSINESS_ID)
   })
 
   it("does not fail the webhook when the contact cannot be resolved", async () => {
@@ -346,7 +347,7 @@ describe("GHL booking webhook — sequence exit on booking", () => {
       }),
     )
     expect(scheduledRes.status).toBe(201)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-7", "booking")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-7", "booking", SINGLETON_BUSINESS_ID)
 
     const completedRes = await POST(
       makeBookingReq({
@@ -358,7 +359,7 @@ describe("GHL booking webhook — sequence exit on booking", () => {
       }),
     )
     expect(completedRes.status).toBe(201)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-8", "booking")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-8", "booking", SINGLETON_BUSINESS_ID)
   })
 })
 
@@ -416,7 +417,7 @@ describe("Calendly booking webhook — sequence exit on booking", () => {
     expect(findContactByIdentifiersMock).toHaveBeenCalledWith(
       expect.objectContaining({ email: "priya.raman+seed@example.test", phone: "+16176504548" }),
     )
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-cal-3", "booking")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-cal-3", "booking", SINGLETON_BUSINESS_ID)
   })
 
   it("does not fail the webhook when the contact cannot be resolved", async () => {

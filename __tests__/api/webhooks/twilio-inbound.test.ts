@@ -223,8 +223,8 @@ beforeEach(() => {
   store.suppressions = []
   store.timeline = []
   store.sequenceRuns = [
-    { id: "run-1", contact_id: CONTACT, status: "active" },
-    { id: "run-2", contact_id: OTHER_CONTACT, status: "active" },
+    { id: "run-1", contact_id: CONTACT, business_id: BUSINESS, status: "active" },
+    { id: "run-2", contact_id: OTHER_CONTACT, business_id: BUSINESS, status: "active" },
   ]
   store.businessSettings = [{ ...SETTINGS }]
   process.env.TWILIO_AUTH_TOKEN = AUTH_TOKEN

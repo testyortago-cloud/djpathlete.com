@@ -13,6 +13,7 @@
 // pair and its status gates, the reschedule skip) is covered through both
 // routes by __tests__/api/webhooks/{pipeline-hooks,sequence-exit-hooks}.test.ts.
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 const findContactByIdentifiersMock = vi.fn(async (..._a: any[]) => null as string | null)
 const exitRunsForContactMock = vi.fn(async (..._a: any[]) => 0)
@@ -174,7 +175,7 @@ describe("the create path", () => {
     })
     await ingestBooking(input())
     expect(order).toEqual(["exit", "pipeline", "insert"])
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("c-1", "booking")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("c-1", "booking", SINGLETON_BUSINESS_ID)
   })
 })
 
@@ -296,7 +297,7 @@ describe("what counts as a NEW booking (review findings 3 and 4)", () => {
     )
     expect(result.action).toBe("created")
     expect(applyPipelineEventMock).toHaveBeenCalledWith(expect.objectContaining({ event: expect.objectContaining({ status: "scheduled" }) }))
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("c-1", "booking")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("c-1", "booking", SINGLETON_BUSINESS_ID)
     expect(enqueueBookingConversionMock).not.toHaveBeenCalled()
     expect(notificationsInsert).not.toHaveBeenCalled()
     expect(recordAuditMock).toHaveBeenCalledWith(

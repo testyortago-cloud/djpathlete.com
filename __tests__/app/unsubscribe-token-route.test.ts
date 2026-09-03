@@ -132,8 +132,8 @@ beforeEach(() => {
   store.suppressions = []
   store.timeline = []
   store.sequenceRuns = [
-    { id: "run-1", contact_id: CONTACT, status: "active" },
-    { id: "run-2", contact_id: OTHER_CONTACT, status: "active" },
+    { id: "run-1", contact_id: CONTACT, business_id: BUSINESS, status: "active" },
+    { id: "run-2", contact_id: OTHER_CONTACT, business_id: BUSINESS, status: "active" },
   ]
   vi.clearAllMocks()
 })
@@ -311,8 +311,8 @@ describe("POST /api/unsubscribe/[token] (RFC 8058 one-click)", () => {
     store.suppressions = []
     store.timeline = []
     store.sequenceRuns = [
-      { id: "run-1", contact_id: CONTACT, status: "active" },
-      { id: "run-2", contact_id: OTHER_CONTACT, status: "active" },
+      { id: "run-1", contact_id: CONTACT, business_id: BUSINESS, status: "active" },
+      { id: "run-2", contact_id: OTHER_CONTACT, business_id: BUSINESS, status: "active" },
     ]
 
     await UnsubscribeTokenPage({ params: Promise.resolve({ token }) })

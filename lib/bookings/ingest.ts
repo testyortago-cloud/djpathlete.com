@@ -40,6 +40,7 @@ import { recordAudit } from "@/lib/audit/record"
 import { findContactByIdentifiers } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 export type BookingSource = "ghl" | "calendly"
 
@@ -187,7 +188,9 @@ async function runContactConsequences(ctx: IngestCtx, input: BookingIngestInput)
     })
     if (contactId) {
       if (input.status === "scheduled" || input.status === "completed") {
-        await exitRunsForContact(contactId, "booking")
+        // Task 5 threads a real per-booking business id through
+        // BookingIngestInput; until then this is the one tenant that exists.
+        await exitRunsForContact(contactId, "booking", SINGLETON_BUSINESS_ID)
       }
       await applyPipelineEvent({
         contactId,
