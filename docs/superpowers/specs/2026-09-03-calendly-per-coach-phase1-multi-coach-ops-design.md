@@ -220,7 +220,12 @@ Class B, by file — this is the work list:
 
 A default parameter comes off a DAL function **only when `grep` shows every caller passing a value**. Removing it earlier turns a working call into a `tsc` error in a file the task did not touch; leaving it forever is how the leak survives. The conversion order is therefore **callers first, signature last**, and each task states which functions it finished so the next task can prove the claim with `grep` rather than trust it.
 
-`getBusinessSettings` / `updateBusinessSettings` (`lib/db/businesses.ts:26,41`) are the first two to lose their defaults, because §5.3 is their first real-value caller and their other callers are few.
+**`updateBusinessSettings` (`lib/db/businesses.ts:41`) loses its default in this phase. `getBusinessSettings` (`:26`) does not** — and the difference is the rule proving itself rather than an inconsistency:
+
+- `updateBusinessSettings` has **zero callers in the repo today** (`grep` returns only its own definition). §5.3's settings form is its first, and it passes a real value, so the default comes off with nothing to break.
+- `getBusinessSettings` has **eight callers, six of them on public surfaces** — `app/(marketing)/ask/page.tsx:49`, `camps/[slug]/page.tsx:69`, `clinics/[slug]/page.tsx:60`, `app/api/inquiry/route.ts:427`, `app/api/ask/capture/route.ts:349`, `app/api/ask/config/route.ts:62`. A public visitor's tenant comes from the `Host` header, which is **phase 4**. There is no real value for those callers to pass yet, so removing the default would either break them or force six fake singleton literals — trading one honest default for six dishonest constants. It keeps its default until phase 4 resolves the host.
+
+(`app/api/ask/route.ts:410` already passes `conversation.business_id` — the one caller that has a real tenant today, and the model the other six follow once the host resolves.)
 
 ### 6.3 Member invitation
 
