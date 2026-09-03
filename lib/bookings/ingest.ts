@@ -120,24 +120,46 @@ function isLive(status: BookingStatus): boolean {
   return status === "scheduled" || status === "completed"
 }
 
+/** Carried through the four stages so each gets the same client and log prefix. */
+type IngestCtx = { supabase: ReturnType<typeof createServiceRoleClient>; log: string }
+
 /** The one place a booking becomes its four consequences. */
 export async function ingestBooking(input: BookingIngestInput): Promise<BookingIngestResult> {
-  const supabase = createServiceRoleClient()
-  const log = `[booking-ingest:${input.source}]`
+  const ctx: IngestCtx = { supabase: createServiceRoleClient(), log: `[booking-ingest:${input.source}]` }
 
+  const { existing, staleReturn } = await readAndGate(ctx, input)
+  if (staleReturn) return staleReturn
+
+  await runContactConsequences(ctx, input)
+
+  const { result, bookingId, clickIds } = await writeRow(ctx, input, existing)
+  if (result.action === "created") {
+    await runPostWriteEffects(ctx, input, bookingId, clickIds)
+  }
+  return result
+}
+
+async function readAndGate(
+  ctx: IngestCtx,
+  input: BookingIngestInput,
+): Promise<{ existing: ExistingRow | null; staleReturn: BookingIngestResult | null }> {
   // Read by the vendor key FIRST, so a stale redelivery can be recognised
   // before any consequence runs. (The GHL route read after the consequences;
   // for a plain status change the order makes no difference.)
-  const existing = input.key ? await readByKey(supabase, input.key) : null
+  const existing = input.key ? await readByKey(ctx.supabase, input.key) : null
 
   if (existing && input.ignoreIfTerminal && input.status === "scheduled" && TERMINAL_STATUSES.has(existing.status ?? "")) {
     // Calendly retried an invitee.created that timed out, and the booking has
     // since been cancelled. Applying it would reopen the card and flip the row
     // back to scheduled. Acknowledged (so the retries stop) and left alone.
-    console.warn(`${log} stale "created" for ${input.key?.value}: row is already ${existing.status}; ignored`)
-    return { action: "updated", bookingId: existing.id }
+    console.warn(`${ctx.log} stale "created" for ${input.key?.value}: row is already ${existing.status}; ignored`)
+    return { existing, staleReturn: { action: "updated", bookingId: existing.id } }
   }
 
+  return { existing, staleReturn: null }
+}
+
+async function runContactConsequences(ctx: IngestCtx, input: BookingIngestInput): Promise<string | null> {
   // Lead Engine: neither the sequence exit nor the pipeline card move may
   // ever fail a booking webhook — catch, log, keep going to the normal
   // response. One contact resolution, two consumers, same catch.
@@ -156,26 +178,34 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
   // status sets from the same resolved contact.
   //
   // A RESCHEDULE'S CANCEL HALF SKIPS BOTH. See the header.
-  if (!input.rescheduled) {
-    try {
-      const contactId = await findContactByIdentifiers({
-        email: input.contact.email,
-        phone: input.contact.phone,
-      })
-      if (contactId) {
-        if (input.status === "scheduled" || input.status === "completed") {
-          await exitRunsForContact(contactId, "booking")
-        }
-        await applyPipelineEvent({
-          contactId,
-          event: { kind: "booking", status: input.status, occurredAt: new Date() },
-        })
-      }
-    } catch (err) {
-      console.error(`${log} sequence/pipeline hook failed`, (err as Error).message)
-    }
-  }
+  if (input.rescheduled) return null
 
+  try {
+    const contactId = await findContactByIdentifiers({
+      email: input.contact.email,
+      phone: input.contact.phone,
+    })
+    if (contactId) {
+      if (input.status === "scheduled" || input.status === "completed") {
+        await exitRunsForContact(contactId, "booking")
+      }
+      await applyPipelineEvent({
+        contactId,
+        event: { kind: "booking", status: input.status, occurredAt: new Date() },
+      })
+    }
+    return contactId ?? null
+  } catch (err) {
+    console.error(`${ctx.log} sequence/pipeline hook failed`, (err as Error).message)
+    return null
+  }
+}
+
+async function writeRow(
+  ctx: IngestCtx,
+  input: BookingIngestInput,
+  existing: ExistingRow | null,
+): Promise<{ result: BookingIngestResult; bookingId: string | null; clickIds: ClickIds }> {
   let gclid = input.clickIds.gclid ?? null
   let gbraid = input.clickIds.gbraid ?? null
   let wbraid = input.clickIds.wbraid ?? null
@@ -192,13 +222,16 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
     }
   }
 
+  const clickIds: ClickIds = { gclid, gbraid, wbraid, fbclid }
+
   // Upsert by the vendor key if present (so status updates and redeliveries
   // don't create duplicates). NOT a PostgREST .upsert(): the Calendly key's
   // unique index is PARTIAL, and ON CONFLICT cannot infer a partial index
   // without repeating its predicate, which PostgREST has no syntax for. Read
   // (done above), then update or insert — and let 23505 below catch the race.
   if (existing) {
-    return updateExisting(supabase, input, existing)
+    const result = await updateExisting(ctx.supabase, input, existing)
+    return { result, bookingId: result.bookingId, clickIds }
   }
 
   // Insert new booking
@@ -227,7 +260,7 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
     row.cancel_url = input.columns?.cancel_url ?? null
   }
 
-  const { data: insertedBooking, error } = await supabase.from("bookings").insert(row).select("id").single()
+  const { data: insertedBooking, error } = await ctx.supabase.from("bookings").insert(row).select("id").single()
 
   if (error) {
     // Two redeliveries raced past the read above and both inserted; the
@@ -235,8 +268,11 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
     // finish as an update rather than answering 500 to a vendor that will
     // only retry.
     if (error.code === PG_UNIQUE_VIOLATION && input.key) {
-      const winner = await readByKey(supabase, input.key)
-      if (winner) return updateExisting(supabase, input, winner)
+      const winner = await readByKey(ctx.supabase, input.key)
+      if (winner) {
+        const result = await updateExisting(ctx.supabase, input, winner)
+        return { result, bookingId: result.bookingId, clickIds }
+      }
     }
     throw error
   }
@@ -262,6 +298,17 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
     })
   }
 
+  return { result: { action: "created", bookingId }, bookingId, clickIds }
+}
+
+async function runPostWriteEffects(
+  ctx: IngestCtx,
+  input: BookingIngestInput,
+  bookingId: string | null,
+  clickIds: ClickIds,
+): Promise<void> {
+  const { gclid, gbraid, wbraid } = clickIds
+
   // A conversion and a notification are for a booking that is going to HAPPEN
   // and has not been counted before. A first-seen cancellation (the create was
   // lost, or the webhook was registered after the booking) is neither, and the
@@ -282,12 +329,12 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
         wbraid,
       })
     } catch (enqueueErr) {
-      console.error(`${log} enqueueBookingConversion failed:`, enqueueErr)
+      console.error(`${ctx.log} enqueueBookingConversion failed:`, enqueueErr)
     }
   }
 
   // Notify admins
-  const { data: admins } = countsAsNew ? await supabase.from("users").select("id").eq("role", "admin") : { data: null }
+  const { data: admins } = countsAsNew ? await ctx.supabase.from("users").select("id").eq("role", "admin") : { data: null }
 
   if (admins && admins.length > 0) {
     const bookingDate = new Date(input.bookingDate).toLocaleString("en-US", {
@@ -304,10 +351,8 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
       link: "/admin/bookings",
     }))
 
-    await supabase.from("notifications").insert(notifications)
+    await ctx.supabase.from("notifications").insert(notifications)
   }
-
-  return { action: "created", bookingId }
 }
 
 async function readByKey(
