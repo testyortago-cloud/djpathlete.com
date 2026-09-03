@@ -181,15 +181,21 @@ const TENANT_COLUMNS = [
  * false again, which is correct: the migration landing is exactly what a
  * redeploy would follow.
  *
- * Set ONLY after a narrowed retry actually SUCCEEDS, never on the bare
- * detection of a PGRST204/42703 — see isMissingTenantColumnsError for why
- * the error code alone is not proof that stripping TENANT_COLUMNS is
- * sufficient. Setting it on detection alone was review round 2's finding:
- * if more than one migration's columns are missing at once, the narrowed
- * retry can fail too, and a flag set on detection would then wedge this
- * instance into legacy mode — silently dropping contact_id, host_id,
- * chat_conversation_id, invitee_timezone and end_at on every booking after
- * that — even once every migration has landed.
+ * Set ONLY from writeRow's INSERT retry, never from readByKey's narrow read
+ * or updateExisting's narrow update — review round 3's finding. After 00243
+ * makes host_id and end_at NOT NULL, a narrow INSERT is the only one of the
+ * three where omitting them can still fail: a narrow SELECT just drops the
+ * business_id predicate and matches rows regardless of whether the column
+ * exists and is NOT NULL, and a narrow UPDATE just omits end_at from the
+ * SET list, which leaves the existing NOT NULL value untouched and succeeds
+ * every time. So only the INSERT retry's success is proof; a success at the
+ * read or update site proves nothing and must not latch this flag — doing so
+ * previously meant a single transient PostgREST schema-cache blip on a read
+ * or update could wedge every later INSERT on this instance into the narrow
+ * shape, which then hits 23502 (host_id/end_at NOT NULL) and 500s, silently,
+ * until the instance recycles. readByKey and updateExisting still fall back
+ * to the narrow shape and still log via warnTenantColumnsAbsent — they just
+ * never get to decide the flag for anyone else.
  */
 let tenantColumnsAbsent = false
 
@@ -533,7 +539,15 @@ async function runPostWriteEffects(
         link: "/admin/bookings",
       }))
 
-      await ctx.supabase.from("notifications").insert(notifications)
+      const { error: notifyError } = await ctx.supabase.from("notifications").insert(notifications)
+      if (notifyError) {
+        // PostgREST resolves rather than throws, so this must be checked
+        // explicitly — a dropped error here is a fan-out that silently never
+        // happened, indistinguishable from one that succeeded.
+        console.error(
+          `${ctx.log} New Call Booked notification insert failed (${notifyError.code} ${notifyError.message})`,
+        )
+      }
     } catch (notifyErr) {
       console.error(`${ctx.log} New Call Booked notification failed:`, notifyErr)
     }
@@ -556,9 +570,9 @@ async function readByKey(
       return (data as ExistingRow | null) ?? null
     }
     warnTenantColumnsAbsent(ctx, "read", error)
-    // Do NOT set tenantColumnsAbsent here — only the narrow retry below,
-    // if it succeeds, actually proves the columns are missing. See
-    // tenantColumnsAbsent's header.
+    // Falls through to the narrow read below, which also must not set
+    // tenantColumnsAbsent — see the comment on that read, and the flag's
+    // header, for why only writeRow's INSERT retry may.
   }
 
   // business_id isn't on this instance's bookings table yet — either just
@@ -567,12 +581,16 @@ async function readByKey(
   // row here — accepted rather than thrown on, because only one business
   // exists until phase 1 ships createBusiness; there is nothing to
   // cross-match against yet.
-  const { data, error } = await ctx.supabase
+  //
+  // Do NOT set tenantColumnsAbsent here. Dropping the .eq("business_id", …)
+  // predicate makes this SELECT succeed regardless of whether the column
+  // exists — it proves nothing about the schema, only that fewer rows were
+  // filtered out. See tenantColumnsAbsent's header.
+  const { data } = await ctx.supabase
     .from("bookings")
     .select("id, status, booking_date")
     .eq(key.column, key.value)
     .maybeSingle()
-  if (!tenantColumnsAbsent && !error) tenantColumnsAbsent = true
   return (data as ExistingRow | null) ?? null
 }
 
@@ -598,10 +616,12 @@ async function updateExisting(
     // test capturing the payload by reference, as this one does) must still
     // see what the FIRST attempt actually sent.
     const retry = await ctx.supabase.from("bookings").update(stripTenantColumns(updates)).eq("id", existing.id)
-    // Only believe the columns are missing once the narrower attempt PROVES
-    // it by succeeding — see tenantColumnsAbsent's header for why the
-    // ordering matters.
-    if (!retry.error) tenantColumnsAbsent = true
+    // Do NOT set tenantColumnsAbsent here, even though the retry succeeded.
+    // This UPDATE only ever names end_at from TENANT_COLUMNS, and dropping a
+    // column from a SET list succeeds whether or not it exists — post-00243
+    // it just leaves the row's existing NOT NULL end_at untouched. A success
+    // here proves nothing about the schema; see tenantColumnsAbsent's header
+    // for why only writeRow's INSERT retry is allowed to set the flag.
     error = retry.error
   }
 

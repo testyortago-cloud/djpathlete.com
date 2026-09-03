@@ -132,13 +132,20 @@ export async function enqueuePaymentValueAdjustmentByEmail(
   const { createServiceRoleClient } = await import("@/lib/supabase")
   const supabase = createServiceRoleClient()
   // Most-recent booking for this email
-  const { data: booking } = await supabase
+  const { data: booking, error } = await supabase
     .from("bookings")
     .select("id")
     .eq("contact_email", input.email)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()
+  if (error) {
+    // PostgREST resolves rather than throws. Left unchecked, a failed read
+    // here is indistinguishable from the legitimate "no booking for this
+    // email yet" case below, and both silently no-op the value adjustment.
+    console.error(`[ads-conversions] booking lookup by email failed (${error.code} ${error.message})`)
+    return null
+  }
   if (!booking?.id) return null
   return enqueuePaymentValueAdjustment({
     booking_id: (booking as { id: string }).id,

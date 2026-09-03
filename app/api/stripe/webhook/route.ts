@@ -202,6 +202,7 @@ export async function POST(request: Request) {
           const email = session.customer_details?.email ?? session.customer_email ?? null
           const contactId = await findContactByIdentifiers({ userId, email })
           if (contactId) {
+            // Sanctioned placeholder, not forgotten work: this route has no tenant in scope yet — revisit once it can resolve a business from the checkout.
             await exitRunsForContact(contactId, "payment", SINGLETON_BUSINESS_ID)
             if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
               // Final review, Important 3: the checkout session id is the

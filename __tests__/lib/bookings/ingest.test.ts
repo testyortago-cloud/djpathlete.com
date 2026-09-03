@@ -700,4 +700,163 @@ describe("the deploy-race fallback (00241's tenant columns not yet on this insta
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("00241"))
     warn.mockRestore()
   })
+
+  // Review round 3: the sticky flag must only ever be set from writeRow's
+  // INSERT retry. After 00243 makes host_id/end_at NOT NULL with no default,
+  // a narrow SELECT (readByKey dropping its business_id predicate) or a
+  // narrow UPDATE (omitting end_at from the SET list) can both SUCCEED
+  // whether or not the columns actually exist — neither one proves anything
+  // about the schema. Setting the flag from either was the bug: a single
+  // transient PostgREST schema-cache blip on a read or update would wedge
+  // every LATER insert on this instance into the narrow shape, which then
+  // 23502s against the NOT NULL columns and 500s every booking, silently,
+  // until the instance recycles.
+  it("a successful narrow READ does not latch tenantColumnsAbsent, so the following INSERT still tries the wide (post-00243) shape", async () => {
+    let selectCount = 0
+    let insertedRow: Record<string, unknown> | null = null
+    vi.resetModules()
+    vi.doMock("@/lib/supabase", () => ({
+      createServiceRoleClient: () => ({
+        from: (table: string) => {
+          if (table !== "bookings") return { select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }
+          return {
+            select: () => {
+              selectCount++
+              const attempt = selectCount
+              const chain: any = {
+                eq: () => chain,
+                maybeSingle: async () =>
+                  attempt === 1
+                    ? { data: null, error: { code: "42703", message: "column bookings.business_id does not exist" } }
+                    : // The narrow read (business_id predicate dropped) succeeds —
+                      // proves nothing post-00243, only that fewer rows were
+                      // filtered. No existing booking for this key.
+                      { data: null, error: null },
+              }
+              return chain
+            },
+            insert: (row: Record<string, unknown>) => {
+              insertedRow = row
+              return {
+                select: () => ({
+                  single: async () =>
+                    // Post-00243, host_id/end_at are NOT NULL with no default.
+                    // If the read above had wrongly latched the flag, this
+                    // insert would omit them and 23502 right here.
+                    "host_id" in row && "end_at" in row
+                      ? { data: { id: "bk-wide-after-narrow-read" }, error: null }
+                      : {
+                          data: null,
+                          error: {
+                            code: "23502",
+                            message: `null value in column "host_id" of relation "bookings" violates not-null constraint`,
+                          },
+                        },
+                }),
+              }
+            },
+          }
+        },
+      }),
+    }))
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const { ingestBooking: freshIngestBooking } = await import("@/lib/bookings/ingest")
+    const result = await freshIngestBooking(input({ status: "scheduled" }))
+
+    expect(selectCount).toBe(2)
+    expect(result).toEqual({ action: "created", bookingId: "bk-wide-after-narrow-read" })
+    expect(insertedRow).toMatchObject({ business_id: SINGLETON_BUSINESS_ID, host_id: "host-singleton", end_at: expect.any(String) })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("00241"))
+    warn.mockRestore()
+  })
+
+  it("a successful narrow UPDATE does not latch tenantColumnsAbsent, so a later INSERT still tries the wide (post-00243) shape", async () => {
+    let selectCount = 0
+    let updateCount = 0
+    let insertedRow: Record<string, unknown> | null = null
+    vi.resetModules()
+    vi.doMock("@/lib/supabase", () => ({
+      createServiceRoleClient: () => ({
+        from: (table: string) => {
+          if (table !== "bookings") return { select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }
+          return {
+            select: () => {
+              selectCount++
+              // Only the FIRST booking (a redelivered key) finds a row. The
+              // second call in this test is a brand new key, so it must
+              // insert — which is the whole point of the assertion.
+              const found = selectCount === 1
+              const chain: any = {
+                eq: () => chain,
+                maybeSingle: async () =>
+                  found
+                    ? { data: { id: "bk-existing", status: "scheduled", booking_date: "2026-09-08T14:00:00.000Z" }, error: null }
+                    : { data: null, error: null },
+              }
+              return chain
+            },
+            update: () => {
+              updateCount++
+              const attempt = updateCount
+              return {
+                eq: async () =>
+                  attempt === 1
+                    ? { error: { code: "42703", message: `column "end_at" of relation "bookings" does not exist` } }
+                    : // The narrow update (end_at dropped from the SET list)
+                      // succeeds — proves nothing post-00243, since omitting a
+                      // NOT NULL column from an UPDATE just leaves the row's
+                      // existing value untouched.
+                      { error: null },
+              }
+            },
+            insert: (row: Record<string, unknown>) => {
+              insertedRow = row
+              return {
+                select: () => ({
+                  single: async () =>
+                    // Post-00243, host_id/end_at are NOT NULL with no default.
+                    // If the update above had wrongly latched the flag, this
+                    // insert would omit them and 23502 right here.
+                    "host_id" in row && "end_at" in row
+                      ? { data: { id: "bk-wide-after-narrow-update" }, error: null }
+                      : {
+                          data: null,
+                          error: {
+                            code: "23502",
+                            message: `null value in column "host_id" of relation "bookings" violates not-null constraint`,
+                          },
+                        },
+                }),
+              }
+            },
+          }
+        },
+      }),
+    }))
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const { ingestBooking: freshIngestBooking } = await import("@/lib/bookings/ingest")
+
+    // First booking: existing row found, the update narrows and succeeds.
+    // This alone must not prove the columns are missing.
+    const updateResult = await freshIngestBooking(input({ status: "completed" }))
+    expect(updateResult).toEqual({ action: "updated", bookingId: "bk-existing" })
+    expect(updateCount).toBe(2)
+
+    // Second booking, same module instance, a fresh key with no existing
+    // row — a brand new INSERT. If the flag had wrongly latched from the
+    // update above, this insert would be narrowed and 23502 against the
+    // NOT NULL host_id/end_at.
+    const insertResult = await freshIngestBooking(
+      input({
+        status: "scheduled",
+        key: { column: "calendly_event_uri", value: "https://api.calendly.com/scheduled_events/E2" },
+      }),
+    )
+    expect(insertResult).toEqual({ action: "created", bookingId: "bk-wide-after-narrow-update" })
+    expect(insertedRow).toMatchObject({ business_id: SINGLETON_BUSINESS_ID, host_id: "host-singleton", end_at: expect.any(String) })
+
+    warn.mockRestore()
+  })
 })

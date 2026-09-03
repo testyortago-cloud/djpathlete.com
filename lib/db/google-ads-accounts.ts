@@ -81,11 +81,15 @@ export async function upsertGoogleAdsAccount(
   //  - existing row → UPDATE metadata only, leave is_active alone
   //  - missing row  → INSERT with is_active=true (newly discovered accounts
   //                   default to active)
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("google_ads_accounts")
     .select("customer_id")
     .eq("customer_id", account.customer_id)
     .maybeSingle()
+  // PostgREST resolves rather than throws. Left unchecked, a failed read here
+  // reads as "no existing row" and falls through to the INSERT below, which
+  // then fails with a confusing 23505 instead of surfacing the real error.
+  if (existingError) throw existingError
 
   const metadataPatch = {
     manager_customer_id: account.manager_customer_id ?? null,
