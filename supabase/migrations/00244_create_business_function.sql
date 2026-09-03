@@ -81,4 +81,22 @@ end;
 $$;
 
 revoke all on function public.create_business(text, text, text, text, text, uuid) from public;
+
+-- DO NOT DELETE THIS AS "REDUNDANT" WITH THE `from public` REVOKE ABOVE. It is
+-- not redundant. Every Supabase project carries a per-project default
+-- privilege -- `alter default privileges for role postgres in schema public
+-- grant execute on functions to anon, authenticated, service_role` -- that
+-- fires on function CREATE and grants anon/authenticated EXECUTE directly,
+-- independent of the PUBLIC pseudo-role. `revoke ... from public` does not
+-- touch it: querying information_schema.role_routine_grants right after
+-- create-or-replace shows anon and authenticated still holding EXECUTE. This
+-- function is `security definer` (runs as owner, bypassing RLS) and
+-- PostgREST auto-exposes any function carrying an EXECUTE grant at
+-- /rest/v1/rpc/create_business, so without this explicit revoke the anon key
+-- alone -- no login required -- can create arbitrary tenants and name any
+-- existing user id as 'owner'. That is exactly the unauthenticated write path
+-- the service-role-only RLS policies on businesses/business_settings/
+-- booking_hosts/business_members exist to prevent.
+revoke execute on function public.create_business(text, text, text, text, text, uuid) from anon, authenticated;
+
 grant execute on function public.create_business(text, text, text, text, text, uuid) to service_role;
