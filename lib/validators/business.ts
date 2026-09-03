@@ -75,7 +75,11 @@ export const businessSettingsPatchSchema = z.object({
   sms_sender_phone: z.string().trim().max(32).optional(),
 })
 
+export type BusinessSettingsPatch = z.infer<typeof businessSettingsPatchSchema>
+
 export const businessPatchSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   status: z.enum(["active", "paused"]).optional(),
 })
+
+export type BusinessPatch = z.infer<typeof businessPatchSchema>

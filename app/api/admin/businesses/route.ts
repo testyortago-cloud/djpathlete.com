@@ -44,6 +44,7 @@ export async function POST(request: Request, _ctx: { params: Promise<Record<stri
       outcome: "success",
       target: { type: "business", id: business.id, label: business.name },
       metadata: { slug: business.slug },
+      request,
     })
     return NextResponse.json({ business }, { status: 201 })
   } catch (err) {

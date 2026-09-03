@@ -7,7 +7,9 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { businessCreateSchema, slugify, type BusinessCreateInput } from "@/lib/validators/business"
+import { COMMON_TIMEZONES, DEFAULT_TIMEZONE } from "@/lib/timezones"
 
 export function BusinessCreateForm() {
   const router = useRouter()
@@ -21,21 +23,27 @@ export function BusinessCreateForm() {
     handleSubmit,
     setValue,
     setError,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<BusinessCreateInput>({
     resolver: zodResolver(businessCreateSchema),
     defaultValues: {
       name: "",
       slug: "",
-      timezone: "",
+      timezone: DEFAULT_TIMEZONE,
       hostDisplayName: "",
       hostEmail: "",
     },
   })
 
+  const timezone = watch("timezone")
+
   function handleNameChange(e: React.ChangeEvent<HTMLInputElement>) {
     if (slugFollowsName) {
-      setValue("slug", slugify(e.target.value), { shouldValidate: true })
+      // Not validated -- the operator hasn't touched "Web address" yet, so
+      // showing its error under a field they haven't reached is confusing,
+      // not helpful. It still validates on submit and on its own edit.
+      setValue("slug", slugify(e.target.value))
     }
   }
 
@@ -111,13 +119,26 @@ export function BusinessCreateForm() {
 
       <div className="space-y-1.5">
         <Label htmlFor="timezone">Timezone</Label>
-        <Input
-          id="timezone"
-          placeholder="e.g. America/New_York"
-          aria-invalid={!!errors.timezone}
-          aria-describedby={errors.timezone ? "timezone-error" : "timezone-hint"}
-          {...register("timezone")}
-        />
+        <Select
+          value={timezone}
+          onValueChange={(value) => setValue("timezone", value, { shouldValidate: true })}
+        >
+          <SelectTrigger
+            id="timezone"
+            aria-invalid={!!errors.timezone}
+            aria-describedby={errors.timezone ? "timezone-error" : "timezone-hint"}
+            className="w-full"
+          >
+            <SelectValue placeholder="Pick a timezone" />
+          </SelectTrigger>
+          <SelectContent>
+            {COMMON_TIMEZONES.map((tz) => (
+              <SelectItem key={tz.value} value={tz.value}>
+                {tz.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {errors.timezone ? (
           <p id="timezone-error" className="text-xs text-error">
             {errors.timezone.message}
