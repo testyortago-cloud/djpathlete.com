@@ -111,7 +111,8 @@ vi.mock("@/lib/supabase", () => ({
     from: (table: string) => {
       if (table === "bookings") {
         return {
-          select: () => ({ eq: () => ({ maybeSingle: bookingsSelectMaybeSingle }) }),
+          // readByKey chains TWO .eq()s now (the vendor key, then business_id).
+          select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: bookingsSelectMaybeSingle }) }) }),
           update: () => ({ eq: bookingsUpdateEq }),
           insert: bookingsInsert,
         }
@@ -121,6 +122,20 @@ vi.mock("@/lib/supabase", () => ({
       }
       if (table === "notifications") {
         return { insert: vi.fn(async () => ({ data: null, error: null })) }
+      }
+      // singletonHostId's chain: select().eq().order().limit().maybeSingle().
+      // No booking_hosts row in these fixtures — hostId resolves to null,
+      // which nothing in this suite asserts on.
+      if (table === "booking_hosts") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+              }),
+            }),
+          }),
+        }
       }
       // Stripe webhook path (event_signups status updates etc.)
       return {
@@ -468,6 +483,7 @@ describe("GHL booking webhook — pipeline", () => {
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-sched",
       event: { kind: "booking", status: "scheduled", occurredAt: expect.any(Date) },
+      businessId: SINGLETON_BUSINESS_ID,
     })
   })
 
@@ -489,6 +505,7 @@ describe("GHL booking webhook — pipeline", () => {
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-comp",
       event: { kind: "booking", status: "completed", occurredAt: expect.any(Date) },
+      businessId: SINGLETON_BUSINESS_ID,
     })
   })
 
@@ -514,6 +531,7 @@ describe("GHL booking webhook — pipeline", () => {
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-cancel",
       event: { kind: "booking", status: "cancelled", occurredAt: expect.any(Date) },
+      businessId: SINGLETON_BUSINESS_ID,
     })
     // Deliberate asymmetry (commit 63ff31db): exitRunsForContact must NOT
     // fire on a cancellation, even though applyPipelineEvent does.
@@ -538,6 +556,7 @@ describe("GHL booking webhook — pipeline", () => {
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-noshow",
       event: { kind: "booking", status: "no_show", occurredAt: expect.any(Date) },
+      businessId: SINGLETON_BUSINESS_ID,
     })
     expect(exitRunsForContactMock).not.toHaveBeenCalled()
   })
@@ -642,10 +661,12 @@ describe("Calendly booking webhook — pipeline", () => {
     expect(findContactByIdentifiersMock).toHaveBeenCalledWith({
       email: "priya.raman+seed@example.test",
       phone: "+16176504548",
+      businessId: SINGLETON_BUSINESS_ID,
     })
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-cal-sched",
       event: { kind: "booking", status: "scheduled", occurredAt: expect.any(Date) },
+      businessId: SINGLETON_BUSINESS_ID,
     })
   })
 
@@ -659,6 +680,7 @@ describe("Calendly booking webhook — pipeline", () => {
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-cal-cancel",
       event: { kind: "booking", status: "cancelled", occurredAt: expect.any(Date) },
+      businessId: SINGLETON_BUSINESS_ID,
     })
     expect(exitRunsForContactMock).not.toHaveBeenCalled()
   })

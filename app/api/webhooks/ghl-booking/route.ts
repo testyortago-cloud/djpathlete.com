@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { ingestBooking } from "@/lib/bookings/ingest"
+import { singletonHostId } from "@/lib/db/bookings"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 /**
  * Webhook endpoint for GoHighLevel appointment bookings.
@@ -121,6 +123,11 @@ export async function POST(request: Request) {
 
     const outcome = await ingestBooking({
       source: "ghl",
+      businessId: SINGLETON_BUSINESS_ID,
+      hostId: await singletonHostId(),
+      connectionId: null,
+      chatConversationId: null,
+      inviteeTimezone: null,
       key: data.ghl_appointment_id ? { column: "ghl_appointment_id", value: data.ghl_appointment_id } : null,
       contact: { name: data.contact_name, email: data.contact_email, phone: data.contact_phone ?? null },
       bookingDate: data.booking_date,

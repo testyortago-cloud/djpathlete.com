@@ -2,10 +2,12 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { ingestBooking } from "@/lib/bookings/ingest"
+import { singletonHostId } from "@/lib/db/bookings"
 import { readCalendlySigningKey } from "@/lib/calendly/env"
 import { CALENDLY_SIGNATURE_HEADER, verifyCalendlySignature } from "@/lib/calendly/signature"
 import { decodeTracking } from "@/lib/calendly/tracking"
 import { normalisePhone } from "@/lib/lead-engine/identity"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 /**
  * Webhook endpoint for Calendly — `invitee.created` and `invitee.canceled`.
@@ -205,6 +207,14 @@ export async function POST(request: Request) {
   try {
     const outcome = await ingestBooking({
       source: "calendly",
+      businessId: SINGLETON_BUSINESS_ID,
+      hostId: await singletonHostId(),
+      connectionId: null,
+      // Both of these are already parsed on this route and then thrown away:
+      // the conversation id reaches only the audit row's metadata, and the
+      // invitee timezone is validated at :81 and dropped. They have columns now.
+      chatConversationId: tracking.conversationId ?? null,
+      inviteeTimezone: data.timezone ?? null,
       key: { column: "calendly_event_uri", value: data.scheduled_event.uri },
       contact: { name: inviteeName(data), email: data.email, phone: inviteePhone(data) },
       bookingDate: data.scheduled_event.start_time,

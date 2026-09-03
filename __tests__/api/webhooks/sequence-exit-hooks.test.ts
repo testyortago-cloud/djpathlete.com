@@ -90,7 +90,8 @@ vi.mock("@/lib/supabase", () => ({
     from: (table: string) => {
       if (table === "bookings") {
         return {
-          select: () => ({ eq: () => ({ maybeSingle: bookingsSelectMaybeSingle }) }),
+          // readByKey chains TWO .eq()s now (the vendor key, then business_id).
+          select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: bookingsSelectMaybeSingle }) }) }),
           update: () => ({ eq: bookingsUpdateEq }),
           insert: bookingsInsert,
         }
@@ -100,6 +101,20 @@ vi.mock("@/lib/supabase", () => ({
       }
       if (table === "notifications") {
         return { insert: vi.fn(async () => ({ data: null, error: null })) }
+      }
+      // singletonHostId's chain: select().eq().order().limit().maybeSingle().
+      // No booking_hosts row in these fixtures — hostId resolves to null,
+      // which nothing in this suite asserts on.
+      if (table === "booking_hosts") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+              }),
+            }),
+          }),
+        }
       }
       // Stripe webhook path (event_signups status updates etc.)
       return {

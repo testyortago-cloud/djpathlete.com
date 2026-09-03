@@ -1,8 +1,31 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { Booking, BookingStatus } from "@/types/database"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 function getClient() {
   return createServiceRoleClient()
+}
+
+/**
+ * The one host of the one business, for the two adapters that still resolve
+ * their tenant from a constant. Phase 2 replaces both call sites with the host
+ * on the coach_calendar_connections row the delivery matched; until then this
+ * is the honest way to say "the singleton's host" without hard-coding a uuid
+ * that only exists because a backfill created it.
+ *
+ * Returns null rather than throwing: a missing host row must not fail a booking
+ * webhook, and host_id is nullable until 00243.
+ */
+export async function singletonHostId(): Promise<string | null> {
+  const supabase = createServiceRoleClient()
+  const { data } = await supabase
+    .from("booking_hosts")
+    .select("id")
+    .eq("business_id", SINGLETON_BUSINESS_ID)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  return (data as { id: string } | null)?.id ?? null
 }
 
 export async function getBookings(status?: BookingStatus) {

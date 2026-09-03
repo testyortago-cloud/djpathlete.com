@@ -40,7 +40,9 @@ vi.mock("@/lib/supabase", () => ({
     from: (table: string) => {
       if (table === "bookings") {
         return {
-          select: () => ({ eq: () => ({ maybeSingle: selectMaybeSingle }) }),
+          // readByKey chains TWO .eq()s now (the vendor key, then business_id) —
+          // both stub calls resolve to the same maybeSingle mock.
+          select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: selectMaybeSingle }) }) }),
           update: () => ({ eq: updateEq }),
           insert: (row: Record<string, unknown>) => {
             lastInsertedRow = row
@@ -60,6 +62,11 @@ import { ingestBooking, type BookingIngestInput } from "@/lib/bookings/ingest"
 function input(overrides: Partial<BookingIngestInput> = {}): BookingIngestInput {
   return {
     source: "calendly",
+    businessId: SINGLETON_BUSINESS_ID,
+    hostId: "host-singleton",
+    connectionId: null,
+    chatConversationId: null,
+    inviteeTimezone: null,
     key: { column: "calendly_event_uri", value: "https://api.calendly.com/scheduled_events/E1" },
     contact: { name: "Priya Raman", email: "priya@example.test", phone: "+16176504548" },
     bookingDate: "2026-09-08T14:00:00.000Z",
@@ -320,5 +327,39 @@ describe("what counts as a NEW booking (review findings 3 and 4)", () => {
     await ingestBooking(input({ clickIds: { gclid: "g-1", gbraid: null, wbraid: null, fbclid: null } }))
     expect(enqueueBookingConversionMock).toHaveBeenCalledTimes(1)
     expect(notificationsInsert).toHaveBeenCalledTimes(1)
+  })
+})
+
+const BUSINESS_B = "00000000-0000-0000-0000-0000000000b2"
+
+describe("tenant threading", () => {
+  it("passes the input's business to every consequence and stamps it on the row", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("c-9")
+    selectMaybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    insertSingle.mockResolvedValueOnce({ data: { id: "b-9" }, error: null })
+
+    await ingestBooking(input({ businessId: BUSINESS_B, hostId: "host-b", status: "scheduled" }))
+
+    expect(findContactByIdentifiersMock).toHaveBeenCalledWith(
+      expect.objectContaining({ businessId: BUSINESS_B }),
+    )
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("c-9", "booking", BUSINESS_B)
+    expect(applyPipelineEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ businessId: BUSINESS_B }),
+    )
+    expect(lastInsertedRow).toMatchObject({
+      business_id: BUSINESS_B,
+      host_id: "host-b",
+      contact_id: "c-9",
+    })
+  })
+
+  it("derives end_at from booking_date and duration", async () => {
+    selectMaybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    insertSingle.mockResolvedValueOnce({ data: { id: "b-10" }, error: null })
+
+    await ingestBooking(input({ bookingDate: "2026-09-10T14:00:00.000Z", durationMinutes: 45 }))
+
+    expect(lastInsertedRow).toMatchObject({ end_at: "2026-09-10T14:45:00.000Z" })
   })
 })

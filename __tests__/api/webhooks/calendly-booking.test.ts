@@ -17,12 +17,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { readFileSync } from "fs"
 
 import { buildSignatureHeader } from "@/lib/calendly/signature"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 const ingestBookingMock = vi.fn(
   async (..._a: any[]): Promise<{ action: "created" | "updated"; bookingId: string | null }> => ({ action: "created", bookingId: "bk-cal-1" }),
 )
 vi.mock("@/lib/bookings/ingest", () => ({
   ingestBooking: (...a: unknown[]) => ingestBookingMock(...a),
+}))
+
+// singletonHostId reaches the database (booking_hosts) directly, independent
+// of ingestBooking. Mocked here so this suite never touches the real dev
+// clone — the point of the createServiceRoleClient guard just below.
+const singletonHostIdMock = vi.fn(async () => "host-singleton" as string | null)
+vi.mock("@/lib/db/bookings", () => ({
+  singletonHostId: () => singletonHostIdMock(),
 }))
 
 // The route must not touch the database before the signature passes. Any
@@ -63,6 +72,7 @@ async function post(req: Request) {
 beforeEach(() => {
   vi.clearAllMocks()
   ingestBookingMock.mockReset().mockResolvedValue({ action: "created", bookingId: "bk-cal-1" })
+  singletonHostIdMock.mockReset().mockResolvedValue("host-singleton")
   process.env.CALENDLY_WEBHOOK_SIGNING_KEY = KEY
   process.env.CALENDLY_EVENT_TYPE_URI = "https://api.calendly.com/event_types/EVENTTYPE000001"
 })
@@ -154,6 +164,11 @@ describe("invitee.created", () => {
     const input = ingestBookingMock.mock.calls[0][0]
     expect(input).toMatchObject({
       source: "calendly",
+      businessId: SINGLETON_BUSINESS_ID,
+      hostId: "host-singleton",
+      connectionId: null,
+      chatConversationId: "0f3b2e9a-6c1d-4f0e-9b7a-2c4d6e8f0a1b",
+      inviteeTimezone: "America/New_York",
       key: { column: "calendly_event_uri", value: "https://api.calendly.com/scheduled_events/SCHEDEVENT0001" },
       contact: { name: "Priya Raman", email: "priya.raman+seed@example.test" },
       bookingDate: "2026-09-08T14:00:00.000000Z",
@@ -168,6 +183,18 @@ describe("invitee.created", () => {
         cancel_url: "https://calendly.com/cancellations/INVITEE00000001",
       },
     })
+  })
+
+  it("carries the conversation id and the invitee timezone it used to drop", async () => {
+    const res = await post(signedRequest(envelope()))
+    expect(res.status).toBe(201)
+    expect(ingestBookingMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        businessId: "00000000-0000-0000-0000-000000000001",
+        chatConversationId: expect.any(String),
+        inviteeTimezone: "America/New_York",
+      }),
+    )
   })
 
   it("normalises the phone-call number to E.164 so it matches contacts.phone_e164", async () => {

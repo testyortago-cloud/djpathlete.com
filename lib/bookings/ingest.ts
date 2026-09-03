@@ -40,7 +40,6 @@ import { recordAudit } from "@/lib/audit/record"
 import { findContactByIdentifiers } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 export type BookingSource = "ghl" | "calendly"
 
@@ -55,6 +54,22 @@ export type ClickIds = {
 
 export type BookingIngestInput = {
   source: BookingSource
+  /**
+   * REQUIRED, and deliberately not defaulted. Every DAL function in the Lead
+   * Engine takes `businessId = SINGLETON_BUSINESS_ID`, and that default is what
+   * let the tenant leak this far — a booking's four consequences all landed in
+   * the singleton because nobody had to say otherwise. A new field that
+   * defaults the tenant is how the next leak ships.
+   */
+  businessId: string
+  /** The host whose calendar this lands on. Null only until 00243 tightens. */
+  hostId: string | null
+  /** The coach_calendar_connections row this delivery matched. Null until phase 2 exists. */
+  connectionId: string | null
+  /** The chat conversation that produced this booking, if any. */
+  chatConversationId: string | null
+  /** The invitee's own timezone as the vendor reported it. */
+  inviteeTimezone: string | null
   /**
    * The vendor's own identifier for this booking, and the column it lives in.
    * Null means "no key" — the row is inserted blind, which is how a GHL
@@ -124,6 +139,18 @@ function isLive(status: BookingStatus): boolean {
 /** Carried through the four stages so each gets the same client and log prefix. */
 type IngestCtx = { supabase: ReturnType<typeof createServiceRoleClient>; log: string }
 
+/**
+ * `Math.max(…, 1)` mirrors migration 00241's `greatest(…, 1)`: duration_minutes
+ * has no positivity CHECK, and a stored 0 would give end_at === booking_date,
+ * which 00243's range check refuses. Shared by writeRow's insert and
+ * updateExisting's date-move update so the arithmetic cannot drift between them.
+ */
+function deriveEndAt(input: BookingIngestInput): string {
+  return new Date(
+    new Date(input.bookingDate).getTime() + Math.max(input.durationMinutes ?? 30, 1) * 60_000,
+  ).toISOString()
+}
+
 /** The one place a booking becomes its four consequences. */
 export async function ingestBooking(input: BookingIngestInput): Promise<BookingIngestResult> {
   const ctx: IngestCtx = { supabase: createServiceRoleClient(), log: `[booking-ingest:${input.source}]` }
@@ -131,9 +158,9 @@ export async function ingestBooking(input: BookingIngestInput): Promise<BookingI
   const { existing, staleReturn } = await readAndGate(ctx, input)
   if (staleReturn) return staleReturn
 
-  await runContactConsequences(ctx, input)
+  const contactId = await runContactConsequences(ctx, input)
 
-  const { result, bookingId, clickIds } = await writeRow(ctx, input, existing)
+  const { result, bookingId, clickIds } = await writeRow(ctx, input, existing, contactId)
   if (result.action === "created") {
     await runPostWriteEffects(ctx, input, bookingId, clickIds)
   }
@@ -147,7 +174,7 @@ async function readAndGate(
   // Read by the vendor key FIRST, so a stale redelivery can be recognised
   // before any consequence runs. (The GHL route read after the consequences;
   // for a plain status change the order makes no difference.)
-  const existing = input.key ? await readByKey(ctx.supabase, input.key) : null
+  const existing = input.key ? await readByKey(ctx.supabase, input.key, input.businessId) : null
 
   if (existing && input.ignoreIfTerminal && input.status === "scheduled" && TERMINAL_STATUSES.has(existing.status ?? "")) {
     // Calendly retried an invitee.created that timed out, and the booking has
@@ -185,16 +212,16 @@ async function runContactConsequences(ctx: IngestCtx, input: BookingIngestInput)
     const contactId = await findContactByIdentifiers({
       email: input.contact.email,
       phone: input.contact.phone,
+      businessId: input.businessId,
     })
     if (contactId) {
       if (input.status === "scheduled" || input.status === "completed") {
-        // Task 5 threads a real per-booking business id through
-        // BookingIngestInput; until then this is the one tenant that exists.
-        await exitRunsForContact(contactId, "booking", SINGLETON_BUSINESS_ID)
+        await exitRunsForContact(contactId, "booking", input.businessId)
       }
       await applyPipelineEvent({
         contactId,
         event: { kind: "booking", status: input.status, occurredAt: new Date() },
+        businessId: input.businessId,
       })
     }
     return contactId ?? null
@@ -208,6 +235,7 @@ async function writeRow(
   ctx: IngestCtx,
   input: BookingIngestInput,
   existing: ExistingRow | null,
+  contactId: string | null,
 ): Promise<{ result: BookingIngestResult; bookingId: string | null; clickIds: ClickIds }> {
   let gclid = input.clickIds.gclid ?? null
   let gbraid = input.clickIds.gbraid ?? null
@@ -238,6 +266,8 @@ async function writeRow(
   }
 
   // Insert new booking
+  const endAt = deriveEndAt(input)
+
   const row: Record<string, unknown> = {
     contact_name: input.contact.name,
     contact_email: input.contact.email,
@@ -253,6 +283,13 @@ async function writeRow(
     gbraid,
     wbraid,
     fbclid,
+    business_id: input.businessId,
+    host_id: input.hostId,
+    connection_id: input.connectionId,
+    contact_id: contactId,
+    chat_conversation_id: input.chatConversationId,
+    end_at: endAt,
+    invitee_timezone: input.inviteeTimezone,
   }
   if (input.key) row[input.key.column] = input.key.value
   // Calendly's columns are only named on a Calendly row. A GHL insert never
@@ -271,7 +308,7 @@ async function writeRow(
     // finish as an update rather than answering 500 to a vendor that will
     // only retry.
     if (error.code === PG_UNIQUE_VIOLATION && input.key) {
-      const winner = await readByKey(ctx.supabase, input.key)
+      const winner = await readByKey(ctx.supabase, input.key, input.businessId)
       if (winner) {
         const result = await updateExisting(ctx.supabase, input, winner)
         return { result, bookingId: result.bookingId, clickIds }
@@ -361,11 +398,13 @@ async function runPostWriteEffects(
 async function readByKey(
   supabase: ReturnType<typeof createServiceRoleClient>,
   key: { column: BookingKeyColumn; value: string },
+  businessId: string,
 ): Promise<ExistingRow | null> {
   const { data } = await supabase
     .from("bookings")
     .select("id, status, booking_date")
     .eq(key.column, key.value)
+    .eq("business_id", businessId)
     .maybeSingle()
   return (data as ExistingRow | null) ?? null
 }
@@ -380,6 +419,7 @@ async function updateExisting(
     .update({
       status: input.status,
       booking_date: input.bookingDate,
+      end_at: deriveEndAt(input),
       notes: input.notes,
       updated_at: new Date().toISOString(),
     })
