@@ -191,5 +191,30 @@ describe("POST /api/public/invite/[token]/claim", () => {
       expect(addBusinessMember).toHaveBeenCalledWith("biz-1", "newU", "coach")
       expect(linkHostToUser).toHaveBeenCalledWith("biz-1", "newU")
     })
+
+    /**
+     * The ordering fix from review round 1. markInviteUsed must run AFTER
+     * the membership write, not before -- otherwise a failed addBusinessMember
+     * leaves a real user account with a consumed invite and no membership
+     * row, and step 13 removed the fallback that would have papered over it.
+     * Asserting call ORDER alone is weaker than this: a mock can record two
+     * calls in order while still having made both. What actually matters is
+     * that the second call NEVER HAPPENED, which is what this pins.
+     */
+    it("does NOT mark the invite used when the membership write fails, so it stays retry-able", async () => {
+      pendingInvite({ business_id: null, business_role: null })
+      ;(addBusinessMember as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("db unavailable"))
+
+      await expect(claim()).rejects.toThrow("db unavailable")
+      expect(markInviteUsed).not.toHaveBeenCalled()
+    })
+
+    it("does NOT mark the invite used when linkHostToUser fails (a coach invite)", async () => {
+      pendingInvite({ business_id: "biz-1", business_role: "coach" })
+      ;(linkHostToUser as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("db unavailable"))
+
+      await expect(claim()).rejects.toThrow("db unavailable")
+      expect(markInviteUsed).not.toHaveBeenCalled()
+    })
   })
 })

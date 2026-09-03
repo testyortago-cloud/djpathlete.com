@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getBusiness } from "@/lib/db/businesses"
 import { createInvite } from "@/lib/db/team-invites"
-import { removeBusinessMember } from "@/lib/db/business-members"
+import { removeBusinessMember, countBusinessMembers } from "@/lib/db/business-members"
 import { businessMemberInviteSchema, businessMemberRemoveSchema } from "@/lib/validators/business"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { recordAudit } from "@/lib/audit/record"
@@ -91,6 +91,18 @@ export async function DELETE(request: Request, ctx: { params: Promise<{ id: stri
   const parsed = businessMemberRemoveSchema.safeParse(await request.json().catch(() => ({})))
   if (!parsed.success) {
     return NextResponse.json({ error: "Check the request", issues: parsed.error.issues }, { status: 400 })
+  }
+
+  // Refuse to empty a business's member list. Without a real membership row
+  // left, its own coach resolves NoAccessibleBusinessError on every admin
+  // surface (step 13 removed the singleton fallback) with hand-written SQL
+  // as the only way back in.
+  const memberCount = await countBusinessMembers(id)
+  if (memberCount <= 1) {
+    return NextResponse.json(
+      { error: "This is the only person left on this business — add someone else before removing them." },
+      { status: 409 },
+    )
   }
 
   // Deletes the membership row only -- NEVER the user, who may belong to

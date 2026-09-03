@@ -73,6 +73,16 @@ export async function addBusinessMember(
   return "added"
 }
 
+/** Cheap head-count for the "don't remove the last member" guard in the route. */
+export async function countBusinessMembers(businessId: string): Promise<number> {
+  const { count, error } = await getClient()
+    .from("business_members")
+    .select("*", { count: "exact", head: true })
+    .eq("business_id", businessId)
+  if (error) throw new Error(`countBusinessMembers failed (${error.code}): ${error.message}`)
+  return count ?? 0
+}
+
 export async function removeBusinessMember(businessId: string, userId: string): Promise<void> {
   const { error } = await getClient()
     .from("business_members")
@@ -86,9 +96,13 @@ export async function removeBusinessMember(businessId: string, userId: string): 
  * Fills in the host row's user_id once the coach's login exists.
  *
  * create_business writes a host with a NULL user_id, because the business is
- * created before the coach has an account. Only the FIRST unclaimed host row
- * is linked, and `.is("user_id", null)` is what stops a second coach's accept
- * from stealing a host that already belongs to someone.
+ * created before the coach has an account. This claims EVERY currently
+ * unclaimed host row of this business, not just one -- there is no `.limit()`
+ * on a PostgREST update. That is correct today because a business has exactly
+ * one host; if a business ever gets a second host before its first coach's
+ * invite is accepted, this would hand both to the same person. The
+ * `.is("user_id", null)` predicate is what stops it from stealing a host that
+ * already belongs to someone else.
  */
 export async function linkHostToUser(businessId: string, userId: string): Promise<void> {
   const { error } = await getClient()
