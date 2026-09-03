@@ -33,6 +33,7 @@ let selectMaybeSingle: ReturnType<typeof vi.fn>
 let insertSingle: ReturnType<typeof vi.fn>
 let updateEq: ReturnType<typeof vi.fn>
 let notificationsInsert: ReturnType<typeof vi.fn>
+let businessMembersEq: ReturnType<typeof vi.fn>
 let lastInsertedRow: Record<string, unknown> | null = null
 // Records every .eq() applied to a `bookings` SELECT, in call order, so a
 // test can assert the PREDICATE readByKey applies — not merely that a row
@@ -66,7 +67,7 @@ vi.mock("@/lib/supabase", () => ({
           },
         }
       }
-      if (table === "business_members") return { select: () => ({ eq: () => Promise.resolve({ data: [{ user_id: "admin-1" }], error: null }) }) }
+      if (table === "business_members") return { select: () => ({ eq: businessMembersEq }) }
       if (table === "notifications") return { insert: notificationsInsert }
       throw new Error(`unmocked table ${table}`)
     },
@@ -105,6 +106,7 @@ beforeEach(() => {
   insertSingle = vi.fn().mockResolvedValue({ data: { id: "bk-new" }, error: null })
   updateEq = vi.fn().mockResolvedValue({ error: null })
   notificationsInsert = vi.fn(async () => ({ data: null, error: null }))
+  businessMembersEq = vi.fn().mockResolvedValue({ data: [{ user_id: "admin-1" }], error: null })
   findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
   exitRunsForContactMock.mockReset().mockResolvedValue(0)
   applyPipelineEventMock.mockReset().mockResolvedValue({ decision: { kind: "noop", reason: "t" }, opportunityId: null })
@@ -184,6 +186,27 @@ describe("the create path", () => {
     enqueueBookingConversionMock.mockRejectedValueOnce(new Error("ads down"))
     const result = await ingestBooking(input({ clickIds: { gclid: "g-1", gbraid: null, wbraid: null, fbclid: null } }))
     expect(result.action).toBe("created")
+    err.mockRestore()
+  })
+
+  it("does not fail the booking when the business_members read throws (migration 00241/00240 deploy-race window)", async () => {
+    // Regression: commit 10ce9d05 swapped the notification fan-out's source
+    // from `users` (always present) to `business_members` (arrives in
+    // migration 00240) with no try/catch around it. Migrations apply via a
+    // GitHub Action on push to main that races the Vercel build for the same
+    // push, so there is a real window where this code is live and the table
+    // is not — a Calendly webhook would 500, and Calendly disables a webhook
+    // subscription after 24 hours of non-2xx retries. This pins that a
+    // notification failure can never take the booking webhook down with it.
+    const err = vi.spyOn(console, "error").mockImplementation(() => {})
+    businessMembersEq.mockRejectedValueOnce(new Error('relation "business_members" does not exist'))
+    const result = await ingestBooking(input())
+    expect(result.action).toBe("created")
+    expect(notificationsInsert).not.toHaveBeenCalled()
+    expect(err).toHaveBeenCalledWith(
+      expect.stringContaining("business_members notification fan-out failed"),
+      expect.anything(),
+    )
     err.mockRestore()
   })
 

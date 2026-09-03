@@ -481,32 +481,48 @@ async function runPostWriteEffects(
   // not every role='admin' user in the deployment, which was a cross-tenant
   // broadcast waiting for a second business. 00240's backfill made every current
   // admin an owner of the singleton, so this is behaviour-identical today.
-  const { data: members } = countsAsNew
-    ? await ctx.supabase.from("business_members").select("user_id").eq("business_id", input.businessId)
-    : { data: null }
+  //
+  // Wrapped in try/catch, same shape and spirit as the ads conversion above:
+  // `business_members` arrives in migration 00240, which lives on this same
+  // unmerged branch, and migrations apply via a GitHub Action on push to main
+  // that races the Vercel build for that same push — nothing sequences the
+  // two (the workflow's own header at .github/workflows/apply-migrations.yml
+  // says so). In the window where the code is live and the table is not yet,
+  // an unguarded read here throws, this function propagates it, and the
+  // booking webhook answers 500. Calendly retries a non-2xx with exponential
+  // back-off for 24 hours and then DISABLES the webhook subscription, which
+  // must be recreated by hand — a coach silently stops receiving bookings. A
+  // booking must never fail because a notification could not be sent.
+  try {
+    const { data: members } = countsAsNew
+      ? await ctx.supabase.from("business_members").select("user_id").eq("business_id", input.businessId)
+      : { data: null }
 
-  if (members && members.length > 0) {
-    // The FOURTH timezone. This string was built with toLocaleString and no
-    // timeZone, i.e. the server process zone — and TZ is a reserved Vercel
-    // environment variable, so the project cannot even choose it. A missing
-    // settings row must not fail a booking webhook, hence the catch.
-    const settings = await getBusinessSettings(input.businessId).catch(() => null)
-    const bookingDate = new Date(input.bookingDate).toLocaleString("en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-      timeZone: settings?.timezone || "UTC",
-    })
+    if (members && members.length > 0) {
+      // The FOURTH timezone. This string was built with toLocaleString and no
+      // timeZone, i.e. the server process zone — and TZ is a reserved Vercel
+      // environment variable, so the project cannot even choose it. A missing
+      // settings row must not fail a booking webhook, hence the catch.
+      const settings = await getBusinessSettings(input.businessId).catch(() => null)
+      const bookingDate = new Date(input.bookingDate).toLocaleString("en-US", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: settings?.timezone || "UTC",
+      })
 
-    const notifications = (members as Array<{ user_id: string }>).map((m) => ({
-      user_id: m.user_id,
-      type: "success" as const,
-      title: "New Call Booked",
-      message: `${input.contact.name} (${input.contact.email}) booked a call for ${bookingDate}`,
-      is_read: false,
-      link: "/admin/bookings",
-    }))
+      const notifications = (members as Array<{ user_id: string }>).map((m) => ({
+        user_id: m.user_id,
+        type: "success" as const,
+        title: "New Call Booked",
+        message: `${input.contact.name} (${input.contact.email}) booked a call for ${bookingDate}`,
+        is_read: false,
+        link: "/admin/bookings",
+      }))
 
-    await ctx.supabase.from("notifications").insert(notifications)
+      await ctx.supabase.from("notifications").insert(notifications)
+    }
+  } catch (notifyErr) {
+    console.error(`${ctx.log} business_members notification fan-out failed:`, notifyErr)
   }
 }
 

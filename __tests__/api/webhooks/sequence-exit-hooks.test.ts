@@ -99,6 +99,13 @@ vi.mock("@/lib/supabase", () => ({
       if (table === "users") {
         return { select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }
       }
+      // runPostWriteEffects reads this business's members (owner/coach/staff)
+      // to fan the "New Call Booked" notification out to. A row here is what
+      // makes that fan-out actually execute in this suite, rather than being
+      // silently swallowed by the never-rethrow catch around it.
+      if (table === "business_members") {
+        return { select: () => ({ eq: () => Promise.resolve({ data: [{ user_id: "member-1" }], error: null }) }) }
+      }
       if (table === "notifications") {
         return { insert: vi.fn(async () => ({ data: null, error: null })) }
       }
