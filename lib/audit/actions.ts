@@ -550,6 +550,21 @@ export const AUDIT_ACTIONS = [
     category: "compliance",
     description: "A staff member was refused a surface they lack permission for",
   },
+
+  // business -- multi-coach tenants
+  { slug: "business.created", category: "admin_write", description: "A new business (coach tenant) was created" },
+  { slug: "business.updated", category: "admin_write", description: "Business name or status changed" },
+  { slug: "business.settings_updated", category: "admin_write", description: "Business settings changed" },
+  {
+    slug: "business.member_invited",
+    category: "admin_write",
+    description: "A coach or staff member was invited to a business",
+  },
+  {
+    slug: "business.member_removed",
+    category: "admin_write",
+    description: "A member's access to a business was removed",
+  },
 ] as const satisfies readonly AuditActionDef[]
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number]["slug"]

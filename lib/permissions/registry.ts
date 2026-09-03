@@ -339,6 +339,7 @@ export function getPreset(key: string): PresetDef | null {
  */
 export const OWNER_ONLY_PREFIXES: readonly string[] = [
   "/admin/dashboard",
+  "/admin/businesses",
   "/admin/settings",
   "/admin/team",
   "/admin/audit-logs",
