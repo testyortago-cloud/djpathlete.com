@@ -63,6 +63,12 @@ export type Fact =
       soldOut: boolean
     }
   | { kind: "testimonial"; quote: string; author: string }
+  /**
+   * One free consultation time the booking lookup returned. `timezone` is the
+   * business's IANA zone: every grounded form of this instant is computed in
+   * it, because that is the zone the system prompt tells the model to speak in.
+   */
+  | { kind: "slot"; startAt: string; timezone: string }
 
 /**
  * The typed facts one conversation's lookups have returned so far, plus every
@@ -124,6 +130,69 @@ function getClient() {
 
 function unique(values: string[]): string[] {
   return Array.from(new Set(values.filter((v) => v.length > 0)))
+}
+
+/**
+ * THE ONE SPELLING OF A CLOCK TIME, on both sides of the validator: "9:00 AM"
+ * → "9:00am", "4 P.M." → "4pm", "19:30" → "19:30", "09:00" → "9:00". Lower-
+ * cased, dots and spaces removed, no leading zero on the hour, minutes kept
+ * only when written. A time is grounded when this form of it is in the set.
+ *
+ * TWIN in validate.ts (`normaliseClock`), deliberately duplicated the way
+ * `normalise` is: that module must not import this one. `chat-validate.test.ts`
+ * pins the two against each other.
+ */
+export function normaliseClock(raw: string): string {
+  const m = raw
+    .toLowerCase()
+    .replace(/[\s.]/g, "")
+    .match(/^(\d{1,2})(?::(\d{2}))?(am|pm)?$/)
+  if (!m) return normalise(raw)
+  return `${Number(m[1])}${m[2] ? `:${m[2]}` : ""}${m[3] ?? ""}`
+}
+
+/** "9:00 AM", "4pm", "4 p.m." — a clock time with a period. Twin of validate.ts's CLOCK_PERIOD_RE. */
+const CLOCK_PERIOD_RE = /\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?(?![a-z])/gi
+/** "19:30", "9:00" — a clock time written with a colon and no period. Twin of validate.ts's CLOCK_COLON_RE. */
+const CLOCK_COLON_RE = /\b(\d{1,2}):(\d{2})\b/g
+
+/**
+ * Every clock time written in a piece of prose, in the one spelling. An FAQ
+ * that says "sessions run 4:00 PM to 6:00 PM" grounds "4:00pm" and "6:00pm",
+ * so the assistant can quote its own source. Without this the validator's
+ * time rule would block the truth.
+ */
+export function clockTokens(text: string): string[] {
+  const out: string[] = []
+  let rest = text
+  rest = rest.replace(CLOCK_PERIOD_RE, (m) => {
+    out.push(normaliseClock(m))
+    return " "
+  })
+  rest.replace(CLOCK_COLON_RE, (m) => {
+    out.push(normaliseClock(m))
+    return " "
+  })
+  return out
+}
+
+/**
+ * The clock forms of an EVENT datetime, which is stored as wall-clock UTC (see
+ * lib/events/format.ts): a camp that starts 09:00 UTC-wall-clock grounds
+ * "9:00am", "9am", "9:00". Midnight is "no daily time set" in this schema and
+ * grounds nothing.
+ */
+function eventClockForms(iso: string): string[] {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return []
+  const h24 = d.getUTCHours()
+  const mm = String(d.getUTCMinutes()).padStart(2, "0")
+  if (h24 === 0 && mm === "00") return []
+  const period = h24 >= 12 ? "pm" : "am"
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12
+  const forms = [`${h12}:${mm}${period}`, `${h24}:${mm}`, `${h12}:${mm}`]
+  if (mm === "00") forms.push(`${h12}${period}`)
+  return forms
 }
 
 /**
@@ -198,6 +267,101 @@ function dateForms(iso: string): string[] {
   // grounded value for a date the database never held.
   if (d.getUTCMonth() === 8) forms.push(`Sept ${day}`)
   return forms
+}
+
+/**
+ * The pieces of an instant as a clock on the wall in `timeZone` would show it.
+ * Null when the zone is not one Intl knows — the caller grounds nothing rather
+ * than grounding the wrong day.
+ */
+function zonedParts(iso: string, timeZone: string) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  try {
+    const long = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    }).formatToParts(d)
+    const numeric = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      month: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(d)
+    const pick = (parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((p) => p.type === type)?.value ?? ""
+    return {
+      weekday: pick(long, "weekday"),
+      month: pick(long, "month"),
+      day: pick(long, "day"),
+      year: pick(long, "year"),
+      hour12: pick(long, "hour"),
+      minute: pick(long, "minute"),
+      period: pick(long, "dayPeriod").replace(/\./g, "").toLowerCase(),
+      monthNumber: pick(numeric, "month"),
+      hour24: pick(numeric, "hour"),
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Every form of a booking SLOT a model might write — date AND time — computed
+ * in the given zone. `dateForms` above is UTC on purpose, because event
+ * datetimes are stored as wall-clock UTC; a Calendly slot is a real instant,
+ * and a 7 pm Eastern slot is the NEXT day in UTC. Grounding it through
+ * `dateForms` would let the assistant name the wrong day and pass.
+ *
+ * Time forms ground the hour and the minute as separate tokens too, because
+ * the validator's bare-numeral rule sees "2:30 PM" as `2` and `30`, and 30 is
+ * above the small-number ceiling.
+ */
+export function slotForms(iso: string, timeZone: string): string[] {
+  const z = zonedParts(iso, timeZone)
+  if (!z) return []
+  const short = z.month.slice(0, 3)
+  const forms = [
+    iso,
+    `${z.month} ${z.day}`,
+    `${short} ${z.day}`,
+    `${z.day} ${z.month}`,
+    `${z.month} ${z.day}, ${z.year}`,
+    `${z.day} ${z.month} ${z.year}`,
+    `${z.monthNumber}/${z.day}/${z.year}`,
+    z.weekday,
+    z.day,
+    z.year,
+    `${z.hour12}:${z.minute} ${z.period}`,
+    `${z.hour12}:${z.minute}${z.period}`,
+    `${z.hour12} ${z.period}`,
+    `${z.hour12}${z.period}`,
+    `${z.hour12}:${z.minute}`,
+    `${z.hour24}:${z.minute}`,
+    z.hour12,
+    z.hour24,
+    z.minute,
+  ]
+  if (z.month === "September") forms.push(`Sept ${z.day}`)
+  return forms
+}
+
+/**
+ * The one human spelling of a slot the tool result hands the model — e.g.
+ * "Tuesday, September 8 at 10:00 AM". Built from the same zoned parts as
+ * `slotForms`, so what the model is shown is by construction a grounded form.
+ */
+export function formatSlotLabel(iso: string, timeZone: string): string {
+  const z = zonedParts(iso, timeZone)
+  if (!z) return iso
+  return `${z.weekday}, ${z.month} ${z.day} at ${z.hour12}:${z.minute} ${z.period.toUpperCase()}`
 }
 
 /**
@@ -404,27 +568,38 @@ export async function listPublicTestimonials(): Promise<Fact[]> {
 function valuesForFact(fact: Fact): string[] {
   switch (fact.kind) {
     case "faq":
-      // The row's own prose is the source, so a number inside it is grounded.
-      return [...numericTokens(fact.question), ...numericTokens(fact.answer)]
+      // The row's own prose is the source, so a number (or a time) inside it is grounded.
+      return [
+        ...numericTokens(fact.question),
+        ...numericTokens(fact.answer),
+        ...clockTokens(fact.question),
+        ...clockTokens(fact.answer),
+      ]
     case "programme":
       return [
         ...moneyForms(fact.priceCents),
         String(fact.durationWeeks),
         String(fact.sessionsPerWeek),
         ...numericTokens(fact.name),
+        ...clockTokens(fact.name),
       ]
     case "event":
       return [
         ...moneyForms(fact.priceCents),
         ...dateForms(fact.startDate),
-        ...(fact.endDate ? dateForms(fact.endDate) : []),
+        ...eventClockForms(fact.startDate),
+        ...(fact.endDate ? [...dateForms(fact.endDate), ...eventClockForms(fact.endDate)] : []),
         String(fact.capacity),
         String(fact.spotsLeft),
         ...numericTokens(fact.title),
         ...numericTokens(fact.locationName),
+        ...clockTokens(fact.title),
+        ...clockTokens(fact.locationName),
       ]
     case "testimonial":
-      return numericTokens(fact.quote)
+      return [...numericTokens(fact.quote), ...clockTokens(fact.quote)]
+    case "slot":
+      return slotForms(fact.startAt, fact.timezone)
   }
 }
 
@@ -506,6 +681,9 @@ function moneyValuesForFact(fact: Fact): string[] {
       return moneyForms(fact.priceCents)
     case "testimonial":
       return moneyTokensInProse(fact.quote)
+    case "slot":
+      // A time is never money.
+      return []
   }
 }
 

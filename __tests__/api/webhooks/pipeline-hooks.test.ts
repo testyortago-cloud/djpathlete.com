@@ -1,4 +1,11 @@
+// @vitest-environment node
+//
+// Pinned to node (Full Engine phase 2): these suites drive route handlers with
+// Request/Response and never touch a DOM, and every jsdom suite in this repo
+// currently fails to start (ERR_REQUIRE_ESM in html-encoding-sniffer). Without
+// this line the file reports "no tests" rather than red.
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 // ─── Shared mocks: lib/db/contacts + lib/db/sequences + lib/db/pipeline ─────
 //
@@ -104,7 +111,8 @@ vi.mock("@/lib/supabase", () => ({
     from: (table: string) => {
       if (table === "bookings") {
         return {
-          select: () => ({ eq: () => ({ maybeSingle: bookingsSelectMaybeSingle }) }),
+          // readByKey chains TWO .eq()s now (the vendor key, then business_id).
+          select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: bookingsSelectMaybeSingle }) }) }),
           update: () => ({ eq: bookingsUpdateEq }),
           insert: bookingsInsert,
         }
@@ -112,8 +120,29 @@ vi.mock("@/lib/supabase", () => ({
       if (table === "users") {
         return { select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }
       }
+      // runPostWriteEffects reads this business's members (owner/coach/staff)
+      // to fan the "New Call Booked" notification out to. A row here is what
+      // makes that fan-out actually execute in this suite, rather than being
+      // silently swallowed by the never-rethrow catch around it.
+      if (table === "business_members") {
+        return { select: () => ({ eq: () => Promise.resolve({ data: [{ user_id: "member-1" }], error: null }) }) }
+      }
       if (table === "notifications") {
         return { insert: vi.fn(async () => ({ data: null, error: null })) }
+      }
+      // singletonHostId's chain: select().eq().order().limit().maybeSingle().
+      // No booking_hosts row in these fixtures — hostId resolves to null,
+      // which nothing in this suite asserts on.
+      if (table === "booking_hosts") {
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () => ({
+                limit: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+              }),
+            }),
+          }),
+        }
       }
       // Stripe webhook path (event_signups status updates etc.)
       return {
@@ -232,7 +261,7 @@ describe("Stripe webhook — pipeline", () => {
     const res = await POST(makeStripeReq())
 
     expect(res.status).toBe(200)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-shop-1", "payment")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-shop-1", "payment", SINGLETON_BUSINESS_ID)
     expect(applyPipelineEventMock).not.toHaveBeenCalled()
     expect(handleShopOrderCheckoutMock).toHaveBeenCalled() // dispatch still runs — only the card is gated
   })
@@ -247,7 +276,7 @@ describe("Stripe webhook — pipeline", () => {
     const res = await POST(makeStripeReq())
 
     expect(res.status).toBe(200)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-savecard-1", "payment")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-savecard-1", "payment", SINGLETON_BUSINESS_ID)
     expect(applyPipelineEventMock).not.toHaveBeenCalled()
   })
 
@@ -259,7 +288,7 @@ describe("Stripe webhook — pipeline", () => {
     const res = await POST(makeStripeReq())
 
     expect(res.status).toBe(200)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-coaching-1", "payment")
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-coaching-1", "payment", SINGLETON_BUSINESS_ID)
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-coaching-1",
       event: { kind: "payment", amountCents: 30000, currency: "usd", occurredAt: expect.any(Date) },
@@ -461,6 +490,7 @@ describe("GHL booking webhook — pipeline", () => {
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-sched",
       event: { kind: "booking", status: "scheduled", occurredAt: expect.any(Date) },
+      businessId: SINGLETON_BUSINESS_ID,
     })
   })
 
@@ -482,6 +512,7 @@ describe("GHL booking webhook — pipeline", () => {
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-comp",
       event: { kind: "booking", status: "completed", occurredAt: expect.any(Date) },
+      businessId: SINGLETON_BUSINESS_ID,
     })
   })
 
@@ -507,6 +538,7 @@ describe("GHL booking webhook — pipeline", () => {
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-cancel",
       event: { kind: "booking", status: "cancelled", occurredAt: expect.any(Date) },
+      businessId: SINGLETON_BUSINESS_ID,
     })
     // Deliberate asymmetry (commit 63ff31db): exitRunsForContact must NOT
     // fire on a cancellation, even though applyPipelineEvent does.
@@ -531,6 +563,7 @@ describe("GHL booking webhook — pipeline", () => {
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-noshow",
       event: { kind: "booking", status: "no_show", occurredAt: expect.any(Date) },
+      businessId: SINGLETON_BUSINESS_ID,
     })
     expect(exitRunsForContactMock).not.toHaveBeenCalled()
   })
@@ -572,5 +605,189 @@ describe("GHL booking webhook — pipeline", () => {
 
     expect(res.status).toBe(201)
     expect(applyPipelineEventMock).not.toHaveBeenCalled()
+  })
+})
+
+// ─── Calendly booking webhook — the SECOND caller of lib/bookings/ingest.ts ──
+//
+// Full Engine phase 2 extracted the GHL route's body into `ingestBooking` and
+// added a Calendly route that calls the same function. These are the GHL
+// assertions above, retargeted: the same mocks, the same expectations about
+// which contactId + PipelineEvent reach applyPipelineEvent, driven through the
+// Calendly envelope instead. If the two routes ever disagree about what a
+// booking means, one of the two blocks goes red.
+
+import { buildSignatureHeader } from "@/lib/calendly/signature"
+import { readFileSync } from "fs"
+
+const CALENDLY_KEY = "pipeline-hooks-signing-key"
+const CALENDLY_FIXTURE = JSON.parse(readFileSync("__tests__/fixtures/calendly/invitee-created.json", "utf8"))
+
+function makeCalendlyReq(event: "invitee.created" | "invitee.canceled", payloadOverrides: Record<string, unknown> = {}): Request {
+  const raw = JSON.stringify({ ...CALENDLY_FIXTURE, event, payload: { ...CALENDLY_FIXTURE.payload, ...payloadOverrides } })
+  return new Request("http://localhost/api/webhooks/calendly", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "calendly-webhook-signature": buildSignatureHeader({
+        rawBody: raw,
+        signingKey: CALENDLY_KEY,
+        timestampSeconds: Math.floor(Date.now() / 1000),
+      }),
+    },
+    body: raw,
+  })
+}
+
+describe("Calendly booking webhook — pipeline", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.CALENDLY_WEBHOOK_SIGNING_KEY = CALENDLY_KEY
+    delete process.env.CALENDLY_EVENT_TYPE_URI
+
+    bookingsSelectMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+    bookingsInsert = vi.fn().mockReturnValue({
+      select: () => ({ single: vi.fn().mockResolvedValue({ data: { id: "bk-cal-1" }, error: null }) }),
+    })
+    bookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
+
+    findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    exitRunsForContactMock.mockReset().mockResolvedValue(0)
+    applyPipelineEventMock
+      .mockReset()
+      .mockResolvedValue({ decision: { kind: "noop", reason: "test" }, opportunityId: null })
+  })
+
+  it("creates a card when an invitee is created", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-cal-sched")
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(makeCalendlyReq("invitee.created"))
+
+    expect(res.status).toBe(201)
+    expect(findContactByIdentifiersMock).toHaveBeenCalledWith({
+      email: "priya.raman+seed@example.test",
+      phone: "+16176504548",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
+    expect(applyPipelineEventMock).toHaveBeenCalledWith({
+      contactId: "contact-cal-sched",
+      event: { kind: "booking", status: "scheduled", occurredAt: expect.any(Date) },
+      businessId: SINGLETON_BUSINESS_ID,
+    })
+  })
+
+  it("closes the card lost when an invitee cancels", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-cal-cancel")
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(makeCalendlyReq("invitee.canceled", { status: "canceled" }))
+
+    expect(res.status).toBe(201)
+    expect(applyPipelineEventMock).toHaveBeenCalledWith({
+      contactId: "contact-cal-cancel",
+      event: { kind: "booking", status: "cancelled", occurredAt: expect.any(Date) },
+      businessId: SINGLETON_BUSINESS_ID,
+    })
+    expect(exitRunsForContactMock).not.toHaveBeenCalled()
+  })
+
+  // Spec §8.2: a reschedule is a cancel PLUS a create, in no guaranteed order.
+  // The cancel half must not reach the pipeline or the person who moved their
+  // call by a day gets a Lost card.
+  it("does NOT touch the pipeline on the cancel half of a reschedule", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-cal-resched")
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(
+      makeCalendlyReq("invitee.canceled", {
+        status: "canceled",
+        rescheduled: true,
+        new_invitee: "https://api.calendly.com/scheduled_events/SCHEDEVENT0002/invitees/INVITEE00000002",
+      }),
+    )
+
+    expect(res.status).toBe(201)
+    expect(applyPipelineEventMock).not.toHaveBeenCalled()
+    expect(exitRunsForContactMock).not.toHaveBeenCalled()
+    // ...but the row IS written, as cancelled.
+    expect(bookingsInsert).toHaveBeenCalledWith(expect.objectContaining({ status: "cancelled", source: "calendly" }))
+  })
+
+  it("updates rather than inserts when the scheduled_event URI is already known (redelivery)", async () => {
+    bookingsSelectMaybeSingle.mockResolvedValueOnce({
+      data: { id: "bk-cal-existing", status: "scheduled", booking_date: "2026-09-08T14:00:00.000000Z" },
+      error: null,
+    })
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(makeCalendlyReq("invitee.created"))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true, action: "updated" })
+    expect(bookingsInsert).not.toHaveBeenCalled()
+    expect(bookingsUpdateEq).toHaveBeenCalledWith("id", "bk-cal-existing")
+  })
+
+  // Review finding 2: Calendly retries a delivery that timed out. If the
+  // booking has been cancelled in the meantime, the retried invitee.created
+  // must not open a second card or flip the row back to scheduled.
+  it("a late retry of invitee.created after the booking was cancelled touches neither the card nor the row", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    bookingsSelectMaybeSingle.mockResolvedValueOnce({
+      data: { id: "bk-cal-cancelled", status: "cancelled", booking_date: "2026-09-08T14:00:00.000000Z" },
+      error: null,
+    })
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-cal-late")
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(makeCalendlyReq("invitee.created"))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true, action: "updated" })
+    expect(applyPipelineEventMock).not.toHaveBeenCalled()
+    expect(exitRunsForContactMock).not.toHaveBeenCalled()
+    expect(bookingsUpdateEq).not.toHaveBeenCalled()
+    expect(bookingsInsert).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it("does not fail the webhook when applyPipelineEvent throws", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-cal-throws")
+    applyPipelineEventMock.mockRejectedValueOnce(new Error("board exploded"))
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(makeCalendlyReq("invitee.created"))
+
+    expect(res.status).toBe(201)
+    expect(consoleErrorSpy).toHaveBeenCalled()
+    consoleErrorSpy.mockRestore()
+  })
+
+  it("does not call applyPipelineEvent when no contact resolves", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce(null)
+
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    const res = await POST(makeCalendlyReq("invitee.created"))
+
+    expect(res.status).toBe(201)
+    expect(applyPipelineEventMock).not.toHaveBeenCalled()
+  })
+
+  it("writes the Calendly key and the two invitee links onto the new row", async () => {
+    const { POST } = await import("@/app/api/webhooks/calendly/route")
+    await POST(makeCalendlyReq("invitee.created"))
+
+    expect(bookingsInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "calendly",
+        calendly_event_uri: "https://api.calendly.com/scheduled_events/SCHEDEVENT0001",
+        reschedule_url: "https://calendly.com/reschedulings/INVITEE00000001",
+        cancel_url: "https://calendly.com/cancellations/INVITEE00000001",
+        gclid: "TeSt_gclid-123",
+        ghl_appointment_id: null,
+      }),
+    )
   })
 })

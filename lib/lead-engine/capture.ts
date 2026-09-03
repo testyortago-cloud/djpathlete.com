@@ -35,6 +35,14 @@ export type CaptureLeadInput = {
   email?: string | null
   phone?: string | null
   name?: string | null
+  /**
+   * The tenant this lead belongs to. Optional for now because eight callers
+   * pre-date multi-tenancy and the DAL still defaults; a caller on a coach's
+   * page MUST pass it, or the lead files under the singleton's contacts —
+   * `input.businessId ?? SINGLETON_BUSINESS_ID` at lib/db/contacts.ts:220 is
+   * where that decision is actually made.
+   */
+  businessId?: string
   attribution?: {
     gclid?: string | null
     gbraid?: string | null
@@ -66,6 +74,7 @@ export async function captureLead(input: CaptureLeadInput): Promise<string | nul
       phone: input.phone,
       name: input.name,
       source: input.source,
+      businessId: input.businessId,
       metadata: { ...(input.metadata ?? {}), ...(input.attribution ?? {}) },
     })
     return contactId

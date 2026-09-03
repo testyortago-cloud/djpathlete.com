@@ -41,6 +41,13 @@ const WORKER_BATCH_SIZE = 50
 interface BookingConversionInput {
   booking_id: string
   booking_date: string
+  /**
+   * Required — this has exactly one caller (lib/bookings/ingest.ts). Unlike
+   * getActiveGoogleAdsAccounts' businessId, this is a NEW field: defaulting it
+   * to the singleton is exactly how the next tenant leak would ship, so there
+   * is no default here.
+   */
+  business_id: string
   gclid?: string | null
   gbraid?: string | null
   wbraid?: string | null
@@ -65,9 +72,11 @@ export async function enqueueBookingConversion(
   const click_id = input.gclid ?? input.gbraid ?? input.wbraid
   if (!click_id) return null
 
-  // Phase 1.5: single-account. Pick the first active account; multi-account
-  // routing lands when D1 (multi-customer) ships.
-  const accounts = await getActiveGoogleAdsAccounts()
+  // Was accounts[0] of every active account: a second single-tenant
+  // assumption sitting under the ads consequence, independent of business_id.
+  // A business with no configured account enqueues nothing, which is correct
+  // — ads attribution is per business or it is wrong.
+  const accounts = await getActiveGoogleAdsAccounts(input.business_id)
   const account = accounts[0]
   if (!account) return null
 
@@ -123,13 +132,20 @@ export async function enqueuePaymentValueAdjustmentByEmail(
   const { createServiceRoleClient } = await import("@/lib/supabase")
   const supabase = createServiceRoleClient()
   // Most-recent booking for this email
-  const { data: booking } = await supabase
+  const { data: booking, error } = await supabase
     .from("bookings")
     .select("id")
     .eq("contact_email", input.email)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()
+  if (error) {
+    // PostgREST resolves rather than throws. Left unchecked, a failed read
+    // here is indistinguishable from the legitimate "no booking for this
+    // email yet" case below, and both silently no-op the value adjustment.
+    console.error(`[ads-conversions] booking lookup by email failed (${error.code} ${error.message})`)
+    return null
+  }
   if (!booking?.id) return null
   return enqueuePaymentValueAdjustment({
     booking_id: (booking as { id: string }).id,

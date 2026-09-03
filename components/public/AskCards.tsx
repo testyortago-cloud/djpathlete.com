@@ -32,7 +32,7 @@
 
 import Link from "next/link"
 import { useId, useState } from "react"
-import { ArrowRight, CalendarDays, MapPin } from "lucide-react"
+import { ArrowRight, CalendarDays, Clock, MapPin } from "lucide-react"
 
 import { formatCents } from "@/lib/bookkeeping/money"
 import { formatEventWhen } from "@/lib/events/format"
@@ -128,19 +128,113 @@ function EventCard({ card }: { card: Extract<Card, { kind: "event" }> }) {
   )
 }
 
+const BOOK_BUTTON =
+  "mt-3 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+
+/** An absolute URL is the booking provider's page and opens in a new tab; a path is ours and stays in the app. */
+function isExternal(href: string): boolean {
+  return /^https?:\/\//i.test(href)
+}
+
 function ConsultCard({ card }: { card: Extract<Card, { kind: "consult" }> }) {
   return (
     <div className={CARD_SHELL}>
       <p className="text-sm text-muted-foreground">
         Nothing is booked yet. This is the page where a consultation is arranged.
       </p>
-      <Link
+      {isExternal(card.href) ? (
+        <a href={card.href} target="_blank" rel="noopener noreferrer" className={BOOK_BUTTON}>
+          Book a consultation
+          <ArrowRight className="size-4" aria-hidden="true" />
+        </a>
+      ) : (
+        <Link href={card.href} className={BOOK_BUTTON}>
+          Book a consultation
+          <ArrowRight className="size-4" aria-hidden="true" />
+        </Link>
+      )}
+    </div>
+  )
+}
+
+/**
+ * FORMATTING ONLY, in the zone the SERVER named. The instant came back from
+ * the booking provider and the zone is the business's setting; this file
+ * decides neither. The zone is spelled out beside the times because the
+ * provider's own page will show the visitor's local zone, and the two can
+ * legitimately differ.
+ */
+function slotDateFormatter(timeZone: string) {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" })
+  } catch {
+    return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" })
+  }
+}
+
+function slotTimeFormatter(timeZone: string) {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit" })
+  } catch {
+    return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", hour: "numeric", minute: "2-digit" })
+  }
+}
+
+function zoneLabel(timeZone: string, sample: Date): string {
+  try {
+    const part = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" })
+      .formatToParts(sample)
+      .find((p) => p.type === "timeZoneName")
+    return part?.value ?? timeZone
+  } catch {
+    return timeZone
+  }
+}
+
+function SlotsCard({ card }: { card: Extract<Card, { kind: "slots" }> }) {
+  const dateOf = slotDateFormatter(card.timezone)
+  const timeOf = slotTimeFormatter(card.timezone)
+  const first = card.slots[0] ? new Date(card.slots[0].startAt) : new Date()
+
+  return (
+    <div className={CARD_SHELL}>
+      <p className="text-sm font-medium">Pick a time for your consultation</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Times are shown in {zoneLabel(card.timezone, first)}. Nothing is booked until you finish on the booking page.
+      </p>
+      <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+        {card.slots.map((slot) => {
+          const when = new Date(slot.startAt)
+          return (
+            <li key={slot.startAt}>
+              <a
+                href={slot.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background px-3 py-2 text-sm transition-colors hover:border-primary hover:bg-primary/5"
+              >
+                <span className="flex items-center gap-2">
+                  <CalendarDays className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <span>{dateOf.format(when)}</span>
+                </span>
+                <span className="flex items-center gap-1.5 font-semibold text-primary">
+                  <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+                  {timeOf.format(when)}
+                </span>
+              </a>
+            </li>
+          )
+        })}
+      </ul>
+      <a
         href={card.href}
-        className="mt-3 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
       >
-        Book a consultation
+        See every available time
         <ArrowRight className="size-4" aria-hidden="true" />
-      </Link>
+      </a>
     </div>
   )
 }
@@ -342,6 +436,8 @@ export function AskCard({
       return <EventCard card={card} />
     case "consult":
       return <ConsultCard card={card} />
+    case "slots":
+      return <SlotsCard card={card} />
     case "capture":
       return <CaptureCard card={card} conversationId={conversationId} displayName={displayName} />
   }

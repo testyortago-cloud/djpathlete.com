@@ -15,10 +15,13 @@
 //     form is what writes anything, through a separate route the model has no
 //     way to call.
 //
-//   * `book_consult` returns a link. There is no public booking-creation route
-//     in this app at all — every existing consultation call to action is a link
-//     to the same page — so handing over is not a limitation, it is what the
-//     repo already decided.
+//   * `book_consult` READS the free consultation times from the booking
+//     provider and puts them on screen as buttons, each a link to that time's
+//     booking page. It books nothing: the provider's own page does, on the
+//     visitor's own click, and the booking reaches this app through a signed
+//     webhook the model has no way to call. The provider exposes a
+//     booking-creation endpoint; it is deliberately not imported here, and the
+//     source test below would fail if it were.
 //
 //   * `escalate` is the ONE tool that leads to a write, and it does not do it
 //     here. It records an intent and a one-line summary; the route acts on that
@@ -38,9 +41,14 @@
 // Spec: docs/superpowers/specs/2026-08-23-lead-engine-stage3-chat-design.md §4.2, §5
 import type Anthropic from "@anthropic-ai/sdk"
 
+import { CalendlyUnavailable, listAvailableTimes, type Slot } from "@/lib/calendly/client"
+import { readCalendlyConfig, readCalendlySchedulingUrl } from "@/lib/calendly/env"
+import { schedulingLink } from "@/lib/calendly/links"
+import { encodeTracking, type ClickTracking } from "@/lib/calendly/tracking"
 import { NO_EVENTS_SCHEDULED } from "@/lib/lead-engine/chat/constants"
 import {
   emptyFactSet,
+  formatSlotLabel,
   listPublicEvents,
   listPublicProgrammes,
   listPublicTestimonials,
@@ -56,6 +64,13 @@ import {
  * the same place rather than inventing a second front door.
  */
 export const CONSULT_PATH = "/contact"
+
+/** The most free times one turn puts on screen. A week of a consult calendar can hold dozens; six is a choice, not a list. */
+export const MAX_SLOTS_SHOWN = 6
+
+/** How far ahead the booking lookup reaches. The provider caps one read at seven days. */
+const SLOT_WINDOW_DAYS = 7
+const DAY_MS = 86_400_000
 
 /**
  * A typed value the server renders beside the reply.
@@ -97,7 +112,7 @@ export function visitorSafeCards(cards: Card[]): Card[] {
  * — a price, a date — and leave the conversation where it was.
  */
 function isWayForward(card: { kind?: unknown } | null | undefined): boolean {
-  return card?.kind === "capture" || card?.kind === "consult"
+  return card?.kind === "capture" || card?.kind === "consult" || card?.kind === "slots"
 }
 
 /** Whether a turn already on the record put one of those on screen. Over the persisted JSON, so it is `unknown[]`. */
@@ -131,9 +146,9 @@ export function cardsOfferWayForward(cards: unknown[] | null | undefined): boole
  * The caller decides whether the conversation has had one already; this
  * function only answers "does THIS turn leave the visitor somewhere to go?".
  */
-export function withWayForward(cards: Card[]): Card[] {
+export function withWayForward(cards: Card[], href: string = CONSULT_PATH): Card[] {
   if (cards.some(isWayForward)) return cards
-  return [...cards, { kind: "consult", href: CONSULT_PATH }]
+  return [...cards, { kind: "consult", href }]
 }
 
 export type Card =
@@ -159,7 +174,14 @@ export type Card =
     }
   /** The details form. `reason` is the model's own words for why it asked, shown back to the visitor. */
   | { kind: "capture"; reason: string | null }
+  /** The booking page. `href` is `CONSULT_PATH` until a booking provider is configured, then the provider's page with the visitor's details prefilled. */
   | { kind: "consult"; href: string }
+  /**
+   * Free consultation times, each a link to the booking page for that time.
+   * Every field is a server-read value: the instants came back from the
+   * provider, the hrefs are built here, the zone is the business's setting.
+   */
+  | { kind: "slots"; timezone: string; href: string; slots: Array<{ startAt: string; href: string }> }
 
 /** Everything one turn's tool calls produced, for the route to act on after the reply has been checked. */
 export type ToolOutcome = {
@@ -168,6 +190,32 @@ export type ToolOutcome = {
   wantsCapture: boolean
   wantsEscalate: boolean
   escalateSummary?: string
+  /**
+   * Where the server-added way forward should point when the turn produced
+   * none: the provider's booking page with prefill when one is configured,
+   * `CONSULT_PATH` otherwise. Optional so older callers (and their tests) keep
+   * the constant.
+   */
+  consultHref?: string
+}
+
+/**
+ * What the route knows about this turn that the model must not be asked for.
+ *
+ * `visitor` is the contact the details card created — read by the route from
+ * the conversation's `contact_id`, NEVER taken from a tool argument, because a
+ * model-authored email in the prefill would send the booking confirmation to
+ * whoever a prompt injection named. `tracking` is the visitor's attribution
+ * (click ids) so the booking can fire the ads conversion. `timezone` is the
+ * business's, the same one the system prompt tells the model to speak in.
+ * `availability` and `now` are injection points for tests.
+ */
+export type ExecutorContext = {
+  timezone?: string | null
+  visitor?: { name: string | null; email: string | null } | null
+  tracking?: Partial<ClickTracking> | null
+  availability?: typeof listAvailableTimes
+  now?: () => Date
 }
 
 export type ToolExecutor = {
@@ -189,7 +237,7 @@ export const TOOL_LABELS: Record<string, string> = {
   list_camps_and_clinics: "Checking the camp and clinic schedule",
   list_testimonials: "Finding what other people have said",
   capture_lead: "Getting a short form ready for you",
-  book_consult: "Finding the page where you can book",
+  book_consult: "Checking which consultation times are free",
   escalate: "Passing this to a person",
 }
 
@@ -250,7 +298,7 @@ export const CHAT_TOOLS: Anthropic.Tool[] = [
   {
     name: "book_consult",
     description:
-      "Put a link on screen to the page where a consultation is arranged. You cannot book anything yourself; this hands the visitor over.",
+      "Look up the free consultation times for the coming week and put them on screen as buttons the visitor can click, together with a link to the booking page. You cannot book anything yourself; this hands the visitor over. Call it whenever a consultation comes up, before you write the sentence that mentions one. If it finds no free times, or can only offer the link, it will say so — repeat that plainly.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -294,6 +342,18 @@ const CAPTURE_CARD_RESULT =
 
 const CONSULT_CARD_RESULT = `A link to ${CONSULT_PATH}, the page where a consultation is arranged, is now on screen. Nothing has been booked and you cannot book anything yourself. Tell the visitor the link is there and what it is for.`
 
+/** A provider page is configured but availability could not be READ. Says nothing about times, because nothing is known about them. */
+const CONSULT_LINK_UNAVAILABLE_RESULT =
+  "A link to the booking page is now on screen; the free times could not be checked just now, so do not mention any time or say whether times are available. Nothing has been booked and you cannot book anything yourself. Tell the visitor the link is there and that they can pick a time on that page."
+
+/** Availability WAS read and there is nothing free in the window. A real answer, different from the one above. */
+const CONSULT_LINK_NO_SLOTS_RESULT =
+  "There are no free consultation times in the next seven days. A link to the booking page is now on screen so the visitor can look further ahead. Say plainly that nothing is free this week, and that the link is there. Nothing has been booked and you cannot book anything yourself."
+
+/** Said with the list of free times, so the model points at the buttons instead of retyping the whole list. */
+const SLOTS_NOTE =
+  "These free times are already on screen as buttons beside your reply. Each button opens the booking page for that exact time with the visitor's details filled in. Tell the visitor to pick one; you may name the FIRST time exactly as written above and no other. Nothing is booked until they finish on that page, and you cannot book it for them."
+
 const ESCALATE_RESULT =
   "Noted. A person will be asked to pick this conversation up once your reply has been checked. Tell the visitor you have passed it on. Do not promise how soon anyone will reply, and do not promise it has already been sent."
 
@@ -324,6 +384,8 @@ function cardForFact(fact: Fact): Card | null {
       }
     case "faq":
     case "testimonial":
+    case "slot":
+      // Slots reach the screen as ONE `slots` card built by the tool, not one card per time.
       return null
   }
 }
@@ -341,13 +403,85 @@ function optionalString(value: unknown): string | null {
  * are served by the same process, and a fact set shared between them would
  * ground one visitor's reply on another visitor's lookups.
  */
-export function createToolExecutor(): ToolExecutor {
+export function createToolExecutor(ctx: ExecutorContext = {}): ToolExecutor {
   let factSet: FactSet = emptyFactSet()
   const cards: Card[] = []
   const cardKeys = new Set<string>()
   let wantsCapture = false
   let wantsEscalate = false
   let escalateSummary: string | undefined
+
+  // Resolved once per turn, not per call: the same environment answers the
+  // same way for the whole turn, and a second `book_consult` call must land
+  // on the same link the first one did.
+  const providerConfig = readCalendlyConfig()
+  const providerPage = providerConfig?.schedulingUrl ?? readCalendlySchedulingUrl()
+  const tracking = encodeTracking(ctx.tracking ?? {})
+  const prefill = ctx.visitor ?? null
+  /** The link every consult card in this turn points at. */
+  const consultHref = providerPage ? schedulingLink(providerPage, { prefill, tracking }) : CONSULT_PATH
+  const timezone = ctx.timezone?.trim() || "UTC"
+  const now = ctx.now ?? (() => new Date())
+  const availability = ctx.availability ?? listAvailableTimes
+
+  /**
+   * The booking hand-over, in three honest shapes:
+   *   slots available  → a `slots` card, slot facts (so the times are grounded), the times in the result
+   *   nothing free     → a `consult` card and copy that says so
+   *   could not read   → a `consult` card and copy that says nothing about times
+   * Never throws for a provider fault: the fallback link must still reach the screen.
+   */
+  async function bookConsult(): Promise<string> {
+    if (!providerPage) {
+      pushCard({ kind: "consult", href: CONSULT_PATH })
+      return CONSULT_CARD_RESULT
+    }
+    if (!providerConfig) {
+      pushCard({ kind: "consult", href: consultHref })
+      return CONSULT_LINK_UNAVAILABLE_RESULT
+    }
+
+    const from = now()
+    const to = new Date(from.getTime() + SLOT_WINDOW_DAYS * DAY_MS)
+    let slots: Slot[]
+    try {
+      slots = await availability({
+        eventTypeUri: providerConfig.eventTypeUri,
+        from,
+        to,
+        apiToken: providerConfig.apiToken,
+        apiBase: providerConfig.apiBase,
+      })
+    } catch (err) {
+      if (!(err instanceof CalendlyUnavailable)) throw err
+      // Logged loudly: a caught provider fault nobody prints is a silent
+      // downgrade to "link only" that reads, from outside, like a design choice.
+      console.error(`[chat-tools] book_consult: availability unreadable (${err.reason}${err.status ? ` ${err.status}` : ""})`)
+      pushCard({ kind: "consult", href: consultHref })
+      return CONSULT_LINK_UNAVAILABLE_RESULT
+    }
+
+    if (slots.length === 0) {
+      pushCard({ kind: "consult", href: consultHref })
+      return CONSULT_LINK_NO_SLOTS_RESULT
+    }
+
+    const shown = slots.slice(0, MAX_SLOTS_SHOWN)
+    // The facts are what ground the times. Without this the assistant naming
+    // the first slot is an ungrounded date and the turn is thrown away.
+    absorb(shown.map((slot) => ({ kind: "slot" as const, startAt: slot.startAt, timezone })))
+    pushCard({
+      kind: "slots",
+      timezone,
+      href: consultHref,
+      slots: shown.map((slot) => ({ startAt: slot.startAt, href: schedulingLink(slot.schedulingUrl, { prefill, tracking }) })),
+    })
+    return JSON.stringify({
+      free_times: shown.map((slot) => formatSlotLabel(slot.startAt, timezone)),
+      timezone,
+      note: SLOTS_NOTE,
+    })
+  }
 
   function pushCard(card: Card): void {
     // A model asked twice about pricing calls the same tool twice; the visitor
@@ -405,10 +539,8 @@ export function createToolExecutor(): ToolExecutor {
         return CAPTURE_CARD_RESULT
       }
 
-      case "book_consult": {
-        pushCard({ kind: "consult", href: CONSULT_PATH })
-        return CONSULT_CARD_RESULT
-      }
+      case "book_consult":
+        return bookConsult()
 
       case "escalate": {
         wantsEscalate = true
@@ -438,6 +570,7 @@ export function createToolExecutor(): ToolExecutor {
       wantsCapture,
       wantsEscalate,
       escalateSummary,
+      consultHref,
     }
   }
 

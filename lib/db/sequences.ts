@@ -491,16 +491,30 @@ export async function failRun(runId: string, error: string): Promise<void> {
 }
 
 /**
+ * Why `reason` is a union and not `string`: the third parameter is a business
+ * id, and before this change the signature was (contactId, reason) — so a
+ * caller passing a business id second would type-check, write a uuid into
+ * exit_reason, and apply no tenant predicate at all. Typing the reason is what
+ * lets tsc police the mistake this parameter exists to prevent.
+ */
+export type SequenceExitReason = "booking" | "unsubscribed" | "sms_stop" | "payment"
+
+/**
  * Exits every ACTIVE run of the given contact, across every sequence. Used
  * by every exit hook (unsubscribe, payment, booking, tick-time suppression
  * check) and MUST be idempotent and safe to call with nothing to exit — a
  * marketing exit must never fail a payment webhook.
  *
- * Filtered by both `contact_id` and `status = 'active'`: a completed,
- * already-exited or failed run of this contact — and any active run of a
- * DIFFERENT contact — must be left untouched.
+ * Filtered by `contact_id`, `business_id`, and `status = 'active'`: a
+ * completed, already-exited or failed run of this contact, any active run of
+ * a DIFFERENT contact, and any active run of the same contact_id belonging
+ * to a DIFFERENT business — must all be left untouched.
  */
-export async function exitRunsForContact(contactId: string, reason: string): Promise<number> {
+export async function exitRunsForContact(
+  contactId: string,
+  reason: SequenceExitReason,
+  businessId: string,
+): Promise<number> {
   const supabase = getClient()
   const nowIso = new Date().toISOString()
   const { data, error } = await supabase
@@ -514,6 +528,7 @@ export async function exitRunsForContact(contactId: string, reason: string): Pro
       updated_at: nowIso,
     })
     .eq("contact_id", contactId)
+    .eq("business_id", businessId)
     .eq("status", "active")
     .select("id")
   if (error) throw error

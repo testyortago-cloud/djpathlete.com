@@ -1,3 +1,9 @@
+// @vitest-environment node
+//
+// Pinned to node (Full Engine phase 2): these suites drive route handlers with
+// Request/Response and never touch a DOM, and every jsdom suite in this repo
+// currently fails to start (ERR_REQUIRE_ESM in html-encoding-sniffer). Without
+// this line the file reports "no tests" rather than red.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mocks = vi.hoisted(() => ({
@@ -42,12 +48,27 @@ describe("POST /api/webhooks/ghl-booking — gclid capture", () => {
       from: (table: string) => {
         if (table === "bookings") {
           return {
-            select: () => ({ eq: () => ({ maybeSingle: bookingsSelectMaybeSingle }) }),
+            // readByKey chains TWO .eq()s now (the vendor key, then business_id).
+            select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: bookingsSelectMaybeSingle }) }) }),
             update: () => ({ eq: bookingsUpdateEq }),
             insert: bookingsInsert,
           }
         }
         if (table === "users") return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: [], error: null }) }) }) }
+        // singletonHostId's chain: select().eq().order().limit().maybeSingle().
+        // No booking_hosts row in these fixtures — hostId resolves to null,
+        // which nothing in this suite asserts on.
+        if (table === "booking_hosts") {
+          return {
+            select: () => ({
+              eq: () => ({
+                order: () => ({
+                  limit: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+                }),
+              }),
+            }),
+          }
+        }
         return { select: () => ({ eq: vi.fn().mockResolvedValue({ data: [], error: null }) }) }
       },
     })

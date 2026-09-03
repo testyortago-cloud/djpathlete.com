@@ -369,7 +369,7 @@ describe("exitRunsForContact", () => {
     seedRun("run-c1-done", "c-1", "seq-3", { status: "completed" })
     seedRun("run-c2-active", "c-2", "seq-1", { status: "active" })
 
-    const count = await exitRunsForContact("c-1", "unsubscribed")
+    const count = await exitRunsForContact("c-1", "unsubscribed", SINGLETON_BUSINESS_ID)
 
     expect(count).toBe(2)
     const byId = (id: string) => store.sequence_runs.find((r) => r.id === id)!
@@ -390,9 +390,9 @@ describe("exitRunsForContact", () => {
     seedRun("run-2", "c-1", "seq-2", { status: "active" })
     seedRun("run-3", "c-1", "seq-3", { status: "active" })
 
-    expect(await exitRunsForContact("c-1", "unsubscribed")).toBe(3)
+    expect(await exitRunsForContact("c-1", "unsubscribed", SINGLETON_BUSINESS_ID)).toBe(3)
     // Idempotent: calling again finds nothing left active.
-    expect(await exitRunsForContact("c-1", "unsubscribed")).toBe(0)
+    expect(await exitRunsForContact("c-1", "unsubscribed", SINGLETON_BUSINESS_ID)).toBe(0)
   })
 })
 

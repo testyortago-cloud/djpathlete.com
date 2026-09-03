@@ -17,6 +17,8 @@
 export type Violation =
   | { rule: "ungrounded_price"; found: string }
   | { rule: "ungrounded_date"; found: string }
+  /** A clock time — "9:00 AM", "4pm", "19:30" — that no lookup returned. Added with the booking slots (Full Engine phase 2). */
+  | { rule: "ungrounded_time"; found: string }
   | { rule: "ungrounded_number"; found: string }
   | { rule: "promised_outcome"; found: string }
   | { rule: "injury_advice"; found: string }
@@ -273,6 +275,40 @@ function normaliseDate(raw: string): string {
 // ---------------------------------------------------------------------------
 
 const BARE_NUMBER_RE = /\d[\d,]*(?:\.\d+)?/g
+
+// ---------------------------------------------------------------------------
+// Clock times
+// ---------------------------------------------------------------------------
+
+/**
+ * WHY A TIME NEEDS ITS OWN RULE. Before the booking slots landed, a time of day
+ * reached the bare-numeral step as two digit runs — "9:00 AM" is `9` and `00`,
+ * "4 PM" is `4` — every one of them at or under SMALL_NUMBER_CEILING and waived.
+ * So an assistant that had just been handed 10:00 and 11:30 as the free times
+ * could write "how about 9:00 AM?" and pass. A time is a claim about
+ * availability exactly the way a price is a claim about money, and it gets the
+ * same treatment: extracted first, checked whole, removed from the text.
+ *
+ * Found by review, not by a test — the test that claimed to cover "a time
+ * nobody looked up" was tripping on the date beside it.
+ */
+const CLOCK_PERIOD_RE = /\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?(?![a-z])/gi
+const CLOCK_COLON_RE = /\b(\d{1,2}):(\d{2})\b/g
+
+/**
+ * The twin of facts.ts's normaliseClock(), duplicated for the same reason
+ * normalise() is (see above). "9:00 AM" → "9:00am", "4 P.M." → "4pm", "19:30"
+ * → "19:30", "09:00" → "9:00". Pinned against the facts copy by
+ * chat-validate.test.ts.
+ */
+export function normaliseClock(raw: string): string {
+  const m = raw
+    .toLowerCase()
+    .replace(/[\s.]/g, "")
+    .match(/^(\d{1,2})(?::(\d{2}))?(am|pm)?$/)
+  if (!m) return normalise(raw)
+  return `${Number(m[1])}${m[2] ? `:${m[2]}` : ""}${m[3] ?? ""}`
+}
 
 /**
  * The tail that turns a number into a percentage. THE SIGN IS ONLY ONE OF ITS
@@ -553,6 +589,20 @@ export function validateReply(
   for (const re of DATE_PATTERNS) {
     remaining = stripMatches(remaining, re, (m) => onDate(m[1] ?? m[0]))
   }
+
+  // 2b. Clock times, removed like dates and checked WHOLE against the grounded
+  //     set — never as their digits. The visitor's own numerals do not reach
+  //     this rule: a visitor typing "is 4 PM free?" cannot make 4 PM a grounded
+  //     answer to their own question, any more than "I heard it's $500" makes
+  //     $500 a price. The assistant points at the buttons instead.
+  const onTime = (raw: string) => {
+    const cleaned = normaliseClock(raw)
+    if (!groundedSet.has(cleaned)) {
+      violations.push({ rule: "ungrounded_time", found: cleaned })
+    }
+  }
+  remaining = stripMatches(remaining, CLOCK_PERIOD_RE, (m) => onTime(m[0]))
+  remaining = stripMatches(remaining, CLOCK_COLON_RE, (m) => onTime(m[0]))
 
   // 3. Percentages, removed like currency and for the same reason: the
   //    SMALL_NUMBER_CEILING below exists so ordinary prose counts ("2 things

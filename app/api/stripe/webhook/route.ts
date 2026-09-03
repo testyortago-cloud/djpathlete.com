@@ -9,6 +9,7 @@ import {
   updateMembershipBySubscriptionId,
 } from "@/lib/db/client-memberships"
 import { sessionMembershipsEnabled, cardOnFileEnabled } from "@/lib/packs/flags"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 /**
  * Membership lookup that is a no-op when the feature is off. Keeps the four
@@ -201,7 +202,8 @@ export async function POST(request: Request) {
           const email = session.customer_details?.email ?? session.customer_email ?? null
           const contactId = await findContactByIdentifiers({ userId, email })
           if (contactId) {
-            await exitRunsForContact(contactId, "payment")
+            // Sanctioned placeholder, not forgotten work: this route has no tenant in scope yet — revisit once it can resolve a business from the checkout.
+            await exitRunsForContact(contactId, "payment", SINGLETON_BUSINESS_ID)
             if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
               // Final review, Important 3: the checkout session id is the
               // source-id idempotency key for the create-with-outcome

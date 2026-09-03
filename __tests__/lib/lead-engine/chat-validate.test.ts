@@ -303,3 +303,88 @@ describe("a promise the assistant REFUSES to make is not a promise", () => {
     expect(v.some((x) => x.rule === "promised_outcome")).toBe(true)
   })
 })
+
+// ─── Clock times (Full Engine phase 2) ───────────────────────────────────────
+//
+// Added with the booking slots. Before this rule a time reached the bare-
+// numeral step as two small digit runs and was waived, so "how about 9:00 AM?"
+// passed with 10:00 and 11:30 as the only free times. Found by review.
+import { clockTokens, emptyFactSet, mergeFacts, normaliseClock as factsNormaliseClock, slotForms } from "@/lib/lead-engine/chat/facts"
+import { normaliseClock as validateNormaliseClock } from "@/lib/lead-engine/chat/validate"
+
+describe("clock times", () => {
+  const slotGrounded = [
+    ...slotForms("2026-09-08T14:00:00.000000Z", "America/New_York"), // 10:00 AM Eastern
+    ...slotForms("2026-09-08T15:30:00.000000Z", "America/New_York"), // 11:30 AM Eastern
+    "september 8",
+    "tuesday",
+  ]
+
+  it("blocks a time no lookup returned, even when every digit in it is small", () => {
+    expect(validateReply("Tuesday, September 8 at 9:00 AM works.", slotGrounded)).toEqual([{ rule: "ungrounded_time", found: "9:00am" }])
+    expect(validateReply("I can offer 4 PM on Tuesday, September 8.", slotGrounded)).toEqual([{ rule: "ungrounded_time", found: "4pm" }])
+    expect(validateReply("There is a 08:00 slot.", slotGrounded)).toEqual([{ rule: "ungrounded_time", found: "8:00" }])
+  })
+
+  it("accepts a time the lookup returned, in every spelling a model writes", () => {
+    for (const text of ["10:00 AM on Tuesday", "at 10 am", "10am works", "10:00 a.m.", "at 11:30 AM", "11:30am", "11:30"]) {
+      expect(validateReply(text, slotGrounded)).toEqual([])
+    }
+  })
+
+  it("does not let the visitor's own numerals ground a time — a visitor cannot supply availability", () => {
+    expect(validateReply("Yes, 4 PM is free.", slotGrounded, ["4", "4pm"])).toEqual([{ rule: "ungrounded_time", found: "4pm" }])
+  })
+
+  it("grounds a time that appears in the source prose itself (an FAQ answer)", () => {
+    const grounded = clockTokens("Sessions run 4:00 PM to 6:00 PM on weekdays, 9 am on Saturdays.")
+    expect(grounded).toEqual(["4:00pm", "6:00pm", "9am"])
+    expect(validateReply("Weekday sessions run 4:00 PM to 6:00 PM.", grounded)).toEqual([])
+    expect(validateReply("Weekday sessions run 4:00 PM to 7:00 PM.", grounded)).toEqual([{ rule: "ungrounded_time", found: "7:00pm" }])
+  })
+
+  // MUTANT KILLED: dropping clockTokens from valuesForFact's faq case. The test
+  // above calls clockTokens directly and cannot see the wiring; this one goes
+  // through the fact set the way the route does.
+  it("an FAQ fact grounds its own times through the fact set, so quoting the source is not blocked", () => {
+    const faq = {
+      kind: "faq" as const,
+      question: "When are sessions?",
+      answer: "Weekday sessions run 4:00 PM to 6:00 PM.",
+      pageKey: "services",
+    }
+    const { groundedValues } = mergeFacts(emptyFactSet(), [faq])
+    expect(validateReply("Weekday sessions run 4:00 PM to 6:00 PM.", groundedValues)).toEqual([])
+    expect(validateReply("Weekday sessions run 4:00 PM to 7:00 PM.", groundedValues)).toEqual([{ rule: "ungrounded_time", found: "7:00pm" }])
+  })
+
+  it("an event fact grounds its wall-clock start time", () => {
+    const event = {
+      kind: "event" as const,
+      title: "Speed Camp",
+      type: "camp",
+      startDate: "2026-07-20T09:00:00.000Z",
+      endDate: "2026-07-24T12:00:00.000Z",
+      locationName: "Main field",
+      priceCents: 25000,
+      capacity: 20,
+      spotsLeft: 5,
+      soldOut: false,
+    }
+    const { groundedValues } = mergeFacts(emptyFactSet(), [event])
+    expect(validateReply("The camp runs 9:00 AM to 12:00 PM each day.", groundedValues)).toEqual([])
+    expect(validateReply("The camp runs 8:00 AM to 12:00 PM each day.", groundedValues)).toEqual([{ rule: "ungrounded_time", found: "8:00am" }])
+  })
+
+  it("leaves ratios and single numbers alone — 1:1 coaching is not a time", () => {
+    expect(validateReply("We offer 1:1 coaching and 2 group options.", [])).toEqual([])
+  })
+
+  it("the facts and validator twins of normaliseClock agree", () => {
+    for (const raw of ["9:00 AM", "4 P.M.", "19:30", "09:00", "10am", "11:30 pm", " 7:05 Am "]) {
+      expect(validateNormaliseClock(raw)).toBe(factsNormaliseClock(raw))
+    }
+    expect(validateNormaliseClock("09:00")).toBe("9:00")
+    expect(validateNormaliseClock("4 P.M.")).toBe("4pm")
+  })
+})

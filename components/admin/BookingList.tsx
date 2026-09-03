@@ -11,7 +11,7 @@ import {
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Search, ChevronLeft, ChevronRight, Calendar, Clock, Mail, Phone, MoreHorizontal } from "lucide-react"
+import { Search, ChevronLeft, ChevronRight, Calendar, Clock, Mail, Phone, MoreHorizontal, ExternalLink } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { EmptyState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
@@ -157,7 +157,14 @@ export function BookingList({ bookings }: BookingListProps) {
                 <DataTableRow key={booking.id}>
                   <DataTableCell>
                     <div>
-                      <p className="font-medium text-primary">{booking.contact_name}</p>
+                      <p className="font-medium text-primary">
+                        {booking.contact_name}
+                        {booking.source === "calendly" && (
+                          <span className="ml-2 inline-flex items-center rounded-full bg-surface px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                            via Calendly
+                          </span>
+                        )}
+                      </p>
                       <div className="flex items-center gap-3 mt-0.5">
                         <span className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Mail className="size-3" />
@@ -206,6 +213,8 @@ export function BookingList({ bookings }: BookingListProps) {
                     <button
                       onClick={() => setOpenMenuId(openMenuId === booking.id ? null : booking.id)}
                       disabled={updatingId === booking.id}
+                      aria-label={`Actions for ${booking.contact_name}`}
+                      aria-expanded={openMenuId === booking.id}
                       className="flex size-8 items-center justify-center rounded-lg hover:bg-surface transition-colors disabled:opacity-50"
                     >
                       <MoreHorizontal className="size-4 text-muted-foreground" />
@@ -214,6 +223,34 @@ export function BookingList({ bookings }: BookingListProps) {
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />
                         <div className="absolute right-4 top-12 z-50 bg-white rounded-lg border border-border shadow-lg py-1 min-w-[160px]">
+                          {/* Migration 00239: a Calendly booking carries the invitee's own
+                              reschedule/cancel links, so the admin can act on it without
+                              logging into Calendly. GHL rows have neither and show nothing. */}
+                          {booking.reschedule_url && (
+                            <a
+                              href={booking.reschedule_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => setOpenMenuId(null)}
+                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm text-primary hover:bg-surface transition-colors"
+                            >
+                              Reschedule in Calendly
+                              <ExternalLink className="size-3.5 text-muted-foreground" aria-hidden />
+                            </a>
+                          )}
+                          {booking.cancel_url && booking.status === "scheduled" && (
+                            <a
+                              href={booking.cancel_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => setOpenMenuId(null)}
+                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm text-destructive hover:bg-surface transition-colors"
+                            >
+                              Cancel in Calendly
+                              <ExternalLink className="size-3.5 text-muted-foreground" aria-hidden />
+                            </a>
+                          )}
+                          {(booking.reschedule_url || booking.cancel_url) && <div className="my-1 border-t border-border" />}
                           {booking.status !== "completed" && (
                             <button
                               onClick={() => handleStatusUpdate(booking.id, "completed")}

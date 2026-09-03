@@ -262,7 +262,8 @@ export async function POST(request: Request) {
           source: "sms_inbound",
           wordingShown: rawBody,
         })
-        await exitRunsForContact(contactId, "sms_stop")
+        // Sanctioned placeholder, not forgotten work: this route has no tenant in scope yet — revisit once it can resolve a business from the inbound number.
+        await exitRunsForContact(contactId, "sms_stop", SINGLETON_BUSINESS_ID)
         await writeTimelineEvent({
           contactId,
           kind: "sms_stop_received",
