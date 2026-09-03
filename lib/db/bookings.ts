@@ -17,7 +17,7 @@ function getClient() {
  * webhook, and host_id is nullable until 00243.
  */
 export async function singletonHostId(): Promise<string | null> {
-  const supabase = createServiceRoleClient()
+  const supabase = getClient()
   const { data } = await supabase
     .from("booking_hosts")
     .select("id")

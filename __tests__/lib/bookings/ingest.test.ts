@@ -34,15 +34,31 @@ let insertSingle: ReturnType<typeof vi.fn>
 let updateEq: ReturnType<typeof vi.fn>
 let notificationsInsert: ReturnType<typeof vi.fn>
 let lastInsertedRow: Record<string, unknown> | null = null
+// Records every .eq() applied to a `bookings` SELECT, in call order, so a
+// test can assert the PREDICATE readByKey applies — not merely that a row
+// came back. A mock that returns rows proves nothing about which rows the
+// database would actually have matched; an argument-blind `eq: () => chain`
+// tolerates any column/value (including a wrong-tenant mutant) silently.
+let eqCalls: Array<[string, unknown]>
 
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({
     from: (table: string) => {
       if (table === "bookings") {
         return {
-          // readByKey chains TWO .eq()s now (the vendor key, then business_id) —
-          // both stub calls resolve to the same maybeSingle mock.
-          select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: selectMaybeSingle }) }) }),
+          // readByKey chains TWO .eq()s (the vendor key, then business_id).
+          // The chain records each call's arguments into eqCalls rather than
+          // ignoring them, so the predicate itself is pinned, not just its arity.
+          select: () => {
+            const chain: any = {
+              eq: (...args: unknown[]) => {
+                eqCalls.push(args as [string, unknown])
+                return chain
+              },
+              maybeSingle: selectMaybeSingle,
+            }
+            return chain
+          },
           update: () => ({ eq: updateEq }),
           insert: (row: Record<string, unknown>) => {
             lastInsertedRow = row
@@ -84,6 +100,7 @@ function input(overrides: Partial<BookingIngestInput> = {}): BookingIngestInput 
 beforeEach(() => {
   vi.clearAllMocks()
   lastInsertedRow = null
+  eqCalls = []
   selectMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
   insertSingle = vi.fn().mockResolvedValue({ data: { id: "bk-new" }, error: null })
   updateEq = vi.fn().mockResolvedValue({ error: null })
@@ -115,8 +132,12 @@ describe("the 23505 race", () => {
   })
 
   it("still throws on any other insert error", async () => {
-    insertSingle.mockResolvedValueOnce({ data: null, error: { code: "42703", message: "column does not exist" } })
-    await expect(ingestBooking(input())).rejects.toMatchObject({ code: "42703" })
+    // NOT 42703/PGRST204: those two codes are now the deploy-race fallback's
+    // own trigger (review round 1, Important 2) and would be silently retried
+    // rather than thrown — see "the deploy-race fallback" describe below.
+    // 23514 (check_violation) is a genuinely different, unrecoverable failure.
+    insertSingle.mockResolvedValueOnce({ data: null, error: { code: "23514", message: "check constraint violated" } })
+    await expect(ingestBooking(input())).rejects.toMatchObject({ code: "23514" })
   })
 
   it("throws on a 23505 with no key to re-read by (nothing sensible to update)", async () => {
@@ -361,5 +382,182 @@ describe("tenant threading", () => {
     await ingestBooking(input({ bookingDate: "2026-09-10T14:00:00.000Z", durationMinutes: 45 }))
 
     expect(lastInsertedRow).toMatchObject({ end_at: "2026-09-10T14:45:00.000Z" })
+  })
+
+  // Review round 1, Important 1: the previous version of this suite pinned
+  // the INSERT row's business_id but never the READ predicate. A reviewer
+  // mutated readByKey's `.eq("business_id", businessId)` to
+  // `.eq("business_id", "MUTANT-WRONG-TENANT")` and all tests stayed green,
+  // because every mock's eq() was argument-blind. This test pins the actual
+  // arguments readByKey applies to the read, so that mutation goes red here.
+  it("filters the read by the vendor key AND business_id, so a redelivered key can never match another tenant's row", async () => {
+    selectMaybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    insertSingle.mockResolvedValueOnce({ data: { id: "b-11" }, error: null })
+
+    await ingestBooking(
+      input({
+        businessId: BUSINESS_B,
+        key: { column: "calendly_event_uri", value: "https://api.calendly.com/scheduled_events/E11" },
+      }),
+    )
+
+    expect(eqCalls).toContainEqual(["calendly_event_uri", "https://api.calendly.com/scheduled_events/E11"])
+    expect(eqCalls).toContainEqual(["business_id", BUSINESS_B])
+  })
+
+  // Review round 1, Minor 3: `return contactId` used to sit inside the try,
+  // after applyPipelineEvent — so a throw there returned null even though the
+  // contact WAS resolved, and the row was written with a wrong contact_id: null.
+  it("keeps the resolved contact id even when the pipeline hook throws after resolution", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {})
+    findContactByIdentifiersMock.mockResolvedValueOnce("c-12")
+    applyPipelineEventMock.mockRejectedValueOnce(new Error("pipeline down"))
+    selectMaybeSingle.mockResolvedValueOnce({ data: null, error: null })
+    insertSingle.mockResolvedValueOnce({ data: { id: "b-12" }, error: null })
+
+    await ingestBooking(input())
+
+    expect(lastInsertedRow).toMatchObject({ contact_id: "c-12" })
+    expect(err).toHaveBeenCalled()
+    err.mockRestore()
+  })
+})
+
+describe("the deploy-race fallback (00241's tenant columns not yet on this instance)", () => {
+  // Each test here runs a FRESH copy of lib/bookings/ingest.ts (via
+  // resetModules + a dynamic import) so the module-level `tenantColumnsAbsent`
+  // sticky flag this fallback sets cannot leak into any other test in this
+  // file. The original statically-imported `ingestBooking` used everywhere
+  // else keeps its own untouched instance — see __tests__/db/sequences-tenancy
+  // .test.ts for the same pattern.
+
+  it("falls back to the pre-00241 row shape when the insert reports PGRST204, and retries once without double-inserting", async () => {
+    const insertedRows: Record<string, unknown>[] = []
+    let insertCount = 0
+    vi.resetModules()
+    vi.doMock("@/lib/supabase", () => ({
+      createServiceRoleClient: () => ({
+        from: (table: string) => {
+          if (table !== "bookings") return { select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }
+          return {
+            select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+            insert: (row: Record<string, unknown>) => {
+              insertedRows.push(row)
+              insertCount++
+              return {
+                select: () => ({
+                  single: async () =>
+                    insertCount === 1
+                      ? {
+                          data: null,
+                          error: { code: "PGRST204", message: "Could not find the 'business_id' column of 'bookings' in the schema cache" },
+                        }
+                      : { data: { id: "bk-fallback" }, error: null },
+                }),
+              }
+            },
+          }
+        },
+      }),
+    }))
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const { ingestBooking: freshIngestBooking } = await import("@/lib/bookings/ingest")
+    const result = await freshIngestBooking(input({ status: "cancelled" }))
+
+    expect(result).toEqual({ action: "created", bookingId: "bk-fallback" })
+    expect(insertCount).toBe(2)
+    expect(insertedRows[0]).toMatchObject({ business_id: SINGLETON_BUSINESS_ID, end_at: expect.any(String) })
+    for (const col of ["business_id", "host_id", "connection_id", "contact_id", "chat_conversation_id", "end_at", "invitee_timezone"]) {
+      expect(insertedRows[1]).not.toHaveProperty(col)
+    }
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("00241"))
+    warn.mockRestore()
+  })
+
+  it("falls back to the pre-00241 row shape when the update reports 42703 for end_at, and retries once", async () => {
+    const updatePayloads: Record<string, unknown>[] = []
+    let updateCount = 0
+    vi.resetModules()
+    vi.doMock("@/lib/supabase", () => ({
+      createServiceRoleClient: () => ({
+        from: (table: string) => {
+          if (table !== "bookings") return { select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  maybeSingle: async () => ({
+                    data: { id: "bk-existing", status: "scheduled", booking_date: "2026-09-08T14:00:00.000Z" },
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+            update: (payload: Record<string, unknown>) => {
+              updatePayloads.push(payload)
+              updateCount++
+              return {
+                eq: async () =>
+                  updateCount === 1
+                    ? { error: { code: "42703", message: `column "end_at" of relation "bookings" does not exist` } }
+                    : { error: null },
+              }
+            },
+          }
+        },
+      }),
+    }))
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const { ingestBooking: freshIngestBooking } = await import("@/lib/bookings/ingest")
+    const result = await freshIngestBooking(input({ status: "completed" }))
+
+    expect(result).toEqual({ action: "updated", bookingId: "bk-existing" })
+    expect(updateCount).toBe(2)
+    expect(updatePayloads[0]).toHaveProperty("end_at")
+    expect(updatePayloads[1]).not.toHaveProperty("end_at")
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("00241"))
+    warn.mockRestore()
+  })
+
+  it("falls back to reading without the business_id predicate when the column is missing (42703), and can still recognise the existing row", async () => {
+    let selectCount = 0
+    vi.resetModules()
+    vi.doMock("@/lib/supabase", () => ({
+      createServiceRoleClient: () => ({
+        from: (table: string) => {
+          if (table !== "bookings") return { select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }
+          return {
+            select: () => {
+              selectCount++
+              const attempt = selectCount
+              const chain: any = {
+                eq: () => chain,
+                maybeSingle: async () =>
+                  attempt === 1
+                    ? { data: null, error: { code: "42703", message: "column bookings.business_id does not exist" } }
+                    : {
+                        data: { id: "bk-legacy", status: "scheduled", booking_date: "2026-09-08T14:00:00.000Z" },
+                        error: null,
+                      },
+              }
+              return chain
+            },
+            insert: () => ({ select: () => ({ single: async () => ({ data: { id: "bk-new" }, error: null }) }) }),
+            update: () => ({ eq: async () => ({ error: null }) }),
+          }
+        },
+      }),
+    }))
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const { ingestBooking: freshIngestBooking } = await import("@/lib/bookings/ingest")
+    const result = await freshIngestBooking(input({ status: "completed" }))
+
+    expect(selectCount).toBe(2)
+    expect(result).toEqual({ action: "updated", bookingId: "bk-legacy" })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("00241"))
+    warn.mockRestore()
   })
 })

@@ -151,6 +151,54 @@ function deriveEndAt(input: BookingIngestInput): string {
   ).toISOString()
 }
 
+/**
+ * The seven columns migration 00241 adds to `bookings`. Migrations and the
+ * Vercel build race, unsequenced, on a push to main (00241's own header).
+ * `writeRow`'s insert names all seven, `updateExisting` names one
+ * (`end_at`), and `readByKey` filters on one (`business_id`) — so if Vercel
+ * wins that race, every booking webhook, both vendors, would 500 until the
+ * migration Action finishes. The same trick 00239's header describes for the
+ * two Calendly columns, generalised to these seven.
+ */
+const TENANT_COLUMNS = [
+  "business_id",
+  "host_id",
+  "connection_id",
+  "contact_id",
+  "chat_conversation_id",
+  "end_at",
+  "invitee_timezone",
+] as const
+
+/**
+ * Sticky for the life of this server instance. Once one write proves the
+ * columns are missing, every later call in this instance skips straight to
+ * the pre-00241 shape rather than paying for a doomed wide attempt first —
+ * this function is on the hot path of every booking webhook, unlike the
+ * one-off DAL functions that use the same PGRST204/42703 check per-call
+ * (lib/db/lead-inquiries.ts, lib/db/funnels.ts). A fresh deploy starts this
+ * false again, which is correct: the migration landing is exactly what a
+ * redeploy would follow.
+ */
+let tenantColumnsAbsent = false
+
+/** PostgREST's schema-cache miss on a write, or Postgres' own undefined_column. */
+function isMissingTenantColumnsError(error: { code?: string } | null | undefined): boolean {
+  return error?.code === "PGRST204" || error?.code === "42703"
+}
+
+function stripTenantColumns(row: Record<string, unknown>): Record<string, unknown> {
+  const narrow = { ...row }
+  for (const column of TENANT_COLUMNS) delete narrow[column]
+  return narrow
+}
+
+function warnTenantColumnsAbsent(ctx: IngestCtx, where: string, error: { code?: string; message?: string }): void {
+  console.warn(
+    `${ctx.log} migration 00241's tenant columns are not on this instance's bookings table yet (${where}: ${error.code} ${error.message}); falling back to the pre-00241 shape until it lands`,
+  )
+}
+
 /** The one place a booking becomes its four consequences. */
 export async function ingestBooking(input: BookingIngestInput): Promise<BookingIngestResult> {
   const ctx: IngestCtx = { supabase: createServiceRoleClient(), log: `[booking-ingest:${input.source}]` }
@@ -174,7 +222,7 @@ async function readAndGate(
   // Read by the vendor key FIRST, so a stale redelivery can be recognised
   // before any consequence runs. (The GHL route read after the consequences;
   // for a plain status change the order makes no difference.)
-  const existing = input.key ? await readByKey(ctx.supabase, input.key, input.businessId) : null
+  const existing = input.key ? await readByKey(ctx, input.key, input.businessId) : null
 
   if (existing && input.ignoreIfTerminal && input.status === "scheduled" && TERMINAL_STATUSES.has(existing.status ?? "")) {
     // Calendly retried an invitee.created that timed out, and the booking has
@@ -208,8 +256,16 @@ async function runContactConsequences(ctx: IngestCtx, input: BookingIngestInput)
   // A RESCHEDULE'S CANCEL HALF SKIPS BOTH. See the header.
   if (input.rescheduled) return null
 
+  // Hoisted above the try, and assigned the moment findContactByIdentifiers
+  // resolves: a later throw in this block (exitRunsForContact or
+  // applyPipelineEvent) must not erase a contact id that WAS successfully
+  // resolved — the row still needs to carry it. `return contactId` used to
+  // sit inside the try after applyPipelineEvent, so a pipeline failure (not
+  // hypothetical — sequence-exit-hooks.test.ts exercises exactly this)
+  // silently wrote contact_id: null for a contact that had, in fact, resolved.
+  let contactId: string | null = null
   try {
-    const contactId = await findContactByIdentifiers({
+    contactId = await findContactByIdentifiers({
       email: input.contact.email,
       phone: input.contact.phone,
       businessId: input.businessId,
@@ -224,11 +280,10 @@ async function runContactConsequences(ctx: IngestCtx, input: BookingIngestInput)
         businessId: input.businessId,
       })
     }
-    return contactId ?? null
   } catch (err) {
     console.error(`${ctx.log} sequence/pipeline hook failed`, (err as Error).message)
-    return null
   }
+  return contactId
 }
 
 async function writeRow(
@@ -261,13 +316,11 @@ async function writeRow(
   // without repeating its predicate, which PostgREST has no syntax for. Read
   // (done above), then update or insert — and let 23505 below catch the race.
   if (existing) {
-    const result = await updateExisting(ctx.supabase, input, existing)
+    const result = await updateExisting(ctx, input, existing)
     return { result, bookingId: result.bookingId, clickIds }
   }
 
   // Insert new booking
-  const endAt = deriveEndAt(input)
-
   const row: Record<string, unknown> = {
     contact_name: input.contact.name,
     contact_email: input.contact.email,
@@ -283,13 +336,17 @@ async function writeRow(
     gbraid,
     wbraid,
     fbclid,
-    business_id: input.businessId,
-    host_id: input.hostId,
-    connection_id: input.connectionId,
-    contact_id: contactId,
-    chat_conversation_id: input.chatConversationId,
-    end_at: endAt,
-    invitee_timezone: input.inviteeTimezone,
+  }
+  // Skipped entirely (not attempted-then-stripped) once this instance has
+  // already proven the columns are missing — see TENANT_COLUMNS' header.
+  if (!tenantColumnsAbsent) {
+    row.business_id = input.businessId
+    row.host_id = input.hostId
+    row.connection_id = input.connectionId
+    row.contact_id = contactId
+    row.chat_conversation_id = input.chatConversationId
+    row.end_at = deriveEndAt(input)
+    row.invitee_timezone = input.inviteeTimezone
   }
   if (input.key) row[input.key.column] = input.key.value
   // Calendly's columns are only named on a Calendly row. A GHL insert never
@@ -300,7 +357,17 @@ async function writeRow(
     row.cancel_url = input.columns?.cancel_url ?? null
   }
 
-  const { data: insertedBooking, error } = await ctx.supabase.from("bookings").insert(row).select("id").single()
+  let insertResult = await ctx.supabase.from("bookings").insert(row).select("id").single()
+
+  if (insertResult.error && !tenantColumnsAbsent && isMissingTenantColumnsError(insertResult.error)) {
+    warnTenantColumnsAbsent(ctx, "insert", insertResult.error)
+    tenantColumnsAbsent = true
+    // Nothing was written on the failed attempt above, so retrying cannot
+    // double-insert.
+    insertResult = await ctx.supabase.from("bookings").insert(stripTenantColumns(row)).select("id").single()
+  }
+
+  const { data: insertedBooking, error } = insertResult
 
   if (error) {
     // Two redeliveries raced past the read above and both inserted; the
@@ -308,9 +375,9 @@ async function writeRow(
     // finish as an update rather than answering 500 to a vendor that will
     // only retry.
     if (error.code === PG_UNIQUE_VIOLATION && input.key) {
-      const winner = await readByKey(ctx.supabase, input.key, input.businessId)
+      const winner = await readByKey(ctx, input.key, input.businessId)
       if (winner) {
-        const result = await updateExisting(ctx.supabase, input, winner)
+        const result = await updateExisting(ctx, input, winner)
         return { result, bookingId: result.bookingId, clickIds }
       }
     }
@@ -396,34 +463,63 @@ async function runPostWriteEffects(
 }
 
 async function readByKey(
-  supabase: ReturnType<typeof createServiceRoleClient>,
+  ctx: IngestCtx,
   key: { column: BookingKeyColumn; value: string },
   businessId: string,
 ): Promise<ExistingRow | null> {
-  const { data } = await supabase
+  if (!tenantColumnsAbsent) {
+    const { data, error } = await ctx.supabase
+      .from("bookings")
+      .select("id, status, booking_date")
+      .eq(key.column, key.value)
+      .eq("business_id", businessId)
+      .maybeSingle()
+    if (error && isMissingTenantColumnsError(error)) {
+      warnTenantColumnsAbsent(ctx, "read", error)
+      tenantColumnsAbsent = true
+    } else {
+      return (data as ExistingRow | null) ?? null
+    }
+  }
+
+  // business_id isn't on this instance's bookings table yet (00241 hasn't
+  // landed). A redelivered vendor key could theoretically match a different
+  // business's row here — accepted rather than thrown on, because only one
+  // business exists until phase 1 ships createBusiness; there is nothing to
+  // cross-match against yet.
+  const { data } = await ctx.supabase
     .from("bookings")
     .select("id, status, booking_date")
     .eq(key.column, key.value)
-    .eq("business_id", businessId)
     .maybeSingle()
   return (data as ExistingRow | null) ?? null
 }
 
 async function updateExisting(
-  supabase: ReturnType<typeof createServiceRoleClient>,
+  ctx: IngestCtx,
   input: BookingIngestInput,
   existing: ExistingRow,
 ): Promise<BookingIngestResult> {
-  const { error } = await supabase
-    .from("bookings")
-    .update({
-      status: input.status,
-      booking_date: input.bookingDate,
-      end_at: deriveEndAt(input),
-      notes: input.notes,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", existing.id)
+  const updates: Record<string, unknown> = {
+    status: input.status,
+    booking_date: input.bookingDate,
+    notes: input.notes,
+    updated_at: new Date().toISOString(),
+  }
+  if (!tenantColumnsAbsent) updates.end_at = deriveEndAt(input)
+
+  const firstAttempt = await ctx.supabase.from("bookings").update(updates).eq("id", existing.id)
+  let error = firstAttempt.error
+
+  if (error && !tenantColumnsAbsent && isMissingTenantColumnsError(error)) {
+    warnTenantColumnsAbsent(ctx, "update", error)
+    tenantColumnsAbsent = true
+    // A fresh object, not a mutation of `updates` in place: the caller (or a
+    // test capturing the payload by reference, as this one does) must still
+    // see what the FIRST attempt actually sent.
+    const retry = await ctx.supabase.from("bookings").update(stripTenantColumns(updates)).eq("id", existing.id)
+    error = retry.error
+  }
 
   if (error) throw error
 
