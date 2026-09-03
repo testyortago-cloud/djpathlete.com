@@ -46,7 +46,7 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-import { resolveAdminTenant } from "@/lib/tenancy/resolve"
+import { resolveAdminTenant, resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 const A = { id: "aaa", name: "Alpha", slug: "alpha", status: "active" }
@@ -71,6 +71,11 @@ describe("resolveAdminTenant — the operator", () => {
     expect(t.businessId).toBe("aaa")
     // Never filtered by membership.
     expect(eqCalls.some(([c]) => c === "user_id")).toBe(false)
+    // The operator is an implicit owner of EVERY business regardless of
+    // status -- a status filter here would lock the operator out the moment
+    // the last active business got paused, including out of the one page
+    // that could un-pause it.
+    expect(eqCalls.some(([c]) => c === "status")).toBe(false)
   })
 
   it("honours a cookie naming one of its own businesses", async () => {
@@ -92,6 +97,9 @@ describe("resolveAdminTenant — a coach", () => {
     expect(t.isOperator).toBe(false)
     // The membership read is keyed on THIS user, by value.
     expect(eqCalls).toContainEqual(["user_id", "coach"])
+    // A coach only ever sees ACTIVE businesses -- a paused tenant is not
+    // operating.
+    expect(eqCalls).toContainEqual(["status", "active"])
   })
 
   it("IGNORES a cookie naming a business it is not a member of", async () => {
@@ -124,6 +132,74 @@ describe("resolveAdminTenant — a coach", () => {
     session = { user: { id: "coach", role: "staff" } }
     membersError = { code: "42P01", message: "no such table" }
     await expect(resolveAdminTenant()).rejects.toThrow(/42P01|no such table/)
+  })
+
+  it("THROWS NoAccessibleBusinessError when the allowed set is empty, rather than falling back to the singleton", async () => {
+    // A coach with a REAL membership row for "bbb" whose business was since
+    // paused (status in ('active','paused') is a reachable state per
+    // migration 00240) does NOT take the ids.length===0 compat branch above
+    // -- it has a membership row. Its active-status business read comes back
+    // empty. Falling back to SINGLETON_BUSINESS_ID here would hand this coach
+    // the operator's own tenant: every contact, pipeline card and booking in
+    // it. This is the security-critical path: select() must invent no id.
+    session = { user: { id: "coach", role: "staff" } }
+    membersRows = [{ business_id: "bbb" }]
+    businessesRows = [] // "bbb" is paused -- excluded by the active filter
+    await expect(resolveAdminTenant()).rejects.toThrow(NoAccessibleBusinessError)
+  })
+})
+
+describe("resolveAdminTenantForRequest — cookie header parsing", () => {
+  it("resolves from a cookie header, honouring a value in the allowed set", async () => {
+    session = { user: { id: "coach", role: "staff" } }
+    membersRows = [{ business_id: "bbb" }]
+    businessesRows = [B]
+    const req = new Request("https://example.test/", { headers: { cookie: "djp_business=bbb" } })
+    const t = await resolveAdminTenantForRequest(req)
+    expect(t.businessId).toBe("bbb")
+  })
+
+  it("IGNORES a cookie naming a business outside the allowed set", async () => {
+    // Same security boundary as the page resolver, driven from a Request
+    // instead of next/headers.
+    session = { user: { id: "coach", role: "staff" } }
+    membersRows = [{ business_id: "bbb" }]
+    businessesRows = [B]
+    const req = new Request("https://example.test/", { headers: { cookie: "djp_business=aaa" } })
+    const t = await resolveAdminTenantForRequest(req)
+    expect(t.businessId).toBe("bbb") // unchanged
+    expect(t.choices.map((c) => c.id)).toContain("bbb") // presence control
+  })
+
+  it("the cookie-name anchor prevents matching inside a similarly-named cookie", async () => {
+    // Without the `(?:^|;\s*)` anchor, a plain substring search for
+    // "djp_business=" would match INSIDE "x_djp_business=aaa" (which
+    // literally contains the substring "djp_business=aaa") before ever
+    // reaching the real "djp_business=bbb" cookie later in the header.
+    session = { user: { id: "op", role: "admin" } }
+    businessesRows = [A, B]
+    const req = new Request("https://example.test/", {
+      headers: { cookie: "x_djp_business=aaa; djp_business=bbb" },
+    })
+    const t = await resolveAdminTenantForRequest(req)
+    expect(t.businessId).toBe("bbb")
+  })
+
+  it("a similarly-prefixed cookie with no real djp_business present resolves as if no cookie were sent", async () => {
+    session = { user: { id: "op", role: "admin" } }
+    businessesRows = [B, A] // choices = [bbb, aaa]; "bbb" is first
+    const req = new Request("https://example.test/", { headers: { cookie: "x_djp_business=aaa" } })
+    const t = await resolveAdminTenantForRequest(req)
+    // The anchored parser finds no djp_business cookie here at all, so
+    // select() falls back to the first allowed choice, "bbb" -- NOT "aaa",
+    // which only an unanchored substring match would wrongly extract.
+    expect(t.businessId).toBe("bbb")
+  })
+
+  it("throws rather than returning a tenant when there is no session", async () => {
+    session = null
+    const req = new Request("https://example.test/", { headers: { cookie: "djp_business=bbb" } })
+    await expect(resolveAdminTenantForRequest(req)).rejects.toThrow(/session/i)
   })
 })
 

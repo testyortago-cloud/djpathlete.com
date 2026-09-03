@@ -17,6 +17,14 @@ export type ResolvedTenant = {
 
 type Row = { id: string; name: string; slug: string }
 
+/** The caller has no business it may act on. Callers render /admin/no-access or answer 403. */
+export class NoAccessibleBusinessError extends Error {
+  constructor() {
+    super("This account has no business it can access")
+    this.name = "NoAccessibleBusinessError"
+  }
+}
+
 function getClient() {
   return createServiceRoleClient()
 }
@@ -33,11 +41,18 @@ async function activeBusinessesByIds(ids: string[]): Promise<Row[]> {
   return (data ?? []) as Row[]
 }
 
-async function allActiveBusinesses(): Promise<Row[]> {
+/**
+ * EVERY business, regardless of status -- deliberately unfiltered. This backs
+ * the operator branch only. If this filtered on status='active', an operator
+ * pausing the last active business would lock itself out of every admin page,
+ * including the one page that could un-pause it. Coaches go through
+ * `activeBusinessesByIds`, which DOES filter on status: a paused tenant is
+ * not operating, so a coach should not land on it.
+ */
+async function allBusinesses(): Promise<Row[]> {
   const { data, error } = await getClient()
     .from("businesses")
     .select("id, name, slug")
-    .eq("status", "active")
     .order("name", { ascending: true })
   if (error) throw new Error(`resolveAdminTenant businesses read failed (${error.code}): ${error.message}`)
   return (data ?? []) as Row[]
@@ -63,7 +78,7 @@ async function membershipBusinessIds(userId: string): Promise<string[]> {
  */
 async function allowedSet(userId: string, role: string): Promise<{ choices: BusinessChoice[]; isOperator: boolean }> {
   if (role === "admin") {
-    return { choices: await allActiveBusinesses(), isOperator: true }
+    return { choices: await allBusinesses(), isOperator: true }
   }
   const ids = await membershipBusinessIds(userId)
   if (ids.length === 0) {
@@ -84,7 +99,15 @@ async function allowedSet(userId: string, role: string): Promise<{ choices: Busi
  */
 function select(choices: BusinessChoice[], cookieValue: string | undefined): string {
   if (cookieValue && choices.some((c) => c.id === cookieValue)) return cookieValue
-  return choices[0]?.id ?? SINGLETON_BUSINESS_ID
+  const first = choices[0]?.id
+  // Never fall back to a constant. An empty allowed set means NO reachable
+  // business -- e.g. a coach whose only membership points at a business that
+  // was since paused -- and answering with the singleton would hand that
+  // coach the operator's own tenant: every contact, pipeline card and
+  // booking in it. The compat path (no membership rows at all) never reaches
+  // here empty; it explicitly resolves the singleton's own row upstream.
+  if (!first) throw new NoAccessibleBusinessError()
+  return first
 }
 
 export async function resolveAdminTenant(): Promise<ResolvedTenant> {
