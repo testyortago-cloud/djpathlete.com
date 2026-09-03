@@ -1,5 +1,6 @@
 // lib/db/google-ads-accounts.ts
 import { createServiceRoleClient } from "@/lib/supabase"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import type { GoogleAdsAccount } from "@/types/database"
 
 function getClient() {
@@ -16,11 +17,22 @@ export async function listGoogleAdsAccounts(): Promise<GoogleAdsAccount[]> {
   return (data ?? []) as GoogleAdsAccount[]
 }
 
-export async function getActiveGoogleAdsAccounts(): Promise<GoogleAdsAccount[]> {
+/**
+ * `businessId` defaults to the singleton because four existing callers
+ * (lib/ads/agent.ts twice, lib/ads/ga4-audiences.ts, and the value-adjustment
+ * path in lib/ads/conversions.ts) pre-date multi-tenancy and are correct with
+ * it. New callers pass one. The default-parameter idiom stays on EXISTING DAL
+ * functions for one migration and is removed caller by caller; a NEW function
+ * that defaults the tenant is how the next leak ships.
+ */
+export async function getActiveGoogleAdsAccounts(
+  businessId: string = SINGLETON_BUSINESS_ID,
+): Promise<GoogleAdsAccount[]> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("google_ads_accounts")
     .select("*")
+    .eq("business_id", businessId)
     .eq("is_active", true)
   if (error) throw error
   return (data ?? []) as GoogleAdsAccount[]

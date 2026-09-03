@@ -153,3 +153,24 @@ describe("booking notification fan-out", () => {
     expect(notificationsInserted).toHaveLength(2)
   })
 })
+
+// enqueueBookingConversion's own second singleton (accounts[0], independent of
+// business_id) is closed by making BookingConversionInput.business_id
+// required — see lib/ads/conversions.ts and lib/db/google-ads-accounts.ts.
+// This suite only owns the wiring: that ingest threads input.businessId
+// through to the conversion enqueue call.
+describe("ads conversion tenancy", () => {
+  it("enqueues against this business's account", async () => {
+    await ingestBooking(
+      input({
+        businessId: BUSINESS_B,
+        status: "scheduled",
+        key: { column: "calendly_event_uri", value: "https://api.calendly.com/scheduled_events/EB3" },
+        clickIds: { gclid: "g1", gbraid: null, wbraid: null, fbclid: null },
+      }),
+    )
+    expect(enqueueBookingConversionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ business_id: BUSINESS_B }),
+    )
+  })
+})

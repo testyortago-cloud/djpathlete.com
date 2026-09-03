@@ -155,6 +155,7 @@ describe("the create path", () => {
     expect(enqueueBookingConversionMock).toHaveBeenCalledWith({
       booking_id: "bk-new",
       booking_date: "2026-09-08T14:00:00.000Z",
+      business_id: SINGLETON_BUSINESS_ID,
       gclid: "g-1",
       gbraid: null,
       wbraid: null,
