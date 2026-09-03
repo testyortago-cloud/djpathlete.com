@@ -22,6 +22,21 @@ function getClient() {
   return createServiceRoleClient()
 }
 
+/**
+ * Thrown when a business has no `business_settings` row at all -- not a
+ * PostgREST error, a genuinely missing row. `create_business` always writes
+ * one, so this is only reachable for a business created outside that
+ * function. A subclass (not a bare Error) so callers that want to answer
+ * "not found" instead of 500 can catch it by type rather than by matching
+ * a message string.
+ */
+export class BusinessSettingsMissingError extends Error {
+  constructor(businessId: string) {
+    super(`business_settings row missing for ${businessId}`)
+    this.name = "BusinessSettingsMissingError"
+  }
+}
+
 export async function getBusinessSettings(
   businessId: string = SINGLETON_BUSINESS_ID,
 ): Promise<BusinessSettings> {
@@ -32,7 +47,7 @@ export async function getBusinessSettings(
     .eq("business_id", businessId)
     .maybeSingle()
   if (error) throw error
-  if (!data) throw new Error(`business_settings row missing for ${businessId}`)
+  if (!data) throw new BusinessSettingsMissingError(businessId)
   return data as BusinessSettings
 }
 

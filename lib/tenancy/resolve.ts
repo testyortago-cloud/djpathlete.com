@@ -71,12 +71,22 @@ async function membershipBusinessIds(userId: string): Promise<string[]> {
   return ((data ?? []) as { business_id: string }[]).map((r) => r.business_id)
 }
 
+/** Roles that have a business in /admin at all. Everyone else gets no tenant. */
+const ADMIN_PANEL_ROLES = new Set(["admin", "staff"])
+
 /**
  * The allowed set, computed server-side from the session. Shared by the page
  * resolver and the request resolver so the two can never disagree about which
  * businesses a caller may read -- if they did, one of them would be a leak.
  */
 async function allowedSet(userId: string, role: string): Promise<{ choices: BusinessChoice[]; isOperator: boolean }> {
+  // Only admin-panel roles resolve a tenant at all. `client` and `editor` have
+  // no business in /admin -- and the compat path below would otherwise hand a
+  // self-registered client the singleton, which proxy.ts does not stop
+  // because it gates /api/* for `staff` only. This is the guard that makes
+  // the compat path safe to keep until membership is universal.
+  if (!ADMIN_PANEL_ROLES.has(role)) throw new NoAccessibleBusinessError()
+
   if (role === "admin") {
     return { choices: await allBusinesses(), isOperator: true }
   }

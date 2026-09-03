@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import {
-  getBusiness, updateBusiness, getBusinessSettings, updateBusinessSettings,
+  getBusiness, updateBusiness, getBusinessSettings, updateBusinessSettings, BusinessSettingsMissingError,
 } from "@/lib/db/businesses"
 import { businessPatchSchema, businessSettingsPatchSchema } from "@/lib/validators/business"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
@@ -59,7 +59,18 @@ export async function PATCH(request: Request, ctx: { params: Promise<Record<stri
     })
   }
 
-  let settings = await getBusinessSettings(id)
+  // create_business always writes the settings row; a business without one
+  // can only exist if it was created outside that function. Either way, a
+  // missing row is a 404, not a 500.
+  let settings
+  try {
+    settings = await getBusinessSettings(id)
+  } catch (err) {
+    if (err instanceof BusinessSettingsMissingError) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
+    throw err
+  }
   if (parsed.data.settings && Object.keys(parsed.data.settings).length > 0) {
     // Field names only -- sender_email and sms_messaging_service_sid are
     // identity configuration, and the metadata scrubber does not cover them

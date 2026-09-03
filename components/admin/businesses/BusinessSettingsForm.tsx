@@ -259,10 +259,16 @@ export function BusinessSettingsForm({
             <Input
               id="sms_messaging_service_sid"
               aria-invalid={!!errors.sms_messaging_service_sid}
+              aria-describedby="sms-messaging-service-sid-hint"
               {...register("sms_messaging_service_sid")}
             />
-            {errors.sms_messaging_service_sid && (
+            {errors.sms_messaging_service_sid ? (
               <p className="text-xs text-error">{errors.sms_messaging_service_sid.message}</p>
+            ) : (
+              <p id="sms-messaging-service-sid-hint" className="text-xs text-muted-foreground">
+                Identifies this business&apos;s text messages to the carrier network. Comes from your text
+                messaging provider when this business is set up to send texts.
+              </p>
             )}
           </div>
 

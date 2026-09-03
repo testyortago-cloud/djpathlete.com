@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import { requireAdmin } from "@/lib/auth-helpers"
-import { getBusiness, getBusinessSettings } from "@/lib/db/businesses"
+import { getBusiness, getBusinessSettings, BusinessSettingsMissingError } from "@/lib/db/businesses"
 import { resolveAdminTenant, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { DataTableBadge } from "@/components/ui/data-table"
 import { BusinessSettingsForm } from "@/components/admin/businesses/BusinessSettingsForm"
@@ -33,7 +33,16 @@ export default async function BusinessDetailPage({ params }: { params: Promise<{
   const business = await getBusiness(id)
   if (!business) notFound()
 
-  const settings = await getBusinessSettings(id)
+  // create_business always writes the settings row; a business without one
+  // can only exist if it was created outside that function. Either way, a
+  // missing row is a 404, not a 500.
+  let settings
+  try {
+    settings = await getBusinessSettings(id)
+  } catch (err) {
+    if (err instanceof BusinessSettingsMissingError) notFound()
+    throw err
+  }
 
   return (
     <div className="space-y-6 p-6">

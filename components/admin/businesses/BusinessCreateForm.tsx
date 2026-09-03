@@ -118,7 +118,7 @@ export function BusinessCreateForm() {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="timezone">Timezone</Label>
+        <Label htmlFor="timezone">Time zone</Label>
         <Select
           value={timezone}
           onValueChange={(value) => setValue("timezone", value, { shouldValidate: true })}

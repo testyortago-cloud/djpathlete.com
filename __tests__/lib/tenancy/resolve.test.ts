@@ -209,3 +209,35 @@ describe("resolveAdminTenant — no session", () => {
     await expect(resolveAdminTenant()).rejects.toThrow(/session/i)
   })
 })
+
+describe("resolveAdminTenant — roles with no business in /admin", () => {
+  // `client` and `editor` have no membership row in practice, so without a
+  // role guard they fall into the SAME compat branch a pre-multi-coach staff
+  // user takes and get handed the singleton -- and proxy.ts gates /api/*
+  // for `staff` only, so a self-registered client account can reach these
+  // routes today. The guard must sit in allowedSet() itself, before it
+  // computes anything, so every caller of the resolver is covered.
+  it("THROWS for a client role, even with zero membership rows (same shape as the old staff compat path)", async () => {
+    session = { user: { id: "cust", role: "client" } }
+    membersRows = []
+    businessesRows = [{ id: SINGLETON_BUSINESS_ID, name: "Primary", slug: "primary", status: "active" }]
+    await expect(resolveAdminTenant()).rejects.toThrow(NoAccessibleBusinessError)
+  })
+
+  it("THROWS for an editor role, even with zero membership rows", async () => {
+    session = { user: { id: "ed", role: "editor" } }
+    membersRows = []
+    businessesRows = [{ id: SINGLETON_BUSINESS_ID, name: "Primary", slug: "primary", status: "active" }]
+    await expect(resolveAdminTenant()).rejects.toThrow(NoAccessibleBusinessError)
+  })
+
+  it("PRESENCE CONTROL — staff, same zero-membership setup, still resolves the singleton", async () => {
+    // Proves the two tests above fail because of the ROLE, not because this
+    // test setup makes everything throw.
+    session = { user: { id: "old-staff", role: "staff" } }
+    membersRows = []
+    businessesRows = [{ id: SINGLETON_BUSINESS_ID, name: "Primary", slug: "primary", status: "active" }]
+    const t = await resolveAdminTenant()
+    expect(t.businessId).toBe(SINGLETON_BUSINESS_ID)
+  })
+})
