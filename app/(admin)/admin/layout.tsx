@@ -8,20 +8,22 @@ import { SessionExpiryGuard } from "@/components/auth/SessionExpiryGuard"
 import { MessagingMount } from "@/components/messaging/MessagingMount"
 import { isContentStudioEnabled } from "@/lib/content-studio/feature-flag"
 import { NoAccessibleBusinessError, resolveAdminTenant, type ResolvedTenant } from "@/lib/tenancy/resolve"
-import { ADMIN_PATH_HEADER, NO_ACCESS_PATH } from "@/lib/permissions/registry"
+import { NO_ACCESS_PATH, PAGE_PATH_HEADER } from "@/lib/permissions/registry"
 
 export default async function AdminRootLayout({ children }: { children: React.ReactNode }) {
   // Admits admins and staff; the per-area decision belongs to the middleware
   // and each page's own requirePermission() call.
   const session = await requireAdminPanelAccess()
 
-  // Stamped by proxy.ts on every /admin request it passes through (see its own
-  // comment there). Used ONLY to tell whether this request is already headed
-  // to NO_ACCESS_PATH -- because /admin/no-access is itself a page nested
-  // under THIS layout, redirecting to it unconditionally below would redirect
-  // from NO_ACCESS_PATH to NO_ACCESS_PATH forever for the exact caller this
-  // is meant to help.
-  const currentPath = (await headers()).get(ADMIN_PATH_HEADER)
+  // PAGE_PATH_HEADER is a UI HINT ONLY (see its own comment in
+  // lib/permissions/registry.ts) -- it carries no authorisation meaning,
+  // unlike ADMIN_PATH_HEADER, and must never be used for an access decision.
+  // Stamped by proxy.ts on every /admin request it renders. Used here ONLY to
+  // tell whether this request is already headed to NO_ACCESS_PATH -- because
+  // /admin/no-access is itself a page nested under THIS layout, redirecting
+  // to it unconditionally below would redirect from NO_ACCESS_PATH to
+  // NO_ACCESS_PATH forever for the exact caller this is meant to help.
+  const currentPath = (await headers()).get(PAGE_PATH_HEADER)
 
   // This wraps EVERY admin page, so an uncaught NoAccessibleBusinessError here
   // is a 500 on every screen at once. An empty allowed set is a real state -- a

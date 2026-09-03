@@ -23,7 +23,9 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 let bookingHostsMaybeSingle: ReturnType<typeof vi.fn>
 let appliedEqs: Array<[string, unknown]>
 let bookingsEqCalls: Array<[string, unknown]>
-let bookingsResult: { data: unknown; error: unknown }
+// Shared shape for both getBookings (`{ data, error }`) and getBookingStats
+// (`{ count, error }`) — each describe block below sets what it needs.
+let bookingsResult: Record<string, unknown>
 
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({
@@ -57,7 +59,7 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-import { getBookings, singletonHostId } from "@/lib/db/bookings"
+import { getBookings, getBookingStats, singletonHostId } from "@/lib/db/bookings"
 
 describe("singletonHostId", () => {
   beforeEach(() => {
@@ -123,5 +125,28 @@ describe("getBookings", () => {
   it("does not apply a status filter when none is given", async () => {
     await getBookings("bbb")
     expect(bookingsEqCalls).toEqual([["business_id", "bbb"]])
+  })
+})
+
+describe("getBookingStats", () => {
+  beforeEach(() => {
+    bookingsEqCalls = []
+    bookingsResult = { count: 3, error: null }
+  })
+
+  // Fix round 1 review: these four counts previously carried NO business
+  // predicate at all, so the tiles on the bookings page counted every
+  // business's rows while the list beneath them showed only one.
+  it("scopes every one of its four counts to the business, which it previously did not do", async () => {
+    await getBookingStats("bbb")
+    const businessEqs = bookingsEqCalls.filter(([column]) => column === "business_id")
+    expect(businessEqs).toHaveLength(4)
+    expect(businessEqs.every(([, value]) => value === "bbb")).toBe(true)
+  })
+
+  it("still narrows each count by its own status", async () => {
+    await getBookingStats("bbb")
+    const statuses = bookingsEqCalls.filter(([column]) => column === "status").map(([, value]) => value)
+    expect(statuses.sort()).toEqual(["cancelled", "completed", "no_show", "scheduled"])
   })
 })

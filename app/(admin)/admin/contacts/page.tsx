@@ -83,13 +83,22 @@ export default async function AdminContactsPage({
     // this is the only file that knows the page size — see PAGE_SIZE above.
     listContacts({ ...filters, businessId, limit: PAGE_SIZE, offset: (filters.page - 1) * PAGE_SIZE }),
     countContacts({ ...filters, businessId }),
-    listSequences(),
+    // Both DAL functions default to SINGLETON_BUSINESS_ID when omitted, which
+    // is exactly the bug here: leaving businessId off would offer the
+    // OPERATOR's sequences to another business's coach, who could then enrol
+    // this business's own contacts into one of them -- a cross-tenant WRITE,
+    // not a display bug. The default stays for the other callers that still
+    // rely on it; this call site must always pass the real value.
+    listSequences(businessId),
   ])
 
   // ONE round trip for every row's tags, not one per row. Read AFTER the list
   // because it is keyed on the ids that came back — and a Map cannot cross the
   // server/client boundary, so it is handed over as a plain object.
-  const tagMap = await tagsForContacts(contacts.map((contact) => contact.id))
+  const tagMap = await tagsForContacts(
+    contacts.map((contact) => contact.id),
+    businessId,
+  )
   const tagsByContact = Object.fromEntries(tagMap)
 
   return (

@@ -49,7 +49,7 @@ vi.mock("@/lib/tenancy/resolve", async () => {
 import { requireAdminPanelAccess } from "@/lib/permissions/guard"
 import { getUserById } from "@/lib/db/users"
 import { resolveAdminTenant, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
-import { NO_ACCESS_PATH } from "@/lib/permissions/registry"
+import { NO_ACCESS_PATH, PAGE_PATH_HEADER } from "@/lib/permissions/registry"
 import AdminRootLayout from "@/app/(admin)/admin/layout"
 import { AdminLayout } from "@/components/admin/AdminLayout"
 
@@ -92,12 +92,18 @@ describe("admin layout — tenant resolution", () => {
     // Without this branch, visiting /admin/no-access directly (or landing
     // there from the redirect above) would resolve the SAME empty tenant and
     // redirect from NO_ACCESS_PATH to NO_ACCESS_PATH forever. proxy.ts stamps
-    // the ADMIN_PATH_HEADER this reads.
+    // PAGE_PATH_HEADER this reads -- a UI hint with no authorisation meaning,
+    // deliberately NOT the same header lib/permissions/guard.ts trusts for
+    // access decisions (ADMIN_PATH_HEADER).
     ;(resolveAdminTenant as ReturnType<typeof vi.fn>).mockRejectedValue(new NoAccessibleBusinessError())
     headersGetMock.mockReturnValue(NO_ACCESS_PATH)
 
     const element = (await AdminRootLayout({ children: null })) as ReactElement
     expect(redirectMock).not.toHaveBeenCalled()
+    // MUTANT: reading ADMIN_PATH_HEADER instead of PAGE_PATH_HEADER here
+    // would still happen to work today (nothing else in this test sets
+    // either), but would be reading the wrong header's meaning.
+    expect(headersGetMock).toHaveBeenCalledWith(PAGE_PATH_HEADER)
     // Rendered with no tenant at all -- the switcher must not appear.
     expect(findAdminLayoutElement(element).props.businessSwitcher).toBeNull()
   })

@@ -8,7 +8,7 @@ export const metadata = { title: "Bookings" }
 
 export default async function BookingsPage() {
   const { businessId } = await resolveAdminTenant()
-  const [bookings, stats] = await Promise.all([getBookings(businessId), getBookingStats()])
+  const [bookings, stats] = await Promise.all([getBookings(businessId), getBookingStats(businessId)])
 
   return (
     <div>

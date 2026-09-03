@@ -12,6 +12,7 @@ import {
   NO_ACCESS_PATH,
   ADMIN_PATH_HEADER,
   ADMIN_METHOD_HEADER,
+  PAGE_PATH_HEADER,
 } from "@/lib/permissions/registry"
 
 const SESSION_COOKIES = ["authjs.session-token", "__Secure-authjs.session-token"]
@@ -103,18 +104,32 @@ export default auth((req) => {
   let res: NextResponse
 
   if (pathname.startsWith("/admin")) {
-    // Stamped on every request this middleware lets through to an /admin
-    // page (not just /api/admin/*, as above) so app/(admin)/admin/layout.tsx
-    // can tell, without a redirect of its own, whether it is already
-    // rendering NO_ACCESS_PATH. Task 7's tenant resolver can throw
-    // NoAccessibleBusinessError for a signed-in admin/staff session with no
-    // reachable business, independent of which page was requested — and
-    // that page IS reachable at /admin/no-access itself, nested under this
-    // same layout. Without this header the layout would redirect() to
-    // NO_ACCESS_PATH from NO_ACCESS_PATH, forever.
-    const passThrough = () => {
+    // GRANTED pass-through: this request cleared the gate for `pathname`, so
+    // it gets the AUTHORISATION headers (see their own comment in
+    // registry.ts) — always from a fresh Headers object, so a client cannot
+    // forge either one for the server-action re-check in
+    // lib/permissions/guard.ts's canAccessAdminPath. PAGE_PATH_HEADER rides
+    // along too, since a granted request obviously also renders.
+    const grantedPassThrough = () => {
       const headers = new Headers(req.headers)
       headers.set(ADMIN_PATH_HEADER, pathname)
+      headers.set(ADMIN_METHOD_HEADER, req.method)
+      headers.set(PAGE_PATH_HEADER, pathname)
+      return NextResponse.next({ request: { headers } })
+    }
+    // DENIED but still rendered: only the staff home-page / NO_ACCESS_PATH
+    // loop-guard below uses this. It must NOT carry the authorisation
+    // headers — the gate said no for `pathname`, and stamping ADMIN_PATH_HEADER
+    // here would read as "the gate said yes" to canAccessAdminPath. It still
+    // needs PAGE_PATH_HEADER, which is the whole reason this exists: so
+    // app/(admin)/admin/layout.tsx can tell it is already rendering
+    // NO_ACCESS_PATH and skip its own redirect() there (Task 7's tenant
+    // resolver throws NoAccessibleBusinessError independent of which page was
+    // requested, and NO_ACCESS_PATH is a page nested under that same layout —
+    // without this it would redirect from NO_ACCESS_PATH to itself, forever).
+    const deniedRenderWithPagePath = () => {
+      const headers = new Headers(req.headers)
+      headers.set(PAGE_PATH_HEADER, pathname)
       return NextResponse.next({ request: { headers } })
     }
     if (!isLoggedIn) {
@@ -123,13 +138,13 @@ export default auth((req) => {
       // Default-deny: an /admin path in no registry rule is denied, so a new
       // admin surface is unreachable to staff until it is mapped deliberately.
       if (canAccessPath({ role: "staff", permissions }, pathname, req.method)) {
-        res = passThrough()
+        res = grantedPassThrough()
       } else {
         const home = staffHomePath(permissions)
         // Never bounce someone off the page we would bounce them to.
         res =
           pathname === home || pathname === NO_ACCESS_PATH
-            ? passThrough()
+            ? deniedRenderWithPagePath()
             : NextResponse.redirect(new URL(NO_ACCESS_PATH, req.url))
       }
     } else if (userRole !== "admin") {
@@ -137,8 +152,14 @@ export default auth((req) => {
       const home = userRole === "editor" ? "/editor" : "/client/dashboard"
       res = NextResponse.redirect(new URL(home, req.url))
     } else {
-      res = passThrough()
+      res = grantedPassThrough()
     }
+    // PAGE_PATH_HEADER on the redirect branches above is functionally inert —
+    // a redirect never reaches a render, so nothing downstream ever reads a
+    // response header off a 307 — but setting it unconditionally here means
+    // no branch has to remember to do it, rather than four places that could
+    // each independently forget.
+    res.headers.set(PAGE_PATH_HEADER, pathname)
   } else if (pathname.startsWith("/editor")) {
     if (!isLoggedIn) {
       res = redirectToLogin(req)

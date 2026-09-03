@@ -101,14 +101,36 @@ export async function updateBookingStatus(id: string, status: BookingStatus, not
   return data as Booking
 }
 
-export async function getBookingStats() {
+/**
+ * `businessId` is REQUIRED, same reasoning as `getBookings` above: these four
+ * counts previously carried NO business predicate at all, so the tiles on the
+ * bookings page counted every business's rows while the list beneath them
+ * showed only one.
+ */
+export async function getBookingStats(businessId: string) {
   const supabase = getClient()
 
   const [scheduled, completed, cancelled, noShow] = await Promise.all([
-    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "scheduled"),
-    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "completed"),
-    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "cancelled"),
-    supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "no_show"),
+    supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", businessId)
+      .eq("status", "scheduled"),
+    supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", businessId)
+      .eq("status", "completed"),
+    supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", businessId)
+      .eq("status", "cancelled"),
+    supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("business_id", businessId)
+      .eq("status", "no_show"),
   ])
 
   return {
