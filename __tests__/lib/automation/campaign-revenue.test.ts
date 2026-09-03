@@ -204,7 +204,7 @@ describe("readCampaignRevenue", () => {
     seedWonOpportunity({ source_session_id: "sess-b", value_cents: 7_500 })
     seedWonOpportunity({ source_session_id: "sess-c", value_cents: 2_000 })
 
-    const rows = await readCampaignRevenue({ since, until })
+    const rows = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
 
     const spring = rows.find((r) => r.utmCampaign === "spring-sale")
     const summer = rows.find((r) => r.utmCampaign === "summer-push")
@@ -242,7 +242,7 @@ describe("readCampaignRevenue", () => {
     seedWonOpportunity({ source_session_id: "sess-gclid-a", value_cents: 10_000 })
     seedWonOpportunity({ source_session_id: "sess-gclid-b", value_cents: 20_000 })
 
-    const rows = await readCampaignRevenue({ since, until })
+    const rows = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
 
     const gclidRow = rows.find((r) => !r.isUnattributed && r.gclid === "Cj0KCQjw-click-1")
     expect(gclidRow).toBeDefined()
@@ -259,7 +259,7 @@ describe("readCampaignRevenue", () => {
     seedAttribution("sess-a")
     seedWonOpportunity({ source_session_id: "sess-a", value_cents: 42_000 })
 
-    const rows = await readCampaignRevenue({ since, until })
+    const rows = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
 
     expect(sum(rows)).toBe(42_000)
   })
@@ -267,7 +267,7 @@ describe("readCampaignRevenue", () => {
   it("counts a won deal with no session id as unattributed rather than dropping it", async () => {
     seedWonOpportunity({ source_session_id: null, value_cents: 9_900 })
 
-    const rows = await readCampaignRevenue({ since, until })
+    const rows = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
 
     const unattributed = findUnattributed(rows)
     expect(unattributed).toBeDefined()
@@ -283,7 +283,7 @@ describe("readCampaignRevenue", () => {
     // "sess-orphan" never gets a marketing_attribution row.
     seedWonOpportunity({ source_session_id: "sess-orphan", value_cents: 15_000 })
 
-    const rows = await readCampaignRevenue({ since, until })
+    const rows = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
 
     const unattributed = findUnattributed(rows)
     expect(unattributed).toBeDefined()
@@ -295,7 +295,7 @@ describe("readCampaignRevenue", () => {
     seedWonOpportunity({ source_session_id: null, value_cents: 1_000 })
     seedWonOpportunity({ source_session_id: "sess-orphan", value_cents: 2_000 })
 
-    const rows = await readCampaignRevenue({ since, until })
+    const rows = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
 
     const unattributed = findUnattributed(rows)
     expect(unattributed?.unattributedCount).toBe(2)
@@ -312,7 +312,7 @@ describe("readCampaignRevenue", () => {
     seedAttribution("sess-a")
     seedWonOpportunity({ source_session_id: "sess-a", value_cents: 6_000 })
 
-    const rows = await readCampaignRevenue({ since, until })
+    const rows = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
 
     const unattributed = findUnattributed(rows)
     expect(unattributed).toBeDefined()
@@ -327,7 +327,7 @@ describe("readCampaignRevenue", () => {
     seedOpenOpportunity({ source_session_id: "sess-a", value_cents: null })
     seedLostOpportunity({ source_session_id: "sess-a" })
 
-    const rows = await readCampaignRevenue({ since, until })
+    const rows = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
 
     expect(sum(rows)).toBe(8_000)
     const spring = rows.find((r) => r.utmCampaign === "spring-sale")
@@ -343,7 +343,7 @@ describe("readCampaignRevenue", () => {
       closed_at: new Date(since.getTime() - DAY_MS).toISOString(), // before the window
     })
 
-    const rows = await readCampaignRevenue({ since, until })
+    const rows = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
 
     expect(sum(rows)).toBe(3_000)
   })
@@ -351,8 +351,31 @@ describe("readCampaignRevenue", () => {
   it("returns an empty list, not an error, when nothing is won yet", async () => {
     seedOpenOpportunity({ source_session_id: "sess-a" })
 
-    const rows = await readCampaignRevenue({ since, until })
+    const rows = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
 
     expect(rows).toEqual([])
+  })
+
+  // Task 7 (multi-tenancy): `readCampaignRevenue` used to scope its opportunities
+  // read to the hardcoded SINGLETON_BUSINESS_ID regardless of who asked. This
+  // seeds a SECOND business's won deal in the SAME window and proves each call
+  // sees only its own business's revenue — a test that only ever seeded one
+  // business could pass just as well against the old hardcoded scope.
+  it("scopes to the businessId it was given, not always the singleton", async () => {
+    const OTHER_BUSINESS = "33333333-3333-3333-3333-333333333333"
+
+    seedAttribution("sess-mine", { utm_campaign: "mine-campaign" })
+    seedWonOpportunity({ business_id: SINGLETON_BUSINESS_ID, source_session_id: "sess-mine", value_cents: 5_000 })
+
+    seedAttribution("sess-theirs", { utm_campaign: "their-campaign" })
+    seedWonOpportunity({ business_id: OTHER_BUSINESS, source_session_id: "sess-theirs", value_cents: 99_000 })
+
+    const mine = await readCampaignRevenue({ since, until, businessId: SINGLETON_BUSINESS_ID })
+    expect(sum(mine)).toBe(5_000)
+    expect(mine.some((r) => r.utmCampaign === "their-campaign")).toBe(false)
+
+    const theirs = await readCampaignRevenue({ since, until, businessId: OTHER_BUSINESS })
+    expect(sum(theirs)).toBe(99_000)
+    expect(theirs.some((r) => r.utmCampaign === "mine-campaign")).toBe(false)
   })
 })

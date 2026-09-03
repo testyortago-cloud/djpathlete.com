@@ -103,19 +103,33 @@ export default auth((req) => {
   let res: NextResponse
 
   if (pathname.startsWith("/admin")) {
+    // Stamped on every request this middleware lets through to an /admin
+    // page (not just /api/admin/*, as above) so app/(admin)/admin/layout.tsx
+    // can tell, without a redirect of its own, whether it is already
+    // rendering NO_ACCESS_PATH. Task 7's tenant resolver can throw
+    // NoAccessibleBusinessError for a signed-in admin/staff session with no
+    // reachable business, independent of which page was requested — and
+    // that page IS reachable at /admin/no-access itself, nested under this
+    // same layout. Without this header the layout would redirect() to
+    // NO_ACCESS_PATH from NO_ACCESS_PATH, forever.
+    const passThrough = () => {
+      const headers = new Headers(req.headers)
+      headers.set(ADMIN_PATH_HEADER, pathname)
+      return NextResponse.next({ request: { headers } })
+    }
     if (!isLoggedIn) {
       res = redirectToLogin(req)
     } else if (userRole === "staff") {
       // Default-deny: an /admin path in no registry rule is denied, so a new
       // admin surface is unreachable to staff until it is mapped deliberately.
       if (canAccessPath({ role: "staff", permissions }, pathname, req.method)) {
-        res = NextResponse.next()
+        res = passThrough()
       } else {
         const home = staffHomePath(permissions)
         // Never bounce someone off the page we would bounce them to.
         res =
           pathname === home || pathname === NO_ACCESS_PATH
-            ? NextResponse.next()
+            ? passThrough()
             : NextResponse.redirect(new URL(NO_ACCESS_PATH, req.url))
       }
     } else if (userRole !== "admin") {
@@ -123,7 +137,7 @@ export default auth((req) => {
       const home = userRole === "editor" ? "/editor" : "/client/dashboard"
       res = NextResponse.redirect(new URL(home, req.url))
     } else {
-      res = NextResponse.next()
+      res = passThrough()
     }
   } else if (pathname.startsWith("/editor")) {
     if (!isLoggedIn) {

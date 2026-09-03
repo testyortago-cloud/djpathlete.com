@@ -26,6 +26,7 @@ import { UsersRound } from "lucide-react"
 import Link from "next/link"
 import { requireAdmin } from "@/lib/auth-helpers"
 import { countContacts, listContacts, parseContactFilters } from "@/lib/db/contacts-list"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { listSequences } from "@/lib/db/sequences"
 import { tagsForContacts } from "@/lib/db/contact-tags"
 import { ContactsTable } from "@/components/admin/contacts/ContactsTable"
@@ -59,6 +60,7 @@ export default async function AdminContactsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireAdmin()
+  const { businessId } = await resolveAdminTenant()
 
   const params = await searchParams
   const read = (key: string) => {
@@ -72,14 +74,15 @@ export default async function AdminContactsPage({
   // fixed set, `days` and `page` against digit patterns. `parseContactFilters`
   // owns all three (lib/db/contacts-list.ts) so the rejection is unit-testable
   // without rendering this component, and so a junk `?days=` narrows to nothing
-  // rather than throwing on an Invalid Date.
+  // rather than throwing on an Invalid Date. It deliberately does not set
+  // `businessId` — that comes from the resolved tenant, not the URL bar.
   const filters = parseContactFilters(raw)
 
   const [contacts, total, sequences] = await Promise.all([
     // The page number is turned into an offset HERE and not in the DAL, because
     // this is the only file that knows the page size — see PAGE_SIZE above.
-    listContacts({ ...filters, limit: PAGE_SIZE, offset: (filters.page - 1) * PAGE_SIZE }),
-    countContacts(filters),
+    listContacts({ ...filters, businessId, limit: PAGE_SIZE, offset: (filters.page - 1) * PAGE_SIZE }),
+    countContacts({ ...filters, businessId }),
     listSequences(),
   ])
 

@@ -12,6 +12,8 @@ interface AdminTopBarProps {
   onMenuClick?: () => void
   avatarUrl?: string | null
   initials?: string
+  /** Task 7: the business switcher, when the signed-in coach has more than one. */
+  businessSwitcher?: React.ReactNode
 }
 
 const unitOptions: { value: WeightUnit; label: string }[] = [
@@ -19,7 +21,7 @@ const unitOptions: { value: WeightUnit; label: string }[] = [
   { value: "lbs", label: "lbs" },
 ]
 
-export function AdminTopBar({ onMenuClick, avatarUrl, initials = "A" }: AdminTopBarProps) {
+export function AdminTopBar({ onMenuClick, avatarUrl, initials = "A", businessSwitcher }: AdminTopBarProps) {
   const { unit, setUnit } = useAdminWeightUnit()
 
   return (
@@ -37,6 +39,8 @@ export function AdminTopBar({ onMenuClick, avatarUrl, initials = "A" }: AdminTop
       </div>
 
       <div className="flex items-center gap-3">
+        {businessSwitcher}
+
         {/* Weight unit toggle */}
         <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted/50 p-0.5">
           {unitOptions.map((opt) => (

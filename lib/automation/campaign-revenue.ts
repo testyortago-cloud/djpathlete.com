@@ -29,7 +29,6 @@
 // neither ever just vanishes from the total.
 
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 type Row = Record<string, any>
 
@@ -76,13 +75,17 @@ export type CampaignRevenueRow = {
  * tell "we checked, and everything traced" apart from "this reader forgot
  * to compute the bucket".
  */
-export async function readCampaignRevenue(input: { since: Date; until: Date }): Promise<CampaignRevenueRow[]> {
+export async function readCampaignRevenue(input: {
+  since: Date
+  until: Date
+  businessId: string
+}): Promise<CampaignRevenueRow[]> {
   const supabase = createServiceRoleClient()
 
   const { data: oppData, error: oppErr } = await supabase
     .from("opportunities")
     .select("source_session_id, value_cents")
-    .eq("business_id", SINGLETON_BUSINESS_ID)
+    .eq("business_id", input.businessId)
     .eq("outcome", "won")
     .gte("closed_at", input.since.toISOString())
     .lt("closed_at", input.until.toISOString())

@@ -43,9 +43,19 @@ export async function singletonHostId(): Promise<string | null> {
   return (data as { id: string } | null)?.id ?? null
 }
 
-export async function getBookings(status?: BookingStatus) {
+/**
+ * `businessId` is REQUIRED and comes first. This function previously applied
+ * NO business predicate at all -- not a default, an absence -- so every
+ * admin bookings list read every business's rows. Not a leak while one
+ * business existed; a leak the moment a second one does.
+ */
+export async function getBookings(businessId: string, status?: BookingStatus) {
   const supabase = getClient()
-  let query = supabase.from("bookings").select("*").order("booking_date", { ascending: false })
+  let query = supabase
+    .from("bookings")
+    .select("*")
+    .eq("business_id", businessId)
+    .order("booking_date", { ascending: false })
 
   if (status) {
     query = query.eq("status", status)

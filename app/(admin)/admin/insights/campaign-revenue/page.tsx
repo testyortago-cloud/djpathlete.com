@@ -22,6 +22,7 @@ import { requireAdmin } from "@/lib/auth-helpers"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { possessiveName } from "@/lib/lead-engine/business-copy"
 import { readCampaignRevenue } from "@/lib/automation/campaign-revenue"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { formatCents } from "@/lib/bookkeeping/money"
 import {
   DataTable,
@@ -45,11 +46,15 @@ function utmCell(value: string | null) {
 
 export default async function CampaignRevenuePage() {
   await requireAdmin()
+  const { businessId } = await resolveAdminTenant()
 
   const until = new Date()
   const since = new Date(0)
 
-  const [rows, business] = await Promise.all([readCampaignRevenue({ since, until }), getBusinessSettings()])
+  const [rows, business] = await Promise.all([
+    readCampaignRevenue({ since, until, businessId }),
+    getBusinessSettings(businessId),
+  ])
   const name = possessiveName(business.display_name)
 
   // Campaign rows only, most valuable first — sort key is `wonValueCents`,

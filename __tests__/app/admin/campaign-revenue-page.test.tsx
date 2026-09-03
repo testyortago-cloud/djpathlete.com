@@ -16,13 +16,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 vi.mock("@/lib/auth-helpers", () => ({ requireAdmin: vi.fn() }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
 vi.mock("@/lib/automation/campaign-revenue", () => ({ readCampaignRevenue: vi.fn() }))
+// Task 7: the page now also resolves the tenant for its businessId. Mocked
+// here the same way `resolveAdminTenant`'s other page callers are — the real
+// implementation reaches `next/headers`, which throws outside a request scope
+// in this harness.
+vi.mock("@/lib/tenancy/resolve", () => ({ resolveAdminTenant: vi.fn() }))
 
 import { requireAdmin } from "@/lib/auth-helpers"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { readCampaignRevenue } from "@/lib/automation/campaign-revenue"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import Page from "@/app/(admin)/admin/insights/campaign-revenue/page"
 
 const BUSINESS = { display_name: "Acme Coaching" }
+const BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
 
 async function renderPage() {
   render(await Page())
@@ -36,9 +43,24 @@ beforeEach(() => {
   vi.clearAllMocks()
   ;(requireAdmin as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "admin" } })
   ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue(BUSINESS)
+  ;(resolveAdminTenant as ReturnType<typeof vi.fn>).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "Acme Coaching", slug: "acme" }],
+    isOperator: true,
+  })
 })
 
 describe("campaign revenue page", () => {
+  // Does not call renderPage()/render() on purpose — this asserts the VALUE
+  // the page passes to its two reads, which does not need a DOM at all. An
+  // argument-blind mock would accept a wrong or missing businessId silently.
+  it("passes the resolved businessId through to readCampaignRevenue and getBusinessSettings", async () => {
+    ;(readCampaignRevenue as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    await Page()
+    expect(readCampaignRevenue).toHaveBeenCalledWith(expect.objectContaining({ businessId: BUSINESS_ID }))
+    expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
+  })
+
   it("renders the empty state, not a fabricated zero row, when nothing has won yet", async () => {
     ;(readCampaignRevenue as ReturnType<typeof vi.fn>).mockResolvedValue([])
     await renderPage()
