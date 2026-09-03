@@ -157,8 +157,8 @@ function deriveEndAt(input: BookingIngestInput): string {
  * `writeRow`'s insert names all seven, `updateExisting` names one
  * (`end_at`), and `readByKey` filters on one (`business_id`) — so if Vercel
  * wins that race, every booking webhook, both vendors, would 500 until the
- * migration Action finishes. The same trick 00239's header describes for the
- * two Calendly columns, generalised to these seven.
+ * migration Action finishes. The same trick 00239's header describes for its
+ * three Calendly-only columns, generalised to these seven.
  */
 const TENANT_COLUMNS = [
   "business_id",
@@ -171,7 +171,7 @@ const TENANT_COLUMNS = [
 ] as const
 
 /**
- * Sticky for the life of this server instance. Once one write proves the
+ * Sticky for the life of this server instance. Once one write PROVES the
  * columns are missing, every later call in this instance skips straight to
  * the pre-00241 shape rather than paying for a doomed wide attempt first —
  * this function is on the hot path of every booking webhook, unlike the
@@ -179,10 +179,38 @@ const TENANT_COLUMNS = [
  * (lib/db/lead-inquiries.ts, lib/db/funnels.ts). A fresh deploy starts this
  * false again, which is correct: the migration landing is exactly what a
  * redeploy would follow.
+ *
+ * Set ONLY after a narrowed retry actually SUCCEEDS, never on the bare
+ * detection of a PGRST204/42703 — see isMissingTenantColumnsError for why
+ * the error code alone is not proof that stripping TENANT_COLUMNS is
+ * sufficient. Setting it on detection alone was review round 2's finding:
+ * if more than one migration's columns are missing at once, the narrowed
+ * retry can fail too, and a flag set on detection would then wedge this
+ * instance into legacy mode — silently dropping contact_id, host_id,
+ * chat_conversation_id, invitee_timezone and end_at on every booking after
+ * that — even once every migration has landed.
  */
 let tenantColumnsAbsent = false
 
-/** PostgREST's schema-cache miss on a write, or Postgres' own undefined_column. */
+/**
+ * PostgREST's schema-cache miss on a write, or Postgres' own undefined_column.
+ *
+ * Checks the CODE only, never WHICH column was missing — deliberately, but
+ * with a known residual. This fallback strips exactly TENANT_COLUMNS, 00241's
+ * seven. Migration 00239 (calendly_event_uri, reschedule_url, cancel_url —
+ * three Calendly-only columns; see writeRow) is a SEPARATE, still-unmerged
+ * migration living on feat/calendly-booking, never merged to main. If both
+ * migrations are missing at once and a Calendly insert races
+ * that window, the narrowed retry below still names all three 00239 columns,
+ * still fails, and — because tenantColumnsAbsent is now only set once a
+ * retry actually succeeds — correctly leaves the flag false rather than
+ * wedging this instance into legacy mode. That one Calendly delivery is
+ * genuinely lost. Accepted: 00239's own header records that the Calendly
+ * webhook is registered with the vendor BY HAND, only after both the code
+ * and the migration have landed, so no Calendly delivery can physically
+ * arrive during that window at all. A GHL insert never names the 00239
+ * columns in the first place (see writeRow), so it is unaffected either way.
+ */
 function isMissingTenantColumnsError(error: { code?: string } | null | undefined): boolean {
   return error?.code === "PGRST204" || error?.code === "42703"
 }
@@ -361,10 +389,17 @@ async function writeRow(
 
   if (insertResult.error && !tenantColumnsAbsent && isMissingTenantColumnsError(insertResult.error)) {
     warnTenantColumnsAbsent(ctx, "insert", insertResult.error)
-    tenantColumnsAbsent = true
     // Nothing was written on the failed attempt above, so retrying cannot
     // double-insert.
-    insertResult = await ctx.supabase.from("bookings").insert(stripTenantColumns(row)).select("id").single()
+    const retry = await ctx.supabase.from("bookings").insert(stripTenantColumns(row)).select("id").single()
+    // Only believe the columns are missing once the narrower attempt PROVES
+    // it by succeeding — see tenantColumnsAbsent's header. If this retry
+    // also fails (e.g. a Calendly insert during the 00239-and-00241 merge
+    // race, when three more columns are also missing), the flag stays
+    // false and the NEXT booking gets a fresh, honest wide attempt instead
+    // of being stuck in legacy mode forever.
+    if (!retry.error) tenantColumnsAbsent = true
+    insertResult = retry
   }
 
   const { data: insertedBooking, error } = insertResult
@@ -474,24 +509,27 @@ async function readByKey(
       .eq(key.column, key.value)
       .eq("business_id", businessId)
       .maybeSingle()
-    if (error && isMissingTenantColumnsError(error)) {
-      warnTenantColumnsAbsent(ctx, "read", error)
-      tenantColumnsAbsent = true
-    } else {
+    if (!error || !isMissingTenantColumnsError(error)) {
       return (data as ExistingRow | null) ?? null
     }
+    warnTenantColumnsAbsent(ctx, "read", error)
+    // Do NOT set tenantColumnsAbsent here — only the narrow retry below,
+    // if it succeeds, actually proves the columns are missing. See
+    // tenantColumnsAbsent's header.
   }
 
-  // business_id isn't on this instance's bookings table yet (00241 hasn't
-  // landed). A redelivered vendor key could theoretically match a different
-  // business's row here — accepted rather than thrown on, because only one
-  // business exists until phase 1 ships createBusiness; there is nothing to
+  // business_id isn't on this instance's bookings table yet — either just
+  // proven above, or already known from an earlier call in this instance. A
+  // redelivered vendor key could theoretically match a different business's
+  // row here — accepted rather than thrown on, because only one business
+  // exists until phase 1 ships createBusiness; there is nothing to
   // cross-match against yet.
-  const { data } = await ctx.supabase
+  const { data, error } = await ctx.supabase
     .from("bookings")
     .select("id, status, booking_date")
     .eq(key.column, key.value)
     .maybeSingle()
+  if (!tenantColumnsAbsent && !error) tenantColumnsAbsent = true
   return (data as ExistingRow | null) ?? null
 }
 
@@ -513,11 +551,14 @@ async function updateExisting(
 
   if (error && !tenantColumnsAbsent && isMissingTenantColumnsError(error)) {
     warnTenantColumnsAbsent(ctx, "update", error)
-    tenantColumnsAbsent = true
     // A fresh object, not a mutation of `updates` in place: the caller (or a
     // test capturing the payload by reference, as this one does) must still
     // see what the FIRST attempt actually sent.
     const retry = await ctx.supabase.from("bookings").update(stripTenantColumns(updates)).eq("id", existing.id)
+    // Only believe the columns are missing once the narrower attempt PROVES
+    // it by succeeding — see tenantColumnsAbsent's header for why the
+    // ordering matters.
+    if (!retry.error) tenantColumnsAbsent = true
     error = retry.error
   }
 

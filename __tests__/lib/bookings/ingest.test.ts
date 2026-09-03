@@ -475,6 +475,74 @@ describe("the deploy-race fallback (00241's tenant columns not yet on this insta
     warn.mockRestore()
   })
 
+  // Review round 2: the merge race isn't only against 00241. Migration 00239
+  // (calendly_event_uri, reschedule_url, cancel_url) is a SEPARATE, still-
+  // unmerged migration (feat/calendly-booking, never merged to main). If both
+  // are missing at once, a Calendly insert still names 00239's three columns
+  // even after 00241's seven are stripped, so the narrowed retry fails too.
+  // Setting tenantColumnsAbsent on the bare detection of the FIRST failure
+  // (round 1's behaviour) would wedge the instance into legacy mode forever
+  // — silently dropping contact_id, host_id, chat_conversation_id,
+  // invitee_timezone and end_at on every booking after that, even once every
+  // migration has landed. The fix: only set the flag once a narrower retry
+  // actually PROVES it by succeeding.
+  it("does NOT set the sticky flag when the narrowed retry also fails, so the next booking still attempts the wide row", async () => {
+    const insertedRows: Record<string, unknown>[] = []
+    let insertCount = 0
+    vi.resetModules()
+    vi.doMock("@/lib/supabase", () => ({
+      createServiceRoleClient: () => ({
+        from: (table: string) => {
+          if (table !== "bookings") return { select: () => ({ eq: () => Promise.resolve({ data: [], error: null }) }) }
+          return {
+            select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+            insert: (row: Record<string, unknown>) => {
+              insertedRows.push(row)
+              insertCount++
+              return {
+                select: () => ({
+                  single: async () =>
+                    // Both the first booking's wide attempt (call 1) AND its
+                    // narrowed retry (call 2) fail — simulating 00239 also
+                    // being absent, so stripping only 00241's seven columns
+                    // is not enough. Call 3 (a SECOND booking) only succeeds
+                    // if it is still attempting the wide shape.
+                    insertCount <= 2
+                      ? {
+                          data: null,
+                          error: {
+                            code: "PGRST204",
+                            message: "Could not find the 'calendly_event_uri' column of 'bookings' in the schema cache",
+                          },
+                        }
+                      : { data: { id: "bk-second-call" }, error: null },
+                }),
+              }
+            },
+          }
+        },
+      }),
+    }))
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+    const { ingestBooking: freshIngestBooking } = await import("@/lib/bookings/ingest")
+
+    // First booking: both attempts fail. The booking is genuinely lost for
+    // this one delivery — it must throw, not silently swallow it.
+    await expect(freshIngestBooking(input({ status: "cancelled" }))).rejects.toMatchObject({ code: "PGRST204" })
+    expect(insertCount).toBe(2)
+
+    // Second booking, same (fresh) module instance. If the flag had been set
+    // on the first failure alone, this row would already be narrow. It is
+    // not: the instance is still willing to try the wide shape.
+    const result = await freshIngestBooking(input({ status: "cancelled", bookingDate: "2026-09-11T14:00:00.000Z" }))
+    expect(result).toEqual({ action: "created", bookingId: "bk-second-call" })
+    expect(insertCount).toBe(3)
+    expect(insertedRows[2]).toMatchObject({ business_id: SINGLETON_BUSINESS_ID, end_at: expect.any(String) })
+
+    warn.mockRestore()
+  })
+
   it("falls back to the pre-00241 row shape when the update reports 42703 for end_at, and retries once", async () => {
     const updatePayloads: Record<string, unknown>[] = []
     let updateCount = 0
