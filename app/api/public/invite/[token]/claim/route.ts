@@ -5,6 +5,8 @@ import { getUserByEmail, createUser } from "@/lib/db/users"
 import { claimInviteSchema } from "@/lib/validators/team-invite"
 import { isPgUniqueViolation } from "@/lib/supabase-errors"
 import { roleForPermissions, sanitizePermissionMap } from "@/lib/permissions/registry"
+import { addBusinessMember, linkHostToUser, type BusinessMemberRole } from "@/lib/db/business-members"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 export async function POST(
   request: Request,
@@ -79,6 +81,20 @@ export async function POST(
   }
 
   await markInviteUsed(invite.id)
+
+  // Every teammate gets a membership row, because ABSENCE of one now means "no
+  // access" (the compatibility branch in resolveAdminTenant is gone as of
+  // migration 00246). A business-scoped invite names its business; a plain
+  // /admin/team invite is platform staff on the singleton.
+  const membershipBusinessId = invite.business_id ?? SINGLETON_BUSINESS_ID
+  const membershipRole = invite.business_id
+    ? ((invite.business_role ?? "coach") as BusinessMemberRole)
+    : "staff"
+  await addBusinessMember(membershipBusinessId, user.id, membershipRole)
+  // A coach is the person whose calendar the bookings land on, so their login
+  // claims the host row create_business left unowned. Only coaches: a staff
+  // member is not a host.
+  if (membershipRole === "coach") await linkHostToUser(membershipBusinessId, user.id)
 
   return NextResponse.json({ user: { id: user.id, email: user.email } }, { status: 201 })
 }

@@ -34,6 +34,8 @@ function invite(over: Partial<TeamInvite> = {}): TeamInvite {
     created_at: "2026-05-04T00:00:00Z",
     permissions: { blog: true },
     staff_role: "marketing",
+    business_id: null,
+    business_role: null,
     ...over,
   }
 }

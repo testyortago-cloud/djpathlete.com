@@ -1,7 +1,6 @@
 import { cookies } from "next/headers"
 import { auth } from "@/lib/auth"
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { BUSINESS_COOKIE } from "@/lib/tenancy/cookie"
 
 export type BusinessChoice = { id: string; name: string; slug: string }
@@ -64,9 +63,9 @@ async function membershipBusinessIds(userId: string): Promise<string[]> {
     .select("business_id")
     .eq("user_id", userId)
   // A FAILED READ IS NOT AN EMPTY LIST. PostgREST resolves rather than
-  // throwing, and treating {data:null,error} as "no memberships" would send a
-  // coach down the singleton compatibility path below -- silently widening
-  // them to another tenant's rows.
+  // throwing, and treating {data:null,error} as "no memberships" would read as
+  // NoAccessibleBusinessError -- turning a transient DB error into a coach
+  // being locked out, rather than the loud failure a read error should be.
   if (error) throw new Error(`resolveAdminTenant membership read failed (${error.code}): ${error.message}`)
   return ((data ?? []) as { business_id: string }[]).map((r) => r.business_id)
 }
@@ -80,24 +79,30 @@ const ADMIN_PANEL_ROLES = new Set(["admin", "staff"])
  * businesses a caller may read -- if they did, one of them would be a leak.
  */
 async function allowedSet(userId: string, role: string): Promise<{ choices: BusinessChoice[]; isOperator: boolean }> {
-  // Only admin-panel roles resolve a tenant at all. `client` and `editor` have
-  // no business in /admin -- and the compat path below would otherwise hand a
-  // self-registered client the singleton, which proxy.ts does not stop
-  // because it gates /api/* for `staff` only. This is the guard that makes
-  // the compat path safe to keep until membership is universal.
+  // Only admin-panel roles resolve a tenant at all. `client` and `editor`
+  // have no business in /admin, even though migration 00246 gave `editor`
+  // rows a `staff` business_members row (so the booking-notification fan-out
+  // reaches them) -- and proxy.ts does not stop a self-registered client from
+  // reaching these routes, since it gates /api/* for `staff` only. This guard
+  // is what keeps that closed regardless of membership.
   if (!ADMIN_PANEL_ROLES.has(role)) throw new NoAccessibleBusinessError()
 
   if (role === "admin") {
     return { choices: await allBusinesses(), isOperator: true }
   }
   const ids = await membershipBusinessIds(userId)
-  if (ids.length === 0) {
-    // COMPATIBILITY, not a default. Every staff user predating multi-coach has
-    // no membership row and legitimately works on the singleton; denying them
-    // would break every existing teammate the day this merges. A coach is
-    // created WITH a membership row, so a coach never takes this path.
-    return { choices: await activeBusinessesByIds([SINGLETON_BUSINESS_ID]), isOperator: false }
-  }
+  // NO COMPATIBILITY FALLBACK HERE ANY MORE. Migration 00246 backfilled every
+  // existing admin/staff/editor with a real membership row (read-back
+  // confirmed 0 teammates without one), and both invite paths -- a
+  // business-scoped invite and a plain /admin/team invite alike -- now write
+  // one on accept. Absence of a row therefore means exactly one thing: no
+  // access, not "predates multi-tenancy". The old fallback to
+  // SINGLETON_BUSINESS_ID could not tell those two cases apart, so
+  // OFFBOARDING a coach by deleting their row PROMOTED them into the
+  // operator's own tenant -- every contact, pipeline card and booking in it.
+  // An empty `ids` here now falls straight through to
+  // `activeBusinessesByIds([])` -> `[]` -> `select()` throws
+  // NoAccessibleBusinessError, exactly like any other empty allowed set.
   return { choices: await activeBusinessesByIds(ids), isOperator: false }
 }
 
@@ -112,10 +117,9 @@ function select(choices: BusinessChoice[], cookieValue: string | undefined): str
   const first = choices[0]?.id
   // Never fall back to a constant. An empty allowed set means NO reachable
   // business -- e.g. a coach whose only membership points at a business that
-  // was since paused -- and answering with the singleton would hand that
-  // coach the operator's own tenant: every contact, pipeline card and
-  // booking in it. The compat path (no membership rows at all) never reaches
-  // here empty; it explicitly resolves the singleton's own row upstream.
+  // was since paused, or (as of this task) simply no membership row at all --
+  // and answering with the singleton would hand that caller the operator's
+  // own tenant: every contact, pipeline card and booking in it.
   if (!first) throw new NoAccessibleBusinessError()
   return first
 }

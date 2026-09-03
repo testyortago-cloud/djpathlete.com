@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { permissionMapSchema } from "@/lib/validators/team-invite"
 
 /**
  * Slugs that would collide with a route segment or with a reserved word in
@@ -83,3 +84,24 @@ export const businessPatchSchema = z.object({
 })
 
 export type BusinessPatch = z.infer<typeof businessPatchSchema>
+
+/**
+ * POST /api/admin/businesses/[id]/members. No `role` field for the same
+ * reason sendInviteSchema has none -- the PLATFORM role (staff | editor) is
+ * derived server-side from `permissions`. `businessRole` is a different axis
+ * entirely: it is what business_members.role the accept path grants, per
+ * migration 00240's (owner|coach|staff) check.
+ */
+export const businessMemberInviteSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email address"),
+  businessRole: z.enum(["owner", "coach", "staff"]),
+  permissions: permissionMapSchema.optional().default({}),
+})
+
+export type BusinessMemberInviteInput = z.infer<typeof businessMemberInviteSchema>
+
+export const businessMemberRemoveSchema = z.object({
+  userId: z.string().uuid(),
+})
+
+export type BusinessMemberRemoveInput = z.infer<typeof businessMemberRemoveSchema>

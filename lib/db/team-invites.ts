@@ -3,6 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import type { PermissionMap } from "@/lib/permissions/registry"
 import { roleForPermissions, sanitizePermissionMap } from "@/lib/permissions/registry"
 import type { TeamInvite } from "@/types/database"
+import type { BusinessMemberRole } from "@/lib/db/business-members"
 
 export { inviteStatus } from "@/lib/team-invites/status"
 
@@ -33,6 +34,10 @@ export async function createInvite(input: {
   /** Already sanitized by the validator; re-sanitized here so the DAL is safe on its own. */
   permissions?: PermissionMap
   staffRole?: string | null
+  /** Names the business a coach/staff invite grants membership to. Null is a plain platform-staff invite. */
+  businessId?: string | null
+  /** business_members.role the accept path will grant. Ignored when businessId is null. */
+  businessRole?: BusinessMemberRole | null
 }): Promise<TeamInvite> {
   const supabase = getClient()
   const token = generateInviteToken()
@@ -51,6 +56,8 @@ export async function createInvite(input: {
       permissions,
       // A preset label on an editor invite would describe access they don't have.
       staff_role: role === "staff" ? (input.staffRole ?? null) : null,
+      business_id: input.businessId ?? null,
+      business_role: input.businessId ? (input.businessRole ?? null) : null,
     })
     .select()
     .single()

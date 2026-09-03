@@ -115,14 +115,18 @@ describe("resolveAdminTenant — a coach", () => {
     expect(t.choices.map((c) => c.id)).not.toContain("aaa")
   })
 
-  it("falls back to the singleton when it has no membership rows", async () => {
-    // Compatibility: every staff user today has no membership row, and
-    // denying them would break every existing teammate on merge day.
+  it("throws NoAccessibleBusinessError when it has no membership rows", async () => {
+    // No more compatibility fallback. Migration 00246 backfilled every
+    // existing admin/staff/editor with a real membership row, and both
+    // invite paths write one on accept, so absence of a row now means
+    // exactly one thing: no access -- never "predates multi-tenancy". The
+    // old fallback to SINGLETON_BUSINESS_ID here is exactly what let
+    // offboarding a coach (deleting their membership row) PROMOTE them into
+    // the operator's own tenant.
     session = { user: { id: "old-staff", role: "staff" } }
     membersRows = []
     businessesRows = [{ id: SINGLETON_BUSINESS_ID, name: "Primary", slug: "primary", status: "active" }]
-    const t = await resolveAdminTenant()
-    expect(t.businessId).toBe(SINGLETON_BUSINESS_ID)
+    await expect(resolveAdminTenant()).rejects.toThrow(NoAccessibleBusinessError)
   })
 
   it("THROWS when the membership read fails — it must never read as 'no memberships'", async () => {
@@ -231,11 +235,14 @@ describe("resolveAdminTenant — roles with no business in /admin", () => {
     await expect(resolveAdminTenant()).rejects.toThrow(NoAccessibleBusinessError)
   })
 
-  it("PRESENCE CONTROL — staff, same zero-membership setup, still resolves the singleton", async () => {
-    // Proves the two tests above fail because of the ROLE, not because this
-    // test setup makes everything throw.
-    session = { user: { id: "old-staff", role: "staff" } }
-    membersRows = []
+  it("PRESENCE CONTROL — staff WITH a real membership row resolves normally", async () => {
+    // Proves the two tests above throw because of the ROLE, not because this
+    // mock setup makes every call throw. Zero-membership staff can no longer
+    // serve as this control (step 13 removed that fallback -- staff with no
+    // membership row now throws too, same as client/editor), so this gives
+    // staff a real row, same as every teammate has post-migration-00246.
+    session = { user: { id: "staffer", role: "staff" } }
+    membersRows = [{ business_id: SINGLETON_BUSINESS_ID }]
     businessesRows = [{ id: SINGLETON_BUSINESS_ID, name: "Primary", slug: "primary", status: "active" }]
     const t = await resolveAdminTenant()
     expect(t.businessId).toBe(SINGLETON_BUSINESS_ID)

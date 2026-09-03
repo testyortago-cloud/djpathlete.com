@@ -2,8 +2,10 @@ import { notFound } from "next/navigation"
 import { requireAdmin } from "@/lib/auth-helpers"
 import { getBusiness, getBusinessSettings, BusinessSettingsMissingError } from "@/lib/db/businesses"
 import { resolveAdminTenant, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
+import { listBusinessMembers } from "@/lib/db/business-members"
 import { DataTableBadge } from "@/components/ui/data-table"
 import { BusinessSettingsForm } from "@/components/admin/businesses/BusinessSettingsForm"
+import { BusinessMembersCard } from "@/components/admin/businesses/BusinessMembersCard"
 
 export const metadata = { title: "Business settings" }
 
@@ -44,6 +46,8 @@ export default async function BusinessDetailPage({ params }: { params: Promise<{
     throw err
   }
 
+  const members = await listBusinessMembers(id)
+
   return (
     <div className="space-y-6 p-6">
       <header className="flex items-start justify-between gap-4">
@@ -55,6 +59,8 @@ export default async function BusinessDetailPage({ params }: { params: Promise<{
           {business.status === "active" ? "Active" : "Paused"}
         </DataTableBadge>
       </header>
+
+      <BusinessMembersCard businessId={business.id} initialMembers={members} />
 
       <BusinessSettingsForm businessId={business.id} settings={settings} />
     </div>
