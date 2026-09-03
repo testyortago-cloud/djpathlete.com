@@ -66,6 +66,7 @@ Every task's requirements implicitly include this section. Values are copied ver
 |---|---|
 | `supabase/migrations/00244_create_business_function.sql` | `create_business()` plpgsql + grants; `businesses.slug` CHECK + NOT NULL |
 | `supabase/migrations/00245_team_invites_business.sql` | `team_invites.business_id`, `.business_role`, both nullable |
+| `supabase/migrations/00246_backfill_business_members.sql` | Backfill a singleton membership row for every existing admin/staff/editor, so ABSENCE of one can mean "no access" (added after Task 3's review) |
 | `lib/tenancy/resolve.ts` | The ONE allowed-set implementation. `resolveAdminTenant()` (server components) and `resolveAdminTenantForRequest(req)` (route handlers) |
 | `lib/tenancy/cookie.ts` | `BUSINESS_COOKIE` name + the cookie's options, so the reader and the writer cannot disagree |
 | `lib/validators/business.ts` | Zod schemas for create + settings-patch, and the slug rules |
@@ -3076,7 +3077,7 @@ npm run dev > /tmp/phase1-dev.log 2>&1 &
 
 **Never pipe a long-running server to `head`** — it wedges, and every route then times out AFTER working fine (memory). Wait for "Ready" in the log before driving.
 
-Migrations `00244` and `00245` must already be applied to the dev clone (Tasks 1 and 6). If the Businesses screen 500s, check that first: the dev clone has been missing migrations before.
+Migrations `00244`, `00245` and `00246` must already be applied to the dev clone (Tasks 1 and 6). If the Businesses screen 500s, check that first: the dev clone has been missing migrations before.
 
 - [ ] **Step 3: Capture the flow — through the real UI, in this order**
 

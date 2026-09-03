@@ -20,12 +20,13 @@ Phase 0 made a second coach *possible* in the schema. Nothing can still **create
 | 1 | **A coach is `users.role = 'staff'` + a permission map + a `business_members` row.** Membership carries the tenant; permissions carry the capability. | Widening `users.role` makes every exhaustive two-branch conditional in `proxy.ts` and the admin layout a latent bug, and the prompt forbids it. A new role would also duplicate the entire `lib/permissions/registry.ts` catalogue. |
 | 2 | **`createBusiness` is a plpgsql function**, called through `.rpc()`. | supabase-js cannot open a transaction. Four separate inserts leave a half-built tenant on any failure — a `businesses` row with no settings is a business every screen throws on. `merge_contacts` already establishes plpgsql as this repo's answer for a multi-row atomic write. |
 | 3 | **The operator is an implicit owner of every business, not a member row.** | The owner's answer: operator sees all, coaches see only their own. Materialising owner rows means every `createBusiness` must also insert one per operator, and every operator added later needs a backfill. `role === 'admin'` already means "the operator" everywhere in this codebase. |
-| 4 | **A staff user with no membership rows resolves to the singleton.** | Every staff user today has no membership row. Denying them would break every existing teammate on the day this merges. This is the compatibility path, and a coach is created *with* a membership row so a coach never takes it. |
+| 4 | **Membership is universal, so its ABSENCE means "no access".** Migration `00246` backfills every existing teammate; both invite paths write a row. *(Revised after Task 3's review — the original decision was a singleton fallback for a staff user with no rows.)* | The fallback could not tell *predates multi-tenancy* from *membership just revoked*, so offboarding a coach by deleting their row **promoted** them into the operator's own tenant. A backfill turns an inferred compatibility path into explicit data, and the resolver then refuses to invent a tenant at all (decision 11). |
 | 5 | **The selected business is a cookie, validated against the caller's allowed set on every read.** | A cookie that is trusted as given is a one-header cross-tenant read. The allowed set is recomputed server-side per request; the cookie only ever *chooses among* it. |
 | 6 | **Twilio inbound resolves its tenant from the `To` number** via `business_settings.sms_sender_phone`. | That column already exists (`00221`) and the `To` number is the only tenant evidence an inbound SMS carries. This is a real resolution, not a placeholder. |
 | 7 | **The Stripe webhook resolves its tenant from the payer's contact row**, through one deliberately unscoped lookup. | One Stripe account serves every business, so the webhook carries no tenant. The contact record does. See §7.2 for the tie-break when two businesses know the same email. |
 | 8 | **The Calendly and GHL webhooks keep the platform business, behind a named seam** (`platformBusinessId()`), not a bare constant. | Phase 2 resolves these from the connection row, which does not exist yet. A named function is one greppable seam for phase 2 instead of four literals; calling it a resolution would be a lie. |
 | 9 | **`slug` becomes `NOT NULL` with its CHECK in the same deploy as the code.** | Safe *because nothing inserts into `businesses` today* — there is no writer that could omit it. Reasoned, not assumed: see §8.2. |
+| 11 | **The resolver NEVER invents a business id.** An empty allowed set throws `NoAccessibleBusinessError`; the admin layout catches it and redirects to `/admin/no-access`. The operator's allowed set ignores `status`, so pausing the last business cannot lock them out of the screen that un-pauses it. *(Added after Task 3's review.)* | The original `?? SINGLETON_BUSINESS_ID` fallback meant a coach whose only business was paused was handed the operator's tenant — every contact, pipeline card and booking in it. A fallback constant in a tenancy resolver is a privilege escalation waiting for an ordinary admin action to trigger it. |
 | 10 | **Crons iterate active businesses but still write one `cron_runs` row per tick.** | `lastSuccessPerCron` selects the single most recent successful row per `cron_name`, so a row per business would hide a business failing every tick behind any business that succeeded. Parent spec §4.2. |
 
 ### What phase 1 does NOT build
@@ -343,8 +344,11 @@ Rows written before phase 0 have a null `contact_id` and will drop off the conta
 |---|---|
 | `00244` | `create_business(...)` plpgsql + grants; `businesses.slug` CHECK and NOT NULL (§8.2) |
 | `00245` | `team_invites.business_id`, `team_invites.business_role`, both nullable |
+| `00246` | Backfill a singleton `business_members` row for every existing `admin`/`staff`/`editor` user |
 
-**Two migrations, not three.** An earlier draft planned a `00246` widening `google_ads_accounts`' key to `(customer_id, business_id)`. §7.1 establishes that `customer_id` is the primary key with nine child foreign keys referencing it, so that migration is both unavailable and unnecessary — the ads fix is code-only.
+**`00246` was added after Task 3's review**, which found that the resolver's compatibility branch — "zero membership rows means the singleton" — could not tell *predates multi-tenancy* from *membership just revoked*, so offboarding a coach promoted them into the operator's own tenant. Making membership universal is what lets that branch be deleted, after which absence means exactly one thing. It also gives `business_members` its **first writer**: phase 0 pointed the "New Call Booked" fan-out at that table and shipped it with none, so the notification has reached nobody since — including on the GHL calendar, which is the one taking bookings today.
+
+**Still no migration widens `google_ads_accounts`.** An earlier draft planned a `00246` widening `google_ads_accounts`' key to `(customer_id, business_id)`. §7.1 establishes that `customer_id` is the primary key with nine child foreign keys referencing it, so that migration is both unavailable and unnecessary — the ads fix is code-only.
 
 Applied to the dev clone (`anjvztjiokcgiyhobknq`) as each lands, and **read back**. `CREATE POLICY` has no `IF NOT EXISTS`, so a DROP guard goes in the applier, never in the `.sql`.
 
@@ -390,7 +394,7 @@ TDD. Retarget existing tests rather than deleting them; the one-board merge's tw
 
 ### 11.1 This phase is one pull request
 
-`00244` and `00245` are both safe against the old build (§8.2), and the code that reads them tolerates their absence only in the sense that it is new code with no old callers. One PR, migrations first, Vercel second — the safe ordering, and the same one phase 0 observed working.
+`00244`, `00245` and `00246` are all safe against the old build (§8.2 — `00246` only INSERTS rows into a table whose sole deployed reader currently finds none, so the old build cannot violate anything), and the code that reads them tolerates their absence only in the sense that it is new code with no old callers. One PR, migrations first, Vercel second — the safe ordering, and the same one phase 0 observed working.
 
 ### 11.2 Not to be done
 
