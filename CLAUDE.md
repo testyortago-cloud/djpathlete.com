@@ -60,6 +60,45 @@ Embeddings use Hugging Face transformers for exercise matching. Token tracking a
 - **Custom CSS vars:** `--success`, `--error`, `--warning`, `--surface` defined in globals.css.
 - **Tables — always use `components/ui/data-table.tsx`.** This is the house standard for every list in the app, taken from the Clients list. Never hand-roll a `<table>`: compose `DataTableCard` → optional `DataTableToolbar` → `DataTable` / `DataTableHeader` / `DataTableHead` / `DataTableRow` / `DataTableCell` / `DataTableEmpty` → optional `DataTableFooter`, with `DataTableBadge` (tones: `neutral | success | warning | info | danger`) for status and role pills. The chrome is card `rounded-xl border border-border bg-white shadow-sm`, header `bg-surface/50` with `text-muted-foreground` labels, rows `hover:bg-surface/30`, cells `px-4 py-3`. A page that invents its own variant reads as a different app — that is exactly how `/admin/team` ended up with a grey header bar and square corners. **Exceptions:** `components/emails/*` (HTML email needs inline styles) and `*/print/*` views (own stylesheets).
 
+## Where this product is going — read before designing anything
+
+**The destination is a white-label, multi-tenant SaaS** that coaches run under their own brand, in
+the shape of GoHighLevel. Today the app serves DJP Athlete and a small number of coaches, and that
+is a waypoint, not the target. Design for the destination; build for today.
+
+**What that means in practice, on every task:**
+
+- **Never add a new `SINGLETON_BUSINESS_ID` reference.** It is in 25 production files (measure it,
+  do not trust this number: `git grep -l SINGLETON_BUSINESS_ID <rev> -- '*.ts' '*.tsx' | sed "s/^<rev>://" | grep -v '^__tests__/\|^scripts/' | wc -l`).
+  That count going to zero is the real progress bar. Adding to it is moving backwards.
+- **Every new table gets `business_id`. Every new reader gets a tenant predicate.** A reader with no
+  predicate is not "fine while there is one tenant" — it is a leak with a fuse in it, and this repo
+  has already had to make `/admin/ads` owner-only because of exactly that.
+- **A column with no writer is a labelling gap, not a feature.** Name the reader before adding one.
+- **When a tenant genuinely cannot be resolved yet, go through `lib/tenancy/platform.ts`** rather
+  than writing the constant inline, and say honestly which KIND of seam it is. That file's value is
+  that it is a truthful inventory.
+- **Prefer per-tenant rows over environment variables** for anything a coach owns. An env var is a
+  single-tenant assumption wearing a config file's clothes — that is precisely what
+  `coach_calendar_connections` replaced for Calendly.
+
+**Do not over-build for it either.** The product today has one real tenant and a handful of coaches.
+Do not add agency hierarchies, tenant switchers, plan tiers or billing abstractions before there is
+a customer for them. The rule is: *make the scalable choice when the cost is the same, and flag the
+expensive ones rather than silently taking them.*
+
+**Known tension, unresolved.** An existing invariant says "do NOT elaborate the permissions system
+further — no presets, no staff-vs-editor tiers, no business switcher; this product is one coach per
+tenant." That still holds for *within* a tenant, but a SaaS may need agency-style access *across*
+tenants. Do not resolve this by drifting — it is a scoping decision, and it belongs in the SaaS
+direction spec, not in a task that happens to touch permissions.
+
+**Three things a white-label SaaS needs that do not exist yet**, so nobody assumes they do: self-serve
+signup for a coach (only `/register` for athletes exists), per-tenant subscription billing (Stripe is
+wired for selling programs to clients, not subscriptions to coaches), and an athlete-facing booking
+surface with nobody else's name on it (Calendly's confirmation email comes from
+`notifications@calendly.com` at every tier and cannot be branded).
+
 ## Key Patterns
 
 - Supabase client: Remove `Database` generic to avoid type conflicts; cast results in DAL instead
