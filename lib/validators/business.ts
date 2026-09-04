@@ -73,6 +73,11 @@ export const businessSettingsPatchSchema = z.object({
   postal_address: z.string().trim().max(500).optional(),
   sms_help_text: z.string().trim().max(500).optional(),
   sms_messaging_service_sid: z.string().trim().max(64).optional(),
+  // NOT normalised to E.164 here -- getBusinessBySmsNumber (lib/db/businesses.ts)
+  // matches this verbatim against Twilio's `To` field, which IS always E.164.
+  // Dormant today (no admin route writes this field yet); whoever builds that
+  // form must normalise to E.164 before it reaches here, or a coach who types
+  // a national-format number silently breaks inbound-SMS tenant resolution.
   sms_sender_phone: z.string().trim().max(32).optional(),
 })
 

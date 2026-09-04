@@ -53,6 +53,13 @@ const KNOWN_TABLES = new Set([
   "business_settings",
 ])
 
+// Fix round 1, Important 1: getBusinessBySmsNumber must THROW on a genuine
+// read error rather than swallow it into the same null a no-match returns.
+// Scoped to the sms_sender_phone-keyed query specifically (via the `filters`
+// check below), so injecting this does not also break getBusinessSettings's
+// business_id-keyed read of the SAME table.
+let businessSettingsReadError: { code: string; message: string } | null = null
+
 function collectionFor(table: string): Row[] {
   switch (table) {
     case "contacts":
@@ -127,6 +134,13 @@ vi.mock("@/lib/supabase", () => ({
           return api
         },
         maybeSingle: async () => {
+          if (
+            table === "business_settings" &&
+            businessSettingsReadError &&
+            filters.some(([k]) => k === "sms_sender_phone")
+          ) {
+            return { data: null, error: businessSettingsReadError }
+          }
           const rows = applyFilter(collectionFor(table))
           return { data: rows[0] ?? null, error: null }
         },
@@ -239,6 +253,7 @@ beforeEach(() => {
     { id: "run-2", contact_id: OTHER_CONTACT, business_id: BUSINESS, status: "active" },
   ]
   store.businessSettings = [{ ...SETTINGS }]
+  businessSettingsReadError = null
   process.env.TWILIO_AUTH_TOKEN = AUTH_TOKEN
   process.env.NEXTAUTH_URL = ORIGIN
   vi.clearAllMocks()
@@ -728,6 +743,31 @@ describe("POST /api/webhooks/twilio/inbound — tenant resolution", () => {
     expect(store.timeline).toHaveLength(1)
     expect(store.timeline[0]).toMatchObject({ contact_id: CONTACT, business_id: BUSINESS })
     expect(BUSINESS).toBe(SINGLETON_BUSINESS_ID) // the fixture IS the singleton -- documents the fallback claim
+  })
+
+  // Fix round 1, Important 1. A failed read is NOT the same answer as "no
+  // business claims this number" -- collapsing them would fall back to the
+  // platform business on a TRANSIENT read failure, suppressing/consenting a
+  // coach's opt-out under the wrong tenant while the coach's own sequences
+  // keep texting them. This must be the fail-safe direction the route
+  // documents 100 lines below for getBusinessSettings: throw, and let
+  // Twilio's retry-on-500 semantics do their job.
+  it("a business_settings read failure is a retryable 500, NOT a silent fallback to the platform business", async () => {
+    businessSettingsReadError = { code: "53300", message: "too many connections" }
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const res = await POST(inboundRequest(smsBody("STOP", OTHER_BUSINESS_PHONE, OTHER_BUSINESS_TO)))
+
+    expect(res.status).toBe(500)
+    // Nothing wrote under ANY business -- not the resolved one, not the
+    // platform fallback either. A silent fallback would show up here as a
+    // suppression/consent row stamped with the platform business's id.
+    expect(store.suppressions).toHaveLength(0)
+    expect(store.consents).toHaveLength(0)
+    expect(store.timeline).toHaveLength(0)
+    expect(consoleErrorSpy).toHaveBeenCalled()
+
+    consoleErrorSpy.mockRestore()
   })
 
   // sms_sender_phone is NOT NULL DEFAULT '', so a naive query would match

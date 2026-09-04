@@ -185,15 +185,16 @@ describe("getBusinessBySmsNumber", () => {
   // PostgREST resolves rather than throwing: {data: null, error} for a
   // genuine read failure looks identical in shape to {data: null, error:
   // null} for "nobody configured this number" unless the error is checked.
-  // A failed read must not silently masquerade as "no business claims this
-  // number" -- both return null to the caller (so the SMS webhook still
-  // falls back rather than 500ing), but only the failure logs.
-  it("logs and returns null on a read error, rather than throwing or matching everything", async () => {
+  // Fix round 1, Important 1: a failed read must NOT read as "no business
+  // claims this number" -- that would fall back to the platform business and
+  // route a coach's STOP to the WRONG tenant (their own sequences keep
+  // texting someone who just opted out). THROW instead, matching the route's
+  // own stated rule 100 lines away ("a settings read that fails is an infra
+  // fault, and a 500 there is the correct, retryable answer"): Twilio retries
+  // on 500, so throwing is the fail-safe direction. Only a genuine miss
+  // (error: null, data: null) returns null.
+  it("throws on a read error, rather than silently matching the no-business-claims-it case", async () => {
     selectResult = { data: null, error: { code: "42501", message: "permission denied" } }
-    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
-    const result = await getBusinessBySmsNumber("+15550001111")
-    expect(result).toBeNull()
-    expect(consoleErrorSpy).toHaveBeenCalled()
-    consoleErrorSpy.mockRestore()
+    await expect(getBusinessBySmsNumber("+15550001111")).rejects.toThrow(/42501|permission denied/)
   })
 })

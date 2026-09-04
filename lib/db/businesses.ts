@@ -163,10 +163,31 @@ export async function updateBusiness(businessId: string, patch: UpdateBusinessPa
  * evidence an inbound SMS carries, and business_settings.sms_sender_phone
  * (00221) already holds it.
  *
- * Returns null rather than throwing on no match: an unmatched number is the
+ * Returns null rather than throwing on NO MATCH: an unmatched number is the
  * ORDINARY case today, because sms_sender_phone is NOT NULL DEFAULT '' and
  * the platform's own number still lives in the environment. The caller falls
  * back to the platform business.
+ *
+ * A genuine READ ERROR is a different case and must NOT collapse into the
+ * same null (fix round 1, Important 1): PostgREST resolves rather than
+ * throwing, so {data: null, error} and {data: null, error: null} look
+ * identical unless the error is checked. Falling back to the platform
+ * business on a transient read failure would route a coach's inbound STOP to
+ * the WRONG tenant -- the suppression and consent rows land on the platform
+ * business, and the coach's own sequences keep texting someone who just
+ * opted out. That is a compliance failure, not a data-tidiness one, so this
+ * THROWS on error instead: the caller's route (app/api/webhooks/twilio/
+ * inbound/route.ts) already wraps this in one try/catch that turns any
+ * exception into a 500, and Twilio retries a 500 -- the same "infra fault,
+ * retryable" contract that route's own getBusinessSettings call documents
+ * 100 lines below its own call site.
+ *
+ * Two businesses claiming the SAME non-empty number would also read as an
+ * error here (.maybeSingle() answers PGRST116, "multiple rows returned"),
+ * which is exactly the outcome wanted: 00247's partial unique index on
+ * sms_sender_phone (WHERE sms_sender_phone <> '') makes that state
+ * unreachable at the database, so this throw exists as defense in depth, not
+ * as the primary guard.
  */
 export async function getBusinessBySmsNumber(toNumber: string): Promise<string | null> {
   const to = toNumber.trim()
@@ -177,14 +198,6 @@ export async function getBusinessBySmsNumber(toNumber: string): Promise<string |
     .select("business_id")
     .eq("sms_sender_phone", to)
     .maybeSingle()
-  if (error) {
-    // Logged, not thrown: a failed read here must not 500 the SMS webhook,
-    // and PostgREST resolves rather than throwing so this is the only
-    // diagnostic. The caller falls back to the platform business -- exactly
-    // the same outcome as "no business claims this number", which is the
-    // correct fail-safe direction for a compliance surface (STOP/START).
-    console.error(`[businesses] getBusinessBySmsNumber failed (${error.code} ${error.message})`)
-    return null
-  }
+  if (error) throw new Error(`getBusinessBySmsNumber failed (${error.code}): ${error.message}`)
   return (data as { business_id: string } | null)?.business_id ?? null
 }

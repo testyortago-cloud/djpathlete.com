@@ -47,7 +47,7 @@ import { enqueuePaymentValueAdjustmentByEmail } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
 import { getSetting } from "@/lib/db/system-settings"
 import { FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT } from "@/lib/funnels/checkout/flag"
-import { findContactByIdentifiers, findContactWithBusinessByIdentifiers } from "@/lib/db/contacts"
+import { findContactWithBusinessByIdentifiers } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
@@ -376,15 +376,23 @@ export async function POST(request: Request) {
           const isNonCoachingPayment = typeof paymentType === "string" && NON_COACHING_PAYMENT_TYPES.has(paymentType)
           if (payment && !isNonCoachingPayment) {
             try {
-              const contactId = await findContactByIdentifiers({ userId: payment.user_id, email: null })
-              if (contactId) {
+              // Fix round 1, Important 2: this used to resolve through the
+              // unscoped findContactByIdentifiers (defaulting to
+              // SINGLETON_BUSINESS_ID) right beside the checkout.session.
+              // completed handler above, which already resolves its tenant
+              // this way. Same reasoning applies here: one Stripe account
+              // serves every business, so the payer's contact row supplies
+              // the tenant a refund event has no other way to know.
+              const contact = await findContactWithBusinessByIdentifiers({ userId: payment.user_id, email: null })
+              if (contact) {
                 await applyPipelineEvent({
-                  contactId,
+                  contactId: contact.id,
                   event: {
                     kind: "refund",
                     amountRefundedCents: charge.amount_refunded,
                     occurredAt: new Date(),
                   },
+                  businessId: contact.businessId,
                   metadata: { stripe_charge_id: charge.id, amount_refunded: charge.amount_refunded },
                 })
               }
