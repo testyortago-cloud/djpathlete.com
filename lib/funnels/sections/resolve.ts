@@ -140,6 +140,7 @@ import {
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
 import { getQuizDefinition, listQuizzes } from "@/lib/db/quizzes"
 import { quizGate } from "@/lib/quizzes/gate"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 // The FAQ page keys that actually have rows. Not a CTA and not a uuid, but the
 // same failure class — see `UnknownFaqKey` below.
 import { getFaqCountsByPage } from "@/lib/db/faqs"
@@ -524,7 +525,18 @@ export async function loadCatalogues(): Promise<Catalogues> {
   // could matter — running them to produce a reason nobody will read would
   // make every builder turn slower for nothing. Concurrent, like the reads
   // above, so this adds one round trip rather than one per quiz.
-  const quizRows = await listQuizzes()
+  // PLATFORM SEAM, NOT A RESOLUTION. `loadCatalogues` backs the AI page
+  // builder's whole call graph (build/publish/plan routes, the funnel editor
+  // page, and the shared draft-preview renderer) -- none of which is in this
+  // phase's declared conversion list (docs/superpowers/plans/2026-09-03-
+  // calendly-per-coach-phase1-multi-coach-ops.md's Task 8 touches quizzes.ts
+  // and its admin quiz pages/routes only). Threading a real per-request
+  // businessId through here would mean re-scoping that entire builder
+  // subsystem as a side effect of a DAL signature change, which is its own
+  // task. `platformBusinessId()` keeps today's behaviour byte-identical
+  // (it returns the same constant `listQuizzes` was hard-coded to) and stays
+  // one greppable line for whichever task gives the builder a real tenant.
+  const quizRows = await listQuizzes(platformBusinessId())
   const gated = await Promise.all(
     quizRows.map(async (row): Promise<QuizCatalogueEntry> => {
       if (row.status !== "active") return { id: row.id, status: row.status, gateBlocker: null }

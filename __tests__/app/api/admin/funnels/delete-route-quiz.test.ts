@@ -34,6 +34,17 @@ vi.mock("@/lib/db/funnels", () => ({
   listStepDocuments: vi.fn(),
 }))
 vi.mock("@/lib/db/quizzes", () => ({ deleteQuiz: vi.fn() }))
+// vi.hoisted, not a bare top-level class: vi.mock factories are hoisted above
+// every other top-level statement in this file, so a plain class declaration
+// referenced inside one throws "Cannot access before initialization".
+const { NoAccessibleBusinessError, BUSINESS_ID } = vi.hoisted(() => {
+  class NoAccessibleBusinessError extends Error {}
+  return { NoAccessibleBusinessError, BUSINESS_ID: "bbb" }
+})
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: () => Promise.resolve({ businessId: BUSINESS_ID, choices: [], isOperator: true }),
+  NoAccessibleBusinessError,
+}))
 
 import { DELETE } from "@/app/api/admin/funnels/[id]/route"
 import { auth } from "@/lib/auth"
@@ -88,7 +99,7 @@ describe("DELETE /api/admin/funnels/[id] and the quiz its pages ran", () => {
   it("deletes a quiz no remaining page points at", async () => {
     const res = await DELETE(request(), ctx)
     expect(res.status).toBe(200)
-    expect(deleteQuiz).toHaveBeenCalledWith(QUIZ_ID)
+    expect(deleteQuiz).toHaveBeenCalledWith(BUSINESS_ID, QUIZ_ID)
   })
 
   it("reads the funnel's pages BEFORE deleting it, or there is nothing left to read", async () => {

@@ -14,7 +14,35 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // the mocked module. A top-level `await import(...)` also works at runtime but
 // is a tsc error under this project's module setting — it cost one point off
 // the 251 baseline before being caught.
-import { getQuizDefinition, completeAttempt } from "@/lib/db/quizzes"
+import {
+  getQuizDefinition,
+  completeAttempt,
+  getQuizDefinitionByKey,
+  listQuizzes,
+  getQuizzesByIds,
+  createQuizFrom,
+  deleteQuiz,
+  saveQuizDefinition,
+  getQuizAttemptCounts,
+  createAttempt,
+  QuizNotInBusinessError,
+} from "@/lib/db/quizzes"
+import type { QuizDefinition } from "@/lib/quizzes/types"
+
+/**
+ * Task 8: the nine sites that pinned `SINGLETON_BUSINESS_ID` in this file, now
+ * a required `businessId` first argument on every converted function. One
+ * test per site, asserting the VALUE reaching `.eq("business_id", …)` (or,
+ * for the two inserts, the value written into `business_id` itself) — never
+ * just that a call happened. `eqCalls` below is an ARGUMENT-RECORDING mock,
+ * not the FILTERING one `apply()` already does for `TABLES`: a mock that only
+ * filters would silently pass if the predicate were dropped entirely, because
+ * an unfiltered read and a correctly-filtered read of these fixtures can
+ * return the same (empty, or all-rows) shape. Recording every `.eq()` call
+ * lets each test assert the predicate was there AT ALL (the presence
+ * control) and that its value was the one this call was given.
+ */
+const eqCalls: [string, unknown][] = []
 
 type Row = Record<string, unknown>
 
@@ -89,6 +117,10 @@ function makeClient() {
         select: () => chain,
         eq: (col: string, val: unknown) => {
           eqs.push([col, val])
+          // Recorded globally, in addition to the local `eqs` `apply()` already
+          // filters on — this is the argument-RECORDING half, not the
+          // filtering one. See the comment on `eqCalls` above.
+          eqCalls.push([col, val])
           return chain
         },
         in: (col: string, vals: unknown[]) => {
@@ -108,7 +140,17 @@ function makeClient() {
           calls.push({ table, op, payload })
           return chain
         },
+        delete: () => {
+          op = "delete"
+          calls.push({ table, op })
+          return chain
+        },
         single: async () => {
+          // `.insert({...}).select("id").single()` (createAttempt) has to get
+          // the row it just wrote back, id included -- Postgres's own
+          // `RETURNING` behaviour, which `apply()` against the unmodified
+          // `TABLES` fixture cannot reproduce.
+          if (op === "insert") return { data: { id: "generated-id", ...(payload as Row) }, error: null }
           if (op === "select") calls.push({ table, op })
           const rows = apply()
           return rows.length === 1
@@ -137,6 +179,7 @@ vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => makeClient() }
 
 beforeEach(() => {
   calls.length = 0
+  eqCalls.length = 0
 })
 
 describe("getQuizDefinition", () => {
@@ -203,5 +246,120 @@ describe("completeAttempt", () => {
       contact_id: "c1",
     })
     expect(write!.payload!.completed_at).toEqual(expect.any(String))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 8 — the nine sites, one test each. Every test uses "bbb" as the
+// business it was given, DELIBERATELY not "b1" (the id baked into TABLES
+// above): none of these assertions depend on which rows come back, only on
+// the value that reached the query or the insert payload, so a business with
+// no matching rows proves the point at least as well as one with rows would.
+// ---------------------------------------------------------------------------
+
+const minimalSource: QuizDefinition = {
+  id: "src",
+  key: "src",
+  name: "Src",
+  status: "draft",
+  introHeadline: "",
+  introBody: "",
+  gateHeadline: "",
+  gateBody: "",
+  resultHeadline: "",
+  seedMarker: null,
+  branches: [],
+  questions: [],
+  tiers: [],
+  profiles: [],
+}
+
+describe("getQuizDefinitionByKey", () => {
+  it("scopes the read to the business it was given", async () => {
+    await getQuizDefinitionByKey("bbb", "rpi-athlete-quiz")
+    const scoped = eqCalls.filter(([c]) => c === "business_id")
+    expect(scoped.every(([, v]) => v === "bbb")).toBe(true)
+    expect(scoped).not.toHaveLength(0) // presence control
+  })
+})
+
+describe("listQuizzes", () => {
+  it("scopes the read to the business it was given", async () => {
+    await listQuizzes("bbb")
+    const scoped = eqCalls.filter(([c]) => c === "business_id")
+    expect(scoped.every(([, v]) => v === "bbb")).toBe(true)
+    expect(scoped).not.toHaveLength(0)
+  })
+})
+
+describe("getQuizzesByIds", () => {
+  it("scopes the read to the business it was given", async () => {
+    await getQuizzesByIds("bbb", ["q1"])
+    const scoped = eqCalls.filter(([c]) => c === "business_id")
+    expect(scoped.every(([, v]) => v === "bbb")).toBe(true)
+    expect(scoped).not.toHaveLength(0)
+  })
+})
+
+describe("createQuizFrom", () => {
+  it("scopes the free-key read (uniqueQuizKey) and the insert to the business it was given", async () => {
+    await createQuizFrom("bbb", { source: minimalSource, name: "Clone" })
+    const scoped = eqCalls.filter(([c]) => c === "business_id")
+    expect(scoped.every(([, v]) => v === "bbb")).toBe(true)
+    expect(scoped).not.toHaveLength(0)
+    const insertCall = calls.find((c) => c.table === "quizzes" && c.op === "insert")
+    expect(insertCall, "no insert was issued").toBeDefined()
+    expect(insertCall!.payload!.business_id).toBe("bbb")
+  })
+})
+
+describe("deleteQuiz", () => {
+  it("scopes the delete to the business it was given", async () => {
+    await deleteQuiz("bbb", "q1")
+    const scoped = eqCalls.filter(([c]) => c === "business_id")
+    expect(scoped.every(([, v]) => v === "bbb")).toBe(true)
+    expect(scoped).not.toHaveLength(0)
+  })
+})
+
+describe("saveQuizDefinition", () => {
+  // "b1", not "bbb": the ownership guard added alongside this task's sweep
+  // finding (child tables carry no `business_id` at all, so `quizId` must be
+  // verified against the business before any write) means "q1" only accepts
+  // the business it actually belongs to -- see TABLES.quizzes above.
+  it("scopes the quiz content update to the business it was given", async () => {
+    await saveQuizDefinition("b1", { quizId: "q1", quiz: { name: "Renamed" } })
+    const scoped = eqCalls.filter(([c]) => c === "business_id")
+    expect(scoped.every(([, v]) => v === "b1")).toBe(true)
+    expect(scoped).not.toHaveLength(0)
+  })
+
+  it("refuses a quiz that does not belong to the business it was given", async () => {
+    // The sweep finding: quiz_questions/options/tiers/branches have no
+    // business_id column, so this upfront check is the only thing stopping a
+    // caller naming another business's quiz from structurally editing it.
+    await expect(
+      saveQuizDefinition("some-other-business", { quizId: "q1", quiz: { name: "Hijacked" } }),
+    ).rejects.toThrow(QuizNotInBusinessError)
+    // Nothing written -- the guard runs before any child table is touched.
+    expect(calls.filter((c) => c.op !== "select")).toHaveLength(0)
+  })
+})
+
+describe("getQuizAttemptCounts", () => {
+  it("scopes the read to the business it was given", async () => {
+    await getQuizAttemptCounts("bbb")
+    const scoped = eqCalls.filter(([c]) => c === "business_id")
+    expect(scoped.every(([, v]) => v === "bbb")).toBe(true)
+    expect(scoped).not.toHaveLength(0)
+  })
+})
+
+describe("createAttempt", () => {
+  it("writes the business it was given onto the insert", async () => {
+    await createAttempt("bbb", { quizId: "q1", attributionSessionId: null })
+    const insertCall = calls.find((c) => c.table === "quiz_attempts" && c.op === "insert")
+    expect(insertCall, "no insert was issued").toBeDefined() // presence control
+    expect(insertCall!.payload!.business_id).toBe("bbb")
   })
 })

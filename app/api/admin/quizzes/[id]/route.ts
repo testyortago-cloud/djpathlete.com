@@ -18,12 +18,14 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import {
   QuizAnsweredOptionError,
+  QuizNotInBusinessError,
   getAnsweredQuestionIds,
   getQuizDefinition,
   getQuizDefinitionForEditor,
   saveQuizDefinition,
 } from "@/lib/db/quizzes"
 import { quizGate } from "@/lib/quizzes/gate"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 export const runtime = "nodejs"
 
@@ -162,6 +164,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const session = await auth()
   if (session?.user?.role !== "admin") return notFound()
 
+  // Same 404-not-403 posture as the role check above: this route does not
+  // confirm what exists to anyone, including an admin session with no
+  // resolvable business.
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) return notFound()
+    throw err
+  }
+
   const { id } = await params
   if (!z.string().uuid().safeParse(id).success) return notFound()
 
@@ -186,7 +199,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { status: _requestedStatus, ...quizWithoutStatus } = body.quiz ?? {}
   let retiredQuestionIds: string[] = []
   try {
-    const outcome = await saveQuizDefinition({
+    const outcome = await saveQuizDefinition(businessId, {
       quizId: id,
       quiz: quizWithoutStatus,
       questions: body.questions,
@@ -209,6 +222,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (error instanceof QuizAnsweredOptionError) {
       return NextResponse.json({ error: error.message, optionIds: error.optionIds }, { status: 400 })
     }
+    // Same 404-not-a-stranger posture as the rest of this route: `existing`
+    // above is read by id alone (see the sweep note on `getQuizDefinition`),
+    // so a quiz belonging to another business still passes that check. This
+    // is the point that actually refuses it.
+    if (error instanceof QuizNotInBusinessError) return notFound()
     throw error
   }
 
@@ -245,9 +263,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const staysActive = body.quiz?.status === undefined ? wasActive : body.quiz.status === "active"
   const deactivated = staysActive && !wantsActive && !gate.ok
   if (deactivated) {
-    await saveQuizDefinition({ quizId: id, quiz: { status: "draft" } })
+    await saveQuizDefinition(businessId, { quizId: id, quiz: { status: "draft" } })
   } else if (body.quiz?.status !== undefined) {
-    await saveQuizDefinition({ quizId: id, quiz: { status: body.quiz.status } })
+    await saveQuizDefinition(businessId, { quizId: id, quiz: { status: body.quiz.status } })
   }
 
   // THE EDITOR'S READ, not the public one. `getQuizDefinition` filters out

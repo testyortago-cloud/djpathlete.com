@@ -18,6 +18,8 @@ import { NextRequest } from "next/server"
 import { sectionDocSchema } from "@/lib/funnels/sections/registry"
 import { BUILTIN_QUIZ_SOURCE } from "@/lib/quizzes/sources"
 
+const BUSINESS_ID = "bbb"
+
 const authMock = vi.fn()
 const canAccessMock = vi.fn()
 const createFunnelMock = vi.fn()
@@ -41,6 +43,11 @@ vi.mock("@/lib/db/quizzes", () => ({
   getQuizDefinition: (...args: unknown[]) => getQuizDefinitionMock(...args),
   createQuizFrom: (...args: unknown[]) => createQuizFromMock(...args),
   deleteQuiz: (...args: unknown[]) => deleteQuizMock(...args),
+}))
+class NoAccessibleBusinessError extends Error {}
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: () => Promise.resolve({ businessId: BUSINESS_ID, choices: [], isOperator: true }),
+  NoAccessibleBusinessError,
 }))
 
 const CLONE_ID = "5f2b7c1e-0000-4000-8000-0000000000aa"
@@ -114,7 +121,8 @@ describe("POST /api/admin/funnels — the quiz template", () => {
   it("names the clone after the funnel", async () => {
     const { POST } = await import("@/app/api/admin/funnels/route")
     await POST(post(quizBody), NO_PARAMS)
-    expect(createQuizFromMock.mock.calls[0][0]).toMatchObject({ name: "Rotational Reboot Check" })
+    expect(createQuizFromMock.mock.calls[0][0]).toBe(BUSINESS_ID)
+    expect(createQuizFromMock.mock.calls[0][1]).toMatchObject({ name: "Rotational Reboot Check" })
   })
 
   it("copies the built-in blueprint without going to the database for it", async () => {
@@ -163,7 +171,7 @@ describe("POST /api/admin/funnels — the quiz template", () => {
     expect(res.status).toBe(500)
     // MUTANT: drop the compensating delete. The quizzes list gains a draft
     // nobody asked for, and nothing on it says where it came from.
-    expect(deleteQuizMock).toHaveBeenCalledWith(CLONE_ID)
+    expect(deleteQuizMock).toHaveBeenCalledWith(BUSINESS_ID, CLONE_ID)
   })
 
   it("reports the original failure even when the cleanup also fails", async () => {

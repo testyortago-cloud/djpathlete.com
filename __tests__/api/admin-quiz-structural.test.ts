@@ -82,6 +82,8 @@ function noRouter(): QuizDefinition {
   return definition
 }
 
+const BUSINESS_ID = "bbb"
+
 const auth = vi.fn()
 const getQuizDefinition = vi.fn()
 const getQuizDefinitionForEditor = vi.fn()
@@ -102,6 +104,11 @@ vi.mock("@/lib/db/quizzes", async () => {
     saveQuizDefinition: (...a: unknown[]) => saveQuizDefinition(...a),
   }
 })
+class NoAccessibleBusinessError extends Error {}
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: () => Promise.resolve({ businessId: BUSINESS_ID, choices: [], isOperator: true }),
+  NoAccessibleBusinessError,
+}))
 
 async function patch(body: unknown, id = QUIZ_ID) {
   const { PATCH } = await import("@/app/api/admin/quizzes/[id]/route")
@@ -141,12 +148,12 @@ describe("PATCH /api/admin/quizzes/[id] — structural edits", () => {
   it("passes a new question and its options through to the save", async () => {
     const res = await patch({ addQuestions: [NEW_QUESTION] })
     expect(res.status).toBe(200)
-    expect(saveQuizDefinition.mock.calls[0][0]).toMatchObject({ quizId: QUIZ_ID, addQuestions: [NEW_QUESTION] })
+    expect(saveQuizDefinition.mock.calls[0][1]).toMatchObject({ quizId: QUIZ_ID, addQuestions: [NEW_QUESTION] })
   })
 
   it("passes deletions through", async () => {
     await patch({ deleteQuestionIds: [Q_A1], deleteOptionIds: [O_A2] })
-    expect(saveQuizDefinition.mock.calls[0][0]).toMatchObject({
+    expect(saveQuizDefinition.mock.calls[0][1]).toMatchObject({
       deleteQuestionIds: [Q_A1],
       deleteOptionIds: [O_A2],
     })
@@ -194,9 +201,9 @@ describe("PATCH /api/admin/quizzes/[id] — structural edits", () => {
     await patch({ quiz: { status: "active", name: "Renamed" }, addQuestions: [NEW_QUESTION] })
     // Losing somebody's morning of copy because their last change did not yet
     // satisfy the gate would be its own bug. The save runs; only the flip does not.
-    expect(saveQuizDefinition.mock.calls[0][0]).toMatchObject({ quiz: { name: "Renamed" } })
+    expect(saveQuizDefinition.mock.calls[0][1]).toMatchObject({ quiz: { name: "Renamed" } })
     const statusWrites = saveQuizDefinition.mock.calls.filter(
-      (call) => (call[0] as { quiz?: { status?: string } })?.quiz?.status,
+      (call) => (call[1] as { quiz?: { status?: string } })?.quiz?.status,
     )
     expect(statusWrites).toHaveLength(0)
   })
@@ -245,13 +252,13 @@ describe("PATCH /api/admin/quizzes/[id] — editing a quiz that is already live"
     const json = await res.json()
     expect(json.deactivated).toBe(true)
     expect(json.blockers.join(" | ")).toMatch(/router/i)
-    expect(saveQuizDefinition).toHaveBeenLastCalledWith({ quizId: QUIZ_ID, quiz: { status: "draft" } })
+    expect(saveQuizDefinition).toHaveBeenLastCalledWith(BUSINESS_ID, { quizId: QUIZ_ID, quiz: { status: "draft" } })
   })
 
   it("keeps the edit itself — being taken offline is not losing your work", async () => {
     getQuizDefinition.mockResolvedValueOnce(live()).mockResolvedValueOnce(noRouter())
     await patch({ quiz: { name: "Renamed" }, deleteQuestionIds: [Q_ROUTER] })
-    expect(saveQuizDefinition.mock.calls[0][0]).toMatchObject({ quiz: { name: "Renamed" } })
+    expect(saveQuizDefinition.mock.calls[0][1]).toMatchObject({ quiz: { name: "Renamed" } })
   })
 
   it("leaves a live quiz alone when the edit keeps it scoreable", async () => {
@@ -262,7 +269,7 @@ describe("PATCH /api/admin/quizzes/[id] — editing a quiz that is already live"
     // take the page offline, and rewording a question would cost a visitor.
     expect(json.deactivated).toBeFalsy()
     const statusWrites = saveQuizDefinition.mock.calls.filter(
-      (call) => (call[0] as { quiz?: { status?: string } })?.quiz?.status,
+      (call) => (call[1] as { quiz?: { status?: string } })?.quiz?.status,
     )
     expect(statusWrites).toHaveLength(0)
   })
@@ -274,6 +281,6 @@ describe("PATCH /api/admin/quizzes/[id] — editing a quiz that is already live"
     // A draft is already offline. Writing status: draft over it would be a
     // pointless write and a message about something that did not happen.
     expect(json.deactivated).toBeFalsy()
-    expect(saveQuizDefinition.mock.calls.filter((c) => (c[0] as { quiz?: { status?: string } })?.quiz?.status)).toHaveLength(0)
+    expect(saveQuizDefinition.mock.calls.filter((c) => (c[1] as { quiz?: { status?: string } })?.quiz?.status)).toHaveLength(0)
   })
 })

@@ -10,6 +10,7 @@ import { FunnelStatusControl } from "@/components/admin/funnels/FunnelStatusCont
 import { StepList } from "@/components/admin/funnels/StepList"
 import { AddStepDialog } from "@/components/admin/funnels/AddStepDialog"
 import { FunnelQuizPanel, type FunnelQuizPanelItem } from "@/components/admin/funnels/FunnelQuizPanel"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -41,6 +42,7 @@ export async function generateMetadata({ params }: PageProps) {
  * straight back to itself, forever.
  */
 export async function FunnelDetailScreen({ id, base }: { id: string; base: "pages" | "funnels" }) {
+  const { businessId } = await resolveAdminTenant()
   const funnel = await getFunnelById(id)
   if (!funnel) notFound()
 
@@ -61,9 +63,9 @@ export async function FunnelDetailScreen({ id, base }: { id: string; base: "page
   // screen for a panel.
   const quizUses = quizUsesInSteps(steps)
   const [quizRows, attemptCounts] = await Promise.all([
-    quizUses.length > 0 ? getQuizzesByIds(quizUses.map((use) => use.quizId)).catch(() => []) : [],
+    quizUses.length > 0 ? getQuizzesByIds(businessId, quizUses.map((use) => use.quizId)).catch(() => []) : [],
     quizUses.length > 0
-      ? getQuizAttemptCounts().catch(() => ({}) as Awaited<ReturnType<typeof getQuizAttemptCounts>>)
+      ? getQuizAttemptCounts(businessId).catch(() => ({}) as Awaited<ReturnType<typeof getQuizAttemptCounts>>)
       : ({} as Awaited<ReturnType<typeof getQuizAttemptCounts>>),
   ])
   const quizItems: FunnelQuizPanelItem[] = quizUses.map((use) => ({

@@ -5,6 +5,7 @@ import { withAudit } from "@/lib/audit/with-audit"
 import { createFunnelSchema } from "@/lib/validators/funnel"
 import { listFunnels, createFunnel } from "@/lib/db/funnels"
 import { createQuizFrom, deleteQuiz, getQuizDefinition } from "@/lib/db/quizzes"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { buildQuizFunnelDoc } from "@/lib/funnels/quiz-funnel-doc"
 import { getTemplate } from "@/lib/funnels/templates"
 import { isBuiltinQuizSource } from "@/lib/quizzes/sources"
@@ -29,6 +30,16 @@ export const POST = withAudit(
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
     }
 
     const body = await request.json().catch(() => null)
@@ -78,7 +89,7 @@ export const POST = withAudit(
         )
       }
 
-      const clone = await createQuizFrom({ source, name: funnelIntake.name })
+      const clone = await createQuizFrom(businessId, { source, name: funnelIntake.name })
       createdQuizId = clone.id
       const page = buildQuizFunnelDoc({ quizId: clone.id })
 
@@ -122,7 +133,7 @@ export const POST = withAudit(
         // Best effort, and logged when it fails: an orphan draft quiz is a
         // smaller problem than the one already being reported, so its own
         // failure must not replace the original error.
-        await deleteQuiz(createdQuizId).catch((cleanupError) =>
+        await deleteQuiz(businessId, createdQuizId).catch((cleanupError) =>
           console.error("[POST /api/admin/funnels] orphaned quiz", createdQuizId, cleanupError),
         )
       }

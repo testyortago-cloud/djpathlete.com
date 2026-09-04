@@ -14,6 +14,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { QuizAnsweredOptionError, saveQuizDefinition } from "@/lib/db/quizzes"
 
+// Matches TABLES.quizzes' business_id below. Only "saveQuizDefinition — what
+// it did not change" actually reaches the scoped `.eq("business_id", …)`
+// update; every other call here exercises the child-table paths that are
+// scoped by quiz_id instead, so the value only has to be consistent, not
+// exercised by every test.
+const BUSINESS_ID = "00000000-0000-0000-0000-000000000001"
+
 type Row = Record<string, unknown>
 
 const TABLES: Record<string, Row[]> = {
@@ -142,7 +149,7 @@ const NEW_QUESTION = {
 
 describe("saveQuizDefinition — adding", () => {
   it("inserts a new question with its options in one save", async () => {
-    await saveQuizDefinition({ quizId: "q1", addQuestions: [NEW_QUESTION] })
+    await saveQuizDefinition(BUSINESS_ID, { quizId: "q1", addQuestions: [NEW_QUESTION] })
     expect(inserted("quiz_questions")[0]).toMatchObject({ id: "new-q", quiz_id: "q1", is_active: false })
     expect(inserted("quiz_options").map((o) => o.question_id)).toEqual(["new-q", "new-q"])
   })
@@ -150,12 +157,12 @@ describe("saveQuizDefinition — adding", () => {
   it("hangs the new question off the quiz being edited, whatever the payload says", async () => {
     // MUTANT: take quiz_id from the payload. A question could be inserted into
     // somebody else's quiz by a hand-crafted request.
-    await saveQuizDefinition({ quizId: "q1", addQuestions: [NEW_QUESTION] })
+    await saveQuizDefinition(BUSINESS_ID, { quizId: "q1", addQuestions: [NEW_QUESTION] })
     expect(inserted("quiz_questions")[0].quiz_id).toBe("q1")
   })
 
   it("adds an option to an existing question", async () => {
-    await saveQuizDefinition({
+    await saveQuizDefinition(BUSINESS_ID, {
       quizId: "q1",
       addOptions: [{ id: "new-o", questionId: "qu1", position: 3, label: "A third answer", weight: 2, routesToBranchId: null, profileId: null }],
     })
@@ -164,7 +171,7 @@ describe("saveQuizDefinition — adding", () => {
 
   it("refuses to add an option to another quiz's question", async () => {
     // MUTANT: insert without checking ownership. quX belongs to q2.
-    await saveQuizDefinition({
+    await saveQuizDefinition(BUSINESS_ID, {
       quizId: "q1",
       addOptions: [{ id: "x", questionId: "quX", position: 1, label: "Intruder", weight: 9, routesToBranchId: null, profileId: null }],
     })
@@ -172,7 +179,7 @@ describe("saveQuizDefinition — adding", () => {
   })
 
   it("inserts before it updates, so a row added in this save can be edited by it", async () => {
-    await saveQuizDefinition({
+    await saveQuizDefinition(BUSINESS_ID, {
       quizId: "q1",
       addQuestions: [NEW_QUESTION],
       questions: [{ id: "qu1", prompt: "Reworded" }],
@@ -185,7 +192,7 @@ describe("saveQuizDefinition — adding", () => {
 
 describe("saveQuizDefinition — deleting", () => {
   it("hard-deletes a question nobody has answered, and its options with it", async () => {
-    const result = await saveQuizDefinition({ quizId: "q1", deleteQuestionIds: ["qu2"] })
+    const result = await saveQuizDefinition(BUSINESS_ID, { quizId: "q1", deleteQuestionIds: ["qu2"] })
     expect(deletedIds("quiz_options", "question_id")).toContain("qu2")
     expect(deletedIds("quiz_questions")).toContain("qu2")
     expect(result.retiredQuestionIds).toEqual([])
@@ -195,19 +202,19 @@ describe("saveQuizDefinition — deleting", () => {
     // MUTANT: delete it anyway. Past SCORES survive — raw_score and max_score
     // are frozen on the attempt — but a report mapping an answer back to its
     // prompt finds a hole where the question used to be.
-    const result = await saveQuizDefinition({ quizId: "q1", deleteQuestionIds: ["qu1"] })
+    const result = await saveQuizDefinition(BUSINESS_ID, { quizId: "q1", deleteQuestionIds: ["qu1"] })
     expect(deletedIds("quiz_questions")).not.toContain("qu1")
     expect(updates("quiz_questions").some((w) => (w.payload as Row).is_active === false)).toBe(true)
     expect(result.retiredQuestionIds).toEqual(["qu1"])
   })
 
   it("deletes an option nobody picked", async () => {
-    await saveQuizDefinition({ quizId: "q1", deleteOptionIds: ["o2"] })
+    await saveQuizDefinition(BUSINESS_ID, { quizId: "q1", deleteOptionIds: ["o2"] })
     expect(deletedIds("quiz_options")).toContain("o2")
   })
 
   it("refuses to delete an answered option, and names it", async () => {
-    await expect(saveQuizDefinition({ quizId: "q1", deleteOptionIds: ["o1"] })).rejects.toThrow(QuizAnsweredOptionError)
+    await expect(saveQuizDefinition(BUSINESS_ID, { quizId: "q1", deleteOptionIds: ["o1"] })).rejects.toThrow(QuizAnsweredOptionError)
   })
 
   it("writes NOTHING when it refuses", async () => {
@@ -215,7 +222,7 @@ describe("saveQuizDefinition — deleting", () => {
     // reports failure, and the editor and the database now disagree about a
     // save the owner was told did not happen.
     await expect(
-      saveQuizDefinition({ quizId: "q1", quiz: { name: "Should not be written" }, deleteOptionIds: ["o1"] }),
+      saveQuizDefinition(BUSINESS_ID, { quizId: "q1", quiz: { name: "Should not be written" }, deleteOptionIds: ["o1"] }),
     ).rejects.toThrow(QuizAnsweredOptionError)
     expect(writes).toHaveLength(0)
   })
@@ -224,12 +231,12 @@ describe("saveQuizDefinition — deleting", () => {
     // MUTANT: scan every attempt rather than this quiz's. Another quiz's
     // attempt names o3, so deleting an option nobody here ever picked would be
     // refused, and the owner could never remove it.
-    await saveQuizDefinition({ quizId: "q1", deleteOptionIds: ["o3"] })
+    await saveQuizDefinition(BUSINESS_ID, { quizId: "q1", deleteOptionIds: ["o3"] })
     expect(deletedIds("quiz_options")).toContain("o3")
   })
 
   it("deletes last, so an earlier edit in the same save still lands", async () => {
-    await saveQuizDefinition({ quizId: "q1", questions: [{ id: "qu1", prompt: "Reworded" }], deleteQuestionIds: ["qu2"] })
+    await saveQuizDefinition(BUSINESS_ID, { quizId: "q1", questions: [{ id: "qu1", prompt: "Reworded" }], deleteQuestionIds: ["qu2"] })
     const lastUpdate = writes.map((w) => w.op).lastIndexOf("update")
     const firstDelete = writes.findIndex((w) => w.op === "delete")
     expect(lastUpdate).toBeLessThan(firstDelete)
@@ -240,18 +247,18 @@ describe("saveQuizDefinition — deleting", () => {
     // delete is scoped by quiz_id and no-ops, but the OPTION delete is keyed
     // on question_id and is not — so a hand-crafted payload would strip
     // another quiz's answers off its live page while appearing to do nothing.
-    await saveQuizDefinition({ quizId: "q1", deleteQuestionIds: ["quX"] })
+    await saveQuizDefinition(BUSINESS_ID, { quizId: "q1", deleteQuestionIds: ["quX"] })
     expect(writes.filter((w) => w.op === "delete")).toHaveLength(0)
   })
 
   it("scopes the question delete by quiz as well as by id", async () => {
-    await saveQuizDefinition({ quizId: "q1", deleteQuestionIds: ["qu2"] })
+    await saveQuizDefinition(BUSINESS_ID, { quizId: "q1", deleteQuestionIds: ["qu2"] })
     const del = deletes("quiz_questions")[0]
     expect(del?.eqs.some(([col, val]) => col === "quiz_id" && val === "q1")).toBe(true)
   })
 
   it("scopes the option delete through this quiz's questions", async () => {
-    await saveQuizDefinition({ quizId: "q1", deleteOptionIds: ["o2"] })
+    await saveQuizDefinition(BUSINESS_ID, { quizId: "q1", deleteOptionIds: ["o2"] })
     const del = deletes("quiz_options")[0]
     expect(del?.ins.some(([col]) => col === "question_id")).toBe(true)
   })
@@ -259,7 +266,7 @@ describe("saveQuizDefinition — deleting", () => {
 
 describe("saveQuizDefinition — what it did not change", () => {
   it("still applies a plain content edit with no structural payload at all", async () => {
-    await saveQuizDefinition({ quizId: "q1", quiz: { name: "Renamed" } })
+    await saveQuizDefinition(BUSINESS_ID, { quizId: "q1", quiz: { name: "Renamed" } })
     // Nor does it read this quiz's questions: nothing here needs ownership.
     expect(reads).not.toContain("quiz_questions")
     expect(updates("quizzes")[0].payload).toMatchObject({ name: "Renamed" })
@@ -270,7 +277,7 @@ describe("saveQuizDefinition — what it did not change", () => {
   it("does not read the attempts at all when nothing is being deleted", async () => {
     // The scan is O(attempts). A save that deletes nothing must not pay for it.
     // MUTANT KILLED: run `answeredIds` unconditionally.
-    await saveQuizDefinition({ quizId: "q1", quiz: { name: "Renamed" } })
+    await saveQuizDefinition(BUSINESS_ID, { quizId: "q1", quiz: { name: "Renamed" } })
     expect(reads).not.toContain("quiz_attempts")
   })
 })

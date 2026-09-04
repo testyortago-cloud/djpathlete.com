@@ -22,6 +22,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createAttempt, getAttempt, getQuizDefinition, saveAttemptProgress } from "@/lib/db/quizzes"
 import { sanitiseAnswers } from "@/lib/quizzes/score"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export const runtime = "nodejs"
 
@@ -95,7 +96,9 @@ export async function POST(request: Request) {
     }
     await saveAttemptProgress({ attemptId, branchId, answers })
   } else {
-    attemptId = await createAttempt({
+    // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()`
+    // is the seam until phase 4 resolves a real business off the Host header.
+    attemptId = await createAttempt(platformBusinessId(), {
       quizId: body.quizId,
       attributionSessionId: body.attributionSessionId ?? null,
     })

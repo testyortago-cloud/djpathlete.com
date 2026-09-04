@@ -5,6 +5,7 @@ import { withAudit } from "@/lib/audit/with-audit"
 import { updateFunnelSchema } from "@/lib/validators/funnel"
 import { getFunnelById, updateFunnel, deleteFunnel, listSteps, listStepDocuments } from "@/lib/db/funnels"
 import { deleteQuiz } from "@/lib/db/quizzes"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { quizUsesInSteps } from "@/lib/funnels/quiz-refs"
 
 export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -121,11 +122,22 @@ export const PATCH = withAudit(
 
 export const DELETE = withAudit(
   { action: "funnel.deleted", category: "admin_write" },
-  async (_request, ctx) => {
+  async (request, ctx) => {
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
+
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
+    }
+
     const { id } = await ctx.params
     try {
       // READ THE PAGES FIRST. `funnel_steps.funnel_id` is ON DELETE CASCADE, so
@@ -154,7 +166,7 @@ export const DELETE = withAudit(
       // is the last copy -- `funnel_submissions` cascaded away with the funnel.
       // So a quiz ANY remaining page still points at is left alone, and the
       // owner is told what goes before they confirm (see FunnelList).
-      if (quizUses.length > 0) await cleanUpOrphanedQuizzes(quizUses.map((use) => use.quizId))
+      if (quizUses.length > 0) await cleanUpOrphanedQuizzes(businessId, quizUses.map((use) => use.quizId))
 
       return NextResponse.json({ ok: true })
     } catch (error) {
@@ -173,7 +185,7 @@ export const DELETE = withAudit(
  * nuisance; a delete the owner believes failed and repeats is worse. Same call
  * the create path makes when it has to undo a half-made quiz funnel.
  */
-async function cleanUpOrphanedQuizzes(quizIds: string[]): Promise<void> {
+async function cleanUpOrphanedQuizzes(businessId: string, quizIds: string[]): Promise<void> {
   // ONE GUARD PER FAILURE MODE, and deliberately not a single try wrapping both.
   // A try around the whole body catches the scan AND the deletes, so either
   // guard alone satisfies "a failure here does not 500" -- and a test asserting
@@ -194,7 +206,7 @@ async function cleanUpOrphanedQuizzes(quizIds: string[]): Promise<void> {
   const stillUsed = new Set(quizUsesInSteps(remaining).map((use) => use.quizId))
   for (const quizId of quizIds) {
     if (stillUsed.has(quizId)) continue
-    await deleteQuiz(quizId).catch((error) =>
+    await deleteQuiz(businessId, quizId).catch((error) =>
       console.error("[DELETE /api/admin/funnels/:id] orphaned quiz", quizId, error),
     )
   }

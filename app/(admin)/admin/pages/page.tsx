@@ -19,10 +19,12 @@ import { listFunnels, listSteps, getSubmissionCountsByFunnel } from "@/lib/db/fu
 import { getQuizAttemptCounts, getQuizzesByIds } from "@/lib/db/quizzes"
 import { quizIdByStep } from "@/lib/funnels/quiz-refs"
 import { FunnelList, type FunnelWithSteps } from "@/components/admin/funnels/FunnelList"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 
 export const metadata = { title: "Landing pages" }
 
 export default async function LandingPagesScreen() {
+  const { businessId } = await resolveAdminTenant()
   const funnels = await listFunnels({ kind: "page" })
 
   const [leadCounts, stepsPerFunnel] = await Promise.all([
@@ -51,7 +53,7 @@ export default async function LandingPagesScreen() {
   // running app, not guessed.
   const quizByStep = quizIdByStep(stepsPerFunnel.flat())
   const quizIds = [...new Set(quizByStep.values())]
-  const quizRows = quizIds.length > 0 ? await getQuizzesByIds(quizIds).catch(() => []) : []
+  const quizRows = quizIds.length > 0 ? await getQuizzesByIds(businessId, quizIds).catch(() => []) : []
   // HOW MANY PEOPLE HAVE ANSWERED IT, for the delete confirmation. Deleting a
   // quiz cascades `quiz_attempts`, and that is the last copy of those answers --
   // `funnel_submissions` cascades away with the funnel itself. The owner is
@@ -59,7 +61,7 @@ export default async function LandingPagesScreen() {
   // no number rather than to a wrong one.
   const attemptCounts: Awaited<ReturnType<typeof getQuizAttemptCounts>> =
     quizIds.length > 0
-      ? await getQuizAttemptCounts().catch(() => ({}) as Awaited<ReturnType<typeof getQuizAttemptCounts>>)
+      ? await getQuizAttemptCounts(businessId).catch(() => ({}) as Awaited<ReturnType<typeof getQuizAttemptCounts>>)
       : {}
   const quizByStepId: Record<string, { id: string; name: string; attempts?: number }> = {}
   for (const [stepId, quizId] of quizByStep) {
