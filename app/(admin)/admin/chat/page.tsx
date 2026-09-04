@@ -17,6 +17,7 @@
 import { MessagesSquare } from "lucide-react"
 import { requireAdmin } from "@/lib/auth-helpers"
 import { countChatConversations, listChatConversations, parseChatFilters } from "@/lib/db/chat"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { ChatTable } from "@/components/admin/chat/ChatTable"
 
 export const metadata = { title: "Chat assistant" }
@@ -40,6 +41,11 @@ export default async function AdminChatPage({
 }) {
   await requireAdmin()
 
+  // Not wrapped in try/catch: NoAccessibleBusinessError is caught by the
+  // admin layout, which redirects — the established convention for an admin
+  // PAGE (contrast a route handler, which must answer its own 403).
+  const { businessId } = await resolveAdminTenant()
+
   const params = await searchParams
   const read = (key: string) => {
     const value = params[key]
@@ -57,11 +63,12 @@ export default async function AdminChatPage({
     // The page number is turned into an offset HERE and not in the DAL,
     // because this is the only file that knows the page size.
     listChatConversations({
+      businessId,
       show: filters.show,
       limit: PAGE_SIZE,
       offset: (filters.page - 1) * PAGE_SIZE,
     }),
-    countChatConversations({ show: filters.show }),
+    countChatConversations({ businessId, show: filters.show }),
   ])
 
   return (

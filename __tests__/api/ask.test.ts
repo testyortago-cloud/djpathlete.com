@@ -88,6 +88,7 @@ vi.mock("@/lib/lead-engine/chat/tools", async (importOriginal) => {
 })
 
 import { POST } from "@/app/api/ask/route"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import {
   MAX_CONVERSATIONS_PER_IP_PER_HOUR,
   MAX_MESSAGES_PER_CONVERSATION,
@@ -592,6 +593,39 @@ describe("POST /api/ask — the origin identifier", () => {
     expect(h.createConversation).not.toHaveBeenCalled()
     expect(h.appendMessage).not.toHaveBeenCalled()
     expect(h.runWithTools).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/ask — the tenant seam", () => {
+  // This route has no session and no Host resolution yet (phase 4), so a new
+  // conversation is stamped with the named seam rather than a raw literal —
+  // see lib/tenancy/platform.ts. Comparing against the function's own return
+  // value, not a hardcoded string, is what breaks if the route ever starts
+  // writing the constant inline again instead of calling the seam.
+  it("stamps a new conversation with the platform seam value", async () => {
+    await POST(req({ message: "hi" }))
+
+    const stored = h.createConversation.mock.calls[0][0]
+    expect(stored.businessId).toBe(platformBusinessId())
+  })
+
+  // The conversation row is the tenant carrier for every turn after the
+  // first (the file's own header states this). A distinct business id here
+  // is the presence control: if the route re-derived platformBusinessId()
+  // for appendMessage instead of reading it off the conversation it already
+  // has, this business id would never show up in any appendMessage call.
+  it("stamps every appended message with the conversation's own business, not the seam value", async () => {
+    const OTHER_BUSINESS = "33333333-3333-3333-3333-333333333333"
+    h.getConversation.mockResolvedValue(conversation({ business_id: OTHER_BUSINESS }))
+    h.outcome = { facts: [], cards: [], wantsCapture: false, wantsEscalate: false }
+
+    await POST(req({ conversationId: CONVERSATION_ID, message: "how much is it?" }))
+
+    expect(h.appendMessage.mock.calls.length).not.toBe(0)
+    for (const [arg] of h.appendMessage.mock.calls) {
+      expect(arg.businessId).toBe(OTHER_BUSINESS)
+      expect(arg.businessId).not.toBe(platformBusinessId())
+    }
   })
 })
 

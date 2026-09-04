@@ -25,7 +25,6 @@
 // Spec: docs/superpowers/specs/2026-08-23-lead-engine-stage3-chat-design.md §3
 
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { MAX_MESSAGES_PER_CONVERSATION } from "@/lib/lead-engine/chat/constants"
 import type { ChatConversation, ChatMessage } from "@/types/database"
 
@@ -34,6 +33,16 @@ function getClient() {
 }
 
 export interface CreateConversationInput {
+  /**
+   * The tenant this conversation belongs to. REQUIRED, not defaulted: this is
+   * the one place the tenant genuinely ENTERS the chat feature (see the file
+   * header) -- every later turn reads it back off the conversation row rather
+   * than deciding it again, so a default here would be a default for the
+   * whole feature. The public route has no session and no Host resolution yet
+   * (phase 4), so it passes `platformBusinessId()` (lib/tenancy/platform.ts)
+   * rather than deciding a tenant it cannot actually resolve.
+   */
+  businessId: string
   /** sha256(ip + salt). Never a raw address — see the file header. */
   ipHash: string
   userAgent?: string | null
@@ -45,7 +54,7 @@ export async function createConversation(input: CreateConversationInput): Promis
   const { data, error } = await getClient()
     .from("chat_conversations")
     .insert({
-      business_id: SINGLETON_BUSINESS_ID,
+      business_id: input.businessId,
       ip_hash: input.ipHash,
       user_agent: input.userAgent ?? null,
       landing_path: input.landingPath ?? null,
@@ -83,6 +92,14 @@ export async function listMessages(conversationId: string): Promise<ChatMessage[
 }
 
 export interface AppendMessageInput {
+  /**
+   * The tenant this message belongs to. REQUIRED: the conversation row is the
+   * tenant carrier once it exists (see the file header and
+   * `CreateConversationInput.businessId`), so every caller that already has
+   * the conversation passes `conversation.business_id` straight through
+   * rather than re-deciding a tenant here.
+   */
+  businessId: string
   conversationId: string
   role: "user" | "assistant"
   content: string
@@ -109,7 +126,7 @@ export async function appendMessage(input: AppendMessageInput): Promise<ChatMess
   const { data, error } = await supabase
     .from("chat_messages")
     .insert({
-      business_id: SINGLETON_BUSINESS_ID,
+      business_id: input.businessId,
       conversation_id: input.conversationId,
       role: input.role,
       content: input.content,
@@ -349,9 +366,9 @@ interface ChatFilterable {
  * async and this has to stay usable from both callers without either of them
  * forgetting to apply it.
  */
-function applyChatFilter<T>(query: T, show: ChatListFilter, blockedIds: string[]): T {
+function applyChatFilter<T>(query: T, businessId: string, show: ChatListFilter, blockedIds: string[]): T {
   let q = query as ChatFilterable
-  q = q.eq("business_id", SINGLETON_BUSINESS_ID)
+  q = q.eq("business_id", businessId)
   if (show === "escalated") q = q.not("escalated_at", "is", null)
   if (show === "captured") q = q.not("captured_at", "is", null)
   if (show === "blocked") q = q.in("id", blockedIds)
@@ -377,7 +394,10 @@ const MAX_BLOCKED_ID_PAGES = 20
  * conversations where the assistant was stopped", quietly missing some — and
  * the whole point of the blocked filter is that it is complete.
  */
-async function blockedConversationIds(supabase: ReturnType<typeof createServiceRoleClient>): Promise<string[]> {
+async function blockedConversationIds(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  businessId: string,
+): Promise<string[]> {
   const ids = new Set<string>()
 
   for (let page = 0; page < MAX_BLOCKED_ID_PAGES; page++) {
@@ -385,7 +405,7 @@ async function blockedConversationIds(supabase: ReturnType<typeof createServiceR
     const { data, error } = await supabase
       .from("chat_messages")
       .select("conversation_id")
-      .eq("business_id", SINGLETON_BUSINESS_ID)
+      .eq("business_id", businessId)
       .eq("verdict", "blocked")
       .order("created_at", { ascending: false })
       .range(from, from + POSTGREST_ROW_CAP - 1)
@@ -416,6 +436,7 @@ const BLOCKED_COUNT_CHUNK = Math.max(1, Math.floor(POSTGREST_ROW_CAP / MAX_MESSA
 /** Blocked replies per conversation, for the rows actually on screen. */
 async function blockedCountsFor(
   supabase: ReturnType<typeof createServiceRoleClient>,
+  businessId: string,
   ids: string[],
 ): Promise<Map<string, number>> {
   const counts = new Map<string, number>()
@@ -426,7 +447,7 @@ async function blockedCountsFor(
     const { data, error } = await supabase
       .from("chat_messages")
       .select("conversation_id")
-      .eq("business_id", SINGLETON_BUSINESS_ID)
+      .eq("business_id", businessId)
       .eq("verdict", "blocked")
       .in("conversation_id", chunk)
 
@@ -441,6 +462,14 @@ async function blockedCountsFor(
 }
 
 export interface ListChatConversationsInput {
+  /**
+   * REQUIRED, not defaulted -- this is an admin read. The caller resolves it
+   * from `resolveAdminTenant()` (a server component) or
+   * `resolveAdminTenantForRequest(req)` (a route handler); it is never
+   * `platformBusinessId()` here, which would freeze this list at the
+   * singleton for every coach that ever gets onboarded.
+   */
+  businessId: string
   show?: ChatListFilter
   limit?: number
   offset?: number
@@ -453,19 +482,18 @@ export interface ListChatConversationsInput {
  * the assistant" are different answers, and the admin page deliberately does
  * not catch this — see app/(admin)/admin/chat/page.tsx.
  */
-export async function listChatConversations(
-  input: ListChatConversationsInput = {},
-): Promise<ChatConversationListRow[]> {
+export async function listChatConversations(input: ListChatConversationsInput): Promise<ChatConversationListRow[]> {
   const supabase = getClient()
+  const { businessId } = input
   const show = input.show ?? "all"
   const limit = Math.min(input.limit ?? 25, POSTGREST_ROW_CAP)
   const offset = input.offset ?? 0
 
-  const blockedIds = show === "blocked" ? await blockedConversationIds(supabase) : []
+  const blockedIds = show === "blocked" ? await blockedConversationIds(supabase, businessId) : []
   if (show === "blocked" && blockedIds.length === 0) return []
 
   const base = supabase.from("chat_conversations").select(LIST_SELECT_COLUMNS)
-  const filtered = applyChatFilter(base, show, blockedIds)
+  const filtered = applyChatFilter(base, businessId, show, blockedIds)
   const { data, error } = await (filtered as typeof base)
     .order("last_activity_at", { ascending: false })
     .range(offset, offset + limit - 1)
@@ -475,22 +503,24 @@ export async function listChatConversations(
   const rows = (data ?? []) as Array<Omit<ChatConversationListRow, "blocked_count">>
   const counts = await blockedCountsFor(
     supabase,
+    businessId,
     rows.map((row) => row.id),
   )
 
   return rows.map((row) => ({ ...row, blocked_count: counts.get(row.id) ?? 0 }))
 }
 
-/** How many conversations match, for the footer count and the pager. */
-export async function countChatConversations(input: { show?: ChatListFilter } = {}): Promise<number> {
+/** How many conversations match, for the footer count and the pager. Same businessId contract as `listChatConversations`. */
+export async function countChatConversations(input: { businessId: string; show?: ChatListFilter }): Promise<number> {
   const supabase = getClient()
+  const { businessId } = input
   const show = input.show ?? "all"
 
-  const blockedIds = show === "blocked" ? await blockedConversationIds(supabase) : []
+  const blockedIds = show === "blocked" ? await blockedConversationIds(supabase, businessId) : []
   if (show === "blocked" && blockedIds.length === 0) return 0
 
   const base = supabase.from("chat_conversations").select("id", { count: "exact", head: true })
-  const filtered = applyChatFilter(base, show, blockedIds)
+  const filtered = applyChatFilter(base, businessId, show, blockedIds)
   const { count, error } = await (filtered as typeof base)
 
   if (error) throw new Error(`countChatConversations: ${error.message}`)

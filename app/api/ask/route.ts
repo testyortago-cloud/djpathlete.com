@@ -71,6 +71,7 @@ import {
   listMessages,
 } from "@/lib/db/chat"
 import { getSetting } from "@/lib/db/system-settings"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { rateLimit } from "@/lib/shop/rate-limit"
 import {
@@ -371,6 +372,11 @@ export async function POST(request: Request) {
     // limiter that its own rejections feed is a limiter that tightens itself.
     if (!conversation) {
       conversation = await createConversation({
+        // PUBLIC ROUTE, NO SESSION, NO HOST RESOLUTION YET (phase 4). This is
+        // the one place a conversation's tenant is decided, and this route
+        // cannot resolve a real one -- see lib/tenancy/platform.ts's own
+        // docstring for why that's a SEAM and not a resolution.
+        businessId: platformBusinessId(),
         ipHash,
         userAgent: request.headers.get("user-agent"),
         landingPath: landingPathFrom(request),
@@ -385,8 +391,14 @@ export async function POST(request: Request) {
 
   if (risk !== "none") {
     try {
-      await appendMessage({ conversationId, role: "user", content: message })
+      // `conversation.business_id`, not `platformBusinessId()`: the
+      // conversation is the tenant carrier once it exists (see the header
+      // above `createConversation` in lib/db/chat.ts), and it may have been
+      // an EXISTING conversation read via `getConversation` above rather than
+      // one this request just created.
+      await appendMessage({ businessId: conversation.business_id, conversationId, role: "user", content: message })
       await appendMessage({
+        businessId: conversation.business_id,
         conversationId,
         role: "assistant",
         content: REFUSAL_INJURY,
@@ -413,7 +425,7 @@ export async function POST(request: Request) {
     // too, right up until a replica lagged and the model was handed a
     // conversation with no question in it.
     modelMessages = [...toModelMessages(prior), { role: "user" as const, content: message }]
-    await appendMessage({ conversationId, role: "user", content: message })
+    await appendMessage({ businessId: conversation.business_id, conversationId, role: "user", content: message })
   } catch (err) {
     return failed("could not load the conversation", err)
   }
@@ -473,6 +485,7 @@ export async function POST(request: Request) {
   if (text.length === 0) recorded.push(EMPTY_REPLY_NOTE)
 
   const persist = {
+    businessId: conversation.business_id,
     conversationId,
     role: "assistant" as const,
     content: text,
