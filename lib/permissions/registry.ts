@@ -265,10 +265,19 @@ export const PRESETS: readonly PresetDef[] = [
   {
     key: "coach",
     label: "Coach",
-    description: "Trains clients. No access to money or marketing.",
+    description: "Trains clients and works their own leads. No access to money or marketing.",
     invitedRole: "staff",
     permissions: {
       clients: true,
+      // Without this the preset LITERALLY NAMED "Coach" -- and the default
+      // choice on the invite dialog -- hands someone an admin panel with no
+      // contact list, no pipeline board and no chat. The `contacts` permission
+      // existed for one release without being in any preset, which made the
+      // whole capability reachable only by unticking the preset and building a
+      // custom map by hand. Front Desk deliberately does NOT get it: that role
+      // holds `leads` for inquiry triage, and the whole reason `contacts` is a
+      // separate key is that the contact record carries payment history.
+      contacts: true,
       programs: true,
       schedule: true,
       form_reviews: true,

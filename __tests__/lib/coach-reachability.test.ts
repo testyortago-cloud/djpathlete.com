@@ -19,6 +19,7 @@
 import { describe, expect, it } from "vitest"
 import {
   PERMISSIONS,
+  PRESETS,
   PATH_PERMISSIONS,
   canAccessPath,
   resolvePathRequirement,
@@ -202,6 +203,38 @@ describe("the sidebar agrees with the gate", () => {
     }
     // And the nav is not empty, or the loop above asserts nothing.
     expect(hrefs.length).toBeGreaterThan(0)
+  })
+})
+
+describe("the Coach preset — the default path an owner takes", () => {
+  // The invite dialog defaults to this preset, so a permission missing from it
+  // is a permission almost nobody will ever grant. `contacts` shipped as a key
+  // with no preset once; these assertions are why it will not again.
+  const coachPreset = PRESETS.find((p) => p.key === "coach")!
+  const presetActor = { role: "staff" as const, permissions: coachPreset.permissions }
+
+  it("grants `contacts`, so an invited coach can actually reach their book of business", () => {
+    expect(coachPreset.permissions.contacts).toBe(true)
+    for (const path of COACH_PATHS) {
+      expect(canAccessPath(presetActor, path, "GET")).toBe(true)
+    }
+  })
+
+  it("still does not reach money, ads or anything owner-only", () => {
+    // The regression surface of widening a preset is what ELSE it opens.
+    for (const path of ["/admin/books", "/admin/payments", "/admin/ads", "/admin/team", "/admin/settings"]) {
+      expect(canAccessPath(presetActor, path, "GET")).toBe(false)
+    }
+  })
+
+  it("does NOT give Front Desk the contact record", () => {
+    // Front Desk holds `leads` for inquiry triage. The entire reason `contacts`
+    // is a separate key is that the contact record carries payment history and
+    // every message a person sent, so inquiry triage must not imply it.
+    const frontDesk = PRESETS.find((p) => p.key === "front_desk")!
+    const fd = { role: "staff" as const, permissions: frontDesk.permissions }
+    expect(canAccessPath(fd, "/admin/inbox", "GET")).toBe(true)
+    expect(canAccessPath(fd, "/admin/contacts", "GET")).toBe(false)
   })
 })
 
