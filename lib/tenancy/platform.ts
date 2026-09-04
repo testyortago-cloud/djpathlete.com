@@ -66,6 +66,14 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
  *     could tell apart from the platform's own; converting the whole ads
  *     admin surface to multi-tenant is not this task's claim.
  *
+ *     Since 2026-09-04 that seam is at least no longer reachable by a
+ *     teammate: `/admin/ads` and `/api/admin/ads` moved into
+ *     OWNER_ONLY_PREFIXES and the `ads` PermissionDef was deleted, so the
+ *     invite screen can no longer grant it. That is a narrowing of who can
+ *     reach the unscoped reader, NOT a scoping of it — the reader is
+ *     unchanged. See docs/superpowers/plans/2026-09-04-ads-owner-only.md,
+ *     and scope the reader before making it grantable again.
+ *
  * Each of those calls this instead of writing the constant inline, so a
  * later phase has ONE greppable place to change per reason, rather than
  * literals scattered across routes. Calling every one of them a "resolution"

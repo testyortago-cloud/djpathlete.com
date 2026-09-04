@@ -42,8 +42,20 @@ export type BooleanPermissionKey =
   | "leads"
   | "ai_tools"
 
-/** Money surfaces — separate read and write access. */
-export type TieredPermissionKey = "payments" | "accounting" | "commerce" | "ads"
+/**
+ * Money surfaces — separate read and write access.
+ *
+ * `ads` was a member here until 2026-09-04 and is deliberately gone, not
+ * merely undefined: keeping the type member with no PermissionDef behind it
+ * left `hasPermission({ ads: "manage" }, "ads", "manage")` returning TRUE,
+ * because the lookup misses, `def?.kind` is undefined, and the tiered branch
+ * grants by default. `sanitizePermissionMap` would drop a STORED `ads`, but
+ * any PermissionMap built in TypeScript — a preset, a fixture, a future
+ * default — would have carried a silent grant with no definition behind it.
+ * Deleting the member makes that a compile error instead. See the note on
+ * OWNER_ONLY_PREFIXES for why the ads surface is owner-only at all.
+ */
+export type TieredPermissionKey = "payments" | "accounting" | "commerce"
 
 /** Read-only by nature: there is nothing to "manage" on a dashboard. */
 export type ViewOnlyPermissionKey = "analytics"
@@ -210,13 +222,6 @@ export const PERMISSIONS: readonly PermissionDef[] = [
     kind: "tiered",
   },
   {
-    key: "ads",
-    label: "Ads",
-    description: "View sees spend and performance. Manage can change budgets and launch.",
-    group: "money",
-    kind: "tiered",
-  },
-  {
     key: "analytics",
     label: "Analytics",
     description: "Traffic, revenue and engagement dashboards. Read-only.",
@@ -354,9 +359,28 @@ export function getPreset(key: string): PresetDef | null {
  * third-party integration, or read/erase the trail of what they did.
  *
  * `/admin/dashboard` is here because its widgets surface revenue.
+ *
+ * `/admin/ads` and `/api/admin/ads` are here for a DIFFERENT reason, and a
+ * temporary one: not that the surface is privileged, but that its reader is
+ * unscoped. `listGoogleAdsAccounts` (lib/db/google-ads-accounts.ts:10) takes no
+ * businessId and applies no `.eq("business_id", ...)`, so it returns every
+ * business's ad accounts; nine non-test callers sit on it, including five pages
+ * under app/(admin)/admin/ads/. `ads` used to be a tickable checkbox on the
+ * invite screen, which meant granting it would have shown a coach another
+ * tenant's spend. Owner-only is the narrow fix -- the owner is the only actor
+ * for whom "every business" is not a leak while there is one business.
+ *
+ * THIS IS A DELIBERATE NARROWING, NOT THE PERMANENT DESIGN. When the ads
+ * subsystem is converted to multi-tenant (57 files across app/(admin)/admin/ads,
+ * app/api/admin/ads and app/api/integrations/google-ads, plus the separate
+ * Firebase twin in functions/src/ads/dal.ts -- see the frozen-seam inventory in
+ * lib/tenancy/platform.ts), move these two prefixes back into PATH_PERMISSIONS
+ * and restore the `ads` PermissionDef. Do not restore the checkbox before the
+ * reader is scoped: that is the exact order that made this a footgun.
  */
 export const OWNER_ONLY_PREFIXES: readonly string[] = [
   "/admin/dashboard",
+  "/admin/ads",
   "/admin/businesses",
   "/admin/settings",
   "/admin/team",
@@ -364,6 +388,7 @@ export const OWNER_ONLY_PREFIXES: readonly string[] = [
   "/admin/automation",
   "/admin/platform-connections",
   "/admin/reset-data",
+  "/api/admin/ads",
   "/api/admin/users",
   "/api/admin/team",
   "/api/admin/team-videos",
@@ -510,9 +535,6 @@ export const PATH_PERMISSIONS: readonly PathRule[] = [
   { prefix: "/api/admin/memberships", permission: "commerce" },
   { prefix: "/api/admin/sessions/fees", permission: "commerce" },
   { prefix: "/api/admin/events", permission: "commerce" },
-
-  { prefix: "/admin/ads", permission: "ads" },
-  { prefix: "/api/admin/ads", permission: "ads" },
 
   { prefix: "/admin/analytics", permission: "analytics" },
   { prefix: "/api/admin/analytics", permission: "analytics" },
@@ -670,7 +692,6 @@ const HOME_PRIORITY: readonly { permission: PermissionKey; path: string }[] = [
   { permission: "website", path: "/admin/marketing/faqs" },
   { permission: "funnels", path: "/admin/funnels" },
   { permission: "seo", path: "/admin/integrations/gsc" },
-  { permission: "ads", path: "/admin/ads" },
   { permission: "accounting", path: "/admin/books" },
   { permission: "payments", path: "/admin/payments" },
   { permission: "commerce", path: "/admin/shop/products" },

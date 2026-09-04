@@ -50,6 +50,12 @@ capability.
 - `ads` stays ungrantable in practice. `listGoogleAdsAccounts`
   (`lib/db/google-ads-accounts.ts:10`) takes no tenant at all. Out of scope
   here; do not grant it until that reader is scoped.
+
+  > **Superseded 2026-09-04 (later the same day) — see
+  > `2026-09-04-ads-owner-only.md`.** "Ungrantable in practice" was wrong:
+  > `ads` was a real checkbox on the invite screen the whole time, so nothing
+  > but nobody-has-tried-it stood between a coach and another tenant's ad
+  > accounts. It is now owner-only and has no `PermissionDef` at all.
 - Everything in `OWNER_ONLY_PREFIXES` is unchanged.
 - `programs` is not implied. `listGrantablePrograms()` takes no businessId
   because `programs` has no `business_id` column — a known, separately-owned gap.
@@ -213,6 +219,8 @@ finished branch read against its own goal statement.
 ## Out of scope, deliberately
 
 Calendly OAuth (phase 2), the `fn_*` RPC quartet, the neutral `Slot` type,
-scoping `listGoogleAdsAccounts`, the `sequences/enrol` singleton write,
+scoping `listGoogleAdsAccounts` (still out of scope — the *permission* was
+closed in `2026-09-04-ads-owner-only.md`; the *reader* was not touched),
+the `sequences/enrol` singleton write,
 `contacts.user_id` having no writer, `payments` having no `business_id`, and
 `loadCatalogues()`'s frozen platform id. Each wants its own change.

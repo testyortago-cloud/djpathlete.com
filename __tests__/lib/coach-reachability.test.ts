@@ -160,11 +160,65 @@ describe("who gets in", () => {
     }
   })
 
-  it("does not imply `ads`, whose reader is still unscoped", () => {
+  it("does not imply `ads`, which is owner-only while its reader is unscoped", () => {
     // lib/db/google-ads-accounts.ts:listGoogleAdsAccounts takes no tenant at
-    // all. Until that is fixed, `contacts` must not become a back door to it.
+    // all, so it returns every business's ad accounts. `ads` was a tickable
+    // invite-screen checkbox until 2026-09-04; it is now owner-only and has no
+    // PermissionDef, so no staff member can be granted it at all.
     expect(canAccessPath(coach, "/admin/ads", "GET")).toBe(false)
     expect(canAccessPath(coach, "/api/admin/ads", "GET")).toBe(false)
+
+    // The assertion that actually pins the change. Without this the two above
+    // stay green for the OLD registry too: an unmapped path and a path the
+    // coach merely lacks the permission for both deny.
+    expect(resolvePathRequirement("/admin/ads")).toEqual({ kind: "owner_only" })
+    expect(resolvePathRequirement("/api/admin/ads")).toEqual({ kind: "owner_only" })
+    expect(resolvePathRequirement("/admin/ads/settings")).toEqual({ kind: "owner_only" })
+
+    // Segment-aware, so a sibling path that merely shares the string is NOT
+    // swept in — the same property that keeps /admin/team-media out of the
+    // owner-only /admin/team.
+    expect(resolvePathRequirement("/admin/ads-something-else")).not.toEqual({ kind: "owner_only" })
+
+    // And the mirror of it: /admin/ads/pipeline belongs to ADS, not to the
+    // `contacts` rule on /admin/pipeline. A coach holding `contacts` must not
+    // reach an ads screen because the two share a last segment.
+    expect(resolvePathRequirement("/admin/ads/pipeline")).toEqual({ kind: "owner_only" })
+    expect(canAccessPath(coach, "/admin/ads/pipeline", "GET")).toBe(false)
+    // Presence control: the real pipeline board is still theirs.
+    expect(canAccessPath(coach, "/admin/pipeline", "GET")).toBe(true)
+  })
+
+  it("offers `ads` to nobody — it is not a grantable permission any more", () => {
+    // The invite screen renders PERMISSIONS. A key still listed there is a
+    // checkbox an owner can tick, whatever the path rules say afterwards.
+    //
+    // The `as string` casts are load-bearing, not noise: `"ads"` is no longer
+    // assignable to PermissionKey, so the un-cast comparison is a TS2367
+    // ("no overlap") compile error. That error is itself half the proof — but
+    // a suite that does not compile asserts nothing at runtime, and the
+    // runtime half is what stays true if someone widens the union back.
+    expect(PERMISSIONS.find((d) => (d.key as string) === "ads")).toBeUndefined()
+    expect(isPermissionKey("ads")).toBe(false)
+
+    // The presence control: the catalogue is not simply empty.
+    expect(PERMISSIONS.find((d) => d.key === "payments")).toBeDefined()
+    expect(isPermissionKey("payments")).toBe(true)
+
+    // And no path rule still points at the deleted key.
+    expect(PATH_PERMISSIONS.some((r) => (r.permission as string) === "ads")).toBe(false)
+
+    // Not even a maximally permissioned staff member gets in, which is the
+    // claim "no staff member can reach any ads surface" in its strongest form.
+    const maximal = staff(
+      Object.fromEntries(
+        PERMISSIONS.map((d) => [d.key, d.kind === "boolean" ? true : d.kind === "view_only" ? "view" : "manage"]),
+      ) as PermissionMap,
+    )
+    expect(canAccessPath(maximal, "/admin/ads", "GET")).toBe(false)
+    expect(canAccessPath(maximal, "/api/admin/ads/sync", "POST")).toBe(false)
+    // Presence control for the loop-free negative above.
+    expect(canAccessPath(maximal, "/admin/clients", "GET")).toBe(true)
   })
 })
 
