@@ -190,14 +190,21 @@ describe("the create path", () => {
   // is now keyed on the resolved contact's own user_id, not the raw booking
   // email — see findAttributionForContact's docstring for why an email
   // match would be a cross-tenant path once two businesses can share a lead.
+  // Review round 1: the first version of this test ran on the default
+  // (singleton) business, so `getContactUserId(contactId, input.businessId)`
+  // hardcoded to the singleton would have passed just as well — the same
+  // vacuous-tenant-argument defect that hit three other suites earlier on
+  // this branch. Using BUSINESS_B here (defined below, for the "tenant
+  // threading" describe block) means only the REAL threaded value can
+  // satisfy the assertion.
   it("falls back to the contact's own attribution (by user_id) when the payload carried no gclid", async () => {
     findContactByIdentifiersMock.mockResolvedValueOnce("c-1")
     getContactUserIdMock.mockResolvedValueOnce("u-1")
     findAttributionForContactMock.mockResolvedValueOnce({ gclid: "g-email", gbraid: null, wbraid: "w-email", fbclid: null })
 
-    await ingestBooking(input())
+    await ingestBooking(input({ businessId: BUSINESS_B, key: { column: "calendly_event_uri", value: "https://api.calendly.com/scheduled_events/E-attr" } }))
 
-    expect(getContactUserIdMock).toHaveBeenCalledWith("c-1", SINGLETON_BUSINESS_ID)
+    expect(getContactUserIdMock).toHaveBeenCalledWith("c-1", BUSINESS_B)
     expect(findAttributionForContactMock).toHaveBeenCalledWith({ userId: "u-1" })
     expect(enqueueBookingConversionMock).toHaveBeenCalledWith(expect.objectContaining({ gclid: "g-email", wbraid: "w-email" }))
   })

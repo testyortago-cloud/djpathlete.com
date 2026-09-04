@@ -1,3 +1,9 @@
+// @vitest-environment node
+//
+// Pinned to node: the default jsdom environment crashes on worker start
+// in this repo (ERR_REQUIRE_ESM in html-encoding-sniffer), and reports as
+// "Test Files no tests" rather than a failure. Without this line the suite
+// silently runs nothing.
 // POST /api/funnels/submit — SMS consent capture (Lead Engine Stage 2, Task 6).
 //
 // The checkbox lives on the client; this is the half that matters legally.

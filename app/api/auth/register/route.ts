@@ -136,10 +136,10 @@ export async function POST(request: Request) {
     // ever implemented it, which is why newsletter_subscribers is the one
     // table in the schema with a gclid on it.
     //
-    // TASK 13 DEV-CLONE CHECK: on anjvztjiokcgiyhobknq, 399/399
-    // marketing_attribution rows have a NULL user_id — this claim path has
-    // never actually fired in practice, on either the old or new keying. That
-    // is a pre-existing gap this task did not introduce and does not fix.
+    // In practice this claim essentially never fires: nothing else in the
+    // schema sets marketing_attribution.user_id, so both the old email-join
+    // and the current user_id keying resolve nothing until this path runs.
+    // Pre-existing gap; this task did not introduce or fix it.
     try {
       const attrSessionId = parseAttrCookie(request.headers.get("cookie"))
       if (attrSessionId) {

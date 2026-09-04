@@ -168,6 +168,30 @@ describe("getContactDetail — bookings join on contact_id (Task 13)", () => {
     expect(detail.timeline.filter((entry) => entry.origin === "booking")).toEqual([])
   })
 
+  // Review round 1, Important 2: migration 00248 backfills bookings.contact_id
+  // by SAME-BUSINESS normalised-email match for rows written before 00241
+  // added the column (no backfill at the time). This is the fixture-level
+  // proof the review asked for: a booking that would have been INVISIBLE on
+  // this contact's record before the backfill (contact_id was null) now
+  // shows up once it carries the backfilled contact_id — the exact
+  // before/after the migration produces.
+  it("shows a booking that migration 00248 just backfilled — invisible before, present after", async () => {
+    const c = contact({ id: "c1", business_id: BUSINESS, email: "noor.haddad@djpathlete.demo" })
+
+    // BEFORE: the pre-00241 row has contact_id = null, so the (already
+    // contact_id-scoped) query returns nothing for it.
+    bookingsResult = { data: [], error: null }
+    const before = await getContactDetail(c)
+    expect(before.timeline.filter((entry) => entry.origin === "booking")).toEqual([])
+
+    // AFTER: 00248 matched this row to c1 by normalised email within the same
+    // business, so it now carries contact_id = "c1" and the same query
+    // returns it.
+    bookingsResult = { data: [booking({ id: "book-backfilled" })], error: null }
+    const after = await getContactDetail(c)
+    expect(after.timeline.some((entry) => entry.key === "booking:book-backfilled")).toBe(true)
+  })
+
   it("throws on a read failure rather than rendering an empty bookings list", async () => {
     bookingsResult = { data: null, error: { message: "connection reset" } }
     await expect(getContactDetail(contact({ id: "c1", business_id: BUSINESS }))).rejects.toThrow(
