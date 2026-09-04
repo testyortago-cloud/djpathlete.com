@@ -1,21 +1,17 @@
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
+import { createServiceRoleClient } from "@/lib/supabase"
 
 /**
  * The platform's OWN business -- the tenant that owns darrenjpaul.com.
  *
- * This is a SEAM, not a resolution, and the distinction is the point. Two
+ * This is a SEAM, not a resolution, and the distinction is the point. Several
  * different reasons land a call site here, and they are NOT the same claim --
  * conflating them is exactly the kind of stale invariant this file has
- * already been bitten by twice, so both are named explicitly rather than
+ * already been bitten by twice, so each is named explicitly rather than
  * folded into one list.
  *
  * GENUINELY CANNOT RESOLVE A TENANT YET -- the caller has no session, no
  * connection row, and no column to key off:
- *   - the Calendly webhook (app/api/webhooks/calendly/route.ts), until phase 2
- *     gives each coach a connection row whose event-type URI identifies the
- *     business;
- *   - the GHL booking webhook (app/api/webhooks/ghl-booking/route.ts), which
- *     is the calendar Calendly replaces and will never be per-coach;
  *   - public, unauthenticated quiz-taking routes (e.g.
  *     app/api/quiz/progress/route.ts), until phase 4 resolves the Host
  *     header;
@@ -33,6 +29,22 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
  *     can ever legitimately claim a payment today, so this is
  *     correct-by-construction rather than a caller unable to resolve.
  *
+ * CORRECT BY CONSTRUCTION -- the caller could be asked to resolve a tenant
+ * and the answer would still be the platform's own. Not a placeholder
+ * awaiting a later phase:
+ *   - the GHL booking webhook's BUSINESS
+ *     (app/api/webhooks/ghl-booking/route.ts). Listed above as "cannot
+ *     resolve yet" until phase 2; that was the wrong shelf. Nothing later
+ *     will give this route a per-coach tenant to find.
+ *   - the GHL booking webhook's HOST (app/api/webhooks/ghl-booking/route.ts),
+ *     via platformHostId() below. Not a caller that cannot resolve: the GHL
+ *     calendar is the one Calendly REPLACES, it will never be per-coach, and
+ *     so the platform's own host is the right answer rather than a placeholder
+ *     awaiting a later phase. In phase 2 the Calendly webhook ROUTE stopped
+ *     calling it directly — a connection row now carries the host — but its
+ *     resolver still does, on the ramp described below. This is not the only
+ *     remaining caller.
+ *
  * A NARROWER VARIANT OF THE SAME SEAM -- the caller DOES attempt a real
  * resolution first, and only reaches this as the fallback when that lookup
  * comes back empty:
@@ -43,6 +55,14 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
  *     the ORDINARY case today, since `sms_sender_phone` defaults to `''` and
  *     the platform's own number still lives in the environment, not in a
  *     per-coach row.
+ *   - the Calendly webhook's tenant resolver (lib/bookings/calendly-tenant.ts)
+ *     matches the delivery's event type against `coach_calendar_connections`
+ *     first, and reaches this pair only for the single event type named by
+ *     CALENDLY_EVENT_TYPE_URI. That is a deploy ramp, not a default: migrations
+ *     reach production on push to main while Vercel is still building, so
+ *     without it every real booking would be dropped in the window between the
+ *     deploy and the owner clicking Connect. Its use is console.warn'd, and an
+ *     event type matching NEITHER is ignored rather than filed here.
  *
  * DELIBERATELY FROZEN PENDING A LATER PHASE -- the caller COULD resolve a
  * real tenant (it has an authenticated admin session), but converting it
@@ -82,4 +102,47 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
  */
 export function platformBusinessId(): string {
   return SINGLETON_BUSINESS_ID
+}
+
+/**
+ * The platform business's own booking host -- the host half of the seam
+ * above, for the GHL webhook listed under CORRECT BY CONSTRUCTION and for the
+ * Calendly resolver's ramp.
+ *
+ * This was `singletonHostId` in lib/db/bookings.ts until phase 2. The body is
+ * unchanged, because two parts of it are load-bearing and both read like
+ * tidy-up candidates.
+ *
+ * Returns null rather than throwing on a read failure — a throw here would
+ * 500 the booking webhook for what might be a transient read, which is worse
+ * than proceeding without a host. But since migration 00243, `bookings.host_id`
+ * is NOT NULL: a null return now means the insert that follows WILL fail with
+ * 23502 (not_null_violation), and the console.error below is the only
+ * diagnostic that survives — without it, "the table doesn't exist" and "there
+ * really is no host row yet" are indistinguishable from the 23502 alone.
+ * PostgREST resolves a read failure rather than throwing (same as the
+ * business_members fan-out read in lib/bookings/ingest.ts), so `error` is
+ * checked explicitly here instead of relying on a try/catch that would never
+ * fire.
+ *
+ * Note this is the OPPOSITE contract to
+ * `findCoachCalendarConnectionByEventType`, and deliberately so. That read
+ * decides WHOSE booking this is, so a failure there must never be mistaken
+ * for "nobody's" and it throws. This one only decides which host row to stamp
+ * on a booking already known to be the platform's.
+ */
+export async function platformHostId(): Promise<string | null> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from("booking_hosts")
+    .select("id")
+    .eq("business_id", SINGLETON_BUSINESS_ID)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (error) {
+    console.error(`[booking-hosts] platformHostId read failed (${error.code} ${error.message})`)
+    return null
+  }
+  return (data as { id: string } | null)?.id ?? null
 }

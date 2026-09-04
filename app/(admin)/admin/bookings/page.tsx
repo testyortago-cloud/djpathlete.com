@@ -1,4 +1,5 @@
-import { Calendar, Clock, CheckCircle2, XCircle, AlertTriangle } from "lucide-react"
+import Link from "next/link"
+import { Calendar, CalendarCog, Clock, CheckCircle2, XCircle, AlertTriangle } from "lucide-react"
 import { getBookings, getBookingStats } from "@/lib/db/bookings"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { BookingList } from "@/components/admin/BookingList"
@@ -12,7 +13,18 @@ export default async function BookingsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-primary mb-6">Bookings</h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold text-primary">Bookings</h1>
+        {/* The screen a coach connects their own Calendly from. Same `schedule`
+            permission as this page, so everyone who can read bookings can reach it. */}
+        <Link
+          href="/admin/bookings/calendar"
+          className="inline-flex items-center gap-2 rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-primary shadow-sm transition-colors hover:bg-surface/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <CalendarCog className="size-4" />
+          Your calendar
+        </Link>
+      </div>
 
       {/* Summary Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">

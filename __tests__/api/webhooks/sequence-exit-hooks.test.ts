@@ -121,7 +121,7 @@ vi.mock("@/lib/supabase", () => ({
       if (table === "notifications") {
         return { insert: vi.fn(async () => ({ data: null, error: null })) }
       }
-      // singletonHostId's chain: select().eq().order().limit().maybeSingle().
+      // platformHostId's chain: select().eq().order().limit().maybeSingle().
       // No booking_hosts row in these fixtures — hostId resolves to null,
       // which nothing in this suite asserts on.
       if (table === "booking_hosts") {
@@ -133,6 +133,20 @@ vi.mock("@/lib/supabase", () => ({
               }),
             }),
           }),
+        }
+      }
+      // The Calendly route resolves its tenant from this table before it
+      // ingests anything (lib/bookings/calendly-tenant.ts). No row claims the
+      // fixture's event type here, so these suites ride the platform ramp —
+      // which is why each Calendly beforeEach below now SETS
+      // CALENDLY_EVENT_TYPE_URI rather than deleting it. Their subject is what
+      // a booking MEANS, not whose it is; that is
+      // calendly-tenant-resolution.test.ts's job.
+      if (table === "coach_calendar_connections") {
+        // findCoachCalendarConnectionByEventType's chain, which is shorter:
+        // select().eq().maybeSingle().
+        return {
+          select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }) }),
         }
       }
       // Stripe webhook path (event_signups status updates etc.)
@@ -448,7 +462,7 @@ describe("Calendly booking webhook — sequence exit on booking", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     process.env.CALENDLY_WEBHOOK_SIGNING_KEY = CALENDLY_KEY
-    delete process.env.CALENDLY_EVENT_TYPE_URI
+    process.env.CALENDLY_EVENT_TYPE_URI = "https://api.calendly.com/event_types/EVENTTYPE000001"
 
     bookingsSelectMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
     bookingsInsert = vi.fn().mockReturnValue({

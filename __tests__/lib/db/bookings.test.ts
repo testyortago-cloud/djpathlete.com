@@ -1,22 +1,26 @@
 // @vitest-environment node
 //
-// singletonHostId's read failure path. postgrest-js resolves rather than
-// throws on a read failure (missing table, RLS misconfiguration, a transient
-// network fault), so the function must check `error` explicitly instead of
-// relying on a try/catch that would never fire — see the doc comment on
-// singletonHostId, and the identical fix applied to the business_members read
-// in lib/bookings/ingest.ts. Since migration 00243, bookings.host_id is NOT
-// NULL: a null return here now means the booking insert that follows WILL
-// fail with 23502, so the console.error this test pins is the only surviving
-// diagnostic for what actually went wrong.
+// platformHostId's read failure path. This was singletonHostId in
+// lib/db/bookings.ts until phase 2 moved it to lib/tenancy/platform.ts,
+// beside platformBusinessId; the tests came WITH it rather than being
+// rewritten, because the behaviour they pin is exactly what the move must not
+// drift. postgrest-js resolves rather than throws on a read failure (missing
+// table, RLS misconfiguration, a transient network fault), so the function
+// must check `error` explicitly instead of relying on a try/catch that would
+// never fire — see the doc comment on platformHostId, and the identical fix
+// applied to the business_members read in lib/bookings/ingest.ts. Since
+// migration 00243, bookings.host_id is NOT NULL: a null return here now means
+// the booking insert that follows WILL fail with 23502, so the console.error
+// this test pins is the only surviving diagnostic for what actually went
+// wrong.
 //
 // getBookings (Task 7, multi-tenancy): this function previously applied NO
 // business predicate at all — not a default, an absence — so every admin
 // bookings list read every business's rows. It now takes `businessId` as a
 // required first parameter. The "bookings" table mock below is separate from
-// the "booking_hosts" one above: singletonHostId's SINGLETON_BUSINESS_ID
-// literal is deliberately untouched by Task 7 (see lib/db/bookings.ts's own
-// comment on singletonHostId), so its own test above stays exactly as it was.
+// the "booking_hosts" one above: platformHostId's SINGLETON_BUSINESS_ID
+// literal is deliberately untouched by multi-tenancy (see its own comment in
+// lib/tenancy/platform.ts), so its test above stays exactly as it was.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
@@ -59,23 +63,24 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-import { getBookings, getBookingStats, singletonHostId } from "@/lib/db/bookings"
+import { getBookings, getBookingStats } from "@/lib/db/bookings"
+import { platformHostId } from "@/lib/tenancy/platform"
 
-describe("singletonHostId", () => {
+describe("platformHostId", () => {
   beforeEach(() => {
     appliedEqs = []
     bookingHostsMaybeSingle = vi.fn().mockResolvedValue({ data: { id: "host-1" }, error: null })
   })
 
   it("returns the host id on a normal read", async () => {
-    const result = await singletonHostId()
+    const result = await platformHostId()
     expect(result).toBe("host-1")
     expect(appliedEqs).toContainEqual(["business_id", SINGLETON_BUSINESS_ID])
   })
 
   it("returns null when no host row exists yet (a genuine 'none', not a failure)", async () => {
     bookingHostsMaybeSingle.mockResolvedValueOnce({ data: null, error: null })
-    const result = await singletonHostId()
+    const result = await platformHostId()
     expect(result).toBeNull()
   })
 
@@ -93,10 +98,10 @@ describe("singletonHostId", () => {
       error: { code: "42P01", message: 'relation "booking_hosts" does not exist' },
     })
 
-    const result = await singletonHostId()
+    const result = await platformHostId()
 
     expect(result).toBeNull()
-    expect(err).toHaveBeenCalledWith(expect.stringContaining("singletonHostId read failed"))
+    expect(err).toHaveBeenCalledWith(expect.stringContaining("platformHostId read failed"))
     expect(err).toHaveBeenCalledWith(expect.stringContaining("42P01"))
     err.mockRestore()
   })

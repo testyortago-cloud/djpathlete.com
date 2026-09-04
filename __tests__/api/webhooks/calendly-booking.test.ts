@@ -26,12 +26,28 @@ vi.mock("@/lib/bookings/ingest", () => ({
   ingestBooking: (...a: unknown[]) => ingestBookingMock(...a),
 }))
 
-// singletonHostId reaches the database (booking_hosts) directly, independent
-// of ingestBooking. Mocked here so this suite never touches the real dev
-// clone — the point of the createServiceRoleClient guard just below.
-const singletonHostIdMock = vi.fn(async () => "host-singleton" as string | null)
-vi.mock("@/lib/db/bookings", () => ({
-  singletonHostId: () => singletonHostIdMock(),
+// The tenant resolution reaches the database twice, independently of
+// ingestBooking: coach_calendar_connections for the row claiming this event
+// type, then booking_hosts for the platform's own host. Both are mocked here
+// so this suite never touches the real dev clone — the point of the
+// createServiceRoleClient guard just below.
+//
+// resolveCalendlyTenant itself is NOT mocked. WHICH tenant a delivery lands
+// in is pinned against the real resolver in
+// calendly-tenant-resolution.test.ts; this suite is about the adapter, and
+// every test in it rides the platform ramp — beforeEach sets
+// CALENDLY_EVENT_TYPE_URI to the fixture's own event type and no connection
+// row claims it, so the businessId/hostId assertions below read exactly the
+// values they read before phase 2.
+const findByEventTypeMock = vi.fn(async (..._a: any[]) => null as any)
+vi.mock("@/lib/db/coach-calendar-connections", () => ({
+  findCoachCalendarConnectionByEventType: (...a: unknown[]) => findByEventTypeMock(...a),
+}))
+
+const platformHostIdMock = vi.fn(async () => "host-singleton" as string | null)
+vi.mock("@/lib/tenancy/platform", () => ({
+  platformBusinessId: () => "00000000-0000-0000-0000-000000000001",
+  platformHostId: () => platformHostIdMock(),
 }))
 
 // The route must not touch the database before the signature passes. Any
@@ -72,7 +88,8 @@ async function post(req: Request) {
 beforeEach(() => {
   vi.clearAllMocks()
   ingestBookingMock.mockReset().mockResolvedValue({ action: "created", bookingId: "bk-cal-1" })
-  singletonHostIdMock.mockReset().mockResolvedValue("host-singleton")
+  findByEventTypeMock.mockReset().mockResolvedValue(null)
+  platformHostIdMock.mockReset().mockResolvedValue("host-singleton")
   process.env.CALENDLY_WEBHOOK_SIGNING_KEY = KEY
   process.env.CALENDLY_EVENT_TYPE_URI = "https://api.calendly.com/event_types/EVENTTYPE000001"
 })
@@ -328,10 +345,40 @@ describe("what it does not handle", () => {
     warn.mockRestore()
   })
 
-  it("ingests every event type when no consult event type is configured", async () => {
+  // Retargeted at phase 2, because this test used to assert the OPPOSITE:
+  // with no CALENDLY_EVENT_TYPE_URI set, the route ingested every event type
+  // it was handed. That wildcard is gone. The env var is now only the
+  // platform RAMP — the single-coach install's one event type — and an event
+  // type nothing claims belongs to somebody else whether or not a ramp is
+  // configured.
+  it("no longer ingests an unclaimed event type merely because no ramp is configured", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     delete process.env.CALENDLY_EVENT_TYPE_URI
-    await post(signedRequest(envelope({}, { scheduled_event: { ...FIXTURE.payload.scheduled_event, event_type: "https://api.calendly.com/event_types/OTHER" } })))
+    const res = await post(
+      signedRequest(envelope({}, { scheduled_event: { ...FIXTURE.payload.scheduled_event, event_type: "https://api.calendly.com/event_types/OTHER" } })),
+    )
+    expect(res.status).toBe(200)
+    expect((await res.json()).ignored).toBe(true)
+    expect(ingestBookingMock).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  // ...and what replaced it: a CONNECTION row claiming the event type is
+  // ingested with no env var involved at all. Without this control the test
+  // above would pass just as well against a route that ingested nothing ever.
+  it("ingests an event type a connection row claims, with no ramp configured", async () => {
+    delete process.env.CALENDLY_EVENT_TYPE_URI
+    findByEventTypeMock.mockResolvedValueOnce({ id: "conn-1", business_id: "biz-1", host_id: "host-1" })
+    const res = await post(
+      signedRequest(envelope({}, { scheduled_event: { ...FIXTURE.payload.scheduled_event, event_type: "https://api.calendly.com/event_types/OTHER" } })),
+    )
+    expect(res.status).toBe(201)
     expect(ingestBookingMock).toHaveBeenCalledTimes(1)
+    expect(ingestBookingMock.mock.calls[0][0]).toMatchObject({
+      businessId: "biz-1",
+      hostId: "host-1",
+      connectionId: "conn-1",
+    })
   })
 
   it("answers 400 on a signed body that is not the invitee shape, and ingests nothing", async () => {

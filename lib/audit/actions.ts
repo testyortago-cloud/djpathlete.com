@@ -49,6 +49,31 @@ export const AUDIT_ACTIONS = [
   { slug: "integration.connected", category: "admin_write", description: "Third-party integration connected" },
   { slug: "integration.disconnected", category: "admin_write", description: "Third-party integration disconnected" },
   { slug: "integration.refreshed", category: "system", description: "OAuth token refresh occurred" },
+
+  // per-coach calendars — kept apart from integration.* because these belong to
+  // a COACH's own Calendly account, connected by that coach, not to a
+  // platform-wide integration the operator owns.
+  { slug: "calendar.connected", category: "admin_write", description: "A coach connected their own Calendly account" },
+  {
+    slug: "calendar.disconnected",
+    category: "admin_write",
+    description: "A coach's calendar connection was removed",
+  },
+  {
+    slug: "calendar.event_type_selected",
+    category: "admin_write",
+    description: "A coach chose which Calendly meeting is the consult",
+  },
+  // `compliance`, not admin_write: this one is an ATTESTATION about a Calendly
+  // setting no API exposes. The coach's word is the only evidence that "Check
+  // for conflicts" was ever on, so this row is the only record that the claim
+  // was made at all — and the only record of it being withdrawn.
+  {
+    slug: "calendar.conflict_check_confirmed",
+    category: "compliance",
+    description: "A coach confirmed, or withdrew, that Calendly's conflict checking is on",
+  },
+
   { slug: "system_setting.changed", category: "system", description: "system_settings row updated" },
   { slug: "feature_flag.toggled", category: "system", description: "Feature flag toggled" },
 

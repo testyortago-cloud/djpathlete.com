@@ -64,7 +64,7 @@ describe("POST /api/webhooks/ghl-booking — gclid capture", () => {
           }
         }
         if (table === "users") return { select: () => ({ eq: () => ({ maybeSingle: vi.fn().mockResolvedValue({ data: [], error: null }) }) }) }
-        // singletonHostId's chain: select().eq().order().limit().maybeSingle().
+        // platformHostId's chain: select().eq().order().limit().maybeSingle().
         // No booking_hosts row in these fixtures — hostId resolves to null,
         // which nothing in this suite asserts on.
         if (table === "booking_hosts") {
