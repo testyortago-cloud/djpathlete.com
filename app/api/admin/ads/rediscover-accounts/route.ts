@@ -5,6 +5,12 @@
 // (the original callback returns an empty list in that case and leaves the
 // table empty), or after the token rotates and accounts need re-syncing —
 // no consent screen needed.
+//
+// upsertGoogleAdsAccount now requires a businessId. This passes
+// platformBusinessId() rather than resolving the caller's currently-selected
+// tenant -- see lib/tenancy/platform.ts's "DELIBERATELY FROZEN" list, since
+// /admin/ads/settings and everything under it still reads every account with
+// no business filter at all.
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
@@ -12,6 +18,7 @@ import { getPlatformConnection, connectPlatform } from "@/lib/db/platform-connec
 import { upsertGoogleAdsAccount } from "@/lib/db/google-ads-accounts"
 import { listAccessibleCustomers } from "@/lib/ads/google-ads-client"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export async function POST() {
   const session = await auth()
@@ -45,13 +52,28 @@ export async function POST() {
     )
   }
 
-  for (const acct of accounts) {
-    await upsertGoogleAdsAccount({
-      customer_id: acct.customer_id,
-      descriptive_name: acct.descriptive_name,
-      currency_code: acct.currency_code,
-      time_zone: acct.time_zone,
-    })
+  // Every other failure in this route answers a typed JSON error instead of
+  // 500ing (see the customer-discovery catch above) -- upsertGoogleAdsAccount
+  // can now THROW AdsAccountOwnedByAnotherBusinessError (re-discovery finding
+  // a customer_id another business already owns), and an unhandled throw
+  // here would be the one branch in this file that breaks that convention.
+  try {
+    for (const acct of accounts) {
+      await upsertGoogleAdsAccount(
+        {
+          customer_id: acct.customer_id,
+          descriptive_name: acct.descriptive_name,
+          currency_code: acct.currency_code,
+          time_zone: acct.time_zone,
+        },
+        platformBusinessId(),
+      )
+    }
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Saving discovered accounts failed: ${(err as Error).message}` },
+      { status: 502 },
+    )
   }
 
   // Refresh account_handle on the platform_connections row if it was empty.

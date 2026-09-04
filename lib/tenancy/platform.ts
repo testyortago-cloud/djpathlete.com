@@ -38,6 +38,16 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
  *     for tenancy conversion. Freezing it here keeps today's behaviour
  *     byte-identical (this returns the same constant that call site used to
  *     hard-code) while making the compromise greppable instead of silent.
+ *   - the Google Ads OAuth callback (app/api/integrations/google-ads/callback/route.ts)
+ *     and the rediscover-accounts route (app/api/admin/ads/rediscover-accounts/route.ts),
+ *     the two callers of `upsertGoogleAdsAccount`. Both routes DO have an
+ *     admin session, but `/admin/ads/settings` and everything under it --
+ *     `listGoogleAdsAccounts`, the account-toggle and diagnose routes, and
+ *     the Firebase nightly sync cron -- read every account with no business
+ *     filter at all. Passing a real per-coach businessId into just the write
+ *     path here would connect an account no other screen in that subsystem
+ *     could tell apart from the platform's own; converting the whole ads
+ *     admin surface to multi-tenant is not this task's claim.
  *
  * Each of those calls this instead of writing the constant inline, so a
  * later phase has ONE greppable place to change per reason, rather than

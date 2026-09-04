@@ -1,5 +1,7 @@
+// @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextRequest } from "next/server"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 const mocks = vi.hoisted(() => ({
   exchangeCodeForTokens: vi.fn(),
@@ -86,9 +88,43 @@ describe("GET /api/integrations/google-ads/callback", () => {
         connected_by: "u1",
       }),
     )
+    // Second argument is the businessId that upsertGoogleAdsAccount now
+    // requires. /admin/ads/settings and everything under it is still
+    // unscoped (see lib/tenancy/platform.ts), so this deliberately asserts
+    // the platform seam, not a resolved per-coach tenant.
     expect(mocks.upsertGoogleAdsAccount).toHaveBeenCalledWith(
       expect.objectContaining({ customer_id: "1234567890" }),
+      SINGLETON_BUSINESS_ID,
     )
+  })
+
+  it("redirects with a friendly error instead of 500ing when upsertGoogleAdsAccount throws", async () => {
+    // upsertGoogleAdsAccount can now throw AdsAccountOwnedByAnotherBusinessError
+    // (re-discovery finding a customer_id another business already owns). Every
+    // other failure in this route redirects with a message rather than
+    // 500ing -- this pins that the new throw path follows the same convention
+    // instead of propagating as an unhandled rejection.
+    mocks.verifyState.mockReturnValueOnce({ user_id: "u1" })
+    mocks.exchangeCodeForTokens.mockResolvedValueOnce({
+      access_token: "at",
+      refresh_token: "rt",
+      expires_in: 3600,
+      token_type: "Bearer",
+      scope: "adwords",
+    })
+    mocks.listAccessibleCustomers.mockResolvedValueOnce([
+      { customer_id: "1234567890", descriptive_name: null, currency_code: null, time_zone: null },
+    ])
+    mocks.upsertGoogleAdsAccount.mockRejectedValueOnce(
+      new Error("Google Ads account 1234567890 already belongs to business aaa"),
+    )
+    mocks.connectPlatform.mockResolvedValueOnce({})
+
+    const res = await GET(reqWith({ code: "auth-code", state: "good" }))
+    expect(res.status).toBe(307)
+    expect(res.headers.get("location")).toContain("/admin/ads/settings")
+    expect(res.headers.get("location")).toContain("error=")
+    expect(res.headers.get("location")).not.toContain("connected=1")
   })
 
   it("still persists tokens when discovery returns zero accounts (no Developer Token yet)", async () => {

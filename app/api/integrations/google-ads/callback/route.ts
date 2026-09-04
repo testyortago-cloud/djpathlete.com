@@ -9,6 +9,12 @@
 // approval is in flight), `listAccessibleCustomers` returns an empty list and
 // we still persist the refresh token so the connection isn't lost. The
 // settings page surfaces "Connected, no accounts discovered yet" in that case.
+//
+// upsertGoogleAdsAccount now requires a businessId. This passes
+// platformBusinessId() rather than resolving the admin's currently-selected
+// tenant -- see lib/tenancy/platform.ts's "DELIBERATELY FROZEN" list, since
+// /admin/ads/settings and everything under it still reads every account
+// with no business filter at all.
 
 import { NextRequest, NextResponse } from "next/server"
 import { exchangeCodeForTokens, verifyState } from "@/lib/ads/oauth"
@@ -16,6 +22,7 @@ import { connectPlatform } from "@/lib/db/platform-connections"
 import { upsertGoogleAdsAccount } from "@/lib/db/google-ads-accounts"
 import { listAccessibleCustomers } from "@/lib/ads/google-ads-client"
 import { oauthCallbackQuerySchema } from "@/lib/validators/ads"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 function settingsRedirect(request: NextRequest, params: Record<string, string>): NextResponse {
   const url = new URL("/admin/ads/settings", request.url)
@@ -92,12 +99,27 @@ export async function GET(request: NextRequest) {
     connected_by: claim.user_id,
   })
 
-  for (const acct of accounts) {
-    await upsertGoogleAdsAccount({
-      customer_id: acct.customer_id,
-      descriptive_name: acct.descriptive_name,
-      currency_code: acct.currency_code,
-      time_zone: acct.time_zone,
+  // Every other failure in this route redirects with a friendly message
+  // instead of 500ing (see the token-exchange and customer-discovery
+  // catches above) -- upsertGoogleAdsAccount can now THROW
+  // AdsAccountOwnedByAnotherBusinessError (re-discovery finding a
+  // customer_id another business already owns), and an unhandled throw
+  // here would be the one branch in this file that breaks that convention.
+  try {
+    for (const acct of accounts) {
+      await upsertGoogleAdsAccount(
+        {
+          customer_id: acct.customer_id,
+          descriptive_name: acct.descriptive_name,
+          currency_code: acct.currency_code,
+          time_zone: acct.time_zone,
+        },
+        platformBusinessId(),
+      )
+    }
+  } catch (err) {
+    return settingsRedirect(request, {
+      error: `Saving discovered accounts failed: ${(err as Error).message}`,
     })
   }
 
