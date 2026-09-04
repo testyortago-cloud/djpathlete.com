@@ -103,8 +103,18 @@ against a live client during implementation rather than asserted here.
 - **`singletonHostId` has two production callers, not one.** `app/api/webhooks/calendly/route.ts:211`
   and `app/api/webhooks/ghl-booking/route.ts:127`. The comment above it says "phase 2 removes its
   only two call sites"; that is true of the *Calendly* one only.
-- **`SINGLETON_BUSINESS_ID` is in 28 production files** on `3d688a01` (61 including tests and
-  scripts), not the 25 an earlier handoff quoted.
+- **`SINGLETON_BUSINESS_ID` is in 26 production files** on `3d688a01` — 61 including 32 test files
+  and 3 scripts. An earlier handoff said 25; an earlier draft of this document said 28, and that
+  was my own measurement error, recorded here rather than quietly amended. `git grep -l <rev>`
+  prints `<rev>:<path>`, so a `grep -v '^scripts/'` filter never matches and the scripts leak into
+  the count. Filter on `^__tests__/` and `^scripts/` only after stripping the `<rev>:` prefix:
+
+  ```bash
+  git grep -l SINGLETON_BUSINESS_ID <rev> -- '*.ts' '*.tsx' \
+    | sed "s/^<rev>://" | grep -v '^__tests__/\|^scripts/' | wc -l
+  ```
+
+  This phase takes it from 26 to **25**, by emptying `lib/db/bookings.ts` of it.
 - **A neutral `Slot` type is deferred, not forgotten.** `lib/calendly/client.ts` already exports a
   `Slot`. A provider-neutral one has exactly one implementation until the native booking path is
   built, which makes it a rename with no second consumer. It belongs with its second provider.
