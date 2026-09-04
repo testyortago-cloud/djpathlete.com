@@ -183,13 +183,25 @@ export const POST = withAudit({ action: "calendar.event_type_selected", category
     )
   }
 
-  await updateCoachCalendarEventType({
-    connectionId: connection.id,
-    eventTypeUri: chosen.uri,
-    schedulingUrl: chosen.schedulingUrl,
-    webhookSubscriptionUri: subscription.uri,
-    webhookState: subscription.state,
-  })
+  try {
+    await updateCoachCalendarEventType({
+      connectionId: connection.id,
+      eventTypeUri: chosen.uri,
+      schedulingUrl: chosen.schedulingUrl,
+      webhookSubscriptionUri: subscription.uri,
+      webhookState: subscription.state,
+    })
+  } catch (err) {
+    // The subscription exists in Calendly but we failed to record its uri, so
+    // Disconnect will never find it to delete. Naming the uri here is the only
+    // thing that makes it recoverable by hand; rethrow after, because the
+    // coach's pick genuinely did not complete.
+    console.error(
+      `[calendar/event-type] subscription ${subscription.uri} was created but not stored on connection ${connection.id} — remove it in Calendly or retry`,
+      err,
+    )
+    throw err
+  }
 
   // A coach who upgraded their Calendly plan and picked again must not stay
   // on `plan_lapsed` — the connection demonstrably works now.

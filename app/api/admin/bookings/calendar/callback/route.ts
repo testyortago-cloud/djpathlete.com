@@ -24,9 +24,10 @@
 // the wrong one. `businessChoices` is still consulted — for whether the
 // state's business is permitted, not for which business it is.
 //
-// BOTH COOKIES ARE DELETED ON EVERY EXIT PATH, success or failure. A verifier
-// that outlives its exchange is a reusable one, so `finish()` is the only way
-// out of this route.
+// BOTH COOKIES ARE DELETED ON EVERY EXIT PATH, success or failure — the
+// permission refusals included, which answer JSON rather than a redirect. A
+// verifier that outlives its exchange is a reusable one, so every response
+// built here goes through `clearFlowCookies`.
 
 import { NextResponse } from "next/server"
 
@@ -52,26 +53,37 @@ function readCookie(request: Request, name: string): string | null {
   return match ? decodeURIComponent(match[1]) : null
 }
 
-/**
- * THE ONLY EXIT. Redirects to the calendar screen with a result, and clears
- * both flow cookies on the way out — including on success, where the verifier
- * has just been spent.
- */
-function finish(request: Request, params: Record<string, string>): NextResponse {
-  const url = new URL(CALENDAR_SCREEN, request.url)
-  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
-  const response = NextResponse.redirect(url)
+/** The one place both cookies die. Every response this route builds goes through it. */
+function clearFlowCookies(response: NextResponse): NextResponse {
   response.cookies.delete({ name: NONCE_COOKIE, path: CALENDAR_COOKIE_PATH })
   response.cookies.delete({ name: VERIFIER_COOKIE, path: CALENDAR_COOKIE_PATH })
   return response
 }
 
+/**
+ * The normal exit: back to the calendar screen with a result, cookies cleared
+ * on the way out — including on success, where the verifier has just been
+ * spent.
+ */
+function finish(request: Request, params: Record<string, string>): NextResponse {
+  const url = new URL(CALENDAR_SCREEN, request.url)
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value)
+  return clearFlowCookies(NextResponse.redirect(url))
+}
+
 const failed = (request: Request, reason: string) => finish(request, { calendar: "error", reason })
+
+/**
+ * The other exit: a permission answer, which is JSON rather than a redirect
+ * because there is no screen this caller is entitled to land on. It clears the
+ * cookies too — "every exit path" means every one, not every redirect.
+ */
+const denied = (status: 401 | 403, error: string) => clearFlowCookies(NextResponse.json({ error }, { status }))
 
 export async function GET(request: Request) {
   const access = await resolveCalendarAccess(request)
   if (!access.ok) {
-    return NextResponse.json({ error: access.error }, { status: access.status })
+    return denied(access.status, access.error)
   }
 
   const url = new URL(request.url)
@@ -113,7 +125,7 @@ export async function GET(request: Request) {
   //    checks the state's value against the allowed set — it does not adopt
   //    the resolver's currently-selected business.
   if (!access.isOperator && !access.businessChoices.includes(claim.business_id)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    return denied(403, "Forbidden")
   }
 
   const verifier = readCookie(request, VERIFIER_COOKIE)

@@ -375,6 +375,9 @@ describe("GET /api/admin/bookings/calendar/callback — every rejection writes n
     const response = await CALLBACK(callbackRequest({ state: mintState() }))
     expect(response.status).toBe(403)
     expect(connectCalls).toHaveLength(0)
+    // "Every exit path" means every one, not every redirect: a refusal that
+    // left the verifier alive would leave a reusable one.
+    expectCookiesCleared(response)
   })
 
   it("refuses a state naming a business this caller may not act on", async () => {
@@ -386,6 +389,7 @@ describe("GET /api/admin/bookings/calendar/callback — every rejection writes n
     const response = await CALLBACK(callbackRequest({ state: mintState() }))
     expect(response.status).toBe(403)
     expect(connectCalls).toHaveLength(0)
+    expectCookiesCleared(response)
   })
 
   it("refuses when the signed state was minted for a different signed-in user", async () => {
