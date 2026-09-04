@@ -75,12 +75,31 @@ four Calendly endpoints in total, and these five cover all of them:
 | `availability:read` | `GET /event_type_available_times` — the free times the website chat quotes |
 | `webhooks:write` | `POST` + `DELETE /webhook_subscriptions` — booking notifications on, and off on disconnect |
 | `webhooks:read` | `GET /webhook_subscriptions/{id}` — the check that reveals a feed Calendly has disabled |
+| `scheduled_events:read` | **Required to SUBSCRIBE to `invitee.created` / `invitee.canceled`** — see below |
 
-Two that look tempting and are not needed:
+**`scheduled_events:read` is required even though we never poll for events**, and this cost a
+failed go-live attempt on 2026-09-05. Deriving the scope list from "which endpoints do we call"
+misses it, because Calendly checks that you are authorized to read the **data the events carry**,
+not merely that you may create a subscription. Without it, `POST /webhook_subscriptions` answers:
 
-- **`scheduled_events:read` — no.** Bookings arrive by webhook. We never poll for them.
+```
+400 Invalid Argument
+  missing required scope: scheduled_events:read for event: invitee.created
+  missing required scope: scheduled_events:read for event: invitee.canceled
+```
+
+**A scope list is not a list of your API calls. It is a list of the data you touch** — and a
+webhook subscription touches every field its payload carries.
+
+One that genuinely is not needed:
+
 - **`contacts:*` — no.** Contacts in this app are built from the booking payload; we never touch
   Calendly's own contact records.
+
+**Changing an app's scopes does not upgrade a token that already exists.** A token is issued
+against the scope list in force at consent time, so after editing the app you must **Disconnect and
+Connect again** to re-consent. Editing the app alone leaves the old grant in place and the same
+400 comes back.
 
 Copy the **Client ID** and **Client Secret** from the credentials page.
 **The secret is shown once.** If you lose it you must rotate it.
