@@ -298,23 +298,23 @@ describe("getQuizDefinitionForEditor", () => {
     // The pair is the test. Asserting only the second half passes with the two
     // functions identical, which is the mistake that makes retirement silent.
     expect((await getQuizDefinition("q1"))!.questions.map((q) => q.id)).not.toContain("quOff")
-    expect((await getQuizDefinitionForEditor("q1"))!.questions.map((q) => q.id)).toContain("quOff")
+    expect((await getQuizDefinitionForEditor(BUSINESS_ID, "q1"))!.questions.map((q) => q.id)).toContain("quOff")
   })
 
   it("carries the retired question's own options with it", async () => {
-    const def = await getQuizDefinitionForEditor("q1")
+    const def = await getQuizDefinitionForEditor(BUSINESS_ID, "q1")
     const retired = def!.questions.find((q) => q.id === "quOff")!
     expect(retired.isActive).toBe(false)
     expect(retired.options.map((o) => o.id)).toEqual(["oOff"])
   })
 
   it("still refuses another quiz's rows", async () => {
-    const def = await getQuizDefinitionForEditor("q1")
+    const def = await getQuizDefinitionForEditor(BUSINESS_ID, "q1")
     expect(def!.questions.map((q) => q.id)).not.toContain("quX")
     expect(def!.branches.map((b) => b.key)).not.toContain("intruder")
   })
 
   it("returns null for a quiz that does not exist", async () => {
-    expect(await getQuizDefinitionForEditor("nope")).toBeNull()
+    expect(await getQuizDefinitionForEditor(BUSINESS_ID, "nope")).toBeNull()
   })
 })

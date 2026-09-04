@@ -14,11 +14,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { QuizAnsweredOptionError, saveQuizDefinition } from "@/lib/db/quizzes"
 
-// Matches TABLES.quizzes' business_id below. Only "saveQuizDefinition — what
-// it did not change" actually reaches the scoped `.eq("business_id", …)`
-// update; every other call here exercises the child-table paths that are
-// scoped by quiz_id instead, so the value only has to be consistent, not
-// exercised by every test.
+// Matches TABLES.quizzes' business_id below. Every call in this file passes
+// the ownership guard at the top of `saveQuizDefinition` (checked against
+// this value), and TABLES.quiz_attempts' rows carry it too, since
+// `answeredIds` now scopes its read by business_id as well as quiz_id.
 const BUSINESS_ID = "00000000-0000-0000-0000-000000000001"
 
 type Row = Record<string, unknown>
@@ -40,10 +39,10 @@ const TABLES: Record<string, Row[]> = {
   quiz_attempts: [
     // ONE REAL ATTEMPT. It names qu1 and o1 — so those two are the ones the
     // rule must protect, and qu2 / o2 / o3 are the ones it must let go.
-    { id: "a1", quiz_id: "q1", answers: [{ questionId: "qu1", optionId: "o1" }], status: "completed" },
+    { id: "a1", quiz_id: "q1", business_id: BUSINESS_ID, answers: [{ questionId: "qu1", optionId: "o1" }], status: "completed" },
     // Another quiz's attempt, naming rows with the same shape. If the scan
     // forgets to filter by quiz_id, it protects rows nobody here answered.
-    { id: "aX", quiz_id: "q2", answers: [{ questionId: "qu2", optionId: "o3" }], status: "completed" },
+    { id: "aX", quiz_id: "q2", business_id: BUSINESS_ID, answers: [{ questionId: "qu2", optionId: "o3" }], status: "completed" },
   ],
 }
 

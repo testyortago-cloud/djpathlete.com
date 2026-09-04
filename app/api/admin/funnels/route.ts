@@ -4,7 +4,7 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { createFunnelSchema } from "@/lib/validators/funnel"
 import { listFunnels, createFunnel } from "@/lib/db/funnels"
-import { createQuizFrom, deleteQuiz, getQuizDefinition } from "@/lib/db/quizzes"
+import { createQuizFrom, deleteQuiz, getQuizDefinition, assertQuizInBusiness, QuizNotInBusinessError } from "@/lib/db/quizzes"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { buildQuizFunnelDoc } from "@/lib/funnels/quiz-funnel-doc"
 import { getTemplate } from "@/lib/funnels/templates"
@@ -76,9 +76,8 @@ export const POST = withAudit(
       // The built-in is a SENTINEL, not a row: `RPI_ATHLETE_QUIZ` is a typed
       // module, and `toDefinition` is the same conversion its own gate test
       // uses. Treating it as an id would send "builtin:rpi" to a uuid column.
-      const source = isBuiltinQuizSource(quizIntake.copyFrom)
-        ? toDefinition(RPI_ATHLETE_QUIZ)
-        : await getQuizDefinition(quizIntake.copyFrom)
+      const isBuiltin = isBuiltinQuizSource(quizIntake.copyFrom)
+      const source = isBuiltin ? toDefinition(RPI_ATHLETE_QUIZ) : await getQuizDefinition(quizIntake.copyFrom)
       if (!source) {
         // 400 NAMING THE FIELD, not a 500 from inside `createQuizFrom`. The
         // publish gate would catch an invented id eventually, but eventually
@@ -87,6 +86,28 @@ export const POST = withAudit(
           { error: "Invalid request", details: [{ path: "quiz.copyFrom", message: "That quiz no longer exists." }] },
           { status: 400 },
         )
+      }
+
+      // CROSS-TENANT CLONE GUARD, skipped for the built-in sentinel (not a
+      // database row at all). `getQuizDefinition` above is scoped by id
+      // alone -- several of its other callers are public, unauthenticated
+      // quiz-taking routes with no tenant to check against yet -- so without
+      // this an admin could clone another business's full quiz content into
+      // their own by naming its id as `copyFrom`. Same message and status as
+      // "does not exist": telling the two apart would confirm the id names a
+      // real quiz somewhere, just not one this caller may see.
+      if (!isBuiltin) {
+        try {
+          await assertQuizInBusiness(businessId, quizIntake.copyFrom)
+        } catch (err) {
+          if (err instanceof QuizNotInBusinessError) {
+            return NextResponse.json(
+              { error: "Invalid request", details: [{ path: "quiz.copyFrom", message: "That quiz no longer exists." }] },
+              { status: 400 },
+            )
+          }
+          throw err
+        }
       }
 
       const clone = await createQuizFrom(businessId, { source, name: funnelIntake.name })

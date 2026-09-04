@@ -1,3 +1,4 @@
+// @vitest-environment node
 // __tests__/app/api/admin/funnels/delete-route-quiz.test.ts
 //
 // THE DEFECT THIS FILE EXISTS FOR: `deleteFunnel` deletes one row. A quiz is

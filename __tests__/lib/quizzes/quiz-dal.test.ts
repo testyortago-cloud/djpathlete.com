@@ -26,6 +26,8 @@ import {
   getQuizAttemptCounts,
   createAttempt,
   QuizNotInBusinessError,
+  getQuizDefinitionForEditor,
+  getAnsweredQuestionIds,
 } from "@/lib/db/quizzes"
 import type { QuizDefinition } from "@/lib/quizzes/types"
 
@@ -95,7 +97,12 @@ const TABLES: Record<string, Row[]> = {
   quiz_attempts: [],
 }
 
-type Call = { table: string; op: string; payload?: Row }
+// `eqs` is a LIVE reference (not a snapshot) to the chain's own array, so a
+// `.eq()` called after `.update()`/`.insert()`/`.delete()` (the normal
+// chaining order) still shows up here by the time a test inspects `calls` --
+// letting a test isolate ONE call's own predicate rather than reading the
+// eqCalls the whole test run recorded across every table and every guard.
+type Call = { table: string; op: string; payload?: Row; eqs: [string, unknown][] }
 const calls: Call[] = []
 
 function makeClient() {
@@ -131,18 +138,18 @@ function makeClient() {
         insert: (p: Row) => {
           op = "insert"
           payload = p
-          calls.push({ table, op, payload })
+          calls.push({ table, op, payload, eqs })
           return chain
         },
         update: (p: Row) => {
           op = "update"
           payload = p
-          calls.push({ table, op, payload })
+          calls.push({ table, op, payload, eqs })
           return chain
         },
         delete: () => {
           op = "delete"
-          calls.push({ table, op })
+          calls.push({ table, op, eqs })
           return chain
         },
         single: async () => {
@@ -151,19 +158,19 @@ function makeClient() {
           // `RETURNING` behaviour, which `apply()` against the unmodified
           // `TABLES` fixture cannot reproduce.
           if (op === "insert") return { data: { id: "generated-id", ...(payload as Row) }, error: null }
-          if (op === "select") calls.push({ table, op })
+          if (op === "select") calls.push({ table, op, eqs })
           const rows = apply()
           return rows.length === 1
             ? { data: rows[0], error: null }
             : { data: null, error: { code: "PGRST116", message: "no rows" } }
         },
         maybeSingle: async () => {
-          if (op === "select") calls.push({ table, op })
+          if (op === "select") calls.push({ table, op, eqs })
           const rows = apply()
           return { data: rows[0] ?? null, error: null }
         },
         then: (resolve: (v: { data: Row[]; error: null }) => unknown) => {
-          if (op === "select") calls.push({ table, op })
+          if (op === "select") calls.push({ table, op, eqs })
           return Promise.resolve(resolve({ data: apply(), error: null }))
         },
       }
@@ -329,7 +336,16 @@ describe("saveQuizDefinition", () => {
   // the business it actually belongs to -- see TABLES.quizzes above.
   it("scopes the quiz content update to the business it was given", async () => {
     await saveQuizDefinition("b1", { quizId: "q1", quiz: { name: "Renamed" } })
-    const scoped = eqCalls.filter(([c]) => c === "business_id")
+    // Isolated to the UPDATE's OWN predicate, not the file-wide `eqCalls` --
+    // `saveQuizDefinition` also runs the ownership guard's SELECT first,
+    // which carries its own `.eq("business_id", …)`. Drawing both the value
+    // AND the presence control from `eqCalls` let this test stay green with
+    // the update's own predicate (lib/db/quizzes.ts's `quizzes` UPDATE)
+    // deleted entirely, pinning the guard instead of the thing it was named
+    // for -- two guards masking each other.
+    const update = calls.find((c) => c.table === "quizzes" && c.op === "update")
+    expect(update, "no update was issued").toBeDefined()
+    const scoped = update!.eqs.filter(([c]) => c === "business_id")
     expect(scoped.every(([, v]) => v === "b1")).toBe(true)
     expect(scoped).not.toHaveLength(0)
   })
@@ -361,5 +377,33 @@ describe("createAttempt", () => {
     const insertCall = calls.find((c) => c.table === "quiz_attempts" && c.op === "insert")
     expect(insertCall, "no insert was issued").toBeDefined() // presence control
     expect(insertCall!.payload!.business_id).toBe("bbb")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fix round 1: `getQuizDefinitionForEditor` and `getAnsweredQuestionIds` were
+// left unscoped in the first pass with the reasoning "several readers in this
+// family have public callers". That reasoning does not cover these two: both
+// have exactly two callers each, and both are admin-only (the quiz editor
+// page and its save route). Unscoped, a staff coach holding the `funnels`
+// permission (not an operator's OWNER_ONLY route -- see
+// lib/permissions/registry.ts) could open ANY business's quiz editor by id.
+// ---------------------------------------------------------------------------
+
+describe("getQuizDefinitionForEditor", () => {
+  it("scopes the read to the business it was given", async () => {
+    await getQuizDefinitionForEditor("bbb", "q1")
+    const scoped = eqCalls.filter(([c]) => c === "business_id")
+    expect(scoped.every(([, v]) => v === "bbb")).toBe(true)
+    expect(scoped).not.toHaveLength(0) // presence control
+  })
+})
+
+describe("getAnsweredQuestionIds", () => {
+  it("scopes the read to the business it was given", async () => {
+    await getAnsweredQuestionIds("bbb", "q1")
+    const scoped = eqCalls.filter(([c]) => c === "business_id")
+    expect(scoped.every(([, v]) => v === "bbb")).toBe(true)
+    expect(scoped).not.toHaveLength(0) // presence control
   })
 })

@@ -198,9 +198,21 @@ export async function getQuizDefinitionByKey(businessId: string, key: string): P
  *
  * `quizGate` filters `isActive` itself, so handing it this wider definition
  * changes no verdict.
+ *
+ * SCOPED BY businessId. Both its callers are admin-only (the quiz editor
+ * page and its save route) -- unlike `getQuizDefinition`, which several
+ * public, unauthenticated quiz-taking routes also call and cannot yet supply
+ * a real tenant for. Without this, a staff coach holding the `funnels`
+ * permission (not `OWNER_ONLY_PREFIXES` -- see lib/permissions/registry.ts)
+ * could open `/admin/funnels/quizzes/<uuid>` for any business's quiz by id.
  */
-export async function getQuizDefinitionForEditor(quizId: string): Promise<QuizDefinition | null> {
-  const { data, error } = await getClient().from("quizzes").select("*").eq("id", quizId).maybeSingle()
+export async function getQuizDefinitionForEditor(businessId: string, quizId: string): Promise<QuizDefinition | null> {
+  const { data, error } = await getClient()
+    .from("quizzes")
+    .select("*")
+    .eq("id", quizId)
+    .eq("business_id", businessId)
+    .maybeSingle()
   if (error) throw error
   if (!data) return null
   return assemble(data as Row, { includeInactive: true })
@@ -442,9 +454,12 @@ export async function deleteQuiz(businessId: string, quizId: string): Promise<vo
  * false`, and filing the second under a heading reading "Retired" is a lie the
  * owner has no way to check. Within one editing session the editor knows which
  * rows it just created; after a reload it does not, and this is the answer.
+ *
+ * SCOPED BY businessId, same reasoning as `getQuizDefinitionForEditor`: both
+ * its callers are admin-only.
  */
-export async function getAnsweredQuestionIds(quizId: string): Promise<string[]> {
-  const { questions } = await answeredIds(getClient(), quizId)
+export async function getAnsweredQuestionIds(businessId: string, quizId: string): Promise<string[]> {
+  const { questions } = await answeredIds(getClient(), businessId, quizId)
   return [...questions]
 }
 
@@ -527,6 +542,24 @@ export class QuizNotInBusinessError extends Error {
 }
 
 /**
+ * Throws `QuizNotInBusinessError` unless `quizId` belongs to `businessId`.
+ *
+ * EXPORTED, NOT PRIVATE TO `saveQuizDefinition` -- it is also the guard
+ * `getQuizDefinition`'s own callers need. `getQuizDefinition` is scoped by id
+ * alone (several of its callers are public, unauthenticated quiz-taking
+ * routes with no tenant to check against yet), so any admin-side caller that
+ * turns its result into a WRITE -- cloning it (`createQuizFrom`) or
+ * composing it onto another record (`add-to-step`'s draft doc) -- must run
+ * this first, or the read alone is a cross-tenant hole one step removed from
+ * the write the read was scoped to protect.
+ */
+export async function assertQuizInBusiness(businessId: string, quizId: string): Promise<void> {
+  const { data, error } = await getClient().from("quizzes").select("id").eq("id", quizId).eq("business_id", businessId).maybeSingle()
+  if (error) throw error
+  if (!data) throw new QuizNotInBusinessError(quizId)
+}
+
+/**
  * Which of this quiz's questions and options anybody has actually answered.
  *
  * A FULL READ OF ONE COLUMN FOR ONE QUIZ, scanned in JS. `quiz_attempts.answers`
@@ -534,14 +567,21 @@ export class QuizNotInBusinessError extends Error {
  * O(attempts) and honest about it; a jsonb GIN index is the fix the day the
  * volume makes it one. Callers only pay for it when something is being deleted.
  *
- * SCOPED BY quiz_id. Scanning every attempt would let another quiz's answers
- * protect a row nobody here ever picked, and the owner could never remove it.
+ * SCOPED BY quiz_id AND businessId. Scanning every attempt on quiz_id alone
+ * would let another quiz's answers protect a row nobody here ever picked, and
+ * the owner could never remove it; business_id is the second predicate that
+ * keeps this read (and its two callers) inside one tenant.
  */
 async function answeredIds(
   supabase: ReturnType<typeof getClient>,
+  businessId: string,
   quizId: string,
 ): Promise<{ questions: Set<string>; options: Set<string> }> {
-  const { data, error } = await supabase.from("quiz_attempts").select("answers").eq("quiz_id", quizId)
+  const { data, error } = await supabase
+    .from("quiz_attempts")
+    .select("answers")
+    .eq("quiz_id", quizId)
+    .eq("business_id", businessId)
   if (error) throw error
   const questions = new Set<string>()
   const options = new Set<string>()
@@ -597,15 +637,8 @@ export async function saveQuizDefinition(businessId: string, input: QuizSaveInpu
   const supabase = getClient()
   const { quizId } = input
 
-  // OWNERSHIP, CHECKED BEFORE ANYTHING ELSE -- see `QuizNotInBusinessError`.
-  const { data: ownedQuiz, error: ownershipError } = await supabase
-    .from("quizzes")
-    .select("id")
-    .eq("id", quizId)
-    .eq("business_id", businessId)
-    .maybeSingle()
-  if (ownershipError) throw ownershipError
-  if (!ownedQuiz) throw new QuizNotInBusinessError(quizId)
+  // OWNERSHIP, CHECKED BEFORE ANYTHING ELSE -- see `assertQuizInBusiness`.
+  await assertQuizInBusiness(businessId, quizId)
 
   const deleteQuestionIds = input.deleteQuestionIds ?? []
   const deleteOptionIds = input.deleteOptionIds ?? []
@@ -614,7 +647,7 @@ export async function saveQuizDefinition(businessId: string, input: QuizSaveInpu
   // Only paid for when something is being deleted — see `answeredIds`.
   const answered =
     deleteQuestionIds.length > 0 || deleteOptionIds.length > 0
-      ? await answeredIds(supabase, quizId)
+      ? await answeredIds(supabase, businessId, quizId)
       : { questions: new Set<string>(), options: new Set<string>() }
 
   const refusedOptionIds = deleteOptionIds.filter((id) => answered.options.has(id))
