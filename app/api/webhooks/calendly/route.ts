@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
+import { type CalendlyTenant, resolveCalendlyTenant } from "@/lib/bookings/calendly-tenant"
 import { ingestBooking } from "@/lib/bookings/ingest"
-import { singletonHostId } from "@/lib/db/bookings"
 import { readCalendlySigningKey } from "@/lib/calendly/env"
 import { CALENDLY_SIGNATURE_HEADER, verifyCalendlySignature } from "@/lib/calendly/signature"
 import { decodeTracking } from "@/lib/calendly/tracking"
 import { normalisePhone } from "@/lib/lead-engine/identity"
-import { platformBusinessId } from "@/lib/tenancy/platform"
 
 /**
  * Webhook endpoint for Calendly — `invitee.created` and `invitee.canceled`.
@@ -36,11 +35,30 @@ import { platformBusinessId } from "@/lib/tenancy/platform"
  * keeps it away from the pipeline and the sequences — otherwise a person who
  * moved their call by a day gets a Lost card.
  *
- * Setup: scripts/calendly-setup.mjs registers the subscription
- * (`POST /webhook_subscriptions` with our signing key) once the four
- * CALENDLY_* values are in place. Deliveries for an event type other than
- * CALENDLY_EVENT_TYPE_URI are acknowledged and ignored — the same account may
- * host things that are not consults.
+ * WHOSE BOOKING IS THIS? The delivery carries no session, so the only tenant
+ * evidence it holds is the event type it was booked against.
+ * `resolveCalendlyTenant` matches that against
+ * `coach_calendar_connections.event_type_uri` and hands back the claiming
+ * row's business, host and connection id. An event type no row claims, but
+ * which equals CALENDLY_EVENT_TYPE_URI, takes the platform ramp instead — the
+ * single-coach install this phase grew out of, kept working across the window
+ * between a migration reaching production and the owner clicking Connect.
+ *
+ * Anything matching NEITHER is acknowledged with a 200 and ingested nowhere.
+ * An event type we do not recognise is somebody else's business, not an
+ * error, and Calendly disables a subscription after 24 hours of failed
+ * deliveries — a disabled subscription has to be recreated by hand. A
+ * delivery carrying no event type at all is ignored on the same grounds: it
+ * cannot be proven to belong to anyone.
+ *
+ * A read that FAILED is not "no match", and conflating them files a real
+ * booking under the wrong coach. The lookup throws rather than answering
+ * null, and this route turns that throw into a 500 so Calendly retries.
+ *
+ * Setup: scripts/calendly-setup.mjs registers the platform's own subscription
+ * (`POST /webhook_subscriptions` with our signing key) once the CALENDLY_*
+ * values are in place; a coach connecting their own calendar registers a
+ * subscription of their own when they pick an event type.
  */
 
 const CONFIGURED_AWAY = { error: "calendly not configured" }
@@ -180,12 +198,26 @@ export async function POST(request: Request) {
   }
   const data = invitee.data
 
-  // Only the consult event type is a booking here. Other event types on the
-  // same account are somebody else's business — acknowledged, not ingested.
-  // FAILS CLOSED: a delivery with no event_type at all, while one is
-  // configured, is not proven to be a consult and is ignored too.
-  const consultEventType = process.env.CALENDLY_EVENT_TYPE_URI?.trim()
-  if (consultEventType && data.scheduled_event.event_type !== consultEventType) {
+  // WHOSE booking is this — the connection row claiming this event type, or
+  // the platform's own tenant on the ramp. lib/bookings/calendly-tenant.ts
+  // owns that decision; this route owns only what to answer.
+  let tenant: CalendlyTenant
+  try {
+    tenant = await resolveCalendlyTenant(data.scheduled_event.event_type)
+  } catch (err) {
+    // The lookup could not be PERFORMED, which is not the same answer as "no
+    // connection matched". Swallowing it here would take the ramp and file
+    // this coach's booking into the platform's tenant, silently and with a
+    // 200. A 500 instead, which Calendly retries.
+    console.error("[calendly-webhook] could not resolve this delivery's tenant:", err)
+    return NextResponse.json({ error: "could not resolve the booking's tenant" }, { status: 500 })
+  }
+
+  // Not ours, and NEVER a 5xx: an event type nobody here claims belongs to
+  // somebody else, and 24 hours of failed deliveries disables the
+  // subscription. FAILS CLOSED — a delivery with no event type at all
+  // resolves to `unknown` too, and lands here.
+  if (tenant.kind === "unknown") {
     console.warn(`[calendly-webhook] ignoring event type ${data.scheduled_event.event_type ?? "(none)"}`)
     return NextResponse.json({ ignored: true, event_type: data.scheduled_event.event_type ?? null }, { status: 200 })
   }
@@ -207,9 +239,9 @@ export async function POST(request: Request) {
   try {
     const outcome = await ingestBooking({
       source: "calendly",
-      businessId: platformBusinessId(),
-      hostId: await singletonHostId(),
-      connectionId: null,
+      businessId: tenant.businessId,
+      hostId: tenant.hostId,
+      connectionId: tenant.kind === "connection" ? tenant.connectionId : null,
       // Both of these are already parsed on this route and then thrown away:
       // the conversation id reaches only the audit row's metadata, and the
       // invitee timezone is validated at :81 and dropped. They have columns now.
