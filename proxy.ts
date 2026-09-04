@@ -127,8 +127,19 @@ export default auth((req) => {
     // resolver throws NoAccessibleBusinessError independent of which page was
     // requested, and NO_ACCESS_PATH is a page nested under that same layout —
     // without this it would redirect from NO_ACCESS_PATH to itself, forever).
+    //
+    // `new Headers(req.headers)` COPIES whatever the client sent, including a
+    // forged x-djp-admin-path / x-djp-admin-method -- NOT setting a header on
+    // a copy is not the same as clearing it. This branch does not call
+    // `.set()` on the auth pair, so it must `.delete()` them explicitly, or a
+    // staff request denied here (e.g. a manage-tier action a view-only staffer
+    // POSTs to their own home page) would forward the client's own forged
+    // headers straight through to a headerless canAccessAdminPath() call in
+    // some server action, which would trust them.
     const deniedRenderWithPagePath = () => {
       const headers = new Headers(req.headers)
+      headers.delete(ADMIN_PATH_HEADER)
+      headers.delete(ADMIN_METHOD_HEADER)
       headers.set(PAGE_PATH_HEADER, pathname)
       return NextResponse.next({ request: { headers } })
     }
@@ -154,12 +165,6 @@ export default auth((req) => {
     } else {
       res = grantedPassThrough()
     }
-    // PAGE_PATH_HEADER on the redirect branches above is functionally inert —
-    // a redirect never reaches a render, so nothing downstream ever reads a
-    // response header off a 307 — but setting it unconditionally here means
-    // no branch has to remember to do it, rather than four places that could
-    // each independently forget.
-    res.headers.set(PAGE_PATH_HEADER, pathname)
   } else if (pathname.startsWith("/editor")) {
     if (!isLoggedIn) {
       res = redirectToLogin(req)

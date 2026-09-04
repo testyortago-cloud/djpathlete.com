@@ -92,8 +92,19 @@ describe("proxy.ts /admin branch — the two headers", () => {
     // page rather than redirecting them off their own home. ADMIN_PATH_HEADER
     // must stay absent -- present would read as "the gate granted this
     // path", which is false: it denied it.
+    //
+    // Fix round 2: this branch's `new Headers(req.headers)` COPIES whatever
+    // the client sent, so a clean request (nothing forged) passes the
+    // `toBeNull()` assertions below whether or not the code actually clears
+    // the auth pair -- absence proves nothing without something to delete.
+    // The request here FORGES both headers to attacker values first, so a
+    // version that omits the `.delete()` calls forwards them straight
+    // through and this test catches it.
     const viewOnlyStaff = { user: { id: "u3", role: "staff", permissions: { payments: "view" } } }
-    const res = await (middleware as Handler)(adminRequest("/admin/payments", viewOnlyStaff, "POST"))
+    const req = adminRequest("/admin/payments", viewOnlyStaff, "POST")
+    req.headers.set(ADMIN_PATH_HEADER, "/admin/audit-logs")
+    req.headers.set(ADMIN_METHOD_HEADER, "GET")
+    const res = await (middleware as Handler)(req)
     expect(forwardedRequestHeader(res, PAGE_PATH_HEADER)).toBe("/admin/payments")
     expect(forwardedRequestHeader(res, ADMIN_PATH_HEADER)).toBeNull()
     expect(forwardedRequestHeader(res, ADMIN_METHOD_HEADER)).toBeNull()
