@@ -24,7 +24,8 @@
 
 import { UsersRound } from "lucide-react"
 import Link from "next/link"
-import { requirePermission } from "@/lib/permissions/guard"
+import { currentActor, requirePermission } from "@/lib/permissions/guard"
+import { canAccessPath } from "@/lib/permissions/registry"
 import { countContacts, listContacts, parseContactFilters } from "@/lib/db/contacts-list"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { listSequences } from "@/lib/db/sequences"
@@ -54,6 +55,20 @@ export const dynamic = "force-dynamic"
  */
 const PAGE_SIZE = 100
 
+/**
+ * May THIS viewer use the "add to a sequence" action?
+ *
+ * Asked of the same registry that gates the route the button posts to, rather
+ * than hardcoded to `role === "admin"`, so the two cannot drift: if
+ * /api/admin/sequences/enrol is ever mapped and its own role check relaxed
+ * (the follow-up its :117-131 comment describes), the button appears on its
+ * own with no change here.
+ */
+async function viewerCanEnrol(): Promise<boolean> {
+  const actor = await currentActor()
+  return canAccessPath(actor, "/api/admin/sequences/enrol", "POST")
+}
+
 export default async function AdminContactsPage({
   searchParams,
 }: {
@@ -61,6 +76,8 @@ export default async function AdminContactsPage({
 }) {
   await requirePermission("contacts")
   const { businessId } = await resolveAdminTenant()
+  const canEnrol = await viewerCanEnrol()
+  const canSeeLeads = canAccessPath(await currentActor(), "/admin/funnels/leads", "GET")
 
   const params = await searchParams
   const read = (key: string) => {
@@ -108,10 +125,19 @@ export default async function AdminContactsPage({
           <h1 className="text-2xl font-semibold text-primary">Contacts</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Everyone this business has a name, an email address or a phone number for — from{" "}
-            <Link href="/admin/funnels/leads" className="underline underline-offset-2 hover:text-primary">
-              landing page forms
-            </Link>{" "}
-            and from the contacts imported from the old system. Tick the ones you want and add them to a sequence.
+            {/* A LINK ONLY FOR SOMEONE WHO CAN OPEN IT. /admin/funnels/leads needs
+                the `funnels` permission, so for a coach holding only `contacts`
+                this was a dead link in the first paragraph of their own home
+                page. Plain text says the same thing and goes nowhere. */}
+            {canSeeLeads ? (
+              <Link href="/admin/funnels/leads" className="underline underline-offset-2 hover:text-primary">
+                landing page forms
+              </Link>
+            ) : (
+              "landing page forms"
+            )}{" "}
+            and from the contacts imported from the old system.
+            {canEnrol ? " Tick the ones you want and add them to a sequence." : ""}
           </p>
         </div>
         <div className="flex size-12 items-center justify-center rounded-lg bg-accent/10">
@@ -120,6 +146,7 @@ export default async function AdminContactsPage({
       </div>
 
       <ContactsTable
+        canEnrol={canEnrol}
         contacts={contacts}
         tagsByContact={tagsByContact}
         total={total}

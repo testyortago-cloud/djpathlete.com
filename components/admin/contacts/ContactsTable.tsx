@@ -74,6 +74,12 @@ export interface ContactsTableProps {
   pageSize: number
   sequences: SequenceSummary[]
   /**
+   * May the viewer actually enrol? Defaults to true so every existing caller
+   * is unchanged. False hides the bulk enrol toolbar entirely -- see its own
+   * comment in the markup below.
+   */
+  canEnrol?: boolean
+  /**
    * The FILTERS only — `page` is deliberately not one of them. Every filter
    * change rebuilds the query string from this object, so a page number living
    * in here would survive a narrowing search and leave the operator on page 2
@@ -333,6 +339,14 @@ export function ContactsTable(props: ContactsTableProps) {
         ) : null}
       </DataTableToolbar>
 
+      {/* HIDDEN when the viewer cannot use it. This posts to
+          /api/admin/sequences/enrol, which is NOT in PATH_PERMISSIONS and
+          whose handler still requires role === "admin" -- so for a coach it
+          403s twice over. Correct as a gate, but a fully populated sequence
+          picker that always refuses reads as a broken app rather than as a
+          boundary, which is the same reason filterNavForActor drops links a
+          teammate cannot open. Shown for anyone who can actually enrol. */}
+      {props.canEnrol === false ? null : (
       <DataTableToolbar className="flex-wrap items-center gap-2 bg-surface/30">
         <label className="sr-only" htmlFor="sequence-picker">
           Sequence to enrol into
@@ -409,6 +423,7 @@ export function ContactsTable(props: ContactsTableProps) {
           </div>
         ) : null}
       </DataTableToolbar>
+      )}
 
       <DataTable>
         {/* No <tr> here — DataTableHeader renders the row itself. */}

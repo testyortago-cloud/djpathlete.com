@@ -112,6 +112,32 @@ describe("POST /api/admin/contacts/[id]/tags", () => {
     expect(passed).not.toBe("00000000-0000-0000-0000-000000000001")
   })
 
+  it("WRITES the tag in the caller's tenant, not just reads in it", async () => {
+    // The bug this replaces: guard() resolved a businessId, spent it on the
+    // read gate, and did not return it -- so addTag fell to its
+    // SINGLETON_BUSINESS_ID default. The insert SUCCEEDED and answered 200,
+    // filing a coach's tag in the operator's partition, where every reader
+    // (getContactDetail, tagsForContacts) filters it straight back out. The
+    // pill appeared optimistically and vanished on refresh.
+    //
+    // Scoping a read and then writing unscoped is worse than not scoping at
+    // all: the read PROVES the caller owns this contact, and the write then
+    // files the row under a different business.
+    await POST(req({ tag: "camp-2026" }), ctx())
+    const [addArg] = vi.mocked(addTag).mock.calls[0]
+    expect(addArg.businessId).toBe(BUSINESS_ID)
+    expect(addArg.businessId).not.toBe("00000000-0000-0000-0000-000000000001")
+  })
+
+  it("DELETES in the caller's tenant too", async () => {
+    // Mis-keyed the same way, with the mirror consequence: filtering on the
+    // singleton meant a coach could never remove a tag that was filed right.
+    await DELETE(req({ tag: "camp-2026" }, "DELETE"), ctx())
+    const [delArg] = vi.mocked(removeTag).mock.calls[0]
+    expect(delArg.businessId).toBe(BUSINESS_ID)
+    expect(delArg.businessId).not.toBe("00000000-0000-0000-0000-000000000001")
+  })
+
   it("404s for a contact in ANOTHER tenant, the same answer as one that does not exist", async () => {
     // The scoped read returns null for both cases, and 404 is the right answer
     // to fail closed to: distinguishing them would confirm the row exists.
@@ -136,7 +162,12 @@ describe("POST /api/admin/contacts/[id]/tags", () => {
     await expect(res.json()).resolves.toEqual({ tag: "camp-2026", created: true })
     // Pins WHICH contact and WHICH tag reached the DAL — a route that tagged
     // the wrong person would still answer 200.
-    expect(addTag).toHaveBeenCalledWith({ contactId: CONTACT_ID, tag: "camp-2026", createdBy: "admin-1" })
+    expect(addTag).toHaveBeenCalledWith({
+      contactId: CONTACT_ID,
+      tag: "camp-2026",
+      createdBy: "admin-1",
+      businessId: BUSINESS_ID,
+    })
   })
 
   it("normalises before writing, using the same rule the DAL applies", async () => {
@@ -255,7 +286,11 @@ describe("DELETE /api/admin/contacts/[id]/tags", () => {
     const res = await DELETE(req({ tag: "camp-2026" }, "DELETE"), ctx())
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ tag: "camp-2026", removed: true })
-    expect(removeTag).toHaveBeenCalledWith({ contactId: CONTACT_ID, tag: "camp-2026" })
+    expect(removeTag).toHaveBeenCalledWith({
+      contactId: CONTACT_ID,
+      tag: "camp-2026",
+      businessId: BUSINESS_ID,
+    })
   })
 
   it("403s an anonymous caller and removes nothing", async () => {

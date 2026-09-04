@@ -92,6 +92,9 @@ export const POST = withAudit(
         toStageKey: body.toStageKey,
         actorUserId: session.user.id,
         businessId,
+        // The REAL role, not the "admin" this used to hardcode. A coach can
+        // close a deal now, and the audit trail has to say so.
+        actorRole: session.user.role,
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : "Move failed"

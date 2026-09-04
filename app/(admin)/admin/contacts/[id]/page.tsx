@@ -29,7 +29,8 @@
 // never built against.
 
 import { notFound } from "next/navigation"
-import { requirePermission } from "@/lib/permissions/guard"
+import { currentActor, requirePermission } from "@/lib/permissions/guard"
+import { canAccessPath } from "@/lib/permissions/registry"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { recordAudit } from "@/lib/audit/record"
 import { getContactById, getContactDetail } from "@/lib/db/contact-detail"
@@ -94,5 +95,9 @@ export default async function AdminContactDetailPage({ params }: { params: Promi
     },
   })
 
-  return <ContactDetail data={detail} sequences={sequences} />
+  // Same question the list page asks, of the same registry that gates the route
+  // the button posts to. A header action that always 403s reads as a broken app.
+  const canEnrol = canAccessPath(await currentActor(), "/api/admin/sequences/enrol", "POST")
+
+  return <ContactDetail data={detail} sequences={sequences} canEnrol={canEnrol} />
 }

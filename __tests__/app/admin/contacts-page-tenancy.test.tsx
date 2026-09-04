@@ -25,7 +25,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // keeps these tenancy assertions running; leaving the old mock in place made
 // requirePermission reach the real auth() and throw "headers was called
 // outside a request scope", which is a broken test, not a boundary.
-vi.mock("@/lib/permissions/guard", () => ({ requirePermission: vi.fn() }))
+// currentActor too: the page asks canAccessPath whether THIS viewer may use
+// the "add to a sequence" action, so an unmocked currentActor reaches the
+// real auth() and throws "headers was called outside a request scope".
+vi.mock("@/lib/permissions/guard", () => ({ requirePermission: vi.fn(), currentActor: vi.fn() }))
 vi.mock("@/lib/tenancy/resolve", () => ({ resolveAdminTenant: vi.fn() }))
 vi.mock("@/lib/db/contacts-list", () => ({
   listContacts: vi.fn(),
@@ -36,7 +39,7 @@ vi.mock("@/lib/db/sequences", () => ({ listSequences: vi.fn() }))
 vi.mock("@/lib/db/contact-tags", () => ({ tagsForContacts: vi.fn() }))
 vi.mock("@/components/admin/contacts/ContactsTable", () => ({ ContactsTable: () => null }))
 
-import { requirePermission } from "@/lib/permissions/guard"
+import { currentActor, requirePermission } from "@/lib/permissions/guard"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { listContacts, countContacts } from "@/lib/db/contacts-list"
 import { listSequences } from "@/lib/db/sequences"
@@ -52,6 +55,7 @@ async function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks()
   ;(requirePermission as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "admin" } })
+  ;(currentActor as ReturnType<typeof vi.fn>).mockResolvedValue({ role: "admin", permissions: {} })
   ;(resolveAdminTenant as ReturnType<typeof vi.fn>).mockResolvedValue({
     businessId: BUSINESS_ID,
     choices: [{ id: BUSINESS_ID, name: "Acme Coaching", slug: "acme" }],

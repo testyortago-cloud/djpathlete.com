@@ -81,12 +81,36 @@ export const POST = withAudit(
     // call site: buildManualGrantDeps reaches assign-program, the ~2800-line
     // email module, the password-reset DAL and Supabase. No other request to
     // this file's neighbours should pay for that graph.
-    const [{ readOpportunityForGrant, readContactIdentity }, { buildManualGrantDeps }, { grantFunnelPurchase }] =
+    const [
+      { readOpportunityForGrant, readContactIdentity, listGrantablePrograms },
+      { buildManualGrantDeps },
+      { grantFunnelPurchase },
+    ] =
       await Promise.all([
         import("@/lib/db/pipeline"),
         import("@/lib/funnels/checkout/deps"),
         import("@/lib/funnels/checkout/grant"),
       ])
+
+    // The picker only OFFERS active, priced programs — `listGrantablePrograms`
+    // filters on `is_active` and a non-null `stripe_price_id`. That filter was
+    // client-side only: `programId` arrives in the request body and reached
+    // `assignProgram` on nothing but an isNonEmptyString check, so any UUID
+    // from the programs table would do, retired or unpriced. Harmless while
+    // only the operator could call this; a coach can now, and the grant creates
+    // a real account and sends a real email. Re-asking the same question here
+    // is the cheap fix, and it keeps one definition of "grantable".
+    //
+    // `programs` has no business_id, so this is a shared catalogue and there is
+    // no tenant to check it against — see the plan doc. This closes the
+    // "any program at all" hole, not the shared-catalogue question.
+    const grantable = await listGrantablePrograms()
+    if (!grantable.some((program) => program.id === body.programId)) {
+      return NextResponse.json(
+        { error: "That program cannot be granted — it is retired or has no price set." },
+        { status: 400 },
+      )
+    }
 
     const result = await grantWonOpportunity(
       { opportunityId: body.opportunityId, programId: body.programId },

@@ -95,7 +95,16 @@ function SectionHeading({ icon, title, hint }: { icon: React.ReactNode; title: s
   )
 }
 
-export function ContactDetail({ data, sequences = [] }: { data: ContactDetailData; sequences?: SequenceSummary[] }) {
+export function ContactDetail({
+  data,
+  sequences = [],
+  canEnrol = true,
+}: {
+  data: ContactDetailData
+  sequences?: SequenceSummary[]
+  /** Passed to ContactEnrol, which renders nothing when false. See its header. */
+  canEnrol?: boolean
+}) {
   const { contact, timeline, consents, suppressions, runs, tags } = data
 
   const displayName = contact.name ?? contact.email ?? contact.phone_e164 ?? "Contact"
@@ -123,7 +132,12 @@ export function ContactDetail({ data, sequences = [] }: { data: ContactDetailDat
               ┌─ Jane Smith ──────────────── [ Add to a sequence ] ─┐ */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h1 className="text-2xl font-semibold text-primary">{displayName}</h1>
-          <ContactEnrol contactId={contact.id} contactLabel={displayName} sequences={sequences} />
+          <ContactEnrol
+            contactId={contact.id}
+            contactLabel={displayName}
+            sequences={sequences}
+            canEnrol={canEnrol}
+          />
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">

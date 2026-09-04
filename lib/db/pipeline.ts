@@ -867,6 +867,19 @@ export async function moveOpportunityManually(input: {
   toStageKey: string
   actorUserId: string
   businessId?: string
+  /**
+   * The mover's REAL role. Was hardcoded `"admin"` in both audit rows below,
+   * which was true by construction while `/api/admin/pipeline/move` gated on
+   * `role === "admin"` -- and became false on 2026-09-04, when a coach holding
+   * `contacts` could move a card. Every coach close was then filed against the
+   * operator's role. The actor id stayed right, so the row was traceable, but
+   * "did a coach close this deal?" got the wrong answer from the one trail
+   * that is supposed to answer it.
+   *
+   * Defaults to "admin" only so the twin cron/back-office callers that pass no
+   * role keep their previous value rather than writing an empty one.
+   */
+  actorRole?: string
 }): Promise<void> {
   const businessId = input.businessId ?? SINGLETON_BUSINESS_ID
   const supabase = getClient()
@@ -925,7 +938,7 @@ export async function moveOpportunityManually(input: {
   await recordAudit({
     action: "pipeline.opportunity_moved",
     category: "admin_write",
-    actor: { id: input.actorUserId, role: "admin" },
+    actor: { id: input.actorUserId, role: input.actorRole ?? "admin" },
     target: { type: "opportunity", id: input.opportunityId },
     metadata: { to_stage: toStage.key, closing: isClosing },
   })
@@ -940,7 +953,7 @@ export async function moveOpportunityManually(input: {
     await recordAudit({
       action: toStage.kind === "won" ? "pipeline.opportunity_won" : "pipeline.opportunity_lost",
       category: "commerce",
-      actor: { id: input.actorUserId, role: "admin" },
+      actor: { id: input.actorUserId, role: input.actorRole ?? "admin" },
       target: { type: "opportunity", id: input.opportunityId },
       metadata: { to_stage: toStage.key, trigger: "manual" },
     })

@@ -68,8 +68,27 @@ Read back against `main`, that is half right and half stale:
 |---|---|---|---|
 | 1 | `lib/db/chat.ts:75` `getConversation(id)` | **no business predicate at all** | reads ANY tenant |
 | 2 | `lib/db/pipeline.ts:1024` `readOpportunityForGrant(id)` | **no business predicate at all** | reads ANY tenant |
-| 3 | `app/api/admin/contacts/[id]/tags/route.ts:97` `getContactById(id)` | falls to `SINGLETON_BUSINESS_ID` default | wrong tenant |
+| 3 | `app/api/admin/contacts/[id]/tags/route.ts` `getContactById(id)` | falls to `SINGLETON_BUSINESS_ID` default | wrong tenant |
 | 4 | `app/api/admin/pipeline/move/route.ts` `moveOpportunityManually` | `businessId` param exists, is **not passed** → singleton | wrong tenant |
+| 5 | same route, `addTag(...)` | falls to the singleton default | **wrong tenant, on a WRITE** |
+| 6 | same route, `removeTag(...)` | falls to the singleton default | **wrong tenant, on a WRITE** |
+
+**5 and 6 were missed on the first pass and found by the whole-branch review.**
+The first version of this document said "four surfaces" and named only the READ
+on line 97 of the tags route, eight lines above two writes carrying the identical
+default. Scoping the read and leaving the writes is worse than scoping neither:
+the read PROVES the caller owns the contact, and the write then files the row
+under a different business. The insert succeeds, answers `200 {created:true}`,
+and the tag vanishes on refresh because every reader filters on the caller's own
+business — while DELETE, mis-keyed the same way, can never remove a tag that was
+filed correctly. It regressed the OPERATOR too, whenever the business switcher
+was off the singleton.
+
+No repair migration is needed: `contact_tags` was read back on both databases and
+holds **0 rows on production** and 0 mis-keyed rows on the dev clone, so the bug
+was never exercised. Worth knowing if that changes — `contact_tags_unique` is
+`UNIQUE (contact_id, tag)` and is NOT business-scoped, so a mis-keyed row would
+block the corrected insert with a 23505 rather than sitting harmlessly beside it.
 
 `app/(admin)/admin/contacts/[id]/page.tsx` is **already scoped** — a "Task 13"
 conversion did it, and it resolves a tenant and passes it to both
@@ -161,6 +180,35 @@ Pre-existing red at `main@3d2ddbaa`, not to be blamed on this branch:
 `campaign-revenue-page`, `contacts-table`, `pipeline-board`.
 `tsc --noEmit` is **251** errors — compare the error SET, not just the count,
 because a falling count hides new errors too.
+
+## Found by the whole-branch review, and fixed here
+
+Per-task checking could not have seen most of these; they are properties of the
+finished branch read against its own goal statement.
+
+- **The `coach` preset granted nothing new.** The permission shipped in no
+  preset at all, so the one path an owner actually takes — inviting a teammate
+  as "Coach", the default selection on the invite dialog — produced exactly the
+  person this change exists to unblock, still unable to reach any of it. Front
+  Desk deliberately still does not get it.
+- **The tag writes** (surfaces 5 and 6 above).
+- **`programId` was unvalidated server-side.** The picker offers only active,
+  priced programs, but that filter was client-side only: any UUID in the
+  `programs` table reached `assignProgram`, which creates an account and sends
+  email. Now re-checked against `listGrantablePrograms()` in the route.
+- **Every coach card-move audited as `actor_role: "admin"`.** Hardcoded in
+  `moveOpportunityManually`, true by construction only while the route was
+  admin-only. "Did a coach close this deal?" got the wrong answer from the one
+  trail meant to answer it.
+- **Two buttons posted to an unmapped route.** `/api/admin/sequences/enrol` is
+  not in `PATH_PERMISSIONS` and its handler still requires `role === "admin"`,
+  so a coach saw a populated sequence picker that 403s. The gate is right and
+  fails closed twice; the button is now hidden from anyone who cannot use it,
+  asked of the same registry that gates the route so the two cannot drift.
+  The singleton write inside that route remains out of scope and unreachable.
+- **A dead link in the first paragraph** of the coach's own home page:
+  `/admin/funnels/leads` needs `funnels`. Now plain text unless the viewer can
+  open it.
 
 ## Out of scope, deliberately
 

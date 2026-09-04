@@ -11,10 +11,15 @@
 // and proxy.ts bounced every staff member to /admin/no-access.
 //
 // THE CLAIM THAT MATTERS MOST HERE IS THE NEGATIVE ONE. Making these paths
-// reachable is only safe because the four reads and writes behind them were
-// scoped in the same change (see __tests__/lib/db/coach-scoped-reads.test.ts
-// and __tests__/app/api/coach-scoped-routes.test.ts). A test that only asserted
-// "a coach can now get in" would be green for the dangerous version too.
+// reachable is only safe because the SIX reads and writes behind them were
+// scoped in the same change. A test that only asserted "a coach can now get in"
+// would be green for the dangerous version too. Those live in:
+//
+//   __tests__/lib/db/coach-scoped-reads.test.ts        the two unscoped reads
+//   __tests__/app/admin/detail-page-tenancy.test.tsx   the two [id] pages
+//   __tests__/app/api/admin/contacts/tags-route.test.ts  the two tag writes
+//   __tests__/app/api/admin/pipeline/grant-route.test.ts
+//   __tests__/api/admin/pipeline-move.test.ts
 
 import { describe, expect, it } from "vitest"
 import {

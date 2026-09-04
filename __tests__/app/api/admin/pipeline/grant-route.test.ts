@@ -50,9 +50,11 @@ vi.mock("@/lib/tenancy/resolve", () => {
 
 // The route imports these three lazily, inside the handler. Mocking the modules
 // still works because the dynamic import resolves through the same registry.
+const listGrantableProgramsMock = vi.fn()
 vi.mock("@/lib/db/pipeline", () => ({
   readOpportunityForGrant: (...a: unknown[]) => readOpportunityForGrantMock(...a),
   readContactIdentity: vi.fn(),
+  listGrantablePrograms: (...a: unknown[]) => listGrantableProgramsMock(...a),
 }))
 vi.mock("@/lib/funnels/checkout/deps", () => ({ buildManualGrantDeps: vi.fn() }))
 vi.mock("@/lib/funnels/checkout/grant", () => ({ grantFunnelPurchase: vi.fn() }))
@@ -98,6 +100,7 @@ beforeEach(() => {
     source_session_id: null,
   })
   grantWonOpportunityMock.mockResolvedValue({ outcome: "granted", userId: "u-1", accountCreated: true })
+  listGrantableProgramsMock.mockResolvedValue([{ id: "prog-1", name: "12-Week Base", price_cents: 24900 }])
 })
 
 describe("who may grant", () => {
@@ -122,6 +125,20 @@ describe("who may grant", () => {
     const res = await POST(req(validBody) as never, NO_PARAMS)
     expect(res.status).toBe(403)
     expect(grantWonOpportunityMock).not.toHaveBeenCalled()
+  })
+
+  it("asks the gate about THIS request, not a middleware header", async () => {
+    // MUTANT: `canAccessAdminPath(session.user)` with the request dropped. The
+    // no-request form re-derives the path from the middleware-stamped header
+    // and DENIES when it is missing — so the mutant fails closed rather than
+    // open, but it makes the route's answer depend on a header this handler
+    // never sees in a unit context. Assert the argument, not just the call.
+    await POST(req(validBody) as never, NO_PARAMS)
+    expect(canAccessMock).toHaveBeenCalled()
+    const [user, request] = canAccessMock.mock.calls[0]
+    expect(user).toMatchObject({ role: "admin" })
+    expect(request).toBeInstanceOf(Request)
+    expect(new URL((request as Request).url).pathname).toBe("/api/admin/pipeline/grant")
   })
 
   it("refuses BEFORE resolving a tenant or touching the grant path", async () => {
@@ -172,6 +189,28 @@ describe("which tenant's card gets granted", () => {
     const res = await POST(req(validBody) as never, NO_PARAMS)
     expect(res.status).toBe(403)
     expect(grantWonOpportunityMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("which program may be granted", () => {
+  it("refuses a programId the picker never offered", async () => {
+    // MUTANT: dropping the listGrantablePrograms check. `programId` arrives in
+    // the request body and the picker's is_active / stripe_price_id filter is
+    // CLIENT-SIDE ONLY, so without this any UUID from the programs table is
+    // grantable by curl — including a retired or unpriced one. The grant
+    // creates a real account and sends a real email, so this is not a
+    // cosmetic validation.
+    authMock.mockResolvedValue(COACH_SESSION)
+    const res = await POST(req({ opportunityId: OPPORTUNITY_ID, programId: "prog-retired" }) as never, NO_PARAMS)
+    expect(res.status).toBe(400)
+    expect(grantWonOpportunityMock).not.toHaveBeenCalled()
+  })
+
+  it("allows one the picker DID offer — the presence control", async () => {
+    authMock.mockResolvedValue(COACH_SESSION)
+    const res = await POST(req(validBody) as never, NO_PARAMS)
+    expect(res.status).toBe(200)
+    expect(grantWonOpportunityMock).toHaveBeenCalled()
   })
 })
 

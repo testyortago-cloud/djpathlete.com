@@ -44,10 +44,19 @@ export function ContactEnrol({
   contactId,
   contactLabel,
   sequences,
+  canEnrol = true,
 }: {
   contactId: string
   contactLabel: string
   sequences: SequenceSummary[]
+  /**
+   * Defaults to true so existing callers are unchanged. False renders nothing:
+   * this posts to /api/admin/sequences/enrol, which is not in PATH_PERMISSIONS
+   * and whose handler still requires role === "admin", so for a coach the
+   * button 403s twice over. A header action that always refuses reads as a
+   * broken app rather than as a permission boundary.
+   */
+  canEnrol?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [sequenceKey, setSequenceKey] = useState("")
@@ -106,6 +115,10 @@ export function ContactEnrol({
       }
     })
   }
+
+  // AFTER every hook above, never before one: an early return placed higher
+  // would change the hook count between renders.
+  if (!canEnrol) return null
 
   if (!open) {
     return (

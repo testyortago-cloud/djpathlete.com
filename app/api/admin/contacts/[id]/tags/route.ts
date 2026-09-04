@@ -72,7 +72,7 @@ async function tagMetadata(_req: Request, res: Response): Promise<Record<string,
 async function guard(
   request: Request,
   context: { params: Promise<Record<string, string>> },
-): Promise<{ error: Response } | { contactId: string; tag: string; actorId: string }> {
+): Promise<{ error: Response } | { contactId: string; tag: string; actorId: string; businessId: string }> {
   const session = await auth()
   if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return { error: NextResponse.json({ error: "Unauthorized. Admin access required." }, { status: 403 }) }
@@ -115,7 +115,15 @@ async function guard(
   const contact = await getContactById(id, businessId)
   if (!contact) return { error: NextResponse.json({ error: "No such contact." }, { status: 404 }) }
 
-  return { contactId: contact.id, tag, actorId: session.user.id }
+  // businessId IS RETURNED, not just used for the read gate above. Scoping the
+  // lookup and then writing unscoped is worse than not scoping at all: the read
+  // proves the coach owns this contact, and the write then files the tag under
+  // a DIFFERENT business. `addTag`/`removeTag` default it to
+  // SINGLETON_BUSINESS_ID (lib/db/contact-tags.ts), so omitting it here put a
+  // coach's tag in the OPERATOR'S partition -- an insert that succeeds, returns
+  // 200, and disappears on the next refresh because every reader filters on the
+  // caller's own business.
+  return { contactId: contact.id, tag, actorId: session.user.id, businessId }
 }
 
 export const POST = withAudit(
@@ -129,6 +137,7 @@ export const POST = withAudit(
         contactId: checked.contactId,
         tag: checked.tag,
         createdBy: checked.actorId,
+        businessId: checked.businessId,
       })
 
       // `created: false` means the contact already had it. That is a success,
@@ -149,7 +158,13 @@ export const DELETE = withAudit(
       const checked = await guard(request, context)
       if ("error" in checked) return checked.error
 
-      const result = await removeTag({ contactId: checked.contactId, tag: checked.tag })
+      // Mis-keyed on DELETE too: without the tenant this filtered on the
+      // singleton, so a coach could never remove a tag that was filed correctly.
+      const result = await removeTag({
+        contactId: checked.contactId,
+        tag: checked.tag,
+        businessId: checked.businessId,
+      })
       return NextResponse.json({ tag: result.tag, removed: true })
     } catch (error) {
       console.error("Remove contact tag error:", error)

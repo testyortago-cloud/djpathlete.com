@@ -129,6 +129,7 @@ describe("POST /api/admin/pipeline/move", () => {
       toStageKey: "consulted",
       actorUserId: "coach-1",
       businessId: BUSINESS_ID,
+      actorRole: "staff",
     })
   })
 
@@ -142,6 +143,20 @@ describe("POST /api/admin/pipeline/move", () => {
     const arg = moveOpportunityManuallyMock.mock.calls[0][0] as { businessId?: string }
     expect(arg.businessId).toBe(BUSINESS_ID)
     expect(arg.businessId).not.toBe("00000000-0000-0000-0000-000000000001")
+  })
+
+  it("audits the move under the mover's REAL role, not a hardcoded admin", async () => {
+    // MUTANT: dropping actorRole. moveOpportunityManually defaulted the audit
+    // rows to `role: "admin"`, which was true by construction only while this
+    // route gated on `role === "admin"`. A coach can close a deal now, so
+    // leaving it hardcoded files every coach close against the operator — the
+    // actor id stays right, so the row is traceable, but "did a coach close
+    // this deal?" gets the wrong answer from the one trail meant to answer it.
+    authMock.mockResolvedValue(COACH_SESSION)
+    await POST(req({ opportunityId: "opp-9", toStageKey: "won" }) as never, NO_PARAMS)
+    const arg = moveOpportunityManuallyMock.mock.calls[0][0] as { actorRole?: string }
+    expect(arg.actorRole).toBe("staff")
+    expect(arg.actorRole).not.toBe("admin")
   })
 
   it("403s when the caller resolves to no business at all", async () => {
@@ -170,6 +185,7 @@ describe("POST /api/admin/pipeline/move", () => {
       toStageKey: "consulted",
       actorUserId: "admin-1",
       businessId: BUSINESS_ID,
+      actorRole: "admin",
     })
   })
 
@@ -182,6 +198,7 @@ describe("POST /api/admin/pipeline/move", () => {
       toStageKey: "won",
       actorUserId: "admin-1",
       businessId: BUSINESS_ID,
+      actorRole: "admin",
     })
   })
 
