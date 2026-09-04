@@ -29,6 +29,16 @@ export type ClickTracking = {
 
 export const TRACKING_SOURCE = "website-assistant"
 export const TRACKING_MEDIUM = "chat"
+/**
+ * The medium for a booking started from a page rather than the assistant.
+ *
+ * `utm_source`/`utm_medium` are REPORTING LABELS ONLY -- `decodeTracking` reads
+ * `utm_content` and `utm_term` and nothing else -- so varying the medium is
+ * safe for the round trip and is the only way a report can tell a booking that
+ * came from the contact page apart from one the chat produced. Labelling every
+ * booking "chat" would have credited the assistant for work it did not do.
+ */
+export const TRACKING_MEDIUM_PAGE = "contact-page"
 
 const CLICK_ID_RE = /^[A-Za-z0-9_-]{1,200}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -49,8 +59,11 @@ function clean(value: string | null | undefined, re: RegExp): string | null {
 }
 
 /** The UTM parameters to put on a scheduling link so the webhook can give them back. */
-export function encodeTracking(tracking: Partial<ClickTracking>): Record<string, string> {
-  const params: Record<string, string> = { utm_source: TRACKING_SOURCE, utm_medium: TRACKING_MEDIUM }
+export function encodeTracking(
+  tracking: Partial<ClickTracking>,
+  medium: string = TRACKING_MEDIUM,
+): Record<string, string> {
+  const params: Record<string, string> = { utm_source: TRACKING_SOURCE, utm_medium: medium }
 
   const clicks = CLICK_KEYS.map((key) => [key, clean(tracking[key], CLICK_ID_RE)] as const)
     .filter((pair): pair is readonly [(typeof CLICK_KEYS)[number], string] => pair[1] !== null)

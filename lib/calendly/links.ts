@@ -1,3 +1,5 @@
+import { encodeTracking, TRACKING_MEDIUM_PAGE } from "@/lib/calendly/tracking"
+
 // lib/calendly/links.ts — builds the link a visitor clicks to book.
 //
 // PREFILL IS THE WHOLE POINT. The assistant already knows who it is talking
@@ -48,4 +50,32 @@ export function schedulingLink(url: string, options: SchedulingLinkOptions = {})
   }
 
   return target.toString()
+}
+
+/**
+ * The href for a "Book a call" control on a public page.
+ *
+ * WHY THIS EXISTS SEPARATELY from `schedulingLink`: a static page has no
+ * conversation, so the tracking it can carry is only the click ids the visitor
+ * arrived with. Packing them through `encodeTracking` — rather than pasting
+ * `?gclid=` onto the URL — is what makes them survive: Calendly returns only
+ * its own `utm_*` fields on the booking webhook, and `decodeTracking` unpacks
+ * exactly the shape `encodeTracking` produced. A raw `gclid` query parameter
+ * would reach Calendly and never come back, so the booking would look organic
+ * and the ad that paid for it would go uncredited.
+ *
+ * Returns null when no scheduling page is configured, so a caller renders
+ * nothing rather than a dead button.
+ */
+export function consultHref(
+  schedulingUrl: string | null | undefined,
+  tracking: Parameters<typeof encodeTracking>[0] = {},
+  medium: string = TRACKING_MEDIUM_PAGE,
+): string | null {
+  const url = schedulingUrl?.trim()
+  if (!url) return null
+  // The medium says WHERE the booking started. Leaving it at the assistant's
+  // default would have every contact-page booking reported as a chat booking,
+  // crediting the assistant for work it did not do.
+  return schedulingLink(url, { tracking: encodeTracking(tracking, medium) })
 }

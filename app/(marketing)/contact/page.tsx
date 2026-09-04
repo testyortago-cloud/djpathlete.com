@@ -4,6 +4,8 @@ import { JsonLd } from "@/components/shared/JsonLd"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { FadeIn } from "@/components/shared/FadeIn"
 import { ContactForm } from "./ContactForm"
+import { BookACallButton } from "@/components/public/BookACallButton"
+import { readCalendlySchedulingUrl } from "@/lib/calendly/env"
 
 export const metadata: Metadata = {
   title: "Contact Darren J Paul — Book a Consultation",
@@ -61,6 +63,10 @@ const contactInfo = [
 ]
 
 export default function ContactPage() {
+  // Read on the server so the page ships nothing about Calendly when it is not
+  // configured -- and so the value comes from one place, the same one the chat
+  // assistant reads.
+  const schedulingUrl = readCalendlySchedulingUrl()
   return (
     <>
       <JsonLd data={contactPageSchema} />
@@ -140,6 +146,15 @@ export default function ContactPage() {
                     Not sure where to start? Book a free 15-minute consultation and we will help you find the right
                     program for your goals.
                   </p>
+                  {/* This card promised a booking and offered no way to make one
+                      until 2026-09-05. The button belongs HERE, beside the words
+                      that make the offer, rather than in a second block competing
+                      with it -- one ask, in one voice. It renders nothing until a
+                      coach connects a calendar, which returns the card to exactly
+                      the copy it had before. */}
+                  <div className="mt-4">
+                    <BookACallButton schedulingUrl={schedulingUrl} />
+                  </div>
                 </div>
               </div>
             </FadeIn>

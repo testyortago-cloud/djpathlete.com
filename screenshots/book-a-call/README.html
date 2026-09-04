@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Book a call — review sheet</title>
+<style>
+ :root{color-scheme:light}
+ body{margin:0;padding:40px;background:#f6f6f4;color:#16323c;font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+ .wrap{max-width:1000px;margin:0 auto} h1{font-size:28px;margin:0 0 6px} .sub{color:#5b7280;margin:0 0 28px}
+ figure{margin:0 0 40px;background:#fff;border:1px solid #e2e5e3;border-radius:12px;overflow:hidden}
+ figure img{display:block;width:100%;height:auto} figcaption{padding:16px 20px 20px;border-top:1px solid #e2e5e3}
+ figcaption h2{font-size:17px;margin:0 0 6px} figcaption p{margin:0 0 8px;color:#40525c}
+ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;background:#eef0ee;border-radius:4px;padding:1px 5px}
+</style>
+<div class="wrap">
+<h1>"Book a call" on the public contact page</h1>
+<p class="sub">Both shots are the real <code>/contact</code> route in the running app. Annotations are burned into the PNGs. Captured 2026-09-05.</p>
+
+<figure>
+  <img src="01-book-a-call.png" alt="The contact page with a Book a call button inside the Free Consultation card.">
+  <figcaption>
+    <h2>01 — Configured, arrived on a Google Ads click</h2>
+    <p>The button sits inside the existing <strong>Free Consultation</strong> card, which had promised a free
+    15-minute consultation and offered no way to book one. Putting the action beside the words that make the
+    offer keeps it to one ask in one voice, rather than two competing blocks.</p>
+    <p><strong>The href is built on click, not at render.</strong> This page is cached, so a link baked at build
+    time would carry whichever advert's click id the build happened to see. The capture script asserts the real
+    click id reaches the link, <em>packed</em>:
+    <code>utm_content=gclid%3ASCREENSHOT_CLICK_ID</code> — not as a raw <code>?gclid=</code>, which Calendly
+    would accept and never return, leaving the booking looking organic while an ad paid for it.</p>
+  </figcaption>
+</figure>
+
+<figure>
+  <img src="02-not-configured.png" alt="The same contact page with no booking button, because no scheduling page is configured.">
+  <figcaption>
+    <h2>02 — No calendar connected</h2>
+    <p>The same route with <code>CALENDLY_SCHEDULING_URL</code> <strong>genuinely unset</strong> and the server
+    restarted — not an HTML response doctored at the edge, which would only be a picture of the regex that
+    doctored it. The card keeps its copy and loses only the button.</p>
+    <p>A control that cannot book is worse than none: it costs a visitor a click to learn nothing. The capture
+    script fails loudly if a button is found in this state.</p>
+  </figcaption>
+</figure>
+</div>
