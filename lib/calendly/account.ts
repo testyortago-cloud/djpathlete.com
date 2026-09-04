@@ -63,12 +63,68 @@ export type CalendlyAccountErrorReason = "network" | "http" | "shape"
 export class CalendlyAccountError extends Error {
   readonly reason: CalendlyAccountErrorReason
   readonly status: number | null
+  /**
+   * Calendly's OWN words about what is wrong, when it bothered to say.
+   *
+   * A 400 from Calendly carries `details[].message` naming the exact
+   * parameter and the exact fix -- and throwing that away is how a screen ends
+   * up telling a coach to "try again in a moment" about a scope no retry can
+   * grant. That is not hypothetical: the first real go-live failed on
+   *   missing required scope: scheduled_events:read for event: invitee.created
+   * and the sentence that would have fixed it in seconds was in the response
+   * body all along, discarded into a log line.
+   *
+   * Empty for faults that have nothing to tell anyone -- a 5xx, a timeout, a
+   * body that did not parse.
+   */
+  readonly details: string[]
 
-  constructor(reason: CalendlyAccountErrorReason, message: string, status: number | null = null) {
+  constructor(
+    reason: CalendlyAccountErrorReason,
+    message: string,
+    status: number | null = null,
+    details: string[] = [],
+  ) {
     super(message)
     this.name = "CalendlyAccountError"
     this.reason = reason
     this.status = status
+    this.details = details
+  }
+
+  /**
+   * Whether trying the same call again could plausibly succeed.
+   *
+   * A 4xx says WE sent something wrong, so a retry sends the same wrong thing.
+   * Only a 5xx, a 429 or a transport fault earns "try again". Keyed on the
+   * status rather than on `details` being empty, so a 4xx with an unparseable
+   * body is still correctly non-retryable.
+   */
+  get retryable(): boolean {
+    if (this.reason === "network") return true
+    if (this.status === null) return true
+    if (this.status === 429) return true
+    return this.status >= 500
+  }
+}
+
+/**
+ * Pull Calendly's per-parameter complaints out of an error body, falling back
+ * to its top-level `message`. Never throws: an unparseable body simply has
+ * nothing to say, and the caller's generic wording covers it.
+ */
+export function calendlyErrorDetails(bodyText: string): string[] {
+  try {
+    const body = JSON.parse(bodyText) as { message?: unknown; details?: unknown }
+    const details = Array.isArray(body.details)
+      ? body.details
+          .map((d) => (d && typeof d === "object" ? (d as { message?: unknown }).message : null))
+          .filter((m): m is string => typeof m === "string" && m.trim().length > 0)
+      : []
+    if (details.length > 0) return details
+    return typeof body.message === "string" && body.message.trim().length > 0 ? [body.message] : []
+  } catch {
+    return []
   }
 }
 
@@ -270,6 +326,10 @@ export async function createWebhookSubscription(
       "http",
       `POST /webhook_subscriptions answered ${response.status} ${text}`,
       response.status,
+      // Only a 4xx is worth quoting to a coach: it names something WE sent that
+      // Calendly refused, which is a thing they can act on. A 5xx's body is
+      // about Calendly's own trouble and telling them about it helps nobody.
+      response.status < 500 ? calendlyErrorDetails(text) : [],
     )
   }
 

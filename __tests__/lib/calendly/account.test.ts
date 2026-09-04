@@ -110,3 +110,75 @@ describe("fetchIdentity", () => {
     expect(me).toEqual({ uri: "https://api.calendly.com/users/U", name: "Coach", email: "coach@example.com", schedulingUrl: "https://calendly.com/coach", organizationUri: "https://api.calendly.com/organizations/O" })
   })
 })
+
+// Calendly names the exact fix in a 400 body and we used to throw it away, so
+// the screen said "try again in a moment" for a scope problem that no retry
+// could ever fix. That cost a failed go-live on 2026-09-05:
+//   missing required scope: scheduled_events:read for event: invitee.created
+describe("CalendlyAccountError.details", () => {
+  it("lifts Calendly's own per-parameter messages out of a 400 body", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            title: "Invalid Argument",
+            message: "The supplied parameters are invalid.",
+            details: [
+              { parameter: "events", message: "missing required scope: scheduled_events:read for event: invitee.created" },
+              { parameter: "events", message: "missing required scope: scheduled_events:read for event: invitee.canceled" },
+            ],
+          }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        ),
+    )
+    const err = await createWebhookSubscription({
+      accessToken: "a",
+      organizationUri: "https://api.calendly.com/organizations/O",
+      userUri: "https://api.calendly.com/users/U",
+      callbackUrl: "https://x/api/webhooks/calendly",
+      signingKey: "k",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    }).catch((e) => e)
+
+    expect(err).toBeInstanceOf(CalendlyAccountError)
+    expect(err.details).toEqual([
+      "missing required scope: scheduled_events:read for event: invitee.created",
+      "missing required scope: scheduled_events:read for event: invitee.canceled",
+    ])
+    expect(err.retryable).toBe(false)
+  })
+
+  it("falls back to the top-level message when there are no per-parameter details", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ title: "Invalid Argument", message: "The supplied parameters are invalid." }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        }),
+    )
+    const err = await createWebhookSubscription({
+      accessToken: "a",
+      organizationUri: "https://api.calendly.com/organizations/O",
+      userUri: "https://api.calendly.com/users/U",
+      callbackUrl: "https://x/api/webhooks/calendly",
+      signingKey: "k",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    }).catch((e) => e)
+    expect(err.details).toEqual(["The supplied parameters are invalid."])
+    expect(err.retryable).toBe(false)
+  })
+
+  it("leaves a 5xx retryable and detail-free — a transient fault has nothing to tell the coach", async () => {
+    const fetchImpl = vi.fn(async () => new Response("upstream", { status: 503 }))
+    const err = await createWebhookSubscription({
+      accessToken: "a",
+      organizationUri: "https://api.calendly.com/organizations/O",
+      userUri: "https://api.calendly.com/users/U",
+      callbackUrl: "https://x/api/webhooks/calendly",
+      signingKey: "k",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    }).catch((e) => e)
+    expect(err.details).toEqual([])
+    expect(err.retryable).toBe(true)
+  })
+})

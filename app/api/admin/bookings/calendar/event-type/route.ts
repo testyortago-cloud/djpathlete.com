@@ -33,7 +33,12 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { withAudit } from "@/lib/audit/with-audit"
-import { CalendlyPlanRequiredError, createWebhookSubscription, listEventTypes } from "@/lib/calendly/account"
+import {
+  CalendlyAccountError,
+  CalendlyPlanRequiredError,
+  createWebhookSubscription,
+  listEventTypes,
+} from "@/lib/calendly/account"
 import { calendlyWebhookCallbackUrl } from "@/lib/calendly/connect-env"
 import { accessTokenForConnection } from "@/lib/calendly/credentials"
 import { readCalendlySigningKey } from "@/lib/calendly/env"
@@ -211,6 +216,22 @@ export const POST = withAudit({ action: "calendar.event_type_selected", category
         clearErr,
       )
     })
+    // CALENDLY OFTEN NAMES THE FIX; SAY IT RATHER THAN "try again".
+    // A 4xx means we sent something Calendly refused, so retrying sends the
+    // same thing again -- and the generic retry line is then advice that
+    // cannot work. The first real go-live died here on
+    //   missing required scope: scheduled_events:read for event: invitee.created
+    // with that sentence sitting unread in the response body while the screen
+    // said "try again in a moment".
+    if (err instanceof CalendlyAccountError && !err.retryable && err.details.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Calendly would not switch booking notifications on: ${err.details.join(" ")}`,
+          detail: "This will not fix itself by trying again. It usually means the connection needs different permissions — reconnect your Calendly after updating them.",
+        },
+        { status: 422 },
+      )
+    }
     return NextResponse.json(
       { error: "Calendly would not set up booking notifications just now. Try again in a moment." },
       { status: 502 },

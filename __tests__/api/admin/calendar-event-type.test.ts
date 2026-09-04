@@ -346,6 +346,60 @@ describe("POST /api/admin/bookings/calendar/event-type", () => {
     expect(setErrorCalls[0][1]).toBe("plan_lapsed")
   })
 
+  // The failure that actually happened on go-live. Calendly named the fix in
+  // its 400 body and the screen replaced it with "try again in a moment" --
+  // advice no retry could ever satisfy, because a scope is not transient.
+  it("quotes Calendly's own reason for a 4xx, and does NOT call it transient", async () => {
+    const { CalendlyAccountError } =
+      await vi.importActual<typeof import("@/lib/calendly/account")>("@/lib/calendly/account")
+    createSubImpl = async () => {
+      throw new CalendlyAccountError("http", "POST /webhook_subscriptions answered 400", 400, [
+        "missing required scope: scheduled_events:read for event: invitee.created",
+      ])
+    }
+
+    const response = await SELECT_EVENT_TYPE(
+      jsonRequest("/api/admin/bookings/calendar/event-type", { eventTypeUri: ET1 }),
+      routeContext,
+    )
+
+    expect(response.status).toBe(422)
+    const body = (await response.json()) as { error: string; detail: string }
+    expect(body.error).toContain("scheduled_events:read")
+    expect(body.error).not.toContain("Try again in a moment")
+    expect(body.detail).toContain("will not fix itself")
+    // The claim is still released, exactly as on the transient path -- the
+    // coach must land back on the picker either way.
+    expect(clearCalls).toContain("conn-1")
+  })
+
+  // Control for the test above, and it has to carry DETAILS to be worth
+  // anything. An earlier version passed empty details, so the branch fell
+  // through on `details.length` alone and the `!retryable` guard was never
+  // exercised -- dropping that guard left this test green. A 5xx that DOES say
+  // something is the only fixture that pins the real rule: a server fault is
+  // transient no matter how talkative it is, and telling a coach to go and
+  // change their permissions during a Calendly outage sends them to fix
+  // something that was never broken.
+  it("still says 'try again' for a 5xx, however much it has to say", async () => {
+    const { CalendlyAccountError } =
+      await vi.importActual<typeof import("@/lib/calendly/account")>("@/lib/calendly/account")
+    createSubImpl = async () => {
+      throw new CalendlyAccountError("http", "POST /webhook_subscriptions answered 503", 503, [
+        "Something went wrong on our end.",
+      ])
+    }
+
+    const response = await SELECT_EVENT_TYPE(
+      jsonRequest("/api/admin/bookings/calendar/event-type", { eventTypeUri: ET1 }),
+      routeContext,
+    )
+
+    expect(response.status).toBe(502)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toContain("Try again in a moment")
+  })
+
   it("an event type another calendar already claims answers 409, in words", async () => {
     updateImpl = async () => {
       // Exactly how lib/db/coach-calendar-connections.ts flattens a PostgREST
