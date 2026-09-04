@@ -184,6 +184,12 @@ export const AUDIT_ACTIONS = [
   { slug: "inbox.message_sent", category: "support", description: "Coach sent a message via GHL inbox bridge" },
 
   // commerce — bookings + shop
+  // A booking arrived and we could not work out whose it was. Recorded as a
+  // FAILURE so it lands in the 24h failure strip on /admin/audit-logs, which is
+  // the only thing in this deployment that watches for trouble without being
+  // asked. Calendly disables a subscription after 24h of failed deliveries, so
+  // this is the window in which someone has to notice.
+  { slug: "booking.tenant_unresolved", category: "automation", description: "A booking delivery's tenant could not be resolved" },
   { slug: "booking.created", category: "commerce", description: "Booking created" },
   { slug: "booking.rescheduled", category: "commerce", description: "Booking rescheduled" },
   { slug: "booking.cancelled", category: "commerce", description: "Booking cancelled" },

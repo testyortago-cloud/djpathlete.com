@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 
 import { type CalendlyTenant, resolveCalendlyTenant } from "@/lib/bookings/calendly-tenant"
+import { recordAudit } from "@/lib/audit/record"
 import { ingestBooking } from "@/lib/bookings/ingest"
 import { readCalendlySigningKey } from "@/lib/calendly/env"
 import { CALENDLY_SIGNATURE_HEADER, verifyCalendlySignature } from "@/lib/calendly/signature"
@@ -210,6 +211,23 @@ export async function POST(request: Request) {
     // this coach's booking into the platform's tenant, silently and with a
     // 200. A 500 instead, which Calendly retries.
     console.error("[calendly-webhook] could not resolve this delivery's tenant:", err)
+    // A console line nobody reads is not an alert. This lands in audit_logs as
+    // a FAILURE, which the 24h strip on /admin/audit-logs already surfaces --
+    // and 24 hours is exactly the budget, because that is how long Calendly
+    // tolerates failed deliveries before disabling the subscription outright.
+    // Fire-and-forget by design: an audit write must never be the reason a
+    // retryable 500 becomes something else.
+    void recordAudit({
+      action: "booking.tenant_unresolved",
+      category: "automation",
+      outcome: "failure",
+      actor: { role: "system", email: "calendly" },
+      metadata: {
+        event_type: data.scheduled_event.event_type ?? null,
+        calendly_event_uri: data.scheduled_event.uri,
+        reason: err instanceof Error ? err.message : String(err),
+      },
+    })
     return NextResponse.json({ error: "could not resolve the booking's tenant" }, { status: 500 })
   }
 

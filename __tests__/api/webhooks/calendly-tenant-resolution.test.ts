@@ -37,6 +37,14 @@ vi.mock("@/lib/bookings/ingest", () => ({
   ingestBooking: (...a: unknown[]) => ingestBookingMock(...a),
 }))
 
+// The only thing in this deployment that notices trouble unasked is the 24h
+// failure strip on /admin/audit-logs, and it reads audit_logs. So the audit
+// row IS the alert, and a test has to hold it to that.
+const recordAuditMock = vi.fn(async (..._a: any[]) => undefined as any)
+vi.mock("@/lib/audit/record", () => ({
+  recordAudit: (...a: unknown[]) => recordAuditMock(...a),
+}))
+
 // The connection lookup — the tenant proof. Throws on a read error (see its
 // own docstring in lib/db/coach-calendar-connections.ts); the rejection case
 // below is that throw arriving at the route.
@@ -227,5 +235,46 @@ describe("a failed read is not 'no match'", () => {
     expect(res.status).toBe(500)
     expect(ingestBookingMock).not.toHaveBeenCalled()
     err.mockRestore()
+  })
+
+  it("RECORDS THE FAILURE where something is actually watching, not just in a log line", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {})
+    recordAuditMock.mockClear()
+    process.env.CALENDLY_EVENT_TYPE_URI = FIXTURE_EVENT_TYPE
+    findByEventTypeMock.mockRejectedValue(
+      new Error("findCoachCalendarConnectionByEventType failed (PGRST301): JWT expired"),
+    )
+
+    await post(FIXTURE_EVENT_TYPE)
+
+    expect(recordAuditMock).toHaveBeenCalledTimes(1)
+    const row = recordAuditMock.mock.calls[0][0] as {
+      action: string
+      outcome: string
+      metadata: Record<string, unknown>
+    }
+    // `outcome: "failure"` is not decoration — it is the field the 24h strip
+    // filters on. Anything else and the row exists but nobody ever sees it.
+    expect(row.outcome).toBe("failure")
+    expect(row.action).toBe("booking.tenant_unresolved")
+    // Without the event type there is nothing to act on: it is the one value
+    // that says WHICH calendar stopped resolving.
+    expect(row.metadata.event_type).toBe(FIXTURE_EVENT_TYPE)
+    expect(String(row.metadata.reason)).toContain("PGRST301")
+    err.mockRestore()
+  })
+
+  it("does NOT record a failure for a delivery that simply is not ours", async () => {
+    recordAuditMock.mockClear()
+    delete process.env.CALENDLY_EVENT_TYPE_URI
+    findByEventTypeMock.mockResolvedValue(null)
+
+    const res = await post("https://api.calendly.com/event_types/SOMEONE-ELSE")
+
+    // A foreign event type is somebody else's business, not a fault. Auditing
+    // it as a failure would fill the strip with noise and train whoever reads
+    // it to ignore the one row that matters.
+    expect(res.status).toBe(200)
+    expect(recordAuditMock).not.toHaveBeenCalled()
   })
 })

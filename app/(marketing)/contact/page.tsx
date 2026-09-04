@@ -142,9 +142,14 @@ export default function ContactPage() {
 
                 <div className="bg-primary rounded-2xl p-6 text-primary-foreground">
                   <h3 className="text-lg font-semibold mb-2">Free Consultation</h3>
+                  {/* NO DURATION IN THE COPY. This said "15-minute" while the
+                      calendar behind it offered 30, because the length lives in
+                      Calendly and a number typed here cannot track it. Whoever
+                      clicks sees the real length on the booking page; promising
+                      one here only creates something to be wrong. */}
                   <p className="text-sm text-primary-foreground/80 leading-relaxed">
-                    Not sure where to start? Book a free 15-minute consultation and we will help you find the right
-                    program for your goals.
+                    Not sure where to start? Book a free consultation and we will help you find the right program for
+                    your goals.
                   </p>
                   {/* This card promised a booking and offered no way to make one
                       until 2026-09-05. The button belongs HERE, beside the words

@@ -124,7 +124,15 @@ export async function setCoachCalendarError(
   const supabase = getClient()
   const { error } = await supabase
     .from("coach_calendar_connections")
-    .update({ status, last_error: message })
+    .update({
+      status,
+      // EMPTY IS NOT AN ERROR. Callers clearing the field pass "", which stores
+      // a zero-length string -- so `last_error is not null` reads true and every
+      // "has this connection got a problem?" query counts a healthy row. NULL is
+      // what "no error" means; normalise here, in the one place that writes it,
+      // rather than trusting each caller to remember.
+      last_error: message.trim() === "" ? null : message,
+    })
     .eq("id", connectionId)
   if (error) throw new Error(`setCoachCalendarError failed (${error.code}): ${error.message}`)
 }
