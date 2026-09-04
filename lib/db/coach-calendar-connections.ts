@@ -149,10 +149,7 @@ export async function updateCoachCalendarEventType(input: UpdateCoachCalendarEve
   if (error) throw new Error(`updateCoachCalendarEventType failed (${error.code}): ${error.message}`)
 }
 
-export async function confirmCoachCalendarConflictCheck(
-  connectionId: string,
-  confirmed: boolean,
-): Promise<void> {
+export async function confirmCoachCalendarConflictCheck(connectionId: string, confirmed: boolean): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase
     .from("coach_calendar_connections")
