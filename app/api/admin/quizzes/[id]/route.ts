@@ -160,18 +160,24 @@ function notFound() {
   return NextResponse.json({ error: "Not found." }, { status: 404 })
 }
 
+function forbidden() {
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+}
+
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (session?.user?.role !== "admin") return notFound()
 
-  // Same 404-not-403 posture as the role check above: this route does not
-  // confirm what exists to anyone, including an admin session with no
-  // resolvable business.
+  // `NoAccessibleBusinessError` is about the CALLER having no business at
+  // all, not about a resource this route is declining to confirm -- that
+  // posture stays 404 for a missing/foreign QUIZ (see the `notFound()` calls
+  // below), but this branch gets the majority 403 {"error":"Forbidden"}
+  // shape (businesses, funnels routes).
   let businessId: string
   try {
     ;({ businessId } = await resolveAdminTenantForRequest(request))
   } catch (err) {
-    if (err instanceof NoAccessibleBusinessError) return notFound()
+    if (err instanceof NoAccessibleBusinessError) return forbidden()
     throw err
   }
 

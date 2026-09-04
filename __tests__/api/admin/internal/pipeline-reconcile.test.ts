@@ -1,3 +1,5 @@
+// @vitest-environment node
+//
 // Route-level tests for POST /api/admin/internal/pipeline-reconcile. This
 // route is a thin wrapper (bearer check, cron-flag gate,
 // logCronStart/logCronEnd) around `runPipelineReconcile`

@@ -117,11 +117,20 @@ describe("POST /api/admin/quizzes/[id]/add-to-step", () => {
     expect(assertQuizInBusinessMock).not.toHaveBeenCalled()
   })
 
-  it("403-shaped 404 when the caller has no accessible business", async () => {
+  it("answers 403 {error:'Forbidden'} when the caller has no accessible business, matching the majority shape", async () => {
+    // Final holistic review, Important: NoAccessibleBusinessError used to
+    // fall through to this route's bare `notFound()` helper (404, and
+    // before that a real Next `notFound()` throw with no parseable body).
+    // It is about the CALLER having no business at all, not about a
+    // resource this route is declining to confirm -- so it now matches the
+    // 403 {"error":"Forbidden"} shape every other admin route answers with
+    // (businesses x3, funnels x2). MUTANT: reverting the catch branch back
+    // to `notFound()` must fail this on both the status and the body.
     resolveAdminTenantForRequestMock.mockRejectedValueOnce(new NoAccessibleBusinessError())
     const { POST } = await import("@/app/api/admin/quizzes/[id]/add-to-step/route")
     const res = await POST(post({ stepId: STEP_ID }), ctx)
-    expect(res.status).toBe(404)
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: "Forbidden" })
     expect(assertQuizInBusinessMock).not.toHaveBeenCalled()
   })
 })

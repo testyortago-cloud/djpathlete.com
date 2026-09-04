@@ -30,19 +30,26 @@ the link: **Devon Delgado**.
 | 07 | `07-admin-contacts-switcher-new-business.png` | The same screen, same code, switched to the new business: zero contacts — the correct answer for a business minutes old, not the singleton's rows leaking through. | §6.1–6.2 |
 | 08 | `08-admin-businesses-new-slug-conflict.png` | The 409 duplicate-web-address error, rendered on the field itself (not a toast) — typing the web address the new business already claimed. | §5.1, Task 4's test |
 | 09 | `09-admin-bookings-coach-scoped.png` | Signed in as Devon Delgado — a real invited coach, not the operator — `/admin/bookings` scoped to their own business, and **no switcher** (their account belongs to exactly one business). | §6.1–6.2, §6.3 |
-| 10 | `10-admin-contacts-coach-no-access.png` | The same coach's real attempt at `/admin/contacts`, landing on `/admin/no-access`. Documents a pre-existing gap (below), not a bug this phase introduced. | — |
+| 10 | `10-admin-contacts-coach-no-access.png` | A staff coach's real attempt at `/admin/contacts`, landing on `/admin/no-access` because `proxy.ts` default-denies the unmapped path before the page ever renders. Documents a pre-existing gap (below), not a bug this phase introduced. Re-captured after the final review caught the burned-in caption naming the wrong mechanism (`requireAdmin()`) — see its own header comment in `scripts/recapture-shot-10-contacts-caption-fix.mjs`. | — |
 
 ## Why shot 10 exists, and why shot 09 is `/admin/bookings` and not `/admin/contacts`
 
 The task brief this proof was written against assumed a signed-in coach could
-load `/admin/contacts`. Reading `app/(admin)/admin/contacts/page.tsx` and
-`lib/permissions/registry.ts` shows that isn't reachable by any invited
-teammate today: the contacts page calls `requireAdmin()` directly, `/admin/contacts`
-appears in no `PATH_PERMISSIONS` rule, and `roleForPermissions()`
+load `/admin/contacts`. It isn't reachable by any invited teammate today, and
+the proximate cause is `proxy.ts`, not the page: for any `/admin/*` path it
+resolves `canAccessPath({role:"staff",...}, pathname, method)`
+(`lib/permissions/registry.ts`) *before* the page component runs.
+`/admin/contacts` appears in no `PATH_PERMISSIONS` rule, so that resolves to
+`kind: "unmapped"`, `canAccessPath` returns `false`
+(`lib/permissions/registry.ts:611`), and the proxy redirects straight to
+`/admin/no-access` — the contacts page's own `requireAdmin()` call never gets
+the chance to run. Separately, `roleForPermissions()`
 (`lib/permissions/registry.ts:576`) never returns `"admin"` for an invited
-teammate under any preset — only `"staff"` or `"editor"`. A coach is
-redirected to `/admin/no-access` before that page ever renders, regardless of
-which permission preset their invite carried.
+teammate under any preset — only `"staff"` or `"editor"` — so even a coach who
+somehow reached the page would fail that check too; it just isn't the check
+that actually fires here. A coach is redirected to `/admin/no-access` before
+that page ever renders, regardless of which permission preset their invite
+carried.
 
 This is not a hole Phase 1 opened — `/admin/contacts` has never been
 staff-reachable — so it isn't this task's to fix. Shot 09 proves the phase's

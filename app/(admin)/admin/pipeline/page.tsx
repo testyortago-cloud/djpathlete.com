@@ -14,6 +14,7 @@ import { requireAdmin } from "@/lib/auth-helpers"
 import { readBoard, listGrantablePrograms } from "@/lib/db/pipeline"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { possessiveName } from "@/lib/lead-engine/business-copy"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { PipelineBoard } from "@/components/admin/pipeline-board"
 
 export const metadata = { title: "Pipeline" }
@@ -21,10 +22,14 @@ export const dynamic = "force-dynamic"
 
 export default async function PipelinePage() {
   await requireAdmin()
+  const { businessId } = await resolveAdminTenant()
 
+  // `listGrantablePrograms()` takes no businessId: `programs` has no
+  // business_id column at all (it is the shared program catalog, not a
+  // per-tenant table) -- this is not a scoping gap, there is nothing to scope.
   const [columns, business, grantablePrograms] = await Promise.all([
-    readBoard(),
-    getBusinessSettings(),
+    readBoard(undefined, businessId),
+    getBusinessSettings(businessId),
     listGrantablePrograms(),
   ])
   const name = possessiveName(business.display_name)

@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from "vitest"
 import { buildTeamRows } from "@/lib/team/rows"
 import type { TeamMember } from "@/lib/db/team-members"
