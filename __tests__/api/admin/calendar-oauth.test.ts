@@ -172,13 +172,25 @@ function setCookies(response: Response): string[] {
   return response.headers.getSetCookie()
 }
 
-/** Both cookies present in Set-Cookie with an EMPTY value — i.e. cleared. */
+/**
+ * Both cookies present in Set-Cookie with an EMPTY value — i.e. cleared.
+ *
+ * THE PATH IS PART OF THE CLEAR, NOT DECORATION. A browser matches a deletion
+ * to the cookie it deletes by name AND path, so a clear emitted at the default
+ * path ("/api/admin/bookings/calendar/callback", the request's own directory)
+ * leaves the real, "/api/admin/bookings/calendar"-scoped cookies sitting in
+ * the jar — while a Set-Cookie header with an empty value is still right
+ * there in the response for a test to be satisfied by.
+ */
 function expectCookiesCleared(response: Response) {
   const jar = setCookies(response)
   for (const name of [NONCE_COOKIE, VERIFIER_COOKIE]) {
     const entry = jar.find((c) => c.startsWith(`${name}=`))
     expect(entry, `${name} was not in Set-Cookie`).toBeDefined()
     expect(entry!.startsWith(`${name}=;`), `${name} was set to a non-empty value: ${entry}`).toBe(true)
+    expect(entry, `${name} was cleared at the wrong path: ${entry}`).toMatch(
+      /(?:^|;\s*)Path=\/api\/admin\/bookings\/calendar(?:;|$)/i,
+    )
   }
 }
 
@@ -416,6 +428,12 @@ describe("GET /api/admin/bookings/calendar/callback — the positive control", (
       ],
       isOperator: false,
     })
+    // AND the host the resolver would hand back is a DIFFERENT one. Both
+    // halves of the tenant have to be discriminated: while this returned
+    // "host-1" the assertion below passed just as well against a route that
+    // took `access.hostId`, and `host_id` is half of what the signed state
+    // exists to carry.
+    hostImpl = async () => "host-2"
 
     const response = await CALLBACK(callbackRequest({ state: mintState() }))
 

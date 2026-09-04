@@ -160,6 +160,10 @@ function connectedRow(overrides: Record<string, unknown> = {}) {
     host_id: "host-1",
     provider: "calendly",
     status: "connected",
+    // fn_get_coach_calendar_connection decrypts and returns these. Disconnect
+    // reads them to tell "the grant might still work" from "there is nothing
+    // left to authenticate with".
+    credentials: { access_token: "access-token-1", refresh_token: "refresh-token-1" },
     calendly_user_uri: "https://api.calendly.com/users/U1",
     calendly_organization_uri: "https://api.calendly.com/organizations/O1",
     event_type_uri: null,
@@ -435,7 +439,7 @@ describe("POST /api/admin/bookings/calendar/disconnect", () => {
     expect(disconnectCalls).toEqual(["host-1"])
   })
 
-  it("a subscription delete that really fails stops before the credentials are destroyed", async () => {
+  it("a TRANSIENT failure stops before the credentials are destroyed", async () => {
     connection = connectedRow({
       webhook_subscription_uri: "https://api.calendly.com/webhook_subscriptions/WS1",
     })
@@ -452,12 +456,82 @@ describe("POST /api/admin/bookings/calendar/disconnect", () => {
     expect(disconnectCalls).toHaveLength(0)
   })
 
+  // The two branches of the fault-class split. Stopping is only worth doing
+  // while a retry could still succeed; once the grant provably cannot
+  // authenticate, refusing to disconnect just traps the coach.
+  it("a grant that can no longer authenticate does not block the disconnect", async () => {
+    connection = connectedRow({
+      status: "connected",
+      webhook_subscription_uri: "https://api.calendly.com/webhook_subscriptions/WS1",
+    })
+    const real = await vi.importActual<typeof import("@/lib/calendly/account")>("@/lib/calendly/account")
+    deleteSubImpl = (input) =>
+      real.deleteWebhookSubscription({
+        accessToken: String(input.accessToken),
+        subscriptionUri: String(input.subscriptionUri),
+        // 401: these credentials do not work and no retry will change that.
+        fetchImpl: async () => new Response("unauthorized", { status: 401 }),
+      })
+
+    const response = await DISCONNECT(jsonRequest("/api/admin/bookings/calendar/disconnect", {}), routeContext)
+    expect(response.status).toBe(200)
+    expect(disconnectCalls).toEqual(["host-1"])
+
+    // The orphan is named, in the answer and in an audit row — it is the one
+    // fact the nulled row can no longer carry.
+    const body = (await response.json()) as { orphanedWebhookSubscriptionUri: string; message: string }
+    expect(body.orphanedWebhookSubscriptionUri).toBe("https://api.calendly.com/webhook_subscriptions/WS1")
+    expect(body.message).toContain("Calendly")
+    const orphanAudit = auditCalls.find(
+      (c) =>
+        (c.metadata as Record<string, unknown> | undefined)?.orphaned_webhook_subscription_uri ===
+        "https://api.calendly.com/webhook_subscriptions/WS1",
+    )
+    expect(orphanAudit, "the orphaned subscription was not audited").toBeDefined()
+    expect(orphanAudit!.action).toBe("calendar.disconnected")
+  })
+
+  it("a needs_reconnect connection disconnects without even asking Calendly", async () => {
+    connection = connectedRow({
+      status: "needs_reconnect",
+      webhook_subscription_uri: "https://api.calendly.com/webhook_subscriptions/WS1",
+    })
+    tokenImpl = async () => {
+      throw new Error("accessTokenForConnection must not be called for a grant already known dead")
+    }
+
+    const response = await DISCONNECT(jsonRequest("/api/admin/bookings/calendar/disconnect", {}), routeContext)
+    expect(response.status).toBe(200)
+    expect(deleteSubCalls).toHaveLength(0)
+    expect(disconnectCalls).toEqual(["host-1"])
+
+    const body = (await response.json()) as { orphanedWebhookSubscriptionUri: string }
+    expect(body.orphanedWebhookSubscriptionUri).toBe("https://api.calendly.com/webhook_subscriptions/WS1")
+  })
+
+  it("a connection with no stored credentials disconnects without asking Calendly", async () => {
+    connection = connectedRow({
+      credentials: {},
+      webhook_subscription_uri: "https://api.calendly.com/webhook_subscriptions/WS1",
+    })
+    tokenImpl = async () => {
+      throw new Error("accessTokenForConnection must not be called with no stored credentials")
+    }
+
+    const response = await DISCONNECT(jsonRequest("/api/admin/bookings/calendar/disconnect", {}), routeContext)
+    expect(response.status).toBe(200)
+    expect(deleteSubCalls).toHaveLength(0)
+    expect(disconnectCalls).toEqual(["host-1"])
+  })
+
   it("disconnects a connection that never registered a subscription", async () => {
     connection = connectedRow({ webhook_subscription_uri: null })
     const response = await DISCONNECT(jsonRequest("/api/admin/bookings/calendar/disconnect", {}), routeContext)
     expect(response.status).toBe(200)
     expect(deleteSubCalls).toHaveLength(0)
     expect(disconnectCalls).toEqual(["host-1"])
+    const body = (await response.json()) as { orphanedWebhookSubscriptionUri: string | null }
+    expect(body.orphanedWebhookSubscriptionUri).toBeNull()
   })
 
   it("refuses a caller the tenant resolver rejects", async () => {
@@ -472,24 +546,32 @@ describe("POST /api/admin/bookings/calendar/disconnect", () => {
 })
 
 describe("POST /api/admin/bookings/calendar/conflict-check", () => {
-  it("{confirmed: true} stamps the confirmation", async () => {
+  it("{confirmed: true} stamps the confirmation, and records the attestation", async () => {
     const response = await CONFLICT_CHECK(
       jsonRequest("/api/admin/bookings/calendar/conflict-check", { confirmed: true }),
+      routeContext,
     )
     expect(response.status).toBe(200)
     expect(confirmCalls).toEqual([["conn-1", true]])
+    // The column holds one timestamp that the next tick overwrites, so the
+    // audit row is the only lasting evidence the claim was ever made.
+    const attestation = auditCalls.find((c) => c.action === "calendar.conflict_check_confirmed")
+    expect(attestation, "the attestation was not audited").toBeDefined()
+    expect(attestation!.category).toBe("compliance")
   })
 
-  it("{confirmed: false} clears it", async () => {
+  it("{confirmed: false} clears it, and records the withdrawal", async () => {
     const response = await CONFLICT_CHECK(
       jsonRequest("/api/admin/bookings/calendar/conflict-check", { confirmed: false }),
+      routeContext,
     )
     expect(response.status).toBe(200)
     expect(confirmCalls).toEqual([["conn-1", false]])
+    expect(auditCalls.map((c) => c.action)).toContain("calendar.conflict_check_confirmed")
   })
 
   it("rejects a body that says nothing", async () => {
-    const response = await CONFLICT_CHECK(jsonRequest("/api/admin/bookings/calendar/conflict-check", {}))
+    const response = await CONFLICT_CHECK(jsonRequest("/api/admin/bookings/calendar/conflict-check", {}), routeContext)
     expect(response.status).toBe(400)
     expect(confirmCalls).toHaveLength(0)
   })
@@ -500,6 +582,7 @@ describe("POST /api/admin/bookings/calendar/conflict-check", () => {
     }
     const response = await CONFLICT_CHECK(
       jsonRequest("/api/admin/bookings/calendar/conflict-check", { confirmed: true }),
+      routeContext,
     )
     expect(response.status).toBe(403)
     expect(confirmCalls).toHaveLength(0)
