@@ -33,7 +33,16 @@ export async function POST(request: NextRequest) {
   const runId = await logCronStart(supabase, "pipelineReconcileCron")
   try {
     const summary = await runPipelineReconcile()
-    await logCronEnd(supabase, runId, "success", summary)
+
+    // Task 10 (multi-coach ops): `runPipelineReconcile` now loops over every
+    // active business but still returns ONE summary for the whole tick, so
+    // this route still writes exactly ONE cron_runs row per tick regardless
+    // of how many businesses were processed — see the design note on
+    // `PipelineReconcileSummary.failures` (lib/automation/pipeline-reconcile.ts).
+    // A non-empty `failures` means at least one business's pass threw; that
+    // must not be silently reported as a healthy tick.
+    const businessFailed = (summary.failures?.length ?? 0) > 0
+    await logCronEnd(supabase, runId, businessFailed ? "failed" : "success", summary)
     return NextResponse.json({ ok: true, ...summary })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

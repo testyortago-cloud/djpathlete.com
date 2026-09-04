@@ -24,8 +24,7 @@
 
 import { randomUUID } from "crypto"
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
-import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
+import { getBusinessSettings, listBusinesses, type BusinessSettings } from "@/lib/db/businesses"
 import {
   assertSendable,
   classifySendFault,
@@ -87,6 +86,17 @@ export type TickSummary = {
    * `EmailAvailability` and its use in `processRun`.
    */
   skipped_email?: number
+  /** How many active businesses this tick iterated (Task 10). */
+  businesses?: number
+  /**
+   * Task 10 (multi-coach ops): businesses whose preflight or claim loop
+   * itself threw — isolated so one business's outage can't take the whole
+   * tick down. Only present when non-empty. The route (app/api/admin/
+   * internal/sequence-tick/route.ts) reads this to mark the ONE cron_runs
+   * row for the tick `failed` and name the businesses, same reasoning as
+   * `config_faults` above — see the design note on `runSequenceTick`.
+   */
+  failures?: Array<{ businessId: string; error: string }>
 }
 
 /**
@@ -613,11 +623,11 @@ async function processRun(
 }
 
 /**
- * Claims up to `limit` due runs and processes each one to exactly one
- * write-back (see the concurrency contract above). A run that throws
- * anywhere in `processRun` — a bad DB read, an unexpected exception — is
- * caught HERE and the batch continues. One poisoned run must never stop every
- * other contact's sequence.
+ * Claims up to `limit` due runs for ONE business and processes each one to
+ * exactly one write-back (see the concurrency contract above). A run that
+ * throws anywhere in `processRun` — a bad DB read, an unexpected exception —
+ * is caught HERE and the batch continues. One poisoned run must never stop
+ * every other contact's sequence.
  *
  * A caught throw is RETRIED, not buried. `status='failed'` is terminal —
  * nothing in this codebase re-activates a failed run — and `loadRunContext`
@@ -627,23 +637,35 @@ async function processRun(
  * is deferred with a backoff while it has attempts left, and only failed once
  * it has burned through them — at which point it really is poison and a human
  * should look at it.
+ *
+ * `limit` (fix round 1) is what's LEFT of the whole tick's budget, not a
+ * fresh per-business allowance — see `runSequenceTick`'s doc comment. A
+ * `limit` of 0 must claim nothing: `claim_sequence_runs`'s own `LIMIT 0`
+ * would already return zero rows, but the guard below makes that explicit
+ * rather than relying on the RPC's SQL semantics, and skips the round trip
+ * entirely once the tick's budget is spent.
+ *
+ * Mutates `summary` in place — counts accumulate across every business
+ * `runSequenceTick` iterates, not just this one.
  */
-export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Promise<TickSummary> {
-  const now = opts?.now ?? new Date()
-  const limit = opts?.limit ?? DEFAULT_LIMIT
-  const businessId = SINGLETON_BUSINESS_ID
+async function runSequenceTickForBusiness(
+  businessId: string,
+  now: Date,
+  limit: number,
+  summary: TickSummary,
+): Promise<void> {
+  if (limit <= 0) return
   const claimToken = randomUUID()
-
-  const summary: TickSummary = { claimed: 0, sent: 0, deferred: 0, exited: 0, completed: 0, failed: 0 }
 
   // PREFLIGHT BEFORE ANY CLAIM. Migration 00212 seeds every identity column
   // as NOT NULL DEFAULT '' and nothing calls updateBusinessSettings, so an
   // untouched install would send `from: " <>"`, be rejected by Resend, and
   // land in processRun's catch — permanently failing every claimed run with
   // no admin surface and no re-activation path. assertSendable throws
-  // BusinessNotConfiguredError, which the route answers with a 200 (see
-  // app/api/admin/internal/sequence-tick/route.ts). Nothing is claimed, so
-  // nothing can be failed.
+  // BusinessNotConfiguredError, which propagates out of this function to
+  // `runSequenceTick`'s per-business catch (see below). Nothing is claimed
+  // for THIS business, so nothing can be failed for it — but other
+  // businesses in the same tick still run.
   //
   // Settings are also loaded once per tick rather than once per run —
   // lib/lead-engine/email.ts's sendSequenceEmail explicitly supports being
@@ -666,8 +688,8 @@ export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Pr
   const emailAvailability: EmailAvailability = { configured: emailEnvPresent() }
 
   const runs = await claimDueRuns(limit, claimToken, businessId)
-  summary.claimed = runs.length
-  if (runs.length === 0) return summary
+  summary.claimed += runs.length
+  if (runs.length === 0) return
 
   for (const run of runs) {
     try {
@@ -706,6 +728,83 @@ export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Pr
       }
     }
   }
+}
 
+/**
+ * Task 10 (multi-coach ops): loops `runSequenceTickForBusiness` over every
+ * active business, but still returns ONE `TickSummary` for the whole tick —
+ * the route (app/api/admin/internal/sequence-tick/route.ts) writes exactly
+ * ONE `cron_runs` row per call to this function, same reasoning as
+ * `lib/automation/pipeline-reconcile.ts`'s `runPipelineReconcile`:
+ * `lastSuccessPerCron` (lib/db/cron-runs.ts) reads the single most recent
+ * SUCCESSFUL row per cron_name, so a row per business would let one
+ * succeeding business mask another failing every tick.
+ *
+ * `limit` (fix round 1) is a TICK-WIDE budget, not a per-business one. It
+ * used to be handed unchanged to every business's `claimDueRuns`, so a
+ * 2-business tick could claim 2x `DEFAULT_LIMIT` (25) runs against this
+ * route's `maxDuration: 120` — silently changing what the cap means the
+ * moment a second business existed. `remaining` is decremented by however
+ * many a business actually claimed (not the limit it was offered), so a
+ * business claiming fewer than its share leaves the rest for whoever comes
+ * next in the loop, and the running total across the whole tick can never
+ * exceed `limit`.
+ *
+ * One business's preflight/claim/processing throwing must not stop the
+ * others — each is wrapped in its own try/catch and recorded in
+ * `failures[]` rather than rethrown immediately.
+ *
+ * EXCEPTION, deliberately: if EVERY active business failed (not just one of
+ * several), the ORIGINAL error is rethrown rather than swallowed into a
+ * "successful" summary. With today's single active business this makes an
+ * unconfigured-business preflight failure propagate to the route exactly as
+ * it did before this task — same `BusinessNotConfiguredError` instance, same
+ * `instanceof` check, same 200-with-`{error}` response — which is the
+ * behavioural no-op that makes this safe to land before any second business
+ * exists. It also means "all businesses failed" is never quietly reported as
+ * a tick that "succeeded" with zero of everything.
+ *
+ * `failures` (fix round 1) rides along on the rethrown error itself — as a
+ * plain extra property, so `instanceof BusinessNotConfiguredError` at the
+ * route still works unchanged — so the route's cron_runs detail can still
+ * name EVERY business that failed even on the all-failed path, not just
+ * whichever one happened to be last in iteration order and get rethrown.
+ */
+export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Promise<TickSummary> {
+  const now = opts?.now ?? new Date()
+  const tickLimit = opts?.limit ?? DEFAULT_LIMIT
+
+  const businesses = await listBusinesses({ activeOnly: true })
+  if (businesses.length === 0) {
+    throw new Error("[sequence-tick] no active businesses found")
+  }
+
+  const summary: TickSummary = { claimed: 0, sent: 0, deferred: 0, exited: 0, completed: 0, failed: 0 }
+  const failures: Array<{ businessId: string; error: string }> = []
+  let lastError: unknown = null
+  let remaining = tickLimit
+
+  for (const business of businesses) {
+    try {
+      const claimedBefore = summary.claimed
+      await runSequenceTickForBusiness(business.id, now, remaining, summary)
+      remaining -= summary.claimed - claimedBefore
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      failures.push({ businessId: business.id, error: message })
+      lastError = err
+      console.error(`[sequence-tick] business ${business.id} failed:`, message)
+    }
+  }
+
+  if (failures.length > 0 && failures.length === businesses.length) {
+    if (lastError && typeof lastError === "object") {
+      Object.assign(lastError as object, { failures })
+    }
+    throw lastError
+  }
+
+  summary.businesses = businesses.length
+  if (failures.length > 0) summary.failures = failures
   return summary
 }

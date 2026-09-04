@@ -24,7 +24,6 @@
 // to a coach as "search is broken", not as "wrong column name".
 
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 function getClient() {
   return createServiceRoleClient()
@@ -40,6 +39,12 @@ export interface ContactListRow {
 }
 
 export interface ContactFilters {
+  /**
+   * The tenant this read is scoped to. Required, not defaulted — see
+   * `applyFilters`'s own comment on why the scope lives there rather than at
+   * each call site.
+   */
+  businessId: string
   /** Matches name, email or phone_e164, case-insensitively. */
   search?: string
   /** Only contacts with an email address on file. */
@@ -97,7 +102,7 @@ interface Filterable {
  */
 function applyFilters<T>(query: T, filters: ContactFilters): T {
   let q = query as Filterable
-  q = q.eq("business_id", SINGLETON_BUSINESS_ID)
+  q = q.eq("business_id", filters.businessId)
   if (filters.hasEmail) q = q.not("email", "is", null)
   if (filters.hasPhone) q = q.not("phone_e164", "is", null)
   if (filters.since) q = q.gte("created_at", filters.since)
@@ -146,8 +151,12 @@ const MAX_PAGE = 999
  *
  * `applyFilters` never reads it, which matters: a stray `page` reaching the
  * query builder would become a filter on a column `contacts` does not have.
+ *
+ * Omits `businessId`: this is built from URL search params alone, and the
+ * tenant is resolved separately (`resolveAdminTenant`) — the call site spreads
+ * both together before calling `listContacts`/`countContacts`.
  */
-export interface ContactPageFilters extends ContactFilters {
+export interface ContactPageFilters extends Omit<ContactFilters, "businessId"> {
   /** 1-based, already validated. */
   page: number
 }
@@ -203,7 +212,7 @@ export function parseContactFilters(raw: {
 }
 
 /** One page of contacts, newest first. */
-export async function listContacts(filters: ContactFilters = {}): Promise<ContactListRow[]> {
+export async function listContacts(filters: ContactFilters): Promise<ContactListRow[]> {
   const supabase = getClient()
   const limit = Math.min(filters.limit ?? 100, PAGE)
   const offset = filters.offset ?? 0
@@ -223,7 +232,7 @@ export async function listContacts(filters: ContactFilters = {}): Promise<Contac
 }
 
 /** How many contacts match, for the footer count and for pagination. */
-export async function countContacts(filters: ContactFilters = {}): Promise<number> {
+export async function countContacts(filters: ContactFilters): Promise<number> {
   const supabase = getClient()
   const base = supabase.from("contacts").select("id", { count: "exact", head: true })
   const filtered = applyFilters(base, filters)

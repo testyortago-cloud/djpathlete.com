@@ -263,6 +263,13 @@ export async function POST(request: Request) {
     name,
     email: email ?? null,
     phone: phone ?? null,
+    // `conversation.business_id` — this route already has the tenant in
+    // hand (it is a required column, read at step 5 above and used for the
+    // audit row below), so this is not one of captureLead's genuinely
+    // tenant-less public callers. Filing under the DAL's singleton default
+    // here would put the lead under the wrong coach the moment a second one
+    // exists.
+    businessId: conversation.business_id,
     metadata: {
       chat_conversation_id: conversationId,
       landing_path: conversation.landing_path,
@@ -290,7 +297,9 @@ export async function POST(request: Request) {
   // 9. The consent row — only for an actual consent act, and only when the
   //    sentence can name who is doing the emailing. See the file header.
   const marketingConsentRecorded =
-    marketingConsent === true ? await fileMarketingConsent({ contactId, ip, userAgent }) : false
+    marketingConsent === true
+      ? await fileMarketingConsent({ businessId: conversation.business_id, contactId, ip, userAgent })
+      : false
 
   // The trail records what happened, never who it happened to: no name, no
   // email, no phone, no IP. `chat_conversations.ip_hash` is the only origin
@@ -341,12 +350,21 @@ export async function POST(request: Request) {
  * details" into an error for somebody who has just handed them over.
  */
 async function fileMarketingConsent(input: {
+  /**
+   * The conversation's own tenant — this function is only ever called from
+   * this route, which already has it in hand (`conversation.business_id`,
+   * a required column). REQUIRED rather than defaulted, the same reasoning
+   * as `lib/db/chat.ts`'s new parameters: a default here is exactly what let
+   * this call silently read the platform's own business_settings row for
+   * every coach's conversation.
+   */
+  businessId: string
   contactId: string
   ip: string | null
   userAgent: string | null
 }): Promise<boolean> {
   try {
-    const settings = await getBusinessSettings()
+    const settings = await getBusinessSettings(input.businessId)
 
     if (!hasChatConsentDisplayName(settings.display_name)) {
       console.warn("[ask/capture] marketing consent skipped: business_settings.display_name is blank")

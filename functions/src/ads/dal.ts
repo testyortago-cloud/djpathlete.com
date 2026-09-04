@@ -4,6 +4,7 @@
 // Returns local UUIDs (id) for campaigns/ad_groups so children can FK them.
 
 import { getSupabase } from "../lib/supabase.js"
+import { SINGLETON_BUSINESS_ID } from "../lib/tenancy-constants.js"
 import type {
   GoogleAdsAccount,
   UpsertAdGroupInput,
@@ -14,11 +15,31 @@ import type {
   UpsertSearchTermInput,
 } from "./types.js"
 
-export async function getActiveGoogleAdsAccounts(): Promise<GoogleAdsAccount[]> {
+/**
+ * This is a Firebase TWIN of
+ * lib/db/google-ads-accounts.ts:getActiveGoogleAdsAccounts, not a caller of
+ * it (`functions/` cannot import from `lib/` — see CLAUDE.md). It applied NO
+ * business filter at all until now, which was safe only as long as every
+ * account was on the singleton. Now that
+ * lib/db/google-ads-accounts.ts:upsertGoogleAdsAccount writes a real
+ * business_id on insert, a second business CAN have its own account, and an
+ * unfiltered read here would fold every business's campaigns into one nightly
+ * sync worklist.
+ *
+ * `businessId` defaults to the singleton because the one existing caller
+ * (runSyncGoogleAds in sync-google-ads.ts) pre-dates multi-tenancy and is
+ * correct with it — the nightly Firebase cron does not yet iterate
+ * businesses (unlike the Next.js-side crons; see lib/tenancy). A NEW caller
+ * should pass its own businessId rather than relying on the default.
+ */
+export async function getActiveGoogleAdsAccounts(
+  businessId: string = SINGLETON_BUSINESS_ID,
+): Promise<GoogleAdsAccount[]> {
   const supabase = getSupabase()
   const { data, error } = await supabase
     .from("google_ads_accounts")
     .select("customer_id, is_active, last_synced_at, last_error")
+    .eq("business_id", businessId)
     .eq("is_active", true)
   if (error) throw error
   return (data ?? []) as GoogleAdsAccount[]

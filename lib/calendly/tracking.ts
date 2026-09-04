@@ -1,12 +1,12 @@
 // lib/calendly/tracking.ts — how the click ids get from the chat to the booking.
 //
 // THE GAP THIS CLOSES. The GoHighLevel webhook learns a booking's gclid either
-// from its own payload or from `findAttributionByEmail`, which joins
-// `marketing_attribution → users` — so it only ever matches somebody with a
-// `users` row, which a chat visitor is not. Calendly's payload has no click-id
-// field at all. Without a path, every booking made through the assistant
-// would fire ZERO ads conversions, silently, and nothing on screen would look
-// wrong.
+// from its own payload or from `findAttributionForContact` (Task 13; formerly
+// `findAttributionByEmail`), which is keyed on a resolved contact's user_id —
+// so it only ever matches somebody with a `users` row, which a chat visitor is
+// not. Calendly's payload has no click-id field at all. Without a path, every
+// booking made through the assistant would fire ZERO ads conversions,
+// silently, and nothing on screen would look wrong.
 //
 // THE PATH IS THE ONE CALENDLY DOCUMENTS: UTM parameters on the scheduling link
 // come back on the webhook under `payload.tracking`, and the docs say outright

@@ -158,7 +158,7 @@ beforeEach(() => {
 
 describe("importGhlContact", () => {
   it("skips a record with neither email nor phone, and touches nothing", async () => {
-    const out = await importGhlContact(baseRecord({ email: null, phone: null }), { snapshotTimestamp: SNAPSHOT })
+    const out = await importGhlContact(baseRecord({ email: null, phone: null }), { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
     expect(out).toEqual({
       kind: "skipped_no_identifier",
@@ -174,7 +174,7 @@ describe("importGhlContact", () => {
 
   it("reports created on the first sighting of an identifier", async () => {
     const out = await importGhlContact(baseRecord({ email: "first-time@example.com" }), {
-      snapshotTimestamp: SNAPSHOT,
+      snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID,
     })
 
     expect(out.kind).toBe("created")
@@ -183,11 +183,32 @@ describe("importGhlContact", () => {
     expect(state.rows[0].email).toBe("first-time@example.com")
   })
 
+  // `businessId` used to be resolved internally from SINGLETON_BUSINESS_ID —
+  // this proves the caller's value actually reaches the write, not just that
+  // SOME value does. A regression that ignored ctx.businessId and fell back
+  // to the singleton would pass every other test in this file (they all pass
+  // BUSINESS_ID, which equals the singleton) but must fail THIS one on the
+  // VALUE.
+  it("writes the caller's businessId, not the platform singleton", async () => {
+    const OTHER_BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
+
+    const out = await importGhlContact(baseRecord({ email: "other-tenant@example.com" }), {
+      snapshotTimestamp: SNAPSHOT,
+      businessId: OTHER_BUSINESS_ID,
+    })
+
+    expect(state.rows).toHaveLength(1)
+    expect(state.rows[0].business_id).toBe(OTHER_BUSINESS_ID)
+    const importEvent = state.timelineEvents.find((e) => e.kind === "ghl_import")
+    expect(importEvent.business_id).toBe(OTHER_BUSINESS_ID)
+    expect(importEvent.contact_id).toBe(out.contactId)
+  })
+
   describe("dnd === true", () => {
     it("suppresses both identifiers, with reason ghl_dnd_import, and creates no contact", async () => {
       const record = baseRecord({ email: "dnd-contact@example.com", phone: "+16175550123", dnd: true })
 
-      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       expect(out).toEqual({
         kind: "suppressed_only",
@@ -218,7 +239,7 @@ describe("importGhlContact", () => {
     it("suppresses only the identifier the record actually has", async () => {
       const record = baseRecord({ email: "onlyemail@example.com", phone: null, dnd: true })
 
-      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       expect(out.kind).toBe("suppressed_only")
       expect(state.suppressions).toHaveLength(1)
@@ -228,8 +249,8 @@ describe("importGhlContact", () => {
     it("suppressing the same dnd record twice does not throw or duplicate", async () => {
       const record = baseRecord({ email: "repeat-dnd@example.com", dnd: true })
 
-      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
-      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
+      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       expect(state.suppressions).toHaveLength(1)
     })
@@ -242,7 +263,7 @@ describe("importGhlContact", () => {
         tags: ["newsletter", "subscriber", "questionnaire-completed", "purchased"],
       })
 
-      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       expect(out.emailConsentImported).toBe(false)
       expect(state.consents).toHaveLength(0)
@@ -250,7 +271,7 @@ describe("importGhlContact", () => {
 
     it("imports zero consent rows for an untagged record", async () => {
       const out = await importGhlContact(baseRecord({ email: "untagged@example.com" }), {
-        snapshotTimestamp: SNAPSHOT,
+        snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID,
       })
 
       expect(out.emailConsentImported).toBe(false)
@@ -270,7 +291,7 @@ describe("importGhlContact", () => {
       const record = baseRecord({ email: "opted-in@example.com", tags: ["verified-opt-in"] })
 
       const out = await importGhlContact(record, {
-        snapshotTimestamp: SNAPSHOT,
+        snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID,
         emailConsentTagAllowlist: ["verified-opt-in"],
       })
 
@@ -292,7 +313,7 @@ describe("importGhlContact", () => {
       const record = baseRecord({ email: null, phone: "+16175550188", tags: ["verified-opt-in"] })
 
       const out = await importGhlContact(record, {
-        snapshotTimestamp: SNAPSHOT,
+        snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID,
         emailConsentTagAllowlist: ["verified-opt-in"],
       })
 
@@ -311,7 +332,7 @@ describe("importGhlContact", () => {
 
       const record = baseRecord({ email: "already-suppressed@example.com", tags: ["verified-opt-in"] })
       const out = await importGhlContact(record, {
-        snapshotTimestamp: SNAPSHOT,
+        snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID,
         emailConsentTagAllowlist: ["verified-opt-in"],
       })
 
@@ -346,7 +367,7 @@ describe("importGhlContact", () => {
     it("flags a phone-bearing record on the timeline and in the outcome", async () => {
       const record = baseRecord({ id: "phone-record-1", phone: "+16175550199" })
 
-      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       expect(out.smsRepermissionCandidate).toBe(true)
       const candidateEvents = state.timelineEvents.filter((e) => e.kind === "sms_repermission_candidate")
@@ -357,7 +378,7 @@ describe("importGhlContact", () => {
 
     it("does not flag a phoneless record", async () => {
       const out = await importGhlContact(baseRecord({ email: "nophonehere@example.com", phone: null }), {
-        snapshotTimestamp: SNAPSHOT,
+        snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID,
       })
 
       expect(out.smsRepermissionCandidate).toBe(false)
@@ -373,7 +394,7 @@ describe("importGhlContact", () => {
         dateAdded: "2026-08-01T12:00:00.000Z",
       })
 
-      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       const importEvents = state.timelineEvents.filter((e) => e.kind === "ghl_import")
       expect(importEvents).toHaveLength(1)
@@ -407,7 +428,7 @@ describe("importGhlContact", () => {
       })
 
       const record = baseRecord({ id: "scoped-ghl-id", email: "scoped@example.com" })
-      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       expect(out.kind).toBe("enriched")
       const ownBusinessImportRows = state.timelineEvents.filter(
@@ -427,7 +448,7 @@ describe("importGhlContact", () => {
         attributions,
       })
 
-      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       const importEvent = state.timelineEvents.find((e) => e.kind === "ghl_import")
       expect(importEvent.metadata.attributions).toEqual(attributions)
@@ -437,7 +458,7 @@ describe("importGhlContact", () => {
     it("omits the attributions key entirely from the ghl_import metadata when the record carries none", async () => {
       const record = baseRecord({ id: "unattributed-ghl-id", email: "unattributed@example.com" })
 
-      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       const importEvent = state.timelineEvents.find((e) => e.kind === "ghl_import")
       expect("attributions" in importEvent.metadata).toBe(false)
@@ -446,7 +467,7 @@ describe("importGhlContact", () => {
     it("omits the attributions key when the record's attributions array is present but empty", async () => {
       const record = baseRecord({ id: "empty-attributions-ghl-id", email: "empty-attr@example.com", attributions: [] })
 
-      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       const importEvent = state.timelineEvents.find((e) => e.kind === "ghl_import")
       expect("attributions" in importEvent.metadata).toBe(false)
@@ -497,8 +518,8 @@ describe("importGhlContact", () => {
     it("enriches (not duplicates) the contact, and writes exactly one ghl_import row for the same ghl id", async () => {
       const record = baseRecord({ id: "repeat-ghl-id", email: "repeat@example.com" })
 
-      const first = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
-      const second = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      const first = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
+      const second = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       expect(first.kind).toBe("created")
       expect(second.kind).toBe("enriched")
@@ -513,10 +534,10 @@ describe("importGhlContact", () => {
 
     it("does not resurrect a ghl_import row for a DIFFERENT ghl id landing on the same contact", async () => {
       const first = await importGhlContact(baseRecord({ id: "ghl-id-a", email: "shared-person@example.com" }), {
-        snapshotTimestamp: SNAPSHOT,
+        snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID,
       })
       const second = await importGhlContact(baseRecord({ id: "ghl-id-b", email: "shared-person@example.com" }), {
-        snapshotTimestamp: SNAPSHOT,
+        snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID,
       })
 
       expect(second.contactId).toBe(first.contactId)
@@ -539,7 +560,7 @@ describe("importGhlContact", () => {
         phone: "+16175550166",
       })
 
-      const first = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      const first = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       const rowsAfterFirst = state.rows.length
       const timelineAfterFirst = state.timelineEvents.length
@@ -547,7 +568,7 @@ describe("importGhlContact", () => {
       const suppressionsAfterFirst = state.suppressions.length
       expect(timelineAfterFirst).toBeGreaterThan(0) // sanity: the first run actually wrote something
 
-      const second = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      const second = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       expect(second.kind).toBe("enriched")
       expect(second.contactId).toBe(first.contactId)
@@ -563,7 +584,7 @@ describe("importGhlContact", () => {
   describe("merged — threaded from upsertContactIdentity", () => {
     it("reports merged: false on a plain create", async () => {
       const out = await importGhlContact(baseRecord({ email: "plain-create@example.com" }), {
-        snapshotTimestamp: SNAPSHOT,
+        snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID,
       })
 
       expect(out.merged).toBe(false)
@@ -588,7 +609,7 @@ describe("importGhlContact", () => {
       )
 
       const record = baseRecord({ email: "merge-target@example.com", phone: "+16175550177" })
-      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       expect(out.merged).toBe(true)
       expect(out.contactId).toBe("older-contact")
@@ -605,7 +626,7 @@ describe("importGhlContact", () => {
     })
 
     const record = baseRecord({ email: "conflict@example.com", phone: "+16175559888" })
-    const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+    const out = await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
     expect(out.contactId).toBe("existing-contact")
     expect(out.kind).toBe("enriched")
@@ -639,7 +660,7 @@ describe("importGhlContact", () => {
       })
 
       const record = baseRecord({ email: "would-be-enrolled@example.com" })
-      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT })
+      await importGhlContact(record, { snapshotTimestamp: SNAPSHOT, businessId: BUSINESS_ID })
 
       expect(state.sequenceRuns).toHaveLength(0)
     })

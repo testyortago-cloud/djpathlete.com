@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const insertMock = vi.fn()
@@ -109,6 +110,7 @@ describe("inviteStatus", () => {
     id: "i", email: "e@x.com", role: "editor", token: "t",
     invited_by: null, created_at: "2026-01-01T00:00:00Z",
     permissions: {}, staff_role: null,
+    business_id: null, business_role: null,
   }
   it("returns 'accepted' when used_at is set", () => {
     expect(inviteStatus({ ...base, used_at: "2026-01-01T00:00:00Z", expires_at: "2099-01-01T00:00:00Z" }))

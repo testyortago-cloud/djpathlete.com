@@ -49,11 +49,28 @@ export async function POST(request: NextRequest) {
     //
     // The reason carries the provider's own sentence. A cron reason of
     // "[object Object]" is a failure nobody can act on.
-    if ((summary.config_faults ?? 0) > 0) {
-      await logCronEnd(supabase, runId, "failed", {
-        message: `${summary.config_faults} configuration fault(s): the email provider rejected every attempt. Nothing sent; runs deferred, not lost.`,
-        ...summary,
-      })
+    //
+    // Task 10 (multi-coach ops): `runSequenceTick` now loops over active
+    // businesses internally and isolates a business whose preflight/claim
+    // loop threw into `summary.failures` rather than throwing (unless EVERY
+    // business failed — see that function's doc comment). That must ALSO
+    // mark this tick's one cron_runs row failed, same reasoning as
+    // config_faults above: a business failing silently every tick behind
+    // others succeeding is exactly what lastSuccessPerCron would hide.
+    const businessFailures = summary.failures ?? []
+    if ((summary.config_faults ?? 0) > 0 || businessFailures.length > 0) {
+      const messages: string[] = []
+      if ((summary.config_faults ?? 0) > 0) {
+        messages.push(
+          `${summary.config_faults} configuration fault(s): the email provider rejected every attempt. Nothing sent; runs deferred, not lost.`,
+        )
+      }
+      if (businessFailures.length > 0) {
+        messages.push(
+          `${businessFailures.length} business(es) failed: ${businessFailures.map((f) => f.businessId).join(", ")}`,
+        )
+      }
+      await logCronEnd(supabase, runId, "failed", { message: messages.join("; "), ...summary })
       return NextResponse.json({ ok: true, ...summary })
     }
 
@@ -62,7 +79,13 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error("[sequence-tick] failed:", err)
-    await logCronEnd(supabase, runId, "failed", { message })
+    // Fix round 1: when EVERY active business failed, runSequenceTick
+    // rethrows the last one's error but attaches the full `failures[]` to it
+    // first (see that function's doc comment) — so the cron_runs row still
+    // names every failing business, not just whichever one happened to be
+    // rethrown.
+    const attachedFailures = (err as { failures?: Array<{ businessId: string; error: string }> } | null)?.failures
+    await logCronEnd(supabase, runId, "failed", attachedFailures ? { message, failures: attachedFailures } : { message })
 
     // An unconfigured business_settings row answers 200, not 500. The caller
     // is a scheduler: a 500 makes it retry a misconfiguration that no retry

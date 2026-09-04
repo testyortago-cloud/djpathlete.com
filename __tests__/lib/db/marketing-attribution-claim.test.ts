@@ -1,10 +1,21 @@
+// @vitest-environment node
+//
+// Pinned to node: the default jsdom environment crashes on worker start
+// in this repo (ERR_REQUIRE_ESM in html-encoding-sniffer), and reports as
+// "Test Files no tests" rather than a failure. Without this line the suite
+// silently runs nothing.
+//
 // Regression cover for the conversion-tracking outage.
 //
 // Prod state that prompted this: 242 attribution rows carried a gclid, ZERO had
 // a user_id, and google_ads_conversion_uploads had never received a single row.
-// findAttributionByEmail joins `users!inner(email)` through user_id, so with
-// user_id always NULL it could never match — the Stripe webhook's email fallback was
-// dead, no payment ever got a gclid, and both conversion actions never fired.
+// The old findAttributionByEmail (Task 13: replaced by findAttributionForContact,
+// keyed on user_id directly, same reason) joined `users!inner(email)` through
+// user_id, so with user_id always NULL it could never match — the Stripe
+// webhook's email fallback was dead, no payment ever got a gclid, and both
+// conversion actions never fired. Task 13's dev-clone check found the same
+// shape still true today: every marketing_attribution row still has a null
+// user_id, so this remains a live, pre-existing gap rather than a fixed one.
 //
 // The subtle part: the fix (claim at registration) sets claimed_at, and the
 // checkout routes used getUnclaimedAttribution — which filters claimed_at IS

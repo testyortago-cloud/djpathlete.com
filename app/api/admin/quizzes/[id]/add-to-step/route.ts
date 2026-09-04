@@ -28,7 +28,8 @@ import { auth } from "@/lib/auth"
 import { withAudit } from "@/lib/audit/with-audit"
 import { appendTurn, getDraft } from "@/lib/db/funnel-builder"
 import { applyOps } from "@/lib/funnels/sections/apply"
-import { getQuizDefinition } from "@/lib/db/quizzes"
+import { getQuizDefinition, assertQuizInBusiness, QuizNotInBusinessError } from "@/lib/db/quizzes"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 export const runtime = "nodejs"
 
@@ -42,15 +43,45 @@ function notFound() {
   return NextResponse.json({ error: "Not found." }, { status: 404 })
 }
 
+function forbidden() {
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+}
+
 export const POST = withAudit(
   { action: "funnel.updated", category: "admin_write" },
   async (request, ctx) => {
     const session = await auth()
     if (session?.user?.role !== "admin") return notFound()
 
+    // `NoAccessibleBusinessError` is about the CALLER having no business at
+    // all, not about a resource this route is declining to confirm -- that
+    // posture stays 404 for a missing/foreign QUIZ (the `notFound()` calls
+    // below), but this branch gets the majority 403 {"error":"Forbidden"}
+    // shape (businesses, funnels routes).
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) return forbidden()
+      throw err
+    }
+
     const params = (await ctx.params) as Record<string, string>
     const quizId = params.id
     if (!z.string().uuid().safeParse(quizId).success) return notFound()
+
+    // CROSS-TENANT COMPOSITION GUARD. `getQuizDefinition` below is scoped by
+    // id alone (several of its other callers are public, unauthenticated
+    // quiz-taking routes with no tenant to check against yet), so without
+    // this an admin could compose another business's quiz onto their own
+    // funnel page -- same shape as the saveQuizDefinition hole this task
+    // already closed, except this route already holds a real businessId.
+    try {
+      await assertQuizInBusiness(businessId, quizId)
+    } catch (err) {
+      if (err instanceof QuizNotInBusinessError) return notFound()
+      throw err
+    }
 
     let body: z.infer<typeof bodySchema>
     try {

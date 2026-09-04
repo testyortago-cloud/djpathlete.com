@@ -25,7 +25,7 @@ vi.mock("@/lib/supabase", () => ({
     }),
   })),
 }))
-vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
+vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn(), listBusinesses: vi.fn() }))
 // The email path is untouched by this suite, but the runner imports it
 // unconditionally, so it needs a mock shape too. `assertSendable` stays real
 // (the tick-wide preflight this suite's fixtures must satisfy); only the
@@ -74,7 +74,7 @@ vi.mock("@/lib/automation/sequence-tick", async (importOriginal) => {
   return { ...actual, decideStep: vi.fn(actual.decideStep) }
 })
 
-import { getBusinessSettings } from "@/lib/db/businesses"
+import { getBusinessSettings, listBusinesses } from "@/lib/db/businesses"
 import { sendSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engine/email"
 import { sendRenderedSequenceSms, SMS_OPT_OUT_SENTENCE } from "@/lib/lead-engine/sms"
 import {
@@ -178,6 +178,7 @@ beforeEach(() => {
   process.env.TWILIO_MAIN_SID = "SK_test_key"
   process.env.TWILIO_CLIENT_SECRET = "test_secret"
   ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue(CONFIGURED_SETTINGS)
+  ;(listBusinesses as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: "biz-1" }])
   ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([])
   ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([SMS_STEP])
   ;(loadRunContext as ReturnType<typeof vi.fn>).mockResolvedValue(smsSendableContext())

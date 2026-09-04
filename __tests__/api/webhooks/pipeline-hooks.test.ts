@@ -19,6 +19,17 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 // covered by __tests__/lib/lead-engine/pipeline-move.test.ts.
 
 const findContactByIdentifiersMock = vi.fn(async (..._a: any[]) => null as string | null)
+const findContactWithBusinessByIdentifiersMock = vi.fn(
+  async (..._a: any[]) => null as { id: string; businessId: string } | null,
+)
+// The GHL/Calendly booking routes go through lib/bookings/ingest.ts's
+// writeRow, which resolves the contact's user_id before falling back to
+// findAttributionForContact when the payload carried no gclid — see that
+// function's own docstring. Defaults to null (most leads have no linked
+// account); this file's own fixtures mostly supply a gclid anyway, so the
+// fallback rarely fires, but a missing export here would crash the ones
+// that don't.
+const getContactUserIdMock = vi.fn(async (..._a: any[]) => null as string | null)
 const exitRunsForContactMock = vi.fn(async (..._a: any[]) => 0)
 const applyPipelineEventMock = vi.fn(async (..._a: any[]) => ({
   decision: { kind: "noop", reason: "test" } as const,
@@ -27,6 +38,8 @@ const applyPipelineEventMock = vi.fn(async (..._a: any[]) => ({
 
 vi.mock("@/lib/db/contacts", () => ({
   findContactByIdentifiers: (...a: unknown[]) => findContactByIdentifiersMock(...a),
+  findContactWithBusinessByIdentifiers: (...a: unknown[]) => findContactWithBusinessByIdentifiersMock(...a),
+  getContactUserId: (...a: unknown[]) => getContactUserIdMock(...a),
 }))
 vi.mock("@/lib/db/sequences", () => ({
   exitRunsForContact: (...a: unknown[]) => exitRunsForContactMock(...a),
@@ -153,7 +166,7 @@ vi.mock("@/lib/supabase", () => ({
 }))
 
 vi.mock("@/lib/db/marketing-attribution", () => ({
-  findAttributionByEmail: vi.fn(async () => null),
+  findAttributionForContact: vi.fn(async () => null),
   upsertAttributionBySession: vi.fn(),
   getUnclaimedAttribution: vi.fn(),
   claimAttribution: vi.fn(),
@@ -198,6 +211,8 @@ describe("Stripe webhook — pipeline", () => {
     getPaymentByStripeIdMock.mockReset().mockResolvedValue(null)
     getUserByEmailMock.mockReset().mockResolvedValue(null)
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    getContactUserIdMock.mockReset().mockResolvedValue(null)
+    findContactWithBusinessByIdentifiersMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
     applyPipelineEventMock
       .mockReset()
@@ -205,7 +220,7 @@ describe("Stripe webhook — pipeline", () => {
   })
 
   it("wins the card on checkout.session.completed, with the session amount", async () => {
-    findContactByIdentifiersMock.mockResolvedValueOnce("contact-pay-1")
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-pay-1", businessId: "bbb" })
     verifyMock.mockReturnValueOnce(stripeEvent({ amount_total: 12500 }))
 
     const { POST } = await import("@/app/api/stripe/webhook/route")
@@ -215,12 +230,33 @@ describe("Stripe webhook — pipeline", () => {
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-pay-1",
       event: { kind: "payment", amountCents: 12500, currency: "usd", occurredAt: expect.any(Date) },
+      businessId: "bbb",
       metadata: { stripe_session_id: "cs_test_1" },
     })
   })
 
+  // The contact's resolved business, not the singleton -- the whole point of
+  // Task 11. "bbb" is deliberately distinct from SINGLETON_BUSINESS_ID: a
+  // fixture using the singleton itself would pass identically against a
+  // hardcoded-singleton implementation and prove nothing.
+  it("wins the card under the contact's resolved business, not the singleton", async () => {
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "c1", businessId: "bbb" })
+    verifyMock.mockReturnValueOnce(stripeEvent({ amount_total: 7500 }))
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(makeStripeReq())
+
+    expect(res.status).toBe(200)
+    expect(applyPipelineEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ contactId: "c1", businessId: "bbb" }),
+    )
+    expect(applyPipelineEventMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ businessId: SINGLETON_BUSINESS_ID }),
+    )
+  })
+
   it("passes the session currency through", async () => {
-    findContactByIdentifiersMock.mockResolvedValueOnce("contact-pay-2")
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-pay-2", businessId: "bbb" })
     verifyMock.mockReturnValueOnce(stripeEvent({ currency: "eur" }))
 
     const { POST } = await import("@/app/api/stripe/webhook/route")
@@ -237,7 +273,7 @@ describe("Stripe webhook — pipeline", () => {
   })
 
   it("does not fail the webhook when applyPipelineEvent throws", async () => {
-    findContactByIdentifiersMock.mockResolvedValueOnce("contact-pay-3")
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-pay-3", businessId: "bbb" })
     applyPipelineEventMock.mockRejectedValueOnce(new Error("board exploded"))
     verifyMock.mockReturnValueOnce(stripeEvent())
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
@@ -254,20 +290,20 @@ describe("Stripe webhook — pipeline", () => {
   // of money this business takes, not only a coaching sale — applyPipelineEvent
   // must not win a card for the ones that aren't.
   it("exits sequences but does NOT win a card for a shop_order checkout", async () => {
-    findContactByIdentifiersMock.mockResolvedValueOnce("contact-shop-1")
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-shop-1", businessId: "bbb" })
     verifyMock.mockReturnValueOnce(stripeEvent({ metadata: { type: "shop_order" } }))
 
     const { POST } = await import("@/app/api/stripe/webhook/route")
     const res = await POST(makeStripeReq())
 
     expect(res.status).toBe(200)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-shop-1", "payment", SINGLETON_BUSINESS_ID)
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-shop-1", "payment", "bbb")
     expect(applyPipelineEventMock).not.toHaveBeenCalled()
     expect(handleShopOrderCheckoutMock).toHaveBeenCalled() // dispatch still runs — only the card is gated
   })
 
   it("exits sequences but does NOT win a card for a save_card checkout", async () => {
-    findContactByIdentifiersMock.mockResolvedValueOnce("contact-savecard-1")
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-savecard-1", businessId: "bbb" })
     // No session.metadata.userId — handleSaveCardCheckout returns immediately,
     // so this test needs no mock for it (see the module-level comment above).
     verifyMock.mockReturnValueOnce(stripeEvent({ metadata: { type: "save_card" }, amount_total: 0 }))
@@ -276,22 +312,23 @@ describe("Stripe webhook — pipeline", () => {
     const res = await POST(makeStripeReq())
 
     expect(res.status).toBe(200)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-savecard-1", "payment", SINGLETON_BUSINESS_ID)
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-savecard-1", "payment", "bbb")
     expect(applyPipelineEventMock).not.toHaveBeenCalled()
   })
 
   it("still wins the card for an ordinary coaching checkout (no exclusion type set)", async () => {
-    findContactByIdentifiersMock.mockResolvedValueOnce("contact-coaching-1")
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-coaching-1", businessId: "bbb" })
     verifyMock.mockReturnValueOnce(stripeEvent({ metadata: {}, amount_total: 30000 }))
 
     const { POST } = await import("@/app/api/stripe/webhook/route")
     const res = await POST(makeStripeReq())
 
     expect(res.status).toBe(200)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-coaching-1", "payment", SINGLETON_BUSINESS_ID)
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-coaching-1", "payment", "bbb")
     expect(applyPipelineEventMock).toHaveBeenCalledWith({
       contactId: "contact-coaching-1",
       event: { kind: "payment", amountCents: 30000, currency: "usd", occurredAt: expect.any(Date) },
+      businessId: "bbb",
       metadata: { stripe_session_id: "cs_test_1" },
     })
   })
@@ -323,7 +360,7 @@ describe("Stripe webhook — pipeline", () => {
 
     it("amends the Won card, resolving the contact from the payment's user_id", async () => {
       getPaymentByStripeIdMock.mockResolvedValueOnce({ id: "pay-1", user_id: "user-1" })
-      findContactByIdentifiersMock.mockResolvedValueOnce("contact-refund-1")
+      findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-refund-1", businessId: "bbb" })
       verifyMock.mockReturnValueOnce(chargeRefundedEvent({ amount_refunded: 15000 }))
       vi.spyOn(console, "error").mockImplementation(() => {})
 
@@ -331,12 +368,38 @@ describe("Stripe webhook — pipeline", () => {
       const res = await POST(makeStripeReq())
 
       expect(res.status).toBe(200)
-      expect(findContactByIdentifiersMock).toHaveBeenCalledWith({ userId: "user-1", email: null })
+      expect(findContactWithBusinessByIdentifiersMock).toHaveBeenCalledWith({ userId: "user-1", email: null })
       expect(applyPipelineEventMock).toHaveBeenCalledWith({
         contactId: "contact-refund-1",
         event: { kind: "refund", amountRefundedCents: 15000, occurredAt: expect.any(Date) },
+        businessId: "bbb",
         metadata: { stripe_charge_id: "ch_test_1", amount_refunded: 15000 },
       })
+    })
+
+    // Fix round 1, Important 2: the contact's resolved business, not the
+    // singleton -- this handler used to resolve through the unscoped
+    // findContactByIdentifiers (defaulting to SINGLETON_BUSINESS_ID) right
+    // beside the checkout.session.completed handler that already got fixed.
+    // "bbb" is deliberately distinct from SINGLETON_BUSINESS_ID: a fixture
+    // using the singleton itself would pass identically against a
+    // hardcoded-singleton implementation and prove nothing.
+    it("takes the business from the contact it resolved, not the singleton (refund)", async () => {
+      getPaymentByStripeIdMock.mockResolvedValueOnce({ id: "pay-1", user_id: "user-1" })
+      findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-refund-bbb", businessId: "bbb" })
+      verifyMock.mockReturnValueOnce(chargeRefundedEvent({ amount_refunded: 2500 }))
+      vi.spyOn(console, "error").mockImplementation(() => {})
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeStripeReq())
+
+      expect(res.status).toBe(200)
+      expect(applyPipelineEventMock).toHaveBeenCalledWith(
+        expect.objectContaining({ contactId: "contact-refund-bbb", businessId: "bbb" }),
+      )
+      expect(applyPipelineEventMock).not.toHaveBeenCalledWith(
+        expect.objectContaining({ businessId: SINGLETON_BUSINESS_ID }),
+      )
     })
 
     // Fix round 1 (Critical): getPaymentByStripeId select("*")s with no type
@@ -353,7 +416,7 @@ describe("Stripe webhook — pipeline", () => {
         user_id: "user-1",
         metadata: { type: "event_signup" },
       })
-      findContactByIdentifiersMock.mockResolvedValueOnce("contact-refund-ticket")
+      findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-refund-ticket", businessId: "bbb" })
       verifyMock.mockReturnValueOnce(chargeRefundedEvent())
       vi.spyOn(console, "error").mockImplementation(() => {})
 
@@ -370,7 +433,7 @@ describe("Stripe webhook — pipeline", () => {
         user_id: "user-1",
         metadata: { type: "session_fee" },
       })
-      findContactByIdentifiersMock.mockResolvedValueOnce("contact-refund-fee")
+      findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-refund-fee", businessId: "bbb" })
       verifyMock.mockReturnValueOnce(chargeRefundedEvent())
       vi.spyOn(console, "error").mockImplementation(() => {})
 
@@ -387,7 +450,10 @@ describe("Stripe webhook — pipeline", () => {
     // unhandled.
     it("still amends an ordinary coaching refund whose payment carries no metadata.type", async () => {
       getPaymentByStripeIdMock.mockResolvedValueOnce({ id: "pay-coaching-1", user_id: "user-1", metadata: {} })
-      findContactByIdentifiersMock.mockResolvedValueOnce("contact-refund-coaching")
+      findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({
+        id: "contact-refund-coaching",
+        businessId: "bbb",
+      })
       verifyMock.mockReturnValueOnce(chargeRefundedEvent({ amount_refunded: 5000 }))
       vi.spyOn(console, "error").mockImplementation(() => {})
 
@@ -398,6 +464,7 @@ describe("Stripe webhook — pipeline", () => {
       expect(applyPipelineEventMock).toHaveBeenCalledWith({
         contactId: "contact-refund-coaching",
         event: { kind: "refund", amountRefundedCents: 5000, occurredAt: expect.any(Date) },
+        businessId: "bbb",
         metadata: { stripe_charge_id: "ch_test_1", amount_refunded: 5000 },
       })
     })
@@ -416,7 +483,7 @@ describe("Stripe webhook — pipeline", () => {
 
     it("does not call applyPipelineEvent when no contact resolves from the payment", async () => {
       getPaymentByStripeIdMock.mockResolvedValueOnce({ id: "pay-1", user_id: null })
-      findContactByIdentifiersMock.mockResolvedValueOnce(null)
+      findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce(null)
       verifyMock.mockReturnValueOnce(chargeRefundedEvent())
       vi.spyOn(console, "error").mockImplementation(() => {})
 
@@ -429,7 +496,7 @@ describe("Stripe webhook — pipeline", () => {
 
     it("does not fail the webhook when applyPipelineEvent throws for a refund", async () => {
       getPaymentByStripeIdMock.mockResolvedValueOnce({ id: "pay-1", user_id: "user-1" })
-      findContactByIdentifiersMock.mockResolvedValueOnce("contact-refund-2")
+      findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-refund-2", businessId: "bbb" })
       applyPipelineEventMock.mockRejectedValueOnce(new Error("board exploded"))
       verifyMock.mockReturnValueOnce(chargeRefundedEvent())
       const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
@@ -466,6 +533,7 @@ describe("GHL booking webhook — pipeline", () => {
     bookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
 
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    getContactUserIdMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
     applyPipelineEventMock
       .mockReset()
@@ -652,6 +720,7 @@ describe("Calendly booking webhook — pipeline", () => {
     bookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
 
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    getContactUserIdMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
     applyPipelineEventMock
       .mockReset()

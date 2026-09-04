@@ -1,3 +1,9 @@
+// @vitest-environment node
+//
+// Pinned to node: the default jsdom environment crashes on worker start
+// in this repo (ERR_REQUIRE_ESM in html-encoding-sniffer), and reports as
+// "Test Files no tests" rather than a failure. Without this line the suite
+// silently runs nothing.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextRequest } from "next/server"
 
@@ -9,7 +15,7 @@ vi.mock("@/lib/db/marketing-attribution", () => ({
   upsertAttributionBySession: mocks.upsertAttributionBySession,
   getUnclaimedAttribution: vi.fn(),
   claimAttribution: vi.fn(),
-  findAttributionByEmail: vi.fn(),
+  findAttributionForContact: vi.fn(),
 }))
 
 import { POST } from "@/app/api/public/attribution/track/route"

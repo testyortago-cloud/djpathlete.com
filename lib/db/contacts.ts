@@ -314,6 +314,33 @@ export async function mergeContacts(survivorId: string, mergedId: string, busine
 }
 
 /**
+ * The user_id a contact is linked to, or null when it has none — true for
+ * most leads, since a contact only gains one once the same person registers
+ * or is otherwise matched to an account.
+ *
+ * SCOPED BY businessId, same as every other contact read here. This exists
+ * so a booking/payment consequence that already resolved a contact id (via
+ * findContactByIdentifiers, itself business-scoped) can go on to look up
+ * marketing attribution keyed on user_id — see
+ * findAttributionForContact's own docstring for why user_id, not email, is
+ * the safe key once two businesses can share a lead.
+ */
+export async function getContactUserId(
+  contactId: string,
+  businessId: string = SINGLETON_BUSINESS_ID,
+): Promise<string | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("user_id")
+    .eq("business_id", businessId)
+    .eq("id", contactId)
+    .maybeSingle()
+  if (error) throw error
+  return (data as { user_id: string | null } | null)?.user_id ?? null
+}
+
+/**
  * Resolves a contact id from whichever identifiers a caller has on hand —
  * used by the marketing-exit hooks (payment, booking) to find who to stop
  * emailing. Resolution order: userId, then email (normalised), then phone
@@ -372,5 +399,56 @@ export async function findContactByIdentifiers(args: {
     if (data) return (data as { id: string }).id
   }
 
+  return null
+}
+
+/**
+ * DELIBERATELY UNSCOPED -- the only contact lookup in this repo with no
+ * business predicate, and it must stay that way. Its caller is a vendor
+ * webhook (one Stripe account serves every business) which has NO tenant in
+ * scope; the contact row it finds is what SUPPLIES the tenant to every
+ * consequence downstream. Do not "fix" this by adding a businessId: a
+ * businessId here would have to be a guess, and the guess is the leak.
+ *
+ * KNOWN AMBIGUITY, stated rather than hidden: two businesses can each hold a
+ * contact with the same email -- a shared lead. Resolution is the OLDEST row
+ * (the first business to know this person) plus a warning, which is
+ * deterministic but not RIGHT. The right fix is stamping business_id into the
+ * Stripe checkout session metadata at creation and preferring it when
+ * present; that touches every checkout creation site and is phase 4.
+ */
+export async function findContactWithBusinessByIdentifiers(args: {
+  email?: string | null
+  userId?: string | null
+}): Promise<{ id: string; businessId: string } | null> {
+  const supabase = getClient()
+
+  const pick = async (column: "user_id" | "email", value: string) => {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("id, business_id, created_at")
+      .eq(column, value)
+      .order("created_at", { ascending: true })
+    if (error) throw error
+    const rows = (data ?? []) as { id: string; business_id: string }[]
+    if (rows.length === 0) return null
+    if (rows.length > 1) {
+      console.warn(
+        `[contacts] ${rows.length} contacts across businesses match ${column}; taking the oldest (${rows[0].business_id}). ` +
+          `Stamp business_id into the checkout session to remove this ambiguity.`,
+      )
+    }
+    return { id: rows[0].id, businessId: rows[0].business_id }
+  }
+
+  if (args.userId) {
+    const hit = await pick("user_id", args.userId)
+    if (hit) return hit
+  }
+  const email = normaliseEmail(args.email)
+  if (email) {
+    const hit = await pick("email", email)
+    if (hit) return hit
+  }
   return null
 }

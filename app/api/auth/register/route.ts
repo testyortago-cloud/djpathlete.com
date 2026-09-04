@@ -128,12 +128,18 @@ export async function POST(request: Request) {
     // Link this visitor's ad click to the account they just made (non-blocking).
     //
     // Without this, marketing_attribution.user_id stays NULL forever — and
-    // findAttributionByEmail joins `users!inner`, so the Stripe webhook's
-    // email fallback can never match a row and no payment ever gets a gclid.
-    // Net effect: zero offline conversions upload and Google Ads bids blind.
-    // The design always called for claiming at signup; only the newsletter
-    // path ever implemented it, which is why newsletter_subscribers is the one
+    // findAttributionForContact (Task 13; formerly findAttributionByEmail,
+    // which joined `users!inner`) is keyed on user_id, so the Stripe webhook's
+    // fallback can never match a row and no payment ever gets a gclid. Net
+    // effect: zero offline conversions upload and Google Ads bids blind. The
+    // design always called for claiming at signup; only the newsletter path
+    // ever implemented it, which is why newsletter_subscribers is the one
     // table in the schema with a gclid on it.
+    //
+    // In practice this claim essentially never fires: nothing else in the
+    // schema sets marketing_attribution.user_id, so both the old email-join
+    // and the current user_id keying resolve nothing until this path runs.
+    // Pre-existing gap; this task did not introduce or fix it.
     try {
       const attrSessionId = parseAttrCookie(request.headers.get("cookie"))
       if (attrSessionId) {

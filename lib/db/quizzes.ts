@@ -15,7 +15,6 @@
 // Spec: docs/superpowers/specs/2026-08-23-athlete-quiz-funnel-design.md §1
 
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { slugify } from "@/lib/funnels/slug"
 import type {
   QuizAlertStatus,
@@ -168,11 +167,11 @@ export async function getQuizDefinition(quizId: string): Promise<QuizDefinition 
   return assemble(data as Row)
 }
 
-export async function getQuizDefinitionByKey(key: string): Promise<QuizDefinition | null> {
+export async function getQuizDefinitionByKey(businessId: string, key: string): Promise<QuizDefinition | null> {
   const { data, error } = await getClient()
     .from("quizzes")
     .select("*")
-    .eq("business_id", SINGLETON_BUSINESS_ID)
+    .eq("business_id", businessId)
     .eq("key", key)
     .maybeSingle()
   if (error) throw error
@@ -199,9 +198,21 @@ export async function getQuizDefinitionByKey(key: string): Promise<QuizDefinitio
  *
  * `quizGate` filters `isActive` itself, so handing it this wider definition
  * changes no verdict.
+ *
+ * SCOPED BY businessId. Both its callers are admin-only (the quiz editor
+ * page and its save route) -- unlike `getQuizDefinition`, which several
+ * public, unauthenticated quiz-taking routes also call and cannot yet supply
+ * a real tenant for. Without this, a staff coach holding the `funnels`
+ * permission (not `OWNER_ONLY_PREFIXES` -- see lib/permissions/registry.ts)
+ * could open `/admin/funnels/quizzes/<uuid>` for any business's quiz by id.
  */
-export async function getQuizDefinitionForEditor(quizId: string): Promise<QuizDefinition | null> {
-  const { data, error } = await getClient().from("quizzes").select("*").eq("id", quizId).maybeSingle()
+export async function getQuizDefinitionForEditor(businessId: string, quizId: string): Promise<QuizDefinition | null> {
+  const { data, error } = await getClient()
+    .from("quizzes")
+    .select("*")
+    .eq("id", quizId)
+    .eq("business_id", businessId)
+    .maybeSingle()
   if (error) throw error
   if (!data) return null
   return assemble(data as Row, { includeInactive: true })
@@ -216,11 +227,11 @@ export interface QuizListRow {
   updatedAt: string | null
 }
 
-export async function listQuizzes(): Promise<QuizListRow[]> {
+export async function listQuizzes(businessId: string): Promise<QuizListRow[]> {
   const { data, error } = await getClient()
     .from("quizzes")
     .select("id, key, name, status, seed_marker, updated_at")
-    .eq("business_id", SINGLETON_BUSINESS_ID)
+    .eq("business_id", businessId)
     .order("updated_at", { ascending: false })
   if (error) throw error
   return ((data ?? []) as Row[]).map((row) => ({
@@ -245,12 +256,12 @@ export async function listQuizzes(): Promise<QuizListRow[]> {
  * absence -- a block pointing at a deleted quiz is a real state, and the
  * person who can fix it is the one looking at this screen.
  */
-export async function getQuizzesByIds(ids: string[]): Promise<QuizListRow[]> {
+export async function getQuizzesByIds(businessId: string, ids: string[]): Promise<QuizListRow[]> {
   if (ids.length === 0) return []
   const { data, error } = await getClient()
     .from("quizzes")
     .select("id, key, name, status, seed_marker, updated_at")
-    .eq("business_id", SINGLETON_BUSINESS_ID)
+    .eq("business_id", businessId)
     .in("id", ids)
   if (error) throw error
   return ((data ?? []) as Row[]).map((row) => ({
@@ -269,8 +280,8 @@ export async function getQuizzesByIds(ids: string[]): Promise<QuizListRow[]> {
  * Create — so the suffix is derived before the insert rather than retried
  * after it.
  */
-async function uniqueQuizKey(supabase: ReturnType<typeof getClient>, base: string): Promise<string> {
-  const { data, error } = await supabase.from("quizzes").select("key").eq("business_id", SINGLETON_BUSINESS_ID)
+async function uniqueQuizKey(supabase: ReturnType<typeof getClient>, businessId: string, base: string): Promise<string> {
+  const { data, error } = await supabase.from("quizzes").select("key").eq("business_id", businessId)
   if (error) throw error
   const taken = new Set(((data ?? []) as Row[]).map((row) => str(row.key)))
   if (!taken.has(base)) return base
@@ -331,16 +342,16 @@ async function insertMapped<T extends { id: string }>(
  *
  * Spec: docs/superpowers/specs/2026-08-24-quiz-funnel-creator-design.md §3
  */
-export async function createQuizFrom(input: { source: QuizDefinition; name: string }): Promise<{ id: string; key: string }> {
+export async function createQuizFrom(businessId: string, input: { source: QuizDefinition; name: string }): Promise<{ id: string; key: string }> {
   const supabase = getClient()
   // `slugify` caps at 80 and can return "" for a name with no letters or
   // digits in it; "quiz" is a key, not a label, so a fallback is honest.
-  const key = await uniqueQuizKey(supabase, slugify(input.name) || "quiz")
+  const key = await uniqueQuizKey(supabase, businessId, slugify(input.name) || "quiz")
   const quizId = globalThis.crypto.randomUUID()
 
   const { error: quizError } = await supabase.from("quizzes").insert({
     id: quizId,
-    business_id: SINGLETON_BUSINESS_ID,
+    business_id: businessId,
     key,
     name: input.name,
     // A COPY IS A DRAFT, even from an active source. Going live stays a
@@ -425,12 +436,12 @@ export async function createQuizFrom(input: { source: QuizDefinition; name: stri
  *
  * Scoped by `business_id` like every other write in this file.
  */
-export async function deleteQuiz(quizId: string): Promise<void> {
+export async function deleteQuiz(businessId: string, quizId: string): Promise<void> {
   const { error } = await getClient()
     .from("quizzes")
     .delete()
     .eq("id", quizId)
-    .eq("business_id", SINGLETON_BUSINESS_ID)
+    .eq("business_id", businessId)
   if (error) throw error
 }
 
@@ -443,9 +454,12 @@ export async function deleteQuiz(quizId: string): Promise<void> {
  * false`, and filing the second under a heading reading "Retired" is a lie the
  * owner has no way to check. Within one editing session the editor knows which
  * rows it just created; after a reload it does not, and this is the answer.
+ *
+ * SCOPED BY businessId, same reasoning as `getQuizDefinitionForEditor`: both
+ * its callers are admin-only.
  */
-export async function getAnsweredQuestionIds(quizId: string): Promise<string[]> {
-  const { questions } = await answeredIds(getClient(), quizId)
+export async function getAnsweredQuestionIds(businessId: string, quizId: string): Promise<string[]> {
+  const { questions } = await answeredIds(getClient(), businessId, quizId)
   return [...questions]
 }
 
@@ -506,6 +520,46 @@ export class QuizAnsweredOptionError extends Error {
 }
 
 /**
+ * Thrown when `quizId` does not belong to `businessId`.
+ *
+ * WITHOUT THIS CHECK, THE CHILD WRITES BELOW ARE THE HOLE. `quiz_questions`,
+ * `quiz_options`, `quiz_tiers` and `quiz_branches` carry no `business_id`
+ * column at all -- only `quiz_id` -- so every insert/update/delete in this
+ * function past the top-level `quizzes` patch is scoped by quiz ownership,
+ * never by tenant. That patch itself is scoped by `business_id`, but an
+ * UPDATE matching zero rows is not an error PostgREST reports: it silently
+ * no-ops while the child writes underneath it — scoped only by `quiz_id` —
+ * go ahead and mutate another business's questions, options, tiers and
+ * branches. Checked before anything else, so a caller naming a quiz outside
+ * its own business gets a clean refusal instead of a partially-applied
+ * cross-tenant edit.
+ */
+export class QuizNotInBusinessError extends Error {
+  constructor(public readonly quizId: string) {
+    super(`Quiz ${quizId} does not belong to this business`)
+    this.name = "QuizNotInBusinessError"
+  }
+}
+
+/**
+ * Throws `QuizNotInBusinessError` unless `quizId` belongs to `businessId`.
+ *
+ * EXPORTED, NOT PRIVATE TO `saveQuizDefinition` -- it is also the guard
+ * `getQuizDefinition`'s own callers need. `getQuizDefinition` is scoped by id
+ * alone (several of its callers are public, unauthenticated quiz-taking
+ * routes with no tenant to check against yet), so any admin-side caller that
+ * turns its result into a WRITE -- cloning it (`createQuizFrom`) or
+ * composing it onto another record (`add-to-step`'s draft doc) -- must run
+ * this first, or the read alone is a cross-tenant hole one step removed from
+ * the write the read was scoped to protect.
+ */
+export async function assertQuizInBusiness(businessId: string, quizId: string): Promise<void> {
+  const { data, error } = await getClient().from("quizzes").select("id").eq("id", quizId).eq("business_id", businessId).maybeSingle()
+  if (error) throw error
+  if (!data) throw new QuizNotInBusinessError(quizId)
+}
+
+/**
  * Which of this quiz's questions and options anybody has actually answered.
  *
  * A FULL READ OF ONE COLUMN FOR ONE QUIZ, scanned in JS. `quiz_attempts.answers`
@@ -513,14 +567,21 @@ export class QuizAnsweredOptionError extends Error {
  * O(attempts) and honest about it; a jsonb GIN index is the fix the day the
  * volume makes it one. Callers only pay for it when something is being deleted.
  *
- * SCOPED BY quiz_id. Scanning every attempt would let another quiz's answers
- * protect a row nobody here ever picked, and the owner could never remove it.
+ * SCOPED BY quiz_id AND businessId. Scanning every attempt on quiz_id alone
+ * would let another quiz's answers protect a row nobody here ever picked, and
+ * the owner could never remove it; business_id is the second predicate that
+ * keeps this read (and its two callers) inside one tenant.
  */
 async function answeredIds(
   supabase: ReturnType<typeof getClient>,
+  businessId: string,
   quizId: string,
 ): Promise<{ questions: Set<string>; options: Set<string> }> {
-  const { data, error } = await supabase.from("quiz_attempts").select("answers").eq("quiz_id", quizId)
+  const { data, error } = await supabase
+    .from("quiz_attempts")
+    .select("answers")
+    .eq("quiz_id", quizId)
+    .eq("business_id", businessId)
   if (error) throw error
   const questions = new Set<string>()
   const options = new Set<string>()
@@ -572,9 +633,13 @@ async function answeredIds(
  *
  * Spec: docs/superpowers/specs/2026-08-24-quiz-funnel-creator-design.md §5
  */
-export async function saveQuizDefinition(input: QuizSaveInput): Promise<{ retiredQuestionIds: string[] }> {
+export async function saveQuizDefinition(businessId: string, input: QuizSaveInput): Promise<{ retiredQuestionIds: string[] }> {
   const supabase = getClient()
   const { quizId } = input
+
+  // OWNERSHIP, CHECKED BEFORE ANYTHING ELSE -- see `assertQuizInBusiness`.
+  await assertQuizInBusiness(businessId, quizId)
+
   const deleteQuestionIds = input.deleteQuestionIds ?? []
   const deleteOptionIds = input.deleteOptionIds ?? []
   const retiredQuestionIds: string[] = []
@@ -582,7 +647,7 @@ export async function saveQuizDefinition(input: QuizSaveInput): Promise<{ retire
   // Only paid for when something is being deleted — see `answeredIds`.
   const answered =
     deleteQuestionIds.length > 0 || deleteOptionIds.length > 0
-      ? await answeredIds(supabase, quizId)
+      ? await answeredIds(supabase, businessId, quizId)
       : { questions: new Set<string>(), options: new Set<string>() }
 
   const refusedOptionIds = deleteOptionIds.filter((id) => answered.options.has(id))
@@ -671,7 +736,7 @@ export async function saveQuizDefinition(input: QuizSaveInput): Promise<{ retire
       .from("quizzes")
       .update(patch)
       .eq("id", quizId)
-      .eq("business_id", SINGLETON_BUSINESS_ID)
+      .eq("business_id", businessId)
     if (error) throw error
   }
 
@@ -809,11 +874,11 @@ export interface QuizAttemptCounts {
  * has no GROUP BY, so a per-quiz count query would be N round trips to avoid
  * an array walk.
  */
-export async function getQuizAttemptCounts(): Promise<Record<string, QuizAttemptCounts>> {
+export async function getQuizAttemptCounts(businessId: string): Promise<Record<string, QuizAttemptCounts>> {
   const { data, error } = await getClient()
     .from("quiz_attempts")
     .select("quiz_id, status")
-    .eq("business_id", SINGLETON_BUSINESS_ID)
+    .eq("business_id", businessId)
   if (error) throw error
   const out: Record<string, QuizAttemptCounts> = {}
   for (const row of (data ?? []) as Row[]) {
@@ -851,14 +916,14 @@ export async function getAttempt(attemptId: string): Promise<QuizAttemptRow | nu
   }
 }
 
-export async function createAttempt(input: {
+export async function createAttempt(businessId: string, input: {
   quizId: string
   attributionSessionId: string | null
 }): Promise<string> {
   const { data, error } = await getClient()
     .from("quiz_attempts")
     .insert({
-      business_id: SINGLETON_BUSINESS_ID,
+      business_id: businessId,
       quiz_id: input.quizId,
       attribution_session_id: input.attributionSessionId,
     })

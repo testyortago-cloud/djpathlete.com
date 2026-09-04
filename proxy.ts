@@ -12,6 +12,7 @@ import {
   NO_ACCESS_PATH,
   ADMIN_PATH_HEADER,
   ADMIN_METHOD_HEADER,
+  PAGE_PATH_HEADER,
 } from "@/lib/permissions/registry"
 
 const SESSION_COOKIES = ["authjs.session-token", "__Secure-authjs.session-token"]
@@ -103,19 +104,58 @@ export default auth((req) => {
   let res: NextResponse
 
   if (pathname.startsWith("/admin")) {
+    // GRANTED pass-through: this request cleared the gate for `pathname`, so
+    // it gets the AUTHORISATION headers (see their own comment in
+    // registry.ts) — always from a fresh Headers object, so a client cannot
+    // forge either one for the server-action re-check in
+    // lib/permissions/guard.ts's canAccessAdminPath. PAGE_PATH_HEADER rides
+    // along too, since a granted request obviously also renders.
+    const grantedPassThrough = () => {
+      const headers = new Headers(req.headers)
+      headers.set(ADMIN_PATH_HEADER, pathname)
+      headers.set(ADMIN_METHOD_HEADER, req.method)
+      headers.set(PAGE_PATH_HEADER, pathname)
+      return NextResponse.next({ request: { headers } })
+    }
+    // DENIED but still rendered: only the staff home-page / NO_ACCESS_PATH
+    // loop-guard below uses this. It must NOT carry the authorisation
+    // headers — the gate said no for `pathname`, and stamping ADMIN_PATH_HEADER
+    // here would read as "the gate said yes" to canAccessAdminPath. It still
+    // needs PAGE_PATH_HEADER, which is the whole reason this exists: so
+    // app/(admin)/admin/layout.tsx can tell it is already rendering
+    // NO_ACCESS_PATH and skip its own redirect() there (Task 7's tenant
+    // resolver throws NoAccessibleBusinessError independent of which page was
+    // requested, and NO_ACCESS_PATH is a page nested under that same layout —
+    // without this it would redirect from NO_ACCESS_PATH to itself, forever).
+    //
+    // `new Headers(req.headers)` COPIES whatever the client sent, including a
+    // forged x-djp-admin-path / x-djp-admin-method -- NOT setting a header on
+    // a copy is not the same as clearing it. This branch does not call
+    // `.set()` on the auth pair, so it must `.delete()` them explicitly, or a
+    // staff request denied here (e.g. a manage-tier action a view-only staffer
+    // POSTs to their own home page) would forward the client's own forged
+    // headers straight through to a headerless canAccessAdminPath() call in
+    // some server action, which would trust them.
+    const deniedRenderWithPagePath = () => {
+      const headers = new Headers(req.headers)
+      headers.delete(ADMIN_PATH_HEADER)
+      headers.delete(ADMIN_METHOD_HEADER)
+      headers.set(PAGE_PATH_HEADER, pathname)
+      return NextResponse.next({ request: { headers } })
+    }
     if (!isLoggedIn) {
       res = redirectToLogin(req)
     } else if (userRole === "staff") {
       // Default-deny: an /admin path in no registry rule is denied, so a new
       // admin surface is unreachable to staff until it is mapped deliberately.
       if (canAccessPath({ role: "staff", permissions }, pathname, req.method)) {
-        res = NextResponse.next()
+        res = grantedPassThrough()
       } else {
         const home = staffHomePath(permissions)
         // Never bounce someone off the page we would bounce them to.
         res =
           pathname === home || pathname === NO_ACCESS_PATH
-            ? NextResponse.next()
+            ? deniedRenderWithPagePath()
             : NextResponse.redirect(new URL(NO_ACCESS_PATH, req.url))
       }
     } else if (userRole !== "admin") {
@@ -123,7 +163,7 @@ export default auth((req) => {
       const home = userRole === "editor" ? "/editor" : "/client/dashboard"
       res = NextResponse.redirect(new URL(home, req.url))
     } else {
-      res = NextResponse.next()
+      res = grantedPassThrough()
     }
   } else if (pathname.startsWith("/editor")) {
     if (!isLoggedIn) {

@@ -28,10 +28,9 @@ export async function listGoogleAdsAccounts(): Promise<GoogleAdsAccount[]> {
  *
  * functions/src/ads/dal.ts:getActiveGoogleAdsAccounts is a SEPARATE Firebase
  * twin of this function, not a caller of it (functions/ cannot import from
- * lib/ — see CLAUDE.md), and it applies NO business filter at all. Safe today
- * only because every account is still on the singleton (see
- * upsertGoogleAdsAccount below); it becomes a cross-tenant leak the day a
- * second business has an account and nobody has updated that twin.
+ * lib/ — see CLAUDE.md). It now carries its own `businessId` predicate too
+ * (added alongside upsertGoogleAdsAccount's write half below), so the two
+ * stay in sync — update both if this one's filtering logic ever changes.
  */
 export async function getActiveGoogleAdsAccounts(
   businessId: string = SINGLETON_BUSINESS_ID,
@@ -55,25 +54,42 @@ export interface UpsertGoogleAdsAccountInput {
   connected_at?: string | null
 }
 
+/** Re-discovery must not silently move an ad account between coaches. */
+export class AdsAccountOwnedByAnotherBusinessError extends Error {
+  constructor(customerId: string, ownerBusinessId: string) {
+    super(`Google Ads account ${customerId} already belongs to business ${ownerBusinessId}`)
+    this.name = "AdsAccountOwnedByAnotherBusinessError"
+  }
+}
+
 /**
- * SINGLETON-ONLY BY CONSTRUCTION: this function never takes or writes a
- * business_id, and matches an existing row on customer_id alone. Every
- * OAuth-discovered account therefore lands on the column default
- * (SINGLETON_BUSINESS_ID), which is exactly why getActiveGoogleAdsAccounts
- * above can filter by business_id today and still find every account —
- * there is only one business that has any. That also means
- * enqueueBookingConversion returns null, permanently and silently, for
- * every OTHER business: a lookup keyed on a column this function never
- * writes just returns empty, which reads exactly like "nothing to do".
- * Correct for this phase (a business with no configured account is meant
- * to enqueue nothing) but NOT a general per-tenant write path. Giving a
- * second business its own Google Ads account requires this function to
- * take a business_id, write it on insert, and match on
- * (customer_id, business_id) rather than customer_id alone — phase-1 scope,
- * not implemented here.
+ * The write half of the per-tenant reader above. `businessId` is REQUIRED
+ * and gets written on every INSERT, so a second business can finally have an
+ * ads account of its own — until this changed, every OAuth-discovered
+ * account landed on the column default (SINGLETON_BUSINESS_ID), which is
+ * exactly why getActiveGoogleAdsAccounts could filter by business_id and
+ * still find every account: there was only one business that had any.
+ *
+ * Still matches an existing row on `customer_id` ALONE, not
+ * `(customer_id, business_id)` — and that is deliberate, not a leftover gap.
+ * `customer_id` is the PRIMARY KEY on `google_ads_accounts`, and nine other
+ * tables (`google_ads_campaigns`, `_ad_groups`, `_keywords`, two tables in
+ * migration 00106, `_recommendations`, `_user_lists`, two in 00118, and
+ * `_ga4_audiences`) carry a foreign key referencing it. A composite key is
+ * not available without dropping the primary key, adding a surrogate, and
+ * rewriting all nine child FKs — and it would model something false anyway:
+ * a Google Ads customer id *is* one real ad account, so it genuinely belongs
+ * to exactly one business, never two.
+ *
+ * Because of that, re-discovery finding a customer_id that already belongs
+ * to a DIFFERENT business cannot be treated as "this business's account
+ * too" — it throws AdsAccountOwnedByAnotherBusinessError instead of
+ * silently reassigning it (or silently ignoring the mismatch and updating
+ * someone else's row).
  */
 export async function upsertGoogleAdsAccount(
   account: UpsertGoogleAdsAccountInput,
+  businessId: string,
 ): Promise<GoogleAdsAccount> {
   const supabase = getClient()
   // Split insert vs update so OAuth re-discovery doesn't clobber the admin's
@@ -83,13 +99,19 @@ export async function upsertGoogleAdsAccount(
   //                   default to active)
   const { data: existing, error: existingError } = await supabase
     .from("google_ads_accounts")
-    .select("customer_id")
+    .select("customer_id, business_id")
     .eq("customer_id", account.customer_id)
     .maybeSingle()
   // PostgREST resolves rather than throws. Left unchecked, a failed read here
-  // reads as "no existing row" and falls through to the INSERT below, which
-  // then fails with a confusing 23505 instead of surfacing the real error.
+  // reads as "no existing row" and falls through to the INSERT below — which
+  // would either 23505 against another business's row, or worse, silently
+  // reassign it if the primary key ever changed. A failed read is not a
+  // miss: surface it.
   if (existingError) throw existingError
+
+  if (existing && existing.business_id !== businessId) {
+    throw new AdsAccountOwnedByAnotherBusinessError(account.customer_id, existing.business_id)
+  }
 
   const metadataPatch = {
     manager_customer_id: account.manager_customer_id ?? null,
@@ -114,6 +136,7 @@ export async function upsertGoogleAdsAccount(
     .from("google_ads_accounts")
     .insert({
       customer_id: account.customer_id,
+      business_id: businessId,
       ...metadataPatch,
       connected_at: account.connected_at ?? new Date().toISOString(),
       is_active: true,

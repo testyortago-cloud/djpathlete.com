@@ -9,7 +9,6 @@ import {
   updateMembershipBySubscriptionId,
 } from "@/lib/db/client-memberships"
 import { sessionMembershipsEnabled, cardOnFileEnabled } from "@/lib/packs/flags"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 /**
  * Membership lookup that is a no-op when the feature is off. Keeps the four
@@ -21,7 +20,7 @@ async function membershipForSub(subscriptionId: string) {
   return getMembershipBySubscriptionId(subscriptionId)
 }
 import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/payments"
-import { findAttributionByEmail } from "@/lib/db/marketing-attribution"
+import { findAttributionForContact } from "@/lib/db/marketing-attribution"
 import { createAssignment, getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assignments"
 import { updateWeekAccess, createWeekAccessBulk } from "@/lib/db/week-access"
 import { createSubscription, getSubscriptionByStripeId, updateSubscriptionByStripeId } from "@/lib/db/subscriptions"
@@ -48,7 +47,7 @@ import { enqueuePaymentValueAdjustmentByEmail } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
 import { getSetting } from "@/lib/db/system-settings"
 import { FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT } from "@/lib/funnels/checkout/flag"
-import { findContactByIdentifiers } from "@/lib/db/contacts"
+import { findContactWithBusinessByIdentifiers } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
@@ -200,10 +199,15 @@ export async function POST(request: Request) {
         try {
           const userId = session.metadata?.userId ?? null
           const email = session.customer_details?.email ?? session.customer_email ?? null
-          const contactId = await findContactByIdentifiers({ userId, email })
-          if (contactId) {
-            // Sanctioned placeholder, not forgotten work: this route has no tenant in scope yet — revisit once it can resolve a business from the checkout.
-            await exitRunsForContact(contactId, "payment", SINGLETON_BUSINESS_ID)
+          // The webhook itself has no tenant -- one Stripe account serves
+          // every business. The payer's contact row supplies it: resolved
+          // ONCE here and threaded through every consequence below, so
+          // exitRunsForContact and applyPipelineEvent never disagree about
+          // which business this sale belongs to.
+          const contact = await findContactWithBusinessByIdentifiers({ userId, email })
+          if (contact) {
+            const { id: contactId, businessId } = contact
+            await exitRunsForContact(contactId, "payment", businessId)
             if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
               // Final review, Important 3: the checkout session id is the
               // source-id idempotency key for the create-with-outcome
@@ -221,6 +225,7 @@ export async function POST(request: Request) {
                   currency: session.currency ?? "usd",
                   occurredAt: new Date(),
                 },
+                businessId,
                 metadata: { stripe_session_id: session.id },
               })
             }
@@ -371,15 +376,23 @@ export async function POST(request: Request) {
           const isNonCoachingPayment = typeof paymentType === "string" && NON_COACHING_PAYMENT_TYPES.has(paymentType)
           if (payment && !isNonCoachingPayment) {
             try {
-              const contactId = await findContactByIdentifiers({ userId: payment.user_id, email: null })
-              if (contactId) {
+              // Fix round 1, Important 2: this used to resolve through the
+              // unscoped findContactByIdentifiers (defaulting to
+              // SINGLETON_BUSINESS_ID) right beside the checkout.session.
+              // completed handler above, which already resolves its tenant
+              // this way. Same reasoning applies here: one Stripe account
+              // serves every business, so the payer's contact row supplies
+              // the tenant a refund event has no other way to know.
+              const contact = await findContactWithBusinessByIdentifiers({ userId: payment.user_id, email: null })
+              if (contact) {
                 await applyPipelineEvent({
-                  contactId,
+                  contactId: contact.id,
                   event: {
                     kind: "refund",
                     amountRefundedCents: charge.amount_refunded,
                     occurredAt: new Date(),
                   },
+                  businessId: contact.businessId,
                   metadata: { stripe_charge_id: charge.id, amount_refunded: charge.amount_refunded },
                 })
               }
@@ -455,9 +468,15 @@ interface TrackingValues {
   fbclid: string | null
 }
 
+// Keyed on the BUYER'S OWN userId, not their email — see
+// findAttributionForContact's docstring for why an email match is a
+// cross-tenant path once two coaches can share a lead. Every call site below
+// already has (or can cheaply resolve) the real userId a payment is being
+// recorded against, so there is no email-vs-userId trade here: the same
+// account is what user_id names.
 async function resolveTrackingParams(
   sessionMetadata: Record<string, string>,
-  customerEmail: string | null | undefined,
+  userId: string | null,
 ): Promise<TrackingValues> {
   // Use || (not ??) so empty strings from Stripe metadata are treated as missing
   let gclid  = sessionMetadata.gclid  || null
@@ -465,8 +484,8 @@ async function resolveTrackingParams(
   let wbraid = sessionMetadata.wbraid || null
   let fbclid = sessionMetadata.fbclid || null
 
-  if (!gclid && customerEmail) {
-    const attr = await findAttributionByEmail(customerEmail).catch(() => null)
+  if (!gclid && userId) {
+    const attr = await findAttributionForContact({ userId }).catch(() => null)
     if (attr) {
       gclid  = attr.gclid
       gbraid = gbraid || attr.gbraid
@@ -494,7 +513,7 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
     if (existing) return
     const customerEmail = session.customer_details?.email
     const resolvedUserId = await tryResolveUserIdFromEmail(customerEmail)
-    const tracking = await resolveTrackingParams(session.metadata ?? {}, customerEmail)
+    const tracking = await resolveTrackingParams(session.metadata ?? {}, resolvedUserId)
     await createPayment({
       user_id: resolvedUserId,
       stripe_payment_id: stripePaymentId,
@@ -517,7 +536,7 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
   const existing = await getPaymentByStripeId(stripePaymentId)
   if (existing) return
 
-  const tracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
+  const tracking = await resolveTrackingParams(session.metadata ?? {}, userId)
   await createPayment({
     user_id: userId,
     stripe_payment_id: stripePaymentId,
@@ -594,7 +613,7 @@ async function handleWeekAccessCheckout(session: Stripe.Checkout.Session) {
   })
 
   // Record payment
-  const weekTracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
+  const weekTracking = await resolveTrackingParams(session.metadata ?? {}, userId)
   await createPayment({
     user_id: userId,
     stripe_payment_id: stripePaymentId,
@@ -682,7 +701,7 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
     if (stripePaymentId) {
       const existingPayment = await getPaymentByStripeId(stripePaymentId)
       if (!existingPayment) {
-        const extTracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
+        const extTracking = await resolveTrackingParams(session.metadata ?? {}, resolvedUserId)
         await createPayment({
           user_id: resolvedUserId,
           stripe_payment_id: stripePaymentId,
@@ -770,7 +789,7 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
   if (stripePaymentId) {
     const existingPayment = await getPaymentByStripeId(stripePaymentId)
     if (!existingPayment) {
-      const subTracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
+      const subTracking = await resolveTrackingParams(session.metadata ?? {}, userId)
       await createPayment({
         user_id: userId,
         stripe_payment_id: stripePaymentId,
@@ -1143,7 +1162,7 @@ async function handleSessionPackCheckout(session: Stripe.Checkout.Session) {
   if (stripePaymentId) {
     const existing = await getPaymentByStripeId(stripePaymentId)
     if (!existing) {
-      const tracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
+      const tracking = await resolveTrackingParams(session.metadata ?? {}, pkg.client_user_id)
       await createPayment({
         user_id: pkg.client_user_id,
         stripe_payment_id: stripePaymentId,
@@ -1214,9 +1233,9 @@ async function recordEventSignupPayment(
   if (existing) return
 
   const customerEmail = session.customer_details?.email ?? signup?.parent_email ?? null
-  const tracking = await resolveTrackingParams(session.metadata ?? {}, customerEmail)
   const resolvedUserId =
     signup?.user_id ?? (customerEmail ? await tryResolveUserIdFromEmail(customerEmail) : null)
+  const tracking = await resolveTrackingParams(session.metadata ?? {}, resolvedUserId)
 
   await createPayment({
     user_id: resolvedUserId,
@@ -1450,9 +1469,10 @@ async function handleFunnelPurchaseCheckout(session: Stripe.Checkout.Session) {
   if (paymentIntentId) {
     const existingPayment = await getPaymentByStripeId(paymentIntentId)
     if (!existingPayment) {
-      const tracking = await resolveTrackingParams(session.metadata ?? {}, email)
+      const grantedUserId = result.ok && result.userId !== "" ? result.userId : null
+      const tracking = await resolveTrackingParams(session.metadata ?? {}, grantedUserId)
       await createPayment({
-        user_id: result.ok && result.userId !== "" ? result.userId : null,
+        user_id: grantedUserId,
         stripe_payment_id: paymentIntentId,
         stripe_customer_id: (session.customer as string) ?? null,
         amount_cents: session.amount_total ?? 0,

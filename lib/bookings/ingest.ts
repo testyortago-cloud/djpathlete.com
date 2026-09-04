@@ -34,10 +34,10 @@
 
 import type { Booking, BookingStatus } from "@/types/database"
 import { createServiceRoleClient } from "@/lib/supabase"
-import { findAttributionByEmail } from "@/lib/db/marketing-attribution"
+import { findAttributionForContact } from "@/lib/db/marketing-attribution"
 import { enqueueBookingConversion } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
-import { findContactByIdentifiers } from "@/lib/db/contacts"
+import { findContactByIdentifiers, getContactUserId } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { getBusinessSettings } from "@/lib/db/businesses"
@@ -332,9 +332,27 @@ async function writeRow(
   let wbraid = input.clickIds.wbraid ?? null
   let fbclid = input.clickIds.fbclid ?? null
 
-  // Email-match fallback if no gclid in payload
+  // Attribution fallback if no gclid in payload, keyed on the resolved
+  // contact's OWN user_id rather than the raw booking email — see
+  // findAttributionForContact's docstring for why an email match is a
+  // cross-tenant path once two businesses can share a lead. A contact with
+  // no linked user_id (most leads) has nothing to key on, so the lookup is
+  // skipped rather than falling back to anything looser.
+  //
+  // THIS HOP DEPENDS ON contacts.user_id, WHICH NOTHING WRITES FOR A BOOKING.
+  // The only writer in the schema is merge_contacts (SQL, carries a loser's
+  // user_id onto the survivor) — no registration or claim flow ever sets it
+  // directly. So this path resolves for a contact that happened to arrive
+  // here via a merge with an already-claimed contact, and for nobody else,
+  // until a real writer exists. Review round 1: TWO owner items, not one —
+  // (1) claim-at-registration actually firing (marketing_attribution.user_id
+  // itself, which the Stripe half of this fallback already depends on via
+  // tryResolveUserIdFromEmail), and separately (2) something writing
+  // contacts.user_id at registration/claim time, which is phase-2 scope and
+  // is not attempted here.
   if (!gclid) {
-    const attr = await findAttributionByEmail(input.contact.email).catch(() => null)
+    const userId = contactId ? await getContactUserId(contactId, input.businessId).catch(() => null) : null
+    const attr = userId ? await findAttributionForContact({ userId }).catch(() => null) : null
     if (attr) {
       gclid = attr.gclid
       gbraid ||= attr.gbraid

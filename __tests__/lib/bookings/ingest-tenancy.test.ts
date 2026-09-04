@@ -16,17 +16,21 @@ const SINGLETON = "00000000-0000-0000-0000-000000000001"
 const BUSINESS_B = "00000000-0000-0000-0000-0000000000b2"
 
 const findContactByIdentifiersMock = vi.fn(async (..._a: any[]) => null as string | null)
+const getContactUserIdMock = vi.fn(async (..._a: any[]) => null as string | null)
 const exitRunsForContactMock = vi.fn(async (..._a: any[]) => 0)
 const applyPipelineEventMock = vi.fn(async (..._a: any[]): Promise<any> => ({ decision: { kind: "noop", reason: "t" }, opportunityId: null }))
 const enqueueBookingConversionMock = vi.fn(async (..._a: any[]) => null)
-const findAttributionByEmailMock = vi.fn(async (..._a: any[]) => null as any)
+const findAttributionForContactMock = vi.fn(async (..._a: any[]) => null as any)
 const recordAuditMock = vi.fn(async (..._a: any[]) => undefined)
 
-vi.mock("@/lib/db/contacts", () => ({ findContactByIdentifiers: (...a: unknown[]) => findContactByIdentifiersMock(...a) }))
+vi.mock("@/lib/db/contacts", () => ({
+  findContactByIdentifiers: (...a: unknown[]) => findContactByIdentifiersMock(...a),
+  getContactUserId: (...a: unknown[]) => getContactUserIdMock(...a),
+}))
 vi.mock("@/lib/db/sequences", () => ({ exitRunsForContact: (...a: unknown[]) => exitRunsForContactMock(...a) }))
 vi.mock("@/lib/db/pipeline", () => ({ applyPipelineEvent: (...a: unknown[]) => applyPipelineEventMock(...a) }))
 vi.mock("@/lib/ads/conversions", () => ({ enqueueBookingConversion: (...a: unknown[]) => enqueueBookingConversionMock(...a) }))
-vi.mock("@/lib/db/marketing-attribution", () => ({ findAttributionByEmail: (...a: unknown[]) => findAttributionByEmailMock(...a) }))
+vi.mock("@/lib/db/marketing-attribution", () => ({ findAttributionForContact: (...a: unknown[]) => findAttributionForContactMock(...a) }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: (...a: unknown[]) => recordAuditMock(...a) }))
 
 vi.mock("@/lib/db/businesses", () => ({
@@ -101,10 +105,11 @@ function input(overrides: Partial<BookingIngestInput> = {}): BookingIngestInput 
 beforeEach(() => {
   vi.clearAllMocks()
   findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+  getContactUserIdMock.mockReset().mockResolvedValue(null)
   exitRunsForContactMock.mockReset().mockResolvedValue(0)
   applyPipelineEventMock.mockReset().mockResolvedValue({ decision: { kind: "noop", reason: "t" }, opportunityId: null })
   enqueueBookingConversionMock.mockReset().mockResolvedValue(null)
-  findAttributionByEmailMock.mockReset().mockResolvedValue(null)
+  findAttributionForContactMock.mockReset().mockResolvedValue(null)
   recordAuditMock.mockReset().mockResolvedValue(undefined)
 
   memberRowsByBusiness = {

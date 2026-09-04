@@ -1,3 +1,5 @@
+// @vitest-environment node
+//
 // __tests__/lib/db/contacts-list.test.ts
 //
 // Three claims about the contacts read layer that are worth a test without a
@@ -12,6 +14,13 @@
 //   3. The search clause names the REAL columns. `phone_e164`, not `phone`:
 //      migration 00213 has no `phone` column at all, so getting this wrong is a
 //      400 from PostgREST that reads to a coach as "search is broken".
+//
+// Task 7 (multi-tenancy): `ContactFilters.businessId` is now REQUIRED, and it
+// is what `applyFilters` scopes `.eq("business_id", …)` on — it used to be the
+// SINGLETON_BUSINESS_ID constant, applied regardless of who was asking.
+// `BUSINESS` below is deliberately NOT SINGLETON_BUSINESS_ID, so a test that
+// asserts the caller-supplied id reached `.eq()` cannot be satisfied by code
+// that quietly kept scoping to the singleton underneath it.
 
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -56,8 +65,11 @@ vi.mock("@/lib/supabase", () => ({
 }))
 
 import { contactSearchClause, countContacts, listContacts, parseContactFilters } from "@/lib/db/contacts-list"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
-const BUSINESS = "00000000-0000-0000-0000-000000000001"
+// A caller's real business id — distinct from SINGLETON_BUSINESS_ID, see the
+// header note.
+const BUSINESS = "22222222-2222-2222-2222-222222222222"
 
 beforeEach(() => {
   calls.length = 0
@@ -138,7 +150,7 @@ describe("parseContactFilters rejects junk before it reaches the DAL", () => {
     // A page number is an OFFSET, decided by the call site that knows the page
     // size. If it leaked into `applyFilters` it would silently become a filter
     // on a column named "page", which `contacts` does not have.
-    await listContacts(parseContactFilters({ page: "4" }))
+    await listContacts({ ...parseContactFilters({ page: "4" }), businessId: BUSINESS })
     expect(filterOps(calls[0])).toEqual([["eq", "business_id", BUSINESS]])
   })
 
@@ -159,6 +171,7 @@ describe("parseContactFilters rejects junk before it reaches the DAL", () => {
 
 describe("listContacts and countContacts narrow identically", () => {
   const filters = {
+    businessId: BUSINESS,
     search: "sam",
     hasEmail: true,
     since: "2026-08-01T00:00:00.000Z",
@@ -181,24 +194,42 @@ describe("listContacts and countContacts narrow identically", () => {
     ])
   })
 
-  it("scopes to the one business even with no filters at all", async () => {
-    // MUTANT: dropping the business scope. Harmless today (one business) and
-    // a cross-tenant leak the day a second row exists in `businesses`.
-    await listContacts()
-    await countContacts()
+  // The essential Task 7 assertion: `applyFilters` is the ONE place the scope
+  // is applied, used by both the list read and the count, so this proves BOTH
+  // reach the caller-supplied businessId — and that neither one is quietly
+  // reading SINGLETON_BUSINESS_ID underneath the caller-supplied value.
+  it("scopes both the list and the count to the businessId it was given, not the singleton", async () => {
+    await listContacts({ businessId: BUSINESS, limit: 20 })
+    await countContacts({ businessId: BUSINESS })
+
+    const eqCalls = calls.flatMap((c) => c.ops).filter(([method]) => method === "eq") as [
+      "eq",
+      string,
+      unknown,
+    ][]
+    const scoped = eqCalls.filter(([, column]) => column === "business_id")
+
+    expect(scoped.length).toBeGreaterThanOrEqual(2) // list AND count
+    expect(scoped.every(([, , value]) => value === BUSINESS)).toBe(true)
+    expect(scoped.some(([, , value]) => value === SINGLETON_BUSINESS_ID)).toBe(false)
+  })
+
+  it("scopes to the given business even with no other filters at all", async () => {
+    await listContacts({ businessId: BUSINESS })
+    await countContacts({ businessId: BUSINESS })
     expect(filterOps(calls[0])).toEqual([["eq", "business_id", BUSINESS]])
     expect(filterOps(calls[1])).toEqual([["eq", "business_id", BUSINESS]])
   })
 
   it("has-phone narrows on phone_e164, both together narrow on both", async () => {
-    await listContacts({ hasPhone: true })
+    await listContacts({ businessId: BUSINESS, hasPhone: true })
     expect(filterOps(calls[0])).toEqual([
       ["eq", "business_id", BUSINESS],
       ["not", "phone_e164", "is", null],
     ])
 
     calls.length = 0
-    await listContacts({ hasEmail: true, hasPhone: true })
+    await listContacts({ businessId: BUSINESS, hasEmail: true, hasPhone: true })
     expect(filterOps(calls[0])).toEqual([
       ["eq", "business_id", BUSINESS],
       ["not", "email", "is", null],
@@ -216,7 +247,7 @@ describe("listContacts and countContacts narrow identically", () => {
     // This test used to assert `calls[0].select === "id"` alone, which is true
     // with or without the options object: it pinned the column name and nothing
     // its own title claimed. The whole argument list is the assertion.
-    await countContacts({})
+    await countContacts({ businessId: BUSINESS })
     expect(calls[0].selectArgs).toEqual(["id", { count: "exact", head: true }])
   })
 
@@ -226,18 +257,18 @@ describe("listContacts and countContacts narrow identically", () => {
     // but a count that swallowed its error would render "0 contacts" over a full
     // table and read as "the import did not work".
     countResult = { count: null, error: { message: "count exploded" } }
-    await expect(countContacts()).rejects.toThrow(/countContacts: count exploded/)
+    await expect(countContacts({ businessId: BUSINESS })).rejects.toThrow(/countContacts: count exploded/)
   })
 
   it("orders newest first and never asks for more than the page cap", async () => {
-    await listContacts({ limit: 5000 })
+    await listContacts({ businessId: BUSINESS, limit: 5000 })
     const ops = Object.fromEntries(calls[0].ops.map(([method, ...args]) => [method, args]))
     expect(ops.order).toEqual(["created_at", { ascending: false }])
     expect(ops.range).toEqual([0, 999])
   })
 
   it("pages with range(offset, offset + limit - 1)", async () => {
-    await listContacts({ limit: 100, offset: 200 })
+    await listContacts({ businessId: BUSINESS, limit: 100, offset: 200 })
     const ops = Object.fromEntries(calls[0].ops.map(([method, ...args]) => [method, args]))
     expect(ops.range).toEqual([200, 299])
   })
@@ -246,6 +277,6 @@ describe("listContacts and countContacts narrow identically", () => {
     // `null` and `[]` are different answers: a page that renders an empty list
     // for a failed read tells the operator there are no contacts.
     listResult = { data: null, error: { message: "boom" } }
-    await expect(listContacts()).rejects.toThrow(/listContacts: boom/)
+    await expect(listContacts({ businessId: BUSINESS })).rejects.toThrow(/listContacts: boom/)
   })
 })

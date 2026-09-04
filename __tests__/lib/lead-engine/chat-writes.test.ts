@@ -136,6 +136,7 @@ describe("the writes carry what the caps and the admin surface read", () => {
   it("appendMessage persists the verdict and the violations it was given", async () => {
     const { appendMessage } = await import("@/lib/db/chat")
     await appendMessage({
+      businessId: "bbb",
       conversationId: "conv-1",
       role: "assistant",
       content: "It is $250.",
@@ -149,5 +150,31 @@ describe("the writes carry what the caps and the admin surface read", () => {
     expect(payload.verdict).toBe("blocked")
     expect(payload.violations).toEqual([{ rule: "ungrounded_price", found: "250" }])
     expect(payload.fact_set).toEqual({ groundedValues: ["79"] })
+  })
+})
+
+describe("the tenant that enters at conversation creation carries through", () => {
+  it("stamps the conversation with the businessId it was given, not the singleton", async () => {
+    const { createConversation } = await import("@/lib/db/chat")
+    const { SINGLETON_BUSINESS_ID } = await import("@/lib/lead-engine/constants")
+
+    await createConversation({ businessId: "bbb", ipHash: "hash-abc" })
+
+    const w = find("chat_conversations", "insert") as Call
+    const payload = w.payload as Record<string, unknown>
+    expect(payload.business_id).toBe("bbb")
+    expect(payload.business_id).not.toBe(SINGLETON_BUSINESS_ID)
+  })
+
+  it("stamps the message with the businessId it was given, not the singleton", async () => {
+    const { appendMessage } = await import("@/lib/db/chat")
+    const { SINGLETON_BUSINESS_ID } = await import("@/lib/lead-engine/constants")
+
+    await appendMessage({ businessId: "bbb", conversationId: "conv-1", role: "user", content: "hi" })
+
+    const w = find("chat_messages", "insert") as Call
+    const payload = w.payload as Record<string, unknown>
+    expect(payload.business_id).toBe("bbb")
+    expect(payload.business_id).not.toBe(SINGLETON_BUSINESS_ID)
   })
 })

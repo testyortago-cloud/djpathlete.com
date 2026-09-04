@@ -62,6 +62,8 @@ function broken(): QuizDefinition {
   return d
 }
 
+const BUSINESS_ID = "bbb"
+
 const auth = vi.fn()
 const getQuizDefinition = vi.fn()
 const saveQuizDefinition = vi.fn()
@@ -81,6 +83,14 @@ vi.mock("@/lib/db/quizzes", async () => {
     saveQuizDefinition: (...a: unknown[]) => saveQuizDefinition(...a),
   }
 })
+// The route's tenant resolution, not the DAL's scoping -- this file is about
+// the gate, and mocking this out keeps the whole suite from making a real
+// supabase call through `resolveAdminTenantForRequest`'s fallthrough.
+class NoAccessibleBusinessError extends Error {}
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: () => Promise.resolve({ businessId: BUSINESS_ID, choices: [], isOperator: true }),
+  NoAccessibleBusinessError,
+}))
 
 async function patch(body: unknown, id = QUIZ_ID) {
   const { PATCH } = await import("@/app/api/admin/quizzes/[id]/route")
@@ -114,14 +124,14 @@ describe("PATCH /api/admin/quizzes/[id]", () => {
     const json = await res.json()
     expect(json.blockers.join(" | ")).toMatch(/unreachable/)
     // The status flip must not have been written.
-    const statusWrites = saveQuizDefinition.mock.calls.filter((c) => (c[0] as { quiz?: { status?: string } })?.quiz?.status)
+    const statusWrites = saveQuizDefinition.mock.calls.filter((c) => (c[1] as { quiz?: { status?: string } })?.quiz?.status)
     expect(statusWrites).toHaveLength(0)
   })
 
   it("5b. allows activation once the quiz passes", async () => {
     const res = await patch({ quiz: { status: "active" } })
     expect(res.status).toBe(200)
-    expect(saveQuizDefinition).toHaveBeenCalledWith({ quizId: QUIZ_ID, quiz: { status: "active" } })
+    expect(saveQuizDefinition).toHaveBeenCalledWith(BUSINESS_ID, { quizId: QUIZ_ID, quiz: { status: "active" } })
   })
 
   it("5c. keeps the content edits even when activation is refused", async () => {
@@ -131,6 +141,7 @@ describe("PATCH /api/admin/quizzes/[id]", () => {
     const res = await patch({ quiz: { status: "active", name: "Renamed" }, options: [{ id: O_A1, weight: 2 }] })
     expect(res.status).toBe(409)
     expect(saveQuizDefinition).toHaveBeenCalledWith(
+      BUSINESS_ID,
       expect.objectContaining({ quiz: expect.objectContaining({ name: "Renamed" }), options: [{ id: O_A1, weight: 2 }] }),
     )
   })
@@ -139,7 +150,7 @@ describe("PATCH /api/admin/quizzes/[id]", () => {
     // The content write must be status-free, or a rejected activation would
     // already have flipped it before the gate ran.
     await patch({ quiz: { status: "active", name: "Renamed" } })
-    const contentCall = saveQuizDefinition.mock.calls[0][0] as { quiz?: Record<string, unknown> }
+    const contentCall = saveQuizDefinition.mock.calls[0][1] as { quiz?: Record<string, unknown> }
     expect(contentCall.quiz).not.toHaveProperty("status")
   })
 
@@ -155,7 +166,7 @@ describe("PATCH /api/admin/quizzes/[id]", () => {
       options: [{ id: O_TO_B, routesToBranchId: BRANCH_B }],
     })
     expect(res.status).toBe(200)
-    expect(saveQuizDefinition).toHaveBeenCalledWith({ quizId: QUIZ_ID, quiz: { status: "active" } })
+    expect(saveQuizDefinition).toHaveBeenCalledWith(BUSINESS_ID, { quizId: QUIZ_ID, quiz: { status: "active" } })
   })
 
   it("5f. and refuses when the save BREAKS a quiz that was fine before", async () => {
@@ -185,7 +196,10 @@ describe("PATCH /api/admin/quizzes/[id]", () => {
   it("saves an ordinary edit with no status change", async () => {
     const res = await patch({ questions: [{ id: Q_A1, position: 60 }] })
     expect(res.status).toBe(200)
-    expect(saveQuizDefinition).toHaveBeenCalledWith(expect.objectContaining({ questions: [{ id: Q_A1, position: 60 }] }))
+    expect(saveQuizDefinition).toHaveBeenCalledWith(
+      BUSINESS_ID,
+      expect.objectContaining({ questions: [{ id: Q_A1, position: 60 }] }),
+    )
   })
 
   it("rejects a malformed payload before writing anything", async () => {

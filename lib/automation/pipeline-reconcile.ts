@@ -18,6 +18,7 @@
 import { getBookingsForPipelineReconcile } from "@/lib/db/bookings"
 import { getSucceededPaymentsForPipelineReconcile } from "@/lib/db/payments"
 import { findContactByIdentifiers } from "@/lib/db/contacts"
+import { listBusinesses } from "@/lib/db/businesses"
 import {
   applyPipelineEvent,
   resolvePipeline,
@@ -25,7 +26,8 @@ import {
   listReconciledSourceIds,
   DEFAULT_PIPELINE_KEY,
 } from "@/lib/db/pipeline"
-import { SINGLETON_BUSINESS_ID, NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
+import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 // Final review, Critical 1 — REVERTS the "replay every succeeded payment
 // unconditionally" ruling a prior fix round made. That ruling contradicted
@@ -72,6 +74,20 @@ export type PipelineReconcileSummary = {
    * logged row id.
    */
   failed: number
+  /** How many active businesses this tick iterated. */
+  businesses: number
+  /**
+   * Task 10 (multi-coach ops): businesses whose reconcile pass itself threw
+   * (e.g. `resolvePipeline` finding no configured board for that business) —
+   * isolated here so one business's outage can't take the whole tick down.
+   * Only present when non-empty. The route (app/api/admin/internal/
+   * pipeline-reconcile/route.ts) reads this to decide the cron_runs status:
+   * ONE row per tick, marked `failed` when this is non-empty, naming the
+   * businesses. See lastSuccessPerCron (lib/db/cron-runs.ts) — it reads the
+   * single most recent SUCCESSFUL row per cron_name, so a row per business
+   * would let one succeeding business mask another failing every tick.
+   */
+  failures?: Array<{ businessId: string; error: string }>
 }
 
 /**
@@ -128,17 +144,102 @@ export type PipelineReconcileSummary = {
  * poisoned row aborted the ENTIRE pass, silently repairing nothing for the
  * rest of the 30-day window on every hourly run until someone noticed. A
  * failed row is counted and logged with its source id, never rethrown.
+ *
+ * MULTI-BUSINESS (Task 10, fix round 1): the two source reads are NOT
+ * symmetric, because the two tables are not in the same position.
+ *
+ * - `getBookingsForPipelineReconcile` (lib/db/bookings.ts) IS now scoped by
+ *   `business_id` — `bookings` has that column (migration 00240) and this
+ *   read is called once per business, inside the loop, with that business's
+ *   id. This was a real cross-tenant hole before this fix, not a merely
+ *   theoretical one: `findContactByIdentifiers` matches by email/phone
+ *   WITHIN a business, and a shared email is the ordinary multi-tenant case
+ *   (one person training with two coaches), not an edge case. An unscoped
+ *   read let business B's pass see business A's booking, resolve it to B's
+ *   contact via the shared email, and write a cross-tenant opportunity into
+ *   B's board — proven with a probe before this fix (two businesses, one
+ *   shared-email booking → `createdFromBookings: 2`, one opportunity per
+ *   business). See the "does not create a cross-tenant opportunity" test
+ *   below, which fails without the `.eq("business_id", …)` this read now
+ *   has.
+ *
+ * - `getSucceededPaymentsForPipelineReconcile` (lib/db/payments.ts) is
+ *   UNCHANGED and CANNOT be scoped the same way: `payments` has no
+ *   `business_id` column at all today. Rather than leave the payments half
+ *   exposed to the identical cross-tenant risk, it only ever runs for
+ *   `platformBusinessId()` (lib/tenancy/platform.ts) — every other business
+ *   in the loop gets an empty payments list and skips that half entirely.
+ *   This is correct-by-construction (no business other than the platform's
+ *   own can ever win a card off a payment) rather than "probably fine
+ *   because the lookup is scoped" — that argument is exactly what failed
+ *   for bookings above. The real fix, scoping `payments` by `business_id`,
+ *   needs a migration and is out of this task.
  */
 export async function runPipelineReconcile(): Promise<PipelineReconcileSummary> {
-  const businessId = SINGLETON_BUSINESS_ID
   const pipelineKey = DEFAULT_PIPELINE_KEY
   const since = new Date(Date.now() - PIPELINE_RECONCILE_WINDOW_DAYS * DAY_MS).toISOString()
 
-  const [bookings, payments, processed] = await Promise.all([
-    getBookingsForPipelineReconcile(["scheduled", "completed"], since),
-    getSucceededPaymentsForPipelineReconcile(since),
-    listReconciledSourceIds(since, businessId),
-  ])
+  const businesses = await listBusinesses({ activeOnly: true })
+  if (businesses.length === 0) {
+    throw new Error("[pipeline-reconcile] no active businesses found")
+  }
+
+  // payments has no business_id column to scope by — fetched once, and
+  // handed to reconcileForBusiness ONLY for the platform business (see the
+  // doc comment above). bookings, by contrast, IS scoped and is fetched
+  // fresh per business inside the loop below.
+  const payments = await getSucceededPaymentsForPipelineReconcile(since)
+
+  let createdFromBookings = 0
+  let wonFromPayments = 0
+  let failed = 0
+  let scanned = 0
+  const failures: Array<{ businessId: string; error: string }> = []
+
+  for (const business of businesses) {
+    try {
+      const bookings = await getBookingsForPipelineReconcile(["scheduled", "completed"], since, business.id)
+      const businessPayments = business.id === platformBusinessId() ? payments : []
+      const result = await reconcileForBusiness(business.id, pipelineKey, since, bookings, businessPayments)
+      createdFromBookings += result.createdFromBookings
+      wonFromPayments += result.wonFromPayments
+      failed += result.failed
+      scanned += result.scanned
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      failures.push({ businessId: business.id, error: message })
+      console.error(`[pipeline-reconcile] business ${business.id} failed:`, message)
+    }
+  }
+
+  const summary: PipelineReconcileSummary = {
+    createdFromBookings,
+    wonFromPayments,
+    scanned,
+    failed,
+    businesses: businesses.length,
+  }
+  if (failures.length > 0) summary.failures = failures
+  return summary
+}
+
+/**
+ * The per-business reconcile pass — every line of what `runPipelineReconcile`
+ * used to do directly before Task 10's business loop. `bookings` is already
+ * scoped to `businessId` by the caller's `.eq("business_id", …)` read.
+ * `payments` is the platform-wide list, handed in only for the platform
+ * business and `[]` for every other one (see the doc comment above) — the
+ * `payments.length > 0` guard below is what makes that a true no-op for a
+ * non-platform business rather than merely an empty loop.
+ */
+async function reconcileForBusiness(
+  businessId: string,
+  pipelineKey: string,
+  since: string,
+  bookings: Awaited<ReturnType<typeof getBookingsForPipelineReconcile>>,
+  payments: Awaited<ReturnType<typeof getSucceededPaymentsForPipelineReconcile>>,
+): Promise<Omit<PipelineReconcileSummary, "businesses" | "failures">> {
+  const processed = await listReconciledSourceIds(since, businessId)
 
   let createdFromBookings = 0
   let wonFromPayments = 0
@@ -218,3 +319,4 @@ export async function runPipelineReconcile(): Promise<PipelineReconcileSummary> 
 
   return { createdFromBookings, wonFromPayments, scanned: bookings.length + payments.length, failed }
 }
+

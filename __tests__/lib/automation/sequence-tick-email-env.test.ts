@@ -41,7 +41,7 @@ vi.mock("@/lib/supabase", () => ({
     }),
   })),
 }))
-vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
+vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn(), listBusinesses: vi.fn() }))
 // The sms path is untouched by this suite, but the runner imports it
 // unconditionally, so it needs a mock shape too — same split the sms-focused
 // suite uses for its (untouched) email import.
@@ -70,7 +70,8 @@ vi.mock("@/lib/db/sequences", async (importOriginal) => ({
   failRun: vi.fn(),
 }))
 
-import { getBusinessSettings } from "@/lib/db/businesses"
+import { getBusinessSettings, listBusinesses } from "@/lib/db/businesses"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { sendRenderedSequenceSms } from "@/lib/lead-engine/sms"
 import {
   claimDueRuns,
@@ -161,6 +162,7 @@ beforeEach(() => {
   process.env.RESEND_API_KEY = "re_test"
   sendMock.mockResolvedValue({ data: { id: "resend-env-default" }, error: null })
   ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue(SETTINGS)
+  ;(listBusinesses as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: SINGLETON_BUSINESS_ID }])
   ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([])
   ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([EMAIL_STEP])
   ;(loadRunContext as ReturnType<typeof vi.fn>).mockResolvedValue(sendableContext())

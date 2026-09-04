@@ -19,6 +19,18 @@ import { quizGate } from "@/lib/quizzes/gate"
 import { RPI_ATHLETE_QUIZ, toDefinition } from "@/lib/quizzes/seed/rpi-athlete-quiz"
 import type { QuizDefinition, QuizOption } from "@/lib/quizzes/types"
 
+// Matches TABLES.quizzes' business_id below -- the free-key collision test
+// depends on `uniqueQuizKey`'s scoped read actually seeing the existing row.
+const BUSINESS_ID = "00000000-0000-0000-0000-000000000001"
+
+// A DIFFERENT tenant, used only where a test needs to prove that the caller's
+// OWN value reaches the write/read rather than some other value (a hardcoded
+// SINGLETON_BUSINESS_ID, which is exactly what BUSINESS_ID above equals) --
+// see __tests__/lib/lead-engine/import.test.ts's "writes the caller's
+// businessId, not the platform singleton" for the pattern this follows.
+// Every OTHER test in this file keeps using BUSINESS_ID untouched.
+const OTHER_BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
+
 type Row = Record<string, unknown>
 
 /** Canned tables. Deliberately contains rows that MUST be filtered out. */
@@ -189,7 +201,7 @@ function rebuildFromInserts(): QuizDefinition {
 describe("createQuizFrom", () => {
   it("remaps every routed option onto the CLONE's branches, never the source's", async () => {
     const source = await getQuizDefinition("q1")
-    const { id } = await createQuizFrom({ source: source!, name: "Rotational Reboot" })
+    const { id } = await createQuizFrom(BUSINESS_ID, { source: source!, name: "Rotational Reboot" })
 
     const cloneBranchIds = new Set(inserted("quiz_branches").map((r) => String(r.id)))
     // MUTANT: let `routes_to_branch_id` pass through unmapped.
@@ -205,7 +217,7 @@ describe("createQuizFrom", () => {
 
   it("remaps profile votes onto the clone's own profiles", async () => {
     const source = await getQuizDefinition("q1")
-    await createQuizFrom({ source: source!, name: "Rotational Reboot" })
+    await createQuizFrom(BUSINESS_ID, { source: source!, name: "Rotational Reboot" })
 
     const cloneProfileIds = new Set(inserted("quiz_profiles").map((r) => String(r.id)))
     // MUTANT: let `profile_id` pass through unmapped. The gate's own blocker
@@ -218,7 +230,7 @@ describe("createQuizFrom", () => {
 
   it("remaps each question onto the clone's own branch", async () => {
     const source = await getQuizDefinition("q1")
-    await createQuizFrom({ source: source!, name: "Rotational Reboot" })
+    await createQuizFrom(BUSINESS_ID, { source: source!, name: "Rotational Reboot" })
 
     const cloneBranchIds = new Set(inserted("quiz_branches").map((r) => String(r.id)))
     for (const question of inserted("quiz_questions")) {
@@ -229,7 +241,7 @@ describe("createQuizFrom", () => {
 
   it("hangs every child off the new quiz, not the one it copied", async () => {
     const source = await getQuizDefinition("q1")
-    const { id } = await createQuizFrom({ source: source!, name: "Rotational Reboot" })
+    const { id } = await createQuizFrom(BUSINESS_ID, { source: source!, name: "Rotational Reboot" })
     for (const table of ["quiz_branches", "quiz_profiles", "quiz_questions", "quiz_tiers"]) {
       expect(inserted(table).every((r) => r.quiz_id === id)).toBe(true)
       expect(inserted(table).length).toBeGreaterThan(0)
@@ -241,19 +253,19 @@ describe("createQuizFrom", () => {
     // TABLES.quizzes already holds key "rpi-athlete-quiz".
     // MUTANT: return slugify(name) unsuffixed — a unique-violation 500 at the
     // exact moment the owner clicks Create.
-    const { key } = await createQuizFrom({ source: source!, name: "RPI Athlete Quiz" })
+    const { key } = await createQuizFrom(BUSINESS_ID, { source: source!, name: "RPI Athlete Quiz" })
     expect(key).toBe("rpi-athlete-quiz-2")
   })
 
   it("falls back to a usable key when the name slugifies to nothing", async () => {
     const source = await getQuizDefinition("q1")
-    const { key } = await createQuizFrom({ source: source!, name: "!!!" })
+    const { key } = await createQuizFrom(BUSINESS_ID, { source: source!, name: "!!!" })
     expect(key).toBe("quiz")
   })
 
   it("carries the seed marker rather than laundering a guess into a decision", async () => {
     const source = await getQuizDefinition("q1")
-    await createQuizFrom({ source: source!, name: "Copy" })
+    await createQuizFrom(BUSINESS_ID, { source: source!, name: "Copy" })
     // MUTANT: write null. The clone inherits invented weights with no banner
     // saying they were invented.
     expect(inserted("quizzes")[0].seed_marker).toBe("reconstructed-from-ghl-export-2026-08-23")
@@ -264,28 +276,53 @@ describe("createQuizFrom", () => {
     expect(source!.status).toBe("active")
     // MUTANT: copy the source's status. A copy of a live quiz goes live the
     // instant it is made, with its placeholder name on it.
-    await createQuizFrom({ source: source!, name: "Copy" })
+    await createQuizFrom(BUSINESS_ID, { source: source!, name: "Copy" })
     expect(inserted("quizzes")[0].status).toBe("draft")
   })
 
   it("takes its name from the caller, not from the source", async () => {
     const source = await getQuizDefinition("q1")
-    await createQuizFrom({ source: source!, name: "Rotational Reboot" })
+    await createQuizFrom(BUSINESS_ID, { source: source!, name: "Rotational Reboot" })
     expect(inserted("quizzes")[0].name).toBe("Rotational Reboot")
   })
 
   it("produces a clone that passes the gate when its source does", async () => {
     const source = toDefinition(RPI_ATHLETE_QUIZ)
     expect(quizGate(source).blockers).toEqual([])
-    await createQuizFrom({ source, name: "Copy of the original" })
+    await createQuizFrom(BUSINESS_ID, { source, name: "Copy of the original" })
     // Run against what was WRITTEN, not against what was read.
     expect(quizGate(rebuildFromInserts()).blockers).toEqual([])
   })
 
   it("copies the built-in blueprint, which is not in any table", async () => {
-    await createQuizFrom({ source: toDefinition(RPI_ATHLETE_QUIZ), name: "From the blueprint" })
+    await createQuizFrom(BUSINESS_ID, { source: toDefinition(RPI_ATHLETE_QUIZ), name: "From the blueprint" })
     expect(inserted("quiz_questions").length).toBe(toDefinition(RPI_ATHLETE_QUIZ).questions.length)
     expect(inserted("quiz_branches").length).toBe(RPI_ATHLETE_QUIZ.branches.length)
+  })
+
+  // BUSINESS_ID above equals SINGLETON_BUSINESS_ID, so every test up to here
+  // would pass identically against a version of createQuizFrom that ignored
+  // its businessId argument and hardcoded the singleton on the insert. This
+  // is the one test in the describe block that cannot: it names a DIFFERENT
+  // tenant and checks the actual value written, not just that some value was.
+  it("writes the caller's businessId, not a different tenant's", async () => {
+    const source = await getQuizDefinition("q1")
+    await createQuizFrom(OTHER_BUSINESS_ID, { source: source!, name: "Copy for another business" })
+
+    expect(inserted("quizzes")[0].business_id).toBe(OTHER_BUSINESS_ID)
+    expect(inserted("quizzes")[0].business_id).not.toBe(BUSINESS_ID)
+  })
+
+  // uniqueQuizKey's collision read is scoped by businessId (file header
+  // comment). TABLES.quizzes only has "rpi-athlete-quiz" under BUSINESS_ID,
+  // so a caller cloning into OTHER_BUSINESS_ID must NOT see that collision --
+  // if the scoped read secretly used the singleton regardless of the
+  // argument, this would come back suffixed "-2" exactly like the sibling
+  // test above that deliberately DOES collide.
+  it("does not suffix a key that only collides in a different business", async () => {
+    const source = await getQuizDefinition("q1")
+    const { key } = await createQuizFrom(OTHER_BUSINESS_ID, { source: source!, name: "RPI Athlete Quiz" })
+    expect(key).toBe("rpi-athlete-quiz")
   })
 })
 
@@ -294,23 +331,31 @@ describe("getQuizDefinitionForEditor", () => {
     // The pair is the test. Asserting only the second half passes with the two
     // functions identical, which is the mistake that makes retirement silent.
     expect((await getQuizDefinition("q1"))!.questions.map((q) => q.id)).not.toContain("quOff")
-    expect((await getQuizDefinitionForEditor("q1"))!.questions.map((q) => q.id)).toContain("quOff")
+    expect((await getQuizDefinitionForEditor(BUSINESS_ID, "q1"))!.questions.map((q) => q.id)).toContain("quOff")
   })
 
   it("carries the retired question's own options with it", async () => {
-    const def = await getQuizDefinitionForEditor("q1")
+    const def = await getQuizDefinitionForEditor(BUSINESS_ID, "q1")
     const retired = def!.questions.find((q) => q.id === "quOff")!
     expect(retired.isActive).toBe(false)
     expect(retired.options.map((o) => o.id)).toEqual(["oOff"])
   })
 
   it("still refuses another quiz's rows", async () => {
-    const def = await getQuizDefinitionForEditor("q1")
+    const def = await getQuizDefinitionForEditor(BUSINESS_ID, "q1")
     expect(def!.questions.map((q) => q.id)).not.toContain("quX")
     expect(def!.branches.map((b) => b.key)).not.toContain("intruder")
   })
 
   it("returns null for a quiz that does not exist", async () => {
-    expect(await getQuizDefinitionForEditor("nope")).toBeNull()
+    expect(await getQuizDefinitionForEditor(BUSINESS_ID, "nope")).toBeNull()
+  })
+
+  // q1 belongs to BUSINESS_ID (== SINGLETON_BUSINESS_ID). Asking for it under
+  // a DIFFERENT business must come back null, the same answer as "no such
+  // quiz" -- a version of this function that ignored businessId (or defaulted
+  // it to the singleton internally) would return the real quiz here instead.
+  it("refuses a quiz that belongs to a different business", async () => {
+    expect(await getQuizDefinitionForEditor(OTHER_BUSINESS_ID, "q1")).toBeNull()
   })
 })

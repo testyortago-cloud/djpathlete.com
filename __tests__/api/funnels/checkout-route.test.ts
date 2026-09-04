@@ -1,3 +1,9 @@
+// @vitest-environment node
+//
+// Pinned to node: the default jsdom environment crashes on worker start
+// in this repo (ERR_REQUIRE_ESM in html-encoding-sniffer), and reports as
+// "Test Files no tests" rather than a failure. Without this line the suite
+// silently runs nothing.
 // POST /api/funnels/checkout — the anonymous, flag-gated route that starts a
 // purchase from a published funnel page.
 //

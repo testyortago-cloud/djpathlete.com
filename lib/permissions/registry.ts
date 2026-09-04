@@ -339,6 +339,7 @@ export function getPreset(key: string): PresetDef | null {
  */
 export const OWNER_ONLY_PREFIXES: readonly string[] = [
   "/admin/dashboard",
+  "/admin/businesses",
   "/admin/settings",
   "/admin/team",
   "/admin/audit-logs",
@@ -644,14 +645,39 @@ const HOME_PRIORITY: readonly { permission: PermissionKey; path: string }[] = [
 export const NO_ACCESS_PATH = "/admin/no-access"
 
 /**
- * Request header the middleware stamps with the resolved pathname, so a route
- * handler can re-evaluate the permission rule itself instead of trusting that
- * the middleware ran. Always overwritten on matched paths, so it cannot be
- * forged; absent means the middleware did not run, and the route guard then
- * denies staff rather than assuming they were vetted.
+ * AN AUTHORISATION INPUT, not a UI convenience. The middleware stamps this
+ * with the resolved pathname (and method, in ADMIN_METHOD_HEADER) ONLY on a
+ * request it has actually GRANTED, so a route handler or server action can
+ * re-evaluate the permission rule itself instead of trusting that the
+ * middleware ran — see `canAccessAdminPath` in lib/permissions/guard.ts, the
+ * one place that reads it. Always overwritten from a fresh Headers object on
+ * every matched request, so a client cannot forge it; absent means either the
+ * middleware did not run, or it ran and DENIED the request, and the route
+ * guard denies staff in both cases rather than assuming they were vetted.
+ *
+ * Do not stamp this on a path the gate denied, even one the middleware still
+ * renders for its own reasons (e.g. proxy.ts's NO_ACCESS_PATH loop-guard) —
+ * that is exactly the case PAGE_PATH_HEADER below exists to cover instead, so
+ * the two meanings never have to share one header.
  */
 export const ADMIN_PATH_HEADER = "x-djp-admin-path"
 export const ADMIN_METHOD_HEADER = "x-djp-admin-method"
+
+/**
+ * A UI HINT ONLY — carries NO authorisation meaning and must never be read by
+ * anything that makes an access decision. Stamped by proxy.ts's /admin/*
+ * branch with the resolved pathname on every request it renders, REGARDLESS
+ * of whether that request was granted or denied (e.g. the NO_ACCESS_PATH
+ * loop-guard render is denied, but still gets this header). The one reader is
+ * app/(admin)/admin/layout.tsx, which uses it purely to tell whether it is
+ * already rendering NO_ACCESS_PATH, so its own NoAccessibleBusinessError
+ * handling does not redirect() from that page to itself forever.
+ *
+ * Kept deliberately separate from ADMIN_PATH_HEADER above so a future edit
+ * cannot merge them back into one header without re-reading both comments —
+ * one is "the gate said yes", the other is just "this is the current URL".
+ */
+export const PAGE_PATH_HEADER = "x-djp-page-path"
 
 export function staffHomePath(permissions: PermissionMap | null | undefined): string {
   for (const entry of HOME_PRIORITY) {

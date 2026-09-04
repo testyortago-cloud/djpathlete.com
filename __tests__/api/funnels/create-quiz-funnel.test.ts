@@ -1,3 +1,4 @@
+// @vitest-environment node
 // POST /api/admin/funnels — the quiz template's orchestration.
 //
 // This is the only place in the app where creating a funnel also creates a
@@ -18,12 +19,15 @@ import { NextRequest } from "next/server"
 import { sectionDocSchema } from "@/lib/funnels/sections/registry"
 import { BUILTIN_QUIZ_SOURCE } from "@/lib/quizzes/sources"
 
+const BUSINESS_ID = "bbb"
+
 const authMock = vi.fn()
 const canAccessMock = vi.fn()
 const createFunnelMock = vi.fn()
 const getQuizDefinitionMock = vi.fn()
 const createQuizFromMock = vi.fn()
 const deleteQuizMock = vi.fn()
+const assertQuizInBusinessMock = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/permissions/guard", () => ({
@@ -37,10 +41,27 @@ vi.mock("@/lib/db/funnels", () => ({
   listFunnels: vi.fn(),
   createFunnel: (...args: unknown[]) => createFunnelMock(...args),
 }))
+// Every test's dynamic `await import(".../route")` (below) loads this factory
+// AFTER these class declarations run, so unlike a static top-level import a
+// bare class here is safe -- no `vi.hoisted` needed, matching
+// NoAccessibleBusinessError just below.
+class QuizNotInBusinessError extends Error {
+  constructor(public readonly quizId: string) {
+    super(`Quiz ${quizId} does not belong to this business`)
+    this.name = "QuizNotInBusinessError"
+  }
+}
 vi.mock("@/lib/db/quizzes", () => ({
   getQuizDefinition: (...args: unknown[]) => getQuizDefinitionMock(...args),
   createQuizFrom: (...args: unknown[]) => createQuizFromMock(...args),
   deleteQuiz: (...args: unknown[]) => deleteQuizMock(...args),
+  assertQuizInBusiness: (...args: unknown[]) => assertQuizInBusinessMock(...args),
+  QuizNotInBusinessError,
+}))
+class NoAccessibleBusinessError extends Error {}
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: () => Promise.resolve({ businessId: BUSINESS_ID, choices: [], isOperator: true }),
+  NoAccessibleBusinessError,
 }))
 
 const CLONE_ID = "5f2b7c1e-0000-4000-8000-0000000000aa"
@@ -86,6 +107,7 @@ beforeEach(() => {
   createFunnelMock.mockResolvedValue({ id: "f1", slug: "rotational-reboot-check", entryStepId: "s1" })
   createQuizFromMock.mockResolvedValue({ id: CLONE_ID, key: "rotational-reboot-check" })
   deleteQuizMock.mockResolvedValue(undefined)
+  assertQuizInBusinessMock.mockResolvedValue(undefined)
 })
 
 describe("POST /api/admin/funnels — the quiz template", () => {
@@ -114,7 +136,8 @@ describe("POST /api/admin/funnels — the quiz template", () => {
   it("names the clone after the funnel", async () => {
     const { POST } = await import("@/app/api/admin/funnels/route")
     await POST(post(quizBody), NO_PARAMS)
-    expect(createQuizFromMock.mock.calls[0][0]).toMatchObject({ name: "Rotational Reboot Check" })
+    expect(createQuizFromMock.mock.calls[0][0]).toBe(BUSINESS_ID)
+    expect(createQuizFromMock.mock.calls[0][1]).toMatchObject({ name: "Rotational Reboot Check" })
   })
 
   it("copies the built-in blueprint without going to the database for it", async () => {
@@ -144,6 +167,32 @@ describe("POST /api/admin/funnels — the quiz template", () => {
     expect(createFunnelMock).not.toHaveBeenCalled()
   })
 
+  it("checks ownership of a named copyFrom with the resolved business", async () => {
+    getQuizDefinitionMock.mockResolvedValue({ id: EXISTING_QUIZ_ID, questions: [], branches: [], tiers: [], profiles: [] })
+    const { POST } = await import("@/app/api/admin/funnels/route")
+    await POST(post({ ...quizBody, quiz: { copyFrom: EXISTING_QUIZ_ID } }), NO_PARAMS)
+    expect(assertQuizInBusinessMock).toHaveBeenCalledWith(BUSINESS_ID, EXISTING_QUIZ_ID)
+  })
+
+  it("refuses to clone a copyFrom that belongs to another business, before creating anything", async () => {
+    // THE CROSS-TENANT CLONE HOLE. `getQuizDefinition` above is scoped by id
+    // alone, so without this guard an admin could name another business's
+    // quiz id and clone its full content into their own.
+    getQuizDefinitionMock.mockResolvedValue({ id: EXISTING_QUIZ_ID, questions: [], branches: [], tiers: [], profiles: [] })
+    assertQuizInBusinessMock.mockRejectedValue(new QuizNotInBusinessError(EXISTING_QUIZ_ID))
+    const { POST } = await import("@/app/api/admin/funnels/route")
+    const res = await POST(post({ ...quizBody, quiz: { copyFrom: EXISTING_QUIZ_ID } }), NO_PARAMS)
+    expect(res.status).toBe(400)
+    expect(createQuizFromMock).not.toHaveBeenCalled()
+    expect(createFunnelMock).not.toHaveBeenCalled()
+  })
+
+  it("skips the ownership check for the built-in sentinel, which is not a database row", async () => {
+    const { POST } = await import("@/app/api/admin/funnels/route")
+    await POST(post(quizBody), NO_PARAMS)
+    expect(assertQuizInBusinessMock).not.toHaveBeenCalled()
+  })
+
   it("still writes the page when the body sends no step plan", async () => {
     const { name, slug, kind, template, quiz } = quizBody
     const { POST } = await import("@/app/api/admin/funnels/route")
@@ -163,7 +212,7 @@ describe("POST /api/admin/funnels — the quiz template", () => {
     expect(res.status).toBe(500)
     // MUTANT: drop the compensating delete. The quizzes list gains a draft
     // nobody asked for, and nothing on it says where it came from.
-    expect(deleteQuizMock).toHaveBeenCalledWith(CLONE_ID)
+    expect(deleteQuizMock).toHaveBeenCalledWith(BUSINESS_ID, CLONE_ID)
   })
 
   it("reports the original failure even when the cleanup also fails", async () => {

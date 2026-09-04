@@ -114,6 +114,21 @@ export const POST = withAudit(
     // the audit metadata above, which stays counts and a sequence key.
     const failedContactIds: string[] = []
 
+    // FOLLOW-UP, NOT YET DONE: no businessId is passed here, so
+    // enrolContactManually (lib/lead-engine/enroll.ts) defaults it to
+    // SINGLETON_BUSINESS_ID regardless of which business the caller actually
+    // belongs to. The contact-detail page's "Add to a sequence" picker (Task
+    // 13) is now correctly scoped to the caller's own business, so a
+    // non-singleton coach ordinarily gets a loud `sequence_not_found` here —
+    // not silent, because the picked key does not exist under the singleton.
+    // But the seeded sequence keys are generic templates
+    // (`new_lead_nurture`, `cold_lead_re_engagement`), so a second business
+    // provisioned from the same templates COLLIDES on those keys and gets a
+    // silent success: a `sequence_runs` row written against the singleton's
+    // sequence, carrying this business's own contact_id. Needs
+    // resolveAdminTenantForRequest threaded through to `enrolContactManually`
+    // (and its own test suite retargeted, not just extended) in a follow-up
+    // task — not attempted here.
     for (const contactId of parsed.contactIds) {
       try {
         const outcome = await enrolContactManually(contactId, parsed.sequenceKey, {

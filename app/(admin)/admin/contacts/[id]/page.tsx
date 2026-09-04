@@ -30,6 +30,7 @@
 
 import { notFound } from "next/navigation"
 import { requireAdmin } from "@/lib/auth-helpers"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { recordAudit } from "@/lib/audit/record"
 import { getContactById, getContactDetail } from "@/lib/db/contact-detail"
 import { listSequences } from "@/lib/db/sequences"
@@ -40,19 +41,35 @@ export const dynamic = "force-dynamic"
 
 export default async function AdminContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAdmin()
+  // Task 13: `getContactById` used to be called with no businessId, so it
+  // defaulted to SINGLETON_BUSINESS_ID regardless of which business the
+  // signed-in admin/staff member actually has selected — the same class of
+  // bug __tests__/lib/db/contacts-list.test.ts's own header warns about.
+  // Every other admin screen resolves its tenant through resolveAdminTenant
+  // (see app/(admin)/admin/contacts/page.tsx); this page had simply never
+  // been converted.
+  const { businessId } = await resolveAdminTenant()
 
   const { id } = await params
 
   // `getContactById` returns null ONLY when the row is not there — a failed
   // read throws (lib/db/contact-detail.ts). So this branch really is "no such
-  // contact" and nothing else.
-  const contact = await getContactById(id)
+  // contact" and nothing else. It ALSO means "this contact belongs to a
+  // different business", since the read is scoped to businessId — a 404 is
+  // the right answer for both, and the right one to fail closed to.
+  const contact = await getContactById(id, businessId)
   if (!contact) notFound()
 
   // The sequence list powers the header's "Add to a sequence" action. Read here
   // rather than inside the island so the picker is populated on first paint and
   // the browser makes no extra round trip for it.
-  const [detail, sequences] = await Promise.all([getContactDetail(contact), listSequences()])
+  //
+  // SCOPED BY THE SAME businessId AS getContactById JUST ABOVE. Task 13's
+  // sweep caught this call defaulting to SINGLETON_BUSINESS_ID right next to
+  // a now-tenant-scoped read on the same page — a coach on another business
+  // would have seen (and could have enrolled this contact into) the
+  // platform's own sequences instead of their own.
+  const [detail, sequences] = await Promise.all([getContactDetail(contact), listSequences(businessId)])
 
   await recordAudit({
     action: "contact.viewed",

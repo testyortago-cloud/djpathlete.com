@@ -26,9 +26,16 @@
 // defensively at 4000 serialized characters (`buildAttributionsMetadata`
 // below) since nothing about the export's own shape bounds that array's
 // size.
+//
+// `ctx.businessId` is REQUIRED, not defaulted — this file used to resolve
+// `SINGLETON_BUSINESS_ID` internally, which is exactly how a second-business
+// import would silently write every record into the platform's own tenant.
+// The one caller today (scripts/import-ghl-contacts.ts) supplies
+// `SINGLETON_BUSINESS_ID` explicitly, because this one-time GHL migration
+// really does target only the platform's own historical data — that is a
+// property of the script, not something this DAL function should assume.
 
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { normaliseEmail, normalisePhone } from "@/lib/lead-engine/identity"
 import { upsertContactIdentity } from "@/lib/db/contacts"
 import { suppress, recordConsent, isSuppressed } from "@/lib/db/contact-consents"
@@ -246,9 +253,9 @@ async function alreadyLoggedImport(contactId: string, ghlId: string, businessId:
 
 export async function importGhlContact(
   record: GhlContactRecord,
-  ctx: { snapshotTimestamp: string; emailConsentTagAllowlist?: readonly string[] },
+  ctx: { snapshotTimestamp: string; businessId: string; emailConsentTagAllowlist?: readonly string[] },
 ): Promise<ImportOutcome> {
-  const businessId = SINGLETON_BUSINESS_ID
+  const businessId = ctx.businessId
   const email = normaliseEmail(record.email)
   const phone = normalisePhone(record.phone)
 

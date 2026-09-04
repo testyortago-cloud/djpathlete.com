@@ -15,10 +15,22 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 // reused by both describe blocks below.
 
 const findContactByIdentifiersMock = vi.fn(async (..._a: any[]) => null as string | null)
+const findContactWithBusinessByIdentifiersMock = vi.fn(
+  async (..._a: any[]) => null as { id: string; businessId: string } | null,
+)
+// The GHL booking webhook now resolves the contact's user_id (via
+// lib/bookings/ingest.ts's writeRow) before falling back to
+// findAttributionForContact — see that function's own docstring. Defaults to
+// null (most leads have no linked account), which also keeps every
+// pre-existing test in this file — none of which cares about attribution —
+// from reaching an attribution lookup at all.
+const getContactUserIdMock = vi.fn(async (..._a: any[]) => null as string | null)
 const exitRunsForContactMock = vi.fn(async (..._a: any[]) => 0)
 
 vi.mock("@/lib/db/contacts", () => ({
   findContactByIdentifiers: (...a: unknown[]) => findContactByIdentifiersMock(...a),
+  findContactWithBusinessByIdentifiers: (...a: unknown[]) => findContactWithBusinessByIdentifiersMock(...a),
+  getContactUserId: (...a: unknown[]) => getContactUserIdMock(...a),
 }))
 vi.mock("@/lib/db/sequences", () => ({
   exitRunsForContact: (...a: unknown[]) => exitRunsForContactMock(...a),
@@ -132,7 +144,7 @@ vi.mock("@/lib/supabase", () => ({
 }))
 
 vi.mock("@/lib/db/marketing-attribution", () => ({
-  findAttributionByEmail: vi.fn(async () => null),
+  findAttributionForContact: vi.fn(async () => null),
   upsertAttributionBySession: vi.fn(),
   getUnclaimedAttribution: vi.fn(),
   claimAttribution: vi.fn(),
@@ -173,22 +185,40 @@ describe("Stripe webhook — sequence exit on payment", () => {
     getPaymentByStripeIdMock.mockReset().mockResolvedValue(null)
     getUserByEmailMock.mockReset().mockResolvedValue(null)
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    getContactUserIdMock.mockReset().mockResolvedValue(null)
+    findContactWithBusinessByIdentifiersMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
   })
 
   it("exits active runs when a checkout completes", async () => {
-    findContactByIdentifiersMock.mockResolvedValueOnce("contact-1")
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-1", businessId: "bbb" })
     verifyMock.mockReturnValueOnce(stripeEvent())
 
     const { POST } = await import("@/app/api/stripe/webhook/route")
     const res = await POST(makeStripeReq())
 
     expect(res.status).toBe(200)
-    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-1", "payment", SINGLETON_BUSINESS_ID)
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-1", "payment", "bbb")
+  })
+
+  // The contact's resolved business, not the singleton -- the whole point of
+  // Task 11. "bbb" is deliberately distinct from SINGLETON_BUSINESS_ID: a
+  // fixture using the singleton itself would pass identically against a
+  // hardcoded-singleton implementation and prove nothing.
+  it("takes the business from the contact it resolved, not the singleton", async () => {
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "c1", businessId: "bbb" })
+    verifyMock.mockReturnValueOnce(stripeEvent())
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(makeStripeReq())
+
+    expect(res.status).toBe(200)
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("c1", "payment", "bbb")
+    expect(exitRunsForContactMock).not.toHaveBeenCalledWith("c1", "payment", SINGLETON_BUSINESS_ID)
   })
 
   it("resolves by user_id in preference to email", async () => {
-    findContactByIdentifiersMock.mockResolvedValueOnce("contact-by-uid")
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-by-uid", businessId: "bbb" })
     verifyMock.mockReturnValueOnce(
       stripeEvent({ metadata: { userId: "user-7" }, customer_details: { email: "lead@example.com" } }),
     )
@@ -197,13 +227,13 @@ describe("Stripe webhook — sequence exit on payment", () => {
     const res = await POST(makeStripeReq())
 
     expect(res.status).toBe(200)
-    expect(findContactByIdentifiersMock).toHaveBeenCalledWith(
+    expect(findContactWithBusinessByIdentifiersMock).toHaveBeenCalledWith(
       expect.objectContaining({ userId: "user-7", email: "lead@example.com" }),
     )
   })
 
   it("does not fail the webhook when the contact cannot be resolved", async () => {
-    findContactByIdentifiersMock.mockResolvedValueOnce(null)
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce(null)
     verifyMock.mockReturnValueOnce(stripeEvent())
 
     const { POST } = await import("@/app/api/stripe/webhook/route")
@@ -214,7 +244,7 @@ describe("Stripe webhook — sequence exit on payment", () => {
   })
 
   it("does not fail the webhook when exitRunsForContact throws", async () => {
-    findContactByIdentifiersMock.mockResolvedValueOnce("contact-2")
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-2", businessId: "bbb" })
     exitRunsForContactMock.mockRejectedValueOnce(new Error("db exploded"))
     verifyMock.mockReturnValueOnce(stripeEvent())
     const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
@@ -250,6 +280,7 @@ describe("GHL booking webhook — sequence exit on booking", () => {
     bookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
 
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    getContactUserIdMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
   })
 
@@ -426,6 +457,7 @@ describe("Calendly booking webhook — sequence exit on booking", () => {
     bookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
 
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    getContactUserIdMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
   })
 

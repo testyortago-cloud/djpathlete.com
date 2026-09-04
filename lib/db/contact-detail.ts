@@ -8,52 +8,46 @@
 //
 // `contact_timeline_events` has every form, text and chat. It does NOT have the
 // money. Payments hang off `users`, reachable only through `contacts.user_id`,
-// which is nullable and null for most leads. Bookings hang off nothing at all —
-// `bookings` has no `contact_id` (migration 00050 predates the contact spine),
-// so they are matched on the identifiers instead. A screen that selects from
+// which is nullable and null for most leads. A screen that selects from
 // contact_timeline_events alone shows the forms and silently omits the payments
 // and the booked calls, which is the half the customer was actually sold.
 //
 // ---------------------------------------------------------------------------
-// HOW A BOOKING IS MATCHED TO A CONTACT, and why it is not `.eq()`
+// HOW A BOOKING IS MATCHED TO A CONTACT (Task 13: joined, not compared)
 // ---------------------------------------------------------------------------
-// The design note for this phase said to "reuse the predicate in
-// getBookingsForPipelineReconcile". There is no predicate in it — that function
-// is a pure window read (`.in("status", …).gte("created_at", …)`, lib/db/bookings.ts)
-// and the matching happens per-row in lib/automation/pipeline-reconcile.ts, which
-// calls `findContactByIdentifiers` and therefore normalises the BOOKING side at
-// read time. That direction is booking -> contact. This screen needs the
-// opposite, and the naive inversion is broken three separate ways:
+// This used to be an in-memory identifier match (`bookingMatchesContact`,
+// still worth reading in git history): `bookings` had no `contact_id`
+// (migration 00050 predates the contact spine), so the whole window was read
+// and filtered in TypeScript by normalised email/phone. Phase 0 of the
+// multi-coach work started writing `bookings.contact_id`, which closes TWO
+// faults the old comparison had, not one:
 //
-//   * PHONE. `bookings.contact_phone` is stored in US national format, exactly
-//     as GoHighLevel sent it — "(617) 650-4548" is a real row on the dev clone.
-//     `contacts.phone_e164` holds "+16176504548". `.eq()` between them matches
-//     ZERO rows, always, and reads on screen as "this person never booked".
-//   * EMAIL. `bookings.contact_email` is inserted raw-cased
-//     (app/api/webhooks/ghl-booking/route.ts), while `contacts.email` is
-//     lowercased on write. `.eq()` silently drops the mixed-case ones.
-//   * `.ilike()` IS NOT THE FIX, it is a disclosure. PostgREST cannot apply
-//     `lower()` to the column side, so `ilike` looks tempting — but `_` and `%`
-//     are LIKE wildcards and both are legal characters in the emails
-//     `EMAIL_RE` accepts (lib/lead-engine/identity.ts). `a_b@x.com` would then
-//     match `axb@x.com`, putting a DIFFERENT person's booked calls on this
-//     person's record. On a screen whose whole purpose is one individual's
-//     history, that is the worst possible bug.
+//   * NO TENANT PREDICATE AT ALL. The old read had no `.eq("business_id", …)`
+//     — every business's bookings filled this contact's window, competing
+//     with its own for the `BOOKINGS_WINDOW` cap.
+//   * A SHARED EMAIL COULD CROSS CONTACTS. Matching by email/phone means two
+//     different contacts (in the same business, or — once a second coach
+//     exists — in different ones) who happen to share an address could each
+//     see the other's booked calls on their own record.
 //
-// So both sides are normalised in TypeScript through the same
-// `normaliseEmail` / `normalisePhone` the writes use, and compared exactly.
-// That is not a second definition of "this person's bookings" — it is the same
-// definition the reconciler uses, applied in the other direction. The
-// comparison is pure and unit-tested without a database (`bookingMatchesContact`).
+// `.eq("business_id", businessId).eq("contact_id", contact.id)` closes both.
+// The PHONE-FORMAT TRAP that forced the in-memory match in the first place is
+// still real and unfixed at the column level: `bookings.contact_phone` is US
+// national format ("(617) 650-4548", a real row on the dev clone) while
+// `contacts.phone_e164` is E.164, so `.eq()` between those two columns still
+// matches zero rows forever, and `.ilike()` on email is a PII disclosure (`_`
+// and `%` are LIKE wildcards and legal in the emails EMAIL_RE accepts — see
+// the git history above for the full `a_b@x.com` vs `axb@x.com` example).
+// Keying on `contact_id` sidesteps both traps rather than fixing the
+// comparison, which is why this is a join and not a tightened `.eq()`.
 //
-// The cost is that the bookings window is read and filtered in memory. That is
-// exactly what the reconciler already does, and `bookings` is a consult table,
-// not an event log. The cap is stated and ordered so that if it is ever
-// reached, it is the OLDEST bookings that fall out of view, never the newest.
+// Bookings written before phase 0 have a null `contact_id` and drop off a
+// contact's record. That is correct, not a regression: they were never
+// provably this contact's, the same way a payment is skipped rather than
+// guessed at when `contact.user_id` is null just below.
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
-import { normaliseEmail, normalisePhone } from "@/lib/lead-engine/identity"
 import { maskEmail, maskPhone } from "@/lib/lead-engine/mask"
 import { isMissingTagsTable } from "@/lib/db/contact-tags"
 
@@ -95,8 +89,6 @@ export interface PaymentRow {
 
 export interface BookingRow {
   id: string
-  contact_email: string
-  contact_phone: string | null
   booking_date: string
   duration_minutes: number | null
   status: string
@@ -376,34 +368,6 @@ function describeBooking(row: BookingRow): { title: string; detail: string | nul
   }
 }
 
-/* --------------------------------------------------------- pure: matching */
-
-/**
- * Does this booking belong to this contact?
- *
- * PURE and exported so it can be tested without a database — this is the one
- * comparison on the page that can put the WRONG PERSON'S calls on someone's
- * record, so it is tested directly rather than only through the read.
- *
- * Both sides go through the same normalisers the writes use, then are compared
- * for exact equality. An identifier that will not normalise (null, blank,
- * unparseable) never matches — it does not fall back to a looser comparison,
- * because every looser comparison available here is one that can match a
- * different human.
- */
-export function bookingMatchesContact(
-  booking: Pick<BookingRow, "contact_email" | "contact_phone">,
-  identity: { email: string | null; phone: string | null },
-): boolean {
-  const contactEmail = normaliseEmail(identity.email)
-  if (contactEmail !== null && normaliseEmail(booking.contact_email) === contactEmail) return true
-
-  const contactPhone = normalisePhone(identity.phone)
-  if (contactPhone !== null && normalisePhone(booking.contact_phone) === contactPhone) return true
-
-  return false
-}
-
 /* ------------------------------------------------------------ pure: merge */
 
 /**
@@ -597,22 +561,30 @@ export async function getContactDetail(contact: ContactRecord): Promise<ContactD
     payments = (data ?? []) as PaymentRow[]
   }
 
-  // BOOKINGS ARE MATCHED IN MEMORY — see this file's header for why `.eq()`
-  // and `.ilike()` are both wrong. Skipped entirely when the contact has
-  // neither identifier, since nothing could match.
-  let bookings: BookingRow[] = []
-  let bookingsWindowFull = false
-  if (contact.email || contact.phone_e164) {
-    const { data, error } = await supabase
-      .from("bookings")
-      .select("id, contact_email, contact_phone, booking_date, duration_minutes, status, source, created_at")
-      .order("booking_date", { ascending: false })
-      .limit(BOOKINGS_WINDOW)
-    if (error) throw new Error(`getContactDetail bookings: ${error.message}`)
-    const window = (data ?? []) as BookingRow[]
-    bookingsWindowFull = window.length >= BOOKINGS_WINDOW
-    bookings = window.filter((row) => bookingMatchesContact(row, { email: contact.email, phone: contact.phone_e164 }))
-  }
+  // Bookings now join on contact_id, which phase 0 started writing. That fixes
+  // TWO faults the in-memory match had — see this file's header: this read
+  // carried NO tenant predicate at all, so another business's bookings could
+  // fill the window, AND a shared email could match another contact's booking
+  // onto this one.
+  //
+  // The phone-format trap that forced the in-memory match is still true —
+  // bookings store national-format phones, so `.eq()` on phone_e164 matches
+  // zero rows forever and `.ilike()` on email is a PII disclosure. Keying on
+  // contact_id sidesteps both, which is why the join is the fix rather than a
+  // tightened comparison.
+  //
+  // Rows written before phase 0 have a null contact_id and drop off the
+  // record. Correct: they were never provably this contact's.
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("id, booking_date, duration_minutes, status, source, created_at")
+    .eq("business_id", businessId)
+    .eq("contact_id", contact.id)
+    .order("booking_date", { ascending: false })
+    .limit(BOOKINGS_WINDOW)
+  if (error) throw new Error(`getContactDetail bookings: ${error.message}`)
+  const bookings = (data ?? []) as BookingRow[]
+  const bookingsWindowFull = bookings.length >= BOOKINGS_WINDOW
 
   // SUPPRESSIONS ARE KEYED BY IDENTIFIER, NOT BY CONTACT (00215) — deliberately,
   // so a STOP survives a merge, a delete, and the same person arriving again.

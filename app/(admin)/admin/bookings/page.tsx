@@ -1,12 +1,14 @@
 import { Calendar, Clock, CheckCircle2, XCircle, AlertTriangle } from "lucide-react"
 import { getBookings, getBookingStats } from "@/lib/db/bookings"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { BookingList } from "@/components/admin/BookingList"
 
 export const dynamic = "force-dynamic"
 export const metadata = { title: "Bookings" }
 
 export default async function BookingsPage() {
-  const [bookings, stats] = await Promise.all([getBookings(), getBookingStats()])
+  const { businessId } = await resolveAdminTenant()
+  const [bookings, stats] = await Promise.all([getBookings(businessId), getBookingStats(businessId)])
 
   return (
     <div>

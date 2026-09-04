@@ -144,6 +144,10 @@ export interface TeamInvite {
   created_at: string
   permissions: PermissionMap
   staff_role: string | null
+  /** Names the business this invite grants membership to. Null is a plain platform-staff invite. */
+  business_id: string | null
+  /** business_members.role the accept path grants. Null when business_id is null. */
+  business_role: "owner" | "coach" | "staff" | null
 }
 
 /** Which clients a staff member is allowed to see. */
