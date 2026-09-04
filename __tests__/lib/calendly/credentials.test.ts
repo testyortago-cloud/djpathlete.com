@@ -21,6 +21,7 @@ vi.mock("@/lib/calendly/oauth", async (orig) => ({
 
 import { accessTokenForConnection, needsRefresh, REFRESH_SKEW_SECONDS } from "@/lib/calendly/credentials"
 import { CalendlyOAuthError } from "@/lib/calendly/oauth"
+import { CalendlyUnavailable } from "@/lib/calendly/client"
 
 const NOW = Date.parse("2026-09-04T12:00:00.000Z")
 function conn(over: Record<string, unknown> = {}) {
@@ -46,6 +47,10 @@ describe("needsRefresh", () => {
   })
   it("is true when the expiry is unknown — an unknown expiry is not a valid token", () => {
     expect(needsRefresh(null, NOW)).toBe(true)
+  })
+  it("is true for an unparseable expiry — NaN comparisons are false, not a free pass", () => {
+    expect(needsRefresh("", NOW)).toBe(true)
+    expect(needsRefresh("garbage", NOW)).toBe(true)
   })
 })
 
@@ -81,5 +86,23 @@ describe("accessTokenForConnection", () => {
     await expect(accessTokenForConnection(conn({ access_token_expires_at: new Date(NOW - 1000).toISOString() }), { now: () => NOW })).rejects.toThrow()
     const statuses = setError.mock.calls.map((c) => c[1])
     expect(statuses).not.toContain("needs_reconnect")
+  })
+
+  it("throws CalendlyUnavailable — not undefined — when a refused swap has no usable access token", async () => {
+    // fn_store_refreshed_calendar_credentials returns credentials: '{}'::jsonb
+    // when it has no secret to hand back (e.g. disconnected mid-race).
+    refresh.mockResolvedValue({ access_token: "mine", refresh_token: "r-mine", expires_in: 7200, token_type: "Bearer" })
+    storeRefreshed.mockResolvedValue({ stored: false, credentials: {} })
+    await expect(
+      accessTokenForConnection(conn({ access_token_expires_at: new Date(NOW - 1000).toISOString() }), { now: () => NOW }),
+    ).rejects.toBeInstanceOf(CalendlyUnavailable)
+  })
+
+  it("still throws CalendlyUnavailable, not the DB error, when setCoachCalendarError itself rejects", async () => {
+    refresh.mockRejectedValue(new CalendlyOAuthError("http", "upstream", 503))
+    setError.mockRejectedValue(new Error("db write failed"))
+    await expect(
+      accessTokenForConnection(conn({ access_token_expires_at: new Date(NOW - 1000).toISOString() }), { now: () => NOW }),
+    ).rejects.toBeInstanceOf(CalendlyUnavailable)
   })
 })

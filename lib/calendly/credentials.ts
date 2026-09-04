@@ -46,11 +46,16 @@ export const REFRESH_SKEW_SECONDS = 120
 /**
  * `expiresAt === null` returns true. An unknown expiry is not a valid token —
  * the alternative, assuming freshness, fails at the worst possible moment
- * (mid-call, with no expiry left to warn us).
+ * (mid-call, with no expiry left to warn us). An unparseable `expiresAt`
+ * (`""`, `"garbage"`, ...) gets the same treatment: `new Date(x).getTime()`
+ * is `NaN` there, and every comparison against `NaN` is `false` — silently
+ * returning "not expired" for a value that was never actually usable, which
+ * is the exact inverse of what this function exists to guard against.
  */
 export function needsRefresh(expiresAt: string | null, nowMs: number = Date.now()): boolean {
   if (expiresAt === null) return true
   const expiresMs = new Date(expiresAt).getTime()
+  if (Number.isNaN(expiresMs)) return true
   return expiresMs - nowMs <= REFRESH_SKEW_SECONDS * 1000
 }
 
@@ -104,13 +109,16 @@ export async function accessTokenForConnection(
     })
   } catch (err) {
     if (err instanceof CalendlyOAuthError) {
+      // Guarded: a failed write here must never replace the refresh failure
+      // we actually need to report with a raw DB error, losing the
+      // diagnostic (lib/gmail/client.ts:138,142 follows the same pattern).
       if (err.kind === "invalid_grant") {
         // The grant is genuinely dead. Only the coach can fix this.
-        await setCoachCalendarError(connection.id, "needs_reconnect", err.message)
+        await setCoachCalendarError(connection.id, "needs_reconnect", err.message).catch(() => {})
       } else {
         // Transient until proven otherwise -- record the reason, but leave
         // the status exactly as it was so a healthy connection stays healthy.
-        await setCoachCalendarError(connection.id, connection.status, err.message)
+        await setCoachCalendarError(connection.id, connection.status, err.message).catch(() => {})
       }
       throw new CalendlyUnavailable(
         unavailableReasonFor(err.kind),
@@ -133,5 +141,17 @@ export async function accessTokenForConnection(
   // token first -- adopt THEIR credentials, the only ones still valid, rather
   // than the ones this call just obtained from a now-revoked grant.
   const winning = (swap.stored ? { access_token: refreshed.access_token } : swap.credentials) as CalendlyCredentials
+
+  // The DB function returns `credentials: '{}'::jsonb` when it has no secret
+  // to hand back (e.g. the connection was disconnected mid-race). An empty
+  // object is not a usable token -- surface that as "could not authenticate"
+  // rather than handing a caller `undefined` to use as a Bearer token.
+  if (typeof winning?.access_token !== "string" || winning.access_token.length === 0) {
+    throw new CalendlyUnavailable(
+      "shape",
+      `coach calendar connection ${connection.id}: no usable access token after refresh (swap.stored=${swap.stored})`,
+    )
+  }
+
   return winning.access_token
 }
