@@ -1,3 +1,5 @@
+// @vitest-environment node
+//
 // __tests__/api/admin/pipeline-move.test.ts
 //
 // POST /api/admin/pipeline/move — the only way a human moves a card on the
@@ -10,8 +12,17 @@
 // already covered by __tests__/db/pipeline.test.ts.
 //
 // The 403 case is not boilerplate here: this endpoint can close a deal and
-// therefore move a revenue number, so a non-admin session must be refused
+// therefore move a revenue number, so an unauthorised session must be refused
 // before moveOpportunityManually is ever reached.
+//
+// AS OF 2026-09-04 THIS ROUTE IS NO LONGER ADMIN-ONLY. `/api/admin/pipeline` is
+// mapped to the `contacts` permission, so a coach can move cards on their OWN
+// board — that is the point of the change. Two things replace the old blanket
+// `role === "admin"` check and both are asserted below: the permission gate,
+// and the tenant. The tenant half is the one that matters, because
+// `opportunityId` arrives in the REQUEST BODY: without a businessId,
+// moveOpportunityManually falls back to its SINGLETON_BUSINESS_ID default and a
+// coach moves the operator's cards.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
@@ -24,12 +35,40 @@ vi.mock("@/lib/db/pipeline", () => ({
   moveOpportunityManually: (...a: unknown[]) => moveOpportunityManuallyMock(...a),
 }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: (...a: unknown[]) => recordAuditMock(...a) }))
+// Mocked, or the route's resolveAdminTenantForRequest reaches a real Supabase
+// client and this stops being a unit test.
+//
+// The error class is DECLARED INSIDE the factory and imported back below, not
+// declared above it: vi.mock is hoisted to the top of the file, so a top-level
+// `class` referenced from the factory is still in its temporal dead zone when
+// the factory runs. That failure reports as "no tests", which is
+// indistinguishable from a passing run at a glance.
+const resolveTenantMock = vi.fn()
+vi.mock("@/lib/tenancy/resolve", () => {
+  class NoAccessibleBusinessError extends Error {}
+  return {
+    resolveAdminTenantForRequest: (...a: unknown[]) => resolveTenantMock(...a),
+    NoAccessibleBusinessError,
+  }
+})
 
 import { POST } from "@/app/api/admin/pipeline/move/route"
+// The same class the route will `instanceof` against — taken from the mocked
+// module so the two cannot be different constructors.
+import { NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 const ADMIN_SESSION = { user: { id: "admin-1", role: "admin" } }
 const CLIENT_SESSION = { user: { id: "client-1", role: "client" } }
 const STAFF_SESSION = { user: { id: "staff-1", role: "staff", permissions: {} } }
+/** A coach who holds the permission this route is now mapped to. */
+const COACH_SESSION = { user: { id: "coach-1", role: "staff", permissions: { contacts: true } } }
+/**
+ * The coach's own tenant. Deliberately NOT SINGLETON_BUSINESS_ID
+ * (00000000-0000-0000-0000-000000000001): a fixture equal to the singleton
+ * makes every "the right tenant reached the DAL" assertion vacuous, because
+ * code that quietly kept scoping to the constant would satisfy it.
+ */
+const BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
 
 function req(body: unknown) {
   return new Request("http://localhost/api/admin/pipeline/move", {
@@ -49,6 +88,8 @@ beforeEach(() => {
   moveOpportunityManuallyMock.mockReset()
   recordAuditMock.mockReset()
   moveOpportunityManuallyMock.mockResolvedValue(undefined)
+  resolveTenantMock.mockReset()
+  resolveTenantMock.mockResolvedValue({ businessId: BUSINESS_ID, choices: [], isOperator: false })
 })
 
 describe("POST /api/admin/pipeline/move", () => {
@@ -66,9 +107,49 @@ describe("POST /api/admin/pipeline/move", () => {
     expect(moveOpportunityManuallyMock).not.toHaveBeenCalled()
   })
 
-  it("403s for staff too — this route is admin-only, not permission-gated", async () => {
+  it("403s for a staff member who does NOT hold `contacts`", async () => {
+    // This assertion used to read "admin-only, not permission-gated". That
+    // stopped being true on 2026-09-04; what survives of it is the part that
+    // still matters — holding no permission is still a refusal, and the refusal
+    // still happens before moveOpportunityManually is reached.
     authMock.mockResolvedValue(STAFF_SESSION)
     const res = await POST(req({ opportunityId: "opp-1", toStageKey: "consulted" }) as never, NO_PARAMS)
+    expect(res.status).toBe(403)
+    expect(moveOpportunityManuallyMock).not.toHaveBeenCalled()
+  })
+
+  it("lets a coach holding `contacts` move a card — the point of the change", async () => {
+    // The presence control for the refusal above: without this, a route that
+    // 403'd everyone would pass every negative assertion in this file.
+    authMock.mockResolvedValue(COACH_SESSION)
+    const res = await POST(req({ opportunityId: "opp-9", toStageKey: "consulted" }) as never, NO_PARAMS)
+    expect(res.status).toBe(200)
+    expect(moveOpportunityManuallyMock).toHaveBeenCalledWith({
+      opportunityId: "opp-9",
+      toStageKey: "consulted",
+      actorUserId: "coach-1",
+      businessId: BUSINESS_ID,
+    })
+  })
+
+  it("moves the card in the CALLER'S tenant, never the singleton", async () => {
+    // MUTANT: dropping `businessId` from the call. moveOpportunityManually
+    // defaults it to SINGLETON_BUSINESS_ID, so the move silently lands on the
+    // operator's own pipeline and the coach's board looks broken while the
+    // operator's changes underneath them.
+    authMock.mockResolvedValue(COACH_SESSION)
+    await POST(req({ opportunityId: "opp-9", toStageKey: "won" }) as never, NO_PARAMS)
+    const arg = moveOpportunityManuallyMock.mock.calls[0][0] as { businessId?: string }
+    expect(arg.businessId).toBe(BUSINESS_ID)
+    expect(arg.businessId).not.toBe("00000000-0000-0000-0000-000000000001")
+  })
+
+  it("403s when the caller resolves to no business at all", async () => {
+    // A revoked membership, or a coach whose only business was paused. Failing
+    // closed here is what stops the route falling through to the singleton.
+    authMock.mockResolvedValue(COACH_SESSION)
+    resolveTenantMock.mockRejectedValue(new NoAccessibleBusinessError())
+    const res = await POST(req({ opportunityId: "opp-1", toStageKey: "won" }) as never, NO_PARAMS)
     expect(res.status).toBe(403)
     expect(moveOpportunityManuallyMock).not.toHaveBeenCalled()
   })
@@ -88,6 +169,7 @@ describe("POST /api/admin/pipeline/move", () => {
       opportunityId: "opp-1",
       toStageKey: "consulted",
       actorUserId: "admin-1",
+      businessId: BUSINESS_ID,
     })
   })
 
@@ -99,6 +181,7 @@ describe("POST /api/admin/pipeline/move", () => {
       opportunityId: "opp-2",
       toStageKey: "won",
       actorUserId: "admin-1",
+      businessId: BUSINESS_ID,
     })
   })
 

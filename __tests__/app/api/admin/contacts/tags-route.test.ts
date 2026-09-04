@@ -17,6 +17,22 @@ vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/permissions/guard", () => ({ canAccessAdminPath: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 vi.mock("@/lib/db/contact-detail", () => ({ getContactById: vi.fn() }))
+// Mocked as of 2026-09-04. `/api/admin/contacts` is now mapped to the
+// `contacts` permission, so the route resolves a tenant -- and without this
+// mock it reached a real Supabase client, which made this suite both slow and
+// dependent on whatever the dev clone happened to contain.
+//
+// Declared inside the factory, not above it: vi.mock is hoisted, so a
+// top-level class referenced from the factory is still in its temporal dead
+// zone when the factory runs, and that failure reports as "no tests".
+const resolveTenantMock = vi.fn()
+vi.mock("@/lib/tenancy/resolve", () => {
+  class NoAccessibleBusinessError extends Error {}
+  return {
+    resolveAdminTenantForRequest: (...a: unknown[]) => resolveTenantMock(...a),
+    NoAccessibleBusinessError,
+  }
+})
 vi.mock("@/lib/db/contact-tags", async () => {
   // The pure rule is NOT mocked: the route's rejection must be the real one, or
   // the test pins a validator that does not ship.
@@ -34,9 +50,17 @@ import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { recordAudit } from "@/lib/audit/record"
 import { getContactById } from "@/lib/db/contact-detail"
+import { NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { addTag, removeTag } from "@/lib/db/contact-tags"
 
 const CONTACT_ID = "11111111-1111-1111-1111-111111111111"
+/**
+ * The caller's tenant. Deliberately NOT SINGLETON_BUSINESS_ID: `getContactById`
+ * DEFAULTS its second argument to the singleton, so a fixture equal to it would
+ * be satisfied by the very bug this asserts against -- the route omitting the
+ * argument entirely and writing tags against the operator's contacts.
+ */
+const BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
 
 function ctx(id: string = CONTACT_ID) {
   return { params: Promise.resolve({ id }) }
@@ -57,6 +81,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   vi.mocked(auth).mockResolvedValue({ user: { id: "admin-1", role: "admin" } } as never)
   vi.mocked(canAccessAdminPath).mockResolvedValue(true)
+  resolveTenantMock.mockResolvedValue({ businessId: BUSINESS_ID, choices: [], isOperator: false })
   vi.mocked(recordAudit).mockResolvedValue(undefined as never)
   vi.mocked(getContactById).mockResolvedValue({
     id: CONTACT_ID,
@@ -74,6 +99,37 @@ beforeEach(() => {
 })
 
 describe("POST /api/admin/contacts/[id]/tags", () => {
+  it("looks the contact up in the CALLER'S tenant, not the singleton", async () => {
+    // MUTANT: `getContactById(id)` with one argument. The parameter defaults to
+    // SINGLETON_BUSINESS_ID, so a coach's tag write would land on the
+    // operator's own contact records -- and, because the lookup would SUCCEED
+    // for a platform contact, it reads as working rather than as a refusal.
+    // Asserting the VALUE, not the arity: an argument-blind assertion is
+    // satisfied by the wrong id just as happily as the right one.
+    await POST(req({ tag: "camp-2026" }), ctx())
+    expect(getContactById).toHaveBeenCalledWith(CONTACT_ID, BUSINESS_ID)
+    const [, passed] = vi.mocked(getContactById).mock.calls[0]
+    expect(passed).not.toBe("00000000-0000-0000-0000-000000000001")
+  })
+
+  it("404s for a contact in ANOTHER tenant, the same answer as one that does not exist", async () => {
+    // The scoped read returns null for both cases, and 404 is the right answer
+    // to fail closed to: distinguishing them would confirm the row exists.
+    vi.mocked(getContactById).mockResolvedValue(null as never)
+    const res = await POST(req({ tag: "camp-2026" }), ctx())
+    expect(res.status).toBe(404)
+    expect(addTag).not.toHaveBeenCalled()
+  })
+
+  it("403s when the caller resolves to no business at all", async () => {
+    // A revoked membership or a paused business. Failing closed here is what
+    // stops the route falling through to the singleton default.
+    resolveTenantMock.mockRejectedValue(new NoAccessibleBusinessError())
+    const res = await POST(req({ tag: "camp-2026" }), ctx())
+    expect(res.status).toBe(403)
+    expect(addTag).not.toHaveBeenCalled()
+  })
+
   it("creates the tag for the contact named in the PATH", async () => {
     const res = await POST(req({ tag: "camp-2026" }), ctx())
     expect(res.status).toBe(200)

@@ -10,7 +10,7 @@
 // app/(admin)/admin/error.tsx, the existing admin error boundary, which is
 // visibly different from a board with zero cards.
 
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
 import { readBoard, listGrantablePrograms } from "@/lib/db/pipeline"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { possessiveName } from "@/lib/lead-engine/business-copy"
@@ -21,7 +21,7 @@ export const metadata = { title: "Pipeline" }
 export const dynamic = "force-dynamic"
 
 export default async function PipelinePage() {
-  await requireAdmin()
+  await requirePermission("contacts")
   const { businessId } = await resolveAdminTenant()
 
   // `listGrantablePrograms()` takes no businessId: `programs` has no

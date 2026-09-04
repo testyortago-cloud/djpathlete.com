@@ -29,7 +29,7 @@
 // never built against.
 
 import { notFound } from "next/navigation"
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { recordAudit } from "@/lib/audit/record"
 import { getContactById, getContactDetail } from "@/lib/db/contact-detail"
@@ -40,7 +40,7 @@ export const metadata = { title: "Contact" }
 export const dynamic = "force-dynamic"
 
 export default async function AdminContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireAdmin()
+  await requirePermission("contacts")
   // Task 13: `getContactById` used to be called with no businessId, so it
   // defaulted to SINGLETON_BUSINESS_ID regardless of which business the
   // signed-in admin/staff member actually has selected — the same class of

@@ -11,7 +11,13 @@
 // no try/catch of its own, matching app/(admin)/admin/funnels/quizzes/[id]/page.tsx.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-vi.mock("@/lib/auth-helpers", () => ({ requireAdmin: vi.fn() }))
+// This page moved from requireAdmin() to requirePermission("contacts") on
+// 2026-09-04, when /admin/contacts, /admin/pipeline and /admin/chat became
+// reachable by a coach. Mocking the guard the page ACTUALLY calls is what
+// keeps these tenancy assertions running; leaving the old mock in place made
+// requirePermission reach the real auth() and throw "headers was called
+// outside a request scope", which is a broken test, not a boundary.
+vi.mock("@/lib/permissions/guard", () => ({ requirePermission: vi.fn() }))
 vi.mock("@/lib/db/chat", () => ({
   listChatConversations: vi.fn(),
   countChatConversations: vi.fn(),
@@ -19,7 +25,7 @@ vi.mock("@/lib/db/chat", () => ({
 }))
 vi.mock("@/lib/tenancy/resolve", () => ({ resolveAdminTenant: vi.fn() }))
 
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
 import { listChatConversations, countChatConversations, parseChatFilters } from "@/lib/db/chat"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import Page from "@/app/(admin)/admin/chat/page"
@@ -32,7 +38,7 @@ function searchParams(params: Record<string, string> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  ;(requireAdmin as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "admin" } })
+  ;(requirePermission as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "admin" } })
   ;(resolveAdminTenant as ReturnType<typeof vi.fn>).mockResolvedValue({
     businessId: BUSINESS_ID,
     choices: [{ id: BUSINESS_ID, name: "Acme Coaching", slug: "acme" }],
@@ -44,6 +50,17 @@ beforeEach(() => {
 })
 
 describe("admin chat list page", () => {
+  // The gate this page sits behind. `/admin/chat` was unmapped in
+  // PATH_PERMISSIONS until 2026-09-04, so the proxy default-denied every staff
+  // member and requireAdmin() was the only guard that mattered. Now that a
+  // coach can hold `contacts`, asserting the KEY matters: guarding on any other
+  // permission would still compile, still redirect somebody, and silently gate
+  // this screen on an unrelated grant.
+  it("guards on the `contacts` permission", async () => {
+    await Page({ searchParams: searchParams() })
+    expect(requirePermission).toHaveBeenCalledWith("contacts")
+  })
+
   // Asserts the VALUE passed to both reads, with a presence control — an
   // argument-blind mock would tolerate a missing or wrong businessId just as
   // happily as the right one.

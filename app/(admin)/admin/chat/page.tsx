@@ -15,7 +15,7 @@
 // app/(admin)/admin/contacts/page.tsx and app/(admin)/admin/pipeline/page.tsx.
 
 import { MessagesSquare } from "lucide-react"
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
 import { countChatConversations, listChatConversations, parseChatFilters } from "@/lib/db/chat"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { ChatTable } from "@/components/admin/chat/ChatTable"
@@ -39,7 +39,7 @@ export default async function AdminChatPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireAdmin()
+  await requirePermission("contacts")
 
   // Not wrapped in try/catch: NoAccessibleBusinessError is caught by the
   // admin layout, which redirects — the established convention for an admin

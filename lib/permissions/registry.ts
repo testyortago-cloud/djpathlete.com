@@ -29,6 +29,7 @@ export type PermissionMap = Partial<Record<PermissionKey, PermissionValue>>
 
 export type BooleanPermissionKey =
   | "clients"
+  | "contacts"
   | "programs"
   | "schedule"
   | "form_reviews"
@@ -102,6 +103,14 @@ export const PERMISSIONS: readonly PermissionDef[] = [
     key: "clients",
     label: "Clients",
     description: "Client roster and profiles. Limited to the clients you assign them.",
+    group: "coaching",
+    kind: "boolean",
+  },
+  {
+    key: "contacts",
+    label: "Contacts & Pipeline",
+    description:
+      "Contact records, the sales pipeline board, and website chat transcripts. Includes what a contact paid and every message they sent. Separate from the Leads Inbox, which is inquiries only.",
     group: "coaching",
     kind: "boolean",
   },
@@ -377,6 +386,23 @@ export const PATH_PERMISSIONS: readonly PathRule[] = [
   { prefix: "/admin/clients", permission: "clients" },
   { prefix: "/api/admin/clients", permission: "clients" },
 
+  // Contacts, the pipeline board and the website chat transcripts are ONE
+  // capability, not three. The board draws its cards from the contacts list and
+  // links straight to a contact record; the chat transcript is how a good share
+  // of those contacts arrived. Granting a subset lands a coach in a half-broken
+  // app whose own links bounce them.
+  //
+  // These prefixes were `unmapped` -- and therefore default-denied to staff --
+  // until 2026-09-04. Four reads and writes behind them were unscoped or
+  // singleton-defaulted and were safe ONLY because nothing could reach them;
+  // they were scoped in the same change that added these five lines. Do not add
+  // a prefix here for a surface whose DAL has no tenant predicate.
+  { prefix: "/admin/contacts", permission: "contacts" },
+  { prefix: "/admin/pipeline", permission: "contacts" },
+  { prefix: "/admin/chat", permission: "contacts" },
+  { prefix: "/api/admin/contacts", permission: "contacts" },
+  { prefix: "/api/admin/pipeline", permission: "contacts" },
+
   { prefix: "/admin/programs", permission: "programs" },
   { prefix: "/admin/exercises", permission: "programs" },
   { prefix: "/api/admin/programs", permission: "programs" },
@@ -624,6 +650,7 @@ export function canAccessPath(
  */
 const HOME_PRIORITY: readonly { permission: PermissionKey; path: string }[] = [
   { permission: "clients", path: "/admin/clients" },
+  { permission: "contacts", path: "/admin/contacts" },
   { permission: "schedule", path: "/admin/schedule" },
   { permission: "messages", path: "/admin/messages" },
   { permission: "leads", path: "/admin/inbox" },

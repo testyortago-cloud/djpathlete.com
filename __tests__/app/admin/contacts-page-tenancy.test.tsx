@@ -19,7 +19,13 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-vi.mock("@/lib/auth-helpers", () => ({ requireAdmin: vi.fn() }))
+// This page moved from requireAdmin() to requirePermission("contacts") on
+// 2026-09-04, when /admin/contacts, /admin/pipeline and /admin/chat became
+// reachable by a coach. Mocking the guard the page ACTUALLY calls is what
+// keeps these tenancy assertions running; leaving the old mock in place made
+// requirePermission reach the real auth() and throw "headers was called
+// outside a request scope", which is a broken test, not a boundary.
+vi.mock("@/lib/permissions/guard", () => ({ requirePermission: vi.fn() }))
 vi.mock("@/lib/tenancy/resolve", () => ({ resolveAdminTenant: vi.fn() }))
 vi.mock("@/lib/db/contacts-list", () => ({
   listContacts: vi.fn(),
@@ -30,7 +36,7 @@ vi.mock("@/lib/db/sequences", () => ({ listSequences: vi.fn() }))
 vi.mock("@/lib/db/contact-tags", () => ({ tagsForContacts: vi.fn() }))
 vi.mock("@/components/admin/contacts/ContactsTable", () => ({ ContactsTable: () => null }))
 
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { listContacts, countContacts } from "@/lib/db/contacts-list"
 import { listSequences } from "@/lib/db/sequences"
@@ -45,7 +51,7 @@ async function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  ;(requireAdmin as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "admin" } })
+  ;(requirePermission as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "admin" } })
   ;(resolveAdminTenant as ReturnType<typeof vi.fn>).mockResolvedValue({
     businessId: BUSINESS_ID,
     choices: [{ id: BUSINESS_ID, name: "Acme Coaching", slug: "acme" }],
@@ -58,6 +64,17 @@ beforeEach(() => {
 })
 
 describe("AdminContactsPage — tenancy scoping", () => {
+  // The gate this page sits behind. `/admin/contacts` was unmapped in
+  // PATH_PERMISSIONS until 2026-09-04, so the proxy default-denied every staff
+  // member and requireAdmin() was the only guard that mattered. Now that a
+  // coach can hold `contacts`, asserting the KEY matters: guarding on any other
+  // permission would still compile, still redirect somebody, and silently gate
+  // this screen on an unrelated grant.
+  it("guards on the `contacts` permission", async () => {
+    await renderPage()
+    expect(requirePermission).toHaveBeenCalledWith("contacts")
+  })
+
   it("passes the resolved businessId to listSequences, not the SINGLETON default", async () => {
     // MUTANT: `listSequences()` with no argument. This is the cross-tenant
     // WRITE gap — the sequences dropdown would silently offer the operator's

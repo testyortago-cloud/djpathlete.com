@@ -24,7 +24,7 @@
 
 import { UsersRound } from "lucide-react"
 import Link from "next/link"
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
 import { countContacts, listContacts, parseContactFilters } from "@/lib/db/contacts-list"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { listSequences } from "@/lib/db/sequences"
@@ -59,7 +59,7 @@ export default async function AdminContactsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireAdmin()
+  await requirePermission("contacts")
   const { businessId } = await resolveAdminTenant()
 
   const params = await searchParams
