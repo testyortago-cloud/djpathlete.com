@@ -420,3 +420,75 @@ export async function deleteWebhookSubscription(args: DeleteWebhookSubscriptionA
     response.status,
   )
 }
+
+/**
+ * The scopes this integration cannot work without, and the documented endpoint
+ * that proves each one. `webhooks:write` is absent DELIBERATELY -- see below.
+ */
+const SCOPE_PROBES = [
+  { scope: "event_types:read", path: "/event_types", params: (u: string) => ({ user: u, count: "1" }) },
+  { scope: "scheduled_events:read", path: "/scheduled_events", params: (u: string) => ({ user: u, count: "1" }) },
+] as const
+
+export type ScopeProbeResult = { granted: string[]; missing: string[] }
+
+/**
+ * Prove at CONNECT time that the scopes this integration needs actually
+ * survived the install, by calling the endpoints that require them.
+ *
+ * WHY A PROBE AND NOT `/oauth/introspect`. The design this implements said to
+ * read introspect in the callback. `introspect` appears NOWHERE in Calendly's
+ * published OpenAPI document (615KB, searched 2026-09-05) and the document has
+ * no `/oauth/*` paths at all, so its response shape could not be confirmed
+ * from any source we control. Calling the endpoints we actually depend on is
+ * strictly better evidence anyway: it tests the capability rather than a claim
+ * about the capability, and every path below IS in that document.
+ *
+ * WHY THIS EXISTS AT ALL. A user may decline scopes, and an app's scope list
+ * can be edited after a token was issued. Without this the connection is
+ * stored `connected`, looks healthy, and fails LATER -- which is exactly what
+ * happened on 2026-09-05: `scheduled_events:read` was missing, nothing noticed
+ * at connect, and it surfaced as a 400 when the coach picked their meeting.
+ * `scheduled_events:read` is the least obvious of the set, because nothing here
+ * ever reads a scheduled event: Calendly requires it to SUBSCRIBE to
+ * invitee.created, since that payload carries scheduled-event data.
+ *
+ * `webhooks:write` IS NOT PROBED, and pretending otherwise would be the same
+ * false confidence this function exists to remove: proving it needs creating a
+ * subscription, which needs an event type the coach has not chosen yet. It
+ * stays a real gap and is named here rather than papered over.
+ *
+ * A NON-403 FAILURE IS NOT A MISSING SCOPE. A network fault or a 5xx says
+ * nothing about permissions, so it is reported as neither granted nor missing
+ * -- the caller must not refuse a connection because Calendly had a bad minute.
+ */
+export async function probeGrantedScopes(args: {
+  accessToken: string
+  userUri: string
+  apiBase?: string
+  fetchImpl?: typeof fetch
+}): Promise<ScopeProbeResult> {
+  const fetchImpl = args.fetchImpl ?? fetch
+  const apiBase = args.apiBase ?? CALENDLY_API_BASE_DEFAULT
+  const granted: string[] = []
+  const missing: string[] = []
+
+  for (const probe of SCOPE_PROBES) {
+    const url = new URL(probe.path, apiBase)
+    for (const [k, v] of Object.entries(probe.params(args.userUri))) url.searchParams.set(k, v)
+    let response: Response
+    try {
+      response = await rawFetch(fetchImpl, url.toString(), {
+        method: "GET",
+        headers: authHeaders(args.accessToken),
+      })
+    } catch {
+      continue // could not ask; says nothing about the scope
+    }
+    if (response.ok) granted.push(probe.scope)
+    else if (response.status === 403) missing.push(probe.scope)
+    // Any other status is inconclusive and deliberately falls through.
+  }
+
+  return { granted, missing }
+}

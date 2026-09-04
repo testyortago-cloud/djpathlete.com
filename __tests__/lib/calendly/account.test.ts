@@ -10,7 +10,7 @@ import { describe, it, expect, vi } from "vitest"
 import {
   fetchIdentity, listEventTypes, createWebhookSubscription, deleteWebhookSubscription,
   getWebhookSubscription,
-  CalendlyAccountError, CalendlyPlanRequiredError,
+  CalendlyAccountError, CalendlyPlanRequiredError, probeGrantedScopes,
 } from "@/lib/calendly/account"
 
 const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })
@@ -180,5 +180,57 @@ describe("CalendlyAccountError.details", () => {
     }).catch((e) => e)
     expect(err.details).toEqual([])
     expect(err.retryable).toBe(true)
+  })
+})
+
+// The failure of 2026-09-05, caught one step earlier. `scheduled_events:read`
+// was missing, the connection stored as `connected` and looked healthy, and it
+// surfaced as a 400 only when the coach picked their meeting. Probing at
+// connect turns that into an immediate, specific refusal.
+describe("probeGrantedScopes", () => {
+  const USER = "https://api.calendly.com/users/U"
+  const ok = () => new Response(JSON.stringify({ collection: [] }), { status: 200, headers: { "content-type": "application/json" } })
+
+  it("reports a 403 as MISSING, naming the scope", async () => {
+    const fetchImpl = vi.fn(async (u: string) =>
+      String(u).includes("/scheduled_events") ? new Response("{}", { status: 403 }) : ok(),
+    )
+    const out = await probeGrantedScopes({ accessToken: "a", userUri: USER, fetchImpl: fetchImpl as unknown as typeof fetch })
+    expect(out.missing).toEqual(["scheduled_events:read"])
+    expect(out.granted).toEqual(["event_types:read"])
+  })
+
+  it("reports everything granted when every probe passes", async () => {
+    const fetchImpl = vi.fn(async () => ok())
+    const out = await probeGrantedScopes({ accessToken: "a", userUri: USER, fetchImpl: fetchImpl as unknown as typeof fetch })
+    expect(out.missing).toEqual([])
+    expect(out.granted).toEqual(["event_types:read", "scheduled_events:read"])
+  })
+
+  it("a 5xx is INCONCLUSIVE — neither granted nor missing", async () => {
+    const fetchImpl = vi.fn(async () => new Response("boom", { status: 503 }))
+    const out = await probeGrantedScopes({ accessToken: "a", userUri: USER, fetchImpl: fetchImpl as unknown as typeof fetch })
+    // Refusing a connection because Calendly had a bad minute would be worse
+    // than the problem this function exists to solve.
+    expect(out.missing).toEqual([])
+    expect(out.granted).toEqual([])
+  })
+
+  it("a network fault is inconclusive too, and does not throw", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("ECONNRESET")
+    })
+    const out = await probeGrantedScopes({ accessToken: "a", userUri: USER, fetchImpl: fetchImpl as unknown as typeof fetch })
+    expect(out).toEqual({ granted: [], missing: [] })
+  })
+
+  it("sends the user uri, so the probe is scoped to the account that just connected", async () => {
+    const seen: string[] = []
+    const fetchImpl = vi.fn(async (u: string) => {
+      seen.push(String(u))
+      return ok()
+    })
+    await probeGrantedScopes({ accessToken: "a", userUri: USER, fetchImpl: fetchImpl as unknown as typeof fetch })
+    expect(seen.every((u) => u.includes(encodeURIComponent(USER)))).toBe(true)
   })
 })

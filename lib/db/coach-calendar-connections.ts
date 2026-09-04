@@ -260,3 +260,26 @@ export async function findCoachCalendarConnectionByEventType(
   if (error) throw new Error(`findCoachCalendarConnectionByEventType failed (${error.code}): ${error.message}`)
   return (data as CoachCalendarConnection | null) ?? null
 }
+
+/**
+ * Store the scopes a probe actually PROVED this connection holds.
+ *
+ * Deliberately a plain column update rather than part of `fn_connect_coach_calendar`:
+ * scopes are not a secret, so routing them through the vault RPC would buy
+ * nothing and would mean changing a function signature that a still-running
+ * previous build calls -- the deploy race this repo has to survive on every
+ * push to main.
+ */
+export async function recordCoachCalendarGrantedScopes(
+  hostId: string,
+  provider: CoachCalendarProvider = "calendly",
+  scopes: string[] = [],
+): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("coach_calendar_connections")
+    .update({ granted_scopes: scopes })
+    .eq("host_id", hostId)
+    .eq("provider", provider)
+  if (error) throw new Error(`recordCoachCalendarGrantedScopes failed (${error.code}): ${error.message}`)
+}

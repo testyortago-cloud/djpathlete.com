@@ -36,10 +36,15 @@ let connectImpl: (input: Record<string, unknown>) => Promise<unknown> = async (i
   id: "conn-1",
   ...input,
 })
+const scopeCalls: Array<unknown[]> = []
 vi.mock("@/lib/db/coach-calendar-connections", () => ({
   connectCoachCalendar: (input: Record<string, unknown>) => {
     connectCalls.push(input)
     return connectImpl(input)
+  },
+  recordCoachCalendarGrantedScopes: (...args: unknown[]) => {
+    scopeCalls.push(args)
+    return Promise.resolve()
   },
 }))
 
@@ -70,6 +75,12 @@ let identityImpl: () => Promise<unknown> = async () => ({
   schedulingUrl: "https://calendly.com/nadia",
   organizationUri: "https://api.calendly.com/organizations/O1",
 })
+const probeCalls: Record<string, unknown>[] = []
+let probeImpl: () => Promise<{ granted: string[]; missing: string[] }> = async () => ({
+  granted: ["event_types:read", "scheduled_events:read"],
+  missing: [],
+})
+
 vi.mock("@/lib/calendly/account", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/calendly/account")>()
   return {
@@ -77,6 +88,13 @@ vi.mock("@/lib/calendly/account", async (importOriginal) => {
     fetchIdentity: (input: Record<string, unknown>) => {
       identityCalls.push(input)
       return identityImpl()
+    },
+    // Defaults to "everything we need survived the install", so the existing
+    // happy-path tests keep testing what they were written to test. The
+    // refusal is exercised explicitly below.
+    probeGrantedScopes: (input: Record<string, unknown>) => {
+      probeCalls.push(input)
+      return probeImpl()
     },
   }
 })
@@ -202,6 +220,7 @@ function redirectTarget(response: Response): URL {
 
 beforeEach(() => {
   connectCalls.length = 0
+  scopeCalls.length = 0
   exchangeCalls.length = 0
   identityCalls.length = 0
   auditCalls.length = 0
@@ -219,6 +238,8 @@ beforeEach(() => {
     schedulingUrl: "https://calendly.com/nadia",
     organizationUri: "https://api.calendly.com/organizations/O1",
   })
+  probeCalls.length = 0
+  probeImpl = async () => ({ granted: ["event_types:read", "scheduled_events:read"], missing: [] })
   tenantImpl = async () => ({
     businessId: "biz-1",
     choices: [{ id: "biz-1", name: "B", slug: "b" }],
@@ -501,6 +522,35 @@ describe("GET /api/admin/bookings/calendar/callback — the positive control", (
     expect(typeof connectCalls[0].accessTokenExpiresAt).toBe("string")
 
     expectCookiesCleared(response)
+  })
+
+  // The 2026-09-05 failure, caught one step earlier. Without this the row is
+  // written `connected`, the card looks healthy, and it fails as a 400 when the
+  // coach picks their meeting -- by which point nothing on screen says why.
+  it("REFUSES to connect when Calendly withheld a scope, and writes NOTHING", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {})
+    probeImpl = async () => ({ granted: ["event_types:read"], missing: ["scheduled_events:read"] })
+
+    const res = await CALLBACK(callbackRequest({ state: mintState() }))
+
+    expect(res.status).toBe(307)
+    const location = new URL(res.headers.get("location")!)
+    expect(location.searchParams.get("reason")).toBe("scopes")
+    // Naming the scope is the point. A refusal that does not say which
+    // permission is missing only moves the confusion earlier.
+    expect(location.searchParams.get("missing")).toBe("scheduled_events:read")
+    expect(connectCalls).toHaveLength(0)
+    err.mockRestore()
+  })
+
+  it("records only the scopes the probe PROVED, never the ones we asked for", async () => {
+    probeImpl = async () => ({ granted: ["event_types:read", "scheduled_events:read"], missing: [] })
+
+    await CALLBACK(callbackRequest({ state: mintState() }))
+
+    expect(connectCalls).toHaveLength(1)
+    expect(scopeCalls).toHaveLength(1)
+    expect(scopeCalls[0][2]).toEqual(["event_types:read", "scheduled_events:read"])
   })
 
   it("sends the verifier cookie on the exchange, and audits the connection", async () => {

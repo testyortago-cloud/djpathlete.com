@@ -46,7 +46,7 @@ export const dynamic = "force-dynamic"
 export const metadata = { title: "Calendar" }
 
 type PageProps = {
-  searchParams: Promise<{ calendar?: string; reason?: string }>
+  searchParams: Promise<{ calendar?: string; reason?: string; missing?: string }>
 }
 
 /**
@@ -54,7 +54,11 @@ type PageProps = {
  * the `reason` values; anything unrecognised falls through to the generic
  * sentence rather than showing the raw word.
  */
-function flashFor(calendar: string | undefined, reason: string | undefined): CalendarFlash | null {
+function flashFor(
+  calendar: string | undefined,
+  reason: string | undefined,
+  missing?: string,
+): CalendarFlash | null {
   if (calendar === "connected") {
     return { tone: "success", message: "Your Calendly account is connected." }
   }
@@ -66,6 +70,23 @@ function flashFor(calendar: string | undefined, reason: string | undefined): Cal
     }
   }
   if (calendar !== "error") return null
+  if (reason === "scopes") {
+    // NAME WHAT IS MISSING. This refusal exists because a vague version of it
+    // cost a go-live: the connection looked healthy and failed later with a
+    // 400 nobody saw. A message that does not say which permission is missing
+    // just moves the confusion earlier.
+    const names = (missing ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+    return {
+      tone: "warning",
+      message:
+        names.length > 0
+          ? `Calendly did not give us everything we need, so we have not connected it. Missing: ${names.join(", ")}. Add those permissions to the Calendly app, then click "Connect Calendly" again.`
+          : 'Calendly did not give us everything we need, so we have not connected it. Check the app\'s permissions in Calendly, then click "Connect Calendly" again.',
+    }
+  }
   if (reason === "config") {
     return {
       tone: "warning",
@@ -194,7 +215,7 @@ export default async function BookingsCalendarPage({ searchParams }: PageProps) 
       <CalendarConnectionCard
         hasHost={hostId !== null}
         connection={view}
-        flash={flashFor(params.calendar, params.reason)}
+        flash={flashFor(params.calendar, params.reason, params.missing)}
       />
     </div>
   )

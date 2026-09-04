@@ -33,10 +33,10 @@ import { NextResponse } from "next/server"
 
 import { recordAudit } from "@/lib/audit/record"
 import { resolveCalendarAccess } from "@/lib/bookings/calendar-access"
-import { fetchIdentity } from "@/lib/calendly/account"
+import { fetchIdentity, probeGrantedScopes } from "@/lib/calendly/account"
 import { readCalendlyConnectConfig } from "@/lib/calendly/connect-env"
 import { exchangeCodeForTokens, verifyState } from "@/lib/calendly/oauth"
-import { connectCoachCalendar } from "@/lib/db/coach-calendar-connections"
+import { connectCoachCalendar, recordCoachCalendarGrantedScopes } from "@/lib/db/coach-calendar-connections"
 import { CALENDAR_COOKIE_PATH, NONCE_COOKIE, VERIFIER_COOKIE } from "../cookies"
 
 /** The screen the coach came from, and the only place this route sends them. */
@@ -155,6 +155,26 @@ export async function GET(request: Request) {
     return failed(request, "identity")
   }
 
+  // PROVE THE SCOPES SURVIVED THE INSTALL, BEFORE ANYTHING IS STORED.
+  //
+  // A user may decline scopes, and an app's scope list can be edited after a
+  // token was issued -- so a successful exchange says nothing about what this
+  // token may actually do. Without this the row is written `connected`, looks
+  // healthy on the card, and fails LATER: on 2026-09-05 `scheduled_events:read`
+  // was missing, nothing noticed here, and it surfaced as a 400 when the coach
+  // picked their meeting. Refusing here costs one screen and names the fix.
+  //
+  // Nothing is written on this path, deliberately: a half-connected row that
+  // cannot receive bookings is the state this whole flow exists to avoid.
+  const scopes = await probeGrantedScopes({
+    accessToken: tokens.access_token,
+    userUri: identity.uri,
+  })
+  if (scopes.missing.length > 0) {
+    console.error(`[calendar/callback] refusing to connect — Calendly declined: ${scopes.missing.join(", ")}`)
+    return finish(request, { calendar: "error", reason: "scopes", missing: scopes.missing.join(",") })
+  }
+
   try {
     await connectCoachCalendar({
       businessId: claim.business_id,
@@ -171,6 +191,12 @@ export async function GET(request: Request) {
       calendlyRole: null,
       accessTokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
       connectedBy: claim.user_id,
+    })
+    // `granted_scopes` gets its first real writer here, and it holds only what
+    // was PROVEN by a probe -- never the list we asked for. A column named
+    // granted_scopes that records our hopes would be trusted by a later reader.
+    await recordCoachCalendarGrantedScopes(claim.host_id, "calendly", scopes.granted).catch((err) => {
+      console.error("[calendar/callback] could not record the proven scopes", err)
     })
   } catch (err) {
     console.error("[calendar/callback] connectCoachCalendar failed", err)
