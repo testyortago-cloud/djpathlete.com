@@ -346,6 +346,7 @@ function seedOpportunity(id: string, contactId: string, overrides: Row = {}): Ro
 function seedBooking(id: string, overrides: Row = {}) {
   store.bookings.push({
     id,
+    business_id: SINGLETON_BUSINESS_ID,
     contact_name: "Lead",
     contact_email: "lead@example.com",
     contact_phone: null,
@@ -694,15 +695,89 @@ describe("runPipelineReconcile — multi-business loop", () => {
     seedBooking("bk-1", { contact_email: "lead1@example.com", status: "scheduled" })
 
     seedContact("c-b", { business_id: BUSINESS_B, email: "lead-b@example.com" })
-    seedBooking("bk-b", { contact_email: "lead-b@example.com", status: "scheduled" })
+    seedBooking("bk-b", { business_id: BUSINESS_B, contact_email: "lead-b@example.com", status: "scheduled" })
+
+    // A payment for the platform business — used below to prove `scanned`
+    // is not inflated (fix round 1, Minor 2).
+    seedContact("c-pay", { email: "payer@example.com", user_id: "user-pay" })
+    seedOpportunity("opp-pay", "c-pay")
+    seedPayment("pay-1", { user_id: "user-pay", status: "succeeded" })
 
     const summary = await runPipelineReconcile()
 
     expect(summary.businesses).toBe(2)
     expect(summary.createdFromBookings).toBe(2)
+    expect(summary.wonFromPayments).toBe(1)
     expect(summary.failures).toBeUndefined()
     expect(store.opportunities.find((o) => o.contact_id === "c-1")?.business_id).toBe(SINGLETON_BUSINESS_ID)
     expect(store.opportunities.find((o) => o.contact_id === "c-b")?.business_id).toBe(BUSINESS_B)
+    // Fix round 1 (Minor 2): before the (a)/(b) fix, bookings/payments were
+    // the SAME unscoped list re-scanned once per business, so `scanned`
+    // reported N x the true row count (4, here) instead of the real total:
+    // 2 bookings (one per business) + 1 payment (platform business only).
+    expect(summary.scanned).toBe(3)
+  })
+
+  // Fix round 1 (Important). Before this fix, `getBookingsForPipelineReconcile`
+  // applied no business_id predicate, so every business's pass saw every
+  // OTHER business's bookings too. That was not merely wasted work: a
+  // contact with the same email under two coaches is the ordinary
+  // multi-tenant case, not an edge case, and findContactByIdentifiers
+  // matches within a business — so business B's pass resolved business A's
+  // booking to B's own contact and created a cross-tenant opportunity.
+  // Reproduced before the fix with exactly this shape: createdFromBookings
+  // was 2, with one opportunity per business, for a booking that belongs to
+  // only one of them.
+  it("does not create a cross-tenant opportunity when two businesses share a contact's email", async () => {
+    seedBusiness(BUSINESS_B)
+    seedBoard() // singleton's board
+    seedBoard(BUSINESS_B, "pipe-b", "b-")
+
+    // The SAME person, as a contact of BOTH businesses.
+    seedContact("c-a", { business_id: SINGLETON_BUSINESS_ID, email: "shared@example.com" })
+    seedContact("c-b", { business_id: BUSINESS_B, email: "shared@example.com" })
+
+    // The booking belongs to ONLY the singleton.
+    seedBooking("bk-shared", {
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_email: "shared@example.com",
+      status: "scheduled",
+    })
+
+    const summary = await runPipelineReconcile()
+
+    expect(summary.createdFromBookings).toBe(1)
+    expect(store.opportunities).toHaveLength(1)
+    expect(store.opportunities[0].contact_id).toBe("c-a")
+    expect(store.opportunities[0].business_id).toBe(SINGLETON_BUSINESS_ID)
+  })
+
+  // The payments equivalent. `payments` has no `business_id` column at all
+  // (confirmed: grep -rn "business_id" supabase/migrations/*.sql | grep -i
+  // payments returns nothing), so it cannot be scoped the way bookings now
+  // is. The fix instead restricts the payments half to `platformBusinessId()`
+  // — every other business's pass never attempts it, so a shared `user_id`
+  // across two businesses' contacts cannot win a card on the wrong board.
+  it("does not win a cross-tenant opportunity when two businesses share a contact's user_id via payments", async () => {
+    seedBusiness(BUSINESS_B)
+    seedBoard() // singleton's (== platformBusinessId()'s) board
+    seedBoard(BUSINESS_B, "pipe-b", "b-")
+
+    // The SAME user_id, as a contact of BOTH businesses, each with their own
+    // open card.
+    seedContact("c-a", { business_id: SINGLETON_BUSINESS_ID, user_id: "user-shared" })
+    seedContact("c-b", { business_id: BUSINESS_B, user_id: "user-shared" })
+    seedOpportunity("opp-a", "c-a", { business_id: SINGLETON_BUSINESS_ID })
+    seedOpportunity("opp-b", "c-b", { business_id: BUSINESS_B, pipeline_id: "pipe-b", stage_id: "b-stage-consult-booked" })
+
+    seedPayment("pay-shared", { user_id: "user-shared", status: "succeeded" })
+
+    const summary = await runPipelineReconcile()
+
+    expect(summary.wonFromPayments).toBe(1)
+    expect(store.opportunities.find((o) => o.id === "opp-a")!.outcome).toBe("won")
+    // BUSINESS_B's card is untouched — the payment never even reached its pass.
+    expect(store.opportunities.find((o) => o.id === "opp-b")!.outcome).toBeNull()
   })
 
   // The design reason this whole loop exists: lastSuccessPerCron
@@ -713,30 +788,36 @@ describe("runPipelineReconcile — multi-business loop", () => {
   // failure into `failures[]` — rather than swallowing it or aborting the
   // whole tick — is what lets the ONE cron_runs row (written by the route)
   // be marked failed and name the business.
+  // Fix round 1: the platform business is the ONLY one payments ever run
+  // for (see the module doc comment — `payments` has no `business_id`
+  // column, so its half is restricted to `platformBusinessId()`). So the
+  // failure trigger here has to be the platform's board itself, not
+  // BUSINESS_B's — BUSINESS_B never even attempts the payments half.
   it("does not let one business's failure stop the others", async () => {
-    // Order matters for this test: BUSINESS_B (unconfigured) is seeded
-    // FIRST, so if the per-business try/catch were removed, its throw would
-    // abort the loop before the singleton (seeded second) is ever reached.
-    store.businesses = [{ id: BUSINESS_B, name: "b", slug: "b", status: "active" }, ...store.businesses]
+    // The singleton (platform) is seeded FIRST in beforeEach, and stays
+    // first here, so if the per-business try/catch were removed, its throw
+    // would abort the loop before BUSINESS_B (seeded second) is ever
+    // reached.
+    seedBusiness(BUSINESS_B)
+    seedBoard(BUSINESS_B, "pipe-b", "b-") // BUSINESS_B IS configured; the platform is NOT.
 
-    // Only the singleton gets a configured board; BUSINESS_B has no
-    // pipeline row at all, so resolvePipeline throws PipelineNotConfiguredError
-    // for it as soon as it has a succeeded payment to process.
-    seedBoard()
+    // The platform's own board is deliberately left unseeded: a succeeded
+    // payment for it reaches resolvePipeline(pipelineKey, platformBusinessId())
+    // outside any per-row try/catch, which throws PipelineNotConfiguredError
+    // and aborts the WHOLE platform business's pass.
+    seedContact("c-1", { email: "lead1@example.com", user_id: "user-1" })
+    seedPayment("pay-1", { user_id: "user-1", status: "succeeded" })
 
-    seedContact("c-1", { email: "lead1@example.com" })
-    seedBooking("bk-1", { contact_email: "lead1@example.com", status: "scheduled" })
-
-    seedContact("c-b", { business_id: BUSINESS_B, email: "lead-b@example.com", user_id: "user-b" })
-    seedPayment("pay-b", { user_id: "user-b", status: "succeeded" })
+    seedContact("c-b", { business_id: BUSINESS_B, email: "lead-b@example.com" })
+    seedBooking("bk-b", { business_id: BUSINESS_B, contact_email: "lead-b@example.com", status: "scheduled" })
 
     const summary = await runPipelineReconcile()
 
     expect(summary.businesses).toBe(2)
-    expect(summary.failures?.map((f) => f.businessId)).toEqual([BUSINESS_B])
-    // The singleton's booking still got processed despite BUSINESS_B failing.
+    expect(summary.failures?.map((f) => f.businessId)).toEqual([SINGLETON_BUSINESS_ID])
+    // BUSINESS_B's booking still got processed despite the platform failing.
     expect(summary.createdFromBookings).toBe(1)
-    expect(store.opportunities.find((o) => o.contact_id === "c-1")).toBeTruthy()
+    expect(store.opportunities.find((o) => o.contact_id === "c-b")?.business_id).toBe(BUSINESS_B)
   })
 
   it("is unchanged for a single active business", async () => {

@@ -638,6 +638,13 @@ async function processRun(
  * it has burned through them — at which point it really is poison and a human
  * should look at it.
  *
+ * `limit` (fix round 1) is what's LEFT of the whole tick's budget, not a
+ * fresh per-business allowance — see `runSequenceTick`'s doc comment. A
+ * `limit` of 0 must claim nothing: `claim_sequence_runs`'s own `LIMIT 0`
+ * would already return zero rows, but the guard below makes that explicit
+ * rather than relying on the RPC's SQL semantics, and skips the round trip
+ * entirely once the tick's budget is spent.
+ *
  * Mutates `summary` in place — counts accumulate across every business
  * `runSequenceTick` iterates, not just this one.
  */
@@ -647,6 +654,7 @@ async function runSequenceTickForBusiness(
   limit: number,
   summary: TickSummary,
 ): Promise<void> {
+  if (limit <= 0) return
   const claimToken = randomUUID()
 
   // PREFLIGHT BEFORE ANY CLAIM. Migration 00212 seeds every identity column
@@ -732,6 +740,16 @@ async function runSequenceTickForBusiness(
  * SUCCESSFUL row per cron_name, so a row per business would let one
  * succeeding business mask another failing every tick.
  *
+ * `limit` (fix round 1) is a TICK-WIDE budget, not a per-business one. It
+ * used to be handed unchanged to every business's `claimDueRuns`, so a
+ * 2-business tick could claim 2x `DEFAULT_LIMIT` (25) runs against this
+ * route's `maxDuration: 120` — silently changing what the cap means the
+ * moment a second business existed. `remaining` is decremented by however
+ * many a business actually claimed (not the limit it was offered), so a
+ * business claiming fewer than its share leaves the rest for whoever comes
+ * next in the loop, and the running total across the whole tick can never
+ * exceed `limit`.
+ *
  * One business's preflight/claim/processing throwing must not stop the
  * others — each is wrapped in its own try/catch and recorded in
  * `failures[]` rather than rethrown immediately.
@@ -745,10 +763,16 @@ async function runSequenceTickForBusiness(
  * behavioural no-op that makes this safe to land before any second business
  * exists. It also means "all businesses failed" is never quietly reported as
  * a tick that "succeeded" with zero of everything.
+ *
+ * `failures` (fix round 1) rides along on the rethrown error itself — as a
+ * plain extra property, so `instanceof BusinessNotConfiguredError` at the
+ * route still works unchanged — so the route's cron_runs detail can still
+ * name EVERY business that failed even on the all-failed path, not just
+ * whichever one happened to be last in iteration order and get rethrown.
  */
 export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Promise<TickSummary> {
   const now = opts?.now ?? new Date()
-  const limit = opts?.limit ?? DEFAULT_LIMIT
+  const tickLimit = opts?.limit ?? DEFAULT_LIMIT
 
   const businesses = await listBusinesses({ activeOnly: true })
   if (businesses.length === 0) {
@@ -758,10 +782,13 @@ export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Pr
   const summary: TickSummary = { claimed: 0, sent: 0, deferred: 0, exited: 0, completed: 0, failed: 0 }
   const failures: Array<{ businessId: string; error: string }> = []
   let lastError: unknown = null
+  let remaining = tickLimit
 
   for (const business of businesses) {
     try {
-      await runSequenceTickForBusiness(business.id, now, limit, summary)
+      const claimedBefore = summary.claimed
+      await runSequenceTickForBusiness(business.id, now, remaining, summary)
+      remaining -= summary.claimed - claimedBefore
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       failures.push({ businessId: business.id, error: message })
@@ -771,6 +798,9 @@ export async function runSequenceTick(opts?: { limit?: number; now?: Date }): Pr
   }
 
   if (failures.length > 0 && failures.length === businesses.length) {
+    if (lastError && typeof lastError === "object") {
+      Object.assign(lastError as object, { failures })
+    }
     throw lastError
   }
 

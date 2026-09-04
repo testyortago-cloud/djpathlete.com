@@ -79,7 +79,13 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error("[sequence-tick] failed:", err)
-    await logCronEnd(supabase, runId, "failed", { message })
+    // Fix round 1: when EVERY active business failed, runSequenceTick
+    // rethrows the last one's error but attaches the full `failures[]` to it
+    // first (see that function's doc comment) — so the cron_runs row still
+    // names every failing business, not just whichever one happened to be
+    // rethrown.
+    const attachedFailures = (err as { failures?: Array<{ businessId: string; error: string }> } | null)?.failures
+    await logCronEnd(supabase, runId, "failed", attachedFailures ? { message, failures: attachedFailures } : { message })
 
     // An unconfigured business_settings row answers 200, not 500. The caller
     // is a scheduler: a 500 makes it retry a misconfiguration that no retry

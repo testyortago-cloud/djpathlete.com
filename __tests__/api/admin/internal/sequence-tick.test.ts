@@ -850,6 +850,77 @@ describe("POST /api/admin/internal/sequence-tick", () => {
       expect(claimDueRuns).toHaveBeenCalledWith(expect.any(Number), expect.any(String), SINGLETON_BUSINESS_ID)
       expect(await res.json()).toMatchObject({ claimed: 1, sent: 1 })
     })
+
+    // Fix round 1 (Minor 1). DEFAULT_LIMIT (25) used to be handed unchanged
+    // to EVERY business's claimDueRuns, so an N-business tick could claim up
+    // to N x 25 runs against this route's maxDuration: 120 — silently
+    // changing what the cap means the moment a second business existed. The
+    // budget must be shared across the whole tick.
+    it("treats the limit as a TICK-WIDE budget, not a fresh allowance per business", async () => {
+      ;(listBusinesses as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: SINGLETON_BUSINESS_ID },
+        { id: BUSINESS_B },
+      ])
+      // The singleton claims 20 of the 25-run tick budget; BUSINESS_B must
+      // be offered only what's left (5), not a fresh 25.
+      ;(claimDueRuns as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(Array.from({ length: 20 }, (_, i) => makeRun(`r-a-${i}`)))
+        .mockResolvedValueOnce([])
+
+      const res = await POST(makeRequest())
+
+      expect(res.status).toBe(200)
+      expect(claimDueRuns).toHaveBeenNthCalledWith(1, 25, expect.any(String), SINGLETON_BUSINESS_ID)
+      expect(claimDueRuns).toHaveBeenNthCalledWith(2, 5, expect.any(String), BUSINESS_B)
+      expect(await res.json()).toMatchObject({ claimed: 20 })
+    })
+
+    it("stops claiming once the tick's whole budget is spent, without even calling claimDueRuns again", async () => {
+      ;(listBusinesses as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: SINGLETON_BUSINESS_ID },
+        { id: BUSINESS_B },
+      ])
+      // The singleton alone claims the FULL 25-run budget.
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+        Array.from({ length: 25 }, (_, i) => makeRun(`r-a-${i}`)),
+      )
+
+      const res = await POST(makeRequest())
+
+      expect(res.status).toBe(200)
+      expect(claimDueRuns).toHaveBeenCalledTimes(1) // BUSINESS_B never even asked
+      expect(await res.json()).toMatchObject({ claimed: 25 })
+    })
+
+    // Fix round 1 (Minor 3). When EVERY business fails, runSequenceTick
+    // rethrows rather than returning a summary — but it must not lose which
+    // businesses failed in the process. Two businesses here, both
+    // unconfigured, proves the cron_runs detail names BOTH, not just
+    // whichever one happened to be last in iteration order.
+    it("names every failing business in cron_runs detail even when all of them fail", async () => {
+      ;(listBusinesses as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: SINGLETON_BUSINESS_ID },
+        { id: BUSINESS_B },
+      ])
+      ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ ...SETTINGS, sender_email: "" })
+
+      const res = await POST(makeRequest())
+
+      expect(res.status).toBe(200)
+      expect(logCronEnd).toHaveBeenCalledWith(
+        expect.anything(),
+        "run-1",
+        "failed",
+        expect.objectContaining({
+          failures: expect.arrayContaining([
+            expect.objectContaining({ businessId: SINGLETON_BUSINESS_ID }),
+            expect.objectContaining({ businessId: BUSINESS_B }),
+          ]),
+        }),
+      )
+      const detail = (logCronEnd as ReturnType<typeof vi.fn>).mock.calls[0][3]
+      expect(detail.failures).toHaveLength(2)
+    })
   })
 
   it("a contact with no name on file still sends, with contactName null (falls back to '' per lib/lead-engine/email.ts)", async () => {
