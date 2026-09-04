@@ -134,6 +134,13 @@ export interface UpdateCoachCalendarEventTypeInput {
   eventTypeUri: string
   schedulingUrl: string | null
   webhookSubscriptionUri: string | null
+  /**
+   * Mirrored from `POST /webhook_subscriptions`, because the uri alone does not
+   * say whether Calendly is still delivering: it disables a subscription after
+   * 24 hours of failures and the uri is unchanged when it does. Spec §6.3's
+   * screen has nothing else to show for "bookings stopped arriving".
+   */
+  webhookState: string | null
 }
 
 export async function updateCoachCalendarEventType(input: UpdateCoachCalendarEventTypeInput): Promise<void> {
@@ -144,8 +151,14 @@ export async function updateCoachCalendarEventType(input: UpdateCoachCalendarEve
       event_type_uri: input.eventTypeUri,
       scheduling_url: input.schedulingUrl,
       webhook_subscription_uri: input.webhookSubscriptionUri,
+      webhook_state: input.webhookState,
     })
     .eq("id", input.connectionId)
+  // A CALLER MATCHES ON THIS STRING. PostgREST's error object does not survive
+  // `new Error`, so `app/api/admin/bookings/calendar/event-type` reads the
+  // `(23505)` and the constraint name back out of the message to tell "that
+  // event type is already connected to another coach's calendar" apart from a
+  // generic failure. The format below is that caller's contract.
   if (error) throw new Error(`updateCoachCalendarEventType failed (${error.code}): ${error.message}`)
 }
 

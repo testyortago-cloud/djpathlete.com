@@ -49,6 +49,22 @@ export const AUDIT_ACTIONS = [
   { slug: "integration.connected", category: "admin_write", description: "Third-party integration connected" },
   { slug: "integration.disconnected", category: "admin_write", description: "Third-party integration disconnected" },
   { slug: "integration.refreshed", category: "system", description: "OAuth token refresh occurred" },
+
+  // per-coach calendars — kept apart from integration.* because these belong to
+  // a COACH's own Calendly account, connected by that coach, not to a
+  // platform-wide integration the operator owns.
+  { slug: "calendar.connected", category: "admin_write", description: "A coach connected their own Calendly account" },
+  {
+    slug: "calendar.disconnected",
+    category: "admin_write",
+    description: "A coach's calendar connection was removed",
+  },
+  {
+    slug: "calendar.event_type_selected",
+    category: "admin_write",
+    description: "A coach chose which Calendly meeting is the consult",
+  },
+
   { slug: "system_setting.changed", category: "system", description: "system_settings row updated" },
   { slug: "feature_flag.toggled", category: "system", description: "Feature flag toggled" },
 
