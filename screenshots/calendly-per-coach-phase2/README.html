@@ -1,0 +1,116 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Calendly per coach, phase 2 — review sheet</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 40px; background: #f6f6f4; color: #16323c;
+         font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  .sub { color: #5b7280; margin: 0 0 32px; }
+  figure { margin: 0 0 44px; background: #fff; border: 1px solid #e2e5e3;
+           border-radius: 12px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { padding: 18px 22px 22px; border-top: 1px solid #e2e5e3; }
+  figcaption h2 { font-size: 18px; margin: 0 0 6px; }
+  figcaption p { margin: 0 0 8px; color: #40525c; }
+  .route { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+           font-size: 13px; color: #7a6a52; background: #fdf6ec;
+           border: 1px solid #f0e2cc; border-radius: 6px; padding: 2px 7px; display: inline-block; }
+  .note { background: #fff; border: 1px solid #e2e5e3; border-left: 4px solid #c8873f;
+          border-radius: 8px; padding: 18px 22px; margin: 0 0 36px; }
+  .note h2 { font-size: 17px; margin: 0 0 8px; }
+  .note ul { margin: 8px 0 0; padding-left: 20px; }
+  .note li { margin-bottom: 6px; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+         background: #eef0ee; border-radius: 4px; padding: 1px 5px; }
+</style>
+<div class="wrap">
+
+<h1>Calendly per coach, phase 2 — the connect screen</h1>
+<p class="sub">
+  Three states of <span class="route">/admin/bookings/calendar</span>, captured against the real
+  running app on the real route, signed in as the real dev-clone operator. Annotations are burned
+  into each PNG. Captured 2026-09-05.
+</p>
+
+<div class="note">
+  <h2>Two states could not be captured, and why</h2>
+  <p>
+    The two happy-path states — <em>connected but no meeting picked</em>, and
+    <em>connected with a meeting</em> — both make live Calendly API calls while the page renders:
+    <code>GET /users/me</code> for the account name and email, and <code>GET /event_types</code>
+    for the meeting list. Reaching them needs a real Calendly OAuth application
+    (<code>CALENDLY_CLIENT_ID</code> and <code>CALENDLY_CLIENT_SECRET</code>), and no such
+    application exists in any environment yet. Creating one is an owner action.
+  </p>
+  <p>
+    Seeding a fake connection row would render the <em>degraded</em> variant of those states, with
+    both Calendly reads failing — a picture of an error dressed up as a success. So they are
+    reported as not captured rather than faked.
+  </p>
+  <p style="margin-bottom:0">
+    The three states below are honest: each renders from the database row alone. After the fix in
+    <code>f7ddf104</code> the page only calls Calendly when the row is <code>connected</code> or
+    <code>error</code>, so <code>plan_lapsed</code> and <code>needs_reconnect</code> make no network
+    call at all — which is exactly why they can be shown truthfully here.
+  </p>
+</div>
+
+<figure>
+  <img src="01-not-connected.png" alt="The calendar screen before anything is connected, with three numbered annotations.">
+  <figcaption>
+    <h2>01 — Not connected</h2>
+    <p>
+      The true out-of-the-box state, with <strong>no seeding whatsoever</strong>: the dev clone has
+      a booking host for the Primary business and no connection row, so this is what a coach sees on
+      day one.
+    </p>
+    <p>
+      The screen sits under Bookings deliberately. That prefix maps to the <code>schedule</code>
+      permission, so a coach reaches it themselves — which is the whole point, since the owner's
+      decision is that each coach owns and pays for their own Calendly account. Putting it under
+      <code>/admin/businesses</code> would have made it owner-only.
+    </p>
+  </figcaption>
+</figure>
+
+<figure>
+  <img src="02-plan-lapsed.png" alt="The calendar screen telling the coach Calendly needs a paid plan, with one numbered annotation.">
+  <figcaption>
+    <h2>02 — Needs a paid Calendly plan</h2>
+    <p>
+      Calendly only delivers bookings to us on a paid plan; its API answers <code>403</code> to a
+      Free account when we try to register for booking notifications. Migration <code>00240</code>
+      anticipated this with a <code>plan_lapsed</code> status, and the screen names
+      <em>Standard, Teams or Enterprise</em> so the coach knows exactly what to buy — instead of a
+      generic failure they cannot act on.
+    </p>
+    <p>
+      The meeting picker below the message is intentional: the copy says "pick your meeting again",
+      and re-picking is what retries the registration. The "we could not reach Calendly" row inside
+      it is the honest consequence of there being no real Calendly credentials here yet.
+    </p>
+  </figcaption>
+</figure>
+
+<figure>
+  <img src="03-needs-reconnect.png" alt="The calendar screen after Calendly stopped accepting the connection, with three numbered annotations.">
+  <figcaption>
+    <h2>03 — The connection died</h2>
+    <p>
+      Calendly's refresh tokens are single-use, so a revoked one cannot be renewed. The coach is
+      told what happened and what it costs, without the words token, grant or webhook, and is
+      reassured that their meetings and past bookings are untouched.
+    </p>
+    <p>
+      <strong>Marker 2 is the interesting one.</strong> Disconnect is still offered on a dead
+      connection. It used to fail forever here — disconnecting asked Calendly for a token it could
+      no longer give — which a review round caught and a later round fixed by splitting on fault
+      class: an authentication rejection completes the disconnect locally and records the orphaned
+      subscription, while a network fault still stops and asks the coach to retry.
+    </p>
+  </figcaption>
+</figure>
+
+</div>
