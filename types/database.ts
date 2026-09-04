@@ -3435,3 +3435,50 @@ export interface ChatMessage {
   model: string | null
   created_at: string
 }
+
+// --- Calendly per coach, phase 2: OAuth connections (00240, 00250) -----------
+// Spec: docs/superpowers/specs/2026-09-04-calendly-per-coach-phase2-oauth-design.md
+
+/** Only Calendly today; 00240's `provider` check constraint names `'google'` as a future value. */
+export type CoachCalendarProvider = "calendly"
+
+export type CoachCalendarStatus = "not_connected" | "connected" | "needs_reconnect" | "plan_lapsed" | "error"
+
+/**
+ * One coach's calendar connection, keyed on `(host_id, provider)` per 00240 —
+ * the host is the tenant key, `business_id` rides along for the composite FK.
+ *
+ * `credentials` is optional: `fn_get_coach_calendar_connection` and
+ * `fn_connect_coach_calendar` decrypt and return it, but
+ * `fn_list_coach_calendar_connections` deliberately omits it — a list screen
+ * has no business holding tokens, and a function that returns them invites a
+ * caller that logs them.
+ */
+export interface CoachCalendarConnection {
+  id: string
+  business_id: string
+  host_id: string
+  provider: CoachCalendarProvider
+  status: CoachCalendarStatus
+  credentials?: Record<string, unknown>
+  calendly_user_uri: string | null
+  calendly_organization_uri: string | null
+  /** 'owner' | 'admin' | 'user' — org-scope Calendly calls need admin. */
+  calendly_role: string | null
+  granted_scopes: string[]
+  event_type_uri: string | null
+  scheduling_url: string | null
+  webhook_subscription_uri: string | null
+  /** Mirrored from GET /webhook_subscriptions; Calendly disables a subscription after 24h of failure. */
+  webhook_state: string | null
+  webhook_checked_at: string | null
+  access_token_expires_at: string | null
+  /** The coach's own confirmation that "Check for conflicts" is on in their Calendly — no API exposes that setting. */
+  conflict_check_confirmed_at: string | null
+  last_refresh_at: string | null
+  last_error: string | null
+  connected_by: string | null
+  connected_at: string | null
+  created_at: string
+  updated_at: string
+}
