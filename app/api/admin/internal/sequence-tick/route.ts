@@ -49,11 +49,28 @@ export async function POST(request: NextRequest) {
     //
     // The reason carries the provider's own sentence. A cron reason of
     // "[object Object]" is a failure nobody can act on.
-    if ((summary.config_faults ?? 0) > 0) {
-      await logCronEnd(supabase, runId, "failed", {
-        message: `${summary.config_faults} configuration fault(s): the email provider rejected every attempt. Nothing sent; runs deferred, not lost.`,
-        ...summary,
-      })
+    //
+    // Task 10 (multi-coach ops): `runSequenceTick` now loops over active
+    // businesses internally and isolates a business whose preflight/claim
+    // loop threw into `summary.failures` rather than throwing (unless EVERY
+    // business failed — see that function's doc comment). That must ALSO
+    // mark this tick's one cron_runs row failed, same reasoning as
+    // config_faults above: a business failing silently every tick behind
+    // others succeeding is exactly what lastSuccessPerCron would hide.
+    const businessFailures = summary.failures ?? []
+    if ((summary.config_faults ?? 0) > 0 || businessFailures.length > 0) {
+      const messages: string[] = []
+      if ((summary.config_faults ?? 0) > 0) {
+        messages.push(
+          `${summary.config_faults} configuration fault(s): the email provider rejected every attempt. Nothing sent; runs deferred, not lost.`,
+        )
+      }
+      if (businessFailures.length > 0) {
+        messages.push(
+          `${businessFailures.length} business(es) failed: ${businessFailures.map((f) => f.businessId).join(", ")}`,
+        )
+      }
+      await logCronEnd(supabase, runId, "failed", { message: messages.join("; "), ...summary })
       return NextResponse.json({ ok: true, ...summary })
     }
 

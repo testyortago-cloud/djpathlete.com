@@ -87,6 +87,7 @@ import {
   type ImportOutcome,
 } from "@/lib/lead-engine/import"
 import { maskEmail, maskPhone } from "@/lib/lead-engine/mask"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 const SERVICE_APPLICATION_RE = /service.?application/i
 const CLASSES = ["skipped_no_identifier", "dnd_suppression", "importable"] as const
@@ -338,8 +339,13 @@ async function runExecute(
     contacts,
     initialDoneIds,
     (record) =>
+      // This is a one-time historical migration of THIS platform's own GHL
+      // export -- not a per-coach onboarding tool -- so the singleton is the
+      // right value here, passed explicitly rather than defaulted inside
+      // importGhlContact (lib/lead-engine/import.ts).
       importGhlContact(record, {
         snapshotTimestamp,
+        businessId: SINGLETON_BUSINESS_ID,
         emailConsentTagAllowlist: EMAIL_CONSENT_TAG_ALLOWLIST,
       }),
     (progress) => writeFileSync(progressPath, JSON.stringify(progress, null, 2)),

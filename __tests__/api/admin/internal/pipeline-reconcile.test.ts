@@ -105,4 +105,67 @@ describe("POST /api/admin/internal/pipeline-reconcile", () => {
     expect(await res.json()).toEqual({ error: "board not seeded" })
     expect(logCronEnd).toHaveBeenCalledWith(expect.anything(), "run-1", "failed", { message: "board not seeded" })
   })
+
+  // Task 10 (multi-coach ops): `runPipelineReconcile` now loops over active
+  // businesses internally but still returns ONE summary, so the route still
+  // writes exactly ONE cron_runs row per tick regardless of how many
+  // businesses were processed or how many failed.
+  describe("multi-business summary (Task 10)", () => {
+    it("writes ONE cron_runs row per tick even when several businesses were processed", async () => {
+      isCronSkipped.mockResolvedValueOnce({ skipped: false })
+      runPipelineReconcile.mockResolvedValueOnce({
+        createdFromBookings: 3,
+        wonFromPayments: 2,
+        scanned: 9,
+        failed: 0,
+        businesses: 3,
+      })
+
+      const res = await call()
+
+      expect(res.status).toBe(200)
+      expect(logCronStart).toHaveBeenCalledTimes(1)
+      expect(logCronEnd).toHaveBeenCalledTimes(1)
+    })
+
+    it("marks the single row failed and names the failing business when one fails", async () => {
+      isCronSkipped.mockResolvedValueOnce({ skipped: false })
+      runPipelineReconcile.mockResolvedValueOnce({
+        createdFromBookings: 1,
+        wonFromPayments: 0,
+        scanned: 4,
+        failed: 0,
+        businesses: 2,
+        failures: [{ businessId: "bbb", error: "pipeline not configured" }],
+      })
+
+      const res = await call()
+
+      expect(res.status).toBe(200)
+      expect(logCronEnd).toHaveBeenCalledTimes(1)
+      expect(logCronEnd).toHaveBeenCalledWith(
+        expect.anything(),
+        "run-1",
+        "failed",
+        expect.objectContaining({
+          failures: [{ businessId: "bbb", error: "pipeline not configured" }],
+        }),
+      )
+    })
+
+    it("stays success when every business succeeds (failures absent)", async () => {
+      isCronSkipped.mockResolvedValueOnce({ skipped: false })
+      runPipelineReconcile.mockResolvedValueOnce({
+        createdFromBookings: 0,
+        wonFromPayments: 0,
+        scanned: 0,
+        failed: 0,
+        businesses: 1,
+      })
+
+      const res = await call()
+
+      expect(logCronEnd).toHaveBeenCalledWith(expect.anything(), "run-1", "success", expect.anything())
+    })
+  })
 })

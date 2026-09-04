@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 type Row = Record<string, any>
 
 type Store = {
+  businesses: Row[]
   pipelines: Row[]
   pipeline_stages: Row[]
   opportunities: Row[]
@@ -23,6 +24,7 @@ type Store = {
 }
 
 const store: Store = {
+  businesses: [],
   pipelines: [],
   pipeline_stages: [],
   opportunities: [],
@@ -211,6 +213,13 @@ const DAY_MS = 86_400_000
 const INSIDE_SUPPRESSION_WINDOW = () => new Date(Date.now() - (REBOOKING_SUPPRESSION_DAYS / 2) * DAY_MS).toISOString()
 
 beforeEach(() => {
+  // Task 10 (multi-coach ops): the reconciler now loops over active
+  // businesses via listBusinesses(), which queries this table. Every
+  // existing test in this file predates that loop and assumes exactly one
+  // (the singleton) — seeded here so those tests need no changes.
+  store.businesses = [
+    { id: SINGLETON_BUSINESS_ID, name: "Darren J Paul", slug: "darren-j-paul", status: "active" },
+  ]
   store.pipelines = []
   store.pipeline_stages = []
   store.opportunities = []
@@ -228,19 +237,22 @@ beforeEach(() => {
 // shape as __tests__/db/pipeline.test.ts's fixtures.
 // ---------------------------------------------------------------------------
 
-function seedBoard() {
+// businessId/pipelineId/stagePrefix are overridable (default: the singleton,
+// "pipe-1", plain stage ids) so a two-business test can seed a second,
+// independent board without colliding on pipeline/stage ids.
+function seedBoard(businessId = SINGLETON_BUSINESS_ID, pipelineId = "pipe-1", stagePrefix = "") {
   store.pipelines.push({
-    id: "pipe-1",
-    business_id: SINGLETON_BUSINESS_ID,
+    id: pipelineId,
+    business_id: businessId,
     key: DEFAULT_PIPELINE_KEY,
     name: "Coaching",
     status: "active",
   })
   store.pipeline_stages.push(
     {
-      id: "stage-consult-booked",
-      business_id: SINGLETON_BUSINESS_ID,
-      pipeline_id: "pipe-1",
+      id: `${stagePrefix}stage-consult-booked`,
+      business_id: businessId,
+      pipeline_id: pipelineId,
       key: "consult_booked",
       name: "Consult Booked",
       position: 1,
@@ -249,9 +261,9 @@ function seedBoard() {
       red_after_days: 7,
     },
     {
-      id: "stage-consulted",
-      business_id: SINGLETON_BUSINESS_ID,
-      pipeline_id: "pipe-1",
+      id: `${stagePrefix}stage-consulted`,
+      business_id: businessId,
+      pipeline_id: pipelineId,
       key: "consulted",
       name: "Consulted",
       position: 2,
@@ -260,9 +272,9 @@ function seedBoard() {
       red_after_days: 14,
     },
     {
-      id: "stage-won",
-      business_id: SINGLETON_BUSINESS_ID,
-      pipeline_id: "pipe-1",
+      id: `${stagePrefix}stage-won`,
+      business_id: businessId,
+      pipeline_id: pipelineId,
       key: "won",
       name: "Won",
       position: 3,
@@ -271,9 +283,9 @@ function seedBoard() {
       red_after_days: null,
     },
     {
-      id: "stage-lost",
-      business_id: SINGLETON_BUSINESS_ID,
-      pipeline_id: "pipe-1",
+      id: `${stagePrefix}stage-lost`,
+      business_id: businessId,
+      pipeline_id: pipelineId,
       key: "lost",
       name: "Lost",
       position: 4,
@@ -293,6 +305,16 @@ function seedContact(id: string, overrides: Row = {}) {
     user_id: null,
     name: null,
     first_touch_session_id: null,
+    ...overrides,
+  })
+}
+
+function seedBusiness(id: string, overrides: Row = {}) {
+  store.businesses.push({
+    id,
+    name: id,
+    slug: id,
+    status: "active",
     ...overrides,
   })
 }
@@ -579,7 +601,7 @@ describe("runPipelineReconcile", () => {
 
     const summary = await runPipelineReconcile()
 
-    expect(summary).toEqual({ createdFromBookings: 1, wonFromPayments: 1, scanned: 2, failed: 0 })
+    expect(summary).toEqual({ createdFromBookings: 1, wonFromPayments: 1, scanned: 2, failed: 0, businesses: 1 })
   })
 
   // Final review, Important 1: before this fix, neither loop had a per-row
@@ -652,5 +674,89 @@ describe("runPipelineReconcile", () => {
     // No duplicate card for A, and — the part that actually depends on the
     // metadata check — no second refusal row for B.
     expect(store.opportunity_stage_events).toHaveLength(2)
+  })
+})
+
+// Task 10 (multi-coach ops): the reconciler now loops over active
+// businesses (listBusinesses({activeOnly:true})). These tests are about the
+// LOOP itself — isolation and the returned `businesses`/`failures` fields —
+// not the booking/payment decision logic, which the suite above already
+// covers per business.
+describe("runPipelineReconcile — multi-business loop", () => {
+  const BUSINESS_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+  it("processes every active business and reports the count", async () => {
+    seedBusiness(BUSINESS_B)
+    seedBoard() // singleton's board
+    seedBoard(BUSINESS_B, "pipe-b", "b-")
+
+    seedContact("c-1", { email: "lead1@example.com" })
+    seedBooking("bk-1", { contact_email: "lead1@example.com", status: "scheduled" })
+
+    seedContact("c-b", { business_id: BUSINESS_B, email: "lead-b@example.com" })
+    seedBooking("bk-b", { contact_email: "lead-b@example.com", status: "scheduled" })
+
+    const summary = await runPipelineReconcile()
+
+    expect(summary.businesses).toBe(2)
+    expect(summary.createdFromBookings).toBe(2)
+    expect(summary.failures).toBeUndefined()
+    expect(store.opportunities.find((o) => o.contact_id === "c-1")?.business_id).toBe(SINGLETON_BUSINESS_ID)
+    expect(store.opportunities.find((o) => o.contact_id === "c-b")?.business_id).toBe(BUSINESS_B)
+  })
+
+  // The design reason this whole loop exists: lastSuccessPerCron
+  // (lib/db/cron-runs.ts) reads the single most recent SUCCESSFUL row per
+  // cron_name, so if one business's pass silently threw every tick while
+  // another kept succeeding, a row-per-business cron_runs write would hide
+  // the failing business behind the succeeding one forever. Isolating the
+  // failure into `failures[]` — rather than swallowing it or aborting the
+  // whole tick — is what lets the ONE cron_runs row (written by the route)
+  // be marked failed and name the business.
+  it("does not let one business's failure stop the others", async () => {
+    // Order matters for this test: BUSINESS_B (unconfigured) is seeded
+    // FIRST, so if the per-business try/catch were removed, its throw would
+    // abort the loop before the singleton (seeded second) is ever reached.
+    store.businesses = [{ id: BUSINESS_B, name: "b", slug: "b", status: "active" }, ...store.businesses]
+
+    // Only the singleton gets a configured board; BUSINESS_B has no
+    // pipeline row at all, so resolvePipeline throws PipelineNotConfiguredError
+    // for it as soon as it has a succeeded payment to process.
+    seedBoard()
+
+    seedContact("c-1", { email: "lead1@example.com" })
+    seedBooking("bk-1", { contact_email: "lead1@example.com", status: "scheduled" })
+
+    seedContact("c-b", { business_id: BUSINESS_B, email: "lead-b@example.com", user_id: "user-b" })
+    seedPayment("pay-b", { user_id: "user-b", status: "succeeded" })
+
+    const summary = await runPipelineReconcile()
+
+    expect(summary.businesses).toBe(2)
+    expect(summary.failures?.map((f) => f.businessId)).toEqual([BUSINESS_B])
+    // The singleton's booking still got processed despite BUSINESS_B failing.
+    expect(summary.createdFromBookings).toBe(1)
+    expect(store.opportunities.find((o) => o.contact_id === "c-1")).toBeTruthy()
+  })
+
+  it("is unchanged for a single active business", async () => {
+    seedBoard()
+    seedContact("c-1", { email: "lead1@example.com" })
+    seedBooking("bk-1", { contact_email: "lead1@example.com", status: "scheduled" })
+
+    const summary = await runPipelineReconcile()
+
+    expect(summary).toEqual({
+      createdFromBookings: 1,
+      wonFromPayments: 0,
+      scanned: 1,
+      failed: 0,
+      businesses: 1,
+    })
+  })
+
+  it("throws (rather than reporting empty success) when there are no active businesses", async () => {
+    store.businesses = []
+    await expect(runPipelineReconcile()).rejects.toThrow("no active businesses")
   })
 })

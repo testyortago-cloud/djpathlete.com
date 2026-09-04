@@ -32,7 +32,10 @@ vi.mock("@/lib/supabase", () => ({
   })),
 }))
 vi.mock("@/lib/db/cron-runs", () => ({ logCronStart: vi.fn(), logCronEnd: vi.fn() }))
-vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
+// listBusinesses (Task 10, multi-coach ops): every test in this file
+// predates the business loop and assumes exactly one (the singleton) — the
+// default in beforeEach below keeps that true so nothing else here changes.
+vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn(), listBusinesses: vi.fn() }))
 // Only the SENDER is mocked. `assertSendable`, `renderSequenceEmail` and
 // `BusinessNotConfiguredError` stay real: the route's unconfigured-business
 // arm is an `instanceof` check across this module boundary, and a mock that
@@ -67,7 +70,8 @@ vi.mock("@/lib/db/sequences", async (importOriginal) => ({
 
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { logCronStart, logCronEnd } from "@/lib/db/cron-runs"
-import { getBusinessSettings } from "@/lib/db/businesses"
+import { getBusinessSettings, listBusinesses } from "@/lib/db/businesses"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { sendSequenceEmail, sendRenderedSequenceEmail, SequenceSendError } from "@/lib/lead-engine/email"
 import { unsubscribeUrl, unsubscribeOneClickUrl } from "@/lib/lead-engine/unsubscribe-token"
 import {
@@ -173,6 +177,7 @@ beforeEach(() => {
   ;(logCronStart as ReturnType<typeof vi.fn>).mockResolvedValue("run-1")
   ;(logCronEnd as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
   ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue(SETTINGS)
+  ;(listBusinesses as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: SINGLETON_BUSINESS_ID }])
   ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([])
   ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([EMAIL_STEP])
   ;(loadRunContext as ReturnType<typeof vi.fn>).mockResolvedValue(sendableContext())
@@ -312,6 +317,7 @@ describe("POST /api/admin/internal/sequence-tick", () => {
       ;(isCronSkipped as ReturnType<typeof vi.fn>).mockResolvedValue({ skipped: false })
       ;(logCronStart as ReturnType<typeof vi.fn>).mockResolvedValue("run-1")
       ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue(SETTINGS)
+      ;(listBusinesses as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: SINGLETON_BUSINESS_ID }])
       ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([EMAIL_STEP])
       ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-a", { attempts: 3 })])
       throwOn("r-a")
@@ -774,6 +780,75 @@ describe("POST /api/admin/internal/sequence-tick", () => {
       const res = await POST(makeRequest())
       expect(res.status).toBe(200)
       expect(await res.json()).toMatchObject({ ok: true, sent: 1 })
+    })
+  })
+
+  // Task 10 (multi-coach ops): runSequenceTick now loops over active
+  // businesses. These are about the LOOP and the cron_runs bookkeeping it
+  // feeds, not the per-run decision logic already covered above.
+  describe("multiple active businesses (Task 10)", () => {
+    const BUSINESS_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+
+    it("writes ONE cron_runs row per tick even with several active businesses", async () => {
+      ;(listBusinesses as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: SINGLETON_BUSINESS_ID },
+        { id: BUSINESS_B },
+      ])
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([])
+
+      const res = await POST(makeRequest())
+
+      expect(res.status).toBe(200)
+      expect(logCronStart).toHaveBeenCalledTimes(1)
+      expect(logCronEnd).toHaveBeenCalledTimes(1)
+      expect(getBusinessSettings).toHaveBeenCalledWith(SINGLETON_BUSINESS_ID)
+      expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_B)
+    })
+
+    it("marks the single row failed and names the failing business when one of several fails", async () => {
+      ;(listBusinesses as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: SINGLETON_BUSINESS_ID },
+        { id: BUSINESS_B },
+      ])
+      ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockImplementation(async (businessId: string) => {
+        if (businessId === BUSINESS_B) return { ...SETTINGS, sender_email: "" }
+        return SETTINGS
+      })
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([])
+
+      const res = await POST(makeRequest())
+
+      expect(res.status).toBe(200)
+      expect(logCronEnd).toHaveBeenCalledTimes(1)
+      expect(logCronEnd).toHaveBeenCalledWith(
+        expect.anything(),
+        "run-1",
+        "failed",
+        expect.objectContaining({
+          failures: [expect.objectContaining({ businessId: BUSINESS_B })],
+        }),
+      )
+    })
+
+    it("one business failing does not stop the others from being claimed", async () => {
+      ;(listBusinesses as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: BUSINESS_B }, // unconfigured, and seeded FIRST so a removed
+        // try/catch would abort before the singleton is ever reached
+        { id: SINGLETON_BUSINESS_ID },
+      ])
+      ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockImplementation(async (businessId: string) => {
+        if (businessId === BUSINESS_B) return { ...SETTINGS, sender_email: "" }
+        return SETTINGS
+      })
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-still-fine")])
+
+      const res = await POST(makeRequest())
+
+      expect(res.status).toBe(200)
+      // claimDueRuns was reached for the singleton despite BUSINESS_B's
+      // preflight throwing first.
+      expect(claimDueRuns).toHaveBeenCalledWith(expect.any(Number), expect.any(String), SINGLETON_BUSINESS_ID)
+      expect(await res.json()).toMatchObject({ claimed: 1, sent: 1 })
     })
   })
 

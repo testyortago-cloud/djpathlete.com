@@ -7,7 +7,7 @@ import { readCalendlySigningKey } from "@/lib/calendly/env"
 import { CALENDLY_SIGNATURE_HEADER, verifyCalendlySignature } from "@/lib/calendly/signature"
 import { decodeTracking } from "@/lib/calendly/tracking"
 import { normalisePhone } from "@/lib/lead-engine/identity"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 /**
  * Webhook endpoint for Calendly — `invitee.created` and `invitee.canceled`.
@@ -207,7 +207,7 @@ export async function POST(request: Request) {
   try {
     const outcome = await ingestBooking({
       source: "calendly",
-      businessId: SINGLETON_BUSINESS_ID,
+      businessId: platformBusinessId(),
       hostId: await singletonHostId(),
       connectionId: null,
       // Both of these are already parsed on this route and then thrown away:
