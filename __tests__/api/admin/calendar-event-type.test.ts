@@ -491,6 +491,29 @@ describe("POST /api/admin/bookings/calendar/disconnect", () => {
     expect(orphanAudit!.action).toBe("calendar.disconnected")
   })
 
+  it("a 2xx token response with an unparseable body is transient, not a dead grant", async () => {
+    connection = connectedRow({
+      webhook_subscription_uri: "https://api.calendly.com/webhook_subscriptions/WS1",
+    })
+    // Exactly the shape lib/calendly/credentials.ts produces when a refresh
+    // gets HTTP 200 with a body that does not parse: parseTokenResponse raises
+    // CalendlyOAuthError("shape", …, response.status) carrying THAT 2xx, and
+    // unavailableReasonFor passes `shape` straight through. Calendly rejected
+    // nothing — only the body was garbled — so abandoning the coach's live
+    // subscription over it would be wrong, and telling them "Calendly would
+    // not let us switch it off" would be false.
+    const { CalendlyUnavailable } =
+      await vi.importActual<typeof import("@/lib/calendly/client")>("@/lib/calendly/client")
+    tokenImpl = async () => {
+      throw new CalendlyUnavailable("shape", "Calendly token response had an unexpected shape", 200)
+    }
+
+    const response = await DISCONNECT(jsonRequest("/api/admin/bookings/calendar/disconnect", {}), routeContext)
+    expect(response.status).toBe(502)
+    expect(disconnectCalls).toHaveLength(0)
+    expect(deleteSubCalls).toHaveLength(0)
+  })
+
   it("a needs_reconnect connection disconnects without even asking Calendly", async () => {
     connection = connectedRow({
       status: "needs_reconnect",
