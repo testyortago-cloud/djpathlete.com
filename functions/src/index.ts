@@ -40,7 +40,12 @@ const googleAdsSecrets = [
 ]
 
 const allSecrets = [anthropicApiKey, supabaseUrl, supabaseServiceRoleKey, resendApiKey, coachEmail, resendFromEmail]
-const sendSecrets = [supabaseUrl, supabaseServiceRoleKey, resendApiKey]
+// resendFromEmail is REQUIRED here even though this list is otherwise minimal.
+// A secret that is declared but not bound to a function is simply absent from
+// process.env inside it, so `?? "<default>"` silently wins — newsletterSend sent
+// every batch from the unverified apex for exactly this reason, and no value in
+// the secret store could have fixed it.
+const sendSecrets = [supabaseUrl, supabaseServiceRoleKey, resendApiKey, resendFromEmail]
 
 // ─── Program Generation ────────────────────────────────────────────────────────
 // Triggered when a new ai_jobs doc is created with type "program_generation"

@@ -60,6 +60,22 @@ function getFromEmail(): string {
   return process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@send.darrenjpaul.com>"
 }
 
+/**
+ * Reply-to for both notification emails.
+ *
+ * These reach CLIENTS, and the From address sits on send.darrenjpaul.com, which
+ * Resend has configured for sending only — `receiving` is disabled. So a client
+ * who hits Reply on "your program is ready" gets a bounce unless we point the
+ * reply somewhere that accepts mail. COACH_EMAIL is the apex, which does.
+ *
+ * Returns undefined rather than a guessed address when COACH_EMAIL is unset:
+ * no Reply-To at all is honest, while a wrong one silently swallows replies.
+ */
+function getReplyTo(): string | undefined {
+  const coach = process.env.COACH_EMAIL?.trim()
+  return coach && coach.length > 0 ? coach : undefined
+}
+
 async function resolveProgramName(programId: string | null): Promise<string> {
   if (!programId) return "Program"
   try {
@@ -153,6 +169,7 @@ export async function notifyJobCompleted(opts: JobSuccessInput): Promise<void> {
     const sendResult = await resend.emails.send({
       from: fromAddr,
       to: recipients,
+      replyTo: getReplyTo(),
       subject: `${opts.jobLabel} is ready — ${programName}`,
       html,
     })
@@ -223,6 +240,7 @@ export async function notifyJobFailed(opts: JobFailureInput): Promise<void> {
     const sendResult = await resend.emails.send({
       from: getFromEmail(),
       to: recipients,
+      replyTo: getReplyTo(),
       subject: `${opts.jobLabel} failed — ${programName}`,
       html,
     })
