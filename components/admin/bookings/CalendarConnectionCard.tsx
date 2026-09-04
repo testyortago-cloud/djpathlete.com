@@ -62,7 +62,7 @@ const DISCONNECT_PATH = "/api/admin/bookings/calendar/disconnect"
 /** Where "Check for conflicts" lives in Calendly's own settings. */
 const CALENDLY_CALENDAR_SETTINGS_URL = "https://calendly.com/app/settings/calendar_connections"
 
-const CALENDLY_UNREACHABLE = "We could not reach Calendly just now. Load this page again to try."
+const CALENDLY_UNREACHABLE = "We could not reach Calendly just now. Load this page again to try once more."
 
 /**
  * The connection as the browser is allowed to see it. Deliberately not
@@ -110,9 +110,19 @@ async function readJson(response: Response): Promise<Record<string, unknown> | n
   return (await response.json().catch(() => null)) as Record<string, unknown> | null
 }
 
+/**
+ * The two sentences the shared gate in lib/bookings/calendar-access.ts
+ * answers with are written for a programmer, not a coach. Neither is reachable
+ * from this screen — the page is behind the same gate — but a route message is
+ * shown verbatim, so they are swapped for the caller's own sentence rather
+ * than trusted.
+ */
+const NOT_FOR_A_COACH = new Set(["Forbidden", "Sign in required."])
+
 function errorFrom(body: Record<string, unknown> | null, fallback: string): string {
   const message = body?.error
-  return typeof message === "string" && message.length > 0 ? message : fallback
+  if (typeof message !== "string" || message.length === 0) return fallback
+  return NOT_FOR_A_COACH.has(message) ? fallback : message
 }
 
 /** The card's own chrome, so every state opens the same way. */
@@ -179,8 +189,8 @@ function DisconnectButton({ onDone }: { onDone: (leftoverNotice: string | null) 
       toast.success("Your Calendly is disconnected.")
       onDone(
         leftover
-          ? "Your Calendly is disconnected here. One leftover setting could not be removed from your Calendly account. " +
-              "It does nothing on its own — no more bookings will come through. Ask the person who set up your account to clear it."
+          ? "We could not remove one setting from your Calendly account. It is harmless. No more bookings will come " +
+              "through here. Ask the person who set up your account to remove it."
           : null,
       )
       router.refresh()
@@ -335,8 +345,8 @@ function BookingAlertRow({ webhookState }: { webhookState: string | null }) {
       <>
         <DataTableBadge tone="danger">Off</DataTableBadge>
         <p className="mt-1 text-muted-foreground">
-          Calendly has stopped telling us about new bookings. Click &quot;Disconnect&quot; below, then connect again to
-          switch it back on.
+          Calendly has stopped telling us about new bookings. Click &quot;Disconnect&quot; at the top of this card, then
+          connect again to switch it back on.
         </p>
       </>
     )
@@ -402,8 +412,8 @@ function ConflictCheck({ confirmed, checkedOn }: { confirmed: boolean; checkedOn
         )}
       </div>
       <p className="text-sm text-muted-foreground">
-        Calendly only avoids double-booking you if &quot;Check for conflicts&quot; is turned on for the calendar you
-        use. We can&apos;t see that setting, so please check it yourself.
+        Calendly only avoids double-booking you if &quot;Check for conflicts&quot; is turned on for each calendar you
+        have added to Calendly. We cannot see that setting, so please check it yourself.
       </p>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <a
@@ -487,7 +497,10 @@ export function CalendarConnectionCard({ hasHost, connection, flash }: CalendarC
           }
         >
           <Prose>
-            <p>Calendly no longer accepts our connection, so we cannot see your times or receive your bookings.</p>
+            <p>
+              Calendly no longer accepts our connection, so we cannot see the times you are free, and we cannot receive
+              your bookings.
+            </p>
             <p>
               This happens if you removed our access inside Calendly. Click &quot;Connect Calendly&quot; and say yes
               again. Your meetings and your past bookings are not changed.
@@ -531,7 +544,7 @@ export function CalendarConnectionCard({ hasHost, connection, flash }: CalendarC
           title="Your calendar"
           badge={
             connection.status === "error"
-              ? { tone: "warning", label: "Needs a look" }
+              ? { tone: "warning", label: "Something went wrong" }
               : { tone: "success", label: "Connected" }
           }
           actions={<DisconnectButton onDone={setLeftoverNotice} />}

@@ -15,8 +15,9 @@
 // field by field: adding a field to that view is then a deliberate act rather
 // than the side effect of a spread.
 //
-// TWO CALENDLY READS HAPPEN HERE, AND ONLY IN THE CONNECTED-AND-CHOSEN STATE:
-// who the connection belongs to, and what the chosen meeting is called.
+// TWO CALENDLY READS HAPPEN HERE, AND ONLY FOR A WORKING CONNECTION THAT HAS
+// CHOSEN ITS MEETING: who the connection belongs to, and what that meeting is
+// called.
 // Neither is stored on the row — 00240 keeps URIs, not display names — and
 // this screen is the only place either is needed, so there is nothing to cache
 // them in. Both are wrapped: Calendly being unreachable must downgrade one
@@ -66,7 +67,8 @@ function flashFor(calendar: string | undefined, reason: string | undefined): Cal
   if (reason === "state" || reason === "pkce") {
     return {
       tone: "warning",
-      message: 'Connecting took too long, so we stopped. Nothing has changed. Click "Connect Calendly" to start again.',
+      message:
+        'We could not finish connecting safely, so we stopped. Nothing has changed. Click "Connect Calendly" to start again.',
     }
   }
   return {
@@ -93,7 +95,11 @@ export default async function BookingsCalendarPage({ searchParams }: PageProps) 
   let accountReadFailed = false
 
   const chosen = connection
-  if (hostId && chosen && chosen.status !== "not_connected" && chosen.event_type_uri) {
+  // `connected` and `error` ONLY. A `needs_reconnect` or `plan_lapsed` row shows
+  // its own card and displays neither the account nor the meeting, so asking
+  // Calendly for them there buys nothing and costs a refresh round trip plus
+  // two 8-second timeouts on a grant that is already known to be refused.
+  if (hostId && chosen && (chosen.status === "connected" || chosen.status === "error") && chosen.event_type_uri) {
     try {
       const accessToken = await accessTokenForConnection(chosen)
       const [identity, eventTypes] = await Promise.all([
@@ -141,7 +147,7 @@ export default async function BookingsCalendarPage({ searchParams }: PageProps) 
       </Link>
       <h1 className="mb-2 text-2xl font-semibold text-primary">Your calendar</h1>
       <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
-        Connect Calendly here so the times you are free, and the consults people book, both show up in this app.
+        Connect your Calendly account here. We then show the times you are free, and every consult someone books.
       </p>
 
       <CalendarConnectionCard
