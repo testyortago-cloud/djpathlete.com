@@ -1,6 +1,6 @@
 # Calendly per coach, phase 2 — go-live runbook
 
-**Written:** 2026-09-05, for `feat/calendly-per-coach-phase2` (`98d9da2e`, pushed, not merged).
+**Written:** 2026-09-05, for `feat/calendly-per-coach-phase2` — pushed to origin, **not merged**.
 **Darren's Calendly plan:** Standard — which is what webhooks need, so the `plan_lapsed` path
 should never appear. Free accounts get a 403 when we register for booking notifications; Standard,
 Teams and Enterprise do not.
@@ -144,7 +144,7 @@ Wait for the Vercel deploy to be **live**, not merely merged.
    an account can host several meetings and only one of them is the consult.
 4. Tick the **Check for conflicts** confirmation.
 
-### Step 4 is not a formality
+### That last tick is not a formality
 
 No Calendly API exposes whether "Check for conflicts" is switched on. It is the setting that makes
 Darren's real commitments block slots, so with it off Calendly will happily double-book him — and
