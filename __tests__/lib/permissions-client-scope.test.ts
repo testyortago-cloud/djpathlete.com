@@ -1,3 +1,11 @@
+// @vitest-environment node
+//
+// Pinned to node because the default jsdom environment fails to start a worker
+// here (ERR_REQUIRE_ESM out of html-encoding-sniffer). This suite is pure —
+// no DOM — and was crashing rather than running, which is indistinguishable
+// from passing at a glance. It covers the permission registry and the sidebar
+// that reads it, so it going quiet is exactly the coverage you cannot afford
+// to lose.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 import {
