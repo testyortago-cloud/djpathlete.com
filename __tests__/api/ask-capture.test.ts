@@ -240,6 +240,34 @@ describe("POST /api/ask/capture — the only contact-write path", () => {
     expect(await res.json()).toEqual(expect.objectContaining({ marketingConsentRecorded: false }))
   })
 
+  // conversation.business_id is a required column and this route already
+  // reads it (it is on the audit metadata a few lines below captureLead's own
+  // call, at the file's step 9). A DISTINCT id from SETTINGS.business_id is
+  // the presence control here: a route that dropped the argument (or that
+  // called captureLead/getBusinessSettings with none, letting their own
+  // singleton defaults silently apply) would keep every OTHER test in this
+  // file green, since they all use a conversation whose business_id equals
+  // the singleton already.
+  it("files the contact under the conversation's own business, not the platform default", async () => {
+    const OTHER_BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
+    h.getConversation.mockResolvedValue(conversation({ business_id: OTHER_BUSINESS_ID }))
+
+    await POST(req(submission()))
+
+    expect(h.captureLead).toHaveBeenCalledWith(expect.objectContaining({ businessId: OTHER_BUSINESS_ID }))
+  })
+
+  it("reads business settings for the consent wording from the conversation's own business", async () => {
+    const OTHER_BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
+    h.getConversation.mockResolvedValue(conversation({ business_id: OTHER_BUSINESS_ID }))
+    h.getBusinessSettings.mockResolvedValue({ ...SETTINGS, business_id: OTHER_BUSINESS_ID })
+
+    await POST(req(submission({ marketingConsent: true })))
+
+    expect(h.getBusinessSettings).toHaveBeenCalledTimes(1)
+    expect(h.getBusinessSettings).toHaveBeenCalledWith(OTHER_BUSINESS_ID)
+  })
+
   it("treats a failed business-settings read as a blank name, never as a licence to file", async () => {
     h.getBusinessSettings.mockRejectedValue(new Error("business_settings unreachable"))
 

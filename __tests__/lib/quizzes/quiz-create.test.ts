@@ -23,6 +23,14 @@ import type { QuizDefinition, QuizOption } from "@/lib/quizzes/types"
 // depends on `uniqueQuizKey`'s scoped read actually seeing the existing row.
 const BUSINESS_ID = "00000000-0000-0000-0000-000000000001"
 
+// A DIFFERENT tenant, used only where a test needs to prove that the caller's
+// OWN value reaches the write/read rather than some other value (a hardcoded
+// SINGLETON_BUSINESS_ID, which is exactly what BUSINESS_ID above equals) --
+// see __tests__/lib/lead-engine/import.test.ts's "writes the caller's
+// businessId, not the platform singleton" for the pattern this follows.
+// Every OTHER test in this file keeps using BUSINESS_ID untouched.
+const OTHER_BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
+
 type Row = Record<string, unknown>
 
 /** Canned tables. Deliberately contains rows that MUST be filtered out. */
@@ -291,6 +299,31 @@ describe("createQuizFrom", () => {
     expect(inserted("quiz_questions").length).toBe(toDefinition(RPI_ATHLETE_QUIZ).questions.length)
     expect(inserted("quiz_branches").length).toBe(RPI_ATHLETE_QUIZ.branches.length)
   })
+
+  // BUSINESS_ID above equals SINGLETON_BUSINESS_ID, so every test up to here
+  // would pass identically against a version of createQuizFrom that ignored
+  // its businessId argument and hardcoded the singleton on the insert. This
+  // is the one test in the describe block that cannot: it names a DIFFERENT
+  // tenant and checks the actual value written, not just that some value was.
+  it("writes the caller's businessId, not a different tenant's", async () => {
+    const source = await getQuizDefinition("q1")
+    await createQuizFrom(OTHER_BUSINESS_ID, { source: source!, name: "Copy for another business" })
+
+    expect(inserted("quizzes")[0].business_id).toBe(OTHER_BUSINESS_ID)
+    expect(inserted("quizzes")[0].business_id).not.toBe(BUSINESS_ID)
+  })
+
+  // uniqueQuizKey's collision read is scoped by businessId (file header
+  // comment). TABLES.quizzes only has "rpi-athlete-quiz" under BUSINESS_ID,
+  // so a caller cloning into OTHER_BUSINESS_ID must NOT see that collision --
+  // if the scoped read secretly used the singleton regardless of the
+  // argument, this would come back suffixed "-2" exactly like the sibling
+  // test above that deliberately DOES collide.
+  it("does not suffix a key that only collides in a different business", async () => {
+    const source = await getQuizDefinition("q1")
+    const { key } = await createQuizFrom(OTHER_BUSINESS_ID, { source: source!, name: "RPI Athlete Quiz" })
+    expect(key).toBe("rpi-athlete-quiz")
+  })
 })
 
 describe("getQuizDefinitionForEditor", () => {
@@ -316,5 +349,13 @@ describe("getQuizDefinitionForEditor", () => {
 
   it("returns null for a quiz that does not exist", async () => {
     expect(await getQuizDefinitionForEditor(BUSINESS_ID, "nope")).toBeNull()
+  })
+
+  // q1 belongs to BUSINESS_ID (== SINGLETON_BUSINESS_ID). Asking for it under
+  // a DIFFERENT business must come back null, the same answer as "no such
+  // quiz" -- a version of this function that ignored businessId (or defaulted
+  // it to the singleton internally) would return the real quiz here instead.
+  it("refuses a quiz that belongs to a different business", async () => {
+    expect(await getQuizDefinitionForEditor(OTHER_BUSINESS_ID, "q1")).toBeNull()
   })
 })

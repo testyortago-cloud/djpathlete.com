@@ -12,13 +12,22 @@
 //
 // Spec: docs/superpowers/specs/2026-08-24-quiz-funnel-creator-design.md §5
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { QuizAnsweredOptionError, saveQuizDefinition } from "@/lib/db/quizzes"
+import { QuizAnsweredOptionError, QuizNotInBusinessError, saveQuizDefinition } from "@/lib/db/quizzes"
 
 // Matches TABLES.quizzes' business_id below. Every call in this file passes
 // the ownership guard at the top of `saveQuizDefinition` (checked against
 // this value), and TABLES.quiz_attempts' rows carry it too, since
 // `answeredIds` now scopes its read by business_id as well as quiz_id.
 const BUSINESS_ID = "00000000-0000-0000-0000-000000000001"
+
+// A DIFFERENT tenant, used only in the one discriminating test below. Every
+// call above passes BUSINESS_ID, which equals SINGLETON_BUSINESS_ID -- so a
+// version of `assertQuizInBusiness` that ignored its businessId argument (or
+// defaulted it to the singleton internally) would still pass every one of
+// them. Only a call with a value that does NOT match q1's real owner can
+// prove the ownership guard actually checks what it was given. Pattern from
+// __tests__/lib/lead-engine/import.test.ts's OTHER_BUSINESS_ID.
+const OTHER_BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
 
 type Row = Record<string, unknown>
 
@@ -186,6 +195,19 @@ describe("saveQuizDefinition — adding", () => {
     const firstInsert = writes.findIndex((w) => w.op === "insert")
     const firstUpdate = writes.findIndex((w) => w.op === "update")
     expect(firstInsert).toBeLessThan(firstUpdate)
+  })
+})
+
+describe("saveQuizDefinition — ownership", () => {
+  it("refuses a quiz that belongs to a different business, and writes nothing", async () => {
+    // q1's real owner is BUSINESS_ID. Calling with a different business id
+    // must throw QuizNotInBusinessError BEFORE any write happens -- a guard
+    // that silently ignored businessId (or defaulted it to the singleton
+    // internally) would let this save through instead.
+    await expect(
+      saveQuizDefinition(OTHER_BUSINESS_ID, { quizId: "q1", quiz: { name: "Should never land" } }),
+    ).rejects.toThrow(QuizNotInBusinessError)
+    expect(writes).toHaveLength(0)
   })
 })
 
