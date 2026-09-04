@@ -2,12 +2,12 @@ import { NextResponse } from "next/server"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { validateTwilioSignature } from "@/lib/lead-engine/twilio-signature"
 import { appOrigin } from "@/lib/lead-engine/origin"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import { normalisePhone } from "@/lib/lead-engine/identity"
 import { findContactByIdentifiers } from "@/lib/db/contacts"
 import { recordConsent, suppress, unsuppress } from "@/lib/db/contact-consents"
 import { exitRunsForContact } from "@/lib/db/sequences"
-import { getBusinessSettings } from "@/lib/db/businesses"
+import { getBusinessSettings, getBusinessBySmsNumber } from "@/lib/db/businesses"
 import { renderSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engine/email"
 
 /**
@@ -143,13 +143,14 @@ const TIMELINE_BODY_CAP = 500
  * compliance record here is exactly the silence spec §5 exists to avoid.
  */
 async function writeTimelineEvent(args: {
+  businessId: string
   contactId: string
   kind: string
   metadata: Record<string, unknown>
 }): Promise<void> {
   const supabase = createServiceRoleClient()
   const { error } = await supabase.from("contact_timeline_events").insert({
-    business_id: SINGLETON_BUSINESS_ID,
+    business_id: args.businessId,
     contact_id: args.contactId,
     kind: args.kind,
     source: TIMELINE_SOURCE,
@@ -227,6 +228,17 @@ export async function POST(request: Request) {
   try {
     const rawBody = params.Body ?? ""
     const rawFrom = params.From ?? ""
+    const rawTo = params.To ?? ""
+
+    // The To number is the ONLY tenant evidence an inbound SMS carries.
+    // Resolved ONCE, here, and threaded through every call below -- a
+    // request that resolves business B for one call and defaults to the
+    // singleton for the next is worse than either alone, because the rows
+    // disagree. An unmatched number falls back to the platform business
+    // (the honest seam, not the raw constant): the ordinary case today,
+    // since sms_sender_phone defaults to '' and the platform's own number
+    // still lives in the environment.
+    const businessId = (await getBusinessBySmsNumber(rawTo)) ?? platformBusinessId()
 
     const phone = normalisePhone(rawFrom)
     // Suppression is identifier-keyed, not contact-keyed, so it needs SOME
@@ -235,7 +247,7 @@ export async function POST(request: Request) {
     // suppression check normalises to before comparing); the raw trimmed
     // value is the fallback of last resort, never silently dropped.
     const identifier = phone ?? rawFrom.trim()
-    const contactId = phone ? await findContactByIdentifiers({ phone }) : null
+    const contactId = phone ? await findContactByIdentifiers({ phone, businessId }) : null
 
     const trimmed = rawBody.trim()
     // Trailing punctuation ("Stop.", "STOP!") must still count as the
@@ -253,7 +265,7 @@ export async function POST(request: Request) {
     const upper = withoutTrailingPunctuation.toUpperCase()
 
     if (STOP_KEYWORDS.has(upper)) {
-      await suppress(identifier, "sms_stop")
+      await suppress(identifier, "sms_stop", businessId)
       if (contactId) {
         await recordConsent({
           contactId,
@@ -261,10 +273,11 @@ export async function POST(request: Request) {
           granted: false,
           source: "sms_inbound",
           wordingShown: rawBody,
+          businessId,
         })
-        // Sanctioned placeholder, not forgotten work: this route has no tenant in scope yet — revisit once it can resolve a business from the inbound number.
-        await exitRunsForContact(contactId, "sms_stop", SINGLETON_BUSINESS_ID)
+        await exitRunsForContact(contactId, "sms_stop", businessId)
         await writeTimelineEvent({
+          businessId,
           contactId,
           kind: "sms_stop_received",
           metadata: { body: capBody(rawBody), from: rawFrom },
@@ -285,7 +298,7 @@ export async function POST(request: Request) {
         // a failed alert here must not turn an already-degraded STOP into a
         // 500, and this webhook's 200 to Twilio must not depend on Resend.
         try {
-          const settings = await getBusinessSettings()
+          const settings = await getBusinessSettings(businessId)
           const rendered = renderSequenceEmail({
             settings,
             subject: "SMS STOP needs manual review",
@@ -309,7 +322,7 @@ export async function POST(request: Request) {
     }
 
     if (START_KEYWORDS.has(upper)) {
-      await unsuppress(identifier)
+      await unsuppress(identifier, businessId)
       if (contactId) {
         await recordConsent({
           contactId,
@@ -317,8 +330,10 @@ export async function POST(request: Request) {
           granted: true,
           source: "sms_inbound",
           wordingShown: rawBody,
+          businessId,
         })
         await writeTimelineEvent({
+          businessId,
           contactId,
           kind: "sms_start_received",
           metadata: { body: capBody(rawBody), from: rawFrom },
@@ -330,6 +345,7 @@ export async function POST(request: Request) {
     if (HELP_KEYWORDS.has(upper)) {
       if (contactId) {
         await writeTimelineEvent({
+          businessId,
           contactId,
           kind: "sms_help_received",
           metadata: { body: capBody(rawBody), from: rawFrom },
@@ -343,6 +359,7 @@ export async function POST(request: Request) {
     // — see the doc comment above for why.
     if (contactId) {
       await writeTimelineEvent({
+        businessId,
         contactId,
         kind: "sms_inbound",
         metadata: { body: capBody(rawBody), from: rawFrom },
@@ -368,7 +385,7 @@ export async function POST(request: Request) {
       // endless Twilio retry. `getBusinessSettings` stays OUTSIDE: a settings
       // read that fails is an infra fault, and a 500 there is the correct,
       // retryable answer.
-      const settings = await getBusinessSettings()
+      const settings = await getBusinessSettings(businessId)
       try {
         const rendered = renderSequenceEmail({
           settings,

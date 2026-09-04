@@ -9,7 +9,6 @@ import {
   updateMembershipBySubscriptionId,
 } from "@/lib/db/client-memberships"
 import { sessionMembershipsEnabled, cardOnFileEnabled } from "@/lib/packs/flags"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 /**
  * Membership lookup that is a no-op when the feature is off. Keeps the four
@@ -48,7 +47,7 @@ import { enqueuePaymentValueAdjustmentByEmail } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
 import { getSetting } from "@/lib/db/system-settings"
 import { FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT } from "@/lib/funnels/checkout/flag"
-import { findContactByIdentifiers } from "@/lib/db/contacts"
+import { findContactByIdentifiers, findContactWithBusinessByIdentifiers } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
@@ -200,10 +199,15 @@ export async function POST(request: Request) {
         try {
           const userId = session.metadata?.userId ?? null
           const email = session.customer_details?.email ?? session.customer_email ?? null
-          const contactId = await findContactByIdentifiers({ userId, email })
-          if (contactId) {
-            // Sanctioned placeholder, not forgotten work: this route has no tenant in scope yet — revisit once it can resolve a business from the checkout.
-            await exitRunsForContact(contactId, "payment", SINGLETON_BUSINESS_ID)
+          // The webhook itself has no tenant -- one Stripe account serves
+          // every business. The payer's contact row supplies it: resolved
+          // ONCE here and threaded through every consequence below, so
+          // exitRunsForContact and applyPipelineEvent never disagree about
+          // which business this sale belongs to.
+          const contact = await findContactWithBusinessByIdentifiers({ userId, email })
+          if (contact) {
+            const { id: contactId, businessId } = contact
+            await exitRunsForContact(contactId, "payment", businessId)
             if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
               // Final review, Important 3: the checkout session id is the
               // source-id idempotency key for the create-with-outcome
@@ -221,6 +225,7 @@ export async function POST(request: Request) {
                   currency: session.currency ?? "usd",
                   occurredAt: new Date(),
                 },
+                businessId,
                 metadata: { stripe_session_id: session.id },
               })
             }

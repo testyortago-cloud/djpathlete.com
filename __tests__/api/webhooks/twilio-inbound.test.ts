@@ -162,6 +162,7 @@ vi.mock("@/lib/lead-engine/email", async (importOriginal) => {
 
 import { renderSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engine/email"
 import { POST } from "@/app/api/webhooks/twilio/inbound/route"
+import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 const AUTH_TOKEN = "route_test_auth_token"
 const ORIGIN = "https://app.example.test"
@@ -177,6 +178,17 @@ const PHONE = "+16176504548" // 617-650-4548
 const CONTACT = "contact-1"
 const OTHER_CONTACT = "contact-2"
 const OTHER_PHONE = "+14158675309" // 415-867-5309
+
+// A business DISTINCT from BUSINESS/SINGLETON_BUSINESS_ID on purpose: BUSINESS
+// above IS the literal SINGLETON_BUSINESS_ID value, which would make any
+// tenancy assertion pass identically against a hardcoded-singleton
+// implementation. OTHER_BUSINESS is how the tests below prove the route
+// actually threads a RESOLVED, non-singleton id through every call.
+const OTHER_BUSINESS = "22222222-2222-2222-2222-222222222222"
+const OTHER_BUSINESS_TO = "+15550002222"
+const OTHER_BUSINESS_PHONE = "+16175559911" // real, libphonenumber-valid
+const OTHER_BUSINESS_CONTACT = "contact-bbb-1"
+const UNCLAIMED_TO = "+15550009999" // no business_settings row claims this
 
 function sign(params: Record<string, string>, authToken = AUTH_TOKEN): string {
   const url = `${ORIGIN}${PATH}`
@@ -196,8 +208,8 @@ function inboundRequest(params: Record<string, string>, opts: { signature?: stri
   })
 }
 
-function smsBody(body: string, from = PHONE): Record<string, string> {
-  return { From: from, To: "+15550001111", Body: body, MessageSid: "SMinbound1" }
+function smsBody(body: string, from = PHONE, to = "+15550001111"): Record<string, string> {
+  return { From: from, To: to, Body: body, MessageSid: "SMinbound1" }
 }
 
 const SETTINGS = {
@@ -662,6 +674,111 @@ describe("POST /api/webhooks/twilio/inbound — infra faults", () => {
 // A status assertion cannot fail on this bug: the route answered 200 the
 // whole time. Only a content-type assertion can.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Tenant resolution (Task 11). The `To` number is the ONLY tenant evidence an
+// inbound SMS carries. These prove the route resolves a REAL, non-singleton
+// business from it via getBusinessBySmsNumber, and threads that SAME value
+// through every sibling call (writeTimelineEvent, exitRunsForContact,
+// findContactByIdentifiers, suppress, recordConsent) rather than resolving it
+// once and defaulting to the singleton for the rest.
+// ---------------------------------------------------------------------------
+describe("POST /api/webhooks/twilio/inbound — tenant resolution", () => {
+  beforeEach(() => {
+    store.businessSettings.push({ ...SETTINGS, business_id: OTHER_BUSINESS, sms_sender_phone: OTHER_BUSINESS_TO })
+    store.contacts.push({
+      id: OTHER_BUSINESS_CONTACT,
+      business_id: OTHER_BUSINESS,
+      email: "other-biz-lead@example.com",
+      phone_e164: OTHER_BUSINESS_PHONE,
+    })
+    store.sequenceRuns.push({
+      id: "run-bbb-1",
+      contact_id: OTHER_BUSINESS_CONTACT,
+      business_id: OTHER_BUSINESS,
+      status: "active",
+    })
+  })
+
+  it("resolves the business from the To number, and stamps it on the timeline row and the exited run", async () => {
+    const res = await POST(inboundRequest(smsBody("STOP", OTHER_BUSINESS_PHONE, OTHER_BUSINESS_TO)))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline).toHaveLength(1)
+    expect(store.timeline[0]).toMatchObject({ contact_id: OTHER_BUSINESS_CONTACT, business_id: OTHER_BUSINESS })
+
+    const theirRun = store.sequenceRuns.find((r) => r.id === "run-bbb-1")
+    expect(theirRun?.status).toBe("exited")
+    // The SINGLETON's own run must be untouched -- proof this is scoped, not
+    // a business-blind exit.
+    const singletonRun = store.sequenceRuns.find((r) => r.id === "run-1")
+    expect(singletonRun?.status).toBe("active")
+
+    expect(store.consents[0]).toMatchObject({ contact_id: OTHER_BUSINESS_CONTACT, business_id: OTHER_BUSINESS })
+    expect(store.suppressions[0]).toMatchObject({ business_id: OTHER_BUSINESS })
+  })
+
+  it("falls back to the platform business when no business claims the To number", async () => {
+    // Correct, not lazy: sms_sender_phone defaults to '' and the singleton's
+    // number lives in env today, so an unmatched number is the ORDINARY case
+    // until a coach's number is configured. The default CONTACT (seeded in
+    // the top-level beforeEach) is on the singleton, so it still matches.
+    const res = await POST(inboundRequest(smsBody("STOP", PHONE, UNCLAIMED_TO)))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline).toHaveLength(1)
+    expect(store.timeline[0]).toMatchObject({ contact_id: CONTACT, business_id: BUSINESS })
+    expect(BUSINESS).toBe(SINGLETON_BUSINESS_ID) // the fixture IS the singleton -- documents the fallback claim
+  })
+
+  // sms_sender_phone is NOT NULL DEFAULT '', so a naive query would match
+  // every business that has not configured a number -- including one that
+  // isn't the platform's own. Seed exactly that trap: a second, unrelated
+  // business row also sitting on ''.
+  it("does NOT look up an empty To number, even when another business's row also has an empty sms_sender_phone", async () => {
+    store.businessSettings.push({
+      ...SETTINGS,
+      business_id: "33333333-3333-3333-3333-333333333333",
+      sms_sender_phone: "",
+    })
+
+    const res = await POST(inboundRequest(smsBody("STOP", PHONE, "")))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline[0]).toMatchObject({ contact_id: CONTACT, business_id: SINGLETON_BUSINESS_ID })
+  })
+
+  it("still answers TwiML when resolving a non-singleton business", async () => {
+    const res = await POST(inboundRequest(smsBody("STOP", OTHER_BUSINESS_PHONE, OTHER_BUSINESS_TO)))
+    expect(res.headers.get("content-type")).toMatch(/xml/)
+  })
+
+  // START and the anything-else path both write through the same resolved
+  // businessId -- proving the threading isn't STOP-only.
+  it("threads the resolved business through START (unsuppress + consent + timeline)", async () => {
+    store.suppressions = [
+      { id: "sup-bbb", business_id: OTHER_BUSINESS, identifier: OTHER_BUSINESS_PHONE.toLowerCase(), reason: "sms_stop" },
+    ]
+    const res = await POST(inboundRequest(smsBody("START", OTHER_BUSINESS_PHONE, OTHER_BUSINESS_TO)))
+
+    expect(res.status).toBe(200)
+    expect(store.suppressions).toHaveLength(0)
+    expect(store.consents[0]).toMatchObject({ contact_id: OTHER_BUSINESS_CONTACT, business_id: OTHER_BUSINESS })
+    expect(store.timeline[0]).toMatchObject({ contact_id: OTHER_BUSINESS_CONTACT, business_id: OTHER_BUSINESS })
+  })
+
+  it("threads the resolved business through the anything-else path, and reads THAT business's settings for the ops alert", async () => {
+    store.businessSettings = store.businessSettings.map((row) =>
+      row.business_id === OTHER_BUSINESS ? { ...row, reply_to: "other-biz-ops@example.test" } : row,
+    )
+    const res = await POST(inboundRequest(smsBody("Can I reschedule?", OTHER_BUSINESS_PHONE, OTHER_BUSINESS_TO)))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline[0]).toMatchObject({ contact_id: OTHER_BUSINESS_CONTACT, business_id: OTHER_BUSINESS })
+    const sendArg = (sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(sendArg.to).toBe("other-biz-ops@example.test")
+  })
+})
+
 describe("POST /api/webhooks/twilio/inbound — Twilio response contract", () => {
   // Every handled branch, not just one: the JSON bug was uniform across all
   // four returns, so a single-branch test would have been green on a route

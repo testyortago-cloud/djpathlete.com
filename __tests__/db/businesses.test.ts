@@ -38,7 +38,7 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-import { createBusiness, listBusinesses, updateBusiness, SlugTakenError } from "@/lib/db/businesses"
+import { createBusiness, listBusinesses, updateBusiness, SlugTakenError, getBusinessBySmsNumber } from "@/lib/db/businesses"
 
 const ROW = {
   id: "b1",
@@ -146,5 +146,54 @@ describe("updateBusiness", () => {
     selectResult = { data: ROW, error: null }
     await updateBusiness("b1", { name: "Renamed" })
     expect(calls.eq).toEqual([["id", "b1"]])
+  })
+})
+
+// The To number is the ONLY tenant evidence an inbound SMS carries. These
+// pin the DAL function directly: the query it builds, and the two ways an
+// unmatched number must NOT be confused with an error.
+describe("getBusinessBySmsNumber", () => {
+  it("resolves the business_id for a matching sms_sender_phone", async () => {
+    selectResult = { data: { business_id: "bbb" }, error: null }
+    const result = await getBusinessBySmsNumber("+15550001111")
+    expect(result).toBe("bbb")
+    expect(calls.eq).toEqual([["sms_sender_phone", "+15550001111"]])
+  })
+
+  it("returns null when no business claims the number (the ordinary case today)", async () => {
+    selectResult = { data: null, error: null }
+    const result = await getBusinessBySmsNumber("+15559999999")
+    expect(result).toBeNull()
+  })
+
+  // sms_sender_phone is NOT NULL DEFAULT '', so a query for '' would match
+  // every business that has not configured a number -- the single worst
+  // possible outcome (every unconfigured business's SMS routes to whichever
+  // one the query happens to return first).
+  it("does NOT query an empty To number", async () => {
+    const result = await getBusinessBySmsNumber("")
+    expect(result).toBeNull()
+    expect(calls.eq).toEqual([])
+  })
+
+  it("does not query a To number that is only whitespace either", async () => {
+    const result = await getBusinessBySmsNumber("   ")
+    expect(result).toBeNull()
+    expect(calls.eq).toEqual([])
+  })
+
+  // PostgREST resolves rather than throwing: {data: null, error} for a
+  // genuine read failure looks identical in shape to {data: null, error:
+  // null} for "nobody configured this number" unless the error is checked.
+  // A failed read must not silently masquerade as "no business claims this
+  // number" -- both return null to the caller (so the SMS webhook still
+  // falls back rather than 500ing), but only the failure logs.
+  it("logs and returns null on a read error, rather than throwing or matching everything", async () => {
+    selectResult = { data: null, error: { code: "42501", message: "permission denied" } }
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const result = await getBusinessBySmsNumber("+15550001111")
+    expect(result).toBeNull()
+    expect(consoleErrorSpy).toHaveBeenCalled()
+    consoleErrorSpy.mockRestore()
   })
 })

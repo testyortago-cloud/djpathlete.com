@@ -157,3 +157,34 @@ export async function updateBusiness(businessId: string, patch: UpdateBusinessPa
   if (error) throw new Error(`updateBusiness failed (${error.code}): ${error.message}`)
   return data as Business
 }
+
+/**
+ * Which business owns this inbound number. The To number is the only tenant
+ * evidence an inbound SMS carries, and business_settings.sms_sender_phone
+ * (00221) already holds it.
+ *
+ * Returns null rather than throwing on no match: an unmatched number is the
+ * ORDINARY case today, because sms_sender_phone is NOT NULL DEFAULT '' and
+ * the platform's own number still lives in the environment. The caller falls
+ * back to the platform business.
+ */
+export async function getBusinessBySmsNumber(toNumber: string): Promise<string | null> {
+  const to = toNumber.trim()
+  // '' would match every business that has not configured a number.
+  if (!to) return null
+  const { data, error } = await getClient()
+    .from("business_settings")
+    .select("business_id")
+    .eq("sms_sender_phone", to)
+    .maybeSingle()
+  if (error) {
+    // Logged, not thrown: a failed read here must not 500 the SMS webhook,
+    // and PostgREST resolves rather than throwing so this is the only
+    // diagnostic. The caller falls back to the platform business -- exactly
+    // the same outcome as "no business claims this number", which is the
+    // correct fail-safe direction for a compliance surface (STOP/START).
+    console.error(`[businesses] getBusinessBySmsNumber failed (${error.code} ${error.message})`)
+    return null
+  }
+  return (data as { business_id: string } | null)?.business_id ?? null
+}

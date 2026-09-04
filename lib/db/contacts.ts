@@ -374,3 +374,54 @@ export async function findContactByIdentifiers(args: {
 
   return null
 }
+
+/**
+ * DELIBERATELY UNSCOPED -- the only contact lookup in this repo with no
+ * business predicate, and it must stay that way. Its caller is a vendor
+ * webhook (one Stripe account serves every business) which has NO tenant in
+ * scope; the contact row it finds is what SUPPLIES the tenant to every
+ * consequence downstream. Do not "fix" this by adding a businessId: a
+ * businessId here would have to be a guess, and the guess is the leak.
+ *
+ * KNOWN AMBIGUITY, stated rather than hidden: two businesses can each hold a
+ * contact with the same email -- a shared lead. Resolution is the OLDEST row
+ * (the first business to know this person) plus a warning, which is
+ * deterministic but not RIGHT. The right fix is stamping business_id into the
+ * Stripe checkout session metadata at creation and preferring it when
+ * present; that touches every checkout creation site and is phase 4.
+ */
+export async function findContactWithBusinessByIdentifiers(args: {
+  email?: string | null
+  userId?: string | null
+}): Promise<{ id: string; businessId: string } | null> {
+  const supabase = getClient()
+
+  const pick = async (column: "user_id" | "email", value: string) => {
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("id, business_id, created_at")
+      .eq(column, value)
+      .order("created_at", { ascending: true })
+    if (error) throw error
+    const rows = (data ?? []) as { id: string; business_id: string }[]
+    if (rows.length === 0) return null
+    if (rows.length > 1) {
+      console.warn(
+        `[contacts] ${rows.length} contacts across businesses match ${column}; taking the oldest (${rows[0].business_id}). ` +
+          `Stamp business_id into the checkout session to remove this ambiguity.`,
+      )
+    }
+    return { id: rows[0].id, businessId: rows[0].business_id }
+  }
+
+  if (args.userId) {
+    const hit = await pick("user_id", args.userId)
+    if (hit) return hit
+  }
+  const email = normaliseEmail(args.email)
+  if (email) {
+    const hit = await pick("email", email)
+    if (hit) return hit
+  }
+  return null
+}
