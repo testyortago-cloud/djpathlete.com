@@ -402,15 +402,29 @@ card says so and does not offer Connect, because there is nothing to attach a ca
 The coach's active event types, from `GET /event_types?user=<uri>&active=true`, each with its name,
 duration and public booking page, and a radio to pick the consult. Choosing one:
 
-1. Writes `event_type_uri` and `scheduling_url`.
-2. Registers the Calendly webhook subscription — `invitee.created` + `invitee.canceled`, scope
+1. Checks everything registering a subscription needs — the signing key, the callback origin, the
+   connection's `calendly_organization_uri` — **before** writing anything.
+2. Writes `event_type_uri` and `scheduling_url`.
+3. Registers the Calendly webhook subscription — `invitee.created` + `invitee.canceled`, scope
    `user`, our platform signing key, pointing at `<origin>/api/webhooks/calendly` — and stores
    `webhook_subscription_uri` and `webhook_state`.
+
+**Step 1 comes first because of what step 2 leaves behind.** `event_type_uri` is UNIQUE, so it has
+to be claimed before the Calendly call (a rejected pick must not leave a subscription we hold no
+handle to). That makes the window between step 2 and a stored `webhook_subscription_uri` a state
+the screen renders as a finished connection: a green **Connected** badge whose only action is
+Disconnect. Any exit inside that window strands the coach on a calendar that will never receive a
+booking — and production has no `CALENDLY_WEBHOOK_SIGNING_KEY`, so an unhoisted check would take
+that path on the very first pick after go-live. For the same reason, a **transient** registration
+failure (the 502 branch) clears `event_type_uri` again, returning the coach to the picker.
 
 **A 403 from that registration means a Free Calendly plan.** That is documented Calendly behaviour
 and is what the `plan_lapsed` status in `00240`'s CHECK exists for. The row goes to `plan_lapsed`
 and the screen says webhooks need a paid Calendly plan (Standard, Teams or Enterprise) — a specific,
-actionable sentence rather than a generic failure the coach cannot act on.
+actionable sentence rather than a generic failure the coach cannot act on. This branch **keeps**
+`event_type_uri`, unlike the transient one above: the `plan_lapsed` card shows the picker with the
+coach's choice already selected, so upgrading and picking again does not mean remembering which
+meeting they chose.
 
 A `23505` on `coach_calendar_connections_event_type_key` means another connection already claims
 that event type. The screen says which, in words: that event type is already connected to another
@@ -419,7 +433,19 @@ coach's calendar.
 ### 6.3 Connected and chosen
 
 Which Calendly account (name and email), which event type, the webhook subscription's state, a
-Disconnect button, and the conflict-check confirmation:
+Disconnect button, and the conflict-check confirmation.
+
+**The subscription's state is re-read on every render, not shown from the row.** `webhook_state` is
+written once, at creation, and Calendly disables a subscription after 24 hours of failed deliveries
+*without changing its uri* — so the stored value is a snapshot of one moment, and rendering it as
+live status is exactly how the card could promise "Calendly tells us as soon as someone books" over
+a subscription that stopped delivering weeks ago. The page therefore makes a third wrapped Calendly
+read, `getWebhookSubscription`, alongside identity and event types, and writes what it learns to
+`webhook_state` + `webhook_checked_at` (its only writer). A 404 records `removed` — our word, since
+Calendly has no state for a subscription it no longer holds. A read that *fails* writes nothing and
+leaves the last known answer standing: "could not check" and "not delivering" are different answers.
+
+The confirmation reads:
 
 > **Check for conflicts** — Calendly only avoids double-booking you if "Check for conflicts" is
 > turned on for the calendar you use. We can't see that setting, so please check it yourself.
@@ -505,7 +531,7 @@ connection rows yet behaves exactly like the old one.
 | Not built | Reason |
 |---|---|
 | Neutral provider-agnostic `Slot` type | One implementation until the native booking path exists; a rename with no second consumer |
-| `webhook_state` refresh cron | The screen checks the subscription when it renders. A cron for one row per coach is a scheduled job to maintain for information already fetched on demand |
+| `webhook_state` refresh cron | The screen checks the subscription when it renders — `getWebhookSubscription` in `app/(admin)/admin/bookings/calendar/page.tsx`, §6.3. A cron for one row per coach is a scheduled job to maintain for information already fetched on demand. The gap this leaves is deliberate and narrow: a subscription that dies is noticed the next time a coach opens the screen, not the moment it dies |
 | Expiry checking in the shared `verifyState` | A real pre-existing gap in three shipped flows (§1.2), named so it is not lost. Fixing it belongs in its own change, not inside a booking feature |
 | `hasPermission` failing open on an unknown key | Known live footgun in `lib/permissions/registry.ts`; unrelated to this seam and worth its own change |
 | Scoping `listGoogleAdsAccounts` | Explicitly its own project; `/admin/ads` is owner-only precisely so this can wait |

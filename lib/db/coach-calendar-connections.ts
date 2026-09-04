@@ -162,6 +162,64 @@ export async function updateCoachCalendarEventType(input: UpdateCoachCalendarEve
   if (error) throw new Error(`updateCoachCalendarEventType failed (${error.code}): ${error.message}`)
 }
 
+/**
+ * Put the connection back where a coach can pick a meeting again.
+ *
+ * `event_type_uri` is claimed BEFORE the webhook subscription is registered
+ * (see the event-type route's header: the uniqueness conflict has to surface
+ * before anything exists in Calendly to clean up). When that registration then
+ * fails for a reason the coach cannot act on, the claim has to be given back —
+ * otherwise the row reads `connected` with a chosen meeting and no
+ * subscription, which the screen renders as a working calendar that will never
+ * receive a booking, and only Disconnect gets out of it.
+ *
+ * DELIBERATELY NOT A `null` OVERLOAD OF updateCoachCalendarEventType. That
+ * function's whole contract is a claim, and its caller matches on the 23505
+ * that a claim can raise; giving away the claim is the opposite operation and
+ * raises nothing.
+ *
+ * NOT for `plan_lapsed`, which deliberately KEEPS the pick so the coach can
+ * upgrade and re-pick with their choice still selected.
+ */
+export async function clearCoachCalendarEventType(connectionId: string): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("coach_calendar_connections")
+    .update({
+      event_type_uri: null,
+      scheduling_url: null,
+      webhook_subscription_uri: null,
+      webhook_state: null,
+      webhook_checked_at: null,
+    })
+    .eq("id", connectionId)
+  if (error) throw new Error(`clearCoachCalendarEventType failed (${error.code}): ${error.message}`)
+}
+
+/**
+ * What Calendly said about the subscription just now, and when we asked.
+ *
+ * `webhook_state` was written once at creation and never again, which made a
+ * frozen snapshot look like live status on the screen — the one failure the
+ * column exists to catch (Calendly disables a subscription after 24 hours of
+ * failed deliveries, silently stopping every booking) was the one it could not
+ * show. `/admin/bookings/calendar` re-reads the subscription on render and
+ * calls this with the answer, which is also the only writer
+ * `webhook_checked_at` has.
+ *
+ * `state` is Calendly's own word (`active` / `disabled`), or `removed` when
+ * Calendly 404s the subscription — we do not invent a Calendly state for a
+ * subscription Calendly no longer has.
+ */
+export async function recordCoachCalendarWebhookState(connectionId: string, state: string): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase
+    .from("coach_calendar_connections")
+    .update({ webhook_state: state, webhook_checked_at: new Date().toISOString() })
+    .eq("id", connectionId)
+  if (error) throw new Error(`recordCoachCalendarWebhookState failed (${error.code}): ${error.message}`)
+}
+
 export async function confirmCoachCalendarConflictCheck(connectionId: string, confirmed: boolean): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase

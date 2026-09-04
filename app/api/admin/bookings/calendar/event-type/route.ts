@@ -18,6 +18,12 @@
 // subscription exists in the coach's Calendly account, or a rejected pick
 // leaves behind a subscription we hold no handle to and can never delete.
 //
+// WHICH MAKES EVERY OTHER CHECK COME BEFORE THE CLAIM, and a failed
+// registration give it back. Between the claim and a stored
+// `webhook_subscription_uri` the row reads as a finished connection, so any
+// exit in that window ships the coach a green "Connected" badge on a calendar
+// that will never receive a booking.
+//
 // AND ONLY REGISTER ONCE. A Calendly subscription is scoped to the USER, not
 // to one event type, so a coach changing which meeting is the consult still
 // has a working subscription. Registering a second one would double every
@@ -31,7 +37,11 @@ import { CalendlyPlanRequiredError, createWebhookSubscription, listEventTypes } 
 import { calendlyWebhookCallbackUrl } from "@/lib/calendly/connect-env"
 import { accessTokenForConnection } from "@/lib/calendly/credentials"
 import { readCalendlySigningKey } from "@/lib/calendly/env"
-import { setCoachCalendarError, updateCoachCalendarEventType } from "@/lib/db/coach-calendar-connections"
+import {
+  clearCoachCalendarEventType,
+  setCoachCalendarError,
+  updateCoachCalendarEventType,
+} from "@/lib/db/coach-calendar-connections"
 import { requireCalendarConnection } from "../connection"
 
 /** Spec §6.2's sentence, verbatim. A coach can act on this one; "something went wrong" they cannot. */
@@ -124,22 +134,14 @@ export const POST = withAudit({ action: "calendar.event_type_selected", category
     return NextResponse.json({ ok: true, eventTypeUri: chosen.uri, schedulingUrl: chosen.schedulingUrl })
   }
 
-  // Claim the event type before anything exists in Calendly to clean up.
-  try {
-    await updateCoachCalendarEventType({
-      connectionId: connection.id,
-      eventTypeUri: chosen.uri,
-      schedulingUrl: chosen.schedulingUrl,
-      webhookSubscriptionUri: null,
-      webhookState: null,
-    })
-  } catch (err) {
-    if (isEventTypeAlreadyClaimed(err)) {
-      return NextResponse.json({ error: ALREADY_CLAIMED_MESSAGE }, { status: 409 })
-    }
-    throw err
-  }
-
+  // EVERY PRECONDITION FOR REGISTERING THE SUBSCRIPTION IS CHECKED BEFORE
+  // ANYTHING IS CLAIMED. The claim has to precede the Calendly call (see the
+  // header), so a check that ran after it would exit having left the row
+  // `connected`, with a meeting chosen and no subscription — which the screen
+  // renders as a finished, working calendar whose only button is Disconnect.
+  // The coach sees a green tick on a calendar that can never receive a
+  // booking. Production has no CALENDLY_WEBHOOK_SIGNING_KEY today, so that is
+  // the path the very first pick after go-live would take, not a corner case.
   const callbackUrl = calendlyWebhookCallbackUrl()
   const signingKey = readCalendlySigningKey()
   if (!callbackUrl || !signingKey) {
@@ -155,6 +157,22 @@ export const POST = withAudit({ action: "calendar.event_type_selected", category
       { error: "Connect your Calendly account again — we did not record which organisation it belongs to." },
       { status: 409 },
     )
+  }
+
+  // Claim the event type before anything exists in Calendly to clean up.
+  try {
+    await updateCoachCalendarEventType({
+      connectionId: connection.id,
+      eventTypeUri: chosen.uri,
+      schedulingUrl: chosen.schedulingUrl,
+      webhookSubscriptionUri: null,
+      webhookState: null,
+    })
+  } catch (err) {
+    if (isEventTypeAlreadyClaimed(err)) {
+      return NextResponse.json({ error: ALREADY_CLAIMED_MESSAGE }, { status: 409 })
+    }
+    throw err
   }
 
   let subscription: { uri: string; state: string }
@@ -174,9 +192,25 @@ export const POST = withAudit({ action: "calendar.event_type_selected", category
       await setCoachCalendarError(connection.id, "plan_lapsed", err.message).catch((writeErr) => {
         console.error("[calendar/event-type] could not record plan_lapsed", writeErr)
       })
+      //
+      // AND THE CLAIM IS KEPT HERE, unlike the transient branch below. The
+      // screen's plan_lapsed card shows the picker with this meeting already
+      // selected, so a coach who upgrades and picks again does not have to
+      // remember which one they chose.
       return NextResponse.json({ error: PLAN_REQUIRED_MESSAGE, status: "plan_lapsed" }, { status: 402 })
     }
     console.error("[calendar/event-type] registering the webhook subscription failed", err)
+    // GIVE THE CLAIM BACK. Nothing exists in Calendly (that is what just
+    // failed) and nothing else releases `event_type_uri`, so keeping it would
+    // strand the coach on a card that says Connected, offers only Disconnect,
+    // and will never receive a booking. Clearing it returns them to the picker,
+    // where the toast this 502 raises tells them to try again.
+    await clearCoachCalendarEventType(connection.id).catch((clearErr) => {
+      console.error(
+        `[calendar/event-type] could not release the event type claim on connection ${connection.id} after a failed registration — the coach is stranded on "connected" with no subscription`,
+        clearErr,
+      )
+    })
     return NextResponse.json(
       { error: "Calendly would not set up booking notifications just now. Try again in a moment." },
       { status: 502 },

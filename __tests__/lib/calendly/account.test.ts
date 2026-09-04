@@ -9,7 +9,8 @@
 import { describe, it, expect, vi } from "vitest"
 import {
   fetchIdentity, listEventTypes, createWebhookSubscription, deleteWebhookSubscription,
-  CalendlyPlanRequiredError,
+  getWebhookSubscription,
+  CalendlyAccountError, CalendlyPlanRequiredError,
 } from "@/lib/calendly/account"
 
 const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })
@@ -38,6 +39,47 @@ describe("createWebhookSubscription", () => {
     expect(sent.events).toEqual(["invitee.created", "invitee.canceled"])
     expect(sent.scope).toBe("user")
     expect(out.uri).toBe("https://api.calendly.com/webhook_subscriptions/W")
+  })
+})
+
+/**
+ * The screen renders this answer as "Calendly tells us as soon as someone
+ * books", so the three outcomes have to stay three outcomes. Calendly disables
+ * a subscription after 24 hours of failed deliveries WITHOUT changing its uri,
+ * which is why the state stored at creation cannot be trusted to still be true.
+ */
+describe("getWebhookSubscription", () => {
+  const WS = "https://api.calendly.com/webhook_subscriptions/W"
+  const get = (fetchImpl: unknown) => getWebhookSubscription({ accessToken: "a", subscriptionUri: WS, fetchImpl: fetchImpl as typeof fetch })
+
+  it("reads back the state Calendly holds NOW, not the one stored at creation", async () => {
+    let calledUrl = ""
+    let calledMethod: string | undefined
+    const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+      calledUrl = url; calledMethod = init.method
+      return ok({ resource: { uri: WS, state: "disabled" } })
+    })
+    expect(await get(fetchImpl)).toEqual({ uri: WS, state: "disabled" })
+    // The uri IS the URL — Calendly's resource uris are absolute, so nothing is joined onto an apiBase.
+    expect(calledUrl).toBe(WS)
+    expect(calledMethod).toBe("GET")
+  })
+
+  it("a subscription Calendly no longer has (404) is null — an answer, not a failure", async () => {
+    await expect(get(vi.fn(async () => new Response("", { status: 404 })))).resolves.toBeNull()
+  })
+
+  it("a 500 THROWS rather than reading as gone — 'could not look' is not 'not there'", async () => {
+    await expect(get(vi.fn(async () => new Response("boom", { status: 500 })))).rejects.toBeInstanceOf(CalendlyAccountError)
+  })
+
+  it("an unexpected body throws rather than inventing a state", async () => {
+    await expect(get(vi.fn(async () => ok({ resource: { uri: WS } })))).rejects.toMatchObject({ reason: "shape" })
+  })
+
+  it("tolerates fields Calendly adds — a new key is not a shape failure", async () => {
+    const fetchImpl = vi.fn(async () => ok({ resource: { uri: WS, state: "active", retry_started_at: null }, extra: 1 }))
+    expect(await get(fetchImpl)).toEqual({ uri: WS, state: "active" })
   })
 })
 

@@ -298,6 +298,50 @@ describe("GET /api/admin/bookings/calendar/connect", () => {
     expect(response.status).toBe(409)
     expect(setCookies(response)).toHaveLength(0)
   })
+
+  // "Connect Calendly" is an <a>, so whatever this route answers is what the
+  // coach LOOKS AT. A JSON body is a blank page of braces — and an install
+  // with no CALENDLY_* variables is what production is today, so this is the
+  // first thing a coach would see, not a corner case.
+  it("an unconfigured server sends the coach back to the screen, not to raw JSON", async () => {
+    vi.stubEnv("CALENDLY_CLIENT_ID", "")
+
+    const response = await CONNECT(connectRequest())
+
+    expect(response.status).toBe(307)
+    const target = redirectTarget(response)
+    expect(target.pathname).toBe("/admin/bookings/calendar")
+    // `reason=config` is the word the page's own flash already reads: "Connecting
+    // Calendly is not set up on this site yet. Ask the person who set up your
+    // account to finish it."
+    expect(target.searchParams.get("calendar")).toBe("error")
+    expect(target.searchParams.get("reason")).toBe("config")
+    // No flow was started, so there is no verifier left behind to reuse.
+    expect(setCookies(response)).toHaveLength(0)
+  })
+
+  it("a missing NEXTAUTH_SECRET lands on the same screen — the redirect does not need it", async () => {
+    vi.stubEnv("NEXTAUTH_SECRET", "")
+
+    const response = await CONNECT(connectRequest())
+
+    expect(response.status).toBe(307)
+    expect(redirectTarget(response).searchParams.get("reason")).toBe("config")
+    expect(setCookies(response)).toHaveLength(0)
+  })
+
+  it("a missing NEXTAUTH_URL still produces a usable target — it is built from the request", async () => {
+    // NEXTAUTH_URL is one of the values readCalendlyConnectConfig needs, so it
+    // is missing exactly when this redirect has to be built without it.
+    vi.stubEnv("NEXTAUTH_URL", "")
+
+    const response = await CONNECT(connectRequest())
+
+    expect(response.status).toBe(307)
+    const target = redirectTarget(response)
+    expect(target.origin).toBe(ORIGIN)
+    expect(target.pathname).toBe("/admin/bookings/calendar")
+  })
 })
 
 describe("GET /api/admin/bookings/calendar/callback — every rejection writes nothing", () => {

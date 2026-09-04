@@ -1,10 +1,10 @@
-// lib/calendly/account.ts — the three Calendly API calls the per-coach
-// connect flow needs once a coach has an OAuth access token: who the token
-// belongs to, what event types they have, and owning the webhook
-// subscription that delivers their bookings to us.
+// lib/calendly/account.ts — the Calendly API calls the per-coach connect flow
+// needs once a coach has an OAuth access token: who the token belongs to, what
+// event types they have, and owning the webhook subscription that delivers
+// their bookings to us -- create it, READ ITS STATE BACK, delete it.
 //
-// These are the same three calls scripts/calendly-setup.mjs already makes by
-// hand with a personal access token (/users/me, /event_types?user=…, POST
+// The first three are the same calls scripts/calendly-setup.mjs already makes
+// by hand with a personal access token (/users/me, /event_types?user=…, POST
 // /webhook_subscriptions) -- that script is where the request and response
 // shapes below were proven, not guessed.
 //
@@ -277,6 +277,57 @@ export async function createWebhookSubscription(
   const parsed = webhookSubscriptionResponseSchema.safeParse(body)
   if (!parsed.success) {
     throw new CalendlyAccountError("shape", "POST /webhook_subscriptions returned an unexpected shape", response.status)
+  }
+
+  return { uri: parsed.data.resource.uri, state: parsed.data.resource.state }
+}
+
+export type GetWebhookSubscriptionArgs = {
+  accessToken: string
+  /** The absolute uri Calendly handed back at creation, stored on the connection row. */
+  subscriptionUri: string
+  fetchImpl?: typeof fetch
+}
+
+/**
+ * Read ONE subscription back -- the only way to learn whether Calendly is
+ * still delivering. Calendly disables a subscription after 24 hours of failed
+ * deliveries and the uri is UNCHANGED when it does, so the `state` stored at
+ * creation is a snapshot of one moment, not a status. This is what re-reads it.
+ *
+ * `null` means Calendly no longer has this subscription (404) -- a real
+ * answer, and a different one from "we could not look", which throws. Same
+ * split as findCoachCalendarConnectionByEventType: conflating them would let a
+ * transient outage be recorded as "bookings have stopped".
+ *
+ * The uri is used as the URL directly, exactly as deleteWebhookSubscription
+ * does -- Calendly's resource uris are absolute, so there is no apiBase to
+ * join them onto.
+ */
+export async function getWebhookSubscription(
+  args: GetWebhookSubscriptionArgs,
+): Promise<{ uri: string; state: string } | null> {
+  const fetchImpl = args.fetchImpl ?? fetch
+  const response = await rawFetch(fetchImpl, args.subscriptionUri, {
+    method: "GET",
+    headers: authHeaders(args.accessToken),
+  })
+
+  if (response.status === 404) return null
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "")
+    throw new CalendlyAccountError(
+      "http",
+      `GET ${args.subscriptionUri} answered ${response.status} ${text}`,
+      response.status,
+    )
+  }
+
+  const body = await parseJson(response, `GET ${args.subscriptionUri}`)
+  const parsed = webhookSubscriptionResponseSchema.safeParse(body)
+  if (!parsed.success) {
+    throw new CalendlyAccountError("shape", `GET ${args.subscriptionUri} returned an unexpected shape`, response.status)
   }
 
   return { uri: parsed.data.resource.uri, state: parsed.data.resource.state }

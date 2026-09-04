@@ -18,6 +18,14 @@
 //
 // Nothing is written to the database here. A coach who abandons the consent
 // screen leaves no trace but two cookies that expire in ten minutes.
+//
+// A MISSING CONFIGURATION REDIRECTS; IT DOES NOT ANSWER JSON. "Connect
+// Calendly" is an <a>, not a fetch, so a JSON body is a blank page of braces
+// in the coach's browser — and an install with no CALENDLY_* variables is not
+// a corner case, it is what production is today. The coach goes back to the
+// screen they came from with `reason=config`, which that page already turns
+// into a sentence naming what to do. The permission refusals stay JSON, the
+// same way the callback's do: there is no screen that caller is entitled to.
 
 import { randomBytes } from "node:crypto"
 
@@ -27,6 +35,25 @@ import { resolveCalendarAccess } from "@/lib/bookings/calendar-access"
 import { buildAuthorizationUrl, createPkcePair, signState } from "@/lib/calendly/oauth"
 import { readCalendlyConnectConfig } from "@/lib/calendly/connect-env"
 import { CALENDAR_COOKIE_MAX_AGE_SECONDS, CALENDAR_COOKIE_PATH, NONCE_COOKIE, VERIFIER_COOKIE } from "../cookies"
+
+/** The screen the coach clicked Connect on, and the only place this route sends them on a failure. */
+const CALENDAR_SCREEN = "/admin/bookings/calendar"
+
+/**
+ * Back to the calendar screen, saying why. `reason=config` is the callback
+ * route's own word for the same fault, and the page's `flashFor` already reads
+ * it: "Connecting Calendly is not set up on this site yet. Ask the person who
+ * set up your account to finish it."
+ *
+ * The target is built from the request's own URL rather than NEXTAUTH_URL,
+ * because a missing NEXTAUTH_URL is one of the faults this answers.
+ */
+function misconfigured(request: Request): NextResponse {
+  const url = new URL(CALENDAR_SCREEN, request.url)
+  url.searchParams.set("calendar", "error")
+  url.searchParams.set("reason", "config")
+  return NextResponse.redirect(url)
+}
 
 export async function GET(request: Request) {
   const access = await resolveCalendarAccess(request)
@@ -41,13 +68,12 @@ export async function GET(request: Request) {
   }
 
   const config = readCalendlyConnectConfig()
-  if (!config) {
-    return NextResponse.json({ error: "Connecting Calendly is not configured on this server yet." }, { status: 500 })
-  }
-
   const secret = process.env.NEXTAUTH_SECRET
-  if (!secret) {
-    return NextResponse.json({ error: "Connecting Calendly is not configured on this server yet." }, { status: 500 })
+  if (!config || !secret) {
+    console.error(
+      "[calendar/connect] CALENDLY_CLIENT_ID / CALENDLY_CLIENT_SECRET / NEXTAUTH_URL / NEXTAUTH_SECRET are not configured",
+    )
+    return misconfigured(request)
   }
 
   const { verifier, challenge } = createPkcePair()

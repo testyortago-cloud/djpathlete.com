@@ -40,8 +40,10 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     via platformHostId() below. Not a caller that cannot resolve: the GHL
  *     calendar is the one Calendly REPLACES, it will never be per-coach, and
  *     so the platform's own host is the right answer rather than a placeholder
- *     awaiting a later phase. The Calendly webhook stopped calling it in
- *     phase 2, when a connection row began carrying the host.
+ *     awaiting a later phase. In phase 2 the Calendly webhook ROUTE stopped
+ *     calling it directly — a connection row now carries the host — but its
+ *     resolver still does, on the ramp described below. This is not the only
+ *     remaining caller.
  *
  * A NARROWER VARIANT OF THE SAME SEAM -- the caller DOES attempt a real
  * resolution first, and only reaches this as the fallback when that lookup

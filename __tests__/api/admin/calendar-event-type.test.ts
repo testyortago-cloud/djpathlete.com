@@ -31,6 +31,7 @@ type Connection = Record<string, unknown> | null
 let connection: Connection = null
 const updateCalls: Array<Record<string, unknown>> = []
 let updateImpl: (input: Record<string, unknown>) => Promise<void> = async () => {}
+const clearCalls: string[] = []
 const disconnectCalls: string[] = []
 const setErrorCalls: Array<[string, string, string]> = []
 const confirmCalls: Array<[string, boolean]> = []
@@ -41,6 +42,10 @@ vi.mock("@/lib/db/coach-calendar-connections", () => ({
     callLog.push("updateCoachCalendarEventType")
     updateCalls.push(input)
     return updateImpl(input)
+  },
+  clearCoachCalendarEventType: async (connectionId: string) => {
+    callLog.push("clearCoachCalendarEventType")
+    clearCalls.push(connectionId)
   },
   disconnectCoachCalendar: async (hostId: string) => {
     callLog.push("disconnectCoachCalendar")
@@ -190,6 +195,7 @@ function getRequest(path: string) {
 beforeEach(() => {
   callLog.length = 0
   updateCalls.length = 0
+  clearCalls.length = 0
   disconnectCalls.length = 0
   setErrorCalls.length = 0
   confirmCalls.length = 0
@@ -393,6 +399,86 @@ describe("POST /api/admin/bookings/calendar/event-type", () => {
     )
     expect(response.status).toBe(403)
     expect(updateCalls).toHaveLength(0)
+  })
+
+  // WHAT THE ROW LOOKS LIKE AFTERWARDS IS THE ASSERTION, not the status code.
+  // `event_type_uri` is claimed before the Calendly call, and between that
+  // claim and a stored subscription uri the screen renders a green "Connected"
+  // badge whose only action is Disconnect. So every way this route can exit in
+  // that window has to be pinned: the state it leaves is what a coach is stuck
+  // with, and no status-code assertion can see it.
+  describe("what a failed pick leaves behind", () => {
+    it("an unconfigured server claims NOTHING — the check happens before the write", async () => {
+      // Exactly production today: no CALENDLY_* variables at all.
+      vi.stubEnv("CALENDLY_WEBHOOK_SIGNING_KEY", "")
+
+      const response = await SELECT_EVENT_TYPE(
+        jsonRequest("/api/admin/bookings/calendar/event-type", { eventTypeUri: ET1 }),
+        routeContext,
+      )
+
+      expect(response.status).toBe(500)
+      // The row is untouched, so the screen still shows the picker rather than
+      // a Connected badge over a calendar that can never receive a booking.
+      expect(updateCalls).toHaveLength(0)
+      expect(clearCalls).toHaveLength(0)
+      expect(createSubCalls).toHaveLength(0)
+    })
+
+    it("a connection with no organisation uri claims NOTHING either", async () => {
+      connection = connectedRow({ calendly_organization_uri: null })
+
+      const response = await SELECT_EVENT_TYPE(
+        jsonRequest("/api/admin/bookings/calendar/event-type", { eventTypeUri: ET1 }),
+        routeContext,
+      )
+
+      expect(response.status).toBe(409)
+      expect(updateCalls).toHaveLength(0)
+      expect(createSubCalls).toHaveLength(0)
+    })
+
+    it("a transient registration failure gives the claim back, returning the coach to the picker", async () => {
+      const { CalendlyAccountError } =
+        await vi.importActual<typeof import("@/lib/calendly/account")>("@/lib/calendly/account")
+      createSubImpl = async () => {
+        throw new CalendlyAccountError("http", "POST /webhook_subscriptions answered 500", 500)
+      }
+
+      const response = await SELECT_EVENT_TYPE(
+        jsonRequest("/api/admin/bookings/calendar/event-type", { eventTypeUri: ET1 }),
+        routeContext,
+      )
+
+      expect(response.status).toBe(502)
+      // Claimed, then released — and released AFTER the failed registration,
+      // not instead of the claim.
+      expect(updateCalls).toHaveLength(1)
+      expect(clearCalls).toEqual(["conn-1"])
+      expect(callLog.indexOf("createWebhookSubscription")).toBeLessThan(callLog.indexOf("clearCoachCalendarEventType"))
+      // Nothing was recorded as a subscription, so Disconnect has nothing to chase.
+      expect(updateCalls[0]).toMatchObject({ webhookSubscriptionUri: null })
+    })
+
+    it("a Free plan KEEPS the pick, so upgrading and re-picking does not start over", async () => {
+      const { CalendlyPlanRequiredError } =
+        await vi.importActual<typeof import("@/lib/calendly/account")>("@/lib/calendly/account")
+      createSubImpl = async () => {
+        throw new CalendlyPlanRequiredError()
+      }
+
+      const response = await SELECT_EVENT_TYPE(
+        jsonRequest("/api/admin/bookings/calendar/event-type", { eventTypeUri: ET1 }),
+        routeContext,
+      )
+
+      expect(response.status).toBe(402)
+      // The control for the test above: plan_lapsed and transient are the two
+      // branches of the same catch, and only one of them releases the claim.
+      expect(clearCalls).toHaveLength(0)
+      expect(updateCalls[0]).toMatchObject({ eventTypeUri: ET1 })
+      expect(setErrorCalls[0][1]).toBe("plan_lapsed")
+    })
   })
 })
 
