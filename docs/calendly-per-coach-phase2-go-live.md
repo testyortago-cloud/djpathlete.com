@@ -62,6 +62,26 @@ Click **OAuth → Get started here**, which lands on
 mismatch is the single most common failure here, and Calendly reports it as a redirect-uri error
 rather than anything that names the real cause.
 
+### Scopes — tick exactly these five, and nothing else
+
+Calendly's form presents ~19 granular scopes. The coach sees this list on the consent screen, so
+asking for more than we use is both a bad look and a real risk with no upside. This build calls
+four Calendly endpoints in total, and these five cover all of them:
+
+| Scope | The call it covers |
+|---|---|
+| `users:read` | `GET /users/me` — the callback reads which account just connected |
+| `event_types:read` | `GET /event_types` — lists the coach's meetings so they can pick the consult |
+| `availability:read` | `GET /event_type_available_times` — the free times the website chat quotes |
+| `webhooks:write` | `POST` + `DELETE /webhook_subscriptions` — booking notifications on, and off on disconnect |
+| `webhooks:read` | `GET /webhook_subscriptions/{id}` — the check that reveals a feed Calendly has disabled |
+
+Two that look tempting and are not needed:
+
+- **`scheduled_events:read` — no.** Bookings arrive by webhook. We never poll for them.
+- **`contacts:*` — no.** Contacts in this app are built from the booking payload; we never touch
+  Calendly's own contact records.
+
 Copy the **Client ID** and **Client Secret** from the credentials page.
 **The secret is shown once.** If you lose it you must rotate it.
 

@@ -78,7 +78,7 @@ and someone will read it again.
 | **Reusing an outdated refresh token returns HTTP 400/401 with `invalid_grant`.** | `invalid_grant` is the one refresh failure that means "genuinely dead" → `needs_reconnect`. Every other failure leaves status alone. |
 | **Access tokens last ~2 hours.** | Refresh proactively off `access_token_expires_at`, not reactively off a 401. |
 | **PKCE is supported with `S256`** (`code_challenge_methods_supported: ["S256"]` in Calendly's published authorization-server metadata). | §4 uses real PKCE. |
-| **Calendly publishes no granular scopes** — the metadata document has no `scopes_supported`, and a token carries the authorizing user's own permissions. | `granted_scopes` stays an **empty array**. Writing a fabricated scope list into a column named `granted_scopes` would be worse than leaving it empty: a later reader would trust it. |
+| ~~**Calendly publishes no granular scopes**~~ — **WRONG, corrected 2026-09-05.** Calendly's OAuth app-creation form presents ~19 granular scopes across six groups (Scheduling, Contacts, Notetaker, Security & Compliance, Webhooks, and users). I inferred their absence from the published `.well-known/oauth-authorization-server` document having no `scopes_supported` field — but that absence only means the metadata does not advertise them. **An absent metadata field is not evidence of an absent feature.** | Scopes are declared **on the app** at creation time, not per authorize request, so `buildAuthorizationUrl` sending no `scope` parameter remains correct. The five this build needs are in the go-live runbook. `granted_scopes` still ships empty — see below. |
 | **The webhook signing key is chosen by us at subscription time**, not issued by Calendly. | One platform key for all coaches is the existing model, not a compromise introduced here. |
 | **Webhook subscriptions require a paid Calendly plan**; `POST /webhook_subscriptions` answers **403** on a Free account. | This is the documented meaning of the `plan_lapsed` status already in `00240`'s CHECK constraint. |
 
@@ -103,6 +103,10 @@ against a live client during implementation rather than asserted here.
 - **`singletonHostId` has two production callers, not one.** `app/api/webhooks/calendly/route.ts:211`
   and `app/api/webhooks/ghl-booking/route.ts:127`. The comment above it says "phase 2 removes its
   only two call sites"; that is true of the *Calendly* one only.
+- **`granted_scopes` still ships empty, and that is now a known gap rather than a principled choice.**
+  It was left empty because I believed there were no scopes to record. Now that scopes exist, the
+  honest fix is to store what the token response actually grants. Deferred, not forgotten: nothing
+  reads the column yet, so an empty one misleads no code — only a future reader.
 - **`SINGLETON_BUSINESS_ID` is in 26 production files** on `3d688a01` — 61 including 32 test files
   and 3 scripts. An earlier handoff said 25; an earlier draft of this document said 28, and that
   was my own measurement error, recorded here rather than quietly amended. `git grep -l <rev>`
