@@ -122,8 +122,29 @@ vercel env add CALENDLY_SCHEDULING_URL production
 ```
 
 The Personal Access Token comes from Calendly → **Integrations & apps → API & webhooks →
-Personal Access Tokens**. It is a different thing from the OAuth app, and it describes only
-Darren's own account.
+Get a token now**. It is a different thing from the OAuth app.
+
+**Two traps, both hit for real on 2026-09-05:**
+
+1. **The variable is `CALENDLY_API_TOKEN`.** Not `CALENDLY_PERSONAL_ACCESS_TOKEN`, which is what
+   Calendly's own UI calls it. Nothing reads that name, so a token stored under it sits there
+   looking configured and doing nothing.
+2. **The token IS an identity — it must be the coach's own account.** An OAuth app is a container
+   and it is fine for it to live under whoever created it; the coach connects *through* it by
+   signing in as themselves. A Personal Access Token is the opposite: it says whose calendar the
+   public website quotes. The first token supplied here belonged to the developer's account
+   (`calendly.com/tayawaaean`, one default "30 Minute Meeting"), and wiring it in would have had
+   darrenjpaul.com offering the wrong person's availability. **A PAT can only be created from
+   inside the account it belongs to** — you cannot mint one for someone else, even within your own
+   organization. The coach has to sign in and make it.
+
+**Always run the setup script against a new token before storing it.** Its first line prints whose
+account the token belongs to, which turns a silent wrong-account mistake into an obvious one:
+
+```
+Token belongs to: <name> <email>
+scheduling page:  https://calendly.com/<handle>
+```
 
 To find the two URIs, with `CALENDLY_API_TOKEN` in your local `.env.local`:
 
