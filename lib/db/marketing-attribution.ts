@@ -126,20 +126,37 @@ export async function claimAttribution(
 }
 
 /**
- * Look up a recent attribution row for an email-match fallback (used by GHL
- * booking webhook when gclid is missing in the payload). Joins through
- * users.email — only finds rows that were claimed by a user with this email.
+ * Attribution for a contact, keyed on the contact's OWN user_id.
+ *
+ * marketing_attribution has no business_id and cannot get one in this phase:
+ * captureAttribution runs in proxy.ts, where the tenant is not resolved until
+ * phase 4, and a column with no correct writer is a labelling gap rather than
+ * a feature. So the tenant safety here comes from HOW the userId was obtained
+ * -- the caller resolved it from a contact of its own business.
+ *
+ * The old `users!inner(email)` join is gone, and nothing is lost by it:
+ * marketing_attribution.user_id is nullable with a partial index
+ * (00101:7,25), so that join only ever matched rows already CLAIMED by a
+ * registered user. A contact with no user_id had no match then either -- and
+ * an EMAIL match besides was a cross-tenant path once two coaches can share a
+ * lead: a click id captured on coach A's funnel would attach to coach B's
+ * contact the moment that shared lead typed the same address into both.
+ * user_id is unique to one account, never shared across businesses the way an
+ * email string can be, so keying on it removes that path with no schema
+ * change.
+ *
+ * The 30-day default window is unchanged -- it is a settled decision.
  */
-export async function findAttributionByEmail(
-  email: string,
-  withinDays = 30,
-): Promise<MarketingAttribution | null> {
+export async function findAttributionForContact(args: {
+  userId: string
+  withinDays?: number
+}): Promise<MarketingAttribution | null> {
   const supabase = getClient()
-  const since = new Date(Date.now() - withinDays * 86_400_000).toISOString()
+  const since = new Date(Date.now() - (args.withinDays ?? 30) * 86_400_000).toISOString()
   const { data, error } = await supabase
     .from("marketing_attribution")
-    .select("*, users!inner(email)")
-    .eq("users.email", email.toLowerCase().trim())
+    .select("*")
+    .eq("user_id", args.userId)
     .gte("first_seen_at", since)
     .order("first_seen_at", { ascending: false })
     .limit(1)

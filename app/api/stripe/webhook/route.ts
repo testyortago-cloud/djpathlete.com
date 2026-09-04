@@ -20,7 +20,7 @@ async function membershipForSub(subscriptionId: string) {
   return getMembershipBySubscriptionId(subscriptionId)
 }
 import { createPayment, getPaymentByStripeId, updatePayment } from "@/lib/db/payments"
-import { findAttributionByEmail } from "@/lib/db/marketing-attribution"
+import { findAttributionForContact } from "@/lib/db/marketing-attribution"
 import { createAssignment, getAssignmentByUserAndProgram, updateAssignment } from "@/lib/db/assignments"
 import { updateWeekAccess, createWeekAccessBulk } from "@/lib/db/week-access"
 import { createSubscription, getSubscriptionByStripeId, updateSubscriptionByStripeId } from "@/lib/db/subscriptions"
@@ -468,9 +468,15 @@ interface TrackingValues {
   fbclid: string | null
 }
 
+// Keyed on the BUYER'S OWN userId, not their email — see
+// findAttributionForContact's docstring for why an email match is a
+// cross-tenant path once two coaches can share a lead. Every call site below
+// already has (or can cheaply resolve) the real userId a payment is being
+// recorded against, so there is no email-vs-userId trade here: the same
+// account is what user_id names.
 async function resolveTrackingParams(
   sessionMetadata: Record<string, string>,
-  customerEmail: string | null | undefined,
+  userId: string | null,
 ): Promise<TrackingValues> {
   // Use || (not ??) so empty strings from Stripe metadata are treated as missing
   let gclid  = sessionMetadata.gclid  || null
@@ -478,8 +484,8 @@ async function resolveTrackingParams(
   let wbraid = sessionMetadata.wbraid || null
   let fbclid = sessionMetadata.fbclid || null
 
-  if (!gclid && customerEmail) {
-    const attr = await findAttributionByEmail(customerEmail).catch(() => null)
+  if (!gclid && userId) {
+    const attr = await findAttributionForContact({ userId }).catch(() => null)
     if (attr) {
       gclid  = attr.gclid
       gbraid = gbraid || attr.gbraid
@@ -507,7 +513,7 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
     if (existing) return
     const customerEmail = session.customer_details?.email
     const resolvedUserId = await tryResolveUserIdFromEmail(customerEmail)
-    const tracking = await resolveTrackingParams(session.metadata ?? {}, customerEmail)
+    const tracking = await resolveTrackingParams(session.metadata ?? {}, resolvedUserId)
     await createPayment({
       user_id: resolvedUserId,
       stripe_payment_id: stripePaymentId,
@@ -530,7 +536,7 @@ async function handleOneTimeCheckout(session: Stripe.Checkout.Session) {
   const existing = await getPaymentByStripeId(stripePaymentId)
   if (existing) return
 
-  const tracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
+  const tracking = await resolveTrackingParams(session.metadata ?? {}, userId)
   await createPayment({
     user_id: userId,
     stripe_payment_id: stripePaymentId,
@@ -607,7 +613,7 @@ async function handleWeekAccessCheckout(session: Stripe.Checkout.Session) {
   })
 
   // Record payment
-  const weekTracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
+  const weekTracking = await resolveTrackingParams(session.metadata ?? {}, userId)
   await createPayment({
     user_id: userId,
     stripe_payment_id: stripePaymentId,
@@ -695,7 +701,7 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
     if (stripePaymentId) {
       const existingPayment = await getPaymentByStripeId(stripePaymentId)
       if (!existingPayment) {
-        const extTracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
+        const extTracking = await resolveTrackingParams(session.metadata ?? {}, resolvedUserId)
         await createPayment({
           user_id: resolvedUserId,
           stripe_payment_id: stripePaymentId,
@@ -783,7 +789,7 @@ async function handleSubscriptionCheckout(session: Stripe.Checkout.Session) {
   if (stripePaymentId) {
     const existingPayment = await getPaymentByStripeId(stripePaymentId)
     if (!existingPayment) {
-      const subTracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
+      const subTracking = await resolveTrackingParams(session.metadata ?? {}, userId)
       await createPayment({
         user_id: userId,
         stripe_payment_id: stripePaymentId,
@@ -1156,7 +1162,7 @@ async function handleSessionPackCheckout(session: Stripe.Checkout.Session) {
   if (stripePaymentId) {
     const existing = await getPaymentByStripeId(stripePaymentId)
     if (!existing) {
-      const tracking = await resolveTrackingParams(session.metadata ?? {}, session.customer_details?.email)
+      const tracking = await resolveTrackingParams(session.metadata ?? {}, pkg.client_user_id)
       await createPayment({
         user_id: pkg.client_user_id,
         stripe_payment_id: stripePaymentId,
@@ -1227,9 +1233,9 @@ async function recordEventSignupPayment(
   if (existing) return
 
   const customerEmail = session.customer_details?.email ?? signup?.parent_email ?? null
-  const tracking = await resolveTrackingParams(session.metadata ?? {}, customerEmail)
   const resolvedUserId =
     signup?.user_id ?? (customerEmail ? await tryResolveUserIdFromEmail(customerEmail) : null)
+  const tracking = await resolveTrackingParams(session.metadata ?? {}, resolvedUserId)
 
   await createPayment({
     user_id: resolvedUserId,
@@ -1463,9 +1469,10 @@ async function handleFunnelPurchaseCheckout(session: Stripe.Checkout.Session) {
   if (paymentIntentId) {
     const existingPayment = await getPaymentByStripeId(paymentIntentId)
     if (!existingPayment) {
-      const tracking = await resolveTrackingParams(session.metadata ?? {}, email)
+      const grantedUserId = result.ok && result.userId !== "" ? result.userId : null
+      const tracking = await resolveTrackingParams(session.metadata ?? {}, grantedUserId)
       await createPayment({
-        user_id: result.ok && result.userId !== "" ? result.userId : null,
+        user_id: grantedUserId,
         stripe_payment_id: paymentIntentId,
         stripe_customer_id: (session.customer as string) ?? null,
         amount_cents: session.amount_total ?? 0,

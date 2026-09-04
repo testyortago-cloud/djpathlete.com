@@ -71,7 +71,7 @@ vi.mock("@/lib/db/payments", () => ({
   getPaymentByStripeId: (...a: unknown[]) => mocks.getPaymentByStripeId(...a),
   updatePayment: vi.fn(),
 }))
-vi.mock("@/lib/db/marketing-attribution", () => ({ findAttributionByEmail: vi.fn(async () => null) }))
+vi.mock("@/lib/db/marketing-attribution", () => ({ findAttributionForContact: vi.fn(async () => null) }))
 vi.mock("@/lib/db/assignments", () => ({
   createAssignment: vi.fn(),
   getAssignmentByUserAndProgram: vi.fn(),

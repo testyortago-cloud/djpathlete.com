@@ -1,25 +1,64 @@
 // @vitest-environment node
 //
-// The pure half of the contact detail screen: the booking match, the timeline
-// merge, and the per-kind describer.
+// The pure half of the contact detail screen: the timeline merge and the
+// per-kind describer. Plus (Task 13) a mocked-database suite for
+// `getContactDetail`'s bookings read, which used to be an in-memory
+// identifier match and is now a join on `contact_id`.
 //
 // NODE ENVIRONMENT, PINNED. Every jsdom suite in this repo currently cannot
 // start — `require() of ES Module ... html-encoding-sniffer` — and vitest
 // reports that as "Test Files no tests" rather than as a failure. A jsdom suite
 // here would look green while executing nothing.
 //
-// These three functions are exported and tested directly, rather than only
-// through `getContactDetail`, because they are where the screen can be wrong in
-// ways that still render: a booking match that is too loose puts a DIFFERENT
-// person's calls on this record, and a merge that drops a source silently omits
-// the money.
-import { describe, expect, it } from "vitest"
+// mergeTimeline and describeTimelineEvent are exported and tested directly,
+// rather than only through `getContactDetail`, because a merge that drops a
+// source silently omits the money.
+import { beforeEach, describe, expect, it, vi } from "vitest"
+
+// ---------------------------------------------------------------------------
+// getContactDetail's supabase double
+// ---------------------------------------------------------------------------
+// One fake `.from(table)` handler shared by every parallel read
+// getContactDetail issues. It records every `.eq()`/`.in()`/`.order()`/
+// `.limit()` call PER TABLE (an argument-blind `eq: () => chain` tolerates a
+// wrong-tenant mutant silently — see contacts-list.test.ts's own header for
+// the same lesson), and resolves with a per-table canned result. Every table
+// except "bookings" returns an empty result by default: this suite's claim is
+// about the bookings read alone, and an unscoped return elsewhere would just
+// be noise.
+type Op = [string, ...unknown[]]
+const opsByTable: Record<string, Op[]> = {}
+let bookingsResult: { data: unknown; error: unknown } = { data: [], error: null }
+const EMPTY = { data: [], error: null }
+
+function makeBuilder(table: string, result: unknown) {
+  const ops: Op[] = (opsByTable[table] ??= [])
+  const builder: Record<string, unknown> = {}
+  for (const method of ["eq", "in", "order", "limit"]) {
+    builder[method] = (...args: unknown[]) => {
+      ops.push([method, ...args] as Op)
+      return builder
+    }
+  }
+  builder.then = (resolve: (value: unknown) => void) => resolve(result)
+  return builder
+}
+
+vi.mock("@/lib/supabase", () => ({
+  createServiceRoleClient: () => ({
+    from: (table: string) => ({
+      select: () => makeBuilder(table, table === "bookings" ? bookingsResult : EMPTY),
+    }),
+  }),
+}))
+
 import {
-  bookingMatchesContact,
   describeTimelineEvent,
   formatMoney,
+  getContactDetail,
   mergeTimeline,
   type BookingRow,
+  type ContactRecord,
   type PaymentRow,
   type TimelineEventRow,
 } from "@/lib/db/contact-detail"
@@ -48,8 +87,6 @@ function payment(over: Partial<PaymentRow> & { id: string }): PaymentRow {
 
 function booking(over: Partial<BookingRow> & { id: string }): BookingRow {
   return {
-    contact_email: "jane@example.com",
-    contact_phone: "(813) 555-0142",
     booking_date: "2026-08-21T14:00:00.000Z",
     duration_minutes: 30,
     status: "scheduled",
@@ -59,130 +96,83 @@ function booking(over: Partial<BookingRow> & { id: string }): BookingRow {
   }
 }
 
-describe("bookingMatchesContact", () => {
-  // THE REGRESSION THIS FUNCTION EXISTS FOR. `bookings.contact_phone` is stored
-  // in US national format exactly as GoHighLevel sent it, while
-  // `contacts.phone_e164` holds E.164. A `.eq()` between the two columns
-  // matches nothing, forever, and renders as "never booked a call".
-  it("matches a national-format booking phone against an E.164 contact phone", () => {
-    expect(
-      bookingMatchesContact({ contact_email: "someone.else@example.com", contact_phone: "(813) 555-0142" }, {
-        email: "jane@example.com",
-        phone: "+18135550142",
-      }),
-    ).toBe(true)
+// Distinct from SINGLETON_BUSINESS_ID on purpose — see this branch's own
+// fixture-hazard note: a "business" value that IS the singleton makes a
+// tenancy assertion pass regardless of whether the code scopes at all.
+const BUSINESS = "22222222-2222-2222-2222-222222222222"
+
+function contact(over: Partial<ContactRecord> & { id: string }): ContactRecord {
+  return {
+    business_id: BUSINESS,
+    user_id: null,
+    name: "Jane Contact",
+    email: null,
+    phone_e164: null,
+    created_at: "2026-08-01T00:00:00.000Z",
+    updated_at: "2026-08-01T00:00:00.000Z",
+    timezone: null,
+    ...over,
+  }
+}
+
+describe("getContactDetail — bookings join on contact_id (Task 13)", () => {
+  beforeEach(() => {
+    for (const key of Object.keys(opsByTable)) delete opsByTable[key]
+    bookingsResult = { data: [], error: null }
   })
 
-  it("matches a mixed-case booking email against a lowercased contact email", () => {
-    expect(
-      bookingMatchesContact({ contact_email: "Jane@Example.COM", contact_phone: null }, {
-        email: "jane@example.com",
-        phone: null,
-      }),
-    ).toBe(true)
+  // MUTATION 1 target: drop `.eq("business_id", businessId)` from the read.
+  // MUTATION 2 target: drop `.eq("contact_id", contact.id)` from the read.
+  // Either one leaves this assertion unsatisfied — pinning the VALUE, not
+  // merely that "some eq() happened" (an argument-blind chain would tolerate
+  // a wrong-tenant mutant silently).
+  it("scopes the bookings read to the business AND joins on contact_id", async () => {
+    await getContactDetail(contact({ id: "c1", business_id: BUSINESS }))
+    const ops = opsByTable["bookings"]
+    expect(ops).toContainEqual(["eq", "business_id", BUSINESS])
+    expect(ops).toContainEqual(["eq", "contact_id", "c1"])
   })
 
-  // THE DISCLOSURE GUARD. `_` and `%` are LIKE wildcards and both are legal in
-  // the emails EMAIL_RE accepts, so an `.ilike()` implementation would match
-  // `axb@x.com` for a contact whose address is `a_b@x.com` — putting a second
-  // person's booked calls on this person's record.
-  it("does NOT treat an underscore in an email as a wildcard", () => {
-    expect(
-      bookingMatchesContact({ contact_email: "axb@x.com", contact_phone: null }, {
-        email: "a_b@x.com",
-        phone: null,
-      }),
-    ).toBe(false)
+  // MUTATION 3 target: revert the read to the old in-memory email/phone
+  // comparison. This booking's stored email and phone BOTH mismatch the
+  // contact's own — the old `bookingMatchesContact` would exclude it, and
+  // only the contact_id join includes it. A test that used a booking whose
+  // identifiers happen to agree could not tell the two mechanisms apart.
+  it("includes a booking whose stored email/phone differ from the contact's own, because it matches by contact_id", async () => {
+    bookingsResult = {
+      data: [
+        booking({
+          id: "book-mismatched-email",
+          // These two fields don't exist on the new SELECT at all any more —
+          // included here only to prove that even if a reverted
+          // implementation looked at them, they would NOT match.
+          ...({ contact_email: "totally-different@example.com", contact_phone: "+19995550000" } as unknown as Partial<BookingRow>),
+        }),
+      ],
+      error: null,
+    }
+    const c = contact({ id: "c1", business_id: BUSINESS, email: "jane@example.com", phone_e164: "+18135550142" })
+
+    const detail = await getContactDetail(c)
+
+    expect(detail.timeline.some((entry) => entry.key === "booking:book-mismatched-email")).toBe(true)
   })
 
-  // THE SHARPER VERSION OF THE SAME GUARD, and the one that actually holds the
-  // implementation down. A mutation sweep caught the first attempt at this test
-  // passing VACUOUSLY: it used "%@x.com" as the contact email, but `%` is not in
-  // the character class EMAIL_RE accepts, so `normaliseEmail` returned null and
-  // the function bailed before comparing anything. It asserted the right answer
-  // for the wrong reason, and a substring-matching implementation survived it.
-  //
-  // This one cannot pass vacuously — both addresses are valid, and one CONTAINS
-  // the other. Exact equality says no; any `includes` / `ilike` / prefix
-  // comparison says yes and hands this contact a stranger's booked call.
-  it("does NOT match a booking whose email merely CONTAINS the contact's", () => {
-    expect(
-      bookingMatchesContact({ contact_email: "rob@x.com", contact_phone: null }, {
-        email: "ob@x.com",
-        phone: null,
-      }),
-    ).toBe(false)
+  it("drops a booking with a null contact_id off the record (pre-phase-0 row)", async () => {
+    // Not literally reachable through this mock (the query already filters
+    // server-side on contact_id), but documents the intended behaviour: a
+    // pre-phase-0 booking with no contact_id was never provably this
+    // contact's, and correctly never appears rather than being guessed at.
+    bookingsResult = { data: [], error: null }
+    const detail = await getContactDetail(contact({ id: "c1", business_id: BUSINESS }))
+    expect(detail.timeline.filter((entry) => entry.origin === "booking")).toEqual([])
   })
 
-  it("does NOT match a booking phone that merely contains the contact's digits", () => {
-    expect(
-      bookingMatchesContact({ contact_email: "other@example.com", contact_phone: "+1 813 555 01423" }, {
-        email: null,
-        phone: "+18135550142",
-      }),
-    ).toBe(false)
-  })
-
-  it("does not match a different person who shares neither identifier", () => {
-    expect(
-      bookingMatchesContact({ contact_email: "other@example.com", contact_phone: "(212) 555-9999" }, {
-        email: "jane@example.com",
-        phone: "+18135550142",
-      }),
-    ).toBe(false)
-  })
-
-  // A contact with no identifiers must match NOTHING. The dangerous failure is
-  // the opposite: null == null coming out true and attaching every booking that
-  // also has a null phone.
-  it("a contact with no identifiers matches no booking", () => {
-    expect(
-      bookingMatchesContact({ contact_email: "jane@example.com", contact_phone: null }, {
-        email: null,
-        phone: null,
-      }),
-    ).toBe(false)
-  })
-
-  // THE EMAIL LEG OF THE NULL GUARD. A mutation sweep found `contactEmail !== null`
-  // was unpinned: every other case gave the booking a valid email, so nothing
-  // exercised null-on-both-sides for the EMAIL comparison. normaliseEmail(null)
-  // === normaliseEmail(null) is null === null, which is true — without the guard
-  // this booking attaches to any contact with no email address on file.
-  it("a null booking email does not match a contact with no email", () => {
-    expect(
-      bookingMatchesContact({ contact_email: null as unknown as string, contact_phone: "(212) 555-9999" }, {
-        email: null,
-        phone: "+18135550142",
-      }),
-    ).toBe(false)
-  })
-
-  it("an unparseable booking email does not match a contact whose email is also unparseable", () => {
-    expect(
-      bookingMatchesContact({ contact_email: "not-an-email", contact_phone: null }, {
-        email: "also-not-an-email",
-        phone: null,
-      }),
-    ).toBe(false)
-  })
-
-  it("a null booking phone does not match a null contact phone", () => {
-    expect(
-      bookingMatchesContact({ contact_email: "other@example.com", contact_phone: null }, {
-        email: "jane@example.com",
-        phone: null,
-      }),
-    ).toBe(false)
-  })
-
-  it("an unparseable phone on either side does not match", () => {
-    expect(
-      bookingMatchesContact({ contact_email: "other@example.com", contact_phone: "not a phone" }, {
-        email: "jane@example.com",
-        phone: "also not a phone",
-      }),
-    ).toBe(false)
+  it("throws on a read failure rather than rendering an empty bookings list", async () => {
+    bookingsResult = { data: null, error: { message: "connection reset" } }
+    await expect(getContactDetail(contact({ id: "c1", business_id: BUSINESS }))).rejects.toThrow(
+      /getContactDetail bookings/,
+    )
   })
 })
 

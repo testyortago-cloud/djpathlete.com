@@ -1,3 +1,9 @@
+// @vitest-environment node
+//
+// Pinned to node: the default jsdom environment crashes on worker start
+// in this repo (ERR_REQUIRE_ESM in html-encoding-sniffer), and reports as
+// "Test Files no tests" rather than a failure. Without this line the suite
+// silently runs nothing.
 // The webhook branch for an anonymous funnel purchase.
 //
 // Four of the eight rows in the spec's test table live here, and each is a way
@@ -39,7 +45,7 @@ vi.mock("@/lib/db/payments", () => ({
   getPaymentByStripeId: (id: unknown) => getPaymentByStripeIdMock(id),
   updatePayment: vi.fn(),
 }))
-vi.mock("@/lib/db/marketing-attribution", () => ({ findAttributionByEmail: vi.fn(async () => null) }))
+vi.mock("@/lib/db/marketing-attribution", () => ({ findAttributionForContact: vi.fn(async () => null) }))
 vi.mock("@/lib/db/assignments", () => ({
   createAssignment: vi.fn(),
   getAssignmentByUserAndProgram: vi.fn(),

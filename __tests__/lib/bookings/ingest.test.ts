@@ -16,17 +16,21 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 const findContactByIdentifiersMock = vi.fn(async (..._a: any[]) => null as string | null)
+const getContactUserIdMock = vi.fn(async (..._a: any[]) => null as string | null)
 const exitRunsForContactMock = vi.fn(async (..._a: any[]) => 0)
 const applyPipelineEventMock = vi.fn(async (..._a: any[]): Promise<any> => ({ decision: { kind: "noop", reason: "t" }, opportunityId: null }))
 const enqueueBookingConversionMock = vi.fn(async (..._a: any[]) => null)
-const findAttributionByEmailMock = vi.fn(async (..._a: any[]) => null as any)
+const findAttributionForContactMock = vi.fn(async (..._a: any[]) => null as any)
 const recordAuditMock = vi.fn(async (..._a: any[]) => undefined)
 
-vi.mock("@/lib/db/contacts", () => ({ findContactByIdentifiers: (...a: unknown[]) => findContactByIdentifiersMock(...a) }))
+vi.mock("@/lib/db/contacts", () => ({
+  findContactByIdentifiers: (...a: unknown[]) => findContactByIdentifiersMock(...a),
+  getContactUserId: (...a: unknown[]) => getContactUserIdMock(...a),
+}))
 vi.mock("@/lib/db/sequences", () => ({ exitRunsForContact: (...a: unknown[]) => exitRunsForContactMock(...a) }))
 vi.mock("@/lib/db/pipeline", () => ({ applyPipelineEvent: (...a: unknown[]) => applyPipelineEventMock(...a) }))
 vi.mock("@/lib/ads/conversions", () => ({ enqueueBookingConversion: (...a: unknown[]) => enqueueBookingConversionMock(...a) }))
-vi.mock("@/lib/db/marketing-attribution", () => ({ findAttributionByEmail: (...a: unknown[]) => findAttributionByEmailMock(...a) }))
+vi.mock("@/lib/db/marketing-attribution", () => ({ findAttributionForContact: (...a: unknown[]) => findAttributionForContactMock(...a) }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: (...a: unknown[]) => recordAuditMock(...a) }))
 
 let selectMaybeSingle: ReturnType<typeof vi.fn>
@@ -115,10 +119,11 @@ beforeEach(() => {
   // but without the "unmocked table" noise for tests that don't care.
   businessSettingsMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
   findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+  getContactUserIdMock.mockReset().mockResolvedValue(null)
   exitRunsForContactMock.mockReset().mockResolvedValue(0)
   applyPipelineEventMock.mockReset().mockResolvedValue({ decision: { kind: "noop", reason: "t" }, opportunityId: null })
   enqueueBookingConversionMock.mockReset().mockResolvedValue(null)
-  findAttributionByEmailMock.mockReset().mockResolvedValue(null)
+  findAttributionForContactMock.mockReset().mockResolvedValue(null)
   recordAuditMock.mockReset().mockResolvedValue(undefined)
 })
 
@@ -160,7 +165,7 @@ describe("the create path", () => {
     const result = await ingestBooking(input({ clickIds: { gclid: "g-1", gbraid: null, wbraid: null, fbclid: null } }))
 
     expect(result).toEqual({ action: "created", bookingId: "bk-new" })
-    expect(findAttributionByEmailMock).not.toHaveBeenCalled()
+    expect(findAttributionForContactMock).not.toHaveBeenCalled()
     expect(enqueueBookingConversionMock).toHaveBeenCalledWith({
       booking_id: "bk-new",
       booking_date: "2026-09-08T14:00:00.000Z",
@@ -181,11 +186,44 @@ describe("the create path", () => {
     ])
   })
 
-  it("falls back to the email-matched attribution when the payload carried no gclid", async () => {
-    findAttributionByEmailMock.mockResolvedValueOnce({ gclid: "g-email", gbraid: null, wbraid: "w-email", fbclid: null })
+  // Retargeted from "falls back to the email-matched attribution": the lookup
+  // is now keyed on the resolved contact's own user_id, not the raw booking
+  // email — see findAttributionForContact's docstring for why an email
+  // match would be a cross-tenant path once two businesses can share a lead.
+  it("falls back to the contact's own attribution (by user_id) when the payload carried no gclid", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("c-1")
+    getContactUserIdMock.mockResolvedValueOnce("u-1")
+    findAttributionForContactMock.mockResolvedValueOnce({ gclid: "g-email", gbraid: null, wbraid: "w-email", fbclid: null })
+
     await ingestBooking(input())
-    expect(findAttributionByEmailMock).toHaveBeenCalledWith("priya@example.test")
+
+    expect(getContactUserIdMock).toHaveBeenCalledWith("c-1", SINGLETON_BUSINESS_ID)
+    expect(findAttributionForContactMock).toHaveBeenCalledWith({ userId: "u-1" })
     expect(enqueueBookingConversionMock).toHaveBeenCalledWith(expect.objectContaining({ gclid: "g-email", wbraid: "w-email" }))
+  })
+
+  // The ordinary case: most leads have no linked user_id at all. Skipping
+  // (rather than falling back to email) must not throw or call the DAL with
+  // a null userId.
+  it("skips the attribution lookup entirely when the contact has no linked user_id", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("c-1")
+    getContactUserIdMock.mockResolvedValueOnce(null)
+
+    await ingestBooking(input())
+
+    expect(findAttributionForContactMock).not.toHaveBeenCalled()
+  })
+
+  // No contact resolved at all (a booking whose identifiers matched nobody) —
+  // there is nothing to look up a user_id for, so the DAL call is skipped
+  // rather than passed a null contactId.
+  it("skips both the user_id lookup and the attribution lookup when no contact resolved", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce(null)
+
+    await ingestBooking(input())
+
+    expect(getContactUserIdMock).not.toHaveBeenCalled()
+    expect(findAttributionForContactMock).not.toHaveBeenCalled()
   })
 
   it("does not fail the booking when the ads enqueue throws", async () => {

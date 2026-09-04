@@ -314,6 +314,33 @@ export async function mergeContacts(survivorId: string, mergedId: string, busine
 }
 
 /**
+ * The user_id a contact is linked to, or null when it has none — true for
+ * most leads, since a contact only gains one once the same person registers
+ * or is otherwise matched to an account.
+ *
+ * SCOPED BY businessId, same as every other contact read here. This exists
+ * so a booking/payment consequence that already resolved a contact id (via
+ * findContactByIdentifiers, itself business-scoped) can go on to look up
+ * marketing attribution keyed on user_id — see
+ * findAttributionForContact's own docstring for why user_id, not email, is
+ * the safe key once two businesses can share a lead.
+ */
+export async function getContactUserId(
+  contactId: string,
+  businessId: string = SINGLETON_BUSINESS_ID,
+): Promise<string | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("user_id")
+    .eq("business_id", businessId)
+    .eq("id", contactId)
+    .maybeSingle()
+  if (error) throw error
+  return (data as { user_id: string | null } | null)?.user_id ?? null
+}
+
+/**
  * Resolves a contact id from whichever identifiers a caller has on hand —
  * used by the marketing-exit hooks (payment, booking) to find who to stop
  * emailing. Resolution order: userId, then email (normalised), then phone

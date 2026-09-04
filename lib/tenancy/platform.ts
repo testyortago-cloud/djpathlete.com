@@ -19,6 +19,12 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
  *   - public, unauthenticated quiz-taking routes (e.g.
  *     app/api/quiz/progress/route.ts), until phase 4 resolves the Host
  *     header;
+ *   - the public chat assistant (app/api/ask/route.ts), the one place a
+ *     conversation's tenant is decided at all -- same story as the quiz
+ *     route, no session and no Host resolution until phase 4. Once the
+ *     conversation exists, every OTHER call in that route threads
+ *     `conversation.business_id` instead of calling this again -- see the
+ *     route's own comment above `createConversation`;
  *   - the pipeline reconciler's payments half
  *     (lib/automation/pipeline-reconcile.ts) -- not because the reconciler
  *     itself lacks a businessId (it iterates real businesses in a loop and
@@ -26,6 +32,17 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
  *     `business_id` column at all. No business other than the platform's own
  *     can ever legitimately claim a payment today, so this is
  *     correct-by-construction rather than a caller unable to resolve.
+ *
+ * A NARROWER VARIANT OF THE SAME SEAM -- the caller DOES attempt a real
+ * resolution first, and only reaches this as the fallback when that lookup
+ * comes back empty:
+ *   - the Twilio inbound SMS webhook (app/api/webhooks/twilio/inbound/route.ts)
+ *     resolves the tenant from the `To` number via `getBusinessBySmsNumber`
+ *     first -- the only tenant evidence an inbound SMS carries -- and falls
+ *     back to this only when no business claims that number. That fallback is
+ *     the ORDINARY case today, since `sms_sender_phone` defaults to `''` and
+ *     the platform's own number still lives in the environment, not in a
+ *     per-coach row.
  *
  * DELIBERATELY FROZEN PENDING A LATER PHASE -- the caller COULD resolve a
  * real tenant (it has an authenticated admin session), but converting it

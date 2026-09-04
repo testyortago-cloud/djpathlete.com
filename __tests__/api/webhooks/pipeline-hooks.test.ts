@@ -22,6 +22,14 @@ const findContactByIdentifiersMock = vi.fn(async (..._a: any[]) => null as strin
 const findContactWithBusinessByIdentifiersMock = vi.fn(
   async (..._a: any[]) => null as { id: string; businessId: string } | null,
 )
+// The GHL/Calendly booking routes go through lib/bookings/ingest.ts's
+// writeRow, which resolves the contact's user_id before falling back to
+// findAttributionForContact when the payload carried no gclid — see that
+// function's own docstring. Defaults to null (most leads have no linked
+// account); this file's own fixtures mostly supply a gclid anyway, so the
+// fallback rarely fires, but a missing export here would crash the ones
+// that don't.
+const getContactUserIdMock = vi.fn(async (..._a: any[]) => null as string | null)
 const exitRunsForContactMock = vi.fn(async (..._a: any[]) => 0)
 const applyPipelineEventMock = vi.fn(async (..._a: any[]) => ({
   decision: { kind: "noop", reason: "test" } as const,
@@ -31,6 +39,7 @@ const applyPipelineEventMock = vi.fn(async (..._a: any[]) => ({
 vi.mock("@/lib/db/contacts", () => ({
   findContactByIdentifiers: (...a: unknown[]) => findContactByIdentifiersMock(...a),
   findContactWithBusinessByIdentifiers: (...a: unknown[]) => findContactWithBusinessByIdentifiersMock(...a),
+  getContactUserId: (...a: unknown[]) => getContactUserIdMock(...a),
 }))
 vi.mock("@/lib/db/sequences", () => ({
   exitRunsForContact: (...a: unknown[]) => exitRunsForContactMock(...a),
@@ -157,7 +166,7 @@ vi.mock("@/lib/supabase", () => ({
 }))
 
 vi.mock("@/lib/db/marketing-attribution", () => ({
-  findAttributionByEmail: vi.fn(async () => null),
+  findAttributionForContact: vi.fn(async () => null),
   upsertAttributionBySession: vi.fn(),
   getUnclaimedAttribution: vi.fn(),
   claimAttribution: vi.fn(),
@@ -202,6 +211,7 @@ describe("Stripe webhook — pipeline", () => {
     getPaymentByStripeIdMock.mockReset().mockResolvedValue(null)
     getUserByEmailMock.mockReset().mockResolvedValue(null)
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    getContactUserIdMock.mockReset().mockResolvedValue(null)
     findContactWithBusinessByIdentifiersMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
     applyPipelineEventMock
@@ -523,6 +533,7 @@ describe("GHL booking webhook — pipeline", () => {
     bookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
 
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    getContactUserIdMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
     applyPipelineEventMock
       .mockReset()
@@ -709,6 +720,7 @@ describe("Calendly booking webhook — pipeline", () => {
     bookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
 
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    getContactUserIdMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
     applyPipelineEventMock
       .mockReset()

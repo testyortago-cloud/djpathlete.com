@@ -34,10 +34,10 @@
 
 import type { Booking, BookingStatus } from "@/types/database"
 import { createServiceRoleClient } from "@/lib/supabase"
-import { findAttributionByEmail } from "@/lib/db/marketing-attribution"
+import { findAttributionForContact } from "@/lib/db/marketing-attribution"
 import { enqueueBookingConversion } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
-import { findContactByIdentifiers } from "@/lib/db/contacts"
+import { findContactByIdentifiers, getContactUserId } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { getBusinessSettings } from "@/lib/db/businesses"
@@ -332,9 +332,15 @@ async function writeRow(
   let wbraid = input.clickIds.wbraid ?? null
   let fbclid = input.clickIds.fbclid ?? null
 
-  // Email-match fallback if no gclid in payload
+  // Attribution fallback if no gclid in payload, keyed on the resolved
+  // contact's OWN user_id rather than the raw booking email — see
+  // findAttributionForContact's docstring for why an email match is a
+  // cross-tenant path once two businesses can share a lead. A contact with
+  // no linked user_id (most leads) has nothing to key on, so the lookup is
+  // skipped rather than falling back to anything looser.
   if (!gclid) {
-    const attr = await findAttributionByEmail(input.contact.email).catch(() => null)
+    const userId = contactId ? await getContactUserId(contactId, input.businessId).catch(() => null) : null
+    const attr = userId ? await findAttributionForContact({ userId }).catch(() => null) : null
     if (attr) {
       gclid = attr.gclid
       gbraid ||= attr.gbraid

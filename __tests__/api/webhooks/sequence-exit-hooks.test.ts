@@ -18,11 +18,19 @@ const findContactByIdentifiersMock = vi.fn(async (..._a: any[]) => null as strin
 const findContactWithBusinessByIdentifiersMock = vi.fn(
   async (..._a: any[]) => null as { id: string; businessId: string } | null,
 )
+// The GHL booking webhook now resolves the contact's user_id (via
+// lib/bookings/ingest.ts's writeRow) before falling back to
+// findAttributionForContact — see that function's own docstring. Defaults to
+// null (most leads have no linked account), which also keeps every
+// pre-existing test in this file — none of which cares about attribution —
+// from reaching an attribution lookup at all.
+const getContactUserIdMock = vi.fn(async (..._a: any[]) => null as string | null)
 const exitRunsForContactMock = vi.fn(async (..._a: any[]) => 0)
 
 vi.mock("@/lib/db/contacts", () => ({
   findContactByIdentifiers: (...a: unknown[]) => findContactByIdentifiersMock(...a),
   findContactWithBusinessByIdentifiers: (...a: unknown[]) => findContactWithBusinessByIdentifiersMock(...a),
+  getContactUserId: (...a: unknown[]) => getContactUserIdMock(...a),
 }))
 vi.mock("@/lib/db/sequences", () => ({
   exitRunsForContact: (...a: unknown[]) => exitRunsForContactMock(...a),
@@ -136,7 +144,7 @@ vi.mock("@/lib/supabase", () => ({
 }))
 
 vi.mock("@/lib/db/marketing-attribution", () => ({
-  findAttributionByEmail: vi.fn(async () => null),
+  findAttributionForContact: vi.fn(async () => null),
   upsertAttributionBySession: vi.fn(),
   getUnclaimedAttribution: vi.fn(),
   claimAttribution: vi.fn(),
@@ -177,6 +185,7 @@ describe("Stripe webhook — sequence exit on payment", () => {
     getPaymentByStripeIdMock.mockReset().mockResolvedValue(null)
     getUserByEmailMock.mockReset().mockResolvedValue(null)
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    getContactUserIdMock.mockReset().mockResolvedValue(null)
     findContactWithBusinessByIdentifiersMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
   })
@@ -271,6 +280,7 @@ describe("GHL booking webhook — sequence exit on booking", () => {
     bookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
 
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    getContactUserIdMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
   })
 
@@ -447,6 +457,7 @@ describe("Calendly booking webhook — sequence exit on booking", () => {
     bookingsUpdateEq = vi.fn().mockResolvedValue({ error: null })
 
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
+    getContactUserIdMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
   })
 
