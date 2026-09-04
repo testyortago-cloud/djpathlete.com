@@ -2,9 +2,15 @@
 // won card their account. Body: { opportunityId, programId }.
 //
 // Sits beside ../move/route.ts rather than under an /opportunities/[id] tree
-// so the two things a human does to a card live together, and it is admin-only
-// for the same reason that one is: this creates a real account and sends a real
-// person a real email.
+// so the two things a human does to a card live together.
+//
+// NO LONGER ADMIN-ONLY as of 2026-09-04: `/api/admin/pipeline` is mapped to the
+// `contacts` permission so a coach can grant on their OWN board. What replaced
+// the blanket role check is a permission gate PLUS a tenant, and the tenant is
+// the load-bearing half -- `opportunityId` arrives in the request body, so an
+// unscoped read here would let a coach grant against another coach's won card.
+// This still creates a real account and sends a real person a real email; it is
+// the highest-consequence write behind that permission.
 //
 // PROMPTED, NEVER AUTOMATIC — the board asks which program before calling this.
 // Won alone does not say what was bought: a card can be a cash deal, a camp, or
@@ -18,6 +24,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import { grantWonOpportunity } from "@/lib/funnels/checkout/grant-manual"
 
 type GrantBody = { opportunityId?: unknown; programId?: unknown }
@@ -44,8 +52,24 @@ export const POST = withAudit(
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-    if (session.user.role !== "admin") {
+    // Was `role !== "admin"`. A coach holding `contacts` reaches this now.
+    if (!(await canAccessAdminPath(session.user, request))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    // This is the highest-consequence write behind the `contacts` permission:
+    // it assigns a program, can create an account and sends email. The
+    // opportunityId comes from the request body, so the read below is fenced to
+    // the caller's own tenant -- otherwise a coach grants against another
+    // coach's won opportunity.
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
     }
 
     const body = (await request.clone().json().catch(() => null)) as GrantBody | null
@@ -67,7 +91,7 @@ export const POST = withAudit(
     const result = await grantWonOpportunity(
       { opportunityId: body.opportunityId, programId: body.programId },
       {
-        getOpportunity: readOpportunityForGrant,
+        getOpportunity: (opportunityId: string) => readOpportunityForGrant(opportunityId, businessId),
         getContactIdentity: readContactIdentity,
         runGrant: (purchase) =>
           grantFunnelPurchase(purchase, buildManualGrantDeps({ opportunityId: body.opportunityId as string })),

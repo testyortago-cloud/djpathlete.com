@@ -23,6 +23,7 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { addTag, removeTag, normaliseTag, MAX_TAG_LENGTH } from "@/lib/db/contact-tags"
 import { getContactById } from "@/lib/db/contact-detail"
+import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 
 /** Resolves `{ type, id }` for the audit row from the path. */
 async function tagTarget(_req: Request, ctx: { params: Promise<Record<string, string>> }) {
@@ -94,7 +95,24 @@ async function guard(
     }
   }
 
-  const contact = await getContactById(id)
+  // SCOPED BY BUSINESS. `getContactById`'s second parameter DEFAULTS to
+  // SINGLETON_BUSINESS_ID (lib/db/contact-detail.ts), so omitting it here did
+  // not mean "any tenant" -- it meant "the operator's tenant". Harmless while
+  // `/api/admin/contacts` was unmapped and only an admin could reach this;
+  // now that a coach holding `contacts` can, omitting it would point their tag
+  // writes at the platform's own contact records. A contact in another
+  // business reads as 404, the same answer the detail page gives.
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) {
+      return { error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) }
+    }
+    throw err
+  }
+
+  const contact = await getContactById(id, businessId)
   if (!contact) return { error: NextResponse.json({ error: "No such contact." }, { status: 404 }) }
 
   return { contactId: contact.id, tag, actorId: session.user.id }

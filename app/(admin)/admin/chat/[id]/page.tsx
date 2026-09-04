@@ -23,7 +23,8 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { getConversation, listMessages } from "@/lib/db/chat"
 import { recordAudit } from "@/lib/audit/record"
 import { ChatTranscript } from "@/components/admin/chat/ChatTranscript"
@@ -33,16 +34,30 @@ export const metadata = { title: "Chat transcript" }
 export const dynamic = "force-dynamic"
 
 export default async function AdminChatTranscriptPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireAdmin()
+  await requirePermission("contacts")
+  // SCOPED BY BUSINESS. `id` comes straight from the URL bar, and until
+  // 2026-09-04 it was passed to an unscoped `getConversation` — safe only
+  // while `/admin/chat` was unmapped in PATH_PERMISSIONS and the proxy
+  // default-denied every staff member. This page is now reachable by any coach
+  // holding `contacts`, so the read must be fenced to the tenant they resolved
+  // to; otherwise a guessed UUID reads another coach's visitor conversations,
+  // which is exactly the prose this file's header explains is sensitive.
+  const { businessId } = await resolveAdminTenant()
 
   const { id } = await params
 
   // `getConversation` returns null only when the row is not there — a failed
   // READ throws (lib/db/chat.ts). So this branch really is "no such
-  // conversation" and nothing else.
-  const conversation = await getConversation(id)
+  // conversation" and nothing else. It ALSO means "this conversation belongs
+  // to a different business", since the read is scoped to businessId — a 404
+  // is the right answer for both, and the right one to fail closed to. Same
+  // rule app/(admin)/admin/contacts/[id]/page.tsx states.
+  const conversation = await getConversation(id, businessId)
   if (!conversation) notFound()
 
+  // Keyed on a conversation this caller has just been PROVEN to own, so it
+  // needs no business predicate of its own: an id that survived the read above
+  // is in their tenant by construction.
   const messages = await listMessages(id)
   const blockedTurns = messages.filter((message) => message.verdict === "blocked").length
 

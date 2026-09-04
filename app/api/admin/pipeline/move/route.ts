@@ -9,9 +9,14 @@
 // the destination is won/lost, clearing closure fields on a reopen — is
 // already the DAL's job and is NOT reimplemented here.
 //
-// Admin-only, not permission-tiered: a card move can close a deal and
-// therefore move a revenue number, so staff (even with a "leads"-shaped
-// permission elsewhere) do not get a pass here — only `role === "admin"`.
+// NO LONGER ADMIN-ONLY as of 2026-09-04. `/api/admin/pipeline` is mapped to the
+// `contacts` permission, so a coach can move cards on their OWN board — the
+// whole point of that change. A card move can still close a deal and therefore
+// move a revenue number, so two things replaced the blanket role check and both
+// matter: the permission gate, and the TENANT. `opportunityId` arrives in the
+// request body, and `moveOpportunityManually` defaults its `businessId` to
+// SINGLETON_BUSINESS_ID — so omitting it here would silently move the
+// OPERATOR'S cards on a coach's request. Holding no permission is still a 403.
 //
 // withAudit() wraps this for the 401/denied/failure trail (the DAL is never
 // reached on those paths, so it never logs them). On a SUCCESSFUL move this
@@ -24,6 +29,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { withAudit } from "@/lib/audit/with-audit"
+import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import { moveOpportunityManually } from "@/lib/db/pipeline"
 
 type MoveBody = { opportunityId?: unknown; toStageKey?: unknown }
@@ -51,8 +58,24 @@ export const POST = withAudit(
     if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
-    if (session.user.role !== "admin") {
+    // Was `role !== "admin"`. A coach holding `contacts` reaches this now, so
+    // the decision moves to the registry -- and the move below MUST carry the
+    // tenant, or a coach moves the operator's cards.
+    if (!(await canAccessAdminPath(session.user, request))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    // The opportunityId arrives in the request body, so without this the
+    // `businessId` parameter below falls to its SINGLETON_BUSINESS_ID default
+    // and a coach's move lands on the operator's own pipeline.
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
     }
 
     const body = (await request.clone().json().catch(() => null)) as MoveBody | null
@@ -68,6 +91,7 @@ export const POST = withAudit(
         opportunityId: body.opportunityId,
         toStageKey: body.toStageKey,
         actorUserId: session.user.id,
+        businessId,
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : "Move failed"

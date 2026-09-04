@@ -72,8 +72,32 @@ export async function createConversation(input: CreateConversationInput): Promis
  * database was unreachable" and "no such conversation" are different answers
  * and a caller that conflates them turns an outage into a silent new session.
  */
-export async function getConversation(id: string): Promise<ChatConversation | null> {
-  const { data, error } = await getClient().from("chat_conversations").select("*").eq("id", id).maybeSingle()
+/**
+ * One conversation by id.
+ *
+ * `businessId` is OPTIONAL and omitting it means "any tenant", which is correct
+ * for exactly three callers and wrong for every future one:
+ *   - app/api/ask/route.ts and app/api/ask/capture/route.ts are PUBLIC. A
+ *     website visitor resolves their own conversation by the id in their
+ *     session before anyone knows which business it belongs to -- the row is
+ *     what CARRIES that answer, so requiring it as an argument is circular.
+ *   - lib/lead-engine/chat/escalate.ts already holds a conversation the caller
+ *     located by other means.
+ *
+ * EVERY ADMIN CALLER MUST PASS IT. Until 2026-09-04 this function had no
+ * business predicate at all and app/(admin)/admin/chat/[id]/page.tsx called it
+ * with a UUID straight from the URL bar. That was safe only because
+ * `/admin/chat` was unmapped in PATH_PERMISSIONS and the proxy default-denied
+ * staff; the moment that page became reachable it would have been one coach
+ * reading another coach's website-visitor conversations by guessing an id.
+ *
+ * Optional rather than required for the same reason `getBusinessSettings` keeps
+ * its default: the public callers legitimately have no tenant to give.
+ */
+export async function getConversation(id: string, businessId?: string): Promise<ChatConversation | null> {
+  let query = getClient().from("chat_conversations").select("*").eq("id", id)
+  if (businessId) query = query.eq("business_id", businessId)
+  const { data, error } = await query.maybeSingle()
 
   if (error) throw error
   return (data as ChatConversation | null) ?? null

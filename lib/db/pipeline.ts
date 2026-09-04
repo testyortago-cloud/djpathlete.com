@@ -1021,7 +1021,26 @@ export async function readBoard(
  * of the same deal as a duplicate — the two key on different columns by
  * design (00235). So the check has to happen before the grant, here.
  */
-export async function readOpportunityForGrant(opportunityId: string): Promise<{
+/**
+ * One opportunity, for the manual grant path.
+ *
+ * `businessId` is REQUIRED, unlike the optional/defaulted tenant arguments
+ * elsewhere in this file. This function has exactly one caller
+ * (app/api/admin/pipeline/grant/route.ts), so there is no public path needing
+ * an unscoped read and no reason to leave a footgun that a future caller could
+ * trip over by omission.
+ *
+ * Until 2026-09-04 it had NO business predicate and took the id straight from
+ * the request body. It was safe only because the route hard-gated on
+ * `role === "admin"`; mapping `/api/admin/pipeline` to a staff-grantable
+ * permission without this would have let a coach grant a program against
+ * ANOTHER tenant's won opportunity -- a write that assigns a program, creates
+ * an account and sends email.
+ */
+export async function readOpportunityForGrant(
+  opportunityId: string,
+  businessId: string,
+): Promise<{
   id: string
   outcome: "won" | "lost" | null
   contact_id: string | null
@@ -1031,6 +1050,7 @@ export async function readOpportunityForGrant(opportunityId: string): Promise<{
   const { data, error } = await supabase
     .from("opportunities")
     .select("id, outcome, contact_id, source_session_id")
+    .eq("business_id", businessId)
     .eq("id", opportunityId)
     .maybeSingle()
   // A read that fails is NOT "no such card". Throwing here is what stops the
