@@ -35,7 +35,12 @@ const resend = {
   },
 }
 
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@darrenjpaul.com>"
+// Resend verifies `send.darrenjpaul.com` only — the apex `darrenjpaul.com` has
+// never been added to the account, and sending from it returns "domain is not
+// verified" and drops the message. The fallback therefore has to name the
+// subdomain: an unset RESEND_FROM_EMAIL must not be able to reintroduce the
+// 2026-08-31 fault that killed 73 sequence runs.
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "DJP Athlete <noreply@send.darrenjpaul.com>"
 
 /** CC all admin/business emails to Darren's main account */
 const ADMIN_CC = "darren@darrenjpaul.com"

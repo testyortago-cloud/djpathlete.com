@@ -33,7 +33,7 @@ const BIZ = "00000000-0000-0000-0000-000000000001"
 const IDENTITY = {
   display_name: "DJP Athlete",
   sender_name: "Darren J. Paul",
-  sender_email: "noreply@darrenjpaul.com",
+  sender_email: "noreply@send.darrenjpaul.com",
   reply_to: "darren@darrenjpaul.com",
   postal_address: "6585 Simons Rd, Zephyrhills, FL 33541, USA",
 }
