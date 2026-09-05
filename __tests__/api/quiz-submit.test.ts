@@ -20,6 +20,9 @@ const Q_A1 = "22222222-2222-4222-8222-222222222221"
 const O_BEST = "22222222-2222-4222-8222-222222222222"
 const O_WORST = "22222222-2222-4222-8222-222222222223"
 const BRANCH_A = "44444444-4444-4444-8444-444444444441"
+// NOT the platform id. The route must take this from the attempt row; a
+// fixture equal to the platform id would pass for a default just as well.
+const ATTEMPT_BUSINESS_ID = "22222222-2222-4222-8222-222222222222"
 
 function definition(status = "active"): QuizDefinition {
   return {
@@ -114,7 +117,14 @@ async function post(extra: Record<string, unknown> = {}, ip = freshIp()) {
 beforeEach(() => {
   vi.resetAllMocks()
   getQuizDefinition.mockResolvedValue(definition())
-  getAttempt.mockResolvedValue({ id: ATTEMPT_ID, quizId: QUIZ_ID, branchId: null, status: "in_progress", answers: [] })
+  getAttempt.mockResolvedValue({
+    id: ATTEMPT_ID,
+    quizId: QUIZ_ID,
+    branchId: null,
+    status: "in_progress",
+    answers: [],
+    businessId: ATTEMPT_BUSINESS_ID,
+  })
   completeAttempt.mockResolvedValue(undefined)
   recordContactEvent.mockResolvedValue({ contactId: CONTACT_ID, created: true, merged: false })
   recordConsent.mockResolvedValue(undefined)
@@ -327,6 +337,14 @@ describe("POST /api/quiz/submit", () => {
     expect(res.status).toBe(200)
     expect(spy.mock.calls.map((c) => String(c[0])).join(" | ")).toContain("applyPipelineEvent failed")
     spy.mockRestore()
+  })
+
+  it("files every write under the ATTEMPT's business — contact, pipeline card, settings read, consent row", async () => {
+    await post({ phone: "5551234567", smsConsent: true })
+    expect(recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: ATTEMPT_BUSINESS_ID })
+    expect(applyPipelineEvent.mock.calls[0][0]).toMatchObject({ businessId: ATTEMPT_BUSINESS_ID })
+    expect(getBusinessSettings).toHaveBeenCalledWith(ATTEMPT_BUSINESS_ID)
+    expect(recordConsent.mock.calls[0][0]).toMatchObject({ businessId: ATTEMPT_BUSINESS_ID })
   })
 
   it("refuses an attempt belonging to a different quiz", async () => {

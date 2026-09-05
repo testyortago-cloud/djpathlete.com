@@ -896,12 +896,19 @@ export interface QuizAttemptRow {
   branchId: string | null
   status: string
   answers: QuizAnswer[]
+  /**
+   * The business the attempt was created under (`quiz_attempts.business_id`,
+   * NOT NULL since 00228). /api/quiz/submit inherits it for every write it
+   * makes, so the contact, the pipeline card and the consent row land on the
+   * same tenant the attempt did — by construction, not by defaults agreeing.
+   */
+  businessId: string
 }
 
 export async function getAttempt(attemptId: string): Promise<QuizAttemptRow | null> {
   const { data, error } = await getClient()
     .from("quiz_attempts")
-    .select("id, quiz_id, branch_id, status, answers")
+    .select("id, quiz_id, branch_id, status, answers, business_id")
     .eq("id", attemptId)
     .maybeSingle()
   if (error) throw error
@@ -913,6 +920,7 @@ export async function getAttempt(attemptId: string): Promise<QuizAttemptRow | nu
     branchId: strOrNull(row.branch_id),
     status: str(row.status),
     answers: Array.isArray(row.answers) ? (row.answers as QuizAnswer[]) : [],
+    businessId: str(row.business_id),
   }
 }
 

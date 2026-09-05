@@ -128,6 +128,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not found." }, { status: 404 })
   }
 
+  // THE TENANT IS THE ATTEMPT'S. `quiz_attempts.business_id` was stamped when
+  // /api/quiz/progress created the attempt, so every write below — the
+  // contact, the pipeline card, the settings read, the consent row — lands on
+  // the business the attempt belongs to, by construction rather than by four
+  // defaults happening to agree. A public route, but NOT a caller of
+  // platformBusinessId(): it has a row to inherit from.
+  const businessId = attempt.businessId
+
   // 1. SCORE. Pure, no I/O, and the only source of the numbers below.
   const answers = sanitiseAnswers(definition, body.answers)
   const result = scoreQuiz(definition, answers)
@@ -152,7 +160,7 @@ export async function POST(request: Request) {
   }
 
   // 3-5. EVERYTHING BELOW IS NON-FATAL.
-  await handoff({ body, definition, result, answers, ip, request }).catch((error: unknown) => {
+  await handoff({ body, definition, result, answers, ip, request, businessId }).catch((error: unknown) => {
     logFailure("handoff", error, { attemptId: body.attemptId, quizId: body.quizId })
   })
 
@@ -171,8 +179,9 @@ async function handoff(input: {
   answers: { questionId: string; optionId: string }[]
   ip: string
   request: Request
+  businessId: string
 }): Promise<void> {
-  const { body, definition, result, ip, request } = input
+  const { body, definition, result, ip, request, businessId } = input
   const correlation = { attemptId: body.attemptId, quizId: body.quizId }
 
   // ONE ANSWER TO "WHICH VISIT WAS THIS", shared by the lead and the contact
@@ -242,6 +251,7 @@ async function handoff(input: {
   let contactId: string | null = null
   try {
     const contact = await recordContactEvent({
+      businessId,
       email: body.email,
       phone: body.phone ?? null,
       name: body.name,
@@ -268,6 +278,7 @@ async function handoff(input: {
   if (contactId) {
     try {
       await applyPipelineEvent({
+        businessId,
         contactId,
         event: { kind: "quiz_result", tier: result.tierKey ?? "", occurredAt: new Date() },
         // Carries the attempt id so a replay of the same completion cannot
@@ -282,7 +293,7 @@ async function handoff(input: {
   // 5b. THE OPERATOR ALERT, and the honest record of whether it went.
   if (shouldAlert(result.tierKey)) {
     try {
-      const settings = await getBusinessSettings()
+      const settings = await getBusinessSettings(businessId)
       const { delivered } = await sendQuizAlert({
         to: settings.reply_to ?? "",
         definition,
@@ -307,7 +318,7 @@ async function handoff(input: {
 
   if (contactId && body.smsConsent && body.phone) {
     try {
-      const settings = await getBusinessSettings()
+      const settings = await getBusinessSettings(businessId)
       // MIRRORS THE ISLAND'S OWN GATE. A blank display name means the checkbox
       // was never shown, so filing a row would misrepresent what the visitor
       // saw. Skipped and logged, never thrown — the lead is already captured.
@@ -315,6 +326,7 @@ async function handoff(input: {
         console.warn("[quiz/submit] sms consent skipped: business_settings.display_name is blank")
       } else {
         await recordConsent({
+          businessId,
           contactId,
           channel: "sms",
           granted: true,
