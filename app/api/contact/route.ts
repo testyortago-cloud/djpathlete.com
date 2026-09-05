@@ -5,6 +5,7 @@ import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { sendContactFormEmail, sendContactAutoReply } from "@/lib/email"
 import { withAudit } from "@/lib/audit/with-audit"
 import { captureLead } from "@/lib/lead-engine/capture"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export const POST = withAudit({ action: "contact.submitted", category: "marketing" }, async (request) => {
   try {
@@ -19,6 +20,12 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
     }
 
     const { name, email, subject, message } = result.data
+
+    // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()`
+    // is the seam until phase 4 resolves a real business off the Host header
+    // (lib/tenancy/platform.ts, CANNOT RESOLVE YET). Resolved once here and
+    // threaded; the DAL no longer defaults it.
+    const businessId = platformBusinessId()
 
     const supabase = createServiceRoleClient()
 
@@ -58,7 +65,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
     // Join the contact spine. captureLead never throws (lib/lead-engine/capture.ts
     // swallows its own errors), so a contact-write failure here can never
     // change this route's response or the writes/emails below.
-    await captureLead({ source: "contact_form", email, name })
+    await captureLead({ source: "contact_form", email, name, businessId })
 
     // Find all admin users to notify
     const { data: admins, error: adminsError } = await supabase.from("users").select("id").eq("role", "admin")

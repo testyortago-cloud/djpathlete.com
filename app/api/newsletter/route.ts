@@ -11,6 +11,7 @@ import {
 } from "@/lib/lead-engine/newsletter-consent-wording"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 const newsletterSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -33,9 +34,12 @@ const newsletterSchema = z.object({
  * wording the inline surface always uses, rather than filing a nameless
  * legal sentence as if it were what the visitor saw.
  */
-async function resolveNewsletterConsentWording(consentContext: "checkbox" | "inline" | undefined): Promise<string> {
+async function resolveNewsletterConsentWording(
+  consentContext: "checkbox" | "inline" | undefined,
+  businessId: string,
+): Promise<string> {
   if (consentContext !== "checkbox") return NEWSLETTER_CONSENT_WORDING
-  const settings = await getBusinessSettings()
+  const settings = await getBusinessSettings(businessId)
   if (!hasNewsletterConsentDisplayName(settings.display_name)) {
     console.warn("[Newsletter] checkbox consent wording skipped: business_settings.display_name is blank")
     return NEWSLETTER_CONSENT_WORDING
@@ -51,6 +55,12 @@ export const POST = withAudit({ action: "newsletter.subscribed", category: "mark
     if (!result.success) {
       return NextResponse.json({ error: "Invalid email address" }, { status: 400 })
     }
+
+    // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()`
+    // is the seam until phase 4 resolves a real business off the Host header
+    // (lib/tenancy/platform.ts, CANNOT RESOLVE YET). Resolved once here and
+    // threaded; the DAL no longer defaults it.
+    const businessId = platformBusinessId()
 
     const cookieHeader = request.headers.get("cookie")
     const sessionId = parseAttrCookie(cookieHeader) ?? undefined
@@ -70,7 +80,7 @@ export const POST = withAudit({ action: "newsletter.subscribed", category: "mark
     // this successful subscribe into an error response. The subscriber is
     // still a contact regardless of whether they consented to marketing, so
     // this always runs.
-    const contactId = await captureLead({ source: "newsletter", email: result.data.email })
+    const contactId = await captureLead({ source: "newsletter", email: result.data.email, businessId })
 
     // A consent row is only ever filed for an actual consent act. Not
     // ticking the box (or this submission's schema-defaulted-false absence
@@ -82,7 +92,7 @@ export const POST = withAudit({ action: "newsletter.subscribed", category: "mark
     // error response either.
     if (contactId && result.data.consent_marketing === true) {
       try {
-        const wordingShown = await resolveNewsletterConsentWording(result.data.consent_context)
+        const wordingShown = await resolveNewsletterConsentWording(result.data.consent_context, businessId)
         await recordConsent({
           contactId,
           channel: "email",
@@ -91,6 +101,7 @@ export const POST = withAudit({ action: "newsletter.subscribed", category: "mark
           wordingShown,
           ip,
           userAgent,
+          businessId,
         })
       } catch (consentError) {
         console.error("[Newsletter] consent record failed:", consentError)
