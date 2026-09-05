@@ -77,6 +77,12 @@ vi.mock("@/lib/email", () => ({
   sendContactAutoReply: mocks.sendContactAutoReply,
 }))
 
+// The seam is MOCKED to a sentinel, not left real: a route that hard-coded the
+// constant instead of calling platformBusinessId() would pass a test that
+// asserted the real id, and the whole point of the seam is that phase 4
+// changes ONE function.
+vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
+
 import { POST } from "@/app/api/contact/route"
 
 function jsonRequest(body: unknown): NextRequest {
@@ -135,5 +141,14 @@ describe("POST /api/contact — joins the contact spine", () => {
     expect(state.users[0].email).toBe("jamie@example.com")
     expect(mocks.sendContactFormEmail).toHaveBeenCalledTimes(1)
     expect(mocks.sendContactAutoReply).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("POST /api/contact — tenant", () => {
+  it("files the contact under the business the seam names, resolved once and threaded", async () => {
+    const res = await post(VALID_BODY)
+    expect(res.status).toBe(200)
+    expect(mocks.recordContactEvent).toHaveBeenCalledTimes(1)
+    expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
   })
 })

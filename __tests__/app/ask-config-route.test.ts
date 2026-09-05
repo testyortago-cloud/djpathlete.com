@@ -29,6 +29,7 @@ const h = vi.hoisted(() => ({ getSetting: vi.fn(), getBusinessSettings: vi.fn() 
 
 vi.mock("@/lib/db/system-settings", () => ({ getSetting: h.getSetting }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: h.getBusinessSettings }))
+vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
 
 import { GET, dynamic } from "@/app/api/ask/config/route"
 import { CHAT_ASSISTANT_FLAG, CHAT_ASSISTANT_FLAG_DEFAULT } from "@/lib/lead-engine/chat/constants"
@@ -124,6 +125,13 @@ describe("GET /api/ask/config", () => {
     // is what production and the dev clone actually hold. `null` reaching the
     // browser would be rendered as the word "null" by any careless consumer.
     expect((await get()).body).toEqual({ enabled: true, displayName: "" })
+  })
+
+  it("reads settings for the business the seam names — a public route with no session", async () => {
+    h.getSetting.mockResolvedValue(true)
+    h.getBusinessSettings.mockResolvedValue({ display_name: DISPLAY_NAME })
+    await GET()
+    expect(h.getBusinessSettings).toHaveBeenCalledWith("platform-biz")
   })
 
   it("imports the flag key instead of retyping it", () => {

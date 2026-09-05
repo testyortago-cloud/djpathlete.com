@@ -27,6 +27,7 @@ import { captureContactFromSubmission } from "@/lib/funnels/capture-contact"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 /** Bots submit instantly; a person cannot read and fill a form this fast. */
 const MIN_ELAPSED_MS = 1500
@@ -119,6 +120,13 @@ export async function POST(request: Request) {
     leadUserId = await upsertLead(email, name)
   }
 
+  // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM — and no row to inherit
+  // one from either: `funnels`, `funnel_steps` and `funnel_submissions` carry
+  // no business_id (no funnel migration mentions the column). `platformBusinessId()`
+  // is the seam until phase 4 resolves a real business off the Host header
+  // (lib/tenancy/platform.ts, CANNOT RESOLVE YET). Resolved once, threaded.
+  const businessId = platformBusinessId()
+
   try {
     await createSubmission({
       funnel_id: parsedBody.funnelId,
@@ -148,6 +156,7 @@ export async function POST(request: Request) {
     funnelId: parsedBody.funnelId,
     stepId: parsedBody.stepId,
     payload,
+    businessId,
   })
 
   // ---------------------------------------------------------------------------
@@ -163,6 +172,7 @@ export async function POST(request: Request) {
       contactId,
       ip: ip === "unknown" ? null : ip,
       userAgent: request.headers.get("user-agent"),
+      businessId,
     }).catch((error) => {
       console.error("[funnels/submit] sms consent write failed (the lead was saved):", error)
     })
@@ -334,8 +344,9 @@ async function recordFunnelSmsConsent(input: {
   contactId: string
   ip: string | null
   userAgent: string | null
+  businessId: string
 }): Promise<void> {
-  const settings = await getBusinessSettings()
+  const settings = await getBusinessSettings(input.businessId)
   if (!hasSmsConsentDisplayName(settings.display_name)) {
     console.warn("[funnels/submit] sms consent skipped: business_settings.display_name is blank")
     return
@@ -348,6 +359,7 @@ async function recordFunnelSmsConsent(input: {
     wordingShown: renderSmsConsentWording(settings.display_name),
     ip: input.ip,
     userAgent: input.userAgent,
+    businessId: input.businessId,
   })
 }
 

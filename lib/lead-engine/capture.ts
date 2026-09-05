@@ -36,13 +36,13 @@ export type CaptureLeadInput = {
   phone?: string | null
   name?: string | null
   /**
-   * The tenant this lead belongs to. Optional for now because eight callers
-   * pre-date multi-tenancy and the DAL still defaults; a caller on a coach's
-   * page MUST pass it, or the lead files under the singleton's contacts —
-   * `input.businessId ?? SINGLETON_BUSINESS_ID` at lib/db/contacts.ts:220 is
-   * where that decision is actually made.
+   * The tenant this lead belongs to. REQUIRED: every caller resolves one —
+   * from a session, from a row that carries it (a chat conversation, a quiz
+   * attempt, the payer's contact row), or through the seam in
+   * lib/tenancy/platform.ts for the public forms that have neither. A default
+   * here is how a coach's lead would silently file under the platform.
    */
-  businessId?: string
+  businessId: string
   attribution?: {
     gclid?: string | null
     gbraid?: string | null

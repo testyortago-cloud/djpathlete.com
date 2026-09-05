@@ -1,7 +1,6 @@
 // The one entry point every front door calls.
 
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { normaliseEmail, normalisePhone } from "@/lib/lead-engine/identity"
 import { decideMerge, type MatchCandidate } from "@/lib/lead-engine/merge"
 import { enrollIfTriggered } from "@/lib/lead-engine/enroll"
@@ -32,7 +31,7 @@ export type RecordContactEventInput = {
   source: ContactEventSource
   attributionSessionId?: string | null
   metadata?: Record<string, unknown>
-  businessId?: string
+  businessId: string
 }
 
 function getClient() {
@@ -126,7 +125,7 @@ export type UpsertContactIdentityInput = {
   phone?: string | null
   name?: string | null
   attributionSessionId?: string | null
-  businessId?: string
+  businessId: string
 }
 
 export type UpsertContactIdentityResult = {
@@ -152,7 +151,7 @@ export type UpsertContactIdentityResult = {
  * existing `recordContactEvent` suites prove by staying green unmodified.
  */
 export async function upsertContactIdentity(input: UpsertContactIdentityInput): Promise<UpsertContactIdentityResult> {
-  const businessId = input.businessId ?? SINGLETON_BUSINESS_ID
+  const businessId = input.businessId
   const email = normaliseEmail(input.email)
   const phone = normalisePhone(input.phone)
 
@@ -217,7 +216,7 @@ export async function upsertContactIdentity(input: UpsertContactIdentityInput): 
 export async function recordContactEvent(
   input: RecordContactEventInput,
 ): Promise<{ contactId: string; created: boolean; merged: boolean }> {
-  const businessId = input.businessId ?? SINGLETON_BUSINESS_ID
+  const businessId = input.businessId
 
   const { contactId, created, merged, identifierConflicts } = await upsertContactIdentity({
     email: input.email,
@@ -325,10 +324,7 @@ export async function mergeContacts(survivorId: string, mergedId: string, busine
  * findAttributionForContact's own docstring for why user_id, not email, is
  * the safe key once two businesses can share a lead.
  */
-export async function getContactUserId(
-  contactId: string,
-  businessId: string = SINGLETON_BUSINESS_ID,
-): Promise<string | null> {
+export async function getContactUserId(contactId: string, businessId: string): Promise<string | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("contacts")
@@ -359,10 +355,10 @@ export async function findContactByIdentifiers(args: {
   email?: string | null
   phone?: string | null
   userId?: string | null
-  businessId?: string
+  businessId: string
 }): Promise<string | null> {
   const supabase = getClient()
-  const businessId = args.businessId ?? SINGLETON_BUSINESS_ID
+  const businessId = args.businessId
 
   if (args.userId) {
     const { data, error } = await supabase

@@ -52,6 +52,7 @@ import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
 import { captureLead } from "@/lib/lead-engine/capture"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 // Lead Engine: `checkout.session.completed` fires for every kind of money
 // this business takes, not just a coaching sale — merch, event tickets, and
@@ -143,12 +144,13 @@ async function tryEnqueueAdsValueAdjustment(session: Stripe.Checkout.Session): P
 // dedupe the row (append-only spine, intentional per Task 4's ruling on the
 // event_signup/purchase overlap); it just makes every row traceable to its
 // session, the same way the sibling pipeline hook already tags itself.
-async function tryCaptureLeadFromCheckout(session: Stripe.Checkout.Session): Promise<void> {
+async function tryCaptureLeadFromCheckout(session: Stripe.Checkout.Session, businessId: string): Promise<void> {
   try {
     await captureLead({
       source: "purchase",
       email: session.customer_details?.email ?? session.customer_email ?? null,
       name: session.customer_details?.name ?? null,
+      businessId,
       metadata: { stripe_session_id: session.id },
     })
   } catch (err) {
@@ -196,6 +198,10 @@ export async function POST(request: Request) {
         // is excluded. Do not "simplify" these into one shared condition —
         // the two consumers legitimately fire on different subsets of the
         // same resolved contact's checkout.
+        // The payer's business, when they already have a contact row. Declared
+        // OUTSIDE the try below so a throw inside it (which must never fail a
+        // payment webhook) cannot leave the capture without a tenant.
+        let payerBusinessId: string | null = null
         try {
           const userId = session.metadata?.userId ?? null
           const email = session.customer_details?.email ?? session.customer_email ?? null
@@ -207,6 +213,7 @@ export async function POST(request: Request) {
           const contact = await findContactWithBusinessByIdentifiers({ userId, email })
           if (contact) {
             const { id: contactId, businessId } = contact
+            payerBusinessId = businessId
             await exitRunsForContact(contactId, "payment", businessId)
             if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
               // Final review, Important 3: the checkout session id is the
@@ -234,12 +241,12 @@ export async function POST(request: Request) {
           console.error("[stripe-webhook] sequence/pipeline hook failed", (err as Error).message)
         }
 
-        // Lead Engine Stage 4, Task 5: EVERY completed checkout joins the
-        // contact spine — see tryCaptureLeadFromCheckout's doc comment.
-        // Placed BEFORE every metadata-type branch below so it runs
-        // unconditionally, the same way findContactByIdentifiers/
-        // exitRunsForContact above it already do.
-        await tryCaptureLeadFromCheckout(session)
+        // A NARROWER VARIANT of the lib/tenancy/platform.ts seam: the payer's own
+        // contact row first — a repeat buyer's capture lands on their coach's
+        // business — and platformBusinessId() only for a first-time payer, for
+        // whom one Stripe account serving every business genuinely carries no
+        // tenant. Listed under that shelf in the inventory.
+        await tryCaptureLeadFromCheckout(session, payerBusinessId ?? platformBusinessId())
 
         if (session.metadata?.type === "shop_order") {
           await handleShopOrderCheckout(session)
@@ -377,12 +384,12 @@ export async function POST(request: Request) {
           if (payment && !isNonCoachingPayment) {
             try {
               // Fix round 1, Important 2: this used to resolve through the
-              // unscoped findContactByIdentifiers (defaulting to
-              // SINGLETON_BUSINESS_ID) right beside the checkout.session.
-              // completed handler above, which already resolves its tenant
-              // this way. Same reasoning applies here: one Stripe account
-              // serves every business, so the payer's contact row supplies
-              // the tenant a refund event has no other way to know.
+              // findContactByIdentifiers with no tenant right beside the
+              // checkout.session.completed handler above, which already
+              // resolves its tenant this way. Same reasoning applies here:
+              // one Stripe account serves every business, so the payer's
+              // contact row supplies the tenant a refund event has no other
+              // way to know.
               const contact = await findContactWithBusinessByIdentifiers({ userId: payment.user_id, email: null })
               if (contact) {
                 await applyPipelineEvent({

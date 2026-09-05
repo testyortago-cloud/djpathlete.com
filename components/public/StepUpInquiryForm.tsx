@@ -8,11 +8,14 @@
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { StepUpInquiryFormClient } from "./StepUpInquiryFormClient"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export async function StepUpInquiryForm() {
   // See InquiryForm.tsx for the full "failed read and blank name both
   // degrade to no checkbox" reasoning — identical here.
-  const businessSettings = await getBusinessSettings().catch(() => null)
+  //
+  // Same business as the route that files the consent row — through the seam in lib/tenancy/platform.ts.
+  const businessSettings = await getBusinessSettings(platformBusinessId()).catch(() => null)
   const displayName = businessSettings?.display_name
   const smsConsentWording = hasSmsConsentDisplayName(displayName) ? renderSmsConsentWording(displayName) : undefined
 

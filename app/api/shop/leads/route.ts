@@ -9,6 +9,7 @@ import { isShopDigitalEnabled } from "@/lib/shop/feature-flag"
 import { rateLimit } from "@/lib/shop/rate-limit"
 import { recordAudit } from "@/lib/audit/record"
 import { captureLead } from "@/lib/lead-engine/capture"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export async function POST(req: Request) {
   if (!isShopDigitalEnabled()) {
@@ -25,6 +26,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   }
   const { email, product_id } = parsed.data
+
+  // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()`
+  // is the seam until phase 4 resolves a real business off the Host header
+  // (lib/tenancy/platform.ts, CANNOT RESOLVE YET). Resolved once here and
+  // threaded; the DAL no longer defaults it.
+  const businessId = platformBusinessId()
 
   const product = await getProductById(product_id)
   if (!product || product.product_type !== "digital" || !product.digital_is_free) {
@@ -43,7 +50,7 @@ export async function POST(req: Request) {
   // this can never change what happens next, including a later 502 from the
   // download email. The delivery is transactional, not marketing consent,
   // so no consent row is written here.
-  await captureLead({ source: "lead_magnet", email, metadata: { product_id } })
+  await captureLead({ source: "lead_magnet", email, metadata: { product_id }, businessId })
 
   try {
     await sendFreeDownloadEmail({

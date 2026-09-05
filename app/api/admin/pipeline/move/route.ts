@@ -14,9 +14,9 @@
 // whole point of that change. A card move can still close a deal and therefore
 // move a revenue number, so two things replaced the blanket role check and both
 // matter: the permission gate, and the TENANT. `opportunityId` arrives in the
-// request body, and `moveOpportunityManually` defaults its `businessId` to
-// SINGLETON_BUSINESS_ID — so omitting it here would silently move the
-// OPERATOR'S cards on a coach's request. Holding no permission is still a 403.
+// request body, and `moveOpportunityManually` requires a `businessId` — the
+// tenant is what stops a coach's request from moving the OPERATOR'S cards.
+// Holding no permission is still a 403.
 //
 // withAudit() wraps this for the 401/denied/failure trail (the DAL is never
 // reached on those paths, so it never logs them). On a SUCCESSFUL move this
@@ -65,9 +65,7 @@ export const POST = withAudit(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
-    // The opportunityId arrives in the request body, so without this the
-    // `businessId` parameter below falls to its SINGLETON_BUSINESS_ID default
-    // and a coach's move lands on the operator's own pipeline.
+    // The opportunityId arrives in the request body; the tenant is what scopes it.
     let businessId: string
     try {
       ;({ businessId } = await resolveAdminTenantForRequest(request))

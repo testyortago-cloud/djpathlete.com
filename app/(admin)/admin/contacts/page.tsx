@@ -100,12 +100,9 @@ export default async function AdminContactsPage({
     // this is the only file that knows the page size — see PAGE_SIZE above.
     listContacts({ ...filters, businessId, limit: PAGE_SIZE, offset: (filters.page - 1) * PAGE_SIZE }),
     countContacts({ ...filters, businessId }),
-    // Both DAL functions default to SINGLETON_BUSINESS_ID when omitted, which
-    // is exactly the bug here: leaving businessId off would offer the
-    // OPERATOR's sequences to another business's coach, who could then enrol
-    // this business's own contacts into one of them -- a cross-tenant WRITE,
-    // not a display bug. The default stays for the other callers that still
-    // rely on it; this call site must always pass the real value.
+    // SCOPED, like every read on this page. Offering another business's
+    // sequences here would let a coach enrol this business's contacts into
+    // one of them — a cross-tenant WRITE, not a display bug.
     listSequences(businessId),
   ])
 

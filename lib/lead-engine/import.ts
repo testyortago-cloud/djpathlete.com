@@ -27,13 +27,11 @@
 // below) since nothing about the export's own shape bounds that array's
 // size.
 //
-// `ctx.businessId` is REQUIRED, not defaulted — this file used to resolve
-// `SINGLETON_BUSINESS_ID` internally, which is exactly how a second-business
-// import would silently write every record into the platform's own tenant.
-// The one caller today (scripts/import-ghl-contacts.ts) supplies
-// `SINGLETON_BUSINESS_ID` explicitly, because this one-time GHL migration
-// really does target only the platform's own historical data — that is a
-// property of the script, not something this DAL function should assume.
+// `ctx.businessId` is REQUIRED, like every tenant parameter in the Lead
+// Engine. The one caller today (scripts/import-ghl-contacts.ts) supplies the
+// platform's own id explicitly, because this one-time GHL migration really
+// does target only the platform's historical data — a property of the
+// script, not something this function should assume.
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import { normaliseEmail, normalisePhone } from "@/lib/lead-engine/identity"

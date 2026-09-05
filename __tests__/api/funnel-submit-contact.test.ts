@@ -13,6 +13,7 @@ describe("funnel submit → contact spine", () => {
       phone: "617-650-4548",
       attributionSessionId: "sess-123",
       payload: { sport: "lacrosse" },
+      businessId: "platform-biz",
     })
     expect(recordContactEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -21,6 +22,7 @@ describe("funnel submit → contact spine", () => {
         name: "Marissa",
         source: "funnel_form",
         attributionSessionId: "sess-123",
+        businessId: "platform-biz",
       }),
     )
   })
@@ -29,7 +31,14 @@ describe("funnel submit → contact spine", () => {
     recordContactEvent.mockRejectedValueOnce(new Error("PGRST204 column missing"))
     const { captureContactFromSubmission } = await import("@/lib/funnels/capture-contact")
     await expect(
-      captureContactFromSubmission({ name: "X", email: "x@y.com", phone: null, attributionSessionId: null, payload: {} }),
+      captureContactFromSubmission({
+        name: "X",
+        email: "x@y.com",
+        phone: null,
+        attributionSessionId: null,
+        payload: {},
+        businessId: "platform-biz",
+      }),
     ).resolves.toBeNull()
   })
 })

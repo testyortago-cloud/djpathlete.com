@@ -21,7 +21,6 @@
 // input can share it without importing a Supabase client.
 
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { MAX_TAG_LENGTH, normaliseTag } from "@/lib/contacts/tag-format"
 
 // Re-exported so existing server-side callers can keep importing the rule from
@@ -80,7 +79,7 @@ export function isMissingTagsTable(error: unknown): boolean {
 }
 
 /** Every tag on one contact, alphabetical so the pills do not reorder between renders. */
-export async function listTags(contactId: string, businessId: string = SINGLETON_BUSINESS_ID): Promise<ContactTag[]> {
+export async function listTags(contactId: string, businessId: string): Promise<ContactTag[]> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("contact_tags")
@@ -111,14 +110,14 @@ export async function addTag(input: {
   contactId: string
   tag: string
   createdBy?: string | null
-  businessId?: string
+  businessId: string
 }): Promise<{ tag: string; created: boolean }> {
   const tag = normaliseTag(input.tag)
   if (tag === null) throw new Error("addTag: tag is empty or too long after normalisation")
 
   const supabase = getClient()
   const { error } = await supabase.from("contact_tags").insert({
-    business_id: input.businessId ?? SINGLETON_BUSINESS_ID,
+    business_id: input.businessId,
     contact_id: input.contactId,
     tag,
     created_by: input.createdBy ?? null,
@@ -140,7 +139,7 @@ export async function addTag(input: {
 export async function removeTag(input: {
   contactId: string
   tag: string
-  businessId?: string
+  businessId: string
 }): Promise<{ tag: string }> {
   const tag = normaliseTag(input.tag)
   if (tag === null) throw new Error("removeTag: tag is empty or too long after normalisation")
@@ -149,7 +148,7 @@ export async function removeTag(input: {
   const { error } = await supabase
     .from("contact_tags")
     .delete()
-    .eq("business_id", input.businessId ?? SINGLETON_BUSINESS_ID)
+    .eq("business_id", input.businessId)
     .eq("contact_id", input.contactId)
     .eq("tag", tag)
   if (error) throw new Error(`removeTag: ${error.message}`)
@@ -168,10 +167,7 @@ export async function removeTag(input: {
  * is a legal query that matches nothing, but paying a round trip to learn that
  * is waste.
  */
-export async function tagsForContacts(
-  contactIds: string[],
-  businessId: string = SINGLETON_BUSINESS_ID,
-): Promise<Map<string, string[]>> {
+export async function tagsForContacts(contactIds: string[], businessId: string): Promise<Map<string, string[]>> {
   const byContact = new Map<string, string[]>()
   if (contactIds.length === 0) return byContact
 

@@ -299,6 +299,7 @@ describe("recordSend — the idempotency gate", () => {
     toIdentifier: "lead@example.com",
     subject: "Hi",
     bodyRendered: "Body",
+    businessId: SINGLETON_BUSINESS_ID,
   }
 
   it("claims the send when no message row exists yet", async () => {
@@ -415,7 +416,26 @@ describe("claimDueRuns", () => {
 
   it("throws on RPC error rather than returning an empty batch", async () => {
     rpcResult = { data: null, error: new Error("connection reset") }
-    await expect(claimDueRuns(10, "tick-token-2")).rejects.toThrow("connection reset")
+    await expect(claimDueRuns(10, "tick-token-2", SINGLETON_BUSINESS_ID)).rejects.toThrow("connection reset")
+  })
+
+  // WHICH tenant, not just that one was passed. Every other call in this file
+  // hands SINGLETON_BUSINESS_ID to fixtures seeded under
+  // SINGLETON_BUSINESS_ID, so a DAL that ignored its argument and hard-coded
+  // the constant would satisfy all of them: they pin the ARITY of the tenant
+  // parameter, not the value it carries. The claim RPC is the whole batch's
+  // tenant boundary — the wrong id here would run one coach's sequences on
+  // another coach's tick.
+  it("hands the RPC the business it was given, not the platform's", async () => {
+    const otherBusinessId = "22222222-2222-4222-8222-222222222222"
+    rpcResult = { data: [], error: null }
+
+    await claimDueRuns(25, "tick-token-3", otherBusinessId)
+
+    // Presence control: an empty rpcCalls array would satisfy any assertion
+    // written as "no call carries the platform id".
+    expect(rpcCalls).toHaveLength(1)
+    expect(rpcCalls[0].args.p_business_id).toBe(otherBusinessId)
   })
 })
 
@@ -442,7 +462,7 @@ describe("loadRunContext", () => {
     seedSequence("seq-1", { trigger_source: "funnel_form" })
     const run = seedRun("run-1", "c-1", "seq-1", { enrolled_at: "2026-08-18T10:00:00Z" }) as SequenceRunRow
 
-    const ctx = await loadRunContext(run, now)
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
 
     expect(ctx.timezone).toBe("America/New_York")
     expect(ctx.quiet).toEqual({ startHour: 8, endHour: 21 })
@@ -465,7 +485,7 @@ describe("loadRunContext", () => {
     seedSequence("seq-1")
     const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
 
-    const ctx = await loadRunContext(run, now)
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
 
     expect(ctx.contact.name).toBe("Jane Doe")
   })
@@ -476,7 +496,7 @@ describe("loadRunContext", () => {
     seedSequence("seq-1")
     const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
 
-    const ctx = await loadRunContext(run, now)
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
 
     expect(ctx.contact.name).toBeNull()
   })
@@ -493,7 +513,7 @@ describe("loadRunContext", () => {
       reason: "unsubscribed",
     })
 
-    const ctx = await loadRunContext(run, now)
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
     expect(ctx.isSuppressed).toBe(true)
   })
 
@@ -506,7 +526,7 @@ describe("loadRunContext", () => {
     seedRun("run-2", "c-1", "seq-2", { status: "active", enrolled_at: "2026-08-18T09:00:00Z" })
     seedRun("run-3", "c-1", "seq-2", { status: "completed", enrolled_at: "2026-08-18T08:00:00Z" })
 
-    const ctx = await loadRunContext(run, now)
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
 
     expect(ctx.activeSiblings.map((s) => s.id)).toEqual(["run-2"])
   })
@@ -518,7 +538,7 @@ describe("loadRunContext", () => {
     const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
     forceErrorOnTable = "contact_consents"
 
-    await expect(loadRunContext(run, now)).rejects.toThrow()
+    await expect(loadRunContext(run, now, SINGLETON_BUSINESS_ID)).rejects.toThrow()
   })
 
   it("does NOT swallow an isSuppressed read failure", async () => {
@@ -528,7 +548,7 @@ describe("loadRunContext", () => {
     const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
     forceErrorOnTable = "contact_suppressions"
 
-    await expect(loadRunContext(run, now)).rejects.toThrow()
+    await expect(loadRunContext(run, now, SINGLETON_BUSINESS_ID)).rejects.toThrow()
   })
 
   it("throws when the contact row is missing", async () => {
@@ -536,7 +556,7 @@ describe("loadRunContext", () => {
     seedSequence("seq-1")
     const run = seedRun("run-1", "c-missing", "seq-1") as SequenceRunRow
 
-    await expect(loadRunContext(run, now)).rejects.toThrow()
+    await expect(loadRunContext(run, now, SINGLETON_BUSINESS_ID)).rejects.toThrow()
   })
 
   // Fix wave (Important, Finding 1): applyDeliveryStatus (lib/db/sequences.ts)
@@ -587,7 +607,7 @@ describe("loadRunContext", () => {
       current_position: 0,
     }) as SequenceRunRow
 
-    const ctx = await loadRunContext(sibling, now)
+    const ctx = await loadRunContext(sibling, now, SINGLETON_BUSINESS_ID)
 
     // The bug this guards against: filtering on status === "sent" only would
     // miss this row entirely, leaving sentAtToday empty and the cap

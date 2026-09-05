@@ -46,6 +46,7 @@ import { NextResponse } from "next/server"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { getSetting } from "@/lib/db/system-settings"
 import { CHAT_ASSISTANT_FLAG, CHAT_ASSISTANT_FLAG_DEFAULT } from "@/lib/lead-engine/chat/constants"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export const dynamic = "force-dynamic"
 
@@ -59,7 +60,10 @@ export async function GET() {
   try {
     const [flag, settings] = await Promise.all([
       getSetting<boolean>(CHAT_ASSISTANT_FLAG, CHAT_ASSISTANT_FLAG_DEFAULT),
-      getBusinessSettings(),
+      // PUBLIC, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()` is
+      // the seam until phase 4 resolves a real business off the Host header
+      // (lib/tenancy/platform.ts, CANNOT RESOLVE YET).
+      getBusinessSettings(platformBusinessId()),
     ])
 
     return NextResponse.json(

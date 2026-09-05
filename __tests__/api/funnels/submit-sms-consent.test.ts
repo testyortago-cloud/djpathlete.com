@@ -51,6 +51,7 @@ vi.mock("@/lib/db/marketing-attribution", () => ({ getAttributionBySession: vi.f
 vi.mock("@/lib/marketing/cookies", () => ({ parseAttrCookie: () => null }))
 vi.mock("@/lib/db/events", () => ({ getEventById: vi.fn(async () => null) }))
 vi.mock("@/lib/events/checkout", () => ({ createEventSignupCheckout: vi.fn() }))
+vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
 
 import { POST } from "@/app/api/funnels/submit/route"
 import { renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
@@ -120,6 +121,7 @@ describe("POST /api/funnels/submit — SMS consent", () => {
       wordingShown: renderSmsConsentWording("Acme Fitness"),
       ip: "203.0.113.1",
       userAgent: "test-agent",
+      businessId: "platform-biz",
     })
   })
 
@@ -183,5 +185,16 @@ describe("POST /api/funnels/submit — SMS consent", () => {
 
     expect(res.status).toBe(200)
     expect(recordConsent).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/funnels/submit — tenant", () => {
+  it("resolves the tenant once through the seam and threads it into the bridge, the settings read and the consent row", async () => {
+    const res = await POST(request({ sms_consent: true }))
+    await flush()
+    expect(res.status).toBe(200)
+    expect(captureContactFromSubmission.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
+    expect(getBusinessSettings).toHaveBeenCalledWith("platform-biz")
+    expect(recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
   })
 })

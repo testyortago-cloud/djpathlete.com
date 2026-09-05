@@ -8,6 +8,7 @@ import { captureLead } from "@/lib/lead-engine/capture"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 function getBaseUrl() {
   return process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
@@ -36,6 +37,12 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     if (!event || event.status !== "published") {
       return NextResponse.json({ error: "Event not available" }, { status: 404 })
     }
+
+    // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()`
+    // is the seam until phase 4 resolves a real business off the Host header
+    // (lib/tenancy/platform.ts, CANNOT RESOLVE YET). Resolved once here and
+    // threaded; the DAL no longer defaults it.
+    const businessId = platformBusinessId()
 
     // Resolved from the djp_attr cookie BEFORE the signup is created, so gclid
     // lands on `event_signups` itself and not only on the downstream payments row
@@ -96,6 +103,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       email: parsed.data.parent_email,
       phone: parsed.data.parent_phone,
       name: parsed.data.parent_name,
+      businessId,
     })
 
     // SMS consent (Lead Engine Stage 4). AWAITED — NOT fire-and-forget like
@@ -113,7 +121,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     // does), so awaiting it just adds real latency before the
     // already-decided response, never a new failure mode.
     if (contactId && parsed.data.parent_phone && parsed.data.sms_consent === true) {
-      await recordEventSignupSmsConsent({ contactId, ip: ipAddress, userAgent }).catch((err) => {
+      await recordEventSignupSmsConsent({ contactId, ip: ipAddress, userAgent, businessId }).catch((err) => {
         console.error("[api/events/checkout] sms consent write failed (the signup was saved):", err)
       })
     }
@@ -149,8 +157,9 @@ async function recordEventSignupSmsConsent(input: {
   contactId: string
   ip: string | null
   userAgent: string | null
+  businessId: string
 }): Promise<void> {
-  const settings = await getBusinessSettings()
+  const settings = await getBusinessSettings(input.businessId)
   if (!hasSmsConsentDisplayName(settings.display_name)) {
     console.warn("[api/events/checkout] sms consent skipped: business_settings.display_name is blank")
     return
@@ -163,5 +172,6 @@ async function recordEventSignupSmsConsent(input: {
     wordingShown: renderSmsConsentWording(settings.display_name),
     ip: input.ip,
     userAgent: input.userAgent,
+    businessId: input.businessId,
   })
 }

@@ -46,6 +46,7 @@ import { describe, it, expect } from "vitest"
 import { runWithTools } from "@/lib/ai/tool-loop"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { createServiceRoleClient } from "@/lib/supabase"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import {
   CHAT_MODEL,
   MAX_OUTPUT_TOKENS,
@@ -135,7 +136,10 @@ async function runOnce(prompt: string, n: number, category: string): Promise<Out
     }
   }
 
-  const settings = await getBusinessSettings()
+  // Mirrors app/api/ask/route.ts: no session, no conversation yet, so the
+  // platform's own tenant is the seam — same as the live route this probe
+  // is standing in for.
+  const settings = await getBusinessSettings(platformBusinessId())
   const executor = createToolExecutor()
   const result = await runWithTools({
     system: buildSystemPrompt(settings),

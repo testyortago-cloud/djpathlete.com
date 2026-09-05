@@ -21,6 +21,12 @@ export async function captureContactFromSubmission(input: {
   funnelId?: string | null
   stepId?: string | null
   payload: Record<string, unknown>
+  /**
+   * REQUIRED, and deliberately not defaulted. This bridge has no tenant of its
+   * own — the submit route resolves one and hands it over. A default here is
+   * how a second coach's funnel lead would silently file under the platform.
+   */
+  businessId: string
 }): Promise<string | null> {
   if (!input.email && !input.phone) return null
   try {
@@ -31,6 +37,7 @@ export async function captureContactFromSubmission(input: {
       source: "funnel_form",
       attributionSessionId: input.attributionSessionId,
       metadata: input.payload,
+      businessId: input.businessId,
     })
     return contactId
   } catch (err) {

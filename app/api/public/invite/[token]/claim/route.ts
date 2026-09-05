@@ -6,7 +6,7 @@ import { claimInviteSchema } from "@/lib/validators/team-invite"
 import { isPgUniqueViolation } from "@/lib/supabase-errors"
 import { roleForPermissions, sanitizePermissionMap } from "@/lib/permissions/registry"
 import { addBusinessMember, linkHostToUser, type BusinessMemberRole } from "@/lib/db/business-members"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export async function POST(
   request: Request,
@@ -83,7 +83,8 @@ export async function POST(
   // Every teammate gets a membership row, because ABSENCE of one now means "no
   // access" (the compatibility branch in resolveAdminTenant is gone as of
   // migration 00246). A business-scoped invite names its business; a plain
-  // /admin/team invite is platform staff on the singleton.
+  // /admin/team invite is platform staff on the platform's own business —
+  // CORRECT BY CONSTRUCTION, and listed as such in lib/tenancy/platform.ts.
   //
   // THIS RUNS BEFORE markInviteUsed, DELIBERATELY. If addBusinessMember (or
   // linkHostToUser) throws, the invite must still read as pending, not
@@ -93,7 +94,7 @@ export async function POST(
   // admin surface), and no UI path to re-run just the membership write. An
   // unused invite at least leaves the door open for someone to intervene by
   // hand rather than for hand-written SQL to be the ONLY fix.
-  const membershipBusinessId = invite.business_id ?? SINGLETON_BUSINESS_ID
+  const membershipBusinessId = invite.business_id ?? platformBusinessId()
   const membershipRole = invite.business_id
     ? ((invite.business_role ?? "coach") as BusinessMemberRole)
     : "staff"

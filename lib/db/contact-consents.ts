@@ -1,5 +1,4 @@
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 export type ConsentChannel = "email" | "sms"
 
@@ -15,11 +14,11 @@ export async function recordConsent(input: {
   wordingShown: string
   ip?: string | null
   userAgent?: string | null
-  businessId?: string
+  businessId: string
 }): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase.from("contact_consents").insert({
-    business_id: input.businessId ?? SINGLETON_BUSINESS_ID,
+    business_id: input.businessId,
     contact_id: input.contactId,
     channel: input.channel,
     granted: input.granted,
@@ -52,11 +51,7 @@ export async function hasConsent(contactId: string, channel: ConsentChannel): Pr
   return Boolean(data.granted)
 }
 
-export async function suppress(
-  identifier: string,
-  reason: string,
-  businessId: string = SINGLETON_BUSINESS_ID,
-): Promise<void> {
+export async function suppress(identifier: string, reason: string, businessId: string): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase
     .from("contact_suppressions")
@@ -83,7 +78,7 @@ export async function suppress(
  * needed here to get that idempotency: calling this for an identifier that
  * was never suppressed, or calling it twice in a row, both succeed silently.
  */
-export async function unsuppress(identifier: string, businessId: string = SINGLETON_BUSINESS_ID): Promise<void> {
+export async function unsuppress(identifier: string, businessId: string): Promise<void> {
   const supabase = getClient()
   const { error } = await supabase
     .from("contact_suppressions")
@@ -93,7 +88,7 @@ export async function unsuppress(identifier: string, businessId: string = SINGLE
   if (error) throw error
 }
 
-export async function isSuppressed(identifier: string, businessId: string = SINGLETON_BUSINESS_ID): Promise<boolean> {
+export async function isSuppressed(identifier: string, businessId: string): Promise<boolean> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("contact_suppressions")

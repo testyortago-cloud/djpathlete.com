@@ -68,9 +68,17 @@ is a waypoint, not the target. Design for the destination; build for today.
 
 **What that means in practice, on every task:**
 
-- **Never add a new `SINGLETON_BUSINESS_ID` reference.** It is in 25 production files (measure it,
-  do not trust this number: `git grep -l SINGLETON_BUSINESS_ID <rev> -- '*.ts' '*.tsx' | sed "s/^<rev>://" | grep -v '^__tests__/\|^scripts/' | wc -l`).
-  That count going to zero is the real progress bar. Adding to it is moving backwards.
+- **Never add a new `SINGLETON_BUSINESS_ID` reference.** It is in 5 production files (measure it,
+  do not trust this number: `git grep -l SINGLETON_BUSINESS_ID <rev> -- '*.ts' '*.tsx' | sed "s/^<rev>://" | grep -v '^__tests__/\|/__tests__/\|^scripts/' | wc -l`):
+  `lib/lead-engine/constants.ts` (the definition), `lib/tenancy/platform.ts` (the seam),
+  `lib/tenancy/resolve.ts` (a history comment, not a use), and the two `functions/` twins
+  (`functions/src/lib/tenancy-constants.ts`, `functions/src/ads/dal.ts`), which cannot import
+  `lib/`. The filter above gained `/__tests__/` on 2026-09-05: without it the command also counted
+  `functions/src/ads/__tests__/dal.test.ts` and reported 6. Every other caller goes through
+  `platformBusinessId()`, whose doc comment is the inventory;
+  `__tests__/lib/tenancy/platform-inventory.test.ts` fails if a caller is missing from it, if
+  `app/api/quiz/submit/route.ts` ever starts calling it, or if the inventory names a file that
+  stopped. That count going to zero is the real progress bar. Adding to it is moving backwards.
 - **Every new table gets `business_id`. Every new reader gets a tenant predicate.** A reader with no
   predicate is not "fine while there is one tenant" — it is a leak with a fuse in it, and this repo
   has already had to make `/admin/ads` owner-only because of exactly that.

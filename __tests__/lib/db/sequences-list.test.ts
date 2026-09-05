@@ -51,21 +51,28 @@ beforeEach(() => {
 })
 
 describe("listSequences", () => {
-  it("reads key, name, status and trigger_source, scoped to the one business", async () => {
+  // Retargeted: this used to call listSequences() with no argument and rely
+  // on the DAL default equalling BUSINESS. Now that businessId is required,
+  // passing BUSINESS here would pass even if the implementation ignored the
+  // argument and used a hardcoded id that happens to match it — so this
+  // names a DIFFERENT business id and asserts THAT value reached the query,
+  // which a reintroduced hardcoded default would fail.
+  it("reads key, name, status and trigger_source, scoped to the business the caller names", async () => {
     // MUTANT: dropping `status` from the select. The picker would show
     // "Cold Lead Re-Engagement" with nothing to say it is a draft, and the
     // first thing the coach learns is that nobody was enrolled.
-    await listSequences()
+    const OTHER_BUSINESS = "biz-coach-2"
+    await listSequences(OTHER_BUSINESS)
     expect(calls[0].table).toBe("sequences")
     expect(calls[0].select).toBe("id, key, name, status, trigger_source")
-    expect(calls[0].ops).toContainEqual(["eq", "business_id", BUSINESS])
+    expect(calls[0].ops).toContainEqual(["eq", "business_id", OTHER_BUSINESS])
   })
 
   it("does NOT filter to status = active — every sequence here ships as a draft", async () => {
     // MUTANT: `.eq("status","active")`. Migrations 00218 and 00223 seed every
     // sequence `draft`, so this picker would be empty on day one and the
     // manual-enrol surface would look broken rather than unactivated.
-    await listSequences()
+    await listSequences(BUSINESS)
     expect(calls[0].ops.filter(([method, column]) => method === "eq" && column === "status")).toEqual([])
   })
 
@@ -82,7 +89,7 @@ describe("listSequences", () => {
       ],
       error: null,
     }
-    const rows = await listSequences()
+    const rows = await listSequences(BUSINESS)
     expect(rows).toEqual([
       {
         id: "s1",
@@ -98,6 +105,6 @@ describe("listSequences", () => {
     // `null` and `[]` are different answers: an empty picker for a failed read
     // says "this business has no sequences", which is not true.
     result = { data: null, error: { message: "boom" } }
-    await expect(listSequences()).rejects.toThrow(/listSequences: boom/)
+    await expect(listSequences(BUSINESS)).rejects.toThrow(/listSequences: boom/)
   })
 })

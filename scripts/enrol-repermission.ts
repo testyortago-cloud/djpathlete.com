@@ -358,7 +358,13 @@ async function runExecute(candidates: RepermissionCandidate[]): Promise<void> {
     // already filtered out anyone with a prior run; this is what makes that
     // guarantee load-bearing rather than advisory, in case a run started
     // between discovery and this call.
-    const outcome = await enrolContactManually(candidate.contactId, SEQUENCE_KEY, { onePerContact: true })
+    const outcome = await enrolContactManually(candidate.contactId, SEQUENCE_KEY, {
+      // The same tenant every query above filters on: this one-off campaign
+      // targets the platform's own historical contacts, and `businessId` is
+      // required now that the enrolment DAL no longer defaults it.
+      businessId: SINGLETON_BUSINESS_ID,
+      onePerContact: true,
+    })
     counts[outcome.outcome]++
     const detail = outcome.outcome === "sequence_not_active" ? ` (status=${outcome.status})` : ""
     console.log(`  id=${candidate.contactId} email=${maskEmail(candidate.email)} -> ${outcome.outcome}${detail}`)
@@ -420,8 +426,10 @@ async function main(): Promise<void> {
 
   // PREFLIGHT — see this file's header comment. Runs before discovery: a
   // misconfigured business has nothing worth discovering candidates for
-  // under --execute.
-  const settings = await getBusinessSettings()
+  // under --execute. This campaign is platform-only (see every other
+  // SINGLETON_BUSINESS_ID reference in this file), so the tenant is named
+  // explicitly rather than relying on a DAL default that no longer exists.
+  const settings = await getBusinessSettings(SINGLETON_BUSINESS_ID)
   const preflight = checkBusinessSettingsForRepermission(settings)
   if (preflight.missing.length > 0) {
     const fields = preflight.missing.map((f) => `business_settings.${f}`).join(", ")

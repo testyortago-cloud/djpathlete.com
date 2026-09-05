@@ -268,6 +268,15 @@ describe("POST /api/ask/capture — the only contact-write path", () => {
     expect(h.getBusinessSettings).toHaveBeenCalledWith(OTHER_BUSINESS_ID)
   })
 
+  it("files the consent row under the conversation's own business too, not just the settings read", async () => {
+    const OTHER_BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
+    h.getConversation.mockResolvedValue(conversation({ business_id: OTHER_BUSINESS_ID }))
+
+    await POST(req(submission({ marketingConsent: true })))
+
+    expect(h.recordConsent).toHaveBeenCalledWith(expect.objectContaining({ businessId: OTHER_BUSINESS_ID }))
+  })
+
   it("treats a failed business-settings read as a blank name, never as a licence to file", async () => {
     h.getBusinessSettings.mockRejectedValue(new Error("business_settings unreachable"))
 

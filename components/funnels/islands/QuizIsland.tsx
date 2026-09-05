@@ -5,6 +5,7 @@ import { getQuizDefinition } from "@/lib/db/quizzes"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { publicQuizDefinition } from "@/lib/quizzes/public-definition"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import { QuizRunner } from "./QuizRunner"
 import type { FunnelRenderContext } from "./index"
 
@@ -41,7 +42,9 @@ export async function QuizIsland({ props, context }: QuizIslandProps) {
   // the business, and `hasSmsConsentDisplayName` is the same gate the submit
   // route checks before filing the row, so "the name was unusable" cannot mean
   // one thing here and another there.
-  const settings = await getBusinessSettings().catch(() => null)
+  //
+  // Same business as /api/quiz/submit's consent write — see lib/tenancy/platform.ts.
+  const settings = await getBusinessSettings(platformBusinessId()).catch(() => null)
   const displayName = settings?.display_name
   const smsConsentWording = hasSmsConsentDisplayName(displayName) ? renderSmsConsentWording(displayName) : undefined
 

@@ -18,10 +18,14 @@ describe("captureLead tenancy", () => {
     )
   })
 
-  it("omits businessId when the caller gives none, so the DAL default still applies", async () => {
-    await captureLead({ source: "ai_chat", email: "a@b.com" })
-    expect(recordContactEventMock).toHaveBeenCalledWith(
-      expect.objectContaining({ businessId: undefined }),
-    )
+  it("never substitutes the platform's own id for the tenant the caller named", async () => {
+    // The inverse of the test this replaced. `businessId` is required and the
+    // DAL has no default left, so the only value that can reach the contact
+    // spine is the caller's — and specifically NOT the platform id a
+    // reintroduced fallback would quietly swap in.
+    await captureLead({ source: "ai_chat", email: "a@b.com", businessId: "00000000-0000-0000-0000-0000000000c3" })
+    const forwarded = recordContactEventMock.mock.calls[0][0] as { businessId?: string }
+    expect(forwarded.businessId).toBe("00000000-0000-0000-0000-0000000000c3")
+    expect(forwarded.businessId).not.toBe("00000000-0000-0000-0000-000000000001")
   })
 })

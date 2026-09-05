@@ -9,6 +9,7 @@ import { captureLead } from "@/lib/lead-engine/capture"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export const POST = withAudit(
   {
@@ -46,6 +47,12 @@ export const POST = withAudit(
         return NextResponse.json({ error: "Event not available" }, { status: 404 })
       }
 
+      // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()`
+      // is the seam until phase 4 resolves a real business off the Host header
+      // (lib/tenancy/platform.ts, CANNOT RESOLVE YET). Resolved once here and
+      // threaded; the DAL no longer defaults it.
+      const businessId = platformBusinessId()
+
       if (!waitlist && event.signup_count >= event.capacity) {
         return NextResponse.json({ error: "at_capacity" }, { status: 409 })
       }
@@ -72,6 +79,7 @@ export const POST = withAudit(
         email: signup.parent_email,
         phone: signup.parent_phone,
         name: signup.parent_name,
+        businessId,
       })
 
       // SMS consent (Lead Engine Stage 4). FIRE AND FORGET, same reasoning as
@@ -82,7 +90,7 @@ export const POST = withAudit(
       // to, a phone that was actually submitted, and the box was actually
       // ticked — an unchecked or absent box writes no row at all.
       if (contactId && signup.parent_phone && sms_consent === true) {
-        void recordEventSignupSmsConsent({ contactId, ip: ipAddress, userAgent }).catch((err) => {
+        void recordEventSignupSmsConsent({ contactId, ip: ipAddress, userAgent, businessId }).catch((err) => {
           console.error("[api/events/signup] sms consent write failed (the signup was saved):", err)
         })
       }
@@ -134,8 +142,9 @@ async function recordEventSignupSmsConsent(input: {
   contactId: string
   ip: string | null
   userAgent: string | null
+  businessId: string
 }): Promise<void> {
-  const settings = await getBusinessSettings()
+  const settings = await getBusinessSettings(input.businessId)
   if (!hasSmsConsentDisplayName(settings.display_name)) {
     console.warn("[api/events/signup] sms consent skipped: business_settings.display_name is blank")
     return
@@ -148,5 +157,6 @@ async function recordEventSignupSmsConsent(input: {
     wordingShown: renderSmsConsentWording(settings.display_name),
     ip: input.ip,
     userAgent: input.userAgent,
+    businessId: input.businessId,
   })
 }

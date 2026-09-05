@@ -41,6 +41,7 @@ import { auth } from "@/lib/auth"
 import { withAudit } from "@/lib/audit/with-audit"
 import { enrolContactManually } from "@/lib/lead-engine/enroll"
 import { emptyTally, parseEnrolRequest, type EnrolTally } from "@/lib/lead-engine/manual-enrol"
+import { NoAccessibleBusinessError, resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 
 // One enrolment is a `sequences` lookup plus a `sequence_runs` insert, run
 // sequentially. A full batch (100, the cap in lib/lead-engine/manual-enrol.ts)
@@ -91,6 +92,26 @@ export const POST = withAudit(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
+    // THE TENANT. The contact-detail page populated its "Add to a sequence"
+    // picker with listSequences(businessId) for the caller's SELECTED business
+    // (the cookie's choice, else the first), so this route must look the picked
+    // key up under the SAME business or the two disagree. They used to: this
+    // call let the DAL default apply, so a coach on another business hit a
+    // loud sequence_not_found in the ordinary case — but the seeded keys are
+    // generic templates (`new_lead_nurture`, `cold_lead_re_engagement`), and a
+    // second business provisioned from them COLLIDES: a sequence_runs row
+    // written against the platform's sequence, carrying this business's own
+    // contact. Same shape as app/api/admin/pipeline/move/route.ts.
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
+    }
+
     const raw = await request
       .clone()
       .json()
@@ -114,24 +135,10 @@ export const POST = withAudit(
     // the audit metadata above, which stays counts and a sequence key.
     const failedContactIds: string[] = []
 
-    // FOLLOW-UP, NOT YET DONE: no businessId is passed here, so
-    // enrolContactManually (lib/lead-engine/enroll.ts) defaults it to
-    // SINGLETON_BUSINESS_ID regardless of which business the caller actually
-    // belongs to. The contact-detail page's "Add to a sequence" picker (Task
-    // 13) is now correctly scoped to the caller's own business, so a
-    // non-singleton coach ordinarily gets a loud `sequence_not_found` here —
-    // not silent, because the picked key does not exist under the singleton.
-    // But the seeded sequence keys are generic templates
-    // (`new_lead_nurture`, `cold_lead_re_engagement`), so a second business
-    // provisioned from the same templates COLLIDES on those keys and gets a
-    // silent success: a `sequence_runs` row written against the singleton's
-    // sequence, carrying this business's own contact_id. Needs
-    // resolveAdminTenantForRequest threaded through to `enrolContactManually`
-    // (and its own test suite retargeted, not just extended) in a follow-up
-    // task — not attempted here.
     for (const contactId of parsed.contactIds) {
       try {
         const outcome = await enrolContactManually(contactId, parsed.sequenceKey, {
+          businessId,
           onePerContact: parsed.onePerContact,
         })
         tally[outcome.outcome] += 1

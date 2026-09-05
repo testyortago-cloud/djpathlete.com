@@ -98,6 +98,11 @@ vi.mock("@/lib/supabase", () => ({
 
 import { recordConsent, hasConsent, isSuppressed, suppress } from "@/lib/db/contact-consents"
 
+// Every tenant parameter in this module is REQUIRED — there is no default to
+// fall back on — so each call below names the business it is writing to or
+// reading from, and the writes and reads share this one id on purpose.
+const BUSINESS_ID = "biz-1"
+
 beforeEach(() => {
   store.consents = []
   store.suppressions = []
@@ -108,17 +113,40 @@ beforeEach(() => {
 describe("consent", () => {
   it("records the wording the person was actually shown", async () => {
     await recordConsent({
-      contactId: "c1", channel: "sms", granted: true,
-      source: "funnel_form", wordingShown: "Text me about camps and clinics.",
+      contactId: "c1",
+      channel: "sms",
+      granted: true,
+      businessId: BUSINESS_ID,
+      source: "funnel_form",
+      wordingShown: "Text me about camps and clinics.",
     })
     expect(store.consents[0].wording_shown).toBe("Text me about camps and clinics.")
     expect(store.consents[0].channel).toBe("sms")
     expect(store.consents[0].granted).toBe(true)
+    // The tenant the caller named is the tenant the row is FILED under. Every
+    // other assertion in this file reads a column the caller also supplied, so
+    // a `business_id` hard-coded back to the platform constant would survive
+    // all of them — BUSINESS_ID here is deliberately not that constant.
+    expect(store.consents[0].business_id).toBe(BUSINESS_ID)
   })
 
   it("treats the most recent record as authoritative", async () => {
-    await recordConsent({ contactId: "c1", channel: "email", granted: true, source: "form", wordingShown: "w" })
-    await recordConsent({ contactId: "c1", channel: "email", granted: false, source: "unsubscribe", wordingShown: "w" })
+    await recordConsent({
+      contactId: "c1",
+      channel: "email",
+      granted: true,
+      source: "form",
+      wordingShown: "w",
+      businessId: BUSINESS_ID,
+    })
+    await recordConsent({
+      contactId: "c1",
+      channel: "email",
+      granted: false,
+      source: "unsubscribe",
+      wordingShown: "w",
+      businessId: BUSINESS_ID,
+    })
     expect(await hasConsent("c1", "email")).toBe(false)
   })
 
@@ -131,8 +159,22 @@ describe("consent", () => {
     // ever assert a `true` result — a hardcoded/broken contact_id filter
     // would pass every prior test in this file while returning false for
     // everyone. This pins the positive case and isolation across contacts.
-    await recordConsent({ contactId: "c1", channel: "email", granted: true, source: "form", wordingShown: "w" })
-    await recordConsent({ contactId: "c2", channel: "email", granted: false, source: "form", wordingShown: "w" })
+    await recordConsent({
+      contactId: "c1",
+      channel: "email",
+      granted: true,
+      source: "form",
+      wordingShown: "w",
+      businessId: BUSINESS_ID,
+    })
+    await recordConsent({
+      contactId: "c2",
+      channel: "email",
+      granted: false,
+      source: "form",
+      wordingShown: "w",
+      businessId: BUSINESS_ID,
+    })
     expect(await hasConsent("c1", "email")).toBe(true)
     expect(await hasConsent("c2", "email")).toBe(false)
   })
@@ -177,7 +219,14 @@ describe("consent", () => {
     // test would still pass with the wrong answer for the wrong reason.
     // "Could not read" and "they said no" are different answers, and only
     // one of them is safe to act on.
-    await recordConsent({ contactId: "c1", channel: "email", granted: true, source: "form", wordingShown: "w" })
+    await recordConsent({
+      contactId: "c1",
+      channel: "email",
+      granted: true,
+      source: "form",
+      wordingShown: "w",
+      businessId: BUSINESS_ID,
+    })
     forceErrorOnTable = "contact_consents"
     await expect(hasConsent("c1", "email")).rejects.toThrow()
   })
@@ -185,12 +234,12 @@ describe("consent", () => {
 
 describe("suppression", () => {
   it("suppresses by identifier", async () => {
-    await suppress("marissa@example.com", "unsubscribed")
-    expect(await isSuppressed("marissa@example.com")).toBe(true)
+    await suppress("marissa@example.com", "unsubscribed", BUSINESS_ID)
+    expect(await isSuppressed("marissa@example.com", BUSINESS_ID)).toBe(true)
   })
 
   it("keys suppression by identifier, so it survives the contact it named being merged away", async () => {
-    await suppress("marissa@example.com", "unsubscribed")
+    await suppress("marissa@example.com", "unsubscribed", BUSINESS_ID)
 
     // The suppression row itself must carry no contact reference at all —
     // that is what lets it survive a merge, a delete, and the same person
@@ -202,7 +251,7 @@ describe("suppression", () => {
     // only the identifier, which is all `isSuppressed` ever accepts.
     store.consents = []
 
-    expect(await isSuppressed("marissa@example.com")).toBe(true)
+    expect(await isSuppressed("marissa@example.com", BUSINESS_ID)).toBe(true)
   })
 
   it("swallows a real 23505 and rethrows anything else", async () => {
@@ -213,12 +262,12 @@ describe("suppression", () => {
       table: "contact_suppressions",
       error: { code: "23505", message: 'duplicate key value violates unique constraint "contact_suppressions_uniq"' },
     }
-    await expect(suppress("dup@example.com", "unsubscribed")).resolves.toBeUndefined()
+    await expect(suppress("dup@example.com", "unsubscribed", BUSINESS_ID)).resolves.toBeUndefined()
 
     forceInsertError = {
       table: "contact_suppressions",
       error: { code: "42501", message: "permission denied — this looks like a duplicate but is not one" },
     }
-    await expect(suppress("other@example.com", "unsubscribed")).rejects.toThrow(/permission denied/)
+    await expect(suppress("other@example.com", "unsubscribed", BUSINESS_ID)).rejects.toThrow(/permission denied/)
   })
 })

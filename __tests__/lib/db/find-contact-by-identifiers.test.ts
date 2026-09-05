@@ -42,7 +42,7 @@ beforeEach(() => {
 describe("findContactByIdentifiers", () => {
   it("resolves by user_id when present", async () => {
     store.contacts.push({ id: "c-uid", business_id: BUSINESS_ID, user_id: "user-1", email: null, phone_e164: null })
-    const id = await findContactByIdentifiers({ userId: "user-1" })
+    const id = await findContactByIdentifiers({ userId: "user-1", businessId: BUSINESS_ID })
     expect(id).toBe("c-uid")
   })
 
@@ -55,7 +55,7 @@ describe("findContactByIdentifiers", () => {
       email: "lead@example.com",
       phone_e164: null,
     })
-    const id = await findContactByIdentifiers({ userId: "user-1", email: "lead@example.com" })
+    const id = await findContactByIdentifiers({ userId: "user-1", email: "lead@example.com", businessId: BUSINESS_ID })
     expect(id).toBe("c-uid")
   })
 
@@ -67,7 +67,11 @@ describe("findContactByIdentifiers", () => {
       email: "lead@example.com",
       phone_e164: null,
     })
-    const id = await findContactByIdentifiers({ userId: "user-missing", email: "lead@example.com" })
+    const id = await findContactByIdentifiers({
+      userId: "user-missing",
+      email: "lead@example.com",
+      businessId: BUSINESS_ID,
+    })
     expect(id).toBe("c-email")
   })
 
@@ -79,7 +83,7 @@ describe("findContactByIdentifiers", () => {
       email: "lead@example.com",
       phone_e164: null,
     })
-    const id = await findContactByIdentifiers({ email: "  Lead@Example.com  " })
+    const id = await findContactByIdentifiers({ email: "  Lead@Example.com  ", businessId: BUSINESS_ID })
     expect(id).toBe("c-email")
   })
 
@@ -91,7 +95,7 @@ describe("findContactByIdentifiers", () => {
       email: null,
       phone_e164: "+16176504548",
     })
-    const id = await findContactByIdentifiers({ phone: "617-650-4548" })
+    const id = await findContactByIdentifiers({ phone: "617-650-4548", businessId: BUSINESS_ID })
     expect(id).toBe("c-phone")
   })
 
@@ -100,11 +104,16 @@ describe("findContactByIdentifiers", () => {
       userId: "nope",
       email: "nobody@example.com",
       phone: "617-650-4548",
+      businessId: BUSINESS_ID,
     })
     expect(id).toBeNull()
   })
 
-  it("scopes lookups to the given business id", async () => {
+  it("scopes lookups to the business the caller names", async () => {
+    // `businessId` is required now, so this pins WHICH tenant was applied
+    // rather than which one a default happened to pick. The second assertion
+    // is the presence control: without it, this would pass just as well if
+    // the lookup were broken for every business.
     store.contacts.push({
       id: "c-other-biz",
       business_id: "some-other-business",
@@ -112,7 +121,9 @@ describe("findContactByIdentifiers", () => {
       email: "lead@example.com",
       phone_e164: null,
     })
-    const id = await findContactByIdentifiers({ email: "lead@example.com" })
-    expect(id).toBeNull()
+    await expect(findContactByIdentifiers({ email: "lead@example.com", businessId: BUSINESS_ID })).resolves.toBeNull()
+    await expect(
+      findContactByIdentifiers({ email: "lead@example.com", businessId: "some-other-business" }),
+    ).resolves.toBe("c-other-biz")
   })
 })

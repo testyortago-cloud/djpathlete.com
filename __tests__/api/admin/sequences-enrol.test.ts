@@ -1,3 +1,4 @@
+// @vitest-environment node
 // __tests__/api/admin/sequences-enrol.test.ts
 //
 // POST /api/admin/sequences/enrol — the only surface in the whole app that
@@ -37,8 +38,25 @@ vi.mock("@/lib/lead-engine/enroll", () => ({
 }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: (...a: unknown[]) => recordAuditMock(...a) }))
 
+const resolveTenantMock = vi.fn()
+vi.mock("@/lib/tenancy/resolve", () => {
+  class NoAccessibleBusinessError extends Error {}
+  return {
+    resolveAdminTenantForRequest: (...a: unknown[]) => resolveTenantMock(...a),
+    NoAccessibleBusinessError,
+  }
+})
+
 import { POST } from "@/app/api/admin/sequences/enrol/route"
 import { MAX_ENROL_BATCH } from "@/lib/lead-engine/manual-enrol"
+
+// The class the route `instanceof`-checks against — imported from the mocked
+// module so the two cannot be different constructors.
+import { NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
+
+// NOT the platform id: a fixture equal to it would pass for a route that
+// dropped the argument and let the DAL default apply.
+const OTHER_BUSINESS_ID = "22222222-2222-4222-8222-222222222222"
 
 const ADMIN_SESSION = { user: { id: "admin-1", email: "coach@example.com", role: "admin" } }
 const CLIENT_SESSION = { user: { id: "client-1", role: "client" } }
@@ -65,6 +83,7 @@ beforeEach(() => {
   // misattribute the failure to it.
   vi.resetAllMocks()
   enrolContactManuallyMock.mockResolvedValue({ outcome: "enrolled" })
+  resolveTenantMock.mockResolvedValue({ businessId: OTHER_BUSINESS_ID, choices: [], isOperator: true })
 })
 
 describe("POST /api/admin/sequences/enrol — the gate", () => {
@@ -139,16 +158,21 @@ describe("POST /api/admin/sequences/enrol — the work", () => {
     expect(res.status).toBe(200)
     expect(enrolContactManuallyMock).toHaveBeenCalledTimes(2)
     expect(enrolContactManuallyMock).toHaveBeenNthCalledWith(1, "c1", "cold_lead_re_engagement", {
+      businessId: OTHER_BUSINESS_ID,
       onePerContact: false,
     })
     expect(enrolContactManuallyMock).toHaveBeenNthCalledWith(2, "c2", "cold_lead_re_engagement", {
+      businessId: OTHER_BUSINESS_ID,
       onePerContact: false,
     })
   })
 
   it("passes onePerContact through when the caller asked for it", async () => {
     await POST(req({ contactIds: ["c1"], sequenceKey: "k", onePerContact: true }) as never, NO_PARAMS)
-    expect(enrolContactManuallyMock).toHaveBeenCalledWith("c1", "k", { onePerContact: true })
+    expect(enrolContactManuallyMock).toHaveBeenCalledWith("c1", "k", {
+      businessId: OTHER_BUSINESS_ID,
+      onePerContact: true,
+    })
   })
 
   it("returns a tally with one entry per outcome", async () => {
@@ -358,5 +382,27 @@ describe("POST /api/admin/sequences/enrol — the audit row", () => {
     const call = recordAuditMock.mock.calls.at(-1)?.[0] as { outcome: string; metadata?: Record<string, unknown> }
     expect(call.outcome).toBe("denied")
     expect(JSON.stringify(call.metadata ?? {})).not.toContain("contact-aaa")
+  })
+})
+
+describe("POST /api/admin/sequences/enrol — the tenant", () => {
+  it("looks the key up under the caller's SELECTED business, the same one the picker was populated from", async () => {
+    authMock.mockResolvedValue(ADMIN_SESSION)
+    const res = await POST(req({ contactIds: ["c1"], sequenceKey: "k" }) as never, NO_PARAMS)
+    expect(res.status).toBe(200)
+    expect(resolveTenantMock).toHaveBeenCalledTimes(1)
+    expect(enrolContactManuallyMock).toHaveBeenCalledWith(
+      "c1",
+      "k",
+      expect.objectContaining({ businessId: OTHER_BUSINESS_ID }),
+    )
+  })
+
+  it("403s, enrolling nobody, when the caller has no accessible business", async () => {
+    authMock.mockResolvedValue(ADMIN_SESSION)
+    resolveTenantMock.mockRejectedValue(new NoAccessibleBusinessError())
+    const res = await POST(req({ contactIds: ["c1", "c2"], sequenceKey: "k" }) as never, NO_PARAMS)
+    expect(res.status).toBe(403)
+    expect(enrolContactManuallyMock).not.toHaveBeenCalled()
   })
 })

@@ -16,6 +16,7 @@ import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import type { ContactEventSource } from "@/lib/db/contacts"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export const maxDuration = 45
 
@@ -54,6 +55,12 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
         { status: 400 },
       )
     }
+
+    // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()`
+    // is the seam until phase 4 resolves a real business off the Host header
+    // (lib/tenancy/platform.ts, CANNOT RESOLVE YET). Resolved once here and
+    // threaded; the DAL no longer defaults it.
+    const businessId = platformBusinessId()
 
     const {
       name,
@@ -152,6 +159,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       phone,
       name,
       attribution: { gclid, gbraid, wbraid, fbclid },
+      businessId,
     })
 
     // SMS consent (Lead Engine Stage 4). FIRE AND FORGET, same reasoning as
@@ -164,7 +172,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
     if (contactId && phone && sms_consent === true) {
       const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null
       const userAgent = request.headers.get("user-agent")
-      void recordInquirySmsConsent({ contactId, ip, userAgent, source: contactSource }).catch((err) => {
+      void recordInquirySmsConsent({ contactId, ip, userAgent, source: contactSource, businessId }).catch((err) => {
         console.error("Inquiry sms consent write failed (the lead was saved):", err)
       })
     }
@@ -423,8 +431,9 @@ async function recordInquirySmsConsent(input: {
   ip: string | null
   userAgent: string | null
   source: ContactEventSource
+  businessId: string
 }): Promise<void> {
-  const settings = await getBusinessSettings()
+  const settings = await getBusinessSettings(input.businessId)
   if (!hasSmsConsentDisplayName(settings.display_name)) {
     console.warn("[inquiry] sms consent skipped: business_settings.display_name is blank")
     return
@@ -437,5 +446,6 @@ async function recordInquirySmsConsent(input: {
     wordingShown: renderSmsConsentWording(settings.display_name),
     ip: input.ip,
     userAgent: input.userAgent,
+    businessId: input.businessId,
   })
 }

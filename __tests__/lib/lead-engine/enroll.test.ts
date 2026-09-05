@@ -11,6 +11,12 @@ function nextId(prefix: string) {
   return `${prefix}-${seqCounter}`
 }
 
+// Every `.eq()` the implementation applies, across every `from()` chain in a
+// test. The per-chain `filters` array below narrows the row set, which proves
+// a filter was USED; this one records WHICH VALUE it was given, which is a
+// different claim and the one the tenancy test needs.
+let appliedEqs: Array<[string, any]> = []
+
 // NOTE ON THE MOCK: the trap this project has hit before is a `.eq()` that
 // returns the query object without recording the filter, so every query
 // resolves to "everything in the table" and every assertion passes without
@@ -72,6 +78,7 @@ vi.mock("@/lib/supabase", () => ({
         select: () => api,
         eq: (col: string, val: any) => {
           filters.push([col, val])
+          appliedEqs.push([col, val])
           return api
         },
         insert: (p: Row) => {
@@ -122,7 +129,15 @@ beforeEach(() => {
   store.sequences = []
   store.sequence_runs = []
   seqCounter = 0
+  appliedEqs = []
 })
+
+// NOT the platform id, and not what `seedSequence` stamps. Every other call in
+// this file passes SINGLETON_BUSINESS_ID into fixtures seeded under
+// SINGLETON_BUSINESS_ID, so a DAL that ignored its argument and hard-coded the
+// constant would satisfy all of them: they pin the ARITY of the tenant
+// parameter, not the value it carries.
+const OTHER_BUSINESS_ID = "22222222-2222-4222-8222-222222222222"
 
 describe("enrollIfTriggered", () => {
   it("enrols into every active sequence whose trigger matches the source", async () => {
@@ -130,7 +145,11 @@ describe("enrollIfTriggered", () => {
     seedSequence("seq-b", { trigger_source: "funnel_form" })
     seedSequence("seq-c", { trigger_source: "newsletter" })
 
-    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form" })
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "funnel_form",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     expect(result.enrolled.sort()).toEqual(["seq-a", "seq-b"])
     expect(store.sequence_runs).toHaveLength(2)
@@ -148,7 +167,11 @@ describe("enrollIfTriggered", () => {
     seedSequence("seq-archived", { status: "archived" })
     seedSequence("seq-active", { status: "active" })
 
-    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form" })
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "funnel_form",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     expect(result.enrolled).toEqual(["seq-active"])
     expect(store.sequence_runs).toHaveLength(1)
@@ -159,7 +182,11 @@ describe("enrollIfTriggered", () => {
     seedSequence("seq-null-trigger", { trigger_source: null, status: "active" })
     seedSequence("seq-matching", { trigger_source: "funnel_form", status: "active" })
 
-    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form" })
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "funnel_form",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     expect(result.enrolled).toEqual(["seq-matching"])
   })
@@ -175,7 +202,11 @@ describe("enrollIfTriggered", () => {
       current_position: 0,
     })
 
-    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form" })
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "funnel_form",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     expect(result.enrolled).toEqual([])
     // No new row was inserted — the one already there is untouched.
@@ -195,7 +226,11 @@ describe("enrollIfTriggered", () => {
       current_position: 0,
     })
 
-    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form" })
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "funnel_form",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     expect(result.enrolled).toEqual(["seq-new"])
     expect(store.sequence_runs).toHaveLength(2)
@@ -209,6 +244,7 @@ describe("enrollIfTriggered", () => {
       contactId: "contact-1",
       source: "funnel_form",
       metadata: { funnel_id: "xyz" },
+      businessId: SINGLETON_BUSINESS_ID,
     })
     // The filtered sequence does not match; the empty-filter one always does.
     expect(mismatch.enrolled).toEqual(["seq-open"])
@@ -221,6 +257,7 @@ describe("enrollIfTriggered", () => {
       contactId: "contact-2",
       source: "funnel_form",
       metadata: { funnel_id: "abc", unrelated: "ignored" },
+      businessId: SINGLETON_BUSINESS_ID,
     })
     expect(match.enrolled).toEqual(["seq-filtered"])
   })
@@ -234,7 +271,11 @@ describe("enrollIfTriggered", () => {
   it("does not enrol a 'purchase' source into a sequence triggered by a different source", async () => {
     seedSequence("seq-newsletter", { trigger_source: "newsletter" })
 
-    const result = await enrollIfTriggered({ contactId: "contact-1", source: "purchase" })
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "purchase",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     expect(result.enrolled).toEqual([])
     expect(store.sequence_runs).toHaveLength(0)
@@ -252,7 +293,7 @@ describe("enrolContactManually", () => {
   it("enrols a contact into a named active manual sequence", async () => {
     seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
 
-    const result = await enrolContactManually("contact-1", "sms_repermission")
+    const result = await enrolContactManually("contact-1", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(result).toEqual({ outcome: "enrolled" })
     expect(store.sequence_runs).toHaveLength(1)
@@ -271,7 +312,7 @@ describe("enrolContactManually", () => {
   it("refuses to enrol into a draft sequence", async () => {
     seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "draft" })
 
-    const result = await enrolContactManually("contact-1", "sms_repermission")
+    const result = await enrolContactManually("contact-1", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(result).toEqual({ outcome: "sequence_not_active", status: "draft" })
     expect(store.sequence_runs).toHaveLength(0)
@@ -280,17 +321,34 @@ describe("enrolContactManually", () => {
   it("refuses to enrol into a paused or archived sequence the same way", async () => {
     seedSequence("seq-paused", { key: "seq-paused-key", trigger_source: null, status: "paused" })
 
-    const result = await enrolContactManually("contact-1", "seq-paused-key")
+    const result = await enrolContactManually("contact-1", "seq-paused-key", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(result).toEqual({ outcome: "sequence_not_active", status: "paused" })
     expect(store.sequence_runs).toHaveLength(0)
   })
 
   it("reports sequence_not_found for an unknown key rather than silently no-oping", async () => {
-    const result = await enrolContactManually("contact-1", "does-not-exist")
+    const result = await enrolContactManually("contact-1", "does-not-exist", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(result).toEqual({ outcome: "sequence_not_found" })
     expect(store.sequence_runs).toHaveLength(0)
+  })
+
+  // WHICH tenant, not just that one was passed. The sequence below exists —
+  // under the platform business — and the key is right, so the only thing that
+  // can make this lookup miss is the business filter carrying the ARGUMENT
+  // rather than the constant.
+  it("looks the sequence up under the business it was given, not the platform's", async () => {
+    seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
+
+    const result = await enrolContactManually("contact-1", "sms_repermission", { businessId: OTHER_BUSINESS_ID })
+
+    expect(result).toEqual({ outcome: "sequence_not_found" })
+    expect(store.sequence_runs).toHaveLength(0)
+    // Presence control: "not found" is also what a mock that ignored the
+    // filter and a query that never ran would both produce. This pins that the
+    // business filter WAS applied, and which value it carried.
+    expect(appliedEqs).toContainEqual(["business_id", OTHER_BUSINESS_ID])
   })
 
   // The duplicate-run guard: a second manual enrolment of the same contact
@@ -300,8 +358,8 @@ describe("enrolContactManually", () => {
   it("no-ops on a second enrolment of the same contact into the same sequence", async () => {
     seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
 
-    const first = await enrolContactManually("contact-1", "sms_repermission")
-    const second = await enrolContactManually("contact-1", "sms_repermission")
+    const first = await enrolContactManually("contact-1", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
+    const second = await enrolContactManually("contact-1", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(first).toEqual({ outcome: "enrolled" })
     expect(second).toEqual({ outcome: "already_enrolled" })
@@ -311,8 +369,8 @@ describe("enrolContactManually", () => {
   it("still enrols a different contact into the same sequence after a duplicate no-op", async () => {
     seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
 
-    await enrolContactManually("contact-1", "sms_repermission")
-    const result = await enrolContactManually("contact-2", "sms_repermission")
+    await enrolContactManually("contact-1", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
+    const result = await enrolContactManually("contact-2", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(result).toEqual({ outcome: "enrolled" })
     expect(store.sequence_runs).toHaveLength(2)
@@ -337,7 +395,10 @@ describe("enrolContactManually", () => {
       current_position: 1,
     })
 
-    const result = await enrolContactManually("contact-1", "sms_repermission", { onePerContact: true })
+    const result = await enrolContactManually("contact-1", "sms_repermission", {
+      businessId: SINGLETON_BUSINESS_ID,
+      onePerContact: true,
+    })
 
     expect(result).toEqual({ outcome: "already_enrolled_once" })
     // Nothing new was inserted — the prior (completed) row is the only one.
@@ -355,7 +416,10 @@ describe("enrolContactManually", () => {
       current_position: 0,
     })
 
-    const result = await enrolContactManually("contact-1", "sms_repermission", { onePerContact: true })
+    const result = await enrolContactManually("contact-1", "sms_repermission", {
+      businessId: SINGLETON_BUSINESS_ID,
+      onePerContact: true,
+    })
 
     expect(result).toEqual({ outcome: "already_enrolled_once" })
     expect(store.sequence_runs).toHaveLength(1)
@@ -375,7 +439,7 @@ describe("enrolContactManually", () => {
       current_position: 1,
     })
 
-    const result = await enrolContactManually("contact-1", "sms_repermission")
+    const result = await enrolContactManually("contact-1", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(result).toEqual({ outcome: "enrolled" })
     expect(store.sequence_runs).toHaveLength(2)
@@ -393,7 +457,10 @@ describe("enrolContactManually", () => {
       current_position: 1,
     })
 
-    const result = await enrolContactManually("contact-1", "sms_repermission", { onePerContact: true })
+    const result = await enrolContactManually("contact-1", "sms_repermission", {
+      businessId: SINGLETON_BUSINESS_ID,
+      onePerContact: true,
+    })
 
     expect(result).toEqual({ outcome: "enrolled" })
   })

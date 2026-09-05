@@ -54,6 +54,7 @@ vi.mock("@/lib/supabase", () => ({
     from: () => ({ update: () => ({ eq: mocks.updateEq }) }),
   }),
 }))
+vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
 
 const publishedEvent = {
   id: "evt-1",
@@ -213,6 +214,7 @@ describe("POST /api/events/[id]/signup — SMS consent", () => {
         "I agree to receive text messages from Acme Fitness about my inquiry. Message and data rates may apply. Reply STOP to opt out, HELP for help.",
       ip: null,
       userAgent: null,
+      businessId: "platform-biz",
     })
   })
 
@@ -419,6 +421,7 @@ describe("POST /api/events/[id]/checkout — SMS consent", () => {
         "I agree to receive text messages from Acme Fitness about my inquiry. Message and data rates may apply. Reply STOP to opt out, HELP for help.",
       ip: null,
       userAgent: null,
+      businessId: "platform-biz",
     })
   })
 
@@ -476,5 +479,43 @@ describe("POST /api/events/[id]/checkout — SMS consent", () => {
     expect(res.status).toBe(200)
     expect(data).toEqual({ sessionUrl: "https://checkout.stripe.com/cs_test_xyz", signupId: "sig-1" })
     expect(mocks.recordConsent).toHaveBeenCalled()
+  })
+})
+
+describe("event routes — tenant", () => {
+  const signupRow = {
+    id: "sig-1",
+    event_id: "evt-1",
+    parent_name: "Alex Parent",
+    parent_email: "alex@example.com",
+    parent_phone: "5551234567",
+    athlete_name: "Sam Athlete",
+    athlete_age: 14,
+    status: "pending",
+  }
+
+  it("signup: resolves the tenant once through the seam and threads it into contact, settings and consent", async () => {
+    mocks.getEventById.mockResolvedValueOnce(publishedEvent)
+    mocks.createSignup.mockResolvedValueOnce(signupRow)
+    const { POST } = await import("@/app/api/events/[id]/signup/route")
+    const res = await POST(signupReq({ ...validBody, sms_consent: true }), ctx)
+    await flush()
+    expect(res.status).toBe(200)
+    expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
+    expect(mocks.getBusinessSettings).toHaveBeenCalledWith("platform-biz")
+    expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
+  })
+
+  it("checkout: resolves the tenant once through the seam and threads it into contact, settings and consent", async () => {
+    mocks.getEventById.mockResolvedValueOnce(publishedEvent)
+    mocks.createSignup.mockResolvedValueOnce(signupRow)
+    mocks.createEventCheckoutSession.mockResolvedValueOnce({ id: "cs_1", url: "https://checkout.stripe.test/cs_1" })
+    const { POST } = await import("@/app/api/events/[id]/checkout/route")
+    const res = await POST(checkoutReq({ ...validBody, sms_consent: true }), ctx)
+    await flush()
+    expect(res.ok).toBe(true)
+    expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
+    expect(mocks.getBusinessSettings).toHaveBeenCalledWith("platform-biz")
+    expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
   })
 })
