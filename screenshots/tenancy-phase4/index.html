@@ -1,0 +1,97 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Tenancy phase 4 — one page, two Hosts, two businesses</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0 auto; max-width: 1100px; padding: 2rem 1.5rem 4rem; color: #16323f; }
+  h1 { font-size: 1.9rem; margin-bottom: .25rem; }
+  .sub { color: #5b7280; margin-top: 0; }
+  .facts { background: #f6f7f8; border: 1px solid #e3e6e8; border-radius: 10px; padding: 1rem 1.25rem; margin: 1.5rem 0 2rem; }
+  .caveat { background: #fdf6ec; border: 1px solid #eadfcc; border-radius: 10px; padding: 1rem 1.25rem; margin: 0 0 2.5rem; }
+  code { font-size: .85em; }
+  figure { margin: 0 0 3rem; }
+  img { width: 100%; height: auto; border: 1px solid #e3e6e8; border-radius: 10px; display: block; }
+  figcaption { margin-top: .6rem; color: #44606d; line-height: 1.55; }
+  pre { background: #0e3f50; color: #eef4f6; padding: 1.1rem 1.25rem; border-radius: 10px; overflow-x: auto; font-size: .85rem; line-height: 1.55; }
+</style>
+<h1>Tenancy phase 4 — one page, two Hosts, two businesses</h1>
+<p class="sub">Same route, <code>/camps</code>, requested with two different Hosts. Captured with
+<code>scripts/capture-tenancy-phase4-screenshots.mjs</code> against the real dev server on port 3050.
+The callouts are burned into each PNG.</p>
+
+<div class="facts">
+  <p><b>What each shot proves.</b> <code>app/(marketing)/camps/page.tsx</code> renders
+  <code>&lt;InquiryForm&gt;</code> (<code>components/public/InquiryForm.tsx</code>), a converted server
+  component that calls <code>resolvePublicTenant()</code> (<code>lib/tenancy/public.ts</code>) — the
+  same function <code>/api/ask/config</code> calls. That function reads <code>x-forwarded-host</code>
+  first, then <code>host</code>, and looks the (normalised) value up in <code>business_domains</code>.
+  Chromium refuses to override the real <code>Host</code> header, so every capture below sets
+  <code>x-forwarded-host</code> instead — the header the resolver actually reads first.</p>
+  <ul>
+    <li><b>Coach host</b> (<code>phase4-coach.test</code>) resolves via the row seeded for
+        "Trailhead Strength &amp; Conditioning" and the consent line names its display name,
+        <b>Trailhead Strength &amp; Conditioning — Personal Training</b>.</li>
+    <li><b>Platform host</b> (<code>www.darrenjpaul.com</code>) resolves via the seeded <code>www</code>
+        row for the platform business and the same consent line names <b>DJP Athlete</b>.</li>
+    <li>No app code and no database row was touched to get here — the dev clone was already seeded by
+        the controller with the <code>business_domains</code> rows and both businesses' <code>display_name</code>.</li>
+  </ul>
+</div>
+
+<div class="caveat">
+  <p><b>One capture-script bug found and fixed along the way</b> (not a tenancy bug):
+  <code>app/(marketing)/camps/page.tsx</code> wraps its sections — including the inquiry form — in
+  <code>components/shared/FadeIn.tsx</code>, which animates <code>opacity: 0 → 1</code> via
+  framer-motion's <code>whileInView</code> once the section scrolls into view.
+  <code>scrollIntoViewIfNeeded()</code> jumps to the element instantly, so the very first run screenshotted
+  mid-fade — the consent text was already correct in the DOM (the marker position and caption text were
+  right) but the pixels were still almost invisible. Fixed by waiting 1200&nbsp;ms after the scroll for the
+  fade to settle before reading the bounding box and taking the shot. The four PNGs below are from the
+  corrected run.</p>
+  <p><b>Dark mode:</b> the <code>dark</code> captures are effectively pixel-identical to their
+  <code>light</code> counterparts (a &lt;0.01% per-pixel difference consistent with a single animation
+  frame landing slightly differently between two separate page loads, not a theme change). The marketing
+  site does not appear to implement a dark theme — kept per instructions rather than treated as a
+  failure.</p>
+</div>
+
+<figure>
+  <a href="01-camps-coach-host-light.png"><img src="01-camps-coach-host-light.png" alt="Coach host, light — consent line names Trailhead Strength & Conditioning — Personal Training"></a>
+  <figcaption><b>1. Coach host, light</b> — <code>x-forwarded-host: phase4-coach.test</code>. The consent
+  checkbox reads "I agree to receive text messages from Trailhead Strength &amp; Conditioning — Personal
+  Training about my inquiry. Message and data rates may apply. Reply STOP to opt out, HELP for help."</figcaption>
+</figure>
+
+<figure>
+  <a href="02-camps-platform-host-light.png"><img src="02-camps-platform-host-light.png" alt="Platform host, light — consent line names DJP Athlete"></a>
+  <figcaption><b>2. Platform host, light</b> — <code>x-forwarded-host: www.darrenjpaul.com</code>. The same
+  page, same form, same route — the consent checkbox now reads "I agree to receive text messages from DJP
+  Athlete about my inquiry. Message and data rates may apply. Reply STOP to opt out, HELP for help."</figcaption>
+</figure>
+
+<figure>
+  <a href="03-camps-coach-host-dark.png"><img src="03-camps-coach-host-dark.png" alt="Coach host, dark"></a>
+  <figcaption><b>3. Coach host, dark</b> — same Host as shot 1, captured with
+  <code>colorScheme: "dark"</code>. Visually identical to shot 1 — see the dark-mode note above.</figcaption>
+</figure>
+
+<figure>
+  <a href="04-camps-platform-host-dark.png"><img src="04-camps-platform-host-dark.png" alt="Platform host, dark"></a>
+  <figcaption><b>4. Platform host, dark</b> — same Host as shot 2, captured with
+  <code>colorScheme: "dark"</code>. Visually identical to shot 2 — see the dark-mode note above.</figcaption>
+</figure>
+
+<h2>Curl transcript</h2>
+<p class="sub">Same resolver, hit directly at <code>/api/ask/config</code> — three Hosts, and the server
+log's own account of what happened on the one Host with no row.</p>
+<pre><code># coach host (row for the seeded business)
+$ curl -s -H "x-forwarded-host: phase4-coach.test" http://localhost:3050/api/ask/config
+{"enabled":true,"displayName":"Trailhead Strength &amp; Conditioning — Personal Training"}
+# platform host (the seeded www row)
+$ curl -s -H "x-forwarded-host: www.darrenjpaul.com" http://localhost:3050/api/ask/config
+{"enabled":true,"displayName":"DJP Athlete"}
+# no row: localhost falls back to the platform, and the server log says so ONCE
+$ curl -s http://localhost:3050/api/ask/config
+{"enabled":true,"displayName":"DJP Athlete"}
+# server log lines mentioning [tenancy]:
+[tenancy] no business_domains row for host "localhost"; serving the platform
+</code></pre>
