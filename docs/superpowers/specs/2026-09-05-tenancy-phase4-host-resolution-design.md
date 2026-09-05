@@ -105,9 +105,14 @@ components alike with no call-site signature churn (the brief's decision). Algor
      on every occurrence (not deduped: each is an incident), plus
      `recordAudit({ action: "tenancy.public_host_lookup_failed", category: "system", outcome: "failure",
      actor: { role: "system" }, error: { code, message }, metadata: { host } })` so the 24h failure strip on
-     `/admin/audit-logs` sees it. `recordAudit` never throws and is AWAITED here (a serverless function may end with the
-     response, and this row is the only durable trace); `actor` is passed so it does not call
-     `auth()` on a public request.
+     `/admin/audit-logs` sees it. The audit row is filed ONCE per host per process (the error line is
+     per request): during a sustained outage every public request would otherwise pay an extra awaited
+     insert against the same degraded database, and one row per instance already lights the strip.
+     `recordAudit` never throws and is AWAITED (a serverless function may end with the response);
+     `actor` is passed so it does not call `auth()` on a public request.
+   - **Every per-host dedupe set is bounded.** The host is client-controlled, so an unbounded `Set`
+     keyed on it is a memory-growth vector on a warm instance; at 1000 entries the set is cleared and
+     dedupe simply starts over (a host may warn twice per thousand distinct hosts — acceptable).
 4. Return the id. The return type stays `Promise<string>` (the brief's signature); WHY the platform was served
    is in the logs, not the type. If a caller ever needs the reason, widen then.
 
@@ -214,7 +219,7 @@ routes (frozen); `lib/automation/pipeline-reconcile.ts` (payments has no busines
 | row found | row's business | — | — |
 | no row | platform | warn once per host | — |
 | `42P01` / `PGRST205` | platform | warn once per host, with code | — |
-| any other read error | platform | error every time, code + message | `tenancy.public_host_lookup_failed`, failure |
+| any other read error | platform | error every time, code + message | `tenancy.public_host_lookup_failed`, failure — ONCE per host per process |
 
 ## 7. Testing — assert WHICH tenant
 
@@ -287,6 +292,9 @@ routes (frozen); `lib/automation/pipeline-reconcile.ts` (payments has no busines
    named `phase4-coach` so it is greppable and deletable.
 8. **Audit slug is `tenancy.public_host_lookup_failed`, category `system`.** Nearest precedent is
    `booking.tenant_unresolved` (automation); this is not a cron, so `system`.
+9. **Audit row deduped per host per process; dedupe sets capped at 1000.** Both from Task 2's review
+   (2026-09-05): the reviewer flagged the unbounded client-keyed set and the per-request awaited write
+   during an outage. The error LOG stays per request.
 
 ## 10. Risks and traps for the implementer
 
