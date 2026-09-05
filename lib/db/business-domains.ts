@@ -6,10 +6,11 @@ function getClient() {
 
 /**
  * A failed read of `business_domains`. Carries PostgREST's code so the Host
- * boundary (lib/tenancy/public.ts) can tell "the table is not there yet" —
- * the deploy window between the migration applying and the build finishing —
- * from every other failure. The message names the code and the reason
- * because a raw PostgREST error object logs as `[object Object]`.
+ * boundary (lib/tenancy/public.ts) can name a MISSING table (42P01 /
+ * PGRST205) in its log line. That is not a deploy window: the table has been
+ * live since migration 00240, so in production a missing table is an incident
+ * and is audited like every other failed read. The message names the code and
+ * the reason because a raw PostgREST error object logs as `[object Object]`.
  */
 export class BusinessDomainReadError extends Error {
   readonly code: string
