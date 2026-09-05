@@ -49,8 +49,12 @@ export default async function AskPage() {
   // it is one card that loses one optional line.
   //
   // PUBLIC, NO SESSION. The tenant is resolved from the request's Host by
-  // lib/tenancy/public.ts — the SAME resolution /api/ask/capture makes, so
-  // the wording shown and the wording filed name one business.
+  // lib/tenancy/public.ts: this page shows the Host's business. POST
+  // /api/ask/capture does not read the Host at all — it files under the
+  // conversation's business_id, decided once when POST /api/ask created the
+  // conversation from this same origin. The two agree TRANSITIVELY, not
+  // because they share one resolution: the name shown here and the wording
+  // filed there both trace back to the same Host, one hop apart.
   const businessId = await resolvePublicTenant()
   const settings = await getBusinessSettings(businessId).catch(() => null)
   const displayName = settings?.display_name ?? ""

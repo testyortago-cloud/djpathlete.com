@@ -56,8 +56,11 @@ import { recordAudit } from "@/lib/audit/record"
  * RESOLVE YET shelf. __tests__/lib/tenancy/public-inventory.test.ts fails if
  * a caller is missing from this list or a listed file stops calling.
  *
- *   The §5.1 lead-capture routes, each resolving once at the top and
- *   threading into every write (contact, settings read, consent row):
+ *   The §5.1 lead-capture routes — §5.1 of the PREDECESSOR spec
+ *   (docs/superpowers/specs/2026-09-05-remove-singleton-business-id-design.md),
+ *   not this one — each resolving once at the top and threading it into
+ *   every write it makes: a contact, a settings read, a consent row, or
+ *   (ask/config, a read-only GET) a single settings read:
  *     app/api/contact/route.ts
  *     app/api/shop/leads/route.ts
  *     app/api/newsletter/route.ts
@@ -71,8 +74,14 @@ import { recordAudit } from "@/lib/audit/record"
  *     app/api/ask/route.ts             (createConversation; the rest of that
  *                                       route threads conversation.business_id)
  *   The pages and server components that render the consent wording those
- *   routes file, which must read the SAME business the route resolves —
- *   under Host resolution both read the same header:
+ *   routes file, which must name the SAME business the route files under.
+ *   For camps/clinics and the two form/quiz islands that holds because both
+ *   sides read the Host directly. app/(marketing)/ask/page.tsx is the one
+ *   exception: it resolves the Host's business itself, but POST
+ *   /api/ask/capture never reads the Host — it inherits
+ *   conversation.business_id, set once when POST /api/ask created the
+ *   conversation from the same origin. The two still agree, TRANSITIVELY
+ *   through that shared origin, not because they share one resolution:
  *     app/(marketing)/ask/page.tsx
  *     app/(marketing)/camps/[slug]/page.tsx
  *     app/(marketing)/clinics/[slug]/page.tsx

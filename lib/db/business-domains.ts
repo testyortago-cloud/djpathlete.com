@@ -34,6 +34,10 @@ export class BusinessDomainReadError extends Error {
  *
  * No `kind` filter: an `alias` row resolves exactly like a `primary` one. The
  * distinction is for the domain-management surface that does not exist yet.
+ * `verified_at` is not filtered either: a row resolves the moment it exists.
+ * The seed sets it because the platform's hosts are live; an onboarding
+ * writer that inserts a row before verification must know the row goes live
+ * immediately.
  */
 export async function findBusinessIdByHost(host: string): Promise<string | null> {
   const { data, error } = await getClient()

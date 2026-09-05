@@ -96,9 +96,12 @@ components alike with no call-site signature churn (the brief's decision). Algor
    - `null` → `platformBusinessId()`; `console.warn("[tenancy] no business_domains row for host \"<host>\"; serving the platform")`
      **once per host per process** (a module-level `Set`). Dev (`localhost:3050`) and every preview host land
      here on every request; "never silent" means the host is named, not that the log is flooded.
-   - throws with code `42P01` (undefined_table) or `PGRST205` (PostgREST's "not in schema cache") → the deploy
-     window before the migration applies. `platformBusinessId()` + the same once-per-host `console.warn`, naming
-     the code. No audit row: this is the expected transient, and it self-heals when the migration lands.
+   - throws with code `42P01` (undefined_table) or `PGRST205` (PostgREST's "not in schema cache") → NOT a deploy
+     window: `business_domains` has been live since migration 00240, so either code in production means the
+     table is gone or PostgREST's schema cache is stale — an incident. `platformBusinessId()`, plus
+     `console.error` naming the code and the word "MISSING" (every occurrence, not deduped — same as any other
+     failed read below), plus the same once-per-host `recordAudit` row described below. The branch exists so an
+     environment behind 00240 (a fresh clone, a preview database) still serves the platform instead of 500ing.
    - throws with any other code → **the read-failure decision** (brief: record it explicitly). `platformBusinessId()`
      — a public page 500ing on a transient read is worse than serving the platform — plus
      `console.error("[tenancy] business_domains read failed for host \"<host>\" (<code> <message>); serving the platform")`
@@ -215,9 +218,11 @@ routes (frozen); `lib/automation/pipeline-reconcile.ts` (payments has no busines
    they will flip to ƒ exactly as the five did. Seven routes, not two. Accepted as inherent (a page
    naming the tenant cannot be one static artefact); the mitigation, when wanted, is a Suspense/PPR
    boundary around the form so the page shell stays static — a later phase.
-2. **One extra indexed read per resolution** (`business_domains.host` is UNIQUE, so indexed). A page that
-   renders a component which also resolves (camps page + InquiryForm) reads twice. No cache in this phase;
-   a per-request memo (`React.cache`) is a two-line follow-up once the cost is measured, not assumed.
+2. **One extra indexed read per resolution** (`business_domains.host` is UNIQUE, so indexed). No page reads
+   twice today: `camps/[slug]` renders `EventSignupCard`, not `InquiryForm`, and `/camps` renders
+   `InquiryForm` without resolving itself. This is a memo for WHEN a future page resolves AND also renders a
+   component that resolves — no cache in this phase; a per-request memo (`React.cache`) is a two-line
+   follow-up once the cost is measured, not assumed.
 3. **A matching host row now wins over the platform.** Identical today: the only rows are the platform's own.
 4. **Audit rows appear on a failed lookup** — a new, rare, system-actor row type.
 
@@ -229,7 +234,7 @@ routes (frozen); `lib/automation/pipeline-reconcile.ts` (payments has no busines
 | no Host at all | platform | warn once per host ("(none)") | — |
 | row found | row's business | — | — |
 | no row | platform | warn once per host | — |
-| `42P01` / `PGRST205` | platform | warn once per host, with code | — |
+| `42P01` / `PGRST205` (table missing — an incident since 00240) | platform | error every time, "MISSING" + code | `tenancy.public_host_lookup_failed`, failure — ONCE per host per process |
 | any other read error | platform | error every time, code + message | `tenancy.public_host_lookup_failed`, failure — ONCE per host per process |
 
 ## 7. Testing — assert WHICH tenant
@@ -271,9 +276,10 @@ routes (frozen); `lib/automation/pipeline-reconcile.ts` (payments has no busines
   run `npm run dev` on 3050 in the worktree, and show `GET /api/ask/config` under three Hosts:
   `x-forwarded-host: phase4-coach.test` → the coach's display name; `www.darrenjpaul.com` → the platform's
   name via the row (no warn in the server log); `localhost:3050` → the platform's name via the fallback WITH
-  the warn. Then Playwright screenshots of `/ask` under the coach host and the platform host (Chromium
-  forbids overriding `Host`, so `x-forwarded-host` is set via `setExtraHTTPHeaders` — the header the resolver
-  reads first), annotated with `scripts/_annotate-lib.mjs`, delivered under `screenshots/tenancy-phase4/`.
+  the warn. Then Playwright screenshots of `/camps` under the coach host and the platform host — the inquiry
+  form, a component conversion rendered by a page that does not resolve itself (Chromium forbids overriding
+  `Host`, so `x-forwarded-host` is set via `setExtraHTTPHeaders` — the header the resolver reads first),
+  annotated with `scripts/_annotate-lib.mjs`, delivered under `screenshots/tenancy-phase4/`.
 - Gates: tsc error SET identical to the 251-line baseline (modulo `(line,col)`); `npm run build` green with the
   route table diffed (● → ƒ for camps/clinics expected, nothing else); targeted suites with non-zero counts.
 
@@ -294,7 +300,9 @@ routes (frozen); `lib/automation/pipeline-reconcile.ts` (payments has no busines
    merge needs a go-ahead the session cannot get, and the REASON for the order (an honest runner) is met by
    stacking. Merge A first; B then merges clean.
 2. **Read failure → serve the platform + `console.error` + audit row** (the brief's recommendation, taken).
-3. **Missing table → warn, no audit row.** It is the expected deploy-window state, not an incident.
+3. **Missing table → error every time, audit once per host per process.** `business_domains` has been live
+   since migration 00240, so a missing table in production is an incident, not a deploy window; see decision
+   11 below.
 4. **The "no row" warn is deduped per host per process.** The brief said "never silent"; a warn per request on
    every dev and preview request is noise that gets muted, which is silence with extra steps.
 5. **`verified_at = now()` on the seed rows.** They are live on Vercel today.
@@ -310,6 +318,9 @@ routes (frozen); `lib/automation/pipeline-reconcile.ts` (payments has no busines
 9. **Audit row deduped per host per process; dedupe sets capped at 1000.** Both from Task 2's review
    (2026-09-05): the reviewer flagged the unbounded client-keyed set and the per-request awaited write
    during an outage. The error LOG stays per request.
+11. **Table-missing reclassified as an incident** (whole-branch review, 2026-09-06): the branch cannot be a
+   deploy window for a table that predates this branch; it now errors and audits like any failed read, and
+   exists for environments behind 00240.
 
 ## 10. Risks and traps for the implementer
 

@@ -22,9 +22,9 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *   - the Host boundary's own fallback (lib/tenancy/public.ts). Since phase 4
  *     every public surface resolves through `resolvePublicTenant()`, which
  *     reads `business_domains` by the request's Host and reaches this only
- *     when no row claims the host, when the table is not there yet (the
- *     deploy window), or when the read failed. Its callers are inventoried in
- *     that file, not here.
+ *     when no row claims the host, when the table is missing (an incident
+ *     since 00240, audited), or when the read failed. Its callers are
+ *     inventoried in that file, not here.
  *   - the public lead-capture surfaces, the marketing pages and the server
  *     components that render their consent wording all resolve through the
  *     Host boundary above since phase 4 (2026-09-05); none calls this
