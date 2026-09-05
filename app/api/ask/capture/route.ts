@@ -357,6 +357,10 @@ async function fileMarketingConsent(input: {
    * as `lib/db/chat.ts`'s new parameters: a default here is exactly what let
    * this call silently read the platform's own business_settings row for
    * every coach's conversation.
+   *
+   * Threaded into recordConsent as well as getBusinessSettings — filing the
+   * row under a default while reading the wording for the real business was
+   * a latent split.
    */
   businessId: string
   contactId: string
@@ -372,6 +376,7 @@ async function fileMarketingConsent(input: {
     }
 
     await recordConsent({
+      businessId: input.businessId,
       contactId: input.contactId,
       channel: "email",
       granted: true,

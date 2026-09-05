@@ -16,6 +16,7 @@ import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { InquiryFormClient } from "./InquiryFormClient"
 import type { ServiceType } from "@/lib/validators/inquiry"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 interface InquiryFormProps {
   /** Pre-select the service type based on which page the form is on */
@@ -41,7 +42,9 @@ export async function InquiryForm({ defaultService, heading, description }: Inqu
   // the same gate the route checks before filing the consent row, so "the
   // name was unusable" can never mean one thing here and a different thing
   // there.
-  const businessSettings = await getBusinessSettings().catch(() => null)
+  //
+  // Same business as the route that files the consent row — through the seam in lib/tenancy/platform.ts.
+  const businessSettings = await getBusinessSettings(platformBusinessId()).catch(() => null)
   const displayName = businessSettings?.display_name
   const smsConsentWording = hasSmsConsentDisplayName(displayName) ? renderSmsConsentWording(displayName) : undefined
 

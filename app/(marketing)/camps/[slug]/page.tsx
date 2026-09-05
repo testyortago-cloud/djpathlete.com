@@ -19,6 +19,7 @@ import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { SITE_URL } from "@/lib/constants"
 import { DJP_AUTHOR_PERSON } from "@/lib/brand/author"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export const revalidate = 300
 
@@ -66,7 +67,9 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
   // here rather than inside the card. A failed read and a blank name both
   // degrade to no checkbox, never to a checkbox with broken wording — see
   // hasSmsConsentDisplayName's own doc comment.
-  const businessSettings = await getBusinessSettings().catch(() => null)
+  //
+  // Same business as the route that files the consent row — through the seam in lib/tenancy/platform.ts.
+  const businessSettings = await getBusinessSettings(platformBusinessId()).catch(() => null)
   const smsConsentWording = hasSmsConsentDisplayName(businessSettings?.display_name)
     ? renderSmsConsentWording(businessSettings.display_name)
     : undefined

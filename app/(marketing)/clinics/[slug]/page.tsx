@@ -16,6 +16,7 @@ import { SITE_URL } from "@/lib/constants"
 import { DJP_AUTHOR_PERSON } from "@/lib/brand/author"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export const revalidate = 300
 
@@ -57,7 +58,9 @@ export default async function ClinicDetailPage({ params }: { params: Promise<{ s
   // THE SMS CONSENT WORDING IS FETCHED SERVER-SIDE — see camps/[slug]/page.tsx's
   // identical block for the full reasoning (this page is EventSignupCard's
   // nearest server parent, same as that one).
-  const businessSettings = await getBusinessSettings().catch(() => null)
+  //
+  // Same business as the route that files the consent row — through the seam in lib/tenancy/platform.ts.
+  const businessSettings = await getBusinessSettings(platformBusinessId()).catch(() => null)
   const smsConsentWording = hasSmsConsentDisplayName(businessSettings?.display_name)
     ? renderSmsConsentWording(businessSettings.display_name)
     : undefined
