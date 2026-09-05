@@ -214,8 +214,9 @@ routes (frozen); `lib/automation/pipeline-reconcile.ts` (payments has no busines
    `/assessment`, `/in-person`, `/online`, `/programs/rotational-reboot`, `/step-up-for-students` (all
    `revalidate = 3600`, previously CDN-cached 1h/1y). Next logs NOTHING when it does this. `/camps/[slug]`
    and `/clinics/[slug]` still show ● on this build only because the dev clone has zero published events,
-   so `generateStaticParams` returned no paths and no prerender ran; on production, where events exist,
-   they will flip to ƒ exactly as the five did. Seven routes, not two. Accepted as inherent (a page
+   so `generateStaticParams` returned no paths and no prerender ran. MEASURED on a second build (2026-09-06)
+   after temporarily publishing one camp and one clinic with future dates on the dev clone: both flipped to ƒ,
+   again with no log line. Seven routes, not two — all seven measured. Accepted as inherent (a page
    naming the tenant cannot be one static artefact); the mitigation, when wanted, is a Suspense/PPR
    boundary around the form so the page shell stays static — a later phase.
 2. **One extra indexed read per resolution** (`business_domains.host` is UNIQUE, so indexed). No page reads
@@ -311,8 +312,9 @@ routes (frozen); `lib/automation/pipeline-reconcile.ts` (payments has no busines
    named `phase4-coach` so it is greppable and deletable.
 8. **Audit slug is `tenancy.public_host_lookup_failed`, category `system`.** Nearest precedent is
    `booking.tenant_unresolved` (automation); this is not a cron, so `system`.
-10. **Seven marketing routes lose static rendering, not two** (§5.1). Measured from the build after the
-   branch; the spec had counted seam call sites instead of the components' render tree. Accepted as
+10. **Seven marketing routes lose static rendering, not two** (§5.1). Five measured on the first build after
+   the branch, the camps/clinics pair on a second build with upcoming dev events; the spec had counted seam
+   call sites instead of the components' render tree. Accepted as
    inherent; flagged for the owner because it is a CDN-caching regression on five pages that were
    static, and the fix (a Suspense/PPR boundary) is a later phase.
 9. **Audit row deduped per host per process; dedupe sets capped at 1000.** Both from Task 2's review
