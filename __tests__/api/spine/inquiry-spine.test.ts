@@ -100,6 +100,7 @@ vi.mock("@/lib/supabase", () => ({
     },
   }),
 }))
+vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
 
 import { POST } from "@/app/api/inquiry/route"
 
@@ -242,6 +243,7 @@ describe("POST /api/inquiry — SMS consent", () => {
         "I agree to receive text messages from Acme Fitness about my inquiry. Message and data rates may apply. Reply STOP to opt out, HELP for help.",
       ip: "203.0.113.9",
       userAgent: "test-agent/1.0",
+      businessId: "platform-biz",
     })
   })
 
@@ -317,5 +319,15 @@ describe("POST /api/inquiry — SMS consent", () => {
     expect(await res.json()).toEqual({ success: true })
     expect(mocks.recordContactEvent).toHaveBeenCalled()
     expect(mocks.recordConsent).toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/inquiry — tenant", () => {
+  it("resolves the tenant once through the seam and threads it into the contact, the settings read and the consent row", async () => {
+    await post({ ...VALID_BODY, sms_consent: true })
+    await flush()
+    expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
+    expect(mocks.getBusinessSettings).toHaveBeenCalledWith("platform-biz")
+    expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
   })
 })
