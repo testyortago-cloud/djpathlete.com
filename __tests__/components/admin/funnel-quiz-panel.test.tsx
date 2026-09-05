@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The panel exists so the quiz is reachable FROM THE FUNNEL THAT USES IT. The
 // assertions are therefore about the link and about the two states that are
 // easy to get wrong: a quiz that is still a draft (so the page it is on cannot

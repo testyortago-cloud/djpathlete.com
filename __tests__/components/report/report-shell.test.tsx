@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { render, screen, fireEvent } from "@testing-library/react"
 import { describe, it, expect, beforeEach } from "vitest"
 import { ReportShell } from "@/components/public/report/ReportShell"

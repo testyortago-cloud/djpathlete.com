@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Inline text editing. Until now the only way to change a heading was a
 // <Textarea> in the sidebar, which is the one place the builder did not feel
 // like the tool it is imitating.

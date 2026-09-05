@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The name the owner typed, on the card, and editable from it.
 //
 // What shipped: `createFunnel` names a landing page's only step "Landing page",

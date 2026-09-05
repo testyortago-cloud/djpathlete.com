@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The editor's add, remove and restore.
 //
 // Every test here asks what the SAVE PAYLOAD says, not what the screen shows,

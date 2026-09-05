@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Stage 1.2 of the AI page builder: the section renderer
 // (lib/funnels/sections/render.ts) and stylesheet (lib/funnels/sections/styles.ts).
 //

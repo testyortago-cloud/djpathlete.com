@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Regression cover for a SHIPPED component, written before this branch touched
 // it. `components/public/StickyApplyCTA.tsx` has been on every marketing page
 // for months and had no tests; Stage 3 adds a second action to its bar (the

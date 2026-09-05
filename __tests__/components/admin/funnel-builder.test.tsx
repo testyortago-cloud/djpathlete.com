@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/funnel-builder.test.tsx — Stage 1.9's UI.
 //
 // EVERY TEST HERE NAMES THE MUTANT IT KILLS, because this repo's dominant

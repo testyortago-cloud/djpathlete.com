@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Deviation from the task brief's literal test snippet: the brief imports
 // `@testing-library/user-event`, which is not installed anywhere in this repo
 // (not in package.json/package-lock.json, no other test uses it) and adding a

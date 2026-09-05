@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/public/EventSignupModal.test.tsx
 //
 // The SMS opt-in checkbox EventSignupModal gained alongside the spine wiring

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // "Quiz completions should show there alongside form fills, distinguishable
 // from them." Distinguishable means visible WITHOUT opening the row, and
 // readable once opened -- a coach picking up the phone wants the archetype and

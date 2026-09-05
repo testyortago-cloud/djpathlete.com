@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/public/InquiryFormClient.test.tsx
 //
 // The half of the SMS consent checkbox InquiryForm.test.tsx cannot see:

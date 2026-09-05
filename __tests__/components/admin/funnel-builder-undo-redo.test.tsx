@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/funnel-builder-undo-redo.test.tsx
 //
 // Undo/redo in the builder — the buttons, the two shortcuts, and the one rule

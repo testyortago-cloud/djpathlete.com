@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // ONE BOARD COMPONENT, TWO VOCABULARIES.
 //
 // `/admin/pages` and `/admin/funnels` are separate ROUTES — they have to be,

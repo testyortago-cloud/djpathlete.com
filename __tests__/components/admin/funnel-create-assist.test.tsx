@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Ask AI and Examples, and the one apply path they share.
 //
 // The thing worth guarding is that NOTHING lands in the dialog without the

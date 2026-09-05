@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/funnels/funnel-form-test-run.test.tsx
 //
 // Three submit behaviours share one handler, and getting the branch wrong is

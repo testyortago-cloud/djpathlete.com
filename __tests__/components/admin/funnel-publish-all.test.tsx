@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/funnel-publish-all.test.tsx — the split publish
 // control, and the guard that stops the builder and the background draft queue
 // building the same page twice.

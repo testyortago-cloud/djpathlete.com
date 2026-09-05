@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The style inspector. `styleToCss` has always compiled roughly seventeen
 // properties; before this the inspector offered three of them, so the rest were
 // reachable only by hand-editing the stored document. These cover that the

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Which editor a step opens in is decided by the COLUMNS, and until now the
 // designer route only ever read ONE of them. `page_tree` is null on every page
 // the AI builder has ever made, so the route fell through to `emptyPageTree()`

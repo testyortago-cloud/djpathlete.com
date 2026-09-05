@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/leads-board-columns.test.tsx
 //
 // The leads inbox shipped with its heads wrapped in a `<tr>` — but

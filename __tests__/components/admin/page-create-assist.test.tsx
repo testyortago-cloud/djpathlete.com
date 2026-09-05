@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The same assist, on the landing pages screen.
 //
 // A page is NOT a one-step funnel, and these tests exist mostly to hold that

@@ -42,7 +42,14 @@ const isIntegration = (process.env.npm_lifecycle_event ?? "").startsWith(
 
 export default defineConfig({
   test: {
-    environment: "jsdom",
+    // node is the DEFAULT; a suite that renders needs `// @vitest-environment jsdom`
+    // on line 1. Flipped 2026-09-05 from jsdom-by-default: with jsdom as the
+    // default, a suite that cannot start its environment reports "no tests" (see
+    // the guard above) — with node as the default, a DOM suite that forgot its
+    // pragma fails loudly with "document is not defined" instead. The 191 files
+    // that carry the pragma were found by measurement, not by grep: every file
+    // that failed, or ran fewer tests, under node than under jsdom.
+    environment: "node",
     globals: true,
     setupFiles: ["./__tests__/setup.tsx"],
     include: isIntegration

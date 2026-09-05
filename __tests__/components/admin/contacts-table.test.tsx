@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/contacts-table.test.tsx
 //
 // The multi-select table is the first one in this admin, so the wiring is not

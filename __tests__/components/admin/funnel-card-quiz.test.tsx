@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // THE QUIZ LIVES IN THE FUNNEL, and nowhere else.
 //
 // There is no quizzes list any more. A quiz is not a thing this product has

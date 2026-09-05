@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/public/AskPanel.test.tsx
 //
 // The public chat surface. Everything this feature promises about honesty is

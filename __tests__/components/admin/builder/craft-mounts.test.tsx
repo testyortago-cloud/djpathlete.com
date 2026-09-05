@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Craft.js declares React ^19 in its peer range, but a peer range is a claim,
 // not a proof. GrapesJS also "supported" this app right up until its icons
 // rendered as blank squares under our CSP and it silently discarded every

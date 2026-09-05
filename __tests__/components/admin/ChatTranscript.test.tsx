@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/ChatTranscript.test.tsx
 //
 // The transcript is the only place a blocked turn can be explained after the

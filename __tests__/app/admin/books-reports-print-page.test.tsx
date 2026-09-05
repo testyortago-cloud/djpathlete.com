@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The print view is the THIRD CPA-facing rendering of the fee/net line (after
 // ReportsClient and the xlsx pack) and it resolves `showFees` and its own
 // empty-state condition itself. fee-lines.test.ts pins the STRINGS; nothing

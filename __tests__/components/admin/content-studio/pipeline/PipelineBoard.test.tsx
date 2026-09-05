@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import { PipelineBoard } from "@/components/admin/content-studio/pipeline/PipelineBoard"

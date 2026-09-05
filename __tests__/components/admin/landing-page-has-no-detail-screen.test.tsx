@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/landing-page-has-no-detail-screen.test.tsx
 //
 // A landing page is ONE page, so `/admin/pages/<id>` — a step list — rendered a

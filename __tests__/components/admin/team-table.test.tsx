@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi } from "vitest"
 import { render, screen, within } from "@testing-library/react"
 import { TeamTable } from "@/components/admin/team/TeamTable"

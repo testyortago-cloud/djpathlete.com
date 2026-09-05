@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // A funnel is a sequence, so its dialog plans the sequence: pick what the
 // funnel is for, get its steps, edit them, and land in step one already
 // drafting.

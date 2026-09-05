@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/funnel-builder-polish.test.tsx
 //
 // The review's client half. Two behaviours here are load-bearing and neither is

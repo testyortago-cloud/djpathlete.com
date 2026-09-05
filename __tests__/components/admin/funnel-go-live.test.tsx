@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/funnel-go-live.test.tsx
 //
 // "Publish" means two different things in this product, and the second one was

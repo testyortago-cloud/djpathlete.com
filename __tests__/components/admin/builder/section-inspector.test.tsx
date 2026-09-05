@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The inspector emits ops and nothing else. It does not hold the document, does
 // not merge, and does not decide whether an edit is legal - `applyOps` on the
 // server does all three. So what these tests pin is the SHAPE OF THE OP each

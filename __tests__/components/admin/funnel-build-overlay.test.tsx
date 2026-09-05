@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The build overlay, which the owner reported as mostly empty space.
 //
 // jsdom has no layout, so these assert the DECISIONS rather than measured

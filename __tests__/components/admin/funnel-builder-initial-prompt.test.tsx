@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The hand-off that makes a new page start building itself. The danger is not
 // that it fails to fire — it is that it fires twice, or fires over work that
 // already exists, so most of these tests exist to catch a send that should not

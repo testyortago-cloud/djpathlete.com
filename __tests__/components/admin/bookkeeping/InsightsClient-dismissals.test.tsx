@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Component-level coverage for the B4 dismissal UI. The route/pure-fn suites
 // (finding-fingerprint, insights-dismissals, insights GET) cannot see any of
 // this: the verb chosen per action, the optimistic rollback, or the reveal

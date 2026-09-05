@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/pipeline-board.test.tsx
 //
 // Fix round 1, Finding 1: the board must render the CONFIGURED stage name

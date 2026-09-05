@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Every buy button on every published funnel page rendered as PLAIN LINK TEXT.
 //
 // A `url` / `anchor` / `step` CTA is an `<a class="djp-btn djp-btn-primary">`

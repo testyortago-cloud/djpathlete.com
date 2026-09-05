@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/funnels/draft-queue.test.tsx
 //
 // The queue that answers "i dont want to click the other one for it to be
