@@ -28,6 +28,7 @@ vi.mock("@/lib/supabase", () => ({
     },
   }),
 }))
+vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
 
 import { getActiveGoogleAdsAccounts } from "@/lib/db/google-ads-accounts"
 
@@ -44,6 +45,6 @@ describe("getActiveGoogleAdsAccounts tenancy", () => {
 
   it("defaults to the singleton so existing callers are unchanged", async () => {
     await getActiveGoogleAdsAccounts()
-    expect(appliedEqs).toContainEqual(["business_id", "00000000-0000-0000-0000-000000000001"])
+    expect(appliedEqs).toContainEqual(["business_id", "platform-biz"])
   })
 })

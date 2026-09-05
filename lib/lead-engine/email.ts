@@ -14,7 +14,7 @@
 // (below) and the general shape of a transactional HTML email.
 
 import { Resend } from "resend"
-import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
+import type { BusinessSettings } from "@/lib/db/businesses"
 
 const _resendClient = new Resend(process.env.RESEND_API_KEY)
 
@@ -456,10 +456,7 @@ export async function sendRenderedSequenceEmail(args: {
 }
 
 /**
- * Renders and sends one sequence email via Resend. When `settings` is
- * omitted it is loaded from `business_settings` — pass it explicitly (as
- * `sequence-tick-runner.ts` will, having already loaded it once per tick)
- * to avoid a redundant read.
+ * Renders and sends one sequence email via Resend.
  *
  * Convenience wrapper over `renderSequenceEmail` + `sendRenderedSequenceEmail`
  * for callers with nothing to do with the rendered output (the `alert` step).
@@ -482,7 +479,7 @@ export async function sendSequenceEmail(args: {
    */
   oneClickUrl?: string
   contactName: string | null
-  settings?: BusinessSettings
+  settings: BusinessSettings
   /**
    * Defaults to TRUE. `false` marks this as an internal operator
    * notification: no unsubscribe footer AND no List-Unsubscribe headers. An
@@ -491,7 +488,7 @@ export async function sendSequenceEmail(args: {
    */
   includeUnsubscribeFooter?: boolean
 }): Promise<{ providerMessageId: string | null }> {
-  const settings = args.settings ?? (await getBusinessSettings())
+  const settings = args.settings
 
   const includeUnsubscribeFooter = args.includeUnsubscribeFooter !== false
 

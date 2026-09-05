@@ -14,12 +14,12 @@ vi.mock("@/lib/db/business-members", () => ({
   addBusinessMember: vi.fn().mockResolvedValue("added"),
   linkHostToUser: vi.fn().mockResolvedValue(undefined),
 }))
+vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
 
 import { getInviteByToken, inviteStatus, markInviteUsed } from "@/lib/db/team-invites"
 import { getUserByEmail, createUser } from "@/lib/db/users"
 import { addBusinessMember, linkHostToUser } from "@/lib/db/business-members"
 import { POST } from "@/app/api/public/invite/[token]/claim/route"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 beforeEach(() => vi.clearAllMocks())
 
@@ -159,11 +159,11 @@ describe("POST /api/public/invite/[token]/claim", () => {
       return POST(ok({ firstName: "K", lastName: "D", password: "Strongpass1!" }), { params })
     }
 
-    it("a business-less invite (a plain /admin/team invite) still produces a singleton staff membership", async () => {
+    it("a business-less invite (a plain /admin/team invite) joins the platform's own business, through the seam", async () => {
       pendingInvite({ business_id: null, business_role: null })
 
       expect((await claim()).status).toBe(201)
-      expect(addBusinessMember).toHaveBeenCalledWith(SINGLETON_BUSINESS_ID, "newU", "staff")
+      expect(addBusinessMember).toHaveBeenCalledWith("platform-biz", "newU", "staff")
       // A platform-staff invite is never a host.
       expect(linkHostToUser).not.toHaveBeenCalled()
     })

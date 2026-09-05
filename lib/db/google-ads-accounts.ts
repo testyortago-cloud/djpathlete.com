@@ -1,6 +1,6 @@
 // lib/db/google-ads-accounts.ts
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import type { GoogleAdsAccount } from "@/types/database"
 
 function getClient() {
@@ -18,13 +18,15 @@ export async function listGoogleAdsAccounts(): Promise<GoogleAdsAccount[]> {
 }
 
 /**
- * `businessId` defaults to the singleton because five existing callers in the
- * Next.js runtime (lib/ads/agent.ts twice, lib/ads/ga4-audiences.ts, the
- * value-adjustment path in lib/ads/conversions.ts, and
- * app/api/admin/ads/diagnose/route.ts) pre-date multi-tenancy and are correct
- * with it. New callers pass one. The default-parameter idiom stays on
- * EXISTING DAL functions for one migration and is removed caller by caller; a
- * NEW function that defaults the tenant is how the next leak ships.
+ * `businessId` DEFAULTS, and it is the one tenant default left in lib/db —
+ * deliberately, and inventoried under DELIBERATELY FROZEN in
+ * lib/tenancy/platform.ts. Five callers in the ads subsystem (lib/ads/agent.ts
+ * twice, lib/ads/ga4-audiences.ts, lib/ads/conversions.ts's value-adjustment
+ * path, app/api/admin/ads/diagnose/route.ts) pass nothing, and that subsystem
+ * is scoped as a unit or not at all: /admin/ads and /api/admin/ads are
+ * owner-only precisely because listGoogleAdsAccounts above has no tenant
+ * filter (docs/superpowers/plans/2026-09-04-ads-owner-only.md). A NEW caller
+ * passes one.
  *
  * functions/src/ads/dal.ts:getActiveGoogleAdsAccounts is a SEPARATE Firebase
  * twin of this function, not a caller of it (functions/ cannot import from
@@ -33,7 +35,7 @@ export async function listGoogleAdsAccounts(): Promise<GoogleAdsAccount[]> {
  * stay in sync — update both if this one's filtering logic ever changes.
  */
 export async function getActiveGoogleAdsAccounts(
-  businessId: string = SINGLETON_BUSINESS_ID,
+  businessId: string = platformBusinessId(),
 ): Promise<GoogleAdsAccount[]> {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -66,7 +68,7 @@ export class AdsAccountOwnedByAnotherBusinessError extends Error {
  * The write half of the per-tenant reader above. `businessId` is REQUIRED
  * and gets written on every INSERT, so a second business can finally have an
  * ads account of its own — until this changed, every OAuth-discovered
- * account landed on the column default (SINGLETON_BUSINESS_ID), which is
+ * account landed on the column's default (the platform business), which is
  * exactly why getActiveGoogleAdsAccounts could filter by business_id and
  * still find every account: there was only one business that had any.
  *
