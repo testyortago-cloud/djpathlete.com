@@ -12,7 +12,6 @@
 // retrying a crashed send) stalls a sequence forever on a single crash.
 
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { resolveTimezone, localDayBounds } from "@/lib/lead-engine/guardrails"
 import { hasConsent, isSuppressed } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
@@ -32,11 +31,7 @@ const RECLAIM_WINDOW_MS = 15 * 60 * 1000
  * overlapping ticks claiming the same run, which is the entire reason the
  * function exists in the database rather than here.
  */
-export async function claimDueRuns(
-  limit: number,
-  claimToken: string,
-  businessId: string = SINGLETON_BUSINESS_ID,
-): Promise<SequenceRunRow[]> {
+export async function claimDueRuns(limit: number, claimToken: string, businessId: string): Promise<SequenceRunRow[]> {
   const supabase = getClient()
   const { data, error } = await supabase.rpc("claim_sequence_runs", {
     p_business_id: businessId,
@@ -75,11 +70,7 @@ export async function loadSteps(sequenceId: string): Promise<SequenceStepRow[]> 
  * act on. Letting it propagate fails the run visibly (`status='failed'`)
  * rather than sending or exiting on a guess.
  */
-export async function loadRunContext(
-  run: SequenceRunRow,
-  now: Date,
-  businessId: string = SINGLETON_BUSINESS_ID,
-): Promise<DecisionContext> {
+export async function loadRunContext(run: SequenceRunRow, now: Date, businessId: string): Promise<DecisionContext> {
   const supabase = getClient()
 
   const settings = await getBusinessSettings(businessId)
@@ -208,10 +199,10 @@ export async function recordSend(args: {
   toIdentifier: string
   subject: string | null
   bodyRendered: string
-  businessId?: string
+  businessId: string
 }): Promise<{ claimed: boolean; messageId: string | null }> {
   const supabase = getClient()
-  const businessId = args.businessId ?? SINGLETON_BUSINESS_ID
+  const businessId = args.businessId
 
   const { data: inserted, error: insertErr } = await supabase
     .from("sequence_messages")
@@ -565,7 +556,7 @@ export interface SequenceSummary {
   trigger_source: string | null
 }
 
-export async function listSequences(businessId: string = SINGLETON_BUSINESS_ID): Promise<SequenceSummary[]> {
+export async function listSequences(businessId: string): Promise<SequenceSummary[]> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("sequences")

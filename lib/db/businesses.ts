@@ -1,5 +1,4 @@
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 export type BusinessSettings = {
   business_id: string
@@ -37,9 +36,7 @@ export class BusinessSettingsMissingError extends Error {
   }
 }
 
-export async function getBusinessSettings(
-  businessId: string = SINGLETON_BUSINESS_ID,
-): Promise<BusinessSettings> {
+export async function getBusinessSettings(businessId: string): Promise<BusinessSettings> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("business_settings")

@@ -369,17 +369,17 @@ function stageEventsFor(opportunityId: string): Row[] {
 describe("resolvePipeline", () => {
   it("throws PipelineNotConfiguredError when the board has not been seeded", async () => {
     // Nothing seeded.
-    await expect(resolvePipeline("coaching")).rejects.toThrow(PipelineNotConfiguredError)
+    await expect(resolvePipeline("coaching", SINGLETON_BUSINESS_ID)).rejects.toThrow(PipelineNotConfiguredError)
   })
 
   it("throws PipelineNotConfiguredError when the pipeline exists but has no stages", async () => {
     store.pipelines.push({ id: "pipe-empty", business_id: SINGLETON_BUSINESS_ID, key: "empty", name: "Empty" })
-    await expect(resolvePipeline("empty")).rejects.toThrow(PipelineNotConfiguredError)
+    await expect(resolvePipeline("empty", SINGLETON_BUSINESS_ID)).rejects.toThrow(PipelineNotConfiguredError)
   })
 
   it("returns stages ordered by position", async () => {
     seedBoard()
-    const { stages } = await resolvePipeline("coaching")
+    const { stages } = await resolvePipeline("coaching", SINGLETON_BUSINESS_ID)
     expect(stages.map((s) => s.key)).toEqual(["consult_booked", "consulted", "won", "lost"])
   })
 
@@ -390,7 +390,7 @@ describe("resolvePipeline", () => {
   // mapped values, not just that the field is present.
   it("carries the configured stage name, not a key-derived one", async () => {
     seedBoard()
-    const { stages } = await resolvePipeline("coaching")
+    const { stages } = await resolvePipeline("coaching", SINGLETON_BUSINESS_ID)
     expect(stages.map((s) => s.name)).toEqual(["Consult Booked", "Consulted", "Won", "Lost"])
   })
 })
@@ -424,8 +424,8 @@ describe("readMostRecentOpportunity", () => {
       closed_at: new Date().toISOString(),
     })
 
-    const { stages } = await resolvePipeline("coaching")
-    const current = await readMostRecentOpportunity("c-1", "pipe-1", stages)
+    const { stages } = await resolvePipeline("coaching", SINGLETON_BUSINESS_ID)
+    const current = await readMostRecentOpportunity("c-1", "pipe-1", stages, SINGLETON_BUSINESS_ID)
 
     expect(current?.id).toBe("opp-old-open")
     expect(current?.outcome).toBeNull()
@@ -452,8 +452,8 @@ describe("readMostRecentOpportunity", () => {
       closed_trigger: "payment",
     })
 
-    const { stages } = await resolvePipeline("coaching")
-    const current = await readMostRecentOpportunity("c-1", "pipe-1", stages)
+    const { stages } = await resolvePipeline("coaching", SINGLETON_BUSINESS_ID)
+    const current = await readMostRecentOpportunity("c-1", "pipe-1", stages, SINGLETON_BUSINESS_ID)
 
     expect(current?.id).toBe("opp-newer-won")
   })
@@ -465,8 +465,8 @@ describe("readMostRecentWonOpportunity", () => {
     seedContact("c-1")
     seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
 
-    const { stages } = await resolvePipeline("coaching")
-    const won = await readMostRecentWonOpportunity("c-1", "pipe-1", stages)
+    const { stages } = await resolvePipeline("coaching", SINGLETON_BUSINESS_ID)
+    const won = await readMostRecentWonOpportunity("c-1", "pipe-1", stages, SINGLETON_BUSINESS_ID)
 
     expect(won).toBeNull()
   })
@@ -490,8 +490,8 @@ describe("readMostRecentWonOpportunity", () => {
       created_at: new Date().toISOString(),
     })
 
-    const { stages } = await resolvePipeline("coaching")
-    const won = await readMostRecentWonOpportunity("c-1", "pipe-1", stages)
+    const { stages } = await resolvePipeline("coaching", SINGLETON_BUSINESS_ID)
+    const won = await readMostRecentWonOpportunity("c-1", "pipe-1", stages, SINGLETON_BUSINESS_ID)
 
     expect(won?.id).toBe("opp-won")
     expect(won?.value_cents).toBe(90000)
@@ -516,8 +516,8 @@ describe("readMostRecentWonOpportunity", () => {
       closed_trigger: "payment",
     })
 
-    const { stages } = await resolvePipeline("coaching")
-    const won = await readMostRecentWonOpportunity("c-1", "pipe-1", stages)
+    const { stages } = await resolvePipeline("coaching", SINGLETON_BUSINESS_ID)
+    const won = await readMostRecentWonOpportunity("c-1", "pipe-1", stages, SINGLETON_BUSINESS_ID)
 
     expect(won?.id).toBe("opp-won-newer")
   })
@@ -529,6 +529,7 @@ describe("applyPipelineEvent", () => {
     seedContact("c-1")
 
     const { decision, opportunityId } = await applyPipelineEvent({
+      businessId: SINGLETON_BUSINESS_ID,
       contactId: "c-1",
       event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
     })
@@ -549,6 +550,7 @@ describe("applyPipelineEvent", () => {
     seedContact("c-1")
 
     const { opportunityId } = await applyPipelineEvent({
+      businessId: SINGLETON_BUSINESS_ID,
       contactId: "c-1",
       event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
     })
@@ -565,6 +567,7 @@ describe("applyPipelineEvent", () => {
     seedContact("c-1", { first_touch_session_id: "sess-abc" })
 
     await applyPipelineEvent({
+      businessId: SINGLETON_BUSINESS_ID,
       contactId: "c-1",
       event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
     })
@@ -584,6 +587,7 @@ describe("applyPipelineEvent", () => {
     // it to consulted — it must not re-read the contact's (now different)
     // first_touch_session_id.
     const { decision } = await applyPipelineEvent({
+      businessId: SINGLETON_BUSINESS_ID,
       contactId: "c-1",
       event: { kind: "booking", status: "completed", occurredAt: new Date() },
     })
@@ -600,6 +604,7 @@ describe("applyPipelineEvent", () => {
 
     const before = Date.now()
     const { decision } = await applyPipelineEvent({
+      businessId: SINGLETON_BUSINESS_ID,
       contactId: "c-1",
       event: { kind: "booking", status: "completed", occurredAt: new Date() },
     })
@@ -616,6 +621,7 @@ describe("applyPipelineEvent", () => {
     seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" })
 
     const { decision } = await applyPipelineEvent({
+      businessId: SINGLETON_BUSINESS_ID,
       contactId: "c-1",
       event: { kind: "payment", amountCents: 50000, currency: "usd", occurredAt: new Date() },
     })
@@ -644,6 +650,7 @@ describe("applyPipelineEvent", () => {
     seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
 
     const { decision } = await applyPipelineEvent({
+      businessId: SINGLETON_BUSINESS_ID,
       contactId: "c-1",
       event: { kind: "booking", status: "cancelled", occurredAt: new Date() },
     })
@@ -665,6 +672,7 @@ describe("applyPipelineEvent", () => {
     seedContact("c-1")
 
     const { decision, opportunityId } = await applyPipelineEvent({
+      businessId: SINGLETON_BUSINESS_ID,
       contactId: "c-1",
       event: { kind: "payment", amountCents: 12000, currency: "usd", occurredAt: new Date() },
     })
@@ -713,6 +721,7 @@ describe("applyPipelineEvent", () => {
     })
 
     const { decision, opportunityId } = await applyPipelineEvent({
+      businessId: SINGLETON_BUSINESS_ID,
       contactId: "c-1",
       event: { kind: "payment", amountCents: 12000, currency: "usd", occurredAt: new Date() },
       metadata: { stripe_session_id: "cs_test_dup_1" },
@@ -745,6 +754,7 @@ describe("applyPipelineEvent", () => {
     })
 
     const { decision } = await applyPipelineEvent({
+      businessId: SINGLETON_BUSINESS_ID,
       contactId: "c-1",
       event: { kind: "payment", amountCents: 12000, currency: "usd", occurredAt: new Date() },
       metadata: { stripe_session_id: "cs_test_dup_1" },
@@ -787,8 +797,18 @@ describe("applyPipelineEvent", () => {
         occurredAt: new Date(),
       }
       const [first, second] = await Promise.all([
-        applyPipelineEvent({ contactId: "c-1", event: payment, metadata: { stripe_session_id: "cs_race_1" } }),
-        applyPipelineEvent({ contactId: "c-1", event: payment, metadata: { stripe_session_id: "cs_race_1" } }),
+        applyPipelineEvent({
+          businessId: SINGLETON_BUSINESS_ID,
+          contactId: "c-1",
+          event: payment,
+          metadata: { stripe_session_id: "cs_race_1" },
+        }),
+        applyPipelineEvent({
+          businessId: SINGLETON_BUSINESS_ID,
+          contactId: "c-1",
+          event: payment,
+          metadata: { stripe_session_id: "cs_race_1" },
+        }),
       ])
 
       expect(store.opportunities).toHaveLength(1)
@@ -828,8 +848,8 @@ describe("applyPipelineEvent", () => {
         occurredAt: new Date(),
       }
       const [first, second] = await Promise.all([
-        applyPipelineEvent({ contactId: "c-1", event: payment }),
-        applyPipelineEvent({ contactId: "c-1", event: payment }),
+        applyPipelineEvent({ businessId: SINGLETON_BUSINESS_ID, contactId: "c-1", event: payment }),
+        applyPipelineEvent({ businessId: SINGLETON_BUSINESS_ID, contactId: "c-1", event: payment }),
       ])
 
       expect(first.decision.kind).toBe("create")
@@ -843,6 +863,7 @@ describe("applyPipelineEvent", () => {
       seedContact("c-1")
 
       await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "payment", amountCents: 9900, currency: "usd", occurredAt: new Date() },
         source: "reconciler",
@@ -857,6 +878,7 @@ describe("applyPipelineEvent", () => {
       seedContact("c-1")
 
       await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
         source: "reconciler",
@@ -875,6 +897,7 @@ describe("applyPipelineEvent", () => {
       seedContact("c-1")
 
       await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "payment", amountCents: 9900, currency: "usd", occurredAt: new Date() },
         metadata: { payment_id: "pay-7", booking_id: "bk-7", stripe_session_id: "cs_wins" },
@@ -892,6 +915,7 @@ describe("applyPipelineEvent", () => {
       seedContact("c-1")
 
       await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "payment", amountCents: 9900, currency: "usd", occurredAt: new Date() },
         metadata: { stripe_session_id: 12345, amount_refunded: 0 },
@@ -918,6 +942,7 @@ describe("applyPipelineEvent", () => {
 
       try {
         const { decision, opportunityId } = await applyPipelineEvent({
+          businessId: SINGLETON_BUSINESS_ID,
           contactId: "c-1",
           event: { kind: "payment", amountCents: 12000, currency: "usd", occurredAt: new Date() },
           metadata: { stripe_session_id: "cs_pre_migration" },
@@ -957,6 +982,7 @@ describe("applyPipelineEvent", () => {
       seedContact("c-1")
 
       const { opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "payment", amountCents: 12000, currency: "usd", occurredAt: new Date() },
         metadata: { stripe_session_id: "cs_normal" },
@@ -985,6 +1011,7 @@ describe("applyPipelineEvent", () => {
 
       await expect(
         applyPipelineEvent({
+          businessId: SINGLETON_BUSINESS_ID,
           contactId: "c-1",
           event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
           source: "reconciler",
@@ -1007,6 +1034,7 @@ describe("applyPipelineEvent", () => {
     })
 
     const { decision, opportunityId } = await applyPipelineEvent({
+      businessId: SINGLETON_BUSINESS_ID,
       contactId: "c-1",
       event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
     })
@@ -1034,6 +1062,7 @@ describe("applyPipelineEvent", () => {
     seedOpportunity("opp-2", "c-2", { stage_id: "stage-consult-booked", entered_stage_at: untouchedEnteredAt })
 
     await applyPipelineEvent({
+      businessId: SINGLETON_BUSINESS_ID,
       contactId: "c-1",
       event: { kind: "booking", status: "completed", occurredAt: new Date() },
     })
@@ -1055,6 +1084,7 @@ describe("applyPipelineEvent", () => {
       seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" })
 
       await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "payment", amountCents: 9900, currency: "usd", occurredAt: new Date() },
         source: "reconciler",
@@ -1071,6 +1101,7 @@ describe("applyPipelineEvent", () => {
       seedContact("c-1")
 
       const { opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
       })
@@ -1095,6 +1126,7 @@ describe("applyPipelineEvent", () => {
       })
 
       const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "refund", amountRefundedCents: 120000, occurredAt: new Date() },
         metadata: { stripe_charge_id: "ch_full_1", amount_refunded: 120000 },
@@ -1127,6 +1159,7 @@ describe("applyPipelineEvent", () => {
       })
 
       const { decision } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "refund", amountRefundedCents: 10000, occurredAt: new Date() },
         metadata: { stripe_charge_id: "ch_partial_1", amount_refunded: 10000 },
@@ -1151,6 +1184,7 @@ describe("applyPipelineEvent", () => {
       })
 
       const { decision } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "refund", amountRefundedCents: 999999, occurredAt: new Date() },
         metadata: { stripe_charge_id: "ch_over_1", amount_refunded: 999999 },
@@ -1166,6 +1200,7 @@ describe("applyPipelineEvent", () => {
       seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" }) // open, not Won
 
       const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "refund", amountRefundedCents: 5000, occurredAt: new Date() },
         metadata: { stripe_charge_id: "ch_nowon_1", amount_refunded: 5000 },
@@ -1193,6 +1228,7 @@ describe("applyPipelineEvent", () => {
       })
 
       const first = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "refund", amountRefundedCents: 10000, occurredAt: new Date() },
         metadata: { stripe_charge_id: "ch_dup_1", amount_refunded: 10000 },
@@ -1202,6 +1238,7 @@ describe("applyPipelineEvent", () => {
 
       // Stripe retries the identical webhook delivery.
       const second = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "refund", amountRefundedCents: 10000, occurredAt: new Date() },
         metadata: { stripe_charge_id: "ch_dup_1", amount_refunded: 10000 },
@@ -1228,6 +1265,7 @@ describe("applyPipelineEvent", () => {
 
       // First partial refund: 10000 off.
       await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "refund", amountRefundedCents: 10000, occurredAt: new Date() },
         metadata: { stripe_charge_id: "ch_accum_1", amount_refunded: 10000 },
@@ -1237,6 +1275,7 @@ describe("applyPipelineEvent", () => {
       // A later, additional partial refund on the SAME charge — Stripe now
       // reports the cumulative total (25000), not just the new increment.
       const { decision } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
         contactId: "c-1",
         event: { kind: "refund", amountRefundedCents: 25000, occurredAt: new Date() },
         metadata: { stripe_charge_id: "ch_accum_1", amount_refunded: 25000 },
@@ -1253,7 +1292,7 @@ describe("readBoard", () => {
   it("returns one column per stage in position order", async () => {
     seedBoard()
 
-    const board = await readBoard()
+    const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
 
     expect(board.map((c) => c.stage.key)).toEqual(["consult_booked", "consulted", "won", "lost"])
   })
@@ -1264,7 +1303,7 @@ describe("readBoard", () => {
     const redEnteredAt = new Date(Date.now() - 8 * DAY_MS).toISOString() // red_after_days=7
     seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked", entered_stage_at: redEnteredAt })
 
-    const board = await readBoard()
+    const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
 
     const column = board.find((c) => c.stage.key === "consult_booked")!
     expect(column.cards).toHaveLength(1)
@@ -1297,7 +1336,7 @@ describe("readBoard", () => {
       closed_trigger: "payment",
     })
 
-    const board = await readBoard()
+    const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
 
     const openColumn = board.find((c) => c.stage.key === "consult_booked")!
     expect(openColumn.cards.map((c) => c.id)).toEqual(["opp-open"])
@@ -1311,7 +1350,7 @@ describe("readBoard", () => {
     seedContact("c-1", { name: "Jane Doe" })
     seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked", value_cents: 25000 })
 
-    const board = await readBoard()
+    const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
     const card = board.find((c) => c.stage.key === "consult_booked")!.cards[0]
 
     expect(card.contactName).toBe("Jane Doe")
@@ -1326,7 +1365,12 @@ describe("moveOpportunityManually", () => {
     seedContact("c-1")
     seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" })
 
-    await moveOpportunityManually({ opportunityId: "opp-1", toStageKey: "won", actorUserId: "admin-1" })
+    await moveOpportunityManually({
+      opportunityId: "opp-1",
+      toStageKey: "won",
+      actorUserId: "admin-1",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     const row = store.opportunities[0]
     expect(row.stage_id).toBe("stage-won")
@@ -1350,7 +1394,12 @@ describe("moveOpportunityManually", () => {
     seedContact("c-1")
     seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
 
-    await moveOpportunityManually({ opportunityId: "opp-1", toStageKey: "consulted", actorUserId: "admin-1" })
+    await moveOpportunityManually({
+      opportunityId: "opp-1",
+      toStageKey: "consulted",
+      actorUserId: "admin-1",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     const row = store.opportunities[0]
     expect(row.stage_id).toBe("stage-consulted")
@@ -1370,7 +1419,12 @@ describe("moveOpportunityManually", () => {
       closed_by_user_id: "admin-1",
     })
 
-    await moveOpportunityManually({ opportunityId: "opp-1", toStageKey: "consult_booked", actorUserId: "admin-2" })
+    await moveOpportunityManually({
+      opportunityId: "opp-1",
+      toStageKey: "consult_booked",
+      actorUserId: "admin-2",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     const row = store.opportunities[0]
     expect(row.stage_id).toBe("stage-consult-booked")
@@ -1390,7 +1444,12 @@ describe("moveOpportunityManually", () => {
       seedContact("c-1")
       seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" })
 
-      await moveOpportunityManually({ opportunityId: "opp-1", toStageKey: "won", actorUserId: "admin-1" })
+      await moveOpportunityManually({
+        opportunityId: "opp-1",
+        toStageKey: "won",
+        actorUserId: "admin-1",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
 
       const actions = store.audit_logs.map((a) => a.action)
       expect(actions).toContain("pipeline.opportunity_moved")
@@ -1406,7 +1465,12 @@ describe("moveOpportunityManually", () => {
       seedContact("c-1")
       seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
 
-      await moveOpportunityManually({ opportunityId: "opp-1", toStageKey: "lost", actorUserId: "admin-1" })
+      await moveOpportunityManually({
+        opportunityId: "opp-1",
+        toStageKey: "lost",
+        actorUserId: "admin-1",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
 
       const actions = store.audit_logs.map((a) => a.action)
       expect(actions).toContain("pipeline.opportunity_moved")
@@ -1422,7 +1486,12 @@ describe("moveOpportunityManually", () => {
       seedContact("c-1")
       seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
 
-      await moveOpportunityManually({ opportunityId: "opp-1", toStageKey: "consulted", actorUserId: "admin-1" })
+      await moveOpportunityManually({
+        opportunityId: "opp-1",
+        toStageKey: "consulted",
+        actorUserId: "admin-1",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
 
       const actions = store.audit_logs.map((a) => a.action)
       expect(actions).toEqual(["pipeline.opportunity_moved"])

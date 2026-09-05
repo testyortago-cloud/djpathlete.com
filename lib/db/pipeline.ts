@@ -16,7 +16,6 @@
 // Spec: docs/superpowers/specs/2026-08-19-lead-engine-stage1c-pipeline-design.md §3-§4
 
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { recordAudit } from "@/lib/audit/record"
 import { isPgUniqueViolation } from "@/lib/supabase-errors"
 import {
@@ -76,7 +75,7 @@ export type BoardCard = {
  */
 export async function resolvePipeline(
   key: string,
-  businessId: string = SINGLETON_BUSINESS_ID,
+  businessId: string,
 ): Promise<{ pipelineId: string; stages: StageRow[] }> {
   const supabase = getClient()
 
@@ -138,7 +137,7 @@ export async function readMostRecentOpportunity(
   contactId: string,
   pipelineId: string,
   stages: StageRow[],
-  businessId: string = SINGLETON_BUSINESS_ID,
+  businessId: string,
 ): Promise<OpportunityState | null> {
   const supabase = getClient()
 
@@ -197,7 +196,7 @@ export async function readMostRecentWonOpportunity(
   contactId: string,
   pipelineId: string,
   stages: StageRow[],
-  businessId: string = SINGLETON_BUSINESS_ID,
+  businessId: string,
 ): Promise<OpportunityState | null> {
   const supabase = getClient()
 
@@ -252,10 +251,7 @@ export async function readMostRecentWonOpportunity(
  * refunds are a rare path, so a table-wide scan costs nothing a bounded
  * window would meaningfully save.
  */
-export async function highestRecordedRefundAmount(
-  chargeId: string,
-  businessId: string = SINGLETON_BUSINESS_ID,
-): Promise<number> {
+export async function highestRecordedRefundAmount(chargeId: string, businessId: string): Promise<number> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("opportunity_stage_events")
@@ -472,10 +468,10 @@ export async function applyPipelineEvent(input: {
   event: PipelineEvent
   pipelineKey?: string
   source?: "hook" | "reconciler"
-  businessId?: string
+  businessId: string
   metadata?: Record<string, unknown>
 }): Promise<{ decision: MoveDecision; opportunityId: string | null }> {
-  const businessId = input.businessId ?? SINGLETON_BUSINESS_ID
+  const businessId = input.businessId
   const pipelineKey = input.pipelineKey ?? DEFAULT_PIPELINE_KEY
   const source = input.source ?? "hook"
   const supabase = getClient()
@@ -822,7 +818,7 @@ export async function applyPipelineEvent(input: {
  */
 export async function listReconciledSourceIds(
   sinceIso: string,
-  businessId: string = SINGLETON_BUSINESS_ID,
+  businessId: string,
 ): Promise<{ bookingIds: Set<string>; paymentIds: Set<string> }> {
   const supabase = getClient()
 
@@ -866,7 +862,7 @@ export async function moveOpportunityManually(input: {
   opportunityId: string
   toStageKey: string
   actorUserId: string
-  businessId?: string
+  businessId: string
   /**
    * The mover's REAL role. Was hardcoded `"admin"` in both audit rows below,
    * which was true by construction while `/api/admin/pipeline/move` gated on
@@ -881,7 +877,7 @@ export async function moveOpportunityManually(input: {
    */
   actorRole?: string
 }): Promise<void> {
-  const businessId = input.businessId ?? SINGLETON_BUSINESS_ID
+  const businessId = input.businessId
   const supabase = getClient()
 
   const { data: oppData, error: oppErr } = await supabase
@@ -985,10 +981,14 @@ async function readContactNames(
  * only ever reached through a close, so their cards always carry a matching
  * outcome.
  */
-export async function readBoard(
-  pipelineKey?: string,
-  businessId: string = SINGLETON_BUSINESS_ID,
-): Promise<BoardColumn[]> {
+// `pipelineKey` is typed `string | undefined` rather than `pipelineKey?:
+// string` — a bare `?` marks a parameter optional in the ordering sense TS
+// enforces, and a required parameter (businessId, no default) cannot follow
+// one of those (TS1016). Typed as a union instead, it is not "optional" to
+// the compiler even though the one caller (app/(admin)/admin/pipeline/page.tsx)
+// still passes `undefined` explicitly — same call shape, same runtime
+// behavior, no reordering.
+export async function readBoard(pipelineKey: string | undefined, businessId: string): Promise<BoardColumn[]> {
   const key = pipelineKey ?? DEFAULT_PIPELINE_KEY
   const supabase = getClient()
 
@@ -1037,8 +1037,8 @@ export async function readBoard(
 /**
  * One opportunity, for the manual grant path.
  *
- * `businessId` is REQUIRED, unlike the optional/defaulted tenant arguments
- * elsewhere in this file. This function has exactly one caller
+ * `businessId` is REQUIRED — every tenant argument in this file is, now that
+ * the singleton defaults are gone. This function has exactly one caller
  * (app/api/admin/pipeline/grant/route.ts), so there is no public path needing
  * an unscoped read and no reason to leave a footgun that a future caller could
  * trip over by omission.

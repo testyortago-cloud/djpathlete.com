@@ -426,8 +426,10 @@ async function main(): Promise<void> {
 
   // PREFLIGHT — see this file's header comment. Runs before discovery: a
   // misconfigured business has nothing worth discovering candidates for
-  // under --execute.
-  const settings = await getBusinessSettings()
+  // under --execute. This campaign is platform-only (see every other
+  // SINGLETON_BUSINESS_ID reference in this file), so the tenant is named
+  // explicitly rather than relying on a DAL default that no longer exists.
+  const settings = await getBusinessSettings(SINGLETON_BUSINESS_ID)
   const preflight = checkBusinessSettingsForRepermission(settings)
   if (preflight.missing.length > 0) {
     const fields = preflight.missing.map((f) => `business_settings.${f}`).join(", ")
