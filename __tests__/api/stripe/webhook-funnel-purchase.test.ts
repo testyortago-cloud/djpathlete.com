@@ -142,7 +142,7 @@ describe("the funnel branch is reached at all", () => {
     expect(res.status).toBe(200)
     expect(grantMock).toHaveBeenCalledTimes(1)
     expect(grantMock.mock.calls[0][0]).toEqual({
-      sessionId: "cs_funnel_1",
+      idempotencyKey: "cs_funnel_1",
       email: "buyer@example.com",
       name: "Jordan Blake",
       productKind: "program",

@@ -14,16 +14,24 @@ import { render, screen } from "@testing-library/react"
 import { PipelineBoard } from "@/components/admin/pipeline-board"
 import type { BoardColumn } from "@/lib/db/pipeline"
 
-vi.mock("@/lib/auth-helpers", () => ({ requireAdmin: vi.fn() }))
+// The page moved from requireAdmin() to requirePermission("contacts") on
+// 2026-09-04 (0dcedc9f); left unmocked, the real guard reaches auth() and
+// throws "headers was called outside a request scope".
+vi.mock("@/lib/permissions/guard", () => ({ requirePermission: vi.fn() }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
+// The page resolves its tenant at the session boundary (lib/tenancy/resolve.ts,
+// which reads cookies() and so cannot run outside a request). Mocked to a
+// sentinel so both reads below are pinned to the RESOLVED tenant.
+vi.mock("@/lib/tenancy/resolve", () => ({ resolveAdminTenant: vi.fn() }))
 vi.mock("@/lib/db/pipeline", async () => {
   const actual = await vi.importActual<typeof import("@/lib/db/pipeline")>("@/lib/db/pipeline")
   return { ...actual, readBoard: vi.fn() }
 })
 
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { readBoard } from "@/lib/db/pipeline"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import PipelinePage from "@/app/(admin)/admin/pipeline/page"
 
 const COLUMNS: BoardColumn[] = [
@@ -78,8 +86,13 @@ describe("<PipelineBoard>", () => {
 describe("<PipelinePage>", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(requireAdmin as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "admin" } })
+    ;(requirePermission as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "admin" } })
     ;(readBoard as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    ;(resolveAdminTenant as ReturnType<typeof vi.fn>).mockResolvedValue({
+      businessId: "biz-resolved",
+      choices: [],
+      isOperator: false,
+    })
   })
 
   // business_settings.display_name is seeded as '' (migration 00212 — NOT
@@ -100,6 +113,9 @@ describe("<PipelinePage>", () => {
     const intro = container.querySelector("p")
     expect(intro?.textContent).toMatch(/^The coaching pipeline\. Drag a card to move it between stages/)
     expect(intro?.textContent).not.toMatch(/^[’']s\b/)
+    // Both reads take the tenant the SESSION resolved to, threaded once.
+    expect(readBoard).toHaveBeenCalledWith(undefined, "biz-resolved")
+    expect(getBusinessSettings).toHaveBeenCalledWith("biz-resolved")
   })
 
   it("still renders the possessive when display_name is a real name", async () => {

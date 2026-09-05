@@ -34,6 +34,7 @@ describe("island traits cover their island's settings", () => {
       successMessage: "You're in.",
       redirectUrl: "/go/thanks",
       consentText: "We'll email you the guide.",
+      eventId: "44444444-4444-4444-8444-444444444444",
     },
     checkout: {
       productKind: "program",

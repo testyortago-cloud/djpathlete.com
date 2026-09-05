@@ -50,9 +50,11 @@ describe("ReceiptRowEditor PDF preview", () => {
     )
     expect(document.querySelector('iframe[src="https://signed/doc.pdf"]')).not.toBeNull()
     expect(document.querySelector('img[src="https://signed/doc.pdf"]')).toBeNull()
+    // The DURABLE admin route, never the raw signed URL: a signed URL kept in a
+    // tab rots into GCS ExpiredToken XML after its TTL (2026-08-03 report).
     expect(screen.getByRole("link", { name: /open in new tab/i })).toHaveAttribute(
       "href",
-      "https://signed/doc.pdf",
+      "/api/admin/bookkeeping/documents/d1/download?redirect=1",
     )
   })
 
