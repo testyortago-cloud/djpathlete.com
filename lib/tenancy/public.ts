@@ -25,10 +25,19 @@ import { recordAudit } from "@/lib/audit/record"
  *     between the migration applying on push and the Vercel build finishing.
  *     Warn once, naming the code. Self-heals; not an incident.
  *   - any other failed read: error EVERY time with code and message (never
- *     the raw object — it logs as [object Object]), plus an audit row with
- *     outcome "failure" so the 24h strip on /admin/audit-logs sees it. A
- *     public page 500ing on a transient read is worse than serving the
+ *     the raw object — it logs as [object Object]) — each one is an
+ *     incident, not deduped. The audit row that files it under outcome
+ *     "failure" so the 24h strip on /admin/audit-logs sees it is filed ONCE
+ *     per host per process instead: during a sustained outage every public
+ *     request would otherwise pay an extra awaited insert against the same
+ *     degraded database, and one row per instance already lights the strip.
+ *     A public page 500ing on a transient read is worse than serving the
  *     platform; that is the recorded decision, not a default.
+ *
+ * Both dedupe sets below (warned hosts, audited hosts) are capped at 1000
+ * entries and cleared on overflow: the host is client-controlled, so an
+ * unbounded Set keyed on it would be a memory-growth vector on a long-lived
+ * (Fluid Compute) instance.
  *
  * `await headers()` is deliberately OUTSIDE the try. During a static
  * prerender Next throws from it to bail the route out to dynamic rendering;
@@ -86,12 +95,27 @@ export function normalizeHost(raw: string | null | undefined): string | null {
   return noPort === "" ? null : noPort
 }
 
+/** A dedupe set keyed on a client-controlled value must not grow forever. */
+const DEDUPE_CAP = 1000
+
+/**
+ * True the first time `key` is seen; false on a repeat. Bounds `set` at
+ * `DEDUPE_CAP` by clearing it outright rather than evicting one entry at a
+ * time — a host may warn (or audit) twice per thousand distinct hosts, which
+ * is an acceptable price for a Set that never grows past a fixed size.
+ */
+function once(set: Set<string>, key: string): boolean {
+  if (set.size >= DEDUPE_CAP) set.clear()
+  if (set.has(key)) return false
+  set.add(key)
+  return true
+}
+
 const warnedHosts = new Set<string>()
+const auditedHosts = new Set<string>()
 
 function warnOnce(host: string, message: string): void {
-  if (warnedHosts.has(host)) return
-  warnedHosts.add(host)
-  console.warn(message)
+  if (once(warnedHosts, host)) console.warn(message)
 }
 
 /** The business this public request belongs to. Never throws for a tenancy reason. */
@@ -116,21 +140,26 @@ export async function resolvePublicTenant(): Promise<string> {
       warnOnce(host, `[tenancy] business_domains is not there yet (${code}) for host "${host}"; serving the platform`)
       return platformBusinessId()
     }
+    // Never deduped — each failed read is its own incident in the log.
     console.error(
       `[tenancy] business_domains read failed for host "${host}" (${code} ${message}); serving the platform`,
     )
-    // Awaited, not fire-and-forget: a serverless function may end the moment
-    // the response does, and this row is the only durable trace. recordAudit
-    // never throws. `actor` is passed so it does not call auth() on a public
+    // The audit row IS deduped, ONCE per host per process: unlike the error
+    // line above, an awaited insert against the same degraded database on
+    // every request during a sustained outage is its own cost, and one row
+    // per instance already lights the 24h failure strip. recordAudit never
+    // throws. `actor` is passed so it does not call auth() on a public
     // request.
-    await recordAudit({
-      action: "tenancy.public_host_lookup_failed",
-      category: "system",
-      outcome: "failure",
-      actor: { role: "system" },
-      error: { code, message },
-      metadata: { host },
-    })
+    if (once(auditedHosts, host)) {
+      await recordAudit({
+        action: "tenancy.public_host_lookup_failed",
+        category: "system",
+        outcome: "failure",
+        actor: { role: "system" },
+        error: { code, message },
+        metadata: { host },
+      })
+    }
     return platformBusinessId()
   }
 }

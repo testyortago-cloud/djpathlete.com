@@ -185,7 +185,38 @@ describe("resolvePublicTenant", () => {
     await resolvePublicTenant()
     await resolvePublicTenant()
     expect(error).toHaveBeenCalledTimes(2)
+    // The audit row, unlike the error log, is deduped ONCE per host per
+    // process (Task 2 review, 2026-09-05): a sustained outage must not add
+    // an awaited insert to every public request against the same degraded
+    // database.
+    expect(h.recordAudit).toHaveBeenCalledTimes(1)
+  })
+
+  it("files the audit row again for a DIFFERENT host", async () => {
+    h.find.mockRejectedValue(new h.BusinessDomainReadError("57014", "timeout"))
+    const { resolvePublicTenant } = await load()
+    withHeaders({ host: "www.darrenjpaul.com" })
+    await resolvePublicTenant()
+    withHeaders({ host: "other.test" })
+    await resolvePublicTenant()
     expect(h.recordAudit).toHaveBeenCalledTimes(2)
+    expect((h.recordAudit as ReturnType<typeof vi.fn>).mock.calls[1][0]).toMatchObject({
+      metadata: { host: "other.test" },
+    })
+  })
+
+  it("the dedupe set is bounded: after 1000 distinct hosts the first host warns again", async () => {
+    h.find.mockResolvedValue(null)
+    const { resolvePublicTenant } = await load()
+    for (let i = 0; i < 1000; i++) {
+      withHeaders({ host: `host-${i}.test` })
+      await resolvePublicTenant()
+    }
+    withHeaders({ host: "host-0.test" })
+    await resolvePublicTenant()
+    // One warn per distinct host (1000), plus one more once the 1000-entry
+    // cap forces the set to clear and "host-0.test" is seen as new again.
+    expect(warn).toHaveBeenCalledTimes(1001)
   })
 
   it("lets a throwing headers() PROPAGATE — the prerender bail-out must reach Next", async () => {
