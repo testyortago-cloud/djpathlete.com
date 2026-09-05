@@ -35,7 +35,7 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     so the wording shown and the wording filed can never name different
  *     businesses. No session, and no row to inherit from: `funnels`,
  *     `funnel_steps`, `funnel_submissions`, `events`, `event_signups`,
- *     `products` and `shop_leads` carry no business_id (no migration adds
+ *     `shop_products` and `shop_leads` carry no business_id (no migration adds
  *     one), so until phase 4 reads the Host header these are the platform's
  *     by seam, not by evidence:
  *       app/api/contact/route.ts
