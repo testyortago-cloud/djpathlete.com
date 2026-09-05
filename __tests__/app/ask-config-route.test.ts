@@ -29,7 +29,10 @@ const h = vi.hoisted(() => ({ getSetting: vi.fn(), getBusinessSettings: vi.fn() 
 
 vi.mock("@/lib/db/system-settings", () => ({ getSetting: h.getSetting }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: h.getBusinessSettings }))
-vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
 
 import { GET, dynamic } from "@/app/api/ask/config/route"
 import { CHAT_ASSISTANT_FLAG, CHAT_ASSISTANT_FLAG_DEFAULT } from "@/lib/lead-engine/chat/constants"
@@ -131,7 +134,7 @@ describe("GET /api/ask/config", () => {
     h.getSetting.mockResolvedValue(true)
     h.getBusinessSettings.mockResolvedValue({ display_name: DISPLAY_NAME })
     await GET()
-    expect(h.getBusinessSettings).toHaveBeenCalledWith("platform-biz")
+    expect(h.getBusinessSettings).toHaveBeenCalledWith("host-biz")
   })
 
   it("imports the flag key instead of retyping it", () => {

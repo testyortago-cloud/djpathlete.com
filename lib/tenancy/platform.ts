@@ -15,12 +15,6 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *   - public, unauthenticated quiz-taking routes (e.g.
  *     app/api/quiz/progress/route.ts), until phase 4 resolves the Host
  *     header;
- *   - the public chat assistant (app/api/ask/route.ts), the one place a
- *     conversation's tenant is decided at all -- same story as the quiz
- *     route, no session and no Host resolution until phase 4. Once the
- *     conversation exists, every OTHER call in that route threads
- *     `conversation.business_id` instead of calling this again -- see the
- *     route's own comment above `createConversation`;
  *   - the pipeline reconciler's payments half
  *     (lib/automation/pipeline-reconcile.ts) -- not because the reconciler
  *     itself lacks a businessId (it iterates real businesses in a loop and
@@ -44,10 +38,8 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     `shop_products` and `shop_leads` carry no business_id (no migration adds
  *     one), so until phase 4 reads the Host header these are the platform's
  *     by seam, not by evidence:
- *       app/api/ask/config/route.ts
  *     and the pages and server components that render the same consent
  *     wording those routes file, which must read the SAME business:
- *       app/(marketing)/ask/page.tsx
  *       app/(marketing)/camps/[slug]/page.tsx
  *       app/(marketing)/clinics/[slug]/page.tsx
  *       components/public/InquiryForm.tsx
