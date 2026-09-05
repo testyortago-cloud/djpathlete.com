@@ -90,7 +90,7 @@ components alike with no call-site signature churn (the brief's decision). Algor
    dynamic rendering; swallowing that would prerender the page with the platform tenant and silently keep it
    static forever. A test pins that a throwing `headers()` propagates.
 2. `host = normalizeHost(raw)`: trim; take the first comma-separated value; lowercase; strip `:port`
-   (IPv6 literal `[::1]:3050` → `[::1]`). Null → shelf (a) below.
+   (IPv6 literal `[::1]:3050` → `[::1]`). Null is treated exactly like an unmatched host (the second bullet of step 3), with the host logged as `(none)`.
 3. `findBusinessIdByHost(host)`:
    - a row → its `business_id`. Done. No log.
    - `null` → `platformBusinessId()`; `console.warn("[tenancy] no business_domains row for host \"<host>\"; serving the platform")`
@@ -136,7 +136,7 @@ naming a value with no reader is the labelling gap CLAUDE.md warns about. Applie
 implementer (standing instruction); applied to production by the Action on push to main — NOT by hand.
 
 **The race.** Push to main → the migration applies while Vercel builds. Old code + new rows: ignores them.
-New code + no rows yet: shelf (b), platform. Both orders serve the platform; there is no window in which a
+New code + no rows yet: the "no row" branch of §3.2 step 3, platform. Both orders serve the platform; there is no window in which a
 production request resolves to anything else, because the only business is the platform.
 
 ### 3.4 Audit taxonomy
