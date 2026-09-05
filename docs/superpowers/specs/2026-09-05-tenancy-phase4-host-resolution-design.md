@@ -184,7 +184,7 @@ and replaces the 17-path list with ONE entry:
 
 > the Host boundary's own fallback (`lib/tenancy/public.ts`) — every public, unauthenticated surface now
 > resolves through `resolvePublicTenant()`, which reads `business_domains` by Host and reaches this only when
-> no row claims the host, when the table is not there yet (the deploy window), or when the read failed. The
+> no row claims the host, when the table is missing (an incident since 00240, audited), or when the read failed. The
 > callers are inventoried in that file, not here.
 
 Nothing on the other three shelves changes.
