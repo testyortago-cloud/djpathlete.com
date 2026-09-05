@@ -55,6 +55,14 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *       components/public/StepUpInquiryForm.tsx
  *       components/funnels/islands/FormIsland.tsx
  *       components/funnels/islands/QuizIsland.tsx
+ *     QuizIsland's partner is NOT one of the §5.1 routes above. The wording
+ *     it shows is filed by app/api/quiz/submit/route.ts, which inherits the
+ *     attempt that app/api/quiz/progress/route.ts created under this seam —
+ *     so the island and the submit agree today because two INDEPENDENT calls
+ *     to this seam return the same value, not because one value is threaded
+ *     from island to write. Phase 4 must therefore convert the progress route
+ *     and this island together; converting either alone splits the wording
+ *     shown from the wording filed.
  *     NOT on this list, deliberately: app/api/quiz/submit/route.ts. It is
  *     public too, but it has a row to inherit from — the attempt that
  *     app/api/quiz/progress/route.ts created under this seam carries
@@ -103,8 +111,15 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     One Stripe account serves every business, so the webhook has no
  *     tenant of its own. It resolves the payer's contact row first — the
  *     same lookup its pipeline half already makes — and a repeat buyer's
- *     capture lands on their coach's business. Only a FIRST-TIME payer, who
- *     has no contact row anywhere, falls to this.
+ *     capture lands on that contact row's business (the OLDEST row when a
+ *     lead is shared — see `findContactWithBusinessByIdentifiers` in
+ *     lib/db/contacts.ts). A FIRST-TIME payer, who has no contact row
+ *     anywhere, falls to this — and so does a payer whose lookup FAILED,
+ *     because the capture must not be lost and pre-branch it always filed
+ *     here. The route declares `payerBusinessId` outside its own try block
+ *     for exactly that reason, and the throw path is pinned by
+ *     __tests__/api/stripe/webhook-capture-tenant.test.ts ("a contact lookup
+ *     that THROWS still leaves the capture with the platform tenant").
  *
  * DELIBERATELY FROZEN PENDING A LATER PHASE -- the caller COULD resolve a
  * real tenant (it has an authenticated admin session), but converting it
