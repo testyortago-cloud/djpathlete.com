@@ -95,13 +95,9 @@ async function guard(
     }
   }
 
-  // SCOPED BY BUSINESS. `getContactById`'s second parameter DEFAULTS to
-  // SINGLETON_BUSINESS_ID (lib/db/contact-detail.ts), so omitting it here did
-  // not mean "any tenant" -- it meant "the operator's tenant". Harmless while
-  // `/api/admin/contacts` was unmapped and only an admin could reach this;
-  // now that a coach holding `contacts` can, omitting it would point their tag
-  // writes at the platform's own contact records. A contact in another
-  // business reads as 404, the same answer the detail page gives.
+  // SCOPED BY BUSINESS. `getContactById` REQUIRES its tenant; a contact in
+  // another business reads as 404, the same answer the detail page gives. A
+  // coach holding `contacts` reaches this route, so the read must be theirs.
   let businessId: string
   try {
     ;({ businessId } = await resolveAdminTenantForRequest(request))
@@ -117,12 +113,8 @@ async function guard(
 
   // businessId IS RETURNED, not just used for the read gate above. Scoping the
   // lookup and then writing unscoped is worse than not scoping at all: the read
-  // proves the coach owns this contact, and the write then files the tag under
-  // a DIFFERENT business. `addTag`/`removeTag` default it to
-  // SINGLETON_BUSINESS_ID (lib/db/contact-tags.ts), so omitting it here put a
-  // coach's tag in the OPERATOR'S partition -- an insert that succeeds, returns
-  // 200, and disappears on the next refresh because every reader filters on the
-  // caller's own business.
+  // proves the coach owns this contact, and the write must file the tag under
+  // the SAME business. `addTag`/`removeTag` require it.
   return { contactId: contact.id, tag, actorId: session.user.id, businessId }
 }
 

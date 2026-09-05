@@ -130,7 +130,11 @@ describe("enrollIfTriggered", () => {
     seedSequence("seq-b", { trigger_source: "funnel_form" })
     seedSequence("seq-c", { trigger_source: "newsletter" })
 
-    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form" })
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "funnel_form",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     expect(result.enrolled.sort()).toEqual(["seq-a", "seq-b"])
     expect(store.sequence_runs).toHaveLength(2)
@@ -148,7 +152,11 @@ describe("enrollIfTriggered", () => {
     seedSequence("seq-archived", { status: "archived" })
     seedSequence("seq-active", { status: "active" })
 
-    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form" })
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "funnel_form",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     expect(result.enrolled).toEqual(["seq-active"])
     expect(store.sequence_runs).toHaveLength(1)
@@ -159,7 +167,11 @@ describe("enrollIfTriggered", () => {
     seedSequence("seq-null-trigger", { trigger_source: null, status: "active" })
     seedSequence("seq-matching", { trigger_source: "funnel_form", status: "active" })
 
-    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form" })
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "funnel_form",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     expect(result.enrolled).toEqual(["seq-matching"])
   })
@@ -175,7 +187,11 @@ describe("enrollIfTriggered", () => {
       current_position: 0,
     })
 
-    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form" })
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "funnel_form",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     expect(result.enrolled).toEqual([])
     // No new row was inserted — the one already there is untouched.
@@ -195,7 +211,11 @@ describe("enrollIfTriggered", () => {
       current_position: 0,
     })
 
-    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form" })
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "funnel_form",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     expect(result.enrolled).toEqual(["seq-new"])
     expect(store.sequence_runs).toHaveLength(2)
@@ -209,6 +229,7 @@ describe("enrollIfTriggered", () => {
       contactId: "contact-1",
       source: "funnel_form",
       metadata: { funnel_id: "xyz" },
+      businessId: SINGLETON_BUSINESS_ID,
     })
     // The filtered sequence does not match; the empty-filter one always does.
     expect(mismatch.enrolled).toEqual(["seq-open"])
@@ -221,6 +242,7 @@ describe("enrollIfTriggered", () => {
       contactId: "contact-2",
       source: "funnel_form",
       metadata: { funnel_id: "abc", unrelated: "ignored" },
+      businessId: SINGLETON_BUSINESS_ID,
     })
     expect(match.enrolled).toEqual(["seq-filtered"])
   })
@@ -234,7 +256,11 @@ describe("enrollIfTriggered", () => {
   it("does not enrol a 'purchase' source into a sequence triggered by a different source", async () => {
     seedSequence("seq-newsletter", { trigger_source: "newsletter" })
 
-    const result = await enrollIfTriggered({ contactId: "contact-1", source: "purchase" })
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "purchase",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
 
     expect(result.enrolled).toEqual([])
     expect(store.sequence_runs).toHaveLength(0)
@@ -252,7 +278,7 @@ describe("enrolContactManually", () => {
   it("enrols a contact into a named active manual sequence", async () => {
     seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
 
-    const result = await enrolContactManually("contact-1", "sms_repermission")
+    const result = await enrolContactManually("contact-1", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(result).toEqual({ outcome: "enrolled" })
     expect(store.sequence_runs).toHaveLength(1)
@@ -271,7 +297,7 @@ describe("enrolContactManually", () => {
   it("refuses to enrol into a draft sequence", async () => {
     seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "draft" })
 
-    const result = await enrolContactManually("contact-1", "sms_repermission")
+    const result = await enrolContactManually("contact-1", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(result).toEqual({ outcome: "sequence_not_active", status: "draft" })
     expect(store.sequence_runs).toHaveLength(0)
@@ -280,14 +306,14 @@ describe("enrolContactManually", () => {
   it("refuses to enrol into a paused or archived sequence the same way", async () => {
     seedSequence("seq-paused", { key: "seq-paused-key", trigger_source: null, status: "paused" })
 
-    const result = await enrolContactManually("contact-1", "seq-paused-key")
+    const result = await enrolContactManually("contact-1", "seq-paused-key", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(result).toEqual({ outcome: "sequence_not_active", status: "paused" })
     expect(store.sequence_runs).toHaveLength(0)
   })
 
   it("reports sequence_not_found for an unknown key rather than silently no-oping", async () => {
-    const result = await enrolContactManually("contact-1", "does-not-exist")
+    const result = await enrolContactManually("contact-1", "does-not-exist", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(result).toEqual({ outcome: "sequence_not_found" })
     expect(store.sequence_runs).toHaveLength(0)
@@ -300,8 +326,8 @@ describe("enrolContactManually", () => {
   it("no-ops on a second enrolment of the same contact into the same sequence", async () => {
     seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
 
-    const first = await enrolContactManually("contact-1", "sms_repermission")
-    const second = await enrolContactManually("contact-1", "sms_repermission")
+    const first = await enrolContactManually("contact-1", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
+    const second = await enrolContactManually("contact-1", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(first).toEqual({ outcome: "enrolled" })
     expect(second).toEqual({ outcome: "already_enrolled" })
@@ -311,8 +337,8 @@ describe("enrolContactManually", () => {
   it("still enrols a different contact into the same sequence after a duplicate no-op", async () => {
     seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
 
-    await enrolContactManually("contact-1", "sms_repermission")
-    const result = await enrolContactManually("contact-2", "sms_repermission")
+    await enrolContactManually("contact-1", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
+    const result = await enrolContactManually("contact-2", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(result).toEqual({ outcome: "enrolled" })
     expect(store.sequence_runs).toHaveLength(2)
@@ -337,7 +363,10 @@ describe("enrolContactManually", () => {
       current_position: 1,
     })
 
-    const result = await enrolContactManually("contact-1", "sms_repermission", { onePerContact: true })
+    const result = await enrolContactManually("contact-1", "sms_repermission", {
+      businessId: SINGLETON_BUSINESS_ID,
+      onePerContact: true,
+    })
 
     expect(result).toEqual({ outcome: "already_enrolled_once" })
     // Nothing new was inserted — the prior (completed) row is the only one.
@@ -355,7 +384,10 @@ describe("enrolContactManually", () => {
       current_position: 0,
     })
 
-    const result = await enrolContactManually("contact-1", "sms_repermission", { onePerContact: true })
+    const result = await enrolContactManually("contact-1", "sms_repermission", {
+      businessId: SINGLETON_BUSINESS_ID,
+      onePerContact: true,
+    })
 
     expect(result).toEqual({ outcome: "already_enrolled_once" })
     expect(store.sequence_runs).toHaveLength(1)
@@ -375,7 +407,7 @@ describe("enrolContactManually", () => {
       current_position: 1,
     })
 
-    const result = await enrolContactManually("contact-1", "sms_repermission")
+    const result = await enrolContactManually("contact-1", "sms_repermission", { businessId: SINGLETON_BUSINESS_ID })
 
     expect(result).toEqual({ outcome: "enrolled" })
     expect(store.sequence_runs).toHaveLength(2)
@@ -393,7 +425,10 @@ describe("enrolContactManually", () => {
       current_position: 1,
     })
 
-    const result = await enrolContactManually("contact-1", "sms_repermission", { onePerContact: true })
+    const result = await enrolContactManually("contact-1", "sms_repermission", {
+      businessId: SINGLETON_BUSINESS_ID,
+      onePerContact: true,
+    })
 
     expect(result).toEqual({ outcome: "enrolled" })
   })

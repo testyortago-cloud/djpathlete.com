@@ -47,7 +47,6 @@
 // guessed at when `contact.user_id` is null just below.
 
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { maskEmail, maskPhone } from "@/lib/lead-engine/mask"
 import { isMissingTagsTable } from "@/lib/db/contact-tags"
 
@@ -468,10 +467,7 @@ export const BOOKINGS_WINDOW = 1000
 export const TIMELINE_WINDOW = 500
 
 /** One contact, or null when there is no such row. A failed READ throws. */
-export async function getContactById(
-  contactId: string,
-  businessId: string = SINGLETON_BUSINESS_ID,
-): Promise<ContactRecord | null> {
+export async function getContactById(contactId: string, businessId: string): Promise<ContactRecord | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("contacts")

@@ -5,7 +5,6 @@
 // recoverable; losing the lead is not.
 
 import { createServiceRoleClient } from "@/lib/supabase"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import type { ContactEventSource } from "@/lib/db/contacts"
 
 function getClient() {
@@ -76,9 +75,9 @@ export async function enrollIfTriggered(args: {
   contactId: string
   source: ContactEventSource
   metadata?: Record<string, unknown>
-  businessId?: string
+  businessId: string
 }): Promise<{ enrolled: string[] }> {
-  const businessId = args.businessId ?? SINGLETON_BUSINESS_ID
+  const businessId = args.businessId
   const metadata = args.metadata ?? {}
   const supabase = getClient()
 
@@ -169,9 +168,9 @@ export type ManualEnrolOutcome =
 export async function enrolContactManually(
   contactId: string,
   sequenceKey: string,
-  opts: { businessId?: string; onePerContact?: boolean } = {},
+  opts: { businessId: string; onePerContact?: boolean },
 ): Promise<ManualEnrolOutcome> {
-  const businessId = opts.businessId ?? SINGLETON_BUSINESS_ID
+  const businessId = opts.businessId
   const onePerContact = opts.onePerContact ?? false
   const supabase = getClient()
 

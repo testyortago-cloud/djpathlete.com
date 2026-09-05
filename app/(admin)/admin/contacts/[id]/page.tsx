@@ -42,13 +42,8 @@ export const dynamic = "force-dynamic"
 
 export default async function AdminContactDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requirePermission("contacts")
-  // Task 13: `getContactById` used to be called with no businessId, so it
-  // defaulted to SINGLETON_BUSINESS_ID regardless of which business the
-  // signed-in admin/staff member actually has selected — the same class of
-  // bug __tests__/lib/db/contacts-list.test.ts's own header warns about.
-  // Every other admin screen resolves its tenant through resolveAdminTenant
-  // (see app/(admin)/admin/contacts/page.tsx); this page had simply never
-  // been converted.
+  // Every admin screen resolves its tenant through resolveAdminTenant (see
+  // app/(admin)/admin/contacts/page.tsx), and every read below requires it.
   const { businessId } = await resolveAdminTenant()
 
   const { id } = await params
@@ -65,11 +60,8 @@ export default async function AdminContactDetailPage({ params }: { params: Promi
   // rather than inside the island so the picker is populated on first paint and
   // the browser makes no extra round trip for it.
   //
-  // SCOPED BY THE SAME businessId AS getContactById JUST ABOVE. Task 13's
-  // sweep caught this call defaulting to SINGLETON_BUSINESS_ID right next to
-  // a now-tenant-scoped read on the same page — a coach on another business
-  // would have seen (and could have enrolled this contact into) the
-  // platform's own sequences instead of their own.
+  // SCOPED BY THE SAME businessId AS getContactById JUST ABOVE, so the picker
+  // offers this business's own sequences and nothing else's.
   const [detail, sequences] = await Promise.all([getContactDetail(contact), listSequences(businessId)])
 
   await recordAudit({

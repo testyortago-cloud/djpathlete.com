@@ -56,11 +56,10 @@ export type ClickIds = {
 export type BookingIngestInput = {
   source: BookingSource
   /**
-   * REQUIRED, and deliberately not defaulted. Every DAL function in the Lead
-   * Engine takes `businessId = SINGLETON_BUSINESS_ID`, and that default is what
-   * let the tenant leak this far — a booking's four consequences all landed in
-   * the singleton because nobody had to say otherwise. A new field that
-   * defaults the tenant is how the next leak ships.
+   * REQUIRED, like every tenant parameter in the Lead Engine now is. This
+   * field was the first to lose its default: a booking's four consequences
+   * all landed on one business because nobody had to say otherwise. A new
+   * field that defaults the tenant is how the next leak ships.
    */
   businessId: string
   /** The host whose calendar this lands on. Null only until 00243 tightens. */

@@ -138,7 +138,7 @@ describe("normaliseTag", () => {
 
 describe("addTag", () => {
   it("creates the tag and reports that it created one", async () => {
-    const result = await addTag({ contactId: A, tag: "Camp 2026", createdBy: "user-1" })
+    const result = await addTag({ contactId: A, tag: "Camp 2026", createdBy: "user-1", businessId: BUSINESS })
     expect(result).toEqual({ tag: "camp 2026", created: true })
     // Pins WHICH row landed, not merely that something was stored.
     expect(store.contact_tags).toHaveLength(1)
@@ -146,65 +146,67 @@ describe("addTag", () => {
   })
 
   it("re-adding is a no-op, reported as created:false rather than thrown", async () => {
-    await addTag({ contactId: A, tag: "camp-2026" })
-    const second = await addTag({ contactId: A, tag: "CAMP-2026" })
+    await addTag({ contactId: A, tag: "camp-2026", businessId: BUSINESS })
+    const second = await addTag({ contactId: A, tag: "CAMP-2026", businessId: BUSINESS })
     expect(second).toEqual({ tag: "camp-2026", created: false })
     expect(store.contact_tags).toHaveLength(1)
   })
 
   it("the same tag on a DIFFERENT contact is a separate row", async () => {
-    await addTag({ contactId: A, tag: "camp-2026" })
-    await addTag({ contactId: B, tag: "camp-2026" })
+    await addTag({ contactId: A, tag: "camp-2026", businessId: BUSINESS })
+    await addTag({ contactId: B, tag: "camp-2026", businessId: BUSINESS })
     expect(store.contact_tags).toHaveLength(2)
   })
 
   it("rethrows a real failure instead of swallowing it as a duplicate", async () => {
     store.failWith = { code: "42501", message: "permission denied" }
-    await expect(addTag({ contactId: A, tag: "camp-2026" })).rejects.toThrow(/permission denied/)
+    await expect(addTag({ contactId: A, tag: "camp-2026", businessId: BUSINESS })).rejects.toThrow(/permission denied/)
   })
 
   it("refuses a tag that normalises to nothing", async () => {
-    await expect(addTag({ contactId: A, tag: "   " })).rejects.toThrow(/empty or too long/)
+    await expect(addTag({ contactId: A, tag: "   ", businessId: BUSINESS })).rejects.toThrow(/empty or too long/)
   })
 })
 
 describe("removeTag", () => {
   it("removes the row, and only for that contact", async () => {
-    await addTag({ contactId: A, tag: "camp-2026" })
-    await addTag({ contactId: B, tag: "camp-2026" })
-    await removeTag({ contactId: A, tag: "camp-2026" })
+    await addTag({ contactId: A, tag: "camp-2026", businessId: BUSINESS })
+    await addTag({ contactId: B, tag: "camp-2026", businessId: BUSINESS })
+    await removeTag({ contactId: A, tag: "camp-2026", businessId: BUSINESS })
     expect(store.contact_tags.map((row) => row.contact_id)).toEqual([B])
   })
 
   it("normalises before deleting, so the pill you can see is the pill you can remove", async () => {
-    await addTag({ contactId: A, tag: "Coaching Lead" })
-    await removeTag({ contactId: A, tag: "  COACHING   lead " })
+    await addTag({ contactId: A, tag: "Coaching Lead", businessId: BUSINESS })
+    await removeTag({ contactId: A, tag: "  COACHING   lead ", businessId: BUSINESS })
     expect(store.contact_tags).toEqual([])
   })
 
   it("removing a tag that is not there succeeds", async () => {
-    await expect(removeTag({ contactId: A, tag: "never-applied" })).resolves.toEqual({ tag: "never-applied" })
+    await expect(removeTag({ contactId: A, tag: "never-applied", businessId: BUSINESS })).resolves.toEqual({
+      tag: "never-applied",
+    })
   })
 })
 
 describe("listTags", () => {
   it("returns only this contact's tags", async () => {
-    await addTag({ contactId: A, tag: "b-tag" })
-    await addTag({ contactId: A, tag: "a-tag" })
-    await addTag({ contactId: B, tag: "other-contact-tag" })
+    await addTag({ contactId: A, tag: "b-tag", businessId: BUSINESS })
+    await addTag({ contactId: A, tag: "a-tag", businessId: BUSINESS })
+    await addTag({ contactId: B, tag: "other-contact-tag", businessId: BUSINESS })
     const tags = await listTags(A, BUSINESS)
     // Pins the CONTACT as well as the values — a read that ignored contact_id
     // would return all three and still be "non-empty".
     expect(tags.map((row) => row.tag)).toEqual(["a-tag", "b-tag"])
   })
 
-  // BUSINESS SCOPING. Every row addTag writes carries the singleton business id,
-  // so a read that dropped `.eq("business_id", …)` behaved identically in every
-  // other test here. Asking as a DIFFERENT business must come back empty — and
-  // the second assertion is the presence control, so this cannot pass by the
-  // read being broken for everyone.
+  // BUSINESS SCOPING. addTag requires its tenant and every call in this file
+  // names BUSINESS, so a read that dropped `.eq("business_id", …)` behaved
+  // identically in every other test here. Asking as a DIFFERENT business must
+  // come back empty — and the second assertion is the presence control, so
+  // this cannot pass by the read being broken for everyone.
   it("scopes the read to the given business", async () => {
-    await addTag({ contactId: A, tag: "a-tag" })
+    await addTag({ contactId: A, tag: "a-tag", businessId: BUSINESS })
     await expect(listTags(A, "99999999-9999-9999-9999-999999999999")).resolves.toEqual([])
     expect((await listTags(A, BUSINESS)).map((row) => row.tag)).toEqual(["a-tag"])
   })
@@ -258,8 +260,8 @@ describe("tagsForContacts", () => {
   // The per-row walk matters: a deduping helper reads identically at the call
   // site and silently drops one of two contacts that share a tag value.
   it("keeps both contacts when they share a tag", async () => {
-    await addTag({ contactId: A, tag: "shared" })
-    await addTag({ contactId: B, tag: "shared" })
+    await addTag({ contactId: A, tag: "shared", businessId: BUSINESS })
+    await addTag({ contactId: B, tag: "shared", businessId: BUSINESS })
     const map = await tagsForContacts([A, B], BUSINESS)
     expect(map.get(A)).toEqual(["shared"])
     expect(map.get(B)).toEqual(["shared"])
@@ -267,9 +269,9 @@ describe("tagsForContacts", () => {
   })
 
   it("groups several tags under the right contact", async () => {
-    await addTag({ contactId: A, tag: "a1" })
-    await addTag({ contactId: A, tag: "a2" })
-    await addTag({ contactId: B, tag: "b1" })
+    await addTag({ contactId: A, tag: "a1", businessId: BUSINESS })
+    await addTag({ contactId: A, tag: "a2", businessId: BUSINESS })
+    await addTag({ contactId: B, tag: "b1", businessId: BUSINESS })
     const map = await tagsForContacts([A, B], BUSINESS)
     expect(map.get(A)).toEqual(["a1", "a2"])
     expect(map.get(B)).toEqual(["b1"])

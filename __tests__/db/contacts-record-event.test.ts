@@ -195,6 +195,7 @@ describe("recordContactEvent", () => {
       phone: "617-650-4548",
       name: "Marissa",
       source: "funnel_form",
+      businessId: "00000000-0000-0000-0000-000000000001",
     })
     expect(out.created).toBe(true)
     expect(out.merged).toBe(false)
@@ -204,13 +205,23 @@ describe("recordContactEvent", () => {
 
   it("rejects an event carrying neither identifier", async () => {
     await expect(
-      recordContactEvent({ email: null, phone: null, source: "funnel_form" }),
+      recordContactEvent({
+        email: null,
+        phone: null,
+        source: "funnel_form",
+        businessId: "00000000-0000-0000-0000-000000000001",
+      }),
     ).rejects.toThrow(/identifier/i)
   })
 
-  it("stores the business id on the contact", async () => {
-    await recordContactEvent({ email: "a@b.com", source: "newsletter" })
-    expect(state.rows[0].business_id).toBe("00000000-0000-0000-0000-000000000001")
+  it("stores the business id the CALLER passed, not a default", async () => {
+    // `businessId` is required and has no default any more, so the only way
+    // a row can carry a tenant is for the caller to have named one. A
+    // deliberately non-platform id: if this ever came back as
+    // 00000000-0000-0000-0000-000000000001 it would mean something upstream
+    // had reintroduced a fallback and quietly overruled the caller.
+    await recordContactEvent({ email: "a@b.com", source: "newsletter", businessId: "biz-coach-2" })
+    expect(state.rows[0].business_id).toBe("biz-coach-2")
   })
 
   it("de-duplicates a contact matched by both the email and the phone query", async () => {
@@ -226,6 +237,7 @@ describe("recordContactEvent", () => {
       email: "dup@example.com",
       phone: "617-650-4548",
       source: "funnel_form",
+      businessId: "00000000-0000-0000-0000-000000000001",
     })
 
     expect(out.created).toBe(false)
@@ -245,6 +257,7 @@ describe("recordContactEvent", () => {
     const out = await recordContactEvent({
       email: "resilient@example.com",
       source: "funnel_form",
+      businessId: "00000000-0000-0000-0000-000000000001",
     })
 
     expect(out.created).toBe(true)
@@ -271,6 +284,7 @@ describe("recordContactEvent", () => {
     const out = await recordContactEvent({
       email: "enroll-resilient@example.com",
       source: "funnel_form",
+      businessId: "00000000-0000-0000-0000-000000000001",
     })
 
     // The contact write itself is unaffected — enrolment failing is
@@ -302,6 +316,7 @@ describe("recordContactEvent", () => {
       email: "hasemailonly@example.com",
       phone: "617-650-4548",
       source: "funnel_form",
+      businessId: "00000000-0000-0000-0000-000000000001",
     })
 
     expect(out.contactId).toBe("contact-fill")
@@ -323,6 +338,7 @@ describe("recordContactEvent", () => {
       email: "shared@example.com",
       phone: "212-555-0100",
       source: "funnel_form",
+      businessId: "00000000-0000-0000-0000-000000000001",
     })
 
     expect(out.contactId).toBe("contact-conflict")
@@ -351,7 +367,11 @@ describe("recordContactEvent", () => {
     state.errors.contactsUpdate = new Error("update boom")
 
     await expect(
-      recordContactEvent({ email: "willfail@example.com", source: "funnel_form" }),
+      recordContactEvent({
+        email: "willfail@example.com",
+        source: "funnel_form",
+        businessId: "00000000-0000-0000-0000-000000000001",
+      }),
     ).rejects.toThrow("update boom")
   })
 })
