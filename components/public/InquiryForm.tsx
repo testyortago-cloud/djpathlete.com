@@ -16,7 +16,7 @@ import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { InquiryFormClient } from "./InquiryFormClient"
 import type { ServiceType } from "@/lib/validators/inquiry"
-import { platformBusinessId } from "@/lib/tenancy/platform"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 interface InquiryFormProps {
   /** Pre-select the service type based on which page the form is on */
@@ -43,8 +43,10 @@ export async function InquiryForm({ defaultService, heading, description }: Inqu
   // name was unusable" can never mean one thing here and a different thing
   // there.
   //
-  // Same business as the route that files the consent row — through the seam in lib/tenancy/platform.ts.
-  const businessSettings = await getBusinessSettings(platformBusinessId()).catch(() => null)
+  // Same business as the route that files the consent row: both resolve it
+  // from the request's Host through lib/tenancy/public.ts.
+  const businessId = await resolvePublicTenant()
+  const businessSettings = await getBusinessSettings(businessId).catch(() => null)
   const displayName = businessSettings?.display_name
   const smsConsentWording = hasSmsConsentDisplayName(displayName) ? renderSmsConsentWording(displayName) : undefined
 

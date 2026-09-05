@@ -19,6 +19,11 @@ vi.mock("@/lib/db/businesses", () => ({
   getBusinessSettings: (...a: unknown[]) => getBusinessSettings(...a),
 }))
 
+// The component resolves its tenant from the request's Host through the ONE
+// Host boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a component that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
+
 import { InquiryForm } from "@/components/public/InquiryForm"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70,5 +75,11 @@ describe("InquiryForm (server wrapper) — SMS consent wording gate", () => {
     expect(element.props.defaultService).toBe("camp")
     expect(element.props.heading).toBe("Apply for a spot")
     expect(element.props.description).toBe("Places are limited.")
+  })
+
+  it("reads the business settings for the Host-resolved tenant, not the platform's", async () => {
+    getBusinessSettings.mockResolvedValue({ display_name: "Acme Fitness" })
+    await InquiryForm({ defaultService: "assessment" })
+    expect(getBusinessSettings).toHaveBeenCalledWith("host-biz")
   })
 })

@@ -25,27 +25,13 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     when no row claims the host, when the table is not there yet (the
  *     deploy window), or when the read failed. Its callers are inventoried in
  *     that file, not here.
- *   - the public lead-capture surfaces, converted 2026-09-05 when the Lead
- *     Engine DAL stopped defaulting its tenant. Each resolves this ONCE at
- *     the top of its handler and threads it into every write — the contact,
- *     the settings read behind the consent wording, and the consent row —
- *     so the wording shown and the wording filed can never name different
- *     businesses. No session, and no row to inherit from: `funnels`,
- *     `funnel_steps`, `funnel_submissions`, `events`, `event_signups`,
- *     `shop_products` and `shop_leads` carry no business_id (no migration adds
- *     one), so until phase 4 reads the Host header these are the platform's
- *     by seam, not by evidence:
- *     and the pages and server components that render the same consent
- *     wording those routes file, which must read the SAME business:
- *       app/(marketing)/camps/[slug]/page.tsx
- *       app/(marketing)/clinics/[slug]/page.tsx
- *       components/public/InquiryForm.tsx
- *       components/public/StepUpInquiryForm.tsx
- *       components/funnels/islands/FormIsland.tsx
- *     Phase 4 converted the quiz progress route and the quiz island together
- *     (both now resolve the Host); app/api/quiz/submit/route.ts is still NOT
- *     on this list, deliberately: it inherits the attempt's business_id
- *     rather than resolving anything.
+ *   - the public lead-capture surfaces, the marketing pages and the server
+ *     components that render their consent wording all resolve through the
+ *     Host boundary above since phase 4 (2026-09-05); none calls this
+ *     directly any more. NOT on the boundary's list either, deliberately:
+ *     app/api/quiz/submit/route.ts. It is public too, but it has a row to
+ *     inherit from — the attempt the quiz progress route created — so it
+ *     resolves rather than calling anything.
  *
  * CORRECT BY CONSTRUCTION -- the caller could be asked to resolve a tenant
  * and the answer would still be the platform's own. Not a placeholder
