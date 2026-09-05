@@ -3,8 +3,7 @@
 
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { renderLegalContent } from "@/lib/legal-content"
-import { getBusinessSettings } from "@/lib/db/businesses"
-import type { BusinessSettings } from "@/lib/db/businesses"
+import { getBusinessSettings, type BusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
 import { FunnelForm } from "./FunnelForm"

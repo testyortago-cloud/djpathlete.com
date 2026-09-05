@@ -62,7 +62,10 @@ describe("findBusinessIdByHost", () => {
   })
 
   it("THROWS on a failed read, carrying PostgREST's code — null is reserved for 'no row'", async () => {
-    state.result = { data: null, error: { code: "PGRST205", message: "Could not find the table 'public.business_domains'" } }
+    state.result = {
+      data: null,
+      error: { code: "PGRST205", message: "Could not find the table 'public.business_domains'" },
+    }
     const attempt = findBusinessIdByHost("x.test")
     await expect(attempt).rejects.toBeInstanceOf(BusinessDomainReadError)
     await expect(findBusinessIdByHost("x.test")).rejects.toMatchObject({ code: "PGRST205" })

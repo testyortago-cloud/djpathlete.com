@@ -75,6 +75,7 @@ describe("normalizeHost", () => {
     ["[::1]:3050", "[::1]"],
     ["a.test, b.test", "a.test"],
     ["  spaced.test  ", "spaced.test"],
+    ["www.darrenjpaul.com.", "www.darrenjpaul.com"],
   ])("%s -> %s", async (raw, expected) => {
     const { normalizeHost } = await load()
     expect(normalizeHost(raw)).toBe(expected)
@@ -105,6 +106,14 @@ describe("resolvePublicTenant", () => {
     await expect(resolvePublicTenant()).resolves.toBe("biz-public")
     expect(h.find).toHaveBeenCalledWith("public.test")
     expect(h.find).not.toHaveBeenCalledWith("internal.test")
+  })
+
+  it("falls back to host when x-forwarded-host is present but empty", async () => {
+    withHeaders({ "x-forwarded-host": "", host: "coach.test" })
+    h.find.mockResolvedValue("biz-42")
+    const { resolvePublicTenant } = await load()
+    await expect(resolvePublicTenant()).resolves.toBe("biz-42")
+    expect(h.find).toHaveBeenCalledWith("coach.test")
   })
 
   it("serves the platform for a host no row claims, and warns naming the host", async () => {
@@ -141,16 +150,23 @@ describe("resolvePublicTenant", () => {
   })
 
   it.each([["42P01"], ["PGRST205"]])(
-    "treats %s as 'the table is not there yet': platform, a warn naming the code, NO error and NO audit row",
+    "treats %s as a MISSING table — an incident since migration 00240, not a deploy window: platform, error naming the code and 'MISSING', an audit row, NO warn",
     async (code) => {
       withHeaders({ host: "www.darrenjpaul.com" })
       h.find.mockRejectedValue(new h.BusinessDomainReadError(code, "relation does not exist"))
       const { resolvePublicTenant } = await load()
       await expect(resolvePublicTenant()).resolves.toBe("platform-biz")
-      expect(warn).toHaveBeenCalledTimes(1)
-      expect(String(warn.mock.calls[0][0])).toContain(code)
-      expect(error).not.toHaveBeenCalled()
-      expect(h.recordAudit).not.toHaveBeenCalled()
+      expect(error).toHaveBeenCalledTimes(1)
+      expect(String(error.mock.calls[0][0])).toContain(code)
+      expect(String(error.mock.calls[0][0])).toContain("MISSING")
+      expect(warn).not.toHaveBeenCalled()
+      expect(h.recordAudit).toHaveBeenCalledTimes(1)
+      expect((h.recordAudit as ReturnType<typeof vi.fn>).mock.calls[0][0]).toMatchObject({
+        action: "tenancy.public_host_lookup_failed",
+        outcome: "failure",
+        error: { code },
+        metadata: { host: "www.darrenjpaul.com" },
+      })
     },
   )
 

@@ -58,6 +58,7 @@ describe("POST /api/newsletter — tenant", () => {
       params: Promise.resolve({}),
     })
     expect(res.ok).toBe(true)
+    expect(h.resolvePublicTenant).toHaveBeenCalledTimes(1)
     expect(h.recordContactEvent).toHaveBeenCalledTimes(1)
     expect(h.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
     expect(h.getBusinessSettings).toHaveBeenCalledWith("host-biz")

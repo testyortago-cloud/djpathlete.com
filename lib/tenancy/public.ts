@@ -21,9 +21,12 @@ import { recordAudit } from "@/lib/audit/record"
  *   - no row claims the host (every dev and preview host lands here): warn,
  *     ONCE per host per process. "Never silent" means the host is named, not
  *     that the log is flooded with one line per request.
- *   - the table is not there yet (PostgREST 42P01 / PGRST205): the window
- *     between the migration applying on push and the Vercel build finishing.
- *     Warn once, naming the code. Self-heals; not an incident.
+ *   - the table is missing (PostgREST 42P01 / PGRST205): business_domains has
+ *     been live since migration 00240, so in production this is an incident,
+ *     not a deploy window — it is logged and audited exactly like any other
+ *     failed read below. The branch exists so an environment behind 00240 (a
+ *     fresh clone, a preview database) still serves the platform instead of
+ *     500ing.
  *   - any other failed read: error EVERY time with code and message (never
  *     the raw object — it logs as [object Object]) — each one is an
  *     incident, not deduped. The audit row that files it under outcome
@@ -79,8 +82,15 @@ import { recordAudit } from "@/lib/audit/record"
  *     components/funnels/islands/QuizIsland.tsx
  */
 
-/** PostgREST codes meaning "the table is not there yet": undefined_table, and "not in the schema cache". */
-const TABLE_NOT_THERE_YET = new Set(["42P01", "PGRST205"])
+/**
+ * PostgREST codes meaning the table itself is missing: undefined_table
+ * (42P01) and "not in the schema cache" (PGRST205). business_domains has
+ * existed since migration 00240, so either code in production is an
+ * incident, not a deploy window — this Set only picks the LOG WORDING in the
+ * catch block below; the failure path itself (error every time, audit once
+ * per host per process) is identical to any other failed read.
+ */
+const TABLE_MISSING = new Set(["42P01", "PGRST205"])
 
 /**
  * Lowercase, no port, first value of a comma list, trimmed. Null for absent
@@ -92,7 +102,11 @@ export function normalizeHost(raw: string | null | undefined): string | null {
   if (first === "") return null
   // An IPv6 literal keeps its brackets and loses only the port: "[::1]:3050" -> "[::1]".
   const noPort = first.startsWith("[") ? first.replace(/^(\[[^\]]*\]).*$/, "$1") : first.replace(/:.*$/, "")
-  return noPort === "" ? null : noPort
+  // A browser sends a trailing dot when one is typed: "www.darrenjpaul.com." ->
+  // "www.darrenjpaul.com". Applied AFTER the port is stripped, and only ONE
+  // dot is removed — the column stores the host without it.
+  const noTrailingDot = noPort.endsWith(".") ? noPort.slice(0, -1) : noPort
+  return noTrailingDot === "" ? null : noTrailingDot
 }
 
 /** A dedupe set keyed on a client-controlled value must not grow forever. */
@@ -121,7 +135,9 @@ function warnOnce(host: string, message: string): void {
 /** The business this public request belongs to. Never throws for a tenancy reason. */
 export async function resolvePublicTenant(): Promise<string> {
   const h = await headers()
-  const host = normalizeHost(h.get("x-forwarded-host") ?? h.get("host"))
+  // `||`, not `??`: an EMPTY x-forwarded-host (present but "") must still
+  // fall back to `host`, not resolve as "(none)".
+  const host = normalizeHost(h.get("x-forwarded-host") || h.get("host"))
 
   if (host === null) {
     warnOnce("(none)", "[tenancy] request carried no Host header; serving the platform")
@@ -136,13 +152,17 @@ export async function resolvePublicTenant(): Promise<string> {
   } catch (err) {
     const code = err instanceof BusinessDomainReadError ? err.code : "unknown"
     const message = err instanceof Error ? err.message : String(err)
-    if (TABLE_NOT_THERE_YET.has(code)) {
-      warnOnce(host, `[tenancy] business_domains is not there yet (${code}) for host "${host}"; serving the platform`)
-      return platformBusinessId()
-    }
-    // Never deduped — each failed read is its own incident in the log.
+    // ONE failure path — only the log message differs by classification.
+    // TABLE_MISSING gets its own wording because business_domains has
+    // existed since migration 00240: seeing 42P01/PGRST205 in production
+    // means the table is gone or PostgREST's schema cache is stale, which is
+    // an incident, not a deploy window. Every other code gets the generic
+    // message. Neither is deduped — each failed read is its own incident in
+    // the log — but the audit row below IS.
     console.error(
-      `[tenancy] business_domains read failed for host "${host}" (${code} ${message}); serving the platform`,
+      TABLE_MISSING.has(code)
+        ? `[tenancy] business_domains is MISSING (${code}) for host "${host}"; serving the platform — the table has existed since migration 00240, so this is an incident, not a deploy window`
+        : `[tenancy] business_domains read failed for host "${host}" (${code} ${message}); serving the platform`,
     )
     // The audit row IS deduped, ONCE per host per process: unlike the error
     // line above, an awaited insert against the same degraded database on

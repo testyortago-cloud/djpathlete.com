@@ -18,7 +18,7 @@ import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
 
-export const revalidate = 300
+// No `revalidate`: since phase 4 this page reads the request's Host (resolvePublicTenant), which makes it render per request; an ISR interval here would be a false promise.
 
 export async function generateStaticParams() {
   const events = await getPublishedEvents({ type: "clinic" })
