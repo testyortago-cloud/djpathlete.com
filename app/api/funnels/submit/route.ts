@@ -27,7 +27,7 @@ import { captureContactFromSubmission } from "@/lib/funnels/capture-contact"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
-import { platformBusinessId } from "@/lib/tenancy/platform"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 /** Bots submit instantly; a person cannot read and fill a form this fast. */
 const MIN_ELAPSED_MS = 1500
@@ -120,12 +120,13 @@ export async function POST(request: Request) {
     leadUserId = await upsertLead(email, name)
   }
 
-  // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM — and no row to inherit
-  // one from either: `funnels`, `funnel_steps` and `funnel_submissions` carry
-  // no business_id (no funnel migration mentions the column). `platformBusinessId()`
-  // is the seam until phase 4 resolves a real business off the Host header
-  // (lib/tenancy/platform.ts, CANNOT RESOLVE YET). Resolved once, threaded.
-  const businessId = platformBusinessId()
+  // PUBLIC ROUTE, NO SESSION — and no row to inherit a tenant from either:
+  // `funnels`, `funnel_steps` and `funnel_submissions` carry no business_id
+  // (no funnel migration mentions the column). The tenant is resolved from the
+  // request's Host by lib/tenancy/public.ts (business_domains), and is the
+  // platform's own only when no domain row claims the host. Resolved once,
+  // threaded.
+  const businessId = await resolvePublicTenant()
 
   try {
     await createSubmission({

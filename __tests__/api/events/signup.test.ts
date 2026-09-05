@@ -15,6 +15,10 @@ vi.mock("@/lib/email", () => ({
   sendEventSignupReceivedEmail: (signup: unknown, event: unknown) => sendReceivedMock(signup, event),
   sendAdminNewSignupEmail: (signup: unknown, event: unknown) => sendAdminMock(signup, event),
 }))
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
 
 const publishedEvent = {
   id: "evt-1",

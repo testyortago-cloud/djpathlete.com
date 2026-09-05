@@ -54,7 +54,10 @@ vi.mock("@/lib/supabase", () => ({
     from: () => ({ update: () => ({ eq: mocks.updateEq }) }),
   }),
 }))
-vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
 
 const publishedEvent = {
   id: "evt-1",
@@ -214,7 +217,7 @@ describe("POST /api/events/[id]/signup — SMS consent", () => {
         "I agree to receive text messages from Acme Fitness about my inquiry. Message and data rates may apply. Reply STOP to opt out, HELP for help.",
       ip: null,
       userAgent: null,
-      businessId: "platform-biz",
+      businessId: "host-biz",
     })
   })
 
@@ -421,7 +424,7 @@ describe("POST /api/events/[id]/checkout — SMS consent", () => {
         "I agree to receive text messages from Acme Fitness about my inquiry. Message and data rates may apply. Reply STOP to opt out, HELP for help.",
       ip: null,
       userAgent: null,
-      businessId: "platform-biz",
+      businessId: "host-biz",
     })
   })
 
@@ -501,9 +504,9 @@ describe("event routes — tenant", () => {
     const res = await POST(signupReq({ ...validBody, sms_consent: true }), ctx)
     await flush()
     expect(res.status).toBe(200)
-    expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
-    expect(mocks.getBusinessSettings).toHaveBeenCalledWith("platform-biz")
-    expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
+    expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
+    expect(mocks.getBusinessSettings).toHaveBeenCalledWith("host-biz")
+    expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
   })
 
   it("checkout: resolves the tenant once through the seam and threads it into contact, settings and consent", async () => {
@@ -514,8 +517,8 @@ describe("event routes — tenant", () => {
     const res = await POST(checkoutReq({ ...validBody, sms_consent: true }), ctx)
     await flush()
     expect(res.ok).toBe(true)
-    expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
-    expect(mocks.getBusinessSettings).toHaveBeenCalledWith("platform-biz")
-    expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
+    expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
+    expect(mocks.getBusinessSettings).toHaveBeenCalledWith("host-biz")
+    expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
   })
 })
