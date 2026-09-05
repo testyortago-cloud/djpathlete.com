@@ -5,6 +5,7 @@ import { getActiveDocument } from "@/lib/db/legal-documents"
 import { renderLegalContent } from "@/lib/legal-content"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import { FunnelForm } from "./FunnelForm"
 import type { FunnelRenderContext } from "./index"
 import type { FunnelFormField } from "@/lib/funnels/islands"
@@ -47,8 +48,12 @@ export async function FormIsland({ props, context }: FormIslandProps) {
   // valid consent wording. `hasSmsConsentDisplayName` is the same gate the
   // submit route checks before filing the consent row, so "the name was
   // unusable" can never mean one thing here and a different thing there.
+  //
+  // Read for the SAME business the submit route files the consent row under —
+  // both go through the seam in lib/tenancy/platform.ts (CANNOT RESOLVE YET),
+  // so the wording shown and the wording filed cannot name different businesses.
   const businessSettings = fields.some((field) => field.type === "tel")
-    ? await getBusinessSettings().catch(() => null)
+    ? await getBusinessSettings(platformBusinessId()).catch(() => null)
     : null
   const displayName = businessSettings?.display_name
   const smsConsentWording = hasSmsConsentDisplayName(displayName) ? renderSmsConsentWording(displayName) : undefined
