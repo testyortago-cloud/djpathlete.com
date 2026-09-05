@@ -105,8 +105,9 @@ components alike with no call-site signature churn (the brief's decision). Algor
      on every occurrence (not deduped: each is an incident), plus
      `recordAudit({ action: "tenancy.public_host_lookup_failed", category: "system", outcome: "failure",
      actor: { role: "system" }, error: { code, message }, metadata: { host } })` so the 24h failure strip on
-     `/admin/audit-logs` sees it. `recordAudit` is fire-and-forget and never throws; `actor` is passed so it does
-     not call `auth()` on a public request.
+     `/admin/audit-logs` sees it. `recordAudit` never throws and is AWAITED here (a serverless function may end with the
+     response, and this row is the only durable trace); `actor` is passed so it does not call
+     `auth()` on a public request.
 4. Return the id. The return type stays `Promise<string>` (the brief's signature); WHY the platform was served
    is in the logs, not the type. If a caller ever needs the reason, widen then.
 

@@ -242,7 +242,7 @@ git commit -m "feat(tenancy): business_domains gets its first reader, and a fail
 //     forever, silently.
 //   - a failed read is NOT the same as an unknown host: it logs an error and
 //     files an audit row, where an unknown host only warns.
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest"
 
 const h = vi.hoisted(() => {
   class BusinessDomainReadError extends Error {
@@ -280,8 +280,8 @@ async function load() {
   return await import("@/lib/tenancy/public")
 }
 
-let warn: ReturnType<typeof vi.spyOn>
-let error: ReturnType<typeof vi.spyOn>
+let warn: MockInstance
+let error: MockInstance
 
 beforeEach(() => {
   h.headers.mockReset()
@@ -589,7 +589,7 @@ export async function resolvePublicTenant(): Promise<string> {
 - [ ] **Step 5: Run the test to verify it passes**
 
 Run: `npx vitest run __tests__/lib/tenancy/public.test.ts`
-Expected: PASS — 11 tests in `normalizeHost` (6 + 5), 9 in `resolvePublicTenant`, 1 taxonomy.
+Expected: PASS — 22 tests: 11 in `normalizeHost` (6 + 5), 10 in `resolvePublicTenant`, 1 taxonomy.
 
 - [ ] **Step 6: Mutation check — the dedupe is load-bearing**
 
