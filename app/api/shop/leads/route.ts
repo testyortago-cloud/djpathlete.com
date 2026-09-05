@@ -9,7 +9,7 @@ import { isShopDigitalEnabled } from "@/lib/shop/feature-flag"
 import { rateLimit } from "@/lib/shop/rate-limit"
 import { recordAudit } from "@/lib/audit/record"
 import { captureLead } from "@/lib/lead-engine/capture"
-import { platformBusinessId } from "@/lib/tenancy/platform"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 export async function POST(req: Request) {
   if (!isShopDigitalEnabled()) {
@@ -27,11 +27,11 @@ export async function POST(req: Request) {
   }
   const { email, product_id } = parsed.data
 
-  // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()`
-  // is the seam until phase 4 resolves a real business off the Host header
-  // (lib/tenancy/platform.ts, CANNOT RESOLVE YET). Resolved once here and
-  // threaded; the DAL no longer defaults it.
-  const businessId = platformBusinessId()
+  // PUBLIC ROUTE, NO SESSION. The tenant is resolved from the request's Host
+  // by lib/tenancy/public.ts (business_domains), and is the platform's own
+  // only when no domain row claims the host. Resolved once here and
+  // threaded; the DAL does not default it.
+  const businessId = await resolvePublicTenant()
 
   const product = await getProductById(product_id)
   if (!product || product.product_type !== "digital" || !product.digital_is_free) {

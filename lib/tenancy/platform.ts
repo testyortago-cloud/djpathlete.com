@@ -44,10 +44,6 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     `shop_products` and `shop_leads` carry no business_id (no migration adds
  *     one), so until phase 4 reads the Host header these are the platform's
  *     by seam, not by evidence:
- *       app/api/contact/route.ts
- *       app/api/shop/leads/route.ts
- *       app/api/newsletter/route.ts
- *       app/api/inquiry/route.ts
  *       app/api/events/[id]/signup/route.ts
  *       app/api/events/[id]/checkout/route.ts
  *       app/api/funnels/submit/route.ts
