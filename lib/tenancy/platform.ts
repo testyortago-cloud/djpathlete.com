@@ -28,6 +28,12 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     `business_id` column at all. No business other than the platform's own
  *     can ever legitimately claim a payment today, so this is
  *     correct-by-construction rather than a caller unable to resolve.
+ *   - the Host boundary's own fallback (lib/tenancy/public.ts). Since phase 4
+ *     every public surface resolves through `resolvePublicTenant()`, which
+ *     reads `business_domains` by the request's Host and reaches this only
+ *     when no row claims the host, when the table is not there yet (the
+ *     deploy window), or when the read failed. Its callers are inventoried in
+ *     that file, not here.
  *   - the public lead-capture surfaces, converted 2026-09-05 when the Lead
  *     Engine DAL stopped defaulting its tenant. Each resolves this ONCE at
  *     the top of its handler and threads it into every write — the contact,

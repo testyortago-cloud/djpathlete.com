@@ -584,6 +584,11 @@ export const AUDIT_ACTIONS = [
 
   // business -- multi-coach tenants
   { slug: "business.created", category: "admin_write", description: "A new business (coach tenant) was created" },
+  {
+    slug: "tenancy.public_host_lookup_failed",
+    category: "system",
+    description: "A public request's Host could not be looked up in business_domains; the platform was served",
+  },
   { slug: "business.updated", category: "admin_write", description: "Business name or status changed" },
   { slug: "business.settings_updated", category: "admin_write", description: "Business settings changed" },
   {
