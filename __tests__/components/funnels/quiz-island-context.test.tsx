@@ -14,6 +14,11 @@ const getBusinessSettings = vi.fn()
 vi.mock("@/lib/db/quizzes", () => ({ getQuizDefinition: (...a: unknown[]) => getQuizDefinition(...a) }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: (...a: unknown[]) => getBusinessSettings(...a) }))
 
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
+
 import { QuizIsland } from "@/components/funnels/islands/QuizIsland"
 import type { FunnelRenderContext } from "@/components/funnels/islands"
 import type { QuizDefinition } from "@/lib/quizzes/types"
@@ -66,5 +71,10 @@ describe("QuizIsland", () => {
     const props = element.props as { stepId?: string }
     expect(props.stepId).toBe(STEP_ID)
     expect(props.stepId).not.toBe(CONTEXT.stepSlug)
+  })
+
+  it("reads the business settings for the Host-resolved tenant, not the platform's", async () => {
+    await QuizIsland({ props: { quizId: QUIZ_ID }, context: CONTEXT })
+    expect(getBusinessSettings).toHaveBeenCalledWith("host-biz")
   })
 })

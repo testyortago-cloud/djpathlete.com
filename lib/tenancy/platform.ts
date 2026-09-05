@@ -12,9 +12,6 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *
  * GENUINELY CANNOT RESOLVE A TENANT YET -- the caller has no session, no
  * connection row, and no column to key off:
- *   - public, unauthenticated quiz-taking routes (e.g.
- *     app/api/quiz/progress/route.ts), until phase 4 resolves the Host
- *     header;
  *   - the pipeline reconciler's payments half
  *     (lib/automation/pipeline-reconcile.ts) -- not because the reconciler
  *     itself lacks a businessId (it iterates real businesses in a loop and
@@ -45,20 +42,10 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *       components/public/InquiryForm.tsx
  *       components/public/StepUpInquiryForm.tsx
  *       components/funnels/islands/FormIsland.tsx
- *       components/funnels/islands/QuizIsland.tsx
- *     QuizIsland's partner is NOT one of the §5.1 routes above. The wording
- *     it shows is filed by app/api/quiz/submit/route.ts, which inherits the
- *     attempt that app/api/quiz/progress/route.ts created under this seam —
- *     so the island and the submit agree today because two INDEPENDENT calls
- *     to this seam return the same value, not because one value is threaded
- *     from island to write. Phase 4 must therefore convert the progress route
- *     and this island together; converting either alone splits the wording
- *     shown from the wording filed.
- *     NOT on this list, deliberately: app/api/quiz/submit/route.ts. It is
- *     public too, but it has a row to inherit from — the attempt that
- *     app/api/quiz/progress/route.ts created under this seam carries
- *     business_id — so it resolves rather than calling this. When phase 4
- *     converts the progress route, the submit route follows for free.
+ *     Phase 4 converted the quiz progress route and the quiz island together
+ *     (both now resolve the Host); app/api/quiz/submit/route.ts is still NOT
+ *     on this list, deliberately: it inherits the attempt's business_id
+ *     rather than resolving anything.
  *
  * CORRECT BY CONSTRUCTION -- the caller could be asked to resolve a tenant
  * and the answer would still be the platform's own. Not a placeholder

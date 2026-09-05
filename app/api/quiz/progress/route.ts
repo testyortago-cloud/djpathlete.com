@@ -22,7 +22,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { createAttempt, getAttempt, getQuizDefinition, saveAttemptProgress } from "@/lib/db/quizzes"
 import { sanitiseAnswers } from "@/lib/quizzes/score"
-import { platformBusinessId } from "@/lib/tenancy/platform"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 export const runtime = "nodejs"
 
@@ -96,9 +96,11 @@ export async function POST(request: Request) {
     }
     await saveAttemptProgress({ attemptId, branchId, answers })
   } else {
-    // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()`
-    // is the seam until phase 4 resolves a real business off the Host header.
-    attemptId = await createAttempt(platformBusinessId(), {
+    // PUBLIC ROUTE, NO SESSION. The attempt's tenant is DECIDED here, from the
+    // request's Host via lib/tenancy/public.ts; /api/quiz/submit then inherits
+    // it from the attempt row rather than resolving again.
+    const businessId = await resolvePublicTenant()
+    attemptId = await createAttempt(businessId, {
       quizId: body.quizId,
       attributionSessionId: body.attributionSessionId ?? null,
     })
