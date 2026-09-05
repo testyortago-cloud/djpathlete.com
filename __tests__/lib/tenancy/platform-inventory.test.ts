@@ -32,62 +32,16 @@
 // substring test over the whole comment, and the comment names quiz/submit
 // in the very sentence that says it is not a caller.
 import { describe, it, expect } from "vitest"
-import { readdirSync, readFileSync, statSync } from "node:fs"
-import { join, relative } from "node:path"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { callersOf } from "../../helpers/seam-callers"
 
 const ROOT = process.cwd()
-const ROOTS = ["app", "lib", "components"]
 const INVENTORY = "lib/tenancy/platform.ts"
 
-function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === "node_modules" || name === "__tests__") continue
-    const full = join(dir, name)
-    if (statSync(full).isDirectory()) walk(full, out)
-    else if (/\.(ts|tsx)$/.test(name)) out.push(full)
-  }
-  return out
-}
-
-function isCommentLine(line: string): boolean {
-  const t = line.trim()
-  return t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")
-}
-
-/**
- * Repo-relative paths of every file that references `platformBusinessId` on a
- * code line — a line that is neither a comment nor a bare `import`.
- *
- * The identifier, not the call. See the header: a file can reach the seam by
- * passing the function as a value, and matching `platformBusinessId()` misses
- * exactly that. An `import` line is skipped because importing a symbol is not
- * using it; every real caller has the identifier on at least one other line,
- * so the skip costs nothing and stops a leftover import from being reported as
- * a caller.
- *
- * One predicate serves both directions. The forward check asks "is every file
- * that references the seam named in the inventory"; the reverse asks "does
- * every file the inventory names still reference it". Those are the same
- * relation read each way, so a second, looser matcher for the reverse check
- * would only be a second thing to keep in sync.
- */
+// The walker and the identifier-not-call rule live in __tests__/helpers/seam-callers.ts.
 function callers(): string[] {
-  const hits: string[] = []
-  for (const root of ROOTS) {
-    for (const file of walk(join(ROOT, root))) {
-      const rel = relative(ROOT, file)
-      if (rel === INVENTORY) continue
-      const refs = readFileSync(file, "utf8")
-        .split("\n")
-        .some((line) => {
-          if (isCommentLine(line)) return false
-          if (line.trim().startsWith("import ")) return false
-          return line.includes("platformBusinessId")
-        })
-      if (refs) hits.push(rel)
-    }
-  }
-  return hits.sort()
+  return callersOf("platformBusinessId", INVENTORY)
 }
 
 /**
