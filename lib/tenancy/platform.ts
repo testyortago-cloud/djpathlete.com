@@ -28,6 +28,38 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     `business_id` column at all. No business other than the platform's own
  *     can ever legitimately claim a payment today, so this is
  *     correct-by-construction rather than a caller unable to resolve.
+ *   - the public lead-capture surfaces, converted 2026-09-05 when the Lead
+ *     Engine DAL stopped defaulting its tenant. Each resolves this ONCE at
+ *     the top of its handler and threads it into every write — the contact,
+ *     the settings read behind the consent wording, and the consent row —
+ *     so the wording shown and the wording filed can never name different
+ *     businesses. No session, and no row to inherit from: `funnels`,
+ *     `funnel_steps`, `funnel_submissions`, `events`, `event_signups`,
+ *     `products` and `shop_leads` carry no business_id (no migration adds
+ *     one), so until phase 4 reads the Host header these are the platform's
+ *     by seam, not by evidence:
+ *       app/api/contact/route.ts
+ *       app/api/shop/leads/route.ts
+ *       app/api/newsletter/route.ts
+ *       app/api/inquiry/route.ts
+ *       app/api/events/[id]/signup/route.ts
+ *       app/api/events/[id]/checkout/route.ts
+ *       app/api/funnels/submit/route.ts
+ *       app/api/ask/config/route.ts
+ *     and the pages and server components that render the same consent
+ *     wording those routes file, which must read the SAME business:
+ *       app/(marketing)/ask/page.tsx
+ *       app/(marketing)/camps/[slug]/page.tsx
+ *       app/(marketing)/clinics/[slug]/page.tsx
+ *       components/public/InquiryForm.tsx
+ *       components/public/StepUpInquiryForm.tsx
+ *       components/funnels/islands/FormIsland.tsx
+ *       components/funnels/islands/QuizIsland.tsx
+ *     NOT on this list, deliberately: app/api/quiz/submit/route.ts. It is
+ *     public too, but it has a row to inherit from — the attempt that
+ *     app/api/quiz/progress/route.ts created under this seam carries
+ *     business_id — so it resolves rather than calling this. When phase 4
+ *     converts the progress route, the submit route follows for free.
  *
  * CORRECT BY CONSTRUCTION -- the caller could be asked to resolve a tenant
  * and the answer would still be the platform's own. Not a placeholder
@@ -44,6 +76,10 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     calling it directly — a connection row now carries the host — but its
  *     resolver still does, on the ramp described below. This is not the only
  *     remaining caller.
+ *   - the invite claim's plain-team-invite branch
+ *     (app/api/public/invite/[token]/claim/route.ts). An invite with no
+ *     business_id is a /admin/team invite, which is by definition onto the
+ *     platform's own business; the membership row it writes says so.
  *
  * A NARROWER VARIANT OF THE SAME SEAM -- the caller DOES attempt a real
  * resolution first, and only reaches this as the fallback when that lookup
@@ -63,6 +99,12 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     without it every real booking would be dropped in the window between the
  *     deploy and the owner clicking Connect. Its use is console.warn'd, and an
  *     event type matching NEITHER is ignored rather than filed here.
+ *   - the Stripe webhook's purchase capture (app/api/stripe/webhook/route.ts).
+ *     One Stripe account serves every business, so the webhook has no
+ *     tenant of its own. It resolves the payer's contact row first — the
+ *     same lookup its pipeline half already makes — and a repeat buyer's
+ *     capture lands on their coach's business. Only a FIRST-TIME payer, who
+ *     has no contact row anywhere, falls to this.
  *
  * DELIBERATELY FROZEN PENDING A LATER PHASE -- the caller COULD resolve a
  * real tenant (it has an authenticated admin session), but converting it
@@ -93,6 +135,20 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     reach the unscoped reader, NOT a scoping of it — the reader is
  *     unchanged. See docs/superpowers/plans/2026-09-04-ads-owner-only.md,
  *     and scope the reader before making it grantable again.
+ *
+ *     The reader's own default is the same seam: `getActiveGoogleAdsAccounts`
+ *     (lib/db/google-ads-accounts.ts) is the one tenant default left in
+ *     lib/db, spelled as this function since 2026-09-05, and its five
+ *     no-argument callers — lib/ads/agent.ts (twice), lib/ads/ga4-audiences.ts,
+ *     lib/ads/conversions.ts, app/api/admin/ads/diagnose/route.ts — are
+ *     untouched for the reason above. Scope the subsystem, then the default.
+ *
+ * TWINS THAT CANNOT CALL THIS: functions/src/lib/tenancy-constants.ts and
+ * functions/src/ads/dal.ts carry the literal because `functions/` has
+ * rootDir "src" and cannot import lib/. A grep for the constant finds them;
+ * they are the Firebase runtime's copy of this seam, not inline literals in
+ * the Next.js app. lib/tenancy/resolve.ts also names the constant, in a
+ * history comment about the fallback migration 00246 removed — not a use.
  *
  * Each of those calls this instead of writing the constant inline, so a
  * later phase has ONE greppable place to change per reason, rather than
