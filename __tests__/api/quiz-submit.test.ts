@@ -22,7 +22,12 @@ const O_WORST = "22222222-2222-4222-8222-222222222223"
 const BRANCH_A = "44444444-4444-4444-8444-444444444441"
 // NOT the platform id. The route must take this from the attempt row; a
 // fixture equal to the platform id would pass for a default just as well.
-const ATTEMPT_BUSINESS_ID = "22222222-2222-4222-8222-222222222222"
+//
+// Also NOT equal to any option id above. It was byte-identical to O_BEST
+// until the final review: two different things wearing one literal means a
+// value plumbed from the wrong place still satisfies the assertion for the
+// right one, and nothing on screen looks wrong.
+const ATTEMPT_BUSINESS_ID = "22222222-2222-4222-8222-2222222222b9"
 
 function definition(status = "active"): QuizDefinition {
   return {

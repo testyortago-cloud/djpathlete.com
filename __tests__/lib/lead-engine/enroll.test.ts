@@ -11,6 +11,12 @@ function nextId(prefix: string) {
   return `${prefix}-${seqCounter}`
 }
 
+// Every `.eq()` the implementation applies, across every `from()` chain in a
+// test. The per-chain `filters` array below narrows the row set, which proves
+// a filter was USED; this one records WHICH VALUE it was given, which is a
+// different claim and the one the tenancy test needs.
+let appliedEqs: Array<[string, any]> = []
+
 // NOTE ON THE MOCK: the trap this project has hit before is a `.eq()` that
 // returns the query object without recording the filter, so every query
 // resolves to "everything in the table" and every assertion passes without
@@ -72,6 +78,7 @@ vi.mock("@/lib/supabase", () => ({
         select: () => api,
         eq: (col: string, val: any) => {
           filters.push([col, val])
+          appliedEqs.push([col, val])
           return api
         },
         insert: (p: Row) => {
@@ -122,7 +129,15 @@ beforeEach(() => {
   store.sequences = []
   store.sequence_runs = []
   seqCounter = 0
+  appliedEqs = []
 })
+
+// NOT the platform id, and not what `seedSequence` stamps. Every other call in
+// this file passes SINGLETON_BUSINESS_ID into fixtures seeded under
+// SINGLETON_BUSINESS_ID, so a DAL that ignored its argument and hard-coded the
+// constant would satisfy all of them: they pin the ARITY of the tenant
+// parameter, not the value it carries.
+const OTHER_BUSINESS_ID = "22222222-2222-4222-8222-222222222222"
 
 describe("enrollIfTriggered", () => {
   it("enrols into every active sequence whose trigger matches the source", async () => {
@@ -317,6 +332,23 @@ describe("enrolContactManually", () => {
 
     expect(result).toEqual({ outcome: "sequence_not_found" })
     expect(store.sequence_runs).toHaveLength(0)
+  })
+
+  // WHICH tenant, not just that one was passed. The sequence below exists —
+  // under the platform business — and the key is right, so the only thing that
+  // can make this lookup miss is the business filter carrying the ARGUMENT
+  // rather than the constant.
+  it("looks the sequence up under the business it was given, not the platform's", async () => {
+    seedSequence("seq-repermission", { key: "sms_repermission", trigger_source: null, status: "active" })
+
+    const result = await enrolContactManually("contact-1", "sms_repermission", { businessId: OTHER_BUSINESS_ID })
+
+    expect(result).toEqual({ outcome: "sequence_not_found" })
+    expect(store.sequence_runs).toHaveLength(0)
+    // Presence control: "not found" is also what a mock that ignored the
+    // filter and a query that never ran would both produce. This pins that the
+    // business filter WAS applied, and which value it carried.
+    expect(appliedEqs).toContainEqual(["business_id", OTHER_BUSINESS_ID])
   })
 
   // The duplicate-run guard: a second manual enrolment of the same contact

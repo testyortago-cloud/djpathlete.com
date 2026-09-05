@@ -43,7 +43,7 @@ describe("getActiveGoogleAdsAccounts tenancy", () => {
     expect(appliedEqs).toContainEqual(["is_active", true])
   })
 
-  it("defaults to the singleton so existing callers are unchanged", async () => {
+  it("defaults through the seam so existing callers are unchanged", async () => {
     await getActiveGoogleAdsAccounts()
     expect(appliedEqs).toContainEqual(["business_id", "platform-biz"])
   })

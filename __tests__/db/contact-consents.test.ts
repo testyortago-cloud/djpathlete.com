@@ -123,6 +123,11 @@ describe("consent", () => {
     expect(store.consents[0].wording_shown).toBe("Text me about camps and clinics.")
     expect(store.consents[0].channel).toBe("sms")
     expect(store.consents[0].granted).toBe(true)
+    // The tenant the caller named is the tenant the row is FILED under. Every
+    // other assertion in this file reads a column the caller also supplied, so
+    // a `business_id` hard-coded back to the platform constant would survive
+    // all of them — BUSINESS_ID here is deliberately not that constant.
+    expect(store.consents[0].business_id).toBe(BUSINESS_ID)
   })
 
   it("treats the most recent record as authoritative", async () => {

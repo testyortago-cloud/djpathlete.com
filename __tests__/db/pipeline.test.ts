@@ -253,6 +253,12 @@ const DAY_MS = 86_400_000
  */
 const INSIDE_SUPPRESSION_WINDOW = () => new Date(Date.now() - (REBOOKING_SUPPRESSION_DAYS / 2) * DAY_MS).toISOString()
 
+// NOT the platform id. Every other test in this file seeds its board under
+// SINGLETON_BUSINESS_ID and then passes SINGLETON_BUSINESS_ID back in, so a
+// DAL that ignored its tenant argument and hard-coded the constant would
+// satisfy all of them: they pin the ARITY of the parameter, not its value.
+const OTHER_BUSINESS_ID = "22222222-2222-4222-8222-222222222222"
+
 beforeEach(() => {
   store.pipelines = []
   store.pipeline_stages = []
@@ -268,10 +274,10 @@ beforeEach(() => {
 // Fixtures: one seeded board matching migration 00219's real seed.
 // ---------------------------------------------------------------------------
 
-function seedBoard() {
+function seedBoard(businessId: string = SINGLETON_BUSINESS_ID) {
   store.pipelines.push({
     id: "pipe-1",
-    business_id: SINGLETON_BUSINESS_ID,
+    business_id: businessId,
     key: DEFAULT_PIPELINE_KEY,
     name: "Coaching",
     status: "active",
@@ -279,7 +285,7 @@ function seedBoard() {
   store.pipeline_stages.push(
     {
       id: "stage-consult-booked",
-      business_id: SINGLETON_BUSINESS_ID,
+      business_id: businessId,
       pipeline_id: "pipe-1",
       key: "consult_booked",
       name: "Consult Booked",
@@ -290,7 +296,7 @@ function seedBoard() {
     },
     {
       id: "stage-consulted",
-      business_id: SINGLETON_BUSINESS_ID,
+      business_id: businessId,
       pipeline_id: "pipe-1",
       key: "consulted",
       name: "Consulted",
@@ -301,7 +307,7 @@ function seedBoard() {
     },
     {
       id: "stage-won",
-      business_id: SINGLETON_BUSINESS_ID,
+      business_id: businessId,
       pipeline_id: "pipe-1",
       key: "won",
       name: "Won",
@@ -312,7 +318,7 @@ function seedBoard() {
     },
     {
       id: "stage-lost",
-      business_id: SINGLETON_BUSINESS_ID,
+      business_id: businessId,
       pipeline_id: "pipe-1",
       key: "lost",
       name: "Lost",
@@ -543,6 +549,37 @@ describe("applyPipelineEvent", () => {
     const created = store.audit_logs.find((a) => a.action === "pipeline.opportunity_created")
     expect(created).toBeDefined()
     expect(created?.category).toBe("automation")
+  })
+
+  // WHICH tenant, not just that one was passed. The board here belongs to a
+  // business that is not the platform's, and nothing else in the store does.
+  it("reads the board and files the card under the business it was given", async () => {
+    seedBoard(OTHER_BUSINESS_ID)
+    seedContact("c-other", { business_id: OTHER_BUSINESS_ID })
+
+    // Presence control, and the mutant-killer: asking under the PLATFORM id
+    // must find no board at all. A resolvePipeline that hard-coded the
+    // constant would find this board and quietly create the card under the
+    // wrong tenant instead of throwing.
+    await expect(
+      applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-other",
+        event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
+      }),
+    ).rejects.toThrow(PipelineNotConfiguredError)
+    expect(store.opportunities).toHaveLength(0)
+
+    const { opportunityId } = await applyPipelineEvent({
+      businessId: OTHER_BUSINESS_ID,
+      contactId: "c-other",
+      event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
+    })
+
+    expect(opportunityId).not.toBeNull()
+    expect(store.opportunities).toHaveLength(1)
+    expect(store.opportunities[0].business_id).toBe(OTHER_BUSINESS_ID)
+    expect(store.opportunity_stage_events[0].business_id).toBe(OTHER_BUSINESS_ID)
   })
 
   it("writes an opportunity_stage_events row with trigger='booking' and from_stage_id=null on creation", async () => {

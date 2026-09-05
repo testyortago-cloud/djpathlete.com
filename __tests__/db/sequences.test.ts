@@ -418,6 +418,25 @@ describe("claimDueRuns", () => {
     rpcResult = { data: null, error: new Error("connection reset") }
     await expect(claimDueRuns(10, "tick-token-2", SINGLETON_BUSINESS_ID)).rejects.toThrow("connection reset")
   })
+
+  // WHICH tenant, not just that one was passed. Every other call in this file
+  // hands SINGLETON_BUSINESS_ID to fixtures seeded under
+  // SINGLETON_BUSINESS_ID, so a DAL that ignored its argument and hard-coded
+  // the constant would satisfy all of them: they pin the ARITY of the tenant
+  // parameter, not the value it carries. The claim RPC is the whole batch's
+  // tenant boundary — the wrong id here would run one coach's sequences on
+  // another coach's tick.
+  it("hands the RPC the business it was given, not the platform's", async () => {
+    const otherBusinessId = "22222222-2222-4222-8222-222222222222"
+    rpcResult = { data: [], error: null }
+
+    await claimDueRuns(25, "tick-token-3", otherBusinessId)
+
+    // Presence control: an empty rpcCalls array would satisfy any assertion
+    // written as "no call carries the platform id".
+    expect(rpcCalls).toHaveLength(1)
+    expect(rpcCalls[0].args.p_business_id).toBe(otherBusinessId)
+  })
 })
 
 describe("loadSteps", () => {
