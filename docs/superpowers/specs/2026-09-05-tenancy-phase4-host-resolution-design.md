@@ -204,6 +204,17 @@ routes (frozen); `lib/automation/pipeline-reconcile.ts` (payments has no busines
    verification. The eventual shape for static-per-host pages is a proxy rewrite to a `/[host]/…` segment
    (Vercel's Platforms pattern); that restructures routing and is a later phase, named here so nobody mistakes
    `headers()` for the end state.
+
+   **Measured after the branch (build route table, dev clone, 2026-09-06).** The blast radius is the
+   RENDER TREE of the converted components, not their call sites, and it is wider than the two routes
+   above: every static marketing page that embeds `InquiryForm` or `StepUpInquiryForm` went ○ → ƒ —
+   `/assessment`, `/in-person`, `/online`, `/programs/rotational-reboot`, `/step-up-for-students` (all
+   `revalidate = 3600`, previously CDN-cached 1h/1y). Next logs NOTHING when it does this. `/camps/[slug]`
+   and `/clinics/[slug]` still show ● on this build only because the dev clone has zero published events,
+   so `generateStaticParams` returned no paths and no prerender ran; on production, where events exist,
+   they will flip to ƒ exactly as the five did. Seven routes, not two. Accepted as inherent (a page
+   naming the tenant cannot be one static artefact); the mitigation, when wanted, is a Suspense/PPR
+   boundary around the form so the page shell stays static — a later phase.
 2. **One extra indexed read per resolution** (`business_domains.host` is UNIQUE, so indexed). A page that
    renders a component which also resolves (camps page + InquiryForm) reads twice. No cache in this phase;
    a per-request memo (`React.cache`) is a two-line follow-up once the cost is measured, not assumed.
@@ -292,6 +303,10 @@ routes (frozen); `lib/automation/pipeline-reconcile.ts` (payments has no busines
    named `phase4-coach` so it is greppable and deletable.
 8. **Audit slug is `tenancy.public_host_lookup_failed`, category `system`.** Nearest precedent is
    `booking.tenant_unresolved` (automation); this is not a cron, so `system`.
+10. **Seven marketing routes lose static rendering, not two** (§5.1). Measured from the build after the
+   branch; the spec had counted seam call sites instead of the components' render tree. Accepted as
+   inherent; flagged for the owner because it is a CDN-caching regression on five pages that were
+   static, and the fix (a Suspense/PPR boundary) is a later phase.
 9. **Audit row deduped per host per process; dedupe sets capped at 1000.** Both from Task 2's review
    (2026-09-05): the reviewer flagged the unbounded client-keyed set and the per-request awaited write
    during an outage. The error LOG stays per request.
