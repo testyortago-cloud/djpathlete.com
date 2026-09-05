@@ -8,16 +8,27 @@
 // caller missing from it is a caller phase 4 will not convert.
 //
 // This is deliberately a prose assertion on a comment. The callers are found
-// on CODE lines only — a comment that mentions platformBusinessId() is not a
-// caller — and platform.ts itself is excluded.
+// on CODE lines only — a comment that mentions platformBusinessId is not a
+// caller, and neither is a bare `import` line — and platform.ts itself is
+// excluded.
 //
-// Three failure modes, three tests below the presence control:
-//   - a caller missing from the inventory (the forward check);
+// The match is on the IDENTIFIER, not on the literal call `platformBusinessId()`.
+// lib/bookings/calendly-tenant.ts:88 reaches the seam as
+// `(deps.platformBusinessId ?? platformBusinessId)()`, so it passes the
+// function as a VALUE and the `()` never sits against the name. A literal-call
+// match reported that file as a non-caller — a real caller invisible to the
+// check that exists to find them.
+//
+// Four failure modes, four tests below the presence control:
+//   - a file that references the seam missing from the inventory (the
+//     forward check);
 //   - the inventory's strongest single claim — that app/api/quiz/submit does
 //     NOT call the seam — being reverted in code;
+//   - the matcher narrowing back to the literal call, which would drop
+//     lib/bookings/calendly-tenant.ts from the forward check silently;
 //   - the inventory naming a file that has stopped touching the seam (the
 //     reverse check).
-// The forward check alone cannot see either of the last two: it is a
+// The forward check alone cannot see the second or the fourth: it is a
 // substring test over the whole comment, and the comment names quiz/submit
 // in the very sentence that says it is not a caller.
 import { describe, it, expect } from "vitest"
@@ -43,42 +54,40 @@ function isCommentLine(line: string): boolean {
   return t.startsWith("//") || t.startsWith("*") || t.startsWith("/*")
 }
 
-/** Repo-relative paths of every file with `needle` on a code line. */
-function filesMatching(needle: string): string[] {
+/**
+ * Repo-relative paths of every file that references `platformBusinessId` on a
+ * code line — a line that is neither a comment nor a bare `import`.
+ *
+ * The identifier, not the call. See the header: a file can reach the seam by
+ * passing the function as a value, and matching `platformBusinessId()` misses
+ * exactly that. An `import` line is skipped because importing a symbol is not
+ * using it; every real caller has the identifier on at least one other line,
+ * so the skip costs nothing and stops a leftover import from being reported as
+ * a caller.
+ *
+ * One predicate serves both directions. The forward check asks "is every file
+ * that references the seam named in the inventory"; the reverse asks "does
+ * every file the inventory names still reference it". Those are the same
+ * relation read each way, so a second, looser matcher for the reverse check
+ * would only be a second thing to keep in sync.
+ */
+function callers(): string[] {
   const hits: string[] = []
   for (const root of ROOTS) {
     for (const file of walk(join(ROOT, root))) {
       const rel = relative(ROOT, file)
       if (rel === INVENTORY) continue
-      const calls = readFileSync(file, "utf8")
+      const refs = readFileSync(file, "utf8")
         .split("\n")
-        .some((line) => !isCommentLine(line) && line.includes(needle))
-      if (calls) hits.push(rel)
+        .some((line) => {
+          if (isCommentLine(line)) return false
+          if (line.trim().startsWith("import ")) return false
+          return line.includes("platformBusinessId")
+        })
+      if (refs) hits.push(rel)
     }
   }
   return hits.sort()
-}
-
-/** Repo-relative paths of every file with platformBusinessId() on a code line. */
-function callers(): string[] {
-  return filesMatching("platformBusinessId()")
-}
-
-/**
- * Looser than `callers()`: every file that MENTIONS the seam on a code line,
- * called or not.
- *
- * The reverse check below asks "has this named file stopped touching the seam
- * entirely?", which is a weaker question than "does it call it" and needs the
- * weaker matcher. lib/bookings/calendly-tenant.ts is exactly why: it reaches
- * the seam through an injectable default —
- * `(deps.platformBusinessId ?? platformBusinessId)()` — which contains no
- * `platformBusinessId()` substring at all. It is a genuine caller the strict
- * matcher cannot see, and listing it as "not a caller" to keep the reverse
- * check green would put a falsehood in this file to protect a comment.
- */
-function seamReferences(): string[] {
-  return filesMatching("platformBusinessId")
 }
 
 /**
@@ -132,11 +141,11 @@ function inventoryPaths(): string[] {
 }
 
 describe("lib/tenancy/platform.ts inventory", () => {
-  it("has callers to inventory at all (presence control for the test below)", () => {
+  it("has files referencing the seam at all (presence control for the test below)", () => {
     expect(callers().length).toBeGreaterThan(10)
   })
 
-  it("names every file that calls platformBusinessId(), so the seam list cannot silently go stale", () => {
+  it("names every file that references platformBusinessId, so the seam list cannot silently go stale", () => {
     const inventory = readFileSync(join(ROOT, INVENTORY), "utf8")
     const missing = callers().filter((file) => !inventory.includes(file))
     expect(missing).toEqual([])
@@ -152,8 +161,22 @@ describe("lib/tenancy/platform.ts inventory", () => {
   // so its four writes stay on one tenant BY CONSTRUCTION. A call to the seam
   // in that route would be a real regression — the submit route would stop
   // following the attempt — and would silently make the inventory false.
-  it("keeps app/api/quiz/submit/route.ts off the caller list, as the inventory claims", () => {
+  it("keeps app/api/quiz/submit/route.ts off the reference list, as the inventory claims", () => {
     expect(callers()).not.toContain("app/api/quiz/submit/route.ts")
+  })
+
+  // The case that motivated matching the identifier rather than the call.
+  // lib/bookings/calendly-tenant.ts:88 reads
+  //
+  //     businessId: (deps.platformBusinessId ?? platformBusinessId)(),
+  //
+  // — the seam is passed as a VALUE, so a test injecting a fake can replace
+  // it, and the `()` sits against the closing paren rather than the name.
+  // A `platformBusinessId()` substring match reported this file as a
+  // non-caller, which meant the forward check above could not see it dropped
+  // from the inventory. Pinned here so the matcher cannot narrow back.
+  it("counts a file that passes the seam as a value, not only one that calls it inline", () => {
+    expect(callers()).toContain("lib/bookings/calendly-tenant.ts")
   })
 
   // The reverse direction. The forward check only proves every caller is
@@ -164,7 +187,7 @@ describe("lib/tenancy/platform.ts inventory", () => {
   // which carry, per entry, the sentence that puts it there.
   it("names no file that has stopped referencing the seam", () => {
     const excluded = new Set([...NAMED_BUT_NOT_CALLERS, ...NAMED_AS_CONTEXT])
-    const referenced = new Set(seamReferences())
+    const referenced = new Set(callers())
     const stale = inventoryPaths().filter((p) => !excluded.has(p) && !referenced.has(p))
     expect(stale).toEqual([])
   })
