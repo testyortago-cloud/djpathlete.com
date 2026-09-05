@@ -243,9 +243,12 @@ export async function POST(request: Request) {
 
         // A NARROWER VARIANT of the lib/tenancy/platform.ts seam: the payer's own
         // contact row first — a repeat buyer's capture lands on their coach's
-        // business — and platformBusinessId() only for a first-time payer, for
-        // whom one Stripe account serving every business genuinely carries no
-        // tenant. Listed under that shelf in the inventory.
+        // business — and platformBusinessId() for a first-time payer, for whom
+        // one Stripe account serving every business genuinely carries no tenant,
+        // AND for a payer whose contact lookup THREW: the capture must not be
+        // lost, and pre-branch it always filed here, which is why
+        // `payerBusinessId` is declared outside the try block above. Listed
+        // under that shelf in the inventory.
         await tryCaptureLeadFromCheckout(session, payerBusinessId ?? platformBusinessId())
 
         if (session.metadata?.type === "shop_order") {
