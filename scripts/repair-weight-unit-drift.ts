@@ -26,22 +26,33 @@ loadEnv({ path: ".env.prod" })
 import { writeFileSync } from "node:fs"
 
 const KG_TO_LBS = 2.20462
-const EPSILON = 1e-7
 /** Widest gap we will treat as drift rather than a real value. */
 const MAX_DRIFT_LBS = 0.02
 
 const APPLY = process.argv.includes("--apply")
 
 /**
- * Returns the corrected kg value, or null when the value is not drifted.
- * A drifted value is one that is *close to but not exactly* a half-pound mark.
+ * Returns the corrected kg value, or null when the value needs no change.
+ *
+ * "Drifted" is defined by what the athlete actually SEES -- the 2dp value
+ * displayWeight renders -- not by the exact float. That matters for
+ * idempotency: a repaired value stores the 6dp kg nearest a half-pound mark,
+ * which is still ~1e-6 lb off the mark in exact arithmetic. An exact-float
+ * comparison therefore flags every already-repaired row as still drifted, and a
+ * second run reports thousands of phantom repairs. Comparing the rendered value
+ * is both the honest definition and self-verifying.
  */
 function repairKg(kg: number): number | null {
   if (!Number.isFinite(kg) || kg <= 0) return null
   const lbs = kg * KG_TO_LBS
+  const shown = Math.round(lbs * 100) / 100 // what displayWeight renders
   const nearestHalf = Math.round(lbs * 2) / 2
-  const delta = Math.abs(lbs - nearestHalf)
-  if (delta <= EPSILON || delta >= MAX_DRIFT_LBS) return null
+  // Already renders on a half-pound mark -- nothing for the athlete to notice.
+  if (shown === nearestHalf) return null
+  // Too far out to be rounding damage. This is a real value, most likely from
+  // the one athlete who works in kg: 64.4 kg genuinely IS 141.98 lbs, and
+  // snapping it to 142 would corrupt what they typed.
+  if (Math.abs(shown - nearestHalf) >= MAX_DRIFT_LBS) return null
   return Math.round((nearestHalf / KG_TO_LBS) * 1e6) / 1e6
 }
 
