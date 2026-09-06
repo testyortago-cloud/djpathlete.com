@@ -156,11 +156,18 @@ the two lives in `functions/`, which has `rootDir: "src"` and cannot import `lib
 there is a twin edit that has to be kept in sync forever. Dropping the redundant constraint
 requires **no call-site change at all**.
 
-**This is the one assumption in this spec that must be verified before the rest is built.**
-PostgREST must resolve an embed across a COMPOSITE foreign key. Task 1 verifies it on the dev
-clone by applying the migration and reading `lib/db/bookkeeping.ts`'s query back. If it does not
-resolve, the fallback is the hint form — `events!event_signups_event_business_fkey(title,type)`
-at both sites, twin edit accepted — and the spec is wrong rather than the implementer.
+**VERIFIED on the dev clone, 2026-09-06, not assumed.** A scratch parent/child pair mirroring
+this exact shape was created, probed through PostgREST, and dropped:
+
+- With ONLY the composite FK, the embed resolves:
+  `GET /_probe_child?select=label,_probe_parent(title)` -> `[{"label":"Child A","_probe_parent":{"title":"Parent A"}}]`.
+- Adding the single-column FK alongside it makes the SAME request fail with `PGRST201`,
+  "Could not embed because more than one relationship was found", listing both constraints and
+  hinting at the disambiguated forms.
+
+So the drop is required and sufficient, and no call site changes. Had it gone the other way the
+fallback was the hint form — `events!event_signups_event_business_fkey(title,type)` at both
+sites, twin edit accepted.
 
 **`(business_id, slug)`, not `(business_id, lower(slug))`.** `events_slug_key` is case-sensitive
 today; `funnels_slug_key` is a functional index on `lower(slug)`. Making events case-insensitive
