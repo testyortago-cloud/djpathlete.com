@@ -141,16 +141,31 @@ describe("POST /api/events/[id]/signup", () => {
     const res = await POST(makeRequest(validBody), ctx)
     expect(res.status).toBe(200)
     expect(createSignupMock).toHaveBeenCalledWith(
+      "host-biz",
       "evt-1",
       expect.objectContaining({ parent_email: "a@x.com" }),
       "interest",
       expect.objectContaining({ document_id: "doc-waiver-1" }),
     )
     // The waiver_accepted boolean is stripped before reaching the DAL.
-    expect(createSignupMock.mock.calls[0][1]).not.toHaveProperty("waiver_accepted")
+    expect(createSignupMock.mock.calls[0][2]).not.toHaveProperty("waiver_accepted")
     expect(sendReceivedMock).toHaveBeenCalled()
     expect(sendAdminMock).toHaveBeenCalled()
     expect(vi.mocked(captureLead)).toHaveBeenCalledWith(expect.objectContaining({ businessId: "host-biz" }))
+  })
+
+  it("threads the resolved tenant into getEventById and createSignup, not the platform id", async () => {
+    // The sentinel "host-biz" (mocked above via resolvePublicTenant) is
+    // deliberately NOT platformBusinessId() — a route that hard-codes the
+    // platform id in place of the resolved tenant would still pass a test
+    // written against that id, which is the whole gap this closes.
+    getEventByIdMock.mockResolvedValueOnce(publishedEvent)
+    createSignupMock.mockResolvedValueOnce({ id: "sig-1", event_id: "evt-1", parent_email: "a@x.com" })
+    const { POST } = await import("@/app/api/events/[id]/signup/route")
+    const res = await POST(makeRequest(validBody), ctx)
+    expect(res.status).toBe(200)
+    expect(getEventByIdMock).toHaveBeenCalledWith("host-biz", "evt-1")
+    expect(createSignupMock.mock.calls[0][0]).toBe("host-biz")
   })
 
   it("still returns 200 when email send rejects", async () => {

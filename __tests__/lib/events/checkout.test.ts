@@ -56,16 +56,25 @@ const base = { event: EVENT as never, input: INPUT as never, ipAddress: "1.2.3.4
 
 describe("createEventSignupCheckout", () => {
   it("returns the session url and the signup id", async () => {
-    await expect(createEventSignupCheckout(base)).resolves.toMatchObject({
+    await expect(createEventSignupCheckout("host-biz", base)).resolves.toMatchObject({
       ok: true,
       sessionUrl: "https://stripe.test/pay",
       signupId: "s1",
     })
   })
 
+  it("threads the caller's businessId into createSignup as the first argument", async () => {
+    // Sentinel is deliberately NOT the platform id: a helper that hard-codes
+    // platformBusinessId() instead of using the argument would still pass a
+    // test written against the platform id.
+    await createEventSignupCheckout("host-biz", base)
+    expect(createSignup.mock.calls[0][0]).toBe("host-biz")
+  })
+
   it("files the waiver evidence with the signup", async () => {
-    await createEventSignupCheckout(base)
-    const [eventId, , signupType, waiver] = createSignup.mock.calls[0]
+    await createEventSignupCheckout("host-biz", base)
+    const [businessId, eventId, , signupType, waiver] = createSignup.mock.calls[0]
+    expect(businessId).toBe("host-biz")
     expect(eventId).toBe("e1")
     expect(signupType).toBe("paid")
     expect(waiver).toMatchObject({ document_id: "doc1", ip_address: "1.2.3.4", user_agent: "UA" })
@@ -76,38 +85,41 @@ describe("createEventSignupCheckout", () => {
     // `CreateSignupDbInput` is `Omit<CreateSignupInput, "waiver_accepted">` for
     // exactly this reason — passing the boolean would target a column that does
     // not exist.
-    await createEventSignupCheckout(base)
-    expect(createSignup.mock.calls[0][1]).not.toHaveProperty("waiver_accepted")
-    expect(createSignup.mock.calls[0][1]).toMatchObject({ parent_email: "dana@example.com", athlete_age: 13 })
+    await createEventSignupCheckout("host-biz", base)
+    expect(createSignup.mock.calls[0][2]).not.toHaveProperty("waiver_accepted")
+    expect(createSignup.mock.calls[0][2]).toMatchObject({ parent_email: "dana@example.com", athlete_age: 13 })
   })
 
   it("records a null document id when no waiver is active, rather than refusing", async () => {
     // Matches what the event route already does. The evidence is still filed —
     // "they accepted, and there was no active document" is a true record.
     getActiveDocument.mockResolvedValue(null)
-    const out = await createEventSignupCheckout(base)
+    const out = await createEventSignupCheckout("host-biz", base)
     expect(out.ok).toBe(true)
-    expect(createSignup.mock.calls[0][3]).toMatchObject({ document_id: null })
+    expect(createSignup.mock.calls[0][4]).toMatchObject({ document_id: null })
   })
 
   it("refuses at capacity WITHOUT creating a signup", async () => {
     // MUTANT: checking capacity after createSignup. Every refused attempt would
     // leave a pending row behind, and the next check would count it.
-    const out = await createEventSignupCheckout({ ...base, event: { ...EVENT, signup_count: 12 } as never })
+    const out = await createEventSignupCheckout("host-biz", { ...base, event: { ...EVENT, signup_count: 12 } as never })
     expect(out).toMatchObject({ ok: false, status: 409 })
     expect(out.ok === false && out.error).toMatch(/full/i)
     expect(createSignup).not.toHaveBeenCalled()
   })
 
   it("refuses an event with no Stripe price without creating a signup", async () => {
-    const out = await createEventSignupCheckout({ ...base, event: { ...EVENT, stripe_price_id: null } as never })
+    const out = await createEventSignupCheckout("host-biz", {
+      ...base,
+      event: { ...EVENT, stripe_price_id: null } as never,
+    })
     expect(out).toMatchObject({ ok: false, status: 400 })
     expect(createSignup).not.toHaveBeenCalled()
   })
 
   it("reports a Stripe failure as 502 rather than throwing", async () => {
     createEventCheckoutSession.mockRejectedValue(new Error("stripe down"))
-    const out = await createEventSignupCheckout(base)
+    const out = await createEventSignupCheckout("host-biz", base)
     expect(out).toMatchObject({ ok: false, status: 502 })
   })
 
@@ -115,12 +127,12 @@ describe("createEventSignupCheckout", () => {
     // Stripe types `url` as nullable. Returning `{ok: true, sessionUrl: undefined}`
     // would send the visitor to the string "undefined".
     createEventCheckoutSession.mockResolvedValue({ id: "cs_1", url: null })
-    const out = await createEventSignupCheckout(base)
+    const out = await createEventSignupCheckout("host-biz", base)
     expect(out).toMatchObject({ ok: false, status: 502 })
   })
 
   it("passes custom return urls straight through", async () => {
-    await createEventSignupCheckout({
+    await createEventSignupCheckout("host-biz", {
       ...base,
       returnUrls: { successUrl: "https://x.test/go/f/thank-you", cancelUrl: "https://x.test/go/f/register" },
     })
@@ -133,14 +145,14 @@ describe("createEventSignupCheckout", () => {
   it("passes NO return urls when none are given, leaving the event page's own default", async () => {
     // MUTANT: defaulting these to the funnel's paths here. The event page's modal
     // shares this helper and must keep returning to the event pages.
-    await createEventSignupCheckout(base)
+    await createEventSignupCheckout("host-biz", base)
     const arg = createEventCheckoutSession.mock.calls[0][0]
     expect(arg.successUrl).toBeUndefined()
     expect(arg.cancelUrl).toBeUndefined()
   })
 
   it("stores the stripe session id against the signup", async () => {
-    await createEventSignupCheckout(base)
+    await createEventSignupCheckout("host-biz", base)
     expect(from).toHaveBeenCalledWith("event_signups")
   })
 })

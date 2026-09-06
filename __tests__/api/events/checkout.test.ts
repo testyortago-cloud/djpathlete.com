@@ -125,13 +125,14 @@ describe("POST /api/events/[id]/checkout", () => {
     const res = await POST(makeReq(validBody), ctx)
     expect(res.status).toBe(200)
     expect(createSignupMock).toHaveBeenCalledWith(
+      "host-biz",
       "evt-1",
       expect.objectContaining({ parent_email: "a@x.com" }),
       "paid",
       expect.objectContaining({ document_id: "doc-waiver-1" }),
       undefined,
     )
-    expect(createSignupMock.mock.calls[0][1]).not.toHaveProperty("waiver_accepted")
+    expect(createSignupMock.mock.calls[0][2]).not.toHaveProperty("waiver_accepted")
     const data = await res.json()
     expect(data.sessionUrl).toBe("https://checkout.stripe.com/cs_test_clinic")
   })
@@ -169,6 +170,7 @@ describe("POST /api/events/[id]/checkout", () => {
     const res = await POST(makeReq(validBody), ctx)
     expect(res.status).toBe(200)
     expect(createSignupMock).toHaveBeenCalledWith(
+      "host-biz",
       "evt-1",
       expect.objectContaining({ parent_email: "a@x.com" }),
       "paid",
@@ -187,5 +189,23 @@ describe("POST /api/events/[id]/checkout", () => {
     const { POST } = await import("@/app/api/events/[id]/checkout/route")
     const res = await POST(makeReq(validBody), ctx)
     expect(res.status).toBe(502)
+  })
+
+  it("threads the resolved tenant into getEventById and createSignup, not the platform id", async () => {
+    // The sentinel "host-biz" (mocked above via resolvePublicTenant) is
+    // deliberately NOT platformBusinessId() — a route that hard-codes the
+    // platform id in place of the resolved tenant would still pass a test
+    // written against that id, which is the whole gap this closes.
+    getEventByIdMock.mockResolvedValueOnce(publishedCamp)
+    createSignupMock.mockResolvedValueOnce({ id: "sig-1", event_id: "evt-1" })
+    createEventCheckoutSessionMock.mockResolvedValueOnce({
+      id: "cs_test_tenant",
+      url: "https://checkout.stripe.com/cs_test_tenant",
+    })
+    const { POST } = await import("@/app/api/events/[id]/checkout/route")
+    const res = await POST(makeReq(validBody), ctx)
+    expect(res.status).toBe(200)
+    expect(getEventByIdMock).toHaveBeenCalledWith("host-biz", "evt-1")
+    expect(createSignupMock.mock.calls[0][0]).toBe("host-biz")
   })
 })

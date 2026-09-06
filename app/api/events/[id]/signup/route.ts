@@ -42,16 +42,16 @@ export const POST = withAudit(
         )
       }
 
-      const event = await getEventById(id)
-      if (!event || event.status !== "published") {
-        return NextResponse.json({ error: "Event not available" }, { status: 404 })
-      }
-
       // PUBLIC ROUTE, NO SESSION. The tenant is resolved from the request's Host
       // by lib/tenancy/public.ts (business_domains), and is the platform's own
       // only when no domain row claims the host. Resolved once here and
       // threaded; the DAL does not default it.
       const businessId = await resolvePublicTenant()
+
+      const event = await getEventById(businessId, id)
+      if (!event || event.status !== "published") {
+        return NextResponse.json({ error: "Event not available" }, { status: 404 })
+      }
 
       if (!waitlist && event.signup_count >= event.capacity) {
         return NextResponse.json({ error: "at_capacity" }, { status: 409 })
@@ -62,7 +62,7 @@ export const POST = withAudit(
       const userAgent = request.headers.get("user-agent") || null
       const { waiver_accepted: _waiver_accepted, sms_consent, ...signupInput } = parsed.data
 
-      const signup = await createSignup(id, signupInput, "interest", {
+      const signup = await createSignup(businessId, id, signupInput, "interest", {
         document_id: waiverDoc?.id ?? null,
         ip_address: ipAddress,
         user_agent: userAgent,

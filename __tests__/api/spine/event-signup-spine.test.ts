@@ -509,6 +509,20 @@ describe("event routes — tenant", () => {
     expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
   })
 
+  it("signup: threads the resolved tenant into getEventById and createSignup, not the platform id", async () => {
+    // The sentinel "host-biz" is deliberately NOT platformBusinessId() — a
+    // route that hard-codes the platform id in place of the resolved tenant
+    // would still pass a test written against that id.
+    mocks.getEventById.mockResolvedValueOnce(publishedEvent)
+    mocks.createSignup.mockResolvedValueOnce(signupRow)
+    const { POST } = await import("@/app/api/events/[id]/signup/route")
+    const res = await POST(signupReq(validBody), ctx)
+    await flush()
+    expect(res.status).toBe(200)
+    expect(mocks.getEventById).toHaveBeenCalledWith("host-biz", "evt-1")
+    expect(mocks.createSignup.mock.calls[0][0]).toBe("host-biz")
+  })
+
   it("checkout: resolves the tenant once through the seam and threads it into contact, settings and consent", async () => {
     mocks.getEventById.mockResolvedValueOnce(publishedEvent)
     mocks.createSignup.mockResolvedValueOnce(signupRow)
@@ -520,5 +534,20 @@ describe("event routes — tenant", () => {
     expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
     expect(mocks.getBusinessSettings).toHaveBeenCalledWith("host-biz")
     expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
+  })
+
+  it("checkout: threads the resolved tenant into getEventById and createSignup, not the platform id", async () => {
+    // The sentinel "host-biz" is deliberately NOT platformBusinessId() — a
+    // route that hard-codes the platform id in place of the resolved tenant
+    // would still pass a test written against that id.
+    mocks.getEventById.mockResolvedValueOnce(publishedEvent)
+    mocks.createSignup.mockResolvedValueOnce(signupRow)
+    mocks.createEventCheckoutSession.mockResolvedValueOnce({ id: "cs_2", url: "https://checkout.stripe.test/cs_2" })
+    const { POST } = await import("@/app/api/events/[id]/checkout/route")
+    const res = await POST(checkoutReq(validBody), ctx)
+    await flush()
+    expect(res.ok).toBe(true)
+    expect(mocks.getEventById).toHaveBeenCalledWith("host-biz", "evt-1")
+    expect(mocks.createSignup.mock.calls[0][0]).toBe("host-biz")
   })
 })
