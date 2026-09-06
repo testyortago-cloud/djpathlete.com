@@ -85,6 +85,11 @@ const NAMED_AS_CONTEXT = [
   // lookup the Stripe webhook makes BEFORE reaching this seam, named so the
   // "oldest row wins" tiebreak is greppable. That module never calls this.
   "lib/db/contacts.ts",
+  // "calling `listPlatformIncome` in lib/db/bookkeeping.ts" — the DAL
+  // function the bookkeeping income-sync cron's businessId reaches, named so
+  // the seam's caller (the ROUTE, not the DAL) is greppable. The DAL file
+  // itself takes businessId as a parameter and never calls this seam.
+  "lib/db/bookkeeping.ts",
 ]
 
 /** Every path-like token the inventory file names, deduped. */

@@ -127,6 +127,7 @@ export async function createEventSignupCheckout(
     .from("event_signups")
     .update({ stripe_session_id: session.id, updated_at: new Date().toISOString() })
     .eq("id", signup.id)
+    .eq("business_id", businessId)
 
   return { ok: true, sessionUrl: session.url, signupId: signup.id }
 }

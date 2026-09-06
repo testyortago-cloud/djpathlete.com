@@ -138,6 +138,10 @@ describe("Stripe webhook — event_signup branches", () => {
     expect(confirmSignupMock).toHaveBeenCalledWith("row-biz", "sig-1")
     expect(getSignupByIdMock).toHaveBeenCalledWith("row-biz", "sig-1")
     expect(getEventByIdMock).toHaveBeenCalledWith("row-biz", "evt-1")
+    // The stripe_payment_intent_id write is scoped by business_id too, not
+    // only by signup id — deleting this predicate would let the write reach
+    // a same-id row belonging to a different tenant.
+    expect(updateSignupMock).toHaveBeenCalledWith("business_id", "row-biz")
     expect(sendEventSignupConfirmedEmail).toHaveBeenCalled()
   })
 
@@ -234,6 +238,9 @@ describe("Stripe webhook — event_signup branches", () => {
       expect.objectContaining({ payment_intent: "pi_race_loser" }),
     )
     expect(updateSignupMock).toHaveBeenCalled()
+    // The refund-status write is scoped by business_id too — the same
+    // predicate that closes the confirm-path leak above.
+    expect(updateSignupMock).toHaveBeenCalledWith("business_id", "row-biz")
     expect(getSignupByIdMock).toHaveBeenCalledWith("row-biz", "sig-loser")
     expect(getEventByIdMock).toHaveBeenCalledWith("row-biz", "evt-1")
     expect(sendEventSignupOverbookRefundEmail).toHaveBeenCalled()
@@ -257,5 +264,7 @@ describe("Stripe webhook — event_signup branches", () => {
     // MUTANT: hard-coding the platform id, or swapping (id, businessId).
     expect(cancelSignupMock).toHaveBeenCalledWith("row-biz", "sig-1")
     expect(updateSignupMock).toHaveBeenCalled()
+    // The status=refunded write is scoped by business_id too.
+    expect(updateSignupMock).toHaveBeenCalledWith("business_id", "row-biz")
   })
 })

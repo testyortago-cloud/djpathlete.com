@@ -17,6 +17,7 @@ const state = {
   sourceRows: {} as Record<string, Row[]>,
   sourceErrorTables: new Set<string>(),
   orCalls: {} as Record<string, string[]>,
+  eqCalls: {} as Record<string, Array<[string, unknown]>>,
   usersRows: [] as Row[],
   usersMode: "ok" as "ok" | "error",
   usersInCalls: [] as string[][],
@@ -30,6 +31,7 @@ function resetState() {
   }
   state.sourceErrorTables = new Set()
   state.orCalls = {}
+  state.eqCalls = {}
   state.usersRows = []
   state.usersMode = "ok"
   state.usersInCalls = []
@@ -64,6 +66,11 @@ function makeBuilder(table: string) {
 
   const builder = {
     select: (_cols?: string) => builder,
+    eq: (col: string, val: unknown) => {
+      state.eqCalls[table] = state.eqCalls[table] ?? []
+      state.eqCalls[table].push([col, val])
+      return builder
+    },
     gte: (_c: string, _v: string) => builder,
     lte: (_c: string, _v: string) => builder,
     or: (s: string) => {
@@ -93,6 +100,8 @@ import { listPlatformIncome } from "@/lib/db/bookkeeping"
 const U1 = "11111111-1111-4111-8111-111111111111"
 const U2 = "22222222-2222-4222-8222-222222222222"
 const PR = "33333333-3333-4333-8333-333333333333"
+/** Threaded from an admin-resolved tenant (or the sync cron's seam) — never the platform id. */
+const BUSINESS_ID = "admin-biz"
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -117,7 +126,7 @@ describe("listPlatformIncome — enrichment wiring", () => {
     ]
     state.programsRows = [{ id: PR, name: "Cannon Baller!" }]
 
-    const result = await listPlatformIncome("2026-01-01", "2026-12-31")
+    const result = await listPlatformIncome(BUSINESS_ID, "2026-01-01", "2026-12-31")
 
     expect(result.payments[0]).toMatchObject({
       payer_name: "Cannon Kremer", payer_email: "ck@x.com", program_name: "Cannon Baller!",
@@ -133,7 +142,7 @@ describe("listPlatformIncome — user id chunking", () => {
       purchased_at: "2026-03-01T00:00:00Z",
     }))
 
-    await listPlatformIncome("2026-01-01", "2026-12-31")
+    await listPlatformIncome(BUSINESS_ID, "2026-01-01", "2026-12-31")
 
     expect(state.usersInCalls).toHaveLength(2)
     expect(state.usersInCalls[0]).toHaveLength(200)
@@ -151,7 +160,7 @@ describe("listPlatformIncome — graceful degrade", () => {
     }]
     state.usersMode = "error"
 
-    const result = await listPlatformIncome("2026-01-01", "2026-12-31")
+    const result = await listPlatformIncome(BUSINESS_ID, "2026-01-01", "2026-12-31")
 
     expect(result.payments).toHaveLength(1)
     expect(result.payments[0]).toMatchObject({ payer_name: null, payer_email: null })
@@ -161,7 +170,7 @@ describe("listPlatformIncome — graceful degrade", () => {
     state.sourceRows.shop_orders = [{ id: "so1", amount_cents: 1000, created_at: "2026-03-02T10:00:00Z" }]
     state.sourceErrorTables.add("payments")
 
-    const result = await listPlatformIncome("2026-01-01", "2026-12-31")
+    const result = await listPlatformIncome(BUSINESS_ID, "2026-01-01", "2026-12-31")
 
     expect(result.payments).toEqual([])
     expect(result.shopOrders).toHaveLength(1)
@@ -172,7 +181,7 @@ describe("listPlatformIncome — strict mode (nightly cron)", () => {
   it("opts.strict rejects instead of degrading when a source table read fails", async () => {
     state.sourceErrorTables.add("payments")
 
-    await expect(listPlatformIncome("2026-01-01", "2026-12-31", { strict: true })).rejects.toThrow(/payments boom/)
+    await expect(listPlatformIncome(BUSINESS_ID, "2026-01-01", "2026-12-31", { strict: true })).rejects.toThrow(/payments boom/)
   })
 
   it("opts.strict still resolves normally when every source table is healthy", async () => {
@@ -181,7 +190,7 @@ describe("listPlatformIncome — strict mode (nightly cron)", () => {
       status: "succeeded", created_at: "2026-03-02T10:00:00Z", description: "x",
     }]
 
-    const result = await listPlatformIncome("2026-01-01", "2026-12-31", { strict: true })
+    const result = await listPlatformIncome(BUSINESS_ID, "2026-01-01", "2026-12-31", { strict: true })
 
     expect(result.payments).toHaveLength(1)
   })
@@ -189,7 +198,7 @@ describe("listPlatformIncome — strict mode (nightly cron)", () => {
   it("without opts (default), a failing table still degrades to [] — matches the untouched manual-import call", async () => {
     state.sourceErrorTables.add("event_signups")
 
-    const result = await listPlatformIncome("2026-01-01", "2026-12-31")
+    const result = await listPlatformIncome(BUSINESS_ID, "2026-01-01", "2026-12-31")
 
     expect(result.eventSignups).toEqual([])
   })
@@ -197,7 +206,7 @@ describe("listPlatformIncome — strict mode (nightly cron)", () => {
 
 describe("listPlatformIncome — client_packages late-paid window widening", () => {
   it("queries client_packages with an .or() spanning both purchased_at.gte and updated_at.gte, alongside .lte(purchased_at)", async () => {
-    await listPlatformIncome("2026-03-01", "2026-03-31")
+    await listPlatformIncome(BUSINESS_ID, "2026-03-01", "2026-03-31")
 
     const calls = state.orCalls.client_packages ?? []
     expect(calls).toHaveLength(1)
@@ -206,7 +215,7 @@ describe("listPlatformIncome — client_packages late-paid window widening", () 
   })
 
   it("does not widen the other four arms with an .or() on updated_at", async () => {
-    await listPlatformIncome("2026-03-01", "2026-03-31")
+    await listPlatformIncome(BUSINESS_ID, "2026-03-01", "2026-03-31")
 
     // memberships legitimately has its own unrelated .or() (canceled_at); the
     // other three arms must have no .or() call at all.
@@ -229,9 +238,38 @@ describe("listPlatformIncome — client_packages late-paid window widening", () 
       purchased_at: "2026-01-05T00:00:00Z", updated_at: "2026-03-10T00:00:00Z",
     }]
 
-    const result = await listPlatformIncome("2026-03-01", "2026-03-31")
+    const result = await listPlatformIncome(BUSINESS_ID, "2026-03-01", "2026-03-31")
 
     expect(result.clientPackages).toHaveLength(1)
     expect(result.clientPackages[0]).toMatchObject({ id: "cp-late" })
+  })
+})
+
+describe("listPlatformIncome — tenancy", () => {
+  it("scopes ONLY the event_signups arm to the caller's businessId", async () => {
+    await listPlatformIncome(BUSINESS_ID, "2026-01-01", "2026-12-31")
+
+    expect(state.eqCalls.event_signups ?? []).toContainEqual(["business_id", BUSINESS_ID])
+  })
+
+  it("never scopes the four arms with no business_id column at all", async () => {
+    // payments, shop_orders, client_packages and client_memberships carry no
+    // business_id column (verified against the migrations) — scoping them
+    // would be silently querying a column that does not exist, or worse,
+    // filtering on the wrong one. Only event_signups (migration 00252) has one.
+    await listPlatformIncome(BUSINESS_ID, "2026-01-01", "2026-12-31")
+
+    for (const table of ["payments", "shop_orders", "client_packages", "client_memberships"]) {
+      const calls = state.eqCalls[table] ?? []
+      expect(calls.some(([col]) => col === "business_id")).toBe(false)
+    }
+  })
+
+  it("never substitutes the platform's own id for the tenant the caller named", async () => {
+    await listPlatformIncome(BUSINESS_ID, "2026-01-01", "2026-12-31")
+
+    const [, value] = (state.eqCalls.event_signups ?? []).find(([col]) => col === "business_id") ?? []
+    expect(value).toBe(BUSINESS_ID)
+    expect(value).not.toBe("00000000-0000-0000-0000-000000000001")
   })
 })

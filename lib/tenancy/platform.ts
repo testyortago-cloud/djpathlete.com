@@ -44,6 +44,22 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     scoping just the bookings section's signup count to a real tenant
  *     while the rest of the email stays platform-wide would not make the
  *     digest multi-tenant, only inconsistent.
+ *   - the bookkeeping income-sync cron's `event_signups` arm
+ *     (app/api/admin/internal/bookkeeping-income-sync/route.ts, calling
+ *     `listPlatformIncome` in lib/db/bookkeeping.ts). Guarded by
+ *     `INTERNAL_CRON_TOKEN` like the Daily Brief above -- no session, so no
+ *     admin tenant to resolve. `bookkeeping_books` and every table under it
+ *     carry no `business_id` column at all, so "the primary business book"
+ *     this cron posts into is not per-coach today; scoping the ONE arm of
+ *     its five-table read that does have a tenant column
+ *     (`event_signups`, since migration 00252) to anything other than the
+ *     platform's own business would read as if a second business's camp
+ *     signups belonged to the platform's books, which is worse than the
+ *     unscoped four arms next to it. The admin-triggered preview of the same
+ *     read (`POST /api/admin/bookkeeping/import-platform`) DOES have a
+ *     session and resolves a real admin tenant via
+ *     `resolveAdminTenantForRequest` instead -- this seam is the cron path
+ *     only.
  *
  * CORRECT BY CONSTRUCTION -- the caller could be asked to resolve a tenant
  * and the answer would still be the platform's own. Not a placeholder
@@ -133,6 +149,19 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     no-argument callers — lib/ads/agent.ts (twice), lib/ads/ga4-audiences.ts,
  *     lib/ads/conversions.ts, app/api/admin/ads/diagnose/route.ts — are
  *     untouched for the reason above. Scope the subsystem, then the default.
+ *
+ * THE OUTPUT ITSELF IS KEYED TO ONE HOST -- not a caller that cannot resolve
+ * a tenant, and not a placeholder either. A real resolution would make this
+ * file WORSE than it is today:
+ *   - app/sitemap.ts's event listing. Every URL this file emits is built from
+ *     the `SITE_URL` constant (`const BASE_URL = SITE_URL`), for every
+ *     section — blog, events, shop, the static pages — not only the events
+ *     arm this phase touches. Threading the request's resolved business
+ *     into `getPublishedEvents` here would list a second coach's camps and
+ *     clinics at `darrenjpaul.com`, which is a worse leak than today's single-
+ *     tenant sitemap, not a fix. A per-host sitemap needs per-host absolute
+ *     URLs throughout the file — blog and shop included — which is a
+ *     separate phase than events alone.
  *
  * TWINS THAT CANNOT CALL THIS: functions/src/lib/tenancy-constants.ts and
  * functions/src/ads/dal.ts carry the literal because `functions/` has

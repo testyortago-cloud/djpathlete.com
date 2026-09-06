@@ -4,7 +4,21 @@ const getEventByIdMock = vi.fn()
 const createSignupMock = vi.fn()
 const getActiveDocumentMock = vi.fn()
 const createEventCheckoutSessionMock = vi.fn()
-const updateSignupSessionMock = vi.fn(async () => undefined)
+const updateSignupSessionMock = vi.fn((..._args: unknown[]) => undefined)
+
+// A chainable, awaitable `.eq()` stand-in — the update now writes
+// `.eq("id", ...).eq("business_id", ...)` rather than a single `.eq()`. Each
+// call is recorded on `updateSignupSessionMock` so existing assertions still
+// see it, and the chain stays awaitable throughout.
+type EqChain = PromiseLike<undefined> & { eq: (...args: unknown[]) => EqChain }
+function chainableEq(): EqChain {
+  const chain = Promise.resolve(undefined) as unknown as EqChain
+  chain.eq = (...args: unknown[]) => {
+    updateSignupSessionMock(...args)
+    return chainableEq()
+  }
+  return chain
+}
 
 vi.mock("@/lib/db/events", () => ({ getEventById: (...a: unknown[]) => getEventByIdMock(...a) }))
 vi.mock("@/lib/db/event-signups", () => ({
@@ -19,7 +33,12 @@ vi.mock("@/lib/stripe", () => ({
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({
     from: () => ({
-      update: () => ({ eq: updateSignupSessionMock }),
+      update: () => ({
+        eq: (...args: unknown[]) => {
+          updateSignupSessionMock(...args)
+          return chainableEq()
+        },
+      }),
     }),
   }),
 }))

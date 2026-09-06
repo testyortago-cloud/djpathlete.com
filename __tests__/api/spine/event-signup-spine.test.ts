@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
   recordConsent: vi.fn(),
   getBusinessSettings: vi.fn(),
   recordAudit: vi.fn(),
-  updateEq: vi.fn(async () => ({})),
+  updateEq: vi.fn((..._args: unknown[]) => Promise.resolve({})),
 }))
 
 vi.mock("@/lib/db/events", () => ({ getEventById: (...a: unknown[]) => mocks.getEventById(...a) }))
@@ -49,9 +49,27 @@ vi.mock("@/lib/audit/record", () => ({ recordAudit: (...a: unknown[]) => mocks.r
 vi.mock("@/lib/audit/with-audit", () => ({
   withAudit: (_cfg: unknown, handler: unknown) => handler,
 }))
+// A chainable `.eq()` stand-in — the checkout route's update now writes
+// `.eq("id", ...).eq("business_id", ...)` rather than a single `.eq()`. Each
+// call is recorded on `mocks.updateEq` so it stays the one place to inspect.
+function chainableUpdateEq(): { eq: typeof chainableUpdateEq } & PromiseLike<Record<string, never>> {
+  const chain = Promise.resolve({}) as unknown as { eq: typeof chainableUpdateEq } & PromiseLike<Record<string, never>>
+  chain.eq = ((...args: unknown[]) => {
+    mocks.updateEq(...args)
+    return chainableUpdateEq()
+  }) as typeof chainableUpdateEq
+  return chain
+}
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({
-    from: () => ({ update: () => ({ eq: mocks.updateEq }) }),
+    from: () => ({
+      update: () => ({
+        eq: (...args: unknown[]) => {
+          mocks.updateEq(...args)
+          return chainableUpdateEq()
+        },
+      }),
+    }),
   }),
 }))
 // The route resolves its tenant from the request's Host through the ONE Host

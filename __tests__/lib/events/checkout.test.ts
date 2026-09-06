@@ -13,6 +13,20 @@ const createSignup = vi.fn()
 const getActiveDocument = vi.fn()
 const createEventCheckoutSession = vi.fn()
 const from = vi.fn()
+const eqCalls: Array<[string, unknown]> = []
+
+// A chainable, awaitable `.eq()` stand-in — the update now writes
+// `.eq("id", ...).eq("business_id", ...)` rather than a single `.eq()`, so
+// each call must return something with another `.eq` AND remain awaitable.
+type EqChain = PromiseLike<{ error: null }> & { eq: (...args: unknown[]) => EqChain }
+function chainableEq(): EqChain {
+  const chain = Promise.resolve({ error: null }) as unknown as EqChain
+  chain.eq = (...args: unknown[]) => {
+    eqCalls.push(args as [string, unknown])
+    return chainableEq()
+  }
+  return chain
+}
 
 vi.mock("@/lib/db/event-signups", () => ({ createSignup: (...a: unknown[]) => createSignup(...a) }))
 vi.mock("@/lib/db/legal-documents", () => ({ getActiveDocument: (...a: unknown[]) => getActiveDocument(...a) }))
@@ -49,7 +63,8 @@ beforeEach(() => {
   createSignup.mockReset().mockResolvedValue({ id: "s1" })
   getActiveDocument.mockReset().mockResolvedValue({ id: "doc1" })
   createEventCheckoutSession.mockReset().mockResolvedValue({ id: "cs_1", url: "https://stripe.test/pay" })
-  from.mockReset().mockReturnValue({ update: () => ({ eq: () => Promise.resolve({ error: null }) }) })
+  eqCalls.length = 0
+  from.mockReset().mockReturnValue({ update: () => chainableEq() })
 })
 
 const base = { event: EVENT as never, input: INPUT as never, ipAddress: "1.2.3.4", userAgent: "UA", baseUrl: "https://x.test" }
@@ -69,6 +84,15 @@ describe("createEventSignupCheckout", () => {
     // test written against the platform id.
     await createEventSignupCheckout("host-biz", base)
     expect(createSignup.mock.calls[0][0]).toBe("host-biz")
+  })
+
+  it("scopes the stripe_session_id write by business_id, not just signup id", async () => {
+    // The same shape the Stripe webhook's writes were fixed to carry — a
+    // write keyed on `id` alone can reach a same-id row belonging to a
+    // different tenant.
+    await createEventSignupCheckout("host-biz", base)
+    expect(eqCalls).toContainEqual(["id", "s1"])
+    expect(eqCalls).toContainEqual(["business_id", "host-biz"])
   })
 
   it("files the waiver evidence with the signup", async () => {
