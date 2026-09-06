@@ -5,6 +5,7 @@ import Link from "next/link"
 import { ctaClassFor } from "@/lib/funnels/cta-class"
 import { getEventById } from "@/lib/db/events"
 import { formatEventWhen } from "@/lib/events/format"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 interface EventIslandProps {
   props: Record<string, unknown>
@@ -17,9 +18,19 @@ export async function EventIsland({ props }: EventIslandProps) {
 
   if (!eventId) return null
 
+  // A funnel document names an event id; without the tenant predicate a
+  // funnel built on one business's host could embed another business's
+  // event. resolvePublicTenant() is called BARE, matching FormIsland and
+  // QuizIsland — its first action is `await headers()`, which Next relies on
+  // throwing (a postpone signal) to bail a route to dynamic rendering during
+  // a static prerender. Catching around it would swallow that signal and
+  // silently prerender the island with the platform's tenant. Only the DB
+  // read below is wrapped: a failed event lookup degrades to no island, not
+  // a 500.
+  const businessId = await resolvePublicTenant()
   let event
   try {
-    event = await getEventById(eventId)
+    event = await getEventById(businessId, eventId)
   } catch {
     // A page must not 500 because one embedded event failed to load.
     return null
@@ -36,9 +47,7 @@ export async function EventIsland({ props }: EventIslandProps) {
       <p data-djp-event-when>{formatEventWhen(event)}</p>
       <p data-djp-event-where>{event.location_name}</p>
       {showSpots ? (
-        <p data-djp-event-spots>
-          {soldOut ? "Sold out" : `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`}
-        </p>
+        <p data-djp-event-spots>{soldOut ? "Sold out" : `${spotsLeft} spot${spotsLeft === 1 ? "" : "s"} left`}</p>
       ) : null}
       {/* The card is the island; only its REGISTER LINK is the CTA, so the
           variant lands here and not on the wrapper. */}

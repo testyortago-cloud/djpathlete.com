@@ -9,6 +9,7 @@ import { getEventSignupByStripeSessionId } from "@/lib/db/event-signups"
 import { ConversionTracker } from "@/components/shared/ConversionTracker"
 import { getSendTo } from "@/lib/ads/conversion-registry"
 import { formatEventWhen } from "@/lib/events/format"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 export const metadata: Metadata = {
   title: "Booking confirmed",
@@ -24,10 +25,16 @@ export default async function ClinicBookingSuccessPage({ params, searchParams }:
   const { slug } = await params
   const { session_id } = await searchParams
 
-  const event = await getEventBySlug(slug)
+  const businessId = await resolvePublicTenant()
+  const event = await getEventBySlug(businessId, slug)
   if (!event || event.type !== "clinic") notFound()
 
   const signup = session_id ? await getEventSignupByStripeSessionId(session_id) : null
+
+  // The signup was found by a Stripe session id, which carries no tenant. A
+  // coach's host must not be usable to display another business's customer,
+  // so the row's own tenant is checked against the host's here.
+  if (signup && signup.business_id !== businessId) notFound()
 
   // Use signup.amount_paid_cents when available (handles discounts /
   // partial refunds); fall back to the event's listed price. Either way

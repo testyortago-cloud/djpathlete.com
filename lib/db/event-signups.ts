@@ -152,13 +152,18 @@ export async function getEventSignupByStripeSessionId(sessionId: string): Promis
  * DELIBERATELY NOT SCOPED BY businessId. A Stripe payment-intent id is
  * issued by Stripe and globally unique, so it names exactly one signup and
  * cannot be guessed into another tenant's rows — the id IS the authorisation.
- * Adding a tenant argument here would be theatre: every caller would have to
- * invent one, and the two that exist (the success page and the webhook) have
- * no better answer than the row itself.
+ * Adding a tenant argument here would be theatre: the caller would have to
+ * invent one, and it has no better answer than the row itself.
  *
- * Its CALLERS still check: the camps/clinics success pages compare the
- * returned row's business_id against the host's resolved business and 404 on
- * a mismatch, so this cannot be used to display another tenant's customer.
+ * Its ONLY caller is `handleEventSignupRefund` in
+ * app/api/stripe/webhook/route.ts, a webhook — there is no Host header to
+ * resolve a tenant from and nothing to compare the row against, unlike the
+ * camps/clinics success pages (see getEventSignupByStripeSessionId's doc
+ * comment above). The webhook instead DERIVES the tenant FROM the returned
+ * row: it reads `signup.id` and `signup.status` off the row this function
+ * hands back and acts on that same row, never on a second, independently
+ * looked-up one — so there is no second value for a wrong-tenant row to be
+ * substituted into.
  *
  * An unscoped reader with a written argument is a decision; an unscoped
  * reader without one is a defect. Do not delete this comment to "clean up".
