@@ -11,7 +11,7 @@ import { ManagedFaqSection } from "@/components/public/ManagedFaqSection"
 import { SemanticAnswerBlock } from "@/components/public/SemanticAnswerBlock"
 import { BreadcrumbSchema } from "@/components/shared/BreadcrumbSchema"
 import { CheckoutCancelledBanner } from "@/components/public/CheckoutCancelledBanner"
-import { getEventBySlug, getPublishedEvents } from "@/lib/db/events"
+import { getEventBySlug } from "@/lib/db/events"
 import { campHasDailyTimes, formatEventTime } from "@/lib/events/format"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { renderLegalContent } from "@/lib/legal-content"
@@ -23,14 +23,13 @@ import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 // No `revalidate`: since phase 4 this page reads the request's Host (resolvePublicTenant), which makes it render per request; an ISR interval here would be a false promise.
 
-export async function generateStaticParams() {
-  const events = await getPublishedEvents({ type: "camp" })
-  return events.map((e) => ({ slug: e.slug }))
-}
+// No generateStaticParams: since phase 5a an event's slug is unique per
+// business, not globally, so a slug alone does not name a page to prerender.
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
-  const event = await getEventBySlug(slug)
+  const businessId = await resolvePublicTenant()
+  const event = await getEventBySlug(businessId, slug)
   if (!event || event.type !== "camp" || event.status !== "published") return {}
   const images = event.hero_image_url ? [{ url: event.hero_image_url }] : []
   return {
@@ -52,7 +51,8 @@ function ageLabel(min: number | null, max: number | null): string {
 
 export default async function CampDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const event = await getEventBySlug(slug)
+  const businessId = await resolvePublicTenant()
+  const event = await getEventBySlug(businessId, slug)
   if (!event || event.type !== "camp" || event.status !== "published") notFound()
 
   const waiverDoc = await getActiveDocument("liability_waiver")
@@ -69,8 +69,9 @@ export default async function CampDetailPage({ params }: { params: Promise<{ slu
   // hasSmsConsentDisplayName's own doc comment.
   //
   // Same business as the route that files the consent row: both resolve it
-  // from the request's Host through lib/tenancy/public.ts.
-  const businessId = await resolvePublicTenant()
+  // from the request's Host through lib/tenancy/public.ts. `businessId` is
+  // already resolved above (for the getEventBySlug scope) — reused here
+  // rather than resolved a second time.
   const businessSettings = await getBusinessSettings(businessId).catch(() => null)
   const smsConsentWording = hasSmsConsentDisplayName(businessSettings?.display_name)
     ? renderSmsConsentWording(businessSettings.display_name)

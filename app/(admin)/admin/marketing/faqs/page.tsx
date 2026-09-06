@@ -2,14 +2,15 @@ import { HelpCircle } from "lucide-react"
 import { getStaticAndTemplatedFaqPages, type FaqPage } from "@/lib/faq/pages"
 import { getPublishedEvents } from "@/lib/db/events"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { FaqManager } from "./FaqManager"
 
 export const metadata = { title: "FAQs — DJP Athlete" }
 export const dynamic = "force-dynamic"
 
-async function eventFaqPages(): Promise<FaqPage[]> {
+async function eventFaqPages(businessId: string): Promise<FaqPage[]> {
   try {
-    const events = await getPublishedEvents()
+    const events = await getPublishedEvents(businessId)
     return events.map((e) => ({
       key: `event/${e.id}`,
       label: `${e.title} (event)`,
@@ -34,9 +35,10 @@ async function faqCounts(): Promise<Record<string, number>> {
 }
 
 export default async function FaqsAdminPage() {
+  const { businessId } = await resolveAdminTenant()
   const [staticPages, eventPages, counts] = await Promise.all([
     Promise.resolve(getStaticAndTemplatedFaqPages()),
-    eventFaqPages(),
+    eventFaqPages(businessId),
     faqCounts(),
   ])
   const allPages = [...staticPages, ...eventPages]

@@ -660,5 +660,5 @@ async function executorContextFor(
     }
   }
 
-  return { timezone: settings.timezone, visitor, tracking }
+  return { timezone: settings.timezone, visitor, tracking, businessId: conversation.business_id }
 }

@@ -15,6 +15,7 @@ import { buildIncomeDrafts } from "@/lib/bookkeeping/income-adapter"
 import { matchAccountForServiceLine } from "@/lib/bookkeeping/account-match"
 import { computeSyncWindow } from "@/lib/bookkeeping/income-sync-window"
 import { recordAudit } from "@/lib/audit/record"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export const runtime = "nodejs"
 export const maxDuration = 120
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
     // strict: a source-table read failure here must fail the run (throw → logCronEnd
     // "failed" + 500 → health watchdog) rather than silently degrading to [] and
     // letting the watermark advance past that table's unread income.
-    const sources = await listPlatformIncome(from, to, { strict: true })
+    const sources = await listPlatformIncome(platformBusinessId(), from, to, { strict: true })
     const { drafts, warnings } = buildIncomeDrafts(sources, { from, to })
     const accounts = await listAccounts(book.id)
     const withAccounts = drafts.map((d) => ({

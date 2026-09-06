@@ -32,6 +32,45 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     app/api/quiz/submit/route.ts. It is public too, but it has a row to
  *     inherit from — the attempt the quiz progress route created — so it
  *     resolves rather than calling anything.
+ *   - the Daily Brief email's booking section, in lib/analytics/daily-pulse.ts
+ *     -- threaded from there into the bookings section builder's own
+ *     `businessId` parameter, not called a second time inside it.
+ *     `POST /api/admin/internal/send-daily-pulse` is guarded by
+ *     `INTERNAL_CRON_TOKEN`, not a session -- there is no `auth()` call to
+ *     resolve an admin tenant from, and the digest composes every section
+ *     builder in one `Promise.all` for a single `COACH_EMAIL` recipient, not
+ *     per business. Every sibling builder in that same digest (coaching,
+ *     revenue funnel, client risk, inbox SLA) is equally unconverted;
+ *     scoping just the bookings section's signup count to a real tenant
+ *     while the rest of the email stays platform-wide would not make the
+ *     digest multi-tenant, only inconsistent.
+ *   - the bookkeeping income-sync cron's `event_signups` arm
+ *     (app/api/admin/internal/bookkeeping-income-sync/route.ts, calling
+ *     `listPlatformIncome` in lib/db/bookkeeping.ts). Guarded by
+ *     `INTERNAL_CRON_TOKEN` like the Daily Brief above -- no session, so no
+ *     admin tenant to resolve. `bookkeeping_books` and every table under it
+ *     carry no `business_id` column at all, so "the primary business book"
+ *     this cron posts into is not per-coach today; scoping the ONE arm of
+ *     its five-table read that does have a tenant column
+ *     (`event_signups`, since migration 00252) to anything other than the
+ *     platform's own business would read as if a second business's camp
+ *     signups belonged to the platform's books, which is worse than the
+ *     unscoped four arms next to it. The admin-triggered preview of the same
+ *     read (`POST /api/admin/bookkeeping/import-platform`) DOES have a
+ *     session and resolves a real admin tenant via
+ *     `resolveAdminTenantForRequest` instead -- this seam is the cron path
+ *     only.
+ *
+ *     RECONCILING that with `resolveAdminTenantForRequest` giving an admin
+ *     EVERY business as a choice: this phase strictly NARROWED that preview
+ *     route rather than widening it -- pre-phase `listPlatformIncome` was
+ *     fully unscoped, reading every business's event signups regardless of
+ *     which tenant the admin had selected. It writes nothing (a preview:
+ *     drafts and warnings only, no insert), so this is not a privilege
+ *     escalation. But the preview is now MIXED SCOPE -- one arm per-tenant,
+ *     four still platform-wide -- which reads more authoritative about "this
+ *     business's income" than it is. Reconciling that belongs to the
+ *     bookkeeping phase, not this one.
  *
  * CORRECT BY CONSTRUCTION -- the caller could be asked to resolve a tenant
  * and the answer would still be the platform's own. Not a placeholder
@@ -94,8 +133,21 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     routes, the ~1900-line build orchestrator, the funnel editor page, and
  *     the shared draft-preview renderer -- none of which any task has claimed
  *     for tenancy conversion. Freezing it here keeps today's behaviour
- *     byte-identical (this returns the same constant that call site used to
- *     hard-code) while making the compromise greppable instead of silent.
+ *     byte-identical (that call site never hard-coded anything -- it passed
+ *     NO argument, i.e. read every business's rows; it is byte-identical only
+ *     because migration 00252's DEFAULT put all existing rows on the
+ *     platform) while making the compromise greppable instead of silent.
+ *
+ *     THAT IS NO LONGER THE WHOLE STORY as of the events-per-tenant phase.
+ *     The funnel's live event rendering and its submission handling both
+ *     now resolve a real per-host tenant while this loader stays
+ *     platform-only, so the builder and the publish gate validate an
+ *     event CTA against a catalogue the live page no longer agrees with.
+ *     Pre-phase both sides were unscoped and agreed; the day a second
+ *     tenant publishes a funnel with an event CTA, the builder and the
+ *     gate pass and the live render is silent absence. Recorded, not
+ *     fixed here — see that phase's design doc §8; resolving it is phase
+ *     5b's (funnels), not this seam's.
  *   - the Google Ads OAuth callback (app/api/integrations/google-ads/callback/route.ts)
  *     and the rediscover-accounts route (app/api/admin/ads/rediscover-accounts/route.ts),
  *     the two callers of `upsertGoogleAdsAccount`. Both routes DO have an
@@ -121,6 +173,19 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     no-argument callers — lib/ads/agent.ts (twice), lib/ads/ga4-audiences.ts,
  *     lib/ads/conversions.ts, app/api/admin/ads/diagnose/route.ts — are
  *     untouched for the reason above. Scope the subsystem, then the default.
+ *
+ * THE OUTPUT ITSELF IS KEYED TO ONE HOST -- not a caller that cannot resolve
+ * a tenant, and not a placeholder either. A real resolution would make this
+ * file WORSE than it is today:
+ *   - app/sitemap.ts's event listing. Every URL this file emits is built from
+ *     the `SITE_URL` constant (`const BASE_URL = SITE_URL`), for every
+ *     section — blog, events, shop, the static pages — not only the events
+ *     arm this phase touches. Threading the request's resolved business
+ *     into `getPublishedEvents` here would list a second coach's camps and
+ *     clinics at `darrenjpaul.com`, which is a worse leak than today's single-
+ *     tenant sitemap, not a fix. A per-host sitemap needs per-host absolute
+ *     URLs throughout the file — blog and shop included — which is a
+ *     separate phase than events alone.
  *
  * TWINS THAT CANNOT CALL THIS: functions/src/lib/tenancy-constants.ts and
  * functions/src/ads/dal.ts carry the literal because `functions/` has

@@ -28,6 +28,11 @@ vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.f
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: vi.fn(),
+  NoAccessibleBusinessError: class NoAccessibleBusinessError extends Error {},
+}))
+vi.mock("@/lib/events/ensure-priced", () => ({ ensureEventPriced: vi.fn() }))
 
 import { POST } from "@/app/api/admin/funnels/[id]/publish/route"
 import { auth } from "@/lib/auth"
@@ -38,15 +43,20 @@ import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
+import { platformBusinessId } from "@/lib/tenancy/platform"
+import { ensureEventPriced } from "@/lib/events/ensure-priced"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
 
 const FUNNEL_ID = "ffffffff-1111-4222-8333-444444444444"
+const BUSINESS_ID = "admin-biz"
 const ADMIN_ID = "aaaaaaaa-1111-4222-8333-444444444444"
 const PROGRAM_ID = "11111111-2222-4333-8444-555555555555"
 const PROGRAM_NAME = "Comeback Code"
 const DEAD_REF = "Winter Throwing Intensive"
+const EVENT_ID = "cccccccc-3333-4333-8333-cccccccccccc"
 
 const FUNNEL = { id: FUNNEL_ID, slug: "free-trial-week", name: "Free Trial Week", kind: "funnel", status: "draft" }
 
@@ -122,6 +132,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   mock(auth).mockResolvedValue({ user: { id: ADMIN_ID, role: "admin" } })
   mock(canAccessAdminPath).mockResolvedValue(true)
+  mock(resolveAdminTenantForRequest).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "Test Co", slug: "test-co" }],
+    isOperator: true,
+  })
   mock(getFunnelById).mockResolvedValue(FUNNEL)
   mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => ({
     ok: true,
@@ -137,6 +152,7 @@ beforeEach(() => {
   mock(getEvents).mockResolvedValue([])
   mock(getPublishedEvents).mockResolvedValue([])
   mock(getFaqCountsByPage).mockResolvedValue({})
+  mock(ensureEventPriced).mockResolvedValue({ ok: true, changed: false })
 })
 
 describe("POST /api/admin/funnels/[id]/publish", () => {
@@ -150,6 +166,51 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     // count — a route that writes one page twice would pass a count check.
     expect(mock(publishStep).mock.calls.map((call) => call[0].stepId)).toEqual(["s1", "s2"])
     expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { status: "published" })
+    // `loadCatalogues` reads events under `platformBusinessId()`, the
+    // DELIBERATELY FROZEN seam (lib/tenancy/platform.ts) — NOT the resolved
+    // admin tenant. That seam is what ensureEventPriced (below) is exempt
+    // from: this route resolves a real tenant for its own write, but the
+    // whole builder-catalogue subsystem behind loadCatalogues is out of
+    // this phase's conversion.
+    // MUTANT: the catalogue reading under no tenant, or under `BUSINESS_ID`.
+    expect(mock(getEvents)).toHaveBeenCalledWith(platformBusinessId(), {})
+    expect(mock(getPublishedEvents)).toHaveBeenCalledWith(platformBusinessId())
+  })
+
+  it("refuses a caller with no accessible business, before touching any funnel data", async () => {
+    mock(resolveAdminTenantForRequest).mockRejectedValue(new NoAccessibleBusinessError())
+    const response = await POST(request(), ctx)
+    expect(response.status).toBe(403)
+    expect(mock(getFunnelById)).not.toHaveBeenCalled()
+    expect(mock(updateFunnel)).not.toHaveBeenCalled()
+  })
+
+  it("prices a duplicated camp's checkout form under the RESOLVED admin tenant, not a swapped argument", async () => {
+    // The camp's Stripe pricing repair (`ensureCheckoutCampsPriced` ->
+    // `ensureEventPriced`) runs on the raw draft, before the catalogue gate,
+    // so this assertion holds regardless of what the gate does with an
+    // eventId the (empty, mocked) catalogue doesn't recognize.
+    const checkoutDoc = {
+      v: 1,
+      engine: "sections",
+      theme: { tone: "light", accent: "accent", radius: "soft" },
+      sections: [
+        {
+          id: "form1",
+          kind: "form",
+          variant: "stack",
+          style: {},
+          props: { formKey: "signup", fields: [], successMode: "checkout", eventId: EVENT_ID },
+        },
+      ],
+    } as unknown as SectionDoc
+    mock(listSteps).mockResolvedValue([stepRow()])
+    mock(getDraft).mockResolvedValue({ doc: checkoutDoc, docInvalid: false, revision: 1 })
+
+    await POST(request(), ctx)
+    // MUTANT: swapping the two string arguments (businessId, eventId) at the
+    // call site — TypeScript cannot catch a two-string-argument swap.
+    expect(mock(ensureEventPriced)).toHaveBeenCalledWith(BUSINESS_ID, EVENT_ID)
   })
 
   it("publishes the RESOLVED document, with the CTA ref substituted for the real id", async () => {

@@ -16,6 +16,7 @@ import { buildDailyAnomalies } from "@/lib/analytics/sections/anomalies-daily"
 import { buildDailyClientRisk } from "@/lib/analytics/sections/client-risk-daily"
 import { buildDailyInboxSla } from "@/lib/analytics/sections/inbox-sla-daily"
 import type { DailyBriefPayload, DailyContentPipelinePayload, DailyTrendingTopic } from "@/types/coach-emails"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 async function renderEmail(element: React.ReactElement): Promise<string> {
   const { renderToStaticMarkup } = await import("react-dom/server")
@@ -52,7 +53,14 @@ export async function buildDailyPulse(options: BuildOptions = {}): Promise<Daily
   // New per-area builders, run in parallel. Each catches its own errors so a
   // bad section doesn't kill the email.
   const [bookings, coaching, revenueFunnel, clientRisk, inboxSla, trendingTopics] = await Promise.all([
-    safe(() => buildDailyBookings({ referenceDate }), "bookings"),
+    // PLATFORM SEAM, NOT A RESOLUTION. The Daily Brief is one email to one
+    // COACH_EMAIL, composed by an internal cron route with no session and no
+    // per-business loop — every other builder in this Promise.all reads the
+    // same single-tenant way today. Converting the whole digest to a
+    // per-coach send is a separate, larger task; this keeps today's
+    // behaviour byte-identical while making the compromise greppable. See
+    // lib/tenancy/platform.ts's inventory.
+    safe(() => buildDailyBookings({ referenceDate, businessId: platformBusinessId() }), "bookings"),
     safe(() => buildDailyCoaching({ referenceDate }), "coaching"),
     safe(() => buildDailyRevenueFunnel({ referenceDate }), "revenueFunnel"),
     safe(() => buildDailyClientRisk(), "clientRisk"),

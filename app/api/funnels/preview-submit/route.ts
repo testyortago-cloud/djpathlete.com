@@ -39,6 +39,7 @@ import { getEventById } from "@/lib/db/events"
 import { funnelFormFieldSchema, type FunnelFormField } from "@/lib/funnels/islands"
 import { livePathToPreview } from "@/lib/funnels/preview-path"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 const bodySchema = z.object({
   stepId: z.string().uuid(),
@@ -70,6 +71,17 @@ export async function POST(request: Request) {
   const session = await auth()
   const role = session?.user?.role
   if (role !== "admin" && role !== "staff") return notFound()
+
+  // 404, NOT 403 — same fail-closed shape as the role check above. A staff
+  // session with no accessible business is indistinguishable, from the
+  // outside, from one that was never admin/staff at all.
+  let businessId: string
+  try {
+    ;({ businessId } = await resolveAdminTenantForRequest(request))
+  } catch (err) {
+    if (err instanceof NoAccessibleBusinessError) return notFound()
+    throw err
+  }
 
   const parsed = bodySchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: "Invalid submission." }, { status: 400 })
@@ -127,16 +139,16 @@ export async function POST(request: Request) {
     if (value.length > 0) captured.push({ label: field.label, value })
   }
 
-  return NextResponse.json({ ok: true, outcome: await outcomeFor(props), captured })
+  return NextResponse.json({ ok: true, outcome: await outcomeFor(props, businessId), captured })
 }
 
-async function outcomeFor(props: Record<string, unknown>): Promise<Outcome> {
+async function outcomeFor(props: Record<string, unknown>, businessId: string): Promise<Outcome> {
   if (props.successMode === "checkout") {
     // A NICETY THAT MAY NOT FAIL THE TEST RUN. Naming the camp is friendlier
     // than "a checkout", but the owner is testing the FORM — a catalogue read
     // that throws must not turn their test into an error.
     const eventId = typeof props.eventId === "string" ? props.eventId : null
-    const event = eventId ? await getEventById(eventId).catch(() => null) : null
+    const event = eventId ? await getEventById(businessId, eventId).catch(() => null) : null
     return { kind: "checkout", label: event?.title ?? "this camp" }
   }
 

@@ -12,9 +12,13 @@ export interface EventListFilters {
   search?: string
 }
 
-export async function getEvents(filters: EventListFilters = {}): Promise<Event[]> {
+export async function getEvents(businessId: string, filters: EventListFilters = {}): Promise<Event[]> {
   const supabase = getClient()
-  let query = supabase.from("events").select("*").order("start_date", { ascending: true })
+  let query = supabase
+    .from("events")
+    .select("*")
+    .eq("business_id", businessId)
+    .order("start_date", { ascending: true })
   if (filters.type) query = query.eq("type", filters.type)
   if (filters.status) query = query.eq("status", filters.status)
   if (filters.search) query = query.ilike("title", `%${filters.search}%`)
@@ -23,7 +27,10 @@ export async function getEvents(filters: EventListFilters = {}): Promise<Event[]
   return (data ?? []) as Event[]
 }
 
-export async function getPublishedEvents(filters: { type?: EventType; from?: Date } = {}): Promise<Event[]> {
+export async function getPublishedEvents(
+  businessId: string,
+  filters: { type?: EventType; from?: Date } = {},
+): Promise<Event[]> {
   const supabase = getClient()
   const from = filters.from ?? new Date()
   // An event is "upcoming" until it ends, not until it starts. Clinics auto-set
@@ -33,6 +40,7 @@ export async function getPublishedEvents(filters: { type?: EventType; from?: Dat
   let query = supabase
     .from("events")
     .select("*")
+    .eq("business_id", businessId)
     .eq("status", "published")
     .gte("end_date", from.toISOString())
     .order("start_date", { ascending: true })
@@ -42,16 +50,33 @@ export async function getPublishedEvents(filters: { type?: EventType; from?: Dat
   return (data ?? []) as Event[]
 }
 
-export async function getEventById(id: string): Promise<Event | null> {
+export async function getEventById(businessId: string, id: string): Promise<Event | null> {
   const supabase = getClient()
-  const { data, error } = await supabase.from("events").select("*").eq("id", id).maybeSingle()
+  const { data, error } = await supabase
+    .from("events")
+    .select("*")
+    .eq("id", id)
+    .eq("business_id", businessId)
+    .maybeSingle()
   if (error) throw error
   return (data as Event) ?? null
 }
 
-export async function getEventBySlug(slug: string): Promise<Event | null> {
+/**
+ * SCOPED BY businessId, and not merely defensively. `events.slug` is unique
+ * per business since 00252, so two businesses may hold the same slug; this
+ * ends in `.maybeSingle()`, which answers PGRST116 on more than one row.
+ * Without the predicate the per-tenant constraint turns a wrong-tenant read
+ * into a crash.
+ */
+export async function getEventBySlug(businessId: string, slug: string): Promise<Event | null> {
   const supabase = getClient()
-  const { data, error } = await supabase.from("events").select("*").eq("slug", slug).maybeSingle()
+  const { data, error } = await supabase
+    .from("events")
+    .select("*")
+    .eq("slug", slug)
+    .eq("business_id", businessId)
+    .maybeSingle()
   if (error) throw error
   return (data as Event) ?? null
 }
@@ -60,7 +85,7 @@ function autoEndDate(startIso: string): string {
   return new Date(new Date(startIso).getTime() + 2 * 3600 * 1000).toISOString()
 }
 
-export async function createEvent(input: CreateEventInput): Promise<Event> {
+export async function createEvent(businessId: string, input: CreateEventInput): Promise<Event> {
   const supabase = getClient()
 
   // Clinics may pass an explicit end_date now; fall back to start + 2h.
@@ -71,6 +96,7 @@ export async function createEvent(input: CreateEventInput): Promise<Event> {
       : input.end_date
 
   const base = {
+    business_id: businessId,
     type: input.type,
     slug: input.slug,
     title: input.title,
@@ -96,7 +122,7 @@ export async function createEvent(input: CreateEventInput): Promise<Event> {
   return data as Event
 }
 
-export async function updateEvent(id: string, input: UpdateEventInput): Promise<Event> {
+export async function updateEvent(businessId: string, id: string, input: UpdateEventInput): Promise<Event> {
   const supabase = getClient()
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
   for (const [key, value] of Object.entries(input)) {
@@ -113,7 +139,7 @@ export async function updateEvent(id: string, input: UpdateEventInput): Promise<
   const startChanged = "start_date" in updates
   const endCleared = "end_date" in updates && updates.end_date == null
   if (startChanged || endCleared) {
-    const existing = await getEventById(id)
+    const existing = await getEventById(businessId, id)
     if (existing?.type === "clinic") {
       const noEndProvided = !("end_date" in updates) || updates.end_date == null
       if (noEndProvided) {
@@ -123,7 +149,13 @@ export async function updateEvent(id: string, input: UpdateEventInput): Promise<
     }
   }
 
-  const { data, error } = await supabase.from("events").update(updates).eq("id", id).select().single()
+  const { data, error } = await supabase
+    .from("events")
+    .update(updates)
+    .eq("id", id)
+    .eq("business_id", businessId)
+    .select()
+    .single()
   if (error) throw error
   return data as Event
 }
@@ -138,14 +170,14 @@ export const ALLOWED_STATUS_TRANSITIONS: Record<EventStatus, EventStatus[]> = {
   completed: [],
 }
 
-export async function setEventStatus(id: string, status: EventStatus): Promise<Event> {
-  const current = await getEventById(id)
+export async function setEventStatus(businessId: string, id: string, status: EventStatus): Promise<Event> {
+  const current = await getEventById(businessId, id)
   if (!current) throw new Error(`Event ${id} not found`)
   const allowed = ALLOWED_STATUS_TRANSITIONS[current.status]
   if (!allowed.includes(status)) {
     throw new Error(`Cannot transition event from ${current.status} to ${status}`)
   }
-  return updateEvent(id, { status })
+  return updateEvent(businessId, id, { status })
 }
 
 export interface DeleteEventOptions {
@@ -158,13 +190,17 @@ export interface DeleteEventOptions {
   force?: boolean
 }
 
-export async function deleteEvent(id: string, opts: DeleteEventOptions = {}): Promise<void> {
-  const event = await getEventById(id)
+export async function deleteEvent(
+  businessId: string,
+  id: string,
+  opts: DeleteEventOptions = {},
+): Promise<void> {
+  const event = await getEventById(businessId, id)
   if (!event) return
   if (!opts.force && event.signup_count > 0) {
     throw new Error("Cannot delete an event with existing signups; cancel the event instead")
   }
   const supabase = getClient()
-  const { error } = await supabase.from("events").delete().eq("id", id)
+  const { error } = await supabase.from("events").delete().eq("id", id).eq("business_id", businessId)
   if (error) throw error
 }

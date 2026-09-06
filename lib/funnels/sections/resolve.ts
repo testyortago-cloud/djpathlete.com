@@ -5,7 +5,7 @@
 // on the server, against the real catalogue. It is the mechanism that makes a
 // hallucinated id structurally impossible rather than merely unlikely.
 //
-// WHY THIS MATTERS MORE THAN IT LOOKS. `EventIsland.tsx:26-28` returns `null`
+// WHY THIS MATTERS MORE THAN IT LOOKS. `EventIsland.tsx:38` returns `null`
 // for an unknown event id. So a PLAUSIBLE hallucinated UUID passes Zod, passes
 // the compiler, and renders as nothing at all — silent absence, the worst
 // possible failure for an owner who cannot read the DOM. Names can't be
@@ -494,11 +494,14 @@ export async function loadCatalogues(): Promise<Catalogues> {
       listActiveSessionPackProducts(),
       // `{}` is not a stray argument: `getEvents` filters status only when a
       // status filter is present, so this is deliberately "every event, ever".
-      getEvents({}),
-      // No argument at all: the `from: new Date()` default IS the offer bound.
+      // `platformBusinessId()` — the same frozen seam `listQuizzes` below
+      // already uses; see that call's comment for why this whole builder
+      // subsystem is not part of this phase's conversion.
+      getEvents(platformBusinessId(), {}),
+      // No second argument: the `from: new Date()` default IS the offer bound.
       // Passing an epoch here would silently widen the picker back to every
       // event that ever ran, which is the mutant the offer-side test kills.
-      getPublishedEvents(),
+      getPublishedEvents(platformBusinessId()),
       // One lightweight `select page_key` — the same read the admin FAQ picker
       // uses. Counts across EVERY status on purpose: a page key whose rows are
       // all drafts is still a real key, and the live island filters by status
@@ -533,9 +536,12 @@ export async function loadCatalogues(): Promise<Catalogues> {
   // and its admin quiz pages/routes only). Threading a real per-request
   // businessId through here would mean re-scoping that entire builder
   // subsystem as a side effect of a DAL signature change, which is its own
-  // task. `platformBusinessId()` keeps today's behaviour byte-identical
-  // (it returns the same constant `listQuizzes` was hard-coded to) and stays
-  // one greppable line for whichever task gives the builder a real tenant.
+  // task. `platformBusinessId()` keeps today's behaviour byte-identical --
+  // `listQuizzes` never hard-coded anything; it took NO businessId argument
+  // at all and read every business's quizzes. It is byte-identical only
+  // because there is exactly one business's worth of quizzes to read today --
+  // and stays one greppable line for whichever task gives the builder a real
+  // tenant.
   const quizRows = await listQuizzes(platformBusinessId())
   const gated = await Promise.all(
     quizRows.map(async (row): Promise<QuizCatalogueEntry> => {

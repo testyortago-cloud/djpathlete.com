@@ -240,7 +240,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not found" }, { status: 404 })
     }
 
-    const event = configEventId === "" ? null : await getEventById(configEventId).catch(() => null)
+    const event = configEventId === "" ? null : await getEventById(businessId, configEventId).catch(() => null)
     if (!event || event.status !== "published") {
       // The publish gate refuses this configuration, so reaching it means the
       // camp changed AFTER the page went live. The visitor gets the plain fact.
@@ -273,7 +273,7 @@ export async function POST(request: Request) {
       ? { gclid: attrRow.gclid, gbraid: attrRow.gbraid, wbraid: attrRow.wbraid, fbclid: attrRow.fbclid }
       : undefined
 
-    const outcome = await createEventSignupCheckout({
+    const outcome = await createEventSignupCheckout(businessId, {
       event,
       input: parsedSignup.data,
       ipAddress: ip === "unknown" ? null : ip,

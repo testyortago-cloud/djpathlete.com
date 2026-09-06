@@ -89,6 +89,24 @@ import { recordAudit } from "@/lib/audit/record"
  *     components/public/StepUpInquiryForm.tsx
  *     components/funnels/islands/FormIsland.tsx
  *     components/funnels/islands/QuizIsland.tsx
+ *
+ *   The camps/clinics LIST pages, scoping getPublishedEvents to the host —
+ *   landed the same phase as the two detail pages above but missing from
+ *   this inventory until phase 5a's task 5 closed the gap:
+ *     app/(marketing)/camps/page.tsx
+ *     app/(marketing)/clinics/page.tsx
+ *
+ *   Phase 5a (docs/superpowers/sdd/2026-09-06-tenancy-phase5a-events-per-
+ *   tenant) added three more, each guarding against a different tenant's row:
+ *   the two post-purchase success pages scope getEventBySlug and then check
+ *   the Stripe-session-keyed signup's own business_id against the resolved
+ *   tenant before rendering it (that lookup itself stays unscoped — see
+ *   getEventSignupByStripeSessionId's own doc comment); EventIsland scopes
+ *   getEventById, since a funnel document names an event id with no tenant
+ *   of its own:
+ *     app/(marketing)/camps/[slug]/success/page.tsx
+ *     app/(marketing)/clinics/[slug]/success/page.tsx
+ *     components/funnels/islands/EventIsland.tsx
  */
 
 /**

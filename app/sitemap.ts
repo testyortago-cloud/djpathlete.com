@@ -4,6 +4,7 @@ import { getPublishedEvents } from "@/lib/db/events"
 import { listActiveProducts } from "@/lib/db/shop-products"
 import { SITE_URL } from "@/lib/constants"
 import { SPORTS } from "@/lib/data/sports"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 const BASE_URL = SITE_URL
 
@@ -84,9 +85,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Dynamic event pages (clinics and camps)
   let eventPages: MetadataRoute.Sitemap = []
   try {
+    // platformBusinessId(): the whole file is keyed to one host (every URL
+    // below is built from SITE_URL), so a per-request tenant here would list
+    // a coach's events at darrenjpaul.com — see lib/tenancy/platform.ts.
     const [clinics, camps] = await Promise.all([
-      getPublishedEvents({ type: "clinic" }),
-      getPublishedEvents({ type: "camp" }),
+      getPublishedEvents(platformBusinessId(), { type: "clinic" }),
+      getPublishedEvents(platformBusinessId(), { type: "camp" }),
     ])
     eventPages = [
       ...clinics.map((e) => ({

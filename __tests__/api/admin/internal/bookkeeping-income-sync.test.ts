@@ -16,6 +16,7 @@ import {
 } from "@/lib/db/bookkeeping"
 import { recordAudit } from "@/lib/audit/record"
 import { computeSyncWindow } from "@/lib/bookkeeping/income-sync-window"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 import { POST } from "@/app/api/admin/internal/bookkeeping-income-sync/route"
 
 const TOKEN = "test-cron-token"
@@ -88,7 +89,10 @@ describe("POST /api/admin/internal/bookkeeping-income-sync", () => {
     // Byte-identical cron name (single-owner contract)
     expect(logCronStart).toHaveBeenCalledWith(expect.anything(), "bookkeepingIncomeSyncCron")
     // Window derived from the watermark: from is deterministic (watermark − 14d)
-    const [from, to, opts] = (listPlatformIncome as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [businessId, from, to, opts] = (listPlatformIncome as ReturnType<typeof vi.fn>).mock.calls[0]
+    // No session on an internal-token cron: the platform's own seam, not a
+    // resolved admin tenant — see lib/tenancy/platform.ts.
+    expect(businessId).toBe(platformBusinessId())
     expect(from).toBe("2026-07-06")
     expect(to).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     // Cron path opts into strict source reads — a failing table must fail the
@@ -117,7 +121,7 @@ describe("POST /api/admin/internal/bookkeeping-income-sync", () => {
   it("null watermark → 90-day fallback window", async () => {
     ;(latestPlatformImportDate as ReturnType<typeof vi.fn>).mockResolvedValue(null)
     await POST(makeRequest())
-    const [from, to] = (listPlatformIncome as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [, from, to] = (listPlatformIncome as ReturnType<typeof vi.fn>).mock.calls[0]
     expect({ from, to }).toEqual(computeSyncWindow(null, to))
     expect(from < to).toBe(true)
   })

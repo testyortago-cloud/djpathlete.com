@@ -208,12 +208,16 @@ export type ToolOutcome = {
  * whoever a prompt injection named. `tracking` is the visitor's attribution
  * (click ids) so the booking can fire the ads conversion. `timezone` is the
  * business's, the same one the system prompt tells the model to speak in.
- * `availability` and `now` are injection points for tests.
+ * `businessId` is the conversation's own tenant, threaded into
+ * `list_camps_and_clinics` so events never cross a tenant boundary — see
+ * `listPublicEvents` in `facts.ts`. `availability` and `now` are injection
+ * points for tests.
  */
 export type ExecutorContext = {
   timezone?: string | null
   visitor?: { name: string | null; email: string | null } | null
   tracking?: Partial<ClickTracking> | null
+  businessId?: string
   availability?: typeof listAvailableTimes
   now?: () => Date
 }
@@ -423,6 +427,7 @@ export function createToolExecutor(ctx: ExecutorContext = {}): ToolExecutor {
   const timezone = ctx.timezone?.trim() || "UTC"
   const now = ctx.now ?? (() => new Date())
   const availability = ctx.availability ?? listAvailableTimes
+  const executorBusinessId = ctx.businessId
 
   /**
    * The booking hand-over, in three honest shapes:
@@ -521,7 +526,12 @@ export function createToolExecutor(ctx: ExecutorContext = {}): ToolExecutor {
       }
 
       case "list_camps_and_clinics": {
-        const facts = absorb(await listPublicEvents())
+        // Thrown, not silently substituted with the platform's own tenant: a
+        // turn with no resolved businessId is a wiring bug in the caller, and
+        // answering with someone else's camps would be the exact leak this
+        // parameter exists to close.
+        if (!executorBusinessId) throw new Error("[chat-tools] list_camps_and_clinics called without ctx.businessId")
+        const facts = absorb(await listPublicEvents(executorBusinessId))
         // Zero published events is the COMMON path in this corpus, not an edge
         // case, so the empty answer is designed copy rather than an empty array
         // the model has to interpret.

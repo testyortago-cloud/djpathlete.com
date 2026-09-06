@@ -11,21 +11,38 @@ vi.mock("@/lib/db/bookkeeping", () => ({
   insertImportedEntries: (...a: unknown[]) => insertImportedEntriesMock(...a),
   assertAccountsInBook: vi.fn(),
 }))
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: vi.fn(),
+  NoAccessibleBusinessError: class NoAccessibleBusinessError extends Error {},
+}))
 
 import { POST as PREVIEW } from "@/app/api/admin/bookkeeping/import-platform/route"
 import { POST as COMMIT } from "@/app/api/admin/bookkeeping/import-platform/commit/route"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 const BOOK = "b0000000-0000-4000-8000-000000000001"
+const ADMIN_BIZ = "admin-biz"
 
 beforeEach(() => {
   authMock.mockReset(); listPlatformIncomeMock.mockReset(); insertImportedEntriesMock.mockReset()
   authMock.mockResolvedValue({ user: { id: "admin-1", role: "admin" } })
+  ;(resolveAdminTenantForRequest as ReturnType<typeof vi.fn>).mockReset()
+  ;(resolveAdminTenantForRequest as ReturnType<typeof vi.fn>).mockResolvedValue({
+    businessId: ADMIN_BIZ, choices: [], isOperator: false,
+  })
 })
 
 describe("import-platform preview", () => {
   it("403s non-admin", async () => {
     authMock.mockResolvedValue({ user: { id: "u", role: "client" } })
     const res = await PREVIEW(new Request("http://x", { method: "POST", body: "{}" }) as never)
+    expect(res.status).toBe(403)
+    expect(listPlatformIncomeMock).not.toHaveBeenCalled()
+  })
+  it("403s an admin with no accessible business", async () => {
+    ;(resolveAdminTenantForRequest as ReturnType<typeof vi.fn>).mockRejectedValue(new NoAccessibleBusinessError())
+    const res = await PREVIEW(new Request("http://x", { method: "POST",
+      body: JSON.stringify({ book_id: BOOK, from: "2026-01-01", to: "2026-12-31" }) }) as never)
     expect(res.status).toBe(403)
     expect(listPlatformIncomeMock).not.toHaveBeenCalled()
   })
@@ -44,6 +61,8 @@ describe("import-platform preview", () => {
     const json = await res.json()
     expect(json.drafts).toHaveLength(1)
     expect(json.drafts[0].source_ref).toBe("payments:11111111-1111-4111-8111-111111111111")
+    // The resolved admin tenant reaches the DAL, and it is not the platform id.
+    expect(listPlatformIncomeMock).toHaveBeenCalledWith(ADMIN_BIZ, "2026-01-01", "2026-12-31")
   })
   it("400s an oversized or reversed date range", async () => {
     const res = await PREVIEW(new Request("http://x", { method: "POST",

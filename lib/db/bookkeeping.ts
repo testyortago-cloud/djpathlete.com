@@ -297,7 +297,18 @@ async function lookupProgramNames(ids: string[]): Promise<Map<string, string>> {
   return map
 }
 
+/**
+ * `businessId` scopes ONLY the `event_signups` arm below — the one events-
+ * subsystem table this reads. `payments`, `shop_orders`, `client_packages`
+ * and `client_memberships` have no `business_id` column at all (verified
+ * against the migrations), so they stay platform-wide reads; scoping them is
+ * a separate, larger phase that would need those tables to carry a tenant
+ * column first. Leaving four of five arms unscoped is not an oversight here —
+ * see `lib/tenancy/platform.ts`'s doc comment for the same reasoning applied
+ * to `payments` specifically.
+ */
 export async function listPlatformIncome(
+  businessId: string,
   from: string,
   to: string,
   opts?: { strict?: boolean },
@@ -317,8 +328,12 @@ export async function listPlatformIncome(
     safeAll<IncomeSourceRows["clientPackages"][number]>((f, t) =>
       db().from("client_packages").select("*, session_pack_products(name)")
         .lte("purchased_at", toTs).or(`purchased_at.gte.${fromTs},updated_at.gte.${fromTs}`).range(f, t), strict),
+    // events(title,type) is an EMBED off event_signups.event_id, resolved by
+    // migration 00252's FK — left exactly as-is. Do not add a second embed
+    // filter here; the business_id predicate belongs on event_signups itself.
     safeAll<IncomeSourceRows["eventSignups"][number]>((f, t) =>
-      db().from("event_signups").select("*, events(title,type)").gte("created_at", fromTs).lte("created_at", toTs).range(f, t), strict),
+      db().from("event_signups").select("*, events(title,type)").eq("business_id", businessId)
+        .gte("created_at", fromTs).lte("created_at", toTs).range(f, t), strict),
     safeAll<IncomeSourceRows["memberships"][number]>((f, t) =>
       db().from("client_memberships").select("*, membership_plans(name,price_cents,billing_interval)")
         .lte("created_at", toTs).or(`canceled_at.is.null,canceled_at.gte.${fromTs}`).range(f, t), strict),

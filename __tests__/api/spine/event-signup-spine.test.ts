@@ -27,7 +27,7 @@ const mocks = vi.hoisted(() => ({
   recordConsent: vi.fn(),
   getBusinessSettings: vi.fn(),
   recordAudit: vi.fn(),
-  updateEq: vi.fn(async () => ({})),
+  updateEq: vi.fn((..._args: unknown[]) => Promise.resolve({})),
 }))
 
 vi.mock("@/lib/db/events", () => ({ getEventById: (...a: unknown[]) => mocks.getEventById(...a) }))
@@ -49,9 +49,27 @@ vi.mock("@/lib/audit/record", () => ({ recordAudit: (...a: unknown[]) => mocks.r
 vi.mock("@/lib/audit/with-audit", () => ({
   withAudit: (_cfg: unknown, handler: unknown) => handler,
 }))
+// A chainable `.eq()` stand-in — the checkout route's update now writes
+// `.eq("id", ...).eq("business_id", ...)` rather than a single `.eq()`. Each
+// call is recorded on `mocks.updateEq` so it stays the one place to inspect.
+function chainableUpdateEq(): { eq: typeof chainableUpdateEq } & PromiseLike<Record<string, never>> {
+  const chain = Promise.resolve({}) as unknown as { eq: typeof chainableUpdateEq } & PromiseLike<Record<string, never>>
+  chain.eq = ((...args: unknown[]) => {
+    mocks.updateEq(...args)
+    return chainableUpdateEq()
+  }) as typeof chainableUpdateEq
+  return chain
+}
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({
-    from: () => ({ update: () => ({ eq: mocks.updateEq }) }),
+    from: () => ({
+      update: () => ({
+        eq: (...args: unknown[]) => {
+          mocks.updateEq(...args)
+          return chainableUpdateEq()
+        },
+      }),
+    }),
   }),
 }))
 // The route resolves its tenant from the request's Host through the ONE Host
@@ -509,6 +527,20 @@ describe("event routes — tenant", () => {
     expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
   })
 
+  it("signup: threads the resolved tenant into getEventById and createSignup, not the platform id", async () => {
+    // The sentinel "host-biz" is deliberately NOT platformBusinessId() — a
+    // route that hard-codes the platform id in place of the resolved tenant
+    // would still pass a test written against that id.
+    mocks.getEventById.mockResolvedValueOnce(publishedEvent)
+    mocks.createSignup.mockResolvedValueOnce(signupRow)
+    const { POST } = await import("@/app/api/events/[id]/signup/route")
+    const res = await POST(signupReq(validBody), ctx)
+    await flush()
+    expect(res.status).toBe(200)
+    expect(mocks.getEventById).toHaveBeenCalledWith("host-biz", "evt-1")
+    expect(mocks.createSignup.mock.calls[0][0]).toBe("host-biz")
+  })
+
   it("checkout: resolves the tenant once through the seam and threads it into contact, settings and consent", async () => {
     mocks.getEventById.mockResolvedValueOnce(publishedEvent)
     mocks.createSignup.mockResolvedValueOnce(signupRow)
@@ -520,5 +552,20 @@ describe("event routes — tenant", () => {
     expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
     expect(mocks.getBusinessSettings).toHaveBeenCalledWith("host-biz")
     expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
+  })
+
+  it("checkout: threads the resolved tenant into getEventById and createSignup, not the platform id", async () => {
+    // The sentinel "host-biz" is deliberately NOT platformBusinessId() — a
+    // route that hard-codes the platform id in place of the resolved tenant
+    // would still pass a test written against that id.
+    mocks.getEventById.mockResolvedValueOnce(publishedEvent)
+    mocks.createSignup.mockResolvedValueOnce(signupRow)
+    mocks.createEventCheckoutSession.mockResolvedValueOnce({ id: "cs_2", url: "https://checkout.stripe.test/cs_2" })
+    const { POST } = await import("@/app/api/events/[id]/checkout/route")
+    const res = await POST(checkoutReq(validBody), ctx)
+    await flush()
+    expect(res.ok).toBe(true)
+    expect(mocks.getEventById).toHaveBeenCalledWith("host-biz", "evt-1")
+    expect(mocks.createSignup.mock.calls[0][0]).toBe("host-biz")
   })
 })

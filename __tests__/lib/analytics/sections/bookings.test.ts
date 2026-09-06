@@ -13,6 +13,7 @@ vi.mock("@/lib/db/event-signups", () => ({
 import { buildDailyBookings } from "@/lib/analytics/sections/bookings"
 
 const referenceDate = new Date("2026-05-07T07:00:00-05:00")
+const businessId = "biz-1"
 
 describe("buildDailyBookings", () => {
   beforeEach(() => {
@@ -22,7 +23,7 @@ describe("buildDailyBookings", () => {
   })
 
   it("returns null when no calls today and no overnight signups", async () => {
-    const result = await buildDailyBookings({ referenceDate })
+    const result = await buildDailyBookings({ referenceDate, businessId })
     expect(result).toBeNull()
   })
 
@@ -41,7 +42,7 @@ describe("buildDailyBookings", () => {
     ])
     listSignupsCreatedSinceMock.mockResolvedValue([{ id: "s1" }, { id: "s2" }])
 
-    const result = await buildDailyBookings({ referenceDate })
+    const result = await buildDailyBookings({ referenceDate, businessId })
 
     expect(result).not.toBeNull()
     expect(result!.callsToday).toHaveLength(2)
@@ -49,11 +50,13 @@ describe("buildDailyBookings", () => {
     expect(result!.callsToday[0].type).toBe("60 min")
     expect(result!.callsToday[1].clientName).toBe("Sarah K.")
     expect(result!.newSignupsOvernight).toBe(2)
+    // MUTANT: passing the wrong argument (or none) to listSignupsCreatedSince.
+    expect(listSignupsCreatedSinceMock).toHaveBeenCalledWith(businessId, expect.any(Date))
   })
 
   it("handles only overnight signups (no calls today)", async () => {
     listSignupsCreatedSinceMock.mockResolvedValue([{ id: "s1" }])
-    const result = await buildDailyBookings({ referenceDate })
+    const result = await buildDailyBookings({ referenceDate, businessId })
     expect(result).toEqual({ callsToday: [], newSignupsOvernight: 1 })
   })
 })

@@ -177,10 +177,17 @@ describe("the executor", () => {
     const { createToolExecutor } = await import("@/lib/lead-engine/chat/tools")
     const { NO_EVENTS_SCHEDULED } = await import("@/lib/lead-engine/chat/constants")
     rowsByTable = { events: [] }
-    const ex = createToolExecutor()
+    const ex = createToolExecutor({ businessId: "host-biz" })
     // 0 published events is the COMMON path in this corpus, not an edge case.
     expect(await ex.execute("list_camps_and_clinics", {})).toBe(NO_EVENTS_SCHEDULED)
     expect(ex.outcome().cards).toEqual([])
+  })
+
+  it("throws rather than silently answering with another tenant's camps when businessId is missing", async () => {
+    const { createToolExecutor } = await import("@/lib/lead-engine/chat/tools")
+    rowsByTable = { events: [] }
+    const ex = createToolExecutor()
+    await expect(ex.execute("list_camps_and_clinics", {})).rejects.toThrow(/businessId/)
   })
 
   it("gives each turn its own accumulator", async () => {

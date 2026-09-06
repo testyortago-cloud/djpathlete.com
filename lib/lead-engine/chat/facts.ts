@@ -504,12 +504,19 @@ export async function listPublicProgrammes(): Promise<Fact[]> {
  * `spotsLeft` and `soldOut` are COMPUTED HERE from capacity and signups. The
  * assistant is never asked to do arithmetic about availability, because a
  * number it worked out itself is a number nothing can check.
+ *
+ * `businessId` is the conversation's OWN tenant (`chat_conversations.business_id`,
+ * resolved once at conversation creation via `resolvePublicTenant()` in
+ * `app/api/ask/route.ts`), never re-resolved here. Without this predicate a
+ * coach's public `/ask` chat answered questions using the platform's own
+ * camps — a live cross-tenant leak, not a hypothetical one.
  */
-export async function listPublicEvents(): Promise<Fact[]> {
+export async function listPublicEvents(businessId: string): Promise<Fact[]> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("events")
     .select("title, type, start_date, end_date, location_name, price_cents, capacity, signup_count")
+    .eq("business_id", businessId)
     .eq("status", "published")
     .gte("end_date", new Date().toISOString())
     .order("start_date", { ascending: true })

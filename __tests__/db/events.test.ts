@@ -10,6 +10,9 @@ import {
   setEventStatus,
 } from "@/lib/db/events"
 
+const PLATFORM = "00000000-0000-0000-0000-000000000001"
+const OTHER_BUSINESS = "82d5b238-1653-4a04-9d2d-2f65e5a8c225" // Trailhead Strength & Conditioning
+
 describe("events DAL", () => {
   const createdIds: string[] = []
 
@@ -21,13 +24,14 @@ describe("events DAL", () => {
 
   it("creates and fetches by id + slug", async () => {
     const slug = `test-${randomUUID()}`
-    const event = await createEvent({
+    const event = await createEvent(PLATFORM, {
       type: "clinic",
       slug,
       title: "T",
       summary: "S",
       description: "D",
       focus_areas: [],
+      audience: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
       location_name: "L",
       capacity: 5,
@@ -37,22 +41,23 @@ describe("events DAL", () => {
     expect(event.id).toBeDefined()
     expect(event.end_date).not.toBeNull() // clinic auto-end
 
-    const byId = await getEventById(event.id)
+    const byId = await getEventById(PLATFORM, event.id)
     expect(byId?.id).toBe(event.id)
 
-    const bySlug = await getEventBySlug(slug)
+    const bySlug = await getEventBySlug(PLATFORM, slug)
     expect(bySlug?.id).toBe(event.id)
   })
 
   it("rejects duplicate slugs", async () => {
     const slug = `dup-${randomUUID()}`
-    const event = await createEvent({
+    const event = await createEvent(PLATFORM, {
       type: "clinic",
       slug,
       title: "T",
       summary: "S",
       description: "D",
       focus_areas: [],
+      audience: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
       location_name: "L",
       capacity: 5,
@@ -61,13 +66,14 @@ describe("events DAL", () => {
     createdIds.push(event.id)
 
     await expect(
-      createEvent({
+      createEvent(PLATFORM, {
         type: "clinic",
         slug,
         title: "T2",
         summary: "S",
         description: "D",
         focus_areas: [],
+        audience: [],
         start_date: new Date(Date.now() + 86400000).toISOString(),
         location_name: "L",
         capacity: 5,
@@ -77,13 +83,14 @@ describe("events DAL", () => {
   })
 
   it("getPublishedEvents returns only published + upcoming", async () => {
-    const draft = await createEvent({
+    const draft = await createEvent(PLATFORM, {
       type: "clinic",
       slug: `draft-${randomUUID()}`,
       title: "D",
       summary: "S",
       description: "D",
       focus_areas: [],
+      audience: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
       location_name: "L",
       capacity: 5,
@@ -91,13 +98,14 @@ describe("events DAL", () => {
     })
     createdIds.push(draft.id)
 
-    const published = await createEvent({
+    const published = await createEvent(PLATFORM, {
       type: "clinic",
       slug: `pub-${randomUUID()}`,
       title: "P",
       summary: "S",
       description: "D",
       focus_areas: [],
+      audience: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
       location_name: "L",
       capacity: 5,
@@ -105,19 +113,20 @@ describe("events DAL", () => {
     })
     createdIds.push(published.id)
 
-    const results = await getPublishedEvents({ type: "clinic" })
+    const results = await getPublishedEvents(PLATFORM, { type: "clinic" })
     expect(results.some((e) => e.id === published.id)).toBe(true)
     expect(results.some((e) => e.id === draft.id)).toBe(false)
   })
 
   it("setEventStatus enforces allowed transitions", async () => {
-    const event = await createEvent({
+    const event = await createEvent(PLATFORM, {
       type: "clinic",
       slug: `trans-${randomUUID()}`,
       title: "T",
       summary: "S",
       description: "D",
       focus_areas: [],
+      audience: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
       location_name: "L",
       capacity: 5,
@@ -125,20 +134,21 @@ describe("events DAL", () => {
     })
     createdIds.push(event.id)
 
-    await setEventStatus(event.id, "published")
-    await setEventStatus(event.id, "completed") // published -> completed is allowed
+    await setEventStatus(PLATFORM, event.id, "published")
+    await setEventStatus(PLATFORM, event.id, "completed") // published -> completed is allowed
     // completed is a terminal state — no transitions out of it
-    await expect(setEventStatus(event.id, "draft")).rejects.toThrow()
+    await expect(setEventStatus(PLATFORM, event.id, "draft")).rejects.toThrow()
   })
 
   it("deleteEvent rejects an event that has signups", async () => {
-    const event = await createEvent({
+    const event = await createEvent(PLATFORM, {
       type: "clinic",
       slug: `del-${randomUUID()}`,
       title: "T",
       summary: "S",
       description: "D",
       focus_areas: [],
+      audience: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
       location_name: "L",
       capacity: 5,
@@ -149,17 +159,18 @@ describe("events DAL", () => {
     const { createServiceRoleClient } = await import("@/lib/supabase")
     const supabase = createServiceRoleClient()
     await supabase.from("events").update({ signup_count: 1 }).eq("id", event.id)
-    await expect(deleteEvent(event.id)).rejects.toThrow()
+    await expect(deleteEvent(PLATFORM, event.id)).rejects.toThrow()
   })
 
   it("updateEvent converts price_dollars to price_cents", async () => {
-    const event = await createEvent({
+    const event = await createEvent(PLATFORM, {
       type: "camp",
       slug: `camp-${randomUUID()}`,
       title: "C",
       summary: "S",
       description: "D",
       focus_areas: [],
+      audience: [],
       start_date: new Date(Date.now() + 86400000).toISOString(),
       end_date: new Date(Date.now() + 7 * 86400000).toISOString(),
       location_name: "L",
@@ -170,7 +181,84 @@ describe("events DAL", () => {
     createdIds.push(event.id)
     expect(event.price_cents).toBe(29900)
 
-    const updated = await updateEvent(event.id, { price_dollars: 349.5 })
+    const updated = await updateEvent(PLATFORM, event.id, { price_dollars: 349.5 })
     expect(updated.price_cents).toBe(34950)
+  })
+
+  describe("tenancy scoping", () => {
+    it("does not return another business's event by id or slug", async () => {
+      const slug = `tenancy-${randomUUID()}`
+      const event = await createEvent(PLATFORM, {
+        type: "clinic",
+        slug,
+        title: "T",
+        summary: "S",
+        description: "D",
+        focus_areas: [],
+        audience: [],
+        start_date: new Date(Date.now() + 86400000).toISOString(),
+        location_name: "L",
+        capacity: 5,
+        status: "draft",
+      })
+      createdIds.push(event.id)
+
+      expect(await getEventById(PLATFORM, event.id)).not.toBeNull()
+      expect(await getEventById(OTHER_BUSINESS, event.id)).toBeNull()
+      expect(await getEventBySlug(PLATFORM, slug)).not.toBeNull()
+      expect(await getEventBySlug(OTHER_BUSINESS, slug)).toBeNull()
+    })
+
+    it("stamps the business on create", async () => {
+      const slug = `tenancy-${randomUUID()}`
+      const event = await createEvent(PLATFORM, {
+        type: "clinic",
+        slug,
+        title: "T",
+        summary: "S",
+        description: "D",
+        focus_areas: [],
+        audience: [],
+        start_date: new Date(Date.now() + 86400000).toISOString(),
+        location_name: "L",
+        capacity: 5,
+        status: "draft",
+      })
+      createdIds.push(event.id)
+      expect(event.business_id).toBe(PLATFORM)
+    })
+
+    it("allows the same slug in two businesses", async () => {
+      const slug = `shared-${randomUUID()}`
+      const a = await createEvent(PLATFORM, {
+        type: "clinic",
+        slug,
+        title: "T",
+        summary: "S",
+        description: "D",
+        focus_areas: [],
+        audience: [],
+        start_date: new Date(Date.now() + 86400000).toISOString(),
+        location_name: "L",
+        capacity: 5,
+        status: "draft",
+      })
+      const b = await createEvent(OTHER_BUSINESS, {
+        type: "clinic",
+        slug,
+        title: "T",
+        summary: "S",
+        description: "D",
+        focus_areas: [],
+        audience: [],
+        start_date: new Date(Date.now() + 86400000).toISOString(),
+        location_name: "L",
+        capacity: 5,
+        status: "draft",
+      })
+      createdIds.push(a.id, b.id)
+      expect(a.slug).toBe(b.slug)
+      expect(a.business_id).not.toBe(b.business_id)
+    })
   })
 })

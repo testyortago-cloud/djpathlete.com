@@ -33,16 +33,16 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       )
     }
 
-    const event = await getEventById(id)
-    if (!event || event.status !== "published") {
-      return NextResponse.json({ error: "Event not available" }, { status: 404 })
-    }
-
     // PUBLIC ROUTE, NO SESSION. The tenant is resolved from the request's Host
     // by lib/tenancy/public.ts (business_domains), and is the platform's own
     // only when no domain row claims the host. Resolved once here and
     // threaded; the DAL does not default it.
     const businessId = await resolvePublicTenant()
+
+    const event = await getEventById(businessId, id)
+    if (!event || event.status !== "published") {
+      return NextResponse.json({ error: "Event not available" }, { status: 404 })
+    }
 
     // Resolved from the djp_attr cookie BEFORE the signup is created, so gclid
     // lands on `event_signups` itself and not only on the downstream payments row
@@ -63,7 +63,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     // success and cancel pages, which is what the helper defaults to.
     const ipAddress = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || null
     const userAgent = request.headers.get("user-agent")
-    const outcome = await createEventSignupCheckout({
+    const outcome = await createEventSignupCheckout(businessId, {
       event,
       input: parsed.data,
       ipAddress,

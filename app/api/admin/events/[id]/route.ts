@@ -5,6 +5,7 @@ import { updateEvent, deleteEvent, getEventById, ALLOWED_STATUS_TRANSITIONS } fr
 import { syncEventToStripe, archiveAndCreateNewPrice, stripe } from "@/lib/stripe"
 import { submitUrlToIndexNow } from "@/lib/indexnow"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 async function requireAdmin() {
   const session = await auth()
@@ -16,6 +17,15 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   try {
     if (!(await requireAdmin())) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
     }
     const { id } = await ctx.params
     const body = await request.json()
@@ -37,7 +47,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
       const merged: Record<string, unknown> = { ...rest }
 
       // Load the current event up-front so we can detect price changes and validate transitions.
-      const current = await getEventById(id)
+      const current = await getEventById(businessId, id)
       if (!current) {
         return NextResponse.json({ error: "Event not found" }, { status: 404 })
       }
@@ -130,7 +140,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
         return NextResponse.json({ event: current })
       }
 
-      const updated = await updateEvent(id, merged)
+      const updated = await updateEvent(businessId, id, merged)
 
       // Ping IndexNow for published clinic/camp pages so search engines
       // re-crawl. Fire-and-forget — never block the save.
@@ -162,14 +172,23 @@ export async function DELETE(request: Request, ctx: { params: Promise<{ id: stri
     if (!(await requireAdmin())) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
+    }
     const { id } = await ctx.params
     const force = new URL(request.url).searchParams.get("force") === "true"
 
-    const current = await getEventById(id)
+    const current = await getEventById(businessId, id)
     if (!current) return NextResponse.json({ ok: true })
 
     try {
-      await deleteEvent(id, { force })
+      await deleteEvent(businessId, id, { force })
     } catch (err) {
       const msg = (err as Error).message
       if (msg.includes("Cannot delete")) {

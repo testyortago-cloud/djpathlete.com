@@ -144,6 +144,7 @@ describe("chat facts respect every other visibility column", () => {
         title: "Camp",
         type: "camp",
         status: "published",
+        business_id: SETTINGS.business_id,
         start_date: "2026-09-01T12:00:00Z",
         end_date: "2026-09-03T12:00:00Z",
         location_name: "Field",
@@ -152,8 +153,8 @@ describe("chat facts respect every other visibility column", () => {
         signup_count: 12,
       },
     ]
-    const [fact] = (await listPublicEvents()) as Array<{ soldOut: boolean; spotsLeft: number }>
-    expect(applied[0]).toMatchObject({ status: "published" })
+    const [fact] = (await listPublicEvents(SETTINGS.business_id)) as Array<{ soldOut: boolean; spotsLeft: number }>
+    expect(applied[0]).toMatchObject({ status: "published", business_id: SETTINGS.business_id })
     expect(applied[0]).toHaveProperty("end_date__gte")
     expect(fact.soldOut).toBe(true)
     expect(fact.spotsLeft).toBe(0)
@@ -240,6 +241,7 @@ describe("date forms cover the shapes a model actually writes", () => {
         title: "Camp",
         type: "camp",
         status: "published",
+        business_id: SETTINGS.business_id,
         start_date: "2026-09-01T12:00:00Z",
         end_date: "2026-09-03T12:00:00Z",
         location_name: "Field",
@@ -248,7 +250,7 @@ describe("date forms cover the shapes a model actually writes", () => {
         signup_count: 0,
       },
     ]
-    const grounded = groundedValuesFor(await listPublicEvents(), SETTINGS)
+    const grounded = groundedValuesFor(await listPublicEvents(SETTINGS.business_id), SETTINGS)
     for (const form of ["september 1", "sep 1", "sept 1", "1 september 2026", "9/1/2026"]) {
       expect(grounded).toContain(form)
     }
@@ -264,6 +266,7 @@ const JULY_CAMP = {
   title: "Camp",
   type: "camp",
   status: "published",
+  business_id: SETTINGS.business_id,
   start_date: "2026-07-24T12:00:00Z",
   end_date: "2026-07-26T12:00:00Z",
   location_name: "Field",
@@ -283,7 +286,7 @@ describe("the Sept form belongs to September and to no other month", () => {
     // not. A fixture that makes the expectation trivially true proves nothing.
     const { listPublicEvents, groundedValuesFor } = await import("@/lib/lead-engine/chat/facts")
     rows = [JULY_CAMP]
-    const grounded = groundedValuesFor(await listPublicEvents(), SETTINGS)
+    const grounded = groundedValuesFor(await listPublicEvents(SETTINGS.business_id), SETTINGS)
     expect(grounded).not.toContain("sept 24")
     // The honest July forms are all still there, so this is not passing by
     // grounding nothing at all.
@@ -301,7 +304,7 @@ describe("the Sept form belongs to September and to no other month", () => {
         end_date: "2026-09-03T12:00:00Z",
       },
     ]
-    const grounded = groundedValuesFor(await listPublicEvents(), SETTINGS)
+    const grounded = groundedValuesFor(await listPublicEvents(SETTINGS.business_id), SETTINGS)
     expect(grounded).toContain("sept 1")
   })
 })

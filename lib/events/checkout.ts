@@ -48,7 +48,15 @@ export interface EventCheckoutArgs {
   returnUrls?: { successUrl: string; cancelUrl: string }
 }
 
-export async function createEventSignupCheckout(args: EventCheckoutArgs): Promise<EventCheckoutOutcome> {
+/**
+ * `businessId` is resolved by the CALLER — a public route resolves it once
+ * via `resolvePublicTenant()` (`@/lib/tenancy/public`) and threads it in;
+ * this helper does not resolve or default it itself.
+ */
+export async function createEventSignupCheckout(
+  businessId: string,
+  args: EventCheckoutArgs,
+): Promise<EventCheckoutOutcome> {
   const { event, input, ipAddress, userAgent, tracking, baseUrl, returnUrls } = args
 
   if (!event.stripe_price_id) {
@@ -84,6 +92,7 @@ export async function createEventSignupCheckout(args: EventCheckoutArgs): Promis
   const { waiver_accepted: _accepted, sms_consent: _smsConsent, ...signupInput } = input
 
   const signup = await createSignup(
+    businessId,
     event.id,
     signupInput,
     "paid",
@@ -118,6 +127,7 @@ export async function createEventSignupCheckout(args: EventCheckoutArgs): Promis
     .from("event_signups")
     .update({ stripe_session_id: session.id, updated_at: new Date().toISOString() })
     .eq("id", signup.id)
+    .eq("business_id", businessId)
 
   return { ok: true, sessionUrl: session.url, signupId: signup.id }
 }

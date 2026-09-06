@@ -1319,6 +1319,7 @@ export type SignupStatus = "pending" | "confirmed" | "cancelled" | "refunded"
 
 export interface Event {
   id: string
+  business_id: string
   type: EventType
   slug: string
   title: string
@@ -1348,6 +1349,7 @@ export interface Event {
 export interface EventSignup {
   id: string
   event_id: string
+  business_id: string
   signup_type: SignupType
   parent_name: string
   parent_email: string
