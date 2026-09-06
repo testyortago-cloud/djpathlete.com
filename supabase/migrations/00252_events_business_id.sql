@@ -44,10 +44,17 @@ alter table public.event_signups
 
 -- A signup's tenant cannot drift from its event's: the pair must exist in
 -- events. This is why events_id_business_id_key above exists.
+--
+-- ON DELETE CASCADE is inherited from event_signups_event_id_fkey below, not
+-- a new choice. deleteEvent(id, {force:true}) in lib/db/events.ts and the
+-- admin delete-event confirm dialog both depend on the FK cascading signups
+-- away; dropping this clause here would silently turn that force-delete into
+-- a foreign_key_violation. Keep it on any future edit of this constraint.
 alter table public.event_signups
   add constraint event_signups_event_business_fkey
     foreign key (event_id, business_id)
-    references public.events (id, business_id);
+    references public.events (id, business_id)
+    on delete cascade;
 
 -- REQUIRED, not tidy-up. PostgREST picks an embed by finding THE foreign key
 -- between two tables; with both this and the composite FK above it answers
