@@ -3,12 +3,15 @@ import { randomUUID } from "crypto"
 import { createEvent } from "@/lib/db/events"
 import { createSignup, getSignupsForEvent, getSignupById, confirmSignup, cancelSignup } from "@/lib/db/event-signups"
 
+const PLATFORM = "00000000-0000-0000-0000-000000000001"
+const OTHER_BUSINESS = "82d5b238-1653-4a04-9d2d-2f65e5a8c225" // Trailhead Strength & Conditioning
+
 describe("event-signups DAL", () => {
   let eventId: string
   const extraEventIds: string[] = []
 
   beforeAll(async () => {
-    const e = await createEvent({
+    const e = await createEvent(PLATFORM, {
       type: "clinic",
       slug: `signup-test-${randomUUID()}`,
       title: "T",
@@ -32,6 +35,7 @@ describe("event-signups DAL", () => {
 
   it("creates a signup and fetches it back", async () => {
     const signup = await createSignup(
+      PLATFORM,
       eventId,
       {
         parent_name: "A",
@@ -43,15 +47,16 @@ describe("event-signups DAL", () => {
     )
     expect(signup.status).toBe("pending")
 
-    const fetched = await getSignupById(signup.id)
+    const fetched = await getSignupById(PLATFORM, signup.id)
     expect(fetched?.id).toBe(signup.id)
 
-    const all = await getSignupsForEvent(eventId)
+    const all = await getSignupsForEvent(PLATFORM, eventId)
     expect(all.some((s) => s.id === signup.id)).toBe(true)
   })
 
   it("confirm + cancel flip status and adjust signup_count", async () => {
     const signup = await createSignup(
+      PLATFORM,
       eventId,
       {
         parent_name: "B",
@@ -62,18 +67,18 @@ describe("event-signups DAL", () => {
       "interest",
     )
 
-    const confirmed = await confirmSignup(signup.id)
+    const confirmed = await confirmSignup(PLATFORM, signup.id)
     expect(confirmed.ok).toBe(true)
 
-    const fetched = await getSignupById(signup.id)
+    const fetched = await getSignupById(PLATFORM, signup.id)
     expect(fetched?.status).toBe("confirmed")
 
-    const cancelled = await cancelSignup(signup.id)
+    const cancelled = await cancelSignup(PLATFORM, signup.id)
     expect(cancelled.ok).toBe(true)
   })
 
   it("confirm returns at_capacity when full", async () => {
-    const e = await createEvent({
+    const e = await createEvent(PLATFORM, {
       type: "clinic",
       slug: `cap-${randomUUID()}`,
       title: "T",
@@ -88,6 +93,7 @@ describe("event-signups DAL", () => {
     extraEventIds.push(e.id)
 
     const s1 = await createSignup(
+      PLATFORM,
       e.id,
       {
         parent_name: "A",
@@ -98,6 +104,7 @@ describe("event-signups DAL", () => {
       "interest",
     )
     const s2 = await createSignup(
+      PLATFORM,
       e.id,
       {
         parent_name: "B",
@@ -108,17 +115,17 @@ describe("event-signups DAL", () => {
       "interest",
     )
 
-    const r1 = await confirmSignup(s1.id)
+    const r1 = await confirmSignup(PLATFORM, s1.id)
     expect(r1.ok).toBe(true)
 
-    const r2 = await confirmSignup(s2.id)
+    const r2 = await confirmSignup(PLATFORM, s2.id)
     expect(r2.ok).toBe(false)
     if (!r2.ok) expect(r2.reason).toBe("at_capacity")
   })
 
   it("getEventSignupByStripeSessionId returns the matching signup", async () => {
     const { getEventSignupByStripeSessionId } = await import("@/lib/db/event-signups")
-    const e = await createEvent({
+    const e = await createEvent(PLATFORM, {
       type: "camp",
       slug: `lookup-session-${randomUUID()}`,
       title: "T",
@@ -135,6 +142,7 @@ describe("event-signups DAL", () => {
     extraEventIds.push(e.id)
 
     const sig = await createSignup(
+      PLATFORM,
       e.id,
       {
         parent_name: "A",
@@ -156,7 +164,7 @@ describe("event-signups DAL", () => {
 
   it("getEventSignupByPaymentIntent returns the matching signup", async () => {
     const { getEventSignupByPaymentIntent } = await import("@/lib/db/event-signups")
-    const e = await createEvent({
+    const e = await createEvent(PLATFORM, {
       type: "camp",
       slug: `lookup-pi-${randomUUID()}`,
       title: "T",
@@ -173,6 +181,7 @@ describe("event-signups DAL", () => {
     extraEventIds.push(e.id)
 
     const sig = await createSignup(
+      PLATFORM,
       e.id,
       {
         parent_name: "A",
@@ -194,7 +203,7 @@ describe("event-signups DAL", () => {
 
   it("getSignupsForEvent sweeps stale paid+pending rows to cancelled", async () => {
     const { getSignupsForEvent } = await import("@/lib/db/event-signups")
-    const e = await createEvent({
+    const e = await createEvent(PLATFORM, {
       type: "camp",
       slug: `sweep-${randomUUID()}`,
       title: "T", summary: "S", description: "D", focus_areas: [],
@@ -205,7 +214,7 @@ describe("event-signups DAL", () => {
     extraEventIds.push(e.id)
 
     // Create a paid pending signup, then manually backdate created_at to >1 hour ago
-    const stale = await createSignup(e.id, {
+    const stale = await createSignup(PLATFORM, e.id, {
       parent_name: "A", parent_email: "a@x.com", athlete_name: "X", athlete_age: 14,
     }, "paid")
 
@@ -215,16 +224,66 @@ describe("event-signups DAL", () => {
     await supabase.from("event_signups").update({ created_at: twoHoursAgo }).eq("id", stale.id)
 
     // Calling getSignupsForEvent should sweep the stale row to 'cancelled'
-    const signups = await getSignupsForEvent(e.id)
+    const signups = await getSignupsForEvent(PLATFORM, e.id)
     const swept = signups.find((s) => s.id === stale.id)
     expect(swept?.status).toBe("cancelled")
 
     // Also verify a fresh paid+pending row is NOT swept
-    const fresh = await createSignup(e.id, {
+    const fresh = await createSignup(PLATFORM, e.id, {
       parent_name: "B", parent_email: "b@x.com", athlete_name: "Y", athlete_age: 14,
     }, "paid")
-    const after = await getSignupsForEvent(e.id)
+    const after = await getSignupsForEvent(PLATFORM, e.id)
     const freshAfter = after.find((s) => s.id === fresh.id)
     expect(freshAfter?.status).toBe("pending")
+  })
+
+  it("does not return another business's signup", async () => {
+    const signup = await createSignup(
+      PLATFORM,
+      eventId,
+      {
+        parent_name: "Tenant",
+        parent_email: "tenant@x.com",
+        athlete_name: "T",
+        athlete_age: 14,
+      },
+      "interest",
+    )
+
+    expect(await getSignupById(PLATFORM, signup.id)).not.toBeNull()
+    expect(await getSignupById(OTHER_BUSINESS, signup.id)).toBeNull()
+  })
+
+  it("refuses to confirm another business's signup", async () => {
+    const signup = await createSignup(
+      PLATFORM,
+      eventId,
+      {
+        parent_name: "Tenant2",
+        parent_email: "tenant2@x.com",
+        athlete_name: "T2",
+        athlete_age: 14,
+      },
+      "interest",
+    )
+
+    const result = await confirmSignup(OTHER_BUSINESS, signup.id)
+    expect(result).toEqual({ ok: false, reason: "not_found" })
+  })
+
+  it("rejects a signup whose business disagrees with its event", async () => {
+    await expect(
+      createSignup(
+        OTHER_BUSINESS,
+        eventId,
+        {
+          parent_name: "Mismatch",
+          parent_email: "mismatch@x.com",
+          athlete_name: "M",
+          athlete_age: 14,
+        },
+        "interest",
+      ),
+    ).rejects.toMatchObject({ code: "23503" })
   })
 })

@@ -15,17 +15,20 @@ function getClient() {
   return createServiceRoleClient()
 }
 
-export async function getSignupsForEvent(eventId: string): Promise<EventSignup[]> {
+export async function getSignupsForEvent(businessId: string, eventId: string): Promise<EventSignup[]> {
   const supabase = getClient()
 
   // On-read sweep: stale paid pending rows (>1 hour old) become cancelled.
   // The capacity guard's time window already excludes them; this keeps the
-  // admin table tidy without a scheduled job.
+  // admin table tidy without a scheduled job. This is a WRITE, so it needs
+  // the tenant predicate as much as the select below does — without it, one
+  // tenant's read could flip another tenant's stale rows to cancelled.
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
   await supabase
     .from("event_signups")
     .update({ status: "cancelled", updated_at: new Date().toISOString() })
     .eq("event_id", eventId)
+    .eq("business_id", businessId)
     .eq("signup_type", "paid")
     .eq("status", "pending")
     .lt("created_at", oneHourAgo)
@@ -34,14 +37,20 @@ export async function getSignupsForEvent(eventId: string): Promise<EventSignup[]
     .from("event_signups")
     .select("*")
     .eq("event_id", eventId)
+    .eq("business_id", businessId)
     .order("created_at", { ascending: false })
   if (error) throw error
   return (data ?? []) as EventSignup[]
 }
 
-export async function getSignupById(id: string): Promise<EventSignup | null> {
+export async function getSignupById(businessId: string, id: string): Promise<EventSignup | null> {
   const supabase = getClient()
-  const { data, error } = await supabase.from("event_signups").select("*").eq("id", id).maybeSingle()
+  const { data, error } = await supabase
+    .from("event_signups")
+    .select("*")
+    .eq("id", id)
+    .eq("business_id", businessId)
+    .maybeSingle()
   if (error) throw error
   return (data as EventSignup) ?? null
 }
@@ -60,6 +69,7 @@ export interface SignupTracking {
 }
 
 export async function createSignup(
+  businessId: string,
   eventId: string,
   input: CreateSignupDbInput,
   signupType: SignupType,
@@ -71,6 +81,7 @@ export async function createSignup(
     .from("event_signups")
     .insert({
       event_id: eventId,
+      business_id: businessId,
       signup_type: signupType,
       ...input,
       waiver_accepted_at: waiver ? new Date().toISOString() : null,
@@ -91,20 +102,41 @@ export async function createSignup(
 export type ConfirmResult = { ok: true } | { ok: false; reason: "not_found" | "not_pending" | "at_capacity" }
 export type CancelResult = { ok: true } | { ok: false; reason: "not_found" | "not_cancellable" }
 
-export async function confirmSignup(id: string): Promise<ConfirmResult> {
+export async function confirmSignup(businessId: string, id: string): Promise<ConfirmResult> {
   const supabase = getClient()
-  const { data, error } = await supabase.rpc("confirm_event_signup", { p_signup_id: id })
+  const { data, error } = await supabase.rpc("confirm_event_signup", {
+    p_signup_id: id,
+    p_business_id: businessId,
+  })
   if (error) throw error
   return data as ConfirmResult
 }
 
-export async function cancelSignup(id: string): Promise<CancelResult> {
+export async function cancelSignup(businessId: string, id: string): Promise<CancelResult> {
   const supabase = getClient()
-  const { data, error } = await supabase.rpc("cancel_event_signup", { p_signup_id: id })
+  const { data, error } = await supabase.rpc("cancel_event_signup", {
+    p_signup_id: id,
+    p_business_id: businessId,
+  })
   if (error) throw error
   return data as CancelResult
 }
 
+/**
+ * DELIBERATELY NOT SCOPED BY businessId. A Stripe checkout-session id is
+ * issued by Stripe and globally unique, so it names exactly one signup and
+ * cannot be guessed into another tenant's rows — the id IS the authorisation.
+ * Adding a tenant argument here would be theatre: every caller would have to
+ * invent one, and the two that exist (the success page and the webhook) have
+ * no better answer than the row itself.
+ *
+ * Its CALLERS still check: the camps/clinics success pages compare the
+ * returned row's business_id against the host's resolved business and 404 on
+ * a mismatch, so this cannot be used to display another tenant's customer.
+ *
+ * An unscoped reader with a written argument is a decision; an unscoped
+ * reader without one is a defect. Do not delete this comment to "clean up".
+ */
 export async function getEventSignupByStripeSessionId(sessionId: string): Promise<EventSignup | null> {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -116,6 +148,21 @@ export async function getEventSignupByStripeSessionId(sessionId: string): Promis
   return (data as EventSignup) ?? null
 }
 
+/**
+ * DELIBERATELY NOT SCOPED BY businessId. A Stripe payment-intent id is
+ * issued by Stripe and globally unique, so it names exactly one signup and
+ * cannot be guessed into another tenant's rows — the id IS the authorisation.
+ * Adding a tenant argument here would be theatre: every caller would have to
+ * invent one, and the two that exist (the success page and the webhook) have
+ * no better answer than the row itself.
+ *
+ * Its CALLERS still check: the camps/clinics success pages compare the
+ * returned row's business_id against the host's resolved business and 404 on
+ * a mismatch, so this cannot be used to display another tenant's customer.
+ *
+ * An unscoped reader with a written argument is a decision; an unscoped
+ * reader without one is a defect. Do not delete this comment to "clean up".
+ */
 export async function getEventSignupByPaymentIntent(piId: string): Promise<EventSignup | null> {
   const supabase = getClient()
   const { data, error } = await supabase
@@ -127,11 +174,12 @@ export async function getEventSignupByPaymentIntent(piId: string): Promise<Event
   return (data as EventSignup) ?? null
 }
 
-export async function listSignupsCreatedSince(since: Date): Promise<EventSignup[]> {
+export async function listSignupsCreatedSince(businessId: string, since: Date): Promise<EventSignup[]> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("event_signups")
     .select("*")
+    .eq("business_id", businessId)
     .gte("created_at", since.toISOString())
     .order("created_at", { ascending: false })
   if (error) throw error
