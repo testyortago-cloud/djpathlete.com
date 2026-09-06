@@ -1,0 +1,11 @@
+# coach host (row for the seeded business)
+$ curl -s -H "x-forwarded-host: phase4-coach.test" http://localhost:3050/api/ask/config
+{"enabled":true,"displayName":"Trailhead Strength & Conditioning — Personal Training"}
+# platform host (the seeded www row)
+$ curl -s -H "x-forwarded-host: www.darrenjpaul.com" http://localhost:3050/api/ask/config
+{"enabled":true,"displayName":"DJP Athlete"}
+# no row: localhost falls back to the platform, and the server log says so ONCE
+$ curl -s http://localhost:3050/api/ask/config
+{"enabled":true,"displayName":"DJP Athlete"}
+# server log lines mentioning [tenancy]:
+[tenancy] no business_domains row for host "localhost"; serving the platform

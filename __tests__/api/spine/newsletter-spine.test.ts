@@ -154,11 +154,16 @@ vi.mock("@/lib/db/newsletter", () => ({
   addSubscriber: vi.fn(),
 }))
 vi.mock("@/lib/ghl", () => ({ ghlCreateContact: mocks.ghlCreateContact }))
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+// Without this mock the real boundary calls headers() from next/headers,
+// which throws outside a request scope.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
 
 import { POST } from "@/app/api/newsletter/route"
 import { NEWSLETTER_CONSENT_WORDING } from "@/lib/lead-engine/capture"
 import { renderNewsletterConsentWording } from "@/lib/lead-engine/newsletter-consent-wording"
-import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 function jsonRequest(body: unknown, headers: Record<string, string> = {}): NextRequest {
   return new NextRequest("http://localhost/api/newsletter", {
@@ -210,7 +215,7 @@ describe("POST /api/newsletter — joins the contact spine", () => {
 
     expect(state.consents).toHaveLength(1)
     expect(state.consents[0]).toMatchObject({
-      business_id: SINGLETON_BUSINESS_ID,
+      business_id: "host-biz",
       contact_id: state.contacts[0].id,
       channel: "email",
       granted: true,
@@ -228,7 +233,7 @@ describe("POST /api/newsletter — joins the contact spine", () => {
     // throw before recordConsent is ever reached, and the assertion below
     // would pass for the wrong reason (masking a dropped gate instead of
     // proving it).
-    state.businessSettings = { business_id: SINGLETON_BUSINESS_ID, display_name: "Acme Coaching" }
+    state.businessSettings = { business_id: "host-biz", display_name: "Acme Coaching" }
 
     const res = await post({ email: "declined@example.com", consent_marketing: false, consent_context: "checkbox" })
     expect(res.status).toBe(200)
@@ -249,7 +254,7 @@ describe("POST /api/newsletter — joins the contact spine", () => {
   })
 
   it("consent_context 'checkbox' quotes the real checkbox template with the configured business name", async () => {
-    state.businessSettings = { business_id: SINGLETON_BUSINESS_ID, display_name: "Acme Coaching" }
+    state.businessSettings = { business_id: "host-biz", display_name: "Acme Coaching" }
 
     const res = await post({ email: "checkbox@example.com", consent_marketing: true, consent_context: "checkbox" })
     expect(res.status).toBe(200)
@@ -260,7 +265,7 @@ describe("POST /api/newsletter — joins the contact spine", () => {
   })
 
   it("consent_context 'inline' always writes the generic act wording, even with a business name configured", async () => {
-    state.businessSettings = { business_id: SINGLETON_BUSINESS_ID, display_name: "Acme Coaching" }
+    state.businessSettings = { business_id: "host-biz", display_name: "Acme Coaching" }
 
     const res = await post({ email: "inline@example.com", consent_marketing: true, consent_context: "inline" })
     expect(res.status).toBe(200)
@@ -272,7 +277,7 @@ describe("POST /api/newsletter — joins the contact spine", () => {
   it("consent_context 'checkbox' falls back to the generic wording when business_settings.display_name is blank", async () => {
     // The real seeded default (migration 00212 — NOT NULL DEFAULT ''), not a
     // missing row: any install nobody has configured yet reads back this way.
-    state.businessSettings = { business_id: SINGLETON_BUSINESS_ID, display_name: "" }
+    state.businessSettings = { business_id: "host-biz", display_name: "" }
 
     const res = await post({ email: "blank-name@example.com", consent_marketing: true, consent_context: "checkbox" })
     expect(res.status).toBe(200)
@@ -313,7 +318,7 @@ describe("POST /api/newsletter — enrolment (real recordContactEvent, real enro
   it("enrols the new contact into an ACTIVE newsletter-sourced sequence", async () => {
     state.sequences.push({
       id: "seq-newsletter-welcome",
-      business_id: SINGLETON_BUSINESS_ID,
+      business_id: "host-biz",
       key: "newsletter_welcome",
       name: "Newsletter Welcome",
       trigger_source: "newsletter",
@@ -327,7 +332,7 @@ describe("POST /api/newsletter — enrolment (real recordContactEvent, real enro
     expect(state.contacts).toHaveLength(1)
     expect(state.sequenceRuns).toHaveLength(1)
     expect(state.sequenceRuns[0]).toMatchObject({
-      business_id: SINGLETON_BUSINESS_ID,
+      business_id: "host-biz",
       sequence_id: "seq-newsletter-welcome",
       contact_id: state.contacts[0].id,
       current_position: 0,
@@ -337,7 +342,7 @@ describe("POST /api/newsletter — enrolment (real recordContactEvent, real enro
   it("does not enrol into a DRAFT newsletter-sourced sequence", async () => {
     state.sequences.push({
       id: "seq-draft",
-      business_id: SINGLETON_BUSINESS_ID,
+      business_id: "host-biz",
       key: "newsletter_welcome",
       trigger_source: "newsletter",
       trigger_filter: {},

@@ -8,7 +8,7 @@ import { captureLead } from "@/lib/lead-engine/capture"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
-import { platformBusinessId } from "@/lib/tenancy/platform"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 function getBaseUrl() {
   return process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
@@ -38,11 +38,11 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       return NextResponse.json({ error: "Event not available" }, { status: 404 })
     }
 
-    // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()`
-    // is the seam until phase 4 resolves a real business off the Host header
-    // (lib/tenancy/platform.ts, CANNOT RESOLVE YET). Resolved once here and
-    // threaded; the DAL no longer defaults it.
-    const businessId = platformBusinessId()
+    // PUBLIC ROUTE, NO SESSION. The tenant is resolved from the request's Host
+    // by lib/tenancy/public.ts (business_domains), and is the platform's own
+    // only when no domain row claims the host. Resolved once here and
+    // threaded; the DAL does not default it.
+    const businessId = await resolvePublicTenant()
 
     // Resolved from the djp_attr cookie BEFORE the signup is created, so gclid
     // lands on `event_signups` itself and not only on the downstream payments row

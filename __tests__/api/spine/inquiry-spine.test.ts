@@ -100,7 +100,10 @@ vi.mock("@/lib/supabase", () => ({
     },
   }),
 }))
-vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
 
 import { POST } from "@/app/api/inquiry/route"
 
@@ -243,7 +246,7 @@ describe("POST /api/inquiry — SMS consent", () => {
         "I agree to receive text messages from Acme Fitness about my inquiry. Message and data rates may apply. Reply STOP to opt out, HELP for help.",
       ip: "203.0.113.9",
       userAgent: "test-agent/1.0",
-      businessId: "platform-biz",
+      businessId: "host-biz",
     })
   })
 
@@ -326,8 +329,8 @@ describe("POST /api/inquiry — tenant", () => {
   it("resolves the tenant once through the seam and threads it into the contact, the settings read and the consent row", async () => {
     await post({ ...VALID_BODY, sms_consent: true })
     await flush()
-    expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
-    expect(mocks.getBusinessSettings).toHaveBeenCalledWith("platform-biz")
-    expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
+    expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
+    expect(mocks.getBusinessSettings).toHaveBeenCalledWith("host-biz")
+    expect(mocks.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
   })
 })

@@ -2,12 +2,13 @@
 //
 // POST /api/newsletter — WHICH business the subscribe files under.
 //
-// A public route with no session, so the tenant comes from the seam in
-// lib/tenancy/platform.ts. The seam is mocked to a sentinel so this proves the
-// route CALLS it: a hard-coded constant would satisfy an assertion on the real
-// id just as well. All three writes — the contact, the settings read behind the
-// consent wording, and the consent row — must carry the same value, resolved
-// once at the top of the handler.
+// A public route with no session, so the tenant comes from the request's Host
+// through the ONE Host boundary in lib/tenancy/public.ts. The boundary is
+// mocked to a sentinel so this proves the route CALLS it: a hard-coded
+// constant would satisfy an assertion on the real id just as well. All three
+// writes — the contact, the settings read behind the consent wording, and the
+// consent row — must carry the same value, resolved once at the top of the
+// handler.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const h = vi.hoisted(() => ({
@@ -17,6 +18,7 @@ const h = vi.hoisted(() => ({
   recordConsent: vi.fn(),
   getBusinessSettings: vi.fn(),
   recordAudit: vi.fn(),
+  resolvePublicTenant: vi.fn(),
 }))
 
 vi.mock("@/lib/db/newsletter", () => ({ addSubscriberWithAttribution: h.addSubscriberWithAttribution }))
@@ -25,7 +27,10 @@ vi.mock("@/lib/db/contacts", () => ({ recordContactEvent: h.recordContactEvent }
 vi.mock("@/lib/db/contact-consents", () => ({ recordConsent: h.recordConsent }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: h.getBusinessSettings }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: h.recordAudit }))
-vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: h.resolvePublicTenant }))
 
 import { POST } from "@/app/api/newsletter/route"
 
@@ -43,7 +48,8 @@ beforeEach(() => {
   h.ghlCreateContact.mockResolvedValue(null)
   h.recordContactEvent.mockResolvedValue({ contactId: "contact-1", created: true, merged: false })
   h.recordConsent.mockResolvedValue(undefined)
-  h.getBusinessSettings.mockResolvedValue({ business_id: "platform-biz", display_name: "Acme Fitness" })
+  h.getBusinessSettings.mockResolvedValue({ business_id: "host-biz", display_name: "Acme Fitness" })
+  h.resolvePublicTenant.mockResolvedValue("host-biz")
 })
 
 describe("POST /api/newsletter — tenant", () => {
@@ -52,10 +58,11 @@ describe("POST /api/newsletter — tenant", () => {
       params: Promise.resolve({}),
     })
     expect(res.ok).toBe(true)
+    expect(h.resolvePublicTenant).toHaveBeenCalledTimes(1)
     expect(h.recordContactEvent).toHaveBeenCalledTimes(1)
-    expect(h.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
-    expect(h.getBusinessSettings).toHaveBeenCalledWith("platform-biz")
+    expect(h.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
+    expect(h.getBusinessSettings).toHaveBeenCalledWith("host-biz")
     expect(h.recordConsent).toHaveBeenCalledTimes(1)
-    expect(h.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
+    expect(h.recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
   })
 })

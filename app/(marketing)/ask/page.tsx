@@ -25,7 +25,7 @@ import { AskPanel } from "@/components/public/AskPanel"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { getSetting } from "@/lib/db/system-settings"
 import { CHAT_ASSISTANT_FLAG, CHAT_ASSISTANT_FLAG_DEFAULT } from "@/lib/lead-engine/chat/constants"
-import { platformBusinessId } from "@/lib/tenancy/platform"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 export const dynamic = "force-dynamic"
 
@@ -48,10 +48,15 @@ export default async function AskPage() {
   // other would refuse to file. The rest of the assistant works either way;
   // it is one card that loses one optional line.
   //
-  // PUBLIC, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()` is
-  // the seam until phase 4 resolves a real business off the Host header
-  // (lib/tenancy/platform.ts, CANNOT RESOLVE YET).
-  const settings = await getBusinessSettings(platformBusinessId()).catch(() => null)
+  // PUBLIC, NO SESSION. The tenant is resolved from the request's Host by
+  // lib/tenancy/public.ts: this page shows the Host's business. POST
+  // /api/ask/capture does not read the Host at all — it files under the
+  // conversation's business_id, decided once when POST /api/ask created the
+  // conversation from this same origin. The two agree TRANSITIVELY, not
+  // because they share one resolution: the name shown here and the wording
+  // filed there both trace back to the same Host, one hop apart.
+  const businessId = await resolvePublicTenant()
+  const settings = await getBusinessSettings(businessId).catch(() => null)
   const displayName = settings?.display_name ?? ""
 
   return (

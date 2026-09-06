@@ -23,6 +23,10 @@ vi.mock("@/lib/supabase", () => ({
     }),
   }),
 }))
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
 
 const publishedCamp = {
   id: "evt-1",

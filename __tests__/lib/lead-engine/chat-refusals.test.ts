@@ -125,6 +125,11 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
+
 import { POST } from "@/app/api/ask/route"
 import { NO_EVENTS_SCHEDULED, REFUSAL_BLOCKED, REFUSAL_INJURY } from "@/lib/lead-engine/chat/constants"
 import type { Card } from "@/lib/lead-engine/chat/tools"
@@ -549,5 +554,13 @@ describe("9. it cannot create a contact without the visitor's own click", () => 
       expect(src).not.toContain(forbidden)
     }
     expect(src).not.toMatch(/\.(insert|update|upsert|delete)\(/)
+  })
+})
+
+describe("the tenant seam", () => {
+  it("stamps a new conversation with the tenant the Host resolves to", async () => {
+    await ask("hi")
+
+    expect(h.createConversation).toHaveBeenCalledWith(expect.objectContaining({ businessId: "host-biz" }))
   })
 })

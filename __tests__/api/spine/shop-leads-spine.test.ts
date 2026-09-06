@@ -41,11 +41,10 @@ vi.mock("@/lib/shop/emails", () => ({
 vi.mock("@/lib/audit/record", () => ({
   recordAudit: mocks.recordAudit,
 }))
-// The seam is MOCKED to a sentinel, not left real: a route that hard-coded the
-// constant instead of calling platformBusinessId() would pass a test that
-// asserted the real id, and the whole point of the seam is that phase 4
-// changes ONE function.
-vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
 
 import { POST } from "@/app/api/shop/leads/route"
 
@@ -115,6 +114,6 @@ describe("POST /api/shop/leads — tenant", () => {
   it("files the contact under the business the seam names", async () => {
     const res = await POST(req({ email: "buyer@example.com", product_id: PRODUCT_ID, website: "" }, "198.51.100.77"))
     expect(res.status).toBe(200)
-    expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
+    expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
   })
 })

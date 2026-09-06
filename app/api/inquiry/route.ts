@@ -16,7 +16,7 @@ import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import type { ContactEventSource } from "@/lib/db/contacts"
-import { platformBusinessId } from "@/lib/tenancy/platform"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 export const maxDuration = 45
 
@@ -56,11 +56,11 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       )
     }
 
-    // PUBLIC ROUTE, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()`
-    // is the seam until phase 4 resolves a real business off the Host header
-    // (lib/tenancy/platform.ts, CANNOT RESOLVE YET). Resolved once here and
-    // threaded; the DAL no longer defaults it.
-    const businessId = platformBusinessId()
+    // PUBLIC ROUTE, NO SESSION. The tenant is resolved from the request's Host
+    // by lib/tenancy/public.ts (business_domains), and is the platform's own
+    // only when no domain row claims the host. Resolved once here and
+    // threaded; the DAL does not default it.
+    const businessId = await resolvePublicTenant()
 
     const {
       name,

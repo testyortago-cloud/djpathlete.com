@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { captureLead } from "@/lib/lead-engine/capture"
 
 const getEventByIdMock = vi.fn()
 const createSignupMock = vi.fn()
@@ -15,6 +16,16 @@ vi.mock("@/lib/email", () => ({
   sendEventSignupReceivedEmail: (signup: unknown, event: unknown) => sendReceivedMock(signup, event),
   sendAdminNewSignupEmail: (signup: unknown, event: unknown) => sendAdminMock(signup, event),
 }))
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
+// Unmocked, this route's captureLead call is a REAL Supabase write against
+// whatever database .env.local points at — this suite doesn't mock the DB at
+// all, so that write is a bug, not a feature: __tests__ must never touch a
+// live database. Mocked here so the route's contact-spine join is observable
+// without one.
+vi.mock("@/lib/lead-engine/capture", () => ({ captureLead: vi.fn(async () => "contact-1") }))
 
 const publishedEvent = {
   id: "evt-1",
@@ -68,6 +79,7 @@ describe("POST /api/events/[id]/signup", () => {
     getActiveDocumentMock.mockResolvedValue({ id: "doc-waiver-1" })
     sendReceivedMock.mockClear()
     sendAdminMock.mockClear()
+    vi.mocked(captureLead).mockClear()
   })
 
   it("silently succeeds on honeypot fill without writing DB", async () => {
@@ -138,6 +150,7 @@ describe("POST /api/events/[id]/signup", () => {
     expect(createSignupMock.mock.calls[0][1]).not.toHaveProperty("waiver_accepted")
     expect(sendReceivedMock).toHaveBeenCalled()
     expect(sendAdminMock).toHaveBeenCalled()
+    expect(vi.mocked(captureLead)).toHaveBeenCalledWith(expect.objectContaining({ businessId: "host-biz" }))
   })
 
   it("still returns 200 when email send rejects", async () => {

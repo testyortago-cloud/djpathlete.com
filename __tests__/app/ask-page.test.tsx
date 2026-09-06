@@ -24,6 +24,10 @@ vi.mock("next/navigation", () => ({
 }))
 vi.mock("@/lib/db/system-settings", () => ({ getSetting: vi.fn() }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
 
 import AskPage from "@/app/(marketing)/ask/page"
 import { notFound } from "next/navigation"
@@ -88,5 +92,13 @@ describe("/ask", () => {
     // The panel still answers questions — the consent card is one card.
     const tree = await AskPage()
     expect(JSON.stringify(tree)).toContain('"displayName":""')
+  })
+
+  it("reads settings for the business the Host resolves to, the same as /api/ask/config", async () => {
+    mock(getSetting).mockResolvedValue(true)
+
+    await AskPage()
+
+    expect(getBusinessSettings).toHaveBeenCalledWith("host-biz")
   })
 })

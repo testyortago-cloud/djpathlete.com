@@ -11,6 +11,12 @@ vi.mock("@/lib/db/newsletter", () => ({
   addSubscriber: vi.fn(),
 }))
 vi.mock("@/lib/ghl", () => ({ ghlCreateContact: mocks.ghlCreateContact }))
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+// Without this mock the real boundary calls headers() from next/headers,
+// which throws outside a request scope.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
 
 import { POST } from "@/app/api/newsletter/route"
 

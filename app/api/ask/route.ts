@@ -71,7 +71,7 @@ import {
   listMessages,
 } from "@/lib/db/chat"
 import { getSetting } from "@/lib/db/system-settings"
-import { platformBusinessId } from "@/lib/tenancy/platform"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { rateLimit } from "@/lib/shop/rate-limit"
 import {
@@ -371,12 +371,13 @@ export async function POST(request: Request) {
     // leaves an empty conversation behind — the rate limits count rows, and a
     // limiter that its own rejections feed is a limiter that tightens itself.
     if (!conversation) {
+      // PUBLIC ROUTE, NO SESSION. This is the one place a conversation's
+      // tenant is DECIDED; it is resolved from the request's Host by
+      // lib/tenancy/public.ts (business_domains). Once the row exists, every
+      // later call in this route threads `conversation.business_id` instead.
+      const businessId = await resolvePublicTenant()
       conversation = await createConversation({
-        // PUBLIC ROUTE, NO SESSION, NO HOST RESOLUTION YET (phase 4). This is
-        // the one place a conversation's tenant is decided, and this route
-        // cannot resolve a real one -- see lib/tenancy/platform.ts's own
-        // docstring for why that's a SEAM and not a resolution.
-        businessId: platformBusinessId(),
+        businessId,
         ipHash,
         userAgent: request.headers.get("user-agent"),
         landingPath: landingPathFrom(request),
@@ -391,7 +392,7 @@ export async function POST(request: Request) {
 
   if (risk !== "none") {
     try {
-      // `conversation.business_id`, not `platformBusinessId()`: the
+      // `conversation.business_id`, not `resolvePublicTenant()`: the
       // conversation is the tenant carrier once it exists (see the header
       // above `createConversation` in lib/db/chat.ts), and it may have been
       // an EXISTING conversation read via `getConversation` above rather than

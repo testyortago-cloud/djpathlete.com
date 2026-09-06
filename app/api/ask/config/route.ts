@@ -46,7 +46,7 @@ import { NextResponse } from "next/server"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { getSetting } from "@/lib/db/system-settings"
 import { CHAT_ASSISTANT_FLAG, CHAT_ASSISTANT_FLAG_DEFAULT } from "@/lib/lead-engine/chat/constants"
-import { platformBusinessId } from "@/lib/tenancy/platform"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 export const dynamic = "force-dynamic"
 
@@ -58,12 +58,13 @@ const NO_STORE = { "Cache-Control": "no-store, no-cache, must-revalidate" }
 
 export async function GET() {
   try {
+    // PUBLIC, NO SESSION. The tenant is resolved from the request's Host by
+    // lib/tenancy/public.ts (business_domains); the platform's own only when
+    // no domain row claims the host.
+    const businessId = await resolvePublicTenant()
     const [flag, settings] = await Promise.all([
       getSetting<boolean>(CHAT_ASSISTANT_FLAG, CHAT_ASSISTANT_FLAG_DEFAULT),
-      // PUBLIC, NO SESSION TO RESOLVE A TENANT FROM. `platformBusinessId()` is
-      // the seam until phase 4 resolves a real business off the Host header
-      // (lib/tenancy/platform.ts, CANNOT RESOLVE YET).
-      getBusinessSettings(platformBusinessId()),
+      getBusinessSettings(businessId),
     ])
 
     return NextResponse.json(

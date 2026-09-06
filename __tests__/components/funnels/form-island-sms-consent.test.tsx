@@ -25,6 +25,11 @@ vi.mock("@/lib/db/businesses", () => ({
   getBusinessSettings: (...a: unknown[]) => getBusinessSettings(...a),
 }))
 
+// The component resolves its tenant from the request's Host through the ONE
+// Host boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a component that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
+
 import { FormIsland } from "@/components/funnels/islands/FormIsland"
 import type { FunnelFormField } from "@/lib/funnels/islands"
 
@@ -102,5 +107,14 @@ describe("FormIsland — SMS consent wording gate", () => {
     })
     expect(getBusinessSettings).not.toHaveBeenCalled()
     expect(wordingOf(element)).toBeUndefined()
+  })
+
+  it("reads the business settings for the Host-resolved tenant, not the platform's", async () => {
+    getBusinessSettings.mockResolvedValue({ display_name: "Acme Fitness" })
+    await FormIsland({
+      props: { fields: FIELDS_WITH_PHONE, successMode: "message" },
+      context: CONTEXT,
+    })
+    expect(getBusinessSettings).toHaveBeenCalledWith("host-biz")
   })
 })

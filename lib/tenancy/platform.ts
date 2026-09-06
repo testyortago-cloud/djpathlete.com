@@ -12,15 +12,6 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *
  * GENUINELY CANNOT RESOLVE A TENANT YET -- the caller has no session, no
  * connection row, and no column to key off:
- *   - public, unauthenticated quiz-taking routes (e.g.
- *     app/api/quiz/progress/route.ts), until phase 4 resolves the Host
- *     header;
- *   - the public chat assistant (app/api/ask/route.ts), the one place a
- *     conversation's tenant is decided at all -- same story as the quiz
- *     route, no session and no Host resolution until phase 4. Once the
- *     conversation exists, every OTHER call in that route threads
- *     `conversation.business_id` instead of calling this again -- see the
- *     route's own comment above `createConversation`;
  *   - the pipeline reconciler's payments half
  *     (lib/automation/pipeline-reconcile.ts) -- not because the reconciler
  *     itself lacks a businessId (it iterates real businesses in a loop and
@@ -28,46 +19,19 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     `business_id` column at all. No business other than the platform's own
  *     can ever legitimately claim a payment today, so this is
  *     correct-by-construction rather than a caller unable to resolve.
- *   - the public lead-capture surfaces, converted 2026-09-05 when the Lead
- *     Engine DAL stopped defaulting its tenant. Each resolves this ONCE at
- *     the top of its handler and threads it into every write — the contact,
- *     the settings read behind the consent wording, and the consent row —
- *     so the wording shown and the wording filed can never name different
- *     businesses. No session, and no row to inherit from: `funnels`,
- *     `funnel_steps`, `funnel_submissions`, `events`, `event_signups`,
- *     `shop_products` and `shop_leads` carry no business_id (no migration adds
- *     one), so until phase 4 reads the Host header these are the platform's
- *     by seam, not by evidence:
- *       app/api/contact/route.ts
- *       app/api/shop/leads/route.ts
- *       app/api/newsletter/route.ts
- *       app/api/inquiry/route.ts
- *       app/api/events/[id]/signup/route.ts
- *       app/api/events/[id]/checkout/route.ts
- *       app/api/funnels/submit/route.ts
- *       app/api/ask/config/route.ts
- *     and the pages and server components that render the same consent
- *     wording those routes file, which must read the SAME business:
- *       app/(marketing)/ask/page.tsx
- *       app/(marketing)/camps/[slug]/page.tsx
- *       app/(marketing)/clinics/[slug]/page.tsx
- *       components/public/InquiryForm.tsx
- *       components/public/StepUpInquiryForm.tsx
- *       components/funnels/islands/FormIsland.tsx
- *       components/funnels/islands/QuizIsland.tsx
- *     QuizIsland's partner is NOT one of the §5.1 routes above. The wording
- *     it shows is filed by app/api/quiz/submit/route.ts, which inherits the
- *     attempt that app/api/quiz/progress/route.ts created under this seam —
- *     so the island and the submit agree today because two INDEPENDENT calls
- *     to this seam return the same value, not because one value is threaded
- *     from island to write. Phase 4 must therefore convert the progress route
- *     and this island together; converting either alone splits the wording
- *     shown from the wording filed.
- *     NOT on this list, deliberately: app/api/quiz/submit/route.ts. It is
- *     public too, but it has a row to inherit from — the attempt that
- *     app/api/quiz/progress/route.ts created under this seam carries
- *     business_id — so it resolves rather than calling this. When phase 4
- *     converts the progress route, the submit route follows for free.
+ *   - the Host boundary's own fallback (lib/tenancy/public.ts). Since phase 4
+ *     every public surface resolves through `resolvePublicTenant()`, which
+ *     reads `business_domains` by the request's Host and reaches this only
+ *     when no row claims the host, when the table is missing (an incident
+ *     since 00240, audited), or when the read failed. Its callers are
+ *     inventoried in that file, not here.
+ *   - the public lead-capture surfaces, the marketing pages and the server
+ *     components that render their consent wording all resolve through the
+ *     Host boundary above since phase 4 (2026-09-05); none calls this
+ *     directly any more. NOT on the boundary's list either, deliberately:
+ *     app/api/quiz/submit/route.ts. It is public too, but it has a row to
+ *     inherit from — the attempt the quiz progress route created — so it
+ *     resolves rather than calling anything.
  *
  * CORRECT BY CONSTRUCTION -- the caller could be asked to resolve a tenant
  * and the answer would still be the platform's own. Not a placeholder

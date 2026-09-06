@@ -13,6 +13,11 @@ vi.mock("@/lib/db/businesses", () => ({
   getBusinessSettings: (...a: unknown[]) => getBusinessSettings(...a),
 }))
 
+// The component resolves its tenant from the request's Host through the ONE
+// Host boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a component that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
+
 import { StepUpInquiryForm } from "@/components/public/StepUpInquiryForm"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -49,5 +54,11 @@ describe("StepUpInquiryForm (server wrapper) — SMS consent wording gate", () =
     expect(wordingOf(element)).toBe(
       "I agree to receive text messages from Acme Fitness about my inquiry. Message and data rates may apply. Reply STOP to opt out, HELP for help.",
     )
+  })
+
+  it("reads the business settings for the Host-resolved tenant, not the platform's", async () => {
+    getBusinessSettings.mockResolvedValue({ display_name: "Acme Fitness" })
+    await StepUpInquiryForm()
+    expect(getBusinessSettings).toHaveBeenCalledWith("host-biz")
   })
 })

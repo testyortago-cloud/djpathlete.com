@@ -13,6 +13,13 @@ vi.mock("@/lib/shop/emails", async () => {
     sendFreeDownloadEmail: vi.fn().mockResolvedValue(undefined),
   }
 })
+// This lane writes to the real dev database under the platform business — the
+// boundary is mocked to the real seam (not a sentinel) so the row this suite's
+// cleanup tracks still lands where every other integration test expects it.
+vi.mock("@/lib/tenancy/public", async () => {
+  const { platformBusinessId } = await import("@/lib/tenancy/platform")
+  return { resolvePublicTenant: async () => platformBusinessId() }
+})
 
 describe("POST /api/shop/leads", () => {
   let productId: string

@@ -98,6 +98,11 @@ vi.mock("@/lib/db/quizzes", () => ({
   getAttempt: (...a: unknown[]) => getAttempt(...a),
 }))
 
+// The route resolves its tenant from the request's Host through the ONE Host
+// boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
+// platform's, so a route that hard-codes platformBusinessId() cannot pass.
+vi.mock("@/lib/tenancy/public", () => ({ resolvePublicTenant: async () => "host-biz" }))
+
 async function post(body: unknown, ip = "1.2.3.4") {
   const { POST } = await import("@/app/api/quiz/progress/route")
   return POST(
@@ -128,6 +133,7 @@ describe("POST /api/quiz/progress", () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ attemptId: ATTEMPT_ID })
     expect(createAttempt).toHaveBeenCalledTimes(1)
+    expect(createAttempt).toHaveBeenCalledWith("host-biz", expect.anything())
   })
 
   it("2. updates THAT row on a second call, rather than creating another", async () => {
