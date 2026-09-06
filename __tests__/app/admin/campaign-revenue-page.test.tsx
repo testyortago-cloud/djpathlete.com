@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Server component invoked directly, per the
 // __tests__/app/content-studio/post-page.test.tsx /
 // __tests__/app/admin/books-reports-print-page.test.tsx precedent.

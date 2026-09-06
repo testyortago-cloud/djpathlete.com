@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // A funnel form that takes payment: the waiver it must show, and the redirect it
 // must follow.
 //

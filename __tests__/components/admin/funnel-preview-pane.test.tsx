@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/funnel-preview-pane.test.tsx — Stage 1.9's preview.
 //
 // EVERY TEST HERE NAMES THE MUTANT IT KILLS. This repo's dominant defect class

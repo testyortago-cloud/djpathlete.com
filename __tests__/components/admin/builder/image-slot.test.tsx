@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The media picker. Two things here can produce a page that looks fine and is
 // broken, and both are what these cover:
 //

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/lib/funnels/sections/review/section-boundary.test.ts
 //
 // Two adjacent sections at the same tone had no boundary of any kind. Not a

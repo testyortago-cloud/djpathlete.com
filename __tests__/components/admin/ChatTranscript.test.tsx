@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/ChatTranscript.test.tsx
 //
 // The transcript is the only place a blocked turn can be explained after the
@@ -25,18 +26,27 @@ import { DataTableBadge } from "@/components/ui/data-table"
 // imported explicitly and aliased so nothing here can pick up the wrong one.
 import type { ChatMessage as ChatMessageRow, ChatConversation } from "@/types/database"
 
-vi.mock("@/lib/auth-helpers", () => ({ requireAdmin: vi.fn() }))
+// The page moved from requireAdmin() to requirePermission("contacts") on
+// 2026-09-04 (0dcedc9f); left unmocked, the real guard reaches auth() and
+// throws "headers was called outside a request scope".
+vi.mock("@/lib/permissions/guard", () => ({ requirePermission: vi.fn() }))
 vi.mock("@/lib/db/chat", () => ({ getConversation: vi.fn(), listMessages: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
+// The page resolves its tenant at the session boundary (lib/tenancy/resolve.ts,
+// which reads cookies() and so cannot run outside a request). Mocked to a
+// sentinel that is NOT the fixture's business_id, so the read below is pinned
+// to the RESOLVED tenant rather than to whatever the row happens to carry.
+vi.mock("@/lib/tenancy/resolve", () => ({ resolveAdminTenant: vi.fn() }))
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("NEXT_NOT_FOUND")
   },
 }))
 
-import { requireAdmin } from "@/lib/auth-helpers"
+import { requirePermission } from "@/lib/permissions/guard"
 import { getConversation, listMessages } from "@/lib/db/chat"
 import { recordAudit } from "@/lib/audit/record"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import TranscriptPage from "@/app/(admin)/admin/chat/[id]/page"
 
 const asMock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
@@ -147,7 +157,7 @@ function turn(container: HTMLElement, id: string): HTMLElement {
 
 beforeEach(() => {
   vi.resetAllMocks()
-  asMock(requireAdmin).mockResolvedValue({ user: { id: "u1", role: "admin" } })
+  asMock(requirePermission).mockResolvedValue({ user: { id: "u1", role: "admin" } })
 })
 
 afterEach(() => {
@@ -216,11 +226,19 @@ describe("a blocked turn is explainable months later", () => {
 })
 
 describe("opening a transcript is a sensitive read and is recorded as one", () => {
+  beforeEach(() => {
+    asMock(resolveAdminTenant).mockResolvedValue({ businessId: "biz-resolved", choices: [], isOperator: false })
+  })
+
   it("records chat.transcript_viewed when an admin opens a transcript", async () => {
     asMock(getConversation).mockResolvedValue(CONVERSATION)
     asMock(listMessages).mockResolvedValue([ASKED, BLOCKED])
 
     render(await TranscriptPage({ params: Promise.resolve({ id: "conv-1" }) }))
+
+    // The read is fenced to the tenant the SESSION resolved to — not the
+    // fixture's own business_id ("b-1"), which a guessed UUID could never carry.
+    expect(getConversation).toHaveBeenCalledWith("conv-1", "biz-resolved")
 
     expect(recordAudit).toHaveBeenCalledTimes(1)
     expect(asMock(recordAudit).mock.calls[0][0]).toMatchObject({

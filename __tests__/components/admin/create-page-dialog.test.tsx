@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The create dialog exists because a bare name field could not ask anything
 // useful. These tests hold it to that: the URL it promises must be the URL it
 // sends, and the rules it enforces must be the validator's rules, not a copy.

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // ONE CARD, TWO KINDS OF ROW.
 //
 // `/admin/pages` and `/admin/funnels` render the same `FunnelCard` now. What

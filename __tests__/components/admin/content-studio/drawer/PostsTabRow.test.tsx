@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { PostsTabRow } from "@/components/admin/content-studio/drawer/PostsTabRow"

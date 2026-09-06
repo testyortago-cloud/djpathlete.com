@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // A card that shows only a name and a URL cannot tell two similar pages apart.
 // The goal and the description are the two things that do.
 

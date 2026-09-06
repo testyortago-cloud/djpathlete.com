@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/funnels/funnel-form-editable.test.tsx
 //
 // The form is the one part of a funnel page whose editing anchors CANNOT come

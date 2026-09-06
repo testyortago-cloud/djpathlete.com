@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { render, screen } from "@testing-library/react"
 import { describe, it, expect, beforeAll, vi } from "vitest"
 import { AthleteProfileCard } from "@/components/admin/arena/AthleteProfileCard"

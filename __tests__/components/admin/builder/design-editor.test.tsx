@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The editor shell. jsdom cannot perform a real drag, so these cover what it
 // CAN: that the palette offers what the registry declares, that a stored tree
 // renders onto the canvas, and that an unreadable document refuses to open

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // A camp funnel's run window, on the card.
 //
 // The window is stored whether or not the job that acts on it is switched on,

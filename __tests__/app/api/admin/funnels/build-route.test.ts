@@ -403,7 +403,10 @@ describe("POST .../build — request handling", () => {
     }
     const res = await runTurn({ message: "one too many", revision: 4 })
     expect(res.status).toBe(429)
-  })
+    // Twenty sequential, fully-handled POSTs measured 9.2s in isolation
+    // (2026-09-05, Node 24); the 5s default timed this test out on every run
+    // since it was written. The count is the assertion, so the budget moves.
+  }, 30_000)
 
   it("404s when the step does not exist", async () => {
     mock(getDraft).mockResolvedValue(null)

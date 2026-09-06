@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The editor, and the gate its Activate button shares with the save route.
 //
 // `quizGate` is NOT mocked here. It is the pure rule deciding whether a quiz

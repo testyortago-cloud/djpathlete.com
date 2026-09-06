@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/public/StepUpInquiryFormClient.test.tsx
 //
 // See InquiryFormClient.test.tsx's header comment — identical coverage for

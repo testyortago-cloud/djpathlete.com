@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // THE CHAIN THIS PINS: `FunnelRenderContext` has always carried funnelId and
 // stepId to every island. `QuizIsland` never passed them on, so the submit
 // body could not name the funnel and no lead could be filed against it.

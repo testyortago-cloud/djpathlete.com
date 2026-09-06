@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The click-to-edit gestures, tested against a plain Document.
 //
 // No iframe and no React: `bindCanvasEditing` is a function over a Document

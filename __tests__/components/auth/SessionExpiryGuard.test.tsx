@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render } from "@testing-library/react"
 import { SessionExpiryGuard, loginRedirectUrl } from "@/components/auth/SessionExpiryGuard"

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/funnel-status-control.test.tsx
 //
 // THE FUNNEL DETAIL PAGE'S PUBLISH BUTTON, which was the second unguarded way

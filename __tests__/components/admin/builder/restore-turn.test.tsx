@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // "Go back to here" — the transcript's undo.
 //
 // The machinery (`revertToRevision`, a `source:'revert'` head turn) shipped

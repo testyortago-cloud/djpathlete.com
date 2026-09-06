@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // A LANDING PAGE HAS NO DETAIL SCREEN -- `/admin/pages/<id>` redirects to the
 // list, on purpose (see landing-page-has-no-detail-screen.test.tsx). So the
 // quiz panel on the funnel settings screen cannot be the whole answer to

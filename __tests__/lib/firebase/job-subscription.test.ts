@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 const snapshotHandlers = new Map<string, { next: (s: unknown) => void; error: (e: unknown) => void }>()

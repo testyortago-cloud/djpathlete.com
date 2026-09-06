@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // components/admin/funnels/StepRail.tsx — the funnel drawn as a funnel.
 //
 // EVERY QUERY IS SCOPED WITH `within`. A rail renders N rows carrying similar

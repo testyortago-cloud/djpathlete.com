@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The split is the whole feature, and it lives here. A board that renders the
 // same chrome for both kinds would look done and be exactly the thing the owner
 // complained about.

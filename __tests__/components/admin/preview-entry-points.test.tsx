@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/preview-entry-points.test.tsx
 //
 // The feature is unreachable without these. Every assertion here is one surface

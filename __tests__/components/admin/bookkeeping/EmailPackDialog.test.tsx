@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The send dialog is the last screen the coach reads before a workbook leaves
 // the building, so its description of that workbook has to match what the
 // workbook says about itself (lib/bookkeeping/email-pack.ts cover copy, the

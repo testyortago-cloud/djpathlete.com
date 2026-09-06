@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/ChatTable.test.tsx
 //
 // The admin list for the public chat assistant. Four properties are

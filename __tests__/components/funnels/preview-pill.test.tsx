@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/funnels/preview-pill.test.tsx
 //
 // The one piece of chrome the full-screen preview adds. Its whole job is that

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/funnels/QuizRunner.test.tsx
 //
 // The visitor's walk. The two behaviours worth guarding hardest are that the

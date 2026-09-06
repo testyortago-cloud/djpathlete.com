@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/components/admin/funnel-list.test.tsx
 //
 // THE REPORT, verbatim: "why connected funnels is not compiled, and also the
