@@ -61,6 +61,17 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     `resolveAdminTenantForRequest` instead -- this seam is the cron path
  *     only.
  *
+ *     RECONCILING that with `resolveAdminTenantForRequest` giving an admin
+ *     EVERY business as a choice: this phase strictly NARROWED that preview
+ *     route rather than widening it -- pre-phase `listPlatformIncome` was
+ *     fully unscoped, reading every business's event signups regardless of
+ *     which tenant the admin had selected. It writes nothing (a preview:
+ *     drafts and warnings only, no insert), so this is not a privilege
+ *     escalation. But the preview is now MIXED SCOPE -- one arm per-tenant,
+ *     four still platform-wide -- which reads more authoritative about "this
+ *     business's income" than it is. Reconciling that belongs to the
+ *     bookkeeping phase, not this one.
+ *
  * CORRECT BY CONSTRUCTION -- the caller could be asked to resolve a tenant
  * and the answer would still be the platform's own. Not a placeholder
  * awaiting a later phase:
@@ -122,8 +133,21 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     routes, the ~1900-line build orchestrator, the funnel editor page, and
  *     the shared draft-preview renderer -- none of which any task has claimed
  *     for tenancy conversion. Freezing it here keeps today's behaviour
- *     byte-identical (this returns the same constant that call site used to
- *     hard-code) while making the compromise greppable instead of silent.
+ *     byte-identical (that call site never hard-coded anything -- it passed
+ *     NO argument, i.e. read every business's rows; it is byte-identical only
+ *     because migration 00252's DEFAULT put all existing rows on the
+ *     platform) while making the compromise greppable instead of silent.
+ *
+ *     THAT IS NO LONGER THE WHOLE STORY as of the events-per-tenant phase.
+ *     The funnel's live event rendering and its submission handling both
+ *     now resolve a real per-host tenant while this loader stays
+ *     platform-only, so the builder and the publish gate validate an
+ *     event CTA against a catalogue the live page no longer agrees with.
+ *     Pre-phase both sides were unscoped and agreed; the day a second
+ *     tenant publishes a funnel with an event CTA, the builder and the
+ *     gate pass and the live render is silent absence. Recorded, not
+ *     fixed here — see that phase's design doc §8; resolving it is phase
+ *     5b's (funnels), not this seam's.
  *   - the Google Ads OAuth callback (app/api/integrations/google-ads/callback/route.ts)
  *     and the rediscover-accounts route (app/api/admin/ads/rediscover-accounts/route.ts),
  *     the two callers of `upsertGoogleAdsAccount`. Both routes DO have an

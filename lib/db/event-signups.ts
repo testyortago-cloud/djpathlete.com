@@ -127,8 +127,11 @@ export async function cancelSignup(businessId: string, id: string): Promise<Canc
  * issued by Stripe and globally unique, so it names exactly one signup and
  * cannot be guessed into another tenant's rows — the id IS the authorisation.
  * Adding a tenant argument here would be theatre: every caller would have to
- * invent one, and the two that exist (the success page and the webhook) have
- * no better answer than the row itself.
+ * invent one, and the two that exist (the camps and clinics success pages)
+ * have no better answer than the row itself. The Stripe webhook USED to be a
+ * third caller; it now resolves the signup's tenant via `getSignupTenantById`
+ * instead (by signup id, not by session id), and this function survives only
+ * in an explanatory comment there.
  *
  * Its CALLERS still check: the camps/clinics success pages compare the
  * returned row's business_id against the host's resolved business and 404 on

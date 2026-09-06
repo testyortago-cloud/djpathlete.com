@@ -1,11 +1,32 @@
 -- supabase/migrations/00252_events_business_id.sql
 -- Tenancy phase 5a: events and their signups carry a tenant.
 --
--- THE RACE. On push to main this applies while Vercel is still building.
--- Old code + new schema: createEvent inserts no business_id, and the DEFAULT
--- below is what keeps that insert from failing 23502. New code + old schema
--- cannot happen (the code ships after the migration in every ordering that
--- matters here, and a missing column fails loudly rather than silently).
+-- THE RACE. On push to main this applies while Vercel is still building, and
+-- nothing sequences the two (.github/workflows/apply-migrations.yml says so
+-- plainly). Old code + new schema: createEvent inserts no business_id, and
+-- the DEFAULT below is what keeps that insert from failing 23502.
+--
+-- New code + old schema CAN happen — it is not prevented, only unlikely.
+-- Every events/event_signups read in this branch carries `.eq("business_id",
+-- ...)`, which is 42703 against the pre-migration schema. Nothing tolerates
+-- that column-not-found the way the DEFAULT tolerates the old-code insert.
+-- Two callers degrade instead of 500ing: app/sitemap.ts's try/catch yields an
+-- empty event list, and EventIsland's try/catch around the read (not around
+-- resolvePublicTenant()) returns null. Everything else surfaces the error. In
+-- practice the migration Action is much faster than a Turbopack build, so the
+-- schema will almost certainly win the race — "almost certainly," not
+-- "cannot happen."
+--
+-- A SECOND old-code hazard, independent of the column: this migration
+-- `drop function`s the one-argument confirm_event_signup(uuid) and
+-- cancel_event_signup(uuid) below and replaces them with a two-argument
+-- (signup id, business id) signature. An old bundle still calling the
+-- one-argument RPC gets PGRST202 (function not found), not a silent
+-- mismatch. The Stripe webhook's confirmSignup() surfaces that as a 500,
+-- which Stripe retries until the new bundle is live, so it self-heals.
+-- /admin/events/[id] confirm/cancel calls answer 500 for the same window,
+-- which an admin would have to retry by hand. Low impact either way:
+-- production carries 0 signup rows as of this migration.
 --
 -- THE DEFAULT MUST OUTLIVE THIS DEPLOY. Dropping it belongs in a LATER
 -- branch, once every writer stamps business_id explicitly. It cannot be

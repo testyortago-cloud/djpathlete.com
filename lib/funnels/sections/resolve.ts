@@ -536,9 +536,12 @@ export async function loadCatalogues(): Promise<Catalogues> {
   // and its admin quiz pages/routes only). Threading a real per-request
   // businessId through here would mean re-scoping that entire builder
   // subsystem as a side effect of a DAL signature change, which is its own
-  // task. `platformBusinessId()` keeps today's behaviour byte-identical
-  // (it returns the same constant `listQuizzes` was hard-coded to) and stays
-  // one greppable line for whichever task gives the builder a real tenant.
+  // task. `platformBusinessId()` keeps today's behaviour byte-identical --
+  // `listQuizzes` never hard-coded anything; it took NO businessId argument
+  // at all and read every business's quizzes. It is byte-identical only
+  // because there is exactly one business's worth of quizzes to read today --
+  // and stays one greppable line for whichever task gives the builder a real
+  // tenant.
   const quizRows = await listQuizzes(platformBusinessId())
   const gated = await Promise.all(
     quizRows.map(async (row): Promise<QuizCatalogueEntry> => {
