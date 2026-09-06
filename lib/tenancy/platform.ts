@@ -32,6 +32,18 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     app/api/quiz/submit/route.ts. It is public too, but it has a row to
  *     inherit from — the attempt the quiz progress route created — so it
  *     resolves rather than calling anything.
+ *   - the Daily Brief email's booking section, in lib/analytics/daily-pulse.ts
+ *     -- threaded from there into the bookings section builder's own
+ *     `businessId` parameter, not called a second time inside it.
+ *     `POST /api/admin/internal/send-daily-pulse` is guarded by
+ *     `INTERNAL_CRON_TOKEN`, not a session -- there is no `auth()` call to
+ *     resolve an admin tenant from, and the digest composes every section
+ *     builder in one `Promise.all` for a single `COACH_EMAIL` recipient, not
+ *     per business. Every sibling builder in that same digest (coaching,
+ *     revenue funnel, client risk, inbox SLA) is equally unconverted;
+ *     scoping just the bookings section's signup count to a real tenant
+ *     while the rest of the email stays platform-wide would not make the
+ *     digest multi-tenant, only inconsistent.
  *
  * CORRECT BY CONSTRUCTION -- the caller could be asked to resolve a tenant
  * and the answer would still be the platform's own. Not a placeholder

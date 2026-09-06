@@ -494,11 +494,14 @@ export async function loadCatalogues(): Promise<Catalogues> {
       listActiveSessionPackProducts(),
       // `{}` is not a stray argument: `getEvents` filters status only when a
       // status filter is present, so this is deliberately "every event, ever".
-      getEvents({}),
-      // No argument at all: the `from: new Date()` default IS the offer bound.
+      // `platformBusinessId()` — the same frozen seam `listQuizzes` below
+      // already uses; see that call's comment for why this whole builder
+      // subsystem is not part of this phase's conversion.
+      getEvents(platformBusinessId(), {}),
+      // No second argument: the `from: new Date()` default IS the offer bound.
       // Passing an epoch here would silently widen the picker back to every
       // event that ever ran, which is the mutant the offer-side test kills.
-      getPublishedEvents(),
+      getPublishedEvents(platformBusinessId()),
       // One lightweight `select page_key` — the same read the admin FAQ picker
       // uses. Counts across EVERY status on purpose: a page key whose rows are
       // all drafts is still a real key, and the live island filters by status

@@ -179,6 +179,27 @@ export async function getEventSignupByPaymentIntent(piId: string): Promise<Event
   return (data as EventSignup) ?? null
 }
 
+/**
+ * The tenant a signup belongs to, by its id alone — DELIBERATELY UNSCOPED,
+ * and narrow on purpose.
+ *
+ * The Stripe webhook holds `session.metadata.event_signup_id` and nothing
+ * else it can trust. The row's `stripe_session_id` is written AFTER the
+ * Stripe session is created (lib/events/checkout.ts), so a webhook that
+ * arrives before that update lands would not find the row by session id —
+ * looking it up that way would silently drop a paid confirmation.
+ *
+ * Returns ONLY the business id, never the row, so it cannot become a way to
+ * read another tenant's customer data. The caller's next call is a scoped
+ * one, which refuses if the id and tenant disagree.
+ */
+export async function getSignupTenantById(id: string): Promise<string | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase.from("event_signups").select("business_id").eq("id", id).maybeSingle()
+  if (error) throw error
+  return (data as { business_id: string } | null)?.business_id ?? null
+}
+
 export async function listSignupsCreatedSince(businessId: string, since: Date): Promise<EventSignup[]> {
   const supabase = getClient()
   const { data, error } = await supabase

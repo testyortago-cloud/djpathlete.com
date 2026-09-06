@@ -33,7 +33,13 @@ import {
   sendEventSignupOverbookRefundEmail,
 } from "@/lib/email"
 import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
-import { confirmSignup, cancelSignup, getSignupById, getEventSignupByPaymentIntent } from "@/lib/db/event-signups"
+import {
+  confirmSignup,
+  cancelSignup,
+  getSignupById,
+  getEventSignupByPaymentIntent,
+  getSignupTenantById,
+} from "@/lib/db/event-signups"
 import { handleShopOrderCheckout } from "@/lib/shop/webhooks"
 import { getEventById as getEventByIdForSignup } from "@/lib/db/events"
 import {
@@ -1273,14 +1279,29 @@ async function handleEventSignupCheckout(session: Stripe.Checkout.Session) {
     return
   }
 
-  const result = await confirmSignup(signupId)
+  // NO SESSION AND NO HOST — the webhook's tenant comes from the signup ROW
+  // itself, by id alone. `getEventSignupByStripeSessionId(session.id)` looks
+  // like an equivalent lookup and is not: `lib/events/checkout.ts` writes
+  // `stripe_session_id` onto the row AFTER `createEventCheckoutSession`
+  // returns, so a webhook arriving before that update lands would find
+  // nothing by session id and silently drop a paid confirmation. Keying on
+  // the metadata id — which exists from the moment the row is created — is
+  // what makes this robust, and `getSignupTenantById` returns only the
+  // business id so it cannot become a way to read another tenant's row.
+  const businessId = await getSignupTenantById(signupId)
+  if (!businessId) {
+    console.error(`[webhook event_signup] no signup ${signupId}`)
+    return
+  }
+
+  const result = await confirmSignup(businessId, signupId)
   if (!result.ok) {
     if (result.reason === "at_capacity") {
       // Race: someone else's confirm beat this one to the last slot. The
       // customer has already paid Stripe, so we owe them an immediate refund
       // and an apology. The signup row is left as 'pending' until the refund
       // succeeds, then flipped to 'refunded'.
-      await handleEventSignupOverbook(session, signupId)
+      await handleEventSignupOverbook(session, signupId, businessId)
       return
     }
     if (result.reason !== "not_pending") {
@@ -1298,8 +1319,9 @@ async function handleEventSignupCheckout(session: Stripe.Checkout.Session) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", signupId)
+    .eq("business_id", businessId)
 
-  const updated = await getSignupById(signupId)
+  const updated = await getSignupById(businessId, signupId)
 
   // Record the payment so event revenue surfaces on /admin/dashboard
   // (totalRevenue, revenue trend, monthly chart, activity feed). Without this
@@ -1312,7 +1334,7 @@ async function handleEventSignupCheckout(session: Stripe.Checkout.Session) {
 
   const eventId = session.metadata?.event_id
   if (updated && eventId) {
-    const ev = await getEventByIdForSignup(eventId)
+    const ev = await getEventByIdForSignup(businessId, eventId)
     if (ev) {
       try {
         await sendEventSignupConfirmedEmail(updated, ev)
@@ -1328,6 +1350,7 @@ async function handleEventSignupCheckout(session: Stripe.Checkout.Session) {
 async function handleEventSignupOverbook(
   session: Stripe.Checkout.Session,
   signupId: string,
+  businessId: string,
 ) {
   const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : null
   if (!paymentIntentId) {
@@ -1356,8 +1379,9 @@ async function handleEventSignupOverbook(
       updated_at: new Date().toISOString(),
     })
     .eq("id", signupId)
+    .eq("business_id", businessId)
 
-  const signup = await getSignupById(signupId)
+  const signup = await getSignupById(businessId, signupId)
 
   // Record the payment as refunded so the dashboard still has accurate history
   // (the customer was charged then immediately refunded — net zero revenue).
@@ -1370,7 +1394,7 @@ async function handleEventSignupOverbook(
 
   const eventId = session.metadata?.event_id
   if (signup && eventId) {
-    const ev = await getEventByIdForSignup(eventId)
+    const ev = await getEventByIdForSignup(businessId, eventId)
     if (ev) {
       try {
         await sendEventSignupOverbookRefundEmail(signup, ev)
@@ -1384,12 +1408,18 @@ async function handleEventSignupOverbook(
 // ─── Event signup refund ──────────────────────────────────────────────────────
 
 async function handleEventSignupRefund(paymentIntentId: string) {
+  // UNSCOPED READER, SCOPED FROM HERE ON. `getEventSignupByPaymentIntent` has
+  // no tenant to filter by (a payment-intent id is Stripe's own, globally
+  // unique, and IS the authorization — see its doc comment in
+  // lib/db/event-signups.ts), but the row it returns carries `business_id`,
+  // and every write and lookup below uses that same value rather than a
+  // second, independently-resolved one.
   const signup = await getEventSignupByPaymentIntent(paymentIntentId)
   if (!signup) return
   if (signup.status === "refunded") return
 
   if (signup.status === "confirmed") {
-    const result = await cancelSignup(signup.id)
+    const result = await cancelSignup(signup.business_id, signup.id)
     if (!result.ok) {
       console.error(`[webhook event refund] cancelSignup failed: ${result.reason}`)
     }
@@ -1400,6 +1430,7 @@ async function handleEventSignupRefund(paymentIntentId: string) {
     .from("event_signups")
     .update({ status: "refunded", updated_at: new Date().toISOString() })
     .eq("id", signup.id)
+    .eq("business_id", signup.business_id)
 }
 
 // ─── Anonymous funnel purchase ──────────────────────────────────────────────

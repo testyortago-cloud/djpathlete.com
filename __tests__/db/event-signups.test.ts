@@ -1,7 +1,14 @@
 import { describe, it, expect, afterAll, beforeAll } from "vitest"
 import { randomUUID } from "crypto"
 import { createEvent } from "@/lib/db/events"
-import { createSignup, getSignupsForEvent, getSignupById, confirmSignup, cancelSignup } from "@/lib/db/event-signups"
+import {
+  createSignup,
+  getSignupsForEvent,
+  getSignupById,
+  confirmSignup,
+  cancelSignup,
+  getSignupTenantById,
+} from "@/lib/db/event-signups"
 
 const PLATFORM = "00000000-0000-0000-0000-000000000001"
 const OTHER_BUSINESS = "82d5b238-1653-4a04-9d2d-2f65e5a8c225" // Trailhead Strength & Conditioning
@@ -52,6 +59,28 @@ describe("event-signups DAL", () => {
 
     const all = await getSignupsForEvent(PLATFORM, eventId)
     expect(all.some((s) => s.id === signup.id)).toBe(true)
+  })
+
+  it("getSignupTenantById returns the row's own business id, by id alone", async () => {
+    // The webhook's whole reason for existing: it holds only
+    // `session.metadata.event_signup_id`, with no tenant of its own to scope
+    // a normal read by.
+    const signup = await createSignup(
+      PLATFORM,
+      eventId,
+      {
+        parent_name: "C",
+        parent_email: "c@x.com",
+        athlete_name: "S3",
+        athlete_age: 14,
+      },
+      "interest",
+    )
+    expect(await getSignupTenantById(signup.id)).toBe(PLATFORM)
+  })
+
+  it("getSignupTenantById returns null for an id that does not exist", async () => {
+    expect(await getSignupTenantById(randomUUID())).toBeNull()
   })
 
   it("confirm + cancel flip status and adjust signup_count", async () => {

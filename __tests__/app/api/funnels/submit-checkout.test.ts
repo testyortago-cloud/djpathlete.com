@@ -149,9 +149,19 @@ describe("POST /api/funnels/submit — checkout forms", () => {
     expect(await res.json()).toMatchObject({ sessionUrl: "https://stripe.test/pay" })
   })
 
+  it("threads the request's own resolved tenant into every event-scoped call, not the platform's", async () => {
+    // "host-biz" is the sentinel `@/lib/tenancy/public`'s mock resolves to
+    // above — distinct from the platform id, so a route that reads the
+    // event or calls checkout under `platformBusinessId()` instead of the
+    // resolved tenant fails this rather than passing by accident.
+    await POST(request())
+    expect(getEventById).toHaveBeenCalledWith("host-biz", EVENT_ID)
+    expect(createEventSignupCheckout.mock.calls[0][0]).toBe("host-biz")
+  })
+
   it("maps the owner's own field names onto the signup schema via roles", async () => {
     await POST(request())
-    expect(createEventSignupCheckout.mock.calls[0][0].input).toMatchObject({
+    expect(createEventSignupCheckout.mock.calls[0][1].input).toMatchObject({
       parent_name: "Dana Reed",
       parent_email: "dana@example.com",
       parent_phone: "09952017559",
@@ -203,7 +213,7 @@ describe("POST /api/funnels/submit — checkout forms", () => {
 
   it("passes funnel-scoped return urls built from the funnel's own slugs", async () => {
     await POST(request())
-    const { returnUrls } = createEventSignupCheckout.mock.calls[0][0]
+    const { returnUrls } = createEventSignupCheckout.mock.calls[0][1]
     // The LAST step by position, not by array order — the fixture lists them
     // out of order deliberately.
     expect(returnUrls.successUrl).toBe(
@@ -217,7 +227,7 @@ describe("POST /api/funnels/submit — checkout forms", () => {
     // %7BCHECKOUT_SESSION_ID%7D as a literal and the confirmation page could
     // never look the session up.
     await POST(request())
-    expect(createEventSignupCheckout.mock.calls[0][0].returnUrls.successUrl).toContain("{CHECKOUT_SESSION_ID}")
+    expect(createEventSignupCheckout.mock.calls[0][1].returnUrls.successUrl).toContain("{CHECKOUT_SESSION_ID}")
   })
 
   it("rejects an age outside the schema's range using the owner's own label", async () => {

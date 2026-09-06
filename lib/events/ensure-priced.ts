@@ -40,8 +40,8 @@ export type EnsurePricedOutcome =
  * NEVER THROWS. It runs inside a publish that is about to report on several pages
  * at once, and one unreachable Stripe must not take that whole report down.
  */
-export async function ensureEventPriced(eventId: string): Promise<EnsurePricedOutcome> {
-  const event = await getEventById(eventId).catch(() => null)
+export async function ensureEventPriced(businessId: string, eventId: string): Promise<EnsurePricedOutcome> {
+  const event = await getEventById(businessId, eventId).catch(() => null)
   if (!event) return { ok: false, reason: "not_found" }
 
   if (event.stripe_price_id) return { ok: true, changed: false }
@@ -65,7 +65,7 @@ export async function ensureEventPriced(eventId: string): Promise<EnsurePricedOu
       stripe_product_id: synced.productId,
       stripe_price_id: synced.priceId,
     }
-    await updateEvent(event.id, stripeFields)
+    await updateEvent(businessId, event.id, stripeFields)
     return { ok: true, changed: true }
   } catch (error) {
     console.error("[events/ensure-priced] Stripe sync failed for event", eventId, error)

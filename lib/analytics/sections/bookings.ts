@@ -5,6 +5,7 @@ import type { DailyBookingsPayload } from "@/types/coach-emails"
 
 interface Options {
   referenceDate: Date
+  businessId: string
 }
 
 function startOfDay(d: Date): Date {
@@ -34,7 +35,7 @@ export async function buildDailyBookings(opts: Options): Promise<DailyBookingsPa
 
   const [bookings, signups] = await Promise.all([
     getBookingsInRange(dayStart, dayEnd),
-    listSignupsCreatedSince(overnightSince),
+    listSignupsCreatedSince(opts.businessId, overnightSince),
   ])
 
   const callsToday = bookings

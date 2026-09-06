@@ -68,6 +68,7 @@ import { withAudit } from "@/lib/audit/with-audit"
 import { getFunnelById, listSteps, publishStep, updateFunnel } from "@/lib/db/funnels"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { ensureEventPriced } from "@/lib/events/ensure-priced"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import { loadCatalogues, publishGate, resolveDoc, type PublishGate } from "@/lib/funnels/sections/resolve"
@@ -90,10 +91,23 @@ export const POST = withAudit(
       return { type: "funnel", id }
     },
   },
-  async (_request, ctx) => {
+  async (request, ctx) => {
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+    // `ensureEventPriced` (below, via `ensureCheckoutCampsPriced`) needs a
+    // tenant to scope its event read and Stripe-id write to — an admin
+    // route with a session, unlike the webhook, so it resolves one rather
+    // than deriving it from a row.
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
     }
     const { id } = await ctx.params
 
@@ -142,7 +156,7 @@ export const POST = withAudit(
       // Runs BEFORE `loadCatalogues`, because the catalogue is where `priced`
       // comes from and a repair after the read would be invisible until the next
       // publish. Never throws; a camp it cannot fix is still reported by the gate.
-      await ensureCheckoutCampsPriced(drafts)
+      await ensureCheckoutCampsPriced(drafts, businessId)
 
       // READ ONCE FOR THE WHOLE FUNNEL. A funnel-wide fact, and re-reading it per
       // page would not only cost N times the work but could gate page 1 and page 4
@@ -346,7 +360,10 @@ export const POST = withAudit(
  * list is one or two camps on a real funnel, and a burst of concurrent product
  * creations against one account buys nothing worth the risk of rate limiting.
  */
-async function ensureCheckoutCampsPriced(drafts: (Awaited<ReturnType<typeof getDraft>> | null)[]): Promise<void> {
+async function ensureCheckoutCampsPriced(
+  drafts: (Awaited<ReturnType<typeof getDraft>> | null)[],
+  businessId: string,
+): Promise<void> {
   const eventIds = new Set<string>()
   for (const draft of drafts) {
     for (const section of draft?.doc?.sections ?? []) {
@@ -357,7 +374,7 @@ async function ensureCheckoutCampsPriced(drafts: (Awaited<ReturnType<typeof getD
     }
   }
   for (const eventId of eventIds) {
-    const outcome = await ensureEventPriced(eventId)
+    const outcome = await ensureEventPriced(businessId, eventId)
     if (outcome.ok && outcome.changed) {
       console.info("[funnels/publish] created a Stripe price for camp", eventId)
     }

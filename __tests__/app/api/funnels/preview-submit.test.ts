@@ -18,12 +18,17 @@ vi.mock("@/lib/db/funnels", () => ({
   getStep: vi.fn(),
 }))
 vi.mock("@/lib/db/events", () => ({ getEventById: vi.fn() }))
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: vi.fn(),
+  NoAccessibleBusinessError: class NoAccessibleBusinessError extends Error {},
+}))
 
 import { POST } from "@/app/api/funnels/preview-submit/route"
 import { auth } from "@/lib/auth"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { getFunnelById, getFunnelBySlug, getStep, listSteps } from "@/lib/db/funnels"
 import { getEventById } from "@/lib/db/events"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
@@ -32,6 +37,7 @@ const STEP_ID = "3f1b7c5e-1111-4222-8333-444444444444"
 const NEXT_ID = "3f1b7c5e-2222-4222-8333-444444444444"
 const FUNNEL_ID = "ffffffff-1111-4222-8333-444444444444"
 const EVENT_ID = "11111111-2222-4333-8444-555555555555"
+const BUSINESS_ID = "admin-biz"
 
 /**
  * Shaped against the REAL `sectionDocSchema` — `v`/`engine`/`theme`, and a form
@@ -90,6 +96,11 @@ function armFunnelWithSecondPage() {
 beforeEach(() => {
   vi.resetAllMocks()
   mock(auth).mockResolvedValue({ user: { role: "admin" } })
+  mock(resolveAdminTenantForRequest).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "Test Co", slug: "test-co" }],
+    isOperator: true,
+  })
   mock(getStep).mockResolvedValue({ id: STEP_ID, funnel_id: FUNNEL_ID, slug: "start", name: "Start" })
   mock(getFunnelById).mockResolvedValue({ id: FUNNEL_ID, slug: "summer-camp", name: "Summer camp" })
   mock(getDraft).mockResolvedValue({ doc: docWith({}), docInvalid: false, revision: 1 })
@@ -114,6 +125,14 @@ describe("the gate", () => {
       mock(auth).mockResolvedValue({ user: { role } })
       expect((await post(GOOD)).status).toBe(200)
     }
+  })
+
+  it("404s (never 403) a staff session with no accessible business", async () => {
+    // Same fail-closed shape as the role check above: the route never
+    // confirms a step id exists to someone who cannot see it, and that
+    // includes a staff account with no business membership left.
+    mock(resolveAdminTenantForRequest).mockRejectedValue(new NoAccessibleBusinessError())
+    expect((await post(GOOD)).status).toBe(404)
   })
 })
 
@@ -221,6 +240,8 @@ describe("outcomes", () => {
     const body = await (await post(GOOD)).json()
     expect(body.outcome).toEqual({ kind: "checkout", label: "Summer Throwing Camp" })
     expect(JSON.stringify(body)).not.toMatch(/stripe|sessionUrl/i)
+    // MUTANT: reading the event under no tenant, or a swapped argument order.
+    expect(getEventById).toHaveBeenCalledWith(BUSINESS_ID, EVENT_ID)
   })
 
   it("still reports a checkout when the camp cannot be read", async () => {
