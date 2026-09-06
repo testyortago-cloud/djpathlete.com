@@ -120,7 +120,8 @@ alter table public.event_signups
 alter table public.event_signups
   add constraint event_signups_event_business_fkey
     foreign key (event_id, business_id)
-    references public.events (id, business_id);
+    references public.events (id, business_id)
+    on delete cascade;   -- inherited from the constraint this replaces
 
 -- Redundant once the composite FK exists, and actively harmful: see below.
 alter table public.event_signups drop constraint event_signups_event_id_fkey;
@@ -149,7 +150,21 @@ sites embed across it — `lib/db/bookkeeping.ts:321` and `functions/src/ai/admi
 so leaving both constraints in place breaks the bookkeeping income read and a Firebase admin
 tool. The composite FK fully implies the single-column one (`events.id` is the primary key, so
 `(event_id, business_id)` referencing `(id, business_id)` cannot be satisfied without
-`event_id` referencing `id`), which is why dropping it loses no integrity.
+`event_id` referencing `id`), which is why dropping it loses no REFERENTIAL integrity.
+
+**It does not, however, inherit the old constraint's `ON DELETE` clause, and the first draft of
+this spec was wrong to say the drop costs nothing.** `event_signups_event_id_fkey` was declared
+`ON DELETE CASCADE`; a composite replacement with no `ON DELETE` defaults to `NO ACTION`, which
+makes deleting an event that has signups raise `foreign_key_violation` instead of cascading.
+`deleteEvent(businessId, id, { force: true })` exists precisely to rely on that cascade — its
+own doc comment says so, and the admin confirm dialog tells the user the delete "cascades via
+FK". Caught by Task 1's review, which reproduced the failure on the dev clone rather than
+reasoning about it. The clause is therefore explicit above, with a comment saying where it came
+from, so a later reader does not tidy it away.
+
+Whether cascade remains the right semantic once a tenant boundary exists — as opposed to
+blocking the delete — is a product question this phase does not answer. It preserves today's
+behaviour exactly; changing it would be a separate, deliberate decision.
 
 Dropping it, rather than adding a disambiguating hint to both call sites, is deliberate: one of
 the two lives in `functions/`, which has `rootDir: "src"` and cannot import `lib/`, so a hint
@@ -401,7 +416,10 @@ before and after for §5.1. Not the full suite — this change is not cross-cutt
 9. **The Stripe webhook takes its tenant from the signup row**, adding no seam entry (§3.6).
 10. **`event_signups_event_id_fkey` is dropped** rather than disambiguating two embeds by hand,
     one of which is a `functions/` twin (§3.1).
-11. **`lib/ads/agent.ts` and `functions/src/ai/admin-tools.ts` keep unscoped events reads.**
+11. **The composite FK carries `on delete cascade`,** preserving the dropped constraint's
+    behaviour exactly rather than silently changing event deletion (§3.1). Whether cascade is
+    still the right semantic across a tenant boundary is deliberately NOT decided here.
+12. **`lib/ads/agent.ts` and `functions/src/ai/admin-tools.ts` keep unscoped events reads.**
     Both are named in §8 with the reason. The second is flagged as a leak with a deadline —
     a second tenant — rather than an open-ended deferral.
 
