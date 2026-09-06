@@ -14,6 +14,7 @@ import { buildEventListSchema } from "@/lib/seo/build-event-list-schema"
 import { EventCard } from "@/components/public/EventCard"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { renderLegalContent } from "@/lib/legal-content"
+import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 export const dynamic = "force-dynamic"
 
@@ -97,8 +98,9 @@ const TRACKS = [
 ]
 
 export default async function CampsPage() {
+  const businessId = await resolvePublicTenant()
   const [events, waiverDoc] = await Promise.all([
-    getPublishedEvents({ type: "camp" }),
+    getPublishedEvents(businessId, { type: "camp" }),
     getActiveDocument("liability_waiver"),
   ])
   const waiverContent = waiverDoc?.content ? renderLegalContent(waiverDoc.content) : null
