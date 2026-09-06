@@ -1,6 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { FadeIn } from "@/components/shared/FadeIn"
 import type { AthleteProfileData } from "@/lib/profile-share/data"
+import { displayWeight } from "@/lib/weight-utils"
 
 const MONTH_YEAR = new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric", timeZone: "UTC" })
 
@@ -24,12 +25,14 @@ export function AthleteHero({ data }: { data: AthleteProfileData }) {
   const meta = [data.sport, data.position, data.experienceLevel ? prettify(data.experienceLevel) : null]
     .filter(Boolean)
     .join(" · ")
-  const weightLbs = data.weightKg !== null ? Math.round(data.weightKg * 2.20462) : null
+  // Whole numbers by design here; conversion goes through the shared helper.
+  const weightDisplay =
+    data.weightKg !== null ? Math.round(displayWeight(data.weightKg, data.weightUnit) ?? 0) : null
 
   const specs: { label: string; value: string }[] = []
   if (data.heightCm !== null) specs.push({ label: "Height", value: `${data.heightCm} CM` })
   if (data.weightKg !== null)
-    specs.push({ label: "Weight", value: data.weightUnit === "lbs" ? `${weightLbs} LBS` : `${data.weightKg} KG` })
+    specs.push({ label: "Weight", value: `${weightDisplay} ${data.weightUnit.toUpperCase()}` })
   if (data.age !== null) specs.push({ label: "Age", value: `${data.age} YRS` })
 
   return (

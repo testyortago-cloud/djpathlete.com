@@ -3,6 +3,7 @@ import { FadeIn } from "@/components/shared/FadeIn"
 import { SectionHeading } from "./SectionHeading"
 import type { GymRecord, FieldRecord } from "@/lib/profile-share/data"
 import type { WeightUnit } from "@/types/database"
+import { displayWeight } from "@/lib/weight-utils"
 
 const DAY_MS = 86_400_000
 const MONTH_YEAR = new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric", timeZone: "UTC" })
@@ -81,7 +82,9 @@ export function RecordsSection({
   weightUnit: WeightUnit
 }) {
   const both = gym.length > 0 && field.length > 0
-  const lift = (kg: number) => (weightUnit === "lbs" ? `${Math.round(kg * 2.20462)} lbs` : `${kg} kg`)
+  // Whole numbers by design on this showcase page, but the conversion itself
+  // goes through the shared helper so there is one KG_TO_LBS in the codebase.
+  const lift = (kg: number) => `${Math.round(displayWeight(kg, weightUnit) ?? 0)} ${weightUnit}`
   const maxKg = gym.reduce((m, r) => Math.max(m, r.valueKg), 0)
   return (
     <FadeIn>
