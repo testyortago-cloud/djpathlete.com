@@ -3,13 +3,15 @@ import { CalendarDays, CheckCircle2, FileEdit, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import { getEvents } from "@/lib/db/events"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { EventList } from "@/components/admin/events/EventList"
 
 export const dynamic = "force-dynamic"
 export const metadata = { title: "Events" }
 
 export default async function AdminEventsPage() {
-  const events = await getEvents()
+  const { businessId } = await resolveAdminTenant()
+  const events = await getEvents(businessId)
 
   const total = events.length
   const published = events.filter((e) => e.status === "published").length

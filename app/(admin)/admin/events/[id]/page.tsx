@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { ArrowLeft, Users } from "lucide-react"
 import { getEventById } from "@/lib/db/events"
 import { getSignupsForEvent } from "@/lib/db/event-signups"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { EventForm } from "@/components/admin/events/EventForm"
 import { SignupsTable } from "@/components/admin/events/SignupsTable"
 
@@ -15,10 +16,11 @@ interface Props {
 
 export default async function EditEventPage({ params }: Props) {
   const { id } = await params
-  const event = await getEventById(id)
+  const { businessId } = await resolveAdminTenant()
+  const event = await getEventById(businessId, id)
   if (!event) notFound()
 
-  const signups = await getSignupsForEvent(id)
+  const signups = await getSignupsForEvent(businessId, id)
 
   return (
     <div className="space-y-8">

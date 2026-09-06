@@ -4,12 +4,23 @@ import { createEventSchema } from "@/lib/validators/events"
 import { createEvent, updateEvent } from "@/lib/db/events"
 import { syncEventToStripe } from "@/lib/stripe"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
 export async function POST(request: Request) {
   try {
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
     }
 
     const body = await request.json()
@@ -22,7 +33,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      const event = await createEvent(result.data)
+      const event = await createEvent(businessId, result.data)
 
       // Auto-sync to Stripe when the new event is created in published+priced
       // state (i.e. admin clicked "Save & publish" with a price set). Without
@@ -35,7 +46,7 @@ export async function POST(request: Request) {
             stripe_product_id: synced.productId,
             stripe_price_id: synced.priceId,
           }
-          const updated = await updateEvent(event.id, stripeFields)
+          const updated = await updateEvent(businessId, event.id, stripeFields)
           return NextResponse.json({ event: updated }, { status: 201 })
         } catch (err) {
           console.error("[admin events POST] auto-sync on create failed", err)

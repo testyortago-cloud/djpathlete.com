@@ -1,11 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
+const { NoAccessibleBusinessError } = vi.hoisted(() => {
+  class NoAccessibleBusinessError extends Error {
+    constructor() {
+      super("This account has no business it can access")
+      this.name = "NoAccessibleBusinessError"
+    }
+  }
+  return { NoAccessibleBusinessError }
+})
+
 const authMock = vi.fn()
 const getSignupByIdMock = vi.fn()
 const getEventByIdMock = vi.fn()
 const confirmSignupMock = vi.fn()
 const cancelSignupMock = vi.fn()
 const sendConfirmedMock = vi.fn<(...a: unknown[]) => Promise<undefined>>(async () => undefined)
+// Mocked, or the route's resolveAdminTenantForRequest reaches a real
+// Supabase client and this stops being a unit test. Sentinel is "admin-biz",
+// never the platform id and never "host-biz" (the PUBLIC boundary's own
+// sentinel).
+const resolveTenantMock = vi.fn()
 
 vi.mock("@/lib/auth", () => ({ auth: (...args: unknown[]) => authMock(...args) }))
 vi.mock("@/lib/db/event-signups", () => ({
@@ -15,6 +30,10 @@ vi.mock("@/lib/db/event-signups", () => ({
 }))
 vi.mock("@/lib/db/events", () => ({ getEventById: (...a: unknown[]) => getEventByIdMock(...a) }))
 vi.mock("@/lib/email", () => ({ sendEventSignupConfirmedEmail: (...a: unknown[]) => sendConfirmedMock(...a) }))
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: (...a: unknown[]) => resolveTenantMock(...a),
+  NoAccessibleBusinessError,
+}))
 
 function makeReq(body: Record<string, unknown>) {
   return new Request("http://localhost/api/admin/events/evt-1/signups/sig-1", {
@@ -36,7 +55,9 @@ describe("PATCH /api/admin/events/[id]/signups/[signupId]", () => {
     confirmSignupMock.mockReset()
     cancelSignupMock.mockReset()
     sendConfirmedMock.mockClear()
+    resolveTenantMock.mockReset()
     authMock.mockResolvedValue({ user: { id: "u1", role: "admin" } })
+    resolveTenantMock.mockResolvedValue({ businessId: "admin-biz", choices: [], isOperator: true })
   })
 
   it("returns 403 when not admin", async () => {
@@ -44,6 +65,14 @@ describe("PATCH /api/admin/events/[id]/signups/[signupId]", () => {
     const { PATCH } = await import("@/app/api/admin/events/[id]/signups/[signupId]/route")
     const res = await PATCH(makeReq({ action: "confirm" }), ctx)
     expect(res.status).toBe(403)
+  })
+
+  it("returns 403 when the caller has no accessible business", async () => {
+    resolveTenantMock.mockRejectedValueOnce(new NoAccessibleBusinessError())
+    const { PATCH } = await import("@/app/api/admin/events/[id]/signups/[signupId]/route")
+    const res = await PATCH(makeReq({ action: "confirm" }), ctx)
+    expect(res.status).toBe(403)
+    expect(getSignupByIdMock).not.toHaveBeenCalled()
   })
 
   it("returns 404 when signup does not belong to event", async () => {
@@ -96,6 +125,30 @@ describe("PATCH /api/admin/events/[id]/signups/[signupId]", () => {
     expect(data.signup.status).toBe("confirmed")
   })
 
+  // MUTANT: getSignupById(signupId) / confirmSignup(signupId) / cancelSignup(signupId)
+  // / getEventById(id) with no leading businessId. TypeScript cannot catch a
+  // swap here (both remaining params are strings), so this asserts the
+  // resolved tenant reaches every one of them, in the businessId-first slot.
+  it("threads the resolved tenant into every DAL call, not the platform id", async () => {
+    getSignupByIdMock.mockResolvedValueOnce(sigMatching)
+    confirmSignupMock.mockResolvedValueOnce({ ok: true })
+    getSignupByIdMock.mockResolvedValueOnce({ ...sigMatching, status: "confirmed" })
+    getEventByIdMock.mockResolvedValueOnce({
+      id: "evt-1",
+      title: "T",
+      type: "clinic",
+      slug: "s",
+      start_date: "",
+      location_name: "L",
+    })
+    const { PATCH } = await import("@/app/api/admin/events/[id]/signups/[signupId]/route")
+    const res = await PATCH(makeReq({ action: "confirm" }), ctx)
+    expect(res.status).toBe(200)
+    expect(getSignupByIdMock).toHaveBeenCalledWith("admin-biz", "sig-1")
+    expect(confirmSignupMock).toHaveBeenCalledWith("admin-biz", "sig-1")
+    expect(getEventByIdMock).toHaveBeenCalledWith("admin-biz", "evt-1")
+  })
+
   it("cancel happy path returns refetched signup, no email", async () => {
     getSignupByIdMock.mockResolvedValueOnce(sigMatching)
     cancelSignupMock.mockResolvedValueOnce({ ok: true })
@@ -104,6 +157,7 @@ describe("PATCH /api/admin/events/[id]/signups/[signupId]", () => {
     const res = await PATCH(makeReq({ action: "cancel" }), ctx)
     expect(res.status).toBe(200)
     expect(sendConfirmedMock).not.toHaveBeenCalled()
+    expect(cancelSignupMock).toHaveBeenCalledWith("admin-biz", "sig-1")
   })
 
   it("cancel maps not_cancellable to 409", async () => {

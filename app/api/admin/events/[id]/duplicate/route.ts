@@ -2,20 +2,30 @@ import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getEventById, getEventBySlug, createEvent } from "@/lib/db/events"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 
-export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
+    let businessId: string
+    try {
+      ;({ businessId } = await resolveAdminTenantForRequest(request))
+    } catch (err) {
+      if (err instanceof NoAccessibleBusinessError) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+      }
+      throw err
+    }
     const { id } = await ctx.params
-    const source = await getEventById(id)
+    const source = await getEventById(businessId, id)
     if (!source) return NextResponse.json({ error: "Event not found" }, { status: 404 })
 
     let suffix = 1
     let newSlug = `${source.slug}-copy`
-    while (await getEventBySlug(newSlug)) {
+    while (await getEventBySlug(businessId, newSlug)) {
       suffix += 1
       newSlug = `${source.slug}-copy-${suffix}`
     }
@@ -40,8 +50,8 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     }
     const duplicated =
       source.type === "clinic"
-        ? await createEvent({ ...base, type: "clinic" })
-        : await createEvent({
+        ? await createEvent(businessId, { ...base, type: "clinic" })
+        : await createEvent(businessId, {
             ...base,
             type: "camp",
             end_date: source.end_date ?? source.start_date,
