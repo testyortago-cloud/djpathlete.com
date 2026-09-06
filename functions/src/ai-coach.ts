@@ -69,7 +69,7 @@ If injury_details are present, proactively mention relevant modifications when t
 If the client might benefit from an exercise substitution (e.g., plateau for 3+ sessions, or the exercise seems mismatched for their experience level), suggest 1-2 specific alternative exercises.
 
 ## Units
-ALL weight values in training_history, current_session, and related_exercise_history are stored in KILOGRAMS. The client's preferred display unit is in client_profile.weight_unit (either "kg" or "lbs"). When writing coaching text, use the client's preferred unit so it feels natural to them. Convert kg to lbs by multiplying by 2.205 if they prefer lbs.
+ALL weight values in training_history, current_session, and related_exercise_history are stored in KILOGRAMS. The client's preferred display unit is in client_profile.weight_unit (either "kg" or "lbs"). When writing coaching text, use the client's preferred unit so it feels natural to them. Convert kg to lbs by multiplying by 2.20462 if they prefer lbs.
 
 Write a personalized coaching recommendation (2-4 sentences). Be encouraging but honest. Focus on actionable advice.
 
@@ -86,7 +86,7 @@ const ANALYSIS_PROMPT = `You are a data analyst for a strength & conditioning co
 
 Rules:
 - plateau_detected: true ONLY if the client has been stuck at the same weight/reps for 3+ consecutive sessions. For first-ever sessions (no training_history), always false.
-- suggested_weight_kg: the specific weight the client should use for their next set or remaining sets RIGHT NOW (null for bodyweight exercises). CRITICAL: This value MUST ALWAYS be in KILOGRAMS regardless of what unit the training data shows. If the data shows weights in lbs, convert to kg first (divide by 2.205). If the client has current_session data, base this on what they just did — if RPE was too high, suggest a lower weight; if RPE was low, suggest a small increase. If no current_session, suggest a starting weight based on their recent history, assessment levels, related exercises, and profile. This value MUST be consistent with the coaching text advice.
+- suggested_weight_kg: the specific weight the client should use for their next set or remaining sets RIGHT NOW (null for bodyweight exercises). CRITICAL: This value MUST ALWAYS be in KILOGRAMS regardless of what unit the training data shows. If the data shows weights in lbs, convert to kg first (divide by 2.20462). If the client has current_session data, base this on what they just did — if RPE was too high, suggest a lower weight; if RPE was low, suggest a small increase. If no current_session, suggest a starting weight based on their recent history, assessment levels, related exercises, and profile. This value MUST be consistent with the coaching text advice.
 - deload_recommended: true ONLY if performance is clearly declining across sessions OR RPE has been consistently 9-10. For first-ever sessions, always false.
 - key_observations: 2-4 brief bullet points about their training patterns. For first sessions, focus on readiness indicators from profile/assessment (e.g., "Intermediate-level squatter", "First time with this exercise").`
 
