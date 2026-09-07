@@ -1795,11 +1795,20 @@ describe("moveOpportunityBySequence", () => {
   // Separates the forward-only guard from `already_on_stage`, which the two
   // tests above cannot: they only ever change the STAGE ID, and the two
   // guards agree on every case reachable that way (equal position implies
-  // equal stage_id on a normal board, since positions are unique). Here the
-  // target stage has a DIFFERENT id but the SAME position as the card's
-  // current stage -- a data anomaly, but the guard must not rely on the
-  // pipeline never producing one. `already_on_stage` compares stage_id and
-  // would wave this through; only a `<=` on position catches it.
+  // equal stage_id on a normal board). Here the target stage has a DIFFERENT
+  // id but the SAME position as the card's current stage. `already_on_stage`
+  // compares stage_id and would wave this through; only a `<=` on position
+  // catches it -- this is what pins the guard's `<=` boundary rather than the
+  // `<` a naive read of "forward only" might reach for.
+  //
+  // NOT regression cover for a reachable bug: `pipeline_stages_position_per_pipeline
+  // UNIQUE (pipeline_id, position)` in supabase/migrations/00219_lead_engine_pipeline.sql:32
+  // makes two stage ids sharing a position on one pipeline schema-impossible,
+  // not merely a state no current writer happens to produce. The row below is
+  // pushed straight into the in-memory store, bypassing that constraint on
+  // purpose, because there is no other way to exercise the `<=` vs `<`
+  // boundary at all -- a future reader should not mistake this for coverage
+  // that guards against production ever reaching this state.
   it("refuses a move to a different stage id that shares the same position", async () => {
     seedBoard()
     store.pipeline_stages.push({
