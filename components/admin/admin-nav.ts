@@ -140,6 +140,10 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: Permi
           // billed. Contacts is `contacts`: marketing and consent, including
           // the ~90 imported rows that have a phone number and no login.
           { label: "Contacts", href: "/admin/contacts", icon: UsersRound },
+          // The report on what those sequences did to those contacts. Beside
+          // Contacts because it is the same subsystem and answers the question
+          // that page raises: they are in a sequence — and then what?
+          { label: "Sequences", href: "/admin/sequences", icon: Workflow },
           { label: "Clients", href: "/admin/clients", icon: Users },
           { label: "Schedule", href: "/admin/schedule", icon: CalendarClock },
           // Clients coached here but billed by a partner facility. Sits beside
