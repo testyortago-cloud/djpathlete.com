@@ -128,6 +128,24 @@ function constraintViolation(table: string, payload: Row, rows: Row[]): PgError 
   return null
 }
 
+/**
+ * RESIDUAL 1. A read fault the mock can be told to answer a SELECT with.
+ *
+ * `moveOpportunityBySequence` catches around `resolvePipeline` and re-decides
+ * on the exception. Nothing in this harness could previously make that read
+ * fail for any reason OTHER than "no such pipeline", so the `instanceof
+ * PipelineNotConfiguredError` half of the catch's condition was unpinned:
+ * broadening it to a bare `input.pipelineKey !== null` left 90/90 green.
+ *
+ * That broadening is the dangerous direction. It would convert a transient
+ * database outage on a step with an explicit pipeline key into a permanently
+ * failed run — precisely the inversion the 73-run incident of 2026-08-31
+ * taught, and the reason the throw-vs-return split exists at all.
+ *
+ * Set per table; cleared in `beforeEach`, so it cannot leak into another case.
+ */
+let selectErrorByTable: Partial<Record<keyof Store, PgError>> = {}
+
 // NOTE ON THE MOCK: copied (structure verbatim) from __tests__/db/sequences.ts's
 // harness. The trap this project has hit twice is a `.eq()` that returns the
 // query object without recording the filter, so every query resolves to
@@ -196,6 +214,8 @@ vi.mock("@/lib/supabase", () => ({
       const execute = (): { data: any; error: any } => {
         if (mode === "insert") return doInsert()
         if (mode === "update") return doUpdate()
+        const injected = selectErrorByTable[table]
+        if (injected) return { data: null, error: injected }
         return { data: matched(), error: null }
       }
 
@@ -303,6 +323,7 @@ beforeEach(() => {
   seqCounter = 0
   opportunitiesHasSourceEventId = true
   updateCalls.length = 0
+  selectErrorByTable = {}
 })
 
 // ---------------------------------------------------------------------------
@@ -1906,6 +1927,89 @@ describe("moveOpportunityBySequence", () => {
       sequenceRunId: RUN_ID,
     })
     expect(wrong.kind).toBe("invalid")
+  })
+
+  // RESIDUAL 1. The catch above is narrow on TWO axes and the previous round
+  // pinned only one. `pipelineKey !== null` was covered; `err instanceof
+  // PipelineNotConfiguredError` was not, so broadening the condition to a bare
+  // `if (input.pipelineKey !== null)` left the whole suite green.
+  //
+  // That direction is the dangerous one. Every OTHER way the pipeline read can
+  // fail — a PostgREST outage, a dropped connection, a schema-cache miss — is
+  // transient. Swallowing one into `{ kind: "invalid" }` makes the runner call
+  // `failRun` on the first attempt, permanently, for a fault that would have
+  // cleared on the next tick. That is the 2026-08-31 shape exactly: 73 runs
+  // marked failed inside ten minutes over a fault nobody could retry past.
+  //
+  // So these two assert the SAME input differing only in the class of the
+  // throw, which is the only pair that can pin `instanceof` rather than the
+  // key check sitting beside it.
+  describe("only a missing pipeline is treated as the author's typo", () => {
+    // Shape copied from the PGRST204 fixture at the top of this file, so it is
+    // a real PostgREST error object rather than a plausible-looking invention.
+    const READ_FAULT = {
+      code: "PGRST301",
+      message: "JWT expired",
+      details: null,
+      hint: null,
+    }
+
+    it("propagates a transient read fault even when the step NAMED a pipeline", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+      // The pipeline EXISTS. The read of it is what fails, and it fails for a
+      // reason that has nothing to do with how the step was authored.
+      selectErrorByTable.pipelines = READ_FAULT
+
+      await expect(
+        moveOpportunityBySequence({
+          contactId: "c-1",
+          stageKey: "consulted",
+          pipelineKey: DEFAULT_PIPELINE_KEY,
+          businessId: SINGLETON_BUSINESS_ID,
+          sequenceRunId: RUN_ID,
+        }),
+      ).rejects.toMatchObject({ code: "PGRST301" })
+    })
+
+    it("propagates a bare Error from the stage read too, named pipeline or not", async () => {
+      // The SECOND read inside resolvePipeline. Same rule: not a
+      // PipelineNotConfiguredError, so not the author's problem to fix.
+      seedBoard()
+      seedContact("c-1")
+      selectErrorByTable.pipeline_stages = READ_FAULT
+
+      await expect(
+        moveOpportunityBySequence({
+          contactId: "c-1",
+          stageKey: "consulted",
+          pipelineKey: DEFAULT_PIPELINE_KEY,
+          businessId: SINGLETON_BUSINESS_ID,
+          sequenceRunId: RUN_ID,
+        }),
+      ).rejects.toMatchObject({ code: "PGRST301" })
+    })
+
+    // THE CONTROL. Without it, both assertions above are satisfied by a
+    // function that never returns `invalid` at all — including one whose whole
+    // catch block was deleted. Same explicit key, same seeded board; only the
+    // class of the throw differs.
+    it("still returns invalid for the same input when the pipeline is genuinely missing", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+      const result = await moveOpportunityBySequence({
+        contactId: "c-1",
+        stageKey: "consulted",
+        pipelineKey: "no-such-pipeline",
+        businessId: SINGLETON_BUSINESS_ID,
+        sequenceRunId: RUN_ID,
+      })
+
+      expect(result.kind).toBe("invalid")
+    })
   })
 
   // FIX 6. `sequence_runs.last_error` is rendered raw beside the run on the

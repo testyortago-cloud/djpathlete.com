@@ -503,6 +503,30 @@ describe("a stage step", () => {
     expect(summary.failed).toBe(1)
     expect(summary.config_faults ?? 0).toBe(0)
   })
+
+  // RESIDUAL 3. This is the route by which a THROWN error's `.message` becomes
+  // coach-facing text: the terminal arm of the batch catch calls
+  // `failRun(run.id, message)`, and the contact detail page renders
+  // `run.last_error` raw. The string predates this branch, but nothing routed
+  // it to a coach until a sequence could move a card.
+  //
+  // Driven through the real class, not a fixture, so the assertion pins what
+  // production would actually write.
+  it("writes the pipeline error to the run in words a coach can act on", async () => {
+    ;(moveOpportunityBySequence as Mock).mockRejectedValue(new PipelineNotConfiguredError("coaching"))
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1", { attempts: 5 })])
+
+    await runSequenceTick()
+
+    // Presence control: this is the terminal arm, not the defer arm.
+    expect(failRun).toHaveBeenCalledTimes(1)
+    const written = (failRun as Mock).mock.calls[0][1] as string
+    expect(written).toBe('No pipeline is set up for this business under the name "coaching".')
+    // Same bar as every other operator-facing string on this branch.
+    expect(written).not.toContain("`")
+    expect(written.toLowerCase()).not.toContain("board")
+    expect(written.toLowerCase()).not.toContain("config")
+  })
 })
 
 describe("the one-write-back concurrency contract", () => {

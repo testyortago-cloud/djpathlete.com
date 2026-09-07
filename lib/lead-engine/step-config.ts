@@ -38,8 +38,12 @@ function requiredString(value: unknown): string | null {
  * a tag by typing what they see.
  *
  * Rejecting here rather than inside `addTag` means an unstorable tag fails the
- * run at the DECISION, where the reason is visible on the sequence screen,
- * instead of throwing four layers down.
+ * run at the DECISION, where the reason lands on `sequence_runs.last_error` and
+ * the contact detail page renders it beside the run — instead of throwing four
+ * layers down where nothing surfaces it. Visible, note, not recoverable:
+ * `status='failed'` is terminal and nothing here re-activates a failed run.
+ * (There is no `/admin/sequences` screen on this branch; that is a different,
+ * unmerged one.)
  */
 export function parseTagConfig(config: Record<string, unknown>): ParseResult<TagStepConfig> {
   const raw = config.tag

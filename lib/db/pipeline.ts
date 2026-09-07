@@ -55,7 +55,19 @@ function getClient() {
 export class PipelineNotConfiguredError extends Error {
   readonly pipelineKey: string
   constructor(pipelineKey: string) {
-    super(`pipeline not configured: no seeded board for key "${pipelineKey}"`)
+    // WRITTEN FOR A COACH, because this message reaches one. On the terminal
+    // config-fault path the sequence tick calls `failRun(run.id, err.message)`
+    // (lib/automation/sequence-tick-runner.ts), and the contact detail page
+    // renders `run.last_error` raw beside the run — so the words "board" and
+    // "not configured" would land on the same reader Task 6 reworded "board"
+    // out of the timeline copy for. That route only opened when this branch
+    // made a sequence able to move a card; the string is older than the route.
+    //
+    // No caller matches on this text — every classification is `instanceof` or
+    // `.name`, verified by grep before rewriting it. The key is still named,
+    // so a stack trace stays as diagnosable as it was (00249's incident note
+    // quotes the old wording; that is a historical record, not a dependency).
+    super(`No pipeline is set up for this business under the name "${pipelineKey}".`)
     this.name = "PipelineNotConfiguredError"
     this.pipelineKey = pipelineKey
   }
@@ -1041,6 +1053,22 @@ export async function moveOpportunityBySequence(input: {
   // See the THROW vs RETURN note above: an explicitly named pipeline that does
   // not resolve is the author's typo and is returned; the default one not
   // resolving is an unfilled setting and is rethrown.
+  //
+  // KNOWN IMPRECISION, recorded rather than fixed. `resolvePipeline` raises
+  // PipelineNotConfiguredError for TWO conditions: no `pipelines` row for the
+  // key, and a row that exists with no stages under it. With an explicit key
+  // this branch treats both as the author's typo, so a seeded-but-EMPTY
+  // pipeline is failed terminally and told it "does not exist" — inaccurate,
+  // and that second fault is operator-recoverable rather than authorial.
+  //
+  // Left as is because: it is unreachable today (00219 and 00249 both seed
+  // stages with the pipeline, and there is no surface that creates one
+  // without them), and separating the two would mean either widening
+  // `resolvePipeline`'s contract — which `applyPipelineEvent` and the
+  // reconciler depend on — or pre-reading the `pipelines` row here, which
+  // costs a round trip and duplicates that function's two-part definition of
+  // "not seeded" into a second copy that will drift. Revisit if a path ever
+  // creates a pipeline before its stages.
   let pipelineId: string
   let stages: StageRow[]
   try {
