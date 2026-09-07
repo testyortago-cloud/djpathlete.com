@@ -384,11 +384,26 @@ describe("timeline labels for sequence side effects", () => {
     expect(described.detail).toContain("Consulted")
   })
 
-  it("explains a skipped move without jargon", () => {
+  it("explains a skipped move without jargon: no card on the pipeline yet", () => {
     const described = describeTimelineEvent(
       event({ id: "e", kind: "sequence_stage_skipped", metadata: { reason: "no_opportunity" } }),
     )
     expect(described.detail).not.toContain("opportunity")
+    expect(described.detail).toBe("They are not in your pipeline yet, so there was no card to move.")
+  })
+
+  it("explains a skipped move without jargon: the deal is already closed", () => {
+    const described = describeTimelineEvent(
+      event({ id: "e", kind: "sequence_stage_skipped", metadata: { reason: "already_closed" } }),
+    )
+    expect(described.detail).toBe("Their card is already closed, so it was left where it was.")
+  })
+
+  it("explains a skipped move without jargon: the card was already on that stage", () => {
+    const described = describeTimelineEvent(
+      event({ id: "e", kind: "sequence_stage_skipped", metadata: { reason: "already_on_stage" } }),
+    )
+    expect(described.detail).toBe("Their card was already at that stage, so nothing changed.")
   })
 
   // The guard that matters: no hand-written label may render an empty title.

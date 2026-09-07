@@ -315,7 +315,7 @@ export function describeTimelineEvent(row: TimelineEventRow): {
       const reason = asString(meta.reason)
       const why =
         reason === "no_opportunity"
-          ? "They are not on the board yet, so there was no card to move."
+          ? "They are not in your pipeline yet, so there was no card to move."
           : reason === "already_closed"
             ? "Their card is already closed, so it was left where it was."
             : reason === "already_on_stage"
