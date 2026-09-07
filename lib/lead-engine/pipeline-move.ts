@@ -15,7 +15,14 @@ export type StageKind = "open" | "won" | "lost"
 // through). Omitting it here was a type lie: the CHECK constraint on
 // opportunities.closed_trigger already allows it and 00220 already writes
 // it (final review, Minor).
-export type MoveTrigger = "booking" | "payment" | "manual" | "reconciler" | "merge" | "quiz"
+// "sequence" is written by moveOpportunityBySequence (lib/db/pipeline.ts) via
+// insertStageEvent — not produced by decideMove, and never as
+// closed_trigger, since a sequence step may move a card but never close one
+// (migration 00254). It belongs in this union anyway: this type is the
+// single source of truth the opportunity_stage_events_trigger_check CHECK is
+// tested against, and a value the constraint allows but this union omits is
+// the same kind of drift that let 'quiz' ship silently broken.
+export type MoveTrigger = "booking" | "payment" | "manual" | "reconciler" | "merge" | "quiz" | "sequence"
 export type Staleness = "fresh" | "amber" | "red"
 
 export type StageRow = {
