@@ -15,7 +15,7 @@ node scripts/capture-sequence-reporting-screenshots.mjs
 
 | # | File | What it shows |
 |---|---|---|
-| 01 | [01-every-sequence-and-what-happened.png](01-every-sequence-and-what-happened.png) | The `/admin/sequences` list: all nine sequences, each one's entered count and outcome columns, a row explaining why an empty sequence has no runs yet, and an "off" status pill on a paused/draft sequence. |
+| 01 | [01-every-sequence-and-what-happened.png](01-every-sequence-and-what-happened.png) | The `/admin/sequences` list: all nine sequences, each one's entered count and outcome columns, a row explaining why an empty sequence has no runs yet, and the status pill — `On`, `Paused`, `Not started` or `Archived` — on each one. |
 | 02 | [02-one-sequence-and-its-people.png](02-one-sequence-and-its-people.png) | `/admin/sequences/cold_lead_re_engagement` — the summary tiles plus the two real people in it: Noor Haddad, who booked a call and left the sequence, and Maya Sorensen, still going through its six steps. |
 | 03 | [03-why-somebody-left.png](03-why-somebody-left.png) | `/admin/sequences/quiz_rebuilder` — one person who opted out, with the specific reason (clicked unsubscribe in an email) kept separate from a texted STOP or an existing do-not-contact entry. |
 | 04 | [04-an-empty-sequence-says-why.png](04-an-empty-sequence-says-why.png) | `/admin/sequences/new_lead_nurture` — zero entries, and the empty row says why instead of looking like a broken page. |

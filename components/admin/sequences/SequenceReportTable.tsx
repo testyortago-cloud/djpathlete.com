@@ -46,6 +46,24 @@ function whyEmpty(row: SequenceReportRow): string {
   return "Nobody has entered this one yet."
 }
 
+/**
+ * The sentence that stops a red number reading as a broken screen.
+ *
+ * The only sequence on production with any people in it has 73, and nothing was
+ * sent to any of them. A bare "73" in a column headed "Something went wrong"
+ * looks like the page is at fault. This says what actually happened and where
+ * the reason is written down.
+ *
+ * Deliberately NOT inside the "nobody has entered this yet" branch: a sequence
+ * can have plenty of people in it and still have failed some of them, and that
+ * is the case worth reading.
+ */
+function failedNote(count: number): string {
+  return count === 1
+    ? "Nothing was sent to 1 of these people. Open the sequence to see why."
+    : `Nothing was sent to ${count} of these people. Open the sequence to see why.`
+}
+
 export function SequenceReportTable({ rows }: { rows: SequenceReportRow[] }) {
   return (
     <DataTableCard>
@@ -59,10 +77,15 @@ export function SequenceReportTable({ rows }: { rows: SequenceReportRow[] }) {
           <DataTableHead align="right">Opted out</DataTableHead>
           <DataTableHead align="right">Reached the end</DataTableHead>
           <DataTableHead align="right">Something went wrong</DataTableHead>
+          {/* Two of the seven things that can happen have no column of their own
+              — somebody's details were merged into another person's record, or
+              they were already in this sequence under a second record. Without
+              this column the row's numbers visibly stop adding up to Entered. */}
+          <DataTableHead align="right">Something else</DataTableHead>
         </DataTableHeader>
         <tbody>
           {rows.length === 0 ? (
-            <DataTableEmpty colSpan={8}>No sequences have been set up yet.</DataTableEmpty>
+            <DataTableEmpty colSpan={9}>No sequences have been set up yet.</DataTableEmpty>
           ) : (
             rows.map((row) => (
               <DataTableRow key={row.id}>
@@ -70,11 +93,14 @@ export function SequenceReportTable({ rows }: { rows: SequenceReportRow[] }) {
                   <Link href={`/admin/sequences/${row.key}`} className="font-medium text-primary hover:underline">
                     {row.name}
                   </Link>
-                  <div className="mt-1 flex items-center gap-2">
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
                     <DataTableBadge tone={STATUS_TONE[row.status] ?? "neutral"}>
                       {STATUS_LABEL[row.status] ?? row.status}
                     </DataTableBadge>
                     {row.entered === 0 ? <span className="text-xs text-muted-foreground">{whyEmpty(row)}</span> : null}
+                    {row.buckets.failed > 0 ? (
+                      <span className="text-xs text-muted-foreground">{failedNote(row.buckets.failed)}</span>
+                    ) : null}
                   </div>
                 </DataTableCell>
                 <DataTableCell align="right" className="font-medium">
@@ -97,6 +123,9 @@ export function SequenceReportTable({ rows }: { rows: SequenceReportRow[] }) {
                 </DataTableCell>
                 <DataTableCell align="right" muted={row.buckets.failed === 0}>
                   {row.buckets.failed}
+                </DataTableCell>
+                <DataTableCell align="right" muted={row.buckets.other === 0}>
+                  {row.buckets.other}
                 </DataTableCell>
               </DataTableRow>
             ))

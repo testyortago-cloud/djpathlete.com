@@ -42,13 +42,33 @@ export default async function SequenceDetailPage({
   const { key } = await params
   const { page } = await searchParams
 
-  const pageNumber = Math.max(1, Number.parseInt(page ?? "1", 10) || 1)
-  const offset = (pageNumber - 1) * DETAIL_PAGE_SIZE
+  const requestedPage = Math.max(1, Number.parseInt(page ?? "1", 10) || 1)
 
-  const detail = await sequenceDetail(businessId, key, { limit: DETAIL_PAGE_SIZE, offset })
+  // The page number cannot be clamped BEFORE the read: the last page number is
+  // derived from the total, and only the read knows the total. So it is clamped
+  // after, and the read repeated at the clamped position. Without this, typing
+  // ?page=9 at a sequence with 73 people rendered "Entered 73" in the tiles
+  // directly above a table saying nobody has entered this sequence yet.
+  //
+  // The repeat only ever happens for a page that does not exist, which no link
+  // on this screen produces — the alternative (a cheap count read first, then
+  // the paged read) would cost an extra round trip on EVERY view to save one on
+  // a hand-typed URL.
+  let detail = await sequenceDetail(businessId, key, {
+    limit: DETAIL_PAGE_SIZE,
+    offset: (requestedPage - 1) * DETAIL_PAGE_SIZE,
+  })
   if (!detail) notFound()
 
   const totalPages = Math.max(1, Math.ceil(detail.totalRuns / DETAIL_PAGE_SIZE))
+  const pageNumber = Math.min(requestedPage, totalPages)
+  if (pageNumber !== requestedPage) {
+    detail =
+      (await sequenceDetail(businessId, key, {
+        limit: DETAIL_PAGE_SIZE,
+        offset: (pageNumber - 1) * DETAIL_PAGE_SIZE,
+      })) ?? detail
+  }
 
   return (
     <div className="space-y-6">
@@ -85,14 +105,30 @@ export default async function SequenceDetailPage({
         ))}
       </div>
 
+      {/* "Something else" is not a mystery any more: two of the seven things that
+          can happen — somebody's details merged into another person's record, and
+          somebody already in this sequence under a second record — land here on
+          purpose, and the list below names both in plain words. Anything genuinely
+          new still shows up here, as itself. */}
       {detail.buckets.other > 0 ? (
         <p className="text-sm text-muted-foreground">
-          {detail.buckets.other} left for a reason this page does not have a name for yet. They are listed
-          below with the raw reason.
+          {detail.buckets.other === 1
+            ? "1 person left this sequence for a reason with no column of its own."
+            : `${detail.buckets.other} people left this sequence for a reason with no column of its own.`}{" "}
+          Each one is named in the list below.
         </p>
       ) : null}
 
       <SequenceRunsTable runs={detail.runs} />
+
+      {detail.contactsWithoutEmailConsent > 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {detail.contactsWithoutEmailConsent === 1
+            ? "1 person in this sequence has no recorded permission to email."
+            : `${detail.contactsWithoutEmailConsent} people in this sequence have no recorded permission to email.`}{" "}
+          Emails still go out to them — this is here so you can see the number.
+        </p>
+      ) : null}
 
       {totalPages > 1 ? (
         <div className="flex items-center justify-between text-sm">

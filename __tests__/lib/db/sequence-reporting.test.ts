@@ -99,6 +99,17 @@ describe("bucketForRun", () => {
   it("puts an unknown status in other", () => {
     expect(bucketForRun("paused_by_hand", null)).toBe("other")
   })
+
+  // The two the first grep missed because it only searched TypeScript. Both are
+  // written by SQL, inside migration 00238's merge_contacts, which runs during
+  // ordinary identity resolution rather than from any button. They belong in
+  // `other` — they are bookkeeping about which record somebody ended up in, not
+  // an outcome the follow-up produced — and `other` is a COLUMN on the list, so
+  // they are visible rather than making the row stop adding up.
+  it("puts the two reasons migration 00238 writes in other", () => {
+    expect(bucketForRun("exited", "merged_into_survivor")).toBe("other")
+    expect(bucketForRun("exited", "superseded_by_merged_run")).toBe("other")
+  })
 })
 
 describe("emptyBuckets", () => {
@@ -164,7 +175,8 @@ describe("sequenceReport", () => {
         { sequence_id: "s1", contact_id: "c5", status: "failed", exit_reason: null },
       ],
     })
-    const [row] = await sequenceReport(BUSINESS)
+    const { rows } = await sequenceReport(BUSINESS)
+    const [row] = rows
     expect(row.entered).toBe(5)
     expect(row.buckets.in_progress).toBe(1)
     expect(row.buckets.bought).toBe(1)
@@ -184,7 +196,8 @@ describe("sequenceReport", () => {
         { sequence_id: "s1", contact_id: "c4", status: "weird_new_status", exit_reason: null },
       ],
     })
-    const [row] = await sequenceReport(BUSINESS)
+    const { rows } = await sequenceReport(BUSINESS)
+    const [row] = rows
     const total = OUTCOME_BUCKETS.reduce((n, b) => n + row.buckets[b], 0)
     expect(total).toBe(row.entered)
     expect(row.entered).toBe(4)
@@ -195,7 +208,8 @@ describe("sequenceReport", () => {
     // Eight of the nine sequences in production have never run; they would
     // render with `undefined` in every column.
     seed({ sequences: ONE_SEQUENCE, runs: [] })
-    const [row] = await sequenceReport(BUSINESS)
+    const { rows } = await sequenceReport(BUSINESS)
+    const [row] = rows
     expect(row.entered).toBe(0)
     expect(row.buckets).toEqual(emptyBuckets())
   })
@@ -210,7 +224,7 @@ describe("sequenceReport", () => {
         { sequence_id: "s2", contact_id: "c1", status: "exited", exit_reason: "payment" },
       ],
     })
-    const rows = await sequenceReport(BUSINESS)
+    const { rows } = await sequenceReport(BUSINESS)
     const nurture = rows.find((r) => r.key === "new_lead_nurture")!
     const quiz = rows.find((r) => r.key === "quiz_rebuilder")!
     expect(nurture.entered).toBe(0)
@@ -243,13 +257,51 @@ describe("sequenceReport", () => {
         // c3 has no consent row at all.
       ],
     })
-    const rows = await sequenceReport(BUSINESS)
+    const { rows } = await sequenceReport(BUSINESS)
     const nurture = rows.find((r) => r.key === "new_lead_nurture")!
     const quiz = rows.find((r) => r.key === "quiz_rebuilder")!
     // s1: c1's newest row grants, c2's newest row revokes -> 1 without consent.
     expect(nurture.contactsWithoutEmailConsent).toBe(1)
     // s2: c3 has never consented, c1 (shared with s1) grants -> 1 without consent.
     expect(quiz.contactsWithoutEmailConsent).toBe(1)
+  })
+
+  it("pages the runs read — PostgREST silently caps a plain select at ~1000 rows", async () => {
+    // MUTANT: drop the .range() and read straight. Nothing errors; the numbers
+    // are simply wrong past 1000 runs, and wrong in a confusing direction — the
+    // detail page reads runs for ONE sequence and stays right, so a sequence can
+    // read "nobody yet" on the list and "Entered 600" one click later.
+    seed({ sequences: ONE_SEQUENCE, runs: [] })
+    await sequenceReport(BUSINESS)
+    const runsCall = calls.find((c) => c.table === "sequence_runs")!
+    expect(runsCall.ops).toContainEqual(["range", 0, 999])
+    // And an order, because a .range() walk over an unordered result set can
+    // repeat and skip rows between windows.
+    expect(runsCall.ops).toContainEqual(["order", "id", { ascending: true }])
+  })
+
+  it("counts a person in two sequences once at the top level, and in both rows", async () => {
+    // MUTANT this kills: the page summing `contactsWithoutEmailConsent` across
+    // the rows, which is what it used to do. c1 is in both sequences and has
+    // never consented, so the summed version says two people where there is one
+    // — under a sentence that says "people".
+    seed({
+      sequences: [
+        ...ONE_SEQUENCE,
+        { id: "s2", key: "quiz_rebuilder", name: "Quiz Rebuilder", status: "active", trigger_source: "quiz" },
+      ],
+      runs: [
+        { sequence_id: "s1", contact_id: "c1", status: "active", exit_reason: null },
+        { sequence_id: "s2", contact_id: "c1", status: "active", exit_reason: null },
+      ],
+      consents: [],
+    })
+    const report = await sequenceReport(BUSINESS)
+    expect(report.contactsWithoutEmailConsent).toBe(1)
+    // Presence control: the per-row numbers must still be 1 each, or this would
+    // pass just as well against an implementation that counts nobody anywhere.
+    expect(report.rows.find((r) => r.key === "new_lead_nurture")!.contactsWithoutEmailConsent).toBe(1)
+    expect(report.rows.find((r) => r.key === "quiz_rebuilder")!.contactsWithoutEmailConsent).toBe(1)
   })
 
   it("throws when the runs read fails, rather than reporting zero runs", async () => {
@@ -329,6 +381,26 @@ describe("contactsWithEmailConsent", () => {
     expect(calls).toHaveLength(0)
   })
 
+  it("chunks the contact ids so the query string cannot outgrow PostgREST's limit", async () => {
+    // MUTANT: pass every id in one .in(). PostgREST puts the list in the query
+    // STRING, so at roughly 450 uuids the request clears 16 KB and fails — and
+    // on this screen a failed read is the admin error boundary, not a missing
+    // number.
+    const ids = Array.from({ length: 450 }, (_, i) => `c${i}`)
+    results = []
+    await contactsWithEmailConsent(BUSINESS, ids)
+    expect(calls).toHaveLength(3)
+    expect(calls[0].ops).toContainEqual(["in", "contact_id", ids.slice(0, 200)])
+    expect(calls[1].ops).toContainEqual(["in", "contact_id", ids.slice(200, 400)])
+    expect(calls[2].ops).toContainEqual(["in", "contact_id", ids.slice(400)])
+  })
+
+  it("pages each chunk — one person can have many consent rows", async () => {
+    results = [{ data: [], error: null }]
+    await contactsWithEmailConsent(BUSINESS, ["c1"])
+    expect(calls[0].ops).toContainEqual(["range", 0, 999])
+  })
+
   it("throws on a failed read rather than reporting nobody consented", async () => {
     results = [{ data: null, error: { message: "consent read failed" } }]
     await expect(contactsWithEmailConsent(BUSINESS, ["c1"])).rejects.toThrow(/consent read failed/)
@@ -374,7 +446,7 @@ describe("sequenceDetail", () => {
             completed_at: "2026-09-02T10:00:00Z",
             status: "exited",
             exit_reason: "payment",
-            current_position: 3,
+            last_error: null,
             contacts: { name: "Alex Rivera", email: "alex@example.com" },
           },
           {
@@ -384,7 +456,7 @@ describe("sequenceDetail", () => {
             completed_at: null,
             status: "active",
             exit_reason: null,
-            current_position: 1,
+            last_error: null,
             contacts: null,
           },
         ],
@@ -416,7 +488,7 @@ describe("sequenceDetail", () => {
         data: [
           {
             id: "r1", contact_id: "c1", enrolled_at: "2026-09-01T10:00:00Z", completed_at: null,
-            status: "exited", exit_reason: "sms_stop", current_position: 2, contacts: null,
+            status: "exited", exit_reason: "sms_stop", last_error: null, contacts: null,
           },
         ],
         error: null,
@@ -459,6 +531,105 @@ describe("sequenceDetail", () => {
     // that. This is the one thing standing between this suite and that same
     // mistake shipping again silently: pin the select string's column name.
     expect(runsCall.select).toContain("contacts(name, email)")
+  })
+
+  it("scopes EVERY read it makes to the business, not just the first", async () => {
+    // MUTANT: point any one of the three business_id predicates inside
+    // sequenceDetail at a different tenant. The previous version of this test
+    // only looked at calls[0], so all three could be wrong and 29/29 still
+    // passed. Spec §7 names this test: mutate the VALUE, not the arity — an
+    // argument-blind mock swallows a wrong-tenant .eq() happily.
+    results = [
+      { data: SEQUENCE, error: null },
+      { data: [{ status: "active", exit_reason: null, contact_id: "c1" }], error: null },
+      { data: [], error: null },
+      { data: [{ id: "step1" }], error: null },
+      { data: [], error: null },
+    ]
+    await sequenceDetail(BUSINESS, "new_lead_nurture")
+    // Presence control: an empty `calls` satisfies the loop below trivially.
+    // Five reads: the sequence, the tally, the page of people, the steps, and
+    // the consent lookup.
+    expect(calls).toHaveLength(5)
+    for (const call of calls) {
+      expect(call.ops).toContainEqual(["eq", "business_id", BUSINESS])
+    }
+  })
+
+  it("reads the page of people newest first — .range() over an unordered read repeats and skips", async () => {
+    // MUTANT: remove .order("enrolled_at", { ascending: false }). 29/29 passed
+    // without it. Postgres promises no row order without an ORDER BY, so page 2
+    // can show somebody page 1 already showed and silently omit somebody else.
+    results = [
+      { data: SEQUENCE, error: null },
+      { data: [], error: null },
+      { data: [], error: null },
+      { data: [], error: null },
+    ]
+    await sequenceDetail(BUSINESS, "new_lead_nurture")
+    const runsCall = calls.find((c) => c.table === "sequence_runs" && c.select.includes("contacts"))!
+    expect(runsCall.ops).toContainEqual(["order", "enrolled_at", { ascending: false }])
+    // The tally read is paged too, and pages its own way.
+    const tallyCall = calls.find((c) => c.table === "sequence_runs" && !c.select.includes("contacts"))!
+    expect(tallyCall.ops).toContainEqual(["range", 0, 999])
+    expect(tallyCall.ops).toContainEqual(["order", "id", { ascending: true }])
+  })
+
+  it("counts the people in this sequence with no recorded permission to email", async () => {
+    // MUTANT: hardcode contactsWithoutEmailConsent to 0. That passed 29/29,
+    // because the number was computed at the cost of a fifth round trip and
+    // then never rendered anywhere. The detail page shows it now.
+    results = [
+      { data: SEQUENCE, error: null },
+      {
+        data: [
+          { status: "active", exit_reason: null, contact_id: "c1" },
+          { status: "active", exit_reason: null, contact_id: "c2" },
+          // c1 twice: counted as one PERSON, not two.
+          { status: "completed", exit_reason: null, contact_id: "c1" },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+      { data: [], error: null },
+      { data: [{ contact_id: "c1", granted: true, occurred_at: "2026-09-01T00:00:00Z" }], error: null },
+    ]
+    const detail = await sequenceDetail(BUSINESS, "new_lead_nurture")
+    // Presence control: three runs really were read, so a 1 below is a count and
+    // not an empty fixture.
+    expect(detail!.entered).toBe(3)
+    // c1 consented. c2 has no consent row at all.
+    expect(detail!.contactsWithoutEmailConsent).toBe(1)
+  })
+
+  it("carries the recorded failure reason through to the screen", async () => {
+    // MUTANT: drop last_error from the select, or from the mapping. On
+    // production the only sequence anybody has entered has 73 people in it and
+    // nothing was sent to any of them; without this the screen can say only
+    // "something went wrong", which is the bare red number the design was
+    // written to prevent.
+    results = [
+      { data: SEQUENCE, error: null },
+      { data: [{ status: "failed", exit_reason: null, contact_id: "c1" }], error: null },
+      {
+        data: [
+          {
+            id: "r1", contact_id: "c1", enrolled_at: "2026-09-01T10:00:00Z", completed_at: null,
+            status: "failed", exit_reason: null,
+            last_error: "The darrenjpaul.com domain is not verified",
+            contacts: null,
+          },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+      { data: [], error: null },
+    ]
+    const detail = await sequenceDetail(BUSINESS, "new_lead_nurture")
+    expect(detail!.runs[0].bucket).toBe("failed")
+    expect(detail!.runs[0].lastError).toBe("The darrenjpaul.com domain is not verified")
+    const runsCall = calls.find((c) => c.table === "sequence_runs" && c.select.includes("contacts"))!
+    expect(runsCall.select).toContain("last_error")
   })
 
   it("throws when the sequence read fails, rather than 404ing", async () => {

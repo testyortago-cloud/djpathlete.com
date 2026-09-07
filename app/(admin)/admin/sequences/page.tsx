@@ -23,9 +23,10 @@ export const dynamic = "force-dynamic"
 export default async function SequencesPage() {
   await requirePermission("contacts")
   const { businessId } = await resolveAdminTenant()
-  const rows = await sequenceReport(businessId)
-
-  const withoutConsent = rows.reduce((n, r) => n + r.contactsWithoutEmailConsent, 0)
+  // The tenant-wide figure comes back on its own rather than being summed from
+  // the rows: somebody who is in two sequences appears in two rows, and adding
+  // those up reported one person as two under a sentence that says "people".
+  const { rows, contactsWithoutEmailConsent: withoutConsent } = await sequenceReport(businessId)
 
   return (
     <div className="space-y-6">

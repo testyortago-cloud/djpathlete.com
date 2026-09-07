@@ -8,9 +8,24 @@
 // on a screen.
 
 import { createServiceRoleClient } from "@/lib/supabase"
+import { fetchAllRows } from "@/lib/db/paginate"
 
 function getClient() {
   return createServiceRoleClient()
+}
+
+/**
+ * `fetchAllRows` throws the bare PostgREST message, which does not say WHICH of
+ * this module's reads failed. Every read here labels its own failures, so the
+ * label is re-attached rather than lost. The error still THROWS — it is never
+ * turned into an empty result, which would render as "nobody entered".
+ */
+async function labelled<T>(label: string, run: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await run()
+  } catch (err) {
+    throw new Error(`${label}: ${(err as Error).message}`)
+  }
 }
 
 /**
@@ -30,7 +45,7 @@ function getClient() {
  * `other` is not defensive padding. `exitRun` takes a plain `string`, so the
  * set of reasons that can reach the database is not closed by the type system
  * — `lib/automation/sequence-tick.ts` already writes one ("suppressed") that
- * `SequenceExitReason` does not declare. A sixth added tomorrow lands in
+ * `SequenceExitReason` does not declare. A reason added tomorrow lands in
  * `other` and is VISIBLE on the screen, instead of quietly making the columns
  * stop adding up to the total.
  */
@@ -54,9 +69,11 @@ export const OUTCOME_BUCKETS: readonly OutcomeBucket[] = [
 ] as const
 
 /**
- * Every exit reason that can reach the database today, found by grepping the
- * helper that performs the verb rather than the function expected to call it —
- * the exits live in the event handlers, not in `decideStep`:
+ * Every exit reason that can reach the database today.
+ *
+ * Found by grepping the helper that performs the verb rather than the function
+ * expected to call it — the exits live in the event handlers, not in
+ * `decideStep`. Written by TypeScript:
  *
  *   payment      app/api/stripe/webhook/route.ts:223
  *   booking      lib/bookings/ingest.ts:309
@@ -64,10 +81,26 @@ export const OUTCOME_BUCKETS: readonly OutcomeBucket[] = [
  *   sms_stop     app/api/webhooks/twilio/inbound/route.ts:278
  *   suppressed   lib/automation/sequence-tick.ts:113   <- not in the union
  *
- * Grouped here rather than switched on inline so that the three ways of saying
- * "stop contacting me" stay one column on the list. The detail page splits
- * them again, because an email unsubscribe, a texted STOP and "was already on
- * the do-not-contact list before we reached them" are three different things.
+ * AND TWO WRITTEN BY SQL, which a TypeScript-only grep does not find — this
+ * list was wrong for exactly that reason once already:
+ *
+ *   merged_into_survivor      supabase/migrations/00238_merge_contacts_carries_tags.sql
+ *   superseded_by_merged_run  supabase/migrations/00238_merge_contacts_carries_tags.sql
+ *
+ * Both are set inside the `merge_contacts` plpgsql function, which is called
+ * automatically from lib/db/contacts.ts during identity resolution — not from a
+ * button — so they can appear on this screen without anybody having done
+ * anything that looks like a merge. When you go looking for the writer of a
+ * reason, grep the migrations as well as the source.
+ *
+ * The three "stop contacting me" reasons are grouped here rather than switched
+ * on inline so they stay one column on the list. The detail page splits them
+ * again, because an email unsubscribe, a texted STOP and "was already on the
+ * do-not-contact list before we reached them" are three different things.
+ *
+ * The two merge reasons deliberately do NOT get their own bucket: they land in
+ * `other`, and the detail page names them in words. They are bookkeeping, not
+ * an outcome the follow-up produced.
  */
 const OPTED_OUT_REASONS = new Set(["unsubscribed", "sms_stop", "suppressed"])
 
@@ -100,13 +133,35 @@ export interface SequenceReportRow {
   id: string
   key: string
   name: string
-  description: string | null
   status: string
   trigger_source: string | null
   entered: number
   buckets: Record<OutcomeBucket, number>
   contactsWithoutEmailConsent: number
 }
+
+export interface SequenceReport {
+  rows: SequenceReportRow[]
+  /**
+   * DISTINCT people across the whole tenant with no recorded permission to
+   * email — NOT the sum of the per-row numbers. Somebody in two sequences is
+   * one person, and the sentence under the table says "people". Summing the
+   * rows counted them twice.
+   */
+  contactsWithoutEmailConsent: number
+}
+
+/**
+ * How many contact ids go into one `.in(...)` clause.
+ *
+ * PostgREST puts the whole list in the query STRING, so an unchunked `.in()`
+ * over every contact in every sequence grows the URL without limit. Past
+ * roughly 450 uuids it clears 16 KB and the request fails outright — which on
+ * this screen means the whole page falls through to the admin error boundary,
+ * not a missing number. 200 is the chunk size lib/db/bookkeeping.ts already
+ * uses for the same reason.
+ */
+const CONTACT_ID_CHUNK = 200
 
 /**
  * Which of these contacts have said yes to email, most recently.
@@ -119,15 +174,21 @@ export interface SequenceReportRow {
  *
  * The tiebreak matches `hasConsent` in lib/db/contact-consents.ts exactly —
  * `occurred_at desc, created_at desc` — so the report and the engine cannot
- * disagree about one person.
+ * disagree about one person. `id desc` is appended only as a paging tiebreaker
+ * (see below); it never changes which row wins for a contact whose rows carry
+ * distinct timestamps.
  *
  * Bulk, unlike `hasConsent`, which issues one query per contact: this is a
  * report over every contact in every sequence, and the per-contact version
- * would be 169 round trips on the current data.
+ * would be 73 round trips on the current data — 73 being the number of contacts
+ * that are in a sequence, which is the population this walks, not the 169 rows
+ * in the whole contacts table.
  *
  * The walk KEEPS THE FIRST ROW SEEN per contact and skips the rest, which is
  * only correct because the query is ordered newest-first. The dedup and the
- * ordering are one mechanism; either alone is a bug.
+ * ordering are one mechanism; either alone is a bug. Chunking cannot disturb it
+ * because the chunks are disjoint sets of contact ids: every row for one person
+ * is in exactly one chunk, still in order.
  */
 export async function contactsWithEmailConsent(
   businessId: string,
@@ -136,25 +197,42 @@ export async function contactsWithEmailConsent(
   if (contactIds.length === 0) return new Set()
 
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("contact_consents")
-    .select("contact_id, granted, occurred_at")
-    .eq("business_id", businessId)
-    .eq("channel", "email")
-    .in("contact_id", contactIds)
-    .order("occurred_at", { ascending: false })
-    .order("created_at", { ascending: false })
-  // Throws: "could not read the consent table" must not render as "nobody has
-  // consented". null and [] are different answers.
-  if (error) throw new Error(`contactsWithEmailConsent: ${(error as { message?: string }).message}`)
+  type ConsentRow = { contact_id: string; granted: boolean }
 
   const seen = new Set<string>()
   const granted = new Set<string>()
-  for (const row of (data ?? []) as { contact_id: string; granted: boolean }[]) {
-    if (seen.has(row.contact_id)) continue
-    seen.add(row.contact_id)
-    if (row.granted) granted.add(row.contact_id)
+
+  for (let i = 0; i < contactIds.length; i += CONTACT_ID_CHUNK) {
+    const chunk = contactIds.slice(i, i + CONTACT_ID_CHUNK)
+    // Paged as well as chunked: one contact can have many consent rows, so the
+    // trail for 200 people can exceed PostgREST's ~1000-row cap on its own.
+    // Throws: "could not read the consent table" must not render as "nobody has
+    // consented". null and [] are different answers.
+    const rows = await labelled("contactsWithEmailConsent", () =>
+      fetchAllRows<ConsentRow>(
+        (from, to) =>
+          supabase
+            .from("contact_consents")
+            .select("contact_id, granted, occurred_at")
+            .eq("business_id", businessId)
+            .eq("channel", "email")
+            .in("contact_id", chunk)
+            .order("occurred_at", { ascending: false })
+            .order("created_at", { ascending: false })
+            // Unique tiebreaker: rows tied on both timestamps could otherwise
+            // repeat or vanish across a .range() page boundary.
+            .order("id", { ascending: false })
+            .range(from, to) as never,
+      ),
+    )
+
+    for (const row of rows) {
+      if (seen.has(row.contact_id)) continue
+      seen.add(row.contact_id)
+      if (row.granted) granted.add(row.contact_id)
+    }
   }
+
   return granted
 }
 
@@ -164,36 +242,53 @@ export async function contactsWithEmailConsent(
  * PostgREST cannot GROUP BY and this feature takes no migration, so there is no
  * RPC to call: the counts are computed here, over one row per run.
  *
- * THE CEILING, stated honestly: that is every run of every sequence in memory
- * at once. At today's 73 it is free, and it stays comfortable into the low tens
+ * THE CEILING, stated honestly, and corrected. The first version of this read
+ * had no `.range()` on it at all, and PostgREST silently caps a plain
+ * `.select()` at about 1000 rows — no error, no warning. So the real ceiling was
+ * never memory: past 1000 runs in a tenant, the numbers on this screen would
+ * simply have been WRONG. Worse, `sequenceDetail` reads runs for ONE sequence,
+ * so it would have gone on being right while the list under-counted, and a
+ * sequence could read "Nobody has entered this one yet" on the list and
+ * "Entered 600" on its own page one click later — with neither read ordered, a
+ * different sequence could lose on every page load. It is now paged with
+ * `fetchAllRows`, so the row count is no longer a correctness limit.
+ *
+ * What is left is a MEMORY ceiling: one row per run of every sequence, held at
+ * once. At today's 73 that is free, and it stays comfortable into the low tens
  * of thousands. Past that this wants a database-side GROUP BY behind an RPC.
- * Written down so the next person meets a documented threshold instead of a
- * mystery.
  *
  * Every sequence gets a row whether or not anybody has entered it. Eight of the
  * nine sequences in production have never run; a report that only listed the
  * ones with runs would be a nearly empty page that looks like a broken read.
  */
-export async function sequenceReport(businessId: string): Promise<SequenceReportRow[]> {
+export async function sequenceReport(businessId: string): Promise<SequenceReport> {
   const supabase = getClient()
 
+  // Not paged: one row per sequence, nine of them in production, and a coach
+  // who has authored a thousand sequences is not a problem this repo has.
   const { data: sequences, error: seqError } = await supabase
     .from("sequences")
-    .select("id, key, name, description, status, trigger_source")
+    .select("id, key, name, status, trigger_source")
     .eq("business_id", businessId)
     .order("name", { ascending: true })
   // Throws rather than returning []: an empty page for a failed read would tell
   // the operator this business has no sequences, which is not true.
   if (seqError) throw new Error(`sequenceReport sequences: ${(seqError as { message?: string }).message}`)
 
-  const { data: runs, error: runsError } = await supabase
-    .from("sequence_runs")
-    .select("sequence_id, contact_id, status, exit_reason")
-    .eq("business_id", businessId)
-  if (runsError) throw new Error(`sequenceReport runs: ${(runsError as { message?: string }).message}`)
-
   type RunRow = { sequence_id: string; contact_id: string; status: string; exit_reason: string | null }
-  const runRows = (runs ?? []) as RunRow[]
+  const runRows = await labelled("sequenceReport runs", () =>
+    fetchAllRows<RunRow>(
+      (from, to) =>
+        supabase
+          .from("sequence_runs")
+          .select("sequence_id, contact_id, status, exit_reason")
+          .eq("business_id", businessId)
+          // Paging an UNORDERED read can repeat and skip rows across .range()
+          // windows, so the read that got paged also got an order.
+          .order("id", { ascending: true })
+          .range(from, to) as never,
+    ),
+  )
 
   const tallies = new Map<string, { entered: number; buckets: Record<OutcomeBucket, number> }>()
   const contactsBySequence = new Map<string, Set<string>>()
@@ -217,16 +312,20 @@ export async function sequenceReport(businessId: string): Promise<SequenceReport
   const allContactIds = [...new Set(runRows.map((r) => r.contact_id))]
   const consented = await contactsWithEmailConsent(businessId, allContactIds)
 
+  // The tenant-wide figure, counted over the DISTINCT ids rather than summed
+  // from the rows below. One person in two sequences is one person.
+  let withoutConsentTotal = 0
+  for (const contactId of allContactIds) if (!consented.has(contactId)) withoutConsentTotal += 1
+
   type SequenceRow = {
     id: string
     key: string
     name: string
-    description: string | null
     status: string
     trigger_source: string | null
   }
 
-  return ((sequences ?? []) as SequenceRow[]).map((sequence) => {
+  const rows = ((sequences ?? []) as SequenceRow[]).map((sequence) => {
     const tally = tallies.get(sequence.id)
     const contacts = contactsBySequence.get(sequence.id) ?? new Set<string>()
     let without = 0
@@ -238,6 +337,8 @@ export async function sequenceReport(businessId: string): Promise<SequenceReport
       contactsWithoutEmailConsent: without,
     }
   })
+
+  return { rows, contactsWithoutEmailConsent: withoutConsentTotal }
 }
 
 export interface SequenceRunRowForReport {
@@ -255,10 +356,26 @@ export interface SequenceRunRowForReport {
    * list" are three different things an operator would act on differently.
    */
   exitReason: string | null
-  currentPosition: number
+  /**
+   * Why nothing was sent, on a run that failed. Written only by `failRun`, so
+   * it is null on every run that did not fail.
+   *
+   * Carried all the way to the screen deliberately. On production today the
+   * only sequence with any runs at all has 73 of them and every one failed; a
+   * bare red 73 under "Something went wrong" reads as a bug in the report. The
+   * recorded reason is the only answer the database has, and "the darrenjpaul.com
+   * domain is not verified" is something a coach can act on.
+   */
+  lastError: string | null
 }
 
 export interface SequenceDetail extends SequenceReportRow {
+  /**
+   * Kept here although the LIST no longer selects it — the detail page has a
+   * standing comment on why it is not rendered yet, and a future step editor
+   * will want it.
+   */
+  description: string | null
   stepCount: number
   runs: SequenceRunRowForReport[]
   /** May exceed `runs.length` — the pager needs the real total. */
@@ -302,26 +419,37 @@ export async function sequenceDetail(
     trigger_source: string | null
   }
 
-  const { data: allRuns, error: allRunsError } = await supabase
-    .from("sequence_runs")
-    .select("status, exit_reason, contact_id")
-    .eq("business_id", businessId)
-    .eq("sequence_id", row.id)
-  if (allRunsError) throw new Error(`sequenceDetail tally: ${(allRunsError as { message?: string }).message}`)
-
   type TallyRow = { status: string; exit_reason: string | null; contact_id: string }
-  const tallyRows = (allRuns ?? []) as TallyRow[]
+  const tallyRows = await labelled("sequenceDetail tally", () =>
+    fetchAllRows<TallyRow>(
+      (from, to) =>
+        supabase
+          .from("sequence_runs")
+          .select("status, exit_reason, contact_id")
+          .eq("business_id", businessId)
+          .eq("sequence_id", row.id)
+          // Same reason as the list read: an unordered .range() walk can repeat
+          // and skip rows, and this one feeds the pager's total.
+          .order("id", { ascending: true })
+          .range(from, to) as never,
+    ),
+  )
+
   const buckets = emptyBuckets()
   for (const r of tallyRows) buckets[bucketForRun(r.status, r.exit_reason)] += 1
 
   const { data: pageRuns, error: pageError } = await supabase
     .from("sequence_runs")
     .select(
-      "id, contact_id, enrolled_at, completed_at, status, exit_reason, current_position, contacts(name, email)",
+      "id, contact_id, enrolled_at, completed_at, status, exit_reason, last_error, contacts(name, email)",
     )
     .eq("business_id", businessId)
     .eq("sequence_id", row.id)
+    // Newest first, and NOT optional: .range() over an unordered result set can
+    // repeat and skip rows between pages. `id` breaks ties on enrolled_at for
+    // the same reason.
     .order("enrolled_at", { ascending: false })
+    .order("id", { ascending: false })
     .range(offset, offset + limit - 1)
   if (pageError) throw new Error(`sequenceDetail runs: ${(pageError as { message?: string }).message}`)
 
@@ -332,7 +460,7 @@ export async function sequenceDetail(
     completed_at: string | null
     status: string
     exit_reason: string | null
-    current_position: number
+    last_error: string | null
     contacts: { name: string | null; email: string | null } | null
   }
 
@@ -347,9 +475,11 @@ export async function sequenceDetail(
     completedAt: r.completed_at,
     bucket: bucketForRun(r.status, r.exit_reason),
     exitReason: r.exit_reason,
-    currentPosition: r.current_position,
+    lastError: r.last_error,
   }))
 
+  // Not paged: a sequence is a handful of steps, and the longest one in
+  // production has eight.
   const { data: steps, error: stepsError } = await supabase
     .from("sequence_steps")
     .select("id")

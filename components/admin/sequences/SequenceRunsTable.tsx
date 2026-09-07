@@ -33,13 +33,19 @@ const BUCKET_LABEL: Record<OutcomeBucket, string> = {
 }
 
 /**
- * The three ways of saying "stop contacting me", separated again.
+ * The three ways of saying "stop contacting me", separated again — plus the two
+ * that are not a decision anybody made.
  *
- * The list page collapses them into one column. Here they stay apart, because
- * they are three different things: they clicked the link in an email, they
- * replied STOP to a text, or they were already on the do-not-contact list
+ * The list page collapses the opt-outs into one column. Here they stay apart,
+ * because they are three different things: they clicked the link in an email,
+ * they replied STOP to a text, or they were already on the do-not-contact list
  * before we reached them — which is not a decision they made about THIS
  * sequence at all.
+ *
+ * The last two are written by the database itself when two records turn out to
+ * be the same person (migration 00238's `merge_contacts`). Nobody pressed a
+ * button, so without a plain sentence here they would show up as a raw phrase
+ * with underscores in it.
  */
 function exitDetail(run: SequenceRunRowForReport): string | null {
   switch (run.exitReason) {
@@ -53,11 +59,30 @@ function exitDetail(run: SequenceRunRowForReport): string | null {
       return "Bought something"
     case "booking":
       return "Booked a call"
+    case "merged_into_survivor":
+      return "Their details were merged into another person's record."
+    case "superseded_by_merged_run":
+      return "They were already in this sequence under another record."
     case null:
       return null
     default:
+      // Anything genuinely new shows as itself rather than disappearing. Better
+      // an odd-looking phrase on screen than a person with no explanation.
       return run.exitReason
   }
+}
+
+/**
+ * Why nothing was sent to this person.
+ *
+ * The database records one reason per failure and this shows it as written. No
+ * attempt is made to tidy it up: it is the only answer there is, and a coach can
+ * do something about "the darrenjpaul.com domain is not verified" and nothing at
+ * all about a blank space.
+ */
+function failureNote(run: SequenceRunRowForReport): string {
+  if (!run.lastError) return "Nothing was sent, and no reason was recorded."
+  return `Nothing was sent. The reason recorded was: "${run.lastError}"`
 }
 
 function formatDate(iso: string | null): string {
@@ -103,6 +128,13 @@ export function SequenceRunsTable({ runs }: { runs: SequenceRunRowForReport[] })
                         keep rendering. */}
                     {detail && detail !== BUCKET_LABEL[run.bucket] ? (
                       <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
+                    ) : null}
+                    {/* A failure has no exit reason at all — a failure is not an exit —
+                        so it needs its own line. Without it "Something went wrong" is
+                        the whole of what the screen can tell you, and that reads as a
+                        fault in the report rather than in the sending. */}
+                    {run.bucket === "failed" ? (
+                      <div className="mt-1 text-xs text-muted-foreground">{failureNote(run)}</div>
                     ) : null}
                   </DataTableCell>
                   <DataTableCell muted>{formatDate(run.completedAt)}</DataTableCell>

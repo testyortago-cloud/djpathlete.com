@@ -62,8 +62,11 @@ One **Outcome** axis, six mutually exclusive buckets, derived from both columns:
 Plus **Other**, which catches any `exited` run whose reason matches none of the
 above. Other is not defensive padding — it is the thing that makes a future
 sixth reason *visible on the screen* instead of quietly missing from the totals.
-The five reasons that exist today are enumerated in §2.1; a sixth added later
-lands in Other until somebody names it.
+The seven reasons that exist today are enumerated in §2.1 — two of which are
+written by SQL and were missed by the first, TypeScript-only grep. An eighth
+added later lands in Other until somebody names it. **Other is a column on the
+list**, not just a concept: two of the seven reasons live in it today, so a list
+without that column would visibly stop adding up.
 
 **The invariant, which is a test:** the six buckets plus Other sum exactly to
 Entered, for every sequence, always. If they ever do not, the screen is lying
@@ -72,20 +75,36 @@ and the test says so.
 ### 2.1 Every exit reason that can reach the database
 
 Found by grepping the helper that performs the verb, not the function expected
-to call it — the exits live in the event handlers, not in `decideStep`:
+to call it — the exits live in the event handlers, not in `decideStep`.
 
-| Reason | Written by |
-|---|---|
-| `payment` | [stripe/webhook:223](<../../../app/api/stripe/webhook/route.ts#L223>) |
-| `booking` | [bookings/ingest.ts:309](../../../lib/bookings/ingest.ts#L309) |
-| `unsubscribed` | [unsubscribe.ts:95](../../../lib/lead-engine/unsubscribe.ts#L95) |
-| `sms_stop` | [twilio/inbound:278](<../../../app/api/webhooks/twilio/inbound/route.ts#L278>) |
-| `suppressed` | [sequence-tick.ts:113](../../../lib/automation/sequence-tick.ts#L113) — **not in the union** |
+**There are seven, not five.** The first version of this list had five, because
+the grep was TypeScript-only. Two of the writers are SQL: `merge_contacts` in
+migration 00238 sets an exit reason directly, and that function is called
+automatically from [`lib/db/contacts.ts`](../../../lib/db/contacts.ts) during
+identity resolution — not from a button — so those two reasons can appear on the
+screen without anybody having done anything that looks like a merge. **When you
+look for the writer of a reason, grep the migrations as well as the source.**
+
+| Reason | Written by | Bucket |
+|---|---|---|
+| `payment` | [stripe/webhook:223](<../../../app/api/stripe/webhook/route.ts#L223>) | Bought |
+| `booking` | [bookings/ingest.ts:309](../../../lib/bookings/ingest.ts#L309) | Booked a call |
+| `unsubscribed` | [unsubscribe.ts:95](../../../lib/lead-engine/unsubscribe.ts#L95) | Opted out |
+| `sms_stop` | [twilio/inbound:278](<../../../app/api/webhooks/twilio/inbound/route.ts#L278>) | Opted out |
+| `suppressed` | [sequence-tick.ts:113](../../../lib/automation/sequence-tick.ts#L113) — **not in the union** | Opted out |
+| `merged_into_survivor` | [00238_merge_contacts_carries_tags.sql](../../../supabase/migrations/00238_merge_contacts_carries_tags.sql) — **SQL, not TypeScript** | Other |
+| `superseded_by_merged_run` | [00238_merge_contacts_carries_tags.sql](../../../supabase/migrations/00238_merge_contacts_carries_tags.sql) — **SQL, not TypeScript** | Other |
+
+The two merge reasons stay in **Other** rather than earning a bucket: they are
+bookkeeping about which record a person ended up in, not an outcome the
+follow-up produced. Other therefore has to be a COLUMN on the list, not just a
+concept — otherwise the row's numbers visibly stop adding up to Entered. The
+detail page names both in plain words.
 
 ### 2.2 Where the split is shown
 
-The **list** shows the six buckets. The **detail** splits *Opted out* into its
-three, because they are three different things an operator would act on
+The **list** shows all seven buckets, Other included. The **detail** splits
+*Opted out* into its three, because they are three different things an operator would act on
 differently:
 
 - *unsubscribed* — they clicked the link in an email.
@@ -184,6 +203,13 @@ export interface SequenceReportRow {
   trigger_source: string | null  // NULL means manual enrolment only
   entered: number
   buckets: Record<OutcomeBucket, number>
+  contactsWithoutEmailConsent: number   // people in THIS sequence
+}
+
+export interface SequenceReport {
+  rows: SequenceReportRow[]
+  // DISTINCT across the tenant, not the sum of the rows: somebody in two
+  // sequences is one person, and the sentence under the table says "people".
   contactsWithoutEmailConsent: number
 }
 
@@ -196,7 +222,7 @@ export interface SequenceRunRowForReport {
   completedAt: string | null
   bucket: OutcomeBucket
   exitReason: string | null   // raw, so the detail page can split "opted out"
-  currentPosition: number
+  lastError: string | null    // why nothing was sent, on a run that failed
 }
 
 export interface SequenceDetail extends SequenceReportRow {
@@ -206,7 +232,7 @@ export interface SequenceDetail extends SequenceReportRow {
   totalRuns: number           // for the pager; may exceed runs.length
 }
 
-export async function sequenceReport(businessId: string): Promise<SequenceReportRow[]>
+export async function sequenceReport(businessId: string): Promise<SequenceReport>
 export async function sequenceDetail(
   businessId: string,
   key: string,
@@ -226,10 +252,25 @@ RPC to call. The aggregation selects the three columns it needs
 (`sequence_id, status, exit_reason`) for the tenant and buckets them in
 TypeScript.
 
-**The honest ceiling:** that is one row per run in memory. At today's 73 runs it
-is free; it stays comfortable into the low tens of thousands. Past that this
-wants a database-side `GROUP BY` behind an RPC. Recorded here so the next
-person meets a documented threshold rather than a mystery.
+**Every growth-table read is paged** through `lib/db/paginate.ts`'s
+`fetchAllRows`. PostgREST silently caps a plain `.select()` at about 1000 rows —
+no error — so the first cut of this read would simply have shown wrong numbers
+past 1000 runs in a tenant, and wrong in an especially confusing way: the detail
+page reads runs for ONE sequence and would have stayed right while the list
+under-counted. A sequence could read "Nobody has entered this one yet" on the
+list and "Entered 600" one click later. The paged reads carry an `id` order,
+because a `.range()` walk over an unordered result set can repeat and skip rows.
+
+The `.in("contact_id", …)` on the consent read is **chunked at 200**, for the
+reason [gsc-query-daily](../../../lib/db/gsc-query-daily.ts) records: PostgREST
+puts the list in the query string, and past roughly 450 uuids the request clears
+16 KB and fails, taking the whole screen to the error boundary.
+
+**The honest ceiling** is therefore memory, not row count: one row per run of
+every sequence, held at once. At today's 73 runs it is free; it stays
+comfortable into the low tens of thousands. Past that this wants a database-side
+`GROUP BY` behind an RPC. Recorded here so the next person meets a documented
+threshold rather than a mystery.
 
 `sequenceDetail` additionally returns the individual runs — contact name, email,
 when they entered, their outcome, and the raw `exit_reason` — paged at 100, the
@@ -276,9 +317,14 @@ distinguishable:
 - **A `paused` or `draft` sequence** says so in the same sentence, because for
   `newsletter_welcome` and `lead_magnet_delivery` that *is* why the count is
   zero, and it is fixable in thirty seconds.
-- **The 73 failed runs** carry a plain-language explanation — these people were
-  stranded by the 2026-08-31 domain fault and are waiting on a dating decision —
-  rather than a bare red 73 that looks like a bug in the screen.
+- **The 73 failed runs** carry a plain-language explanation rather than a bare
+  red 73 that looks like a bug in the screen. The explanation is the reason the
+  database actually recorded (`sequence_runs.last_error`), shown as written and
+  not prettified: it is the only answer there is, and a coach can act on "the
+  darrenjpaul.com domain is not verified" and cannot act on silence. The LIST
+  says *"Nothing was sent to 73 of these people. Open the sequence to see why."*
+  beside the sequence name; the DETAIL page prints the recorded reason under
+  each person's badge, or says plainly that no reason was recorded.
 
 Written for a non-programmer. No jargon: not "enrolled", not "terminal state",
 not "trigger source". "Nobody has entered this sequence yet." "This sequence is
