@@ -320,7 +320,9 @@ export function describeTimelineEvent(row: TimelineEventRow): {
             ? "Their card is already closed, so it was left where it was."
             : reason === "already_on_stage"
               ? "Their card was already at that stage, so nothing changed."
-              : null
+              : reason === "would_move_backwards"
+                ? "Their card is further along than the step asked for, so it was left where it is."
+                : null
       return { title: "A sequence left their card where it was", detail: why, tone: "neutral" }
     }
 

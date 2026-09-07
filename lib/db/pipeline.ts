@@ -985,7 +985,7 @@ const SEQUENCE_MOVED_AUDIT_ACTION: AuditAction = "sequence.opportunity_moved"
 
 export type SequenceMoveResult =
   | { kind: "moved"; opportunityId: string; fromStageKey: string | null; toStageKey: string }
-  | { kind: "skipped"; reason: "no_opportunity" | "already_closed" | "already_on_stage" }
+  | { kind: "skipped"; reason: "no_opportunity" | "already_closed" | "already_on_stage" | "would_move_backwards" }
   | { kind: "invalid"; error: string }
 
 /**
@@ -1104,6 +1104,19 @@ export async function moveOpportunityBySequence(input: {
   // and must not reset entered_stage_at, which would silently restart the
   // staleness colour the board computes from it.
   if (current.stage_id === toStage.id) return { kind: "skipped", reason: "already_on_stage" }
+
+  // Forward only, matching `decideMove` (lib/lead-engine/pipeline-move.ts).
+  // A sequence step is the only automated writer that could otherwise drag a
+  // card backwards, and moving one back resets entered_stage_at -- so the
+  // board's staleness colour would restart and the coach's queue would show a
+  // card as needing a step the person has already taken.
+  //
+  // SKIPPED, not INVALID: the step is well formed and the sequence author did
+  // nothing wrong. Failing the whole run over a card that simply moved on
+  // without us would be disproportionate.
+  if (toStage.position <= current.stage_position) {
+    return { kind: "skipped", reason: "would_move_backwards" }
+  }
 
   const now = new Date()
   const { error: updateErr } = await supabase

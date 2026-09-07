@@ -406,6 +406,13 @@ describe("timeline labels for sequence side effects", () => {
     expect(described.detail).toBe("Their card was already at that stage, so nothing changed.")
   })
 
+  it("explains a skipped move without jargon: the card is further along than the step asked for", () => {
+    const described = describeTimelineEvent(
+      event({ id: "e", kind: "sequence_stage_skipped", metadata: { reason: "would_move_backwards" } }),
+    )
+    expect(described.detail).toBe("Their card is further along than the step asked for, so it was left where it is.")
+  })
+
   // The guard that matters: no hand-written label may render an empty title.
   it("never renders an empty title for any sequence kind", () => {
     for (const kind of ["sequence_tag_applied", "sequence_stage_moved", "sequence_stage_skipped"]) {
