@@ -71,9 +71,9 @@ VALUES
    $subj$You left something half-finished$subj$,
    $body$Hi {{name}}
 
-You started to pay for something and it did not go through. That happens — it is usually a question that did not have an obvious answer.
+You started to pay for something and it did not go through. That happens — it's usually a question that didn't have an obvious answer.
 
-If it was the price, the commitment, or whether it is the right thing right now, tell me which and I will give you a straight answer. If it was just the timing, that is fine too.
+If it was the price, the commitment, or whether it is the right thing right now, tell me which and I'll give you a straight answer. If it was just the timing, that's fine too.
 
 Reply to this email and let me know.$body$,
    '{}'::jsonb, NULL, NULL, NULL),
@@ -95,7 +95,7 @@ Reply to this email and let me know.$body$,
   ('00000000-0000-0000-0000-000000000001',
    (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'abandoned_checkout'),
    4, 'sms', NULL, NULL,
-   $body$Hi {{name}} — you started to pay for something and it did not go through. If something was unclear, text back and a real person answers.$body$,
+   $body$Hi {{name}} — you started to pay for something and it didn't go through. If something was unclear, text back and a real person answers.$body$,
    '{}'::jsonb, NULL, NULL, NULL),
 
   ('00000000-0000-0000-0000-000000000001',
@@ -108,9 +108,9 @@ Reply to this email and let me know.$body$,
    $subj$Still worth a conversation$subj$,
    $body$Hi {{name}}
 
-I will leave this one here.
+I'll leave this one here.
 
-If you want to talk it through before deciding anything, reply to this email. No commitment, and no follow-up after this if you would rather leave it.$body$,
+If you want to talk it through before deciding anything, reply to this email. No commitment, and no follow-up after this if you'd rather leave it.$body$,
    '{}'::jsonb, NULL, NULL, NULL),
 
   ('00000000-0000-0000-0000-000000000001',
@@ -129,9 +129,9 @@ VALUES
    $subj$We have your application$subj$,
    $body$Hi {{name}}
 
-Thanks for sending this through. It has landed and a real person reads every one.
+Thanks for sending this through. It's landed and a real person reads every one.
 
-What happens next: I go through what you wrote, and if it looks like something we can genuinely help with, I will reply to set up a time to talk. If it is not a good fit, I will tell you that too rather than leave you waiting.
+What happens next: I go through what you wrote, and if it looks like something we can genuinely help with, I'll reply to set up a time to talk. If it is not a good fit, I'll tell you that too rather than leave you waiting.
 
 If anything has changed since you sent it, reply here and let me know.$body$,
    '{}'::jsonb, NULL, NULL, NULL),
@@ -146,11 +146,11 @@ If anything has changed since you sent it, reply here and let me know.$body$,
    $subj$What the first conversation covers$subj$,
    $body$Hi {{name}}
 
-While you are waiting, here is what the first conversation actually is, so it is not a mystery.
+While you're waiting, here is what the first conversation actually is, so it's not a mystery.
 
-It is a straight talk about what you are training for, what has and has not worked, and anything that keeps breaking down. No assessment to prepare for and nothing to bring.
+It is a straight talk about what you are training for, what has and hasn't worked, and anything that keeps breaking down. No assessment to prepare for and nothing to bring.
 
-By the end of it you should know whether this is worth doing. If it is not, I will say so.$body$,
+By the end of it you should know whether this is worth doing. If it's not, I'll say so.$body$,
    '{}'::jsonb, NULL, NULL, NULL),
 
   ('00000000-0000-0000-0000-000000000001',
@@ -163,9 +163,9 @@ By the end of it you should know whether this is worth doing. If it is not, I wi
    $subj$Still want to talk?$subj$,
    $body$Hi {{name}}
 
-I have not heard back, so this is the last one about your application.
+I haven't heard back, so this is the last one about your application.
 
-If you still want to go through it, reply and we will find a time. If your plans changed, no reply needed — I will leave you alone.$body$,
+If you still want to go through it, reply and we'll find a time. If your plans changed, no reply needed — I will leave you alone.$body$,
    '{}'::jsonb, NULL, NULL, NULL),
 
   ('00000000-0000-0000-0000-000000000001',
@@ -185,9 +185,9 @@ VALUES
    $subj$About the camp you asked about$subj$,
    $body$Hi {{name}}
 
-Thanks for putting your name down. Your place is not held yet — that happens when you register properly — but here is what it covers so you can decide.
+Thanks for putting your name down. Your place isn't held yet — that happens when you register properly — but here is what it covers so you can decide.
 
-It is a small group, coached in person, working on the things that actually limit an athlete rather than a general session everyone gets. If you have a specific problem you want looked at, bring it.
+It's a small group, coached in person, working on the things that actually limit an athlete rather than a general session everyone gets. If you have a specific problem you want looked at, bring it.
 
 If you want the details again or have a question first, reply to this email.$body$,
    '{}'::jsonb, NULL, NULL, NULL),
@@ -204,7 +204,7 @@ If you want the details again or have a question first, reply to this email.$bod
 
 In case it helps you decide.
 
-The day is mostly work, not talking. We look at how an athlete moves under load, fix the things that are cheap to fix on the spot, and give them the two or three things worth taking home. Nobody is standing around.
+The day's mostly work, not talking. We look at how an athlete moves under load, fix the things that are cheap to fix on the spot, and give them the two or three things worth taking home. Nobody's standing around.
 
 Parents are welcome to watch. Athletes usually leave knowing exactly what to work on, which is the part that lasts after the day ends.
 
@@ -221,11 +221,11 @@ Reply if you want to know whether it suits the athlete you have in mind.$body$,
    $subj$Places are limited$subj$,
    $body$Hi {{name}}
 
-A quick heads up: places are capped so the coaching stays hands-on, and registering interest does not hold one.
+A quick heads up: places are capped so the coaching stays hands-on, and registering interest doesn't hold one.
 
-If you want the spot, register properly and it is yours. If you have decided against it, that is completely fine — you can ignore this.
+If you want the spot, register properly and it's yours. If you've decided against it, that is completely fine — you can ignore this.
 
-Reply if there is anything you still need to know first.$body$,
+Reply if there's anything you still need to know first.$body$,
    '{}'::jsonb, NULL, NULL, NULL),
 
   ('00000000-0000-0000-0000-000000000001',
@@ -240,7 +240,7 @@ Reply if there is anything you still need to know first.$body$,
 
 Last message about the camp — I will not keep bringing it up.
 
-If the timing is wrong, tell me and I will let you know when the next one is instead. If you want a place, register and you are set.$body$,
+If the timing is wrong, tell me and I'll let you know when the next one is instead. If you want a place, register and you're set.$body$,
    '{}'::jsonb, NULL, NULL, NULL),
 
   ('00000000-0000-0000-0000-000000000001',
