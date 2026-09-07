@@ -247,3 +247,271 @@ If the timing is wrong, tell me and I'll let you know when the next one is inste
    (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'camp_clinic_deadline'),
    7, 'stop', NULL, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL)
 ON CONFLICT (sequence_id, position) DO NOTHING;
+
+-- -----------------------------------------------------------------------------
+-- The four Athlete Quiz sequences (gaps #6, #7). Each has exactly one step
+-- today -- position 0, kind email, live copy from 00253 -- and no stop step,
+-- so positions 1-7 append cleanly with nothing to renumber.
+--
+-- Position 0 is UNTOUCHED here. That is reviewed, production copy from
+-- 00253; rewriting it would discard the owner's own pass over the wording.
+--
+-- Shape, identical across all four: 1 wait 2d, 2 email, 3 branch has_user
+-- (true 6 / false 4), prospect arm 4 email -> 5 stop, client arm 6 email ->
+-- 7 stop. The reader who already has an account gets the client arm; nobody
+-- who already bought is asked to book a call.
+--
+-- Same reason as abandoned_checkout's branch above: each arm ends in its
+-- own stop, or a prospect falls through into the client email (or the
+-- reverse) and the reader gets both endings.
+-- -----------------------------------------------------------------------------
+
+-- quiz_ceiling_breaker: already performing, looking for the next level.
+INSERT INTO public.sequence_steps
+  (business_id, sequence_id, position, kind, wait_minutes, subject, body, config, branch_condition, on_true_position, on_false_position)
+VALUES
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_ceiling_breaker'),
+   1, 'wait', 2880, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_ceiling_breaker'),
+   2, 'email', NULL,
+   $subj$The part most people train around$subj$,
+   $body$Hi {{name}}
+
+A quick follow-up to your result.
+
+When someone is already working hard and the numbers stop moving, it's rarely a work-rate problem. One or two specific qualities have usually stopped feeding into the thing you actually do, and everything built on top of them is capped by that.
+
+It's a specific problem, and it is fixable — just not by training harder around it.$body$,
+   '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_ceiling_breaker'),
+   3, 'branch', NULL, NULL, NULL, '{}'::jsonb,
+   $cond${"kind": "has_user"}$cond$::jsonb, 6, 4),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_ceiling_breaker'),
+   4, 'email', NULL,
+   $subj$Which one is holding you back$subj$,
+   $body$Hi {{name}}
+
+If you want to know which of those qualities is actually costing you output, that's a short conversation, not a long assessment.
+
+Reply to this email and tell me what you are training for and what has plateaued. I'll tell you where I would start.$body$,
+   '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_ceiling_breaker'),
+   5, 'stop', NULL, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_ceiling_breaker'),
+   6, 'email', NULL,
+   $subj$Worth raising at your next session$subj$,
+   $body$Hi {{name}}
+
+You're already training with us, so there is nothing to sign up for here.
+
+Bring what the quiz flagged to your next session and we'll look at it directly — it's more useful in front of someone than on a screen.$body$,
+   '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_ceiling_breaker'),
+   7, 'stop', NULL, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL)
+ON CONFLICT (sequence_id, position) DO NOTHING;
+
+-- quiz_rebuilder: coming back from injury or recurring breakdown. Tone
+-- matters most here -- must never read as a sales push at someone hurt.
+INSERT INTO public.sequence_steps
+  (business_id, sequence_id, position, kind, wait_minutes, subject, body, config, branch_condition, on_true_position, on_false_position)
+VALUES
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_rebuilder'),
+   1, 'wait', 2880, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_rebuilder'),
+   2, 'email', NULL,
+   $subj$Where the load is actually going$subj$,
+   $body$Hi {{name}}
+
+A short follow-up to your result.
+
+When something keeps coming back, the spot that hurts usually isn't where the problem started. Load has been going somewhere it shouldn't, and the pain is just where it shows up first.
+
+That's worth knowing before you push volume again, not after.$body$,
+   '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_rebuilder'),
+   3, 'branch', NULL, NULL, NULL, '{}'::jsonb,
+   $cond${"kind": "has_user"}$cond$::jsonb, 6, 4),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_rebuilder'),
+   4, 'email', NULL,
+   $subj$If you want to talk through what recurs$subj$,
+   $body$Hi {{name}}
+
+No pressure here — if you'd like to talk through what keeps recurring, reply to this email and tell me what's been happening and when it shows up.
+
+I won't chase this if you'd rather sit with it for now.$body$,
+   '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_rebuilder'),
+   5, 'stop', NULL, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_rebuilder'),
+   6, 'email', NULL,
+   $subj$Worth telling your coach$subj$,
+   $body$Hi {{name}}
+
+You're already training with us, so this isn't about booking anything.
+
+If what the quiz flagged is still showing up, tell your coach directly — the plan can only account for it if we know it's there.$body$,
+   '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_rebuilder'),
+   7, 'stop', NULL, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL)
+ON CONFLICT (sequence_id, position) DO NOTHING;
+
+-- quiz_aspiring_pro: young athlete building toward something serious.
+-- Reader may be the athlete or a parent, so this stays in second person
+-- and reads fine at a kitchen table -- matching how 00253 already voices it.
+INSERT INTO public.sequence_steps
+  (business_id, sequence_id, position, kind, wait_minutes, subject, body, config, branch_condition, on_true_position, on_false_position)
+VALUES
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_aspiring_pro'),
+   1, 'wait', 2880, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_aspiring_pro'),
+   2, 'email', NULL,
+   $subj$The base that gets built early$subj$,
+   $body$Hi {{name}}
+
+A follow-up to your result.
+
+At this stage the gap between good and serious usually isn't talent. It's whether the physical base gets built before the sport starts demanding it — strength, movement, the boring stuff.
+
+Skip it now and it doesn't disappear. It just gets more expensive to fix later.$body$,
+   '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_aspiring_pro'),
+   3, 'branch', NULL, NULL, NULL, '{}'::jsonb,
+   $cond${"kind": "has_user"}$cond$::jsonb, 6, 4),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_aspiring_pro'),
+   4, 'email', NULL,
+   $subj$What to prioritise first$subj$,
+   $body$Hi {{name}}
+
+If you want to know what to prioritise first, reply to this email and tell me what you're training for and how the season is shaping up.
+
+I'll tell you where I would start.$body$,
+   '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_aspiring_pro'),
+   5, 'stop', NULL, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_aspiring_pro'),
+   6, 'email', NULL,
+   $subj$Worth keeping in during the season$subj$,
+   $body$Hi {{name}}
+
+You're already training with us, so there's nothing to sign up for here.
+
+When the season gets busy, the base work is usually the first thing that gets dropped — and the easiest to lose without noticing. Keep it in, even if it is just maintenance volume.$body$,
+   '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_aspiring_pro'),
+   7, 'stop', NULL, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL)
+ON CONFLICT (sequence_id, position) DO NOTHING;
+
+-- quiz_parent_coach: a parent or coach enquiring on an athlete's behalf.
+-- Third person about the athlete throughout, same as 00253's position 0 --
+-- never "you" or "your body" for the athlete's own qualities.
+INSERT INTO public.sequence_steps
+  (business_id, sequence_id, position, kind, wait_minutes, subject, body, config, branch_condition, on_true_position, on_false_position)
+VALUES
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_parent_coach'),
+   1, 'wait', 2880, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_parent_coach'),
+   2, 'email', NULL,
+   $subj$Why group programs don't fit here$subj$,
+   $body$Hi {{name}}
+
+A follow-up on the athlete's result.
+
+Most group programs are built for the average kid in the room, not the one you're asking about. What the quiz flagged is specific to them, and it's easy for a general session to miss it entirely.
+
+That gap doesn't close on its own — it usually shows up later, at a worse time.$body$,
+   '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_parent_coach'),
+   3, 'branch', NULL, NULL, NULL, '{}'::jsonb,
+   $cond${"kind": "has_user"}$cond$::jsonb, 6, 4),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_parent_coach'),
+   4, 'email', NULL,
+   $subj$Happy to go through it with you$subj$,
+   $body$Hi {{name}}
+
+If you'd like to go through what the quiz flagged together, reply to this email and tell me what the athlete is working on and what you are seeing day to day.
+
+I'll tell you what I'd focus on first.$body$,
+   '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_parent_coach'),
+   5, 'stop', NULL, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_parent_coach'),
+   6, 'email', NULL,
+   $subj$How to support what's already working$subj$,
+   $body$Hi {{name}}
+
+The athlete is already training with us, so there's nothing here to sign up for.
+
+The best thing you can do is keep doing what you're already doing: get them there, ask how it's going, and leave the programming to us. If something specific is nagging them, mention it to their coach directly.$body$,
+   '{}'::jsonb, NULL, NULL, NULL),
+
+  ('00000000-0000-0000-0000-000000000001',
+   (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'quiz_parent_coach'),
+   7, 'stop', NULL, NULL, NULL, '{}'::jsonb, NULL, NULL, NULL)
+ON CONFLICT (sequence_id, position) DO NOTHING;
+
+-- The four quiz sequences are ACTIVE in production and one email long. Adding
+-- steps to a live sequence means the next person who takes the quiz receives
+-- copy nobody has read -- which defeats the gate 00218, 00229 and 00253 all
+-- describe. The owner's decision on 2026-09-08 was to pause them here and
+-- re-activate after reading.
+--
+-- Safe mid-flight: enrollIfTriggered only reads status = 'active', so no NEW
+-- run starts, and no run exists to strand (zero quiz runs, ever).
+--
+-- To switch them back on after reading the copy:
+--     UPDATE public.sequences SET status = 'active' WHERE key LIKE 'quiz_%';
+UPDATE public.sequences
+SET status = 'paused', updated_at = now()
+WHERE business_id = '00000000-0000-0000-0000-000000000001'
+  AND key LIKE 'quiz_%'
+  AND status = 'active';
