@@ -109,6 +109,17 @@ async function markerOn(page, locator, caption, { dx = 0, dy = 0, place = "left"
   // room to the right before the next column, and it beats stacking the
   // marker vertically over a two-line cell where any offset large enough to
   // clear one line lands on the line above or below it instead.
+  // "inset" is for a right-aligned numeric <td> where "right" (measured from
+  // the cell's own right edge) lands the disc ON TOP of the digit itself —
+  // the digit sits flush against the cell's right padding, so anything
+  // "close to the right edge" is close to the digit too. The cell's LEFT
+  // portion, by contrast, is genuinely empty (that's the whole point of
+  // right-alignment), so a small fixed inset from the left edge puts the
+  // disc in that empty space with the digit clearly visible beside it.
+  // Measured on the real page: Entered td is 85.8px wide with its digit
+  // starting ~61px in from the left edge, and the disc is ~19 CSS px in
+  // radius — box.x + 24 clears the digit with room to spare on every
+  // numeric column here, including the narrowest one.
   const cx =
     place === "center"
       ? box.x + box.width / 2
@@ -116,7 +127,9 @@ async function markerOn(page, locator, caption, { dx = 0, dy = 0, place = "left"
         ? box.x + box.width - 22
         : place === "after"
           ? box.x + box.width + 22
-          : box.x - 22
+          : place === "inset"
+            ? box.x + 24
+            : box.x - 22
   return { x: Math.round((cx + dx) * DSF), y: Math.round((box.y + box.height / 2 + dy) * DSF), caption }
 }
 
@@ -202,13 +215,13 @@ try {
         page,
         coldEnteredCell,
         "Two people have entered this one. The columns to the right always add up to this number.",
-        { place: "right" },
+        { place: "inset" },
       ),
       await markerOn(
         page,
         coldBookedCell,
         "One of them booked a call. That is what this sequence is for, and the follow-up stops on its own the moment it happens.",
-        { place: "right" },
+        { place: "inset" },
       ),
       await markerOn(
         page,
