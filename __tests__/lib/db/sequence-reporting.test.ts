@@ -30,6 +30,8 @@ function makeBuilder(table: string, select: string) {
     }
   }
   builder.then = (resolve: (value: unknown) => void) => resolve(settle())
+  builder.maybeSingle = () => settle()
+  builder.single = () => settle()
   return builder
 }
 
@@ -46,6 +48,7 @@ import {
   contactsWithEmailConsent,
   emptyBuckets,
   OUTCOME_BUCKETS,
+  sequenceDetail,
   sequenceReport,
 } from "@/lib/db/sequence-reporting"
 
@@ -329,5 +332,133 @@ describe("contactsWithEmailConsent", () => {
   it("throws on a failed read rather than reporting nobody consented", async () => {
     results = [{ data: null, error: { message: "consent read failed" } }]
     await expect(contactsWithEmailConsent(BUSINESS, ["c1"])).rejects.toThrow(/consent read failed/)
+  })
+})
+
+describe("sequenceDetail", () => {
+  const SEQUENCE = {
+    id: "s1",
+    key: "new_lead_nurture",
+    name: "New Lead Nurture",
+    description: "Eight steps",
+    status: "active",
+    trigger_source: "funnel_form",
+  }
+
+  it("returns null for a key this business does not own", async () => {
+    // NOT an empty report. An empty report tells the operator a sequence they
+    // can name has nobody in it; null lets the page 404, which is the truth:
+    // it belongs to somebody else.
+    results = [{ data: null, error: null }]
+    expect(await sequenceDetail(BUSINESS, "not_ours")).toBeNull()
+  })
+
+  it("looks the sequence up by key AND business", async () => {
+    results = [{ data: SEQUENCE, error: null }, { data: [], error: null }, { data: [], error: null }, { data: [], error: null }]
+    await sequenceDetail(BUSINESS, "new_lead_nurture")
+    expect(calls[0].table).toBe("sequences")
+    expect(calls[0].ops).toContainEqual(["eq", "key", "new_lead_nurture"])
+    expect(calls[0].ops).toContainEqual(["eq", "business_id", BUSINESS])
+  })
+
+  it("buckets each run and flattens the joined contact", async () => {
+    results = [
+      { data: SEQUENCE, error: null },
+      { data: [{ count: 2 }], error: null },
+      {
+        data: [
+          {
+            id: "r1",
+            contact_id: "c1",
+            enrolled_at: "2026-09-01T10:00:00Z",
+            completed_at: "2026-09-02T10:00:00Z",
+            status: "exited",
+            exit_reason: "payment",
+            current_position: 3,
+            contacts: { full_name: "Alex Rivera", email: "alex@example.com" },
+          },
+          {
+            id: "r2",
+            contact_id: "c2",
+            enrolled_at: "2026-09-01T11:00:00Z",
+            completed_at: null,
+            status: "active",
+            exit_reason: null,
+            current_position: 1,
+            contacts: null,
+          },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+    ]
+    const detail = await sequenceDetail(BUSINESS, "new_lead_nurture")
+    expect(detail!.runs[0]).toMatchObject({
+      id: "r1",
+      contactName: "Alex Rivera",
+      contactEmail: "alex@example.com",
+      bucket: "bought",
+      exitReason: "payment",
+    })
+    // A run whose contact row did not come back must still render — a missing
+    // join is not a reason to hide a person from the count.
+    expect(detail!.runs[1]).toMatchObject({ id: "r2", contactName: null, bucket: "in_progress" })
+  })
+
+  it("keeps the raw exit reason, so the page can split opted-out three ways", async () => {
+    // MUTANT: return only `bucket` and drop `exitReason`. The detail page could
+    // no longer tell an email unsubscribe from a texted STOP from someone who
+    // was already on the do-not-contact list — three different things.
+    results = [
+      { data: SEQUENCE, error: null },
+      { data: [{ count: 1 }], error: null },
+      {
+        data: [
+          {
+            id: "r1", contact_id: "c1", enrolled_at: "2026-09-01T10:00:00Z", completed_at: null,
+            status: "exited", exit_reason: "sms_stop", current_position: 2, contacts: null,
+          },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+    ]
+    const detail = await sequenceDetail(BUSINESS, "new_lead_nurture")
+    expect(detail!.runs[0].bucket).toBe("opted_out")
+    expect(detail!.runs[0].exitReason).toBe("sms_stop")
+  })
+
+  it("pages the runs and reports the true total", async () => {
+    // KNOWN DEFECT IN THE BRIEF, ruled on by the controller: the brief's
+    // original version of this test seeded `{ data: [], error: null, count: 240 }`
+    // and asserted `totalRuns === 240`. That cannot pass — the mock harness has
+    // no `count` field, and the implementation deliberately does not issue a
+    // separate count query: the tally read (the second read) already fetches
+    // every run for this sequence, so `totalRuns` is derived from ITS row
+    // count. A dedicated count query would be a redundant round trip. The
+    // ruling: the implementation is right, so this test seeds the TALLY read
+    // with the true number of rows and asserts against that, while separately
+    // asserting the paged runs read carried the requested range.
+    const tallyRows = Array.from({ length: 240 }, (_, i) => ({
+      status: "active",
+      exit_reason: null,
+      contact_id: `c${i}`,
+    }))
+    results = [
+      { data: SEQUENCE, error: null },
+      { data: tallyRows, error: null },
+      { data: [], error: null },
+      { data: [], error: null },
+    ]
+    const detail = await sequenceDetail(BUSINESS, "new_lead_nurture", { limit: 100, offset: 100 })
+    const runsCall = calls.find((c) => c.table === "sequence_runs" && c.select.includes("contacts"))!
+    expect(runsCall.ops).toContainEqual(["range", 100, 199])
+    expect(detail!.totalRuns).toBe(240)
+  })
+
+  it("throws when the sequence read fails, rather than 404ing", async () => {
+    // A failed read must not be indistinguishable from "no such sequence".
+    results = [{ data: null, error: { message: "sequence read failed" } }]
+    await expect(sequenceDetail(BUSINESS, "new_lead_nurture")).rejects.toThrow(/sequence read failed/)
   })
 })

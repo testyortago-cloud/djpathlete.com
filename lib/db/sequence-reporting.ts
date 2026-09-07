@@ -239,3 +239,136 @@ export async function sequenceReport(businessId: string): Promise<SequenceReport
     }
   })
 }
+
+export interface SequenceRunRowForReport {
+  id: string
+  contactId: string
+  contactName: string | null
+  contactEmail: string | null
+  enteredAt: string
+  completedAt: string | null
+  bucket: OutcomeBucket
+  /**
+   * The RAW reason, kept alongside the bucket on purpose. The list collapses
+   * three reasons into "opted out"; the detail page splits them again, because
+   * an email unsubscribe, a texted STOP and "was already on the do-not-contact
+   * list" are three different things an operator would act on differently.
+   */
+  exitReason: string | null
+  currentPosition: number
+}
+
+export interface SequenceDetail extends SequenceReportRow {
+  stepCount: number
+  runs: SequenceRunRowForReport[]
+  /** May exceed `runs.length` — the pager needs the real total. */
+  totalRuns: number
+}
+
+export const DETAIL_PAGE_SIZE = 100
+
+/**
+ * One sequence, its tally, and the individual people in it.
+ *
+ * Returns `null` — not an empty report — when no sequence with this key belongs
+ * to this business, so the page can answer 404. An empty report would tell an
+ * operator that a sequence they can name has nobody in it, when the truth is
+ * that it is somebody else's.
+ */
+export async function sequenceDetail(
+  businessId: string,
+  key: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<SequenceDetail | null> {
+  const limit = opts?.limit ?? DETAIL_PAGE_SIZE
+  const offset = opts?.offset ?? 0
+  const supabase = getClient()
+
+  const { data: sequence, error: seqError } = await supabase
+    .from("sequences")
+    .select("id, key, name, description, status, trigger_source")
+    .eq("key", key)
+    .eq("business_id", businessId)
+    .maybeSingle()
+  if (seqError) throw new Error(`sequenceDetail sequence: ${(seqError as { message?: string }).message}`)
+  if (!sequence) return null
+
+  const row = sequence as {
+    id: string
+    key: string
+    name: string
+    description: string | null
+    status: string
+    trigger_source: string | null
+  }
+
+  const { data: allRuns, error: allRunsError } = await supabase
+    .from("sequence_runs")
+    .select("status, exit_reason, contact_id")
+    .eq("business_id", businessId)
+    .eq("sequence_id", row.id)
+  if (allRunsError) throw new Error(`sequenceDetail tally: ${(allRunsError as { message?: string }).message}`)
+
+  type TallyRow = { status: string; exit_reason: string | null; contact_id: string }
+  const tallyRows = (allRuns ?? []) as TallyRow[]
+  const buckets = emptyBuckets()
+  for (const r of tallyRows) buckets[bucketForRun(r.status, r.exit_reason)] += 1
+
+  const { data: pageRuns, error: pageError } = await supabase
+    .from("sequence_runs")
+    .select(
+      "id, contact_id, enrolled_at, completed_at, status, exit_reason, current_position, contacts(full_name, email)",
+    )
+    .eq("business_id", businessId)
+    .eq("sequence_id", row.id)
+    .order("enrolled_at", { ascending: false })
+    .range(offset, offset + limit - 1)
+  if (pageError) throw new Error(`sequenceDetail runs: ${(pageError as { message?: string }).message}`)
+
+  type JoinedRun = {
+    id: string
+    contact_id: string
+    enrolled_at: string
+    completed_at: string | null
+    status: string
+    exit_reason: string | null
+    current_position: number
+    contacts: { full_name: string | null; email: string | null } | null
+  }
+
+  const runs: SequenceRunRowForReport[] = ((pageRuns ?? []) as unknown as JoinedRun[]).map((r) => ({
+    id: r.id,
+    contactId: r.contact_id,
+    // A missing join is not a reason to hide a person from the list. It renders
+    // without a name rather than not at all.
+    contactName: r.contacts?.full_name ?? null,
+    contactEmail: r.contacts?.email ?? null,
+    enteredAt: r.enrolled_at,
+    completedAt: r.completed_at,
+    bucket: bucketForRun(r.status, r.exit_reason),
+    exitReason: r.exit_reason,
+    currentPosition: r.current_position,
+  }))
+
+  const { data: steps, error: stepsError } = await supabase
+    .from("sequence_steps")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("sequence_id", row.id)
+  if (stepsError) throw new Error(`sequenceDetail steps: ${(stepsError as { message?: string }).message}`)
+
+  const contactIds = [...new Set(tallyRows.map((r) => r.contact_id))]
+  const consented = await contactsWithEmailConsent(businessId, contactIds)
+  let without = 0
+  for (const id of contactIds) if (!consented.has(id)) without += 1
+
+  return {
+    ...row,
+    entered: tallyRows.length,
+    buckets,
+    contactsWithoutEmailConsent: without,
+    stepCount: (steps ?? []).length,
+    runs,
+    totalRuns: tallyRows.length,
+  }
+}
