@@ -191,7 +191,47 @@ const SLOT_SCHEMA = `{
               "intensity_pct": number | null (percentage of 1RM, optional)
             }`
 
-function buildArchitectPrompt(mode: "week" | "day"): string {
+/**
+ * The closing directive on the architect's user turn.
+ *
+ * Day mode used to end with "Look at what {day} typically contains in prior
+ * weeks to determine the appropriate focus, exercise count, and session
+ * structure" UNCONDITIONALLY. Together with day rule 2 that told the model
+ * twice to take the exercise count from history, and it beat the coach's own
+ * count: a Full Body Day asking for 3 squat / 3 hinge / 3 push / 3 pull /
+ * 3 core came back with 7 exercises, which is what prior Fridays held. The
+ * count clause is now dropped whenever the coach supplied instructions, and
+ * replaced with the opposite instruction. Exported for the prompt test.
+ */
+export function buildDesignDirective(args: {
+  isSingleDay: boolean
+  targetDayName: string | null
+  newWeekNumber: number
+  targetDayOfWeek: number | null
+  splitType: string
+  periodization: string
+  hasCoachInstructions: boolean
+}): string {
+  const { isSingleDay, targetDayName, newWeekNumber, targetDayOfWeek, splitType, periodization } = args
+
+  if (!isSingleDay) {
+    return `Design Week ${newWeekNumber} for this program. The week MUST have week_number=${newWeekNumber}. Match the existing program's split (${splitType}), periodization (${periodization}), and training days.`
+  }
+
+  // With coach instructions present, prior weeks inform focus and structure —
+  // never the count. Without them, history is the only signal there is.
+  const derivedFromHistory = args.hasCoachInstructions
+    ? "focus and session structure"
+    : "focus, exercise count, and session structure"
+
+  const countOverride = args.hasCoachInstructions
+    ? ` The Coach Instructions above set the exercise count for this day: follow them exactly, even where the resulting total is far larger or smaller than prior ${targetDayName}s. Do NOT fall back to the prior-week count.`
+    : ""
+
+  return `Design ${targetDayName} for Week ${newWeekNumber}. The output MUST have week_number=${newWeekNumber} and exactly ONE day with day_of_week=${targetDayOfWeek}. Match the existing program's split (${splitType}) and periodization (${periodization}). Look at what ${targetDayName} typically contains in prior weeks to determine the appropriate ${derivedFromHistory}.${countOverride}`
+}
+
+export function buildArchitectPrompt(mode: "week" | "day"): string {
   const isDay = mode === "day"
   const entity = isDay ? "a SINGLE TRAINING DAY within a week of" : "the NEXT WEEK of"
   const entityShort = isDay ? "ONE day" : "ONE week"
@@ -217,13 +257,13 @@ function buildArchitectPrompt(mode: "week" | "day"): string {
   const rules = isDay
     ? `Rules:
 1. Output EXACTLY ONE day in the "days" array — the specific day_of_week requested.
-2. MATCH the program's existing structure for this day: look at what this day_of_week typically contains in prior weeks (muscle groups, exercise count, session focus).
+2. MATCH the program's existing structure for this day: look at what this day_of_week typically contains in prior weeks (muscle groups, exercise count, session focus). The prior-week exercise count is only a DEFAULT — rule 6 overrides it whenever the coach states counts of their own.
 3. COMPLEMENT other days already programmed in this week — avoid duplicating the same muscle groups or movement patterns.
 4. PROGRESS appropriately based on the client's logged performance.
 5. ROTATE ALL WORKING EXERCISES — use DIFFERENT exercises than prior weeks for the same slot roles.
 6. COACH INSTRUCTIONS ARE HIGHEST PRIORITY — they override ALL default rules including technique selection, exercise structure, and progression logic:
    - If the coach names a technique (e.g., "no supersets", "use straight sets only", "use cluster sets", "rest-pause on compounds"), apply EXACTLY that technique regardless of the client's level or time constraints — never substitute supersets because they are more familiar.
-   - If the coach specifies exercise counts (e.g., "4 power exercises", "2 quad exercises"), create EXACTLY that many slots with matching roles/patterns/muscles.
+   - If the coach specifies exercise counts (e.g., "4 power exercises", "2 quad exercises"), create EXACTLY that many slots with matching roles/patterns/muscles. A per-pattern list ("3 squat pattern, 3 hinge, 3 upper push, 3 upper pull, 3 core") is a count PER LINE — sum the lines and build that many slots. This OVERRIDES the prior-week exercise count in rule 2 and any session time budget, even when the total is far larger or smaller than prior weeks. A leading number is a count of EXERCISES, never of sets, unless the coach writes "sets".
    - If the coach says "make this a deload day", set intensity_modifier to "low/deload" and reduce slot count.
    - If the coach specifies session structure (e.g., "start with plyometrics"), arrange slots accordingly.
 7. Use the slot_id format: "w{week_number}d{day_of_week}s{slot_index}".
@@ -660,11 +700,15 @@ ${request.admin_instructions ? "\nYou MUST follow these instructions. If they co
     poolActive,
   )}
 
-${
-  isSingleDay
-    ? `Design ${targetDayName} for Week ${newWeekNumber}. The output MUST have week_number=${newWeekNumber} and exactly ONE day with day_of_week=${request.target_day_of_week}. Match the existing program's split (${program.split_type}) and periodization (${program.periodization}). Look at what ${targetDayName} typically contains in prior weeks to determine the appropriate focus, exercise count, and session structure.`
-    : `Design Week ${newWeekNumber} for this program. The week MUST have week_number=${newWeekNumber}. Match the existing program's split (${program.split_type}), periodization (${program.periodization}), and training days.`
-}
+${buildDesignDirective({
+  isSingleDay,
+  targetDayName,
+  newWeekNumber,
+  targetDayOfWeek: request.target_day_of_week ?? null,
+  splitType: String(program.split_type),
+  periodization: String(program.periodization),
+  hasCoachInstructions: !!request.admin_instructions,
+})}
 
 IMPORTANT: Review the full program progression summary above. If the coach's instructions reference themes, focus areas, or progressions from previous weeks, ensure this ${isSingleDay ? "day" : "week"} builds on that trajectory logically. The coach may ask to maintain a theme while shifting emphasis (e.g., "keep lower leg focus but add glute work") — honor this by blending continuity with the new direction.`
 
