@@ -375,7 +375,7 @@ describe("sequenceDetail", () => {
             status: "exited",
             exit_reason: "payment",
             current_position: 3,
-            contacts: { full_name: "Alex Rivera", email: "alex@example.com" },
+            contacts: { name: "Alex Rivera", email: "alex@example.com" },
           },
           {
             id: "r2",
@@ -454,6 +454,11 @@ describe("sequenceDetail", () => {
     const runsCall = calls.find((c) => c.table === "sequence_runs" && c.select.includes("contacts"))!
     expect(runsCall.ops).toContainEqual(["range", 100, 199])
     expect(detail!.totalRuns).toBe(240)
+    // The mocked Supabase client cannot tell us `contacts.full_name` does not
+    // exist on the real table — only a real PostgREST round trip would 400 on
+    // that. This is the one thing standing between this suite and that same
+    // mistake shipping again silently: pin the select string's column name.
+    expect(runsCall.select).toContain("contacts(name, email)")
   })
 
   it("throws when the sequence read fails, rather than 404ing", async () => {

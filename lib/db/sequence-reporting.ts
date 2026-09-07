@@ -317,7 +317,7 @@ export async function sequenceDetail(
   const { data: pageRuns, error: pageError } = await supabase
     .from("sequence_runs")
     .select(
-      "id, contact_id, enrolled_at, completed_at, status, exit_reason, current_position, contacts(full_name, email)",
+      "id, contact_id, enrolled_at, completed_at, status, exit_reason, current_position, contacts(name, email)",
     )
     .eq("business_id", businessId)
     .eq("sequence_id", row.id)
@@ -333,7 +333,7 @@ export async function sequenceDetail(
     status: string
     exit_reason: string | null
     current_position: number
-    contacts: { full_name: string | null; email: string | null } | null
+    contacts: { name: string | null; email: string | null } | null
   }
 
   const runs: SequenceRunRowForReport[] = ((pageRuns ?? []) as unknown as JoinedRun[]).map((r) => ({
@@ -341,7 +341,7 @@ export async function sequenceDetail(
     contactId: r.contact_id,
     // A missing join is not a reason to hide a person from the list. It renders
     // without a name rather than not at all.
-    contactName: r.contacts?.full_name ?? null,
+    contactName: r.contacts?.name ?? null,
     contactEmail: r.contacts?.email ?? null,
     enteredAt: r.enrolled_at,
     completedAt: r.completed_at,
