@@ -61,9 +61,12 @@ export default async function SequenceDetailPage({
           All sequences
         </Link>
         <h1 className="mt-2 text-2xl font-semibold text-primary">{detail.name}</h1>
-        {detail.description ? (
-          <p className="mt-1 text-sm text-muted-foreground">{detail.description}</p>
-        ) : null}
+        {/* The `description` column is NOT rendered, deliberately. Every one of the nine
+            seeded descriptions is a note written for the next developer — they name
+            helper functions, script paths and column semantics ("trigger_source is
+            NULL"). Until a coach can write their own, showing this column puts
+            engineering prose on a coach's screen. The field stays on SequenceDetail for
+            a future editor to use. */}
         <p className="mt-1 text-sm text-muted-foreground">
           {detail.stepCount === 1 ? "1 step" : `${detail.stepCount} steps`}
         </p>

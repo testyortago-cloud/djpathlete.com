@@ -98,7 +98,25 @@ async function markerOn(page, locator, caption, { dx = 0, dy = 0, place = "left"
     console.warn(`  !! MARKER TARGET HAS NO BOX — caption mispositioned: "${caption.slice(0, 60)}…"`)
     return { x: 100, y: 100, caption }
   }
-  const cx = place === "center" ? box.x + box.width / 2 : box.x - 22
+  // "right" is for a right-aligned numeric <td>: the CELL's box spans the
+  // whole column (that's how table layout works), which is much wider than
+  // the digit text-align:right draws inside it — "center" on a cell like that
+  // lands well to the LEFT of the actual number. box.width - 22 mirrors the
+  // "left" mode's -22 but measured in from the right edge instead, landing
+  // close to the visible digit (cells here use px-4 = 16px padding).
+  // "after" sits in the whitespace just past the box's right edge — for
+  // short inline text (a name, a badge) inside a wide table row, there is
+  // room to the right before the next column, and it beats stacking the
+  // marker vertically over a two-line cell where any offset large enough to
+  // clear one line lands on the line above or below it instead.
+  const cx =
+    place === "center"
+      ? box.x + box.width / 2
+      : place === "right"
+        ? box.x + box.width - 22
+        : place === "after"
+          ? box.x + box.width + 22
+          : box.x - 22
   return { x: Math.round((cx + dx) * DSF), y: Math.round((box.y + box.height / 2 + dy) * DSF), caption }
 }
 
@@ -154,8 +172,19 @@ try {
   const coldLink = page.getByRole("link", { name: "Cold Lead Re-Engagement" })
   const coldEnteredCell = coldRow.locator("td").nth(1)
   const coldBookedCell = coldRow.locator("td").nth(4)
-  const quizWaitingText = page.getByText("Nobody yet — waiting on a quiz result.").first()
-  const notStartedPill = page.getByText("Not started").first()
+  const aspiringRow = page.locator("tbody tr", { hasText: "Quiz — Aspiring Pro" })
+  const quizWaitingText = aspiringRow.getByText("Nobody yet — waiting on a quiz result.")
+  const leadMagnetRow = page.locator("tbody tr", { hasText: "Lead Magnet Follow-Up" })
+  // The badge and its explanation share ONE line (measured: pill y 546-566,
+  // text y 548-564 in the aspiring-pro row) — there is no second line to
+  // offset onto. Markers 4 and 5 sit in the open space AFTER the explanation
+  // text instead, on the same line, well clear of the pill to their left.
+  // The gap before the Entered column is only ~16px (text ends ~561px,
+  // column starts 577px), narrower than the marker disc itself, so "after"
+  // unavoidably drifts a little past that boundary — but that column's own
+  // digit is right-aligned near ITS far edge, so the drift lands on empty
+  // cell padding, never on the digit.
+  const leadMagnetExplanation = leadMagnetRow.getByText("Not switched on yet.")
 
   await shoot(
     page,
@@ -173,25 +202,25 @@ try {
         page,
         coldEnteredCell,
         "Two people have entered this one. The columns to the right always add up to this number.",
-        { place: "center", dy: -26 },
+        { place: "right" },
       ),
       await markerOn(
         page,
         coldBookedCell,
         "One of them booked a call. That is what this sequence is for, and the follow-up stops on its own the moment it happens.",
-        { place: "center", dy: -26 },
+        { place: "right" },
       ),
       await markerOn(
         page,
         quizWaitingText,
         "When nobody has entered a sequence, the page says why instead of showing a bare zero. This one is waiting for somebody to finish the quiz.",
-        { place: "left", dx: -6 },
+        { place: "after" },
       ),
       await markerOn(
         page,
-        notStartedPill,
+        leadMagnetExplanation,
         "These are switched off. That is the reason their numbers are zero — nothing is broken.",
-        { place: "left", dx: -6 },
+        { place: "after" },
       ),
     ],
   )
@@ -200,10 +229,15 @@ try {
   await page.goto(`${APP}/admin/sequences/cold_lead_re_engagement`, { waitUntil: "networkidle" })
   await page.waitForTimeout(600)
 
-  const tiles = page.locator("div.grid.grid-cols-2").first()
-  const noorRow = page.locator("tbody tr", { hasText: "Noor Haddad" })
-  const mayaRow = page.locator("tbody tr", { hasText: "Maya Sorensen" })
-  console.log(`  detail(cold): tiles=${await tiles.count()} noor=${await noorRow.count()} maya=${await mayaRow.count()}`)
+  // The "Entered" tile is the standalone one rendered before the SUMMARY.map —
+  // it shares the same tile classes as the other six, so `.first()` on that
+  // class selector lands on it specifically, not on the grid as a whole.
+  const enteredTile = page.locator("div.rounded-xl.border.border-border.bg-white.p-4.shadow-sm").first()
+  const noorName = page.getByText("Noor Haddad")
+  const mayaName = page.getByText("Maya Sorensen")
+  console.log(
+    `  detail(cold): enteredTile=${await enteredTile.count()} noor=${await noorName.count()} maya=${await mayaName.count()}`,
+  )
 
   await shoot(
     page,
@@ -211,21 +245,24 @@ try {
     "One sequence, and every person in it",
     "/admin/sequences/cold_lead_re_engagement",
     [
-      await markerOn(page, tiles, "The same counts as the list page, for this one sequence.", {
+      await markerOn(page, enteredTile, "The same counts as the list page, for this one sequence.", {
         place: "center",
         dy: -14,
       }),
+      // "after" the name, not centered on it — measured gap to the next
+      // column (the enrolled-date cell) is ~320px here, so there is plenty
+      // of clear card interior to sit in without covering the name itself.
       await markerOn(
         page,
-        noorRow,
+        noorName,
         "Noor booked a call, so she left the sequence on the date shown. She gets no further emails.",
-        { place: "left", dx: -6 },
+        { place: "after" },
       ),
       await markerOn(
         page,
-        mayaRow,
+        mayaName,
         "Maya is still going, part-way through the six steps.",
-        { place: "left", dx: -6 },
+        { place: "after" },
       ),
     ],
   )

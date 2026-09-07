@@ -94,7 +94,16 @@ export function SequenceRunsTable({ runs }: { runs: SequenceRunRowForReport[] })
                   <DataTableCell muted>{formatDate(run.enteredAt)}</DataTableCell>
                   <DataTableCell>
                     <DataTableBadge tone={BUCKET_TONE[run.bucket]}>{BUCKET_LABEL[run.bucket]}</DataTableBadge>
-                    {detail ? <div className="mt-1 text-xs text-muted-foreground">{detail}</div> : null}
+                    {/* Only render the detail line when it ADDS information. "booking"
+                        and "payment" map to a detail string identical to their bucket
+                        label ("Booked a call", "Bought"), so showing both would say the
+                        same thing twice under one person's row. The opt-out reasons
+                        (unsubscribed / sms_stop / suppressed) all collapse to one badge
+                        ("Opted out") but stay three different detail strings, so those
+                        keep rendering. */}
+                    {detail && detail !== BUCKET_LABEL[run.bucket] ? (
+                      <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
+                    ) : null}
                   </DataTableCell>
                   <DataTableCell muted>{formatDate(run.completedAt)}</DataTableCell>
                 </DataTableRow>
