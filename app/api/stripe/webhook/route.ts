@@ -331,20 +331,40 @@ export async function POST(request: Request) {
         //
         // Gated on the same NON_COACHING_CHECKOUT_TYPES set that decides
         // whether a COMPLETED checkout wins a pipeline card, so "a coaching
-        // sale" has exactly one definition in this route. Per that constant's
-        // own comment, a new coaching checkout that forgets to set
+        // sale" has exactly one definition in this route -- not a second,
+        // divergent one for the abandoned case. "session_pack" is
+        // deliberately NOT a member of that set, the same as it is not
+        // excluded from the completed side's pipeline-card win or its
+        // unconditional purchase capture: a session pack IS a coaching sale,
+        // so its abandonment is a coaching-checkout abandonment too, and gets
+        // captured here the same as any other. Do not add it to the denylist
+        // to "fix" that -- it would just be reintroducing the divergent
+        // definition this gate exists to prevent. Per that constant's own
+        // comment, a new coaching checkout that forgets to set
         // `metadata.type` still counts as coaching.
         if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
           // Same tenant resolution the completed case uses: the payer's own
-          // contact row when they have one, the platform seam for a first-time
-          // payer who does not.
-          const contact = await findContactWithBusinessByIdentifiers({
-            userId: session.metadata?.userId ?? null,
-            email: session.customer_details?.email ?? session.customer_email ?? null,
-          })
+          // contact row when they have one, the platform seam for a
+          // first-time payer who does not -- AND for a payer whose contact
+          // lookup THREW. Lead capture must never be able to fail a Stripe
+          // webhook (this file's rule throughout every other capture site),
+          // so this lookup is wrapped exactly like its completed-case
+          // sibling: a throw here still leaves the capture with the platform
+          // tenant instead of 500-ing the whole event and triggering a
+          // Stripe retry.
+          let expiredContactBusinessId: string | null = null
+          try {
+            const contact = await findContactWithBusinessByIdentifiers({
+              userId: session.metadata?.userId ?? null,
+              email: session.customer_details?.email ?? session.customer_email ?? null,
+            })
+            expiredContactBusinessId = contact?.businessId ?? null
+          } catch (err) {
+            console.error("[stripe-webhook] expired-checkout contact lookup failed", (err as Error).message)
+          }
           await tryCaptureLeadFromCheckout(
             session,
-            contact?.businessId ?? platformBusinessId(),
+            expiredContactBusinessId ?? platformBusinessId(),
             "checkout_abandoned",
           )
         }

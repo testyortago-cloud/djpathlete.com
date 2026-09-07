@@ -187,4 +187,26 @@ describe("checkout.session.expired — abandoned coaching checkout capture", () 
       businessId: OTHER_BUSINESS_ID,
     })
   })
+
+  // Mirrors "a contact lookup that THROWS still leaves the capture with the
+  // platform tenant" above, for the expired case. Unlike the completed
+  // case's contact/pipeline resolution, this lookup is the ONLY thing
+  // between the guard and the capture -- no separate try/catch existed here
+  // until this test proved one was needed: without it, a throw here
+  // propagates past this case, out of the switch, into the route's own
+  // top-level catch, and returns 500 -- Stripe retries the whole event
+  // instead of the capture just falling back to the platform tenant.
+  it("a contact lookup that THROWS still leaves the abandoned-checkout capture with the platform tenant", async () => {
+    findContactMock.mockRejectedValue(new Error("contacts read failed"))
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire({ id: "cs_5", customer_email: "e@example.com", metadata: {} }, "checkout.session.expired"),
+    )
+    expect(res.status).toBe(200)
+    expect(captureLeadMock).toHaveBeenCalledTimes(1)
+    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
+      source: "checkout_abandoned",
+      businessId: "platform-biz",
+    })
+  })
 })
