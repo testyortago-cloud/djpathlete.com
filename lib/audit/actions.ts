@@ -215,6 +215,11 @@ export const AUDIT_ACTIONS = [
     // `pipeline.opportunity_moved` both mean a person clicked something, and
     // "did a coach move this card?" is a question the admin_write trail is
     // supposed to answer truthfully. A cron filed there corrupts the answer.
+    // Writer: the tag step in `lib/automation/sequence-tick.ts`. It pins this
+    // exact spelling the way `lib/db/pipeline.ts` pins its sibling below --
+    // `const … : AuditAction = "sequence.contact_tagged"` -- so a typo stops
+    // the build rather than writing a row the log viewer cannot name. Both
+    // registrations are asserted in `__tests__/db/pipeline.test.ts`.
     slug: "sequence.contact_tagged",
     category: "automation",
     description: "A sequence step applied a tag to a contact",

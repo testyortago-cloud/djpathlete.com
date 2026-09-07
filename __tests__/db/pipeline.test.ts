@@ -39,10 +39,23 @@ function nextId(prefix: string) {
  * patch can answer that. An extension of this harness, deliberately not a
  * second one: `store` remains the assertion surface for everything else.
  */
-const updateCalls: Array<{ table: string; payload: Row }> = []
+const updateCalls: Array<{ table: string; payload: Row; filters: Array<[string, any]> }> = []
 
 function updatePatchesFor(table: keyof Store): Row[] {
   return updateCalls.filter((c) => c.table === table).map((c) => c.payload)
+}
+
+/**
+ * The `.eq()` filters each executed UPDATE actually carried, as a lookup.
+ *
+ * Same reason the patch is recorded: the WHERE clause is unrecoverable from
+ * the result. A write scoped to `id` alone and a write scoped to `id` AND
+ * `business_id` touch exactly the same row in every fixture here — the store
+ * seeds one tenant — so only the predicate itself can say whether the tenant
+ * scope is present.
+ */
+function updateFiltersFor(table: keyof Store): Array<Map<string, any>> {
+  return updateCalls.filter((c) => c.table === table).map((c) => new Map(c.filters))
 }
 
 /**
@@ -174,7 +187,7 @@ vi.mock("@/lib/supabase", () => ({
       }
 
       const doUpdate = (): { data: any; error: any } => {
-        updateCalls.push({ table: String(table), payload: { ...(payload as Row) } })
+        updateCalls.push({ table: String(table), payload: { ...(payload as Row) }, filters: [...filters] })
         const targets = rows.filter(passesFilters)
         for (const row of targets) Object.assign(row, payload)
         return { data: [...targets], error: null }
@@ -1790,6 +1803,39 @@ describe("moveOpportunityBySequence", () => {
     expect(store.opportunities[0].stage_id).toBe("stage-consult-booked")
   })
 
+  // Fix round 1, FIX 2. The write is scoped by tenant as well as by id.
+  //
+  // The whole board is seeded under OTHER_BUSINESS_ID here, deliberately: every
+  // other case in this block seeds under SINGLETON_BUSINESS_ID and passes it
+  // straight back, so an assertion made against that value is satisfied by a
+  // hardcoded constant as easily as by the argument. Seeding the non-default
+  // tenant mutates the VALUE, not the arity — a predicate that named the
+  // singleton would fail here, and so would a write with no tenant predicate
+  // at all.
+  it("scopes the opportunities write by business_id, not by id alone", async () => {
+    seedBoard(OTHER_BUSINESS_ID)
+    seedContact("c-1", { business_id: OTHER_BUSINESS_ID })
+    seedOpportunity("opp-1", "c-1", { business_id: OTHER_BUSINESS_ID, stage_id: "stage-consult-booked" })
+
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: null,
+      businessId: OTHER_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    // Presence control: an absence assertion below is worthless if nothing ran.
+    expect(result).toMatchObject({ kind: "moved", opportunityId: "opp-1" })
+    expect(store.opportunities[0].stage_id).toBe("stage-consulted")
+
+    const wheres = updateFiltersFor("opportunities")
+    expect(wheres).toHaveLength(1)
+    expect(wheres[0].get("id")).toBe("opp-1")
+    expect(wheres[0].has("business_id")).toBe(true)
+    expect(wheres[0].get("business_id")).toBe(OTHER_BUSINESS_ID)
+  })
+
   // `pipelineKey: null` above always means DEFAULT_PIPELINE_KEY. This proves
   // the fallback is a fallback and not the only path: a named key resolves
   // its own board, and a named key with no board throws rather than silently
@@ -1817,5 +1863,31 @@ describe("moveOpportunityBySequence", () => {
         sequenceRunId: RUN_ID,
       }),
     ).rejects.toBeInstanceOf(PipelineNotConfiguredError)
+  })
+})
+
+// Fix round 1, FIX 1. `RecordAuditInput.action` is typed `string`, and the
+// audit ROW's category comes from the call site — so before this, both
+// `sequence.*` rows could be deleted from the closed taxonomy with the suite
+// green and tsc clean. `lib/db/pipeline.ts` now pins the moved slug at compile
+// time (`const SEQUENCE_MOVED_AUDIT_ACTION: AuditAction = …`); these pin the
+// registrations themselves, including their category, which is the half a
+// type annotation cannot check.
+//
+// Pattern copied from __tests__/lib/tenancy/public.test.ts:251 and
+// __tests__/app/sms-consent-page.test.ts:552.
+describe("the sequence audit taxonomy", () => {
+  it("registers sequence.opportunity_moved as automation, not admin_write", async () => {
+    const { getActionDef } = await import("@/lib/audit/actions")
+    expect(getActionDef("sequence.opportunity_moved")).toMatchObject({ category: "automation" })
+  })
+
+  // Registered here, written by Task 5's tag step. Pinned now so that task is
+  // held to this exact spelling and this category rather than minting a
+  // second one — a cron filed under admin_write corrupts the one trail that
+  // answers "did a coach do this?".
+  it("registers sequence.contact_tagged as automation, ready for the tag step's writer", async () => {
+    const { getActionDef } = await import("@/lib/audit/actions")
+    expect(getActionDef("sequence.contact_tagged")).toMatchObject({ category: "automation" })
   })
 })

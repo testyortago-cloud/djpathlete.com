@@ -17,6 +17,10 @@
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import { recordAudit } from "@/lib/audit/record"
+// Type-only, so the closed audit taxonomy is checked at compile time rather
+// than at write time: a slug that is not a row in `AUDIT_ACTIONS` stops the
+// build instead of writing a row nothing can look up by name.
+import type { AuditAction } from "@/lib/audit/actions"
 import { isPgUniqueViolation } from "@/lib/supabase-errors"
 import {
   decideMove,
@@ -956,6 +960,17 @@ export async function moveOpportunityManually(input: {
   }
 }
 
+/**
+ * Pinned against the closed taxonomy rather than passed as a bare string.
+ * `RecordAuditInput.action` is typed `string`, so without this the two
+ * `sequence.*` rows in `lib/audit/actions.ts` could be deleted with the suite
+ * still green and tsc still clean -- the audit ROW's category comes from this
+ * call site, not from the taxonomy, so nothing downstream notices until the
+ * admin log viewer has a slug it cannot name. Its sibling
+ * `sequence.contact_tagged` gets the same treatment from its own writer.
+ */
+const SEQUENCE_MOVED_AUDIT_ACTION: AuditAction = "sequence.opportunity_moved"
+
 export type SequenceMoveResult =
   | { kind: "moved"; opportunityId: string; fromStageKey: string | null; toStageKey: string }
   | { kind: "skipped"; reason: "no_opportunity" | "already_closed" | "already_on_stage" }
@@ -1040,6 +1055,13 @@ export async function moveOpportunityBySequence(input: {
       updated_at: now.toISOString(),
     })
     .eq("id", current.id)
+    // Defence in depth, not a live leak: `current.id` came out of
+    // `readMostRecentOpportunity`, which is already business-scoped. It is here
+    // because the standing rule is that every new reader gets a tenant
+    // predicate and this is a brand-new WRITER -- `/admin/ads` had to be made
+    // owner-only over exactly this class of omission. Costs one indexed
+    // column in the WHERE clause.
+    .eq("business_id", businessId)
   if (updateErr) throw updateErr
 
   await insertStageEvent(supabase, {
@@ -1053,7 +1075,7 @@ export async function moveOpportunityBySequence(input: {
   })
 
   await recordAudit({
-    action: "sequence.opportunity_moved",
+    action: SEQUENCE_MOVED_AUDIT_ACTION,
     category: "automation",
     actor: SYSTEM_ACTOR,
     target: { type: "opportunity", id: current.id },
