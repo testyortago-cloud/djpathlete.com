@@ -43,3 +43,27 @@ cookie, and on this dev clone that is the seeded test business "Northcrest Barbe
 setting that cookie to "Primary"; the capture script asserts nine rows are on screen
 before taking shot 01, and fails loudly rather than saving a screenshot of a wall of
 zeros if the cookie didn't take.
+
+## What these shots deliberately do NOT show, and why
+
+**The failed-run explanation is not pictured, and it cannot honestly be.**
+
+The list and the detail page both explain a run that never sent — the list with a
+sentence beside the sequence name, the detail with the reason recorded against
+that person. On production this is the most visible thing on the whole screen:
+`sms_repermission` is the only sequence with any runs at all, and all 73 of them
+failed in the 2026-08-31 domain fault.
+
+It is absent here because **the dev clone has no failed runs, and the real code
+path can no longer produce one.** A configuration fault — an unverified sending
+domain, an empty sender name — used to destroy the run. It now *defers* instead,
+which is exactly the change that stops a repeat of those 73. So the state that
+produced them is unreachable on a clone without writing a row by hand, and
+writing rows by hand is what this whole file exists to avoid.
+
+The rendering is covered by unit tests instead, and the copy is reviewed. If you
+want to see it for real, `/admin/sequences` on production will show it the moment
+you open it.
+
+**Two outcome columns are also zero here** — Bought needs a real Stripe checkout,
+and Something went wrong is the failed state described above.
