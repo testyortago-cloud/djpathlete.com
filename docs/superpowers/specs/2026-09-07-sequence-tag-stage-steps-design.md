@@ -57,10 +57,13 @@ querying role does not own.
 | `cron_sequence_tick_enabled` | **`true`** |
 | Quiz sequences | all four **`active`** |
 
-The last two rows are drift from the 2026-09-06 ledger, which recorded the flag
-as false and the quiz sequences as draft. `sequences` has **no `updated_at`
-trigger**, so that column is not a change signal on this table and cannot be
-used to date the flip.
+The last two rows confirm the 2026-09-06 ledger, which already records the flag
+as `true` and all four quiz sequences as `active` (§3 of that document). It is the
+JOURNAL entry of the same date that is stale on both points — it recorded the flag
+false and the quiz sequences draft, verified at 12:53 UTC, and something flipped
+them afterwards. The two dated documents disagreed and the ledger was the correct
+one. `sequences` has **no `updated_at` trigger**, so that column cannot date the
+flip: it still reads 2026-08-24.
 
 The engine is therefore armed. Nothing has enrolled since 2026-08-22, but the
 next enrolment executes for real, which is why every failure mode below is
