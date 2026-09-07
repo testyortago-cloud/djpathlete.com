@@ -22,7 +22,7 @@ node scripts/capture-sequence-reporting-screenshots.mjs
 
 ## Honest gaps in these shots
 
-Two of the six outcome columns are zero in these shots and that is honest, not a gap in
+Two of the seven outcome buckets are zero in these shots and that is honest, not a gap in
 the feature: producing a "Bought" outcome needs a real Stripe checkout and "Something
 went wrong" needs a deliberately broken send. The three that are shown — Still going,
 Booked a call and Opted out — were all produced by driving real flows on the dev clone,
