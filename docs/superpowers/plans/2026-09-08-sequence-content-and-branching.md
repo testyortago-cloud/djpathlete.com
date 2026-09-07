@@ -504,6 +504,14 @@ a value with no reader."
 
 **Voice, taken from the copy already in production (`00253`):** open `Hi {{name}}`, short paragraphs, no exclamation marks, no hype, no emoji, plain words. Close with one simple ask, usually "reply to this email". Never claim a specific result. `{{name}}` and `{{sms_consent_url}}` are the ONLY placeholders the renderer substitutes — there is no variable for a camp name, date, price or product, so **no body may imply one**.
 
+**Ruling carried from Task 2 — the abandoned-checkout reader may be an existing client.**
+`session_pack` is not in `NON_COACHING_CHECKOUT_TYPES`, so an abandoned session-pack
+top-up is captured by this trigger too. A session pack is bought by someone who is
+already training here. So no body in `abandoned_checkout` may assume a stranger: **do
+not write "signing up", "joining", "getting started" or "the right fit"**. "You started
+to pay for something and it did not go through" reads correctly for a first purchase and
+a top-up alike. The three bodies below already follow this — preserve it.
+
 - [ ] **Step 1: Write the file header**
 
 ```sql
@@ -590,9 +598,9 @@ VALUES
    $subj$You left something half-finished$subj$,
    $body$Hi {{name}}
 
-You started signing up and something got in the way. That happens — it is usually a question that did not have an obvious answer.
+You started to pay for something and it did not go through. That happens — it is usually a question that did not have an obvious answer.
 
-If it was the price, the commitment, or whether it is the right fit at all, tell me which and I will give you a straight answer. If it was just the timing, that is fine too.
+If it was the price, the commitment, or whether it is the right thing right now, tell me which and I will give you a straight answer. If it was just the timing, that is fine too.
 
 Reply to this email and let me know.$body$,
    '{}'::jsonb, NULL, NULL, NULL),
@@ -614,7 +622,7 @@ Reply to this email and let me know.$body$,
   ('00000000-0000-0000-0000-000000000001',
    (SELECT id FROM public.sequences WHERE business_id = '00000000-0000-0000-0000-000000000001' AND key = 'abandoned_checkout'),
    4, 'sms', NULL, NULL,
-   $body$Hi {{name}} — you started signing up and did not finish. If something was unclear, text back and a real person answers.$body$,
+   $body$Hi {{name}} — you started to pay for something and it did not go through. If something was unclear, text back and a real person answers.$body$,
    '{}'::jsonb, NULL, NULL, NULL),
 
   ('00000000-0000-0000-0000-000000000001',
@@ -629,7 +637,7 @@ Reply to this email and let me know.$body$,
 
 I will leave this one here.
 
-If you want to talk it through before deciding anything, reply to this email and tell me what you are training for. No commitment, and no follow-up after this if you would rather leave it.$body$,
+If you want to talk it through before deciding anything, reply to this email. No commitment, and no follow-up after this if you would rather leave it.$body$,
    '{}'::jsonb, NULL, NULL, NULL),
 
   ('00000000-0000-0000-0000-000000000001',
