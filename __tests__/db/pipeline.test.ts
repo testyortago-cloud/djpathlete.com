@@ -28,6 +28,37 @@ function nextId(prefix: string) {
 }
 
 /**
+ * Every UPDATE patch the mocked client actually executed, in order.
+ *
+ * The store applies a patch with `Object.assign`, so once the write lands the
+ * row carries every column it was seeded with and the patch's own KEYS are
+ * gone. That difference is load-bearing for `moveOpportunityBySequence`: the
+ * claim under test is not "outcome ended up null" — the row was seeded null,
+ * so that assertion stays green whether or not the function writes
+ * `outcome: null` — but "the write named no closure column at all". Only the
+ * patch can answer that. An extension of this harness, deliberately not a
+ * second one: `store` remains the assertion surface for everything else.
+ */
+const updateCalls: Array<{ table: string; payload: Row; filters: Array<[string, any]> }> = []
+
+function updatePatchesFor(table: keyof Store): Row[] {
+  return updateCalls.filter((c) => c.table === table).map((c) => c.payload)
+}
+
+/**
+ * The `.eq()` filters each executed UPDATE actually carried, as a lookup.
+ *
+ * Same reason the patch is recorded: the WHERE clause is unrecoverable from
+ * the result. A write scoped to `id` alone and a write scoped to `id` AND
+ * `business_id` touch exactly the same row in every fixture here — the store
+ * seeds one tenant — so only the predicate itself can say whether the tenant
+ * scope is present.
+ */
+function updateFiltersFor(table: keyof Store): Array<Map<string, any>> {
+  return updateCalls.filter((c) => c.table === table).map((c) => new Map(c.filters))
+}
+
+/**
  * Whether the in-memory `opportunities` table knows about migration 00225's
  * `source_event_id` column.
  *
@@ -97,6 +128,24 @@ function constraintViolation(table: string, payload: Row, rows: Row[]): PgError 
   return null
 }
 
+/**
+ * RESIDUAL 1. A read fault the mock can be told to answer a SELECT with.
+ *
+ * `moveOpportunityBySequence` catches around `resolvePipeline` and re-decides
+ * on the exception. Nothing in this harness could previously make that read
+ * fail for any reason OTHER than "no such pipeline", so the `instanceof
+ * PipelineNotConfiguredError` half of the catch's condition was unpinned:
+ * broadening it to a bare `input.pipelineKey !== null` left 90/90 green.
+ *
+ * That broadening is the dangerous direction. It would convert a transient
+ * database outage on a step with an explicit pipeline key into a permanently
+ * failed run — precisely the inversion the 73-run incident of 2026-08-31
+ * taught, and the reason the throw-vs-return split exists at all.
+ *
+ * Set per table; cleared in `beforeEach`, so it cannot leak into another case.
+ */
+let selectErrorByTable: Partial<Record<keyof Store, PgError>> = {}
+
 // NOTE ON THE MOCK: copied (structure verbatim) from __tests__/db/sequences.ts's
 // harness. The trap this project has hit twice is a `.eq()` that returns the
 // query object without recording the filter, so every query resolves to
@@ -156,6 +205,7 @@ vi.mock("@/lib/supabase", () => ({
       }
 
       const doUpdate = (): { data: any; error: any } => {
+        updateCalls.push({ table: String(table), payload: { ...(payload as Row) }, filters: [...filters] })
         const targets = rows.filter(passesFilters)
         for (const row of targets) Object.assign(row, payload)
         return { data: [...targets], error: null }
@@ -164,6 +214,8 @@ vi.mock("@/lib/supabase", () => ({
       const execute = (): { data: any; error: any } => {
         if (mode === "insert") return doInsert()
         if (mode === "update") return doUpdate()
+        const injected = selectErrorByTable[table]
+        if (injected) return { data: null, error: injected }
         return { data: matched(), error: null }
       }
 
@@ -231,6 +283,7 @@ vi.mock("@/lib/supabase", () => ({
 
 import {
   applyPipelineEvent,
+  moveOpportunityBySequence,
   moveOpportunityManually,
   readBoard,
   resolvePipeline,
@@ -239,6 +292,7 @@ import {
   PipelineNotConfiguredError,
   DEFAULT_PIPELINE_KEY,
 } from "@/lib/db/pipeline"
+import type { SequenceMoveResult } from "@/lib/db/pipeline"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { REBOOKING_SUPPRESSION_DAYS } from "@/lib/lead-engine/pipeline-move"
 
@@ -268,6 +322,8 @@ beforeEach(() => {
   store.audit_logs = []
   seqCounter = 0
   opportunitiesHasSourceEventId = true
+  updateCalls.length = 0
+  selectErrorByTable = {}
 })
 
 // ---------------------------------------------------------------------------
@@ -1533,5 +1589,517 @@ describe("moveOpportunityManually", () => {
       const actions = store.audit_logs.map((a) => a.action)
       expect(actions).toEqual(["pipeline.opportunity_moved"])
     })
+  })
+})
+
+describe("moveOpportunityBySequence", () => {
+  // The one input every test below starts from. Written out per test rather
+  // than spread from a shared object where the brief's assertion names a
+  // field, so a reader can see which value the case is actually about.
+  const RUN_ID = "run-1"
+
+  it("moves an open card to an open stage and records a sequence-triggered event", async () => {
+    seedBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: null,
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    expect(result).toMatchObject({
+      kind: "moved",
+      opportunityId: "opp-1",
+      fromStageKey: "consult_booked",
+      toStageKey: "consulted",
+    })
+    expect(store.opportunities[0].stage_id).toBe("stage-consulted")
+
+    const events = stageEventsFor("opp-1")
+    expect(events).toHaveLength(1)
+    const event = events[0]
+    expect(event.trigger).toBe("sequence")
+    expect(event.actor_user_id).toBeNull()
+    expect(event.from_stage_id).toBe("stage-consult-booked")
+    expect(event.to_stage_id).toBe("stage-consulted")
+    expect(event.metadata).toMatchObject({ sequence_run_id: RUN_ID })
+  })
+
+  it("writes no closure fields — a sequence may not close a deal", async () => {
+    seedBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+    await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: null,
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    // The opportunities UPDATE patch must carry stage_id and entered_stage_at
+    // and MUST NOT carry outcome, closed_at, closed_trigger or
+    // closed_by_user_id. Asserted on the patch, not on the resulting row: the
+    // row was seeded with those columns already null, so a row-level check is
+    // green even for a function that writes them explicitly — and writing
+    // `closed_trigger` at all is precisely the defect this function exists to
+    // avoid (moveOpportunityManually sets it to 'manual', which decideMove
+    // reads as "this close is final").
+    const patches = updatePatchesFor("opportunities")
+    expect(patches).toHaveLength(1)
+    const patch = patches[0]
+    expect(Object.keys(patch).sort()).toEqual(["entered_stage_at", "stage_id", "updated_at"])
+  })
+
+  it("audits as automation with the system actor, not as an admin write", async () => {
+    seedBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+    await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: null,
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    const moved = store.audit_logs.find((a) => a.action === "sequence.opportunity_moved")
+    expect(moved).toBeDefined()
+    expect(moved!.category).toBe("automation")
+    expect(moved!.actor_id).toBeNull()
+    expect(moved!.actor_role).toBe("system")
+    expect(moved!.target_id).toBe("opp-1")
+    expect(moved!.metadata).toMatchObject({ to_stage: "consulted", sequence_run_id: RUN_ID })
+
+    // The trail that answers "did a coach move this card?" must not gain a
+    // row a cron wrote. `pipeline.opportunity_moved` is admin_write; a
+    // sequence step files under its own automation slug or not at all.
+    expect(store.audit_logs.map((a) => a.action)).not.toContain("pipeline.opportunity_moved")
+    expect(store.audit_logs.map((a) => a.category)).not.toContain("admin_write")
+  })
+
+  it("skips when the contact has no card on that board", async () => {
+    seedBoard()
+    seedContact("c-1")
+    // No opportunity seeded — readMostRecentOpportunity resolves null.
+
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: null,
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    expect(result).toEqual({ kind: "skipped", reason: "no_opportunity" })
+    expect(updatePatchesFor("opportunities")).toHaveLength(0)
+    expect(store.opportunity_stage_events).toHaveLength(0)
+  })
+
+  it("skips a closed card rather than reopening it", async () => {
+    seedBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", {
+      stage_id: "stage-won",
+      outcome: "won",
+      closed_at: new Date().toISOString(),
+      closed_trigger: "payment",
+    })
+
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: null,
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    expect(result).toEqual({ kind: "skipped", reason: "already_closed" })
+    expect(store.opportunities[0].stage_id).toBe("stage-won")
+    expect(store.opportunities[0].outcome).toBe("won")
+    expect(updatePatchesFor("opportunities")).toHaveLength(0)
+    expect(stageEventsFor("opp-1")).toHaveLength(0)
+  })
+
+  it("skips without writing when the card is already on the target stage", async () => {
+    seedBoard()
+    seedContact("c-1")
+    const enteredAt = new Date(Date.now() - 9 * DAY_MS).toISOString()
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted", entered_stage_at: enteredAt })
+
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: null,
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    expect(result).toEqual({ kind: "skipped", reason: "already_on_stage" })
+    // The idempotency assertion: no second history row, and entered_stage_at
+    // is not reset, which would silently restart the board's staleness colour
+    // (9 days in is red on this stage; a reset reads as fresh).
+    expect(stageEventsFor("opp-1")).toHaveLength(0)
+    expect(store.opportunities[0].entered_stage_at).toBe(enteredAt)
+    expect(updatePatchesFor("opportunities")).toHaveLength(0)
+  })
+
+  it("returns invalid for a stage key that does not exist on the board", async () => {
+    seedBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "nope",
+      pipelineKey: null,
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    expect(result.kind).toBe("invalid")
+    expect((result as { error: string }).error).toContain("nope")
+    expect(updatePatchesFor("opportunities")).toHaveLength(0)
+    expect(stageEventsFor("opp-1")).toHaveLength(0)
+  })
+
+  it.each(["won", "lost"])("returns invalid for the %s stage — a sequence may not close a deal", async (key) => {
+    seedBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: key,
+      pipelineKey: null,
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    expect(result.kind).toBe("invalid")
+    // Nothing moved, nothing closed, nothing logged — the refusal is total.
+    expect(store.opportunities[0].stage_id).toBe("stage-consult-booked")
+    expect(store.opportunities[0].outcome).toBeNull()
+    expect(updatePatchesFor("opportunities")).toHaveLength(0)
+    expect(stageEventsFor("opp-1")).toHaveLength(0)
+    expect(store.audit_logs).toHaveLength(0)
+  })
+
+  // Kept and RETARGETED by the fix wave, not deleted. It always exercised
+  // `pipelineKey: null`; the name and comment now say so, because that is the
+  // only case that still throws and the distinction is the point of FIX 3.
+  it("lets PipelineNotConfiguredError propagate for the DEFAULT pipeline, so the runner can defer it", async () => {
+    // Nothing seeded: no pipeline row for this business, and the step named no
+    // pipeline either. That is a setting somebody can fill in — recoverable
+    // without touching the sequence — so it must reach the runner's
+    // configuration-fault branch as a throw.
+    await expect(
+      moveOpportunityBySequence({
+        contactId: "c-1",
+        stageKey: "consulted",
+        pipelineKey: null,
+        businessId: SINGLETON_BUSINESS_ID,
+        sequenceRunId: RUN_ID,
+      }),
+    ).rejects.toBeInstanceOf(PipelineNotConfiguredError)
+  })
+
+  // FIX 3, the other direction. Before this, the same authoring typo got two
+  // opposite treatments: a bad STAGE key returned `invalid` and failed the run
+  // at once with the reason recorded, while a bad PIPELINE key threw, deferred
+  // five times over ~100 minutes, and then failed with `transient_error`
+  // semantics against a fault that was never transient. Both live in the same
+  // JSON object and both fail identically on every retry.
+  //
+  // The board IS seeded here — so this cannot pass by the whole business being
+  // unconfigured. Only the named key is wrong.
+  it("returns invalid when the step NAMES a pipeline that does not exist", async () => {
+    seedBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: "no-such-pipeline",
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    expect(result.kind).toBe("invalid")
+    // Names the key the author actually typed, so the reason identifies the
+    // mistake rather than merely reporting that something was wrong.
+    expect((result as { error: string }).error).toContain("no-such-pipeline")
+    // Nothing moved, and no throw escaped to the runner's defer branch.
+    expect(store.opportunities[0].stage_id).toBe("stage-consult-booked")
+    expect(updatePatchesFor("opportunities")).toHaveLength(0)
+    expect(stageEventsFor("opp-1")).toHaveLength(0)
+    expect(store.audit_logs).toHaveLength(0)
+  })
+
+  // Pins the VALUE of businessId, not its arity. Every other case here seeds
+  // under SINGLETON_BUSINESS_ID and passes it straight back, so a function
+  // that ignored the argument and hard-coded the constant would satisfy all
+  // of them — the exact trap OTHER_BUSINESS_ID exists in this file for.
+  it("does not reach another tenant's board", async () => {
+    seedBoard(SINGLETON_BUSINESS_ID)
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+    await expect(
+      moveOpportunityBySequence({
+        contactId: "c-1",
+        stageKey: "consulted",
+        pipelineKey: null,
+        businessId: OTHER_BUSINESS_ID,
+        sequenceRunId: RUN_ID,
+      }),
+    ).rejects.toBeInstanceOf(PipelineNotConfiguredError)
+    expect(store.opportunities[0].stage_id).toBe("stage-consult-booked")
+  })
+
+  // Fix round 1, FIX 2. The write is scoped by tenant as well as by id.
+  //
+  // The whole board is seeded under OTHER_BUSINESS_ID here, deliberately: every
+  // other case in this block seeds under SINGLETON_BUSINESS_ID and passes it
+  // straight back, so an assertion made against that value is satisfied by a
+  // hardcoded constant as easily as by the argument. Seeding the non-default
+  // tenant mutates the VALUE, not the arity — a predicate that named the
+  // singleton would fail here, and so would a write with no tenant predicate
+  // at all.
+  it("scopes the opportunities write by business_id, not by id alone", async () => {
+    seedBoard(OTHER_BUSINESS_ID)
+    seedContact("c-1", { business_id: OTHER_BUSINESS_ID })
+    seedOpportunity("opp-1", "c-1", { business_id: OTHER_BUSINESS_ID, stage_id: "stage-consult-booked" })
+
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: null,
+      businessId: OTHER_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    // Presence control: an absence assertion below is worthless if nothing ran.
+    expect(result).toMatchObject({ kind: "moved", opportunityId: "opp-1" })
+    expect(store.opportunities[0].stage_id).toBe("stage-consulted")
+
+    const wheres = updateFiltersFor("opportunities")
+    expect(wheres).toHaveLength(1)
+    expect(wheres[0].get("id")).toBe("opp-1")
+    expect(wheres[0].has("business_id")).toBe(true)
+    expect(wheres[0].get("business_id")).toBe(OTHER_BUSINESS_ID)
+  })
+
+  // `pipelineKey: null` above always means DEFAULT_PIPELINE_KEY. This proves
+  // the fallback is a fallback and not the only path: a named key resolves its
+  // own pipeline rather than being ignored in favour of the default one.
+  //
+  // The fix wave changed the second half: a named key with no pipeline now
+  // returns `invalid` instead of throwing (see the dedicated test above). What
+  // this case still pins is that the two named keys reach DIFFERENT outcomes,
+  // which a function that ignored `pipelineKey` entirely could not do.
+  it("resolves an explicitly named pipeline key rather than ignoring it", async () => {
+    seedBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+    const named = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: DEFAULT_PIPELINE_KEY,
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+    expect(named).toMatchObject({ kind: "moved", toStageKey: "consulted" })
+
+    const wrong = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: "no-such-board",
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+    expect(wrong.kind).toBe("invalid")
+  })
+
+  // RESIDUAL 1. The catch above is narrow on TWO axes and the previous round
+  // pinned only one. `pipelineKey !== null` was covered; `err instanceof
+  // PipelineNotConfiguredError` was not, so broadening the condition to a bare
+  // `if (input.pipelineKey !== null)` left the whole suite green.
+  //
+  // That direction is the dangerous one. Every OTHER way the pipeline read can
+  // fail — a PostgREST outage, a dropped connection, a schema-cache miss — is
+  // transient. Swallowing one into `{ kind: "invalid" }` makes the runner call
+  // `failRun` on the first attempt, permanently, for a fault that would have
+  // cleared on the next tick. That is the 2026-08-31 shape exactly: 73 runs
+  // marked failed inside ten minutes over a fault nobody could retry past.
+  //
+  // So these two assert the SAME input differing only in the class of the
+  // throw, which is the only pair that can pin `instanceof` rather than the
+  // key check sitting beside it.
+  describe("only a missing pipeline is treated as the author's typo", () => {
+    // Shape copied from the PGRST204 fixture at the top of this file, so it is
+    // a real PostgREST error object rather than a plausible-looking invention.
+    const READ_FAULT = {
+      code: "PGRST301",
+      message: "JWT expired",
+      details: null,
+      hint: null,
+    }
+
+    it("propagates a transient read fault even when the step NAMED a pipeline", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+      // The pipeline EXISTS. The read of it is what fails, and it fails for a
+      // reason that has nothing to do with how the step was authored.
+      selectErrorByTable.pipelines = READ_FAULT
+
+      await expect(
+        moveOpportunityBySequence({
+          contactId: "c-1",
+          stageKey: "consulted",
+          pipelineKey: DEFAULT_PIPELINE_KEY,
+          businessId: SINGLETON_BUSINESS_ID,
+          sequenceRunId: RUN_ID,
+        }),
+      ).rejects.toMatchObject({ code: "PGRST301" })
+    })
+
+    it("propagates a bare Error from the stage read too, named pipeline or not", async () => {
+      // The SECOND read inside resolvePipeline. Same rule: not a
+      // PipelineNotConfiguredError, so not the author's problem to fix.
+      seedBoard()
+      seedContact("c-1")
+      selectErrorByTable.pipeline_stages = READ_FAULT
+
+      await expect(
+        moveOpportunityBySequence({
+          contactId: "c-1",
+          stageKey: "consulted",
+          pipelineKey: DEFAULT_PIPELINE_KEY,
+          businessId: SINGLETON_BUSINESS_ID,
+          sequenceRunId: RUN_ID,
+        }),
+      ).rejects.toMatchObject({ code: "PGRST301" })
+    })
+
+    // THE CONTROL. Without it, both assertions above are satisfied by a
+    // function that never returns `invalid` at all — including one whose whole
+    // catch block was deleted. Same explicit key, same seeded board; only the
+    // class of the throw differs.
+    it("still returns invalid for the same input when the pipeline is genuinely missing", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+      const result = await moveOpportunityBySequence({
+        contactId: "c-1",
+        stageKey: "consulted",
+        pipelineKey: "no-such-pipeline",
+        businessId: SINGLETON_BUSINESS_ID,
+        sequenceRunId: RUN_ID,
+      })
+
+      expect(result.kind).toBe("invalid")
+    })
+  })
+
+  // FIX 6. `sequence_runs.last_error` is rendered raw beside the run on the
+  // contact detail page (components/admin/contacts/ContactDetail.tsx:239), so
+  // every one of these strings is read by a coach. Task 6 already reworded
+  // "board" out of the timeline copy for that reason; the same word was still
+  // reaching the same reader by this route.
+  //
+  // Asserted as a guard rather than as four literals so a fifth `invalid`
+  // reason added later cannot quietly reintroduce the voice.
+  describe("every invalid reason is written for a coach", () => {
+    const CASES: Array<{ name: string; run: () => Promise<SequenceMoveResult> }> = [
+      {
+        name: "a stage key that is not on the pipeline",
+        run: () =>
+          moveOpportunityBySequence({
+            contactId: "c-1",
+            stageKey: "nope",
+            pipelineKey: null,
+            businessId: SINGLETON_BUSINESS_ID,
+            sequenceRunId: RUN_ID,
+          }),
+      },
+      {
+        name: "a stage key that closes the sale",
+        run: () =>
+          moveOpportunityBySequence({
+            contactId: "c-1",
+            stageKey: "won",
+            pipelineKey: null,
+            businessId: SINGLETON_BUSINESS_ID,
+            sequenceRunId: RUN_ID,
+          }),
+      },
+      {
+        name: "a pipeline key that does not exist",
+        run: () =>
+          moveOpportunityBySequence({
+            contactId: "c-1",
+            stageKey: "consulted",
+            pipelineKey: "no-such-pipeline",
+            businessId: SINGLETON_BUSINESS_ID,
+            sequenceRunId: RUN_ID,
+          }),
+      },
+    ]
+
+    it.each(CASES)("$name reads as plain language", async ({ run }) => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+      const result = await run()
+
+      // Presence control: an absence assertion is worthless if nothing ran.
+      expect(result.kind).toBe("invalid")
+      const error = (result as { error: string }).error
+      expect(error).not.toContain("`")
+      expect(error.toLowerCase()).not.toContain("config")
+      expect(error.toLowerCase()).not.toContain("board")
+      // Still specific enough to say WHICH step is wrong.
+      expect(error).toContain("stage step")
+    })
+  })
+})
+
+// Fix round 1, FIX 1. `RecordAuditInput.action` is typed `string`, and the
+// audit ROW's category comes from the call site — so before this, both
+// `sequence.*` rows could be deleted from the closed taxonomy with the suite
+// green and tsc clean. `lib/db/pipeline.ts` now pins the moved slug at compile
+// time (`const SEQUENCE_MOVED_AUDIT_ACTION: AuditAction = …`); these pin the
+// registrations themselves, including their category, which is the half a
+// type annotation cannot check.
+//
+// Pattern copied from __tests__/lib/tenancy/public.test.ts:251 and
+// __tests__/app/sms-consent-page.test.ts:552.
+describe("the sequence audit taxonomy", () => {
+  it("registers sequence.opportunity_moved as automation, not admin_write", async () => {
+    const { getActionDef } = await import("@/lib/audit/actions")
+    expect(getActionDef("sequence.opportunity_moved")).toMatchObject({ category: "automation" })
+  })
+
+  // Registered here, written by the `tag` step in
+  // lib/automation/sequence-tick-runner.ts. This pins the spelling and the
+  // category the writer must use rather than letting it mint a second one — a
+  // cron filed under admin_write corrupts the one trail that answers "did a
+  // coach do this?". The writer's own end is pinned by
+  // __tests__/lib/automation/sequence-tick-side-effects.test.ts.
+  it("registers sequence.contact_tagged as automation, the category its writer files under", async () => {
+    const { getActionDef } = await import("@/lib/audit/actions")
+    expect(getActionDef("sequence.contact_tagged")).toMatchObject({ category: "automation" })
   })
 })

@@ -50,6 +50,20 @@ vi.mock("@/lib/lead-engine/unsubscribe-token", () => ({
   unsubscribeUrl: vi.fn(() => "https://example.test/unsubscribe/tok"),
   unsubscribeOneClickUrl: vi.fn(() => "https://example.test/api/unsubscribe/tok"),
 }))
+// The two side-effect steps' DALs. Mocked at the DAL boundary, like the
+// sequences DAL below and for the same reason: the shared `@/lib/supabase`
+// mock in this file only answers `.insert()`, so the real
+// `moveOpportunityBySequence` would die inside `resolvePipeline`'s `.select()`
+// for reasons that have nothing to do with the route. `@/lib/db/pipeline`
+// keeps its real `PipelineNotConfiguredError` — the runner classifies that
+// fault with `instanceof`, and a substitute class would make the check pass or
+// fail for the wrong reason.
+vi.mock("@/lib/db/contact-tags", () => ({ addTag: vi.fn() }))
+vi.mock("@/lib/db/pipeline", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/db/pipeline")>()),
+  moveOpportunityBySequence: vi.fn(),
+}))
+vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 vi.mock("@/lib/db/sequences", async (importOriginal) => ({
   // Keep the real constants (TRANSIENT_ERROR_DEFER_REASON) — the runner and
   // the DAL have to agree on that string, and a mock that invented its own
@@ -74,6 +88,8 @@ import { getBusinessSettings, listBusinesses } from "@/lib/db/businesses"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { sendSequenceEmail, sendRenderedSequenceEmail, SequenceSendError } from "@/lib/lead-engine/email"
 import { unsubscribeUrl, unsubscribeOneClickUrl } from "@/lib/lead-engine/unsubscribe-token"
+import { addTag } from "@/lib/db/contact-tags"
+import { moveOpportunityBySequence, PipelineNotConfiguredError } from "@/lib/db/pipeline"
 import {
   claimDueRuns,
   loadSteps,
@@ -191,6 +207,13 @@ beforeEach(() => {
   ;(exitRun as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
   ;(completeRun as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
   ;(failRun as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+  ;(addTag as ReturnType<typeof vi.fn>).mockResolvedValue({ tag: "warm lead", created: true })
+  ;(moveOpportunityBySequence as ReturnType<typeof vi.fn>).mockResolvedValue({
+    kind: "moved",
+    opportunityId: "opp-1",
+    fromStageKey: "new",
+    toStageKey: "consulted",
+  })
 })
 
 describe("POST /api/admin/internal/sequence-tick", () => {
@@ -407,10 +430,10 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     it("does NOT mark the message failed when the CONFIGURATION is the thing that failed", async () => {
       ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-rejected")])
       ;(sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mockRejectedValue(
-        new SequenceSendError(
-          "sendSequenceEmail failed: The darrenjpaul.com domain is not verified.",
-          { providerErrorName: "validation_error", statusCode: 403 },
-        ),
+        new SequenceSendError("sendSequenceEmail failed: The darrenjpaul.com domain is not verified.", {
+          providerErrorName: "validation_error",
+          statusCode: 403,
+        }),
       )
 
       const res = await POST(makeRequest())
@@ -428,10 +451,10 @@ describe("POST /api/admin/internal/sequence-tick", () => {
       // not a healthy tick, so it must reach automation-health-scanner.
       ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-rejected")])
       ;(sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mockRejectedValue(
-        new SequenceSendError(
-          "sendSequenceEmail failed: The darrenjpaul.com domain is not verified.",
-          { providerErrorName: "validation_error", statusCode: 403 },
-        ),
+        new SequenceSendError("sendSequenceEmail failed: The darrenjpaul.com domain is not verified.", {
+          providerErrorName: "validation_error",
+          statusCode: 403,
+        }),
       )
 
       await POST(makeRequest())
@@ -452,6 +475,45 @@ describe("POST /api/admin/internal/sequence-tick", () => {
       await POST(makeRequest())
 
       expect(logCronEnd).toHaveBeenCalledWith(expect.anything(), "run-1", "success", expect.anything())
+    })
+
+    // FIX 1. `config_faults` counted only rejected sends when its alarm
+    // sentence was written; Task 5 widened it to include
+    // `PipelineNotConfiguredError`, which is a missing pipeline and has
+    // nothing to do with email. The sentence went on saying "the email
+    // provider rejected every attempt", so this exact scenario — a stage step
+    // pointing at a pipeline nobody seeded — emailed the operator a cause that
+    // is not the cause. They check a healthy provider, call it a false alarm,
+    // and the run is destroyed ~100 minutes later.
+    it("does not blame the email provider for a MISSING PIPELINE fault", async () => {
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-stage-noboard")])
+      ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { ...EMAIL_STEP, kind: "stage", config: { stage: "consulted" } },
+      ])
+      ;(moveOpportunityBySequence as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new PipelineNotConfiguredError("coaching"),
+      )
+
+      await POST(makeRequest())
+
+      // Presence control: this really is the config-fault branch, not a
+      // vacuous pass on a tick that logged nothing.
+      const call = (logCronEnd as ReturnType<typeof vi.fn>).mock.calls.find((c) => c[2] === "failed")
+      expect(call).toBeDefined()
+      const message = (call![3] as { message: string }).message
+      expect(message).toContain("1 configuration fault")
+
+      // The wrong cause must not be named...
+      expect(message).not.toContain("the email provider rejected every attempt")
+      // ...and both real ones must be, because the count alone cannot say
+      // which kind of setting is missing.
+      expect(message).toContain("email")
+      expect(message).toContain("pipeline")
+      // And the old sentence's other overstatement: these runs ARE lost if
+      // nobody acts, because a config fault does not exempt them from
+      // MAX_ATTEMPTS.
+      expect(message).not.toContain("not lost")
+      expect(message).toContain("fail for good")
     })
   })
 
@@ -628,38 +690,83 @@ describe("POST /api/admin/internal/sequence-tick", () => {
     expect(arg.rendered.text).toContain("https://example.test/unsubscribe/tok")
   })
 
-  it("an unsupported tag/stage step writes a sequence_step_unsupported timeline event before advancing (spec §6, 'visible, not silent')", async () => {
+  // These two tests used to assert the opposite: that `tag` and `stage` wrote
+  // a `sequence_step_unsupported` row and advanced without doing anything.
+  // They are RETARGETED rather than deleted — the route-level path through the
+  // real runner and the real decideStep is the coverage worth keeping, and the
+  // only thing that changed is what the two steps now do at the end of it.
+  it("a tag step applies the tag, records it on the timeline, and advances", async () => {
     const run = makeRun("r-tag")
     ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
-    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...EMAIL_STEP, kind: "tag" }])
+    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { ...EMAIL_STEP, kind: "tag", config: { tag: "Warm Lead" } },
+    ])
 
     const res = await POST(makeRequest())
 
     expect(res.status).toBe(200)
+    // Normalised by the pure config parser before it ever reaches the DAL —
+    // "Warm Lead" in the step, "warm lead" on the row, one spelling stored.
+    expect(addTag).toHaveBeenCalledWith(
+      expect.objectContaining({ contactId: "contact-r-tag", tag: "warm lead", businessId: SINGLETON_BUSINESS_ID }),
+    )
     expect(timelineInsertSpy).toHaveBeenCalledWith(
       "contact_timeline_events",
       expect.objectContaining({
         contact_id: "contact-r-tag",
-        kind: "sequence_step_unsupported",
+        kind: "sequence_tag_applied",
         source: "sequence_engine",
-        metadata: expect.objectContaining({ run_id: "r-tag", sequence_id: "seq-1", step_id: "step-1" }),
+        metadata: expect.objectContaining({
+          run_id: "r-tag",
+          sequence_id: "seq-1",
+          step_id: "step-1",
+          tag: "warm lead",
+        }),
       }),
     )
-    expect(advanceRun).toHaveBeenCalledWith("r-tag", 1, undefined)
+    expect(advanceRun).toHaveBeenCalledWith("r-tag", 1)
     expect(failRun).not.toHaveBeenCalled()
   })
 
-  it("a 'stage' step ALSO writes the unsupported-kind timeline event (not just 'tag')", async () => {
+  it("a stage step moves the card, records the move, and advances", async () => {
     const run = makeRun("r-stage")
     ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
-    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...EMAIL_STEP, kind: "stage" }])
+    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { ...EMAIL_STEP, kind: "stage", config: { stage: "consulted" } },
+    ])
 
     await POST(makeRequest())
 
+    expect(moveOpportunityBySequence).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contactId: "contact-r-stage",
+        stageKey: "consulted",
+        pipelineKey: null,
+        businessId: SINGLETON_BUSINESS_ID,
+        sequenceRunId: "r-stage",
+      }),
+    )
     expect(timelineInsertSpy).toHaveBeenCalledWith(
       "contact_timeline_events",
-      expect.objectContaining({ kind: "sequence_step_unsupported" }),
+      expect.objectContaining({ kind: "sequence_stage_moved" }),
     )
+    expect(advanceRun).toHaveBeenCalledWith("r-stage", 1)
+    expect(failRun).not.toHaveBeenCalled()
+  })
+
+  it("a tag step with no tag in its config fails the run instead of guessing", async () => {
+    // The other half of the rule, and the reason the two tests above needed a
+    // config at all: a malformed step is a defect in the sequence's own
+    // definition, so decideStep fails it rather than advancing past it.
+    const run = makeRun("r-tag-bad")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+    ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([{ ...EMAIL_STEP, kind: "tag", config: {} }])
+
+    await POST(makeRequest())
+
+    expect(addTag).not.toHaveBeenCalled()
+    expect(failRun).toHaveBeenCalledTimes(1)
+    expect(advanceRun).not.toHaveBeenCalled()
   })
 
   it("a normal advance (e.g. past a wait step) does NOT write any timeline event", async () => {

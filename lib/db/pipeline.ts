@@ -17,6 +17,10 @@
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import { recordAudit } from "@/lib/audit/record"
+// Type-only, so the closed audit taxonomy is checked at compile time rather
+// than at write time: a slug that is not a row in `AUDIT_ACTIONS` stops the
+// build instead of writing a row nothing can look up by name.
+import type { AuditAction } from "@/lib/audit/actions"
 import { isPgUniqueViolation } from "@/lib/supabase-errors"
 import {
   decideMove,
@@ -51,7 +55,19 @@ function getClient() {
 export class PipelineNotConfiguredError extends Error {
   readonly pipelineKey: string
   constructor(pipelineKey: string) {
-    super(`pipeline not configured: no seeded board for key "${pipelineKey}"`)
+    // WRITTEN FOR A COACH, because this message reaches one. On the terminal
+    // config-fault path the sequence tick calls `failRun(run.id, err.message)`
+    // (lib/automation/sequence-tick-runner.ts), and the contact detail page
+    // renders `run.last_error` raw beside the run — so the words "board" and
+    // "not configured" would land on the same reader Task 6 reworded "board"
+    // out of the timeline copy for. That route only opened when this branch
+    // made a sequence able to move a card; the string is older than the route.
+    //
+    // No caller matches on this text — every classification is `instanceof` or
+    // `.name`, verified by grep before rewriting it. The key is still named,
+    // so a stack trace stays as diagnosable as it was (00249's incident note
+    // quotes the old wording; that is a historical record, not a dependency).
+    super(`No pipeline is set up for this business under the name "${pipelineKey}".`)
     this.name = "PipelineNotConfiguredError"
     this.pipelineKey = pipelineKey
   }
@@ -954,6 +970,179 @@ export async function moveOpportunityManually(input: {
       metadata: { to_stage: toStage.key, trigger: "manual" },
     })
   }
+}
+
+/**
+ * Pinned against the closed taxonomy rather than passed as a bare string.
+ * `RecordAuditInput.action` is typed `string`, so without this the two
+ * `sequence.*` rows in `lib/audit/actions.ts` could be deleted with the suite
+ * still green and tsc still clean -- the audit ROW's category comes from this
+ * call site, not from the taxonomy, so nothing downstream notices until the
+ * admin log viewer has a slug it cannot name. Its sibling
+ * `sequence.contact_tagged` gets the same treatment from its own writer.
+ */
+const SEQUENCE_MOVED_AUDIT_ACTION: AuditAction = "sequence.opportunity_moved"
+
+export type SequenceMoveResult =
+  | { kind: "moved"; opportunityId: string; fromStageKey: string | null; toStageKey: string }
+  | { kind: "skipped"; reason: "no_opportunity" | "already_closed" | "already_on_stage" }
+  | { kind: "invalid"; error: string }
+
+/**
+ * Moves a contact's card because a SEQUENCE STEP said so.
+ *
+ * NOT `moveOpportunityManually`, for three separate reasons:
+ *
+ *  1. That function requires an `actorUserId: string`. The tick is a cron and
+ *     has no signed-in user to name.
+ *  2. It writes `closed_trigger = 'manual'`, and 00219's own comment says a
+ *     close is FINAL exactly when that value is 'manual' — `decideMove` reads
+ *     it to suppress later automated moves. A sequence writing it would freeze
+ *     the card against the automation meant to manage it.
+ *  3. It audits as `pipeline.opportunity_moved`, category `admin_write`, whose
+ *     doc comment says that trail exists to answer "did a coach close this
+ *     deal?". A cron filed there gives that question the wrong answer — the
+ *     same defect that comment records being fixed on 2026-09-04.
+ *
+ * `applyPipelineEvent` already answers the actor question for automated moves:
+ * `actor_user_id` null, `SYSTEM_ACTOR` on the audit row, provenance carried by
+ * the `trigger` column. This does the same, with `trigger: 'sequence'`.
+ *
+ * WHAT IT WILL NOT DO. A sequence may move a card. It may not CLOSE one — `won`
+ * feeds revenue reporting, and a nurture email must not be able to book a sale
+ * that never happened. It may not REOPEN one either: a closed card was settled
+ * by a human or by a payment, and `decideMove` already encodes that a human's
+ * ruling is not overruled by a form. Both refusals return `invalid` /
+ * `skipped` rather than throwing, because they are deterministic — see below.
+ *
+ * THROW vs RETURN, which is load-bearing. A DETERMINISTIC fault — one that
+ * will fail identically on every retry because the sequence's own definition
+ * is wrong — comes back as `{ kind: "invalid" }`, and the runner fails the run
+ * at once with the reason recorded. Throwing those would send them through the
+ * transient-error backoff, burning MAX_ATTEMPTS on a fault that was never
+ * transient and recording `transient_error` against it. A RECOVERABLE fault —
+ * one somebody can fix by filling in a setting, after which the next tick
+ * works — throws, and the runner defers it as a configuration fault.
+ *
+ * `PipelineNotConfiguredError` sits on BOTH sides of that line, so this
+ * function decides which one it is rather than passing the exception straight
+ * out:
+ *
+ *  - The step NAMED a pipeline (`pipelineKey` non-null) and it does not
+ *    resolve → author error, same class as a bad stage key and living in the
+ *    same JSON object → `{ kind: "invalid" }`.
+ *  - The step named NO pipeline, so `DEFAULT_PIPELINE_KEY` was used, and THAT
+ *    does not resolve → this business has no pipeline seeded → rethrown, so
+ *    the runner defers.
+ *
+ * `resolvePipeline`'s own contract is deliberately untouched: it still throws
+ * for both, because `applyPipelineEvent` and the reconciler depend on that.
+ * The re-decision happens here, at the only call site that can tell the two
+ * apart, by looking at whether the caller named a key.
+ */
+export async function moveOpportunityBySequence(input: {
+  contactId: string
+  stageKey: string
+  pipelineKey: string | null
+  businessId: string
+  sequenceRunId: string
+}): Promise<SequenceMoveResult> {
+  const businessId = input.businessId
+  const supabase = getClient()
+
+  // See the THROW vs RETURN note above: an explicitly named pipeline that does
+  // not resolve is the author's typo and is returned; the default one not
+  // resolving is an unfilled setting and is rethrown.
+  //
+  // KNOWN IMPRECISION, recorded rather than fixed. `resolvePipeline` raises
+  // PipelineNotConfiguredError for TWO conditions: no `pipelines` row for the
+  // key, and a row that exists with no stages under it. With an explicit key
+  // this branch treats both as the author's typo, so a seeded-but-EMPTY
+  // pipeline is failed terminally and told it "does not exist" — inaccurate,
+  // and that second fault is operator-recoverable rather than authorial.
+  //
+  // Left as is because: it is unreachable today (00219 and 00249 both seed
+  // stages with the pipeline, and there is no surface that creates one
+  // without them), and separating the two would mean either widening
+  // `resolvePipeline`'s contract — which `applyPipelineEvent` and the
+  // reconciler depend on — or pre-reading the `pipelines` row here, which
+  // costs a round trip and duplicates that function's two-part definition of
+  // "not seeded" into a second copy that will drift. Revisit if a path ever
+  // creates a pipeline before its stages.
+  let pipelineId: string
+  let stages: StageRow[]
+  try {
+    ;({ pipelineId, stages } = await resolvePipeline(input.pipelineKey ?? DEFAULT_PIPELINE_KEY, businessId))
+  } catch (err) {
+    if (err instanceof PipelineNotConfiguredError && input.pipelineKey !== null) {
+      return {
+        kind: "invalid",
+        error: `This sequence's stage step points at a pipeline, "${input.pipelineKey}", that does not exist.`,
+      }
+    }
+    throw err
+  }
+
+  const toStage = stages.find((s) => s.key === input.stageKey)
+  if (!toStage) {
+    return {
+      kind: "invalid",
+      error: `This sequence's stage step points at a stage, "${input.stageKey}", that is not on the pipeline.`,
+    }
+  }
+  if (toStage.kind !== "open") {
+    return {
+      kind: "invalid",
+      error: `This sequence's stage step points at the "${input.stageKey}" stage, which closes a sale. A sequence is not allowed to close one.`,
+    }
+  }
+
+  const current = await readMostRecentOpportunity(input.contactId, pipelineId, stages, businessId)
+  if (!current) return { kind: "skipped", reason: "no_opportunity" }
+  if (current.outcome !== null) return { kind: "skipped", reason: "already_closed" }
+  // Idempotent: a retried tick must not append a second identical history row,
+  // and must not reset entered_stage_at, which would silently restart the
+  // staleness colour the board computes from it.
+  if (current.stage_id === toStage.id) return { kind: "skipped", reason: "already_on_stage" }
+
+  const now = new Date()
+  const { error: updateErr } = await supabase
+    .from("opportunities")
+    .update({
+      stage_id: toStage.id,
+      entered_stage_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    })
+    .eq("id", current.id)
+    // Defence in depth, not a live leak: `current.id` came out of
+    // `readMostRecentOpportunity`, which is already business-scoped. It is here
+    // because the standing rule is that every new reader gets a tenant
+    // predicate and this is a brand-new WRITER -- `/admin/ads` had to be made
+    // owner-only over exactly this class of omission. Costs one indexed
+    // column in the WHERE clause.
+    .eq("business_id", businessId)
+  if (updateErr) throw updateErr
+
+  await insertStageEvent(supabase, {
+    businessId,
+    opportunityId: current.id,
+    fromStageId: current.stage_id,
+    toStageId: toStage.id,
+    trigger: "sequence",
+    actorUserId: null,
+    metadata: { sequence_run_id: input.sequenceRunId },
+  })
+
+  await recordAudit({
+    action: SEQUENCE_MOVED_AUDIT_ACTION,
+    category: "automation",
+    actor: SYSTEM_ACTOR,
+    target: { type: "opportunity", id: current.id },
+    metadata: { to_stage: toStage.key, sequence_run_id: input.sequenceRunId },
+  })
+
+  const fromStageKey = stages.find((s) => s.id === current.stage_id)?.key ?? null
+  return { kind: "moved", opportunityId: current.id, fromStageKey, toStageKey: toStage.key }
 }
 
 async function readContactNames(

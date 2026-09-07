@@ -210,6 +210,28 @@ export const AUDIT_ACTIONS = [
   { slug: "pipeline.opportunity_moved", category: "admin_write", description: "Pipeline card moved by an admin" },
   { slug: "pipeline.opportunity_won", category: "commerce", description: "Pipeline card closed won" },
   { slug: "pipeline.opportunity_lost", category: "commerce", description: "Pipeline card closed lost" },
+  {
+    // automation, NOT admin_write. `contact.tag_added` and
+    // `pipeline.opportunity_moved` both mean a person clicked something, and
+    // "did a coach move this card?" is a question the admin_write trail is
+    // supposed to answer truthfully. A cron filed there corrupts the answer.
+    // Writer: the `tag` step in `lib/automation/sequence-tick-runner.ts`. NOT
+    // `sequence-tick.ts` -- that is the pure decision core, whose own header
+    // forbids it from importing any DB client, so it is the one file that could
+    // never hold this write. The runner pins this exact spelling the way
+    // `lib/db/pipeline.ts` pins its sibling below --
+    // `const … : AuditAction = "sequence.contact_tagged"` -- so a typo stops
+    // the build rather than writing a row the log viewer cannot name. Both
+    // registrations are asserted in `__tests__/db/pipeline.test.ts`.
+    slug: "sequence.contact_tagged",
+    category: "automation",
+    description: "A sequence step applied a tag to a contact",
+  },
+  {
+    slug: "sequence.opportunity_moved",
+    category: "automation",
+    description: "A sequence step moved a pipeline card",
+  },
 
   // marketing — public / outbound
   { slug: "newsletter.subscribed", category: "marketing", description: "Newsletter subscription created" },

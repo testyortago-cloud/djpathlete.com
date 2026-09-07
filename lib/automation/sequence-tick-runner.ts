@@ -40,6 +40,13 @@ import { smsConsentUrl } from "@/lib/lead-engine/sms-consent-token"
 import { appOrigin } from "@/lib/lead-engine/origin"
 import { decideStep } from "@/lib/automation/sequence-tick"
 import type { SequenceRunRow } from "@/lib/automation/sequence-tick"
+import { addTag } from "@/lib/db/contact-tags"
+import { moveOpportunityBySequence, PipelineNotConfiguredError } from "@/lib/db/pipeline"
+import { recordAudit } from "@/lib/audit/record"
+// Type-only, so the closed audit taxonomy is checked at compile time rather
+// than at write time — same treatment lib/db/pipeline.ts gives this slug's
+// sibling. See TAG_AUDIT_ACTION below.
+import type { AuditAction } from "@/lib/audit/actions"
 import {
   claimDueRuns,
   loadSteps,
@@ -184,6 +191,26 @@ const SEND_RACE_RETRY_MS = 5 * 60 * 1000
 export { appOrigin }
 
 /**
+ * Pinned against the closed taxonomy rather than passed as a bare string.
+ * `RecordAuditInput.action` is typed `string`, so without this the
+ * `sequence.contact_tagged` row in lib/audit/actions.ts could be deleted with
+ * the suite still green and tsc still clean — the audit ROW's category comes
+ * from this call site, not from the taxonomy, so nothing notices until the
+ * admin log viewer has a slug it cannot name. Its sibling
+ * `sequence.opportunity_moved` gets the same treatment from its own writer in
+ * lib/db/pipeline.ts.
+ */
+const TAG_AUDIT_ACTION: AuditAction = "sequence.contact_tagged"
+
+/**
+ * The tick is a cron. There is no signed-in user to name, and inventing one
+ * would put a person's id on a row they had nothing to do with. Same actor
+ * shape `applyPipelineEvent` and `moveOpportunityBySequence` already use for
+ * automated writes (lib/db/pipeline.ts).
+ */
+const SYSTEM_ACTOR = { id: null, email: null, role: "system" as const }
+
+/**
  * Appends a `contact_timeline_events` row. Deliberately a raw
  * `createServiceRoleClient()` call rather than a `lib/db/` DAL function —
  * same accepted pattern as Task 6's
@@ -248,12 +275,13 @@ async function processRun(
           // IS configured in the DB but this deployment's Twilio credentials
           // are missing (`reason: "sms_env_missing"`, see `smsEnvPresent` —
           // a live-day misconfiguration, not a normal pre-launch state).
-          // Either way, spec §6 groups an unsupported channel with
-          // `tag`/`stage`: an unsupported kind records a
-          // `sequence_step_unsupported` timeline event and ADVANCES, the
-          // same "visible, not silent" shape this branch used before any SMS
-          // sender existed at all — see the case-"advance" `unsupported_kind`
-          // arm below for the sibling of this same rule.
+          // Either way, spec §6's rule for a step this deployment cannot
+          // carry out applies: record a `sequence_step_unsupported` timeline
+          // event and ADVANCE, the same "visible, not silent" shape this
+          // branch used before any SMS sender existed at all. `tag` and
+          // `stage` used to share this arm via a `note: "unsupported_kind"`
+          // advance; they now do their own work, so the two sms/email
+          // env-missing paths are the only remaining users of this kind.
           //
           // Spec §4 amendment (docs/superpowers/specs/2026-08-21-lead-engine-stage2-sms-design.md):
           // deliberately NOT a `recordSend` + immediate `skipped` message
@@ -576,26 +604,126 @@ async function processRun(
       return
     }
 
-    case "advance": {
-      // Spec §6: an unsupported step kind (`tag`/`stage` today) must be
-      // visible, not silently skipped. decideStep already signals this via
-      // `note === "unsupported_kind"` — look up the step it was evaluating
-      // (by the run's CURRENT position, before this advance) purely to
-      // attach its id/kind to the timeline row.
-      if (action.note === "unsupported_kind") {
-        const unsupportedStep = steps.find((s) => s.position === run.current_position)
-        await writeTimelineEvent({
-          businessId,
-          contactId: run.contact_id,
-          kind: "sequence_step_unsupported",
-          metadata: {
-            run_id: run.id,
-            sequence_id: run.sequence_id,
-            step_id: unsupportedStep?.id ?? null,
-            step_kind: unsupportedStep?.kind ?? null,
-          },
-        })
+    case "tag": {
+      // Side effect, then timeline, then exactly one write-back — the same
+      // order `alert` uses. `addTag` is idempotent (it treats a 23505 unique
+      // violation as "already there"), which is what makes the batch-level
+      // retry safe when the timeline write below throws.
+      //
+      // The ORDER is the guarantee: nothing advances the run until the tag is
+      // actually on the contact. Advancing first would march a run past a tag
+      // it never applied, and nothing downstream would ever notice.
+      const { created } = await addTag({
+        contactId: run.contact_id,
+        tag: action.tag,
+        businessId,
+        createdBy: null,
+      })
+
+      // Audited HERE rather than inside `addTag`, for the same reason the
+      // admin tag route audits at its own route handler: `addTag` is shared
+      // with a human-driven surface that files `contact.tag_added` /
+      // admin_write, and it has no business knowing about sequence runs.
+      // recordAudit never throws (it catches internally, see lib/audit/
+      // record.ts), so no try/catch here — a broken audit table must not be
+      // able to defer a live run. That property is pinned by a test rather
+      // than assumed.
+      await recordAudit({
+        action: TAG_AUDIT_ACTION,
+        category: "automation",
+        actor: SYSTEM_ACTOR,
+        target: { type: "contact", id: run.contact_id },
+        metadata: { tag: action.tag, created, sequence_run_id: run.id, step_id: action.step.id },
+      })
+
+      await writeTimelineEvent({
+        businessId,
+        contactId: run.contact_id,
+        kind: "sequence_tag_applied",
+        metadata: {
+          run_id: run.id,
+          sequence_id: run.sequence_id,
+          step_id: action.step.id,
+          tag: action.tag,
+          created,
+        },
+      })
+
+      await advanceRun(run.id, action.step.position + 1)
+      return
+    }
+
+    case "stage": {
+      // Throws PipelineNotConfiguredError ONLY when the step named no
+      // pipeline and the business's default one is not seeded — a setting
+      // somebody can fill in, handled as a configuration fault by the batch
+      // catch. A step that NAMES a pipeline which does not resolve is an
+      // author's typo and comes back as `invalid`, like a bad stage key.
+      // Everything else about a stage step comes back as a value — see the
+      // throw-vs-return note on `moveOpportunityBySequence` itself.
+      //
+      // (`readMostRecentOpportunity`, which that function calls, can still
+      // throw a bare Error for a card whose stage_id is not on the resolved
+      // board. That is pre-existing, shared with `applyPipelineEvent`, and
+      // reachable only through a cross-board stage_id no code path creates —
+      // it is knowingly parked, not overlooked. It would land in the batch
+      // catch as a transient fault.)
+      const result = await moveOpportunityBySequence({
+        contactId: run.contact_id,
+        stageKey: action.stageKey,
+        pipelineKey: action.pipelineKey,
+        businessId,
+        sequenceRunId: run.id,
+      })
+
+      if (result.kind === "invalid") {
+        // Deterministic: the sequence's own definition is wrong and every
+        // retry fails the same way. Fail now rather than deferring — five
+        // deferrals over ~100 minutes end in exactly this write anyway, with
+        // `transient_error` recorded against a fault that was never transient.
+        //
+        // WHAT "FAIL" ACTUALLY BUYS HERE, honestly. The reason lands on
+        // `sequence_runs.last_error`, which the contact detail page renders
+        // beside the run (components/admin/contacts/ContactDetail.tsx), so it
+        // is VISIBLE. It is not RECOVERABLE: `status='failed'` is terminal and
+        // nothing in this codebase re-activates a failed run. (There is no
+        // `/admin/sequences` screen on this branch — that is a different,
+        // unmerged one.) Failing is still the right call over skipping,
+        // because a silent skip leaves an author's typo invisible forever
+        // while the sequence appears to be working.
+        //
+        // No timeline row: the fault is the author's, and a contact's own
+        // history should not carry an entry about it.
+        await failRun(run.id, result.error)
+        summary.failed += 1
+        return
       }
+
+      await writeTimelineEvent({
+        businessId,
+        contactId: run.contact_id,
+        kind: result.kind === "moved" ? "sequence_stage_moved" : "sequence_stage_skipped",
+        metadata:
+          result.kind === "moved"
+            ? {
+                run_id: run.id,
+                sequence_id: run.sequence_id,
+                step_id: action.step.id,
+                from_stage: result.fromStageKey,
+                to_stage: result.toStageKey,
+              }
+            : { run_id: run.id, sequence_id: run.sequence_id, step_id: action.step.id, reason: result.reason },
+      })
+
+      // No audit row is written here: `moveOpportunityBySequence` already
+      // records `sequence.opportunity_moved` from inside the write it audits,
+      // which is where a card move belongs. A second row from out here would
+      // double-count the same event.
+      await advanceRun(run.id, action.step.position + 1)
+      return
+    }
+
+    case "advance": {
       await advanceRun(run.id, action.toPosition, action.deferUntil)
       return
     }
@@ -619,6 +747,30 @@ async function processRun(
       await failRun(run.id, action.error)
       summary.failed += 1
       return
+
+    default: {
+      // THE ARM THAT MAKES THE CONCURRENCY CONTRACT COMPILE-CHECKED. Without
+      // it, a `StepAction` kind with no case here falls out of this function
+      // having made ZERO write-backs: the run keeps its claim until the RPC's
+      // ~10-minute stale reclaim, then does it again, forever — no timeline
+      // row, no counter moving, nothing to alert on.
+      //
+      // That is not hypothetical. It is exactly the state this file was in at
+      // the parent commit, where `decideStep` already returned `tag` and
+      // `stage` and neither had an arm here. The symptom was two route tests
+      // reporting a missing timeline row, not a build error, which is a long
+      // way from the cause.
+      //
+      // `never` turns that whole class into a tsc error at the moment the
+      // union grows — the same guard `decideStep` puts at the bottom of its
+      // own switch. The runtime half fails the run rather than returning
+      // silently: it is a deterministic defect, identical on every retry, and
+      // one write-back keeps the contract above intact.
+      const _exhaustive: never = action
+      await failRun(run.id, `sequence tick: no runner arm for step action ${JSON.stringify(_exhaustive)}`)
+      summary.failed += 1
+      return
+    }
   }
 }
 
@@ -708,7 +860,38 @@ async function runSequenceTickForBusiness(
           // the retry can actually re-claim its own queued row rather than
           // bouncing on `send_in_progress`. Everything else keeps the
           // existing backoff untouched.
-          const isConfigFault = err instanceof SequenceSendError && classifySendFault(err) === "configuration"
+          //
+          // PipelineNotConfiguredError joins it because it is the same KIND of
+          // fault: a setting nobody has filled in, fixable without touching the
+          // sequence, and identical on every retry until somebody does.
+          //
+          // WHAT THIS BUYS, EXACTLY — and what it does NOT. It does not exempt
+          // the run from MAX_ATTEMPTS. `retryable` above is fault-type-blind,
+          // `claim_sequence_runs` increments `attempts` on every claim (00217),
+          // and `deferRun` deliberately does not reset it for
+          // TRANSIENT_ERROR_DEFER_REASON (lib/db/sequences.ts) — so five
+          // consecutive configuration faults still reach `failRun` and destroy
+          // the run, roughly 100 minutes in at the 20-minute floor.
+          // `TickSummary.config_faults`' own doc comment says the same thing.
+          // Two other things are bought instead:
+          //
+          //  1. THE DEFER FLOOR. CONFIG_FAULT_MIN_DEFER_MS (20m) clears
+          //     recordSend's 15-minute reclaim window, so each retry is a real
+          //     retry of the work rather than a tick spent bouncing on
+          //     `send_in_progress`. That is what makes five attempts five
+          //     genuine chances instead of five wasted ones.
+          //  2. THE ALARM. `config_faults` makes the route report the tick
+          //     FAILED, so the automation-health watchdog surfaces this while
+          //     there are still attempts left. A human fixing the setting
+          //     inside that window is what actually saves the run.
+          //
+          // On 2026-08-31 the send path had neither: one unverified sending
+          // domain marked all 73 runs permanently failed inside ten minutes,
+          // silently and with no retry. ~100 minutes with a loud alarm is the
+          // improvement, and it is deliberately bounded rather than infinite.
+          const isConfigFault =
+            (err instanceof SequenceSendError && classifySendFault(err) === "configuration") ||
+            err instanceof PipelineNotConfiguredError
           const backoffMs = isConfigFault
             ? Math.max(transientBackoffMs(attempts), CONFIG_FAULT_MIN_DEFER_MS)
             : transientBackoffMs(attempts)

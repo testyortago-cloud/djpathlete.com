@@ -112,10 +112,64 @@ describe("decideStep — wait", () => {
   })
 })
 
-describe("decideStep — unsupported kinds are visible, not silent", () => {
-  it.each(["tag", "stage"] as const)("advances past a %s step with a note", (kind) => {
-    const action = decideStep(run, [step({ position: 0, kind })], ctx())
-    expect(action).toMatchObject({ kind: "advance", toPosition: 1, note: "unsupported_kind" })
+// Retargeted, not deleted. These two kinds used to advance with
+// note: "unsupported_kind"; they now do their job. Keeping the cases pointed
+// at the replacement is what stops the old no-op quietly coming back.
+describe("decideStep — tag", () => {
+  it("returns a tag action carrying the normalised tag", () => {
+    const tagStep = step({ position: 0, kind: "tag", config: { tag: "Warm Lead" } })
+    expect(decideStep(run, [tagStep], ctx())).toEqual({ kind: "tag", step: tagStep, tag: "warm lead" })
+  })
+
+  it("fails the run when the config has no tag, carrying the parser's own sentence", () => {
+    // Pinned to the sentence rather than to `toContain("tag")`: that substring
+    // is satisfied by the step KIND alone, so it stayed green whatever the
+    // message said. This reason is written to `sequence_runs.last_error` and
+    // rendered raw to a coach, so which string arrives is the point.
+    const action = decideStep(run, [step({ position: 0, kind: "tag", config: {} })], ctx())
+    expect(action.kind).toBe("fail")
+    expect((action as { error: string }).error).toBe("This sequence's tag step does not say which tag to add.")
+  })
+
+  it("never advances past a tag step", () => {
+    const action = decideStep(run, [step({ position: 0, kind: "tag", config: {} })], ctx())
+    expect(action.kind).not.toBe("advance")
+  })
+})
+
+describe("decideStep — stage", () => {
+  it("returns a stage action with a null pipeline when config names only a stage", () => {
+    const stageStep = step({ position: 0, kind: "stage", config: { stage: "consulted" } })
+    expect(decideStep(run, [stageStep], ctx())).toEqual({
+      kind: "stage",
+      step: stageStep,
+      stageKey: "consulted",
+      pipelineKey: null,
+    })
+  })
+
+  it("carries an explicit pipeline key through", () => {
+    const stageStep = step({ position: 0, kind: "stage", config: { stage: "consulted", pipeline: "coaching" } })
+    expect(decideStep(run, [stageStep], ctx())).toMatchObject({ kind: "stage", pipelineKey: "coaching" })
+  })
+
+  it("fails the run when the config has no stage, carrying the parser's own sentence", () => {
+    // Same reasoning as the tag case above.
+    const action = decideStep(run, [step({ position: 0, kind: "stage", config: {} })], ctx())
+    expect(action.kind).toBe("fail")
+    expect((action as { error: string }).error).toBe(
+      "This sequence's stage step does not say which stage to move the person to.",
+    )
+  })
+})
+
+// The suppression check runs before the step kind is even looked at, so a
+// malformed tag step must not be able to keep a suppressed contact in a
+// sequence. Cheap to assert, and the ordering is easy to break.
+describe("decideStep — suppression still wins over a tag step", () => {
+  it("exits rather than failing on a malformed tag step", () => {
+    const action = decideStep(run, [step({ position: 0, kind: "tag", config: {} })], ctx({ isSuppressed: true }))
+    expect(action).toEqual({ kind: "exit", reason: "suppressed" })
   })
 })
 
