@@ -36,10 +36,21 @@
 -- opportunities.closed_trigger is deliberately NOT widened. A sequence step may
 -- move a card but may never close one, so this path cannot reach that column.
 
+-- Each ADD is preceded by a DROP ... IF EXISTS, the house pattern 00221
+-- established on this same table for sequence_steps_sms_body_check. Without
+-- it a manual re-apply of this file raises 42710 on the first statement and
+-- stops, leaving the rest of the migration unrun. The DROPs are a no-op
+-- against the dev database, which already has both constraints (applied and
+-- verified 2026-09-07), and the CHECK bodies below are unchanged.
+
+ALTER TABLE public.sequence_steps
+  DROP CONSTRAINT IF EXISTS sequence_steps_tag_needs_config;
 ALTER TABLE public.sequence_steps
   ADD CONSTRAINT sequence_steps_tag_needs_config
   CHECK ((kind <> 'tag') OR (config ? 'tag'));
 
+ALTER TABLE public.sequence_steps
+  DROP CONSTRAINT IF EXISTS sequence_steps_stage_needs_config;
 ALTER TABLE public.sequence_steps
   ADD CONSTRAINT sequence_steps_stage_needs_config
   CHECK ((kind <> 'stage') OR (config ? 'stage'));

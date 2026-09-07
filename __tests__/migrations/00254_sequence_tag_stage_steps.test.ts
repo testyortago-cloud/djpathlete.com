@@ -38,6 +38,25 @@ describe("migration 00254", () => {
     expect(SQL).toMatch(/kind\s*<>\s*'stage'[\s\S]*OR[\s\S]*config \? 'stage'/i)
   })
 
+  // FIX 7. 00221 established the house pattern on this same table: every
+  // ADD CONSTRAINT is preceded by a DROP ... IF EXISTS, so a manual re-apply
+  // is idempotent instead of raising 42710 on the first statement and leaving
+  // the rest of the file unrun. The trigger constraint below already had it;
+  // these two did not.
+  //
+  // Asserted as ORDER, not as mere presence: a DROP that landed after its own
+  // ADD would satisfy a `toMatch` for both and still fail on re-apply.
+  it.each(["sequence_steps_tag_needs_config", "sequence_steps_stage_needs_config"])(
+    "drops %s before adding it, so a re-apply is idempotent",
+    (name) => {
+      const drop = SQL.indexOf(`DROP CONSTRAINT IF EXISTS ${name}`)
+      const add = SQL.indexOf(`ADD CONSTRAINT ${name}`)
+      expect(drop).toBeGreaterThan(-1)
+      expect(add).toBeGreaterThan(-1)
+      expect(drop).toBeLessThan(add)
+    },
+  )
+
   it("re-adds the trigger constraint it drops", () => {
     expect(SQL).toMatch(/DROP CONSTRAINT[\s\S]*opportunity_stage_events_trigger_check/i)
     expect(SQL).toMatch(/ADD CONSTRAINT opportunity_stage_events_trigger_check/i)
