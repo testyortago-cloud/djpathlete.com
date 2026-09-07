@@ -731,6 +731,30 @@ async function processRun(
       await failRun(run.id, action.error)
       summary.failed += 1
       return
+
+    default: {
+      // THE ARM THAT MAKES THE CONCURRENCY CONTRACT COMPILE-CHECKED. Without
+      // it, a `StepAction` kind with no case here falls out of this function
+      // having made ZERO write-backs: the run keeps its claim until the RPC's
+      // ~10-minute stale reclaim, then does it again, forever — no timeline
+      // row, no counter moving, nothing to alert on.
+      //
+      // That is not hypothetical. It is exactly the state this file was in at
+      // the parent commit, where `decideStep` already returned `tag` and
+      // `stage` and neither had an arm here. The symptom was two route tests
+      // reporting a missing timeline row, not a build error, which is a long
+      // way from the cause.
+      //
+      // `never` turns that whole class into a tsc error at the moment the
+      // union grows — the same guard `decideStep` puts at the bottom of its
+      // own switch. The runtime half fails the run rather than returning
+      // silently: it is a deterministic defect, identical on every retry, and
+      // one write-back keeps the contract above intact.
+      const _exhaustive: never = action
+      await failRun(run.id, `sequence tick: no runner arm for step action ${JSON.stringify(_exhaustive)}`)
+      summary.failed += 1
+      return
+    }
   }
 }
 
@@ -823,10 +847,32 @@ async function runSequenceTickForBusiness(
           //
           // PipelineNotConfiguredError joins it because it is the same KIND of
           // fault: a setting nobody has filled in, fixable without touching the
-          // sequence, and identical on every retry until somebody does. Treating
-          // it as poison would burn MAX_ATTEMPTS and then destroy the run —
-          // which is exactly how 73 runs were destroyed by an unverified sending
-          // domain on 2026-08-31.
+          // sequence, and identical on every retry until somebody does.
+          //
+          // WHAT THIS BUYS, EXACTLY — and what it does NOT. It does not exempt
+          // the run from MAX_ATTEMPTS. `retryable` above is fault-type-blind,
+          // `claim_sequence_runs` increments `attempts` on every claim (00217),
+          // and `deferRun` deliberately does not reset it for
+          // TRANSIENT_ERROR_DEFER_REASON (lib/db/sequences.ts) — so five
+          // consecutive configuration faults still reach `failRun` and destroy
+          // the run, roughly 100 minutes in at the 20-minute floor.
+          // `TickSummary.config_faults`' own doc comment says the same thing.
+          // Two other things are bought instead:
+          //
+          //  1. THE DEFER FLOOR. CONFIG_FAULT_MIN_DEFER_MS (20m) clears
+          //     recordSend's 15-minute reclaim window, so each retry is a real
+          //     retry of the work rather than a tick spent bouncing on
+          //     `send_in_progress`. That is what makes five attempts five
+          //     genuine chances instead of five wasted ones.
+          //  2. THE ALARM. `config_faults` makes the route report the tick
+          //     FAILED, so the automation-health watchdog surfaces this while
+          //     there are still attempts left. A human fixing the setting
+          //     inside that window is what actually saves the run.
+          //
+          // On 2026-08-31 the send path had neither: one unverified sending
+          // domain marked all 73 runs permanently failed inside ten minutes,
+          // silently and with no retry. ~100 minutes with a loud alarm is the
+          // improvement, and it is deliberately bounded rather than infinite.
           const isConfigFault =
             (err instanceof SequenceSendError && classifySendFault(err) === "configuration") ||
             err instanceof PipelineNotConfiguredError

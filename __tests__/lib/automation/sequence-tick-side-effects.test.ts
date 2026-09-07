@@ -294,7 +294,27 @@ describe("a tag step", () => {
         category: "automation",
         actor: { id: null, email: null, role: "system" },
         target: { type: "contact", id: "contact-run-1" },
-        metadata: expect.objectContaining({ tag: "warm-lead", sequence_run_id: "run-1" }),
+        // `created` travels on the audit row as well as the timeline row, and
+        // it is the field the "a retried tick can write a second audit row,
+        // but never a second tag" judgement rests on. Pinned in both places,
+        // and in both directions — see the sibling test below.
+        metadata: expect.objectContaining({ tag: "warm-lead", created: true, sequence_run_id: "run-1" }),
+      }),
+    )
+  })
+
+  it("records created: false on the audit row when the tag was already there", async () => {
+    // The other direction, as its own test. One assertion pinning only
+    // `created: true` stays green against a hardcoded `true`.
+    ;(addTag as Mock).mockResolvedValue({ tag: "warm-lead", created: false })
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
+
+    await runSequenceTick()
+
+    expect(recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "sequence.contact_tagged",
+        metadata: expect.objectContaining({ tag: "warm-lead", created: false }),
       }),
     )
   })
@@ -446,6 +466,26 @@ describe("a stage step", () => {
 
     const until = (deferRun as Mock).mock.calls[0][1] as Date
     expect(until.getTime() - before).toBeGreaterThan(15 * 60 * 1000)
+  })
+
+  it("still fails the run terminally once attempts are exhausted", async () => {
+    // THE BOUNDED HALF, and it is here because the code comment in the batch
+    // catch now claims it out loud. A configuration fault does NOT exempt a
+    // run from MAX_ATTEMPTS: `retryable` is fault-type-blind, and `deferRun`
+    // does not reset `attempts` for a transient-error defer. What the config
+    // branch buys is the 20-minute floor and the `config_faults` alarm, not
+    // immortality — so the fifth one still destroys the run. Asserted rather
+    // than described, because the previous wording of that comment claimed the
+    // opposite and nothing caught it.
+    ;(moveOpportunityBySequence as Mock).mockRejectedValue(new PipelineNotConfiguredError("coaching"))
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1", { attempts: 5 })])
+
+    const summary = await runSequenceTick()
+
+    expect(deferRun).not.toHaveBeenCalled()
+    expect(failRun).toHaveBeenCalledTimes(1)
+    expect(summary.failed).toBe(1)
+    expect(summary.config_faults ?? 0).toBe(0)
   })
 })
 

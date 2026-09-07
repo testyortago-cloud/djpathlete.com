@@ -1882,11 +1882,13 @@ describe("the sequence audit taxonomy", () => {
     expect(getActionDef("sequence.opportunity_moved")).toMatchObject({ category: "automation" })
   })
 
-  // Registered here, written by Task 5's tag step. Pinned now so that task is
-  // held to this exact spelling and this category rather than minting a
-  // second one — a cron filed under admin_write corrupts the one trail that
-  // answers "did a coach do this?".
-  it("registers sequence.contact_tagged as automation, ready for the tag step's writer", async () => {
+  // Registered here, written by the `tag` step in
+  // lib/automation/sequence-tick-runner.ts. This pins the spelling and the
+  // category the writer must use rather than letting it mint a second one — a
+  // cron filed under admin_write corrupts the one trail that answers "did a
+  // coach do this?". The writer's own end is pinned by
+  // __tests__/lib/automation/sequence-tick-side-effects.test.ts.
+  it("registers sequence.contact_tagged as automation, the category its writer files under", async () => {
     const { getActionDef } = await import("@/lib/audit/actions")
     expect(getActionDef("sequence.contact_tagged")).toMatchObject({ category: "automation" })
   })
