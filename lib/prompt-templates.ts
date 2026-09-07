@@ -130,7 +130,8 @@ Adjust the numbers above to match your needs.`,
 - 2 accessory movements: one shoulder (lateral raise, face pull), one chest (fly, cable crossover)
 - 1 tricep isolation (pushdown, skull crusher, or overhead extension)
 - Finish with scapular health work (band pull-apart or Y-T-W)
-- 5-6 exercises total, 45-60 minutes`,
+- Session length: 45-60 minutes
+The numbers above are exercise counts — this session is exactly what is listed, nothing more.`,
   },
   {
     id: "upper-pull-day",
@@ -145,7 +146,8 @@ Adjust the numbers above to match your needs.`,
 - 1 lat/mid-back accessory (straight-arm pulldown or pullover)
 - 1 bicep isolation (curl variation)
 - Optional: grip work (hangs or farmer carries) as a finisher
-- 5-6 exercises total, 45-60 minutes`,
+- Session length: 45-60 minutes
+The numbers above are exercise counts — this session is exactly what is listed, nothing more.`,
   },
   {
     id: "lower-leg-day",
@@ -160,7 +162,8 @@ Adjust the numbers above to match your needs.`,
 - 1 posterior chain accessory (hamstring curl, good morning, or glute-ham raise)
 - 1 calf movement (standing or seated calf raise)
 - Optional: short core finisher (2-3 minutes)
-- 5-6 exercises total, 50-70 minutes`,
+- Session length: 50-70 minutes
+The numbers above are exercise counts — this session is exactly what is listed, nothing more.`,
   },
   {
     id: "full-body-day",
@@ -168,15 +171,16 @@ Adjust the numbers above to match your needs.`,
     category: "session",
     scope: "day",
     description: "Balanced session hitting every major pattern",
-    prompt: `FULL BODY DAY — hit every major movement pattern once:
-- 1 squat pattern (squat variation)
-- 1 hinge pattern (deadlift or RDL variation)
-- 1 upper push (horizontal or vertical)
-- 1 upper pull (horizontal or vertical)
-- 1 core / carry / anti-rotation
+    prompt: `FULL BODY DAY — cover every major movement pattern:
+- 1 squat pattern exercise (squat variation)
+- 1 hinge pattern exercise (deadlift or RDL variation)
+- 1 upper push exercise (horizontal or vertical)
+- 1 upper pull exercise (horizontal or vertical)
+- 1 core / carry / anti-rotation exercise
 - Optional: 1 conditioning or power finisher
-- Keep sets moderate (3 per exercise) to respect total session volume
-- 5-6 exercises total, 50-60 minutes`,
+- 3 sets per exercise, to respect total session volume
+- Session length: 50-60 minutes
+The numbers above are exercise counts — this session is exactly what is listed, nothing more.`,
   },
   {
     id: "mobility-movement-prep",
