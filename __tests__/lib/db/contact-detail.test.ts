@@ -360,6 +360,46 @@ describe("describeTimelineEvent", () => {
   })
 })
 
+// Task 5 (committed) added three new timeline kinds from the sequence tick
+// runner: sequence_tag_applied, sequence_stage_moved, sequence_stage_skipped.
+// Without hand-written arms these fall through to the humanising default and
+// read as "Sequence tag applied" — truthful, but not written for a coach.
+describe("timeline labels for sequence side effects", () => {
+  it("names the tag a sequence applied", () => {
+    const described = describeTimelineEvent(
+      event({ id: "e", kind: "sequence_tag_applied", metadata: { tag: "warm lead" } }),
+    )
+    expect(described.title).toBe("Tagged “warm lead” automatically")
+  })
+
+  it("says where a sequence moved the card, in plain words", () => {
+    const described = describeTimelineEvent(
+      event({
+        id: "e",
+        kind: "sequence_stage_moved",
+        metadata: { from_stage: "consult_booked", to_stage: "consulted" },
+      }),
+    )
+    expect(described.title).toBe("A sequence moved their card automatically")
+    expect(described.detail).toContain("Consulted")
+  })
+
+  it("explains a skipped move without jargon", () => {
+    const described = describeTimelineEvent(
+      event({ id: "e", kind: "sequence_stage_skipped", metadata: { reason: "no_opportunity" } }),
+    )
+    expect(described.detail).not.toContain("opportunity")
+  })
+
+  // The guard that matters: no hand-written label may render an empty title.
+  it("never renders an empty title for any sequence kind", () => {
+    for (const kind of ["sequence_tag_applied", "sequence_stage_moved", "sequence_stage_skipped"]) {
+      const described = describeTimelineEvent(event({ id: "e", kind, metadata: {} }))
+      expect(described.title.trim().length).toBeGreaterThan(0)
+    }
+  })
+})
+
 describe("formatMoney", () => {
   it("renders cents as dollars", () => {
     expect(formatMoney(18000, "usd")).toBe("$180.00")

@@ -291,6 +291,39 @@ export function describeTimelineEvent(row: TimelineEventRow): {
         tone: "warning",
       }
 
+    case "sequence_tag_applied": {
+      const tag = asString(meta.tag)
+      return {
+        title: tag ? `Tagged “${tag}” automatically` : "Tagged automatically",
+        detail: "A sequence added this tag. Nobody had to do it by hand.",
+        tone: "neutral",
+      }
+    }
+
+    case "sequence_stage_moved": {
+      const from = asString(meta.from_stage)
+      const to = asString(meta.to_stage)
+      const detail = to
+        ? from
+          ? `Their card moved from ${humanise(from)} to ${humanise(to)}.`
+          : `Their card moved to ${humanise(to)}.`
+        : null
+      return { title: "A sequence moved their card automatically", detail, tone: "info" }
+    }
+
+    case "sequence_stage_skipped": {
+      const reason = asString(meta.reason)
+      const why =
+        reason === "no_opportunity"
+          ? "They are not on the board yet, so there was no card to move."
+          : reason === "already_closed"
+            ? "Their card is already closed, so it was left where it was."
+            : reason === "already_on_stage"
+              ? "Their card was already at that stage, so nothing changed."
+              : null
+      return { title: "A sequence left their card where it was", detail: why, tone: "neutral" }
+    }
+
     default:
       // NOT unreachable — see the doc comment. A new kind lands here and still
       // renders something truthful rather than an empty line.
