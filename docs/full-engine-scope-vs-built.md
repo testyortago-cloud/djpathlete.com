@@ -127,7 +127,7 @@ Ranked by what stands between you and a working engine. "Blocks go-live" means
 | 1 | **Two finished sequences are paused** — `newsletter_welcome`, `lead_magnet_delivery`. Real copy, triggers wired, nothing wrong with them. | Automation | **Yes** | Minutes — see §5A |
 | 2 | **73 people are stranded** in terminal `failed` runs from the 2026-08-31 domain fault. | Automation | **Yes** | Minutes + your decision |
 | 3 | **Only one funnel is published**, and it has one submission. Nothing is feeding the engine. | Funnels | **Yes** | Yours, not code |
-| 4 | **No reporting screen.** `exit_reason` is recorded faithfully and read in exactly one place — the contact detail page. There is no per-sequence entered / active / exited-by-reason view. Promised in **all three** packages. | Automation | **Yes** — you are flying blind | 2–3 days |
+| 4 | ~~**No reporting screen.**~~ **BUILT** — `/admin/sequences` lists every sequence with entered / still going / bought / booked / opted out / reached the end / something went wrong / something else, and a per-sequence detail page names every person and why they left. Branch `feat/sequence-reporting`, **not merged**. | Automation | ~~Yes~~ **Closed** | ~~2–3 days~~ done |
 | 5 | **Three quoted sequences do not exist**: *abandoned checkout*, *service application received*, *camp or clinic deadline*. Zero references in code or migrations. | Automation | No | 3–5 days incl. copy |
 | 6 | **The four quiz sequences are one email long.** A single send, then done. | Automation | No | 2–3 days incl. copy |
 | 7 | **Branching is unused.** Sold in Complete and Full; zero branch steps exist. | Automation | No | 1–2 days on top of #5/#6 |
