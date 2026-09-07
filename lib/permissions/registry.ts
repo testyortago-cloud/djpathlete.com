@@ -433,6 +433,17 @@ export const PATH_PERMISSIONS: readonly PathRule[] = [
   // a prefix here for a surface whose DAL has no tenant predicate.
   { prefix: "/admin/contacts", permission: "contacts" },
   { prefix: "/admin/pipeline", permission: "contacts" },
+  // The report on what the sequences are doing to the people on the board.
+  // Same permission as Pipeline and Contacts because it is the same subsystem:
+  // the people in a sequence are the people on the board.
+  //
+  // Deliberately NOT paired with an /api/admin/sequences rule. Both pages are
+  // server components that read through the DAL; this surface adds no route
+  // handler. The API prefix would instead reach the pre-existing
+  // /api/admin/sequences/enrol, which is unmapped AND self-guards on
+  // role !== "admin" — registering it would let staff past the proxy into a
+  // route that 403s them anyway, leaving two guards masking each other.
+  { prefix: "/admin/sequences", permission: "contacts" },
   { prefix: "/admin/chat", permission: "contacts" },
   { prefix: "/api/admin/contacts", permission: "contacts" },
   { prefix: "/api/admin/pipeline", permission: "contacts" },

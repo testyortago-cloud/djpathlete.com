@@ -1,0 +1,137 @@
+import Link from "next/link"
+import {
+  DataTable,
+  DataTableBadge,
+  DataTableCard,
+  DataTableCell,
+  DataTableEmpty,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  type DataTableBadgeTone,
+} from "@/components/ui/data-table"
+import type { SequenceReportRow } from "@/lib/db/sequence-reporting"
+
+const STATUS_TONE: Record<string, DataTableBadgeTone> = {
+  active: "success",
+  paused: "warning",
+  draft: "neutral",
+  archived: "neutral",
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  active: "On",
+  paused: "Paused",
+  draft: "Not started",
+  archived: "Archived",
+}
+
+/**
+ * Why nobody has entered this sequence — in words a non-programmer can act on.
+ *
+ * A page of zeros reads as broken. On production today eight of the nine
+ * sequences have never run, and for two of them the reason is simply that they
+ * are paused — which is a thirty-second fix if you can see it, and invisible if
+ * you cannot.
+ */
+function whyEmpty(row: SequenceReportRow): string {
+  if (row.status === "paused") return "Paused, so nobody new is being added."
+  if (row.status === "draft") return "Not switched on yet."
+  if (row.status === "archived") return "Archived."
+  if (!row.trigger_source) return "Nobody yet — people are only added to this one by hand."
+  if (row.trigger_source === "funnel_form") return "Nobody yet — waiting on a funnel form."
+  if (row.trigger_source === "quiz") return "Nobody yet — waiting on a quiz result."
+  if (row.trigger_source === "newsletter") return "Nobody yet — waiting on a newsletter sign-up."
+  if (row.trigger_source === "lead_magnet") return "Nobody yet — waiting on a download."
+  return "Nobody has entered this one yet."
+}
+
+/**
+ * The sentence that stops a red number reading as a broken screen.
+ *
+ * The only sequence on production with any people in it has 73, and nothing was
+ * sent to any of them. A bare "73" in a column headed "Something went wrong"
+ * looks like the page is at fault. This says what actually happened and where
+ * the reason is written down.
+ *
+ * Deliberately NOT inside the "nobody has entered this yet" branch: a sequence
+ * can have plenty of people in it and still have failed some of them, and that
+ * is the case worth reading.
+ */
+function failedNote(count: number): string {
+  return count === 1
+    ? "Nothing was sent to 1 of these people. Open the sequence to see why."
+    : `Nothing was sent to ${count} of these people. Open the sequence to see why.`
+}
+
+export function SequenceReportTable({ rows }: { rows: SequenceReportRow[] }) {
+  return (
+    <DataTableCard>
+      <DataTable>
+        <DataTableHeader>
+          <DataTableHead>Sequence</DataTableHead>
+          <DataTableHead align="right">Entered</DataTableHead>
+          <DataTableHead align="right">Still going</DataTableHead>
+          <DataTableHead align="right">Bought</DataTableHead>
+          <DataTableHead align="right">Booked a call</DataTableHead>
+          <DataTableHead align="right">Opted out</DataTableHead>
+          <DataTableHead align="right">Reached the end</DataTableHead>
+          <DataTableHead align="right">Something went wrong</DataTableHead>
+          {/* Two of the seven things that can happen have no column of their own
+              — somebody's details were merged into another person's record, or
+              they were already in this sequence under a second record. Without
+              this column the row's numbers visibly stop adding up to Entered. */}
+          <DataTableHead align="right">Something else</DataTableHead>
+        </DataTableHeader>
+        <tbody>
+          {rows.length === 0 ? (
+            <DataTableEmpty colSpan={9}>No sequences have been set up yet.</DataTableEmpty>
+          ) : (
+            rows.map((row) => (
+              <DataTableRow key={row.id}>
+                <DataTableCell>
+                  <Link href={`/admin/sequences/${row.key}`} className="font-medium text-primary hover:underline">
+                    {row.name}
+                  </Link>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <DataTableBadge tone={STATUS_TONE[row.status] ?? "neutral"}>
+                      {STATUS_LABEL[row.status] ?? row.status}
+                    </DataTableBadge>
+                    {row.entered === 0 ? <span className="text-xs text-muted-foreground">{whyEmpty(row)}</span> : null}
+                    {row.buckets.failed > 0 ? (
+                      <span className="text-xs text-muted-foreground">{failedNote(row.buckets.failed)}</span>
+                    ) : null}
+                  </div>
+                </DataTableCell>
+                <DataTableCell align="right" className="font-medium">
+                  {row.entered}
+                </DataTableCell>
+                <DataTableCell align="right" muted={row.buckets.in_progress === 0}>
+                  {row.buckets.in_progress}
+                </DataTableCell>
+                <DataTableCell align="right" muted={row.buckets.bought === 0}>
+                  {row.buckets.bought}
+                </DataTableCell>
+                <DataTableCell align="right" muted={row.buckets.booked === 0}>
+                  {row.buckets.booked}
+                </DataTableCell>
+                <DataTableCell align="right" muted={row.buckets.opted_out === 0}>
+                  {row.buckets.opted_out}
+                </DataTableCell>
+                <DataTableCell align="right" muted={row.buckets.finished === 0}>
+                  {row.buckets.finished}
+                </DataTableCell>
+                <DataTableCell align="right" muted={row.buckets.failed === 0}>
+                  {row.buckets.failed}
+                </DataTableCell>
+                <DataTableCell align="right" muted={row.buckets.other === 0}>
+                  {row.buckets.other}
+                </DataTableCell>
+              </DataTableRow>
+            ))
+          )}
+        </tbody>
+      </DataTable>
+    </DataTableCard>
+  )
+}

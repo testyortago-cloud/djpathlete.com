@@ -1,299 +1,293 @@
-# Full Engine — the proposal against what is built
+# Lead Engine — what is live, what is missing, and how to go live
 
-**Date:** 2026-09-01
-**Scope audited:** the "Full Engine · $2,000 · 6–8 weeks" package
-**Method:** read from the code on `main` at `69a678f2`, not from the status docs.
-Production row counts and flag values are quoted from
-`docs/lead-engine-go-live-runbook-2026-09-01.md`, which read them from prod this
-afternoon; nothing here re-reads the database.
+**Date:** 2026-09-06
+**Scope audited:** the "Full Engine · $2,250 · 6–8 weeks" package in the quotation
+**Method:** every count, flag and status below was **read from production**
+(`epzuvzkokzqtzomeyoha`) and from the code on `main` at `9c366ab2` on 2026-09-06.
+Nothing is quoted from an earlier status document. Where an earlier document
+disagrees, it is wrong and §2 says so.
 
----
-
-## 1. The short version
-
-Most of Full Engine is built and deployed. **Five claims in the proposal are not
-true as written**, and one caveat in the proposal is out of date in your favour.
-
-| Verdict | Count | Items |
-|---|---|---|
-| Built and matches the claim | 18 | merging, consent, entry points, staleness, auto-move, campaign→revenue, STOP/HELP, quiet hours, delivery tracking, chat answers, chat capture, chat escalation, chat guardrails, … |
-| **Built, but narrower than claimed** | 3 | two-way SMS, the chat bubble's reach, the timeline |
-| **Not built** | 5 | tags, three pipeline boards, contact detail screen, chat booking, settings screen |
-| Proposal caveat now resolved | 1 | the Twilio A2P dependency |
-
-Behind all of it sits the fact from this morning: **the engine has still never
-successfully sent an email**, and 73 people are waiting on a dating decision
-(runbook step 4).
+**This is the only current document.** The four dated status reports and the
+2026-09-01 version of this file are superseded — see §8.
 
 ---
 
-## 2. The customer database
+## 1. Read this first
 
-### Built and true
+The engine is **built, deployed, switched on, and has almost nothing flowing
+through it.**
 
-- **One contact record per person, merged by email and phone.**
-  `contacts` (migration 00213), with `normaliseEmail` / `normalisePhone` in
-  [lib/lead-engine/identity.ts](../lib/lead-engine/identity.ts) and `decideMerge`
-  in [lib/lead-engine/merge.ts](../lib/lead-engine/merge.ts). 166 contacts
-  imported from GoHighLevel. A `contact_merges` table keeps the survivor, the
-  merged id, and a full snapshot of what was absorbed.
-- **Separate email and SMS consent.** `contact_consents` (00215) carries
-  `channel text NOT NULL CHECK (channel IN ('email','sms'))` with dated rows and
-  the wording that was shown at the time. `contact_suppressions` is separate and
-  identifier-keyed, so a STOP from an unknown number still blocks.
-- **All eleven entry points feed the spine.** Verified per route, not assumed:
+Sending works — an email was delivered to a real inbox on 2026-09-06 and Resend
+confirmed it. The tick cron fires every five minutes on its own. The chat
+assistant is live on the marketing site and quotes real calendar times. The
+contact record, the consent trail, the settings screen and the booking
+integration all shipped.
 
-  | Entry point | Route | Recorded as |
-  |---|---|---|
-  | Funnel forms | `app/api/funnels/submit` | `funnel_form` |
-  | Checkout | `app/api/stripe/webhook` | `purchase` |
-  | Contact form | `app/api/contact` | `contact_form` |
-  | Service applications | `app/api/inquiry` | `inquiry` |
-  | Newsletter | `app/api/newsletter` | `newsletter` |
-  | Blog lead magnets | `app/api/shop/leads` | `lead_magnet` |
-  | Camp registration | `app/api/events/[id]/signup` + `/checkout` | `event_signup` |
-  | Shop | `app/api/stripe/webhook` | `purchase` |
-  | Assessment page | `app/api/inquiry` | `inquiry` |
-  | Questionnaire | `app/api/questionnaire` | `questionnaire` |
-  | Step Up For Students | `app/api/inquiry` (`form_context: "step_up"`) | `step_up` |
+What is missing splits into three piles, and only the first one stands between
+you and being live:
 
-  Two the proposal does not claim are also wired: the quiz (`quiz`) and the AI
-  assistant (`ai_chat`).
+1. **Switches that are off and content that was never written.** Two finished
+   sequences sit paused. Three sequences the quotation names do not exist at
+   all. There is no screen that shows you what the engine is doing. **This pile
+   is most of the remaining value and almost none of the remaining difficulty.**
+2. **Two features from the quotation that were never built** — replying to a
+   text message from the admin, and more than one pipeline board.
+3. **Seventy-three people waiting on a decision only you can make.**
 
-  Shop is covered because
-  [app/api/stripe/webhook/route.ts:230](../app/api/stripe/webhook/route.ts#L230)
-  states the rule outright — *"EVERY completed checkout joins the contact
-  spine"* — and shop checkout uses that same webhook.
-
-### The nuance worth knowing
-
-Three sources are **declared in the union and never written**: `shop`,
-`assessment`, `funnel_checkout`
-([lib/db/contacts.ts:9-26](../lib/db/contacts.ts#L9-L26)). Those leads land
-under `purchase`, `inquiry` and `funnel_form` instead. Everyone is captured; you
-cannot slice the list by "came from the shop" or "came from the assessment
-page". Cheap to fix, and worth fixing before anyone reports off `source`.
-
-### Not built
-
-- **Tags.** No column on `contacts`, no table, no code path. Migration 00223
-  records why there is nothing to migrate: the GoHighLevel export gave no way to
-  tell what any of its **104 tags** meant.
-- **A screen for the timeline.** `contact_timeline_events` (00214) is written by
-  eleven-plus paths and indexed `(contact_id, occurred_at DESC)` — built for
-  exactly this read — but [app/(admin)/admin/contacts/](../app/(admin)/admin/contacts/)
-  holds only `page.tsx`, a list built for bulk sequence enrolment. **There is no
-  contact detail page.** The history is being recorded and nobody can read it.
-
-  Note the migration's own header: payments and bookings are *not* in this
-  table, they still hang off `users`. A timeline screen has to union three
-  sources, not select from one.
-
-→ **Phase 1** covers both.
+The blunt version: on current production data the engine has **nurtured zero
+real leads**. Not because it is broken — because one funnel is published, it has
+received one submission, and the contact list is a bulk import that has recorded
+nothing new since 2026-09-04.
 
 ---
 
-## 3. Pipeline
+## 2. Corrections to the 2026-09-01 version of this document
 
-### Built and true
+Five days and fourteen migrations have passed. The previous version listed five
+outstanding phases. **Three of them have since shipped.** Every correction below
+is in your favour.
 
-- Drag between stages, and cards that move themselves. `decideMove`
-  ([lib/lead-engine/pipeline-move.ts](../lib/lead-engine/pipeline-move.ts))
-  handles triggers `booking | payment | manual | reconciler | merge | quiz`,
-  forward-only on late events, and treats a new booking after a close as a new
-  deal.
-- Amber and red staleness, computed at read time and never stored, from
-  per-stage `amber_after_days` / `red_after_days`.
-- Campaign to revenue — [lib/automation/campaign-revenue.ts](../lib/automation/campaign-revenue.ts),
-  surfaced at `/admin/insights/campaign-revenue`.
-- The security hole the 24 August status doc flagged is **closed**: migration
-  00231 enabled RLS on all four pipeline tables. That row can be struck.
-
-### Not built
-
-**Three of the four boards.** Migration 00219 seeds Coaching only, with four
-stages, and says so in its own comment: *"machinery for N boards, exactly one
-seeded."*
-
-The machinery really is there — `applyPipelineEvent` takes an optional
-`pipelineKey` that defaults to `DEFAULT_PIPELINE_KEY = "coaching"`
-([lib/db/pipeline.ts:34](../lib/db/pipeline.ts#L34), `:479`). **No caller passes
-it**, so every event in the system lands on the Coaching board. Assessment,
-Camps & Clinics and Programs & Products do not exist, there is no screen to
-create one, and nothing decides which board a new opportunity belongs on.
-
-The board is also empty in production — nothing has flowed through it yet.
-
-→ **Phase 4.**
-
----
-
-## 4. Text messaging
-
-### The proposal's caveat is resolved
-
-> *"Stage 2 depends on your Twilio campaign registration covering marketing use…
-> If it needs re-registering, that's a 1–3 week carrier review."*
-
-It was re-registered and **approved on 2026-08-25**. All three gates are green —
-business profile `twilio-approved`, brand `APPROVED` (TCR `BWS458H`, STANDARD),
-campaign `VERIFIED` with no errors — and a test message reached a real handset
-`delivered`, `error=none`. Approval took about a day.
-See `docs/compliance/2026-08-24-a2p-campaign-resubmission.md`.
-
-Throughput is the unvetted-brand default (AT&T 4 msg/sec, T-Mobile ~2,000/day),
-which is ample at current volume. Raising it means paying for secondary vetting
-— a separate decision, not a blocker.
-
-### Built and true
-
-- **STOP / HELP / opt-in**, and done carefully: whole-word keyword sets rather
-  than substring matching (so "STOP IT" is not a STOP), suppression checked
-  *before* consent, and an **empty TwiML** response — a JSON body would 12300
-  every STOP.
-- **Timezone-aware quiet hours** and a daily cap, in
-  [lib/lead-engine/guardrails.ts](../lib/lead-engine/guardrails.ts), read from
-  the business timezone.
-- **Delivery tracking** — `app/api/webhooks/twilio/status`, with the callback
-  URL and the verification URL built from the same `appOrigin()` so the
-  signature check cannot drift.
-
-### Built, but narrower than claimed
-
-> *"Two-way SMS … sending, delivery tracking, and inbound replies landing in
-> your admin rather than only on your phone."*
-
-- **Sending is sequence-only.** `sendRenderedSequenceSms` has exactly one caller
-  in the repo — the sequence tick runner. There is no way to send a text to
-  someone from the admin, and no way to reply to one.
-- **Inbound does not land in the admin.** The webhook writes a
-  `contact_timeline_events` row — which, per §2, has no screen — and forwards
-  the message to your `reply_to` **email address**. `/admin/inbox` is a Gmail
-  view; it has nothing to do with SMS.
-
-So the inbound half works and the outbound half is automated-only. "Two-way" in
-the sense most people mean it is not there yet.
-
-> *"All eight sequences from the specification, with their text steps live."*
-
-Nine sequences exist. SMS steps are seeded into **three** — `newsletter_welcome`,
-`lead_magnet_delivery`, `cold_lead_re_engagement` — plus `sms_repermission`.
-`new_lead_nurture`'s text step exists only as a **commented-out runbook** inside
-migration 00222. The four quiz sequences are drafts still carrying
-`PLACEHOLDER COPY`.
-
-**Still untested:** inbound STOP and HELP against a live handset. Delivery
-working does not prove opt-out works, and opt-out is the compliance-critical
-half.
-
-→ **Phase 3.**
-
----
-
-## 5. The AI assistant
-
-### Built and true
-
-- Answers from real FAQs, services, pricing, programmes and camp availability —
-  [lib/lead-engine/chat/facts.ts](../lib/lead-engine/chat/facts.ts), with tools
-  `search_faqs`, `list_programmes`, `list_camps_and_clinics`,
-  `list_testimonials`.
-- **A grounded-value validator** that has already caught the assistant inventing
-  a price and mis-stating a camp date. The comments in `facts.ts` read as a log
-  of real bugs found and closed.
-- Lead capture with the campaign that brought them — `capture_lead` →
-  `/api/ask/capture` → `captureLead(source: "ai_chat")`.
-- Escalation — [escalate.ts](../lib/lead-engine/chat/escalate.ts) writes
-  `escalated_at` first and is allowed to fail loudly, so a visitor is never told
-  a human is coming when no record exists.
-- The injury/medical, no-invented-price and no-promised-result guardrails, in
-  `risk.ts` and `validate.ts`.
-
-### Two claims to correct
-
-> *"It books consults directly from live calendar availability."*
-
-It does not. `book_consult` puts a link to `/contact` on screen. The code says
-so in as many words —
-[tools.ts:18](../lib/lead-engine/chat/tools.ts#L18): *"There is no public
-booking-creation route"*, and `:253`: *"You cannot book anything yourself; this
-hands the visitor over."* Nothing in the app holds availability: `bookings`
-(migration 00050) is a record-only table with `source DEFAULT 'ghl'`, populated
-entirely by the GoHighLevel webhook.
-
-> *"A chat bubble on your website — funnels, landing pages and marketing pages."*
-
-It is on marketing pages only. [app/(funnel)/layout.tsx](../app/(funnel)/layout.tsx)
-excludes it deliberately: *"A landing page's entire job is to remove exits."*
-That is a defensible design call — but it contradicts the sentence, so one of
-the two has to change.
-
-The assistant is also switched off (`chat_assistant_enabled = false`).
-
-→ **Phase 2** (booking) and a one-line decision on the funnel bubble.
-
----
-
-## 6. Built to be reconfigured
-
-Every promised field exists on `business_settings`: `display_name`,
-`sender_name`, `sender_email`, `reply_to`, `logo_url`, `timezone`,
-`quiet_hours_start` / `_end`, `daily_message_cap`, `postal_address`,
-`sms_help_text`, `sms_messaging_service_sid`, `sms_sender_phone`.
-
-**But `updateBusinessSettings` has zero callers.** There is no settings screen.
-Changing any of it is a SQL statement — which is literally what happened to
-`sender_email` this afternoon, and what two code comments already complain about
-(*"nothing calls updateBusinessSettings, so an untouched install would send…"*).
-
-> *"A rebrand, a move to a new sending domain, or adding a second business line
-> stops being a development job."*
-
-The first two become settings changes once the screen exists. The third does
-not: `SINGLETON_BUSINESS_ID` is hard-coded in **124 places**.
-
-→ **Phase 5.**
-
----
-
-## 7. What the proposal does not mention, and should
-
-- **The engine has never sent a successful email.** 73 `sms_repermission` runs
-  are `failed`; sending was proved working today with a control, but the 73 need
-  repairing before anything reaches a person. Runbook steps 4–6.
-- **The Airtable injury-details job** — the second of the two GoHighLevel jobs
-  with no home here — is still unbuilt. (The first, handing an athlete their
-  account when a deal is won, shipped today.)
-- **Do not cancel GoHighLevel yet.** It still holds the consent records, it
-  still runs the real quiz, and until Phase 2 it is the only calendar.
-
----
-
-## 8. The five phases
-
-Ordered by what unblocks what, not by size.
-
-| Phase | What it delivers | Doc |
-|---|---|---|
-| 1 | The contact record becomes readable — detail page, timeline, tags | [phase 1](superpowers/specs/2026-09-01-full-engine-phase1-contact-record-design.md) |
-| 2 | Calendly replaces the GoHighLevel calendar, and the assistant books | [phase 2](superpowers/specs/2026-09-01-full-engine-phase2-calendly-booking-design.md) |
-| 3 | Two-way SMS — a conversation view you can reply from | [phase 3](superpowers/specs/2026-09-01-full-engine-phase3-two-way-sms-design.md) |
-| 4 | Four pipeline boards, created from a screen rather than a migration | [phase 4](superpowers/specs/2026-09-01-full-engine-phase4-pipeline-boards-design.md) |
-| 5 | The business settings screen | [phase 5](superpowers/specs/2026-09-01-full-engine-phase5-business-settings-design.md) |
-
-**Why this order.** Phase 1 first because the timeline is already being written
-and cannot be read — the cheapest gap between recorded and useful, and Phase 3
-hangs its send action off the screen it builds. Phase 2 second because it is the
-last thing keeping GoHighLevel load-bearing. Phase 5 last only because it is the
-smallest, not because it matters least — it is the one that stops you needing a
-developer to change your own sender address.
-
-## 9. Corrections to earlier status docs
-
-`docs/lead-engine-status-2026-08-24-evening.md` is now wrong in three places:
-
-| It says | Actually |
+| The 2026-09-01 version said | Actually, on 2026-09-06 |
 |---|---|
-| "Texts cannot send — waiting on Twilio, 1–3 weeks" | Approved 2026-08-25, delivery proven to a handset |
-| "A security gap on the deal records" | Closed by migration 00231 |
-| "One [GHL job] sets up a client's account when a sale is won… Not built yet" | Shipped 2026-09-01 |
+| "**There is no contact detail page.** The history is being recorded and nobody can read it." | Shipped. [the contact detail page](<../app/(admin)/admin/contacts/[id]/page.tsx>) renders permission-to-contact, the do-not-contact list, sequences they are in, and full history. **Phase 1 done.** |
+| "**Tags.** No column, no table, no code path." | Shipped — migrations 00237 and 00238, with [ContactTags.tsx](../components/admin/contacts/ContactTags.tsx). Merging carries tags across. **Zero tags have been applied yet.** |
+| "*It books consults directly from live calendar availability.* — It does not." | It does now. [chat/tools.ts](../lib/lead-engine/chat/tools.ts) calls `listAvailableTimes`, and all six `CALENDLY_*` variables landed in production two days ago. **Phase 2 done.** |
+| "**`updateBusinessSettings` has zero callers.** There is no settings screen." | Shipped. [BusinessSettingsForm](../components/admin/businesses/BusinessSettingsForm.tsx) edits all thirteen fields. **Phase 5 done.** |
+| "The assistant is switched off (`chat_assistant_enabled = false`)." | It is **on**. |
+| "The engine has never sent a successful email." | It has. 2026-09-06, Resend `delivered`, from `Darren J. Paul <noreply@send.darrenjpaul.com>`. |
+| "`SINGLETON_BUSINESS_ID` is hard-coded in **124 places**." | **Five production files**, measured with the command in `CLAUDE.md`. The tenancy work has been eating this number steadily. |
+
+**Two phases remain from that list:** Phase 3 (two-way SMS) and Phase 4
+(pipeline boards). Both still have designs marked *"not yet approved"*.
+
+---
+
+## 3. Production, measured on 2026-09-06
+
+### The nine sequences
+
+Every step in every sequence has **real copy**. Zero placeholders remain
+anywhere in production.
+
+| Sequence | Status | Steps | Fires on | Runs ever |
+|---|---|---|---|---|
+| `new_lead_nurture` | **active** | 8 — 3 email, 3 wait, 1 SMS, 1 stop | funnel form | 0 |
+| `quiz_aspiring_pro` | **active** | 1 email | quiz | 0 |
+| `quiz_ceiling_breaker` | **active** | 1 email | quiz | 0 |
+| `quiz_parent_coach` | **active** | 1 email | quiz | 0 |
+| `quiz_rebuilder` | **active** | 1 email | quiz | 0 |
+| `sms_repermission` | **active** | email + stop | manual only | 73, **all failed** |
+| `newsletter_welcome` | **paused** | 6 — 2 email, 2 wait, 1 SMS, 1 stop | newsletter signup | 0 |
+| `lead_magnet_delivery` | **paused** | 7 — 2 email, 3 wait, 1 SMS, 1 stop | lead magnet | 0 |
+| `cold_lead_re_engagement` | **draft** | 6 — 2 email, 2 wait, 1 SMS, 1 stop | manual only | 0 |
+
+**Zero branch steps exist across all nine.** The engine supports branching
+(`branch_condition`, `on_true_position`, `on_false_position` are all real
+columns and the evaluator works) — no sequence uses it.
+
+### Everything else
+
+| | Count | Reading |
+|---|---|---|
+| Contacts | **169** | Bulk-imported from GoHighLevel across 8 distinct minutes, zero first-touch sessions. Newest is 2026-09-04. |
+| Consent rows | **0** | Nothing has been captured with dated consent yet. |
+| Timeline events | 261 | Newest 2026-09-04 13:31. |
+| Tags / merges / suppressions | **0 / 0 / 0** | All three features work; none has been used. |
+| Sequence runs | 73 | **All `failed`.** All `sms_repermission`, 73 distinct people, enrolled 2026-08-22, killed 2026-08-31. |
+| Pipelines / stages | **1** / 4 | Coaching only. |
+| Opportunities | **3** | The board is effectively empty. |
+| Funnels | 6, **1 published** | **1 submission, ever.** |
+| Bookings | 5 | All `source='ghl'`. **Zero from Calendly.** |
+| Chat conversations | **1** (2 messages) | Live but essentially untouched. |
+
+### Configuration
+
+| | |
+|---|---|
+| Sender | `Darren J. Paul <noreply@send.darrenjpaul.com>` — the verified domain ✅ |
+| Reply-to | `darren@darrenjpaul.com` |
+| Timezone / quiet hours | `America/New_York`, 08:00–21:00, DST-correct |
+| Daily cap | 1 message per person per day, across all sequences |
+| Twilio | All three required variables present in production; messaging-service SID set; A2P approved 2026-08-25 ✅ |
+| Calendly | Connected 2026-09-04 (`status='connected'`); all six variables in production ✅ |
+| `chat_assistant_enabled` | **true** |
+| `cron_sequence_tick_enabled` | **true**, verified self-firing |
+| `cron_pipeline_reconcile_enabled` | **no row → false**. See §4 item 9. |
+| `logo_url`, `sms_sender_phone` | **empty** — neither blocks anything today |
+
+---
+
+## 4. What is missing
+
+Ranked by what stands between you and a working engine. "Blocks go-live" means
+*the engine cannot do its job without it*, not *it is in the quotation*.
+
+| # | Missing | Area | Blocks go-live | Rough effort |
+|---|---|---|---|---|
+| 1 | **Two finished sequences are paused** — `newsletter_welcome`, `lead_magnet_delivery`. Real copy, triggers wired, nothing wrong with them. | Automation | **Yes** | Minutes — see §5A |
+| 2 | **73 people are stranded** in terminal `failed` runs from the 2026-08-31 domain fault. | Automation | **Yes** | Minutes + your decision |
+| 3 | **Only one funnel is published**, and it has one submission. Nothing is feeding the engine. | Funnels | **Yes** | Yours, not code |
+| 4 | ~~**No reporting screen.**~~ **BUILT** — `/admin/sequences` lists every sequence with entered / still going / bought / booked / opted out / reached the end / something went wrong / something else, and a per-sequence detail page names every person and why they left. Branch `feat/sequence-reporting`, **not merged**. | Automation | ~~Yes~~ **Closed** | ~~2–3 days~~ done |
+| 5 | **Three quoted sequences do not exist**: *abandoned checkout*, *service application received*, *camp or clinic deadline*. Zero references in code or migrations. | Automation | No | 3–5 days incl. copy |
+| 6 | **The four quiz sequences are one email long.** A single send, then done. | Automation | No | 2–3 days incl. copy |
+| 7 | **Branching is unused.** Sold in Complete and Full; zero branch steps exist. | Automation | No | 1–2 days on top of #5/#6 |
+| 8 | **Three of four pipeline boards, and all routing.** `applyPipelineEvent` accepts a `pipelineKey` and **no caller anywhere passes one** — every booking, payment and quiz result lands on Coaching. A camp registration and a coaching enquiry are the same card in the same column. There is no screen to create a board. | Pipeline | No — but it is your #2 ask | 5–8 days ([design](superpowers/specs/2026-09-01-full-engine-phase4-pipeline-boards-design.md)) |
+| 9 | **The pipeline repair cron is off.** A dropped webhook leaves a deal silently missing from the board and nothing fixes it. | Pipeline | No | Minutes — see §5A |
+| 10 | **Two-way SMS.** `sendRenderedSequenceSms` has exactly one caller — the tick runner. You cannot text a person from the admin or reply to one. Inbound writes a timeline row and forwards to your email. | Automation | No | 4–6 days ([design](superpowers/specs/2026-09-01-full-engine-phase3-two-way-sms-design.md)) |
+| 11 | **No screen to manage sequences at all** — no on/off toggle, no step editor. Turning the quiz sequences on required writing a script for the purpose. | Automation | No | 3–4 days |
+| 12 | **`tag` and `stage` sequence steps silently do nothing.** [sequence-tick.ts:166](../lib/automation/sequence-tick.ts#L166) advances past them with `note: "unsupported_kind"`. A sequence cannot tag someone or move their card. | Automation | No | 1–2 days |
+| 13 | **The chat bubble is not on funnel or landing pages** — deliberate (*"a landing page's job is to remove exits"*), but it contradicts the quotation. | Chat | No | One line, either way |
+| 14 | **`shop`, `assessment` and `funnel_checkout` are declared contact sources and never written.** Everyone is captured, under `purchase` / `inquiry` / `funnel_form` — you just cannot slice the list by those three. | Contacts | No | Half a day |
+| 15 | **Email sends are not consent-gated.** `hasEmailConsent` is computed and consumed at exactly one place — [sequence-tick.ts:85](../lib/automation/sequence-tick.ts#L85), inside an *optional* branch condition. SMS **is** hard-gated. | Compliance | No — unsubscribe works | Decision first, then ~1 day |
+
+### Not missing — verified working, do not rebuild
+
+Sequences genuinely stop on **purchase** ([stripe/webhook:223](../app/api/stripe/webhook/route.ts#L223)),
+on **booking** ([bookings/ingest.ts:309](../lib/bookings/ingest.ts#L309)), on
+**STOP** and on **unsubscribe**. Quiet hours are DST-correct including the
+spring-forward gap. The daily cap and the no-two-sequences-at-once rule work.
+Contact merging by email and phone works. STOP/HELP answers empty TwiML rather
+than JSON. Delivery tracking is signature-verified. The chat assistant refuses
+injury questions before the model is called, and its output validator has
+already caught it inventing a price. Campaign→revenue exists at
+`/admin/insights/campaign-revenue`. RLS is on all four pipeline tables.
+
+---
+
+## 5. Going live
+
+### Part A — today, no code, about thirty minutes
+
+Every command has a `--dry-run`. **Run it first, every time**, and check the
+printed project host: the dev clone and production differ by one subdomain.
+
+**1. Unpause the two finished sequences.** Both have real copy and live
+triggers, so newsletter signups and lead-magnet downloads start being nurtured
+the moment you do this.
+
+```
+node scripts/activate-sequence.mjs .env.prod newsletter_welcome --dry-run
+node scripts/activate-sequence.mjs .env.prod newsletter_welcome
+node scripts/activate-sequence.mjs .env.prod lead_magnet_delivery --dry-run
+node scripts/activate-sequence.mjs .env.prod lead_magnet_delivery
+```
+
+**2. Turn on the pipeline repair cron**, so a dropped webhook stops costing you
+a deal card:
+
+```
+node scripts/set-cron-flag.mjs .env.prod cron_pipeline_reconcile_enabled true --dry-run
+node scripts/set-cron-flag.mjs .env.prod cron_pipeline_reconcile_enabled true
+```
+
+**3. Publish more funnels.** Five of your six funnels are unpublished. The
+engine is wired correctly from funnel form → contact → `new_lead_nurture`; it
+has simply had nothing to nurture. This is the single highest-value action on
+this page and none of it is code.
+
+### Part B — decisions only you can make
+
+**1. The 73 stranded people.** They were asked for permission to text on
+2026-08-22; the send died on 2026-08-31 through a configuration fault that has
+since been fixed. They are in terminal `failed` and cannot recover or re-enrol
+on their own — that guard is deliberate and protects people from a double send.
+
+`scripts/repair-failed-sequence-runs.mjs` exists for exactly this, and it
+**deliberately has no default for `--next-run-at`**, because the question is
+yours: does a fifteen-day-old ask go out as written, or does it get re-dated
+first? Answer that and the repair is a single command.
+
+**2. Consent, and what "live" means for the imported list.** 169 contacts, zero
+consent rows. Email is not consent-gated (§4 item 15) so those 169 *can* be
+emailed. Whether they *should* be, given none of them has a dated consent record
+here, is a business decision — and it is the same question the 73 re-permission
+asks were trying to settle.
+
+**3. The chat bubble on funnel pages.** Currently excluded on purpose. The
+quotation says it is there. One line either way — tell me which.
+
+**4. Do not cancel GoHighLevel yet.** It still holds the consent records and it
+still runs the real quiz. Calendly is connected but has produced **zero**
+bookings here — all five in the database are still `ghl`. Prove one Calendly
+booking arrives through the webhook before you switch anything off.
+
+### Part C — build, in this order
+
+1. **The reporting screen** (#4). Everything else is guesswork without it, it is
+   promised in every package, and the data is already being recorded correctly.
+2. **Sequence content** — the three missing sequences, the four quiz stubs, and
+   branching (#5, #6, #7). Biggest gap against the quotation, no new machinery
+   needed.
+3. **Pipeline boards and routing** (#8). Your second priority, and the only item
+   here that needs real design work — routing is the hard half and does not
+   exist in any form.
+4. **Two-way SMS** (#10). Everything is approved and configured; what is missing
+   is a conversation view and a send action.
+
+Items #11–#15 are cleanups to fold into whichever of the above touches them.
+
+---
+
+## 6. The three areas, directly
+
+### Automation workflow — *"no leads go to waste"*
+
+The follow-up machine is real and running. What is not real is **how much there
+is to follow up with**: five usable sequences of which four are a single email,
+no branching, and three of the eight named in the quotation missing entirely.
+The AI chat is live and answers from your genuine FAQs, programs and camp
+availability, captures the lead with the campaign attached, offers real calendar
+times, and escalates when unsure. It has held one conversation.
+
+### Opportunity / pipeline — *"segment by offer and campaign"*
+
+**This is the weakest area and it is exactly what you flagged.** One board
+exists. Nothing routes to any other. Every sale of every kind lands in the same
+four columns. The machinery for many boards is there and has never been used —
+migration 00219 says so in its own comment. Auto-move, staleness colouring and
+campaign→revenue all genuinely work; they are working on one board with three
+cards on it.
+
+### Sites / funnels
+
+Structurally the most complete part of the system: a full builder, versioned
+publishing, three preview routes, forms wired through to capture and enrolment.
+The gap is not code, it is **usage** — one published funnel, one submission.
+
+---
+
+## 7. Traps already paid for — do not re-learn these
+
+- **`lib/email.ts` returns a success shape when `RESEND_API_KEY` is unset.** A
+  send that did not throw is not a send. Confirm against Resend, not the logs.
+- **The tick returns *before* it logs when its flag is off**, so a silent
+  `cron_runs` table does not mean a dead cron. A four-minute gap measured
+  against a five-minute schedule is not a defect.
+- **`business_settings.sender_name` and `postal_address` are load-bearing.** An
+  empty sender name renders `from: " <addr>"`, which Resend rejects outright,
+  and an empty postal address stops the tick running at all.
+- **Read the migration that created a row before changing that row.** 00229 says
+  in capitals not to seed the quiz sequences active, and explains that the gate
+  is a human reading the copy.
+- **The production Supabase connection is read-only.** Changes go through the
+  scripts, which compare-and-set and read back.
+- **Published funnel CSS is frozen** — style changes reach a live page only when
+  that funnel is re-published.
+
+---
+
+## 8. Superseded documents
+
+Delete-on-sight. Every one of them is wrong somewhere, and three of them read as
+"almost done" while describing different systems:
+
+- `docs/lead-engine-status-2026-08-21.md`
+- `docs/lead-engine-status-2026-08-23.md`
+- `docs/lead-engine-status-2026-08-24.md`
+- `docs/lead-engine-status-2026-08-24-evening.md`
+- the 2026-09-01 version of this file (see §2)
+
+Still current: the four phase designs in `docs/superpowers/specs/`
+(phase 3 and phase 4 are unbuilt; phase 1, 2 and 5 shipped), and
+`docs/superpowers/specs/2026-09-01-lead-engine-last-mile-design.md` for the
+history of the sending defect.
