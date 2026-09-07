@@ -45,8 +45,10 @@ export default async function SequencesPage() {
 
       {withoutConsent > 0 ? (
         <p className="text-sm text-muted-foreground">
-          {withoutConsent === 1 ? "1 person" : `${withoutConsent} people`} in these sequences has no recorded permission
-          to email. Emails still go out to them — this is here so you can see the number.
+          {withoutConsent === 1
+            ? "1 person in these sequences has no recorded permission to email."
+            : `${withoutConsent} people in these sequences have no recorded permission to email.`}{" "}
+          Emails still go out to them — this is here so you can see the number.
         </p>
       ) : null}
     </div>

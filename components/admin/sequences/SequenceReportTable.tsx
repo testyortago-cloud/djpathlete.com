@@ -58,7 +58,7 @@ export function SequenceReportTable({ rows }: { rows: SequenceReportRow[] }) {
           <DataTableHead align="right">Booked a call</DataTableHead>
           <DataTableHead align="right">Opted out</DataTableHead>
           <DataTableHead align="right">Reached the end</DataTableHead>
-          <DataTableHead align="right">Didn&apos;t send</DataTableHead>
+          <DataTableHead align="right">Something went wrong</DataTableHead>
         </DataTableHeader>
         <tbody>
           {rows.length === 0 ? (
