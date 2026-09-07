@@ -89,7 +89,7 @@ import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { sendSequenceEmail, sendRenderedSequenceEmail, SequenceSendError } from "@/lib/lead-engine/email"
 import { unsubscribeUrl, unsubscribeOneClickUrl } from "@/lib/lead-engine/unsubscribe-token"
 import { addTag } from "@/lib/db/contact-tags"
-import { moveOpportunityBySequence } from "@/lib/db/pipeline"
+import { moveOpportunityBySequence, PipelineNotConfiguredError } from "@/lib/db/pipeline"
 import {
   claimDueRuns,
   loadSteps,
@@ -475,6 +475,45 @@ describe("POST /api/admin/internal/sequence-tick", () => {
       await POST(makeRequest())
 
       expect(logCronEnd).toHaveBeenCalledWith(expect.anything(), "run-1", "success", expect.anything())
+    })
+
+    // FIX 1. `config_faults` counted only rejected sends when its alarm
+    // sentence was written; Task 5 widened it to include
+    // `PipelineNotConfiguredError`, which is a missing pipeline and has
+    // nothing to do with email. The sentence went on saying "the email
+    // provider rejected every attempt", so this exact scenario — a stage step
+    // pointing at a pipeline nobody seeded — emailed the operator a cause that
+    // is not the cause. They check a healthy provider, call it a false alarm,
+    // and the run is destroyed ~100 minutes later.
+    it("does not blame the email provider for a MISSING PIPELINE fault", async () => {
+      ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([makeRun("r-stage-noboard")])
+      ;(loadSteps as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { ...EMAIL_STEP, kind: "stage", config: { stage: "consulted" } },
+      ])
+      ;(moveOpportunityBySequence as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new PipelineNotConfiguredError("coaching"),
+      )
+
+      await POST(makeRequest())
+
+      // Presence control: this really is the config-fault branch, not a
+      // vacuous pass on a tick that logged nothing.
+      const call = (logCronEnd as ReturnType<typeof vi.fn>).mock.calls.find((c) => c[2] === "failed")
+      expect(call).toBeDefined()
+      const message = (call![3] as { message: string }).message
+      expect(message).toContain("1 configuration fault")
+
+      // The wrong cause must not be named...
+      expect(message).not.toContain("the email provider rejected every attempt")
+      // ...and both real ones must be, because the count alone cannot say
+      // which kind of setting is missing.
+      expect(message).toContain("email")
+      expect(message).toContain("pipeline")
+      // And the old sentence's other overstatement: these runs ARE lost if
+      // nobody acts, because a config fault does not exempt them from
+      // MAX_ATTEMPTS.
+      expect(message).not.toContain("not lost")
+      expect(message).toContain("fail for good")
     })
   })
 

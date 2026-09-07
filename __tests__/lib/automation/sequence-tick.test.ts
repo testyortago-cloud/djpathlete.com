@@ -121,10 +121,14 @@ describe("decideStep — tag", () => {
     expect(decideStep(run, [tagStep], ctx())).toEqual({ kind: "tag", step: tagStep, tag: "warm lead" })
   })
 
-  it("fails the run when the config has no tag", () => {
+  it("fails the run when the config has no tag, carrying the parser's own sentence", () => {
+    // Pinned to the sentence rather than to `toContain("tag")`: that substring
+    // is satisfied by the step KIND alone, so it stayed green whatever the
+    // message said. This reason is written to `sequence_runs.last_error` and
+    // rendered raw to a coach, so which string arrives is the point.
     const action = decideStep(run, [step({ position: 0, kind: "tag", config: {} })], ctx())
     expect(action.kind).toBe("fail")
-    expect((action as { error: string }).error).toContain("tag")
+    expect((action as { error: string }).error).toBe("This sequence's tag step does not say which tag to add.")
   })
 
   it("never advances past a tag step", () => {
@@ -149,10 +153,13 @@ describe("decideStep — stage", () => {
     expect(decideStep(run, [stageStep], ctx())).toMatchObject({ kind: "stage", pipelineKey: "coaching" })
   })
 
-  it("fails the run when the config has no stage", () => {
+  it("fails the run when the config has no stage, carrying the parser's own sentence", () => {
+    // Same reasoning as the tag case above.
     const action = decideStep(run, [step({ position: 0, kind: "stage", config: {} })], ctx())
     expect(action.kind).toBe("fail")
-    expect((action as { error: string }).error).toContain("stage")
+    expect((action as { error: string }).error).toBe(
+      "This sequence's stage step does not say which stage to move the person to.",
+    )
   })
 })
 

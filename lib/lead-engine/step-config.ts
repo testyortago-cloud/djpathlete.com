@@ -44,11 +44,11 @@ function requiredString(value: unknown): string | null {
 export function parseTagConfig(config: Record<string, unknown>): ParseResult<TagStepConfig> {
   const raw = config.tag
   if (raw === undefined || raw === null) {
-    return { ok: false, error: "tag step config has no `tag`" }
+    return { ok: false, error: "This sequence's tag step does not say which tag to add." }
   }
   const tag = normaliseTag(typeof raw === "string" ? raw : null)
   if (tag === null) {
-    return { ok: false, error: "tag step config has a `tag` that is empty, too long, or not text" }
+    return { ok: false, error: "This sequence's tag step names a tag that is blank or too long." }
   }
   return { ok: true, value: { tag } }
 }
@@ -65,7 +65,7 @@ export function parseTagConfig(config: Record<string, unknown>): ParseResult<Tag
 export function parseStageConfig(config: Record<string, unknown>): ParseResult<StageStepConfig> {
   const stageKey = requiredString(config.stage)
   if (stageKey === null) {
-    return { ok: false, error: "stage step config has no usable `stage`" }
+    return { ok: false, error: "This sequence's stage step does not say which stage to move the person to." }
   }
 
   if (config.pipeline === undefined || config.pipeline === null) {
@@ -74,7 +74,7 @@ export function parseStageConfig(config: Record<string, unknown>): ParseResult<S
 
   const pipelineKey = requiredString(config.pipeline)
   if (pipelineKey === null) {
-    return { ok: false, error: "stage step config has a `pipeline` that is empty or not text" }
+    return { ok: false, error: "This sequence's stage step does not say which pipeline to use." }
   }
   return { ok: true, value: { stageKey, pipelineKey } }
 }

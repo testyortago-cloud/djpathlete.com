@@ -47,8 +47,16 @@ export async function POST(request: NextRequest) {
     // automation-health-scanner (daily 08:00 UTC, emails on `critical`)
     // already lists this cron, so this is the line that reaches a human.
     //
-    // The reason carries the provider's own sentence. A cron reason of
-    // "[object Object]" is a failure nobody can act on.
+    // THE REASON MUST NOT NAME ONE CAUSE. `config_faults` counted only
+    // rejected sends when it was written; Task 5 widened it to include
+    // `PipelineNotConfiguredError`, which is a missing pipeline and has
+    // nothing to do with email. A sentence that blames the email provider
+    // sends the operator to check a provider that is healthy, they call it a
+    // false alarm, and the run is destroyed ~100 minutes later — see the
+    // `isConfigFault` block in lib/automation/sequence-tick-runner.ts, which
+    // rests the whole value of this classification on a human fixing the
+    // setting inside that window. So the sentence names both settings and
+    // says out loud that the runs DO die if nobody acts.
     //
     // Task 10 (multi-coach ops): `runSequenceTick` now loops over active
     // businesses internally and isolates a business whose preflight/claim
@@ -62,7 +70,7 @@ export async function POST(request: NextRequest) {
       const messages: string[] = []
       if ((summary.config_faults ?? 0) > 0) {
         messages.push(
-          `${summary.config_faults} configuration fault(s): the email provider rejected every attempt. Nothing sent; runs deferred, not lost.`,
+          `${summary.config_faults} configuration fault(s): a setting is missing or wrong. Check the email sender, and that this business has a pipeline set up. Those runs are on hold and retrying. They fail for good in roughly 100 minutes if nobody fixes it.`,
         )
       }
       if (businessFailures.length > 0) {
