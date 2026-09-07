@@ -838,6 +838,7 @@ Write the four blocks in the same shape as Task 4's inserts. The per-sequence vo
 - Never state a score, tier or archetype name — there is no merge field, and the body must read correctly whether they scored well or badly.
 - `quiz_parent_coach` speaks about "the athlete", never "you", for the athlete's own qualities.
 - `quiz_rebuilder` must not read as a sales push at someone who is injured.
+- **Use contractions the way `00253` does.** Its bodies are dense with them — "doesn't fix it", "shouldn't be", "it's whether", "you'd like to". Task 4's first draft used none across ten bodies and read noticeably stilted against its own voice reference; that was caught in review and corrected. Do not repeat it, and do not over-correct either: contract where a person speaking plainly would, and leave a deliberate "do not" where it carries weight.
 
 Worked example — `quiz_ceiling_breaker`, positions 2 through 7 complete. Write
 the other three sequences in exactly this shape, changing only the wording per
