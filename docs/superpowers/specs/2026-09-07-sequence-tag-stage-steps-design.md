@@ -23,10 +23,20 @@ case "stage":
 So a sequence cannot tag anybody and cannot move anybody's card. This design
 makes both do what their name says.
 
-It also gives `sequence_steps.config` its **first reader and first writer**.
-The column is `jsonb NOT NULL DEFAULT '{}'` (read from production) and today
-nothing in the repository reads it or writes it. That is where a tag name and a
-stage key belong, and supplying them is most of this work.
+It also gives `sequence_steps.config` its **first reader**. The column is
+`jsonb NOT NULL DEFAULT '{}'` (read from production) and today nothing in the
+repository reads it or writes it. That is where a tag name and a stage key
+belong, and interpreting them is most of this work.
+
+It does **not** add a writer, and that was true when this shipped as well as
+when it was designed: nothing in `lib/`, `app/`, `scripts/` or any migration
+writes `sequence_steps.config`, or writes a step with `kind = 'tag'` or
+`'stage'`. `sequence_steps` has exactly two accessors in TypeScript, both
+`.select()` (`lib/db/sequences.ts:loadSteps`,
+`scripts/render-lead-engine-emails.ts`), and every `INSERT INTO
+public.sequence_steps` in `supabase/migrations/` names
+`(business_id, sequence_id, position, kind, wait_minutes, subject, body)` —
+no `config` column. See §10 for what that means for the operator.
 
 ### Measured state of production, 2026-09-07
 
@@ -148,8 +158,8 @@ Consistent with `branch`, which returns `{ kind: "fail" }` when
 transfers directly: a `tag` step with no tag has no correct default, and a
 `stage` step with no stage could move a real person's card to the wrong column.
 
-A failed run is visible in `/admin/sequences` (built in item #1) and
-recoverable. A guess is neither.
+A failed run is VISIBLE — see the correction in §7. It is not recoverable; a
+guess is neither visible nor recoverable, which is why failing still wins.
 
 ### Migration 00254 — the same belt-and-braces `branch` already has
 
@@ -195,7 +205,8 @@ the only guard. Afterwards it is defence in depth, exactly as `branch` has both.
 | The card is already on the target stage | **Skip** the write, timeline row, advance |
 | Target stage key does not exist on that pipeline | **Fail the run** |
 | Target stage is of kind `won` or `lost` | **Fail the run** |
-| The pipeline is not configured for this business | **Defer** as a configuration fault (§7) |
+| The step NAMES a pipeline and that pipeline does not exist | **Fail the run** (fix wave, see §6) |
+| The step names no pipeline and the DEFAULT one is not configured | **Defer** as a configuration fault (§7) |
 
 **Why closing is forbidden.** `won` feeds revenue reporting, and an automated
 close would let a nurture email book a sale that never happened. Refusing at the
@@ -273,10 +284,24 @@ re-running it `MAX_ATTEMPTS` times, and only then failing it, with
 transient. So it comes back as `{ kind: "invalid" }` and the runner calls
 `failRun` immediately, which is what §5's table means by "fail the run".
 
-`PipelineNotConfiguredError` still **throws**, because it genuinely is
-recoverable without touching the sequence — somebody fills in a setting and the
-next tick works. That difference is the whole distinction between §7's two
-paths.
+`PipelineNotConfiguredError` **throws only when the step named no pipeline** —
+that case genuinely is recoverable without touching the sequence, because
+somebody fills in a setting and the next tick works. That difference is the
+whole distinction between §7's two paths.
+
+> **Amended in the final fix wave (2026-09-07).** As first written this
+> paragraph said `PipelineNotConfiguredError` always throws, and the code
+> matched. That gave the same authoring typo two opposite treatments: a bad
+> stage key returned `invalid` and failed the run at once with the reason
+> recorded, while a bad pipeline key threw, deferred five times over ~100
+> minutes, and then failed with `transient_error` semantics against a fault
+> that was never transient. Both are the same class of mistake in the same
+> JSON object, and the rule two paragraphs up is explicit that a deterministic
+> fault RETURNS. So `moveOpportunityBySequence` now catches the error and
+> re-decides on whether `pipelineKey` was explicit: named-and-missing is the
+> author's, so `invalid`; default-and-missing is the operator's, so rethrown.
+> `resolvePipeline`'s own contract is unchanged — it still throws for both —
+> because `applyPipelineEvent` and the reconciler depend on that.
 
 It resolves the pipeline via `resolvePipeline(pipelineKey ?? DEFAULT_PIPELINE_KEY, businessId)`,
 reads the card via the existing `readMostRecentOpportunity` (which already
@@ -319,9 +344,20 @@ person clicked something.
 - `skipped` → timeline `sequence_stage_skipped` carrying the reason, then
   `advanceRun`
 - `invalid` → `failRun(error)` and **no** `advanceRun`. Still exactly one
-  write-back. No timeline row: the failure is on the run, which
-  `/admin/sequences` already surfaces with its plain-language explanation, and
-  a contact's history should not carry an entry about the author's mistake.
+  write-back. No timeline row: the failure is on the run, and a contact's
+  history should not carry an entry about the author's mistake.
+
+  > **Corrected in the final fix wave.** This originally said `/admin/sequences`
+  > surfaces the failure. That screen is on a different, unmerged branch. On
+  > THIS branch the reason lands on `sequence_runs.last_error`, which the
+  > contact detail page renders beside the run
+  > (`components/admin/contacts/ContactDetail.tsx`) — so the failure is
+  > **visible but not recoverable**: `status='failed'` is terminal and nothing
+  > in this codebase re-activates a failed run. Failing still beats skipping,
+  > because a silent skip leaves the typo invisible while the sequence looks
+  > healthy. Because that string reaches a coach, the fix wave also rewrote
+  > every `invalid` reason into plain language — no backticks, no "config", no
+  > "board".
 
 **Ordering is side effect → timeline → advance** in both cases, matching
 `alert`. If the side effect throws, no `advanceRun` happens and the run keeps
@@ -414,8 +450,17 @@ says must read as plain language. Hand-written labels are added for
 - **A `tag` step cannot remove a tag.** `removeTag` exists and could be wired to
   a `{"remove": "..."}` key, but nothing asks for it, and a step kind that both
   adds and removes is a small language rather than a step.
-- **No UI.** The step editor is item #11. This item is the execution engine, and
-  there is no screen to screenshot.
+- **No UI, and therefore the engine ships DORMANT.** The step editor is item
+  #11. This item is the execution engine, and there is no screen to screenshot.
+  The consequence is worth stating plainly rather than leaving for the next
+  reader to discover: nothing in the repository WRITES a `tag` or `stage` step,
+  so until the editor exists such a step can only be created by writing SQL by
+  hand against `sequence_steps`. Everything below the decision — parsing,
+  moving, tagging, auditing, the timeline rows, the failure classification — is
+  live and tested, and executes for real the moment a row exists. But no
+  operator action available today can produce that row. This is not a defect;
+  the editor is scoped out immediately above. It does mean nobody should read
+  "tag and stage steps work now" as "a coach can use tag and stage steps now".
 - **`opportunities_closed_trigger_check` is untouched**, per §5.
 - **No production data is written and no production flag is flipped.**
 

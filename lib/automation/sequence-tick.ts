@@ -169,8 +169,12 @@ export function decideStep(run: SequenceRunRow, steps: SequenceStepRow[], ctx: D
     case "tag": {
       // Malformed config FAILS rather than advancing, matching `branch` above.
       // The reasoning is the same: there is no correct default for a tag step
-      // with no tag, and a failed run is visible on the sequences screen and
-      // recoverable, where a silent skip is neither.
+      // with no tag. Failing puts the reason on `sequence_runs.last_error`,
+      // which the contact detail page renders beside the run, so a human can
+      // see it. It is NOT recoverable — `status='failed'` is terminal and
+      // nothing re-activates a failed run (and there is no `/admin/sequences`
+      // screen on this branch; that is a different, unmerged one). A silent
+      // skip is neither visible nor recoverable, which is why fail still wins.
       const parsed = parseTagConfig(step.config)
       if (!parsed.ok) return { kind: "fail", error: parsed.error }
       return { kind: "tag", step, tag: parsed.value.tag }
