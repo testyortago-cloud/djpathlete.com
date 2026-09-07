@@ -95,3 +95,119 @@ export function emptyBuckets(): Record<OutcomeBucket, number> {
     other: 0,
   }
 }
+
+export interface SequenceReportRow {
+  id: string
+  key: string
+  name: string
+  description: string | null
+  status: string
+  trigger_source: string | null
+  entered: number
+  buckets: Record<OutcomeBucket, number>
+  contactsWithoutEmailConsent: number
+}
+
+// TEMPORARY — replaced by the real implementation in Task 3.
+async function contactsWithEmailConsent(_businessId: string, ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set()
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("contact_consents")
+    .select("contact_id, granted, occurred_at")
+    .eq("business_id", _businessId)
+    .eq("channel", "email")
+    .in("contact_id", ids)
+    .order("occurred_at", { ascending: false })
+  if (error) throw new Error(`contactsWithEmailConsent: ${(error as { message?: string }).message}`)
+  const seen = new Set<string>()
+  const granted = new Set<string>()
+  for (const row of (data ?? []) as { contact_id: string; granted: boolean }[]) {
+    if (seen.has(row.contact_id)) continue
+    seen.add(row.contact_id)
+    if (row.granted) granted.add(row.contact_id)
+  }
+  return granted
+}
+
+/**
+ * One row per sequence, with its outcome tally.
+ *
+ * PostgREST cannot GROUP BY and this feature takes no migration, so there is no
+ * RPC to call: the counts are computed here, over one row per run.
+ *
+ * THE CEILING, stated honestly: that is every run of every sequence in memory
+ * at once. At today's 73 it is free, and it stays comfortable into the low tens
+ * of thousands. Past that this wants a database-side GROUP BY behind an RPC.
+ * Written down so the next person meets a documented threshold instead of a
+ * mystery.
+ *
+ * Every sequence gets a row whether or not anybody has entered it. Eight of the
+ * nine sequences in production have never run; a report that only listed the
+ * ones with runs would be a nearly empty page that looks like a broken read.
+ */
+export async function sequenceReport(businessId: string): Promise<SequenceReportRow[]> {
+  const supabase = getClient()
+
+  const { data: sequences, error: seqError } = await supabase
+    .from("sequences")
+    .select("id, key, name, description, status, trigger_source")
+    .eq("business_id", businessId)
+    .order("name", { ascending: true })
+  // Throws rather than returning []: an empty page for a failed read would tell
+  // the operator this business has no sequences, which is not true.
+  if (seqError) throw new Error(`sequenceReport sequences: ${(seqError as { message?: string }).message}`)
+
+  const { data: runs, error: runsError } = await supabase
+    .from("sequence_runs")
+    .select("sequence_id, contact_id, status, exit_reason")
+    .eq("business_id", businessId)
+  if (runsError) throw new Error(`sequenceReport runs: ${(runsError as { message?: string }).message}`)
+
+  type RunRow = { sequence_id: string; contact_id: string; status: string; exit_reason: string | null }
+  const runRows = (runs ?? []) as RunRow[]
+
+  const tallies = new Map<string, { entered: number; buckets: Record<OutcomeBucket, number> }>()
+  const contactsBySequence = new Map<string, Set<string>>()
+  for (const run of runRows) {
+    let tally = tallies.get(run.sequence_id)
+    if (!tally) {
+      tally = { entered: 0, buckets: emptyBuckets() }
+      tallies.set(run.sequence_id, tally)
+    }
+    tally.entered += 1
+    tally.buckets[bucketForRun(run.status, run.exit_reason)] += 1
+
+    let contacts = contactsBySequence.get(run.sequence_id)
+    if (!contacts) {
+      contacts = new Set()
+      contactsBySequence.set(run.sequence_id, contacts)
+    }
+    contacts.add(run.contact_id)
+  }
+
+  const allContactIds = [...new Set(runRows.map((r) => r.contact_id))]
+  const consented = await contactsWithEmailConsent(businessId, allContactIds)
+
+  type SequenceRow = {
+    id: string
+    key: string
+    name: string
+    description: string | null
+    status: string
+    trigger_source: string | null
+  }
+
+  return ((sequences ?? []) as SequenceRow[]).map((sequence) => {
+    const tally = tallies.get(sequence.id)
+    const contacts = contactsBySequence.get(sequence.id) ?? new Set<string>()
+    let without = 0
+    for (const contactId of contacts) if (!consented.has(contactId)) without += 1
+    return {
+      ...sequence,
+      entered: tally?.entered ?? 0,
+      buckets: tally?.buckets ?? emptyBuckets(),
+      contactsWithoutEmailConsent: without,
+    }
+  })
+}
