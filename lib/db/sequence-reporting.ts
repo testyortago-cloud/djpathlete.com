@@ -108,18 +108,46 @@ export interface SequenceReportRow {
   contactsWithoutEmailConsent: number
 }
 
-// TEMPORARY — replaced by the real implementation in Task 3.
-async function contactsWithEmailConsent(_businessId: string, ids: string[]): Promise<Set<string>> {
-  if (ids.length === 0) return new Set()
+/**
+ * Which of these contacts have said yes to email, most recently.
+ *
+ * CONSENT IS THE NEWEST ROW PER CONTACT WITH `granted = true`, not "a row
+ * exists". `contact_consents` is an append-only trail: granting, revoking and
+ * re-granting all add rows, so an `exists` check would report a REVOKED
+ * consent as a granted one. Of the two ways to get this wrong, that is the
+ * dangerous one.
+ *
+ * The tiebreak matches `hasConsent` in lib/db/contact-consents.ts exactly —
+ * `occurred_at desc, created_at desc` — so the report and the engine cannot
+ * disagree about one person.
+ *
+ * Bulk, unlike `hasConsent`, which issues one query per contact: this is a
+ * report over every contact in every sequence, and the per-contact version
+ * would be 169 round trips on the current data.
+ *
+ * The walk KEEPS THE FIRST ROW SEEN per contact and skips the rest, which is
+ * only correct because the query is ordered newest-first. The dedup and the
+ * ordering are one mechanism; either alone is a bug.
+ */
+export async function contactsWithEmailConsent(
+  businessId: string,
+  contactIds: string[],
+): Promise<Set<string>> {
+  if (contactIds.length === 0) return new Set()
+
   const supabase = getClient()
   const { data, error } = await supabase
     .from("contact_consents")
     .select("contact_id, granted, occurred_at")
-    .eq("business_id", _businessId)
+    .eq("business_id", businessId)
     .eq("channel", "email")
-    .in("contact_id", ids)
+    .in("contact_id", contactIds)
     .order("occurred_at", { ascending: false })
+    .order("created_at", { ascending: false })
+  // Throws: "could not read the consent table" must not render as "nobody has
+  // consented". null and [] are different answers.
   if (error) throw new Error(`contactsWithEmailConsent: ${(error as { message?: string }).message}`)
+
   const seen = new Set<string>()
   const granted = new Set<string>()
   for (const row of (data ?? []) as { contact_id: string; granted: boolean }[]) {

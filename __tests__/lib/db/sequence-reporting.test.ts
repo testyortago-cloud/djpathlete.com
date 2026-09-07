@@ -43,6 +43,7 @@ vi.mock("@/lib/supabase", () => ({
 
 import {
   bucketForRun,
+  contactsWithEmailConsent,
   emptyBuckets,
   OUTCOME_BUCKETS,
   sequenceReport,
@@ -213,6 +214,41 @@ describe("sequenceReport", () => {
     expect(quiz.buckets.bought).toBe(1)
   })
 
+  it("computes contactsWithoutEmailConsent from the newest row per contact, not merely whether one exists", async () => {
+    // MUTANT this test targets: `contactsWithEmailConsent` implemented as "a
+    // consent row exists" instead of "the newest row grants". c2's newest row
+    // is a revocation, but c2 also has an OLDER granted row — an `exists`
+    // check would find that older row and wrongly call c2 consented, hiding
+    // it from the count below. c3 has never granted at all.
+    seed({
+      sequences: [
+        ...ONE_SEQUENCE,
+        { id: "s2", key: "quiz_rebuilder", name: "Quiz Rebuilder", description: null, status: "active", trigger_source: "quiz" },
+      ],
+      runs: [
+        { sequence_id: "s1", contact_id: "c1", status: "active", exit_reason: null },
+        { sequence_id: "s1", contact_id: "c2", status: "active", exit_reason: null },
+        { sequence_id: "s2", contact_id: "c3", status: "active", exit_reason: null },
+        { sequence_id: "s2", contact_id: "c1", status: "active", exit_reason: null },
+      ],
+      consents: [
+        // Newest first, as the real .order(occurred_at desc, created_at desc)
+        // call would return from the database.
+        { contact_id: "c2", granted: false, occurred_at: "2026-09-05T00:00:00Z" },
+        { contact_id: "c2", granted: true, occurred_at: "2026-08-01T00:00:00Z" },
+        { contact_id: "c1", granted: true, occurred_at: "2026-09-01T00:00:00Z" },
+        // c3 has no consent row at all.
+      ],
+    })
+    const rows = await sequenceReport(BUSINESS)
+    const nurture = rows.find((r) => r.key === "new_lead_nurture")!
+    const quiz = rows.find((r) => r.key === "quiz_rebuilder")!
+    // s1: c1's newest row grants, c2's newest row revokes -> 1 without consent.
+    expect(nurture.contactsWithoutEmailConsent).toBe(1)
+    // s2: c3 has never consented, c1 (shared with s1) grants -> 1 without consent.
+    expect(quiz.contactsWithoutEmailConsent).toBe(1)
+  })
+
   it("throws when the runs read fails, rather than reporting zero runs", async () => {
     // "Could not read" and "nobody entered" must not look the same. A screen
     // whose entire job is to be believed cannot render a failure as an empty
@@ -227,5 +263,71 @@ describe("sequenceReport", () => {
   it("throws when the sequences read fails", async () => {
     results = [{ data: null, error: { message: "sequences down" } }]
     await expect(sequenceReport(BUSINESS)).rejects.toThrow(/sequences down/)
+  })
+})
+
+describe("contactsWithEmailConsent", () => {
+  it("asks only about email, only for the ids given, scoped to the business", async () => {
+    results = [{ data: [], error: null }]
+    await contactsWithEmailConsent(BUSINESS, ["c1", "c2"])
+    expect(calls[0].table).toBe("contact_consents")
+    expect(calls[0].ops).toContainEqual(["eq", "business_id", BUSINESS])
+    expect(calls[0].ops).toContainEqual(["eq", "channel", "email"])
+    expect(calls[0].ops).toContainEqual(["in", "contact_id", ["c1", "c2"]])
+  })
+
+  // THE MUTATION THAT MATTERS. Consent is the most recent row per contact with
+  // granted = true, NOT "a row exists". A naive `exists` implementation reports
+  // a REVOKED consent as a granted one, which is exactly backwards and the more
+  // dangerous of the two possible errors.
+  it("takes the newest row per contact, so a later revocation wins", async () => {
+    results = [
+      {
+        data: [
+          { contact_id: "c1", granted: false, occurred_at: "2026-09-01T00:00:00Z" },
+          { contact_id: "c1", granted: true, occurred_at: "2026-08-01T00:00:00Z" },
+        ],
+        error: null,
+      },
+    ]
+    const granted = await contactsWithEmailConsent(BUSINESS, ["c1"])
+    expect(granted.has("c1")).toBe(false)
+  })
+
+  it("keeps a contact whose newest row grants", async () => {
+    results = [
+      {
+        data: [
+          { contact_id: "c1", granted: true, occurred_at: "2026-09-01T00:00:00Z" },
+          { contact_id: "c1", granted: false, occurred_at: "2026-08-01T00:00:00Z" },
+        ],
+        error: null,
+      },
+    ]
+    const granted = await contactsWithEmailConsent(BUSINESS, ["c1"])
+    // Presence control: without this, the revocation test above would pass just
+    // as well against an implementation that returns an empty set for everything.
+    expect(granted.has("c1")).toBe(true)
+  })
+
+  it("orders by occurred_at descending — the walk depends on it", async () => {
+    // MUTANT: drop the .order, or make it ascending. The first row seen per
+    // contact would be the OLDEST, so every revocation would be ignored. The
+    // dedup and the ordering are one mechanism; neither is correct alone.
+    results = [{ data: [], error: null }]
+    await contactsWithEmailConsent(BUSINESS, ["c1"])
+    expect(calls[0].ops).toContainEqual(["order", "occurred_at", { ascending: false }])
+    expect(calls[0].ops).toContainEqual(["order", "created_at", { ascending: false }])
+  })
+
+  it("does not query at all for an empty id list", async () => {
+    const granted = await contactsWithEmailConsent(BUSINESS, [])
+    expect(granted.size).toBe(0)
+    expect(calls).toHaveLength(0)
+  })
+
+  it("throws on a failed read rather than reporting nobody consented", async () => {
+    results = [{ data: null, error: { message: "consent read failed" } }]
+    await expect(contactsWithEmailConsent(BUSINESS, ["c1"])).rejects.toThrow(/consent read failed/)
   })
 })
