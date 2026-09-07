@@ -154,6 +154,20 @@ describe("POST /api/events/[id]/signup", () => {
     expect(vi.mocked(captureLead)).toHaveBeenCalledWith(expect.objectContaining({ businessId: "host-biz" }))
   })
 
+  it("marks an interest signup so a sequence can tell it from a paid one", async () => {
+    getEventByIdMock.mockResolvedValueOnce(publishedEvent)
+    createSignupMock.mockResolvedValueOnce({ id: "sig-1", event_id: "evt-1", parent_email: "a@x.com" })
+    const { POST } = await import("@/app/api/events/[id]/signup/route")
+    const res = await POST(makeRequest(validBody), ctx)
+    expect(res.status).toBe(200)
+    expect(vi.mocked(captureLead)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "event_signup",
+        metadata: expect.objectContaining({ signup_type: "interest" }),
+      }),
+    )
+  })
+
   it("threads the resolved tenant into getEventById and createSignup, not the platform id", async () => {
     // The sentinel "host-biz" (mocked above via resolvePublicTenant) is
     // deliberately NOT platformBusinessId() — a route that hard-codes the
