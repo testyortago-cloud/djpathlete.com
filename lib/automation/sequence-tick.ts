@@ -8,6 +8,7 @@
 
 import { quietHoursDefer, dailyCapDefer, siblingRunDefer } from "@/lib/lead-engine/guardrails"
 import type { QuietHours } from "@/lib/lead-engine/guardrails"
+import { parseTagConfig, parseStageConfig } from "@/lib/lead-engine/step-config"
 
 export type StepKind = "email" | "sms" | "wait" | "branch" | "tag" | "stage" | "alert" | "stop"
 
@@ -64,6 +65,8 @@ export type DecisionContext = {
 export type StepAction =
   | { kind: "send"; step: SequenceStepRow; channel: "email" | "sms" }
   | { kind: "alert"; step: SequenceStepRow }
+  | { kind: "tag"; step: SequenceStepRow; tag: string }
+  | { kind: "stage"; step: SequenceStepRow; pipelineKey: string | null; stageKey: string }
   | { kind: "advance"; toPosition: number; deferUntil?: Date; note?: string }
   | { kind: "defer"; until: Date; reason: string }
   | { kind: "exit"; reason: string }
@@ -163,9 +166,24 @@ export function decideStep(run: SequenceRunRow, steps: SequenceStepRow[], ctx: D
     case "alert":
       return { kind: "alert", step }
 
-    case "tag":
-    case "stage":
-      return { kind: "advance", toPosition: step.position + 1, note: "unsupported_kind" }
+    case "tag": {
+      // Malformed config FAILS rather than advancing, matching `branch` above.
+      // The reasoning is the same: there is no correct default for a tag step
+      // with no tag, and a failed run is visible on the sequences screen and
+      // recoverable, where a silent skip is neither.
+      const parsed = parseTagConfig(step.config)
+      if (!parsed.ok) return { kind: "fail", error: parsed.error }
+      return { kind: "tag", step, tag: parsed.value.tag }
+    }
+
+    case "stage": {
+      // Same rule as `tag` and `branch`. A stage step with no stage could
+      // otherwise be guessed into moving a real person's card to the wrong
+      // column, which is worse than stopping.
+      const parsed = parseStageConfig(step.config)
+      if (!parsed.ok) return { kind: "fail", error: parsed.error }
+      return { kind: "stage", step, pipelineKey: parsed.value.pipelineKey, stageKey: parsed.value.stageKey }
+    }
 
     default: {
       const _exhaustive: never = step.kind
