@@ -171,6 +171,7 @@ const SOURCE_LABELS: Record<string, string> = {
   step_up: "Asked about stepping up",
   inquiry: "Made an enquiry",
   purchase: "Made a purchase",
+  checkout_abandoned: "Started a checkout and did not finish",
   quiz: "Finished the quiz",
   ai_chat: "Talked to the assistant on the website",
   ghl_import: "Imported from the old system",

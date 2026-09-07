@@ -11,6 +11,8 @@ const getPackageByStripeSessionMock = vi.fn()
 const getPackageByStripePaymentIdMock = vi.fn()
 const updateClientPackageMock = vi.fn()
 const activatePaidPackageMock = vi.fn()
+const findContactMock = vi.fn()
+const captureLeadMock = vi.fn(async (..._args: unknown[]) => "contact-1")
 
 vi.mock("@/lib/stripe", () => ({
   verifyWebhookSignature: (...a: unknown[]) => verifyMock(...a),
@@ -45,6 +47,17 @@ vi.mock("@/lib/email", () => ({
 }))
 vi.mock("@/lib/ghl", () => ({ ghlCreateContact: vi.fn(), ghlTriggerWorkflow: vi.fn() }))
 vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => ({ from: () => ({ update: () => ({ eq: vi.fn() }) }) }) }))
+// checkout.session.expired's abandoned-checkout capture (Lead Engine) needs
+// these three real; without them findContactWithBusinessByIdentifiers hits
+// the unmocked-select @/lib/supabase double above and throws UNCAUGHT (that
+// call, unlike its completed-case sibling, has no try/catch of its own),
+// which would 500 the whole webhook and mask the session-pack regression
+// this file exists to guard.
+vi.mock("@/lib/db/contacts", () => ({
+  findContactWithBusinessByIdentifiers: (...a: unknown[]) => findContactMock(...a),
+}))
+vi.mock("@/lib/lead-engine/capture", () => ({ captureLead: (...a: unknown[]) => captureLeadMock(...a) }))
+vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
 
 import { POST } from "@/app/api/stripe/webhook/route"
 
@@ -61,6 +74,21 @@ function packCompletedEvent() {
         currency: "usd",
         customer: null,
         customer_details: { email: null },
+      },
+    },
+  }
+}
+
+function packExpiredEvent() {
+  return {
+    id: "evt_2",
+    type: "checkout.session.expired",
+    data: {
+      object: {
+        id: "cs_pack_2",
+        metadata: { type: "session_pack" },
+        customer_email: "pack-buyer@example.com",
+        customer_details: null,
       },
     },
   }
@@ -87,6 +115,7 @@ beforeEach(() => {
   verifyMock.mockReturnValue(packCompletedEvent())
   getPackageByStripePaymentIdMock.mockResolvedValue(null)
   updateClientPackageMock.mockResolvedValue(undefined)
+  findContactMock.mockResolvedValue(null)
 })
 
 describe("Stripe webhook — session_pack completed", () => {
@@ -121,6 +150,51 @@ describe("Stripe webhook — session_pack completed", () => {
     const res = await POST(makeReq())
     expect(res.status).toBe(200)
     expect(activatePaidPackageMock).not.toHaveBeenCalled()
+  })
+})
+
+// Task 2 (Lead Engine, sequence-content-and-branching): checkout.session.expired
+// used to only reap an abandoned session pack. It now ALSO records a
+// checkout_abandoned contact event — this suite's job is to prove the new
+// capture code did not displace the pre-existing reap.
+describe("Stripe webhook — session_pack expired", () => {
+  it("still reaps an abandoned session pack", async () => {
+    verifyMock.mockReturnValue(packExpiredEvent())
+    getPackageByStripeSessionMock.mockResolvedValue({
+      id: "pkg-2",
+      client_user_id: "c1",
+      payment_status: "pending",
+      credits_used: 0,
+    })
+    const res = await POST(makeReq())
+    expect(res.status).toBe(200)
+    expect(updateClientPackageMock).toHaveBeenCalledWith("pkg-2", { status: "cancelled" })
+
+    // "session_pack" is deliberately NOT a member of NON_COACHING_CHECKOUT_TYPES
+    // (that set is {shop_order, event_signup, save_card} — see its own doc
+    // comment in the route) — a session pack is a coaching sale, same as it
+    // is on the completed side, where its capture already runs unconditionally.
+    // So the abandoned-checkout gate, reusing that same set, does NOT exclude
+    // it either: the reap and the lead capture both fire for an abandoned
+    // pack checkout.
+    expect(captureLeadMock).toHaveBeenCalledTimes(1)
+    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
+      source: "checkout_abandoned",
+      email: "pack-buyer@example.com",
+    })
+  })
+
+  it("does not reap a pack that was already paid before it expired", async () => {
+    verifyMock.mockReturnValue(packExpiredEvent())
+    getPackageByStripeSessionMock.mockResolvedValue({
+      id: "pkg-3",
+      client_user_id: "c1",
+      payment_status: "paid",
+      credits_used: 0,
+    })
+    const res = await POST(makeReq())
+    expect(res.status).toBe(200)
+    expect(updateClientPackageMock).not.toHaveBeenCalled()
   })
 })
 

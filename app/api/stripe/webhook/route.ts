@@ -53,7 +53,7 @@ import { enqueuePaymentValueAdjustmentByEmail } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
 import { getSetting } from "@/lib/db/system-settings"
 import { FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT } from "@/lib/funnels/checkout/flag"
-import { findContactWithBusinessByIdentifiers } from "@/lib/db/contacts"
+import { findContactWithBusinessByIdentifiers, type ContactEventSource } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
@@ -150,10 +150,14 @@ async function tryEnqueueAdsValueAdjustment(session: Stripe.Checkout.Session): P
 // dedupe the row (append-only spine, intentional per Task 4's ruling on the
 // event_signup/purchase overlap); it just makes every row traceable to its
 // session, the same way the sibling pipeline hook already tags itself.
-async function tryCaptureLeadFromCheckout(session: Stripe.Checkout.Session, businessId: string): Promise<void> {
+async function tryCaptureLeadFromCheckout(
+  session: Stripe.Checkout.Session,
+  businessId: string,
+  source: ContactEventSource,
+): Promise<void> {
   try {
     await captureLead({
-      source: "purchase",
+      source,
       email: session.customer_details?.email ?? session.customer_email ?? null,
       name: session.customer_details?.name ?? null,
       businessId,
@@ -255,7 +259,7 @@ export async function POST(request: Request) {
         // lost, and pre-branch it always filed here, which is why
         // `payerBusinessId` is declared outside the try block above. Listed
         // under that shelf in the inventory.
-        await tryCaptureLeadFromCheckout(session, payerBusinessId ?? platformBusinessId())
+        await tryCaptureLeadFromCheckout(session, payerBusinessId ?? platformBusinessId(), "purchase")
 
         if (session.metadata?.type === "shop_order") {
           await handleShopOrderCheckout(session)
@@ -318,6 +322,31 @@ export async function POST(request: Request) {
         const session = event.data.object as Stripe.Checkout.Session
         if (session.metadata?.type === "session_pack") {
           await handleSessionPackExpired(session)
+        }
+
+        // Lead Engine: an expired session is the ONLY abandonment signal
+        // Stripe gives us. It arrives roughly 24 hours after the session was
+        // created, so the follow-up is a day late by construction -- that is
+        // Stripe's timing, not a choice made here.
+        //
+        // Gated on the same NON_COACHING_CHECKOUT_TYPES set that decides
+        // whether a COMPLETED checkout wins a pipeline card, so "a coaching
+        // sale" has exactly one definition in this route. Per that constant's
+        // own comment, a new coaching checkout that forgets to set
+        // `metadata.type` still counts as coaching.
+        if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
+          // Same tenant resolution the completed case uses: the payer's own
+          // contact row when they have one, the platform seam for a first-time
+          // payer who does not.
+          const contact = await findContactWithBusinessByIdentifiers({
+            userId: session.metadata?.userId ?? null,
+            email: session.customer_details?.email ?? session.customer_email ?? null,
+          })
+          await tryCaptureLeadFromCheckout(
+            session,
+            contact?.businessId ?? platformBusinessId(),
+            "checkout_abandoned",
+          )
         }
         break
       }

@@ -97,8 +97,8 @@ function session() {
   }
 }
 
-function fire(sessionObject: Record<string, unknown>) {
-  verifyMock.mockReturnValueOnce({ type: "checkout.session.completed", id: "evt_1", data: { object: sessionObject } })
+function fire(sessionObject: Record<string, unknown>, eventType = "checkout.session.completed") {
+  verifyMock.mockReturnValueOnce({ type: eventType, id: "evt_1", data: { object: sessionObject } })
   return new Request("http://localhost/api/stripe/webhook", {
     method: "POST",
     headers: { "stripe-signature": "sig" },
@@ -137,5 +137,54 @@ describe("checkout.session.completed — which business the purchase capture fil
     expect(res.status).toBe(200)
     expect(captureLeadMock).toHaveBeenCalledTimes(1)
     expect(captureLeadMock.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
+  })
+})
+
+// checkout.session.expired — the abandoned-checkout lead capture. Reuses this
+// suite's mocks rather than a second harness: same route, same tenant
+// resolution, same captureLeadMock. `fire`'s second argument is the event
+// type; the three tests above default to "checkout.session.completed" and
+// are untouched.
+describe("checkout.session.expired — abandoned coaching checkout capture", () => {
+  it("captures an abandoned coaching checkout as a lead, with source checkout_abandoned", async () => {
+    findContactMock.mockResolvedValue(null)
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire({ id: "cs_1", customer_email: "a@example.com", metadata: {} }, "checkout.session.expired"),
+    )
+    expect(res.status).toBe(200)
+    expect(captureLeadMock).toHaveBeenCalledTimes(1)
+    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
+      source: "checkout_abandoned",
+      email: "a@example.com",
+      businessId: "platform-biz",
+    })
+  })
+
+  it("ignores an abandoned shop checkout — not a coaching sale", async () => {
+    findContactMock.mockResolvedValue(null)
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire(
+        { id: "cs_2", customer_email: "b@example.com", metadata: { type: "shop_order" } },
+        "checkout.session.expired",
+      ),
+    )
+    expect(res.status).toBe(200)
+    expect(findContactMock).not.toHaveBeenCalled()
+    expect(captureLeadMock).not.toHaveBeenCalled()
+  })
+
+  it("a repeat customer's abandoned checkout files under THEIR contact's business", async () => {
+    findContactMock.mockResolvedValue({ id: "contact-1", businessId: OTHER_BUSINESS_ID })
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire({ id: "cs_4", customer_email: "d@example.com", metadata: {} }, "checkout.session.expired"),
+    )
+    expect(res.status).toBe(200)
+    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
+      source: "checkout_abandoned",
+      businessId: OTHER_BUSINESS_ID,
+    })
   })
 })

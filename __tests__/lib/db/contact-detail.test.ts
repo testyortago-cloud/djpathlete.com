@@ -320,6 +320,16 @@ describe("describeTimelineEvent", () => {
     )
   })
 
+  // SOURCE_LABELS is Record<string, string> — a missing entry compiles
+  // clean and falls through to the `Came in through ${humanise(...)}`
+  // default, showing the coach a raw slug instead of a sentence. Pin it so
+  // that fallback can never happen for this source silently.
+  it("names an abandoned checkout, not a raw slug", () => {
+    expect(
+      describeTimelineEvent(event({ id: "e", kind: "entry_point", source: "checkout_abandoned" })).title,
+    ).toBe("Started a checkout and did not finish")
+  })
+
   it("has a default arm — `kind` has no CHECK constraint, so a new kind must still render", () => {
     const described = describeTimelineEvent(event({ id: "e", kind: "some_future_kind_nobody_wrote_yet" }))
     expect(described.title).toBe("Some future kind nobody wrote yet")

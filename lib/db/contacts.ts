@@ -19,6 +19,12 @@ export type ContactEventSource =
   | "ai_chat"
   | "inquiry"
   | "purchase"
+  /**
+   * A Checkout session that expired without being paid. Written from the
+   * Stripe webhook's `checkout.session.expired` case. NOT `funnel_checkout`,
+   * which means the opposite -- a checkout that succeeded.
+   */
+  | "checkout_abandoned"
   // NO MIGRATION NEEDED. `contact_timeline_events.source` is plain
   // `text NOT NULL` with no CHECK constraint (00214_lead_engine_timeline.sql),
   // so this union is the only place the set is enforced.
