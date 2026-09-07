@@ -654,8 +654,11 @@ async function processRun(
     }
 
     case "stage": {
-      // Throws PipelineNotConfiguredError when the board is missing; that is
-      // deliberate and handled as a configuration fault by the batch catch.
+      // Throws PipelineNotConfiguredError ONLY when the step named no
+      // pipeline and the business's default one is not seeded — a setting
+      // somebody can fill in, handled as a configuration fault by the batch
+      // catch. A step that NAMES a pipeline which does not resolve is an
+      // author's typo and comes back as `invalid`, like a bad stage key.
       // Everything else about a stage step comes back as a value — see the
       // throw-vs-return note on `moveOpportunityBySequence` itself.
       //
@@ -675,9 +678,22 @@ async function processRun(
 
       if (result.kind === "invalid") {
         // Deterministic: the sequence's own definition is wrong and every
-        // retry fails the same way. Fail now rather than deferring. No timeline
-        // row — the fault is the author's, and the sequences screen already
-        // shows it against the run; a contact's history should not carry it.
+        // retry fails the same way. Fail now rather than deferring — five
+        // deferrals over ~100 minutes end in exactly this write anyway, with
+        // `transient_error` recorded against a fault that was never transient.
+        //
+        // WHAT "FAIL" ACTUALLY BUYS HERE, honestly. The reason lands on
+        // `sequence_runs.last_error`, which the contact detail page renders
+        // beside the run (components/admin/contacts/ContactDetail.tsx), so it
+        // is VISIBLE. It is not RECOVERABLE: `status='failed'` is terminal and
+        // nothing in this codebase re-activates a failed run. (There is no
+        // `/admin/sequences` screen on this branch — that is a different,
+        // unmerged one.) Failing is still the right call over skipping,
+        // because a silent skip leaves an author's typo invisible forever
+        // while the sequence appears to be working.
+        //
+        // No timeline row: the fault is the author's, and a contact's own
+        // history should not carry an entry about it.
         await failRun(run.id, result.error)
         summary.failed += 1
         return

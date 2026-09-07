@@ -272,6 +272,7 @@ import {
   PipelineNotConfiguredError,
   DEFAULT_PIPELINE_KEY,
 } from "@/lib/db/pipeline"
+import type { SequenceMoveResult } from "@/lib/db/pipeline"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { REBOOKING_SUPPRESSION_DAYS } from "@/lib/lead-engine/pipeline-move"
 
@@ -1769,8 +1770,14 @@ describe("moveOpportunityBySequence", () => {
     expect(store.audit_logs).toHaveLength(0)
   })
 
-  it("lets PipelineNotConfiguredError propagate, so the runner can defer it", async () => {
-    // Nothing seeded: no pipeline row for this business.
+  // Kept and RETARGETED by the fix wave, not deleted. It always exercised
+  // `pipelineKey: null`; the name and comment now say so, because that is the
+  // only case that still throws and the distinction is the point of FIX 3.
+  it("lets PipelineNotConfiguredError propagate for the DEFAULT pipeline, so the runner can defer it", async () => {
+    // Nothing seeded: no pipeline row for this business, and the step named no
+    // pipeline either. That is a setting somebody can fill in — recoverable
+    // without touching the sequence — so it must reach the runner's
+    // configuration-fault branch as a throw.
     await expect(
       moveOpportunityBySequence({
         contactId: "c-1",
@@ -1780,6 +1787,39 @@ describe("moveOpportunityBySequence", () => {
         sequenceRunId: RUN_ID,
       }),
     ).rejects.toBeInstanceOf(PipelineNotConfiguredError)
+  })
+
+  // FIX 3, the other direction. Before this, the same authoring typo got two
+  // opposite treatments: a bad STAGE key returned `invalid` and failed the run
+  // at once with the reason recorded, while a bad PIPELINE key threw, deferred
+  // five times over ~100 minutes, and then failed with `transient_error`
+  // semantics against a fault that was never transient. Both live in the same
+  // JSON object and both fail identically on every retry.
+  //
+  // The board IS seeded here — so this cannot pass by the whole business being
+  // unconfigured. Only the named key is wrong.
+  it("returns invalid when the step NAMES a pipeline that does not exist", async () => {
+    seedBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: "no-such-pipeline",
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    expect(result.kind).toBe("invalid")
+    // Names the key the author actually typed, so the reason identifies the
+    // mistake rather than merely reporting that something was wrong.
+    expect((result as { error: string }).error).toContain("no-such-pipeline")
+    // Nothing moved, and no throw escaped to the runner's defer branch.
+    expect(store.opportunities[0].stage_id).toBe("stage-consult-booked")
+    expect(updatePatchesFor("opportunities")).toHaveLength(0)
+    expect(stageEventsFor("opp-1")).toHaveLength(0)
+    expect(store.audit_logs).toHaveLength(0)
   })
 
   // Pins the VALUE of businessId, not its arity. Every other case here seeds
@@ -1837,10 +1877,14 @@ describe("moveOpportunityBySequence", () => {
   })
 
   // `pipelineKey: null` above always means DEFAULT_PIPELINE_KEY. This proves
-  // the fallback is a fallback and not the only path: a named key resolves
-  // its own board, and a named key with no board throws rather than silently
-  // moving a card on the default one.
-  it("resolves an explicitly named pipeline key, and throws when that board is missing", async () => {
+  // the fallback is a fallback and not the only path: a named key resolves its
+  // own pipeline rather than being ignored in favour of the default one.
+  //
+  // The fix wave changed the second half: a named key with no pipeline now
+  // returns `invalid` instead of throwing (see the dedicated test above). What
+  // this case still pins is that the two named keys reach DIFFERENT outcomes,
+  // which a function that ignored `pipelineKey` entirely could not do.
+  it("resolves an explicitly named pipeline key rather than ignoring it", async () => {
     seedBoard()
     seedContact("c-1")
     seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
@@ -1854,15 +1898,77 @@ describe("moveOpportunityBySequence", () => {
     })
     expect(named).toMatchObject({ kind: "moved", toStageKey: "consulted" })
 
-    await expect(
-      moveOpportunityBySequence({
-        contactId: "c-1",
-        stageKey: "consulted",
-        pipelineKey: "no-such-board",
-        businessId: SINGLETON_BUSINESS_ID,
-        sequenceRunId: RUN_ID,
-      }),
-    ).rejects.toBeInstanceOf(PipelineNotConfiguredError)
+    const wrong = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: "no-such-board",
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+    expect(wrong.kind).toBe("invalid")
+  })
+
+  // FIX 6. `sequence_runs.last_error` is rendered raw beside the run on the
+  // contact detail page (components/admin/contacts/ContactDetail.tsx:239), so
+  // every one of these strings is read by a coach. Task 6 already reworded
+  // "board" out of the timeline copy for that reason; the same word was still
+  // reaching the same reader by this route.
+  //
+  // Asserted as a guard rather than as four literals so a fifth `invalid`
+  // reason added later cannot quietly reintroduce the voice.
+  describe("every invalid reason is written for a coach", () => {
+    const CASES: Array<{ name: string; run: () => Promise<SequenceMoveResult> }> = [
+      {
+        name: "a stage key that is not on the pipeline",
+        run: () =>
+          moveOpportunityBySequence({
+            contactId: "c-1",
+            stageKey: "nope",
+            pipelineKey: null,
+            businessId: SINGLETON_BUSINESS_ID,
+            sequenceRunId: RUN_ID,
+          }),
+      },
+      {
+        name: "a stage key that closes the sale",
+        run: () =>
+          moveOpportunityBySequence({
+            contactId: "c-1",
+            stageKey: "won",
+            pipelineKey: null,
+            businessId: SINGLETON_BUSINESS_ID,
+            sequenceRunId: RUN_ID,
+          }),
+      },
+      {
+        name: "a pipeline key that does not exist",
+        run: () =>
+          moveOpportunityBySequence({
+            contactId: "c-1",
+            stageKey: "consulted",
+            pipelineKey: "no-such-pipeline",
+            businessId: SINGLETON_BUSINESS_ID,
+            sequenceRunId: RUN_ID,
+          }),
+      },
+    ]
+
+    it.each(CASES)("$name reads as plain language", async ({ run }) => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+      const result = await run()
+
+      // Presence control: an absence assertion is worthless if nothing ran.
+      expect(result.kind).toBe("invalid")
+      const error = (result as { error: string }).error
+      expect(error).not.toContain("`")
+      expect(error.toLowerCase()).not.toContain("config")
+      expect(error.toLowerCase()).not.toContain("board")
+      // Still specific enough to say WHICH step is wrong.
+      expect(error).toContain("stage step")
+    })
   })
 })
 

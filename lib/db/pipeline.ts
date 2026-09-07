@@ -1003,15 +1003,30 @@ export type SequenceMoveResult =
  * ruling is not overruled by a form. Both refusals return `invalid` /
  * `skipped` rather than throwing, because they are deterministic — see below.
  *
- * THROW vs RETURN, which is load-bearing. A missing pipeline THROWS
- * (`PipelineNotConfiguredError`) because somebody can fill in the setting and
- * the next tick works: the runner treats it as a configuration fault and
- * DEFERS. Everything else — an unknown stage key, a closing stage — is a defect
- * in the sequence's own definition that will fail identically on every retry,
- * so it comes back as `{ kind: "invalid" }` and the runner fails the run at
- * once. Throwing those would send them through the transient-error backoff,
- * burning MAX_ATTEMPTS on a fault that was never transient and recording
- * `transient_error` against it.
+ * THROW vs RETURN, which is load-bearing. A DETERMINISTIC fault — one that
+ * will fail identically on every retry because the sequence's own definition
+ * is wrong — comes back as `{ kind: "invalid" }`, and the runner fails the run
+ * at once with the reason recorded. Throwing those would send them through the
+ * transient-error backoff, burning MAX_ATTEMPTS on a fault that was never
+ * transient and recording `transient_error` against it. A RECOVERABLE fault —
+ * one somebody can fix by filling in a setting, after which the next tick
+ * works — throws, and the runner defers it as a configuration fault.
+ *
+ * `PipelineNotConfiguredError` sits on BOTH sides of that line, so this
+ * function decides which one it is rather than passing the exception straight
+ * out:
+ *
+ *  - The step NAMED a pipeline (`pipelineKey` non-null) and it does not
+ *    resolve → author error, same class as a bad stage key and living in the
+ *    same JSON object → `{ kind: "invalid" }`.
+ *  - The step named NO pipeline, so `DEFAULT_PIPELINE_KEY` was used, and THAT
+ *    does not resolve → this business has no pipeline seeded → rethrown, so
+ *    the runner defers.
+ *
+ * `resolvePipeline`'s own contract is deliberately untouched: it still throws
+ * for both, because `applyPipelineEvent` and the reconciler depend on that.
+ * The re-decision happens here, at the only call site that can tell the two
+ * apart, by looking at whether the caller named a key.
  */
 export async function moveOpportunityBySequence(input: {
   contactId: string
@@ -1023,18 +1038,34 @@ export async function moveOpportunityBySequence(input: {
   const businessId = input.businessId
   const supabase = getClient()
 
-  // Throws PipelineNotConfiguredError when the board does not exist — see the
-  // throw-vs-return note above.
-  const { pipelineId, stages } = await resolvePipeline(input.pipelineKey ?? DEFAULT_PIPELINE_KEY, businessId)
+  // See the THROW vs RETURN note above: an explicitly named pipeline that does
+  // not resolve is the author's typo and is returned; the default one not
+  // resolving is an unfilled setting and is rethrown.
+  let pipelineId: string
+  let stages: StageRow[]
+  try {
+    ;({ pipelineId, stages } = await resolvePipeline(input.pipelineKey ?? DEFAULT_PIPELINE_KEY, businessId))
+  } catch (err) {
+    if (err instanceof PipelineNotConfiguredError && input.pipelineKey !== null) {
+      return {
+        kind: "invalid",
+        error: `This sequence's stage step points at a pipeline, "${input.pipelineKey}", that does not exist.`,
+      }
+    }
+    throw err
+  }
 
   const toStage = stages.find((s) => s.key === input.stageKey)
   if (!toStage) {
-    return { kind: "invalid", error: `stage "${input.stageKey}" does not exist on this board` }
+    return {
+      kind: "invalid",
+      error: `This sequence's stage step points at a stage, "${input.stageKey}", that is not on the pipeline.`,
+    }
   }
   if (toStage.kind !== "open") {
     return {
       kind: "invalid",
-      error: `stage "${input.stageKey}" closes a deal, and a sequence step may not close one`,
+      error: `This sequence's stage step points at the "${input.stageKey}" stage, which closes a sale. A sequence is not allowed to close one.`,
     }
   }
 

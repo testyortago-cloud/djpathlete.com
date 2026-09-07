@@ -414,20 +414,27 @@ describe("a stage step", () => {
 
   it("fails the run on an invalid stage step", async () => {
     // Deterministic: the sequence's own definition names a stage that cannot
-    // be moved to, and every retry fails identically. Failing now is what
-    // surfaces it on the sequences screen instead of burning five attempts.
+    // be moved to, and every retry fails identically. Failing now records the
+    // reason on the run instead of burning five attempts and then recording
+    // `transient_error`. (There is no `/admin/sequences` screen on this
+    // branch — the reason is read on the contact detail page, which renders
+    // `run.last_error` beside the run.)
     ;(moveOpportunityBySequence as Mock).mockResolvedValue({
       kind: "invalid",
-      error: 'stage "consulted" closes a deal, and a sequence step may not close one',
+      error:
+        'This sequence\'s stage step points at the "won" stage, which closes a sale. A sequence is not allowed to close one.',
     })
     ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
 
     const summary = await runSequenceTick()
 
     expect(failRun).toHaveBeenCalledTimes(1)
+    // The DAL's reason reaches `failRun` verbatim — the runner must not
+    // paraphrase it, because that string is what a coach reads on the contact
+    // detail page.
     expect(failRun).toHaveBeenCalledWith(
       "run-1",
-      'stage "consulted" closes a deal, and a sequence step may not close one',
+      'This sequence\'s stage step points at the "won" stage, which closes a sale. A sequence is not allowed to close one.',
     )
     expect(advanceRun).not.toHaveBeenCalled()
     expect(deferRun).not.toHaveBeenCalled()
@@ -440,8 +447,17 @@ describe("a stage step", () => {
   it("defers and counts a config fault when the pipeline is not configured", async () => {
     // The opposite treatment to `invalid`, and the distinction is the whole
     // point of the throw-vs-return split in the DAL. Somebody can seed the
-    // board and the next tick works, so this must NOT count against
-    // MAX_ATTEMPTS — that is the shape that destroyed 73 runs on 2026-08-31.
+    // pipeline and the next tick works, so the run is deferred instead of
+    // failed on the spot.
+    //
+    // It DOES still count against MAX_ATTEMPTS — `retryable` in the batch
+    // catch is fault-type-blind, and the test at the bottom of this block
+    // proves the fifth one destroys the run. What the classification buys is
+    // the 20-minute defer floor (asserted in the next test) and the
+    // `config_faults` alarm firing while attempts remain, which is the window
+    // a human has to fix the setting. The same false claim — that a config
+    // fault is exempt from MAX_ATTEMPTS — was already corrected in the
+    // runner's own comment; this copy was missed.
     ;(moveOpportunityBySequence as Mock).mockRejectedValue(new PipelineNotConfiguredError("coaching"))
     ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
 
