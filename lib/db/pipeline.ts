@@ -956,6 +956,114 @@ export async function moveOpportunityManually(input: {
   }
 }
 
+export type SequenceMoveResult =
+  | { kind: "moved"; opportunityId: string; fromStageKey: string | null; toStageKey: string }
+  | { kind: "skipped"; reason: "no_opportunity" | "already_closed" | "already_on_stage" }
+  | { kind: "invalid"; error: string }
+
+/**
+ * Moves a contact's card because a SEQUENCE STEP said so.
+ *
+ * NOT `moveOpportunityManually`, for three separate reasons:
+ *
+ *  1. That function requires an `actorUserId: string`. The tick is a cron and
+ *     has no signed-in user to name.
+ *  2. It writes `closed_trigger = 'manual'`, and 00219's own comment says a
+ *     close is FINAL exactly when that value is 'manual' — `decideMove` reads
+ *     it to suppress later automated moves. A sequence writing it would freeze
+ *     the card against the automation meant to manage it.
+ *  3. It audits as `pipeline.opportunity_moved`, category `admin_write`, whose
+ *     doc comment says that trail exists to answer "did a coach close this
+ *     deal?". A cron filed there gives that question the wrong answer — the
+ *     same defect that comment records being fixed on 2026-09-04.
+ *
+ * `applyPipelineEvent` already answers the actor question for automated moves:
+ * `actor_user_id` null, `SYSTEM_ACTOR` on the audit row, provenance carried by
+ * the `trigger` column. This does the same, with `trigger: 'sequence'`.
+ *
+ * WHAT IT WILL NOT DO. A sequence may move a card. It may not CLOSE one — `won`
+ * feeds revenue reporting, and a nurture email must not be able to book a sale
+ * that never happened. It may not REOPEN one either: a closed card was settled
+ * by a human or by a payment, and `decideMove` already encodes that a human's
+ * ruling is not overruled by a form. Both refusals return `invalid` /
+ * `skipped` rather than throwing, because they are deterministic — see below.
+ *
+ * THROW vs RETURN, which is load-bearing. A missing pipeline THROWS
+ * (`PipelineNotConfiguredError`) because somebody can fill in the setting and
+ * the next tick works: the runner treats it as a configuration fault and
+ * DEFERS. Everything else — an unknown stage key, a closing stage — is a defect
+ * in the sequence's own definition that will fail identically on every retry,
+ * so it comes back as `{ kind: "invalid" }` and the runner fails the run at
+ * once. Throwing those would send them through the transient-error backoff,
+ * burning MAX_ATTEMPTS on a fault that was never transient and recording
+ * `transient_error` against it.
+ */
+export async function moveOpportunityBySequence(input: {
+  contactId: string
+  stageKey: string
+  pipelineKey: string | null
+  businessId: string
+  sequenceRunId: string
+}): Promise<SequenceMoveResult> {
+  const businessId = input.businessId
+  const supabase = getClient()
+
+  // Throws PipelineNotConfiguredError when the board does not exist — see the
+  // throw-vs-return note above.
+  const { pipelineId, stages } = await resolvePipeline(input.pipelineKey ?? DEFAULT_PIPELINE_KEY, businessId)
+
+  const toStage = stages.find((s) => s.key === input.stageKey)
+  if (!toStage) {
+    return { kind: "invalid", error: `stage "${input.stageKey}" does not exist on this board` }
+  }
+  if (toStage.kind !== "open") {
+    return {
+      kind: "invalid",
+      error: `stage "${input.stageKey}" closes a deal, and a sequence step may not close one`,
+    }
+  }
+
+  const current = await readMostRecentOpportunity(input.contactId, pipelineId, stages, businessId)
+  if (!current) return { kind: "skipped", reason: "no_opportunity" }
+  if (current.outcome !== null) return { kind: "skipped", reason: "already_closed" }
+  // Idempotent: a retried tick must not append a second identical history row,
+  // and must not reset entered_stage_at, which would silently restart the
+  // staleness colour the board computes from it.
+  if (current.stage_id === toStage.id) return { kind: "skipped", reason: "already_on_stage" }
+
+  const now = new Date()
+  const { error: updateErr } = await supabase
+    .from("opportunities")
+    .update({
+      stage_id: toStage.id,
+      entered_stage_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    })
+    .eq("id", current.id)
+  if (updateErr) throw updateErr
+
+  await insertStageEvent(supabase, {
+    businessId,
+    opportunityId: current.id,
+    fromStageId: current.stage_id,
+    toStageId: toStage.id,
+    trigger: "sequence",
+    actorUserId: null,
+    metadata: { sequence_run_id: input.sequenceRunId },
+  })
+
+  await recordAudit({
+    action: "sequence.opportunity_moved",
+    category: "automation",
+    actor: SYSTEM_ACTOR,
+    target: { type: "opportunity", id: current.id },
+    metadata: { to_stage: toStage.key, sequence_run_id: input.sequenceRunId },
+  })
+
+  const fromStageKey = stages.find((s) => s.id === current.stage_id)?.key ?? null
+  return { kind: "moved", opportunityId: current.id, fromStageKey, toStageKey: toStage.key }
+}
+
 async function readContactNames(
   supabase: ReturnType<typeof createServiceRoleClient>,
   businessId: string,
