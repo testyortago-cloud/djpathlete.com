@@ -465,11 +465,24 @@ Nothing here sends anything on its own. In order:
 1. **Re-activate the four quiz sequences** once the new copy has been read.
    They are paused by this migration by their own decision.
 2. **Activate the three new sequences**, which seed as `draft`.
-3. **Confirm `checkout.session.expired` is subscribed** on the Stripe webhook
-   endpoint. The handler exists and has handled session packs for months, but
-   the subscription list is in the Stripe dashboard, which cannot be read from
-   here. If it is not subscribed, `abandoned_checkout` never enrols anybody and
-   nothing anywhere reports an error.
+3. ~~**Confirm `checkout.session.expired` is subscribed** on the Stripe webhook
+   endpoint.~~ **DONE — the owner activated it on 2026-09-08.** Without it
+   `abandoned_checkout` would never have enrolled anybody, and nothing anywhere
+   would have reported an error.
+
+   **One side effect, measured rather than assumed.** That webhook case already
+   contained `handleSessionPackExpired`, which cancels an unpaid, never-used
+   session pack. If the event was not subscribed before, that reaper had never
+   actually run in production — so activating the event brings a second,
+   pre-existing code path to life alongside the new one.
+
+   It is harmless here, and this was checked rather than reasoned about:
+   production `client_packages` holds **9 rows, every one `payment_status =
+   'paid'`**, with zero unpaid and zero cancelled. So the reaper never had
+   anything to reap, and Stripe does not backfill events — it only delivers
+   expirations that happen from now on. Nothing retroactive fires. Going
+   forward an abandoned unpaid pack now gets cancelled, which is what that
+   handler was written to do.
 
 Steps 1 and 2 are one click each once gap #11 — the sequence management screen,
 the next item in this build — exists. Until then they need
