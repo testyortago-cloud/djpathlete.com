@@ -72,6 +72,7 @@ import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { withAudit } from "@/lib/audit/with-audit"
 import { buildRequestSchema } from "@/lib/validators/funnel"
 import { streamAgent } from "@/lib/ai/anthropic"
+import { describeModelError, recoverObjectFromError, recoverObjectFromValue } from "@/lib/ai/recover-object"
 import {
   BUILD_STREAM_HEARTBEAT,
   encodeBuildStreamEvent,
@@ -689,7 +690,11 @@ async function handleApplyPolish(args: ApplyPolishArgs): Promise<Response> {
   // entry parse without inspecting an op.
   if (draft.docInvalid || draft.doc === null) {
     return NextResponse.json(
-      { error: "There is no readable page here to apply a polish to.", code: "doc_invalid", currentRevision: draft.revision },
+      {
+        error: "There is no readable page here to apply a polish to.",
+        code: "doc_invalid",
+        currentRevision: draft.revision,
+      },
       { status: 422 },
     )
   }
@@ -793,9 +798,7 @@ async function handleApplyPolish(args: ApplyPolishArgs): Promise<Response> {
  * tense that no longer applies.
  */
 function applyPolishMessage(opCount: number): string {
-  return opCount === 1
-    ? "Applied the polish — one change."
-    : `Applied the polish — ${opCount} changes.`
+  return opCount === 1 ? "Applied the polish — one change." : `Applied the polish — ${opCount} changes.`
 }
 
 // ---------------------------------------------------------------------------
@@ -1020,10 +1023,7 @@ async function handlePolish(args: PolishArgs): Promise<Response> {
   // it never ran. `shouldReview` owns that decision for both paths; the
   // automatic one already asks it.
   if (!shouldReview({ rewrotePage: false, requested: true })) {
-    return NextResponse.json(
-      { error: "Page review is switched off right now." },
-      { status: 503 },
-    )
+    return NextResponse.json({ error: "Page review is switched off right now." }, { status: 503 })
   }
 
   const [context, catalogueLoad] = await Promise.all([loadPageContext(funnelId, stepSlug), loadCataloguesSafely()])
@@ -1208,6 +1208,11 @@ async function streamOneAttempt(opts: {
   objectPromise.catch(() => {})
 
   let seen: StreamedSection[] = []
+  // The last partial object the stream emitted, kept ONLY as a recovery source:
+  // when the SDK rejects inside the stream transform, the error is a bare
+  // ZodError carrying neither `.text` nor `.value`, and this is the last
+  // surviving copy of what the model actually sent.
+  let lastPartial: unknown = undefined
   let deltas = 0
   let lastMeterAt = 0
   let announcedWriting = false
@@ -1226,6 +1231,7 @@ async function streamOneAttempt(opts: {
     }
 
     if (part.type === "object") {
+      lastPartial = part.object
       const next = collectStreamedSections(part.object)
       if (!announcedWriting && next.length > 0) {
         opts.emit({ type: "phase", phase: "writing" })
@@ -1251,7 +1257,34 @@ async function streamOneAttempt(opts: {
     // `await objectPromise` below, where one catch already handles it.
   }
 
-  return await objectPromise
+  try {
+    return await objectPromise
+  } catch (error) {
+    // ---------------------------------------------------------------------
+    // A DOUBLE-ENCODED ANSWER IS NOT A FAILED ONE.
+    // ---------------------------------------------------------------------
+    // The model sometimes sends the whole object as a JSON STRING inside a
+    // one-key wrapper (`{"params": "{\"reply\": ...}"}`). Zod then reports
+    // every field missing and the SDK raises `AI_NoObjectGeneratedError`, so a
+    // complete answer was being thrown away and shown to the owner as "I
+    // couldn't build that" — three times in one afternoon on 2026-09-08, and
+    // twice more on the retry, because the wrapper is not something the model
+    // knows it did.
+    //
+    // The recovery re-validates against `buildResultSchema`, so it can only
+    // return something this function would already have returned. Anything
+    // else rethrows and the existing retry runs exactly as before.
+    // Two sources, because the SDK raises this failure in two places and only
+    // one of them carries the text (measured against the live model, not
+    // assumed): a final-parse rejection is an `AI_NoObjectGeneratedError` with
+    // `.text`, while a stream-transform rejection is a bare `ZodError` whose
+    // only surviving copy of the payload is the last partial object.
+    const recovered =
+      recoverObjectFromError(error, buildResultSchema) ?? recoverObjectFromValue(lastPartial, buildResultSchema)
+    if (recovered === null) throw error
+    console.warn("[funnels/build] recovered a double-encoded model response")
+    return recovered
+  }
 }
 
 interface TurnRunArgs {
@@ -1411,7 +1444,13 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
       // `generateObject` as a parse failure, and so does a truncated or
       // schema-violating response. Same treatment as a Zod error, because at
       // this layer that is what it is.
-      lastErrors = [(error as Error).message]
+      //
+      // `describeModelError`, NOT `error.message`. The message alone is "No
+      // object generated: response did not match schema." — it names no field
+      // and no value, so attempt two was being told it was wrong and not told
+      // about what, and duly repeated attempt one. The Zod issues underneath
+      // it are what make the retry a correction rather than a re-roll.
+      lastErrors = describeModelError(error)
       continue
     }
 

@@ -327,7 +327,20 @@ describe("Block A is built once, at module load", () => {
     // the nine kinds, and an enum rendered nine times would have been a reason
     // to compact the content instead of moving the line. The tripwire is intact:
     // an inlined 11119-character JSON Schema still blows straight past 17000.
-    expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(17_000)
+    //
+    // RAISED AGAIN TO 17400 on 2026-09-08, by 411 measured characters: the tone
+    // COLOUR legend in rule 6 (`TONE_COLOUR_LEGEND`). Same test as the 2026-08-17
+    // raise: it renders ONCE, not once per kind. It was compacted first — 693
+    // characters as written, 411 after — and there was only 52 characters of
+    // headroom left, so compaction alone could not have paid for it.
+    //
+    // It is here because the prompt could not name a colour. Asked for "a green
+    // background with white text", the live model answered "I can't set literal
+    // colours — the document has no colour fields" and BLOCKED the turn, because
+    // nothing connected the word green to `tone: "dark"`. A rule that costs 411
+    // characters and stops the builder refusing colour requests outright is the
+    // kind of real content this ceiling was always meant to make room for.
+    expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(17_400)
     // Not a "non-empty" check — `" "` would pass that. The floor is set below
     // the current size but far above any degenerate render.
     expect(SECTION_BUILDER_BLOCK_A.length).toBeGreaterThan(8_000)

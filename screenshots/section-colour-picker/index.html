@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Colour requests in the page builder — review sheet</title>
+<style>
+  body { font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0 auto; max-width: 1100px; padding: 40px 24px 80px; color: #16323d; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 40px 0 6px; }
+  p.lede { color: #5b6b73; margin: 0 0 28px; }
+  img { width: 100%; height: auto; display: block; border: 1px solid #dfe5e8; border-radius: 8px; margin: 10px 0 6px; }
+  .note { color: #5b6b73; font-size: 14px; margin: 0 0 8px; }
+  code { background: #f2f5f6; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .was { border-left: 3px solid #c8763c; padding-left: 12px; margin: 18px 0; }
+</style>
+
+<h1>Colour requests in the page builder</h1>
+<p class="lede">
+  Three shots, all driven against the real app on the real routes. The annotations are burned into
+  each PNG, so any one of them stands on its own.
+</p>
+
+<div class="was">
+  <strong>What was wrong.</strong> Asking the builder chat for “the background as the color green and
+  the text in white” returned <em>“I couldn’t build that — try describing it differently.”</em> three
+  times on 2026-09-08. Two separate faults: the prompt never said what colour any tone paints, so the
+  model answered “I can’t set literal colours” and blocked the turn; and when a response arrived
+  double-encoded, the route threw away a complete answer instead of unwrapping it.
+</div>
+
+<h2>1 — The manual inspector names the colours</h2>
+<img src="01-colour-picker-in-the-inspector.png" alt="The section inspector showing four colour chips" />
+<p class="note">
+  <code>/admin/funnels/&lt;id&gt;/edit/&lt;stepId&gt;</code> — the “Background colour” chips replace a
+  select whose four options read “Default / Muted / Accent / Dark”. Each chip paints its real token
+  with its paired text colour, and carries the tone name the AI chat uses for the same colour.
+</p>
+
+<h2>2 — One click repaints the real section</h2>
+<img src="02-applied-to-the-real-page.png" alt="The bullets band repainted to the brand green" />
+<p class="note">
+  The op the app actually sent:
+  <code>{"op":"update_section","id":"benefits","style":{"tone":"dark"}}</code>. The canvas repaints
+  immediately — no publish, no reload.
+</p>
+
+<h2>3 — The AI chat answers the request that used to fail</h2>
+<img src="03-ai-chat-answers-a-colour-request.png" alt="The builder chat setting the hero to the brand green" />
+<p class="note">
+  Real model, real route. “make the top section background the colour green with the text in white”
+  → <em>“Set the hero to the deep brand green with white text (style tone &quot;dark&quot;). Everything
+  else is untouched.”</em> The stored document went from <code>unset</code> to <code>dark</code>;
+  the script fails rather than captions a pass if it does not.
+</p>
+
+<h2>Reproducing</h2>
+<p class="note">
+  <code>npm run dev</code>, then <code>node scripts/capture-section-colour-picker.mjs</code> and
+  <code>node scripts/capture-ai-colour-turn.mjs</code>. Dev clone only — both refuse any other
+  project ref. The second one spends a real model call, which is the only way to photograph a model
+  changing its mind. Light only: the admin components were never built against <code>.dark</code>.
+</p>

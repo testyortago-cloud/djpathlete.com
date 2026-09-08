@@ -30,6 +30,7 @@ import {
   type SectionField,
 } from "@/lib/funnels/sections/fields"
 import { SECTION_REGISTRY, type Section, type SectionDoc } from "@/lib/funnels/sections/registry"
+import { TONE_SWATCHES } from "@/lib/funnels/sections/tone-legend"
 import type { SectionOp } from "@/lib/funnels/sections/apply"
 import { patchForPath, valueAtPath as valueAt } from "@/lib/funnels/sections/patch"
 import { DestinationPicker } from "./DestinationPicker"
@@ -255,9 +256,7 @@ function FieldControl({
           max={field.max}
           disabled={disabled}
           defaultValue={typeof value === "number" ? value : ""}
-          onBlur={(event) =>
-            onChange(field.path, event.target.value === "" ? null : Number(event.target.value))
-          }
+          onBlur={(event) => onChange(field.path, event.target.value === "" ? null : Number(event.target.value))}
         />
       )
     }
@@ -295,14 +294,7 @@ function FieldControl({
   )
 }
 
-export function SectionInspector({
-  doc,
-  selectedId,
-  selectedPath,
-  onOps,
-  busy,
-  className,
-}: SectionInspectorProps) {
+export function SectionInspector({ doc, selectedId, selectedPath, onOps, busy, className }: SectionInspectorProps) {
   const index = doc.sections.findIndex((section) => section.id === selectedId)
   const section: Section | null = index === -1 ? null : doc.sections[index]
 
@@ -437,9 +429,7 @@ export function SectionInspector({
             className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
             value={section.variant}
             disabled={busy}
-            onChange={(event) =>
-              onOps([{ op: "update_section", id: section.id, variant: event.target.value }])
-            }
+            onChange={(event) => onOps([{ op: "update_section", id: section.id, variant: event.target.value }])}
           >
             {variantOptions(section).map((option) => (
               <option key={option.id} value={option.id}>
@@ -460,12 +450,7 @@ export function SectionInspector({
               // `redirectUrl`, so two separate controls let an owner build a
               // state the server refuses — and the failure would arrive as
               // "that change could not be applied", naming no rule.
-              <FormSuccessControl
-                props={props}
-                onOps={onOps}
-                sectionId={section.id}
-                disabled={busy}
-              />
+              <FormSuccessControl props={props} onOps={onOps} sectionId={section.id} disabled={busy} />
             ) : field.path === "redirectUrl" ? null : (
               <FieldControl
                 field={field}
@@ -482,20 +467,109 @@ export function SectionInspector({
         <div className="border-t border-border pt-4">
           <p className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">Style</p>
           <div className="grid grid-cols-2 gap-3">
-            {style.map((field) => (
-              <FieldControl
-                key={field.path}
-                field={field}
-                props={section.style as Record<string, unknown>}
-                onChange={setStyle}
-                disabled={busy}
-                autoFocus={false}
-              />
-            ))}
+            {style.map((field) =>
+              field.path === "tone" ? (
+                <ToneField
+                  key={field.path}
+                  value={(section.style as Record<string, unknown> | undefined)?.tone}
+                  onChange={setStyle}
+                  disabled={busy}
+                />
+              ) : (
+                <FieldControl
+                  key={field.path}
+                  field={field}
+                  props={section.style as Record<string, unknown>}
+                  onChange={setStyle}
+                  disabled={busy}
+                  autoFocus={false}
+                />
+              ),
+            )}
           </div>
         </div>
       </div>
     </aside>
+  )
+}
+
+/**
+ * The background colour of a section, shown as the colours themselves.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS NOT THE GENERIC `select`
+ * ---------------------------------------------------------------------------
+ * `styleFields()` derives its options straight from `sectionStyleSchema`, so
+ * tone arrived here as four words — "Default", "Muted", "Accent", "Dark" —
+ * that name a rhythm and describe no colour. An owner who wants the green band
+ * cannot tell which one that is, and the optional-field blank option is ALSO
+ * rendered "Default", so the list had the same word twice meaning two different
+ * things ("inherit the page tone" and "the white tone").
+ *
+ * Each chip therefore paints its real background token with its real paired
+ * foreground behind a letter, so the contrast is visible before it is applied.
+ * The tokens come from `TONE_SWATCHES`, the same table the model's prompt reads
+ * — `tone-legend.test.ts` holds both to what `styles.ts` actually paints.
+ *
+ * Clearing sends `""`, which `setStyle` turns into `null`, which deletes the
+ * key — the section then inherits the page tone rather than pinning one.
+ */
+function ToneField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: unknown
+  onChange: (path: string, raw: unknown) => void
+  disabled: boolean
+}) {
+  const current = typeof value === "string" ? value : null
+
+  return (
+    <div className="col-span-2">
+      <p className="mb-2 text-xs text-muted-foreground">Background colour</p>
+      {/* ONE PER ROW. Two columns truncated every label mid-word inside this
+          panel's width — "Dark — bran…" — which cut off the colour the control
+          exists to name. */}
+      <div className="grid grid-cols-1 gap-1.5">
+        {TONE_SWATCHES.map((swatch) => {
+          const active = current === swatch.id
+          return (
+            <button
+              key={swatch.id}
+              type="button"
+              disabled={disabled}
+              aria-pressed={active}
+              title={`Paints ${swatch.description}`}
+              onClick={() => onChange("tone", swatch.id)}
+              className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs transition-colors disabled:opacity-50 ${
+                active ? "border-primary ring-1 ring-primary" : "border-border hover:bg-surface/50"
+              }`}
+            >
+              <span
+                aria-hidden
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border text-[10px] font-semibold"
+                style={{ background: swatch.background, color: swatch.foreground }}
+              >
+                A
+              </span>
+              <span>{swatch.label}</span>
+              {/* The name the AI chat uses for the same thing, so the two
+                  surfaces are visibly the same vocabulary. */}
+              <span className="ml-auto font-mono text-[10px] text-muted-foreground">{swatch.id}</span>
+            </button>
+          )
+        })}
+      </div>
+      <button
+        type="button"
+        disabled={disabled || current === null}
+        onClick={() => onChange("tone", "")}
+        className="mt-2 text-xs text-muted-foreground underline underline-offset-2 disabled:opacity-40"
+      >
+        Use the page default
+      </button>
+    </div>
   )
 }
 
@@ -554,9 +628,7 @@ function FormSuccessControl({
       // `null` is `applyOps`'s delete sentinel — the only way to remove an
       // optional key over JSON. Leaving the URL behind would be a form that
       // says "show a message" while carrying a destination.
-      onOps([
-        { op: "update_section", id: sectionId, props: { successMode: "message", redirectUrl: null } },
-      ])
+      onOps([{ op: "update_section", id: sectionId, props: { successMode: "message", redirectUrl: null } }])
       return
     }
     if (!value.startsWith("page:")) return
@@ -600,14 +672,10 @@ function FormSuccessControl({
             hand someone a free-text box for here — the chat can set it, and
             this option exists so choosing it back is not the only way to see
             what is currently set. */}
-        {selected === "elsewhere" ? (
-          <option value="elsewhere">Send them to {redirectUrl}</option>
-        ) : null}
+        {selected === "elsewhere" ? <option value="elsewhere">Send them to {redirectUrl}</option> : null}
       </select>
       {selected === "message" && pages.length > 1 ? (
-        <p className="text-xs text-muted-foreground">
-          This page will not lead anywhere after the form is submitted.
-        </p>
+        <p className="text-xs text-muted-foreground">This page will not lead anywhere after the form is submitted.</p>
       ) : null}
     </div>
   )
@@ -649,14 +717,10 @@ function RepeaterEditor({
    * first's lead data. Reordering and removing are still safe; only ADD is
    * withheld, and the note below says so rather than leaving a dead button.
    */
-  const unsafeToAdd = (field.item ?? []).some(
-    (child) => !child.optional && child.pattern !== undefined,
-  )
+  const unsafeToAdd = (field.item ?? []).some((child) => !child.optional && child.pattern !== undefined)
 
   const replace = (next: unknown[]) => {
-    onOps([
-      { op: "update_section", id: section.id, props: patchForPath(props, field.path, next) } as SectionOp,
-    ])
+    onOps([{ op: "update_section", id: section.id, props: patchForPath(props, field.path, next) } as SectionOp])
   }
 
   const move = (index: number, direction: -1 | 1) => {
@@ -670,8 +734,7 @@ function RepeaterEditor({
 
   const remove = (index: number) => replace(items.filter((_, i) => i !== index))
 
-  const add = () =>
-    replace([...items, field.type === "repeater" ? blankItemFor(field) : blankValueFor(field)])
+  const add = () => replace([...items, field.type === "repeater" ? blankItemFor(field) : blankValueFor(field)])
 
   /** The first text a row holds, so a row is recognisable without opening it. */
   const rowLabel = (item: unknown, index: number): string => {
@@ -760,9 +823,7 @@ function RepeaterEditor({
         </Button>
       )}
 
-      <p className="px-1 pt-2 text-xs text-muted-foreground">
-        Double-click an item on the page to change its wording.
-      </p>
+      <p className="px-1 pt-2 text-xs text-muted-foreground">Double-click an item on the page to change its wording.</p>
     </div>
   )
 }

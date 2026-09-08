@@ -57,6 +57,7 @@ import {
   sectionStyleSchema,
 } from "@/lib/funnels/sections/registry"
 import { ISLAND_LIST } from "@/lib/funnels/islands"
+import { TONE_COLOUR_LEGEND } from "@/lib/funnels/sections/tone-legend"
 import type { Catalogue } from "@/lib/funnels/sections/resolve"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 import {
@@ -373,9 +374,9 @@ function kindEntry(def: (typeof SECTION_LIST)[number]): string {
 
 const KINDS_BLOCK = OFFERED_SECTIONS.map(kindEntry).join("\n\n")
 
-const ISLANDS_BLOCK = OFFERED_ISLANDS.map((island) => `- ${island.name} (${island.label}) — ${island.description}`).join(
-  "\n",
-)
+const ISLANDS_BLOCK = OFFERED_ISLANDS.map(
+  (island) => `- ${island.name} (${island.label}) — ${island.description}`,
+).join("\n")
 
 // ---------------------------------------------------------------------------
 // The op grammar, in English
@@ -486,7 +487,10 @@ export const BUILDER_RULES: readonly string[] = [
     'tone of its own renders dark and a section you give `style.tone: "muted"` there is a LIGHT band, not a ' +
     'darker one; and a form with `variant: "boxed"` is its own band, so on a dark page its box merges with the ' +
     'page and only its narrower width still reads — use `variant: "band"`, or `style.tone: "muted"` to keep ' +
-    "the box.",
+    "the box. OWNERS NAME TONES BY COLOUR: " +
+    TONE_COLOUR_LEGEND +
+    '. So "green with white text" means `style.tone: "dark"`. Never reply that you cannot change a colour: no ' +
+    "hex or colour field exists anywhere in this document, so these four tones ARE the colour control.",
 
   "An `update_section` op MUST carry at least one of `props`, `style` or `variant`, and it must be non-empty — " +
     "`{}` counts as absent. An op with none of them is not a tolerated no-op: it REJECTS THE ENTIRE BATCH, " +
