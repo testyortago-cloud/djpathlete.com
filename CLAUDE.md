@@ -158,6 +158,39 @@ Three routes render a funnel page, and they are NOT interchangeable:
 - **Only the form island can write.** `checkout`, `event` and `booking` islands are pure `<Link>` navigation, so a preview cannot spend money; clicking one simply leaves the preview.
 - **Gates fail closed and answer 404**, never a redirect — `middleware.ts` covers only `/admin/*` and `/client/*`, so these routes gate themselves.
 
+### Converting between a landing page and a funnel
+
+A landing page and a funnel are ONE ROW with a different `kind`, and (since 2026-09-08) the owner can
+move a row between the two boards from either card. Two rules make that safe, and neither may be
+relaxed without reintroducing a bug this repo has already shipped once:
+
+- **Conversion is `POST /api/admin/funnels/[id]/convert`, never the PATCH body.** `PATCH
+  /api/admin/funnels/[id]` still 400s any body that so much as NAMES `kind`, checked on the RAW body
+  because Zod would strip it and answer 200. That refusal is not vestigial — it is what stops the
+  conversion and the publish sharing one handler, where the only thing separating them is the order
+  two `if`s run in. The old two-request bypass (demote a broken multi-page funnel to a "page", then
+  `PATCH {status:"published"}`, which this route family allows for a page) put a funnel live with
+  three of four pages never built. `__tests__/app/api/admin/funnels/patch-route.test.ts` pins it.
+- **"A landing page is one page" takes TWO guards, not one.** `funnel → page` requires exactly one
+  step, AND `POST /api/admin/funnels/steps` refuses a `kind='page'` parent. The second is easy to
+  miss and was missing until 2026-09-08: the convert guard counts steps at ONE INSTANT, so on its own
+  nothing stops the row growing a second page the next request. `funnels.kind` is stored, not derived
+  (migration `00205` says so outright), and no constraint or trigger enforces the count.
+  Why it matters beyond tidiness: a `kind='page'` row has two doors to publication a funnel does not
+  — `PATCH /api/admin/funnels/[id]` accepts `{status:"published"}` for a page, and
+  `steps/[stepId]/publish` flips a page's row LIVE as a side effect of publishing any one step. So a
+  multi-page "landing page" could go public with its extra pages unbuilt: the
+  live-funnel-whose-own-buttons-404 state, reached without ever touching a funnel.
+  `page → funnel` is unguarded — one step is a legal funnel.
+- **The convert guard is not atomic.** It reads the step count and then writes, with no constraint
+  underneath. Two concurrent admin writers can still produce a two-step page; it is recoverable
+  (convert back, delete the page, convert again) and has not been given locking. Do not describe it
+  as airtight.
+
+`status` is preserved across a conversion, deliberately: the row keeps the same single step and the
+same published version, so `/go/<slug>` serves exactly what it served before. `scripts/restore-funnel-kind.mjs`
+does the same operation against an env file for cases where a browser is not available.
+
 ## Audit Logs
 
 Append-only trail of mutations, auth events, automation runs, and billing webhooks in `audit_logs` (migration `00152_audit_logs.sql`). Eleven categories: `auth | admin_write | admin_read_sensitive | client_action | support | commerce | billing | marketing | compliance | automation | system`.

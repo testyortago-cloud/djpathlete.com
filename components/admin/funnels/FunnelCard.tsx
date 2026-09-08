@@ -31,6 +31,7 @@ import { AlertTriangle, ArrowRight, CircleDot } from "lucide-react"
 import { PreviewCard } from "./PreviewCard"
 import { RenameDialog } from "./RenameDialog"
 import { FunnelGoLiveButton } from "./FunnelGoLiveButton"
+import { ConvertKindDialog } from "./ConvertKindDialog"
 import { FUNNEL_GOALS } from "@/lib/validators/funnel"
 import { Button } from "@/components/ui/button"
 import { ListChecks, Settings2 } from "lucide-react"
@@ -279,6 +280,19 @@ export function FunnelCard({ funnel, steps, leadCount, onDelete, quizByStepId = 
               </Button>
             ) : null}
             <FunnelGoLiveButton funnelId={funnel.id} status={funnel.status} kind={funnel.kind} canGoLive={entryPublished} />
+            {/* BOTH BOARDS, OPPOSITE DIRECTIONS. Restored 2026-09-08 on the
+                owner's instruction after being deleted on 2026-08-31 — see
+                `app/api/admin/funnels/[id]/convert/route.ts` for why it came
+                back as its own route rather than as `kind` in the PATCH body.
+                `stepCount` only decides whether the button is offered or
+                explained; the route counts the steps again and decides. */}
+            <ConvertKindDialog
+              funnelId={funnel.id}
+              funnelName={funnel.name}
+              to={isPage ? "funnel" : "page"}
+              stepCount={ordered.length}
+              isDraft={funnel.status !== "published"}
+            />
             {/* FUNNEL ONLY, AND THIS IS THE SHARP EDGE OF SHARING ONE CARD.
                 `/admin/pages/<id>` redirects to the list by design, so this
                 button on a landing page is a control whose only outcome is a

@@ -301,6 +301,31 @@ export const updateFunnelSchema = z.object({
   notify_emails: z.array(z.string().email()).max(5).nullable().optional(),
 })
 
+/**
+ * The body of `POST /api/admin/funnels/:id/convert`.
+ *
+ * `kind` DELIBERATELY STAYS OUT OF `updateFunnelSchema` ABOVE, and this schema
+ * is why conversion could come back without reopening what freezing it closed.
+ *
+ * The old bypass was two requests through ONE route: `PATCH {kind:"page"}` to
+ * demote a broken multi-page funnel, then `PATCH {status:"published"}` — which
+ * that route allows for a page — to put it live with three of its four pages
+ * never built. Widening the PATCH body again would put the conversion and the
+ * publish back in the same handler, where the only thing standing between them
+ * is the order two `if`s happen to run in.
+ *
+ * So conversion gets its own verb and its own route, PATCH keeps refusing any
+ * body that so much as names `kind`, and the bypass test in
+ * `__tests__/app/api/admin/funnels/patch-route.test.ts` stays green unchanged.
+ *
+ * `to` is the DESTINATION, not a toggle. A toggle would make the outcome depend
+ * on state the caller cannot see, so two clicks on a stale card could land
+ * somewhere neither click asked for.
+ */
+export const convertFunnelSchema = z.object({
+  to: kindSchema,
+})
+
 export const createStepSchema = z.object({
   funnel_id: z.string().uuid(),
   slug: slugSchema,
@@ -474,6 +499,7 @@ export const publishStepSchema = z.object({
 
 export type CreateFunnelData = z.infer<typeof createFunnelSchema>
 export type UpdateFunnelData = z.infer<typeof updateFunnelSchema>
+export type ConvertFunnelData = z.infer<typeof convertFunnelSchema>
 export type UpdateStepData = z.infer<typeof updateStepSchema>
 export type PublishStepData = z.infer<typeof publishStepSchema>
 export type BuildRequestData = z.infer<typeof buildRequestSchema>
