@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest"
-import { stepGraphEdges, hasCycle, reachableFrom, validateStepList, type StepDraft } from "@/lib/lead-engine/step-list"
+import {
+  stepGraphEdges,
+  hasCycle,
+  reachableFrom,
+  validateStepList,
+  planStepSave,
+  type StepDraft,
+  type SavedStep,
+  type RunPointer,
+} from "@/lib/lead-engine/step-list"
 
 /** The messages only, for terser assertions. */
 const messages = (steps: StepDraft[]) => validateStepList(steps).map((p) => p.message)
@@ -228,5 +237,66 @@ describe("validateStepList — the rules the database cannot express", () => {
   it("rejects a list that loops forever", () => {
     const steps: StepDraft[] = [step("email"), step("branch", { on_true_position: 0, on_false_position: 2 }), step("stop")]
     expect(messages(steps)).toEqual([expect.stringMatching(/round in circles|loop/i)])
+  })
+})
+
+describe("planStepSave", () => {
+  const old3: SavedStep[] = [
+    { id: "a", position: 0 },
+    { id: "b", position: 1 },
+    { id: "c", position: 2 },
+  ]
+  const withId = (id: string | null) => step("email", { id })
+
+  it("leaves everyone alone when nothing moved", () => {
+    const plan = planStepSave(old3, [withId("a"), withId("b"), withId("c")], [{ id: "r1", current_position: 1 }])
+    expect(plan.repoint).toEqual([])
+    expect(plan.exit).toEqual([])
+    expect(plan.unchanged).toEqual(["r1"])
+  })
+
+  it("carries a person across when their step moved", () => {
+    // A new step is inserted at the top, so "b" slides from 1 to 2.
+    const plan = planStepSave(old3, [withId(null), withId("a"), withId("b"), withId("c")], [{ id: "r1", current_position: 1 }])
+    expect(plan.repoint).toEqual([{ runId: "r1", from: 1, to: 2 }])
+    expect(plan.exit).toEqual([])
+  })
+
+  it("stops a person whose step was removed", () => {
+    const plan = planStepSave(old3, [withId("a"), withId("c")], [{ id: "r1", current_position: 1 }])
+    expect(plan.exit).toEqual([{ runId: "r1", from: 1 }])
+    expect(plan.repoint).toEqual([])
+  })
+
+  it("leaves a person already past the end alone", () => {
+    // No old step at position 9, so there is nothing to re-point them to and
+    // nothing was taken away. They complete exactly as they would have.
+    const plan = planStepSave(old3, [withId("a")], [{ id: "r1", current_position: 9 }])
+    expect(plan.exit).toEqual([])
+    expect(plan.repoint).toEqual([])
+    expect(plan.unchanged).toEqual(["r1"])
+  })
+
+  it("re-points a person whose step moved EARLIER, not just later", () => {
+    const plan = planStepSave(old3, [withId("c"), withId("a"), withId("b")], [{ id: "r1", current_position: 2 }])
+    expect(plan.repoint).toEqual([{ runId: "r1", from: 2, to: 0 }])
+  })
+
+  it("handles several people at once, each on their own footing", () => {
+    const plan = planStepSave(old3, [withId("a"), withId("c")], [
+      { id: "r1", current_position: 0 },
+      { id: "r2", current_position: 1 },
+      { id: "r3", current_position: 2 },
+    ])
+    expect(plan.unchanged).toEqual(["r1"])
+    expect(plan.exit).toEqual([{ runId: "r2", from: 1 }])
+    expect(plan.repoint).toEqual([{ runId: "r3", from: 2, to: 1 }])
+  })
+
+  it("ignores a brand-new step's null id when matching", () => {
+    // Two new steps both carry id null. Keying on it would collide and could
+    // re-point somebody onto an unrelated step.
+    const plan = planStepSave(old3, [withId(null), withId(null), withId("b")], [{ id: "r1", current_position: 1 }])
+    expect(plan.repoint).toEqual([{ runId: "r1", from: 1, to: 2 }])
   })
 })

@@ -190,3 +190,53 @@ export function validateStepList(steps: StepDraft[]): StepProblem[] {
 
   return problems
 }
+
+export type RunPointer = { id: string; current_position: number }
+export type SavedStep = { id: string; position: number }
+export type StepSavePlan = {
+  repoint: Array<{ runId: string; from: number; to: number }>
+  exit: Array<{ runId: string; from: number }>
+  unchanged: string[]
+}
+
+/**
+ * What an edit does to the people who are partway through.
+ *
+ * Matched on STEP ID, never position -- ids survive a renumber and positions
+ * are exactly what a renumber changes. A run whose step still exists is
+ * carried to wherever that step now sits; a run whose step has been taken away
+ * is EXITED, so it is never recorded as having reached the end.
+ *
+ * A run pointing past the end of the OLD list is left alone: nothing was taken
+ * from it, and `decideStep` already completes it.
+ */
+export function planStepSave(oldSteps: SavedStep[], newSteps: StepDraft[], runs: RunPointer[]): StepSavePlan {
+  const idAtOldPosition = new Map<number, string>()
+  for (const step of oldSteps) idAtOldPosition.set(step.position, step.id)
+
+  const newPositionOfId = new Map<string, number>()
+  newSteps.forEach((step, index) => {
+    // A new step has no id yet; two of them would collide on `null`.
+    if (step.id !== null) newPositionOfId.set(step.id, index)
+  })
+
+  const plan: StepSavePlan = { repoint: [], exit: [], unchanged: [] }
+
+  for (const run of runs) {
+    const oldId = idAtOldPosition.get(run.current_position)
+    if (oldId === undefined) {
+      plan.unchanged.push(run.id)
+      continue
+    }
+    const newPosition = newPositionOfId.get(oldId)
+    if (newPosition === undefined) {
+      plan.exit.push({ runId: run.id, from: run.current_position })
+    } else if (newPosition === run.current_position) {
+      plan.unchanged.push(run.id)
+    } else {
+      plan.repoint.push({ runId: run.id, from: run.current_position, to: newPosition })
+    }
+  }
+
+  return plan
+}
