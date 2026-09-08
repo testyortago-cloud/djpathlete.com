@@ -142,6 +142,13 @@ Five non-content-engine watchdogs surface under `/admin/insights/*`. Each follow
 
 Plan + reconciliation notes live in `docs/superpowers/plans/2026-05-16-broader-automations.md`.
 
+## Sequence management
+
+`/admin/sequences` (on/off switch per row) and `/admin/sequences/[key]` (same switch, plus a full step editor) closed gap #11 — see `docs/full-engine-scope-vs-built.md` §4. Two facts from migration `00256` that are easy to re-break without reading the SQL:
+
+- **The tick is gated on the sequence being ON, and the gate has to stay INSIDE `claim_sequence_runs`, before the claim.** The RPC joins `sequences` and requires `q.status = 'active'` in the same `WHERE` that selects rows to claim — it used to filter only on the run's own status, so "paused" stopped new arrivals but not people already inside. The claiming `UPDATE` also does `attempts = attempts + 1`, and the runner destroys a run once it hits `MAX_ATTEMPTS`. Move this check into the runner (post-claim) instead of the RPC (pre-claim) and every held run's `attempts` climbs on every tick, destroying all of them within minutes — the 73-run incident again, this time caused by the safety feature.
+- **Removing a step cascades `sequence_messages` away with it** (`sequence_messages_step_id_fkey`), deleting the record of real messages already sent to real people. `save_sequence_steps` refuses the whole save if any step being dropped has a `sequence_messages` row, and the step editor (`StepEditor.tsx`) disables that step's own remove button and says why — both checks exist because the SQL refusal alone would surface as an unexplained 500.
+
 ## Funnel & landing-page previews
 
 Three routes render a funnel page, and they are NOT interchangeable:
