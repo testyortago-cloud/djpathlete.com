@@ -54,6 +54,14 @@ describe("routeToPipeline — the routing table (spec §3.2)", () => {
   it("assessment overrides what a bare event_signup payment would otherwise get", () => {
     expectRouted({ event: "payment", checkoutType: "event_signup", serviceType: "assessment" }, ASSESSMENT_KEY)
   })
+
+  it("checkoutType: 'event_signup' only means camps_clinics on a payment — not on a booking", () => {
+    // Pins the `event === "payment"` half of the compound condition
+    // separately from the `checkoutType === "event_signup"` half: dropping
+    // just this conjunct would route a booking that happens to carry the
+    // same string to camps_clinics too.
+    expectRouted({ event: "booking", checkoutType: "event_signup" }, DEFAULT_PIPELINE_KEY)
+  })
 })
 
 describe("routeToPipeline — fallback behaviour", () => {
