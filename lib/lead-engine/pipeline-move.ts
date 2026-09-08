@@ -22,7 +22,12 @@ export type StageKind = "open" | "won" | "lost"
 // single source of truth the opportunity_stage_events_trigger_check CHECK is
 // tested against, and a value the constraint allows but this union omits is
 // the same kind of drift that let 'quiz' ship silently broken.
-export type MoveTrigger = "booking" | "payment" | "manual" | "reconciler" | "merge" | "quiz" | "sequence"
+// "inquiry" is decideMove's trigger for the `inquiry` PipelineEvent kind
+// below (gap #8 phase 1.5) — migration 00258 widens the CHECK constraint to
+// match, and __tests__/migrations/00258_pipeline_inquiry_trigger.test.ts
+// pins the two together the same way 00254's test already does for 'quiz'
+// and 'sequence'.
+export type MoveTrigger = "booking" | "payment" | "manual" | "reconciler" | "merge" | "quiz" | "sequence" | "inquiry"
 export type Staleness = "fresh" | "amber" | "red"
 
 export type StageRow = {
@@ -85,6 +90,18 @@ export type PipelineEvent =
    * so `red` is the most urgent, not the least.
    */
   | { kind: "quiz_result"; tier: string; occurredAt: Date }
+  /**
+   * A person submitting an inquiry form (app/api/inquiry/route.ts). Not a
+   * sale — decideMove's inquiry arm only ever opens a card in the first open
+   * stage, exactly like quiz_result, and never creates one already Won or
+   * Lost. `serviceType` is the submitted `service` field
+   * (lib/validators/inquiry.ts's SERVICE_TYPES) — `routeToPipeline` reads it
+   * to decide which board, but decideMove itself does not branch on it: by
+   * the time an inquiry event reaches decideMove, which board to open the
+   * card on has already been decided by the caller (spec §3.2, "however it
+   * arrives").
+   */
+  | { kind: "inquiry"; serviceType: string | null; occurredAt: Date }
 
 export type MoveDecision =
   | { kind: "create"; toStageKey: string; trigger: MoveTrigger; outcome?: "won" | "lost"; valueCents?: number; currency?: string; reason?: string }
@@ -232,6 +249,44 @@ export function decideMove(ctx: MoveContext, event: PipelineEvent): MoveDecision
       .sort((a, b) => a.position - b.position)[0]
     if (!firstOpen) return { kind: "noop", reason: "no_open_stage" }
     return { kind: "create", toStageKey: firstOpen.key, trigger: "quiz" }
+  }
+
+  // --- inquiry ---
+  //
+  // A person asking is not a sale. Unlike quiz_result, there is no tier gate
+  // — every inquiry that reaches decideMove is already worth a card, because
+  // the caller only sends one when someone actually submitted the form; the
+  // routing DECISION (which board) already happened one layer up
+  // (routeToPipeline). What decideMove owns here is the SAME two rules
+  // quiz_result already owns, reused rather than restated, because both are
+  // the same underlying rule: an unsolicited signal from the person
+  // themselves never outranks work already in flight, and never overrules a
+  // human's own recent verdict.
+  if (event.kind === "inquiry") {
+    if (current && current.outcome == null) {
+      // A live deal is further along than a fresh inquiry can know about —
+      // never drag a card already in motion backwards or re-open it.
+      return { kind: "noop", reason: "already_open" }
+    }
+    if (current?.outcome != null) {
+      // The SAME rule as a re-booking/quiz-result, reused rather than
+      // restated: a human who ruled this person out recently does not get
+      // overruled by a form.
+      if (humanClosed && current.outcome === "lost" && current.closed_at) {
+        const age = now.getTime() - new Date(current.closed_at).getTime()
+        if (age < REBOOKING_SUPPRESSION_DAYS * DAY_MS) {
+          return { kind: "refuse", reason: "suppressed_after_manual_lost" }
+        }
+      }
+    }
+    const firstOpen = stages
+      .filter((stage) => stage.kind === "open")
+      .slice()
+      .sort((a, b) => a.position - b.position)[0]
+    // Never a Won or Lost card — an inquiry with nowhere open to land noops
+    // rather than guessing a closed stage.
+    if (!firstOpen) return { kind: "noop", reason: "no_open_stage" }
+    return { kind: "create", toStageKey: firstOpen.key, trigger: "inquiry" }
   }
 
   // --- booking ---

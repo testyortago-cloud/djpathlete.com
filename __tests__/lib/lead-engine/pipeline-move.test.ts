@@ -340,3 +340,67 @@ describe("decideMove — quiz_result", () => {
     expect(decideMove(ctx(), quiz("chartreuse"))).toEqual({ kind: "noop", reason: "quiz_tier_not_actionable" })
   })
 })
+
+// ---------------------------------------------------------------------------
+// inquiry — a person asking is not a sale (Task B, gap #8 phase 1.5)
+// ---------------------------------------------------------------------------
+//
+// Modeled on quiz_result above: same "don't drag a live deal backwards" and
+// "a human's recent Lost is not overruled by a form" reasoning, reused
+// rather than restated. Unlike quiz_result there is no tier gate — every
+// inquiry event decideMove sees is presumed worth a card; which BOARD it
+// belongs on was already decided one layer up by routeToPipeline.
+describe("decideMove — inquiry (Task B)", () => {
+  const inquiry = (serviceType: string | null = "assessment") => ({
+    kind: "inquiry" as const,
+    serviceType,
+    occurredAt: NOW,
+  })
+
+  it("opens a card in the first open stage when nothing exists", () => {
+    expect(decideMove(ctx(), inquiry())).toEqual({
+      kind: "create",
+      toStageKey: "consult_booked",
+      trigger: "inquiry",
+    })
+  })
+
+  it("never creates a Won or Lost card — only ever the first OPEN stage", () => {
+    const d = decideMove(ctx(), inquiry())
+    expect(d.kind).toBe("create")
+    expect(d).toMatchObject({ toStageKey: "consult_booked" })
+    // The board's own won/lost stage keys must never appear as the target.
+    expect((d as { toStageKey: string }).toStageKey).not.toBe("won")
+    expect((d as { toStageKey: string }).toStageKey).not.toBe("lost")
+  })
+
+  it("leaves an OPEN card alone — the inquiry does not disturb a live deal", () => {
+    expect(decideMove(ctx({ current: openAt("consulted") }), inquiry())).toEqual({
+      kind: "noop",
+      reason: "already_open",
+    })
+  })
+
+  it("refuses inside the Lost suppression window, reusing the existing rule", () => {
+    const current = closedAt("lost", "manual", INSIDE_WINDOW.toISOString())
+    expect(decideMove(ctx({ current }), inquiry())).toEqual({
+      kind: "refuse",
+      reason: "suppressed_after_manual_lost",
+    })
+  })
+
+  it("opens a card once the suppression window has expired", () => {
+    const current = closedAt("lost", "manual", PAST_WINDOW.toISOString())
+    expect(decideMove(ctx({ current }), inquiry())).toMatchObject({ kind: "create", trigger: "inquiry" })
+  })
+
+  it("opens a NEW card after a WON deal — a repeat inquiry is a new deal, not a suppression", () => {
+    const current = closedAt("won", "manual", "2026-08-18T12:00:00Z")
+    expect(decideMove(ctx({ current }), inquiry())).toMatchObject({ kind: "create", trigger: "inquiry" })
+  })
+
+  it("opens a card regardless of serviceType — decideMove does not branch on it, only routeToPipeline does", () => {
+    expect(decideMove(ctx(), inquiry("in_person"))).toMatchObject({ kind: "create", trigger: "inquiry" })
+    expect(decideMove(ctx(), inquiry(null))).toMatchObject({ kind: "create", trigger: "inquiry" })
+  })
+})

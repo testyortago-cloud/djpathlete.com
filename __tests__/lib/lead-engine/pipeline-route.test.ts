@@ -62,6 +62,18 @@ describe("routeToPipeline — the routing table (spec §3.2)", () => {
     // same string to camps_clinics too.
     expectRouted({ event: "booking", checkoutType: "event_signup" }, DEFAULT_PIPELINE_KEY)
   })
+
+  it("routes an assessment inquiry to the assessment board — the inquiry row (Task B)", () => {
+    expectRouted({ event: "inquiry", serviceType: "assessment" }, ASSESSMENT_KEY)
+  })
+
+  it("routes a non-assessment inquiry to coaching", () => {
+    expectRouted({ event: "inquiry", serviceType: "in_person" }, DEFAULT_PIPELINE_KEY)
+  })
+
+  it("routes an inquiry with no serviceType to coaching", () => {
+    expectRouted({ event: "inquiry" }, DEFAULT_PIPELINE_KEY)
+  })
 })
 
 describe("routeToPipeline — fallback behaviour", () => {

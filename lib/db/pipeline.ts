@@ -325,7 +325,12 @@ function findStage(stages: StageRow[], key: string): StageRow {
  * rather than corrects — decideMove's quiz_result branch can also refuse
  * (`suppressed_after_manual_lost`), and this function's own doc comment
  * above has never mentioned that case; fixing that mapping is not this
- * change's job.
+ * change's job. `inquiry` refuses as `inquiry` — decideMove's inquiry arm
+ * can refuse the same `suppressed_after_manual_lost` way quiz_result does
+ * (lib/lead-engine/pipeline-move.ts), and `opportunity_stage_events.trigger`
+ * has its own dedicated value for it (migration 00258) rather than
+ * borrowing `payment`, which would misattribute the refusal to a Stripe
+ * event that never happened.
  */
 function triggerForEvent(event: PipelineEvent): MoveTrigger {
   switch (event.kind) {
@@ -335,6 +340,8 @@ function triggerForEvent(event: PipelineEvent): MoveTrigger {
     case "refund":
     case "quiz_result":
       return "payment"
+    case "inquiry":
+      return "inquiry"
     default: {
       const _exhaustive: never = event
       throw new Error(`triggerForEvent: unhandled event kind "${(_exhaustive as PipelineEvent).kind}"`)
