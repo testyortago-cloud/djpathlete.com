@@ -370,6 +370,55 @@ describe("describeTimelineEvent", () => {
   })
 })
 
+// Gap #14, Task 1: `SOURCE_LABELS` is `Record<string, string>`, so a source
+// added to `ContactEventSource` (lib/db/contacts.ts) without a matching label
+// compiles clean and falls through to `Came in through ${humanise(...)}` --
+// generic, not broken, and not written for a coach. This list is written by
+// hand from that union, so forgetting a label here fails the loop below by
+// name rather than compiling away silently.
+const DECLARED_SOURCES = [
+  "funnel_form",
+  "funnel_checkout",
+  "contact_form",
+  "newsletter",
+  "lead_magnet",
+  "event_signup",
+  "shop",
+  "assessment",
+  "questionnaire",
+  "step_up",
+  "ai_chat",
+  "inquiry",
+  "purchase",
+  "checkout_abandoned",
+  "quiz",
+] as const
+
+function titleFor(source: string): string {
+  return describeTimelineEvent(event({ id: "e", kind: "entry_point", source })).title
+}
+
+describe("every declared contact source has a label written for a coach", () => {
+  it.each(DECLARED_SOURCES)("%s has its own label, not the generic fallback", (source) => {
+    expect(titleFor(source)).not.toMatch(/^Came in through /)
+  })
+
+  it("says which sentence each new source renders", () => {
+    // Assert WHICH value, not that a value came back: a non-empty check is
+    // green for the raw slug and the human label alike.
+    expect(titleFor("shop")).toBe("Bought something from the shop")
+    expect(titleFor("funnel_checkout")).toBe("Bought through a funnel")
+    expect(titleFor("assessment")).toBe("Finished a movement assessment")
+    expect(titleFor("questionnaire")).toBe("Filled in a questionnaire")
+  })
+
+  it("still falls back readably for a source nobody declared", () => {
+    // The default arm is load-bearing: `source` is plain text with no CHECK,
+    // so a value this union has never heard of can arrive from an import.
+    expect(titleFor("carrier_pigeon")).toBe("Came in through Carrier pigeon")
+  })
+})
+
 // Task 5 (committed) added three new timeline kinds from the sequence tick
 // runner: sequence_tag_applied, sequence_stage_moved, sequence_stage_skipped.
 // Without hand-written arms these fall through to the humanising default and
