@@ -352,6 +352,33 @@ describe("Stripe webhook — pipeline", () => {
     })
   })
 
+  // Gap #8, phase 1.5 Task A (owner decision 2026-09-08, awake and explicit):
+  // a paid camp/clinic registration now DOES win a pipeline card, but on its
+  // ROUTED board (camps_clinics), never Coaching. `event_signup` used to be
+  // a member of the set gating this call (NO_PIPELINE_CARD_CHECKOUT_TYPES's
+  // predecessor) — it no longer is, so this call is reached at all, and
+  // routeToPipeline (the real implementation, not a mock) is what names
+  // "camps_clinics". No `event_signup_id` in this fixture's metadata, so the
+  // dispatch below (handleEventSignupCheckout) returns at its own first
+  // guard rather than needing a real event-signups mock.
+  it("wins the card on camps_clinics for an event_signup checkout, not coaching", async () => {
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-camp-1", businessId: "bbb" })
+    verifyMock.mockReturnValueOnce(stripeEvent({ metadata: { type: "event_signup" }, amount_total: 8000 }))
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(makeStripeReq())
+
+    expect(res.status).toBe(200)
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-camp-1", "payment", "bbb")
+    expect(applyPipelineEventMock).toHaveBeenCalledWith({
+      contactId: "contact-camp-1",
+      event: { kind: "payment", amountCents: 8000, currency: "usd", occurredAt: expect.any(Date) },
+      businessId: "bbb",
+      pipelineKey: "camps_clinics",
+      metadata: { stripe_session_id: "cs_test_1" },
+    })
+  })
+
   // ─── charge.refunded — pipeline (spec §14) ───────────────────────────────
   //
   // A refund reopens nothing — the Won card stays Won — but its value_cents

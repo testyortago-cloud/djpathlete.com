@@ -64,22 +64,48 @@ import { platformBusinessId } from "@/lib/tenancy/platform"
 // Lead Engine: `checkout.session.completed` fires for every kind of money
 // this business takes, not just a coaching sale — merch, event tickets, and
 // a $0 card-on-file setup all come through here too. Winning a pipeline
-// card is specific to a coaching sale (spec §2.1: "a contact books a
-// consult OR completes a checkout" — a coaching checkout), so
-// `applyPipelineEvent` below excludes these by `session.metadata?.type`
-// rather than trying to enumerate every coaching type (a new coaching
-// checkout that forgets to set `type` must still win its card, not
-// silently go missing from the board).
+// card is specific to a checkout that names a routable deal (spec §2.1: "a
+// contact books a consult OR completes a checkout", widened by gap #8 to a
+// camp/clinic registration too — routeToPipeline puts that on its own
+// board, `camps_clinics`, never Coaching), so `applyPipelineEvent` below
+// excludes only the checkout types that are NEVER evidence of a deal at
+// all, by `session.metadata?.type`, rather than trying to enumerate every
+// deal type (a new coaching checkout that forgets to set `type` must still
+// win its card, not silently go missing from the board — routeToPipeline's
+// own default is the same rule applied to WHICH board it wins).
 //
-// This is every non-coaching `checkout.session.completed` type this route
-// currently dispatches on — confirmed by reading every
-// `session.metadata?.type` branch below, not guessed:
+// This is every `checkout.session.completed` type this route dispatches on
+// that is NEVER a deal — confirmed by reading every `session.metadata?.type`
+// branch below, not guessed:
 //   - "shop_order": merch — lib/shop/webhooks.ts, revenue tracked in
 //     `shop_orders`, never `payments`.
-//   - "event_signup": a ticket, not a coaching deal — recordEventSignupPayment
-//     below.
 //   - "save_card": a card-on-file setup with `amount_total` of 0 — no sale
 //     happened at all.
+//
+// "event_signup" is deliberately NOT a member (gap #8, owner decision
+// 2026-09-08, awake and explicit): a paid camp/clinic registration IS a
+// deal now, just not a Coaching one. `routeToPipeline` resolves
+// `checkoutType: "event_signup"` to `camps_clinics`, and
+// `applyPipelineEvent` creates the card there via `decideMove`'s `payment`
+// branch — an instant Won card carrying `value_cents` (see the call site
+// below). It stays a member of `NON_COACHING_CHECKOUT_TYPES` below, which
+// answers a different question — see that constant's own comment.
+const NO_PIPELINE_CARD_CHECKOUT_TYPES = new Set(["shop_order", "save_card"])
+
+// A DIFFERENT question from NO_PIPELINE_CARD_CHECKOUT_TYPES above — not
+// "does this checkout ever win a pipeline card", but "is an ABANDONED
+// (`checkout.session.expired`) delivery of this checkout type worth a
+// `checkout_abandoned` lead-capture event". Used only at the expired
+// branch below. "event_signup" stays a member here even though it now DOES
+// win a pipeline card once completed (NO_PIPELINE_CARD_CHECKOUT_TYPES,
+// above): abandoning a camp/clinic signup is not the "a coaching lead went
+// cold" retargeting signal this capture exists for, and gap #8 does not
+// touch that decision — do not collapse these two sets back into one, and
+// do not assume a member added to or removed from one is automatically the
+// right answer for the other.
+//   - "shop_order" / "save_card": same reasoning as the set above — never
+//     evidence of a coaching-checkout abandonment either.
+//   - "event_signup": a ticket abandonment, not a coaching lead gone cold.
 const NON_COACHING_CHECKOUT_TYPES = new Set(["shop_order", "event_signup", "save_card"])
 
 // Plan 3.4 — Stripe webhook audit instrumentation. Only the event types in
@@ -122,9 +148,10 @@ async function tryEnqueueAdsValueAdjustment(session: Stripe.Checkout.Session): P
 // tickets, $0 card-on-file setups, memberships, anonymous funnel purchases,
 // external Payment Link checkouts, all of it. A paying human is a contact
 // regardless of what they bought — deliberately NOT gated by
-// NON_COACHING_CHECKOUT_TYPES the way applyPipelineEvent above is (that gate
-// answers "is this a coaching sale for the pipeline board"; this answers "did
-// a real person just hand over money", which is true for every branch below).
+// NO_PIPELINE_CARD_CHECKOUT_TYPES the way applyPipelineEvent above is (that
+// gate answers "does this checkout ever win a pipeline card"; this answers
+// "did a real person just hand over money", which is true for every branch
+// below).
 //
 // A paid event signup already gets an event_signup capture at row creation
 // (Task 4); this adds a SECOND, later timeline entry at payment completion —
@@ -154,9 +181,9 @@ async function tryEnqueueAdsValueAdjustment(session: Stripe.Checkout.Session): P
 /**
  * Which kind of contact event a completed checkout is.
  *
- * The webhook already discriminates these types for the pipeline and the
- * fulfilment branches above (NON_COACHING_CHECKOUT_TYPES, the
- * `session.metadata?.type` dispatch below); this reuses the same
+ * The webhook already discriminates these types for the pipeline gates
+ * above (NO_PIPELINE_CARD_CHECKOUT_TYPES, NON_COACHING_CHECKOUT_TYPES) and
+ * the `session.metadata?.type` dispatch below; this reuses the same
  * discriminator so one checkout cannot be a shop order to one reader and a
  * coaching sale to another.
  *
@@ -241,13 +268,14 @@ export async function POST(request: Request) {
         // reason to stop the automated nurture sequence for this person.
         //
         // applyPipelineEvent, by contrast, is gated on
-        // NON_COACHING_CHECKOUT_TYPES: winning a pipeline card means "this is
-        // a coaching sale", and a shop order, an event ticket, or a $0
-        // card-on-file setup is not one — see that constant's comment for the
-        // full, confirmed list of what this route dispatches on and why each
-        // is excluded. Do not "simplify" these into one shared condition —
-        // the two consumers legitimately fire on different subsets of the
-        // same resolved contact's checkout.
+        // NO_PIPELINE_CARD_CHECKOUT_TYPES: winning a pipeline card means
+        // "this checkout names a routable deal", and a shop order or a $0
+        // card-on-file setup is never one — see that constant's comment for
+        // the full, confirmed list of what this route dispatches on and why
+        // each is excluded. An event ticket IS a deal (gap #8) and reaches
+        // routeToPipeline below like any other. Do not "simplify" these into
+        // one shared condition — the two consumers legitimately fire on
+        // different subsets of the same resolved contact's checkout.
         // The payer's business, when they already have a contact row. Declared
         // OUTSIDE the try below so a throw inside it (which must never fail a
         // payment webhook) cannot leave the capture without a tenant.
@@ -265,7 +293,7 @@ export async function POST(request: Request) {
             const { id: contactId, businessId } = contact
             payerBusinessId = businessId
             await exitRunsForContact(contactId, "payment", businessId)
-            if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
+            if (!NO_PIPELINE_CARD_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
               // Final review, Important 3: the checkout session id is the
               // source-id idempotency key for the create-with-outcome
               // (instant Won, no prior deal) branch of applyPipelineEvent —
@@ -277,11 +305,11 @@ export async function POST(request: Request) {
               // Task 3 (spec §3.2): the same discriminator
               // `checkoutContactSource` reads a few lines below
               // (`session.metadata?.type`), routed through the same table a
-              // camp-signup payment would use to reach Camps & Clinics.
-              // NON_COACHING_CHECKOUT_TYPES already keeps this call from ever
-              // firing for `event_signup` today (see that constant's own
-              // comment) — this route is unchanged either way, but stays
-              // consistent with the table rather than a second hardcoded key.
+              // camp-signup payment uses to reach Camps & Clinics (gap #8).
+              // Every checkout type this call is reached for — including
+              // "event_signup" as of gap #8 — is handed to routeToPipeline
+              // rather than assumed Coaching, so this stays consistent with
+              // the table instead of a second hardcoded key.
               const routing = routeToPipeline({ event: "payment", checkoutType: session.metadata?.type })
               await applyPipelineEvent({
                 contactId,
@@ -383,19 +411,22 @@ export async function POST(request: Request) {
         // created, so the follow-up is a day late by construction -- that is
         // Stripe's timing, not a choice made here.
         //
-        // Gated on the same NON_COACHING_CHECKOUT_TYPES set that decides
-        // whether a COMPLETED checkout wins a pipeline card, so "a coaching
-        // sale" has exactly one definition in this route -- not a second,
-        // divergent one for the abandoned case. "session_pack" is
-        // deliberately NOT a member of that set, the same as it is not
-        // excluded from the completed side's pipeline-card win or its
-        // unconditional purchase capture: a session pack IS a coaching sale,
-        // so its abandonment is a coaching-checkout abandonment too, and gets
-        // captured here the same as any other. Do not add it to the denylist
-        // to "fix" that -- it would just be reintroducing the divergent
-        // definition this gate exists to prevent. Per that constant's own
-        // comment, a new coaching checkout that forgets to set
-        // `metadata.type` still counts as coaching.
+        // Gated on NON_COACHING_CHECKOUT_TYPES — a DIFFERENT question from
+        // NO_PIPELINE_CARD_CHECKOUT_TYPES that decides whether a COMPLETED
+        // checkout wins a pipeline card (gap #8 split the two; see both
+        // constants' comments up top). This one asks "is an abandoned
+        // delivery of this checkout type a coaching lead going cold",
+        // unchanged by gap #8: an abandoned "event_signup" is still not that
+        // signal, even though a COMPLETED one now wins a pipeline card.
+        // "session_pack" is deliberately NOT a member of that set, the same
+        // as it is not excluded from the completed side's pipeline-card win
+        // or its unconditional purchase capture: a session pack IS a
+        // coaching sale, so its abandonment is a coaching-checkout
+        // abandonment too, and gets captured here the same as any other. Do
+        // not add it to the denylist to "fix" that -- it would just be
+        // reintroducing the divergent definition this gate exists to
+        // prevent. Per that constant's own comment, a new coaching checkout
+        // that forgets to set `metadata.type` still counts as coaching.
         if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
           // Same tenant resolution the completed case uses: the payer's own
           // contact row when they have one, the platform seam for a

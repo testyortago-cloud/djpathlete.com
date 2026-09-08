@@ -177,6 +177,28 @@ describe("checkout.session.expired — abandoned coaching checkout capture", () 
     expect(captureLeadMock).not.toHaveBeenCalled()
   })
 
+  // Gap #8, phase 1.5 Task A: an event_signup PAYMENT now wins a pipeline
+  // card (on camps_clinics, not coaching — see pipeline-hooks.test.ts), but
+  // this branch is a DIFFERENT question — whether an ABANDONED event_signup
+  // checkout is worth a checkout_abandoned lead-capture event — and that
+  // gate (NON_COACHING_CHECKOUT_TYPES) was deliberately left untouched.
+  // Pinned here so a future pass cannot quietly collapse the two sets back
+  // into one and start capturing camp-signup abandonments as if they were a
+  // coaching lead going cold.
+  it("still ignores an abandoned event_signup checkout — gap #8 does not touch this branch", async () => {
+    findContactMock.mockResolvedValue(null)
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire(
+        { id: "cs_3", customer_email: "c@example.com", metadata: { type: "event_signup" } },
+        "checkout.session.expired",
+      ),
+    )
+    expect(res.status).toBe(200)
+    expect(findContactMock).not.toHaveBeenCalled()
+    expect(captureLeadMock).not.toHaveBeenCalled()
+  })
+
   it("a repeat customer's abandoned checkout files under THEIR contact's business", async () => {
     findContactMock.mockResolvedValue({ id: "contact-1", businessId: OTHER_BUSINESS_ID })
     const { POST } = await import("@/app/api/stripe/webhook/route")
