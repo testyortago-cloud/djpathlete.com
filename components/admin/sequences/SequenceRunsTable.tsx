@@ -63,6 +63,13 @@ function exitDetail(run: SequenceRunRowForReport): string | null {
       return "Their details were merged into another person's record."
     case "superseded_by_merged_run":
       return "They were already in this sequence under another record."
+    case "sequence_edited":
+      // Written by migration 00256's save function when an edit to the step
+      // list removes the step this person was on. Reporting this the same way
+      // as "Reached the end" would be the exact lie this feature exists to
+      // prevent, so it stays out of that bucket (bucketForRun puts it in
+      // "other") and is named honestly here instead.
+      return "Stopped because the sequence was edited"
     case null:
       return null
     default:

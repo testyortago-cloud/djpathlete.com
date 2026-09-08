@@ -101,6 +101,18 @@ export const OUTCOME_BUCKETS: readonly OutcomeBucket[] = [
  * The two merge reasons deliberately do NOT get their own bucket: they land in
  * `other`, and the detail page names them in words. They are bookkeeping, not
  * an outcome the follow-up produced.
+ *
+ * A THIRD reason written by SQL, added by migration 00256's `save_sequence_steps`:
+ *
+ *   sequence_edited   supabase/migrations/00256_sequence_management.sql
+ *
+ * Written when an edit to the step list removes a person's current step out
+ * from under them. This ALSO deliberately gets no bucket of its own — it lands
+ * in `other`, never in `finished`. The status column for one of these rows is
+ * `exited`, not `completed`, so `bucketForRun` cannot reach the `finished`
+ * branch for it no matter what this set contains; that separation is the
+ * point, not an accident, because reporting an edited-away follow-up as one
+ * that reached the end is the exact lie this whole feature exists to prevent.
  */
 const OPTED_OUT_REASONS = new Set(["unsubscribed", "sms_stop", "suppressed"])
 
@@ -113,6 +125,11 @@ export function bucketForRun(status: string, exitReason: string | null): Outcome
     if (exitReason === "booking") return "booked"
     if (exitReason && OPTED_OUT_REASONS.has(exitReason)) return "opted_out"
   }
+  // Everything else exited lands here — including "sequence_edited", the two
+  // merge reasons, and any reason not yet invented. NEVER "finished": a run
+  // that exited (this branch) never reached `completed` (the branch above),
+  // so an edited-away follow-up cannot be mistaken for one that ran its
+  // course.
   return "other"
 }
 

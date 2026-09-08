@@ -105,11 +105,12 @@ export default async function SequenceDetailPage({
         ))}
       </div>
 
-      {/* "Something else" is not a mystery any more: two of the seven things that
-          can happen — somebody's details merged into another person's record, and
-          somebody already in this sequence under a second record — land here on
-          purpose, and the list below names both in plain words. Anything genuinely
-          new still shows up here, as itself. */}
+      {/* "Something else" is not a mystery any more: three of the seven things
+          that can happen — somebody's details merged into another person's
+          record, somebody already in this sequence under a second record, or
+          the sequence being edited while they were partway through it — land
+          here on purpose, and the list below names all three in plain words.
+          Anything genuinely new still shows up here, as itself. */}
       {detail.buckets.other > 0 ? (
         <p className="text-sm text-muted-foreground">
           {detail.buckets.other === 1

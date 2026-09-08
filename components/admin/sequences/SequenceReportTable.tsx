@@ -31,11 +31,17 @@ const STATUS_LABEL: Record<string, string> = {
  *
  * A page of zeros reads as broken. On production today eight of the nine
  * sequences have never run, and for two of them the reason is simply that they
- * are paused — which is a thirty-second fix if you can see it, and invisible if
- * you cannot.
+ * are switched off — which is a thirty-second fix if you can see it, and
+ * invisible if you cannot.
+ *
+ * The "paused" sentence used to say "so nobody new is being added" — true
+ * before migration 00256, false after it. The tick now refuses to claim a run
+ * at all while its sequence is off, so switching off stops EVERYONE, not just
+ * new arrivals. Saying only half of that would leave a coach believing the
+ * people already inside were still being messaged.
  */
 function whyEmpty(row: SequenceReportRow): string {
-  if (row.status === "paused") return "Paused, so nobody new is being added."
+  if (row.status === "paused") return "Switched off, so nobody is being added and nobody is moving through it."
   if (row.status === "draft") return "Not switched on yet."
   if (row.status === "archived") return "Archived."
   if (!row.trigger_source) return "Nobody yet — people are only added to this one by hand."
@@ -77,10 +83,12 @@ export function SequenceReportTable({ rows }: { rows: SequenceReportRow[] }) {
           <DataTableHead align="right">Opted out</DataTableHead>
           <DataTableHead align="right">Reached the end</DataTableHead>
           <DataTableHead align="right">Something went wrong</DataTableHead>
-          {/* Two of the seven things that can happen have no column of their own
-              — somebody's details were merged into another person's record, or
-              they were already in this sequence under a second record. Without
-              this column the row's numbers visibly stop adding up to Entered. */}
+          {/* Three of the seven things that can happen have no column of their
+              own — somebody's details were merged into another person's
+              record, they were already in this sequence under a second
+              record, or the sequence was edited while they were partway
+              through it. Without this column the row's numbers visibly stop
+              adding up to Entered. */}
           <DataTableHead align="right">Something else</DataTableHead>
         </DataTableHeader>
         <tbody>
