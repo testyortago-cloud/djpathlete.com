@@ -286,7 +286,15 @@ try {
         page,
         emptyRunsRow,
         "Not broken — genuinely nobody yet. It starts filling in once the sequence is switched on and the Stripe webhook for an abandoned checkout is confirmed.",
-        { place: "center", dy: -20 },
+        // getByText() here matches the <td> (DataTableEmpty), whose own box
+        // includes its py-12 padding — "center", dy: -20 measured the disc's
+        // clearance against that padded box and put it on the text itself,
+        // covering part of "entered". tight:true swaps in the real text
+        // line's own box, and "left" sits in the wide blank gutter before
+        // the (table-centered) sentence rather than guessing a vertical
+        // offset large enough to clear a line whose true height was never
+        // measured.
+        { place: "left", dx: -10, tight: true },
       ),
     ],
   )
