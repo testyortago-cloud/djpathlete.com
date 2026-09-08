@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
 // __tests__/components/admin/sequences/SequenceReportTable.test.tsx
 //
-// The "paused" empty-state sentence, fixed for migration 00256: pausing now
-// stops everybody in the sequence, not just new arrivals, so the copy must
-// say both halves.
+// Two things pinned here:
+//
+//   1. The "paused" empty-state sentence, fixed for migration 00256: pausing
+//      now stops everybody in the sequence, not just new arrivals, so the
+//      copy must say both halves.
+//   2. The on/off switch column that sits alongside the existing status
+//      badge — Ruling B keeps the shipped "Paused" / "Not started" wording on
+//      the badge unchanged, while the switch's own reading comes from
+//      `status === "active"` alone.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, within } from "@testing-library/react"
@@ -58,6 +64,36 @@ describe("<SequenceReportTable> — the paused empty-state sentence", () => {
   it("keeps the shipped 'Paused' badge label — Ruling B, do not churn shipped copy", () => {
     render(<SequenceReportTable rows={[row({ status: "paused" })]} />)
     expect(screen.getByText("Paused")).toBeInTheDocument()
+  })
+})
+
+describe("<SequenceReportTable> — the on/off switch column", () => {
+  it("reads on for an active sequence and off for a paused one", () => {
+    render(
+      <SequenceReportTable
+        rows={[
+          row({ id: "s1", key: "on_seq", name: "On Sequence", status: "active" }),
+          row({ id: "s2", key: "off_seq", name: "Off Sequence", status: "paused" }),
+        ]}
+      />,
+    )
+    const switches = screen.getAllByRole("switch")
+    expect(switches).toHaveLength(2)
+    expect(switches[0]).toHaveAttribute("data-state", "checked")
+    expect(switches[1]).toHaveAttribute("data-state", "unchecked")
+  })
+
+  it("reads off for a draft sequence too", () => {
+    render(<SequenceReportTable rows={[row({ status: "draft" })]} />)
+    expect(screen.getByRole("switch")).toHaveAttribute("data-state", "unchecked")
+  })
+})
+
+describe("<SequenceReportTable> — the empty table", () => {
+  it("still uses DataTableEmpty's own row, spanning every column including the new one", () => {
+    render(<SequenceReportTable rows={[]} />)
+    const cell = screen.getByText("No sequences have been set up yet.")
+    expect(cell.closest("td")).toHaveAttribute("colspan", "10")
   })
 })
 

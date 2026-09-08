@@ -14,6 +14,9 @@ import { requirePermission } from "@/lib/permissions/guard"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { DETAIL_PAGE_SIZE, sequenceDetail, type OutcomeBucket } from "@/lib/db/sequence-reporting"
 import { SequenceRunsTable } from "@/components/admin/sequences/SequenceRunsTable"
+import { SequenceSwitch } from "@/components/admin/sequences/SequenceSwitch"
+import { DataTableBadge } from "@/components/ui/data-table"
+import { STATUS_LABEL, STATUS_TONE } from "@/components/admin/sequences/SequenceReportTable"
 
 export const metadata = { title: "Sequence" }
 export const dynamic = "force-dynamic"
@@ -80,7 +83,13 @@ export default async function SequenceDetailPage({
           <ArrowLeft className="size-4" />
           All sequences
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-primary">{detail.name}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-semibold text-primary">{detail.name}</h1>
+          <DataTableBadge tone={STATUS_TONE[detail.status] ?? "neutral"}>
+            {STATUS_LABEL[detail.status] ?? detail.status}
+          </DataTableBadge>
+          <SequenceSwitch sequenceKey={detail.key} sequenceName={detail.name} status={detail.status} />
+        </div>
         {/* The `description` column is NOT rendered, deliberately. Every one of the nine
             seeded descriptions is a note written for the next developer — they name
             helper functions, script paths and column semantics ("trigger_source is

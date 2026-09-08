@@ -10,16 +10,20 @@ import {
   DataTableRow,
   type DataTableBadgeTone,
 } from "@/components/ui/data-table"
+import { SequenceSwitch } from "@/components/admin/sequences/SequenceSwitch"
 import type { SequenceReportRow } from "@/lib/db/sequence-reporting"
 
-const STATUS_TONE: Record<string, DataTableBadgeTone> = {
+// Exported so the detail screen (app/(admin)/admin/sequences/[key]/page.tsx)
+// can show the exact same words next to its own copy of the switch — two
+// screens describing one sequence's status must not drift apart.
+export const STATUS_TONE: Record<string, DataTableBadgeTone> = {
   active: "success",
   paused: "warning",
   draft: "neutral",
   archived: "neutral",
 }
 
-const STATUS_LABEL: Record<string, string> = {
+export const STATUS_LABEL: Record<string, string> = {
   active: "On",
   paused: "Paused",
   draft: "Not started",
@@ -75,6 +79,7 @@ export function SequenceReportTable({ rows }: { rows: SequenceReportRow[] }) {
     <DataTableCard>
       <DataTable>
         <DataTableHeader>
+          <DataTableHead>On</DataTableHead>
           <DataTableHead>Sequence</DataTableHead>
           <DataTableHead align="right">Entered</DataTableHead>
           <DataTableHead align="right">Still going</DataTableHead>
@@ -93,10 +98,13 @@ export function SequenceReportTable({ rows }: { rows: SequenceReportRow[] }) {
         </DataTableHeader>
         <tbody>
           {rows.length === 0 ? (
-            <DataTableEmpty colSpan={9}>No sequences have been set up yet.</DataTableEmpty>
+            <DataTableEmpty colSpan={10}>No sequences have been set up yet.</DataTableEmpty>
           ) : (
             rows.map((row) => (
               <DataTableRow key={row.id}>
+                <DataTableCell>
+                  <SequenceSwitch sequenceKey={row.key} sequenceName={row.name} status={row.status} />
+                </DataTableCell>
                 <DataTableCell>
                   <Link href={`/admin/sequences/${row.key}`} className="font-medium text-primary hover:underline">
                     {row.name}
