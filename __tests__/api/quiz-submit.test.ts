@@ -335,6 +335,16 @@ describe("POST /api/quiz/submit", () => {
     )
   })
 
+  // Task 3 (spec §3.2): a quiz result always routes to Coaching, but it must
+  // go through the real routing table (routeToPipeline) rather than an
+  // implicit absence of a key -- this pins WHICH key is actually passed.
+  it("13c. routes the quiz result through routeToPipeline, landing on the coaching board", async () => {
+    await post()
+    expect(applyPipelineEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ pipelineKey: "coaching" }),
+    )
+  })
+
   it("13b. a pipeline failure does not change the visitor's response", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {})
     applyPipelineEvent.mockRejectedValue(new Error("pipeline is down"))

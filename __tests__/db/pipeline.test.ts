@@ -1661,10 +1661,35 @@ describe("applyPipelineEvent", () => {
       expect(store.opportunities[0].pipeline_id).toBe("pipe-camps")
     })
 
+    // Only "this board was never seeded" (PipelineNotConfiguredError) may
+    // trigger the fallback. A transient read fault on the SAME table must
+    // propagate instead — swallowing it into a silent retry on Coaching
+    // would hide an outage as a routing decision.
+    it("propagates a transient read fault for a routed board rather than silently falling back", async () => {
+      seedBoard()
+      seedContact("c-1")
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+      // Shape copied from the PGRST301 fixture elsewhere in this file — a
+      // real PostgREST error, not a plausible-looking invention.
+      selectErrorByTable.pipelines = { code: "PGRST301", message: "JWT expired", details: null, hint: null }
+
+      await expect(
+        applyPipelineEvent({
+          businessId: SINGLETON_BUSINESS_ID,
+          contactId: "c-1",
+          event: { kind: "payment", amountCents: 1000, currency: "usd", occurredAt: new Date() },
+          pipelineKey: CAMPS_CLINICS_KEY,
+        }),
+      ).rejects.toMatchObject({ code: "PGRST301" })
+      expect(warnSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+    })
+
     // "Do NOT swallow the error for the DEFAULT key" — a tenant genuinely
     // missing its Coaching board is broken and must still surface.
     it("does NOT fall back when the DEFAULT board itself is not configured", async () => {
       seedContact("c-1") // no board seeded at all
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
 
       await expect(
         applyPipelineEvent({
@@ -1675,6 +1700,12 @@ describe("applyPipelineEvent", () => {
         }),
       ).rejects.toThrow(PipelineNotConfiguredError)
       expect(store.opportunities).toHaveLength(0)
+      // The fallback path must never even be ATTEMPTED for the default key —
+      // not just "still throws" (a fallback attempt that re-resolves the
+      // same missing default key would also end up throwing the same error,
+      // so that assertion alone cannot tell the two apart).
+      expect(warnSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
     })
   })
 })
