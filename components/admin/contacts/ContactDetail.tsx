@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/data-table"
 import { ContactTags } from "@/components/admin/contacts/ContactTags"
 import { ContactEnrol } from "@/components/admin/contacts/ContactEnrol"
+import { exitReasonSentence } from "@/lib/lead-engine/sequence-exit-reasons"
 import type { SequenceSummary } from "@/lib/db/sequences"
 import {
   BOOKINGS_WINDOW,
@@ -234,7 +235,13 @@ export function ContactDetail({
                     <DataTableCell>
                       <DataTableBadge tone={runTone(run.status)}>{run.status}</DataTableBadge>
                       {run.exit_reason ? (
-                        <span className="ml-2 text-xs text-muted-foreground">{run.exit_reason}</span>
+                        // The exact sentence SequenceRunsTable.tsx shows for this
+                        // same run from the sequence's own screen — shared via
+                        // lib/lead-engine/sequence-exit-reasons.ts so the two
+                        // cannot say two different things about one row.
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {exitReasonSentence(run.exit_reason)}
+                        </span>
                       ) : null}
                       {run.last_error ? <span className="ml-2 text-xs text-destructive">{run.last_error}</span> : null}
                     </DataTableCell>

@@ -11,6 +11,7 @@ import {
   type DataTableBadgeTone,
 } from "@/components/ui/data-table"
 import type { OutcomeBucket, SequenceRunRowForReport } from "@/lib/db/sequence-reporting"
+import { exitReasonSentence } from "@/lib/lead-engine/sequence-exit-reasons"
 
 const BUCKET_TONE: Record<OutcomeBucket, DataTableBadgeTone> = {
   in_progress: "info",
@@ -30,53 +31,6 @@ const BUCKET_LABEL: Record<OutcomeBucket, string> = {
   finished: "Reached the end",
   failed: "Something went wrong",
   other: "Something else",
-}
-
-/**
- * The three ways of saying "stop contacting me", separated again — plus the two
- * that are not a decision anybody made.
- *
- * The list page collapses the opt-outs into one column. Here they stay apart,
- * because they are three different things: they clicked the link in an email,
- * they replied STOP to a text, or they were already on the do-not-contact list
- * before we reached them — which is not a decision they made about THIS
- * sequence at all.
- *
- * The last two are written by the database itself when two records turn out to
- * be the same person (migration 00238's `merge_contacts`). Nobody pressed a
- * button, so without a plain sentence here they would show up as a raw phrase
- * with underscores in it.
- */
-function exitDetail(run: SequenceRunRowForReport): string | null {
-  switch (run.exitReason) {
-    case "unsubscribed":
-      return "Clicked unsubscribe in an email"
-    case "sms_stop":
-      return "Replied STOP to a text"
-    case "suppressed":
-      return "Was already on your do-not-contact list"
-    case "payment":
-      return "Bought something"
-    case "booking":
-      return "Booked a call"
-    case "merged_into_survivor":
-      return "Their details were merged into another person's record."
-    case "superseded_by_merged_run":
-      return "They were already in this sequence under another record."
-    case "sequence_edited":
-      // Written by migration 00256's save function when an edit to the step
-      // list removes the step this person was on. Reporting this the same way
-      // as "Reached the end" would be the exact lie this feature exists to
-      // prevent, so it stays out of that bucket (bucketForRun puts it in
-      // "other") and is named honestly here instead.
-      return "Stopped because the sequence was edited"
-    case null:
-      return null
-    default:
-      // Anything genuinely new shows as itself rather than disappearing. Better
-      // an odd-looking phrase on screen than a person with no explanation.
-      return run.exitReason
-  }
 }
 
 /**
@@ -112,7 +66,12 @@ export function SequenceRunsTable({ runs }: { runs: SequenceRunRowForReport[] })
             <DataTableEmpty colSpan={4}>Nobody has entered this sequence yet.</DataTableEmpty>
           ) : (
             runs.map((run) => {
-              const detail = exitDetail(run)
+              // The reason -> sentence mapping is shared with
+              // components/admin/contacts/ContactDetail.tsx, which shows the
+              // exact same run from the contact's side — see
+              // lib/lead-engine/sequence-exit-reasons.ts's header for why that
+              // sharing exists and what every known reason maps to.
+              const detail = exitReasonSentence(run.exitReason)
               return (
                 <DataTableRow key={run.id}>
                   <DataTableCell>
