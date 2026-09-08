@@ -30,6 +30,60 @@ export type ContactEventSource =
   // so this union is the only place the set is enforced.
   | "quiz"
 
+/**
+ * Which members of ContactEventSource mean "this person paid" — see
+ * `PURCHASE_SOURCES` below, read by `hasPurchaseSince`.
+ *
+ * WHY THIS EXISTS (gap #14, fix round 1): `hasPurchaseSince` used to filter
+ * `.eq("source", "purchase")` directly. That was correct only while
+ * `purchase` was the ONE source a completed checkout could write. Once gap
+ * #14 narrowed it -- a `shop_order` checkout now writes `shop`, a
+ * `funnel_purchase` checkout now writes `funnel_checkout` -- that literal
+ * filter silently stopped seeing two of the three ways a person can pay.
+ * The concrete break: someone abandons a funnel checkout, pays on a SECOND
+ * funnel checkout (now `funnel_checkout`, not `purchase`), and ~24h later
+ * Stripe's `checkout.session.expired` fires for the FIRST session; the
+ * webhook's `alreadyPurchased` guard (app/api/stripe/webhook/route.ts, the
+ * `checkout.session.expired` case) reads `hasPurchaseSince`, found nothing,
+ * and would have enrolled a paying customer in the abandoned-checkout
+ * sequence to chase them for a cart they already paid for.
+ *
+ * A `Record<ContactEventSource, boolean>` rather than a bare array so tsc
+ * enforces completeness: adding a member to `ContactEventSource` without
+ * deciding whether it belongs here is a compile error (a missing key on a
+ * `Record` over a union type), not a silent gap the way the old literal
+ * `.eq()` was. `checkout_abandoned` is explicitly `false` — it means the
+ * OPPOSITE of a purchase, and must never be added to `PURCHASE_SOURCES`.
+ */
+const IS_PURCHASE_SOURCE: Record<ContactEventSource, boolean> = {
+  funnel_form: false,
+  funnel_checkout: true,
+  contact_form: false,
+  newsletter: false,
+  lead_magnet: false,
+  event_signup: false,
+  shop: true,
+  assessment: false,
+  questionnaire: false,
+  step_up: false,
+  ai_chat: false,
+  inquiry: false,
+  purchase: true,
+  checkout_abandoned: false,
+  quiz: false,
+}
+
+/**
+ * Every `ContactEventSource` that means "this person paid", derived from
+ * `IS_PURCHASE_SOURCE` above so the two can never disagree. The ONLY reader
+ * today is `hasPurchaseSince` below; a future caller asking "has this
+ * contact paid" should read this rather than re-deciding the question
+ * against a source list of its own.
+ */
+export const PURCHASE_SOURCES: readonly ContactEventSource[] = (
+  Object.keys(IS_PURCHASE_SOURCE) as ContactEventSource[]
+).filter((source) => IS_PURCHASE_SOURCE[source])
+
 export type RecordContactEventInput = {
   email?: string | null
   phone?: string | null
@@ -496,18 +550,25 @@ export async function findContactWithBusinessByIdentifiers(args: {
 }
 
 /**
- * True when this contact already has a `purchase` timeline event at or after
- * `since`.
+ * True when this contact already has a timeline event in `PURCHASE_SOURCES`
+ * (above -- `purchase`, `funnel_checkout` or `shop`) at or after `since`.
  *
  * Exists for the Stripe webhook's `checkout.session.expired` case — see that
  * call site's comment for the ordering problem this closes: a customer who
- * pays on a SECOND checkout attempt already has a `purchase` row (written by
+ * pays on a SECOND checkout attempt already has a qualifying row (written by
  * `tryCaptureLeadFromCheckout` on the `checkout.session.completed` case,
  * above in this file's sibling `recordContactEvent` path) by the time the
  * FIRST, abandoned session's `expired` event arrives, often ~24h later.
  * Comparing against `since` (the expired session's own `created` timestamp)
  * rather than "ever purchased" is deliberate: an older, unrelated purchase
  * must not suppress a genuinely new abandonment.
+ *
+ * MUST filter on `PURCHASE_SOURCES`, never a bare `.eq("source", "purchase")`
+ * — gap #14 narrowed `purchase` to exclude `shop_order` and `funnel_purchase`
+ * checkouts (they now write `shop` / `funnel_checkout`), and an `.eq()` here
+ * stopped seeing those as a purchase at all, silently re-enrolling a paying
+ * funnel customer in the abandoned-checkout sequence. See `PURCHASE_SOURCES`'
+ * own comment above for the incident this fixes.
  *
  * SCOPED BY businessId, same as every other reader here.
  */
@@ -518,7 +579,7 @@ export async function hasPurchaseSince(contactId: string, businessId: string, si
     .select("id")
     .eq("business_id", businessId)
     .eq("contact_id", contactId)
-    .eq("source", "purchase")
+    .in("source", PURCHASE_SOURCES)
     .gte("occurred_at", since.toISOString())
     .limit(1)
   if (error) throw error

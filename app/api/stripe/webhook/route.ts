@@ -160,10 +160,23 @@ async function tryEnqueueAdsValueAdjustment(session: Stripe.Checkout.Session): P
  * coaching sale to another.
  *
  * Everything not named here stays `purchase`, unchanged. Gap #14: `purchase`
- * is being NARROWED, not redefined -- `hasPurchaseSince` above reads it, so a
- * plain coaching sale (and event_signup / save_card / session_pack, which
- * already have their own more specific handling below but are not their own
- * contact-event source) must keep writing it.
+ * is being NARROWED, not redefined -- a plain coaching sale (and
+ * event_signup / save_card / session_pack, which already have their own more
+ * specific handling below but are not their own contact-event source) must
+ * keep writing it.
+ *
+ * NAMED READER, ~250 lines below IN THIS FILE: the `checkout.session.expired`
+ * case's `alreadyPurchased` guard calls `hasPurchaseSince` (lib/db/contacts.ts)
+ * to decide whether the customer already paid on a later attempt. Fix round 1
+ * found that narrowing `purchase` here without updating that reader silently
+ * broke it -- `hasPurchaseSince` used to filter a bare `"purchase"` literal,
+ * so a `shop`/`funnel_checkout` payment stopped counting as "already paid"
+ * and would have re-enrolled a paying customer in the abandoned-checkout
+ * sequence. `hasPurchaseSince` now reads `PURCHASE_SOURCES`
+ * (lib/db/contacts.ts, exported beside `ContactEventSource`) instead of a
+ * literal, and that list is the one place "does this source mean a purchase"
+ * gets decided -- update it, not a second `.eq()`, if a source's meaning
+ * here ever changes again.
  */
 function checkoutContactSource(session: Stripe.Checkout.Session): ContactEventSource {
   switch (session.metadata?.type) {
@@ -395,7 +408,9 @@ export async function POST(request: Request) {
           // through" — the only exit trigger for that sequence already fired
           // and nothing is left to stop the run it is about to start. So:
           // once the contact is resolved, skip the capture when they already
-          // have a `purchase` timeline event dated at or after THIS
+          // have a QUALIFYING timeline event (one of `PURCHASE_SOURCES` in
+          // lib/db/contacts.ts -- `purchase`, `funnel_checkout` or `shop`,
+          // never `checkout_abandoned`) dated at or after THIS
           // session's own `created` timestamp (Unix seconds, converted
           // below) — that is the second, successful checkout. An older,
           // unrelated purchase must not suppress a genuinely new
