@@ -97,6 +97,24 @@ export type MoveDecision =
   | { kind: "noop"; reason: string }
 
 /**
+ * The one board seeded before pipeline boards existed (migration 00219). A
+ * stage key, not a brand.
+ *
+ * Defined HERE rather than in lib/db/pipeline.ts (which re-exports it,
+ * unchanged, for every existing importer) because
+ * docs/superpowers/specs/2026-09-08-pipeline-boards-and-routing-design.md
+ * §3.0 requires a pure `lib/lead-engine/pipeline-route.ts` that names this
+ * exact string without redefining it — and lib/db/pipeline.ts is the impure
+ * DAL, importing anything from it (even a constant) would pull in
+ * `@/lib/supabase` and `@/lib/audit/record` at module load, which is exactly
+ * the IO this file's own header forbids. This module already has zero
+ * imports and is the one place both the impure DAL and the pure router can
+ * import the same string from without either gaining a dependency it isn't
+ * allowed to have.
+ */
+export const DEFAULT_PIPELINE_KEY = "coaching"
+
+/**
  * How long a human's Lost suppresses a brand-new card for the same contact.
  *
  * Without this, spec §2.4 has a side door: the unique index only constrains

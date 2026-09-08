@@ -25,6 +25,7 @@ import { isPgUniqueViolation } from "@/lib/supabase-errors"
 import {
   decideMove,
   stalenessOf,
+  DEFAULT_PIPELINE_KEY,
   type StageRow,
   type OpportunityState,
   type PipelineEvent,
@@ -33,8 +34,11 @@ import {
   type Staleness,
 } from "@/lib/lead-engine/pipeline-move"
 
-/** The one board seeded today (migration 00219). A stage key, not a brand. */
-export const DEFAULT_PIPELINE_KEY = "coaching"
+// Re-exported, not redefined: lib/lead-engine/pipeline-move.ts is now the one
+// place this string lives (see that file's comment on DEFAULT_PIPELINE_KEY).
+// Every existing importer of `DEFAULT_PIPELINE_KEY` from this module keeps
+// working unchanged.
+export { DEFAULT_PIPELINE_KEY }
 
 type Row = Record<string, any>
 
