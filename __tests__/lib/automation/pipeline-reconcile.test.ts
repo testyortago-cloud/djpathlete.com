@@ -195,10 +195,25 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
+// Real by default (delegates to the actual routing table via
+// `importOriginal`) — a partial mock, not a stub, so every existing test's
+// booking/payment routing keeps behaving exactly as before. Exists for ONE
+// test below: proving the reconciler's payments-loop guard (Task 3) actually
+// fires when a payment's routed key disagrees with the board this pass
+// resolved, which the REAL routing table + NON_COACHING_PAYMENT_TYPES
+// cannot currently produce (the one checkoutType routeToPipeline sends
+// elsewhere, "event_signup", is already excluded upstream) — see that
+// guard's own doc comment in lib/automation/pipeline-reconcile.ts.
+vi.mock("@/lib/lead-engine/pipeline-route", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/lead-engine/pipeline-route")>()
+  return { ...actual, routeToPipeline: vi.fn(actual.routeToPipeline) }
+})
+
 import { runPipelineReconcile, PIPELINE_RECONCILE_WINDOW_DAYS } from "@/lib/automation/pipeline-reconcile"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { DEFAULT_PIPELINE_KEY } from "@/lib/db/pipeline"
 import { REBOOKING_SUPPRESSION_DAYS } from "@/lib/lead-engine/pipeline-move"
+import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
 
 const DAY_MS = 86_400_000
 
@@ -230,6 +245,11 @@ beforeEach(() => {
   store.payments = []
   seqCounter = 0
   forceErrorOnContactId = null
+  // Clears call history only — mockClear(), not mockReset(), so the
+  // passthrough-to-the-real-implementation default set at mock time survives
+  // into every test. Only the one test that calls mockReturnValueOnce below
+  // needs to know this ran.
+  vi.mocked(routeToPipeline).mockClear()
 })
 
 // ---------------------------------------------------------------------------
@@ -511,6 +531,45 @@ describe("runPipelineReconcile", () => {
     expect(summary.scanned).toBe(2) // fetched (status='succeeded' passed the SQL filter) — excluded in-loop, not by SQL
     expect(store.opportunities.find((o) => o.id === "opp-1")!.outcome).toBeNull()
     expect(store.opportunities.find((o) => o.id === "opp-2")!.outcome).toBeNull()
+  })
+
+  // Task 3: this loop pre-resolves ONE board's pipelineId/stages (the
+  // "coaching" default) and reuses it as every payment's OPEN-card
+  // precondition. That is safe today only because NON_COACHING_PAYMENT_TYPES
+  // already excludes the one checkoutType ("event_signup") the real routing
+  // table would send to a different board — see this loop's own doc comment
+  // in lib/automation/pipeline-reconcile.ts. The real table can't produce a
+  // mismatch today, so this simulates one directly (routeToPipeline mocked
+  // for one call) to prove the guard actually fires when that invariant is
+  // ever broken, rather than silently checking — or writing — the wrong
+  // board.
+  it("skips a payment whose OWN routed key disagrees with this pass's board, rather than risking a wrong-board write", async () => {
+    seedBoard()
+    seedContact("c-1", { email: "lead1@example.com", user_id: "user-1" })
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" }) // open — would otherwise be won
+    seedPayment("pay-drift", { user_id: "user-1", amount_cents: 9900, metadata: { type: "camp_registration" } })
+    // "camp_registration" is NOT in NON_COACHING_PAYMENT_TYPES, so the loop
+    // reaches the routing check below. This pass also calls routeToPipeline
+    // once for BOOKINGS regardless of whether any exist, so the fake result
+    // is conditioned on the exact payment subject rather than "the next
+    // call" — order-independent, and every other subject shape (including
+    // the booking call) keeps its real, unmocked answer.
+    const realRouting = vi.mocked(routeToPipeline).getMockImplementation()!
+    vi.mocked(routeToPipeline).mockImplementation((subject) =>
+      subject.event === "payment" && subject.checkoutType === "camp_registration"
+        ? { kind: "routed", pipelineKey: "camps_clinics" }
+        : realRouting(subject),
+    )
+
+    const summary = await runPipelineReconcile()
+    vi.mocked(routeToPipeline).mockImplementation(realRouting) // restore, not just clear
+
+    expect(summary.wonFromPayments).toBe(0)
+    expect(summary.failed).toBeGreaterThan(0)
+    // The open card was left completely alone — neither checked against nor
+    // written to under the wrong board's assumption.
+    expect(store.opportunities.find((o) => o.id === "opp-1")!.outcome).toBeNull()
+    expect(stageEventsFor("opp-1")).toHaveLength(0)
   })
 
   // The precondition alone (no type exclusion involved): both contacts here
