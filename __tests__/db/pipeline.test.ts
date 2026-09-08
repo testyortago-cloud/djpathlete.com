@@ -1649,6 +1649,58 @@ describe("applyPipelineEvent", () => {
       expect(store.opportunities.filter((o) => o.pipeline_id === "pipe-1")).toHaveLength(0)
     })
 
+    // Gap #C1 fix (2026-09-08, whole-branch review Critical) — the "both
+    // halves" proof the fix's task brief asked for: a refunded event_signup
+    // ticket amends the camp card AND leaves an untouched, EXISTING,
+    // unrelated coaching Won card alone. The test above ("amends the Won
+    // card on a NON-default board...") only ever seeds ONE board with a
+    // Won card, so it cannot tell "resolved the right board" apart from
+    // "there was nothing else to touch" — this seeds a REAL coaching Won
+    // card for the same contact too, more distantly closed than the camp
+    // one, so `resolveWonPipelineKey`'s "most recent by closed_at" tie-break
+    // (see that function's own doc comment) has an actual choice to make.
+    it("amends the camp Won card and leaves an unrelated coaching Won card untouched", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 300000,
+        closed_at: new Date(Date.now() - 20 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+      })
+      seedOpportunity("opp-camps-won", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        value_cents: 8000,
+        closed_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+      })
+
+      const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        // A full refund of the $80 camp registration — deliberately NOT
+        // $3000, so a bug that amended the coaching card instead would be
+        // caught by the amount, not just by which row changed.
+        event: { kind: "refund", amountRefundedCents: 8000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_camp_refund_1", amount_refunded: 8000 },
+      })
+
+      expect(decision).toMatchObject({ kind: "amend", valueCents: 0, outcomeReason: "refunded" })
+      expect(opportunityId).toBe("opp-camps-won")
+      // Half 1: the camp card is amended, by the right amount.
+      expect(store.opportunities.find((o) => o.id === "opp-camps-won")?.value_cents).toBe(0)
+      // Half 2: the coaching card — a real, pre-existing Won deal for the
+      // SAME contact — keeps its own value_cents exactly as it was.
+      const coaching = store.opportunities.find((o) => o.id === "opp-coaching-won")
+      expect(coaching?.value_cents).toBe(300000)
+      expect(coaching?.outcome).toBe("won")
+    })
+
     // The load-bearing proof: a caller-supplied `pipelineKey` for a refund
     // must be IGNORED, not trusted — this is the exact hazard the refusal
     // exists to prevent (spec §3.1's own worked example: a camp payment

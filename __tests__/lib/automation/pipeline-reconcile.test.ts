@@ -200,10 +200,19 @@ vi.mock("@/lib/supabase", () => ({
 // booking/payment routing keeps behaving exactly as before. Exists for ONE
 // test below: proving the reconciler's payments-loop guard (Task 3) actually
 // fires when a payment's routed key disagrees with the board this pass
-// resolved, which the REAL routing table + NON_COACHING_PAYMENT_TYPES
-// cannot currently produce (the one checkoutType routeToPipeline sends
-// elsewhere, "event_signup", is already excluded upstream) — see that
-// guard's own doc comment in lib/automation/pipeline-reconcile.ts.
+// resolved, for a checkoutType the routing table does not (yet) name —
+// see that guard's own doc comment in lib/automation/pipeline-reconcile.ts.
+//
+// Gap #C1 fix (2026-09-08): this mock used to be the ONLY way to exercise
+// that guard, because "event_signup" — the one real checkoutType
+// `routeToPipeline` sends elsewhere — was excluded upstream by
+// `NO_PIPELINE_CARD_PAYMENT_TYPES`'s predecessor before ever reaching the
+// routing check. That is no longer true: `event_signup` now reaches this
+// guard for REAL, unmocked, every time — see "skips a real event_signup
+// payment via the wrong-board guard, not the old non-coaching denylist"
+// below. This mock stays for the case that IS still hypothetical: a
+// FUTURE checkoutType the routing table sends to a non-default board that
+// nobody has taught this test file's real fixtures to produce yet.
 vi.mock("@/lib/lead-engine/pipeline-route", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/lead-engine/pipeline-route")>()
   return { ...actual, routeToPipeline: vi.fn(actual.routeToPipeline) }
@@ -473,7 +482,7 @@ describe("runPipelineReconcile", () => {
   // ("payments... whose contact has an OPEN opportunity → win it") and would
   // fabricate a Won card for any contact who ever paid for anything —
   // including an existing coaching client's subscription/pack renewal,
-  // neither of which carries a `metadata.type` NON_COACHING_PAYMENT_TYPES
+  // neither of which carries a `metadata.type` NO_PIPELINE_CARD_PAYMENT_TYPES
   // would catch. A payment for a contact with NO opportunity at all must
   // create nothing; that gap is a stated, accepted limitation (see the
   // module header) to be entered by hand, not silently fabricated.
@@ -506,54 +515,86 @@ describe("runPipelineReconcile", () => {
     expect(stageEventsFor("opp-1")).toHaveLength(0)
   })
 
-  // Confirms NON_COACHING_PAYMENT_TYPES is still real defense-in-depth after
-  // Critical 1 restored the open-opportunity precondition — NOT redundant
-  // with it. Both contacts here DO have an open card (so the precondition
-  // alone would let the payment through); the type exclusion is the only
-  // thing stopping a no-show fee or an event ticket from wrongly winning a
-  // deal that is genuinely still open.
-  it("ignores event_signup and session_fee payments even when the contact has an open opportunity", async () => {
+  // Confirms NO_PIPELINE_CARD_PAYMENT_TYPES is still real defense-in-depth
+  // after Critical 1 restored the open-opportunity precondition — NOT
+  // redundant with it. The contact here DOES have an open card (so the
+  // precondition alone would let the payment through); the type exclusion is
+  // the only thing stopping a no-show fee from wrongly winning a deal that
+  // is genuinely still open. Split from event_signup's own test (below) by
+  // gap #C1's fix (2026-09-08) — session_fee still takes the silent, early,
+  // "not evidence of a deal" path; event_signup no longer does.
+  it("ignores a session_fee payment even when the contact has an open opportunity", async () => {
     seedBoard()
-    seedContact("c-1", { email: "lead1@example.com", user_id: "user-1" })
     seedContact("c-2", { email: "lead2@example.com", user_id: "user-2" })
-    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" })
     seedOpportunity("opp-2", "c-2", { stage_id: "stage-consulted" })
-    seedPayment("pay-event", { user_id: "user-1", amount_cents: 4500, metadata: { type: "event_signup" } })
     seedPayment("pay-fee", {
       user_id: "user-2",
       amount_cents: 3000,
       metadata: { type: "session_fee", kind: "no_show" },
     })
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
 
     const summary = await runPipelineReconcile()
 
     expect(summary.wonFromPayments).toBe(0)
-    expect(summary.scanned).toBe(2) // fetched (status='succeeded' passed the SQL filter) — excluded in-loop, not by SQL
-    expect(store.opportunities.find((o) => o.id === "opp-1")!.outcome).toBeNull()
+    expect(summary.failed).toBe(0) // silently excluded up front, never reaches the routing guard
+    expect(summary.scanned).toBe(1) // fetched (status='succeeded' passed the SQL filter) — excluded in-loop, not by SQL
     expect(store.opportunities.find((o) => o.id === "opp-2")!.outcome).toBeNull()
+    // The early NO_PIPELINE_CARD_PAYMENT_TYPES `continue` logs nothing — a
+    // console.error here would mean this actually took the wrong-board
+    // guard's path instead (the case event_signup exercises below).
+    expect(consoleErrorSpy).not.toHaveBeenCalled()
+    consoleErrorSpy.mockRestore()
+  })
+
+  // Gap #C1 fix (2026-09-08, whole-branch review Critical): before this fix,
+  // "event_signup" was silently excluded here too, absorbed into "not
+  // evidence of a deal" — which stopped being true once event_signup started
+  // winning its own card on camps_clinics (Task A, same branch). It is no
+  // longer a member of NO_PIPELINE_CARD_PAYMENT_TYPES, so THIS reconciler
+  // pass — scoped to "coaching" only — now reaches its own wrong-board guard
+  // for real, unmocked, and skips it with an honest, LOGGED reason instead.
+  // Actually reconciling the camps board itself is gap #C2 (no board reader)
+  // and stays out of scope for this fix; this test pins that the skip still
+  // happens, but for the true reason now, not a stale one.
+  it("skips a real event_signup payment via the wrong-board guard, not the old non-coaching denylist", async () => {
+    seedBoard()
+    seedContact("c-1", { email: "lead1@example.com", user_id: "user-1" })
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" }) // open — would otherwise be won
+    seedPayment("pay-camp", { user_id: "user-1", amount_cents: 8000, metadata: { type: "event_signup" } })
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const summary = await runPipelineReconcile()
+
+    expect(summary.wonFromPayments).toBe(0)
+    expect(summary.failed).toBeGreaterThan(0) // counted, not silently absorbed
+    expect(store.opportunities.find((o) => o.id === "opp-1")!.outcome).toBeNull()
+    // Proves it took the LOGGED wrong-board path, not a silent early skip —
+    // the coaching deal-in-progress was never even read against.
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("camps_clinics"))
+    consoleErrorSpy.mockRestore()
   })
 
   // Task 3: this loop pre-resolves ONE board's pipelineId/stages (the
   // "coaching" default) and reuses it as every payment's OPEN-card
-  // precondition. That is safe today only because NON_COACHING_PAYMENT_TYPES
-  // already excludes the one checkoutType ("event_signup") the real routing
-  // table would send to a different board — see this loop's own doc comment
-  // in lib/automation/pipeline-reconcile.ts. The real table can't produce a
-  // mismatch today, so this simulates one directly (routeToPipeline mocked
-  // for one call) to prove the guard actually fires when that invariant is
-  // ever broken, rather than silently checking — or writing — the wrong
-  // board.
+  // precondition. That is safe today only because every payment type that
+  // actually WINS a card routes to that same board. `routeToPipeline`'s
+  // table names one further checkoutType that does not ("event_signup",
+  // proven for real above) — this simulates a SECOND, hypothetical one
+  // directly (routeToPipeline mocked for one call) to prove the guard keeps
+  // firing for any future divergence, not just today's one known case,
+  // rather than silently checking — or writing — the wrong board.
   it("skips a payment whose OWN routed key disagrees with this pass's board, rather than risking a wrong-board write", async () => {
     seedBoard()
     seedContact("c-1", { email: "lead1@example.com", user_id: "user-1" })
     seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" }) // open — would otherwise be won
     seedPayment("pay-drift", { user_id: "user-1", amount_cents: 9900, metadata: { type: "camp_registration" } })
-    // "camp_registration" is NOT in NON_COACHING_PAYMENT_TYPES, so the loop
-    // reaches the routing check below. This pass also calls routeToPipeline
-    // once for BOOKINGS regardless of whether any exist, so the fake result
-    // is conditioned on the exact payment subject rather than "the next
-    // call" — order-independent, and every other subject shape (including
-    // the booking call) keeps its real, unmocked answer.
+    // "camp_registration" is NOT in NO_PIPELINE_CARD_PAYMENT_TYPES, so the
+    // loop reaches the routing check below. This pass also calls
+    // routeToPipeline once for BOOKINGS regardless of whether any exist, so
+    // the fake result is conditioned on the exact payment subject rather
+    // than "the next call" — order-independent, and every other subject
+    // shape (including the booking call) keeps its real, unmocked answer.
     const realRouting = vi.mocked(routeToPipeline).getMockImplementation()!
     vi.mocked(routeToPipeline).mockImplementation((subject) =>
       subject.event === "payment" && subject.checkoutType === "camp_registration"
@@ -574,7 +615,7 @@ describe("runPipelineReconcile", () => {
 
   // The precondition alone (no type exclusion involved): both contacts here
   // have NO opportunity at all, so Critical 1's restored check is what stops
-  // these — not NON_COACHING_PAYMENT_TYPES, which doesn't even list these
+  // these — not NO_PIPELINE_CARD_PAYMENT_TYPES, which doesn't even list these
   // payment types.
   it("ignores payments for contacts with no opportunity, regardless of payment type", async () => {
     seedBoard()
@@ -584,7 +625,7 @@ describe("runPipelineReconcile", () => {
     // (app/api/stripe/webhook/route.ts's handleInvoicePaymentSucceeded).
     seedPayment("pay-renewal", { user_id: "user-1", amount_cents: 9900, metadata: {} })
     // "session_pack" — the exact shape a pack auto-renewal writes
-    // (lib/services/pack-renewal.ts), and NOT in NON_COACHING_PAYMENT_TYPES.
+    // (lib/services/pack-renewal.ts), and NOT in NO_PIPELINE_CARD_PAYMENT_TYPES.
     seedPayment("pay-pack", { user_id: "user-2", amount_cents: 15000, metadata: { type: "session_pack" } })
 
     const summary = await runPipelineReconcile()

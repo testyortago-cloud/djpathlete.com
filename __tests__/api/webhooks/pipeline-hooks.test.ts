@@ -448,29 +448,55 @@ describe("Stripe webhook — pipeline", () => {
       )
     })
 
-    // Fix round 1 (Critical): getPaymentByStripeId select("*")s with no type
-    // check — the SAME `payments` table also carries event-ticket and
-    // no-show-fee rows for a contact who may separately have a real Won
-    // coaching deal. Without this gate, cancelling an unrelated event ticket
-    // would subtract its refund from that contact's coaching value_cents.
-    // Mirrors NON_COACHING_PAYMENT_TYPES, the reconciler's identical gate on
-    // the identical `payments` join (lib/lead-engine/constants.ts) — one
-    // shared denylist, not a third copy.
-    it("does NOT amend a coaching card when the refunded payment is an event_signup ticket", async () => {
+    // Gap #C1 fix (2026-09-08, whole-branch review Critical) — RETARGETS a
+    // test that used to pin the defect this fix closes: "does NOT amend a
+    // coaching card when the refunded payment is an event_signup ticket",
+    // asserting `applyPipelineEventMock` was never called at all. That was
+    // wrong the moment `event_signup` started winning its own Won card on
+    // `camps_clinics` (Task A, same branch) — a camp refund must reach
+    // `applyPipelineEvent` too, or the card it refunds keeps its full
+    // `value_cents` forever. The real intent behind the original test —
+    // "a camp refund must never touch a COACHING card" — is still true and
+    // still worth pinning; it is just proven a different way now, because
+    // the card that SHOULD be amended is the camp one, not nothing.
+    //
+    // This file only tests wiring (`applyPipelineEvent` is mocked, per this
+    // describe block's own header comment) — it cannot see which literal
+    // opportunity row gets amended. So it asserts HALF of "both halves"
+    // directly: the webhook no longer excludes event_signup from this call,
+    // and — deliberately — passes NO `pipelineKey`, which is what lets
+    // `resolveWonPipelineKey` (lib/db/pipeline.ts) resolve the ACTUAL board
+    // rather than a hardcoded "coaching" guess. The other half — that this
+    // resolves to the camp card specifically and an existing, unrelated
+    // coaching Won card is left untouched — is proven for real (not mocked)
+    // in __tests__/db/pipeline.test.ts's "refund board resolution" describe
+    // block, "amends the camp Won card and leaves an unrelated coaching Won
+    // card untouched".
+    //
+    // Still gated on NO_PIPELINE_CARD_PAYMENT_TYPES, the reconciler's
+    // identical gate on the identical `payments` join
+    // (lib/lead-engine/constants.ts) — one shared denylist, not a third
+    // copy — but `event_signup` is no longer a member of it.
+    it("reaches applyPipelineEvent for a refunded event_signup ticket, no pipelineKey forced", async () => {
       getPaymentByStripeIdMock.mockResolvedValueOnce({
         id: "pay-ticket-1",
         user_id: "user-1",
         metadata: { type: "event_signup" },
       })
       findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-refund-ticket", businessId: "bbb" })
-      verifyMock.mockReturnValueOnce(chargeRefundedEvent())
+      verifyMock.mockReturnValueOnce(chargeRefundedEvent({ amount_refunded: 8000 }))
       vi.spyOn(console, "error").mockImplementation(() => {})
 
       const { POST } = await import("@/app/api/stripe/webhook/route")
       const res = await POST(makeStripeReq())
 
       expect(res.status).toBe(200)
-      expect(applyPipelineEventMock).not.toHaveBeenCalled()
+      expect(applyPipelineEventMock).toHaveBeenCalledWith({
+        contactId: "contact-refund-ticket",
+        event: { kind: "refund", amountRefundedCents: 8000, occurredAt: expect.any(Date) },
+        businessId: "bbb",
+        metadata: { stripe_charge_id: "ch_test_1", amount_refunded: 8000 },
+      })
     })
 
     it("does NOT amend a coaching card when the refunded payment is a session_fee penalty", async () => {

@@ -26,7 +26,7 @@ import {
   listReconciledSourceIds,
   DEFAULT_PIPELINE_KEY,
 } from "@/lib/db/pipeline"
-import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
+import { NO_PIPELINE_CARD_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
 import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
 import { platformBusinessId } from "@/lib/tenancy/platform"
 
@@ -39,18 +39,23 @@ import { platformBusinessId } from "@/lib/tenancy/platform"
 // (app/api/stripe/webhook/route.ts's handleInvoicePaymentSucceeded) and pack
 // auto-renewals write `type: "session_pack"` (lib/services/pack-renewal.ts)
 // — NEITHER is a checkout, neither goes through applyPipelineEvent at write
-// time, and neither was ever excluded by NON_COACHING_PAYMENT_TYPES. The
+// time, and neither was ever excluded by NO_PIPELINE_CARD_PAYMENT_TYPES. The
 // hour the reconciler is switched on, every existing coaching client who
 // renewed in the scan window gets a fabricated Won card, valued at one
 // renewal, dated today.
 //
 // The real backstop is the precondition restored below (a payment may only
 // WIN a card that already exists and is OPEN — never create one).
-// NON_COACHING_PAYMENT_TYPES (lib/lead-engine/constants.ts — shared with the
-// charge.refunded pipeline hook, which has the identical problem on the
+// NO_PIPELINE_CARD_PAYMENT_TYPES (lib/lead-engine/constants.ts — shared with
+// the charge.refunded pipeline hook, which has the identical problem on the
 // refund side) stays as defense-in-depth for the one case the precondition
 // alone does NOT cover: a contact who legitimately has an open card and then
-// pays a fee or buys a ticket that is not evidence the deal closed.
+// pays a fee that is not evidence the deal closed. Gap #C1 fix
+// (2026-09-08): "event_signup" left this set — it now wins its own card on
+// `camps_clinics` — but "session_fee" stays, since `routeToPipeline` has no
+// special case for it and it would otherwise sail straight into this same
+// board's OPEN-card precondition. See the loop's own doc comment below for
+// why event_signup's absence here is still safe.
 
 /**
  * How far back the reconciler looks for bookings/payments to repair. Named
@@ -248,20 +253,22 @@ export async function runPipelineReconcile(): Promise<PipelineReconcileSummary> 
  *  - Payments are NOT routed per row. This loop pre-resolves ONE board's
  *    `pipelineId`/`stages` (below) and reuses them as the "does this contact
  *    already have an OPEN card" precondition for every payment in the batch —
- *    correct only because every payment type that reaches this point routes
- *    to that SAME board. `NON_COACHING_PAYMENT_TYPES` already filters out
- *    the one type `routeToPipeline` would send to `camps_clinics`
- *    (`event_signup`) two lines above, so today that invariant always holds.
- *    Splitting this loop to resolve a board per payment would mean
- *    re-fetching `pipelineId`/`stages` (and re-running the OPEN-card
- *    precondition) per distinct board — a real rewrite of this pass's
- *    architecture that the task brief this shipped under explicitly ruled
- *    out of scope. Instead, each payment's routed key is checked AGAINST
- *    `defaultPipelineKey` before it is used (see the guard inside the loop
- *    below): if the two ever diverge — `NON_COACHING_PAYMENT_TYPES` and
- *    `routeToPipeline`'s table drift apart — the payment is skipped and
- *    counted as `failed` rather than being checked against, or written onto,
- *    the wrong board.
+ *    correct only because every payment this loop actually WINS a card for
+ *    routes to that SAME board. Unlike before gap #C1's fix (2026-09-08),
+ *    that is no longer guaranteed by `NO_PIPELINE_CARD_PAYMENT_TYPES` alone:
+ *    `event_signup` (which routes to `camps_clinics`) is deliberately NOT a
+ *    member of that set any more, because it now legitimately wins a card —
+ *    just not on this board. The guard immediately below is what actually
+ *    keeps the invariant true: each payment's routed key is checked AGAINST
+ *    `defaultPipelineKey` before it is used, and if the two disagree — for
+ *    `event_signup` today, or for `NO_PIPELINE_CARD_PAYMENT_TYPES` and
+ *    `routeToPipeline`'s table drifting apart for any other type in the
+ *    future — the payment is skipped and counted as `failed`, with a reason
+ *    naming the real board, rather than being checked against, or written
+ *    onto, the wrong one. That is a deliberate, in-scope-only fix: teaching
+ *    this pass to actually reconcile `camps_clinics` (re-fetching a second
+ *    `pipelineId`/`stages` and re-running the OPEN-card precondition per
+ *    board) is gap #C2 (no board reader) and stays out of scope here.
  */
 async function reconcileForBusiness(
   businessId: string,
@@ -319,7 +326,7 @@ async function reconcileForBusiness(
 
       try {
         const paymentType = payment.metadata?.type
-        if (typeof paymentType === "string" && NON_COACHING_PAYMENT_TYPES.has(paymentType)) continue
+        if (typeof paymentType === "string" && NO_PIPELINE_CARD_PAYMENT_TYPES.has(paymentType)) continue
 
         // See this function's doc comment: this loop's OPEN-card precondition
         // (`pipelineId`/`stages` above) is scoped to `defaultPipelineKey`

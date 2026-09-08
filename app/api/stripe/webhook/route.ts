@@ -57,7 +57,7 @@ import { findContactWithBusinessByIdentifiers, hasPurchaseSince, type ContactEve
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
-import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
+import { NO_PIPELINE_CARD_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
 import { captureLead } from "@/lib/lead-engine/capture"
 import { platformBusinessId } from "@/lib/tenancy/platform"
 
@@ -555,21 +555,29 @@ export async function POST(request: Request) {
           // refunds, so this must run unconditionally, not only on a full
           // refund.
           //
-          // Fix round 1 (Critical): `getPaymentByStripeId` select("*")s with
-          // NO type check — the same `payments` table also carries
-          // event-ticket and no-show-fee rows, keyed by `metadata.type`. A
-          // contact who separately has a real Won coaching deal and cancels
-          // an unrelated event ticket would otherwise subtract the ticket's
-          // refund from that coaching card's value_cents. Gated on
-          // NON_COACHING_PAYMENT_TYPES — the SAME denylist the reconciler
-          // already applies to this identical `payments` join
+          // Fix round 1 (Critical), corrected by gap #C1 (2026-09-08): this
+          // used to read "an event ticket has no card of its own, so its
+          // refund must never touch a payments-adjacent card" — TRUE at the
+          // time, FALSE now. `event_signup` wins its own Won card on
+          // `camps_clinics` (Task A, same branch), so its refund is no
+          // longer a stray write to guard against; it is the correction
+          // that card is now missing. What is still true: `getPaymentByStripeId`
+          // select("*")s with NO type check — the same `payments` table also
+          // carries no-show-fee rows, keyed by `metadata.type`, that win NO
+          // card anywhere. A contact who separately has a real Won coaching
+          // deal and disputes an unrelated no-show fee must not have that
+          // refund subtract from the coaching card's value_cents just
+          // because `resolveWonPipelineKey` would otherwise find it. Gated
+          // on NO_PIPELINE_CARD_PAYMENT_TYPES — the SAME denylist the
+          // reconciler already applies to this identical `payments` join
           // (lib/lead-engine/constants.ts) — rather than a second copy that
           // can drift. Deliberately a denylist: an unlabelled or newly-added
           // coaching payment type must still be handled, not silently
           // skipped.
           const paymentType = payment?.metadata?.type
-          const isNonCoachingPayment = typeof paymentType === "string" && NON_COACHING_PAYMENT_TYPES.has(paymentType)
-          if (payment && !isNonCoachingPayment) {
+          const isNonPipelinePayment =
+            typeof paymentType === "string" && NO_PIPELINE_CARD_PAYMENT_TYPES.has(paymentType)
+          if (payment && !isNonPipelinePayment) {
             try {
               // Fix round 1, Important 2: this used to resolve through the
               // findContactByIdentifiers with no tenant right beside the
