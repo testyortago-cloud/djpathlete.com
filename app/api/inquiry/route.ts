@@ -12,6 +12,8 @@ import { generateLeadAnalysis, type LeadAnalysisResult } from "@/lib/ai/lead-ana
 import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation-log"
 import { MODEL_SONNET } from "@/lib/ai/anthropic"
 import { captureLead } from "@/lib/lead-engine/capture"
+import { applyPipelineEvent } from "@/lib/db/pipeline"
+import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
@@ -161,6 +163,30 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       attribution: { gclid, gbraid, wbraid, fbclid },
       businessId,
     })
+
+    // Lead Engine pipeline (gap #8 phase 1.5, spec
+    // docs/superpowers/specs/2026-09-08-pipeline-boards-and-routing-design.md
+    // §3.2): an inquiry is a person asking, not a sale — decideMove's inquiry
+    // arm only ever opens a card in the first open stage, never one already
+    // Won or Lost. Routed the same way every other event is (routeToPipeline):
+    // `service` ("assessment", ...) sends this to the Assessment board when it
+    // matches, Coaching otherwise. Wrapped exactly like the Stripe webhook's
+    // and the GHL booking webhook's own pipeline hooks — a misconfigured or
+    // unseeded board must never turn "we received your application" into an
+    // error for someone who already submitted it.
+    if (contactId) {
+      try {
+        const routing = routeToPipeline({ event: "inquiry", serviceType: service })
+        await applyPipelineEvent({
+          contactId,
+          event: { kind: "inquiry", serviceType: service, occurredAt: new Date() },
+          businessId,
+          pipelineKey: routing.kind === "routed" ? routing.pipelineKey : undefined,
+        })
+      } catch (err) {
+        console.error("[inquiry] pipeline hook failed", (err as Error).message)
+      }
+    }
 
     // SMS consent (Lead Engine Stage 4). FIRE AND FORGET, same reasoning as
     // recordFunnelSmsConsent (app/api/funnels/submit/route.ts): the lead is

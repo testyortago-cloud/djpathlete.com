@@ -25,6 +25,7 @@ import { isPgUniqueViolation } from "@/lib/supabase-errors"
 import {
   decideMove,
   stalenessOf,
+  DEFAULT_PIPELINE_KEY,
   type StageRow,
   type OpportunityState,
   type PipelineEvent,
@@ -32,9 +33,22 @@ import {
   type MoveTrigger,
   type Staleness,
 } from "@/lib/lead-engine/pipeline-move"
+// Pure routing table (Task 3, spec §3). `routeToPipeline` is consulted here
+// for exactly one case: `event: "refund"`, where it refuses on purpose (see
+// its own module header) and this file is the one that must resolve the
+// board a different way — from the opportunity actually being amended, not
+// from a subject re-derived at the webhook. Every other event kind is
+// already routed by the CALLER (lib/bookings/ingest.ts,
+// app/api/quiz/submit/route.ts, the Stripe webhook's
+// `checkout.session.completed` handler) and arrives here as a plain
+// `pipelineKey` string.
+import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
 
-/** The one board seeded today (migration 00219). A stage key, not a brand. */
-export const DEFAULT_PIPELINE_KEY = "coaching"
+// Re-exported, not redefined: lib/lead-engine/pipeline-move.ts is now the one
+// place this string lives (see that file's comment on DEFAULT_PIPELINE_KEY).
+// Every existing importer of `DEFAULT_PIPELINE_KEY` from this module keeps
+// working unchanged.
+export { DEFAULT_PIPELINE_KEY }
 
 type Row = Record<string, any>
 
@@ -300,9 +314,39 @@ function findStage(stages: StageRow[], key: string): StageRow {
  * `payment` (both are Stripe-driven; `opportunity_stage_events.trigger`'s
  * CHECK constraint has no separate `refund` value — see 00219), every
  * booking status refuses as `booking`.
+ *
+ * A `switch` with a `never` default, not the two-way ternary this used to
+ * be — a ternary silently maps every kind that isn't `booking` onto
+ * `payment`, which is exactly the implicit-fall-through trap
+ * `lib/lead-engine/pipeline-move.ts`'s own `decideMove` guards against: a
+ * future `PipelineEvent` kind would compile clean and refuse with a
+ * misleading trigger instead of failing to build. `quiz_result` mapping to
+ * `payment` here is UNCHANGED, existing behaviour this switch preserves
+ * rather than corrects — decideMove's quiz_result branch can also refuse
+ * (`suppressed_after_manual_lost`), and this function's own doc comment
+ * above has never mentioned that case; fixing that mapping is not this
+ * change's job. `inquiry` refuses as `inquiry` — decideMove's inquiry arm
+ * can refuse the same `suppressed_after_manual_lost` way quiz_result does
+ * (lib/lead-engine/pipeline-move.ts), and `opportunity_stage_events.trigger`
+ * has its own dedicated value for it (migration 00258) rather than
+ * borrowing `payment`, which would misattribute the refusal to a Stripe
+ * event that never happened.
  */
 function triggerForEvent(event: PipelineEvent): MoveTrigger {
-  return event.kind === "booking" ? "booking" : "payment"
+  switch (event.kind) {
+    case "booking":
+      return "booking"
+    case "payment":
+    case "refund":
+    case "quiz_result":
+      return "payment"
+    case "inquiry":
+      return "inquiry"
+    default: {
+      const _exhaustive: never = event
+      throw new Error(`triggerForEvent: unhandled event kind "${(_exhaustive as PipelineEvent).kind}"`)
+    }
+  }
 }
 
 /**
@@ -457,6 +501,132 @@ async function insertStageEvent(
 const SYSTEM_ACTOR = { id: null, email: null, role: "system" as const }
 
 /**
+ * Which board holds `contactId`'s most recent WON opportunity, searched
+ * across EVERY pipeline this business has — not the one board a caller
+ * happens to be routing through.
+ *
+ * Exists to CONSUME `routeToPipeline`'s refusal for `event: "refund"`
+ * (lib/lead-engine/pipeline-route.ts, spec §3.1 "a refund must follow the
+ * card it refunds"): a refund carries no fact saying which board its
+ * original payment landed on, and re-deriving one from checkout metadata the
+ * way a fresh payment is routed risks landing on a board that FEELS right
+ * but isn't the one holding the card — the routing table can change between
+ * a sale and its refund, and a human can move a card by hand after it is
+ * created. The actual Won opportunity is the only ground truth, so this
+ * reads it directly instead of guessing.
+ *
+ * "Most recent" is by `closed_at` — the same tie-break
+ * `readMostRecentWonOpportunity` uses, not `created_at`. Same stated
+ * limitation that function already carries (spec §14): a refund only ever
+ * names a `payment_intent`, not the checkout session the Won card was
+ * created from, so a contact with two Won deals — even on two different
+ * boards — gets whichever is most recently WON amended, which may be the
+ * wrong one. Accepted, not solved here.
+ *
+ * Returns `null` when the contact has no Won opportunity anywhere for this
+ * business — a real answer (there is genuinely nothing to follow), never a
+ * stand-in for a failed read; every Supabase error here is thrown.
+ */
+export async function resolveWonPipelineKey(contactId: string, businessId: string): Promise<string | null> {
+  const supabase = getClient()
+
+  const { data: oppData, error: oppErr } = await supabase
+    .from("opportunities")
+    .select("pipeline_id, closed_at")
+    .eq("business_id", businessId)
+    .eq("contact_id", contactId)
+    .eq("outcome", "won")
+    .order("closed_at", { ascending: false })
+    .limit(1)
+  if (oppErr) throw oppErr
+  const oppRow = ((oppData ?? []) as Row[])[0]
+  if (!oppRow) return null
+
+  const { data: pipelineData, error: pipelineErr } = await supabase
+    .from("pipelines")
+    .select("key")
+    .eq("business_id", businessId)
+    .eq("id", oppRow.pipeline_id)
+  if (pipelineErr) throw pipelineErr
+  const pipelineRow = ((pipelineData ?? []) as Row[])[0]
+  return (pipelineRow?.key as string | undefined) ?? null
+}
+
+/**
+ * Resolves which board `applyPipelineEvent` should use for this event.
+ *
+ * Every non-refund event trusts the caller's `pipelineKey` — already routed
+ * through `routeToPipeline` at the call site (lib/bookings/ingest.ts,
+ * app/api/quiz/submit/route.ts, the Stripe webhook's
+ * `checkout.session.completed` handler) — defaulting to
+ * `DEFAULT_PIPELINE_KEY` when none is given.
+ *
+ * A refund NEVER trusts it, and this is the branch that consumes
+ * `routeToPipeline`'s refusal for `event: "refund"`. `input.pipelineKey` is
+ * not even read in that case — no caller can correctly supply one for a
+ * refund in the first place (today, none tries to: the one refund call site,
+ * the Stripe webhook's `charge.refunded` handler, passes none), and honouring
+ * a caller-supplied guess here would silently reintroduce the exact hazard
+ * the refusal exists to prevent. `routing.kind === "routed"` is unreachable
+ * today (`routeToPipeline` refuses unconditionally for `event: "refund"` —
+ * see its module header) but is honoured rather than ignored, in case that
+ * ever changes.
+ */
+async function resolveRoutedPipelineKey(
+  input: { pipelineKey?: string; contactId: string },
+  businessId: string,
+  isRefund: boolean,
+): Promise<string> {
+  if (!isRefund) return input.pipelineKey ?? DEFAULT_PIPELINE_KEY
+
+  const routing = routeToPipeline({ event: "refund" })
+  if (routing.kind === "routed") return routing.pipelineKey
+  return (await resolveWonPipelineKey(input.contactId, businessId)) ?? DEFAULT_PIPELINE_KEY
+}
+
+/**
+ * Resolves `key`'s board, but falls back to Coaching when `key` names a
+ * NON-DEFAULT board this tenant has not been seeded with, instead of
+ * throwing.
+ *
+ * `create_business()` (migration 00249) seeds every new tenant with
+ * `coaching` ONLY; `camps_clinics` and `assessment` exist only where a later
+ * migration (00257) or a future board-editor save added them. The moment a
+ * caller can route to a board other than `coaching`, that gap becomes
+ * reachable for any tenant seeded before those boards existed — every
+ * business on the dev clone except the platform's own, and every tenant
+ * `create_business()` creates until it is taught to seed all three. The
+ * spec's own fallback rule ("an unroutable event lands on Coaching — it must
+ * not throw and must not vanish", §3.2) applies here for the identical
+ * reason: a board missing for THIS tenant is exactly as unroutable as a
+ * subject the table does not recognise.
+ *
+ * The DEFAULT key is deliberately NOT covered — `resolvePipeline` still
+ * throws `PipelineNotConfiguredError(DEFAULT_PIPELINE_KEY)` uncaught. A
+ * tenant missing `coaching` itself is genuinely broken (every tenant is
+ * supposed to have it from creation) and must surface as an error, not
+ * silently fall back to a fallback that has nowhere left to go.
+ */
+async function resolvePipelineWithFallback(
+  key: string,
+  businessId: string,
+): Promise<{ pipelineId: string; stages: StageRow[]; resolvedKey: string }> {
+  try {
+    const resolved = await resolvePipeline(key, businessId)
+    return { ...resolved, resolvedKey: key }
+  } catch (err) {
+    if (err instanceof PipelineNotConfiguredError && key !== DEFAULT_PIPELINE_KEY) {
+      console.warn(
+        `[pipeline] board "${key}" is not configured for business ${businessId} — falling back to "${DEFAULT_PIPELINE_KEY}"`,
+      )
+      const resolved = await resolvePipeline(DEFAULT_PIPELINE_KEY, businessId)
+      return { ...resolved, resolvedKey: DEFAULT_PIPELINE_KEY }
+    }
+    throw err
+  }
+}
+
+/**
  * Resolves the board, reads the contact's current opportunity, asks
  * `decideMove` what should happen, and writes exactly that. No branch below
  * makes a decision `decideMove` did not already make.
@@ -488,13 +658,22 @@ export async function applyPipelineEvent(input: {
   metadata?: Record<string, unknown>
 }): Promise<{ decision: MoveDecision; opportunityId: string | null }> {
   const businessId = input.businessId
-  const pipelineKey = input.pipelineKey ?? DEFAULT_PIPELINE_KEY
   const source = input.source ?? "hook"
   const supabase = getClient()
 
-  const { pipelineId, stages } = await resolvePipeline(pipelineKey, businessId)
-
   const isRefund = input.event.kind === "refund"
+
+  // Task 3 (spec §3.1) — see `resolveRoutedPipelineKey`'s doc comment: a
+  // refund's board is resolved from the actual Won opportunity, never from
+  // `input.pipelineKey`.
+  const routedPipelineKey = await resolveRoutedPipelineKey(input, businessId, isRefund)
+  // `resolvedKey` (not `routedPipelineKey`) is what every write and audit row
+  // below names as `pipeline_key` — the board the event ACTUALLY landed on,
+  // which can differ from what was asked for when the fallback above fired.
+  const { pipelineId, stages, resolvedKey: pipelineKey } = await resolvePipelineWithFallback(
+    routedPipelineKey,
+    businessId,
+  )
 
   // Refunds resolve `current` differently from every other event: they need
   // the contact's most recent WON opportunity specifically (spec §14), not

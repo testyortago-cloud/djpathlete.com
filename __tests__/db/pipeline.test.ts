@@ -289,12 +289,14 @@ import {
   resolvePipeline,
   readMostRecentOpportunity,
   readMostRecentWonOpportunity,
+  resolveWonPipelineKey,
   PipelineNotConfiguredError,
   DEFAULT_PIPELINE_KEY,
 } from "@/lib/db/pipeline"
 import type { SequenceMoveResult } from "@/lib/db/pipeline"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 import { REBOOKING_SUPPRESSION_DAYS } from "@/lib/lead-engine/pipeline-move"
+import { CAMPS_CLINICS_KEY, ASSESSMENT_KEY } from "@/lib/lead-engine/pipeline-route"
 
 const DAY_MS = 86_400_000
 
@@ -314,6 +316,13 @@ const INSIDE_SUPPRESSION_WINDOW = () => new Date(Date.now() - (REBOOKING_SUPPRES
 const OTHER_BUSINESS_ID = "22222222-2222-4222-8222-222222222222"
 
 beforeEach(() => {
+  // A console.warn/console.error spy created with vi.spyOn inside a test
+  // whose OWN assertion throws (e.g. `expect(warnSpy).not.toHaveBeenCalled()`
+  // failing) never reaches its own `.mockRestore()` call — the throw skips
+  // straight past it. Without this, that spy stays live into the NEXT test
+  // and silently accumulates its calls, which is exactly what turned one
+  // failing assertion into three during this file's Task 3 mutation sweep.
+  vi.restoreAllMocks()
   store.pipelines = []
   store.pipeline_stages = []
   store.opportunities = []
@@ -379,6 +388,106 @@ function seedBoard(businessId: string = SINGLETON_BUSINESS_ID) {
       key: "lost",
       name: "Lost",
       position: 4,
+      kind: "lost",
+      amber_after_days: null,
+      red_after_days: null,
+    },
+  )
+}
+
+// A SECOND board, distinct from `seedBoard`'s "coaching" — used to prove a
+// fact `seedBoard` alone cannot: that routing/fallback/refund-resolution
+// code actually distinguishes between boards rather than always landing on
+// whichever one happens to be seeded first. Task 3's own warning applies
+// here as much as to the implementation: "a test that only covers a tenant
+// with all three boards proves nothing about this."
+function seedCampsBoard(businessId: string = SINGLETON_BUSINESS_ID) {
+  store.pipelines.push({
+    id: "pipe-camps",
+    business_id: businessId,
+    key: CAMPS_CLINICS_KEY,
+    name: "Camps & Clinics",
+    status: "active",
+  })
+  store.pipeline_stages.push(
+    {
+      id: "camps-stage-interested",
+      business_id: businessId,
+      pipeline_id: "pipe-camps",
+      key: "interested",
+      name: "Interested",
+      position: 1,
+      kind: "open",
+      amber_after_days: 3,
+      red_after_days: 7,
+    },
+    {
+      id: "camps-stage-won",
+      business_id: businessId,
+      pipeline_id: "pipe-camps",
+      key: "won",
+      name: "Won",
+      position: 2,
+      kind: "won",
+      amber_after_days: null,
+      red_after_days: null,
+    },
+    {
+      id: "camps-stage-lost",
+      business_id: businessId,
+      pipeline_id: "pipe-camps",
+      key: "lost",
+      name: "Lost",
+      position: 3,
+      kind: "lost",
+      amber_after_days: null,
+      red_after_days: null,
+    },
+  )
+}
+
+// A THIRD board, distinct from both "coaching" and "camps_clinics" — Task
+// B's own board. Same reasoning as seedCampsBoard's own comment: a test that
+// only ever seeds a tenant with every board proves nothing about whether the
+// routing/fallback code actually distinguishes between them.
+function seedAssessmentBoard(businessId: string = SINGLETON_BUSINESS_ID) {
+  store.pipelines.push({
+    id: "pipe-assessment",
+    business_id: businessId,
+    key: ASSESSMENT_KEY,
+    name: "Assessment",
+    status: "active",
+  })
+  store.pipeline_stages.push(
+    {
+      id: "assessment-stage-open",
+      business_id: businessId,
+      pipeline_id: "pipe-assessment",
+      key: "inquired",
+      name: "Inquired",
+      position: 1,
+      kind: "open",
+      amber_after_days: 3,
+      red_after_days: 7,
+    },
+    {
+      id: "assessment-stage-won",
+      business_id: businessId,
+      pipeline_id: "pipe-assessment",
+      key: "won",
+      name: "Won",
+      position: 2,
+      kind: "won",
+      amber_after_days: null,
+      red_after_days: null,
+    },
+    {
+      id: "assessment-stage-lost",
+      business_id: businessId,
+      pipeline_id: "pipe-assessment",
+      key: "lost",
+      name: "Lost",
+      position: 3,
       kind: "lost",
       amber_after_days: null,
       red_after_days: null,
@@ -582,6 +691,132 @@ describe("readMostRecentWonOpportunity", () => {
     const won = await readMostRecentWonOpportunity("c-1", "pipe-1", stages, SINGLETON_BUSINESS_ID)
 
     expect(won?.id).toBe("opp-won-newer")
+  })
+})
+
+// Task 3 (spec §3.1) — the function that CONSUMES `routeToPipeline`'s
+// refusal for `event: "refund"`: which board actually holds this contact's
+// most recent Won card, searched across every pipeline the business has.
+describe("resolveWonPipelineKey", () => {
+  it("returns null when the contact has no Won opportunity on any board", async () => {
+    seedBoard()
+    seedCampsBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" }) // open, not Won
+
+    const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID)
+
+    expect(key).toBeNull()
+  })
+
+  it("finds the Won opportunity's board when it is the default board", async () => {
+    seedBoard()
+    seedCampsBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", {
+      stage_id: "stage-won",
+      outcome: "won",
+      closed_at: new Date().toISOString(),
+      closed_trigger: "payment",
+    })
+
+    const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID)
+
+    expect(key).toBe("coaching")
+  })
+
+  // The presence control: a function that ignored `pipeline_id` and always
+  // answered "coaching" would pass every other test in this block.
+  it("finds the Won opportunity's board when it is a NON-default board", async () => {
+    seedBoard()
+    seedCampsBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-camps-won", "c-1", {
+      pipeline_id: "pipe-camps",
+      stage_id: "camps-stage-won",
+      outcome: "won",
+      closed_at: new Date().toISOString(),
+      closed_trigger: "payment",
+    })
+
+    const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID)
+
+    expect(key).toBe(CAMPS_CLINICS_KEY)
+  })
+
+  it("picks the more recently closed Won card across two different boards", async () => {
+    seedBoard()
+    seedCampsBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-coaching-won", "c-1", {
+      pipeline_id: "pipe-1",
+      stage_id: "stage-won",
+      outcome: "won",
+      closed_at: new Date(Date.now() - 20 * DAY_MS).toISOString(),
+      closed_trigger: "payment",
+    })
+    seedOpportunity("opp-camps-won", "c-1", {
+      pipeline_id: "pipe-camps",
+      stage_id: "camps-stage-won",
+      outcome: "won",
+      closed_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+      closed_trigger: "payment",
+    })
+
+    const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID)
+
+    expect(key).toBe(CAMPS_CLINICS_KEY)
+  })
+
+  it("is scoped to the given business — a Won card on another tenant's board is invisible", async () => {
+    seedBoard()
+    seedCampsBoard(OTHER_BUSINESS_ID)
+    seedContact("c-other", { business_id: OTHER_BUSINESS_ID })
+    seedOpportunity("opp-other-won", "c-other", {
+      business_id: OTHER_BUSINESS_ID,
+      pipeline_id: "pipe-camps",
+      stage_id: "camps-stage-won",
+      outcome: "won",
+      closed_at: new Date().toISOString(),
+      closed_trigger: "payment",
+    })
+
+    const key = await resolveWonPipelineKey("c-other", SINGLETON_BUSINESS_ID)
+
+    expect(key).toBeNull()
+  })
+
+  // Spec §4.2's own documented gap: nothing in the schema ties an
+  // opportunity's `pipeline_id` to a pipeline row belonging to the SAME
+  // business — it is unreachable today only because every write goes
+  // through this file. Simulates that specific data inconsistency (an
+  // opportunity correctly scoped to SINGLETON by its OWN business_id, whose
+  // pipeline_id foreign key nonetheless points at a board belonging to a
+  // DIFFERENT business) to prove the pipeline lookup is independently
+  // business-scoped too, not safe merely because the opportunities read
+  // happens to be.
+  it("does not leak another business's board name when an opportunity's pipeline_id points cross-tenant", async () => {
+    seedBoard()
+    seedContact("c-1")
+    store.pipelines.push({
+      id: "pipe-other-secret",
+      business_id: OTHER_BUSINESS_ID,
+      key: "other_business_board",
+      name: "Someone Else's Board",
+      status: "active",
+    })
+    seedOpportunity("opp-1", "c-1", {
+      pipeline_id: "pipe-other-secret", // the inconsistency
+      stage_id: "camps-stage-won",
+      outcome: "won",
+      closed_at: new Date().toISOString(),
+      closed_trigger: "payment",
+    })
+
+    const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID)
+
+    // Not "other_business_board" — that would be the leak.
+    expect(key).toBeNull()
   })
 })
 
@@ -1377,6 +1612,379 @@ describe("applyPipelineEvent", () => {
       expect(decision).toMatchObject({ kind: "amend", valueCents: 95000, outcomeReason: "partially_refunded" })
       expect(store.opportunities[0].value_cents).toBe(95000) // 120000 - 25000, NOT 120000 - 10000 - 25000
       expect(stageEventsFor("opp-1")).toHaveLength(2)
+    })
+  })
+
+  // Task 3 (spec §3.1) — CONSUMING `routeToPipeline`'s refusal for
+  // `event: "refund"`. Every test above in "refunds (spec §14)" only ever
+  // seeds ONE board, so a refund resolving to "whichever pipeline happens to
+  // be seeded" would pass all of them too. These seed TWO boards specifically
+  // to prove the resolution is real.
+  describe("refund board resolution (Task 3, spec §3.1)", () => {
+    it("amends the Won card on a NON-default board, with no pipelineKey passed at all", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-camps-won", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        value_cents: 20000,
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+      })
+
+      const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 20000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_camps_1", amount_refunded: 20000 },
+      })
+
+      expect(decision).toMatchObject({ kind: "amend", valueCents: 0, outcomeReason: "refunded" })
+      expect(opportunityId).toBe("opp-camps-won")
+      expect(store.opportunities.find((o) => o.id === "opp-camps-won")?.value_cents).toBe(0)
+      // The other board's own (nonexistent) cards are untouched — there is
+      // nothing on "coaching" to have amended in the first place.
+      expect(store.opportunities.filter((o) => o.pipeline_id === "pipe-1")).toHaveLength(0)
+    })
+
+    // Gap #C1 fix (2026-09-08, whole-branch review Critical) — the "both
+    // halves" proof the fix's task brief asked for: a refunded event_signup
+    // ticket amends the camp card AND leaves an untouched, EXISTING,
+    // unrelated coaching Won card alone. The test above ("amends the Won
+    // card on a NON-default board...") only ever seeds ONE board with a
+    // Won card, so it cannot tell "resolved the right board" apart from
+    // "there was nothing else to touch" — this seeds a REAL coaching Won
+    // card for the same contact too, more distantly closed than the camp
+    // one, so `resolveWonPipelineKey`'s "most recent by closed_at" tie-break
+    // (see that function's own doc comment) has an actual choice to make.
+    it("amends the camp Won card and leaves an unrelated coaching Won card untouched", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-coaching-won", "c-1", {
+        pipeline_id: "pipe-1",
+        stage_id: "stage-won",
+        outcome: "won",
+        value_cents: 300000,
+        closed_at: new Date(Date.now() - 20 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+      })
+      seedOpportunity("opp-camps-won", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        value_cents: 8000,
+        closed_at: new Date(Date.now() - 1 * DAY_MS).toISOString(),
+        closed_trigger: "payment",
+      })
+
+      const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        // A full refund of the $80 camp registration — deliberately NOT
+        // $3000, so a bug that amended the coaching card instead would be
+        // caught by the amount, not just by which row changed.
+        event: { kind: "refund", amountRefundedCents: 8000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_camp_refund_1", amount_refunded: 8000 },
+      })
+
+      expect(decision).toMatchObject({ kind: "amend", valueCents: 0, outcomeReason: "refunded" })
+      expect(opportunityId).toBe("opp-camps-won")
+      // Half 1: the camp card is amended, by the right amount.
+      expect(store.opportunities.find((o) => o.id === "opp-camps-won")?.value_cents).toBe(0)
+      // Half 2: the coaching card — a real, pre-existing Won deal for the
+      // SAME contact — keeps its own value_cents exactly as it was.
+      const coaching = store.opportunities.find((o) => o.id === "opp-coaching-won")
+      expect(coaching?.value_cents).toBe(300000)
+      expect(coaching?.outcome).toBe("won")
+    })
+
+    // The load-bearing proof: a caller-supplied `pipelineKey` for a refund
+    // must be IGNORED, not trusted — this is the exact hazard the refusal
+    // exists to prevent (spec §3.1's own worked example: a camp payment
+    // refunded against "coaching" finds no Won card there and silently does
+    // nothing).
+    it("ignores a caller-supplied pipelineKey that names the WRONG board", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-camps-won", "c-1", {
+        pipeline_id: "pipe-camps",
+        stage_id: "camps-stage-won",
+        outcome: "won",
+        value_cents: 15000,
+        closed_at: new Date().toISOString(),
+        closed_trigger: "payment",
+      })
+
+      const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 15000, occurredAt: new Date() },
+        // A caller naively re-deriving the refund's board from checkout
+        // metadata (the wrong answer per the module header) would pass
+        // "coaching" here — and coaching holds nothing for this contact.
+        pipelineKey: DEFAULT_PIPELINE_KEY,
+        metadata: { stripe_charge_id: "ch_camps_2", amount_refunded: 15000 },
+      })
+
+      expect(opportunityId).toBe("opp-camps-won")
+      expect(decision).toMatchObject({ kind: "amend", valueCents: 0 })
+    })
+
+    it("still noops without throwing when the contact has no Won card on ANY board", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" }) // open, not Won
+
+      const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "refund", amountRefundedCents: 5000, occurredAt: new Date() },
+        metadata: { stripe_charge_id: "ch_nowon_camps", amount_refunded: 5000 },
+      })
+
+      expect(decision).toEqual({ kind: "noop", reason: "no_won_opportunity" })
+      expect(opportunityId).toBeNull()
+    })
+  })
+
+  // Task 3 — the hard requirement found while reviewing Task 2: every
+  // tenant gets ONLY "coaching" from `create_business()` (migration 00249).
+  // `camps_clinics`/`assessment` exist only where a later migration or a
+  // board-editor save added them. Routing an event to one of those for a
+  // tenant that lacks it must fall back to Coaching, not throw.
+  describe("fallback for a routed board this tenant lacks (Task 3)", () => {
+    // A call that passes NO pipelineKey at all (every caller before Task 3,
+    // and still the shape a refund's own resolution can produce) must use
+    // Coaching DIRECTLY — never via a fallback retry, which would fire a
+    // warning about a nonexistent board named "undefined".
+    it("does not fall back at all when no pipelineKey is passed", async () => {
+      seedBoard()
+      seedContact("c-1")
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+      const { opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
+      })
+
+      expect(opportunityId).not.toBeNull()
+      expect(store.opportunities[0].pipeline_id).toBe("pipe-1")
+      expect(warnSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+    })
+
+    it("falls back to Coaching when the routed board is not configured for this business", async () => {
+      seedBoard() // only "coaching" — no "camps_clinics" board for this tenant
+      seedContact("c-1")
+
+      const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 5000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: CAMPS_CLINICS_KEY,
+        metadata: { stripe_session_id: "cs_fallback_1" },
+      })
+
+      expect(decision.kind).toBe("create")
+      expect(opportunityId).not.toBeNull()
+      expect(store.opportunities).toHaveLength(1)
+      // Landed on Coaching's own pipeline id — not a phantom camps board.
+      expect(store.opportunities[0].pipeline_id).toBe("pipe-1")
+
+      const created = store.audit_logs.find((a) => a.action === "pipeline.opportunity_created")
+      // The audit trail names the board that was ACTUALLY used, not the one
+      // that was asked for.
+      expect(created?.metadata?.pipeline_key).toBe(DEFAULT_PIPELINE_KEY)
+    })
+
+    // Presence control: the fallback must not mask a board that IS
+    // configured — proving the function distinguishes "not configured" from
+    // "just isn't the first one seeded".
+    it("uses the routed board when it IS configured for this business", async () => {
+      seedBoard()
+      seedCampsBoard()
+      seedContact("c-1")
+
+      const { opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "payment", amountCents: 8000, currency: "usd", occurredAt: new Date() },
+        pipelineKey: CAMPS_CLINICS_KEY,
+        metadata: { stripe_session_id: "cs_camps_configured_1" },
+      })
+
+      expect(opportunityId).not.toBeNull()
+      expect(store.opportunities[0].pipeline_id).toBe("pipe-camps")
+    })
+
+    // Only "this board was never seeded" (PipelineNotConfiguredError) may
+    // trigger the fallback. A transient read fault on the SAME table must
+    // propagate instead — swallowing it into a silent retry on Coaching
+    // would hide an outage as a routing decision.
+    it("propagates a transient read fault for a routed board rather than silently falling back", async () => {
+      seedBoard()
+      seedContact("c-1")
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+      // Shape copied from the PGRST301 fixture elsewhere in this file — a
+      // real PostgREST error, not a plausible-looking invention.
+      selectErrorByTable.pipelines = { code: "PGRST301", message: "JWT expired", details: null, hint: null }
+
+      await expect(
+        applyPipelineEvent({
+          businessId: SINGLETON_BUSINESS_ID,
+          contactId: "c-1",
+          event: { kind: "payment", amountCents: 1000, currency: "usd", occurredAt: new Date() },
+          pipelineKey: CAMPS_CLINICS_KEY,
+        }),
+      ).rejects.toMatchObject({ code: "PGRST301" })
+      expect(warnSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+    })
+
+    // "Do NOT swallow the error for the DEFAULT key" — a tenant genuinely
+    // missing its Coaching board is broken and must still surface.
+    it("does NOT fall back when the DEFAULT board itself is not configured", async () => {
+      seedContact("c-1") // no board seeded at all
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+      await expect(
+        applyPipelineEvent({
+          businessId: SINGLETON_BUSINESS_ID,
+          contactId: "c-1",
+          event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
+          pipelineKey: DEFAULT_PIPELINE_KEY,
+        }),
+      ).rejects.toThrow(PipelineNotConfiguredError)
+      expect(store.opportunities).toHaveLength(0)
+      // The fallback path must never even be ATTEMPTED for the default key —
+      // not just "still throws" (a fallback attempt that re-resolves the
+      // same missing default key would also end up throwing the same error,
+      // so that assertion alone cannot tell the two apart).
+      expect(warnSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+    })
+  })
+
+  // gap #8 phase 1.5, Task B — the Assessment board's own writer. Mirrors the
+  // camps_clinics fallback tests above rather than inventing new assertion
+  // shapes, on a board neither of those tests ever seeds.
+  describe("inquiry (Task B)", () => {
+    it("creates a card in the first open stage of the routed board", async () => {
+      seedBoard()
+      seedAssessmentBoard()
+      seedContact("c-1")
+
+      const routing = { pipelineKey: ASSESSMENT_KEY }
+      const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "inquiry", serviceType: "assessment", occurredAt: new Date() },
+        pipelineKey: routing.pipelineKey,
+      })
+
+      expect(decision).toEqual({ kind: "create", toStageKey: "inquired", trigger: "inquiry" })
+      expect(opportunityId).not.toBeNull()
+      expect(store.opportunities).toHaveLength(1)
+      expect(store.opportunities[0].pipeline_id).toBe("pipe-assessment")
+      expect(store.opportunities[0].stage_id).toBe("assessment-stage-open")
+      // Never Won or Lost — an inquiry is not a sale.
+      expect(store.opportunities[0].outcome).toBeNull()
+
+      const events = stageEventsFor(opportunityId as string)
+      expect(events).toHaveLength(1)
+      expect(events[0].trigger).toBe("inquiry")
+    })
+
+    // The fallback mechanism itself is already proven generic by the
+    // camps_clinics tests above (resolvePipelineWithFallback does not branch
+    // on which non-default key was asked for) — this closes the SAME gap
+    // for the Assessment board specifically, per the task's own test list.
+    it("falls back to Coaching when the Assessment board is not configured for this business", async () => {
+      seedBoard() // only "coaching" — no "assessment" board for this tenant
+      seedContact("c-1")
+
+      const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "inquiry", serviceType: "assessment", occurredAt: new Date() },
+        pipelineKey: ASSESSMENT_KEY,
+      })
+
+      expect(decision.kind).toBe("create")
+      expect(opportunityId).not.toBeNull()
+      expect(store.opportunities).toHaveLength(1)
+      // Landed on Coaching's own pipeline id — not a phantom assessment board.
+      expect(store.opportunities[0].pipeline_id).toBe("pipe-1")
+
+      const created = store.audit_logs.find((a) => a.action === "pipeline.opportunity_created")
+      expect(created?.metadata?.pipeline_key).toBe(DEFAULT_PIPELINE_KEY)
+    })
+
+    it("never creates a Won or Lost card — even when the contact's most recent card was already closed Won", async () => {
+      seedBoard()
+      seedAssessmentBoard()
+      seedContact("c-1")
+      // A prior Won deal on the ASSESSMENT board itself (not Coaching) —
+      // proves a repeat inquiry after a win still only opens a fresh open
+      // card, never reads as an amendment to the closed one.
+      seedOpportunity("opp-won", "c-1", {
+        pipeline_id: "pipe-assessment",
+        stage_id: "assessment-stage-won",
+        outcome: "won",
+        closed_trigger: "payment",
+        closed_at: "2026-08-01T00:00:00Z",
+      })
+
+      const { decision } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "inquiry", serviceType: "assessment", occurredAt: new Date() },
+        pipelineKey: ASSESSMENT_KEY,
+      })
+
+      expect(decision.kind).toBe("create")
+      expect(decision).toMatchObject({ toStageKey: "inquired" })
+      expect(store.opportunities).toHaveLength(2)
+      const newCard = store.opportunities.find((o) => o.id !== "opp-won")!
+      expect(newCard.outcome).toBeNull()
+      expect(newCard.stage_id).toBe("assessment-stage-open")
+    })
+
+    // Proves triggerForEvent's inquiry case, not just decideMove's: a
+    // suppressed refusal must record trigger='inquiry' on the stage event,
+    // never 'payment' — the bug the old two-way ternary would have shipped
+    // the moment `inquiry` became a real PipelineEvent kind.
+    it("records a refused inquiry with trigger='inquiry', never 'payment'", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-lost",
+        outcome: "lost",
+        closed_trigger: "manual",
+        closed_at: INSIDE_SUPPRESSION_WINDOW(),
+        closed_by_user_id: "admin-1",
+      })
+
+      const { decision, opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "inquiry", serviceType: null, occurredAt: new Date() },
+      })
+
+      expect(decision).toEqual({ kind: "refuse", reason: "suppressed_after_manual_lost" })
+      expect(store.opportunities).toHaveLength(1)
+      expect(store.opportunities[0].stage_id).toBe("stage-lost")
+
+      const events = stageEventsFor(opportunityId as string)
+      expect(events).toHaveLength(1)
+      expect(events[0].refused_reason).toBe("suppressed_after_manual_lost")
+      expect(events[0].trigger).toBe("inquiry")
     })
   })
 })

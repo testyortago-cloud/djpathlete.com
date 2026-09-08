@@ -22,7 +22,12 @@ export type StageKind = "open" | "won" | "lost"
 // single source of truth the opportunity_stage_events_trigger_check CHECK is
 // tested against, and a value the constraint allows but this union omits is
 // the same kind of drift that let 'quiz' ship silently broken.
-export type MoveTrigger = "booking" | "payment" | "manual" | "reconciler" | "merge" | "quiz" | "sequence"
+// "inquiry" is decideMove's trigger for the `inquiry` PipelineEvent kind
+// below (gap #8 phase 1.5) — migration 00258 widens the CHECK constraint to
+// match, and __tests__/migrations/00258_pipeline_inquiry_trigger.test.ts
+// pins the two together the same way 00254's test already does for 'quiz'
+// and 'sequence'.
+export type MoveTrigger = "booking" | "payment" | "manual" | "reconciler" | "merge" | "quiz" | "sequence" | "inquiry"
 export type Staleness = "fresh" | "amber" | "red"
 
 export type StageRow = {
@@ -85,6 +90,18 @@ export type PipelineEvent =
    * so `red` is the most urgent, not the least.
    */
   | { kind: "quiz_result"; tier: string; occurredAt: Date }
+  /**
+   * A person submitting an inquiry form (app/api/inquiry/route.ts). Not a
+   * sale — decideMove's inquiry arm only ever opens a card in the first open
+   * stage, exactly like quiz_result, and never creates one already Won or
+   * Lost. `serviceType` is the submitted `service` field
+   * (lib/validators/inquiry.ts's SERVICE_TYPES) — `routeToPipeline` reads it
+   * to decide which board, but decideMove itself does not branch on it: by
+   * the time an inquiry event reaches decideMove, which board to open the
+   * card on has already been decided by the caller (spec §3.2, "however it
+   * arrives").
+   */
+  | { kind: "inquiry"; serviceType: string | null; occurredAt: Date }
 
 export type MoveDecision =
   | { kind: "create"; toStageKey: string; trigger: MoveTrigger; outcome?: "won" | "lost"; valueCents?: number; currency?: string; reason?: string }
@@ -95,6 +112,24 @@ export type MoveDecision =
   | { kind: "amend"; valueCents: number; outcomeReason: "refunded" | "partially_refunded"; trigger: MoveTrigger }
   | { kind: "refuse"; reason: string }
   | { kind: "noop"; reason: string }
+
+/**
+ * The one board seeded before pipeline boards existed (migration 00219). A
+ * stage key, not a brand.
+ *
+ * Defined HERE rather than in lib/db/pipeline.ts (which re-exports it,
+ * unchanged, for every existing importer) because
+ * docs/superpowers/specs/2026-09-08-pipeline-boards-and-routing-design.md
+ * §3.0 requires a pure `lib/lead-engine/pipeline-route.ts` that names this
+ * exact string without redefining it — and lib/db/pipeline.ts is the impure
+ * DAL, importing anything from it (even a constant) would pull in
+ * `@/lib/supabase` and `@/lib/audit/record` at module load, which is exactly
+ * the IO this file's own header forbids. This module already has zero
+ * imports and is the one place both the impure DAL and the pure router can
+ * import the same string from without either gaining a dependency it isn't
+ * allowed to have.
+ */
+export const DEFAULT_PIPELINE_KEY = "coaching"
 
 /**
  * How long a human's Lost suppresses a brand-new card for the same contact.
@@ -216,39 +251,101 @@ export function decideMove(ctx: MoveContext, event: PipelineEvent): MoveDecision
     return { kind: "create", toStageKey: firstOpen.key, trigger: "quiz" }
   }
 
-  // --- booking ---
-  if (event.status === "cancelled" || event.status === "no_show") {
-    if (!current || current.outcome != null) return { kind: "noop", reason: "no_open_deal" }
-    return {
-      kind: "close", outcome: "lost", toStageKey: stageOfKind(stages, "lost").key,
-      reason: event.status === "no_show" ? "booking_no_show" : "booking_cancelled",
-      trigger: "booking",
+  // --- inquiry ---
+  //
+  // A person asking is not a sale. Unlike quiz_result, there is no tier gate
+  // — every inquiry that reaches decideMove is already worth a card, because
+  // the caller only sends one when someone actually submitted the form; the
+  // routing DECISION (which board) already happened one layer up
+  // (routeToPipeline). What decideMove owns here is the SAME two rules
+  // quiz_result already owns, reused rather than restated, because both are
+  // the same underlying rule: an unsolicited signal from the person
+  // themselves never outranks work already in flight, and never overrules a
+  // human's own recent verdict.
+  if (event.kind === "inquiry") {
+    if (current && current.outcome == null) {
+      // A live deal is further along than a fresh inquiry can know about —
+      // never drag a card already in motion backwards or re-open it.
+      return { kind: "noop", reason: "already_open" }
     }
-  }
-
-  const target = bookingTarget(stages, event.status)
-  if (!target) return { kind: "noop", reason: "booking_status_does_not_move" }
-
-  if (!current) return { kind: "create", toStageKey: target.key, trigger: "booking" }
-
-  if (current.outcome != null) {
-    // Closed. A new booking is a new deal — unless a human recently ruled them
-    // out, in which case the side door stays shut.
-    if (humanClosed && current.outcome === "lost" && current.closed_at) {
-      const age = now.getTime() - new Date(current.closed_at).getTime()
-      if (age < REBOOKING_SUPPRESSION_DAYS * DAY_MS) {
-        return { kind: "refuse", reason: "suppressed_after_manual_lost" }
+    if (current?.outcome != null) {
+      // The SAME rule as a re-booking/quiz-result, reused rather than
+      // restated: a human who ruled this person out recently does not get
+      // overruled by a form.
+      if (humanClosed && current.outcome === "lost" && current.closed_at) {
+        const age = now.getTime() - new Date(current.closed_at).getTime()
+        if (age < REBOOKING_SUPPRESSION_DAYS * DAY_MS) {
+          return { kind: "refuse", reason: "suppressed_after_manual_lost" }
+        }
       }
     }
-    return { kind: "create", toStageKey: target.key, trigger: "booking" }
+    const firstOpen = stages
+      .filter((stage) => stage.kind === "open")
+      .slice()
+      .sort((a, b) => a.position - b.position)[0]
+    // Never a Won or Lost card — an inquiry with nowhere open to land noops
+    // rather than guessing a closed stage.
+    if (!firstOpen) return { kind: "noop", reason: "no_open_stage" }
+    return { kind: "create", toStageKey: firstOpen.key, trigger: "inquiry" }
   }
 
-  // Open. Forward only — a late booking.scheduled must not drag a Consulted card
-  // backwards.
-  if (target.position <= current.stage_position) {
-    return { kind: "noop", reason: "would_move_backwards" }
+  // --- booking ---
+  //
+  // EXPLICIT ON PURPOSE. Until this guard was added, `booking` was the only
+  // kind left once payment/refund/quiz_result had each returned on every
+  // path above it, so TypeScript narrowed `event` down to it for free and
+  // nothing below ever named the kind it was handling. That was fine right
+  // up until a fifth `PipelineEvent` kind was going to be added: widening the
+  // union first would have let that new kind fall through to this booking
+  // logic silently — `event.status` would be `undefined`, decided against
+  // anyway, and shipped as a booking decision for an event that was never a
+  // booking. Naming the kind here turns that into a compile error the moment
+  // the union grows, at the `_exhaustive` check below, rather than a
+  // behaviour bug discovered later.
+  if (event.kind === "booking") {
+    if (event.status === "cancelled" || event.status === "no_show") {
+      if (!current || current.outcome != null) return { kind: "noop", reason: "no_open_deal" }
+      return {
+        kind: "close", outcome: "lost", toStageKey: stageOfKind(stages, "lost").key,
+        reason: event.status === "no_show" ? "booking_no_show" : "booking_cancelled",
+        trigger: "booking",
+      }
+    }
+
+    const target = bookingTarget(stages, event.status)
+    if (!target) return { kind: "noop", reason: "booking_status_does_not_move" }
+
+    if (!current) return { kind: "create", toStageKey: target.key, trigger: "booking" }
+
+    if (current.outcome != null) {
+      // Closed. A new booking is a new deal — unless a human recently ruled them
+      // out, in which case the side door stays shut.
+      if (humanClosed && current.outcome === "lost" && current.closed_at) {
+        const age = now.getTime() - new Date(current.closed_at).getTime()
+        if (age < REBOOKING_SUPPRESSION_DAYS * DAY_MS) {
+          return { kind: "refuse", reason: "suppressed_after_manual_lost" }
+        }
+      }
+      return { kind: "create", toStageKey: target.key, trigger: "booking" }
+    }
+
+    // Open. Forward only — a late booking.scheduled must not drag a Consulted card
+    // backwards.
+    if (target.position <= current.stage_position) {
+      return { kind: "noop", reason: "would_move_backwards" }
+    }
+    return { kind: "advance", toStageKey: target.key, trigger: "booking" }
   }
-  return { kind: "advance", toStageKey: target.key, trigger: "booking" }
+
+  // Exhaustiveness guard. Every `PipelineEvent` kind above returns on every
+  // one of its own paths, so by this point `event` can only still be typed
+  // as something if a NEW kind was added to the union without its own `if
+  // (event.kind === "...")` arm above — the same implicit-fall-through trap
+  // the booking comment above describes. Assigning it to `never` makes that
+  // a compile error at the moment the union widens, rather than a silent
+  // pass through whichever arm happens to be last.
+  const _exhaustive: never = event
+  throw new Error(`decideMove: unhandled event kind "${(_exhaustive as PipelineEvent).kind}"`)
 }
 
 /**

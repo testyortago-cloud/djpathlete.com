@@ -40,6 +40,7 @@ import { recordAudit } from "@/lib/audit/record"
 import { findContactByIdentifiers, getContactUserId } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
+import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
 import { getBusinessSettings } from "@/lib/db/businesses"
 
 export type BookingSource = "ghl" | "calendly"
@@ -308,10 +309,17 @@ async function runContactConsequences(ctx: IngestCtx, input: BookingIngestInput)
       if (input.status === "scheduled" || input.status === "completed") {
         await exitRunsForContact(contactId, "booking", input.businessId)
       }
+      // Task 3 (spec §3.2): a booking always routes to Coaching — this call
+      // never carries a checkoutType/serviceType to route on — but it still
+      // goes through the same routing table as every other event rather than
+      // a bare hardcoded key, so a future rule in that table (e.g. an
+      // assessment booking) reaches this call site for free.
+      const routing = routeToPipeline({ event: "booking" })
       await applyPipelineEvent({
         contactId,
         event: { kind: "booking", status: input.status, occurredAt: new Date() },
         businessId: input.businessId,
+        pipelineKey: routing.kind === "routed" ? routing.pipelineKey : undefined,
       })
     }
   } catch (err) {

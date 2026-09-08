@@ -5,11 +5,18 @@
 // scoped to 00218 by a hardcoded path and does NOT cover this file, so the
 // equivalent assertions have to live here.
 //
-// The last assertion is the one that matters most. `MoveTrigger` in TypeScript
-// and the CHECK constraint in SQL encode the same set in two places, and
-// nothing compared them — which is exactly how `quiz` came to be a legal
-// TypeScript value that the database rejects, silently swallowed by the quiz
-// route's catch. This test is that comparison.
+// The last assertion used to be the one that mattered most: `MoveTrigger` in
+// TypeScript and the CHECK constraint in SQL encode the same set in two
+// places, and nothing compared them — which is exactly how `quiz` came to be
+// a legal TypeScript value that the database rejects, silently swallowed by
+// the quiz route's catch. That exact-equality comparison now lives in
+// __tests__/migrations/00258_pipeline_inquiry_trigger.test.ts, because
+// migration 00258 widened the same CHECK constraint again (adding
+// 'inquiry') — 00254 is no longer the constraint's last word, so asserting
+// exact equality HERE against the CURRENT MoveTrigger union would fail for a
+// reason that has nothing to do with 00254 itself. What stays pinned here is
+// the historical fact that 00254's own CHECK is still a subset of what
+// MoveTrigger allows today — i.e. 00254 was never rolled back.
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "fs"
 import { join } from "path"
@@ -69,12 +76,18 @@ describe("migration 00254", () => {
     }
   })
 
-  it("allows exactly the values the MoveTrigger union declares", async () => {
+  // Historical, not exhaustive — see the file header. 00254 must never
+  // appear to have REMOVED a value MoveTrigger still declares; whether
+  // MoveTrigger has grown SINCE 00254 (it has: 'inquiry', added in 00258) is
+  // not this test's question to answer.
+  it("00254's own CHECK values are still all legal MoveTrigger values today", async () => {
     const moveTypes = readFileSync(join(process.cwd(), "lib/lead-engine/pipeline-move.ts"), "utf8")
     const unionLine = moveTypes.match(/export type MoveTrigger\s*=\s*([^\n]+)/)
     if (!unionLine) throw new Error("MoveTrigger union not found")
     const declared = new Set(Array.from(unionLine[1].matchAll(/"([^"]+)"/g), (m) => m[1]))
 
-    expect([...triggerCheckValues(SQL)].sort()).toEqual([...declared].sort())
+    for (const value of triggerCheckValues(SQL)) {
+      expect(declared).toContain(value)
+    }
   })
 })

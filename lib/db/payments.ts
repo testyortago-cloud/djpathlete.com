@@ -62,8 +62,8 @@ export async function updatePayment(id: string, updates: Partial<Omit<Payment, "
  * pending/failed/refunded payments never move a card. `payments` covers
  * every product this business sells, not just coaching consults, so this is
  * deliberately broad; `metadata` is included so the reconciler can exclude
- * the specific non-coaching payment types it has confirmed actually reach
- * this table (`NON_COACHING_PAYMENT_TYPES` in pipeline-reconcile.ts) before
+ * the specific payment types it has confirmed win no pipeline card anywhere
+ * (`NO_PIPELINE_CARD_PAYMENT_TYPES` in lib/lead-engine/constants.ts) before
  * replaying a row through `applyPipelineEvent`.
  */
 export async function getSucceededPaymentsForPipelineReconcile(
