@@ -195,7 +195,7 @@ branch and the only new one with a `tag` step.
 | 6 | email | Last call |
 | 7 | stop | |
 
-The `tag` step at `abandoned_checkout` position 6 is the **first
+The `tag` step at `abandoned_checkout` position 2 is the **first
 `sequence_steps.config` write in the repository's history**, and the thing that
 takes gap #12 from dormant to live. Migration `00254`'s
 `sequence_steps_tag_needs_config` constraint rejects it if the `tag` key is
@@ -265,8 +265,15 @@ who they are.
 texted, a short text; if not, a second email doing the same job. This is not
 redundant with `decideStep`'s existing SMS handling: `decideStep` *skips* an SMS
 step when there is no phone or no consent, so without a branch the un-consented
-person receives **nothing** at that position. The branch is what makes the two
-groups get equal treatment.
+person receives **nothing** at that position. The branch is what makes the
+CONSENT-based split treat both groups equally — it is not a guarantee that
+every run in the true arm actually gets texted. `hasSmsConsent` is computed
+from consent alone, with no phone predicate, so a contact can take the true
+arm (consent: yes) and still have no `phone_e164` on file, or hit a deployment
+with Twilio unconfigured; either way `decideStep` advances the SMS step
+straight to its `stop` (position 5) with nothing sent. That person ends up
+with one email total against the false arm's two — a real, reachable gap this
+branch does not close, not a hypothetical.
 
 **Deliberately not used:** `has_phone` and `source_is`. A `has_phone` branch
 would duplicate the skip `decideStep` already performs, and `source_is` only

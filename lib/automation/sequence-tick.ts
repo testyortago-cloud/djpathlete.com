@@ -172,9 +172,10 @@ export function decideStep(run: SequenceRunRow, steps: SequenceStepRow[], ctx: D
       // with no tag. Failing puts the reason on `sequence_runs.last_error`,
       // which the contact detail page renders beside the run, so a human can
       // see it. It is NOT recoverable — `status='failed'` is terminal and
-      // nothing re-activates a failed run (and there is no `/admin/sequences`
-      // screen on this branch; that is a different, unmerged one). A silent
-      // skip is neither visible nor recoverable, which is why fail still wins.
+      // nothing re-activates a failed run (the `/admin/sequences` screen,
+      // merged 2026-09-07, reports failed runs in aggregate but has no action
+      // to resume or retry one). A silent skip is neither visible nor
+      // recoverable, which is why fail still wins.
       const parsed = parseTagConfig(step.config)
       if (!parsed.ok) return { kind: "fail", error: parsed.error }
       return { kind: "tag", step, tag: parsed.value.tag }

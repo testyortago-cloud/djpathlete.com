@@ -42,8 +42,8 @@ function requiredString(value: unknown): string | null {
  * the contact detail page renders it beside the run — instead of throwing four
  * layers down where nothing surfaces it. Visible, note, not recoverable:
  * `status='failed'` is terminal and nothing here re-activates a failed run.
- * (There is no `/admin/sequences` screen on this branch; that is a different,
- * unmerged one.)
+ * (The `/admin/sequences` screen, merged 2026-09-07, reports failed runs in
+ * aggregate but has no action to resume or retry one.)
  */
 export function parseTagConfig(config: Record<string, unknown>): ParseResult<TagStepConfig> {
   const raw = config.tag

@@ -161,7 +161,7 @@ export interface ContactDetail {
 
 /* ------------------------------------------------------- pure: describing */
 
-/** Plain-language names for the ten `entry_point` sources that actually get written. */
+/** Plain-language names for the twelve `entry_point` sources that actually get written. */
 const SOURCE_LABELS: Record<string, string> = {
   funnel_form: "Filled in a form on a landing page",
   contact_form: "Sent a message through the contact form",
