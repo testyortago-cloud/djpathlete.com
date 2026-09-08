@@ -13,8 +13,10 @@ import { ArrowLeft } from "lucide-react"
 import { requirePermission } from "@/lib/permissions/guard"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { DETAIL_PAGE_SIZE, sequenceDetail, type OutcomeBucket } from "@/lib/db/sequence-reporting"
+import { loadSequenceForEdit } from "@/lib/db/sequence-admin"
 import { SequenceRunsTable } from "@/components/admin/sequences/SequenceRunsTable"
 import { SequenceSwitch } from "@/components/admin/sequences/SequenceSwitch"
+import { StepEditor } from "@/components/admin/sequences/StepEditor"
 import { DataTableBadge } from "@/components/ui/data-table"
 import { STATUS_LABEL, STATUS_TONE } from "@/components/admin/sequences/SequenceReportTable"
 
@@ -62,6 +64,13 @@ export default async function SequenceDetailPage({
     offset: (requestedPage - 1) * DETAIL_PAGE_SIZE,
   })
   if (!detail) notFound()
+
+  // Separate read from sequenceDetail above: that call is the read-only
+  // report this page has always shown; this one is the editable shape task
+  // 9's step editor needs (drafts, old positions, active runs, sent counts) —
+  // see lib/db/sequence-admin.ts's own header for why the two stay apart.
+  const forEdit = await loadSequenceForEdit(businessId, key)
+  if (!forEdit) notFound()
 
   const totalPages = Math.max(1, Math.ceil(detail.totalRuns / DETAIL_PAGE_SIZE))
   const pageNumber = Math.min(requestedPage, totalPages)
@@ -128,6 +137,17 @@ export default async function SequenceDetailPage({
           Each one is named in the list below.
         </p>
       ) : null}
+
+      <div className="rounded-xl border border-border bg-white p-4 shadow-sm sm:p-6">
+        <StepEditor
+          sequenceKey={forEdit.key}
+          sequenceName={forEdit.name}
+          initialSteps={forEdit.drafts}
+          oldSteps={forEdit.steps}
+          runs={forEdit.activeRuns}
+          sentCountByStepId={forEdit.sentCountByStepId}
+        />
+      </div>
 
       <SequenceRunsTable runs={detail.runs} />
 
