@@ -62,6 +62,7 @@ import {
   type PaymentRow,
   type TimelineEventRow,
 } from "@/lib/db/contact-detail"
+import { ALL_CONTACT_EVENT_SOURCES } from "@/lib/db/contacts"
 
 function event(over: Partial<TimelineEventRow> & { id: string }): TimelineEventRow {
   return {
@@ -370,36 +371,24 @@ describe("describeTimelineEvent", () => {
   })
 })
 
-// Gap #14, Task 1: `SOURCE_LABELS` is `Record<string, string>`, so a source
-// added to `ContactEventSource` (lib/db/contacts.ts) without a matching label
-// compiles clean and falls through to `Came in through ${humanise(...)}` --
-// generic, not broken, and not written for a coach. This list is written by
-// hand from that union, so forgetting a label here fails the loop below by
-// name rather than compiling away silently.
-const DECLARED_SOURCES = [
-  "funnel_form",
-  "funnel_checkout",
-  "contact_form",
-  "newsletter",
-  "lead_magnet",
-  "event_signup",
-  "shop",
-  "assessment",
-  "questionnaire",
-  "step_up",
-  "ai_chat",
-  "inquiry",
-  "purchase",
-  "checkout_abandoned",
-  "quiz",
-] as const
-
+// Gap #14, Task 1 (fix round 2, M1): `SOURCE_LABELS` is `Record<string,
+// string>`, so a source added to `ContactEventSource` (lib/db/contacts.ts)
+// without a matching label compiles clean and falls through to `Came in
+// through ${humanise(...)}` -- generic, not broken, and not written for a
+// coach. This USED to be a hand-copied literal list here, which is exactly
+// the same failure mode one level up: forgetting to add a new source to
+// BOTH `ContactEventSource` and this list would ship a missing label
+// silently, undetected by this very guard. Driving off
+// `ALL_CONTACT_EVENT_SOURCES` (lib/db/contacts.ts, derived from a
+// `Record<ContactEventSource, boolean>` that tsc forces to stay complete)
+// means the union itself is what this test walks -- there is no second list
+// to fall out of sync with it.
 function titleFor(source: string): string {
   return describeTimelineEvent(event({ id: "e", kind: "entry_point", source })).title
 }
 
 describe("every declared contact source has a label written for a coach", () => {
-  it.each(DECLARED_SOURCES)("%s has its own label, not the generic fallback", (source) => {
+  it.each(ALL_CONTACT_EVENT_SOURCES)("%s has its own label, not the generic fallback", (source) => {
     expect(titleFor(source)).not.toMatch(/^Came in through /)
   })
 
@@ -408,7 +397,7 @@ describe("every declared contact source has a label written for a coach", () => 
     // green for the raw slug and the human label alike.
     expect(titleFor("shop")).toBe("Bought something from the shop")
     expect(titleFor("funnel_checkout")).toBe("Bought through a funnel")
-    expect(titleFor("assessment")).toBe("Finished a movement assessment")
+    expect(titleFor("assessment")).toBe("Finished the fitness assessment")
     expect(titleFor("questionnaire")).toBe("Filled in a questionnaire")
   })
 

@@ -200,7 +200,9 @@ function expiredEvent(sessionId: string) {
 beforeEach(() => {
   vi.clearAllMocks()
   getSettingMock.mockResolvedValue(false)
-  contactRows = [{ id: "contact-1", business_id: BUSINESS, email: EMAIL, user_id: null, created_at: "2026-01-01T00:00:00.000Z" }]
+  contactRows = [
+    { id: "contact-1", business_id: BUSINESS, email: EMAIL, user_id: null, created_at: "2026-01-01T00:00:00.000Z" },
+  ]
   timelineRows = []
 })
 

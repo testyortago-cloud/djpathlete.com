@@ -64,6 +64,16 @@ async function insertSequenceRun(args: {
  * Enrols `contactId` into every active sequence whose `trigger_source`
  * matches `source` and whose `trigger_filter` matches `metadata`.
  *
+ * `trigger_source` is matched against whatever raw `ContactEventSource`
+ * string the caller passes -- the same kind of "one source value decides
+ * behaviour" reader `PURCHASE_SOURCES` (lib/db/contacts.ts) exists for. Gap
+ * #14 narrowed `purchase`: a `shop_order` or `funnel_purchase` checkout now
+ * writes `shop` / `funnel_checkout`, not `purchase`. No sequence is
+ * currently keyed on `trigger_source = 'purchase'` (checked against every
+ * migration), so this is latent today, not live -- but if one ever is, a
+ * shop or funnel buyer will silently stop matching it. Check
+ * `PURCHASE_SOURCES` before keying a new sequence on `purchase` alone.
+ *
  * A `23505` on `sequence_runs_one_active_per_sequence` means this contact is
  * already in that sequence — the correct outcome of a double submit, not an
  * error. It is swallowed and enrolment continues to the next candidate.

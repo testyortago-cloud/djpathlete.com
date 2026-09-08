@@ -74,15 +74,35 @@ const IS_PURCHASE_SOURCE: Record<ContactEventSource, boolean> = {
 }
 
 /**
+ * Every member of `ContactEventSource`, derived from `IS_PURCHASE_SOURCE`'s
+ * keys rather than hand-copied, so this list can never drift from the union.
+ * `IS_PURCHASE_SOURCE`'s type forces the object literal above to have an
+ * entry for every member (a missing one is a compile error) and rejects an
+ * extra key that isn't one (an excess-property error on the literal), so
+ * `Object.keys` on it enumerates exactly `ContactEventSource`'s members, no
+ * more and no fewer.
+ *
+ * Exists so a test that needs to walk "every declared contact source" (e.g.
+ * the `SOURCE_LABELS` completeness test in
+ * __tests__/lib/db/contact-detail.test.ts) can drive off the union itself
+ * instead of a hand-copied literal list -- a hand-copied list is exactly the
+ * kind of guard that stops guarding the moment someone adds a source and
+ * forgets to update the separate list too.
+ */
+export const ALL_CONTACT_EVENT_SOURCES: readonly ContactEventSource[] = Object.keys(
+  IS_PURCHASE_SOURCE,
+) as ContactEventSource[]
+
+/**
  * Every `ContactEventSource` that means "this person paid", derived from
  * `IS_PURCHASE_SOURCE` above so the two can never disagree. The ONLY reader
  * today is `hasPurchaseSince` below; a future caller asking "has this
  * contact paid" should read this rather than re-deciding the question
  * against a source list of its own.
  */
-export const PURCHASE_SOURCES: readonly ContactEventSource[] = (
-  Object.keys(IS_PURCHASE_SOURCE) as ContactEventSource[]
-).filter((source) => IS_PURCHASE_SOURCE[source])
+export const PURCHASE_SOURCES: readonly ContactEventSource[] = ALL_CONTACT_EVENT_SOURCES.filter(
+  (source) => IS_PURCHASE_SOURCE[source],
+)
 
 export type RecordContactEventInput = {
   email?: string | null

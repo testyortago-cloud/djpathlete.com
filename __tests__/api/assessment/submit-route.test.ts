@@ -62,11 +62,43 @@ describe("assessment submit — the contact-event write", () => {
     const { POST } = await import("@/app/api/assessment/submit/route")
     const res = await POST(postRequest())
     expect(res.status).toBe(201)
-    // Assert the LITERAL arguments, not merely that a call happened.
-    expect(findContactMock).toHaveBeenCalledWith({ userId: USER_ID, businessId: "platform-biz" })
+    // Assert the LITERAL arguments, not merely that a call happened. EMAIL
+    // is load-bearing here: contacts.user_id has no originating writer
+    // anywhere in the repo (0 of 170 production contacts have one), so a
+    // userId-only lookup would find nobody, ever. This is the exact
+    // omission fix round 2 found and closed.
+    expect(findContactMock).toHaveBeenCalledWith({
+      userId: USER_ID,
+      email: "athlete@example.com",
+      businessId: "platform-biz",
+    })
     expect(recordEventMock).toHaveBeenCalledTimes(1)
     expect(recordEventMock.mock.calls[0][0]).toMatchObject({
       contactId: "contact-1",
+      businessId: "platform-biz",
+      source: "assessment",
+    })
+  })
+
+  // THE REAL PRODUCTION SHAPE: 0 of 170 contacts carry a user_id, so every
+  // real match findContactByIdentifiers makes for this route happens on the
+  // EMAIL fallback, never the userId branch. Nothing covered this before —
+  // the test above only proves an email is PASSED, not that a contact found
+  // BY email (with no user_id at all) is handled correctly.
+  it("records an assessment event when the contact is found by EMAIL and has no user_id — the real production shape", async () => {
+    findContactMock.mockImplementation(async (args: { userId?: string | null; email?: string | null }) => {
+      // Simulates findContactByIdentifiers's real behaviour: the userId
+      // branch matches nothing (no contact has ever had one written), so it
+      // falls through to the email branch, which matches.
+      if (args.email === "athlete@example.com") return "contact-by-email"
+      return null
+    })
+    const { POST } = await import("@/app/api/assessment/submit/route")
+    const res = await POST(postRequest())
+    expect(res.status).toBe(201)
+    expect(recordEventMock).toHaveBeenCalledTimes(1)
+    expect(recordEventMock.mock.calls[0][0]).toMatchObject({
+      contactId: "contact-by-email",
       businessId: "platform-biz",
       source: "assessment",
     })

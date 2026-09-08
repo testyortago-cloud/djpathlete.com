@@ -170,7 +170,7 @@ const SOURCE_LABELS: Record<string, string> = {
   lead_magnet: "Downloaded a free guide",
   event_signup: "Signed up for an event",
   shop: "Bought something from the shop",
-  assessment: "Finished a movement assessment",
+  assessment: "Finished the fitness assessment",
   questionnaire: "Filled in a questionnaire",
   step_up: "Asked about stepping up",
   inquiry: "Made an enquiry",

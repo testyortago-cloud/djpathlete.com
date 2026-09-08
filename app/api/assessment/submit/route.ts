@@ -64,7 +64,20 @@ export async function POST(request: Request) {
     // tryCaptureLeadFromCheckout: catch, log, keep going.
     try {
       const businessId = platformBusinessId()
-      const contactId = await findContactByIdentifiers({ userId: session.user.id, businessId })
+      // EMAIL, NOT JUST userId: `contacts.user_id` has no originating writer
+      // anywhere in this repo -- recordContactEvent's create path never sets
+      // it, no route sets it, and the only SQL writes (migrations 00217,
+      // 00220, 00238) are merge carry-over of a value nothing could have set
+      // in the first place. A userId-only lookup finds nobody, ever (0 of
+      // 170 production contacts have a user_id). The contact this ruling
+      // relies on -- "a paying client already has a contact row, their
+      // Stripe checkout wrote a purchase event" (spec §2.3) -- is keyed by
+      // EMAIL. Do not "simplify" this back to userId alone.
+      const contactId = await findContactByIdentifiers({
+        userId: session.user.id,
+        email: session.user.email,
+        businessId,
+      })
       if (contactId) {
         await recordEventForExistingContact({
           contactId,

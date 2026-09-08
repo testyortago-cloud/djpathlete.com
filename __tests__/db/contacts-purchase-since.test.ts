@@ -198,7 +198,7 @@ describe("hasPurchaseSince", () => {
   // mocks the database, rather than hasPurchaseSince's return value, would
   // stay green if a source were silently dropped from PURCHASE_SOURCES
   // UNLESS something asserts the actual list passed to `.in()`. This does.
-  it("queries with .in(\"source\", PURCHASE_SOURCES) — the literal argument, not just that .in() was called", async () => {
+  it('queries with .in("source", PURCHASE_SOURCES) — the literal argument, not just that .in() was called', async () => {
     await hasPurchaseSince("c1", "biz-a", new Date("2026-05-01T00:00:00.000Z"))
     expect(inCalls).toHaveLength(1)
     expect(inCalls[0][0]).toBe("source")
