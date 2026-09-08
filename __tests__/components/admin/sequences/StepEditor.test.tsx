@@ -182,24 +182,36 @@ describe("<StepEditor> — a step that has already been sent cannot be removed",
 
 describe("<StepEditor> — the partway-through summary is derived from planStepSave", () => {
   it("matches planStepSave's own repoint/exit split exactly", () => {
-    // Four runs, matching the brief's own worked example: 3 carry on
-    // (one unchanged, one repointed), 1 is stopped because its step is gone.
+    // Four old steps, four runs. The "3 carry on" bucket is deliberately made
+    // of BOTH an unchanged run and a repointed run — carryOn is
+    // unchanged.length + repoint.length, and a fixture that only ever
+    // produces one of the two terms would let a mutation that drops either
+    // term from that sum survive.
     const oldSteps: SavedStep[] = [
       { id: "s0", position: 0 },
       { id: "s1", position: 1 },
       { id: "s2", position: 2 },
+      { id: "s3", position: 3 },
     ]
-    // New list: s1 moves to position 0, s0 is dropped, s2 stays at the end.
-    const initialSteps: StepDraft[] = [step("email", { id: "s1" }), step("stop", { id: "s2" })]
+    // New list: s0 is dropped, s3 moves up to the front, s1 and s2 keep their
+    // positions exactly.
+    const initialSteps: StepDraft[] = [
+      step("email", { id: "s3" }),
+      step("email", { id: "s1" }),
+      step("stop", { id: "s2" }),
+    ]
     const runs: RunPointer[] = [
-      { id: "r1", current_position: 1 }, // s1 -> repointed to 0
-      { id: "r2", current_position: 1 }, // s1 -> repointed to 0
-      { id: "r3", current_position: 2 }, // s2 -> unchanged (stays at 1)
+      { id: "r1", current_position: 3 }, // s3 -> repointed, 3 to 0
+      { id: "r2", current_position: 1 }, // s1 -> unchanged, stays at 1
+      { id: "r3", current_position: 2 }, // s2 -> unchanged, stays at 2
       { id: "r4", current_position: 0 }, // s0 -> removed -> exited
     ]
 
     // Independently computed, exactly like the component must do internally.
     const expectedPlan = planStepSave(oldSteps, initialSteps, runs)
+    expect(expectedPlan.unchanged).toHaveLength(2)
+    expect(expectedPlan.repoint).toHaveLength(1)
+    expect(expectedPlan.exit).toHaveLength(1)
     const expectedCarryOn = expectedPlan.unchanged.length + expectedPlan.repoint.length
     const expectedStopped = expectedPlan.exit.length
     expect(expectedCarryOn).toBe(3)
