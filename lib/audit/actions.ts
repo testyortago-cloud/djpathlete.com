@@ -381,6 +381,22 @@ export const AUDIT_ACTIONS = [
     description: "Admin enrolled one or more contacts into a sequence by hand",
   },
   {
+    // admin_write, same reasoning as sequence.contacts_enrolled just above:
+    // turning a sequence on or off is an operational act with a wide blast
+    // radius (it starts/stops sending to everyone who enters from now on),
+    // not a consent record. Writer: app/api/admin/sequences/[key]/status/route.ts.
+    slug: "sequence.status_changed",
+    category: "admin_write",
+    description: "Admin switched a sequence on or off",
+  },
+  {
+    // Writer: app/api/admin/sequences/[key]/steps/route.ts. Metadata carries
+    // the sequence key and counts only -- see that route's header for why.
+    slug: "sequence.steps_edited",
+    category: "admin_write",
+    description: "Admin changed a sequence's steps",
+  },
+  {
     // `commerce`, not `admin_write`: this creates an account and grants a paid
     // program off the back of a deal somebody closed. It belongs with the
     // money, beside pipeline.opportunity_won.
