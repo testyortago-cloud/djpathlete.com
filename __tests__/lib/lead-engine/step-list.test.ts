@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest"
-import { stepGraphEdges, hasCycle, reachableFrom, type StepDraft } from "@/lib/lead-engine/step-list"
+import { stepGraphEdges, hasCycle, reachableFrom, validateStepList, type StepDraft } from "@/lib/lead-engine/step-list"
+
+/** The messages only, for terser assertions. */
+const messages = (steps: StepDraft[]) => validateStepList(steps).map((p) => p.message)
 
 /** A step with everything nulled out except what the test cares about. */
 function step(kind: StepDraft["kind"], over: Partial<StepDraft> = {}): StepDraft {
@@ -83,5 +86,147 @@ describe("reachableFrom", () => {
 
   it("terminates on a cycle instead of hanging", () => {
     expect([...reachableFrom([[1], [0]], 0)].sort()).toEqual([0, 1])
+  })
+})
+
+describe("validateStepList — the shapes the database would reject anyway", () => {
+  it("accepts a plain email, wait, stop list", () => {
+    expect(validateStepList([step("email"), step("wait"), step("stop")])).toEqual([])
+  })
+
+  it("rejects an email with no subject", () => {
+    const problems = validateStepList([step("email", { subject: null })])
+    expect(problems).toHaveLength(1)
+    expect(problems[0].index).toBe(0)
+    expect(problems[0].message).toMatch(/subject/i)
+  })
+
+  it("rejects an email with no body", () => {
+    expect(messages([step("email", { body: null })])).toEqual([expect.stringMatching(/written|body|say/i)])
+  })
+
+  it("rejects a text with no body", () => {
+    expect(messages([step("sms", { body: null })])).toEqual([expect.stringMatching(/written|body|say/i)])
+  })
+
+  it("rejects a wait with no length", () => {
+    expect(messages([step("wait", { wait_minutes: null })])).toEqual([expect.stringMatching(/how long/i)])
+  })
+
+  it("rejects a wait of zero, which the database would accept", () => {
+    // sequence_steps_wait_needs_minutes only checks NOT NULL. A zero wait is
+    // storable and pointless, so this half of the rule is ours.
+    expect(messages([step("wait", { wait_minutes: 0 })])).toHaveLength(1)
+  })
+
+  it("rejects a split with no question attached", () => {
+    expect(messages([step("branch", { branch_condition: null })])).toEqual([expect.stringMatching(/which people|question/i)])
+  })
+
+  it("rejects a question the engine does not know", () => {
+    // evaluateBranch FAILS the run on an unknown predicate rather than guessing
+    // an arm, so the editor must not be able to save one.
+    const bogus = { kind: "has_dog" } as unknown as StepDraft["branch_condition"]
+    expect(messages([step("branch", { branch_condition: bogus })])).toHaveLength(1)
+  })
+
+  it("rejects a consent check for a channel the engine cannot send on", () => {
+    // has_consent is a known KIND, but its own `channel` field is still
+    // narrower than "any string" -- evaluateBranch only knows "email" and
+    // "sms". A step that names some other channel must fail the same way an
+    // unknown kind does, not be waved through because the kind matched.
+    const bogus = { kind: "has_consent", channel: "fax" } as unknown as StepDraft["branch_condition"]
+    expect(messages([step("branch", { branch_condition: bogus })])).toHaveLength(1)
+  })
+
+  it("rejects a label step with no label, using step-config's own wording", () => {
+    const problems = validateStepList([step("tag", { config: {} })])
+    expect(problems).toHaveLength(1)
+    expect(problems[0].message).toBe("This sequence's tag step does not say which tag to add.")
+  })
+
+  it("accepts a label step whose label parses", () => {
+    expect(validateStepList([step("tag", { config: { tag: "warm-lead" } })])).toEqual([])
+  })
+
+  it("rejects a card-move step with no stage, using step-config's own wording", () => {
+    const problems = validateStepList([step("stage", { config: {} })])
+    expect(problems[0].message).toBe("This sequence's stage step does not say which stage to move the person to.")
+  })
+
+  it("rejects an empty list", () => {
+    expect(messages([])).toHaveLength(1)
+  })
+})
+
+describe("validateStepList — the rules the database cannot express", () => {
+  // 0 branch -> true:1, false:3
+  // 1 email  \ first side
+  // 2 stop   /
+  // 3 email  \ second side
+  // 4 stop   /
+  const soundBranch = (): StepDraft[] => [
+    step("branch", { on_true_position: 1, on_false_position: 3 }),
+    step("email"),
+    step("stop"),
+    step("email"),
+    step("stop"),
+  ]
+
+  it("accepts a split where each side ends on its own", () => {
+    expect(validateStepList(soundBranch())).toEqual([])
+  })
+
+  it("rejects a split whose first side runs on into the second", () => {
+    // Delete the first side's ending. Position 1 now advances to 2, 2 to 3 --
+    // and 3 is the second side's opening email. The person gets both endings.
+    const steps = soundBranch()
+    steps[2] = step("email")
+    const problems = validateStepList(steps)
+    expect(problems).toHaveLength(1)
+    expect(problems[0].message).toMatch(/runs on into|both/i)
+  })
+
+  it("rejects a split whose SECOND side runs on into the first", () => {
+    // Mirrors the test above with the arms swapped: the "false" side sits at
+    // the lower positions this time, and — missing its own ending — falls
+    // through into the "true" side higher up. `yes` here is 3, `no` is 1, so
+    // this scenario is only caught by `reachableFrom(edges, no).has(yes)`;
+    // the other half of that check never sees it.
+    const steps: StepDraft[] = [
+      step("branch", { on_true_position: 3, on_false_position: 1 }),
+      step("email"),
+      step("wait"),
+      step("email"),
+      step("stop"),
+    ]
+    const problems = validateStepList(steps)
+    expect(problems).toHaveLength(1)
+    expect(problems[0].message).toMatch(/runs on into|both/i)
+  })
+
+  it("accepts a side that ends by running off the end of the list", () => {
+    // Not the house style, but decideStep completes the run when no step
+    // matches, so it is a real ending. Rejecting it would be a false alarm.
+    const steps: StepDraft[] = [
+      step("branch", { on_true_position: 1, on_false_position: 2 }),
+      step("stop"),
+      step("email"),
+    ]
+    expect(validateStepList(steps)).toEqual([])
+  })
+
+  it("accepts both sides pointing at the same ending", () => {
+    // A pointless split, but harmless: there is no other arm to fall into.
+    const steps: StepDraft[] = [
+      step("branch", { on_true_position: 1, on_false_position: 1 }),
+      step("stop"),
+    ]
+    expect(validateStepList(steps)).toEqual([])
+  })
+
+  it("rejects a list that loops forever", () => {
+    const steps: StepDraft[] = [step("email"), step("branch", { on_true_position: 0, on_false_position: 2 }), step("stop")]
+    expect(messages(steps)).toEqual([expect.stringMatching(/round in circles|loop/i)])
   })
 })

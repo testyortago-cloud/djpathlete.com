@@ -20,6 +20,7 @@
 // sequence_steps_position_uniq.
 
 import type { StepKind, BranchCondition } from "@/lib/automation/sequence-tick"
+import { parseTagConfig, parseStageConfig } from "@/lib/lead-engine/step-config"
 
 export type StepDraft = {
   /** `null` for a step that does not exist in the database yet. */
@@ -94,4 +95,98 @@ export function reachableFrom(edges: number[][], start: number): Set<number> {
     for (const next of edges[at]) stack.push(next)
   }
   return seen
+}
+
+export type StepProblem = { index: number | null; message: string }
+
+/** Exactly the four predicates `evaluateBranch` implements. Anything else fails a run. */
+const KNOWN_BRANCH_KINDS = new Set(["has_phone", "has_user", "has_consent", "source_is"])
+
+function branchConditionIsKnown(condition: BranchCondition | null): boolean {
+  if (condition === null) return false
+  if (!KNOWN_BRANCH_KINDS.has(condition.kind)) return false
+  if (condition.kind === "has_consent") return condition.channel === "email" || condition.channel === "sms"
+  if (condition.kind === "source_is") return typeof condition.value === "string" && condition.value.trim().length > 0
+  return true
+}
+
+/**
+ * Every problem with a step list, in the order a person would read them.
+ *
+ * Returns [] for a valid list. The first block mirrors the CHECK constraints on
+ * `sequence_steps` -- not redundantly: the constraint stays and is the last
+ * line, and this exists so the failure arrives as English before the write.
+ * The second block is the two rules SQL cannot state.
+ */
+export function validateStepList(steps: StepDraft[]): StepProblem[] {
+  const problems: StepProblem[] = []
+
+  if (steps.length === 0) {
+    return [{ index: null, message: "A sequence needs at least one step." }]
+  }
+
+  steps.forEach((step, index) => {
+    switch (step.kind) {
+      case "email":
+        if (!step.subject || step.subject.trim().length === 0) {
+          problems.push({ index, message: "This email has no subject line." })
+        }
+        if (!step.body || step.body.trim().length === 0) {
+          problems.push({ index, message: "This email has nothing written in it." })
+        }
+        break
+      case "sms":
+        if (!step.body || step.body.trim().length === 0) {
+          problems.push({ index, message: "This text has nothing written in it." })
+        }
+        break
+      case "wait":
+        if (step.wait_minutes === null || step.wait_minutes <= 0) {
+          problems.push({ index, message: "This wait does not say how long to wait for." })
+        }
+        break
+      case "branch":
+        if (!branchConditionIsKnown(step.branch_condition)) {
+          problems.push({ index, message: "This split does not say which people go down each side." })
+        }
+        break
+      case "tag": {
+        const parsed = parseTagConfig(step.config)
+        if (!parsed.ok) problems.push({ index, message: parsed.error })
+        break
+      }
+      case "stage": {
+        const parsed = parseStageConfig(step.config)
+        if (!parsed.ok) problems.push({ index, message: parsed.error })
+        break
+      }
+      case "alert":
+      case "stop":
+        break
+    }
+  })
+
+  const edges = stepGraphEdges(steps)
+
+  if (hasCycle(edges)) {
+    problems.push({ index: null, message: "These steps go round in circles, so somebody could never reach the end." })
+  } else {
+    // Only meaningful on an acyclic list; on a cyclic one every arm reaches
+    // everything and this would produce a second, confusing complaint about
+    // the same defect.
+    steps.forEach((step, at) => {
+      if (step.kind !== "branch") return
+      const yes = step.on_true_position ?? at + 1
+      const no = step.on_false_position ?? at + 1
+      if (yes === no) return // one shared ending: there is no other side to fall into
+      if (reachableFrom(edges, yes).has(no) || reachableFrom(edges, no).has(yes)) {
+        problems.push({
+          index: at,
+          message: "One side of this split runs on into the other, so the same person would get both endings.",
+        })
+      }
+    })
+  }
+
+  return problems
 }
