@@ -71,6 +71,18 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     four still platform-wide -- which reads more authoritative about "this
  *     business's income" than it is. Reconciling that belongs to the
  *     bookkeeping phase, not this one.
+ *   - the assessment submission's contact lookup
+ *     (app/api/assessment/submit/route.ts, gap #14). The route DOES have a
+ *     session -- it 401s without one -- but the session carries a userId
+ *     only. `users` has no `business_id` column and there is no per-coach
+ *     relationship to resolve a client's own tenant from today. The lookup
+ *     this enables (`findContactByIdentifiers({ userId, businessId })`,
+ *     written onto a contact ONLY when one already exists -- see that
+ *     gap's design doc §2.3 for why the route must never mint one) needs
+ *     some businessId to scope its `.eq()`, and every client's contact row
+ *     was itself filed under this same seam already (a first-time payer's
+ *     Stripe checkout capture, above), so this agrees with how that row was
+ *     filed rather than guessing a second tenant for it.
  *
  * CORRECT BY CONSTRUCTION -- the caller could be asked to resolve a tenant
  * and the answer would still be the platform's own. Not a placeholder

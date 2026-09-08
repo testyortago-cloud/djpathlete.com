@@ -290,6 +290,46 @@ export async function recordContactEvent(
   return { contactId, created, merged }
 }
 
+/**
+ * Appends one timeline event onto a contact that ALREADY EXISTS. Never
+ * creates, merges or otherwise touches identity — the opposite contract to
+ * `recordContactEvent` above, which upserts identity unconditionally.
+ *
+ * Exists for gap #14's ruling on `assessment` (see the design doc, §2.3):
+ * the only assessment surface 401s without a session, so everyone who
+ * submits is already a registered client, not a lead. Minting a contact row
+ * for them the way `recordContactEvent` would is a product decision this
+ * task does not make — the caller is expected to have already resolved a
+ * contact id (e.g. via `findContactByIdentifiers`) and to call this ONLY
+ * when one came back, doing nothing at all otherwise.
+ *
+ * A timeline write failure is logged, never thrown — same discipline as the
+ * timeline insert inside `recordContactEvent`: the caller's own action
+ * (an assessment submission) has already succeeded and must not be failed
+ * to fix a history row.
+ */
+export async function recordEventForExistingContact(input: {
+  contactId: string
+  businessId: string
+  source: ContactEventSource
+  metadata?: Record<string, unknown>
+}): Promise<void> {
+  const supabase = getClient()
+  const { error } = await supabase.from("contact_timeline_events").insert({
+    business_id: input.businessId,
+    contact_id: input.contactId,
+    kind: "entry_point",
+    source: input.source,
+    metadata: input.metadata ?? {},
+  })
+  if (error) {
+    console.error(
+      `recordEventForExistingContact: failed to append timeline event for contact ${input.contactId} (source: ${input.source})`,
+      error,
+    )
+  }
+}
+
 // Runs in a single transaction inside the `merge_contacts` plpgsql function
 // (supabase/migrations/00217_lead_engine_sequence_functions.sql) — Supabase
 // REST cannot span statements, so this used to be several independent

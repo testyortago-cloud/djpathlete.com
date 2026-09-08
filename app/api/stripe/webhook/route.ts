@@ -150,6 +150,32 @@ async function tryEnqueueAdsValueAdjustment(session: Stripe.Checkout.Session): P
 // dedupe the row (append-only spine, intentional per Task 4's ruling on the
 // event_signup/purchase overlap); it just makes every row traceable to its
 // session, the same way the sibling pipeline hook already tags itself.
+/**
+ * Which kind of contact event a completed checkout is.
+ *
+ * The webhook already discriminates these types for the pipeline and the
+ * fulfilment branches above (NON_COACHING_CHECKOUT_TYPES, the
+ * `session.metadata?.type` dispatch below); this reuses the same
+ * discriminator so one checkout cannot be a shop order to one reader and a
+ * coaching sale to another.
+ *
+ * Everything not named here stays `purchase`, unchanged. Gap #14: `purchase`
+ * is being NARROWED, not redefined -- `hasPurchaseSince` above reads it, so a
+ * plain coaching sale (and event_signup / save_card / session_pack, which
+ * already have their own more specific handling below but are not their own
+ * contact-event source) must keep writing it.
+ */
+function checkoutContactSource(session: Stripe.Checkout.Session): ContactEventSource {
+  switch (session.metadata?.type) {
+    case "shop_order":
+      return "shop"
+    case "funnel_purchase":
+      return "funnel_checkout"
+    default:
+      return "purchase"
+  }
+}
+
 async function tryCaptureLeadFromCheckout(
   session: Stripe.Checkout.Session,
   businessId: string,
@@ -259,7 +285,11 @@ export async function POST(request: Request) {
         // lost, and pre-branch it always filed here, which is why
         // `payerBusinessId` is declared outside the try block above. Listed
         // under that shelf in the inventory.
-        await tryCaptureLeadFromCheckout(session, payerBusinessId ?? platformBusinessId(), "purchase")
+        await tryCaptureLeadFromCheckout(
+          session,
+          payerBusinessId ?? platformBusinessId(),
+          checkoutContactSource(session),
+        )
 
         if (session.metadata?.type === "shop_order") {
           await handleShopOrderCheckout(session)

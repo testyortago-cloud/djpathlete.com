@@ -4,6 +4,8 @@ import { assessmentSubmitSchema } from "@/lib/validators/assessment"
 import { getActiveQuestions, getLatestAssessmentResult, createAssessmentResult } from "@/lib/db/assessments"
 import { computeAssessmentScores } from "@/lib/assessment-scoring"
 import { recordAudit } from "@/lib/audit/record"
+import { findContactByIdentifiers, recordEventForExistingContact } from "@/lib/db/contacts"
+import { platformBusinessId } from "@/lib/tenancy/platform"
 
 export async function POST(request: Request) {
   try {
@@ -51,6 +53,29 @@ export async function POST(request: Request) {
       feedback,
       completed_at: new Date().toISOString(),
     })
+
+    // Gap #14: record this on the person's timeline, but ONLY onto a contact
+    // that already exists. This route 401s without a session, so everyone
+    // who submits is already a registered client, not a lead -- minting a
+    // contact row for them (what recordContactEvent would do unconditionally)
+    // is a product decision this task does not make. A contact write must
+    // never fail an assessment submission, so this is isolated in its own
+    // try/catch, the same shape as the Stripe webhook's
+    // tryCaptureLeadFromCheckout: catch, log, keep going.
+    try {
+      const businessId = platformBusinessId()
+      const contactId = await findContactByIdentifiers({ userId: session.user.id, businessId })
+      if (contactId) {
+        await recordEventForExistingContact({
+          contactId,
+          businessId,
+          source: "assessment",
+          metadata: { assessment_result_id: result.id },
+        })
+      }
+    } catch (err) {
+      console.error("[assessment-submit] contact event failed", (err as Error).message)
+    }
 
     await recordAudit({
       action: "assessment.submitted",
