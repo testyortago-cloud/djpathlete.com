@@ -231,3 +231,118 @@ describe("<StepEditor> — the partway-through summary is derived from planStepS
     expect(screen.queryByText(/partway through/i)).not.toBeInTheDocument()
   })
 })
+
+/**
+ * `branch(true -> 1, false -> 3)`, then the true arm (e1, s2) and the false
+ * arm (e3, s4) each ending in their own `stop`. Used by the reorder tests
+ * below: branch targets are held by step identity (`branchTrueKey` /
+ * `branchFalseKey`), not by array index, precisely so a reorder can change
+ * every index in the list without silently repointing a branch at the wrong
+ * step. These tests pin THAT invariant — not merely "the numbers didn't
+ * change", which would be true by coincidence for a list this shape and
+ * would say nothing about whether identity survived the move.
+ */
+function branchFixture(): StepDraft[] {
+  return [
+    step("branch", { id: "b0", on_true_position: 1, on_false_position: 3 }),
+    step("email", { id: "e1" }),
+    step("stop", { id: "s2" }),
+    step("email", { id: "e3" }),
+    step("stop", { id: "s4" }),
+  ]
+}
+
+describe("<StepEditor> — reorder keeps branch targets pointed at the same steps", () => {
+  it("a reorder that keeps both arms intact still saves the branch pointing at the same STEPS, even though the position numbers move", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, plan: { repoint: [], exit: [], unchanged: [] } }),
+    }) as unknown as typeof fetch
+
+    renderEditor({ initialSteps: branchFixture() })
+
+    // Move the false arm's OWN closing step ("stop", s4, last in the list) up
+    // one, swapping it with the false arm's email (e3). Both moved steps stay
+    // inside the false arm, so this cannot merge the two arms — a legal,
+    // saveable reorder that nonetheless changes the false arm's target
+    // position (3 -> 4).
+    fireEvent.click(screen.getByRole("button", { name: /move step 5 up/i }))
+
+    const saveButton = screen.getByRole("button", { name: /save changes/i })
+    expect(saveButton).not.toBeDisabled()
+    fireEvent.click(saveButton)
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string) as { steps: StepDraft[] }
+    const branchDraft = body.steps[0]
+
+    expect(branchDraft.kind).toBe("branch")
+    expect(branchDraft.on_true_position).not.toBeNull()
+    expect(branchDraft.on_false_position).not.toBeNull()
+
+    // The real assertion: look up WHICH STEP each position number now names,
+    // and check it is the same step the branch pointed at before the move —
+    // not that the number itself happens to match some expectation.
+    expect(body.steps[branchDraft.on_true_position as number].id).toBe("e1")
+    expect(body.steps[branchDraft.on_false_position as number].id).toBe("e3")
+
+    // And the number really did move (3 -> 4) — proving this fixture
+    // exercises the remap rather than passing by coincidence on a no-op.
+    expect(branchDraft.on_false_position).toBe(4)
+  })
+
+  it("a reorder that merges the two arms is caught by validation and never saved", async () => {
+    global.fetch = vi.fn()
+    renderEditor({ initialSteps: branchFixture() })
+
+    // Move the false arm's target ("email", e3, originally at index 3) up
+    // one, swapping it with "stop" (s2) — the step that currently ENDS the
+    // true arm. The false arm's own target correctly follows e3 to its new
+    // position (3 -> 2), but the true arm's implicit fallthrough (e1's own
+    // next step) now ALSO lands on position 2 — the two arms collide, and
+    // the same person would get both endings.
+    fireEvent.click(screen.getByRole("button", { name: /move step 4 up/i }))
+
+    expect(
+      screen.getByText(
+        "Step 1: One side of this split runs on into the other, so the same person would get both endings.",
+      ),
+    ).toBeInTheDocument()
+
+    const saveButton = screen.getByRole("button", { name: /save changes/i })
+    expect(saveButton).toBeDisabled()
+
+    fireEvent.click(saveButton)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe("<StepEditor> — reordering moves exactly one step to the target position", () => {
+  it("keeps every step, with the moved step landing where it was dropped and nothing lost or duplicated", () => {
+    const initialSteps: StepDraft[] = [
+      step("email", { id: "a", subject: "First" }),
+      step("email", { id: "b", subject: "Second" }),
+      step("email", { id: "c", subject: "Third" }),
+    ]
+    renderEditor({ initialSteps })
+
+    fireEvent.click(screen.getByRole("button", { name: /move step 2 up/i }))
+
+    // Still exactly three steps — none lost, none duplicated by the splice.
+    expect(screen.getByTestId("step-0")).toBeInTheDocument()
+    expect(screen.getByTestId("step-1")).toBeInTheDocument()
+    expect(screen.getByTestId("step-2")).toBeInTheDocument()
+    expect(screen.queryByTestId("step-3")).not.toBeInTheDocument()
+
+    const subjectAt = (index: number) =>
+      (within(screen.getByTestId(`step-${index}`)).getByLabelText(/subject line/i) as HTMLInputElement).value
+
+    // "Second" moved up to the front; "First" shifted down to make room;
+    // "Third" (untouched by the move) stays exactly where it was.
+    expect(subjectAt(0)).toBe("Second")
+    expect(subjectAt(1)).toBe("First")
+    expect(subjectAt(2)).toBe("Third")
+  })
+})
