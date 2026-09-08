@@ -62,6 +62,7 @@ import {
   type PaymentRow,
   type TimelineEventRow,
 } from "@/lib/db/contact-detail"
+import { ALL_CONTACT_EVENT_SOURCES } from "@/lib/db/contacts"
 
 function event(over: Partial<TimelineEventRow> & { id: string }): TimelineEventRow {
   return {
@@ -367,6 +368,43 @@ describe("describeTimelineEvent", () => {
     const described = describeTimelineEvent(event({ id: "e", kind: "sms_stop_received" }))
     expect(described.title).toBe("Texted STOP")
     expect(described.tone).toBe("danger")
+  })
+})
+
+// Gap #14, Task 1 (fix round 2, M1): `SOURCE_LABELS` is `Record<string,
+// string>`, so a source added to `ContactEventSource` (lib/db/contacts.ts)
+// without a matching label compiles clean and falls through to `Came in
+// through ${humanise(...)}` -- generic, not broken, and not written for a
+// coach. This USED to be a hand-copied literal list here, which is exactly
+// the same failure mode one level up: forgetting to add a new source to
+// BOTH `ContactEventSource` and this list would ship a missing label
+// silently, undetected by this very guard. Driving off
+// `ALL_CONTACT_EVENT_SOURCES` (lib/db/contacts.ts, derived from a
+// `Record<ContactEventSource, boolean>` that tsc forces to stay complete)
+// means the union itself is what this test walks -- there is no second list
+// to fall out of sync with it.
+function titleFor(source: string): string {
+  return describeTimelineEvent(event({ id: "e", kind: "entry_point", source })).title
+}
+
+describe("every declared contact source has a label written for a coach", () => {
+  it.each(ALL_CONTACT_EVENT_SOURCES)("%s has its own label, not the generic fallback", (source) => {
+    expect(titleFor(source)).not.toMatch(/^Came in through /)
+  })
+
+  it("says which sentence each new source renders", () => {
+    // Assert WHICH value, not that a value came back: a non-empty check is
+    // green for the raw slug and the human label alike.
+    expect(titleFor("shop")).toBe("Bought something from the shop")
+    expect(titleFor("funnel_checkout")).toBe("Bought through a funnel")
+    expect(titleFor("assessment")).toBe("Finished the fitness assessment")
+    expect(titleFor("questionnaire")).toBe("Filled in a questionnaire")
+  })
+
+  it("still falls back readably for a source nobody declared", () => {
+    // The default arm is load-bearing: `source` is plain text with no CHECK,
+    // so a value this union has never heard of can arrive from an import.
+    expect(titleFor("carrier_pigeon")).toBe("Came in through Carrier pigeon")
   })
 })
 

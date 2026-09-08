@@ -196,8 +196,11 @@ describe("POST /api/stripe/webhook — checkout.session.completed joins the cont
 
     expect(res.status).toBe(200)
     expect(mocks.handleShopOrderCheckout).toHaveBeenCalled()
+    // Gap #14: a shop order now captures as its own source, `shop`, rather
+    // than the generic `purchase` this suite pinned before that gap closed.
+    // Still "STILL captures a lead" — only WHICH source changed.
     expect(mocks.recordContactEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ source: "purchase", email: "merch@example.com", name: "Merch Buyer" }),
+      expect.objectContaining({ source: "shop", email: "merch@example.com", name: "Merch Buyer" }),
     )
   })
 
@@ -275,8 +278,12 @@ describe("POST /api/stripe/webhook — checkout.session.completed joins the cont
     const res = await POST(makeReq())
 
     expect(res.status).toBe(200)
+    // Gap #14: a funnel purchase now captures as its own source,
+    // `funnel_checkout`, rather than the generic `purchase` this suite
+    // pinned before that gap closed. Still "STILL captures a lead" — only
+    // WHICH source changed.
     expect(mocks.recordContactEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ source: "purchase", email: "funnel@example.com", name: "Funnel Buyer" }),
+      expect.objectContaining({ source: "funnel_checkout", email: "funnel@example.com", name: "Funnel Buyer" }),
     )
   })
 
