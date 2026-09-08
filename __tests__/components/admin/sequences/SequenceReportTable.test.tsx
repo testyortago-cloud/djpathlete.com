@@ -1,15 +1,18 @@
 // @vitest-environment jsdom
 // __tests__/components/admin/sequences/SequenceReportTable.test.tsx
 //
-// Two things pinned here:
+// Three things pinned here:
 //
 //   1. The "paused" empty-state sentence, fixed for migration 00256: pausing
 //      now stops everybody in the sequence, not just new arrivals, so the
 //      copy must say both halves.
 //   2. The on/off switch column that sits alongside the existing status
-//      badge — Ruling B keeps the shipped "Paused" / "Not started" wording on
-//      the badge unchanged, while the switch's own reading comes from
-//      `status === "active"` alone.
+//      badge, whose own reading comes from `status === "active"` alone.
+//   3. The status badge's own wording is bound to §4.1 of the design doc:
+//      "Turned off" / "Never turned on". A prior Task 7+8 ruling kept the
+//      shipped "Paused" / "Not started" wording instead — whole-branch
+//      review reversed that ruling as a spec violation (a ruling is not a
+//      spec amendment), so this file no longer pins the old strings.
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, within } from "@testing-library/react"
@@ -61,9 +64,18 @@ describe("<SequenceReportTable> — the paused empty-state sentence", () => {
     expect(screen.getByText("Not switched on yet.")).toBeInTheDocument()
   })
 
-  it("keeps the shipped 'Paused' badge label — Ruling B, do not churn shipped copy", () => {
+  it("labels the paused badge 'Turned off', per §4.1 of the design doc", () => {
+    // MUTANT this guards against: reverting to the pre-spec "Paused" wording
+    // (whole-branch review, Important 4 — a ruling is not a spec amendment).
     render(<SequenceReportTable rows={[row({ status: "paused" })]} />)
-    expect(screen.getByText("Paused")).toBeInTheDocument()
+    expect(screen.getByText("Turned off")).toBeInTheDocument()
+    expect(screen.queryByText("Paused")).not.toBeInTheDocument()
+  })
+
+  it("labels the draft badge 'Never turned on', per §4.1 of the design doc", () => {
+    render(<SequenceReportTable rows={[row({ status: "draft" })]} />)
+    expect(screen.getByText("Never turned on")).toBeInTheDocument()
+    expect(screen.queryByText("Not started")).not.toBeInTheDocument()
   })
 })
 
@@ -86,6 +98,35 @@ describe("<SequenceReportTable> — the on/off switch column", () => {
   it("reads off for a draft sequence too", () => {
     render(<SequenceReportTable rows={[row({ status: "draft" })]} />)
     expect(screen.getByRole("switch")).toHaveAttribute("data-state", "unchecked")
+  })
+})
+
+describe("<SequenceReportTable> — a staff viewer gets no control that can only ever 403 (whole-branch review, Important 3)", () => {
+  it("renders no switch at all for isAdmin={false}, showing the plain reading instead", () => {
+    render(
+      <SequenceReportTable
+        rows={[
+          row({ id: "s1", key: "on_seq", name: "On Sequence", status: "active" }),
+          row({ id: "s2", key: "off_seq", name: "Off Sequence", status: "paused" }),
+        ]}
+        isAdmin={false}
+      />,
+    )
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument()
+    // Scoped to the switch column's OWN cell (the row's first <td>) — the
+    // row's name text ("On Sequence") itself contains the substring "On",
+    // so an unscoped toHaveTextContent("On") would pass vacuously.
+    const onRow = screen.getByText("On Sequence").closest("tr")!
+    const offRow = screen.getByText("Off Sequence").closest("tr")!
+    expect(onRow.querySelectorAll("td")[0]).toHaveTextContent(/^On$/)
+    expect(offRow.querySelectorAll("td")[0]).toHaveTextContent(/^Off$/)
+  })
+
+  it("presence control: an admin viewer still gets the real switch, by default", () => {
+    // Pairs with the test above — proves the absence there is caused by
+    // isAdmin={false}, not by the switch column disappearing unconditionally.
+    render(<SequenceReportTable rows={[row({ status: "active" })]} />)
+    expect(screen.getByRole("switch")).toBeInTheDocument()
   })
 })
 

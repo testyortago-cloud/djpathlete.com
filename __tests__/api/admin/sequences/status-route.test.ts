@@ -108,6 +108,14 @@ describe("PATCH /api/admin/sequences/[key]/status — the body", () => {
     expect(setSequenceStatusMock).not.toHaveBeenCalled()
   })
 
+  it("the 400 reads in plain English, not raw type jargon — whole-branch review, Minor", async () => {
+    const res = await PATCH(req({}) as never, ctx())
+    const json = await res.json()
+    expect(json.error).toBe("Could not understand that request.")
+    expect(json.error).not.toMatch(/\bboolean\b/i)
+    expect(json.error).not.toContain("{")
+  })
+
   it("400s on a body that is not JSON at all", async () => {
     const res = await PATCH(
       new Request("http://localhost/api/admin/sequences/cold_lead/status", {

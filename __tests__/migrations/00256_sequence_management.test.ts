@@ -113,6 +113,8 @@ describe("save_sequence_steps: operations run in the order that avoids the colli
   const parkIdx = SAVE_FN.indexOf("SET position = -1 - position")
   const insertIdx = SAVE_FN.indexOf("INSERT INTO public.sequence_steps")
   const survivorUpdateIdx = SAVE_FN.indexOf("SET position          = (e.ord - 1)::int")
+  const idIntegrityDiagnosticsIdx = SAVE_FN.indexOf("GET DIAGNOSTICS v_updated = ROW_COUNT")
+  const idIntegrityRaiseIdx = SAVE_FN.indexOf("RAISE EXCEPTION 'expected to update")
   const repointIdx = SAVE_FN.indexOf("SET current_position = (e.value->>'to_position')::int")
   const exitIdx = SAVE_FN.indexOf("SET status = 'exited'")
 
@@ -124,6 +126,8 @@ describe("save_sequence_steps: operations run in the order that avoids the colli
       ["negative parking UPDATE", parkIdx],
       ["INSERT of new steps", insertIdx],
       ["survivor UPDATE", survivorUpdateIdx],
+      ["id-integrity GET DIAGNOSTICS", idIntegrityDiagnosticsIdx],
+      ["id-integrity RAISE", idIntegrityRaiseIdx],
       ["run re-point UPDATE", repointIdx],
       ["run exit UPDATE", exitIdx],
     ]
@@ -158,6 +162,41 @@ describe("save_sequence_steps: operations run in the order that avoids the colli
 
   it("runs are re-pointed before the ones without a home are exited", () => {
     expect(repointIdx).toBeLessThan(exitIdx)
+  })
+
+  it("the id-integrity check (GET DIAGNOSTICS + RAISE) runs right after the survivor UPDATE and before runs are re-pointed", () => {
+    // Whole-branch review, Important 1: this check has to see the survivor
+    // UPDATE's OWN row count, so it cannot run before that statement -- and
+    // it has to run before any run is re-pointed, or a run could be moved
+    // onto a position a bad/duplicate id left with no real step in it.
+    expect(survivorUpdateIdx).toBeLessThan(idIntegrityDiagnosticsIdx)
+    expect(idIntegrityDiagnosticsIdx).toBeLessThan(idIntegrityRaiseIdx)
+    expect(idIntegrityRaiseIdx).toBeLessThan(repointIdx)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// A bad or duplicate step id must not be able to punch a position gap.
+// ---------------------------------------------------------------------------
+
+describe("save_sequence_steps refuses an id that did not match a real survivor row", () => {
+  it("raises an exception naming the expected vs. actual survivor count", () => {
+    expect(SAVE_FN).toMatch(/RAISE EXCEPTION 'expected to update % survivor step\(s\) but touched %'/)
+  })
+
+  it("compares against array_length(v_keep_ids, 1), coalesced for the zero-survivor case", () => {
+    // array_length() of an EMPTY array is NULL in Postgres, not 0 -- a save
+    // with every step brand new (no non-null ids at all) must not spuriously
+    // raise because NULL <> 0.
+    const checkIdx = SAVE_FN.indexOf("IF v_updated <>")
+    expect(checkIdx).toBeGreaterThan(-1)
+    const checkStatement = SAVE_FN.slice(checkIdx, SAVE_FN.indexOf(";", checkIdx) + 1)
+    expect(checkStatement).toContain("coalesce(array_length(v_keep_ids, 1), 0)")
+  })
+
+  it("declares v_updated among the function's local variables", () => {
+    const declareBlock = SAVE_FN.slice(SAVE_FN.indexOf("DECLARE"), SAVE_FN.indexOf("BEGIN"))
+    expect(declareBlock).toMatch(/v_updated\s+integer;/)
   })
 })
 

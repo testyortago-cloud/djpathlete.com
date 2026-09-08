@@ -29,6 +29,18 @@
 --    TypeScript decides, this writes. Validation and the re-point plan are
 --    computed by lib/lead-engine/step-list.ts and passed in; the business rules
 --    do not get a second home here where they can drift from the tick's copy.
+--
+--    WHOLE-BRANCH REVIEW FIX: the survivor UPDATE's row count is now checked
+--    against the number of ids submitted, RAISE-ing on a mismatch. A submitted
+--    id that does not belong to this sequence (stale, another sequence's, or
+--    just wrong -- reachable with nothing more exotic than one coach with two
+--    tabs open on the same sequence) used to match nothing and write no row,
+--    while every later array slot still took its own ordinal position --
+--    punching a gap like 0,1,3,4 instead of 0,1,2,3. A run advancing into that
+--    gap was reported by the tick as having reached the end: the exact lie
+--    this whole feature exists to prevent. The route
+--    (app/api/admin/sequences/[key]/steps/route.ts) checks this too, in
+--    readable English; this RAISE is the line that cannot be bypassed.
 
 CREATE OR REPLACE FUNCTION public.claim_sequence_runs(p_business_id uuid, p_limit integer, p_claim_token text)
  RETURNS SETOF public.sequence_runs
@@ -84,6 +96,7 @@ DECLARE
   v_keep_ids  uuid[];
   v_sent      integer;
   v_owned     boolean;
+  v_updated   integer;
 BEGIN
   SELECT EXISTS (
     SELECT 1 FROM public.sequences
@@ -163,6 +176,22 @@ BEGIN
      AND s.business_id = p_business_id
      AND e.value->>'id' IS NOT NULL
      AND s.id = (e.value->>'id')::uuid;
+
+  -- Every non-null id in p_steps must have matched exactly one real row of
+  -- THIS sequence above. An id belonging to nothing (another sequence's,
+  -- already deleted, or simply wrong) writes no row while every later array
+  -- slot still takes its own ordinal position -- punching a gap such as
+  -- 0,1,3,4. A run that advances into that gap finds no step and is reported
+  -- by the tick as having reached the end, which is the exact lie this whole
+  -- feature exists to prevent. This also catches a DUPLICATED id for free: a
+  -- repeated id can only ever update the one row it names once, so
+  -- ROW_COUNT falls short of array_length(v_keep_ids, 1), which counts every
+  -- element as submitted, duplicates included. The route checks this too (a
+  -- readable sentence); this is the line that cannot be bypassed.
+  GET DIAGNOSTICS v_updated = ROW_COUNT;
+  IF v_updated <> coalesce(array_length(v_keep_ids, 1), 0) THEN
+    RAISE EXCEPTION 'expected to update % survivor step(s) but touched %', coalesce(array_length(v_keep_ids, 1), 0), v_updated;
+  END IF;
 
   UPDATE public.sequence_runs r
      SET current_position = (e.value->>'to_position')::int,

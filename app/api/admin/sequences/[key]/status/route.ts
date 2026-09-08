@@ -68,7 +68,7 @@ export const PATCH = withAudit(
     const raw = await request.json().catch(() => null)
     const parsed = setSequenceStatusRequestSchema.safeParse(raw)
     if (!parsed.success) {
-      return NextResponse.json({ error: "Expected { on: boolean }." }, { status: 400 })
+      return NextResponse.json({ error: "Could not understand that request." }, { status: 400 })
     }
 
     // The whole mapping: `on` -> "active", off -> "paused". Never "draft",

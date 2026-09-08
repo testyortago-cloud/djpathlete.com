@@ -45,6 +45,7 @@ import {
   type RunPointer,
 } from "@/lib/lead-engine/step-list"
 import type { StepKind, BranchCondition } from "@/lib/automation/sequence-tick"
+import { useStepEditorDirty } from "@/components/admin/sequences/StepEditorDirtyContext"
 
 /** Table order from the brief, kept as the one true order for every kind picker on this screen. */
 const STEP_KIND_ORDER: StepKind[] = ["email", "sms", "wait", "branch", "tag", "stage", "alert", "stop"]
@@ -196,6 +197,7 @@ export function StepEditor({
   const [saving, setSaving] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const nextKeyRef = useRef(0)
+  const { setDirty } = useStepEditorDirty()
 
   // Mirrors SequenceSwitch's own rule: no state survives a successful save
   // except what comes back down as props. This is also the ONLY place a
@@ -210,6 +212,21 @@ export function StepEditor({
   const drafts = useMemo(() => toStepDrafts(steps), [steps])
   const problems = useMemo(() => validateStepList(drafts), [drafts])
   const plan = useMemo(() => planStepSave(oldSteps, drafts, runs), [oldSteps, drafts, runs])
+
+  // Whole-branch review, Important 2: reported to SequenceSwitch (via
+  // StepEditorDirtyContext) so it can ask before a toggle's router.refresh()
+  // silently discards whatever is typed here. Compared by VALUE against the
+  // server's own copy, not by an isSaving/hasEdited flag, so it reads "no
+  // unsaved changes" the instant a save round-trips back to matching content
+  // — not just immediately after clicking Save.
+  const isDirty = useMemo(() => JSON.stringify(drafts) !== JSON.stringify(initialSteps), [drafts, initialSteps])
+  useEffect(() => {
+    setDirty(isDirty)
+    // Unmounting (e.g. navigating away mid-edit) must not leave a stale
+    // "dirty" reading behind for whatever mounts next inside the same
+    // provider.
+    return () => setDirty(false)
+  }, [isDirty, setDirty])
 
   const carryOn = plan.unchanged.length + plan.repoint.length
   const stopped = plan.exit.length

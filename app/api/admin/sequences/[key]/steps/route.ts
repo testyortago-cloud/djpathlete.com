@@ -22,6 +22,16 @@
 // caller that skips this route. Because two guards can mask each other under
 // mutation, each has its own test that disables the other — see
 // __tests__/api/admin/sequences/steps-route.test.ts.
+//
+// THE SAME DUAL-GUARD SHAPE PROTECTS STEP IDENTITY. A submitted id that does
+// not belong to this sequence (or is duplicated) would otherwise punch a
+// POSITION GAP in the plpgsql function's survivor UPDATE — that array slot
+// writes no row while later slots still take their ordinal position, and a
+// run that advances into the gap is reported by the tick as "Reached the
+// end". This route's 400 gives a readable sentence; migration 00256's
+// `save_sequence_steps` re-checks the same thing by comparing the survivor
+// UPDATE's actual row count against the number of ids submitted, so the rule
+// cannot be bypassed by a caller that skips this route either.
 
 import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
@@ -99,7 +109,31 @@ export const PUT = withAudit(
         return NextResponse.json({ error: "Sequence not found." }, { status: 404 })
       }
 
-      // 2. Business rules the browser is not trusted to have enforced.
+      // 2. Every non-null id in the new list must be a real step of THIS
+      // sequence, and no id may appear twice. Whole-branch review finding:
+      // skipping this lets a stale or duplicate id punch a POSITION GAP in
+      // save_sequence_steps's survivor UPDATE, which matches on
+      // `s.id = ... AND s.sequence_id = p_sequence_id` — an id that matches
+      // nothing writes no row while later array slots still take their
+      // ordinal position, leaving positions like 0,1,3,4 instead of 0,1,2,3.
+      // A run that then advances into position 2 finds no step there and is
+      // reported by the tick as "Reached the end" — the exact lie this
+      // whole feature exists to prevent. Reachable with nothing more exotic
+      // than one coach with two tabs open on the same sequence: tab 1
+      // removes a never-sent step, tab 2 saves the list it loaded before
+      // that removal, carrying an id tab 1 already deleted.
+      const validStepIds = new Set(sequence.steps.map((s) => s.id))
+      const submittedIds = steps.map((s) => s.id).filter((id): id is string => id !== null)
+      const hasUnknownId = submittedIds.some((id) => !validStepIds.has(id))
+      const hasDuplicateId = new Set(submittedIds).size !== submittedIds.length
+      if (hasUnknownId || hasDuplicateId) {
+        return NextResponse.json(
+          { error: "Those steps have changed since you opened this page. Reload and make your change again." },
+          { status: 400 },
+        )
+      }
+
+      // 3. Business rules the browser is not trusted to have enforced.
       const problems = validateStepList(steps)
       if (problems.length > 0) {
         return NextResponse.json(
@@ -108,15 +142,15 @@ export const PUT = withAudit(
         )
       }
 
-      // 3. What this save does to people partway through.
+      // 4. What this save does to people partway through.
       const plan = planStepSave(sequence.steps, steps, sequence.activeRuns)
 
-      // 4. §4.6: refuse to remove a step that has ever sent a message.
+      // 5. §4.6: refuse to remove a step that has ever sent a message.
       // `steps` carries every step this save is KEEPING (a surviving old
       // step still carries its real id; a new step's id is null) — anything
       // in `sequence.steps` (the OLD list) that is not among those ids is
       // being removed by this save.
-      const keptIds = new Set(steps.map((s) => s.id).filter((id): id is string => id !== null))
+      const keptIds = new Set(submittedIds)
       const removedWithSends = sequence.steps
         .filter((old) => !keptIds.has(old.id))
         .map((old) => sequence.sentCountByStepId[old.id] ?? 0)
@@ -130,12 +164,15 @@ export const PUT = withAudit(
         return NextResponse.json({ error: message }, { status: 409 })
       }
 
-      // 5. One atomic write. save_sequence_steps (migration 00256) enforces
-      // §4.6 again on its own last line — see this file's header. A rejection
-      // from there reaches this catch rather than being swallowed.
+      // 6. One atomic write. save_sequence_steps (migration 00256) enforces
+      // §4.6 again on its own last line, and now also re-checks THIS id
+      // integrity by comparing the survivor UPDATE's row count against the
+      // number of ids submitted — see this file's header and that
+      // migration's own comment. A rejection from there reaches this catch
+      // rather than being swallowed.
       await saveSequenceSteps(businessId, sequence.id, steps, plan)
 
-      // 6. The plan, so the screen can say what happened to the people
+      // 7. The plan, so the screen can say what happened to the people
       // partway through — see §4.5 of the design doc.
       return NextResponse.json({
         ok: true,

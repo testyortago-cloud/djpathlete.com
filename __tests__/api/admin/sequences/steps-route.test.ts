@@ -232,6 +232,67 @@ describe("PUT /api/admin/sequences/[key]/steps — the route validates, it does 
   })
 })
 
+describe("PUT /api/admin/sequences/[key]/steps — step identity (whole-branch review, Important 1)", () => {
+  beforeEach(() => authMock.mockResolvedValue(ADMIN_SESSION))
+
+  it("400s when a submitted id does not belong to this sequence's loaded steps, without ever calling saveSequenceSteps", async () => {
+    // saveSequenceSteps is a bare spy that would happily resolve if called —
+    // this proves the 400 comes from the ROUTE's own check, not the RPC.
+    loadSequenceForEditMock.mockResolvedValue(sequenceFixture({ steps: [{ id: "step-1", position: 0 }] }))
+    const res = await PUT(req({ steps: [EMAIL_STEP("not-a-real-step-id")] }) as never, ctx())
+    expect(res.status).toBe(400)
+    const json = await res.json()
+    // Plain language: no "id", no "payload" on a coach's screen.
+    expect(json.error).toBe("Those steps have changed since you opened this page. Reload and make your change again.")
+    expect(json.error).not.toMatch(/\bid\b/i)
+    expect(json.error).not.toMatch(/payload/i)
+    expect(saveSequenceStepsMock).not.toHaveBeenCalled()
+  })
+
+  it("400s on a duplicated id, without ever calling saveSequenceSteps", async () => {
+    loadSequenceForEditMock.mockResolvedValue(
+      sequenceFixture({
+        steps: [
+          { id: "step-1", position: 0 },
+          { id: "step-2", position: 1 },
+        ],
+      }),
+    )
+    const res = await PUT(req({ steps: [EMAIL_STEP("step-1"), EMAIL_STEP("step-1")] }) as never, ctx())
+    expect(res.status).toBe(400)
+    expect(saveSequenceStepsMock).not.toHaveBeenCalled()
+  })
+
+  it("does NOT refuse a save whose every id genuinely belongs to this sequence — presence control", async () => {
+    loadSequenceForEditMock.mockResolvedValue(sequenceFixture({ steps: [{ id: "step-1", position: 0 }] }))
+    const res = await PUT(req({ steps: [EMAIL_STEP("step-1")] }) as never, ctx())
+    expect(res.status).toBe(200)
+    expect(saveSequenceStepsMock).toHaveBeenCalled()
+  })
+
+  it("does NOT refuse a brand-new step (id: null) alongside a real one", async () => {
+    loadSequenceForEditMock.mockResolvedValue(sequenceFixture({ steps: [{ id: "step-1", position: 0 }] }))
+    const res = await PUT(req({ steps: [EMAIL_STEP("step-1"), EMAIL_STEP(null)] }) as never, ctx())
+    expect(res.status).toBe(200)
+    expect(saveSequenceStepsMock).toHaveBeenCalled()
+  })
+
+  it("the DAL surfaces the plpgsql's own id-integrity refusal when the route's own check is bypassed", async () => {
+    // The route's own check sees every id as valid here — simulating the
+    // check having been weakened or skipped some other way. Migration
+    // 00256's RAISE is the backstop: simulated by a rejecting mock, as the
+    // real function would behave if its survivor UPDATE touched fewer rows
+    // than ids submitted.
+    loadSequenceForEditMock.mockResolvedValue(sequenceFixture({ steps: [{ id: "step-1", position: 0 }] }))
+    saveSequenceStepsMock.mockRejectedValue(new Error("expected to update 1 survivor step(s) but touched 0"))
+    const res = await PUT(req({ steps: [EMAIL_STEP("step-1")] }) as never, ctx())
+    // The write must NOT silently succeed just because the route's own guard
+    // stayed quiet — the DAL's rejection must still fail the request.
+    expect(res.status).toBeGreaterThanOrEqual(500)
+    expect(saveSequenceStepsMock).toHaveBeenCalled()
+  })
+})
+
 describe("PUT /api/admin/sequences/[key]/steps — §4.6 the step-removal guard (Ruling 3)", () => {
   beforeEach(() => authMock.mockResolvedValue(ADMIN_SESSION))
 

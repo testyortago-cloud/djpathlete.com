@@ -14,6 +14,15 @@ import { planStepSave, type StepDraft, type SavedStep, type RunPointer } from "@
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
 vi.mock("sonner", () => ({ toast }))
 
+// A spy on StepEditorDirtyContext's real default value — every test in this
+// file renders StepEditor with no real StepEditorDirtyProvider around it, the
+// same as the real detail screen would if the provider were ever removed, so
+// this must be a harmless no-op (see that file's own header for why).
+const setDirtySpy = vi.hoisted(() => vi.fn())
+vi.mock("@/components/admin/sequences/StepEditorDirtyContext", () => ({
+  useStepEditorDirty: () => ({ dirty: false, setDirty: setDirtySpy }),
+}))
+
 // next/navigation's useRouter is globally mocked in __tests__/setup.tsx.
 
 beforeEach(() => {
@@ -344,5 +353,67 @@ describe("<StepEditor> — reordering moves exactly one step to the target posit
     expect(subjectAt(0)).toBe("Second")
     expect(subjectAt(1)).toBe("First")
     expect(subjectAt(2)).toBe("Third")
+  })
+})
+
+describe("<StepEditor> — reports its own dirtiness (whole-branch review, Important 2)", () => {
+  it("reports NOT dirty on first render, when steps match what was loaded", () => {
+    renderEditor({ initialSteps: [step("email", { id: "e1" })] })
+    expect(setDirtySpy).toHaveBeenCalledWith(false)
+    expect(setDirtySpy).not.toHaveBeenCalledWith(true)
+  })
+
+  it("reports dirty the moment a field is edited", () => {
+    renderEditor({ initialSteps: [step("email", { id: "e1" })] })
+    setDirtySpy.mockClear()
+
+    fireEvent.change(screen.getByLabelText(/subject line/i), { target: { value: "A new subject" } })
+
+    expect(setDirtySpy).toHaveBeenCalledWith(true)
+  })
+
+  it("reports dirty the moment a step is added", () => {
+    renderEditor({ initialSteps: [step("stop", { id: "s1" })] })
+    setDirtySpy.mockClear()
+
+    fireEvent.click(screen.getByRole("button", { name: /add a step/i }))
+
+    expect(setDirtySpy).toHaveBeenCalledWith(true)
+  })
+
+  it("reports dirty the moment a step is reordered, even with no content change", () => {
+    renderEditor({
+      initialSteps: [step("email", { id: "a" }), step("email", { id: "b" })],
+    })
+    setDirtySpy.mockClear()
+
+    fireEvent.click(screen.getByRole("button", { name: /move step 2 up/i }))
+
+    expect(setDirtySpy).toHaveBeenCalledWith(true)
+  })
+
+  it("reports NOT dirty again once the props catch up after a save (router.refresh cycle)", () => {
+    const initialSteps = [step("email", { id: "e1" })]
+    const { rerender } = renderEditor({ initialSteps })
+    setDirtySpy.mockClear()
+
+    fireEvent.change(screen.getByLabelText(/subject line/i), { target: { value: "Edited" } })
+    expect(setDirtySpy).toHaveBeenCalledWith(true)
+    setDirtySpy.mockClear()
+
+    // Simulates the server component re-rendering with the coach's own edit
+    // now reflected in initialSteps — the shape after a real save + refresh.
+    rerender(
+      <StepEditor
+        sequenceKey="cold_lead"
+        sequenceName="Cold Lead"
+        initialSteps={[step("email", { id: "e1", subject: "Edited" })]}
+        oldSteps={[]}
+        runs={[]}
+        sentCountByStepId={{}}
+      />,
+    )
+
+    expect(setDirtySpy).toHaveBeenCalledWith(false)
   })
 })

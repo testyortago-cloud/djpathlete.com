@@ -14,10 +14,21 @@ import { SequenceSwitch } from "@/components/admin/sequences/SequenceSwitch"
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
 vi.mock("sonner", () => ({ toast }))
 
+// Mutable so individual tests can flip "the step editor has unsaved changes"
+// without a real StepEditorDirtyProvider in the tree. The real hook falls
+// back to `{ dirty: false, setDirty: noop }` outside a provider — see that
+// file's own header — which is exactly what every test in this file gets
+// UNLESS it explicitly sets dirtyState.dirty = true below.
+const dirtyState = vi.hoisted(() => ({ dirty: false, setDirty: vi.fn() }))
+vi.mock("@/components/admin/sequences/StepEditorDirtyContext", () => ({
+  useStepEditorDirty: () => dirtyState,
+}))
+
 // next/navigation's useRouter is globally mocked in __tests__/setup.tsx.
 
 beforeEach(() => {
   vi.clearAllMocks()
+  dirtyState.dirty = false
 })
 
 describe("<SequenceSwitch> — reading the current state", () => {
@@ -103,6 +114,72 @@ describe("<SequenceSwitch> — turning off is the safe direction", () => {
     expect(url).toBe("/api/admin/sequences/cold_lead/status")
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({ on: false })
     await waitFor(() => expect(toast.success).toHaveBeenCalled())
+  })
+})
+
+describe("<SequenceSwitch> — unsaved step edits ask first, in EITHER direction (whole-branch review, Important 2)", () => {
+  it("turning OFF with unsaved changes confirms first, naming the discard, instead of going straight through", async () => {
+    dirtyState.dirty = true
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) }) as unknown as typeof fetch
+
+    render(<SequenceSwitch sequenceKey="cold_lead" sequenceName="Cold Lead" status="active" />)
+    fireEvent.click(screen.getByRole("switch"))
+
+    const dialog = await screen.findByRole("alertdialog")
+    expect(dialog).toHaveTextContent(/changes to the steps that have not been saved yet/i)
+    expect(dialog).toHaveTextContent(/turning this off will discard them/i)
+    // MUTANT this guards against: calling the route before confirmation, the
+    // same way the turning-ON dialog is pinned.
+    expect(global.fetch).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: /^turn off$/i }))
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ on: false })
+  })
+
+  it("presence control: turning OFF with NO unsaved changes still goes straight through, unchanged", async () => {
+    // Pairs with the test above — proves the dialog there is caused by
+    // dirtyState, not by turning off always confirming now.
+    dirtyState.dirty = false
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) }) as unknown as typeof fetch
+    render(<SequenceSwitch sequenceKey="cold_lead" sequenceName="Cold Lead" status="active" />)
+    fireEvent.click(screen.getByRole("switch"))
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+  })
+
+  it("cancelling the OFF-with-unsaved-changes dialog calls nothing", async () => {
+    dirtyState.dirty = true
+    global.fetch = vi.fn()
+    render(<SequenceSwitch sequenceKey="cold_lead" sequenceName="Cold Lead" status="active" />)
+    fireEvent.click(screen.getByRole("switch"))
+    const dialog = await screen.findByRole("alertdialog")
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument())
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(screen.getByRole("switch")).toHaveAttribute("data-state", "checked")
+  })
+
+  it("turning ON with unsaved changes adds the discard warning to the existing dialog, on top of the sending warning", async () => {
+    dirtyState.dirty = true
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) }) as unknown as typeof fetch
+    render(<SequenceSwitch sequenceKey="cold_lead" sequenceName="Cold Lead" status="paused" />)
+    fireEvent.click(screen.getByRole("switch"))
+    const dialog = await screen.findByRole("alertdialog")
+    // Both warnings present — this is the SAME "turn on" dialog, not a
+    // separate one, so the sending-related copy must not have been dropped.
+    expect(dialog).toHaveTextContent(/start getting these emails and texts straight away/i)
+    expect(dialog).toHaveTextContent(/changes to the steps that have not been saved yet/i)
+    expect(dialog).toHaveTextContent(/turning this on will discard them/i)
+  })
+
+  it("presence control: turning ON with NO unsaved changes shows the original dialog with no discard warning", async () => {
+    dirtyState.dirty = false
+    render(<SequenceSwitch sequenceKey="cold_lead" sequenceName="Cold Lead" status="paused" />)
+    fireEvent.click(screen.getByRole("switch"))
+    const dialog = await screen.findByRole("alertdialog")
+    expect(dialog).not.toHaveTextContent(/unsaved changes/i)
   })
 })
 

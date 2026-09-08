@@ -23,10 +23,17 @@ export const STATUS_TONE: Record<string, DataTableBadgeTone> = {
   archived: "neutral",
 }
 
+// Bound to §4.1 of the design doc: "paused" reads as "Turned off" and
+// "draft" reads as "Never turned on" everywhere in this feature, not just on
+// the switch. Whole-branch review reversed an earlier Task 7+8 ruling that
+// kept the pre-existing "Paused"/"Not started" wording — that ruling
+// contradicted the spec (a ruling is not a spec amendment) and left three
+// vocabularies on screen for one state: this badge, the "Switched off, so
+// nobody is being added..." sentence below, and a switch labelled "Turn on".
 export const STATUS_LABEL: Record<string, string> = {
   active: "On",
-  paused: "Paused",
-  draft: "Not started",
+  paused: "Turned off",
+  draft: "Never turned on",
   archived: "Archived",
 }
 
@@ -74,7 +81,21 @@ function failedNote(count: number): string {
     : `Nothing was sent to ${count} of these people. Open the sequence to see why.`
 }
 
-export function SequenceReportTable({ rows }: { rows: SequenceReportRow[] }) {
+export function SequenceReportTable({
+  rows,
+  isAdmin = true,
+}: {
+  rows: SequenceReportRow[]
+  /**
+   * Whether the viewer may actually flip the switch — turning a sequence on
+   * or off is admin-only (§4.8 of the design doc; the routes behind this
+   * control never loosen for staff). Defaults to `true` so every existing
+   * caller keeps today's behaviour; the page passes the real answer.
+   * A staff viewer sees the plain On/Off reading instead of a control that
+   * can only ever answer 403.
+   */
+  isAdmin?: boolean
+}) {
   return (
     <DataTableCard>
       <DataTable>
@@ -103,7 +124,14 @@ export function SequenceReportTable({ rows }: { rows: SequenceReportRow[] }) {
             rows.map((row) => (
               <DataTableRow key={row.id}>
                 <DataTableCell>
-                  <SequenceSwitch sequenceKey={row.key} sequenceName={row.name} status={row.status} />
+                  {isAdmin ? (
+                    <SequenceSwitch sequenceKey={row.key} sequenceName={row.name} status={row.status} />
+                  ) : (
+                    // A control that can only ever answer 403 is worse than
+                    // no control — this is hiding a button that cannot work,
+                    // not granting access the routes themselves still refuse.
+                    <span className="text-sm text-muted-foreground">{row.status === "active" ? "On" : "Off"}</span>
+                  )}
                 </DataTableCell>
                 <DataTableCell>
                   <Link href={`/admin/sequences/${row.key}`} className="font-medium text-primary hover:underline">
