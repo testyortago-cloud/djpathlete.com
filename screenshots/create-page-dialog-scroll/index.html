@@ -1,0 +1,104 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>New landing page dialog — the unreachable “Create & build”</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 48px 32px 96px; background: #f6f7f8; color: #16303a;
+         font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  .lede { color: #5c6b70; margin: 0 0 36px; max-width: 70ch; }
+  section { background: #fff; border: 1px solid #e2e6e8; border-radius: 14px; padding: 24px; margin: 0 0 28px; }
+  h2 { font-size: 19px; margin: 0 0 4px; }
+  .meta { color: #5c6b70; font-size: 14px; margin: 0 0 16px; }
+  img { display: block; width: 100%; height: auto; border: 1px solid #e2e6e8; border-radius: 8px; }
+  code { background: #eef1f2; padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+  ul { margin: 10px 0 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .note { background: #fff8e8; border: 1px solid #f0e0b8; border-radius: 10px; padding: 16px 20px; }
+  table { border-collapse: collapse; margin: 12px 0 0; font-size: 15px; }
+  th, td { text-align: left; padding: 6px 18px 6px 0; border-bottom: 1px solid #e2e6e8; }
+  th { color: #5c6b70; font-weight: 600; }
+</style>
+<main>
+  <h1>“New landing page” — the button that could not be reached</h1>
+  <p class="lede">
+    <code>CreatePageDialog</code> set no height cap, so on a laptop screen the dialog rendered taller
+    than the viewport. Radix centres the content, so it overflowed the top <em>and</em> the bottom, and
+    a modal locks the page behind it — “Create&nbsp;&amp;&nbsp;build” was not merely below the fold, it
+    was unreachable by any gesture. Every shot below is the real dialog on the real
+    <code>/admin/pages</code> route, driven with Playwright against the dev clone at 1440×720.
+    Annotations are burned into each PNG.
+  </p>
+
+  <section>
+    <h2>01 — Before</h2>
+    <p class="meta">
+      screenshots/create-page-dialog-scroll/01-before-button-off-screen.png ·
+      /admin/pages · Chromium 1440×720 @2x
+    </p>
+    <img src="01-before-button-off-screen.png" alt="The New landing page dialog overflowing the screen, header clipped at the top and the buttons missing off the bottom.">
+    <p class="meta">
+      Measured, not inferred: dialog 936&nbsp;px inside a 720&nbsp;px viewport, button at
+      <code>y=767..803</code>, and no element in the dialog scrolls.
+    </p>
+  </section>
+
+  <section>
+    <h2>02 — After, the moment it opens</h2>
+    <p class="meta">screenshots/create-page-dialog-scroll/02-after-footer-pinned.png · same route, same viewport</p>
+    <img src="02-after-footer-pinned.png" alt="The same dialog, now fitting the screen, with Cancel and Create and build visible at the bottom.">
+    <p class="meta">Dialog 648&nbsp;px, button at <code>y=623..659</code>, fully on screen.</p>
+  </section>
+
+  <section>
+    <h2>03 — After, scrolled to the last field</h2>
+    <p class="meta">screenshots/create-page-dialog-scroll/03-after-scrolled-to-bottom.png</p>
+    <img src="03-after-scrolled-to-bottom.png" alt="The dialog scrolled to the Describe it field, with the buttons still in the same place.">
+    <p class="meta">
+      The fields scrolled; the footer did not. That is the difference between this fix and the simpler
+      one — see the note below.
+    </p>
+  </section>
+
+  <section>
+    <h2>The numbers</h2>
+    <table>
+      <tr><th></th><th>Dialog height</th><th>Button y</th><th>On screen</th><th>Anything scrolls</th></tr>
+      <tr><td>before</td><td>936 px</td><td>767..803</td><td>no</td><td>no</td></tr>
+      <tr><td>after</td><td>648 px</td><td>623..659</td><td>yes</td><td>yes — the fields row</td></tr>
+      <tr><td>after, scrolled</td><td>648 px</td><td>623..659</td><td>yes</td><td>yes — the fields row</td></tr>
+    </table>
+    <p class="meta" style="margin-top:14px">
+      Reproduce with <code>npm run dev</code> then
+      <code>node scripts/capture-create-page-dialog-scroll.mjs</code>. The script asserts these numbers
+      and fails if the shots stop demonstrating the fix.
+    </p>
+  </section>
+
+  <section class="note">
+    <h2>Notes worth keeping</h2>
+    <ul>
+      <li>
+        <strong>The obvious fix is the wrong one.</strong> Putting <code>overflow-y-auto</code> on the
+        whole dialog also makes the button reachable, so it reads as a fix — but the buttons then scroll
+        away with everything else. Here the <em>fields</em> are the one scrolling row and the footer is
+        pinned. Both shapes exist in this repo; roughly 30 dialogs use the first.
+      </li>
+      <li>
+        <strong>The primitive caps nothing.</strong> <code>components/ui/dialog.tsx</code> sets no
+        <code>max-h</code> and no <code>overflow</code>, so every caller pastes the cap in itself and any
+        that forgets ships this same bug. It only shows on short viewports, which is how it survived review.
+      </li>
+      <li>
+        <strong>No dark-mode pair.</strong> The admin components were never built against the
+        <code>.dark</code> class variant — forcing it breaks existing pages — so there is no second
+        rendering to capture. This is a deliberate omission, not a gap.
+      </li>
+      <li>
+        <strong>No empty state.</strong> The dialog has no failure or empty rendering of its own; it opens
+        with blank fields, which is why the shots carry real typed values instead.
+      </li>
+    </ul>
+  </section>
+</main>

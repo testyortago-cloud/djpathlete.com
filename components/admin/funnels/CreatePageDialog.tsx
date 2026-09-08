@@ -146,7 +146,13 @@ export function CreatePageDialog({ takenSlugs }: CreatePageDialogProps) {
           New landing page
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      {/* Capped at the viewport with the fields as the only scrolling row:
+          this dialog is tall enough that on a laptop screen an uncapped
+          DialogContent pushed "Create & build" off the bottom, and the page
+          behind a modal does not scroll, so the button was unreachable.
+          Four children, four rows — header, the assist bar, the fields, the
+          footer — so the footer stays put while the fields scroll. */}
+      <DialogContent className="grid-rows-[auto_auto_minmax(0,1fr)_auto] max-h-[90vh] sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New landing page</DialogTitle>
           <DialogDescription>
@@ -166,7 +172,7 @@ export function CreatePageDialog({ takenSlugs }: CreatePageDialogProps) {
           </Button>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-y-auto -mx-6 px-6 min-h-0">
           <div className="space-y-1.5">
             <Label htmlFor="page-name">Name</Label>
             <Input

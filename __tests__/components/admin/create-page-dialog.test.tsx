@@ -111,4 +111,33 @@ describe("<CreatePageDialog>", () => {
     expect(screen.getByLabelText(/name/i)).toBeInTheDocument()
     expect(push).not.toHaveBeenCalled()
   })
+
+  // This dialog is taller than a laptop screen. Uncapped, it centred itself
+  // past both edges of the viewport and "Create & build" sat below the fold —
+  // and a modal locks the page behind it, so there was nothing to scroll and
+  // the page could not be created at all. jsdom has no layout engine, so the
+  // geometry is proven by screenshots/create-page-dialog-scroll/; what these
+  // two pin is the mechanism that produces it, which is what a future edit
+  // would remove.
+  it("caps the dialog at the viewport so it cannot outgrow the screen", () => {
+    open()
+    const content = screen.getByRole("dialog")
+    expect(content.className).toMatch(/\bmax-h-\[\d+vh\]/)
+  })
+
+  it("scrolls the fields and not the footer, so the buttons stay on screen", () => {
+    open()
+    const content = screen.getByRole("dialog")
+    // The footer is the LAST row, and only the fields row scrolls. Were the
+    // whole content the scroller instead, the buttons would scroll away with
+    // everything else — reachable, but not where the eye expects them.
+    const scrollers = content.querySelectorAll(".overflow-y-auto")
+    expect(scrollers).toHaveLength(1)
+    const fields = scrollers[0] as HTMLElement
+    expect(fields.contains(screen.getByLabelText(/describe it/i))).toBe(true)
+    expect(fields.contains(screen.getByRole("button", { name: /create & build/i }))).toBe(false)
+    // A scrolling child of a grid row needs an explicit min-height floor, or
+    // the row sizes to its content and nothing ever scrolls.
+    expect(fields.className).toMatch(/\bmin-h-0\b/)
+  })
 })
