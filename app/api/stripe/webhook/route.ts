@@ -53,7 +53,7 @@ import { enqueuePaymentValueAdjustmentByEmail } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
 import { getSetting } from "@/lib/db/system-settings"
 import { FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT } from "@/lib/funnels/checkout/flag"
-import { findContactWithBusinessByIdentifiers } from "@/lib/db/contacts"
+import { findContactWithBusinessByIdentifiers, hasPurchaseSince, type ContactEventSource } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
@@ -150,10 +150,14 @@ async function tryEnqueueAdsValueAdjustment(session: Stripe.Checkout.Session): P
 // dedupe the row (append-only spine, intentional per Task 4's ruling on the
 // event_signup/purchase overlap); it just makes every row traceable to its
 // session, the same way the sibling pipeline hook already tags itself.
-async function tryCaptureLeadFromCheckout(session: Stripe.Checkout.Session, businessId: string): Promise<void> {
+async function tryCaptureLeadFromCheckout(
+  session: Stripe.Checkout.Session,
+  businessId: string,
+  source: ContactEventSource,
+): Promise<void> {
   try {
     await captureLead({
-      source: "purchase",
+      source,
       email: session.customer_details?.email ?? session.customer_email ?? null,
       name: session.customer_details?.name ?? null,
       businessId,
@@ -255,7 +259,7 @@ export async function POST(request: Request) {
         // lost, and pre-branch it always filed here, which is why
         // `payerBusinessId` is declared outside the try block above. Listed
         // under that shelf in the inventory.
-        await tryCaptureLeadFromCheckout(session, payerBusinessId ?? platformBusinessId())
+        await tryCaptureLeadFromCheckout(session, payerBusinessId ?? platformBusinessId(), "purchase")
 
         if (session.metadata?.type === "shop_order") {
           await handleShopOrderCheckout(session)
@@ -318,6 +322,94 @@ export async function POST(request: Request) {
         const session = event.data.object as Stripe.Checkout.Session
         if (session.metadata?.type === "session_pack") {
           await handleSessionPackExpired(session)
+        }
+
+        // Lead Engine: an expired session is the ONLY abandonment signal
+        // Stripe gives us. It arrives roughly 24 hours after the session was
+        // created, so the follow-up is a day late by construction -- that is
+        // Stripe's timing, not a choice made here.
+        //
+        // Gated on the same NON_COACHING_CHECKOUT_TYPES set that decides
+        // whether a COMPLETED checkout wins a pipeline card, so "a coaching
+        // sale" has exactly one definition in this route -- not a second,
+        // divergent one for the abandoned case. "session_pack" is
+        // deliberately NOT a member of that set, the same as it is not
+        // excluded from the completed side's pipeline-card win or its
+        // unconditional purchase capture: a session pack IS a coaching sale,
+        // so its abandonment is a coaching-checkout abandonment too, and gets
+        // captured here the same as any other. Do not add it to the denylist
+        // to "fix" that -- it would just be reintroducing the divergent
+        // definition this gate exists to prevent. Per that constant's own
+        // comment, a new coaching checkout that forgets to set
+        // `metadata.type` still counts as coaching.
+        if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
+          // Same tenant resolution the completed case uses: the payer's own
+          // contact row when they have one, the platform seam for a
+          // first-time payer who does not -- AND for a payer whose contact
+          // lookup THREW. Lead capture must never be able to fail a Stripe
+          // webhook (this file's rule throughout every other capture site),
+          // so this lookup is wrapped exactly like its completed-case
+          // sibling: a throw here still leaves the capture with the platform
+          // tenant instead of 500-ing the whole event and triggering a
+          // Stripe retry.
+          let expiredContactBusinessId: string | null = null
+          // ORDERING PROBLEM this guard closes: a card is declined on THIS
+          // session, the customer immediately opens a second Checkout
+          // session and pays. `checkout.session.completed` fires for the
+          // second session and calls `exitRunsForContact` above — which
+          // finds no active run, because none exists yet (this contact was
+          // never enrolled by the failed first attempt). ~24h later Stripe
+          // fires `checkout.session.expired` for THIS session, and with no
+          // guard, that would capture a `checkout_abandoned` event and enrol
+          // a paying customer into "you started to pay and it did not go
+          // through" — the only exit trigger for that sequence already fired
+          // and nothing is left to stop the run it is about to start. So:
+          // once the contact is resolved, skip the capture when they already
+          // have a `purchase` timeline event dated at or after THIS
+          // session's own `created` timestamp (Unix seconds, converted
+          // below) — that is the second, successful checkout. An older,
+          // unrelated purchase must not suppress a genuinely new
+          // abandonment, which is why this compares against `since` rather
+          // than "ever purchased".
+          let alreadyPurchased = false
+          try {
+            const contact = await findContactWithBusinessByIdentifiers({
+              userId: session.metadata?.userId ?? null,
+              email: session.customer_details?.email ?? session.customer_email ?? null,
+            })
+            expiredContactBusinessId = contact?.businessId ?? null
+            if (contact) {
+              try {
+                alreadyPurchased = await hasPurchaseSince(
+                  contact.id,
+                  contact.businessId,
+                  new Date(session.created * 1000),
+                )
+              } catch (err) {
+                // Same never-fail discipline as the contact lookup right
+                // below: this must not be able to 500 the webhook (Stripe
+                // would retry). Prefer capturing over losing the
+                // abandonment signal — a slightly-wrong "you didn't finish
+                // checking out" email to someone who did pay is a smaller
+                // harm than silently dropping every abandoned checkout
+                // whenever this read fails.
+                console.error(
+                  "[stripe-webhook] expired-checkout purchase-since lookup failed",
+                  (err as Error).message,
+                )
+                alreadyPurchased = false
+              }
+            }
+          } catch (err) {
+            console.error("[stripe-webhook] expired-checkout contact lookup failed", (err as Error).message)
+          }
+          if (!alreadyPurchased) {
+            await tryCaptureLeadFromCheckout(
+              session,
+              expiredContactBusinessId ?? platformBusinessId(),
+              "checkout_abandoned",
+            )
+          }
         }
         break
       }

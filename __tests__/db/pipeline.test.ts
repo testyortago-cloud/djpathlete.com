@@ -1750,6 +1750,95 @@ describe("moveOpportunityBySequence", () => {
     expect(updatePatchesFor("opportunities")).toHaveLength(0)
   })
 
+  it("refuses to drag a card backwards and writes nothing at all", async () => {
+    seedBoard()
+    seedContact("c-1")
+    // Already Consulted — position 2. The step below aims at position 1.
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" })
+
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consult_booked",
+      pipelineKey: null,
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    expect(result).toEqual({ kind: "skipped", reason: "would_move_backwards" })
+    // The card did not move and, just as importantly, entered_stage_at was not
+    // reset — a reset silently restarts the staleness colour the board reads.
+    expect(store.opportunities[0].stage_id).toBe("stage-consulted")
+    expect(updatePatchesFor("opportunities")).toHaveLength(0)
+    expect(stageEventsFor("opp-1")).toHaveLength(0)
+  })
+
+  it("still allows a forward move of more than one stage", async () => {
+    seedBoard()
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consult-booked" })
+
+    // consult_booked (1) -> consulted (2) is +1; this asserts the guard is a
+    // comparison, not an adjacency check. `won` and `lost` are refused
+    // earlier by the kind !== "open" branch, so `consulted` is the only
+    // forward target on this board.
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted",
+      pipelineKey: null,
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    expect(result).toMatchObject({ kind: "moved" })
+  })
+
+  // Separates the forward-only guard from `already_on_stage`, which the two
+  // tests above cannot: they only ever change the STAGE ID, and the two
+  // guards agree on every case reachable that way (equal position implies
+  // equal stage_id on a normal board). Here the target stage has a DIFFERENT
+  // id but the SAME position as the card's current stage. `already_on_stage`
+  // compares stage_id and would wave this through; only a `<=` on position
+  // catches it -- this is what pins the guard's `<=` boundary rather than the
+  // `<` a naive read of "forward only" might reach for.
+  //
+  // NOT regression cover for a reachable bug: `pipeline_stages_position_per_pipeline
+  // UNIQUE (pipeline_id, position)` in supabase/migrations/00219_lead_engine_pipeline.sql:32
+  // makes two stage ids sharing a position on one pipeline schema-impossible,
+  // not merely a state no current writer happens to produce. The row below is
+  // pushed straight into the in-memory store, bypassing that constraint on
+  // purpose, because there is no other way to exercise the `<=` vs `<`
+  // boundary at all -- a future reader should not mistake this for coverage
+  // that guards against production ever reaching this state.
+  it("refuses a move to a different stage id that shares the same position", async () => {
+    seedBoard()
+    store.pipeline_stages.push({
+      id: "stage-consulted-dup",
+      business_id: SINGLETON_BUSINESS_ID,
+      pipeline_id: "pipe-1",
+      key: "consulted_dup",
+      name: "Consulted (duplicate position)",
+      position: 2,
+      kind: "open",
+      amber_after_days: 5,
+      red_after_days: 14,
+    })
+    seedContact("c-1")
+    seedOpportunity("opp-1", "c-1", { stage_id: "stage-consulted" })
+
+    const result = await moveOpportunityBySequence({
+      contactId: "c-1",
+      stageKey: "consulted_dup",
+      pipelineKey: null,
+      businessId: SINGLETON_BUSINESS_ID,
+      sequenceRunId: RUN_ID,
+    })
+
+    expect(result).toEqual({ kind: "skipped", reason: "would_move_backwards" })
+    expect(store.opportunities[0].stage_id).toBe("stage-consulted")
+    expect(updatePatchesFor("opportunities")).toHaveLength(0)
+    expect(stageEventsFor("opp-1")).toHaveLength(0)
+  })
+
   it("returns invalid for a stage key that does not exist on the board", async () => {
     seedBoard()
     seedContact("c-1")

@@ -80,6 +80,11 @@ export const POST = withAudit(
         phone: signup.parent_phone,
         name: signup.parent_name,
         businessId,
+        // enrollIfTriggered matches a sequence's trigger filter against this
+        // bag by exact key equality. Without signup_type, an interest signup
+        // and a paid registration are indistinguishable, and a sequence that
+        // chases people to sign up would chase the ones who already have.
+        metadata: { signup_type: "interest" },
       })
 
       // SMS consent (Lead Engine Stage 4). FIRE AND FORGET, same reasoning as

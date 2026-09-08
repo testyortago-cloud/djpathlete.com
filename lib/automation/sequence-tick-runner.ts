@@ -686,11 +686,12 @@ async function processRun(
         // `sequence_runs.last_error`, which the contact detail page renders
         // beside the run (components/admin/contacts/ContactDetail.tsx), so it
         // is VISIBLE. It is not RECOVERABLE: `status='failed'` is terminal and
-        // nothing in this codebase re-activates a failed run. (There is no
-        // `/admin/sequences` screen on this branch — that is a different,
-        // unmerged one.) Failing is still the right call over skipping,
-        // because a silent skip leaves an author's typo invisible forever
-        // while the sequence appears to be working.
+        // nothing in this codebase re-activates a failed run. (The
+        // `/admin/sequences` screen, merged 2026-09-07, reports failed runs in
+        // aggregate but has no action to resume or retry one.) Failing is
+        // still the right call over skipping, because a silent skip leaves an
+        // author's typo invisible forever while the sequence appears to be
+        // working.
         //
         // No timeline row: the fault is the author's, and a contact's own
         // history should not carry an entry about it.

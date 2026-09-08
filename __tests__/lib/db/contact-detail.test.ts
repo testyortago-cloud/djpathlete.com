@@ -320,6 +320,16 @@ describe("describeTimelineEvent", () => {
     )
   })
 
+  // SOURCE_LABELS is Record<string, string> — a missing entry compiles
+  // clean and falls through to the `Came in through ${humanise(...)}`
+  // default, showing the coach a raw slug instead of a sentence. Pin it so
+  // that fallback can never happen for this source silently.
+  it("names an abandoned checkout, not a raw slug", () => {
+    expect(
+      describeTimelineEvent(event({ id: "e", kind: "entry_point", source: "checkout_abandoned" })).title,
+    ).toBe("Started a checkout and did not finish")
+  })
+
   it("has a default arm — `kind` has no CHECK constraint, so a new kind must still render", () => {
     const described = describeTimelineEvent(event({ id: "e", kind: "some_future_kind_nobody_wrote_yet" }))
     expect(described.title).toBe("Some future kind nobody wrote yet")
@@ -404,6 +414,13 @@ describe("timeline labels for sequence side effects", () => {
       event({ id: "e", kind: "sequence_stage_skipped", metadata: { reason: "already_on_stage" } }),
     )
     expect(described.detail).toBe("Their card was already at that stage, so nothing changed.")
+  })
+
+  it("explains a skipped move without jargon: the card is further along than the step asked for", () => {
+    const described = describeTimelineEvent(
+      event({ id: "e", kind: "sequence_stage_skipped", metadata: { reason: "would_move_backwards" } }),
+    )
+    expect(described.detail).toBe("Their card is further along than the step asked for, so it was left where it is.")
   })
 
   // The guard that matters: no hand-written label may render an empty title.

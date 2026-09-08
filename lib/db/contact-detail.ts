@@ -161,7 +161,7 @@ export interface ContactDetail {
 
 /* ------------------------------------------------------- pure: describing */
 
-/** Plain-language names for the ten `entry_point` sources that actually get written. */
+/** Plain-language names for the twelve `entry_point` sources that actually get written. */
 const SOURCE_LABELS: Record<string, string> = {
   funnel_form: "Filled in a form on a landing page",
   contact_form: "Sent a message through the contact form",
@@ -171,6 +171,7 @@ const SOURCE_LABELS: Record<string, string> = {
   step_up: "Asked about stepping up",
   inquiry: "Made an enquiry",
   purchase: "Made a purchase",
+  checkout_abandoned: "Started a checkout and did not finish",
   quiz: "Finished the quiz",
   ai_chat: "Talked to the assistant on the website",
   ghl_import: "Imported from the old system",
@@ -320,7 +321,9 @@ export function describeTimelineEvent(row: TimelineEventRow): {
             ? "Their card is already closed, so it was left where it was."
             : reason === "already_on_stage"
               ? "Their card was already at that stage, so nothing changed."
-              : null
+              : reason === "would_move_backwards"
+                ? "Their card is further along than the step asked for, so it was left where it is."
+                : null
       return { title: "A sequence left their card where it was", detail: why, tone: "neutral" }
     }
 

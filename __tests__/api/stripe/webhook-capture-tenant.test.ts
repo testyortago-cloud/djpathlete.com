@@ -22,6 +22,7 @@ const createPaymentMock = vi.fn(async (_row: unknown) => undefined)
 const getPaymentByStripeIdMock = vi.fn(async (_id: unknown): Promise<unknown> => null)
 const findContactMock = vi.fn()
 const captureLeadMock = vi.fn(async (..._args: unknown[]) => "contact-1")
+const hasPurchaseSinceMock = vi.fn(async (..._args: unknown[]) => false)
 
 vi.mock("@/lib/stripe", () => ({
   verifyWebhookSignature: (...a: unknown[]) => verifyMock(...a),
@@ -72,6 +73,7 @@ vi.mock("@/lib/supabase", () => ({
 // The four this suite is about.
 vi.mock("@/lib/db/contacts", () => ({
   findContactWithBusinessByIdentifiers: (...a: unknown[]) => findContactMock(...a),
+  hasPurchaseSince: (...a: unknown[]) => hasPurchaseSinceMock(...a),
 }))
 vi.mock("@/lib/lead-engine/capture", () => ({ captureLead: (...a: unknown[]) => captureLeadMock(...a) }))
 vi.mock("@/lib/db/sequences", () => ({ exitRunsForContact: vi.fn(async () => undefined) }))
@@ -97,8 +99,8 @@ function session() {
   }
 }
 
-function fire(sessionObject: Record<string, unknown>) {
-  verifyMock.mockReturnValueOnce({ type: "checkout.session.completed", id: "evt_1", data: { object: sessionObject } })
+function fire(sessionObject: Record<string, unknown>, eventType = "checkout.session.completed") {
+  verifyMock.mockReturnValueOnce({ type: eventType, id: "evt_1", data: { object: sessionObject } })
   return new Request("http://localhost/api/stripe/webhook", {
     method: "POST",
     headers: { "stripe-signature": "sig" },
@@ -137,5 +139,138 @@ describe("checkout.session.completed — which business the purchase capture fil
     expect(res.status).toBe(200)
     expect(captureLeadMock).toHaveBeenCalledTimes(1)
     expect(captureLeadMock.mock.calls[0][0]).toMatchObject({ businessId: "platform-biz" })
+  })
+})
+
+// checkout.session.expired — the abandoned-checkout lead capture. Reuses this
+// suite's mocks rather than a second harness: same route, same tenant
+// resolution, same captureLeadMock. `fire`'s second argument is the event
+// type; the three tests above default to "checkout.session.completed" and
+// are untouched.
+describe("checkout.session.expired — abandoned coaching checkout capture", () => {
+  it("captures an abandoned coaching checkout as a lead, with source checkout_abandoned", async () => {
+    findContactMock.mockResolvedValue(null)
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire({ id: "cs_1", customer_email: "a@example.com", metadata: {} }, "checkout.session.expired"),
+    )
+    expect(res.status).toBe(200)
+    expect(captureLeadMock).toHaveBeenCalledTimes(1)
+    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
+      source: "checkout_abandoned",
+      email: "a@example.com",
+      businessId: "platform-biz",
+    })
+  })
+
+  it("ignores an abandoned shop checkout — not a coaching sale", async () => {
+    findContactMock.mockResolvedValue(null)
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire(
+        { id: "cs_2", customer_email: "b@example.com", metadata: { type: "shop_order" } },
+        "checkout.session.expired",
+      ),
+    )
+    expect(res.status).toBe(200)
+    expect(findContactMock).not.toHaveBeenCalled()
+    expect(captureLeadMock).not.toHaveBeenCalled()
+  })
+
+  it("a repeat customer's abandoned checkout files under THEIR contact's business", async () => {
+    findContactMock.mockResolvedValue({ id: "contact-1", businessId: OTHER_BUSINESS_ID })
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire({ id: "cs_4", customer_email: "d@example.com", metadata: {} }, "checkout.session.expired"),
+    )
+    expect(res.status).toBe(200)
+    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
+      source: "checkout_abandoned",
+      businessId: OTHER_BUSINESS_ID,
+    })
+  })
+
+  // Mirrors "a contact lookup that THROWS still leaves the capture with the
+  // platform tenant" above, for the expired case. Unlike the completed
+  // case's contact/pipeline resolution, this lookup is the ONLY thing
+  // between the guard and the capture -- no separate try/catch existed here
+  // until this test proved one was needed: without it, a throw here
+  // propagates past this case, out of the switch, into the route's own
+  // top-level catch, and returns 500 -- Stripe retries the whole event
+  // instead of the capture just falling back to the platform tenant.
+  it("a contact lookup that THROWS still leaves the abandoned-checkout capture with the platform tenant", async () => {
+    findContactMock.mockRejectedValue(new Error("contacts read failed"))
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire({ id: "cs_5", customer_email: "e@example.com", metadata: {} }, "checkout.session.expired"),
+    )
+    expect(res.status).toBe(200)
+    expect(captureLeadMock).toHaveBeenCalledTimes(1)
+    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
+      source: "checkout_abandoned",
+      businessId: "platform-biz",
+    })
+  })
+
+  // The ordering problem this fix closes: a card declines on THIS session, the
+  // customer immediately pays on a second one, `checkout.session.completed`
+  // fires and captures a `purchase` timeline event, and only THEN does this
+  // (now-stale) session's `expired` event arrive. Without the guard, the
+  // paying customer gets a "you didn't finish checking out" email.
+  it("does NOT capture when the contact already has a qualifying purchase since this session's created time", async () => {
+    findContactMock.mockResolvedValue({ id: "contact-1", businessId: OTHER_BUSINESS_ID })
+    hasPurchaseSinceMock.mockResolvedValue(true)
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire(
+        { id: "cs_6", customer_email: "f@example.com", metadata: {}, created: 1_700_000_000 },
+        "checkout.session.expired",
+      ),
+    )
+    expect(res.status).toBe(200)
+    expect(hasPurchaseSinceMock).toHaveBeenCalledWith("contact-1", OTHER_BUSINESS_ID, new Date(1_700_000_000 * 1000))
+    expect(captureLeadMock).not.toHaveBeenCalled()
+  })
+
+  it("captures as before when the contact has no qualifying purchase", async () => {
+    findContactMock.mockResolvedValue({ id: "contact-1", businessId: OTHER_BUSINESS_ID })
+    hasPurchaseSinceMock.mockResolvedValue(false)
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire(
+        { id: "cs_7", customer_email: "g@example.com", metadata: {}, created: 1_700_000_000 },
+        "checkout.session.expired",
+      ),
+    )
+    expect(res.status).toBe(200)
+    expect(captureLeadMock).toHaveBeenCalledTimes(1)
+    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
+      source: "checkout_abandoned",
+      businessId: OTHER_BUSINESS_ID,
+    })
+  })
+
+  // A purchase that predates this session is an earlier, UNRELATED sale --
+  // not evidence that this particular abandonment resolved itself. The DAL
+  // reader (hasPurchaseSince) is the one that applies the "at or after"
+  // comparison; from the route's point of view this looks identical to "no
+  // qualifying purchase", which is exactly the point: an older purchase must
+  // not suppress a genuinely new abandonment.
+  it("still captures when the contact's only purchase predates this session — an earlier, unrelated sale", async () => {
+    findContactMock.mockResolvedValue({ id: "contact-1", businessId: OTHER_BUSINESS_ID })
+    hasPurchaseSinceMock.mockResolvedValue(false)
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire(
+        { id: "cs_8", customer_email: "h@example.com", metadata: {}, created: 1_700_000_000 },
+        "checkout.session.expired",
+      ),
+    )
+    expect(res.status).toBe(200)
+    expect(captureLeadMock).toHaveBeenCalledTimes(1)
+    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
+      source: "checkout_abandoned",
+      businessId: OTHER_BUSINESS_ID,
+    })
   })
 })
