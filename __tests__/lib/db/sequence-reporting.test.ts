@@ -110,6 +110,23 @@ describe("bucketForRun", () => {
     expect(bucketForRun("exited", "merged_into_survivor")).toBe("other")
     expect(bucketForRun("exited", "superseded_by_merged_run")).toBe("other")
   })
+
+  // The reason migration 00256's save_sequence_steps writes when an edit to
+  // the step list removes the step a person was standing on. This is the
+  // whole point of the feature: reporting a stopped follow-up as one that
+  // reached the end would be a lie, so it must land in "other".
+  it("puts 'sequence_edited' (written by migration 00256) in other", () => {
+    expect(bucketForRun("exited", "sequence_edited")).toBe("other")
+  })
+
+  // Asserted SEPARATELY from the positive case above. A mapping that put
+  // "sequence_edited" in "finished" would still make the positive assertion
+  // above fail (since "finished" !== "other"), but a reviewer skimming only
+  // the failure would see "wrong bucket" rather than the specific, dangerous
+  // direction that wrongness took. This test names that direction on its own.
+  it("never puts 'sequence_edited' in finished — that is the lie this feature exists to prevent", () => {
+    expect(bucketForRun("exited", "sequence_edited")).not.toBe("finished")
+  })
 })
 
 describe("emptyBuckets", () => {

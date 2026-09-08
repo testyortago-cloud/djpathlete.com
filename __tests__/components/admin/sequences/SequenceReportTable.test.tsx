@@ -1,0 +1,156 @@
+// @vitest-environment jsdom
+// __tests__/components/admin/sequences/SequenceReportTable.test.tsx
+//
+// Three things pinned here:
+//
+//   1. The "paused" empty-state sentence, fixed for migration 00256: pausing
+//      now stops everybody in the sequence, not just new arrivals, so the
+//      copy must say both halves.
+//   2. The on/off switch column that sits alongside the existing status
+//      badge, whose own reading comes from `status === "active"` alone.
+//   3. The status badge's own wording is bound to §4.1 of the design doc:
+//      "Turned off" / "Never turned on". A prior Task 7+8 ruling kept the
+//      shipped "Paused" / "Not started" wording instead — whole-branch
+//      review reversed that ruling as a spec violation (a ruling is not a
+//      spec amendment), so this file no longer pins the old strings.
+
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import { render, screen, within } from "@testing-library/react"
+import { SequenceReportTable } from "@/components/admin/sequences/SequenceReportTable"
+import type { SequenceReportRow, OutcomeBucket } from "@/lib/db/sequence-reporting"
+
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }))
+// next/navigation's useRouter is globally mocked in __tests__/setup.tsx.
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+function emptyBuckets(): Record<OutcomeBucket, number> {
+  return { in_progress: 0, bought: 0, booked: 0, opted_out: 0, finished: 0, failed: 0, other: 0 }
+}
+
+function row(overrides: Partial<SequenceReportRow> = {}): SequenceReportRow {
+  return {
+    id: "s1",
+    key: "cold_lead",
+    name: "Cold Lead Nurture",
+    status: "active",
+    trigger_source: "funnel_form",
+    entered: 0,
+    buckets: emptyBuckets(),
+    contactsWithoutEmailConsent: 0,
+    ...overrides,
+  }
+}
+
+describe("<SequenceReportTable> — the paused empty-state sentence", () => {
+  it("says a paused sequence stops EVERYBODY, not just new arrivals", () => {
+    // MUTANT: revert to "Paused, so nobody new is being added." — false since
+    // migration 00256, which gates the tick's claim on the sequence being
+    // active. This must be a test that only the NEW sentence satisfies.
+    render(<SequenceReportTable rows={[row({ status: "paused", entered: 0 })]} />)
+    expect(
+      screen.getByText("Switched off, so nobody is being added and nobody is moving through it."),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/paused, so nobody new is being added/i)).not.toBeInTheDocument()
+  })
+
+  it("still says 'Not switched on yet' for a draft sequence — unaffected by 00256", () => {
+    // Presence control: without this, an implementation that always returns
+    // the new paused sentence regardless of status would still pass the test
+    // above.
+    render(<SequenceReportTable rows={[row({ status: "draft", entered: 0 })]} />)
+    expect(screen.getByText("Not switched on yet.")).toBeInTheDocument()
+  })
+
+  it("labels the paused badge 'Turned off', per §4.1 of the design doc", () => {
+    // MUTANT this guards against: reverting to the pre-spec "Paused" wording
+    // (whole-branch review, Important 4 — a ruling is not a spec amendment).
+    render(<SequenceReportTable rows={[row({ status: "paused" })]} />)
+    expect(screen.getByText("Turned off")).toBeInTheDocument()
+    expect(screen.queryByText("Paused")).not.toBeInTheDocument()
+  })
+
+  it("labels the draft badge 'Never turned on', per §4.1 of the design doc", () => {
+    render(<SequenceReportTable rows={[row({ status: "draft" })]} />)
+    expect(screen.getByText("Never turned on")).toBeInTheDocument()
+    expect(screen.queryByText("Not started")).not.toBeInTheDocument()
+  })
+})
+
+describe("<SequenceReportTable> — the on/off switch column", () => {
+  it("reads on for an active sequence and off for a paused one", () => {
+    render(
+      <SequenceReportTable
+        rows={[
+          row({ id: "s1", key: "on_seq", name: "On Sequence", status: "active" }),
+          row({ id: "s2", key: "off_seq", name: "Off Sequence", status: "paused" }),
+        ]}
+      />,
+    )
+    const switches = screen.getAllByRole("switch")
+    expect(switches).toHaveLength(2)
+    expect(switches[0]).toHaveAttribute("data-state", "checked")
+    expect(switches[1]).toHaveAttribute("data-state", "unchecked")
+  })
+
+  it("reads off for a draft sequence too", () => {
+    render(<SequenceReportTable rows={[row({ status: "draft" })]} />)
+    expect(screen.getByRole("switch")).toHaveAttribute("data-state", "unchecked")
+  })
+})
+
+describe("<SequenceReportTable> — a staff viewer gets no control that can only ever 403 (whole-branch review, Important 3)", () => {
+  it("renders no switch at all for isAdmin={false}, showing the plain reading instead", () => {
+    render(
+      <SequenceReportTable
+        rows={[
+          row({ id: "s1", key: "on_seq", name: "On Sequence", status: "active" }),
+          row({ id: "s2", key: "off_seq", name: "Off Sequence", status: "paused" }),
+        ]}
+        isAdmin={false}
+      />,
+    )
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument()
+    // Scoped to the switch column's OWN cell (the row's first <td>) — the
+    // row's name text ("On Sequence") itself contains the substring "On",
+    // so an unscoped toHaveTextContent("On") would pass vacuously.
+    const onRow = screen.getByText("On Sequence").closest("tr")!
+    const offRow = screen.getByText("Off Sequence").closest("tr")!
+    expect(onRow.querySelectorAll("td")[0]).toHaveTextContent(/^On$/)
+    expect(offRow.querySelectorAll("td")[0]).toHaveTextContent(/^Off$/)
+  })
+
+  it("presence control: an admin viewer still gets the real switch, by default", () => {
+    // Pairs with the test above — proves the absence there is caused by
+    // isAdmin={false}, not by the switch column disappearing unconditionally.
+    render(<SequenceReportTable rows={[row({ status: "active" })]} />)
+    expect(screen.getByRole("switch")).toBeInTheDocument()
+  })
+})
+
+describe("<SequenceReportTable> — the empty table", () => {
+  it("still uses DataTableEmpty's own row, spanning every column including the new one", () => {
+    render(<SequenceReportTable rows={[]} />)
+    const cell = screen.getByText("No sequences have been set up yet.")
+    expect(cell.closest("td")).toHaveAttribute("colspan", "10")
+  })
+})
+
+describe("<SequenceReportTable> — regression: buckets still render", () => {
+  it("renders a row's counts unchanged by any of the above", () => {
+    render(
+      <SequenceReportTable
+        rows={[
+          row({
+            entered: 5,
+            buckets: { in_progress: 1, bought: 1, booked: 0, opted_out: 1, finished: 1, failed: 1, other: 0 },
+          }),
+        ]}
+      />,
+    )
+    const dataRow = screen.getByText("Cold Lead Nurture").closest("tr")!
+    expect(within(dataRow).getByText("5")).toBeInTheDocument()
+  })
+})

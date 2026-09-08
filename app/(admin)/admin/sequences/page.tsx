@@ -12,7 +12,7 @@
 // be told apart from a broken query is worth nothing.
 
 import { Workflow } from "lucide-react"
-import { requirePermission } from "@/lib/permissions/guard"
+import { currentActor, requirePermission } from "@/lib/permissions/guard"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { sequenceReport } from "@/lib/db/sequence-reporting"
 import { SequenceReportTable } from "@/components/admin/sequences/SequenceReportTable"
@@ -23,6 +23,12 @@ export const dynamic = "force-dynamic"
 export default async function SequencesPage() {
   await requirePermission("contacts")
   const { businessId } = await resolveAdminTenant()
+  // Viewing this list stays on the `contacts` permission (above), same as
+  // always. Turning a sequence on or off is a separate, admin-only act
+  // (§4.8 of the design doc) — the routes behind the switch never loosen for
+  // staff, so a staff viewer gets the plain On/Off reading instead of a
+  // control that can only ever answer 403 (whole-branch review, Important 3).
+  const isAdmin = (await currentActor())?.role === "admin"
   // The tenant-wide figure comes back on its own rather than being summed from
   // the rows: somebody who is in two sequences appears in two rows, and adding
   // those up reported one person as two under a sentence that says "people".
@@ -42,7 +48,7 @@ export default async function SequencesPage() {
         </p>
       </div>
 
-      <SequenceReportTable rows={rows} />
+      <SequenceReportTable rows={rows} isAdmin={isAdmin} />
 
       {withoutConsent > 0 ? (
         <p className="text-sm text-muted-foreground">

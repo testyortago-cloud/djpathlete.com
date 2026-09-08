@@ -10,10 +10,16 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
-import { requirePermission } from "@/lib/permissions/guard"
+import { currentActor, requirePermission } from "@/lib/permissions/guard"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { DETAIL_PAGE_SIZE, sequenceDetail, type OutcomeBucket } from "@/lib/db/sequence-reporting"
+import { loadSequenceForEdit } from "@/lib/db/sequence-admin"
 import { SequenceRunsTable } from "@/components/admin/sequences/SequenceRunsTable"
+import { SequenceSwitch } from "@/components/admin/sequences/SequenceSwitch"
+import { StepEditor } from "@/components/admin/sequences/StepEditor"
+import { StepEditorDirtyProvider } from "@/components/admin/sequences/StepEditorDirtyProvider"
+import { DataTableBadge } from "@/components/ui/data-table"
+import { STATUS_LABEL, STATUS_TONE } from "@/components/admin/sequences/SequenceReportTable"
 
 export const metadata = { title: "Sequence" }
 export const dynamic = "force-dynamic"
@@ -39,6 +45,13 @@ export default async function SequenceDetailPage({
 }) {
   await requirePermission("contacts")
   const { businessId } = await resolveAdminTenant()
+  // Viewing this screen stays on the `contacts` permission (above), same as
+  // always. Turning the sequence on or off and editing its steps are both
+  // admin-only acts (§4.8 of the design doc) — the routes behind the switch
+  // and the editor never loosen for staff, so a staff viewer gets a read-only
+  // screen instead of controls that can only ever answer 403 (whole-branch
+  // review, Important 3).
+  const isAdmin = (await currentActor())?.role === "admin"
   const { key } = await params
   const { page } = await searchParams
 
@@ -60,6 +73,13 @@ export default async function SequenceDetailPage({
   })
   if (!detail) notFound()
 
+  // Separate read from sequenceDetail above: that call is the read-only
+  // report this page has always shown; this one is the editable shape task
+  // 9's step editor needs (drafts, old positions, active runs, sent counts) —
+  // see lib/db/sequence-admin.ts's own header for why the two stay apart.
+  const forEdit = await loadSequenceForEdit(businessId, key)
+  if (!forEdit) notFound()
+
   const totalPages = Math.max(1, Math.ceil(detail.totalRuns / DETAIL_PAGE_SIZE))
   const pageNumber = Math.min(requestedPage, totalPages)
   if (pageNumber !== requestedPage) {
@@ -71,84 +91,121 @@ export default async function SequenceDetailPage({
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <Link
-          href="/admin/sequences"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
-        >
-          <ArrowLeft className="size-4" />
-          All sequences
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-primary">{detail.name}</h1>
-        {/* The `description` column is NOT rendered, deliberately. Every one of the nine
-            seeded descriptions is a note written for the next developer — they name
-            helper functions, script paths and column semantics ("trigger_source is
-            NULL"). Until a coach can write their own, showing this column puts
-            engineering prose on a coach's screen. The field stays on SequenceDetail for
-            a future editor to use. */}
-        <p className="mt-1 text-sm text-muted-foreground">
-          {detail.stepCount === 1 ? "1 step" : `${detail.stepCount} steps`}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-        <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
-          <div className="text-2xl font-semibold text-primary">{detail.entered}</div>
-          <div className="mt-1 text-xs text-muted-foreground">Entered</div>
-        </div>
-        {SUMMARY.map((item) => (
-          <div key={item.key} className="rounded-xl border border-border bg-white p-4 shadow-sm">
-            <div className="text-2xl font-semibold text-primary">{detail.buckets[item.key]}</div>
-            <div className="mt-1 text-xs text-muted-foreground">{item.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* "Something else" is not a mystery any more: two of the seven things that
-          can happen — somebody's details merged into another person's record, and
-          somebody already in this sequence under a second record — land here on
-          purpose, and the list below names both in plain words. Anything genuinely
-          new still shows up here, as itself. */}
-      {detail.buckets.other > 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {detail.buckets.other === 1
-            ? "1 person left this sequence for a reason with no column of its own."
-            : `${detail.buckets.other} people left this sequence for a reason with no column of its own.`}{" "}
-          Each one is named in the list below.
-        </p>
-      ) : null}
-
-      <SequenceRunsTable runs={detail.runs} />
-
-      {detail.contactsWithoutEmailConsent > 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {detail.contactsWithoutEmailConsent === 1
-            ? "1 person in this sequence has no recorded permission to email."
-            : `${detail.contactsWithoutEmailConsent} people in this sequence have no recorded permission to email.`}{" "}
-          Emails still go out to them — this is here so you can see the number.
-        </p>
-      ) : null}
-
-      {totalPages > 1 ? (
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">
-            Page {pageNumber} of {totalPages}
-          </span>
-          <div className="flex gap-3">
-            {pageNumber > 1 ? (
-              <Link href={`/admin/sequences/${key}?page=${pageNumber - 1}`} className="text-primary hover:underline">
-                Previous
-              </Link>
-            ) : null}
-            {pageNumber < totalPages ? (
-              <Link href={`/admin/sequences/${key}?page=${pageNumber + 1}`} className="text-primary hover:underline">
-                Next
-              </Link>
+    // Wraps the whole screen so SequenceSwitch (in the header, below) and
+    // StepEditor (in its own section, further down) — two independently
+    // mounted client components — can agree on "is there something unsaved
+    // right now" without either of them needing to know about the other.
+    // See StepEditorDirtyContext.tsx's header (whole-branch review,
+    // Important 2).
+    <StepEditorDirtyProvider>
+      <div className="space-y-6">
+        <div>
+          <Link
+            href="/admin/sequences"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary"
+          >
+            <ArrowLeft className="size-4" />
+            All sequences
+          </Link>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-semibold text-primary">{detail.name}</h1>
+            <DataTableBadge tone={STATUS_TONE[detail.status] ?? "neutral"}>
+              {STATUS_LABEL[detail.status] ?? detail.status}
+            </DataTableBadge>
+            {isAdmin ? (
+              <SequenceSwitch sequenceKey={detail.key} sequenceName={detail.name} status={detail.status} />
             ) : null}
           </div>
+          {/* The `description` column is NOT rendered, deliberately. Every one of the nine
+              seeded descriptions is a note written for the next developer — they name
+              helper functions, script paths and column semantics ("trigger_source is
+              NULL"). Until a coach can write their own, showing this column puts
+              engineering prose on a coach's screen. The field stays on SequenceDetail for
+              a future editor to use. */}
+          <p className="mt-1 text-sm text-muted-foreground">
+            {detail.stepCount === 1 ? "1 step" : `${detail.stepCount} steps`}
+          </p>
         </div>
-      ) : null}
-    </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+          <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
+            <div className="text-2xl font-semibold text-primary">{detail.entered}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Entered</div>
+          </div>
+          {SUMMARY.map((item) => (
+            <div key={item.key} className="rounded-xl border border-border bg-white p-4 shadow-sm">
+              <div className="text-2xl font-semibold text-primary">{detail.buckets[item.key]}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{item.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* "Something else" is not a mystery any more: three of the seven things
+            that can happen — somebody's details merged into another person's
+            record, somebody already in this sequence under a second record, or
+            the sequence being edited while they were partway through it — land
+            here on purpose, and the list below names all three in plain words.
+            Anything genuinely new still shows up here, as itself. */}
+        {detail.buckets.other > 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {detail.buckets.other === 1
+              ? "1 person left this sequence for a reason with no column of its own."
+              : `${detail.buckets.other} people left this sequence for a reason with no column of its own.`}{" "}
+            Each one is named in the list below.
+          </p>
+        ) : null}
+
+        <div className="rounded-xl border border-border bg-white p-4 shadow-sm sm:p-6">
+          {isAdmin ? (
+            <StepEditor
+              sequenceKey={forEdit.key}
+              sequenceName={forEdit.name}
+              initialSteps={forEdit.drafts}
+              oldSteps={forEdit.steps}
+              runs={forEdit.activeRuns}
+              sentCountByStepId={forEdit.sentCountByStepId}
+            />
+          ) : (
+            // A read-write editor whose every save can only ever 403 is worse
+            // than no editor — hiding it, not granting access the route itself
+            // still refuses (whole-branch review, Important 3).
+            <p className="text-sm text-muted-foreground">
+              Only the owner of this account can turn a sequence on or off, or change its steps.
+            </p>
+          )}
+        </div>
+
+        <SequenceRunsTable runs={detail.runs} />
+
+        {detail.contactsWithoutEmailConsent > 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {detail.contactsWithoutEmailConsent === 1
+              ? "1 person in this sequence has no recorded permission to email."
+              : `${detail.contactsWithoutEmailConsent} people in this sequence have no recorded permission to email.`}{" "}
+            Emails still go out to them — this is here so you can see the number.
+          </p>
+        ) : null}
+
+        {totalPages > 1 ? (
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              Page {pageNumber} of {totalPages}
+            </span>
+            <div className="flex gap-3">
+              {pageNumber > 1 ? (
+                <Link href={`/admin/sequences/${key}?page=${pageNumber - 1}`} className="text-primary hover:underline">
+                  Previous
+                </Link>
+              ) : null}
+              {pageNumber < totalPages ? (
+                <Link href={`/admin/sequences/${key}?page=${pageNumber + 1}`} className="text-primary hover:underline">
+                  Next
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </StepEditorDirtyProvider>
   )
 }
