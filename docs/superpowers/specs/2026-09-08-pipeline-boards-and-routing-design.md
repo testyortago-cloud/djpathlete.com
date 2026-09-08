@@ -75,11 +75,67 @@ question, not a technical one.
 
 ## 3. Routing
 
-One pure function, no database access, so the whole table is a unit test:
+### 3.0 The earlier design's `routeToPipeline(event)` CANNOT WORK — read the union
 
+This is the correction that matters most, and it was found by reading
+`PipelineEvent` rather than trusting the routing table.
+
+```ts
+export type PipelineEvent =
+  | { kind: "booking"; status: ...; occurredAt: Date }
+  | { kind: "payment"; amountCents: number; currency: string; occurredAt: Date }
+  | { kind: "refund"; amountRefundedCents: number; occurredAt: Date }
+  | { kind: "quiz_result"; tier: string; occurredAt: Date }
 ```
-routeToPipeline(event): string
+
+**A `payment` carries an amount, a currency and a time. Nothing else.** It does not
+say what was bought. And `event_signup` and `inquiry` are not `PipelineEvent` kinds
+at all — the earlier design's routing table routes on facts the union does not carry.
+A pure `routeToPipeline(event)` would have nothing to switch on and would silently
+return the default for everything, which is exactly today's behaviour wearing a new
+function's clothes.
+
+**The discriminating fact exists, but only at the CALL SITE.** For a checkout it is
+`session.metadata?.type` — the same discriminator gap #14 used for
+`checkoutContactSource` (`shop_order`, `event_signup`, `funnel_purchase`,
+`session_pack`, …). For an inquiry it is `inquiries.service_type`. So the routing
+function must take a subject assembled at the call site, not the bare event:
+
+```ts
+export type RoutingSubject = {
+  event: PipelineEvent["kind"]
+  /** Stripe checkout `metadata.type`, when this came from a checkout. */
+  checkoutType?: string | null
+  /** `inquiries.service_type`, when this came from an inquiry. */
+  serviceType?: string | null
+}
+
+export function routeToPipeline(subject: RoutingSubject): string
 ```
+
+Still pure, still one unit-testable table — but with an input that actually contains
+the answer.
+
+### 3.1 A REFUND MUST FOLLOW THE CARD IT REFUNDS, and this is a trap
+
+`applyPipelineEvent` resolves the existing card with
+`readMostRecentOpportunity(contactId, pipelineId, …)` — scoped to ONE pipeline. A
+refund event carries only `amountRefundedCents`; nothing in it says which board the
+original payment landed on.
+
+So if a camp payment routes to Camps & Clinics and its refund routes to Coaching, the
+refund **finds no won card and silently does nothing**. Today this cannot happen
+because every event lands on Coaching; **creating a second board is exactly what makes
+it reachable.**
+
+**Rule: a refund is NOT routed by subject. It must be resolved against the board that
+holds the contact's most recent won card**, or the refund path must be given the
+original opportunity's `pipeline_id` explicitly. Decide which in Task 1 and write a
+test that refunds a payment which landed on a non-default board.
+
+### 3.2 The routing table
+
+One pure function, no database access, so the whole table is a unit test:
 
 | Event | Board |
 |---|---|
