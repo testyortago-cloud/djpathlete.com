@@ -316,6 +316,13 @@ const INSIDE_SUPPRESSION_WINDOW = () => new Date(Date.now() - (REBOOKING_SUPPRES
 const OTHER_BUSINESS_ID = "22222222-2222-4222-8222-222222222222"
 
 beforeEach(() => {
+  // A console.warn/console.error spy created with vi.spyOn inside a test
+  // whose OWN assertion throws (e.g. `expect(warnSpy).not.toHaveBeenCalled()`
+  // failing) never reaches its own `.mockRestore()` call — the throw skips
+  // straight past it. Without this, that spy stays live into the NEXT test
+  // and silently accumulates its calls, which is exactly what turned one
+  // failing assertion into three during this file's Task 3 mutation sweep.
+  vi.restoreAllMocks()
   store.pipelines = []
   store.pipeline_stages = []
   store.opportunities = []
@@ -727,6 +734,39 @@ describe("resolveWonPipelineKey", () => {
 
     const key = await resolveWonPipelineKey("c-other", SINGLETON_BUSINESS_ID)
 
+    expect(key).toBeNull()
+  })
+
+  // Spec §4.2's own documented gap: nothing in the schema ties an
+  // opportunity's `pipeline_id` to a pipeline row belonging to the SAME
+  // business — it is unreachable today only because every write goes
+  // through this file. Simulates that specific data inconsistency (an
+  // opportunity correctly scoped to SINGLETON by its OWN business_id, whose
+  // pipeline_id foreign key nonetheless points at a board belonging to a
+  // DIFFERENT business) to prove the pipeline lookup is independently
+  // business-scoped too, not safe merely because the opportunities read
+  // happens to be.
+  it("does not leak another business's board name when an opportunity's pipeline_id points cross-tenant", async () => {
+    seedBoard()
+    seedContact("c-1")
+    store.pipelines.push({
+      id: "pipe-other-secret",
+      business_id: OTHER_BUSINESS_ID,
+      key: "other_business_board",
+      name: "Someone Else's Board",
+      status: "active",
+    })
+    seedOpportunity("opp-1", "c-1", {
+      pipeline_id: "pipe-other-secret", // the inconsistency
+      stage_id: "camps-stage-won",
+      outcome: "won",
+      closed_at: new Date().toISOString(),
+      closed_trigger: "payment",
+    })
+
+    const key = await resolveWonPipelineKey("c-1", SINGLETON_BUSINESS_ID)
+
+    // Not "other_business_board" — that would be the leak.
     expect(key).toBeNull()
   })
 })
@@ -1617,6 +1657,27 @@ describe("applyPipelineEvent", () => {
   // board-editor save added them. Routing an event to one of those for a
   // tenant that lacks it must fall back to Coaching, not throw.
   describe("fallback for a routed board this tenant lacks (Task 3)", () => {
+    // A call that passes NO pipelineKey at all (every caller before Task 3,
+    // and still the shape a refund's own resolution can produce) must use
+    // Coaching DIRECTLY — never via a fallback retry, which would fire a
+    // warning about a nonexistent board named "undefined".
+    it("does not fall back at all when no pipelineKey is passed", async () => {
+      seedBoard()
+      seedContact("c-1")
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+
+      const { opportunityId } = await applyPipelineEvent({
+        businessId: SINGLETON_BUSINESS_ID,
+        contactId: "c-1",
+        event: { kind: "booking", status: "scheduled", occurredAt: new Date() },
+      })
+
+      expect(opportunityId).not.toBeNull()
+      expect(store.opportunities[0].pipeline_id).toBe("pipe-1")
+      expect(warnSpy).not.toHaveBeenCalled()
+      warnSpy.mockRestore()
+    })
+
     it("falls back to Coaching when the routed board is not configured for this business", async () => {
       seedBoard() // only "coaching" — no "camps_clinics" board for this tenant
       seedContact("c-1")
