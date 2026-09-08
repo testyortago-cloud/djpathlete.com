@@ -389,6 +389,18 @@ describe("decideMove — inquiry (Task B)", () => {
     })
   })
 
+  // Pins the `humanClosed` conjunct specifically — a recent Lost the SYSTEM
+  // closed (a cancelled/no-show booking, not a person's own ruling) must NOT
+  // suppress a fresh inquiry. Dropping just this conjunct from the guard
+  // would suppress on ANY recent Lost regardless of who closed it, and stay
+  // green against every other inquiry test in this file — found by mutating
+  // this exact conjunct and confirming the same gap exists, untested, in the
+  // quiz_result copy of this rule too.
+  it("does NOT suppress on a recent SYSTEM-closed Lost — only a human's own ruling suppresses", () => {
+    const current = closedAt("lost", "booking", INSIDE_WINDOW.toISOString())
+    expect(decideMove(ctx({ current }), inquiry())).toMatchObject({ kind: "create", trigger: "inquiry" })
+  })
+
   it("opens a card once the suppression window has expired", () => {
     const current = closedAt("lost", "manual", PAST_WINDOW.toISOString())
     expect(decideMove(ctx({ current }), inquiry())).toMatchObject({ kind: "create", trigger: "inquiry" })
