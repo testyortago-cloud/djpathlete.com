@@ -245,6 +245,10 @@ describe("Stripe webhook — pipeline", () => {
       contactId: "contact-pay-1",
       event: { kind: "payment", amountCents: 12500, currency: "usd", occurredAt: expect.any(Date) },
       businessId: "bbb",
+      // No `session.metadata.type` in this fixture — routes to the default
+      // board, same as today's behaviour, but now via the real routing
+      // table (Task 3) rather than an implicit absence of a key.
+      pipelineKey: "coaching",
       metadata: { stripe_session_id: "cs_test_1" },
     })
   })
@@ -343,6 +347,7 @@ describe("Stripe webhook — pipeline", () => {
       contactId: "contact-coaching-1",
       event: { kind: "payment", amountCents: 30000, currency: "usd", occurredAt: expect.any(Date) },
       businessId: "bbb",
+      pipelineKey: "coaching",
       metadata: { stripe_session_id: "cs_test_1" },
     })
   })
@@ -573,6 +578,7 @@ describe("GHL booking webhook — pipeline", () => {
       contactId: "contact-sched",
       event: { kind: "booking", status: "scheduled", occurredAt: expect.any(Date) },
       businessId: SINGLETON_BUSINESS_ID,
+      pipelineKey: "coaching",
     })
   })
 
@@ -595,6 +601,7 @@ describe("GHL booking webhook — pipeline", () => {
       contactId: "contact-comp",
       event: { kind: "booking", status: "completed", occurredAt: expect.any(Date) },
       businessId: SINGLETON_BUSINESS_ID,
+      pipelineKey: "coaching",
     })
   })
 
@@ -621,6 +628,7 @@ describe("GHL booking webhook — pipeline", () => {
       contactId: "contact-cancel",
       event: { kind: "booking", status: "cancelled", occurredAt: expect.any(Date) },
       businessId: SINGLETON_BUSINESS_ID,
+      pipelineKey: "coaching",
     })
     // Deliberate asymmetry (commit 63ff31db): exitRunsForContact must NOT
     // fire on a cancellation, even though applyPipelineEvent does.
@@ -646,6 +654,7 @@ describe("GHL booking webhook — pipeline", () => {
       contactId: "contact-noshow",
       event: { kind: "booking", status: "no_show", occurredAt: expect.any(Date) },
       businessId: SINGLETON_BUSINESS_ID,
+      pipelineKey: "coaching",
     })
     expect(exitRunsForContactMock).not.toHaveBeenCalled()
   })
@@ -757,6 +766,7 @@ describe("Calendly booking webhook — pipeline", () => {
       contactId: "contact-cal-sched",
       event: { kind: "booking", status: "scheduled", occurredAt: expect.any(Date) },
       businessId: SINGLETON_BUSINESS_ID,
+      pipelineKey: "coaching",
     })
   })
 
@@ -771,6 +781,7 @@ describe("Calendly booking webhook — pipeline", () => {
       contactId: "contact-cal-cancel",
       event: { kind: "booking", status: "cancelled", occurredAt: expect.any(Date) },
       businessId: SINGLETON_BUSINESS_ID,
+      pipelineKey: "coaching",
     })
     expect(exitRunsForContactMock).not.toHaveBeenCalled()
   })

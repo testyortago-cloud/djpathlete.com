@@ -56,6 +56,7 @@ import { FUNNEL_CHECKOUT_FLAG, FUNNEL_CHECKOUT_DEFAULT } from "@/lib/funnels/che
 import { findContactWithBusinessByIdentifiers, hasPurchaseSince, type ContactEventSource } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
+import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
 import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
 import { captureLead } from "@/lib/lead-engine/capture"
 import { platformBusinessId } from "@/lib/tenancy/platform"
@@ -273,6 +274,15 @@ export async function POST(request: Request) {
               // Stripe delivers at-least-once with no dedupe on this route;
               // two concurrent deliveries of the same session must not mint
               // two Won cards for one sale.
+              // Task 3 (spec §3.2): the same discriminator
+              // `checkoutContactSource` reads a few lines below
+              // (`session.metadata?.type`), routed through the same table a
+              // camp-signup payment would use to reach Camps & Clinics.
+              // NON_COACHING_CHECKOUT_TYPES already keeps this call from ever
+              // firing for `event_signup` today (see that constant's own
+              // comment) — this route is unchanged either way, but stays
+              // consistent with the table rather than a second hardcoded key.
+              const routing = routeToPipeline({ event: "payment", checkoutType: session.metadata?.type })
               await applyPipelineEvent({
                 contactId,
                 event: {
@@ -282,6 +292,7 @@ export async function POST(request: Request) {
                   occurredAt: new Date(),
                 },
                 businessId,
+                pipelineKey: routing.kind === "routed" ? routing.pipelineKey : undefined,
                 metadata: { stripe_session_id: session.id },
               })
             }
@@ -538,6 +549,19 @@ export async function POST(request: Request) {
               // way to know.
               const contact = await findContactWithBusinessByIdentifiers({ userId: payment.user_id, email: null })
               if (contact) {
+                // Task 3 (spec §3.1) — deliberately NO pipelineKey here.
+                // routeToPipeline refuses unconditionally for `event:
+                // "refund"` (lib/lead-engine/pipeline-route.ts's module
+                // header): re-deriving a board from `payment.metadata.type`
+                // the way a fresh payment is routed is the WRONG ANSWER, not
+                // just the wrong layer, because the actual Won opportunity —
+                // not the routing table — is the ground truth for which
+                // board a refund belongs on. `applyPipelineEvent`
+                // (lib/db/pipeline.ts) consumes that refusal itself: for a
+                // refund it ignores `pipelineKey` entirely and resolves the
+                // board from the contact's own most recent WON opportunity,
+                // searched across every board this business has
+                // (`resolveWonPipelineKey`).
                 await applyPipelineEvent({
                   contactId: contact.id,
                   event: {

@@ -27,6 +27,7 @@ import {
   DEFAULT_PIPELINE_KEY,
 } from "@/lib/db/pipeline"
 import { NON_COACHING_PAYMENT_TYPES } from "@/lib/lead-engine/constants"
+import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
 import { platformBusinessId } from "@/lib/tenancy/platform"
 
 // Final review, Critical 1 — REVERTS the "replay every succeeded payment
@@ -176,7 +177,11 @@ export type PipelineReconcileSummary = {
  *   needs a migration and is out of this task.
  */
 export async function runPipelineReconcile(): Promise<PipelineReconcileSummary> {
-  const pipelineKey = DEFAULT_PIPELINE_KEY
+  // Task 3 (spec §3): NOT a blanket "every event lands here" assumption any
+  // more — see `reconcileForBusiness`'s doc comment for what this is used
+  // for now (bookings are routed for real; payments are scoped to this one
+  // board, checked against per-payment routing rather than assumed).
+  const defaultPipelineKey = DEFAULT_PIPELINE_KEY
   const since = new Date(Date.now() - PIPELINE_RECONCILE_WINDOW_DAYS * DAY_MS).toISOString()
 
   const businesses = await listBusinesses({ activeOnly: true })
@@ -200,7 +205,7 @@ export async function runPipelineReconcile(): Promise<PipelineReconcileSummary> 
     try {
       const bookings = await getBookingsForPipelineReconcile(["scheduled", "completed"], since, business.id)
       const businessPayments = business.id === platformBusinessId() ? payments : []
-      const result = await reconcileForBusiness(business.id, pipelineKey, since, bookings, businessPayments)
+      const result = await reconcileForBusiness(business.id, defaultPipelineKey, since, bookings, businessPayments)
       createdFromBookings += result.createdFromBookings
       wonFromPayments += result.wonFromPayments
       failed += result.failed
@@ -231,10 +236,36 @@ export async function runPipelineReconcile(): Promise<PipelineReconcileSummary> 
  * business and `[]` for every other one (see the doc comment above) — the
  * `payments.length > 0` guard below is what makes that a true no-op for a
  * non-platform business rather than merely an empty loop.
+ *
+ * `defaultPipelineKey` (Task 3, spec §3) is `DEFAULT_PIPELINE_KEY`, still —
+ * this pass has NOT been widened to reconcile the other two boards. It is
+ * now used two different ways, not one, and the difference is load-bearing:
+ *
+ *  - Bookings are routed for real, per row, via `routeToPipeline({event:
+ *    "booking"})` — trivial today (that rule always answers `coaching`, so
+ *    the result is byte-identical to the old hardcoded key) but no longer a
+ *    SEPARATE hardcoded assumption from the rest of the routing table.
+ *  - Payments are NOT routed per row. This loop pre-resolves ONE board's
+ *    `pipelineId`/`stages` (below) and reuses them as the "does this contact
+ *    already have an OPEN card" precondition for every payment in the batch —
+ *    correct only because every payment type that reaches this point routes
+ *    to that SAME board. `NON_COACHING_PAYMENT_TYPES` already filters out
+ *    the one type `routeToPipeline` would send to `camps_clinics`
+ *    (`event_signup`) two lines above, so today that invariant always holds.
+ *    Splitting this loop to resolve a board per payment would mean
+ *    re-fetching `pipelineId`/`stages` (and re-running the OPEN-card
+ *    precondition) per distinct board — a real rewrite of this pass's
+ *    architecture that the task brief this shipped under explicitly ruled
+ *    out of scope. Instead, each payment's routed key is checked AGAINST
+ *    `defaultPipelineKey` before it is used (see the guard inside the loop
+ *    below): if the two ever diverge — `NON_COACHING_PAYMENT_TYPES` and
+ *    `routeToPipeline`'s table drift apart — the payment is skipped and
+ *    counted as `failed` rather than being checked against, or written onto,
+ *    the wrong board.
  */
 async function reconcileForBusiness(
   businessId: string,
-  pipelineKey: string,
+  defaultPipelineKey: string,
   since: string,
   bookings: Awaited<ReturnType<typeof getBookingsForPipelineReconcile>>,
   payments: Awaited<ReturnType<typeof getSucceededPaymentsForPipelineReconcile>>,
@@ -244,6 +275,11 @@ async function reconcileForBusiness(
   let createdFromBookings = 0
   let wonFromPayments = 0
   let failed = 0
+
+  // Never varies per booking — this call carries no checkoutType/serviceType
+  // to route on — so resolved once rather than inside the loop.
+  const bookingRouting = routeToPipeline({ event: "booking" })
+  const bookingPipelineKey = bookingRouting.kind === "routed" ? bookingRouting.pipelineKey : defaultPipelineKey
 
   for (const booking of bookings) {
     if (!booking.id || processed.bookingIds.has(booking.id)) continue
@@ -258,7 +294,7 @@ async function reconcileForBusiness(
 
       const { decision } = await applyPipelineEvent({
         contactId,
-        pipelineKey,
+        pipelineKey: bookingPipelineKey,
         businessId,
         source: "reconciler",
         event: {
@@ -276,7 +312,7 @@ async function reconcileForBusiness(
   }
 
   if (payments.length > 0) {
-    const { pipelineId, stages } = await resolvePipeline(pipelineKey, businessId)
+    const { pipelineId, stages } = await resolvePipeline(defaultPipelineKey, businessId)
 
     for (const payment of payments) {
       if (!payment.id || processed.paymentIds.has(payment.id)) continue
@@ -284,6 +320,24 @@ async function reconcileForBusiness(
       try {
         const paymentType = payment.metadata?.type
         if (typeof paymentType === "string" && NON_COACHING_PAYMENT_TYPES.has(paymentType)) continue
+
+        // See this function's doc comment: this loop's OPEN-card precondition
+        // (`pipelineId`/`stages` above) is scoped to `defaultPipelineKey`
+        // alone. A payment whose OWN routed key disagrees with that must be
+        // skipped rather than checked against — and potentially written
+        // onto — the wrong board.
+        const routing = routeToPipeline({
+          event: "payment",
+          checkoutType: typeof paymentType === "string" ? paymentType : null,
+        })
+        const routedPipelineKey = routing.kind === "routed" ? routing.pipelineKey : defaultPipelineKey
+        if (routedPipelineKey !== defaultPipelineKey) {
+          failed += 1
+          console.error(
+            `[pipeline-reconcile] payment ${payment.id} routes to "${routedPipelineKey}" but this pass only reconciles "${defaultPipelineKey}" — skipped rather than risking a wrong-board write`,
+          )
+          continue
+        }
 
         const contactId = await findContactByIdentifiers({ userId: payment.user_id, businessId })
         if (!contactId) continue
@@ -298,7 +352,7 @@ async function reconcileForBusiness(
 
         const { decision } = await applyPipelineEvent({
           contactId,
-          pipelineKey,
+          pipelineKey: routedPipelineKey,
           businessId,
           source: "reconciler",
           event: {

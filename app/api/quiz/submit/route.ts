@@ -36,6 +36,7 @@ import { quizAnswerPayload } from "@/lib/quizzes/answer-payload"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { recordAudit } from "@/lib/audit/record"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
+import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
 import { sendQuizAlert, shouldAlert } from "@/lib/quizzes/alert"
 import { recordContactEvent } from "@/lib/db/contacts"
 import { recordConsent } from "@/lib/db/contact-consents"
@@ -277,10 +278,16 @@ async function handoff(input: {
   // `decideMove` owns that rule — this route only reports what happened.
   if (contactId) {
     try {
+      // Task 3 (spec §3.2): a quiz result always routes to Coaching — this
+      // route carries no checkoutType/serviceType to route on — but it still
+      // goes through the same routing table as every other event rather than
+      // a bare hardcoded key.
+      const routing = routeToPipeline({ event: "quiz_result" })
       await applyPipelineEvent({
         businessId,
         contactId,
         event: { kind: "quiz_result", tier: result.tierKey ?? "", occurredAt: new Date() },
+        pipelineKey: routing.kind === "routed" ? routing.pipelineKey : undefined,
         // Carries the attempt id so a replay of the same completion cannot
         // open a second card — `SOURCE_EVENT_ID_KEYS` reads this key.
         metadata: { quiz_attempt_id: body.attemptId, quiz_key: definition.key, tier: result.tierKey },
