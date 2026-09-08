@@ -193,6 +193,57 @@ describe("00218's gate: new sequences are seeded draft, not active", () => {
 })
 
 // ---------------------------------------------------------------------------
+// Cross-file literal pins. This branch's own pre-flight called these the two
+// highest-risk literals: `checkout_abandoned` (must match the ContactEventSource
+// member lib/db/contacts.ts adds and the source app/api/stripe/webhook/route.ts
+// captures on checkout.session.expired) and {"signup_type": "interest"}
+// (must match the metadata lib/db/event-signups.ts / the signup route writes).
+// `enrollIfTriggered` compares trigger_source with `.eq()` and trigger_filter
+// with exact key/value equality (`filterMatches`) -- a mismatch on either side
+// enrols nobody, forever, with no error anywhere. Both literals were already
+// pinned on the TypeScript side; nothing asserted the migration agrees.
+// ---------------------------------------------------------------------------
+
+interface SequenceRow {
+  key: string
+  triggerSource: string
+  triggerFilter: string
+}
+
+function parseSequenceRows(sql: string): SequenceRow[] {
+  const block = /INSERT INTO public\.sequences[\s\S]*?ON CONFLICT \(business_id, key\) DO NOTHING;/.exec(sql)?.[0]
+  if (!block) throw new Error("could not find the sequences INSERT block")
+  const rowRe =
+    /'0000[^']*',\s*\n\s*'([a-z_]+)',\s*\n\s*'[^']*',\s*\n\s*'[^']*',\s*\n\s*'([a-z_]+)',\s*\n\s*('[^']*'::jsonb),\s*\n\s*'draft'/g
+  const rows: SequenceRow[] = []
+  let m: RegExpExecArray | null
+  while ((m = rowRe.exec(block))) {
+    rows.push({ key: m[1], triggerSource: m[2], triggerFilter: m[3] })
+  }
+  return rows
+}
+
+const SEQUENCE_ROWS = parseSequenceRows(SQL)
+
+describe("cross-file literal pins (trigger_source / trigger_filter)", () => {
+  it("finds all three new sequence rows (parser sanity)", () => {
+    expect(SEQUENCE_ROWS.map((r) => r.key).sort()).toEqual(
+      ["abandoned_checkout", "camp_clinic_deadline", "service_application_received"].sort(),
+    )
+  })
+
+  it("seeds abandoned_checkout's trigger_source as the literal 'checkout_abandoned'", () => {
+    const row = SEQUENCE_ROWS.find((r) => r.key === "abandoned_checkout")
+    expect(row?.triggerSource).toBe("checkout_abandoned")
+  })
+
+  it('seeds camp_clinic_deadline\'s trigger_filter as the literal \'{"signup_type": "interest"}\'', () => {
+    const row = SEQUENCE_ROWS.find((r) => r.key === "camp_clinic_deadline")
+    expect(row?.triggerFilter).toBe(`'{"signup_type": "interest"}'::jsonb`)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // The trailing UPDATE pauses the four live quiz sequences.
 // ---------------------------------------------------------------------------
 
@@ -215,6 +266,39 @@ it("gives every tag step a tag in its config", () => {
     const cfg = /\$cfg\$([\s\S]*?)\$cfg\$/.exec(t.rest)
     expect(cfg, `tag step at ${t.seqKey}@${t.position} has no $cfg$ block`).not.toBeNull()
     expect(cfg![1]).toContain('"tag"')
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Spec §9's remaining structural assertions: every email step is actually
+// usable (a subject and a body, both non-empty), and every wait step
+// actually waits (a positive wait_minutes) -- rather than silently seeding a
+// NULL that would either crash the renderer or make a wait step advance
+// immediately.
+// ---------------------------------------------------------------------------
+
+it("gives every email step both a subject and a body", () => {
+  const emailTuples = ALL_TUPLES.filter((t) => t.kind === "email")
+  expect(emailTuples.length).toBeGreaterThan(0)
+  for (const t of emailTuples) {
+    const subj = /\$subj\$([\s\S]*?)\$subj\$/.exec(t.rest)
+    const body = /\$body\$([\s\S]*?)\$body\$/.exec(t.rest)
+    expect(subj, `email step at ${t.seqKey}@${t.position} has no $subj$ block`).not.toBeNull()
+    expect(subj![1].trim().length, `email step at ${t.seqKey}@${t.position} has an empty subject`).toBeGreaterThan(0)
+    expect(body, `email step at ${t.seqKey}@${t.position} has no $body$ block`).not.toBeNull()
+    expect(body![1].trim().length, `email step at ${t.seqKey}@${t.position} has an empty body`).toBeGreaterThan(0)
+  }
+})
+
+it("gives every wait step a positive wait_minutes", () => {
+  const waitTuples = ALL_TUPLES.filter((t) => t.kind === "wait")
+  expect(waitTuples.length).toBeGreaterThan(0)
+  for (const t of waitTuples) {
+    const m = /^,\s*(\d+)\s*,/.exec(t.rest)
+    expect(m, `wait step at ${t.seqKey}@${t.position} has no numeric wait_minutes`).not.toBeNull()
+    expect(Number(m![1]), `wait step at ${t.seqKey}@${t.position} has a non-positive wait_minutes`).toBeGreaterThan(
+      0,
+    )
   }
 })
 
