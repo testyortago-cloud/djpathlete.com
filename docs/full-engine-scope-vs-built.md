@@ -94,6 +94,16 @@ columns and the evaluator works) — no sequence uses it.
 
 ### Everything else
 
+> **Re-measured from production on 2026-09-08, and one line below is now wrong.**
+> A **real, live purchase landed on 2026-09-07 18:14:19 UTC** — a `cs_live_...` Checkout
+> session, against a contact created 0.3 seconds earlier. So contacts are **170** (not 169)
+> and timeline events **262** (not 261), and the claim in §1 that the engine has *"nurtured
+> zero real leads"* no longer holds: it captured a paying customer end to end. Everything
+> else in this table re-measured **unchanged** on 2026-09-08 — consent rows still 0, tags
+> still 0, opportunities still 3 on the single Coaching board, funnels still 6 with 1
+> published and 1 submission, bookings still 5, chat still 1 conversation.
+
+
 | | Count | Reading |
 |---|---|---|
 | Contacts | **169** | Bulk-imported from GoHighLevel across 8 distinct minutes, zero first-touch sessions. Newest is 2026-09-04. |
@@ -143,9 +153,9 @@ Ranked by what stands between you and a working engine. "Blocks go-live" means
 | 10 | **Two-way SMS.** `sendRenderedSequenceSms` has exactly one caller — the tick runner. You cannot text a person from the admin or reply to one. Inbound writes a timeline row and forwards to your email. | Automation | No | 4–6 days ([design](superpowers/specs/2026-09-01-full-engine-phase3-two-way-sms-design.md)) |
 | 11 | **No screen to manage sequences at all** — no on/off toggle, no step editor. Turning the quiz sequences on required writing a script for the purpose. | Automation | No | 3–4 days |
 | 12 | ~~**`tag` and `stage` sequence steps silently do nothing.**~~ **BUILT** — a `tag` step applies a tag, a `stage` step moves the contact's card. `sequence_steps.config` has its first reader. A sequence may MOVE a card but never close or reopen one. **Merged 2026-09-07, not yet pushed.** ~~Ships DORMANT~~ — **no longer dormant:** migration `00255` (branch `feat/sequence-content`) writes the first `tag` step, so this is live the moment that branch merges and the sequence is switched on. A `stage` step still has no writer. That branch also made a sequence's card move **forward-only**, matching every other automated writer. | Automation | ~~No~~ **Closed** | ~~1–2 days~~ done |
-| 13 | **The chat bubble is not on funnel or landing pages** — deliberate (*"a landing page's job is to remove exits"*), but it contradicts the quotation. | Chat | No | One line, either way |
+| 13 | ~~**The chat bubble is not on funnel or landing pages.**~~ **DECIDED 2026-09-07 — it stays OFF. Zero work.** The owner ruled it during the gap #4 brainstorm and confirmed it on 2026-09-08: *a landing page's job is to remove exits*. Where the quotation says otherwise, the ruling wins. **Written down 2026-09-08** because both rulings were verbal and this row kept reading as an open question — do not re-open it. | Chat | No | ~~One line, either way~~ **Closed, no work** |
 | 14 | **`shop`, `assessment` and `funnel_checkout` are declared contact sources and never written.** Everyone is captured, under `purchase` / `inquiry` / `funnel_form` — you just cannot slice the list by those three. | Contacts | No | Half a day |
-| 15 | **Email sends are not consent-gated.** `hasEmailConsent` is computed and consumed at exactly one place — [sequence-tick.ts:85](../lib/automation/sequence-tick.ts#L85), inside an *optional* branch condition. SMS **is** hard-gated. | Compliance | No — unsubscribe works | Decision first, then ~1 day |
+| 15 | ~~**Email sends are not consent-gated.**~~ **DECIDED 2026-09-07 — email stays UNGATED. Zero work.** The reason is elsewhere on this page: **170 contacts, zero consent rows** (re-measured 2026-09-08), so a hard gate would silence the entire imported list the day it shipped. Unsubscribe already works and stays the control. `hasEmailConsent` stays computed and stays *advisory* at [sequence-tick.ts:85](../lib/automation/sequence-tick.ts#L85); **SMS remains hard-gated** and that is not in question. **Written down 2026-09-08** — the ruling was verbal and this row kept reading as an open decision. | Compliance | No — unsubscribe works | ~~Decision first, then ~1 day~~ **Closed, no work** |
 
 ### Not missing — verified working, do not rebuild
 
