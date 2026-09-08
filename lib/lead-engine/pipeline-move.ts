@@ -235,38 +235,62 @@ export function decideMove(ctx: MoveContext, event: PipelineEvent): MoveDecision
   }
 
   // --- booking ---
-  if (event.status === "cancelled" || event.status === "no_show") {
-    if (!current || current.outcome != null) return { kind: "noop", reason: "no_open_deal" }
-    return {
-      kind: "close", outcome: "lost", toStageKey: stageOfKind(stages, "lost").key,
-      reason: event.status === "no_show" ? "booking_no_show" : "booking_cancelled",
-      trigger: "booking",
-    }
-  }
-
-  const target = bookingTarget(stages, event.status)
-  if (!target) return { kind: "noop", reason: "booking_status_does_not_move" }
-
-  if (!current) return { kind: "create", toStageKey: target.key, trigger: "booking" }
-
-  if (current.outcome != null) {
-    // Closed. A new booking is a new deal — unless a human recently ruled them
-    // out, in which case the side door stays shut.
-    if (humanClosed && current.outcome === "lost" && current.closed_at) {
-      const age = now.getTime() - new Date(current.closed_at).getTime()
-      if (age < REBOOKING_SUPPRESSION_DAYS * DAY_MS) {
-        return { kind: "refuse", reason: "suppressed_after_manual_lost" }
+  //
+  // EXPLICIT ON PURPOSE. Until this guard was added, `booking` was the only
+  // kind left once payment/refund/quiz_result had each returned on every
+  // path above it, so TypeScript narrowed `event` down to it for free and
+  // nothing below ever named the kind it was handling. That was fine right
+  // up until a fifth `PipelineEvent` kind was going to be added: widening the
+  // union first would have let that new kind fall through to this booking
+  // logic silently — `event.status` would be `undefined`, decided against
+  // anyway, and shipped as a booking decision for an event that was never a
+  // booking. Naming the kind here turns that into a compile error the moment
+  // the union grows, at the `_exhaustive` check below, rather than a
+  // behaviour bug discovered later.
+  if (event.kind === "booking") {
+    if (event.status === "cancelled" || event.status === "no_show") {
+      if (!current || current.outcome != null) return { kind: "noop", reason: "no_open_deal" }
+      return {
+        kind: "close", outcome: "lost", toStageKey: stageOfKind(stages, "lost").key,
+        reason: event.status === "no_show" ? "booking_no_show" : "booking_cancelled",
+        trigger: "booking",
       }
     }
-    return { kind: "create", toStageKey: target.key, trigger: "booking" }
+
+    const target = bookingTarget(stages, event.status)
+    if (!target) return { kind: "noop", reason: "booking_status_does_not_move" }
+
+    if (!current) return { kind: "create", toStageKey: target.key, trigger: "booking" }
+
+    if (current.outcome != null) {
+      // Closed. A new booking is a new deal — unless a human recently ruled them
+      // out, in which case the side door stays shut.
+      if (humanClosed && current.outcome === "lost" && current.closed_at) {
+        const age = now.getTime() - new Date(current.closed_at).getTime()
+        if (age < REBOOKING_SUPPRESSION_DAYS * DAY_MS) {
+          return { kind: "refuse", reason: "suppressed_after_manual_lost" }
+        }
+      }
+      return { kind: "create", toStageKey: target.key, trigger: "booking" }
+    }
+
+    // Open. Forward only — a late booking.scheduled must not drag a Consulted card
+    // backwards.
+    if (target.position <= current.stage_position) {
+      return { kind: "noop", reason: "would_move_backwards" }
+    }
+    return { kind: "advance", toStageKey: target.key, trigger: "booking" }
   }
 
-  // Open. Forward only — a late booking.scheduled must not drag a Consulted card
-  // backwards.
-  if (target.position <= current.stage_position) {
-    return { kind: "noop", reason: "would_move_backwards" }
-  }
-  return { kind: "advance", toStageKey: target.key, trigger: "booking" }
+  // Exhaustiveness guard. Every `PipelineEvent` kind above returns on every
+  // one of its own paths, so by this point `event` can only still be typed
+  // as something if a NEW kind was added to the union without its own `if
+  // (event.kind === "...")` arm above — the same implicit-fall-through trap
+  // the booking comment above describes. Assigning it to `never` makes that
+  // a compile error at the moment the union widens, rather than a silent
+  // pass through whichever arm happens to be last.
+  const _exhaustive: never = event
+  throw new Error(`decideMove: unhandled event kind "${(_exhaustive as PipelineEvent).kind}"`)
 }
 
 /**

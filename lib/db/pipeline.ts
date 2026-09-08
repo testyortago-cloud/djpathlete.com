@@ -314,9 +314,32 @@ function findStage(stages: StageRow[], key: string): StageRow {
  * `payment` (both are Stripe-driven; `opportunity_stage_events.trigger`'s
  * CHECK constraint has no separate `refund` value — see 00219), every
  * booking status refuses as `booking`.
+ *
+ * A `switch` with a `never` default, not the two-way ternary this used to
+ * be — a ternary silently maps every kind that isn't `booking` onto
+ * `payment`, which is exactly the implicit-fall-through trap
+ * `lib/lead-engine/pipeline-move.ts`'s own `decideMove` guards against: a
+ * future `PipelineEvent` kind would compile clean and refuse with a
+ * misleading trigger instead of failing to build. `quiz_result` mapping to
+ * `payment` here is UNCHANGED, existing behaviour this switch preserves
+ * rather than corrects — decideMove's quiz_result branch can also refuse
+ * (`suppressed_after_manual_lost`), and this function's own doc comment
+ * above has never mentioned that case; fixing that mapping is not this
+ * change's job.
  */
 function triggerForEvent(event: PipelineEvent): MoveTrigger {
-  return event.kind === "booking" ? "booking" : "payment"
+  switch (event.kind) {
+    case "booking":
+      return "booking"
+    case "payment":
+    case "refund":
+    case "quiz_result":
+      return "payment"
+    default: {
+      const _exhaustive: never = event
+      throw new Error(`triggerForEvent: unhandled event kind "${(_exhaustive as PipelineEvent).kind}"`)
+    }
+  }
 }
 
 /**
