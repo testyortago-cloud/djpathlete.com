@@ -79,22 +79,87 @@ describe("FunnelCard, per kind of row", () => {
     expect(screen.queryByLabelText("Free Trial settings")).toBeNull()
   })
 
-  it("offers no Convert control on a landing page", () => {
-    // INVERTED 2026-08-31. This test used to pin the Convert button's
-    // PRESENCE on a page card. The owner ruled that landing pages and funnels
-    // are separate things that never turn into each other ("there is no such
-    // thing as convert"), so the guarantee is now absence — on both kinds.
-    // The rename control is the presence check proving the card rendered at
-    // all, without which the absence below passes vacuously.
+  // -------------------------------------------------------------------------
+  // CONVERT. Re-pointed 2026-09-08, NOT rewritten from scratch.
+  //
+  // These two tests were inverted on 2026-08-31 to pin Convert's ABSENCE, after
+  // the owner ruled the two concepts never cross. He has since asked for it back
+  // on both boards, so they are pointed at the new guarantee rather than deleted
+  // — the third case below is the one neither version had.
+  //
+  // The rename control stays as each assertion's presence check: "a Convert
+  // button is on this card" and "it is disabled" both pass vacuously if the card
+  // never rendered at all.
+  // -------------------------------------------------------------------------
+
+  it("offers Convert to funnel on a landing page", () => {
     card(funnel({ kind: "page" }))
     expect(screen.getByLabelText("Rename Free Trial")).toBeTruthy()
-    expect(screen.queryByRole("button", { name: /convert/i })).toBeNull()
+    const button = screen.getByRole("button", { name: "Convert to funnel" })
+    // THE DIRECTION, not merely presence. A page card offering "Convert to
+    // landing page" is a button that does nothing, and `name: /convert/i` is
+    // green for both — the same trap the goal-badge pair above avoids.
+    expect(button.hasAttribute("disabled")).toBe(false)
+    expect(screen.queryByRole("button", { name: "Convert to landing page" })).toBeNull()
   })
 
-  it("offers no Convert control on a funnel either", () => {
+  it("offers Convert to landing page on a ONE-page funnel", () => {
     card(funnel({ kind: "funnel" }))
     expect(screen.getByLabelText("Rename Free Trial")).toBeTruthy()
-    expect(screen.queryByRole("button", { name: /convert/i })).toBeNull()
+    const button = screen.getByRole("button", { name: "Convert to landing page" })
+    expect(button.hasAttribute("disabled")).toBe(false)
+    expect(screen.queryByRole("button", { name: "Convert to funnel" })).toBeNull()
+  })
+
+  it("DISABLES Convert on a funnel with two pages, and says how many", () => {
+    // The behaviour the owner chose over hiding the button: a multi-page funnel
+    // cannot become a landing page (a landing page is one page), and a control
+    // that silently is not there is how "wheres the button" happened.
+    //
+    // A COURTESY, NOT THE GUARD — `convert-route.test.ts` pins the server-side
+    // refusal, which is the one that actually decides.
+    card(funnel({ kind: "funnel" }), [
+      step(),
+      step({ id: "s2", slug: "thanks", name: "Thanks", position: 1, is_entry: false }),
+    ])
+    const button = screen.getByRole("button", { name: "Convert to landing page" })
+    expect(button.hasAttribute("disabled")).toBe(true)
+    expect(button.getAttribute("title")).toContain("2 pages")
+  })
+
+  it("DISABLES Convert on a funnel with NO pages, without claiming it has none", () => {
+    // ADDED after review: a surviving mutant. Changing the component's
+    // `stepCount !== 1` to `stepCount > 1` passed the whole suite, because
+    // nothing exercised zero — so the guard's shape was unpinned at the UI
+    // layer even though the route's equivalent was pinned.
+    //
+    // The wording matters as much as the disabled state. Both boards build
+    // their cards with `listSteps(...).catch(() => [])`, so zero here means
+    // "empty funnel" OR "the read failed" and the tooltip must not assert
+    // which. Above one the count is trustworthy; a failed read cannot make one.
+    card(funnel({ kind: "funnel" }), [])
+    const button = screen.getByRole("button", { name: "Convert to landing page" })
+    expect(button.hasAttribute("disabled")).toBe(true)
+    expect(button.getAttribute("title")).toContain("does not have exactly one page")
+  })
+
+  it("warns that publishing goes live after converting a DRAFT funnel to a page", () => {
+    // The sentence review found missing. A landing page goes live the moment
+    // one of its pages is published, while a funnel waits for a separate Go
+    // live — so converting a draft rearms the builder's Publish button, and the
+    // owner's own Return to Sport page is exactly that case.
+    card(funnel({ kind: "funnel", status: "draft" }))
+    fireEvent.click(screen.getByRole("button", { name: "Convert to landing page" }))
+    expect(screen.getByText(/straight onto your website/i)).toBeTruthy()
+  })
+
+  it("does NOT warn about publishing when the funnel is already live", () => {
+    // PRESENCE-CONTROLLED by the test above: if the sentence rendered
+    // unconditionally, that test would pass and this one would fail.
+    card(funnel({ kind: "funnel", status: "published" }))
+    fireEvent.click(screen.getByRole("button", { name: "Convert to landing page" }))
+    expect(screen.getByText(/moves to your Landing pages/i)).toBeTruthy()
+    expect(screen.queryByText(/straight onto your website/i)).toBeNull()
   })
 
   it("calls a landing page a landing page in the rename dialog", () => {

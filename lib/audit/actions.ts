@@ -247,6 +247,14 @@ export const AUDIT_ACTIONS = [
   { slug: "funnel.updated", category: "admin_write", description: "Funnel or step updated (admin)" },
   { slug: "funnel.published", category: "admin_write", description: "Funnel step or whole funnel published (admin)" },
   { slug: "funnel.deleted", category: "admin_write", description: "Funnel or step deleted (admin)" },
+  {
+    slug: "funnel.converted",
+    category: "admin_write",
+    // Its own slug rather than a `funnel.updated` carrying a kind in metadata:
+    // this is the one write that moves a row between the two admin boards, and
+    // "where did my landing page go" is exactly the question the log gets asked.
+    description: "Landing page converted to a funnel, or a funnel back to a landing page (admin)",
+  },
   { slug: "funnel.ai_turn", category: "admin_write", description: "Funnel page AI build turn (admin)" },
   {
     // The one automation in the app that changes what a visitor sees. Audited
