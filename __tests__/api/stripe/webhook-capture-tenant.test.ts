@@ -22,6 +22,7 @@ const createPaymentMock = vi.fn(async (_row: unknown) => undefined)
 const getPaymentByStripeIdMock = vi.fn(async (_id: unknown): Promise<unknown> => null)
 const findContactMock = vi.fn()
 const captureLeadMock = vi.fn(async (..._args: unknown[]) => "contact-1")
+const hasPurchaseSinceMock = vi.fn(async (..._args: unknown[]) => false)
 
 vi.mock("@/lib/stripe", () => ({
   verifyWebhookSignature: (...a: unknown[]) => verifyMock(...a),
@@ -72,6 +73,7 @@ vi.mock("@/lib/supabase", () => ({
 // The four this suite is about.
 vi.mock("@/lib/db/contacts", () => ({
   findContactWithBusinessByIdentifiers: (...a: unknown[]) => findContactMock(...a),
+  hasPurchaseSince: (...a: unknown[]) => hasPurchaseSinceMock(...a),
 }))
 vi.mock("@/lib/lead-engine/capture", () => ({ captureLead: (...a: unknown[]) => captureLeadMock(...a) }))
 vi.mock("@/lib/db/sequences", () => ({ exitRunsForContact: vi.fn(async () => undefined) }))
@@ -207,6 +209,68 @@ describe("checkout.session.expired — abandoned coaching checkout capture", () 
     expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
       source: "checkout_abandoned",
       businessId: "platform-biz",
+    })
+  })
+
+  // The ordering problem this fix closes: a card declines on THIS session, the
+  // customer immediately pays on a second one, `checkout.session.completed`
+  // fires and captures a `purchase` timeline event, and only THEN does this
+  // (now-stale) session's `expired` event arrive. Without the guard, the
+  // paying customer gets a "you didn't finish checking out" email.
+  it("does NOT capture when the contact already has a qualifying purchase since this session's created time", async () => {
+    findContactMock.mockResolvedValue({ id: "contact-1", businessId: OTHER_BUSINESS_ID })
+    hasPurchaseSinceMock.mockResolvedValue(true)
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire(
+        { id: "cs_6", customer_email: "f@example.com", metadata: {}, created: 1_700_000_000 },
+        "checkout.session.expired",
+      ),
+    )
+    expect(res.status).toBe(200)
+    expect(hasPurchaseSinceMock).toHaveBeenCalledWith("contact-1", OTHER_BUSINESS_ID, new Date(1_700_000_000 * 1000))
+    expect(captureLeadMock).not.toHaveBeenCalled()
+  })
+
+  it("captures as before when the contact has no qualifying purchase", async () => {
+    findContactMock.mockResolvedValue({ id: "contact-1", businessId: OTHER_BUSINESS_ID })
+    hasPurchaseSinceMock.mockResolvedValue(false)
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire(
+        { id: "cs_7", customer_email: "g@example.com", metadata: {}, created: 1_700_000_000 },
+        "checkout.session.expired",
+      ),
+    )
+    expect(res.status).toBe(200)
+    expect(captureLeadMock).toHaveBeenCalledTimes(1)
+    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
+      source: "checkout_abandoned",
+      businessId: OTHER_BUSINESS_ID,
+    })
+  })
+
+  // A purchase that predates this session is an earlier, UNRELATED sale --
+  // not evidence that this particular abandonment resolved itself. The DAL
+  // reader (hasPurchaseSince) is the one that applies the "at or after"
+  // comparison; from the route's point of view this looks identical to "no
+  // qualifying purchase", which is exactly the point: an older purchase must
+  // not suppress a genuinely new abandonment.
+  it("still captures when the contact's only purchase predates this session — an earlier, unrelated sale", async () => {
+    findContactMock.mockResolvedValue({ id: "contact-1", businessId: OTHER_BUSINESS_ID })
+    hasPurchaseSinceMock.mockResolvedValue(false)
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(
+      fire(
+        { id: "cs_8", customer_email: "h@example.com", metadata: {}, created: 1_700_000_000 },
+        "checkout.session.expired",
+      ),
+    )
+    expect(res.status).toBe(200)
+    expect(captureLeadMock).toHaveBeenCalledTimes(1)
+    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
+      source: "checkout_abandoned",
+      businessId: OTHER_BUSINESS_ID,
     })
   })
 })

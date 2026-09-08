@@ -454,3 +454,33 @@ export async function findContactWithBusinessByIdentifiers(args: {
   }
   return null
 }
+
+/**
+ * True when this contact already has a `purchase` timeline event at or after
+ * `since`.
+ *
+ * Exists for the Stripe webhook's `checkout.session.expired` case — see that
+ * call site's comment for the ordering problem this closes: a customer who
+ * pays on a SECOND checkout attempt already has a `purchase` row (written by
+ * `tryCaptureLeadFromCheckout` on the `checkout.session.completed` case,
+ * above in this file's sibling `recordContactEvent` path) by the time the
+ * FIRST, abandoned session's `expired` event arrives, often ~24h later.
+ * Comparing against `since` (the expired session's own `created` timestamp)
+ * rather than "ever purchased" is deliberate: an older, unrelated purchase
+ * must not suppress a genuinely new abandonment.
+ *
+ * SCOPED BY businessId, same as every other reader here.
+ */
+export async function hasPurchaseSince(contactId: string, businessId: string, since: Date): Promise<boolean> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("contact_timeline_events")
+    .select("id")
+    .eq("business_id", businessId)
+    .eq("contact_id", contactId)
+    .eq("source", "purchase")
+    .gte("occurred_at", since.toISOString())
+    .limit(1)
+  if (error) throw error
+  return (data ?? []).length > 0
+}
