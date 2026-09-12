@@ -1,4 +1,4 @@
-import { resend } from "@/lib/resend"
+import { Resend } from "resend"
 
 /**
  * Reads the Resend account's domain list and returns only the ones Resend has
@@ -16,12 +16,38 @@ import { resend } from "@/lib/resend"
  * Resend" must not collapse into the same caller-visible outcome — the
  * message the route shows for each is different, and only one of them is
  * actually "nothing is verified."
+ *
+ * Builds its OWN Resend client, per call, INSTEAD of importing the shared
+ * `resend` singleton from `lib/resend.ts`. That module constructs its client
+ * eagerly at import time (`export const resend = new Resend(process.env
+ * .RESEND_API_KEY!)`), and the SDK's own constructor throws synchronously
+ * when no key is available (node_modules/resend/dist/index.mjs: `if
+ * (!this.key) throw new Error("Missing API key. ...")`). This module is
+ * imported unconditionally at the top of the businesses route, so importing
+ * the shared singleton here would mean merely LOADING that route -- to serve
+ * any PATCH, including one that never touches sender_email -- throws before
+ * the `key` guard below ever runs, whenever RESEND_API_KEY is unset. Only
+ * importing the (side-effect-free) `Resend` class, and constructing after
+ * the guard, means the guard actually guards.
  */
 export async function listVerifiedSenderDomains(): Promise<
   { ok: true; domains: string[] } | { ok: false; reason: "no_api_key" | "api_error" }
 > {
-  if (!process.env.RESEND_API_KEY) return { ok: false as const, reason: "no_api_key" as const }
-  const { data, error } = await resend.domains.list()
+  const key = process.env.RESEND_API_KEY
+  if (!key) return { ok: false as const, reason: "no_api_key" as const }
+  let listed: Awaited<ReturnType<Resend["domains"]["list"]>>
+  try {
+    listed = await new Resend(key).domains.list()
+  } catch (err) {
+    // Constructing the client or calling the SDK can both throw (as opposed
+    // to resolving with an `error` field) -- a network failure inside the
+    // SDK's fetch, for instance. Without this catch, that throw would
+    // propagate as an uncaught exception (a raw 500) instead of the same
+    // fail-closed 400 every other unreachable-Resend case gets.
+    console.error("[sender-domains] Resend domains.list threw:", err)
+    return { ok: false as const, reason: "api_error" as const }
+  }
+  const { data, error } = listed
   if (error || !data) return { ok: false as const, reason: "api_error" as const }
   return {
     ok: true as const,

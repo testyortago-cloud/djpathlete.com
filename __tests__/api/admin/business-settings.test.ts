@@ -227,6 +227,17 @@ describe("PATCH /api/admin/businesses/[id] -- sender_email domain verification (
     expect(settingsCalls).toHaveLength(0)
   })
 
+  it("fails closed with the not-configured message when Resend has no API key, and writes nothing -- this is the seam review round 1's finding 1 lives in: the route must render THIS message for reason:no_api_key, distinct from the api_error message above", async () => {
+    listDomainsImpl = () => Promise.resolve({ ok: false, reason: "no_api_key" })
+    const res = await PATCH(req({ settings: { sender_email: "noreply@send.darrenjpaul.com" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.error).toMatch(/not configured on this server/i)
+    expect(settingsCalls).toHaveLength(0)
+  })
+
   it("presence control: never calls listVerifiedSenderDomains when the patch doesn't touch sender_email", async () => {
     // Without this control, the four tests above could be passing because
     // listVerifiedSenderDomains runs (and is mocked permissively) on every
