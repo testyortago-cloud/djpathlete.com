@@ -7,6 +7,8 @@
 // Falls back to null on any error — never blocks generation. The handler
 // skips the # CONTENT ANGLE block when input.content_angle is missing.
 
+import { MODEL_SONNET_5 } from "@/lib/ai/models"
+
 const SYSTEM_PROMPT = `You are reading a topic summary and producing a contrarian content angle for a strength & conditioning coaching blog.
 
 Output two single-line strings:
@@ -54,7 +56,7 @@ export async function extractContentAngle(input: {
 
   try {
     const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
+      model: MODEL_SONNET_5,
       max_tokens: 400,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userMessage }],

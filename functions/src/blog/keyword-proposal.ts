@@ -4,7 +4,7 @@
 // Falls back to a deterministic title-stripping function on any error.
 
 import { z } from "zod"
-import { callAgent, MODEL_SONNET } from "../ai/anthropic.js"
+import { callAgent, MODEL_SONNET_5 } from "../ai/anthropic.js"
 
 const SYSTEM_PROMPT = `You extract the primary search keyword from a blog topic. Return a 2-6 word noun phrase that someone would type into Google to find this content. Lowercase, no punctuation, no quotes. Skip stopwords like "the", "how to", "best".
 
@@ -55,7 +55,7 @@ export async function proposePrimaryKeyword(input: ProposeKeywordInput): Promise
 
   try {
     const result = await callAgent(SYSTEM_PROMPT, userMessage, proposalSchema, {
-      model: MODEL_SONNET,
+      model: MODEL_SONNET_5,
       maxTokens: 200,
     })
     const proposed = result.content.primary_keyword.trim()

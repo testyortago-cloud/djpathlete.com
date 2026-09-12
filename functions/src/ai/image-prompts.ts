@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { callAgent, MODEL_SONNET } from "./anthropic.js"
+import { callAgent, MODEL_SONNET_5 } from "./anthropic.js"
 import { getCategoryStyleModule } from "./category-style-modules.js"
 
 export const imagePromptsSchema = z.object({
@@ -142,7 +142,7 @@ export async function extractImagePrompts(input: ExtractImagePromptsInput): Prom
   ].join("\n")
 
   const result = await callAgent(SYSTEM_PROMPT, userMessage, imagePromptsSchema, {
-    model: MODEL_SONNET,
+    model: MODEL_SONNET_5,
     maxTokens: 2000,
   })
 

@@ -1,10 +1,6 @@
 import { describe, it, expect } from "vitest"
-import {
-  buildRankingPrompt,
-  EXCLUDED_DOMAINS,
-  nextMondayISO,
-  TRENDING_QUERIES,
-} from "../tavily-trending-scan.js"
+import { buildRankingPrompt, EXCLUDED_DOMAINS, nextMondayISO, TRENDING_QUERIES } from "../tavily-trending-scan.js"
+import { themeOf, TOPIC_THEMES } from "../lib/topic-themes.js"
 
 describe("tavily-trending-scan helpers", () => {
   it("buildRankingPrompt embeds Tavily results as numbered entries", () => {
@@ -20,18 +16,14 @@ describe("tavily-trending-scan helpers", () => {
   })
 
   it("buildRankingPrompt targets both coaching and sport science audiences", () => {
-    const prompt = buildRankingPrompt([
-      { title: "Sample", url: "https://x.example", content: "x" },
-    ]).toLowerCase()
+    const prompt = buildRankingPrompt([{ title: "Sample", url: "https://x.example", content: "x" }]).toLowerCase()
     expect(prompt).toContain("strength & conditioning")
     expect(prompt).toContain("sport science")
     expect(prompt).toContain("performance")
   })
 
   it("buildRankingPrompt enforces science-rigor inclusion criteria", () => {
-    const prompt = buildRankingPrompt([
-      { title: "Sample", url: "https://x.example", content: "x" },
-    ]).toLowerCase()
+    const prompt = buildRankingPrompt([{ title: "Sample", url: "https://x.example", content: "x" }]).toLowerCase()
     // Must require evidence-grade sourcing
     expect(prompt).toMatch(/peer-reviewed|meta-analysis|applied sport-science/)
     // Must require a quantifiable mechanism / metric
@@ -87,13 +79,28 @@ describe("tavily-trending-scan helpers", () => {
     expect(joined).toMatch(/return to play|injury prevention|rehabilitation/)
     expect(joined).toMatch(/psychology|mental performance|readiness/)
     expect(joined).toMatch(/nutrition|fueling/)
-    expect(TRENDING_QUERIES.length).toBe(8)
+    // Was `toBe(8)`. A fixed count pins the wrong property: the set is meant to
+    // GROW, and a count says nothing about whether it still spans the field.
+    // What actually matters is that no theme is left without a query feeding
+    // it — a theme with no query contributes no candidates, and the per-theme
+    // cap then has nothing to balance against.
+    expect(TRENDING_QUERIES.length).toBeGreaterThanOrEqual(8)
+  })
+
+  it("every theme is either fed by a query or is a documented cap-only theme", () => {
+    // A theme with no query of its own still earns its place if its job is to
+    // CAP material arriving via other queries. eccentric_rfd is exactly that:
+    // the eccentric/plyometric query was deliberately removed (see the comment
+    // on TRENDING_QUERIES), but eccentric papers still pour in through the
+    // force-velocity and deceleration queries and must be capped when they do.
+    const CAP_ONLY = new Set(["eccentric_rfd"])
+    const covered = new Set(TRENDING_QUERIES.map((q) => themeOf(q)))
+    const missing = TOPIC_THEMES.map((t) => t.key).filter((k) => !covered.has(k) && !CAP_ONLY.has(k))
+    expect(missing, `themes with no query and no cap-only waiver: ${missing.join(", ")}`).toEqual([])
   })
 
   it("buildRankingPrompt instructs the model not to return two topics about the same underlying study", () => {
-    const prompt = buildRankingPrompt([
-      { title: "Sample", url: "https://x.example", content: "x" },
-    ]).toLowerCase()
+    const prompt = buildRankingPrompt([{ title: "Sample", url: "https://x.example", content: "x" }]).toLowerCase()
     expect(prompt).toMatch(/same underlying study|same finding/)
   })
 })

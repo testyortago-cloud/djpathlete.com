@@ -12,6 +12,26 @@ export interface TavilySearchInput {
   max_results?: number
   include_domains?: string[]
   exclude_domains?: string[]
+  /**
+   * Recency filter. Tavily accepts "day" | "week" | "month" | "year" (and the
+   * single-letter forms d/w/m/y). Without one, a query with no date terms in it
+   * returns the same canonical, most-cited pages every single time it runs —
+   * which is exactly how the weekly topic scan kept resurfacing the same
+   * force-velocity papers. Verified against docs.tavily.com 2026-09-12.
+   */
+  time_range?: "day" | "week" | "month" | "year"
+  /** YYYY-MM-DD. Paired with end_date for an explicit window. */
+  start_date?: string
+  /** YYYY-MM-DD. */
+  end_date?: string
+  /** Return each result's publication date so callers can show/sort by vintage. */
+  include_published_date?: boolean
+  /**
+   * Hard-drop results published outside the window rather than merely ranking
+   * them lower. Leave FALSE for academic queries: indexing lag means a strict
+   * filter can empty a query that would otherwise return good recent work.
+   */
+  filter_by_published_date?: boolean
 }
 
 export interface TavilySearchResult {
@@ -57,6 +77,11 @@ export async function tavilySearch(input: TavilySearchInput): Promise<TavilySear
       max_results: input.max_results ?? 5,
       include_domains: input.include_domains,
       exclude_domains: input.exclude_domains,
+      time_range: input.time_range,
+      start_date: input.start_date,
+      end_date: input.end_date,
+      include_published_date: input.include_published_date,
+      filter_by_published_date: input.filter_by_published_date,
     }),
   })
   if (!response.ok) {

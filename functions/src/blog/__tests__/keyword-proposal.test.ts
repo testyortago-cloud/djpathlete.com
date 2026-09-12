@@ -5,6 +5,7 @@ const mockCallAgent = vi.hoisted(() => vi.fn())
 vi.mock("../../ai/anthropic.js", () => ({
   callAgent: mockCallAgent,
   MODEL_SONNET: "claude-sonnet-test",
+  MODEL_SONNET_5: "claude-sonnet-5-test",
 }))
 
 import { proposePrimaryKeyword, fallbackKeywordFromTitle } from "../keyword-proposal.js"
