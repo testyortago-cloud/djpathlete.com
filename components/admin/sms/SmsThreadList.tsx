@@ -7,10 +7,25 @@
 // TWO THINGS THE TABLE PRIMITIVES DO NOT DO FOR YOU:
 //   * `DataTable` emits no `<tbody>`. This file supplies one.
 //   * `DataTableEmpty` renders its OWN `<tr>`. Wrapping it in a
-//     `DataTableRow` nests `<tr>` in `<tr>`; the browser un-nests it and the
-//     `colSpan` then spans nothing, so the "nothing here" message goes narrow
-//     and left-aligned under the first column. There is a test counting
-//     `tbody > tr` for exactly this.
+//     `DataTableRow` nests `<tr>` inside `<tr>`, and the empty row's
+//     `colSpan` then spans nothing — the "nothing here" message goes narrow
+//     and left-aligned under the first column instead of centred across the
+//     table.
+//
+//     AND THE OBVIOUS TEST FOR THAT DOES NOT CATCH IT. This was measured, not
+//     reasoned about: `querySelectorAll("tbody > tr").length === 1` STILL
+//     PASSES with the wrapper in place. React builds the DOM with
+//     `createElement`, so — unlike the HTML parser, which really does un-nest
+//     a stray `<tr>` — nothing moves the inner row out; React logs a
+//     `validateDOMNesting` warning and carries on, and the wrapper is then
+//     the one and only `tbody > tr`. Do not copy that assertion into a new
+//     page believing it guards anything.
+//
+//     `__tests__/app/admin-sms-list.test.tsx` therefore asserts what actually
+//     breaks: the `td[colspan]`'s row must be a DIRECT child of the `<tbody>`
+//     (`cell.parentElement.parentElement.tagName === "TBODY"`), and no `<tr>`
+//     may sit inside another (`querySelectorAll("tr tr")` is empty). Those
+//     two kill the wrapper mutation; the count alone does not.
 //
 // THE THREAD IS KEYED ON PHONE, NOT CONTACT (lib/db/sms-messages.ts says the
 // same thing): a text from a number nobody has on file is still a

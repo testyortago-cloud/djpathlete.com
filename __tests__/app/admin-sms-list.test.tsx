@@ -6,12 +6,20 @@
 // the house standard and not optional: CLAUDE.md records that /admin/team
 // hand-rolled its own table and now reads as a different app.
 //
-// The fourth test is the one that is easy to write and easy to get wrong.
-// `DataTableEmpty` renders its OWN `<tr>`. Wrapping it in a `DataTableRow`
-// nests a `<tr>` inside a `<tr>`, the browser un-nests it, and the empty
-// row's `colSpan` ends up spanning nothing — the message goes narrow and
-// left-aligned under the first column instead of centred across the table.
-// Counting `tbody > tr` is what tells those two apart.
+// THE EMPTY-STATE TEST IS THE ONE THAT IS EASY TO GET WRONG, and the obvious
+// version of it is wrong. `DataTableEmpty` renders its OWN `<tr>`; wrapping it
+// in a `DataTableRow` nests `<tr>` inside `<tr>` and the empty row's `colSpan`
+// then spans nothing — the message goes narrow and left-aligned under the
+// first column instead of centred across the table.
+//
+// Counting `tbody > tr` does NOT tell those two apart. That was run as a
+// mutation, and it SURVIVED: React builds the DOM with `createElement`, so
+// unlike the HTML parser it does not un-nest the inner `<tr>` — it logs a
+// `validateDOMNesting` warning and carries on, leaving the wrapper as the one
+// and only `tbody > tr`. The count is kept below because it is still true and
+// still cheap, but the assertions that actually bite are the two beneath it:
+// the `td[colspan]`'s row must be a direct child of the `<tbody>`, and no
+// `<tr>` may sit inside another.
 //
 // `cleanup` is explicit: __tests__/setup.tsx installs no global afterEach, so
 // without it the second test's phone number matches the first test's still-

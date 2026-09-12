@@ -44,6 +44,7 @@ import {
   Kanban,
   UsersRound,
   MessagesSquare,
+  MessageSquareText,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 import { canAccessPath, type PermissionActor } from "@/lib/permissions/registry"
@@ -144,6 +145,22 @@ export function getAdminNav(opts: { contentStudioEnabled: boolean; actor?: Permi
           // Contacts because it is the same subsystem and answers the question
           // that page raises: they are in a sequence — and then what?
           { label: "Sequences", href: "/admin/sequences", icon: Workflow },
+          // "TEXTS", NOT "MESSAGES". `Messages -> /admin/messages` already
+          // exists in topLinks and is the coach-to-client in-app chat, which
+          // notification emails deep-link into. Two sidebar items both called
+          // Messages is exactly the confusion this route split exists to
+          // avoid, so the label names the medium.
+          //
+          // Registered here rather than left URL-only: the pipeline board and
+          // the chat assistant both shipped URL-only and both had to be fixed
+          // for it (see this file's other comments and admin-nav.test.ts).
+          //
+          // No permission field, because this nav has none — `filterNavForActor`
+          // asks `canAccessPath(actor, href, "GET")`, which resolves
+          // `/admin/sms` through PATH_PERMISSIONS to `contacts`, the same key
+          // the page's own `requirePermission` uses. There is one source of
+          // truth and it is the registry.
+          { label: "Texts", href: "/admin/sms", icon: MessageSquareText },
           { label: "Clients", href: "/admin/clients", icon: Users },
           { label: "Schedule", href: "/admin/schedule", icon: CalendarClock },
           // Clients coached here but billed by a partner facility. Sits beside

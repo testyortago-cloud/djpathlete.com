@@ -7,7 +7,8 @@
 // that reads it, so it going quiet is exactly the coverage you cannot afford
 // to lose.
 import { describe, expect, it } from "vitest"
-import { getAdminNav, getAllHrefs } from "@/components/admin/admin-nav"
+import { filterNavForActor, getAdminNav, getAllHrefs } from "@/components/admin/admin-nav"
+import { resolvePathRequirement, type PermissionActor } from "@/lib/permissions/registry"
 
 describe("getAdminNav", () => {
   it("returns the expected top-link count", () => {
@@ -186,5 +187,83 @@ describe("getAdminNav", () => {
     const nav = getAdminNav({ contentStudioEnabled: false })
     const coaching = nav.groupedSections.find((s) => s.title === "Coaching")
     expect(coaching?.items.some((i) => i.href === "/admin/pipeline")).toBe(true)
+  })
+
+  // Two-way SMS, Task 9/10. Same defect class again: /admin/sms was reachable
+  // only by typing its URL.
+  it("registers the texts inbox in the Coaching section", () => {
+    for (const contentStudioEnabled of [false, true]) {
+      const nav = getAdminNav({ contentStudioEnabled })
+      const coaching = nav.groupedSections.find((s) => s.title === "Coaching")
+      expect(coaching?.items.some((i) => i.href === "/admin/sms")).toBe(true)
+    }
+  })
+
+  // THE LABEL IS LOAD-BEARING. `Messages -> /admin/messages` is the
+  // coach-to-client in-app chat and is already in topLinks; a second item
+  // called "Messages" is the exact confusion the separate route exists to
+  // avoid. Pinned as an equality so a rename has to come through here.
+  it("calls it Texts, and leaves Messages pointing at the in-app chat", () => {
+    const nav = getAdminNav({ contentStudioEnabled: false })
+    const coaching = nav.groupedSections.find((s) => s.title === "Coaching")
+    const texts = coaching?.items.find((i) => i.href === "/admin/sms")
+    expect(texts?.label).toBe("Texts")
+
+    const messages = nav.topLinks.find((l) => l.href === "/admin/messages")
+    expect(messages?.label).toBe("Messages")
+    // And nothing else in the whole nav is called Texts or points at
+    // /admin/messages a second time.
+    const allLabels = [...nav.topLinks, ...nav.groupedSections.flatMap((s) => s.items), ...nav.standaloneLinks].map(
+      (i) => i.label,
+    )
+    expect(allLabels.filter((l) => l === "Texts")).toHaveLength(1)
+    expect(allLabels.filter((l) => l === "Messages")).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Permission gating for the texts inbox.
+//
+// This nav carries no per-item permission field: `filterNavForActor` asks
+// `canAccessPath(actor, href, "GET")`, which resolves the href through
+// PATH_PERMISSIONS. So the assertion that matters is not "the item names the
+// right key" — there is no key on the item — but that the REGISTRY resolves
+// /admin/sms to `contacts`, the same permission the page's own
+// `requirePermission` call uses, and that the filter therefore behaves.
+//
+// The `messages` actor is the control, and it is the whole point: a staff
+// member who can use the in-app chat but was never given contacts must NOT
+// see the texts inbox, because the texts belong to the contacts.
+// ---------------------------------------------------------------------------
+describe("filterNavForActor — the texts inbox is gated on `contacts`", () => {
+  function hrefs(actor: PermissionActor): string[] {
+    return getAllHrefs(filterNavForActor(getAdminNav({ contentStudioEnabled: false }), actor))
+  }
+
+  it("resolves /admin/sms to the `contacts` permission in the registry", () => {
+    // The single source of truth the nav, the page guard and the proxy all
+    // read. If this ever stops saying `contacts`, the three drift apart.
+    const requirement = resolvePathRequirement("/admin/sms")
+    expect(requirement).toEqual({ kind: "permission", permission: "contacts" })
+  })
+
+  it("shows it to staff holding contacts", () => {
+    expect(hrefs({ role: "staff", permissions: { contacts: true } })).toContain("/admin/sms")
+  })
+
+  it("hides it from staff holding only messages", () => {
+    const visible = hrefs({ role: "staff", permissions: { messages: true } })
+    expect(visible).not.toContain("/admin/sms")
+    // The presence control: an absence assertion passes just as well when
+    // nothing rendered at all. This actor DOES still see the in-app chat.
+    expect(visible).toContain("/admin/messages")
+  })
+
+  it("hides it from staff holding nothing", () => {
+    expect(hrefs({ role: "staff", permissions: {} })).not.toContain("/admin/sms")
+  })
+
+  it("shows it to the owner", () => {
+    expect(hrefs({ role: "admin" })).toContain("/admin/sms")
   })
 })
