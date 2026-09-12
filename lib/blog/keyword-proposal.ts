@@ -4,6 +4,8 @@
 // because functions/ and lib/ are separate TS projects that can't share
 // imports. Keep the system prompt identical between the two files.
 
+import { MODEL_SONNET_5 } from "@/lib/ai/models"
+
 const STOPWORD_PREFIXES = ["the ", "a ", "an ", "how to "]
 
 export function fallbackKeywordFromTitle(title: string): string {
@@ -47,7 +49,7 @@ export async function proposePrimaryKeyword(input: { title: string; summary?: st
 
   try {
     const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
+      model: MODEL_SONNET_5,
       max_tokens: 200,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userMessage }],

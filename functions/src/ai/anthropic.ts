@@ -11,6 +11,42 @@ export const MODEL_OPUS = "claude-opus-4-6"
 export const MODEL_OPUS_4_8 = "claude-opus-4-8"
 export const MODEL_SONNET = "claude-sonnet-4-6"
 export const MODEL_HAIKU = "claude-haiku-4-5-20251001"
+
+/**
+ * ADDITIVE ONLY — the values above are frozen (see lib/ai/models.ts for the
+ * full reasoning; this file is its functions/ twin). Nothing here repoints an
+ * existing agent. Add a constant, then repoint one call site at a time.
+ *
+ * Sonnet 5 is both NEWER and CHEAPER than Sonnet 4.6 ($2/$10 per MTok against
+ * $3/$15), so it is a straight upgrade for the mechanical, short-output steps.
+ */
+export const MODEL_SONNET_5 = "claude-sonnet-5"
+
+/**
+ * Anthropic's most capable widely released model. Reserved for long-form work
+ * a human actually reads — at $10/$50 per MTok it costs roughly 5x Sonnet 4.6
+ * per call and is not worth it for a step whose output is a keyword or a meta
+ * description.
+ *
+ * IT HAS A DIFFERENT REQUEST SURFACE. Forced tool choice (`tool_choice` of
+ * "any" or "tool") returns a 400, which is exactly how callAgent has always
+ * requested structured output — see `modelRejectsForcedToolChoice` below and
+ * the structured-outputs branch in callAgentWithModel. Thinking is also always
+ * on and cannot be disabled; depth is controlled with `output_config.effort`.
+ */
+export const MODEL_FABLE = "claude-fable-5-1"
+
+/**
+ * True for models that 400 on `tool_choice: {type: "tool" | "any"}`.
+ *
+ * Matched on a model-family prefix rather than an exact id so a future
+ * `claude-fable-5-2` is handled correctly on the day it is first passed in,
+ * rather than failing in production with a 400 that looks like an outage.
+ * Mythos shares Fable's surface and is included for the same reason.
+ */
+export function modelRejectsForcedToolChoice(modelId: string): boolean {
+  return /^claude-(fable|mythos)-/.test(modelId)
+}
 const DEFAULT_MAX_TOKENS = 32000
 
 // ─── Enum normalization for model output ────────────────────────────────────
@@ -96,6 +132,41 @@ function toToolInputSchema(schema: ZodSchema): { type: "object"; [key: string]: 
     )
     return null
   }
+}
+
+/**
+ * Keywords the structured-outputs validator (`output_config.format`) refuses.
+ *
+ * Discovered by probing the live API on 2026-09-12, not from documentation:
+ *   output_config.format.schema: For 'array' type, 'minItems' values other
+ *   than 0 or 1 are not supported (got: [2, 5])
+ *
+ * The constraint still holds — `schema.parse()` runs immediately afterwards —
+ * but note WHERE it now holds: on our side, after generation, invisible to the
+ * model.
+ *
+ * THAT IS WHY THIS LIST IS AS SHORT AS IT IS. The first version also stripped
+ * minLength/maxLength "because Zod still enforces them". It does, but the model
+ * could no longer SEE the 280-character excerpt cap, wrote 400 characters, was
+ * rejected by Zod, retried with no feedback about what was wrong, and made the
+ * identical mistake on all five attempts — 138 seconds to produce nothing. A
+ * stripped constraint is not a constraint the model can satisfy; it is a trap
+ * it falls into repeatedly.
+ *
+ * Do NOT extend this list speculatively. Every entry must come from an observed
+ * 400, or it silently converts a working constraint into a retry loop.
+ */
+const UNSUPPORTED_SCHEMA_KEYWORDS = ["minItems", "maxItems"] as const
+
+export function stripUnsupportedSchemaKeywords(node: unknown, depth = 0): unknown {
+  if (depth > 20 || node === null || typeof node !== "object") return node
+  if (Array.isArray(node)) return node.map((n) => stripUnsupportedSchemaKeywords(n, depth + 1))
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if ((UNSUPPORTED_SCHEMA_KEYWORDS as readonly string[]).includes(key)) continue
+    out[key] = stripUnsupportedSchemaKeywords(value, depth + 1)
+  }
+  return out
 }
 
 // ─── Transient error detection ───────────────────────────────────────────────
@@ -193,6 +264,12 @@ function callAgentWithModel<T>(
      */
     images?: Array<{ media_type: string; data: string }>
     /**
+     * Thinking depth / token spend, for models that support it. Only sent on
+     * the structured-outputs path; the tool path's models are tuned without it
+     * and adding it there would change behaviour for every existing agent.
+     */
+    effort?: "low" | "medium" | "high" | "max"
+    /**
      * Optional base64 document blocks (currently application/pdf — receipt
      * invoices). Claude reads a PDF's text layer AND its page images, which is
      * why the receipt path sends PDFs here instead of rasterizing them before
@@ -226,29 +303,82 @@ function callAgentWithModel<T>(
       let cache_creation_tokens = 0
       let cache_read_tokens = 0
 
-      const userContent = buildUserContent(
-        userMessage,
-        options?.cachedUserPrefix,
-        options?.images,
-        options?.documents,
-      )
+      const userContent = buildUserContent(userMessage, options?.cachedUserPrefix, options?.images, options?.documents)
 
-      if (toolSchema) {
-        // ── Primary path: structured output via tool_use (streaming to avoid 10min timeout) ──
-        const stream = client.messages.stream({
-          model: modelId,
-          max_tokens: maxTokens,
-          system: systemContent,
-          tools: [
-            {
-              name: "structured_output",
-              description: "Output the structured result matching the required schema",
-              input_schema: toolSchema,
+      if (toolSchema && modelRejectsForcedToolChoice(modelId)) {
+        // ── Structured-outputs path (Fable / Mythos) ──────────────────────────
+        // These models 400 on forced tool choice, so the schema goes in
+        // `output_config.format` instead and the answer comes back as a text
+        // block of schema-valid JSON rather than a tool_use block. Same Zod
+        // validation downstream, so callers see no difference.
+        const stream = client.messages.stream(
+          {
+            model: modelId,
+            max_tokens: maxTokens,
+            system: systemContent,
+            output_config: {
+              format: {
+                type: "json_schema" as const,
+                schema: stripUnsupportedSchemaKeywords(toolSchema) as Record<string, unknown>,
+              },
+              ...(options?.effort ? { effort: options.effort } : {}),
             },
-          ],
-          tool_choice: { type: "tool" as const, name: "structured_output" },
-          messages: [{ role: "user", content: userContent }],
-        }, { signal: options?.signal })
+            messages: [{ role: "user", content: userContent }],
+          },
+          { signal: options?.signal },
+        )
+
+        const response = await stream.finalMessage()
+
+        // Thinking is always on for this family, so a refusal is a real
+        // possibility on a 200. Checked BEFORE reading content, because the
+        // content of a refused turn is not the answer.
+        if (response.stop_reason === "refusal") {
+          // `stop_details` is on the wire but not in @anthropic-ai/sdk 0.77's
+          // Message type, hence the cast. Read it anyway — without the category
+          // a refusal is indistinguishable from a bug in our own prompt.
+          const details = (response as { stop_details?: unknown }).stop_details ?? null
+          throw new Error(`Model declined the request (${modelId}); stop_details: ${JSON.stringify(details)}`)
+        }
+        if (response.stop_reason === "max_tokens") {
+          throw new Error(
+            `Response truncated (hit ${maxTokens} max_tokens). Output is incomplete — increase maxTokens or reduce input size.`,
+          )
+        }
+
+        // Thinking blocks come first in content; take the text block, not [0].
+        const textBlock = response.content.find((b) => b.type === "text")
+        if (!textBlock || textBlock.type !== "text") {
+          throw new Error("No text content in structured-outputs response")
+        }
+        try {
+          parsed = JSON.parse(textBlock.text)
+        } catch {
+          parsed = JSON.parse(jsonrepair(textBlock.text))
+        }
+
+        tokens_used = (response.usage?.input_tokens ?? 0) + (response.usage?.output_tokens ?? 0)
+        cache_creation_tokens = response.usage?.cache_creation_input_tokens ?? 0
+        cache_read_tokens = response.usage?.cache_read_input_tokens ?? 0
+      } else if (toolSchema) {
+        // ── Primary path: structured output via tool_use (streaming to avoid 10min timeout) ──
+        const stream = client.messages.stream(
+          {
+            model: modelId,
+            max_tokens: maxTokens,
+            system: systemContent,
+            tools: [
+              {
+                name: "structured_output",
+                description: "Output the structured result matching the required schema",
+                input_schema: toolSchema,
+              },
+            ],
+            tool_choice: { type: "tool" as const, name: "structured_output" },
+            messages: [{ role: "user", content: userContent }],
+          },
+          { signal: options?.signal },
+        )
 
         const response = await stream.finalMessage()
 
@@ -284,12 +414,15 @@ function callAgentWithModel<T>(
           options?.documents,
         )
 
-        const stream = client.messages.stream({
-          model: modelId,
-          max_tokens: maxTokens,
-          system: systemContent,
-          messages: [{ role: "user", content: fallbackUserContent }],
-        }, { signal: options?.signal })
+        const stream = client.messages.stream(
+          {
+            model: modelId,
+            max_tokens: maxTokens,
+            system: systemContent,
+            messages: [{ role: "user", content: fallbackUserContent }],
+          },
+          { signal: options?.signal },
+        )
 
         const response = await stream.finalMessage()
 
@@ -363,6 +496,15 @@ export async function callAgent<T>(
     images?: Array<{ media_type: string; data: string }>
     /** Base64 PDFs sent as Anthropic document blocks — see callAgentWithModel. */
     documents?: Array<{ media_type: string; data: string }>
+    /**
+     * Thinking depth for models that support it.
+     *
+     * Safe to leave set across the Haiku fallback below: `effort` is only put
+     * on the wire by the structured-outputs branch, which Haiku never takes
+     * (it does not reject forced tool choice), and Haiku 4.5 would 400 on the
+     * parameter. Do not "simplify" this by sending effort on the tool path.
+     */
+    effort?: "low" | "medium" | "high" | "max"
     signal?: AbortSignal
   },
 ): Promise<AgentCallResult<T>> {

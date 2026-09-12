@@ -47,3 +47,30 @@ export const MODEL_HAIKU = "claude-haiku-4-5-20251001"
  * fallback is `MODEL_SONNET`, which is proven in this repo today.
  */
 export const MODEL_OPUS_5 = "claude-opus-5"
+
+/**
+ * ADDITIVE ONLY, same rule as MODEL_OPUS_5 above.
+ *
+ * Sonnet 5 is newer AND cheaper than Sonnet 4.6 ($2/$10 per MTok against
+ * $3/$15), so for a short, mechanical step it is a straight upgrade rather
+ * than a tradeoff. It does NOT repoint MODEL_SONNET — that value is what the
+ * program-generation pipeline, the strategy agents and the bookkeeper are all
+ * tuned against.
+ *
+ * Verified working through callAgent's forced-tool-choice path against the
+ * live API on 2026-09-12.
+ */
+export const MODEL_SONNET_5 = "claude-sonnet-5"
+
+/**
+ * Anthropic's most capable widely released model, for long-form output a human
+ * actually reads. $10/$50 per MTok — roughly 5x Sonnet 4.6 — so it earns its
+ * place on an article and not on a step that emits a keyword.
+ *
+ * DIFFERENT REQUEST SURFACE. Forced tool choice returns a 400, which is how
+ * callAgent has always asked for structured output; see the structured-outputs
+ * branch and `modelRejectsForcedToolChoice` in functions/src/ai/anthropic.ts.
+ * Thinking is always on and cannot be disabled — use `output_config.effort`.
+ * Its JSON-schema validator also rejects minItems/maxItems above 1.
+ */
+export const MODEL_FABLE = "claude-fable-5-1"

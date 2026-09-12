@@ -30,6 +30,7 @@ const {
 vi.mock("../ai/anthropic.js", () => ({
   callAgent: mockCallAgent,
   MODEL_SONNET: "claude-sonnet-test",
+  MODEL_FABLE: "claude-fable-test",
 }))
 vi.mock("firebase-admin/firestore", () => ({
   getFirestore: mockGetFirestore,

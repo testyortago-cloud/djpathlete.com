@@ -1,6 +1,34 @@
 import { getFirestore, FieldValue } from "firebase-admin/firestore"
 import { z } from "zod"
-import { callAgent, MODEL_SONNET } from "./ai/anthropic.js"
+import { callAgent, MODEL_FABLE } from "./ai/anthropic.js"
+
+/**
+ * The model that writes the article.
+ *
+ * Fable 5.1 at effort "medium", measured against this exact prompt shape on
+ * 2026-09-12: 80.5s for 1923 words, against Sonnet 4.6's 77.1s for 1630. Same
+ * wall clock, more output, materially better prose — and this is the one step
+ * in the whole content pipeline whose output a human actually reads.
+ *
+ * THE WALL CLOCK IS THE CONSTRAINT, NOT THE PRICE. This runs inside a Firebase
+ * function pinned at `timeoutSeconds: 540`, which cannot be raised, and the
+ * handler also fetches research, validates every outbound URL, and may run a
+ * SECOND full generation in the expansion pass. Two Fable passes plus overhead
+ * is roughly 200s, so there is real headroom — but raising `effort` above
+ * "medium" spends that headroom, and nothing warns you before a job dies at
+ * 540s. Re-measure before changing it.
+ *
+ * Cost is not the deciding factor at this volume: ~2 articles a week at
+ * $10/$50 per MTok is roughly $50/year against Sonnet 4.6's $8.
+ *
+ * Measured alternatives on the identical prompt, same day, if this ever needs
+ * to come back down — all three fit the ceiling, so pick on output, not speed:
+ *   claude-sonnet-4-6              77.1s  1630 words   $3/$15   (what this was)
+ *   claude-opus-5    effort=medium 72.5s  1627 words   $5/$25
+ *   claude-fable-5-1 effort=medium 80.5s  1923 words  $10/$50   (chosen)
+ */
+const BLOG_DRAFT_MODEL = MODEL_FABLE
+const BLOG_DRAFT_EFFORT = "medium" as const
 import { getSupabase } from "./lib/supabase.js"
 import { fetchResearchPapers, formatResearchForPrompt } from "./lib/research.js"
 import {
@@ -10,12 +38,7 @@ import {
   type Register,
   type SeoTarget,
 } from "./blog/voice-context.js"
-import {
-  countWords,
-  isTooShort,
-  resolveTargetWordCount,
-  buildExpansionPrompt,
-} from "./blog/length-verifier.js"
+import { countWords, isTooShort, resolveTargetWordCount, buildExpansionPrompt } from "./blog/length-verifier.js"
 import { formatProgramsForPrompt } from "./blog/program-catalog.js"
 import { injectAnchorIds } from "./lib/html-splice.js"
 
@@ -224,8 +247,8 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
 
   const input = job.input as {
     prompt: string
-    tone?: string        // deprecated alias
-    register?: Register  // new
+    tone?: string // deprecated alias
+    register?: Register // new
     length?: string
     primary_keyword?: string
     secondary_keywords?: string[]
@@ -335,7 +358,10 @@ export async function handleBlogGeneration(jobId: string): Promise<void> {
 Length: ${input.length ?? "medium"}
 Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchBlock}${fewShotBlock}`
 
-    const result = await callAgent(systemPrompt, userMessage, blogResultSchema, { model: MODEL_SONNET })
+    const result = await callAgent(systemPrompt, userMessage, blogResultSchema, {
+      model: BLOG_DRAFT_MODEL,
+      effort: BLOG_DRAFT_EFFORT,
+    })
 
     // Length verification: if first pass is too short, run ONE expansion re-prompt.
     let finalContent = result.content
@@ -357,7 +383,10 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
       })
 
       try {
-        const expanded = await callAgent(systemPrompt, expansionUserMessage, blogResultSchema, { model: MODEL_SONNET })
+        const expanded = await callAgent(systemPrompt, expansionUserMessage, blogResultSchema, {
+          model: BLOG_DRAFT_MODEL,
+          effort: BLOG_DRAFT_EFFORT,
+        })
         finalContent = expanded.content
         totalTokens += expanded.tokens_used
         const expandedWordCount = countWords(finalContent.content)
@@ -365,7 +394,9 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
           `[blog-generation] After expansion: ${expandedWordCount} words (was ${initialWordCount}, target ${targetWordCount})`,
         )
       } catch (err) {
-        console.warn(`[blog-generation] Expansion re-prompt failed, keeping first-pass draft: ${(err as Error).message}`)
+        console.warn(
+          `[blog-generation] Expansion re-prompt failed, keeping first-pass draft: ${(err as Error).message}`,
+        )
       }
     }
 
@@ -404,7 +435,7 @@ Current date: ${new Date().toISOString().slice(0, 10)}${userRefBlock}${researchB
         },
         output_summary: `Generated blog: ${finalResult.title}`,
         error_message: null,
-        model_used: MODEL_SONNET,
+        model_used: BLOG_DRAFT_MODEL,
         tokens_used: totalTokens,
         duration_ms: Date.now() - startTime,
         completed_at: new Date().toISOString(),

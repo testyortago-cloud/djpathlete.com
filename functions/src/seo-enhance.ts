@@ -5,7 +5,7 @@
 
 import { FieldValue, getFirestore } from "firebase-admin/firestore"
 import { z } from "zod"
-import { callAgent, MODEL_SONNET } from "./ai/anthropic.js"
+import { callAgent, MODEL_SONNET_5 } from "./ai/anthropic.js"
 import { getSupabase } from "./lib/supabase.js"
 import { getAnchorsForSuggestions } from "./blog/internal-link-anchors.js"
 import { spliceInternalLinks } from "./lib/html-splice.js"
@@ -197,7 +197,7 @@ export async function handleSeoEnhance(jobId: string): Promise<void> {
       }>) ?? [],
     })
 
-    const seoResult = await callAgent(SYSTEM_PROMPT, seoPrompt, SeoSchema, { model: MODEL_SONNET })
+    const seoResult = await callAgent(SYSTEM_PROMPT, seoPrompt, SeoSchema, { model: MODEL_SONNET_5 })
 
     const { data: candidates, error: candidatesErr } = await supabase
       .from("blog_posts")

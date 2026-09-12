@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 vi.mock("../anthropic.js", () => ({
   callAgent: vi.fn(),
   MODEL_SONNET: "claude-sonnet-test",
+  MODEL_SONNET_5: "claude-sonnet-5-test",
 }))
 
 import { extractImagePrompts, BRAND_TREATMENT, PROMPT_VERSION } from "../image-prompts.js"
