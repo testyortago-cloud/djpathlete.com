@@ -60,8 +60,17 @@ const EVENT_ID = "cccccccc-3333-4333-8333-cccccccccccc"
 
 const FUNNEL = { id: FUNNEL_ID, slug: "free-trial-week", name: "Free Trial Week", kind: "funnel", status: "draft" }
 
-/** A one-hero page whose only CTA points at `ref`. */
-function docWithCta(ref: string): SectionDoc {
+/**
+ * A one-hero page whose primary CTA points at `ref`.
+ *
+ * `leadsTo` adds a SECOND button pointing at another page of this funnel, and
+ * every multi-page fixture below needs it. Since 2026-09-13 the route refuses
+ * a page with no way on (audit §3.1) — and a `program` CTA is an OFFER, not a
+ * way on, so without this every two-page fixture here described a funnel that
+ * stopped dead on page one. That was always true of them; nothing could see it
+ * until the connectivity check existed.
+ */
+function docWithCta(ref: string, leadsTo?: string): SectionDoc {
   return {
     v: 1,
     engine: "sections",
@@ -78,6 +87,58 @@ function docWithCta(ref: string): SectionDoc {
           // `heroPropsSchema` requires `primaryCta`, not `cta` — matching
           // `publish-route.test.ts`'s fixture for the same section kind.
           primaryCta: { label: "Join", target: { kind: "program", ref } },
+          ...(leadsTo ? { secondaryCta: { label: "Next", target: { kind: "step", stepSlug: leadsTo } } } : {}),
+        },
+      },
+    ],
+  } as unknown as SectionDoc
+}
+
+/**
+ * A one-form page whose success redirect is whatever the test says.
+ *
+ * Shape copied from `__tests__/lib/funnels/connections.test.ts`: `formKey` and
+ * at least one field, because `formIslandSchema` requires both.
+ */
+function docWithFormRedirect(redirectUrl: string): SectionDoc {
+  return {
+    v: 1,
+    engine: "sections",
+    theme: { tone: "light", accent: "accent", radius: "soft" },
+    sections: [
+      {
+        id: "signup",
+        kind: "form",
+        variant: "split",
+        style: {},
+        props: {
+          heading: "Start the week",
+          formKey: "optin",
+          fields: [{ name: "email", label: "Email", type: "email" }],
+          successMode: "redirect",
+          redirectUrl,
+        },
+      },
+    ],
+  } as unknown as SectionDoc
+}
+
+/** A last page: real content, and nothing that has to lead anywhere. */
+function plainHeroDoc(): SectionDoc {
+  return {
+    v: 1,
+    engine: "sections",
+    theme: { tone: "light", accent: "accent", radius: "soft" },
+    sections: [
+      {
+        id: "hero",
+        kind: "hero",
+        variant: "centered",
+        style: { headline: "lg", align: "center" },
+        props: {
+          headline: "You are in",
+          sub: "Check your email for the first session.",
+          primaryCta: { label: "Book a call", target: { kind: "booking" } },
         },
       },
     ],
@@ -93,20 +154,37 @@ function docWithCta(ref: string): SectionDoc {
  * fixture can reach the branch. 8 FAQ sections x 12 items x ~1200 chars, with
  * `&` expanding to `&amp;` on the way out, clears 500 KB.
  */
-function overCapDoc(): SectionDoc {
+function overCapDoc(leadsTo?: string): SectionDoc {
   const q = "&".repeat(200)
   const a = "&".repeat(1000)
   return {
     v: 1,
     engine: "sections",
     theme: { tone: "light", accent: "accent", radius: "soft" },
-    sections: Array.from({ length: 8 }, (_, index) => ({
-      id: `faq-${index}`,
-      kind: "faq",
-      variant: "stack",
-      style: {},
-      props: { source: "inline", items: Array.from({ length: 12 }, () => ({ q, a })) },
-    })),
+    sections: [
+      // `leadsTo` for the same reason `docWithCta` has one: an FAQ-only page is
+      // a dead end, and the connectivity refusal now runs BEFORE the size-cap
+      // check — so without a way on, a fixture built to blow the cap would be
+      // refused for the wrong reason and the test would prove nothing.
+      ...(leadsTo
+        ? [
+            {
+              id: "cta",
+              kind: "cta",
+              variant: "band",
+              style: {},
+              props: { headline: "Next", cta: { label: "Next", target: { kind: "step", stepSlug: leadsTo } } },
+            },
+          ]
+        : []),
+      ...Array.from({ length: 8 }, (_, index) => ({
+        id: `faq-${index}`,
+        kind: "faq",
+        variant: "stack",
+        style: {},
+        props: { source: "inline", items: Array.from({ length: 12 }, () => ({ q, a })) },
+      })),
+    ],
   } as unknown as SectionDoc
 }
 
@@ -158,7 +236,7 @@ beforeEach(() => {
 describe("POST /api/admin/funnels/[id]/publish", () => {
   it("publishes every page AND takes the funnel live", async () => {
     mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false })])
-    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thank-you"), docInvalid: false, revision: 1 })
 
     const response = await POST(request(), ctx)
     expect(response.status).toBe(200)
@@ -239,7 +317,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
 
   it("returns the published pages, versions and warnings a caller reads", async () => {
     mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false })])
-    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thank-you"), docInvalid: false, revision: 1 })
     mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => ({
       ok: true,
       version: { id: `v-${stepId}`, version: stepId === "s1" ? 3 : 7 },
@@ -279,7 +357,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false })])
     mock(getDraft).mockImplementation(async (stepId: string) =>
       stepId === "s1"
-        ? { doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 }
+        ? { doc: docWithCta(PROGRAM_NAME, "thank-you"), docInvalid: false, revision: 1 }
         : { doc: null, docInvalid: false, revision: 0 },
     )
 
@@ -301,7 +379,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
   it("REFUSES on an unresolved CTA and names the page it is on", async () => {
     mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Offer", slug: "offer", position: 1, is_entry: false })])
     mock(getDraft).mockImplementation(async (stepId: string) => ({
-      doc: docWithCta(stepId === "s2" ? DEAD_REF : PROGRAM_NAME),
+      doc: stepId === "s2" ? docWithCta(DEAD_REF) : docWithCta(PROGRAM_NAME, "offer"),
       docInvalid: false,
       revision: 1,
     }))
@@ -356,6 +434,76 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     ])
   })
 
+  // ---------------------------------------------------------------------------
+  // DEAD ENDS BLOCK PUBLISH (audit 2026-09-13 §3.1).
+  //
+  // "This page leads nowhere" was a rail warning with Publish still enabled.
+  // The shape below is the one the builder actually produced: a form redirect
+  // naming the correct next page under a funnel slug invented from the
+  // funnel's NAME. `/go/free-trial-week-2/thank-you` is a real URL and a real
+  // 404 — the visitor fills the form in and lands nowhere — and NOTHING about
+  // it is visible to a per-page gate, because that page on its own is valid.
+  // ---------------------------------------------------------------------------
+  it("REFUSES a page whose form redirects under a funnel slug that is not this funnel's", async () => {
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false }),
+    ])
+    mock(getDraft).mockImplementation(async (stepId: string) =>
+      stepId === "s1"
+        ? { doc: docWithFormRedirect("/go/free-trial-week-2/thank-you"), docInvalid: false, revision: 1 }
+        : { doc: plainHeroDoc(), docInvalid: false, revision: 1 },
+    )
+
+    const response = await POST(request(), ctx)
+    const body = await response.json()
+    expect(response.status).toBe(422)
+    // MUTANT: passing two arguments to `funnelPublishPlan` — the connectivity
+    // check never reaches it and this funnel goes live 200 with a 404 behind
+    // its own form. The page is VALID, so no other gate here can see it.
+    expect(body.pages).toHaveLength(1)
+    expect(body.pages[0].stepId).toBe("s1")
+    expect(body.pages[0].stepName).toBe("Signup")
+    expect(body.pages[0].blank).toBe(false)
+    expect(body.pages[0].problems[0]).toMatch(/leads nowhere/)
+    expect(mock(publishStep)).not.toHaveBeenCalled()
+    expect(mock(updateFunnel)).not.toHaveBeenCalled()
+  })
+
+  it("publishes the SAME funnel once the redirect names this funnel's real slug", async () => {
+    // THE CONTROL for the test above, and it is not optional: "the route
+    // refused" passes just as well when the fixture was broken for some other
+    // reason, or when the route refuses every two-page funnel. One character
+    // of the URL differs between the two.
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false }),
+    ])
+    mock(getDraft).mockImplementation(async (stepId: string) =>
+      stepId === "s1"
+        ? { doc: docWithFormRedirect(`/go/${FUNNEL.slug}/thank-you`), docInvalid: false, revision: 1 }
+        : { doc: plainHeroDoc(), docInvalid: false, revision: 1 },
+    )
+
+    const response = await POST(request(), ctx)
+    expect(response.status).toBe(200)
+    expect(mock(publishStep).mock.calls.map((call) => call[0].stepId)).toEqual(["s1", "s2"])
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { status: "published" })
+  })
+
+  it("does NOT call a single-page funnel a dead end", async () => {
+    // MUTANT: dropping the last-page exemption in `funnelConnections`, or
+    // building the connectivity map over the wrong list. A landing page has
+    // exactly one page and nowhere to lead — refusing it would break every
+    // `kind: "page"` row in the product.
+    mock(listSteps).mockResolvedValue([stepRow()])
+    mock(getDraft).mockResolvedValue({ doc: plainHeroDoc(), docInvalid: false, revision: 1 })
+
+    const response = await POST(request(), ctx)
+    expect(response.status).toBe(200)
+    expect(mock(publishStep).mock.calls.map((call) => call[0].stepId)).toEqual(["s1"])
+  })
+
   it("does not refuse a legacy step that has no document but is already live", async () => {
     mock(listSteps).mockResolvedValue([
       stepRow(),
@@ -363,7 +511,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     ])
     mock(getDraft).mockImplementation(async (stepId: string) =>
       stepId === "s1"
-        ? { doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 }
+        ? { doc: docWithCta(PROGRAM_NAME, "old"), docInvalid: false, revision: 1 }
         // What `getDraft` reports for legacy GrapesJS state.
         : { doc: null, docInvalid: true, revision: 0 },
     )
@@ -395,7 +543,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
 
   it("does not claim nothing was published when a write threw part way through", async () => {
     mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false })])
-    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thanks"), docInvalid: false, revision: 1 })
     // `publishStep` THROWS rather than returning `ok:false` — any Supabase
     // error does — after page 1 already has a version row.
     mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => {
@@ -423,7 +571,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     ])
     mock(getDraft).mockImplementation(async (stepId: string) =>
       stepId === "s1"
-        ? { doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 }
+        ? { doc: docWithCta(PROGRAM_NAME, "thanks"), docInvalid: false, revision: 1 }
         : { doc: overCapDoc(), docInvalid: false, revision: 1 },
     )
 
@@ -450,7 +598,11 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow(),
       stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
     ])
-    mock(getDraft).mockResolvedValue({ doc: overCapDoc(), docInvalid: false, revision: 1 })
+    mock(getDraft).mockImplementation(async (stepId: string) =>
+      stepId === "s1"
+        ? { doc: overCapDoc("thanks"), docInvalid: false, revision: 1 }
+        : { doc: overCapDoc(), docInvalid: false, revision: 1 },
+    )
 
     const response = await POST(request(), ctx)
     const body = await response.json()
@@ -472,7 +624,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow(),
       stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
     ])
-    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thanks"), docInvalid: false, revision: 1 })
     mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => {
       if (stepId === "s2") throw new Error("connection reset")
       return { ok: true, version: { id: "v1", version: 1 }, warnings: [] }
@@ -503,7 +655,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
       stepRow(),
       stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
     ])
-    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thanks"), docInvalid: false, revision: 1 })
     mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => {
       if (stepId === "s2") throw new Error("connection reset")
       return { ok: true, version: { id: "v1", version: 1 }, warnings: [] }
@@ -521,7 +673,7 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
 
   it("does not flip the funnel row when a page fails to compile", async () => {
     mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false })])
-    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thanks"), docInvalid: false, revision: 1 })
     mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) =>
       stepId === "s2" ? { ok: false, errors: [{ message: "too big" }] } : { ok: true, version: { id: "v1", version: 1 }, warnings: [] },
     )

@@ -73,6 +73,7 @@ import { reassemble } from "@/lib/funnels/sections/doc"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import { loadCatalogues, publishGate, resolveDoc, type PublishGate } from "@/lib/funnels/sections/resolve"
 import { funnelPublishPlan, type PagePublishProblem, type StepToPublish } from "@/lib/funnels/publish-plan"
+import { funnelConnections } from "@/lib/funnels/connections"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 export const maxDuration = 300
@@ -206,15 +207,57 @@ export const POST = withAudit(
         return { ...base, doc: resolution.doc }
       })
 
+      // ---------------------------------------------------------------------
+      // DOES THIS FUNNEL JOIN UP? The question no per-page gate can answer.
+      // ---------------------------------------------------------------------
+      // `publishGate` sees ONE document and a page that leads nowhere is a
+      // perfectly valid document, so until now "this page leads nowhere" was a
+      // rail WARNING with Publish still enabled — and a funnel could go live
+      // whose form redirected to `/go/<a slug the builder invented>/thank-you`
+      // (audit 2026-09-13 §3.1). That is a real 404, reached only after the
+      // visitor has filled the form in.
+      //
+      // RUN OVER THE RESOLVED DOCS, so this agrees with what is about to be
+      // written rather than with the raw draft. `toPublish` is built by
+      // `steps.map` immediately above and nothing filters it, so index `i` is
+      // the same row in both arrays.
+      const connectivity = funnelConnections(
+        funnel.slug,
+        toPublish.map((s, i) => ({
+          id: s.id,
+          name: s.name,
+          slug: steps[i].slug,
+          position: s.position,
+          isEntry: steps[i].is_entry,
+          doc: s.doc,
+        })),
+      )
+      // `funnelConnections` exempts the page with the highest position, so a
+      // single-page funnel — every `kind: "page"` landing page — has no dead
+      // ends by construction and is unaffected.
+      const deadEndNames = new Map(
+        connectivity.deadEnds.map((id) => [id, steps.find((step) => step.id === id)?.name ?? id]),
+      )
+
       // A LOOKUP, not a second `resolveDoc`. `plan.publish[].doc` is the very
       // object put in above, so identity holds. A miss would mean the planner
       // gated a document this route never resolved: throw rather than invent a
       // verdict, which lands in the catch as a refusal.
-      const plan = funnelPublishPlan(toPublish, (doc) => {
-        const verdict = verdicts.get(doc)
-        if (!verdict) throw new Error("publish gate asked about a document this route did not resolve")
-        return verdict
-      })
+      const plan = funnelPublishPlan(
+        toPublish,
+        (doc) => {
+          const verdict = verdicts.get(doc)
+          if (!verdict) throw new Error("publish gate asked about a document this route did not resolve")
+          return verdict
+        },
+        (stepId) =>
+          deadEndNames.has(stepId)
+            ? [
+                `${deadEndNames.get(stepId)} leads nowhere: no button or form on this page goes to ` +
+                  `another page of this funnel. Use "connect this page" in the rail, or make it the last page.`,
+              ]
+            : [],
+      )
 
       if (!plan.ok) {
         return NextResponse.json(

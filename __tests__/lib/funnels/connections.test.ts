@@ -379,6 +379,71 @@ describe("autoConnectOps", () => {
     expect(autoConnectOps(doc, TARGET).ops).toEqual([])
   })
 
+  // -------------------------------------------------------------------------
+  // WRONG FUNNEL, RIGHT PAGE — the one non-empty redirect this tool may touch.
+  //
+  // The builder was told to write "/go/<funnel-slug>/<next-page-slug>" and had
+  // to supply the first half itself, which it did from the funnel's NAME. On
+  // every funnel whose slug is not slugify(name) that produced a URL naming
+  // the CORRECT next page under a funnel that does not exist — a 404 after
+  // submit (audit 2026-09-13 §3.1). The rail already flagged those pages; it
+  // had no repair to offer, because "half-configured is still configured" sent
+  // this branch home.
+  // -------------------------------------------------------------------------
+  it("repairs a form redirect that names the RIGHT next page under the WRONG funnel slug", () => {
+    // MUTANT: keeping "half-configured is still configured" for this exact shape.
+    const doc = formWith({ successMode: "redirect", redirectUrl: "/go/camp-2026/thanks" })
+    const plan = autoConnectOps(doc, TARGET)
+    expect(plan.ops).toEqual([
+      {
+        op: "update_section",
+        id: "fo1",
+        props: { successMode: "redirect", redirectUrl: "/go/camp/thanks" },
+      },
+    ])
+    expect(plan.changes).toEqual([
+      expect.objectContaining({ field: "redirectUrl", to: "thanks" }),
+    ])
+  })
+
+  it("leaves a redirect to a DIFFERENT page of another funnel alone — that is a choice", () => {
+    // MUTANT: keying the repair on the funnel slug alone. Only the page half
+    // matching the next step makes it recognisable as the builder's guess
+    // rather than a deliberate hand-off to another funnel.
+    const doc = formWith({ successMode: "redirect", redirectUrl: "/go/other-funnel/pricing" })
+    expect(autoConnectOps(doc, TARGET).ops).toEqual([])
+  })
+
+  it("leaves an https redirect alone", () => {
+    // MUTANT: matching on "ends with the next page's slug" rather than on the
+    // /go/<funnel>/<page> shape. An off-site thank-you page is somebody's
+    // integration, and overwriting it would silently unhook it.
+    const doc = formWith({ successMode: "redirect", redirectUrl: "https://example.com/thanks" })
+    expect(autoConnectOps(doc, TARGET).ops).toEqual([])
+  })
+
+  it("leaves a DEEPER path under the wrong funnel alone", () => {
+    // MUTANT: a looser regex (or a `split("/")[3]` with no shape check), which
+    // would match "/go/other/thanks/extra" — three segments the builder never
+    // writes, so it is somebody's real URL.
+    const doc = formWith({ successMode: "redirect", redirectUrl: "/go/other-funnel/thanks/extra" })
+    expect(autoConnectOps(doc, TARGET).ops).toEqual([])
+  })
+
+  it("repairs the wrong funnel slug even when successMode was left on message", () => {
+    // The exact shape the builder produced is the URL; `successMode` is the
+    // half it sometimes forgot. MUTANT: requiring `successMode === "redirect"`
+    // before repairing, which leaves the commonest broken page unfixable.
+    const doc = formWith({ successMode: "message", redirectUrl: "/go/camp-2026/thanks" })
+    expect(autoConnectOps(doc, TARGET).ops).toEqual([
+      {
+        op: "update_section",
+        id: "fo1",
+        props: { successMode: "redirect", redirectUrl: "/go/camp/thanks" },
+      },
+    ])
+  })
+
   it("returns nothing when there is nothing to connect, so the button can say so", () => {
     expect(autoConnectOps(heroWith({ kind: "step", stepSlug: "thanks" }), TARGET)).toEqual({
       ops: [],

@@ -414,7 +414,26 @@ export function autoConnectOps(doc: SectionDoc, target: AutoConnectTarget): Auto
       // left alone even if `successMode` was never switched over, because that
       // URL is the only evidence of what the owner meant.
       const untouched = !hasUrl && (mode === undefined || mode === "message")
-      if (untouched) {
+
+      // WRONG FUNNEL, RIGHT PAGE. The builder used to write the next page's
+      // slug under a slug it invented from the funnel NAME (audit 2026-09-13
+      // §3.1). That exact shape — "/go/<not this funnel>/<exactly the next
+      // page>" — is the model's guess, not the owner's choice, so it is the
+      // one non-empty URL this function may correct. Anything else that is
+      // non-empty stays untouched.
+      //
+      // All THREE conditions carry weight. The shape regex refuses a deeper
+      // path, a query or a fragment, none of which the builder writes. The
+      // prefix test is what makes it the WRONG funnel. And the last segment
+      // having to equal `nextStepSlug` is what makes it a guess at THIS
+      // hand-off rather than a deliberate link into another funnel.
+      const current = hasUrl ? (record.redirectUrl as string) : ""
+      const wrongFunnelRightPage =
+        /^\/go\/[^/?#]+\/[^/?#]+$/.test(current) &&
+        !current.startsWith(`/go/${target.funnelSlug}/`) &&
+        current.split("/")[3] === target.nextStepSlug
+
+      if (untouched || wrongFunnelRightPage) {
         // BOTH KEYS TOGETHER. `formIslandSchema`'s superRefine rejects
         // `successMode: "redirect"` with no `redirectUrl`, so writing one
         // without the other is an op `applyOps` refuses outright.

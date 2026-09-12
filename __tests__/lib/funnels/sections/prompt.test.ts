@@ -109,6 +109,10 @@ function catalogueInput(): BuilderCatalogueInput {
     faqPageKeys: ["programs"],
     stepSlugs: ["thank-you"],
     nextStepSlug: "thank-you",
+    // DELIBERATELY NOT slugify("Off-season speed camp"). A slug that happened
+    // to match the funnel's name would let a prompt that re-derives the path
+    // from the name pass every assertion below.
+    funnelSlug: "off-season-speed-camp-dxf8",
   }
 }
 
@@ -265,6 +269,7 @@ describe("Block A is built once, at module load", () => {
       faqPageKeys: [],
       stepSlugs: [],
       nextStepSlug: null,
+      funnelSlug: "spring-camp-7",
     })
     expect(pageOne.startsWith(SECTION_BUILDER_BLOCK_A)).toBe(true)
     expect(pageTwo.startsWith(SECTION_BUILDER_BLOCK_A)).toBe(true)
@@ -340,7 +345,16 @@ describe("Block A is built once, at module load", () => {
     // nothing connected the word green to `tone: "dark"`. A rule that costs 411
     // characters and stops the builder refusing colour requests outright is the
     // kind of real content this ceiling was always meant to make room for.
-    expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(17_400)
+    // RAISED AGAIN TO 17500 on 2026-09-13, by 34 measured characters: the form
+    // redirect rule now says to COPY the catalogue's `redirectUrl` rather than
+    // showing "/go/<funnel-slug>/<next-page-slug>", a template the model filled
+    // in from the funnel's NAME and got wrong the moment an owner's slug was
+    // not slugify(name) (audit 2026-09-13 §3.1). Same test as the two raises
+    // above: it renders ONCE, and it was compacted first — 78 characters as
+    // first written, 34 after — against 41 characters of headroom, so
+    // compaction alone could not have paid for it. The tripwire is intact: an
+    // inlined 11119-character JSON Schema still blows straight past 17500.
+    expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(17_500)
     // Not a "non-empty" check — `" "` would pass that. The floor is set below
     // the current size but far above any degenerate render.
     expect(SECTION_BUILDER_BLOCK_A.length).toBeGreaterThan(8_000)
@@ -658,6 +672,7 @@ describe("Block B carries names and never ids", () => {
       faqPageKeys: [],
       stepSlugs: [],
       nextStepSlug: null,
+      funnelSlug: "empty-funnel",
     })
     expect(block.match(/\(none\)/g)).toHaveLength(5)
   })
@@ -674,6 +689,7 @@ describe("Block B carries names and never ids", () => {
       faqPageKeys: [],
       stepSlugs: [],
       nextStepSlug: null,
+      funnelSlug: "phase-2",
     })
     expect(block).toContain('"Comeback Code: Phase 2, Rebuilt"')
   })
@@ -812,6 +828,7 @@ describe("the next page", () => {
       faqPageKeys: [],
       stepSlugs: ["thank-you"],
       nextStepSlug,
+      funnelSlug: "camp",
     })
 
   it("names the next page in the catalogue block", () => {
@@ -840,6 +857,56 @@ describe("the next page", () => {
 
   it("Block A still forbids inventing a page slug", () => {
     expect(SECTION_BUILDER_BLOCK_A).toMatch(/never invent a slug/i)
+  })
+
+  // -------------------------------------------------------------------------
+  // The funnel's OWN address — the value the model cannot derive.
+  //
+  // `nextStepSlug` told the model WHICH page comes next; it never said what
+  // this funnel is called at its public URL. Block A used to spell the form's
+  // redirect as "/go/<funnel-slug>/<next-page-slug>" and leave the model to
+  // fill the first half in, which it did from the funnel's NAME — correct
+  // exactly while `slug === slugify(name)`, and a 404 after submit the first
+  // time an owner renames a funnel or takes a suffixed slug.
+  // -------------------------------------------------------------------------
+  it("prints the form's exact redirect URL from the REAL funnel slug, never a slugified name", () => {
+    // MUTANT: building the URL from anything but `funnelSlug`, or omitting it.
+    const block = buildCatalogueBlock({
+      ...catalogueInput(),
+      funnelSlug: "off-season-speed-camp-dxf8",
+      nextStepSlug: "thank-you",
+    })
+    expect(block).toContain('"/go/off-season-speed-camp-dxf8/thank-you"')
+  })
+
+  it("names no redirect URL on the last page", () => {
+    // MUTANT: rendering the redirect line unconditionally. There is no next
+    // page to redirect to, and a "/go/x/null" in the prompt is a path the
+    // model would happily copy.
+    const block = buildCatalogueBlock({ ...catalogueInput(), funnelSlug: "x", nextStepSlug: null })
+    expect(block).not.toContain("/go/x/")
+  })
+
+  it("says the redirect cannot be written when the funnel slug is unknown", () => {
+    // Degraded page-context load: the model must be told to leave the form on
+    // "message", not to guess.
+    //
+    // MUTANT: rendering nothing at all for `funnelSlug: null`. Silence is the
+    // state the defect came from — the model fills a gap it was not told about.
+    const block = buildCatalogueBlock({ ...catalogueInput(), funnelSlug: null, nextStepSlug: "thank-you" })
+    expect(block).toMatch(/do not write a redirectUrl/i)
+  })
+
+  it("Block A hands the redirect path over rather than teaching its shape", () => {
+    // MUTANT: leaving the "/go/<funnel-slug>/<next-page-slug>" template in
+    // Block A. Block A is the CACHED, per-page-invariant half, so it cannot
+    // carry the real slug — a template there is an instruction to build the
+    // path, which is the instruction that produced the wrong one.
+    expect(SECTION_BUILDER_BLOCK_A).not.toContain("<funnel-slug>")
+    // `\s+`, not a space: Block A is hard-wrapped prose, so the rule can sit
+    // across a line break and a literal-space regex would go red on a rewrap
+    // that changed nothing.
+    expect(SECTION_BUILDER_BLOCK_A).toMatch(/never\s+build\s+the\s+path\s+yourself/i)
   })
 
   it("the next page does not change Block A, so the cache prefix is stable", () => {

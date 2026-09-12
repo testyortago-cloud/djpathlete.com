@@ -69,6 +69,7 @@ async function runTurn(message: string) {
     faqPageKeys: [],
     stepSlugs: [],
     nextStepSlug: null,
+    funnelSlug: null,
   })
   const stream = streamAgent(systemPrompt, buildTurnMessage({ doc: DOC, history: [], message }), buildResultSchema, {
     model: SECTION_BUILDER_MODEL,
