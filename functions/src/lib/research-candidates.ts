@@ -10,6 +10,8 @@ export interface TavilySearchResult {
   title: string
   url: string
   content: string
+  /** Present only when the caller asked Tavily for include_published_date. */
+  published_date?: string
 }
 
 export interface DedupableResult {
@@ -29,11 +31,7 @@ const SIMILARITY_THRESHOLD = 0.55
  * near-duplicate title of a result already accepted (the same finding
  * re-published under a different URL/domain).
  */
-export function isDuplicate<T extends DedupableResult>(
-  candidate: T,
-  seenUrls: Set<string>,
-  accepted: T[],
-): boolean {
+export function isDuplicate<T extends DedupableResult>(candidate: T, seenUrls: Set<string>, accepted: T[]): boolean {
   if (seenUrls.has(candidate.url)) return true
   return accepted.some((existing) => stringSimilarity(candidate.title, existing.title) >= SIMILARITY_THRESHOLD)
 }
@@ -47,7 +45,7 @@ export function isDuplicate<T extends DedupableResult>(
  * diversify the query set.
  */
 export function collectDiverseResults(
-  searches: Array<{ results: Array<{ title: string; url: string; content: string }> }>,
+  searches: Array<{ results: Array<{ title: string; url: string; content: string; published_date?: string }> }>,
   maxResults: number,
 ): TavilySearchResult[] {
   const seenUrls = new Set<string>()
@@ -60,7 +58,7 @@ export function collectDiverseResults(
       if (!r) continue
       if (isDuplicate(r, seenUrls, collected)) continue
       seenUrls.add(r.url)
-      collected.push({ title: r.title, url: r.url, content: r.content })
+      collected.push({ title: r.title, url: r.url, content: r.content, published_date: r.published_date })
       if (collected.length >= maxResults) break roundLoop
     }
   }
@@ -76,4 +74,32 @@ export function collectDiverseResults(
  */
 export function reassignSequentialRanks<T extends { rank: number }>(topics: T[]): T[] {
   return [...topics].sort((a, b) => a.rank - b.rank).map((t, i) => ({ ...t, rank: i + 1 }))
+}
+
+/**
+ * Drops candidates that near-duplicate something ALREADY COVERED in a previous
+ * week — a prior `content_calendar` topic suggestion or an existing blog post.
+ *
+ * `collectDiverseResults` above dedupes only WITHIN one run, which is why the
+ * same force-velocity meta-analysis could be rank 1 on 2026-08-17, 2026-08-31
+ * and 2026-09-07, and why "RMSSD Coefficient of Variation ..." was written
+ * twice. Same bigram threshold as the in-batch check, for the same reason: it
+ * separates re-publications of one finding (~0.63) from unrelated topics
+ * (0.29-0.38).
+ *
+ * Titles are compared, not URLs — the repeat is usually a different URL for the
+ * same study, and by the time it reaches us the wording has drifted.
+ */
+export function dropCovered<T>(
+  items: T[],
+  coveredTitles: string[],
+  titleOf: (item: T) => string,
+  threshold: number = SIMILARITY_THRESHOLD,
+): T[] {
+  if (coveredTitles.length === 0) return items
+  return items.filter((item) => {
+    const title = titleOf(item)
+    if (!title) return true
+    return !coveredTitles.some((covered) => stringSimilarity(title, covered) >= threshold)
+  })
 }

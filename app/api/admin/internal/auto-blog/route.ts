@@ -16,6 +16,7 @@ import { isCronSkipped } from "@/lib/db/system-settings"
 import { proposePrimaryKeyword } from "@/lib/blog/keyword-proposal"
 import { extractContentAngle } from "@/lib/blog/content-angle"
 import { findInFlightBlogSuggestionJob } from "@/lib/ai-jobs"
+import { pickDiverseTopic, RECENT_THEME_WINDOW, type RankableTopic } from "@/lib/blog/topic-rotation"
 import { SYSTEM_USER_ID } from "@/lib/system-user"
 import type { ContentCalendarEntry } from "@/types/database"
 
@@ -67,13 +68,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ skipped: "no_topics" }, { status: 200 })
     }
 
-    // Best = the most recent week's #1 ranked topic. If multiple recent weeks
-    // tied on scheduled_for, pick lowest rank (rank 1 = best).
-    const best = pickBestTopic(candidates)
-    if (!best) {
-      console.log("[auto-blog] skipped — no rankable topic found")
+    // What we have written lately, newest first. This is what makes the pick
+    // rotate: without it the cron re-picks the same theme for as long as the
+    // ranker keeps putting that theme at rank 1.
+    const { data: recentPosts, error: recentErr } = await supabase
+      .from("blog_posts")
+      .select("title")
+      .order("created_at", { ascending: false })
+      .limit(RECENT_THEME_WINDOW * 3)
+    if (recentErr) {
+      // Fail open — an unrotated post beats no post. Logged so a persistent
+      // failure is visible rather than quietly reverting to the old behaviour.
+      console.warn("[auto-blog] recent-posts read failed, rotation disabled this run:", recentErr.message)
+    }
+    const recentTitles = (recentPosts ?? []).map((r) => (r as { title?: string }).title).filter((t): t is string => !!t)
+
+    const picked = pickDiverseTopic(candidates.map(toRankable), recentTitles)
+    if (!picked) {
+      console.log("[auto-blog] skipped — every queued topic duplicates something recent")
       return NextResponse.json({ skipped: "no_rankable_topic" }, { status: 200 })
     }
+    const best = candidates.find((c) => c.id === picked.topic.id)!
 
     const meta = (best.metadata ?? {}) as TopicMetadata
     const promptLines = [best.title, meta.summary].filter(Boolean).join("\n\n")
@@ -98,7 +113,9 @@ export async function POST(request: NextRequest) {
       extractContentAngle({ title: best.title, summary: meta.summary }),
     ])
     console.log(
-      `[auto-blog] picked topic id=${best.id} rank=${meta.rank ?? "?"} title="${best.title.slice(0, 60)}..." keyword="${proposedKeyword}" angle=${contentAngle ? "yes" : "no"}`,
+      `[auto-blog] picked topic id=${best.id} rank=${meta.rank ?? "?"} theme=${picked.theme} ` +
+        `via=${picked.reason} title="${best.title.slice(0, 60)}..." keyword="${proposedKeyword}" ` +
+        `angle=${contentAngle ? "yes" : "no"}`,
     )
 
     // ── Queue the blog_generation job ─────────────────────────────────────
@@ -131,6 +148,8 @@ export async function POST(request: NextRequest) {
         topicId: best.id,
         topicTitle: best.title,
         rank: meta.rank ?? null,
+        theme: picked.theme,
+        pickedVia: picked.reason,
       },
       { status: 202 },
     )
@@ -141,21 +160,16 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Best-topic picker: prefers the most recent week's lowest-rank suggestion
- * (rank 1 = highest-ranked). If no rank metadata exists, falls back to most
- * recent created_at.
+ * Adapts a content_calendar row to the shape the rotation picker needs. The
+ * picker deliberately knows nothing about content_calendar — it is pure and
+ * unit-tested against plain objects.
  */
-function pickBestTopic(candidates: ContentCalendarEntry[]): ContentCalendarEntry | null {
-  if (candidates.length === 0) return null
-  // candidates already ordered by scheduled_for desc.
-  const mostRecentWeek = candidates[0].scheduled_for
-  const inMostRecentWeek = candidates.filter((c) => c.scheduled_for === mostRecentWeek)
-  inMostRecentWeek.sort((a, b) => {
-    const ra = (a.metadata as TopicMetadata | null)?.rank ?? 999
-    const rb = (b.metadata as TopicMetadata | null)?.rank ?? 999
-    if (ra !== rb) return ra - rb
-    // Tie-breaker: most recently created
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  })
-  return inMostRecentWeek[0] ?? null
+function toRankable(entry: ContentCalendarEntry): RankableTopic {
+  return {
+    id: entry.id,
+    title: entry.title,
+    scheduled_for: entry.scheduled_for,
+    created_at: entry.created_at,
+    rank: (entry.metadata as TopicMetadata | null)?.rank ?? null,
+  }
 }
