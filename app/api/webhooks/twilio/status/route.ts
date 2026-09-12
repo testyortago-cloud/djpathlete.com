@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { validateTwilioSignature } from "@/lib/lead-engine/twilio-signature"
 import { applyDeliveryStatus } from "@/lib/db/sequences"
+import { updateSmsStatusBySid } from "@/lib/db/sms-messages"
 import { appOrigin } from "@/lib/lead-engine/origin"
 
 /**
@@ -96,6 +97,25 @@ export async function POST(request: Request) {
     // a public, unauthenticated-by-us-beyond-signature webhook response.
     console.error("[twilio-status-webhook] applyDeliveryStatus failed:", err)
     return NextResponse.json({ error: "internal" }, { status: 500 })
+  }
+
+  // The same callback updates the conversation's own row too. Its own
+  // try/catch and NOT part of `outcome`: `applyDeliveryStatus` owns the
+  // sequence record and its outcome string, and a conversation-view write
+  // must not be able to turn a delivered receipt into a 500 Twilio retries
+  // forever.
+  //
+  // Twilio's status is passed through verbatim rather than mapped. The
+  // sequence path maps to a four-value space because it drives the engine;
+  // the conversation just displays what the carrier said.
+  try {
+    await updateSmsStatusBySid(
+      params.MessageSid ?? "",
+      params.MessageStatus ?? "",
+      params.ErrorCode ?? null,
+    )
+  } catch (err) {
+    console.error("[twilio-status-webhook] sms_messages update failed:", err)
   }
 
   // Empty TwiML, matching the inbound webhook. Twilio parses a webhook
