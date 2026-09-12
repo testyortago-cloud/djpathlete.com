@@ -13,7 +13,13 @@ const { isSuppressed, insertSmsMessage } = vi.hoisted(() => ({
 vi.mock("@/lib/db/contact-consents", () => ({ isSuppressed }))
 vi.mock("@/lib/db/sms-messages", () => ({ insertSmsMessage }))
 
-import { sendManualSms, SmsSuppressedError, SmsNotConfiguredError } from "@/lib/lead-engine/sms"
+import {
+  sendManualSms,
+  SmsSuppressedError,
+  SmsNotConfiguredError,
+  SmsTooLongError,
+  SmsUnparseablePhoneError,
+} from "@/lib/lead-engine/sms"
 import type { BusinessSettings } from "@/lib/db/businesses"
 
 const BIZ = "11111111-1111-1111-1111-111111111111"
@@ -244,7 +250,10 @@ describe("sendManualSms — the send", () => {
 })
 
 describe("sendManualSms — segment length", () => {
-  it("refuses a message over 10 segments", async () => {
+  it("refuses a message over 10 segments with a typed, caller-input error", async () => {
+    // Typed (not a bare Error) so a caller like the route can map it to 400
+    // rather than the generic 502 every other throw here falls into — this
+    // is the user's message being too long, not a provider fault.
     await expect(
       sendManualSms({
         phone: PHONE,
@@ -253,7 +262,68 @@ describe("sendManualSms — segment length", () => {
         businessId: BIZ,
         appendOptOut: false,
       }),
-    ).rejects.toThrow(/segment/i)
+    ).rejects.toThrow(SmsTooLongError)
     expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it("carries the real segment count and the max on the thrown error", async () => {
+    try {
+      await sendManualSms({
+        phone: PHONE,
+        body: "a".repeat(1600),
+        settings: CONFIGURED,
+        businessId: BIZ,
+        appendOptOut: false,
+      })
+      throw new Error("sendManualSms did not throw")
+    } catch (err) {
+      expect(err).toBeInstanceOf(SmsTooLongError)
+      const tooLong = err as SmsTooLongError
+      expect(tooLong.maxSegments).toBe(10)
+      expect(tooLong.segments).toBeGreaterThan(10)
+    }
+  })
+})
+
+describe("sendManualSms — phone normalisation", () => {
+  // Task 4 re-review flagged this branch as untested directly: every other
+  // test in this file uses PHONE/PHONE_NATIONAL, both of which normalise
+  // successfully, so the `normalisePhone(...) -> null` branch (line 362-364
+  // at the time of writing) never actually ran in this suite.
+  it("throws SmsUnparseablePhoneError when normalisePhone returns null, before checking suppression", async () => {
+    // "+12345678" is shaped like E.164 but is not an assigned NANP number —
+    // libphonenumber-js's isValid() rejects it, so normalisePhone(...)
+    // returns null.
+    await expect(
+      sendManualSms({
+        phone: "+12345678",
+        body: "hi",
+        settings: CONFIGURED,
+        businessId: BIZ,
+        appendOptOut: false,
+      }),
+    ).rejects.toThrow(SmsUnparseablePhoneError)
+
+    // Refused before it ever reaches the suppression check or the provider —
+    // an unparseable number cannot be checked against suppressions at all.
+    expect(isSuppressed).not.toHaveBeenCalled()
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(insertSmsMessage).not.toHaveBeenCalled()
+  })
+
+  it("carries the raw (un-normalised) input on the error", async () => {
+    try {
+      await sendManualSms({
+        phone: "+12345678",
+        body: "hi",
+        settings: CONFIGURED,
+        businessId: BIZ,
+        appendOptOut: false,
+      })
+      throw new Error("sendManualSms did not throw")
+    } catch (err) {
+      expect(err).toBeInstanceOf(SmsUnparseablePhoneError)
+      expect((err as SmsUnparseablePhoneError).phone).toBe("+12345678")
+    }
   })
 })

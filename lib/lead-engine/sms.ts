@@ -308,8 +308,50 @@ export class SmsSuppressedError extends Error {
   }
 }
 
+/**
+ * Thrown when `args.phone` cannot be normalised to E.164 at all — it cannot
+ * be checked against suppressions, so sending to it can never be proven
+ * safe. This is a CALLER INPUT error (a typo, a disconnected or otherwise
+ * unassigned number), not a provider failure: a phone can pass the route's
+ * `/^\+[1-9]\d{7,14}$/` shape check and still fail libphonenumber's real
+ * validation (`+12345678` is shaped like E.164 and is not a real number), so
+ * this has to be its own type rather than falling into the generic 502
+ * every other `sendManualSms` throw lands in — a 502 tells an admin to try
+ * again later, which will never fix a bad number.
+ */
+export class SmsUnparseablePhoneError extends Error {
+  readonly phone: string
+  constructor(phone: string) {
+    super(`"${phone}" is not a valid phone number; refusing because it cannot be checked against suppressions`)
+    this.name = "SmsUnparseablePhoneError"
+    this.phone = phone
+  }
+}
+
 /** A manual message longer than this is refused rather than silently billed. */
 const MANUAL_SMS_MAX_SEGMENTS = 10
+
+/**
+ * Thrown when a manual message renders to more than `MANUAL_SMS_MAX_SEGMENTS`
+ * segments. Zod's 1600-character cap on the route does not catch every case
+ * that lands here: a body that is otherwise plain GSM-7 but contains even one
+ * non-GSM-7 character (an emoji, most accents) forces the WHOLE message to
+ * UCS-2 — 67 characters per segment instead of 153 — so a ~700-character body
+ * can pass that cap and still be 11+ segments. Same reasoning as
+ * `SmsUnparseablePhoneError`: this is the caller's message being too long,
+ * not a provider failure, so the route maps it to 400 with the actual
+ * segment count instead of the generic 502.
+ */
+export class SmsTooLongError extends Error {
+  readonly segments: number
+  readonly maxSegments: number
+  constructor(segments: number, maxSegments: number) {
+    super(`message is ${segments} segments (max ${maxSegments}); shorten it`)
+    this.name = "SmsTooLongError"
+    this.segments = segments
+    this.maxSegments = maxSegments
+  }
+}
 
 /**
  * Sends one manually typed message and records it.
@@ -361,9 +403,7 @@ export async function sendManualSms(args: {
   // thread this creates keys on exactly what the inbound webhook uses.
   const phone = normalisePhone(args.phone)
   if (!phone) {
-    throw new Error(
-      `sendManualSms: "${args.phone}" is not a valid phone number; refusing because it cannot be checked against suppressions`,
-    )
+    throw new SmsUnparseablePhoneError(args.phone)
   }
 
   // 1. Suppression.
@@ -378,9 +418,7 @@ export async function sendManualSms(args: {
   const { text } = renderManualSms({ body: args.body, appendOptOut: args.appendOptOut })
   const counted = countSmsSegments(text)
   if (counted.segments > MANUAL_SMS_MAX_SEGMENTS) {
-    throw new Error(
-      `message is ${counted.segments} segments (max ${MANUAL_SMS_MAX_SEGMENTS}); shorten it`,
-    )
+    throw new SmsTooLongError(counted.segments, MANUAL_SMS_MAX_SEGMENTS)
   }
 
   let providerMessageId: string | null = null
