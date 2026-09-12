@@ -101,7 +101,15 @@ beforeEach(() => {
   })
   recordAudit.mockReset()
   sendNewFunnelLeadEmail.mockReset().mockResolvedValue(undefined)
-  getFunnelById.mockReset().mockResolvedValue({ id: FUNNEL_ID, slug: "camp", name: "Camp" })
+  getFunnelById.mockReset().mockResolvedValue({
+    id: FUNNEL_ID,
+    slug: "camp",
+    name: "Camp",
+    // Task 4 (later) 404s the route unless this is "published" — added now so
+    // this suite survives that change too.
+    status: "published",
+    notify_emails: null,
+  })
   getStep.mockReset().mockResolvedValue({ id: STEP_ID, slug: "optin", name: "Opt in" })
 })
 

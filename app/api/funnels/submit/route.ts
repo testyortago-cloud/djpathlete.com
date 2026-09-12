@@ -111,7 +111,7 @@ export async function POST(request: Request) {
 
   const email = findByType(fields, payload, "email")
   const phone = findByType(fields, payload, "tel")
-  const name = buildName(payload)
+  const name = buildName(fields, payload)
 
   const sessionId = parseAttrCookie(request.headers.get("cookie")) ?? null
 
@@ -413,11 +413,29 @@ function findByType(
   return payload[field.name] ?? null
 }
 
-function buildName(payload: Record<string, string>): string | null {
-  const first = payload.first_name ?? payload.name ?? ""
-  const last = payload.last_name ?? ""
-  const full = `${first} ${last}`.trim()
-  return full.length > 0 ? full : null
+/**
+ * Finds the lead's name the same way email/phone are found — by looking at
+ * what the field IS, not by guessing at what the builder happened to call it.
+ *
+ * The AI builder emits `athlete_name` / `parent_name` fields with a matching
+ * `role` (FORM_FIELD_ROLES in lib/funnels/islands.ts); the first templates
+ * predate roles and use bare `first_name` / `name` / `last_name` keys. Both
+ * are checked before falling back to a best-effort scan of any text field
+ * whose name says "name" — the shape of a form an owner built by hand,
+ * without either convention.
+ */
+function buildName(fields: FunnelFormField[], payload: Record<string, string>): string | null {
+  const value = (name: string | undefined) => (name ? (payload[name] ?? "").trim() : "")
+  const byRole = (role: string) => fields.find((f) => f.role === role)?.name
+  // 1. Explicit roles: the parent is who the coach calls, so parent first.
+  for (const candidate of [value(byRole("parent_name")), value(byRole("athlete_name"))]) if (candidate) return candidate
+  // 2. The shape the first templates used.
+  const legacy = `${payload.first_name ?? payload.name ?? ""} ${payload.last_name ?? ""}`.trim()
+  if (legacy) return legacy
+  // 3. Any text field whose name says "name" — a parent one first.
+  const named = fields.filter((f) => f.type === "text" && /name/.test(f.name) && value(f.name))
+  const parent = named.find((f) => /parent|guardian/.test(f.name))
+  return value((parent ?? named[0])?.name) || null
 }
 
 /**
