@@ -69,9 +69,9 @@ describe("getSmsThread", () => {
 
 describe("updateSmsStatusBySid", () => {
   it("reports unknown_message when no row carries that sid", async () => {
-    const select = vi.fn().mockResolvedValue({ data: [], error: null })
-    const eqSid = vi.fn().mockReturnValue({ select })
-    mockFrom.mockReturnValue({ update: () => ({ eq: eqSid }) })
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+    const eqSid = vi.fn().mockReturnValue({ maybeSingle })
+    mockFrom.mockReturnValue({ select: () => ({ eq: eqSid }) })
 
     const out = await updateSmsStatusBySid("SMnope", "delivered")
 
@@ -79,11 +79,67 @@ describe("updateSmsStatusBySid", () => {
     expect(eqSid).toHaveBeenCalledWith("twilio_sid", "SMnope")
   })
 
-  it("reports updated when a row matched", async () => {
+  it("an ordinary forward transition (sent -> delivered) writes the raw status verbatim", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: "m1", status: "sent" }, error: null })
     const select = vi.fn().mockResolvedValue({ data: [{ id: "m1" }], error: null })
-    mockFrom.mockReturnValue({ update: () => ({ eq: () => ({ select }) }) })
+    const update = vi.fn().mockReturnValue({ eq: () => ({ neq: () => ({ select }) }) })
+    mockFrom.mockReturnValue({ select: () => ({ eq: () => ({ maybeSingle }) }), update })
 
     expect(await updateSmsStatusBySid("SM1", "delivered")).toBe("updated")
+    expect(update).toHaveBeenCalledWith({ status: "delivered" })
+  })
+
+  // Monotonic, mirroring applyDeliveryStatus (lib/db/sequences.ts): a
+  // failed/undelivered callback landing after delivered is a stale,
+  // superseded report and must not regress the row.
+  it("a failed callback arriving AFTER delivered leaves the row delivered", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: "m1", status: "delivered" }, error: null })
+    const update = vi.fn()
+    mockFrom.mockReturnValue({ select: () => ({ eq: () => ({ maybeSingle }) }), update })
+
+    const out = await updateSmsStatusBySid("SM1", "failed", "30006")
+
+    expect(out).toBe("ignored")
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  // A late delivery beats an earlier pessimistic report — the one direction
+  // a "delivered" callback IS allowed to overwrite.
+  it("a delivered callback arriving after failed DOES set it to delivered", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: "m1", status: "failed" }, error: null })
+    const select = vi.fn().mockResolvedValue({ data: [{ id: "m1" }], error: null })
+    const update = vi.fn().mockReturnValue({ eq: () => ({ neq: () => ({ select }) }) })
+    mockFrom.mockReturnValue({ select: () => ({ eq: () => ({ maybeSingle }) }), update })
+
+    expect(await updateSmsStatusBySid("SM1", "delivered")).toBe("updated")
+    expect(update).toHaveBeenCalledWith({ status: "delivered" })
+  })
+
+  // A stale, ignored callback carries no new information at all — that
+  // includes the code explaining why it (supposedly) failed. `update` must
+  // never be reached for it, so neither field can sneak through.
+  it("a stale failed callback does not write its error_code onto a delivered row", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: "m1", status: "delivered" }, error: null })
+    const update = vi.fn()
+    mockFrom.mockReturnValue({ select: () => ({ eq: () => ({ maybeSingle }) }), update })
+
+    const out = await updateSmsStatusBySid("SM1", "failed", "30006")
+
+    expect(out).toBe("ignored")
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it("reports ignored (not a lying 'updated') when the write race loses to a concurrent delivery", async () => {
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { id: "m1", status: "sent" }, error: null })
+    // The neq("status", "delivered") guard blocks the write at the DB, so it
+    // matches zero rows even though the read above thought the row was
+    // still "sent" — the row was delivered by a concurrent callback in
+    // between.
+    const select = vi.fn().mockResolvedValue({ data: [], error: null })
+    const update = vi.fn().mockReturnValue({ eq: () => ({ neq: () => ({ select }) }) })
+    mockFrom.mockReturnValue({ select: () => ({ eq: () => ({ maybeSingle }) }), update })
+
+    expect(await updateSmsStatusBySid("SM1", "failed")).toBe("ignored")
   })
 })
 

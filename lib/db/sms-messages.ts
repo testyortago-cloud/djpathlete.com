@@ -143,22 +143,72 @@ export async function listSmsThreads(
  * Applies one Twilio status callback to the `sms_messages` row carrying that
  * sid. Mirrors `applyDeliveryStatus`'s outcome space (never throws on an
  * unknown sid) so the webhook can report both without branching on an error.
+ *
+ * MONOTONIC, following `applyDeliveryStatus` (lib/db/sequences.ts) — same
+ * invariant, same reasoning, deliberately NOT a second differently-shaped
+ * rule: once a row is `delivered`, no later callback of any kind changes
+ * it. Twilio callbacks can arrive out of order, and a `failed`/`undelivered`
+ * (or even a duplicate `delivered`) callback landing after a `delivered` one
+ * is a stale, superseded report, not new information — writing it would
+ * regress a delivered message back to looking failed in the conversation
+ * view, which is the one thing this view exists to get right. A `delivered`
+ * callback DOES overwrite anything else (`sent`, `failed`, `undelivered`,
+ * `queued`, ...) — a late delivery beats an earlier pessimistic report,
+ * exactly the "arrived out of order" case this guard exists for.
+ *
+ * UNLIKE `applyDeliveryStatus`, the status string itself is never mapped
+ * into a fixed set here (see the route's doc comment: the conversation
+ * shows the carrier's own word, the sequence engine's four-value space is a
+ * separate concern) — only the delivered-is-terminal invariant is shared.
+ *
+ * A stale, ignored callback must not smuggle its `error_code` onto the row
+ * either — the whole point is that a superseded report carries no new
+ * information, and that includes the code explaining why it (supposedly)
+ * failed.
+ *
+ * Returns `"ignored"` (not `"updated"`, which would be a lie) both when the
+ * row was already `delivered` on read, and in the rare read-then-write race
+ * where a concurrent callback delivers it between this function's read and
+ * its write — the in-database `.neq("status", "delivered")` guard blocks
+ * that write the same way `applyDeliveryStatus`'s does, and a blocked write
+ * is exactly as "nothing changed" as the preflight check above it.
  */
 export async function updateSmsStatusBySid(
   twilioSid: string,
   status: string,
   errorCode: string | null = null,
-): Promise<"updated" | "unknown_message"> {
+): Promise<"updated" | "unknown_message" | "ignored"> {
   if (!twilioSid) return "unknown_message"
+  const client = getClient()
+
+  const { data: existing, error: readErr } = await client
+    .from("sms_messages")
+    .select("id, status")
+    .eq("twilio_sid", twilioSid)
+    .maybeSingle()
+  if (readErr) throw new Error(`updateSmsStatusBySid failed (${readErr.code}): ${readErr.message}`)
+  if (!existing) return "unknown_message"
+
+  const row = existing as { id: string; status: string }
+  if (row.status === "delivered") return "ignored"
+
   const patch: Record<string, unknown> = { status }
   if (errorCode) patch.error_code = errorCode
-  const { data, error } = await getClient()
+
+  const { data, error } = await client
     .from("sms_messages")
     .update(patch)
-    .eq("twilio_sid", twilioSid)
+    .eq("id", row.id)
+    // In-database guard against the read-then-write race, identical in
+    // spirit to `applyDeliveryStatus`'s: even a stale in-memory read that
+    // thinks the row is not yet `delivered` cannot un-deliver a row the
+    // database already knows is `delivered`, because this filter is
+    // evaluated against the row's CURRENT state at UPDATE time, not against
+    // the read above.
+    .neq("status", "delivered")
     .select("id")
   if (error) throw new Error(`updateSmsStatusBySid failed (${error.code}): ${error.message}`)
-  return (data ?? []).length > 0 ? "updated" : "unknown_message"
+  return (data ?? []).length > 0 ? "updated" : "ignored"
 }
 
 /**
