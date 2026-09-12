@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lead Engine audit — screenshots (2026-09-13)</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; padding: 24px 32px; color: #16323b; background: #fafaf8; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  p.lead { color: #5b6b73; margin: 0 0 24px; max-width: 900px; }
+  section { margin: 0 0 40px; }
+  h2 { font-size: 16px; text-transform: uppercase; letter-spacing: .04em; color: #b5682c; margin: 0 0 12px; }
+  figure { margin: 0 0 28px; }
+  figure img { max-width: 100%; height: auto; border: 1px solid #e3e0da; border-radius: 6px; background: #fff; }
+  figcaption { font-size: 14px; margin: 6px 0 0; }
+  figcaption b { color: #16323b; }
+  code { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 13px; background: #efece6; padding: 1px 4px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<h1>Lead Engine audit — screenshots</h1>
+<p class="lead">Every frame is the real admin or the real public route, driven with Playwright on the dev clone (<code>localhost:3050</code>) on 2026-09-12/13. The callouts are burned into each PNG. Nothing here was captured from a harness or a preview page. Production screenshots were not captured (the read-only prod pass was blocked by the session's permission policy); the verdicts for production come from database reads and are in <code>docs/lead-engine-audit-2026-09-13.md</code>.</p>
+
+<section>
+<h2>Funnel maker — from scratch to a public page</h2>
+<figure><img src="01-new-funnel-dialog.png" alt=""><figcaption><b>01</b> — The New funnel dialog filled in: name, address, the "Capture leads" template (signup → thank-you), audience, notify address, description.</figcaption></figure>
+<figure><img src="02-builder-drafted.png" alt=""><figcaption><b>02</b> — The builder wrote both pages in 83 s. Note the rail already says <b>"leads nowhere"</b> under Signup, yet "Publish funnel" is enabled.</figcaption></figure>
+<figure><img src="03-builder-published.png" alt=""><figcaption><b>03</b> — Published from the builder: "Published 2 pages. The funnel is live." (The rail still reads "never published" / "writing…" — stale client state, cosmetic.)</figcaption></figure>
+<figure><img src="04-go-public-page.png" alt=""><figcaption><b>04</b> — <code>/go/&lt;slug&gt;</code> in a fresh browser with no session: the published page and its lead form.</figcaption></figure>
+<figure><img src="07-go-form-filled.png" alt=""><figcaption><b>07</b> — The form filled by a visitor; the SMS consent box writes a dated consent row when ticked.</figcaption></figure>
+<figure><img src="08-go-thank-you-404.png" alt=""><figcaption><b>08</b> — <b>The bug.</b> After submitting, the visitor lands on Page not found: the builder wrote the redirect as <code>/go/off-season-speed-camp/thank-you</code>, a slug guessed from the funnel's NAME; the real address is <code>/go/off-season-speed-camp-dxf8</code>. The lead was captured anyway.</figcaption></figure>
+</section>
+
+<section>
+<h2>Draft routes and the test run</h2>
+<figure><img src="09-preview-test-run.png" alt=""><figcaption><b>09</b> — <code>/preview/&lt;slug&gt;</code>, admin-only, full screen, marked "Preview — not published". The form is a test run.</figcaption></figure>
+<figure><img src="10-preview-after-submit.png" alt=""><figcaption><b>10</b> — After the test-run submit: row counts across ten tables identical before and after. The same validation as live applies.</figcaption></figure>
+<figure><img src="11-funnel-preview-iframe-route.png" alt=""><figcaption><b>11</b> — <code>/funnel-preview/&lt;stepId&gt;</code>, the builder's iframe route opened directly. Both draft routes 404 when signed out.</figcaption></figure>
+</section>
+
+<section>
+<h2>Sequences, contacts and texts</h2>
+<figure><img src="06-sequence-switch-confirm.png" alt=""><figcaption><b>06</b> — Turning New Lead Nurture ON asks first and says what happens to anyone partway through. OFF is immediate.</figcaption></figure>
+<figure><img src="12-sms-thread-after-stop.png" alt=""><figcaption><b>12</b> — <code>/admin/sms/&lt;phone&gt;</code> after a signed inbound reply and a STOP: the reply is stored and linked; the composer refuses after STOP.</figcaption></figure>
+<figure><img src="13-contact-record.png" alt=""><figcaption><b>13</b> — The contact record: entry point, the nurture run exited on STOP, SMS consent granted then withdrawn, do-not-contact mark. Email consent: "Never asked".</figcaption></figure>
+<figure><img src="14-funnel-leads.png" alt=""><figcaption><b>14</b> — <code>/admin/funnels/leads</code>: both submissions arrive with no name — the builder's <code>athlete_name</code>/<code>parent_name</code> fields are not recognised by <code>buildName()</code>.</figcaption></figure>
+</section>
+
+<section>
+<h2>Landing page maker and conversion</h2>
+<figure><img src="15-new-landing-page-dialog.png" alt=""><figcaption><b>15</b> — The New landing page dialog: one page, one job, "Create &amp; build".</figcaption></figure>
+<figure><img src="16-landing-page-published.png" alt=""><figcaption><b>16</b> — The builder's Publish on a landing page publishes the page and flips the row live in one request.</figcaption></figure>
+<figure><img src="17-pages-board-live.png" alt=""><figcaption><b>17</b> — <code>/admin/pages</code>: the card is the whole management surface; <code>/admin/pages/&lt;id&gt;</code> lands back here.</figcaption></figure>
+<figure><img src="18-landing-page-public.png" alt=""><figcaption><b>18</b> — The published landing page at <code>/go/&lt;slug&gt;</code>, no session.</figcaption></figure>
+<figure><img src="19-convert-dialog.png" alt=""><figcaption><b>19</b> — Convert to funnel. Status is preserved; <code>/go</code> kept answering 200 before, during and after, and converting back (one step) worked too.</figcaption></figure>
+</section>
+</body>
+</html>

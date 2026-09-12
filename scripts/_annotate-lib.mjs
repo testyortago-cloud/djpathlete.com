@@ -89,10 +89,17 @@ export async function annotate(src, out, opts) {
     wrapped.forEach((l, j) => capLines.push({ n: j === 0 ? i + 1 : null, text: l }))
   })
 
+  // The subtitle wraps too. It used to be one <text> line, which SVG clips at
+  // the band's right edge with no warning — a 200-character subtitle lost its
+  // last clause and nothing in the output said so.
+  const subLines = subtitle ? wrap(subtitle, Math.floor(W / (subSize * 0.56)) - 4) : []
+  const subLineH = Math.round(subSize * 1.4)
+  const subBlockH = subLines.length ? Math.round(subSize * 0.4) + subLines.length * subLineH : 0
+
   const bandH =
     pad +
     titleSize +
-    (subtitle ? Math.round(subSize * 1.6) : 0) +
+    subBlockH +
     Math.round(12 * scale) +
     capLines.length * lineH +
     pad
@@ -113,14 +120,16 @@ export async function annotate(src, out, opts) {
   <rect x="0" y="${H}" width="${W}" height="${bandH}" fill="${PAPER}"/>
   <rect x="0" y="${H}" width="${W}" height="${Math.max(2, Math.round(3 * scale))}" fill="${ACCENT}"/>
   <text class="t title" x="${pad}" y="${H + pad + titleSize * 0.82}">${esc(title)}</text>
-  ${subtitle ? `<text class="t sub" x="${pad}" y="${H + pad + titleSize + subSize * 0.9}">${esc(subtitle)}</text>` : ""}
+  ${subLines
+    .map((l, i) => `<text class="t sub" x="${pad}" y="${H + pad + titleSize + Math.round(subSize * 0.4) + (i + 1) * subLineH - Math.round(subLineH * 0.3)}">${esc(l)}</text>`)
+    .join("\n  ")}
   ${capLines
     .map((l, i) => {
       const y =
         H +
         pad +
         titleSize +
-        (subtitle ? Math.round(subSize * 1.6) : 0) +
+        subBlockH +
         Math.round(12 * scale) +
         (i + 1) * lineH -
         Math.round(lineH * 0.28)
