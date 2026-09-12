@@ -47,6 +47,7 @@ vi.mock("@/lib/lead-engine/sms", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/lead-engine/sms")>()),
   sendRenderedSequenceSms: vi.fn(),
 }))
+vi.mock("@/lib/db/sms-messages", () => ({ insertSmsMessage: vi.fn() }))
 vi.mock("@/lib/db/sequences", async (importOriginal) => ({
   // Keep the real constants (TRANSIENT_ERROR_DEFER_REASON) — see the
   // route-level suite's identical comment for why.
@@ -74,6 +75,7 @@ vi.mock("@/lib/automation/sequence-tick", async (importOriginal) => {
   return { ...actual, decideStep: vi.fn(actual.decideStep) }
 })
 
+import { insertSmsMessage } from "@/lib/db/sms-messages"
 import { getBusinessSettings, listBusinesses } from "@/lib/db/businesses"
 import { sendSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engine/email"
 import { sendRenderedSequenceSms, SMS_OPT_OUT_SENTENCE } from "@/lib/lead-engine/sms"
@@ -192,6 +194,7 @@ beforeEach(() => {
   ;(deferRun as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
   ;(exitRun as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
   ;(failRun as ReturnType<typeof vi.fn>).mockResolvedValue(undefined)
+  ;(insertSmsMessage as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "sms-msg-default" })
 })
 
 afterEach(() => {
@@ -422,5 +425,75 @@ describe("the sms executor (lib/automation/sequence-tick-runner.ts)", () => {
     expect(failRun).not.toHaveBeenCalled()
     expect(recordSend).not.toHaveBeenCalled()
     expect(sendRenderedSequenceSms).not.toHaveBeenCalled()
+  })
+})
+
+// Task 8 (2026-09-12-two-way-sms): the sequence engine's own send record
+// (`sequence_messages`, via recordSend/markSent) stays the engine's record.
+// This mirror write into `sms_messages` is the person's conversation record,
+// linked by `sequence_message_id` so the two cannot disagree about one send.
+// It rides on `markSent` having already run and the text having already gone
+// out via Twilio — so it must never be able to turn a delivered send into a
+// failed tick.
+describe("sequence SMS — the conversation record", () => {
+  it("writes an sms_messages row linked to the sequence message", async () => {
+    const run = makeRun("r-sms-mirror-a")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+    ;(loadRunContext as ReturnType<typeof vi.fn>).mockResolvedValue(
+      smsSendableContext({ contact: { email: null, phone_e164: "+15551234567", user_id: null, name: "Jane" } }),
+    )
+    ;(recordSend as ReturnType<typeof vi.fn>).mockResolvedValue({ claimed: true, messageId: "msg-mirror-a" })
+    ;(sendRenderedSequenceSms as ReturnType<typeof vi.fn>).mockResolvedValue({ providerMessageId: "SM123" })
+
+    const summary = await runSequenceTick()
+
+    expect(summary).toMatchObject({ sent: 1, failed: 0 })
+    expect(insertSmsMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        businessId: "biz-1",
+        contactId: "contact-r-sms-mirror-a",
+        phone: "+15551234567",
+        direction: "outbound",
+        twilioSid: "SM123",
+        status: "sent",
+        sentBy: null,
+        sequenceMessageId: "msg-mirror-a",
+      }),
+    )
+  })
+
+  it("records the rendered text including the opt-out sentence", async () => {
+    // Sequence sends keep appending it every time -- only manual sends
+    // changed (§3.2).
+    const run = makeRun("r-sms-mirror-b")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+    ;(recordSend as ReturnType<typeof vi.fn>).mockResolvedValue({ claimed: true, messageId: "msg-mirror-b" })
+    ;(sendRenderedSequenceSms as ReturnType<typeof vi.fn>).mockResolvedValue({ providerMessageId: "SM456" })
+
+    await runSequenceTick()
+
+    const call = (insertSmsMessage as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0]
+    expect(call.body).toContain(SMS_OPT_OUT_SENTENCE)
+  })
+
+  it("does not fail the send when the conversation write throws", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    const run = makeRun("r-sms-mirror-c")
+    ;(claimDueRuns as ReturnType<typeof vi.fn>).mockResolvedValue([run])
+    ;(recordSend as ReturnType<typeof vi.fn>).mockResolvedValue({ claimed: true, messageId: "msg-mirror-c" })
+    ;(sendRenderedSequenceSms as ReturnType<typeof vi.fn>).mockResolvedValue({ providerMessageId: "SM789" })
+    ;(insertSmsMessage as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("boom"))
+
+    const summary = await runSequenceTick()
+
+    // markSent already ran -- losing the mirror must not turn a delivered
+    // message into a failed run.
+    expect(summary.failed).toBe(0)
+    expect(summary.sent).toBe(1)
+    expect(markSent).toHaveBeenCalledWith("msg-mirror-c", "twilio", "SM789")
+    expect(advanceRun).toHaveBeenCalledWith("r-sms-mirror-c", 1)
+    expect(consoleErrorSpy).toHaveBeenCalled()
+
+    consoleErrorSpy.mockRestore()
   })
 })

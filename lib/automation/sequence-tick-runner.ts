@@ -35,6 +35,7 @@ import {
   sendSequenceEmail,
 } from "@/lib/lead-engine/email"
 import { smsConfigured, smsEnvPresent, renderSequenceSms, sendRenderedSequenceSms } from "@/lib/lead-engine/sms"
+import { insertSmsMessage } from "@/lib/db/sms-messages"
 import { unsubscribeUrl, unsubscribeOneClickUrl } from "@/lib/lead-engine/unsubscribe-token"
 import { smsConsentUrl } from "@/lib/lead-engine/sms-consent-token"
 import { appOrigin } from "@/lib/lead-engine/origin"
@@ -389,6 +390,28 @@ async function processRun(
         // branch below: nothing after this may relabel a delivered message
         // as failed.
         await markSent(messageId as string, "twilio", providerMessageId)
+
+        // Mirror into the conversation. `sequence_messages` stays the
+        // engine's record — this one is the person's, and the link keeps
+        // them from disagreeing about a single send. Never fatal: the
+        // message has already gone and markSent has already run, so losing
+        // the mirror must not turn a delivered text into a failed run.
+        try {
+          await insertSmsMessage({
+            businessId,
+            contactId: run.contact_id,
+            phone: to,
+            direction: "outbound",
+            body: rendered.text,
+            twilioSid: providerMessageId,
+            status: "sent",
+            sentBy: null,
+            sequenceMessageId: messageId as string,
+          })
+        } catch (err) {
+          console.error("[sequence-tick] sms_messages mirror failed:", err)
+        }
+
         await advanceRun(run.id, action.step.position + 1)
         summary.sent += 1
         return
