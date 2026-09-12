@@ -49,12 +49,21 @@ export async function getFunnelById(id: string): Promise<Funnel | null> {
   return (data as Funnel | null) ?? null
 }
 
+/** PostgREST `ilike` treats % and _ as wildcards; a URL segment is not a pattern. */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`)
+}
+
 export async function getFunnelBySlug(slug: string): Promise<Funnel | null> {
   const supabase = getClient()
   const { data, error } = await supabase
     .from("funnels")
     .select("*")
-    .ilike("slug", slug)
+    // Slugs are validated as [a-z0-9-] on write, so escaping only ever changes
+    // a request that was never going to match a real row — e.g. `/go/%25`
+    // (a literal "%"), which unescaped matches every funnel and makes
+    // `.maybeSingle()` throw once more than one exists.
+    .ilike("slug", escapeLikePattern(slug))
     .maybeSingle()
   if (error) throw new Error(`getFunnelBySlug: ${error.message}`)
   return (data as Funnel | null) ?? null

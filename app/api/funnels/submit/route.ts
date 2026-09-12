@@ -91,6 +91,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "This form is no longer available." }, { status: 404 })
   }
 
+  // The step's published_version_id survives an unpublish; only the funnel row
+  // says whether the page is live. Without this, a direct POST kept capturing
+  // and enrolling leads for a funnel /go was already 404ing (audit §3.6).
+  const funnel = await getFunnelById(parsedBody.funnelId).catch(() => null)
+  if (!funnel || funnel.status !== "published") {
+    return NextResponse.json({ error: "This page is no longer live." }, { status: 404 })
+  }
+
   const fieldsResult = z.array(funnelFormFieldSchema).safeParse(config.fields)
   if (!fieldsResult.success) {
     return NextResponse.json({ error: "This form is misconfigured." }, { status: 409 })
@@ -200,6 +208,7 @@ export async function POST(request: Request) {
   // ---------------------------------------------------------------------------
   void notifyCoachOfLead({
     funnelId: parsedBody.funnelId,
+    funnel,
     stepId: parsedBody.stepId,
     name,
     email,
@@ -367,22 +376,24 @@ async function recordFunnelSmsConsent(input: {
 /**
  * Looks up the page's name and emails the coach.
  *
- * The name lookup is inside here rather than on the hot path above so a slow or
+ * The step lookup is inside here rather than on the hot path above so a slow or
  * failing read costs the ALERT, never the submission — the reason this whole
- * function is detached in the first place.
+ * function is detached in the first place. `funnel` itself is NOT re-fetched:
+ * the caller already loaded it for the status gate above, and it is the same
+ * row either way — a second read would only cost an extra round trip for a
+ * fire-and-forget email.
  */
 async function notifyCoachOfLead(input: {
   funnelId: string
+  funnel: Awaited<ReturnType<typeof getFunnelById>>
   stepId: string
   name: string | null
   email: string | null
   phone: string | null
   answers: Record<string, string>
 }): Promise<void> {
-  const [funnel, step] = await Promise.all([
-    getFunnelById(input.funnelId).catch(() => null),
-    getStep(input.stepId).catch(() => null),
-  ])
+  const { funnel } = input
+  const step = await getStep(input.stepId).catch(() => null)
 
   const pageName = [funnel?.name, step?.name].filter(Boolean).join(" · ") || "a landing page"
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.darrenjpaul.com"

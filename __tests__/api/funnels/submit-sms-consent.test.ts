@@ -209,3 +209,27 @@ describe("POST /api/funnels/submit — tenant", () => {
     expect(recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
   })
 })
+
+describe("POST /api/funnels/submit — funnel status gate (audit §3.6)", () => {
+  it("404s when the funnel is not published, without ever writing the submission", async () => {
+    // MUTANT: no status check in the submit route. The step's
+    // published_version_id survives an unpublish, so without this gate a
+    // direct POST would keep capturing and enrolling leads for a funnel /go
+    // was already 404ing.
+    getFunnelById.mockResolvedValue({
+      id: FUNNEL_ID,
+      name: "Camp",
+      status: "draft",
+      notify_emails: null,
+    })
+    const res = await POST(request({ sms_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: "This page is no longer live." })
+    expect(createSubmission).not.toHaveBeenCalled()
+    // Presence control: this isn't "the mock happened to return nothing" —
+    // getFunnelById really was called, with the id off the request body.
+    expect(getFunnelById).toHaveBeenCalledWith(FUNNEL_ID)
+  })
+})
