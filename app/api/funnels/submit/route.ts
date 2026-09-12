@@ -91,10 +91,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "This form is no longer available." }, { status: 404 })
   }
 
+  // PROVE the step actually belongs to the claimed funnel before trusting
+  // either id again. `getPublishedFormConfig` above resolves purely from
+  // `stepId`, and the published-funnel gate below resolves purely from
+  // `funnelId` — with nothing tying the two together, a request could pair a
+  // stale/unpublished funnel's own real stepId+formKey with a DIFFERENT,
+  // currently-published funnel's funnelId, pass the gate below, and still
+  // write a submission against the stale funnel's form. A read failure here
+  // is logged and 500s rather than being swallowed into the same 404 a real
+  // mismatch gets — a transient DB blip on a genuinely live page must not
+  // read to a lead as "this page is gone." One 404 covers both "no such
+  // step" and "step belongs to a different funnel": which half is wrong is
+  // not this visitor's business.
+  let step: Awaited<ReturnType<typeof getStep>>
+  try {
+    step = await getStep(parsedBody.stepId)
+  } catch (error) {
+    console.error("[funnels/submit] step read failed:", error)
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
+  }
+  if (!step || step.funnel_id !== parsedBody.funnelId) {
+    return NextResponse.json({ error: "This page is no longer live." }, { status: 404 })
+  }
+
   // The step's published_version_id survives an unpublish; only the funnel row
   // says whether the page is live. Without this, a direct POST kept capturing
   // and enrolling leads for a funnel /go was already 404ing (audit §3.6).
-  const funnel = await getFunnelById(parsedBody.funnelId).catch(() => null)
+  // Read by `step.funnel_id` — just proven to match `parsedBody.funnelId`
+  // above — rather than trusting the request body's id a second time.
+  let funnel: Awaited<ReturnType<typeof getFunnelById>>
+  try {
+    funnel = await getFunnelById(step.funnel_id)
+  } catch (error) {
+    console.error("[funnels/submit] funnel read failed:", error)
+    return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
+  }
   if (!funnel || funnel.status !== "published") {
     return NextResponse.json({ error: "This page is no longer live." }, { status: 404 })
   }
@@ -209,7 +240,7 @@ export async function POST(request: Request) {
   void notifyCoachOfLead({
     funnelId: parsedBody.funnelId,
     funnel,
-    stepId: parsedBody.stepId,
+    step,
     name,
     email,
     phone,
@@ -376,24 +407,22 @@ async function recordFunnelSmsConsent(input: {
 /**
  * Looks up the page's name and emails the coach.
  *
- * The step lookup is inside here rather than on the hot path above so a slow or
- * failing read costs the ALERT, never the submission — the reason this whole
- * function is detached in the first place. `funnel` itself is NOT re-fetched:
- * the caller already loaded it for the status gate above, and it is the same
- * row either way — a second read would only cost an extra round trip for a
- * fire-and-forget email.
+ * Neither `funnel` nor `step` is fetched in here: both were already read on
+ * the hot path above (the funnel for the status gate, the step for the
+ * funnel/step cross-check), and they are the same rows either way — a second
+ * read of either would only cost an extra round trip for a fire-and-forget
+ * email.
  */
 async function notifyCoachOfLead(input: {
   funnelId: string
   funnel: Awaited<ReturnType<typeof getFunnelById>>
-  stepId: string
+  step: Awaited<ReturnType<typeof getStep>>
   name: string | null
   email: string | null
   phone: string | null
   answers: Record<string, string>
 }): Promise<void> {
-  const { funnel } = input
-  const step = await getStep(input.stepId).catch(() => null)
+  const { funnel, step } = input
 
   const pageName = [funnel?.name, step?.name].filter(Boolean).join(" · ") || "a landing page"
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.darrenjpaul.com"

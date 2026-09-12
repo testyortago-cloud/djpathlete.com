@@ -144,7 +144,7 @@ beforeEach(() => {
     status: "published",
     notify_emails: null,
   })
-  getStep.mockReset().mockResolvedValue({ id: STEP_ID, slug: "signup", name: "Sign up" })
+  getStep.mockReset().mockResolvedValue({ id: STEP_ID, funnel_id: FUNNEL_ID, slug: "signup", name: "Sign up" })
 })
 
 describe("POST /api/funnels/submit — lead name capture", () => {

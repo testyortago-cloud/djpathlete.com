@@ -127,7 +127,7 @@ beforeEach(() => {
     status: "published",
     notify_emails: null,
   })
-  getStep.mockReset().mockResolvedValue({ id: STEP_ID, slug: "register", name: "Register" })
+  getStep.mockReset().mockResolvedValue({ id: STEP_ID, funnel_id: FUNNEL_ID, slug: "register", name: "Register" })
   listSteps.mockReset().mockResolvedValue([
     { id: STEP_ID, slug: "register", name: "Register", position: 2 },
     { id: "zzz", slug: "thank-you", name: "Confirmation", position: 4 },
