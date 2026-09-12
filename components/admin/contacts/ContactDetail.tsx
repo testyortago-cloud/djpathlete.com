@@ -28,7 +28,18 @@
 // House table chrome throughout, per CLAUDE.md. Light-only.
 
 import Link from "next/link"
-import { ArrowLeft, CalendarCheck, CreditCard, History, Mail, Phone, ShieldCheck, Workflow } from "lucide-react"
+import {
+  ArrowLeft,
+  CalendarCheck,
+  CreditCard,
+  History,
+  Mail,
+  MessageSquareText,
+  Phone,
+  ShieldCheck,
+  Workflow,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
 import {
   DataTable,
   DataTableBadge,
@@ -128,17 +139,33 @@ export function ContactDetail({
 
       {/* Header */}
       <div className="mb-6 rounded-xl border border-border bg-white p-6 shadow-sm">
-        {/* Name on the left, the one ACTION on the right — the layout the design
-            sketch specifies:
-              ┌─ Jane Smith ──────────────── [ Add to a sequence ] ─┐ */}
+        {/* Name on the left, the header ACTIONS on the right — the layout the
+            design sketch specifies:
+              ┌─ Jane Smith ──────── [ Text ] [ Add to a sequence ] ─┐
+            "Text" only appears when there is a phone_e164 to link to: the
+            thread page (/admin/sms/[phone]) normalises the URL segment and
+            404s on a number it cannot parse, so a contact with no number
+            would otherwise get a dead-end link. */}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h1 className="text-2xl font-semibold text-primary">{displayName}</h1>
-          <ContactEnrol
-            contactId={contact.id}
-            contactLabel={displayName}
-            sequences={sequences}
-            canEnrol={canEnrol}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            {contact.phone_e164 ? (
+              <Button asChild variant="outline" size="sm">
+                {/* encodeURIComponent, not a raw phone: `+` must become `%2B`
+                    or the segment arrives as a space and matches no thread. */}
+                <Link href={`/admin/sms/${encodeURIComponent(contact.phone_e164)}`}>
+                  <MessageSquareText className="size-4" aria-hidden />
+                  Text
+                </Link>
+              </Button>
+            ) : null}
+            <ContactEnrol
+              contactId={contact.id}
+              contactLabel={displayName}
+              sequences={sequences}
+              canEnrol={canEnrol}
+            />
+          </div>
         </div>
 
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
