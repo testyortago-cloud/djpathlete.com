@@ -174,7 +174,19 @@ vi.mock("@/lib/lead-engine/email", async (importOriginal) => {
   }
 })
 
+// `insertSmsMessage` is mocked rather than run for real: the in-memory
+// `@/lib/supabase` store above only knows KNOWN_TABLES, and it throws
+// immediately on `sms_messages` (an "unmocked table" error) rather than
+// silently no-opping — so every pre-existing test in this file would have
+// broken the moment the route started calling it for real. Mocking it here
+// also lets the new tests below assert on the exact call shape (Task 6),
+// same as `sendRenderedSequenceEmail` above.
+vi.mock("@/lib/db/sms-messages", () => ({
+  insertSmsMessage: vi.fn().mockResolvedValue({ id: "sms-message-1" }),
+}))
+
 import { renderSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engine/email"
+import { insertSmsMessage } from "@/lib/db/sms-messages"
 import { POST } from "@/app/api/webhooks/twilio/inbound/route"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
@@ -559,6 +571,92 @@ describe("POST /api/webhooks/twilio/inbound — anything else", () => {
     expect(consoleErrorSpy).toHaveBeenCalled()
 
     consoleErrorSpy.mockRestore()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 6: the conversation record. `insertSmsMessage` is asserted directly
+// (mocked above) rather than through a fake `sms_messages` table, matching
+// how `sendRenderedSequenceEmail` is pinned elsewhere in this file.
+//
+// The central design point: this write sits OUTSIDE the `if (contactId)`
+// gate. Every timeline write in this route is gated because
+// contact_timeline_events.contact_id is NOT NULL — but sms_messages.contact_id
+// is nullable, and the thread is keyed on the PHONE, not the contact. A text
+// from a number nobody has on file must still start a conversation.
+// ---------------------------------------------------------------------------
+describe("POST /api/webhooks/twilio/inbound — the conversation record", () => {
+  it("writes an sms_messages row for a matched contact", async () => {
+    const res = await POST(inboundRequest(smsBody("hey coach")))
+
+    expect(res.status).toBe(200)
+    expect(insertSmsMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        businessId: BUSINESS,
+        phone: PHONE,
+        contactId: CONTACT,
+        direction: "inbound",
+        body: "hey coach",
+        status: "received",
+      }),
+    )
+  })
+
+  it("STILL writes one when NO contact matches", async () => {
+    // The whole point of keying the thread on the phone number. The
+    // timeline row cannot exist here (contact_timeline_events.contact_id is
+    // NOT NULL); this one must, or a text from an unknown number would never
+    // show up in the conversation view at all.
+    const res = await POST(inboundRequest(smsBody("who is this", OTHER_PHONE)))
+
+    expect(res.status).toBe(200)
+    expect(insertSmsMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: OTHER_PHONE, contactId: null, direction: "inbound" }),
+    )
+    // No contact means no timeline row -- proves this write is genuinely
+    // independent of that gate, not just additionally present.
+    expect(store.timeline).toHaveLength(0)
+  })
+
+  it("stores the FULL body, not the 500-char timeline cap", async () => {
+    const long = "x".repeat(900)
+    const res = await POST(inboundRequest(smsBody(long)))
+
+    expect(res.status).toBe(200)
+    const call = (insertSmsMessage as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0]
+    expect(call.body).toHaveLength(900)
+  })
+
+  it("answers empty TwiML, not JSON — assert the BODY", async () => {
+    const res = await POST(inboundRequest(smsBody("hi")))
+    expect(res.headers.get("Content-Type")).toContain("text/xml")
+    expect(await res.text()).toBe('<?xml version="1.0" encoding="UTF-8"?><Response></Response>')
+  })
+
+  it("still answers 200 and empty TwiML when the conversation write fails", async () => {
+    // The compliance writes above it (timeline, ops-alert email) must not be
+    // undone by the conversation view failing, and Twilio must not be handed
+    // a retry it cannot fix. mockRejectedValueOnce, not mockRejectedValue --
+    // a persistent rejection would leak into every later test in this file.
+    ;(insertSmsMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("table gone"))
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const res = await POST(inboundRequest(smsBody("hi")))
+
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe('<?xml version="1.0" encoding="UTF-8"?><Response></Response>')
+    // The timeline write ran before this one and must still be intact.
+    expect(store.timeline).toHaveLength(1)
+    expect(consoleErrorSpy).toHaveBeenCalled()
+
+    consoleErrorSpy.mockRestore()
+  })
+
+  it("does NOT write a conversation row for a STOP keyword", async () => {
+    // STOP is a command, not conversation -- it already has its own
+    // compliance record (suppression + consent + timeline).
+    await POST(inboundRequest(smsBody("STOP")))
+    expect(insertSmsMessage).not.toHaveBeenCalled()
   })
 })
 
