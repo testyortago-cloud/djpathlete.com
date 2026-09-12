@@ -16,6 +16,8 @@
 // surface would look identical either way.
 
 import type { BusinessSettings } from "@/lib/db/businesses"
+import { isSuppressed } from "@/lib/db/contact-consents"
+import { insertSmsMessage } from "@/lib/db/sms-messages"
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01"
 
@@ -290,4 +292,108 @@ export function renderManualSms(args: { body: string; appendOptOut: boolean }): 
   const body = args.body.trimEnd()
   if (!args.appendOptOut) return { text: body }
   return { text: `${body}\n\n${SMS_OPT_OUT_SENTENCE}` }
+}
+
+/**
+ * Thrown when the destination number has sent STOP. Spec §3.3: this one is
+ * not a preference. Carries the phone so a caller can name it.
+ */
+export class SmsSuppressedError extends Error {
+  readonly phone: string
+  constructor(phone: string) {
+    super(`cannot send: ${phone} has opted out`)
+    this.name = "SmsSuppressedError"
+    this.phone = phone
+  }
+}
+
+/** A manual message longer than this is refused rather than silently billed. */
+const MANUAL_SMS_MAX_SEGMENTS = 10
+
+/**
+ * Sends one manually typed message and records it.
+ *
+ * THREE CHECKS, failing on the first: suppression -> configuration ->
+ * segment length. Suppression is first deliberately: it is the check with
+ * legal consequences, and ordering configuration ahead of it would let an
+ * unconfigured business mask a suppressed number behind a different error.
+ *
+ * Quiet hours are NOT checked here (spec §3.1). A human replying inside a
+ * live conversation is a different act from bulk marketing at 2am; the
+ * compose box warns and requires a second click, and `quietHoursDefer` on
+ * the sequence path is untouched.
+ *
+ * THIS FUNCTION THROWS. It never returns `{ ok: true }` on a send that did
+ * not happen — a success shape returned on an unconfigured deployment is
+ * exactly the pattern this must not repeat. A failed provider call still
+ * writes a `failed` row before rethrowing, so the conversation shows what
+ * happened.
+ */
+export async function sendManualSms(args: {
+  phone: string
+  body: string
+  settings: BusinessSettings
+  businessId: string
+  contactId?: string | null
+  sentBy?: string | null
+  appendOptOut: boolean
+  statusCallbackUrl?: string
+}): Promise<{ messageId: string; providerMessageId: string | null; text: string }> {
+  const { phone, businessId } = args
+
+  // 1. Suppression.
+  if (await isSuppressed(phone, businessId)) {
+    throw new SmsSuppressedError(phone)
+  }
+
+  // 2. Configuration. Throws SmsNotConfiguredError.
+  assertSmsSendable(args.settings)
+
+  // 3. Segment length.
+  const { text } = renderManualSms({ body: args.body, appendOptOut: args.appendOptOut })
+  const counted = countSmsSegments(text)
+  if (counted.segments > MANUAL_SMS_MAX_SEGMENTS) {
+    throw new Error(
+      `message is ${counted.segments} segments (max ${MANUAL_SMS_MAX_SEGMENTS}); shorten it`,
+    )
+  }
+
+  let providerMessageId: string | null = null
+  try {
+    ;({ providerMessageId } = await sendRenderedSequenceSms({
+      to: phone,
+      text,
+      settings: args.settings,
+      statusCallbackUrl: args.statusCallbackUrl,
+    }))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    // Record the attempt before rethrowing: the conversation has to show a
+    // failed message, not a gap.
+    const codeMatch = message.match(/\[(\d+)\]/)
+    await insertSmsMessage({
+      businessId,
+      contactId: args.contactId ?? null,
+      phone,
+      direction: "outbound",
+      body: text,
+      status: "failed",
+      errorCode: codeMatch ? codeMatch[1] : null,
+      sentBy: args.sentBy ?? null,
+    })
+    throw err
+  }
+
+  const { id } = await insertSmsMessage({
+    businessId,
+    contactId: args.contactId ?? null,
+    phone,
+    direction: "outbound",
+    body: text,
+    twilioSid: providerMessageId,
+    status: "sent",
+    sentBy: args.sentBy ?? null,
+  })
+
+  return { messageId: id, providerMessageId, text }
 }

@@ -53,6 +53,15 @@ describe("countSmsSegments", () => {
     const body = "a".repeat(134) + "’"
     expect(countSmsSegments(body)).toMatchObject({ segments: 3, perSegment: 67 })
   })
+
+  it("fits exactly 70 UCS-2 characters in one segment — the <= 70 boundary itself", () => {
+    // 69 plain a's plus one curly apostrophe forces UCS-2 and lands at
+    // exactly 70 characters. `<= 70` must still count this as ONE segment;
+    // a reviewer mutating that to `< 70` passed the whole suite because
+    // nothing else in this file hits the boundary length exactly.
+    const body = "a".repeat(69) + "’"
+    expect(countSmsSegments(body)).toMatchObject({ encoding: "UCS-2", segments: 1, characters: 70 })
+  })
 })
 
 describe("renderManualSms", () => {
