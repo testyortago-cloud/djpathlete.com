@@ -61,6 +61,14 @@ export interface SmsThreadListProps {
    * development for the same row.
    */
   timezone?: string
+  /**
+   * True when `listSmsThreads` (lib/db/sms-messages.ts) hit its row-fetch
+   * cap. When that happens, the "Texts" counts below are only accurate
+   * within that recent window — an old, quiet thread's true lifetime total
+   * can be higher than what is shown. A footnote says so rather than
+   * presenting a partial count as if it were exact.
+   */
+  countsTruncated?: boolean
 }
 
 /**
@@ -105,7 +113,7 @@ function DirectionIcon({ direction }: { direction: SmsDirection }) {
   )
 }
 
-export function SmsThreadList({ threads, timezone = "UTC" }: SmsThreadListProps) {
+export function SmsThreadList({ threads, timezone = "UTC", countsTruncated = false }: SmsThreadListProps) {
   return (
     <DataTableCard>
       <DataTable>
@@ -113,7 +121,7 @@ export function SmsThreadList({ threads, timezone = "UTC" }: SmsThreadListProps)
           <DataTableHead>Who</DataTableHead>
           <DataTableHead>Last message</DataTableHead>
           <DataTableHead>Status</DataTableHead>
-          <DataTableHead align="right">Texts</DataTableHead>
+          <DataTableHead align="right">Texts{countsTruncated ? "*" : ""}</DataTableHead>
           <DataTableHead align="right">When</DataTableHead>
         </DataTableHeader>
         <tbody>
@@ -162,6 +170,12 @@ export function SmsThreadList({ threads, timezone = "UTC" }: SmsThreadListProps)
           ) : null}
         </tbody>
       </DataTable>
+      {countsTruncated ? (
+        <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
+          * Texts counts only the most recent activity across every conversation. A very old, quiet thread's true total
+          could be higher than the number shown.
+        </p>
+      ) : null}
     </DataTableCard>
   )
 }

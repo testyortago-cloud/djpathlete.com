@@ -277,9 +277,20 @@ describe("POST /api/admin/sms/send — the happy path", () => {
     )
   })
 
-  it("sets the x-audit-target-id header to the returned message id", async () => {
+  // Minor (final review): `x-audit-target-id` is an internal channel from
+  // this route to withAudit's `metadata` callback, not something the
+  // browser needs to see. It used to ride all the way through to the
+  // response the admin's own client receives; withAudit now strips it AFTER
+  // reading it, so the audit row still gets the data but the header itself
+  // never leaves the server.
+  it("passes the message id to the audit row, but strips the header from the response the browser sees", async () => {
     const res = await post({ phone: "+15551230000", body: "hi" })
-    expect(res.headers.get("x-audit-target-id")).toBe("m1")
+    expect(res.headers.get("x-audit-target-id")).toBeNull()
+
+    const sentManualCall = recordAuditMock.mock.calls.find(
+      (call: unknown[]) => (call[0] as { action?: string }).action === "sms.sent_manual",
+    )
+    expect((sentManualCall?.[0] as { metadata?: Record<string, unknown> } | undefined)?.metadata?.target_id).toBe("m1")
   })
 })
 
@@ -305,7 +316,9 @@ describe("POST /api/admin/sms/send — the quiet-hours confirmation", () => {
     const sentManualCall = recordAuditMock.mock.calls.find(
       (call: unknown[]) => (call[0] as { action?: string }).action === "sms.sent_manual",
     )
-    expect((sentManualCall?.[0] as { metadata?: Record<string, unknown> } | undefined)?.metadata?.confirmed_quiet_hours).toBeUndefined()
+    expect(
+      (sentManualCall?.[0] as { metadata?: Record<string, unknown> } | undefined)?.metadata?.confirmed_quiet_hours,
+    ).toBeUndefined()
   })
 })
 
@@ -322,6 +335,56 @@ describe("POST /api/admin/sms/send — the record-write-failed case", () => {
     expect(json.id).toBeNull()
     expect(json.providerMessageId).toBe("SM2")
     expect(res.headers.get("x-audit-target-id")).toBeNull()
+  })
+
+  // Minor (final review): this used to be a silent 200 — the text really
+  // did go out, so 200 is still correct, but the admin had no way to know
+  // the conversation wouldn't show it. `warning` is the signal SmsComposer
+  // now surfaces instead of pretending nothing happened.
+  it("carries a warning explaining the text may not appear in the thread", async () => {
+    sendManualSmsMock.mockResolvedValue({ messageId: null, providerMessageId: "SM2", text: "hi" })
+    const res = await post({ phone: "+15551230000", body: "hi" })
+    const json = await res.json()
+    expect(typeof json.warning).toBe("string")
+    expect(json.warning.length).toBeGreaterThan(0)
+  })
+
+  it("carries no warning at all when the record write succeeded", async () => {
+    const res = await post({ phone: "+15551230000", body: "hi" })
+    const json = await res.json()
+    expect(json.warning).toBeUndefined()
+  })
+})
+
+describe("POST /api/admin/sms/send — the opt-out lookup uses the normalised phone", () => {
+  // Minor (final review): recentOutboundExists used to be called with the
+  // raw request value while every WRITE on this path (via sendManualSms)
+  // normalises first. For an ordinary E.164 number they agree, but a
+  // trunk-prefixed variant of the same number does not, and the lookup
+  // would then find nothing and redundantly append the legally-relevant
+  // opt-out sentence to someone who was just texted.
+  it("checks recentOutboundExists against the normalised phone, not the raw request value", async () => {
+    // "+4402071838750" (the raw shape a caller could send) normalises to
+    // "+442071838750" (libphonenumber-js drops the redundant trunk 0) — the
+    // two values genuinely differ, so an unnormalised lookup call is
+    // caught here, not just a lookup call with SOME argument.
+    await post({ phone: "+4402071838750", body: "hi" })
+    expect(recentOutboundExistsMock).toHaveBeenCalledWith("+442071838750", BIZ)
+  })
+})
+
+describe("POST /api/admin/sms/send — a failed opt-out lookup is a mapped error", () => {
+  // Minor (final review): recentOutboundExists used to run OUTSIDE the
+  // try/catch that maps sendManualSms's errors, so a DB fault there was an
+  // unhandled 500 rather than the same mapped 502 every other unexpected
+  // failure on this route gets. It fails closed either way (no send), but
+  // an unmapped 500 is worse for the caller than a mapped one.
+  it("answers a mapped 502, not an unhandled crash, when the lookup itself throws", async () => {
+    recentOutboundExistsMock.mockRejectedValue(new Error("db unavailable"))
+    const res = await post({ phone: "+15551230000", body: "hi" })
+    expect(res.status).toBe(502)
+    expect((await res.json()).reason).toBe("send_failed")
+    expect(sendManualSmsMock).not.toHaveBeenCalled()
   })
 })
 

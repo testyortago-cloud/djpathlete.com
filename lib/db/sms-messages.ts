@@ -86,15 +86,43 @@ export async function getSmsThread(phone: string, businessId: string): Promise<S
   return (data ?? []) as SmsMessageRow[]
 }
 
-export async function listSmsThreads(
-  businessId: string,
-  limit = 500,
-): Promise<SmsThreadSummary[]> {
+export type SmsThreadListResult = {
+  threads: SmsThreadSummary[]
+  /**
+   * True when the row fetch below actually hit `ROW_FETCH_CAP` — meaning
+   * `messageCount`/`inboundCount` are counted only from the most recent
+   * `ROW_FETCH_CAP` messages across the WHOLE tenant, not necessarily a
+   * thread's full history. The UI uses this to say so rather than quietly
+   * showing a partial count as if it were exact.
+   */
+  countsTruncated: boolean
+}
+
+/**
+ * Walking every row for the tenant to compute exact per-thread counts does
+ * not scale: at N texts it pulled all N rows over the wire to render <=
+ * `limit` links, and if PostgREST's own `db-max-rows` were ever set below N,
+ * the rows would arrive silently truncated and `messageCount`/`inboundCount`
+ * would go wrong with no error at all.
+ *
+ * This bounds the fetch itself instead, generously: rows arrive newest
+ * first, and every thread that could plausibly be one of the top `limit`
+ * (default 500) most-recently-active threads contributes its latest message
+ * near the front of that ordering — so the cap only has to comfortably cover
+ * 500 distinct phones' latest activity, not the whole table. It does NOT
+ * guarantee an exact lifetime count for a thread whose history sits mostly
+ * further back than the cap; see `countsTruncated` above for the honest
+ * signal when that happens.
+ */
+export const ROW_FETCH_CAP = 10000
+
+export async function listSmsThreads(businessId: string, limit = 500): Promise<SmsThreadListResult> {
   const { data, error } = await getClient()
     .from("sms_messages")
     .select("phone, contact_id, body, direction, occurred_at, status, contacts(name)")
     .eq("business_id", businessId)
     .order("occurred_at", { ascending: false })
+    .limit(ROW_FETCH_CAP)
   if (error) throw new Error(`listSmsThreads failed (${error.code}): ${error.message}`)
 
   type Row = {
@@ -136,7 +164,10 @@ export async function listSmsThreads(
     }
   }
 
-  return [...byPhone.values()].slice(0, limit)
+  return {
+    threads: [...byPhone.values()].slice(0, limit),
+    countsTruncated: (data ?? []).length >= ROW_FETCH_CAP,
+  }
 }
 
 /**
@@ -221,11 +252,7 @@ export async function updateSmsStatusBySid(
  * false answer here silently appends (or omits) the opt-out sentence based
  * on a read that never actually happened.
  */
-export async function recentOutboundExists(
-  phone: string,
-  businessId: string,
-  withinDays = 30,
-): Promise<boolean> {
+export async function recentOutboundExists(phone: string, businessId: string, withinDays = 30): Promise<boolean> {
   const since = new Date(Date.now() - withinDays * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await getClient()
     .from("sms_messages")

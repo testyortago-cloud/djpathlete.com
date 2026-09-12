@@ -221,9 +221,33 @@ describe("sendManualSms — the send", () => {
       }),
     ).rejects.toThrow(/blocked/)
 
-    expect(insertSmsMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "failed", errorCode: "21610" }),
-    )
+    expect(insertSmsMessage).toHaveBeenCalledWith(expect.objectContaining({ status: "failed", errorCode: "21610" }))
+  })
+
+  it("propagates the original provider error, not a failed record-write's own error", async () => {
+    // If insertSmsMessage (recording the `failed` row) itself throws inside
+    // the catch, that DB error must not replace the real cause — a coach
+    // needs "the carrier blocked it", not "the database was unavailable"
+    // for a text that never had a database problem.
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ code: 21610, message: "blocked by carrier" }),
+    }) as unknown as typeof fetch
+    insertSmsMessage.mockRejectedValue(new Error("db unavailable"))
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    await expect(
+      sendManualSms({
+        phone: PHONE,
+        body: "hi",
+        settings: CONFIGURED,
+        businessId: BIZ,
+        appendOptOut: false,
+      }),
+    ).rejects.toThrow(/blocked by carrier/)
+
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
   })
 
   it("does not report a delivered text as failed when recording it afterward fails", async () => {

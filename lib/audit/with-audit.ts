@@ -1,15 +1,14 @@
 import { recordAudit } from "@/lib/audit/record"
-import type {
-  AuditCategory,
-  AuditOutcome,
-  AuditTarget,
-} from "@/lib/audit/types"
+import type { AuditCategory, AuditOutcome, AuditTarget } from "@/lib/audit/types"
 
 type Handler = (request: Request, context: { params: Promise<Record<string, string>> }) => Promise<Response>
 
 type TargetResolver =
   | AuditTarget
-  | ((request: Request, context: { params: Promise<Record<string, string>> }) => Promise<AuditTarget | undefined> | AuditTarget | undefined)
+  | ((
+      request: Request,
+      context: { params: Promise<Record<string, string>> },
+    ) => Promise<AuditTarget | undefined> | AuditTarget | undefined)
 
 export interface WithAuditOptions {
   action: string
@@ -53,12 +52,35 @@ function isStreamingResponse(response: Response): boolean {
   return (response.headers.get("content-type") ?? "").includes("text/event-stream")
 }
 
+/**
+ * `x-audit-*` request->wrapper signalling headers (see `WithAuditOptions.metadata`
+ * above — `x-audit-target-id`, `x-audit-quiet-hours-confirmed` and any future
+ * one a route invents) are an INTERNAL channel from the handler to this
+ * wrapper. Nothing about them is secret, but they are not meant for the
+ * browser either — they are how a handler hands data to `metadata` without
+ * threading a return value through `withAudit`. Strip them from the response
+ * that actually leaves this wrapper.
+ *
+ * Call this ONLY after `metadata` has already read the headers off its own
+ * clone: stripping first would delete the very data the callback exists to
+ * read, and the audit row would lose it.
+ */
+const AUDIT_HEADER_PREFIX = "x-audit-"
+
+function stripAuditHeaders(response: Response): void {
+  for (const key of [...response.headers.keys()]) {
+    if (key.toLowerCase().startsWith(AUDIT_HEADER_PREFIX)) {
+      response.headers.delete(key)
+    }
+  }
+}
+
 async function maybeReadError(response: Response): Promise<{ code?: string; message?: string } | undefined> {
   if (response.ok) return undefined
   if (isStreamingResponse(response)) return { code: String(response.status) }
   try {
     const clone = response.clone()
-    const body = await clone.json() as { error?: string; code?: string }
+    const body = (await clone.json()) as { error?: string; code?: string }
     return { code: body.code ?? String(response.status), message: body.error }
   } catch {
     return { code: String(response.status) }
@@ -113,7 +135,9 @@ export function withAudit(options: WithAuditOptions, handler: Handler): Handler 
       } else {
         try {
           extra = (await options.metadata(request, resp.clone())) ?? {}
-        } catch { /* swallow */ }
+        } catch {
+          /* swallow */
+        }
       }
     }
 
@@ -126,6 +150,9 @@ export function withAudit(options: WithAuditOptions, handler: Handler): Handler 
       error: outcome === "success" ? undefined : error,
       metadata: extra,
     })
+    // Metadata has already read whatever it needed off the headers above —
+    // safe to strip them from the response the caller actually receives.
+    stripAuditHeaders(resp)
     return resp
   }
 }

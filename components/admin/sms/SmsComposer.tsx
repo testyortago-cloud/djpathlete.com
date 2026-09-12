@@ -115,6 +115,10 @@ export function SmsComposer({
   const [warned, setWarned] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Set only when the route reports `warning`: the text DID send, but the
+  // post-send record write failed, so it may not show up below. Distinct
+  // from `error` — this is not a failed send, and must not read as one.
+  const [warning, setWarning] = useState<string | null>(null)
 
   const who = contactName ?? phone
   const counted = countSmsSegments(body)
@@ -122,7 +126,7 @@ export function SmsComposer({
   const blocked = suppressed || notConfigured
   const canSend = !blocked && !sending && body.trim().length > 0
 
-  async function post(submission: SmsComposeSubmission) {
+  async function post(submission: SmsComposeSubmission): Promise<{ warning?: string }> {
     const response = await fetch("/api/admin/sms/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -133,10 +137,11 @@ export function SmsComposer({
         confirmQuietHours: submission.confirmQuietHours,
       }),
     })
+    const payload = (await response.json().catch(() => null)) as { error?: string; warning?: string } | null
     if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { error?: string } | null
       throw new Error(payload?.error ?? "That text did not send. Try again in a moment.")
     }
+    return { warning: payload?.warning }
   }
 
   async function handleSend() {
@@ -151,8 +156,14 @@ export function SmsComposer({
 
     setSending(true)
     setError(null)
+    setWarning(null)
     try {
-      await (onSend ?? post)({ body, confirmQuietHours: warned })
+      if (onSend) {
+        await onSend({ body, confirmQuietHours: warned })
+      } else {
+        const result = await post({ body, confirmQuietHours: warned })
+        if (result.warning) setWarning(result.warning)
+      }
       setBody("")
       setWarned(false)
       router.refresh()
@@ -198,6 +209,7 @@ export function SmsComposer({
           // message the admin actually read the warning for.
           setWarned(false)
           setError(null)
+          setWarning(null)
         }}
         placeholder={blocked ? "" : `Write a text to ${who}…`}
         rows={3}
@@ -222,6 +234,13 @@ export function SmsComposer({
             It is {formatHour(contactLocalHour)} for {who} ({contactTimezone}). That is late for a text. Click again to
             send it regardless.
           </span>
+        </p>
+      ) : null}
+
+      {warning ? (
+        <p className="mt-3 flex items-start gap-2 rounded-md border border-accent/30 bg-accent/10 p-3 text-sm text-accent">
+          <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+          <span>{warning}</span>
         </p>
       ) : null}
 

@@ -281,6 +281,37 @@ describe("SmsComposer — the request it actually sends", () => {
     expect(screen.getByRole("textbox")).toHaveValue("hello")
   })
 
+  it("surfaces a warning when the text sent but could not be saved to the conversation", async () => {
+    // The route answers 200 (the text DID go) but carries `warning` when the
+    // post-send record write failed. A silent 200 used to clear the box
+    // with no explanation for why the message never shows up in the thread.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: null,
+        providerMessageId: "SM9",
+        text: "hello",
+        warning: "The text was sent, but it could not be saved to this conversation.",
+      }),
+    })
+    render(<SmsComposer {...base} />)
+    await userEvent.type(screen.getByRole("textbox"), "hello")
+    await userEvent.click(screen.getByRole("button", { name: /send/i }))
+
+    expect(await screen.findByText(/could not be saved to this conversation/i)).toBeInTheDocument()
+    // Still cleared: the text really did go out.
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""))
+  })
+
+  it("carries no warning banner on an ordinary successful send", async () => {
+    render(<SmsComposer {...base} />)
+    await userEvent.type(screen.getByRole("textbox"), "hello")
+    await userEvent.click(screen.getByRole("button", { name: /send/i }))
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue(""))
+    expect(screen.queryByText(/could not be saved/i)).not.toBeInTheDocument()
+  })
+
   it("still says something when the response carries no error text", async () => {
     // A 502 from a provider fault, or an HTML error page: `json()` rejects and
     // the catch below it must not leave a silent failure on screen.

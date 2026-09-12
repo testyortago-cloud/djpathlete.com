@@ -85,6 +85,17 @@ describe("SmsThreadList", () => {
     expect(container.querySelectorAll("tr tr")).toHaveLength(0)
   })
 
+  it("says so when the counts are truncated, instead of showing a partial total as exact", () => {
+    render(<SmsThreadList threads={THREADS} countsTruncated />)
+    expect(screen.getByText(/Texts\*/)).toBeInTheDocument()
+    expect(screen.getByText(/only the most recent activity/i)).toBeInTheDocument()
+  })
+
+  it("says nothing extra when the counts are not truncated", () => {
+    render(<SmsThreadList threads={THREADS} />)
+    expect(screen.queryByText(/only the most recent activity/i)).not.toBeInTheDocument()
+  })
+
   it("links each row to that phone's conversation with the + encoded", () => {
     // The phone rides in the path, so `+` has to be `%2B` or the route
     // receives a space. `/admin/sms/+1555…` and `/admin/sms/%2B1555…` are not

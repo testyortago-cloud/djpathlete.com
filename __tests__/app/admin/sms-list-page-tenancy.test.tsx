@@ -42,7 +42,7 @@ beforeEach(() => {
     choices: [],
     isOperator: false,
   })
-  ;(listSmsThreads as ReturnType<typeof vi.fn>).mockResolvedValue([])
+  ;(listSmsThreads as ReturnType<typeof vi.fn>).mockResolvedValue({ threads: [], countsTruncated: false })
   ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue({
     timezone: "America/New_York",
   })

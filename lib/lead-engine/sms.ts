@@ -365,18 +365,27 @@ export async function sendManualSms(args: {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     // Record the attempt before rethrowing: the conversation has to show a
-    // failed message, not a gap.
+    // failed message, not a gap. This write has its OWN try/catch: `err` is
+    // the real cause (Twilio refused the send), and if `insertSmsMessage`
+    // itself throws here (a DB fault on top of the provider fault), that
+    // second error must not replace the first as what gets reported —
+    // the caller needs to know the send failed and why, not that the
+    // failure record also failed to write.
     const codeMatch = message.match(/\[(\d+)\]/)
-    await insertSmsMessage({
-      businessId,
-      contactId: args.contactId ?? null,
-      phone,
-      direction: "outbound",
-      body: text,
-      status: "failed",
-      errorCode: codeMatch ? codeMatch[1] : null,
-      sentBy: args.sentBy ?? null,
-    })
+    try {
+      await insertSmsMessage({
+        businessId,
+        contactId: args.contactId ?? null,
+        phone,
+        direction: "outbound",
+        body: text,
+        status: "failed",
+        errorCode: codeMatch ? codeMatch[1] : null,
+        sentBy: args.sentBy ?? null,
+      })
+    } catch (recordErr) {
+      console.error(`[lead-engine/sms] sendManualSms: failed to record the failed-send row for ${phone}:`, recordErr)
+    }
     throw err
   }
 

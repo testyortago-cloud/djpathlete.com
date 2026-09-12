@@ -41,6 +41,7 @@ import { canAccessPath } from "@/lib/permissions/registry"
 import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { recentOutboundExists } from "@/lib/db/sms-messages"
+import { normalisePhone } from "@/lib/lead-engine/identity"
 import { getContactById } from "@/lib/db/contact-detail"
 import {
   sendManualSms,
@@ -124,11 +125,19 @@ export const POST = withAudit(
 
     const settings = await getBusinessSettings(businessId)
 
-    // Spec §3.2: the opt-out sentence goes on the first outbound to this
-    // number in a rolling 30 days, not on every reply.
-    const appendOptOut = !(await recentOutboundExists(phone, businessId))
-
     try {
+      // Spec §3.2: the opt-out sentence goes on the first outbound to this
+      // number in a rolling 30 days, not on every reply. Normalised once,
+      // here — every write below (via sendManualSms) keys on the SAME
+      // normalised value, so a trunk-prefixed variant of an otherwise
+      // ordinary E.164 number (e.g. "+4402071838750" -> "+442071838750")
+      // cannot look like a first-ever text to a number that was just
+      // texted, and redundantly append the opt-out sentence. Falls back to
+      // the raw value only when it fails to normalise at all — the same
+      // input sendManualSms itself will then reject as unparseable.
+      const normalisedPhone = normalisePhone(phone) ?? phone
+      const appendOptOut = !(await recentOutboundExists(normalisedPhone, businessId))
+
       const result = await sendManualSms({
         phone,
         body,
@@ -140,14 +149,26 @@ export const POST = withAudit(
         statusCallbackUrl: `${appOrigin()}/api/webhooks/twilio/status`,
       })
 
+      // `messageId` is `string | null`: null means the text went out but the
+      // post-send record write failed. Reporting this as a plain 200 is
+      // still correct (see the comment on sendManualSms — a delivered text
+      // must never be reported as failed), but a silent 200 left the admin
+      // with no explanation: the composer clears the box and refreshes, and
+      // the message just isn't there. `warning` is what carries that
+      // explanation across the wire; SmsComposer surfaces it instead of
+      // pretending nothing happened.
       const res = NextResponse.json({
         id: result.messageId,
         providerMessageId: result.providerMessageId,
         text: result.text,
+        ...(result.messageId
+          ? {}
+          : {
+              warning:
+                "The text was sent, but it could not be saved to this conversation. It may not appear in the thread below.",
+            }),
       })
-      // `messageId` is `string | null`: null means the text went out but the
-      // post-send record write failed. Only point the audit trail at a row
-      // that actually exists.
+      // Only point the audit trail at a row that actually exists.
       if (result.messageId) {
         res.headers.set("x-audit-target-id", result.messageId)
       }

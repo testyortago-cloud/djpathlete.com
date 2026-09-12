@@ -34,7 +34,10 @@ export default async function AdminSmsPage() {
   // Settings comes along only for its timezone: these timestamps are read by
   // a coach deciding whether a reply is still warm, so they have to be in the
   // coach's own clock, not the rendering server's.
-  const [threads, settings] = await Promise.all([listSmsThreads(businessId), getBusinessSettings(businessId)])
+  const [{ threads, countsTruncated }, settings] = await Promise.all([
+    listSmsThreads(businessId),
+    getBusinessSettings(businessId),
+  ])
 
   return (
     <div className="space-y-4">
@@ -42,7 +45,7 @@ export default async function AdminSmsPage() {
         <h1 className="font-heading text-2xl font-semibold">Texts</h1>
         <p className="text-sm text-muted-foreground">Every text conversation with a lead or client, newest first.</p>
       </div>
-      <SmsThreadList threads={threads} timezone={settings.timezone} />
+      <SmsThreadList threads={threads} timezone={settings.timezone} countsTruncated={countsTruncated} />
     </div>
   )
 }

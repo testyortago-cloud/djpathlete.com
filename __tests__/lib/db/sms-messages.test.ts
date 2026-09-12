@@ -12,6 +12,7 @@ import {
   listSmsThreads,
   updateSmsStatusBySid,
   recentOutboundExists,
+  ROW_FETCH_CAP,
 } from "@/lib/db/sms-messages"
 
 const BIZ = "11111111-1111-1111-1111-111111111111"
@@ -27,14 +28,20 @@ describe("insertSmsMessage", () => {
     mockFrom.mockReturnValue({ insert })
 
     const res = await insertSmsMessage({
-      businessId: BIZ, phone: "+15551230000", direction: "inbound", body: "hi",
+      businessId: BIZ,
+      phone: "+15551230000",
+      direction: "inbound",
+      body: "hi",
     })
 
     expect(res).toEqual({ id: "m1" })
     expect(mockFrom).toHaveBeenCalledWith("sms_messages")
     expect(insert).toHaveBeenCalledWith(
       expect.objectContaining({
-        business_id: BIZ, phone: "+15551230000", direction: "inbound", body: "hi",
+        business_id: BIZ,
+        phone: "+15551230000",
+        direction: "inbound",
+        body: "hi",
         contact_id: null,
       }),
     )
@@ -146,26 +153,114 @@ describe("updateSmsStatusBySid", () => {
 describe("listSmsThreads", () => {
   it("collapses many messages into one row per phone, newest first", async () => {
     const rows = [
-      { phone: "+1999", contact_id: null, body: "newest", direction: "inbound",
-        occurred_at: "2026-09-10T10:00:00Z", status: "received", contacts: null },
-      { phone: "+1888", contact_id: "c1", body: "older", direction: "outbound",
-        occurred_at: "2026-09-09T10:00:00Z", status: "delivered",
-        contacts: { name: "Jane" } },
-      { phone: "+1999", contact_id: null, body: "oldest", direction: "outbound",
-        occurred_at: "2026-09-08T10:00:00Z", status: "delivered", contacts: null },
+      {
+        phone: "+1999",
+        contact_id: null,
+        body: "newest",
+        direction: "inbound",
+        occurred_at: "2026-09-10T10:00:00Z",
+        status: "received",
+        contacts: null,
+      },
+      {
+        phone: "+1888",
+        contact_id: "c1",
+        body: "older",
+        direction: "outbound",
+        occurred_at: "2026-09-09T10:00:00Z",
+        status: "delivered",
+        contacts: { name: "Jane" },
+      },
+      {
+        phone: "+1999",
+        contact_id: null,
+        body: "oldest",
+        direction: "outbound",
+        occurred_at: "2026-09-08T10:00:00Z",
+        status: "delivered",
+        contacts: null,
+      },
     ]
-    const order = vi.fn().mockResolvedValue({ data: rows, error: null })
+    const limit = vi.fn().mockResolvedValue({ data: rows, error: null })
+    const order = vi.fn().mockReturnValue({ limit })
     const eqBiz = vi.fn().mockReturnValue({ order })
     mockFrom.mockReturnValue({ select: () => ({ eq: eqBiz }) })
 
-    const threads = await listSmsThreads(BIZ)
+    const { threads, countsTruncated } = await listSmsThreads(BIZ)
 
     expect(eqBiz).toHaveBeenCalledWith("business_id", BIZ)
     expect(threads).toHaveLength(2)
     expect(threads[0]).toMatchObject({
-      phone: "+1999", lastBody: "newest", messageCount: 2, inboundCount: 1,
+      phone: "+1999",
+      lastBody: "newest",
+      messageCount: 2,
+      inboundCount: 1,
     })
     expect(threads[1]).toMatchObject({ phone: "+1888", contactName: "Jane", messageCount: 1 })
+    expect(countsTruncated).toBe(false)
+  })
+
+  // Important (final review): at real scale this query used to fetch the
+  // WHOLE table for the tenant to compute per-thread counts, then slice to
+  // `limit` in JS — at 50k texts that is 50k rows over the wire to render
+  // <=500 links, and a PostgREST `db-max-rows` truncation would corrupt the
+  // counts with no error. The fetch must bound itself.
+  it("bounds the raw fetch with .limit(), rather than pulling the whole table", async () => {
+    const limit = vi.fn().mockResolvedValue({ data: [], error: null })
+    const order = vi.fn().mockReturnValue({ limit })
+    const eqBiz = vi.fn().mockReturnValue({ order })
+    mockFrom.mockReturnValue({ select: () => ({ eq: eqBiz }) })
+
+    await listSmsThreads(BIZ)
+
+    expect(limit).toHaveBeenCalledTimes(1)
+    // Generous relative to the 500-thread display cap: enough headroom to
+    // hold 500 distinct phones' latest activity, not a number that would
+    // change meaning if it were dropped to the display limit itself.
+    expect(limit).toHaveBeenCalledWith(ROW_FETCH_CAP)
+    expect(ROW_FETCH_CAP).toBeGreaterThan(500)
+  })
+
+  it("reports countsTruncated when the fetch actually hit the cap", async () => {
+    const rows = Array.from({ length: ROW_FETCH_CAP }, (_, i) => ({
+      phone: `+1${i}`,
+      contact_id: null,
+      body: "x",
+      direction: "outbound" as const,
+      occurred_at: "2026-09-10T10:00:00Z",
+      status: "sent",
+      contacts: null,
+    }))
+    const limit = vi.fn().mockResolvedValue({ data: rows, error: null })
+    const order = vi.fn().mockReturnValue({ limit })
+    const eqBiz = vi.fn().mockReturnValue({ order })
+    mockFrom.mockReturnValue({ select: () => ({ eq: eqBiz }) })
+
+    const { countsTruncated } = await listSmsThreads(BIZ)
+    expect(countsTruncated).toBe(true)
+  })
+
+  it("does not claim truncation when the fetch came back under the cap", async () => {
+    const limit = vi.fn().mockResolvedValue({
+      data: [
+        {
+          phone: "+1999",
+          contact_id: null,
+          body: "hi",
+          direction: "outbound",
+          occurred_at: "2026-09-10T10:00:00Z",
+          status: "sent",
+          contacts: null,
+        },
+      ],
+      error: null,
+    })
+    const order = vi.fn().mockReturnValue({ limit })
+    const eqBiz = vi.fn().mockReturnValue({ order })
+    mockFrom.mockReturnValue({ select: () => ({ eq: eqBiz }) })
+
+    const { countsTruncated } = await listSmsThreads(BIZ)
+    expect(countsTruncated).toBe(false)
   })
 })
 
