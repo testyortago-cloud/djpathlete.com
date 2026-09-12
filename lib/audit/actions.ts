@@ -252,6 +252,12 @@ export const AUDIT_ACTIONS = [
   { slug: "event_signup.created", category: "marketing", description: "Public event signup" },
   { slug: "event_signup.cancelled", category: "marketing", description: "Event signup cancelled" },
   { slug: "contact.submitted", category: "marketing", description: "Public contact form submitted" },
+  { slug: "sms.sent_manual", category: "marketing", description: "Admin sent a text to a contact" },
+  {
+    slug: "sms.send_refused",
+    category: "marketing",
+    description: "Manual text refused (suppressed or unconfigured)",
+  },
 
   // contact record (Full Engine phase 1)
   //

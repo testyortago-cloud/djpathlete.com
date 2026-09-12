@@ -26,6 +26,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { createHmac } from "node:crypto"
 
+// The conversation-record mirror (Task 7, 2026-09-12-two-way-sms) is a
+// separate DAL function from `applyDeliveryStatus` above, so it is mocked
+// directly rather than folded into the in-memory `sequence_messages` table:
+// these tests need to assert the EXACT arguments the route passes through
+// (verbatim status, the raw ErrorCode), which a behavioural row-state check
+// can't distinguish as precisely.
+vi.mock("@/lib/db/sms-messages", () => ({ updateSmsStatusBySid: vi.fn() }))
+
 type Row = {
   id: string
   status: string
@@ -110,6 +118,7 @@ vi.mock("@/lib/supabase", () => ({
 }))
 
 import { POST } from "@/app/api/webhooks/twilio/status/route"
+import { updateSmsStatusBySid } from "@/lib/db/sms-messages"
 
 const AUTH_TOKEN = "route_test_auth_token"
 const ORIGIN = "https://app.example.test"
@@ -151,6 +160,11 @@ beforeEach(() => {
   db.forceReadError = null
   process.env.TWILIO_AUTH_TOKEN = AUTH_TOKEN
   process.env.NEXTAUTH_URL = ORIGIN
+  // mockReset (not clearAllMocks): a prior test's mockRejectedValue/
+  // mockResolvedValue must not leak into the next one via a queued
+  // implementation clearAllMocks would leave behind.
+  ;(updateSmsStatusBySid as ReturnType<typeof vi.fn>).mockReset()
+  ;(updateSmsStatusBySid as ReturnType<typeof vi.fn>).mockResolvedValue("updated")
 })
 
 describe("POST /api/webhooks/twilio/status", () => {
@@ -320,5 +334,66 @@ describe("POST /api/webhooks/twilio/status — Twilio response contract", () => 
     )
     expect(res.status).toBe(403)
     expect(res.headers.get("content-type") ?? "").toContain("application/json")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 7 (2026-09-12-two-way-sms): the same callback also updates the
+// conversation's own row in `sms_messages`, via `updateSmsStatusBySid`
+// (lib/db/sms-messages.ts). `applyDeliveryStatus` above still owns
+// `sequence_messages` and the response's mapped outcome/status code; this is
+// a second, independent side effect with its own try/catch, so a broken
+// conversation-record write can never turn a delivery receipt into a 500
+// Twilio would retry forever.
+// ---------------------------------------------------------------------------
+describe("POST /api/webhooks/twilio/status — sms_messages mirror", () => {
+  it("updates the conversation row by twilio_sid, passing Twilio's status through verbatim", async () => {
+    const row = seedRow({ status: "sent" })
+
+    const res = await POST(statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "delivered" }))
+
+    expect(res.status).toBe(200)
+    // Verbatim, not mapped: applyDeliveryStatus maps to a four-value space
+    // because it drives the engine; the conversation just shows what the
+    // carrier said, so "delivered" must reach the DAL unchanged.
+    expect(updateSmsStatusBySid).toHaveBeenCalledWith(row.provider_message_id, "delivered", null)
+  })
+
+  it("passes the carrier error code through when one is present", async () => {
+    const row = seedRow({ status: "sent" })
+
+    await POST(
+      statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "failed", ErrorCode: "30006" }),
+    )
+
+    expect(updateSmsStatusBySid).toHaveBeenCalledWith(row.provider_message_id, "failed", "30006")
+  })
+
+  it("still answers 200 and empty TwiML when only the sequence row matched", async () => {
+    ;(updateSmsStatusBySid as ReturnType<typeof vi.fn>).mockResolvedValue("unknown_message")
+    const row = seedRow({ status: "sent" })
+
+    const res = await POST(statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "delivered" }))
+
+    expect(res.status).toBe(200)
+    // Assert the BODY, not just res.status -- this repo shipped a production
+    // outage answering JSON to a Twilio webhook (error 12300) while 27 tests
+    // asserted only res.status and none asserted the body.
+    expect(await res.text()).toBe('<?xml version="1.0" encoding="UTF-8"?><Response></Response>')
+    expect(res.headers.get("content-type") ?? "").toContain("text/xml")
+  })
+
+  it("does not 500 the webhook when the conversation update throws", async () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    ;(updateSmsStatusBySid as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("boom"))
+    const row = seedRow({ status: "sent" })
+
+    const res = await POST(statusRequest({ MessageSid: row.provider_message_id, MessageStatus: "delivered" }))
+
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe('<?xml version="1.0" encoding="UTF-8"?><Response></Response>')
+    expect(consoleErrorSpy).toHaveBeenCalled()
+
+    consoleErrorSpy.mockRestore()
   })
 })

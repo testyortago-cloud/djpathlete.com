@@ -16,6 +16,10 @@
 // surface would look identical either way.
 
 import type { BusinessSettings } from "@/lib/db/businesses"
+import { isSuppressed } from "@/lib/db/contact-consents"
+import { insertSmsMessage } from "@/lib/db/sms-messages"
+import { normalisePhone } from "@/lib/lead-engine/identity"
+import { countSmsSegments } from "@/lib/lead-engine/sms-segments"
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01"
 
@@ -199,4 +203,215 @@ export async function sendRenderedSequenceSms(args: {
   }
 
   return { providerMessageId: json.sid ?? null }
+}
+
+// `countSmsSegments` now lives in ./sms-segments — a pure module with no
+// database import, so the compose box can count segments in the browser
+// without dragging lib/supabase (and therefore next/headers) into the
+// client bundle. Re-exported here so every existing caller is unchanged.
+export { countSmsSegments }
+
+/**
+ * Renders a manually typed message.
+ *
+ * Deliberately NOT `renderSequenceSms`: a manual message is typed by a human
+ * into a box, so `{{name}}` is literal text they meant to send, not a
+ * template to substitute. And the opt-out sentence is conditional here —
+ * spec §3.2 puts it on the first outbound to a contact in a rolling 30 days
+ * rather than on every reply, because appending it to a one-line reply in a
+ * live conversation reads as automated and costs a third of the segment.
+ * Sequence sends are unaffected and keep appending every time.
+ */
+export function renderManualSms(args: { body: string; appendOptOut: boolean }): { text: string } {
+  const body = args.body.trimEnd()
+  if (!args.appendOptOut) return { text: body }
+  return { text: `${body}\n\n${SMS_OPT_OUT_SENTENCE}` }
+}
+
+/**
+ * Thrown when the destination number has sent STOP. Spec §3.3: this one is
+ * not a preference. Carries the phone so a caller can name it.
+ */
+export class SmsSuppressedError extends Error {
+  readonly phone: string
+  constructor(phone: string) {
+    super(`cannot send: ${phone} has opted out`)
+    this.name = "SmsSuppressedError"
+    this.phone = phone
+  }
+}
+
+/**
+ * Thrown when `args.phone` cannot be normalised to E.164 at all — it cannot
+ * be checked against suppressions, so sending to it can never be proven
+ * safe. This is a CALLER INPUT error (a typo, a disconnected or otherwise
+ * unassigned number), not a provider failure: a phone can pass the route's
+ * `/^\+[1-9]\d{7,14}$/` shape check and still fail libphonenumber's real
+ * validation (`+12345678` is shaped like E.164 and is not a real number), so
+ * this has to be its own type rather than falling into the generic 502
+ * every other `sendManualSms` throw lands in — a 502 tells an admin to try
+ * again later, which will never fix a bad number.
+ */
+export class SmsUnparseablePhoneError extends Error {
+  readonly phone: string
+  constructor(phone: string) {
+    super(`"${phone}" is not a valid phone number; refusing because it cannot be checked against suppressions`)
+    this.name = "SmsUnparseablePhoneError"
+    this.phone = phone
+  }
+}
+
+/** A manual message longer than this is refused rather than silently billed. */
+const MANUAL_SMS_MAX_SEGMENTS = 10
+
+/**
+ * Thrown when a manual message renders to more than `MANUAL_SMS_MAX_SEGMENTS`
+ * segments. Zod's 1600-character cap on the route does not catch every case
+ * that lands here: a body that is otherwise plain GSM-7 but contains even one
+ * non-GSM-7 character (an emoji, most accents) forces the WHOLE message to
+ * UCS-2 — 67 characters per segment instead of 153 — so a ~700-character body
+ * can pass that cap and still be 11+ segments. Same reasoning as
+ * `SmsUnparseablePhoneError`: this is the caller's message being too long,
+ * not a provider failure, so the route maps it to 400 with the actual
+ * segment count instead of the generic 502.
+ */
+export class SmsTooLongError extends Error {
+  readonly segments: number
+  readonly maxSegments: number
+  constructor(segments: number, maxSegments: number) {
+    super(`message is ${segments} segments (max ${maxSegments}); shorten it`)
+    this.name = "SmsTooLongError"
+    this.segments = segments
+    this.maxSegments = maxSegments
+  }
+}
+
+/**
+ * Sends one manually typed message and records it.
+ *
+ * THREE CHECKS, failing on the first: suppression -> configuration ->
+ * segment length. Suppression is first deliberately: it is the check with
+ * legal consequences, and ordering configuration ahead of it would let an
+ * unconfigured business mask a suppressed number behind a different error.
+ * Ahead of all three, the phone is normalised to E.164 exactly once — the
+ * STOP webhook (`app/api/webhooks/twilio/inbound/route.ts`) writes
+ * suppressions keyed on Twilio's E.164 `From`, so checking (or recording)
+ * against a national-format number would silently match zero rows forever
+ * and let a suppressed contact through. This repo has shipped that exact
+ * bug once already (`bookings.phone_e164`, see project memory). An
+ * unparseable phone is refused outright: it cannot be checked against
+ * suppressions at all, so sending to it can never be proven safe.
+ *
+ * Quiet hours are NOT checked here (spec §3.1). A human replying inside a
+ * live conversation is a different act from bulk marketing at 2am; the
+ * compose box warns and requires a second click, and `quietHoursDefer` on
+ * the sequence path is untouched.
+ *
+ * THIS FUNCTION THROWS on a send that did not happen. It never returns
+ * `{ ok: true }` for one — a success shape returned on an unconfigured
+ * deployment is exactly the pattern this must not repeat. A failed
+ * provider call still writes a `failed` row before rethrowing, so the
+ * conversation shows what happened.
+ *
+ * The one exception is the FINAL record write, after Twilio has already
+ * accepted the message: if that `insertSmsMessage` call itself fails, the
+ * text has already gone out, so throwing here would misreport a delivered
+ * message as unsent. That failure is logged, not thrown, and `messageId`
+ * comes back `null` because there is no row to point to.
+ */
+export async function sendManualSms(args: {
+  phone: string
+  body: string
+  settings: BusinessSettings
+  businessId: string
+  contactId?: string | null
+  sentBy?: string | null
+  appendOptOut: boolean
+  statusCallbackUrl?: string
+}): Promise<{ messageId: string | null; providerMessageId: string | null; text: string }> {
+  const { businessId } = args
+
+  // 0. Normalise once, up front. Every later step — suppression, the send,
+  // and both `insertSmsMessage` writes — uses this same E.164 value, so the
+  // thread this creates keys on exactly what the inbound webhook uses.
+  const phone = normalisePhone(args.phone)
+  if (!phone) {
+    throw new SmsUnparseablePhoneError(args.phone)
+  }
+
+  // 1. Suppression.
+  if (await isSuppressed(phone, businessId)) {
+    throw new SmsSuppressedError(phone)
+  }
+
+  // 2. Configuration. Throws SmsNotConfiguredError.
+  assertSmsSendable(args.settings)
+
+  // 3. Segment length.
+  const { text } = renderManualSms({ body: args.body, appendOptOut: args.appendOptOut })
+  const counted = countSmsSegments(text)
+  if (counted.segments > MANUAL_SMS_MAX_SEGMENTS) {
+    throw new SmsTooLongError(counted.segments, MANUAL_SMS_MAX_SEGMENTS)
+  }
+
+  let providerMessageId: string | null = null
+  try {
+    ;({ providerMessageId } = await sendRenderedSequenceSms({
+      to: phone,
+      text,
+      settings: args.settings,
+      statusCallbackUrl: args.statusCallbackUrl,
+    }))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    // Record the attempt before rethrowing: the conversation has to show a
+    // failed message, not a gap. This write has its OWN try/catch: `err` is
+    // the real cause (Twilio refused the send), and if `insertSmsMessage`
+    // itself throws here (a DB fault on top of the provider fault), that
+    // second error must not replace the first as what gets reported —
+    // the caller needs to know the send failed and why, not that the
+    // failure record also failed to write.
+    const codeMatch = message.match(/\[(\d+)\]/)
+    try {
+      await insertSmsMessage({
+        businessId,
+        contactId: args.contactId ?? null,
+        phone,
+        direction: "outbound",
+        body: text,
+        status: "failed",
+        errorCode: codeMatch ? codeMatch[1] : null,
+        sentBy: args.sentBy ?? null,
+      })
+    } catch (recordErr) {
+      console.error(`[lead-engine/sms] sendManualSms: failed to record the failed-send row for ${phone}:`, recordErr)
+    }
+    throw err
+  }
+
+  // The send already succeeded at this point. A failure recording it must
+  // not be reported as a failure to SEND — that would report a delivered
+  // text as lost, the same gap-in-the-conversation failure mode the catch
+  // block above exists to prevent on the other side.
+  let messageId: string | null = null
+  try {
+    const inserted = await insertSmsMessage({
+      businessId,
+      contactId: args.contactId ?? null,
+      phone,
+      direction: "outbound",
+      body: text,
+      twilioSid: providerMessageId,
+      status: "sent",
+      sentBy: args.sentBy ?? null,
+    })
+    messageId = inserted.id
+  } catch (err) {
+    console.error(
+      `[lead-engine/sms] sendManualSms: message to ${phone} sent (provider id ${providerMessageId}) but recording it failed:`,
+      err,
+    )
+  }
+
+  return { messageId, providerMessageId, text }
 }

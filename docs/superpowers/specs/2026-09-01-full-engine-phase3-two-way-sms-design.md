@@ -265,3 +265,85 @@ Mechanical, and it belongs here because it is the same subsystem:
 - Removing the `reply_to` email forward — later, deliberately, once the screen
   has proven itself.
 - Writing the quiz sequence copy. Mechanically unblocked here; the words are yours.
+
+---
+
+## 8. Measured corrections — 2026-09-12, at implementation time
+
+The sections above were written 2026-09-01 and several are now false. Everything
+below was measured against **production** through the read-only `supabase-prod`
+MCP on 2026-09-12, not inferred. Where §1–§7 and this section disagree, **this
+section wins.**
+
+### 8.1 What moved
+
+| Spec claim | Measured on prod, 2026-09-12 | Effect |
+|---|---|---|
+| §6 task 1 — confirm the `MG…` SID | `business_settings.sms_messaging_service_sid` = `MGfcf240b6275f654f62874594a923d956` | **Done.** Nothing in this phase is blocked. |
+| §4.2 / task 3 — backfill inbound history | `contact_timeline_events` holds `ghl_import` (166), `sms_repermission_candidate` (90), `entry_point` (7). **`sms_inbound` = 0** | **Task 3 is DROPPED**, not deferred. See §8.2. |
+| §4.6 / task 11 — apply the `new_lead_nurture` SMS step, write quiz copy | All 12 sequences `active`; `new_lead_nurture` has 8 steps **including 1 SMS step**; **0 steps carry `PLACEHOLDER`** | **Task 11 is a no-op.** Already shipped 2026-09-09. |
+| §4.1 migration number `002xx` | Last applied migration is `00258` | Migration is **`00259`**. |
+| §3.3 suppression, three layers | `contact_suppressions` has **0 rows** | Guards ship untested by production data — the route test is the only proof. |
+
+### 8.2 Why the backfill is dropped rather than written
+
+A data migration can succeed and match nothing, and a migration that reports
+success over an empty set is worse than no migration: it leaves a permanent
+artefact claiming a backfill happened. The count is zero, measured, so there is
+nothing to import and `status = 'imported'` has no rows to carry. If inbound
+history appears later it will arrive through §4.4's live write, which is the
+same shape. **Do not write `00259_sms_messages_backfill.sql`.**
+
+### 8.3 The route is `/admin/sms`, NOT `/admin/messages`
+
+**§4.3 names a route that is already occupied.** `app/(admin)/admin/messages/page.tsx`
+is the live coach-to-client in-app chat (`MessagingProvider` / `InboxPage`), it is
+owned by the `messages` permission key ("Client Messages — the coach-to-client
+chat"), and **notification emails deep-link into it** with `?conversation=<id>`.
+Building SMS there would either collide with a live screen or quietly become the
+unified inbox that §7 explicitly puts in the NEXT phase.
+
+Therefore:
+
+| Spec said | Build instead |
+|---|---|
+| `/admin/messages` | `/admin/sms` |
+| `/admin/messages/[phone]` | `/admin/sms/[phone]` |
+
+`/api/admin/sms/send` is unchanged — the new page paths now agree with it.
+
+**Permission key: `contacts`, not `messages`.** `messages` means the client chat;
+granting it must not also grant the ability to text a lead. `contacts` already
+owns `/admin/sequences`, `/admin/pipeline` and `/admin/chat`, and an SMS thread is
+contact history of exactly that sensitivity. Two `PATH_PERMISSIONS` prefixes are
+added — `/admin/sms` and `/api/admin/sms`, both → `contacts`. No new permission
+key is minted: `hasPermission` falls through to the tiered branch on an unknown
+key and GRANTS, so an unused key is a hazard, and CLAUDE.md forbids elaborating
+the permission system further.
+
+### 8.4 The inbound write is NOT gated on a matched contact
+
+§4.4 says the webhook "adds an `sms_messages` insert on the `sms_inbound` path",
+which reads as though it sits beside the existing timeline write. It must not.
+
+Every timeline write in that route is gated on `contactId` because
+`contact_timeline_events.contact_id` is `NOT NULL`. `sms_messages.contact_id` is
+**nullable by design** (§4.1: "the thread is keyed on the phone number; the
+contact link is an enrichment"). So the `sms_messages` insert goes **outside**
+that `if (contactId)` block: a text from a number nobody has on file must still
+produce a thread, which is precisely the case the current design loses.
+
+The insert is also the LAST write on the path and is wrapped so a failure logs
+rather than 500s — the compliance writes above it (suppression, consent, exit)
+must not be rolled back by a conversation-view write failing. The empty-TwiML
+response contract (§5) is unchanged and still asserted on the BODY.
+
+### 8.5 The three §3 decisions are settled
+
+Implement the recommendations as written: **§3.1** manual reply warns on quiet
+hours with a second click and never blocks, `quietHoursDefer` untouched; **§3.2**
+the opt-out sentence goes on the first outbound to a contact in a rolling 30
+days, sequence sends keep appending every time; **§3.3** a suppressed number can
+never be texted, guarded at the send function, the API route and the compose box.
+
+**Status: approved for implementation, 2026-09-12.**

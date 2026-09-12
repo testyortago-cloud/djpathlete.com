@@ -448,6 +448,15 @@ export const PATH_PERMISSIONS: readonly PathRule[] = [
   { prefix: "/api/admin/contacts", permission: "contacts" },
   { prefix: "/api/admin/pipeline", permission: "contacts" },
 
+  // SMS threads are contact history of the same sensitivity as /admin/chat
+  // and /admin/sequences, which `contacts` already owns. Deliberately NOT
+  // the `messages` key — that is the coach-to-client chat, and granting it
+  // must not also grant the ability to text a lead. No new key is minted:
+  // hasPermission falls through to the tiered branch on an unknown key and
+  // GRANTS, so an unused key is a hazard.
+  { prefix: "/admin/sms", permission: "contacts" },
+  { prefix: "/api/admin/sms", permission: "contacts" },
+
   { prefix: "/admin/programs", permission: "programs" },
   { prefix: "/admin/exercises", permission: "programs" },
   { prefix: "/api/admin/programs", permission: "programs" },

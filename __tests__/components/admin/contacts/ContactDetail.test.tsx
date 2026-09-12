@@ -187,3 +187,37 @@ describe("ContactDetail and SequenceRunsTable — the same run reads the same se
     },
   )
 })
+
+// Task 11: the "Text" action beside the header's other contact action, linking
+// to that contact's SMS thread at /admin/sms/[phone].
+describe("<ContactDetail> — the Text action linking to the SMS thread", () => {
+  it("renders no Text link when the contact has no phone number", () => {
+    // contactData()'s default contact has phone_e164: null.
+    render(<ContactDetail data={contactData({ runs: [] })} canEnrol={false} />)
+
+    expect(screen.queryByRole("link", { name: "Text" })).not.toBeInTheDocument()
+
+    // Presence control: without this, a component that failed to render at
+    // all would pass the assertion above for the wrong reason. The contact's
+    // own name always renders regardless of whether they have a phone.
+    expect(screen.getByRole("heading", { name: "Alex Rivera" })).toBeInTheDocument()
+  })
+
+  it("renders a Text link to /admin/sms/<phone>, percent-encoded, when the contact has a phone number", () => {
+    const data = contactData({ runs: [] })
+    render(
+      <ContactDetail
+        data={{ ...data, contact: { ...data.contact, phone_e164: "+15551234567" } }}
+        canEnrol={false}
+      />,
+    )
+
+    const link = screen.getByRole("link", { name: "Text" })
+    // `+` must arrive as `%2B` — a bare `+` in the path segment decodes to a
+    // space on the thread page and matches no conversation. Asserting the
+    // exact encoded href (not just "contains %2B") also catches a route typo
+    // like `/admin/messages/...`, the coach-to-client chat, which is a
+    // different screen entirely.
+    expect(link).toHaveAttribute("href", "/admin/sms/%2B15551234567")
+  })
+})

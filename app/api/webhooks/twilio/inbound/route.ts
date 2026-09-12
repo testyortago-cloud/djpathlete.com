@@ -9,6 +9,7 @@ import { recordConsent, suppress, unsuppress } from "@/lib/db/contact-consents"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { getBusinessSettings, getBusinessBySmsNumber } from "@/lib/db/businesses"
 import { renderSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engine/email"
+import { insertSmsMessage } from "@/lib/db/sms-messages"
 
 /**
  * Twilio's inbound webhook for SMS a lead sends TO this business's number —
@@ -69,7 +70,12 @@ import { renderSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engin
  *     SMS sender, ever, for any of these four outcomes — that is a
  *     carrier/Messaging-Service concern (HELP) or simply out of scope
  *     (everything else); this codebase does not originate a reply SMS from
- *     this route.
+ *     this route. This is also the ONLY outcome that writes an
+ *     `sms_messages` row (the conversation view's data source, Task 6) —
+ *     unlike the timeline write, it happens UNCONDITIONALLY, even with no
+ *     matched contact, because that table is keyed on the phone number and
+ *     its contact link is nullable. See the inline comment where it's
+ *     written for the full rationale.
  *
  * All FOUR of the timeline-writing paths above are gated on a matched
  * contact, for the same structural reason as the STOP no-match case:
@@ -404,6 +410,34 @@ export async function POST(request: Request) {
         console.error("[twilio-inbound-webhook] ops-alert email failed:", err)
       }
     }
+
+    // The conversation record (Task 6) — OUTSIDE the `if (contactId)` gate
+    // above on purpose. Every write inside that gate is contact-gated
+    // because contact_timeline_events.contact_id and
+    // contact_consents.contact_id are both NOT NULL; sms_messages.contact_id
+    // is nullable by design, and its thread is keyed on the PHONE, not the
+    // contact. A text from a number nobody has on file must still form a
+    // conversation — that is precisely the case a contact-gated write would
+    // lose, and the whole reason this table exists.
+    //
+    // Its own try/catch, and it is the LAST write on this path: the
+    // compliance writes above it (timeline, consent, ops-alert email) have
+    // already succeeded by the time this runs, so a failure here can't roll
+    // any of them back, and it must not turn an otherwise-handled message
+    // into a 500 that Twilio retries forever.
+    try {
+      await insertSmsMessage({
+        businessId,
+        contactId,
+        phone: identifier,
+        direction: "inbound",
+        body: rawBody,
+        status: "received",
+      })
+    } catch (err) {
+      console.error("[twilio-inbound-webhook] sms_messages insert failed:", err)
+    }
+
     return handled("inbound", Boolean(contactId))
   } catch (err) {
     console.error("[twilio-inbound-webhook] processing failed:", err)
