@@ -17,6 +17,14 @@ import { sendManualSms, SmsSuppressedError, SmsNotConfiguredError } from "@/lib/
 import type { BusinessSettings } from "@/lib/db/businesses"
 
 const BIZ = "11111111-1111-1111-1111-111111111111"
+// A real, VALID E.164 number. "+15551230000" (this suite's original fixture)
+// fails libphonenumber's isValid() check — 555 is not an assigned NANP area
+// code — so once sendManualSms normalises the phone it would be refused as
+// unparseable and every test below would throw before reaching the
+// behaviour under test.
+const PHONE = "+12025550123"
+// A national-format spelling of the SAME number, for the normalisation test.
+const PHONE_NATIONAL = "(202) 555-0123"
 const CONFIGURED = {
   sms_messaging_service_sid: "MGtest",
   sms_sender_phone: "",
@@ -45,7 +53,7 @@ describe("sendManualSms — suppression", () => {
 
     await expect(
       sendManualSms({
-        phone: "+15551230000",
+        phone: PHONE,
         body: "hi",
         settings: CONFIGURED,
         businessId: BIZ,
@@ -60,13 +68,13 @@ describe("sendManualSms — suppression", () => {
 
   it("checks suppression against the normalised phone and this tenant", async () => {
     await sendManualSms({
-      phone: "+15551230000",
+      phone: PHONE,
       body: "hi",
       settings: CONFIGURED,
       businessId: BIZ,
       appendOptOut: false,
     })
-    expect(isSuppressed).toHaveBeenCalledWith("+15551230000", BIZ)
+    expect(isSuppressed).toHaveBeenCalledWith(PHONE, BIZ)
   })
 
   it("checks suppression BEFORE configuration", async () => {
@@ -75,7 +83,7 @@ describe("sendManualSms — suppression", () => {
     isSuppressed.mockResolvedValue(true)
     await expect(
       sendManualSms({
-        phone: "+15551230000",
+        phone: PHONE,
         body: "hi",
         settings: UNCONFIGURED,
         businessId: BIZ,
@@ -83,13 +91,48 @@ describe("sendManualSms — suppression", () => {
       }),
     ).rejects.toThrow(SmsSuppressedError)
   })
+
+  it("normalises a national-format number to E.164 before checking suppression", async () => {
+    // The STOP webhook writes suppressions keyed on Twilio's E.164 `From`.
+    // A caller passing "(202) 555-0123" must still be checked (and later
+    // recorded) against "+12025550123" — otherwise a suppressed contact who
+    // gets dialed in national format is never caught.
+    await sendManualSms({
+      phone: PHONE_NATIONAL,
+      body: "hi",
+      settings: CONFIGURED,
+      businessId: BIZ,
+      appendOptOut: false,
+    })
+    expect(isSuppressed).toHaveBeenCalledWith(PHONE, BIZ)
+  })
+
+  it("propagates when the suppression check itself fails, rather than treating a broken check as a pass", async () => {
+    // The dangerous regression this guards against: something like
+    // `isSuppressed(...).catch(() => false)` would fail OPEN — a suppressed
+    // contact becomes textable the moment the consent lookup has a bad day.
+    isSuppressed.mockRejectedValue(new Error("consent lookup unavailable"))
+
+    await expect(
+      sendManualSms({
+        phone: PHONE,
+        body: "hi",
+        settings: CONFIGURED,
+        businessId: BIZ,
+        appendOptOut: false,
+      }),
+    ).rejects.toThrow(/consent lookup unavailable/)
+
+    expect(global.fetch).not.toHaveBeenCalled()
+    expect(insertSmsMessage).not.toHaveBeenCalled()
+  })
 })
 
 describe("sendManualSms — configuration", () => {
   it("THROWS on an unconfigured business rather than returning a success shape", async () => {
     await expect(
       sendManualSms({
-        phone: "+15551230000",
+        phone: PHONE,
         body: "hi",
         settings: UNCONFIGURED,
         businessId: BIZ,
@@ -103,7 +146,7 @@ describe("sendManualSms — configuration", () => {
 describe("sendManualSms — the send", () => {
   it("sends with MessagingServiceSid, never From", async () => {
     await sendManualSms({
-      phone: "+15551230000",
+      phone: PHONE,
       body: "hi",
       settings: CONFIGURED,
       businessId: BIZ,
@@ -116,7 +159,7 @@ describe("sendManualSms — the send", () => {
 
   it("records the message with the provider sid and the sender", async () => {
     const out = await sendManualSms({
-      phone: "+15551230000",
+      phone: PHONE,
       body: "hi",
       settings: CONFIGURED,
       businessId: BIZ,
@@ -130,7 +173,7 @@ describe("sendManualSms — the send", () => {
       expect.objectContaining({
         businessId: BIZ,
         contactId: "c1",
-        phone: "+15551230000",
+        phone: PHONE,
         direction: "outbound",
         body: "hi",
         twilioSid: "SM123",
@@ -142,7 +185,7 @@ describe("sendManualSms — the send", () => {
 
   it("appends the opt-out sentence when told to, and sends THAT text", async () => {
     const out = await sendManualSms({
-      phone: "+15551230000",
+      phone: PHONE,
       body: "hi",
       settings: CONFIGURED,
       businessId: BIZ,
@@ -164,7 +207,7 @@ describe("sendManualSms — the send", () => {
 
     await expect(
       sendManualSms({
-        phone: "+15551230000",
+        phone: PHONE,
         body: "hi",
         settings: CONFIGURED,
         businessId: BIZ,
@@ -176,13 +219,35 @@ describe("sendManualSms — the send", () => {
       expect.objectContaining({ status: "failed", errorCode: "21610" }),
     )
   })
+
+  it("does not report a delivered text as failed when recording it afterward fails", async () => {
+    // Twilio has already accepted the message by this point. Losing the
+    // local row must not surface as a send failure — that would report a
+    // text that really went out as never sent, the mirror image of the
+    // "record before rethrowing" failure mode above.
+    insertSmsMessage.mockRejectedValue(new Error("db unavailable"))
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const out = await sendManualSms({
+      phone: PHONE,
+      body: "hi",
+      settings: CONFIGURED,
+      businessId: BIZ,
+      appendOptOut: false,
+    })
+
+    expect(out).toMatchObject({ messageId: null, providerMessageId: "SM123", text: "hi" })
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
 })
 
 describe("sendManualSms — segment length", () => {
   it("refuses a message over 10 segments", async () => {
     await expect(
       sendManualSms({
-        phone: "+15551230000",
+        phone: PHONE,
         body: "a".repeat(1600),
         settings: CONFIGURED,
         businessId: BIZ,

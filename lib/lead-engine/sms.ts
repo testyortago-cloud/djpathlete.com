@@ -18,6 +18,7 @@
 import type { BusinessSettings } from "@/lib/db/businesses"
 import { isSuppressed } from "@/lib/db/contact-consents"
 import { insertSmsMessage } from "@/lib/db/sms-messages"
+import { normalisePhone } from "@/lib/lead-engine/identity"
 
 const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01"
 
@@ -317,17 +318,31 @@ const MANUAL_SMS_MAX_SEGMENTS = 10
  * segment length. Suppression is first deliberately: it is the check with
  * legal consequences, and ordering configuration ahead of it would let an
  * unconfigured business mask a suppressed number behind a different error.
+ * Ahead of all three, the phone is normalised to E.164 exactly once — the
+ * STOP webhook (`app/api/webhooks/twilio/inbound/route.ts`) writes
+ * suppressions keyed on Twilio's E.164 `From`, so checking (or recording)
+ * against a national-format number would silently match zero rows forever
+ * and let a suppressed contact through. This repo has shipped that exact
+ * bug once already (`bookings.phone_e164`, see project memory). An
+ * unparseable phone is refused outright: it cannot be checked against
+ * suppressions at all, so sending to it can never be proven safe.
  *
  * Quiet hours are NOT checked here (spec §3.1). A human replying inside a
  * live conversation is a different act from bulk marketing at 2am; the
  * compose box warns and requires a second click, and `quietHoursDefer` on
  * the sequence path is untouched.
  *
- * THIS FUNCTION THROWS. It never returns `{ ok: true }` on a send that did
- * not happen — a success shape returned on an unconfigured deployment is
- * exactly the pattern this must not repeat. A failed provider call still
- * writes a `failed` row before rethrowing, so the conversation shows what
- * happened.
+ * THIS FUNCTION THROWS on a send that did not happen. It never returns
+ * `{ ok: true }` for one — a success shape returned on an unconfigured
+ * deployment is exactly the pattern this must not repeat. A failed
+ * provider call still writes a `failed` row before rethrowing, so the
+ * conversation shows what happened.
+ *
+ * The one exception is the FINAL record write, after Twilio has already
+ * accepted the message: if that `insertSmsMessage` call itself fails, the
+ * text has already gone out, so throwing here would misreport a delivered
+ * message as unsent. That failure is logged, not thrown, and `messageId`
+ * comes back `null` because there is no row to point to.
  */
 export async function sendManualSms(args: {
   phone: string
@@ -338,8 +353,18 @@ export async function sendManualSms(args: {
   sentBy?: string | null
   appendOptOut: boolean
   statusCallbackUrl?: string
-}): Promise<{ messageId: string; providerMessageId: string | null; text: string }> {
-  const { phone, businessId } = args
+}): Promise<{ messageId: string | null; providerMessageId: string | null; text: string }> {
+  const { businessId } = args
+
+  // 0. Normalise once, up front. Every later step — suppression, the send,
+  // and both `insertSmsMessage` writes — uses this same E.164 value, so the
+  // thread this creates keys on exactly what the inbound webhook uses.
+  const phone = normalisePhone(args.phone)
+  if (!phone) {
+    throw new Error(
+      `sendManualSms: "${args.phone}" is not a valid phone number; refusing because it cannot be checked against suppressions`,
+    )
+  }
 
   // 1. Suppression.
   if (await isSuppressed(phone, businessId)) {
@@ -384,16 +409,29 @@ export async function sendManualSms(args: {
     throw err
   }
 
-  const { id } = await insertSmsMessage({
-    businessId,
-    contactId: args.contactId ?? null,
-    phone,
-    direction: "outbound",
-    body: text,
-    twilioSid: providerMessageId,
-    status: "sent",
-    sentBy: args.sentBy ?? null,
-  })
+  // The send already succeeded at this point. A failure recording it must
+  // not be reported as a failure to SEND — that would report a delivered
+  // text as lost, the same gap-in-the-conversation failure mode the catch
+  // block above exists to prevent on the other side.
+  let messageId: string | null = null
+  try {
+    const inserted = await insertSmsMessage({
+      businessId,
+      contactId: args.contactId ?? null,
+      phone,
+      direction: "outbound",
+      body: text,
+      twilioSid: providerMessageId,
+      status: "sent",
+      sentBy: args.sentBy ?? null,
+    })
+    messageId = inserted.id
+  } catch (err) {
+    console.error(
+      `[lead-engine/sms] sendManualSms: message to ${phone} sent (provider id ${providerMessageId}) but recording it failed:`,
+      err,
+    )
+  }
 
-  return { messageId: id, providerMessageId, text }
+  return { messageId, providerMessageId, text }
 }
