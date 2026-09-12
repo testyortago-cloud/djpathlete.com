@@ -6,6 +6,7 @@ import {
 import { businessPatchSchema, businessSettingsPatchSchema } from "@/lib/validators/business"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { recordAudit } from "@/lib/audit/record"
+import { listVerifiedSenderDomains, senderDomainVerdict } from "@/lib/email/sender-domains"
 import { z } from "zod"
 
 const bodySchema = z.object({
@@ -42,6 +43,40 @@ export async function PATCH(request: Request, ctx: { params: Promise<Record<stri
   const parsed = bodySchema.safeParse(await request.json().catch(() => ({})))
   if (!parsed.success) {
     return NextResponse.json({ error: "Check the form", issues: parsed.error.issues }, { status: 400 })
+  }
+
+  // businessSettingsPatchSchema's sender_email rule checks FORMAT only ("is
+  // this an email address"), not who Resend has verified -- so without this,
+  // the 2026-08-31 fault (sender_email on the unverified apex darrenjpaul.com
+  // instead of the verified send.darrenjpaul.com, 73 sequence sends dropped)
+  // can be typed straight back in through this route. Checked before any
+  // write (business or settings) so a rejected sender email leaves the whole
+  // patch un-applied rather than partially saved. "" (clearing the field) is
+  // exempt -- there is no domain to check, and refusing it would make the
+  // field unable to be blanked out.
+  const senderEmail = parsed.data.settings?.sender_email
+  if (senderEmail) {
+    const verified = await listVerifiedSenderDomains()
+    if (!verified.ok) {
+      return NextResponse.json(
+        {
+          error:
+            verified.reason === "no_api_key"
+              ? "Email sending is not configured on this server, so the sender domain cannot be checked. The sender email was not changed."
+              : "Could not confirm the sender domain with Resend just now. Try again in a minute. The sender email was not changed.",
+        },
+        { status: 400 },
+      )
+    }
+    const verdict = senderDomainVerdict(senderEmail, verified.domains)
+    if (!verdict.ok) {
+      return NextResponse.json(
+        {
+          error: `${verdict.domain} is not verified at Resend, so email sent from it would be dropped. Use an address on a verified domain (${verified.domains.join(", ") || "none yet"}).`,
+        },
+        { status: 400 },
+      )
+    }
   }
 
   let business = await getBusiness(id)
