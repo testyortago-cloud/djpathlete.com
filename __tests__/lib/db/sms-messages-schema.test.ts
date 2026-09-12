@@ -26,4 +26,10 @@ describe("00259_sms_messages", () => {
   it("scopes the phone index by tenant", () => {
     expect(sql).toMatch(/sms_messages_phone_idx[\s\S]*business_id, phone/)
   })
+
+  it("makes the twilio_sid unique index partial", () => {
+    // Every inbound row has a NULL sid. A non-partial unique index would
+    // 23505 on the second inbound message ever received.
+    expect(sql).toMatch(/sms_messages_twilio_sid_key[\s\S]*WHERE twilio_sid IS NOT NULL/)
+  })
 })
