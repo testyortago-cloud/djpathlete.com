@@ -848,7 +848,9 @@ ${
         ? `\n\nThe funnel's address could not be read, so do not write a redirectUrl for a form on this` +
           ` page — leave successMode "message"; the owner connects it afterwards.`
         : `\n\nAny form on this page redirects there: successMode "redirect" and redirectUrl exactly` +
-          ` ${JSON.stringify(`/go/${funnelSlug}/${nextStepSlug}`)}.`
+          ` ${JSON.stringify(`/go/${funnelSlug}/${nextStepSlug}`)}. A form already on successMode` +
+          ` "checkout" is the exception — leave it exactly as it is; Stripe returns the payer to` +
+          ` the funnel's last page by itself.`
   }
 `.trim()
 }

@@ -123,6 +123,50 @@ function docWithFormRedirect(redirectUrl: string): SectionDoc {
   } as unknown as SectionDoc
 }
 
+/**
+ * A page that takes payment: `successMode: "checkout"`, no `redirectUrl`.
+ *
+ * Carries all five `CHECKOUT_REQUIRED_ROLES` because `formIslandSchema`'s
+ * superRefine refuses a checkout form missing any of them, and `resolveDoc`
+ * parses these props for real.
+ */
+function docWithCheckoutForm(): SectionDoc {
+  return {
+    v: 1,
+    engine: "sections",
+    theme: { tone: "light", accent: "accent", radius: "soft" },
+    sections: [
+      {
+        id: "signup",
+        kind: "form",
+        variant: "split",
+        style: {},
+        props: {
+          heading: "Reserve a place",
+          formKey: "camp-signup",
+          successMode: "checkout",
+          eventId: EVENT_ID,
+          fields: [
+            { name: "parent_name", label: "Your name", type: "text", role: "parent_name" },
+            { name: "parent_email", label: "Your email", type: "email", role: "parent_email" },
+            { name: "athlete_name", label: "Athlete name", type: "text", role: "athlete_name" },
+            { name: "athlete_age", label: "Athlete age", type: "text", role: "athlete_age" },
+            // `required: true` is not decoration — `formIslandSchema` refuses a
+            // waiver checkbox that can be left blank.
+            {
+              name: "waiver_accepted",
+              label: "I accept the waiver",
+              type: "checkbox",
+              role: "waiver_accepted",
+              required: true,
+            },
+          ],
+        },
+      },
+    ],
+  } as unknown as SectionDoc
+}
+
 /** A last page: real content, and nothing that has to lead anywhere. */
 function plainHeroDoc(): SectionDoc {
   return {
@@ -502,6 +546,40 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     const response = await POST(request(), ctx)
     expect(response.status).toBe(200)
     expect(mock(publishStep).mock.calls.map((call) => call[0].stepId)).toEqual(["s1"])
+  })
+
+  it("PUBLISHES a page whose form takes payment — Stripe returns the payer to the last page", async () => {
+    // A checkout form has NO `redirectUrl`; `funnelReturnUrls()` in
+    // app/api/funnels/submit/route.ts sends the payer to the funnel's last step
+    // by position. Reading that as "leads nowhere" made an ordinary camp-signup
+    // funnel unpublishable — while this same route goes out of its way to
+    // support the shape (`ensureCheckoutCampsPriced` exists only to walk drafts
+    // for it) and the registry tells the model to preserve it.
+    //
+    // MUTANT: `{kind:"none"}` for a checkout form in `connectionsForPage`. This
+    // funnel then 422s with "Signup leads nowhere", pointing the owner at a
+    // rail button that has nothing to offer a checkout form.
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false }),
+    ])
+    mock(getDraft).mockImplementation(async (stepId: string) =>
+      stepId === "s1"
+        ? { doc: docWithCheckoutForm(), docInvalid: false, revision: 1 }
+        : { doc: plainHeroDoc(), docInvalid: false, revision: 1 },
+    )
+    // The camp has to be SELLABLE or `publishGate` blocks it for a different
+    // reason and this test would pass for the wrong one: `toCatalogue` derives
+    // `priced` from `stripe_price_id` and `soldOut` from capacity vs signups.
+    mock(getPublishedEvents).mockResolvedValue([
+      { id: EVENT_ID, title: "Winter Velocity Camp", stripe_price_id: "price_live", capacity: 12, signup_count: 3 },
+    ])
+    mock(getEvents).mockResolvedValue([{ id: EVENT_ID, title: "Winter Velocity Camp" }])
+
+    const response = await POST(request(), ctx)
+    expect(response.status).toBe(200)
+    expect(mock(publishStep).mock.calls.map((call) => call[0].stepId)).toEqual(["s1", "s2"])
+    expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { status: "published" })
   })
 
   it("does not refuse a legacy step that has no document but is already live", async () => {

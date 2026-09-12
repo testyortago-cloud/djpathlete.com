@@ -345,16 +345,13 @@ describe("Block A is built once, at module load", () => {
     // nothing connected the word green to `tone: "dark"`. A rule that costs 411
     // characters and stops the builder refusing colour requests outright is the
     // kind of real content this ceiling was always meant to make room for.
-    // RAISED AGAIN TO 17500 on 2026-09-13, by 34 measured characters: the form
-    // redirect rule now says to COPY the catalogue's `redirectUrl` rather than
-    // showing "/go/<funnel-slug>/<next-page-slug>", a template the model filled
-    // in from the funnel's NAME and got wrong the moment an owner's slug was
-    // not slugify(name) (audit 2026-09-13 §3.1). Same test as the two raises
-    // above: it renders ONCE, and it was compacted first — 78 characters as
-    // first written, 34 after — against 41 characters of headroom, so
-    // compaction alone could not have paid for it. The tripwire is intact: an
-    // inlined 11119-character JSON Schema still blows straight past 17500.
-    expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(17_500)
+    // NOT RAISED on 2026-09-13. The form redirect rule was reworded to say to
+    // COPY the catalogue's `redirectUrl` rather than showing the
+    // "/go/<funnel-slug>/<next-page-slug>" template the model filled in from
+    // the funnel's NAME (audit 2026-09-13 §3.1). It cost +34 characters against
+    // 41 of headroom, so compacting the new sentence paid for it outright and
+    // the ceiling stayed where it was.
+    expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(17_400)
     // Not a "non-empty" check — `" "` would pass that. The floor is set below
     // the current size but far above any degenerate render.
     expect(SECTION_BUILDER_BLOCK_A.length).toBeGreaterThan(8_000)
@@ -877,6 +874,17 @@ describe("the next page", () => {
       nextStepSlug: "thank-you",
     })
     expect(block).toContain('"/go/off-season-speed-camp-dxf8/thank-you"')
+  })
+
+  it("carves out a form that is already taking payment, so Block B cannot contradict the registry", () => {
+    // MUTANT: "Any form on this page redirects there". The `form` registry
+    // entry tells the model to KEEP an existing `successMode: "checkout"`
+    // exactly as it is (registry.ts, formDef.guidance) — and it must, because
+    // a checkout form has no `redirectUrl` and its payer is returned by Stripe
+    // to the funnel's last page. An unqualified instruction here is the same
+    // prompt telling the model two opposite things about one section.
+    const block = buildCatalogueBlock({ ...catalogueInput(), nextStepSlug: "thank-you" })
+    expect(block).toMatch(/checkout/i)
   })
 
   it("names no redirect URL on the last page", () => {

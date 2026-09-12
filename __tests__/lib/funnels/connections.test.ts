@@ -311,6 +311,77 @@ describe("funnelConnections — robustness", () => {
 // and "it connected my pages" is easy to notice while "it silently re-pointed
 // my buy button" is not.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// A CHECKOUT FORM LEADS ON — through Stripe, not through `redirectUrl`.
+//
+// `successMode: "checkout"` has no `redirectUrl` at all. Where the payer lands
+// is decided server-side: `funnelReturnUrls()` in app/api/funnels/submit/route.ts
+// builds `successUrl` as the funnel's LAST STEP BY POSITION. Reading that shape
+// as `{kind:"none"}` made a perfectly normal camp-signup page a dead end, which
+// (since the publish blocker) would have REFUSED it — while the rail told the
+// owner to press a "connect this page" button that has nothing to offer a
+// checkout form.
+// ---------------------------------------------------------------------------
+describe("funnelConnections — a checkout form", () => {
+  /** A one-form page that takes payment. No `redirectUrl` — there is never one. */
+  const checkoutForm = () => formWith({ successMode: "checkout", eventId: "ev-1" })
+
+  it("reads a checkout form as a connection to the funnel's LAST page", () => {
+    // MUTANT: treating checkout as `{kind:"none"}`, which is where this started.
+    const result = funnelConnections("camp", twoPages(checkoutForm()))
+    expect(result.connections).toContainEqual(
+      expect.objectContaining({
+        fromStepId: "s1",
+        sectionId: "fo1",
+        field: "redirectUrl",
+        label: "Form submit",
+        via: "form",
+        to: { kind: "step", slug: "thanks", exists: true },
+      }),
+    )
+    expect(result.broken).toEqual([])
+  })
+
+  it("does NOT call a page with a checkout form a dead end", () => {
+    // The whole point. MUTANT: special-casing `deadEnds` to skip checkout pages
+    // instead — that would silence the refusal without ever showing the owner
+    // the arrow in the rail, so the two surfaces would disagree again.
+    expect(funnelConnections("camp", twoPages(checkoutForm())).deadEnds).toEqual([])
+  })
+
+  it("points at the last page BY POSITION, not by array order", () => {
+    // MUTANT: `steps.at(-1)`. `funnelReturnUrls` sorts by position before
+    // taking the last one, and this module must name the same page or the rail
+    // draws an arrow to somewhere Stripe will not send anybody.
+    const unsorted: StepWithDoc[] = [
+      { id: "s3", name: "Paid", slug: "paid", position: 2, isEntry: false, doc: null },
+      { id: "s1", name: "Sign up", slug: "index", position: 0, isEntry: true, doc: checkoutForm() },
+      { id: "s2", name: "Details", slug: "details", position: 1, isEntry: false, doc: null },
+    ]
+    const form = funnelConnections("camp", unsorted).connections.find((entry) => entry.via === "form")
+    expect(form?.to).toEqual({ kind: "step", slug: "paid", exists: true })
+  })
+
+  it("reports a checkout form ON the last page as going nowhere in this funnel", () => {
+    // Stripe sends the payer back to the page they are already on, so there is
+    // no arrow to draw. MUTANT: a self-link, which would render an arrow from a
+    // page to itself in the rail. The last page is exempt from `deadEnds`
+    // anyway, so nothing is refused either way.
+    const onlyPage: StepWithDoc[] = [
+      { id: "s1", name: "Sign up", slug: "index", position: 0, isEntry: true, doc: checkoutForm() },
+    ]
+    const result = funnelConnections("camp", onlyPage)
+    expect(result.connections[0].to).toEqual({ kind: "none" })
+    expect(result.deadEnds).toEqual([])
+  })
+
+  it("still calls a message-only form a dead end — only checkout leads on by itself", () => {
+    // THE CONTROL. Without it, "checkout is not a dead end" passes just as well
+    // from a mutant that stopped reporting dead ends at all.
+    expect(funnelConnections("camp", twoPages(formWith({ successMode: "message" }))).deadEnds).toEqual(["s1"])
+  })
+})
+
 describe("autoConnectOps", () => {
   const TARGET = { funnelSlug: "camp", nextStepSlug: "thanks" }
 
