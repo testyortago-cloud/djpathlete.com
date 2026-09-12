@@ -19,6 +19,7 @@ export type CronJobName =
   | "sequence-tick"
   | "contact-timeline-retention"
   | "pipeline-reconcile"
+  | "funnel-window"
   | "content-schedule"
 
 export interface CronJob {
@@ -226,6 +227,19 @@ export const CRON_CATALOG: readonly CronJob[] = [
     firebaseFunction: "pipelineReconcileCron",
     phase: "lead-engine-1c",
     enabledKey: "cron_pipeline_reconcile_enabled",
+    defaultEnabled: false,
+  },
+  {
+    name: "funnel-window",
+    label: "Close funnels whose run window has ended",
+    description:
+      "Every day, takes offline any published funnel or landing page whose end date has passed and whose owner asked for it to close automatically. OFF by default; flip the toggle to enable.",
+    schedule: "0 4 * * *",
+    timezone: "UTC",
+    humanSchedule: "Daily at 04:00 UTC",
+    firebaseFunction: "funnelWindowCron",
+    phase: "lead-engine-1c",
+    enabledKey: "cron_funnel_window_enabled",
     defaultEnabled: false,
   },
   {

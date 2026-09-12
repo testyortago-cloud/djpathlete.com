@@ -63,6 +63,12 @@ describe("POST /api/admin/internal/pipeline-reconcile", () => {
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ skipped: "disabled" })
     expect(runPipelineReconcile).not.toHaveBeenCalled()
+    // MUTANT: moving logCronStart back below the gate (the pre-fix shape).
+    // Production has no cron_pipeline_reconcile_enabled row yet, so a
+    // flag-off tick would then write NO cron_runs row at all — the exact
+    // "indistinguishable from a dead scheduler" finding from audit §4 #9.
+    expect(logCronStart).toHaveBeenCalledWith(expect.anything(), "pipelineReconcileCron")
+    expect(logCronEnd).toHaveBeenCalledWith(expect.anything(), "run-1", "success", { skipped: "disabled" })
   })
 
   it("returns { skipped } when the global automation pause is on", async () => {
@@ -70,6 +76,10 @@ describe("POST /api/admin/internal/pipeline-reconcile", () => {
     const res = await call()
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ skipped: "paused" })
+    // Same MUTANT as the "disabled" case above, exercised through the other
+    // skip reason so both values of `gate.reason` are pinned into `detail`.
+    expect(logCronStart).toHaveBeenCalledWith(expect.anything(), "pipelineReconcileCron")
+    expect(logCronEnd).toHaveBeenCalledWith(expect.anything(), "run-1", "success", { skipped: "paused" })
   })
 
   it("checks isCronSkipped with the right key and default", async () => {
