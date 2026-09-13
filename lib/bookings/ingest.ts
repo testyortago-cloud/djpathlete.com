@@ -338,6 +338,14 @@ async function runContactConsequences(ctx: IngestCtx, input: BookingIngestInput)
       // Calendly opened its card on Coaching, where nobody running assessments
       // would think to look. A booking with no service type still routes to
       // Coaching, exactly as before.
+      //
+      // ONE PATH HAS NOT BEEN TAUGHT THIS: lib/automation/pipeline-reconcile.ts
+      // still routes every booking it replays to `coaching`, because it cannot
+      // see a service type (`bookings` has no column for one). So an assessment
+      // booking's card lands here on Assessment and that pass, finding nothing
+      // on Coaching, would open a SECOND card. Its own comment above
+      // `const bookingRouting` carries the detail and the operator gate
+      // (`cron_pipeline_reconcile_enabled` stays off until gap #C2 closes).
       const routing = routeToPipeline({ event: "booking", serviceType: input.serviceType ?? null })
       await applyPipelineEvent({
         contactId,

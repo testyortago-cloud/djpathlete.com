@@ -283,8 +283,30 @@ async function reconcileForBusiness(
   let wonFromPayments = 0
   let failed = 0
 
-  // Never varies per booking — this call carries no checkoutType/serviceType
-  // to route on — so resolved once rather than inside the loop.
+  // Never varies per booking IN THIS PASS — this call carries no
+  // checkoutType/serviceType to route on, so it is resolved once rather than
+  // inside the loop. That is a statement about this call only; it is NO LONGER
+  // true that a booking routes to `coaching` system-wide.
+  //
+  // DIVERGENCE, since 2026-09-13 (lib/bookings/ingest.ts). The booking webhook
+  // now passes a `serviceType`, so an assessment booking's card is opened on
+  // `assessment`, while this pass still routes every booking to `coaching`.
+  // `listReconciledSourceIds` filters `.eq("trigger","reconciler")`, so the
+  // webhook's card is invisible to the ledger above and cannot suppress the
+  // replay: the replay resolves Coaching, `decideMove` finds no open card
+  // there (it is on Assessment), and takes the CREATE branch — a DUPLICATE
+  // card for one booking. `opportunities_one_open_per_contact_pipeline` is
+  // keyed on (contact_id, pipeline_id) and does not constrain it. Before the
+  // webhook could route elsewhere, the replay always found the card on this
+  // same board and no-opped, which is why that hazard is new rather than
+  // long-standing.
+  // No guard is possible here: this pass cannot know a booking's service type
+  // (`bookings` has no such column and does not store the Calendly event
+  // name), so the key comparison the payments loop below uses would compare
+  // `coaching` against `coaching` and never fire. KEEP
+  // `cron_pipeline_reconcile_enabled` OFF (it defaults false and production
+  // has no row) until gap #C2 — a per-board reader, so this pass reconciles
+  // every board instead of one — closes.
   const bookingRouting = routeToPipeline({ event: "booking" })
   const bookingPipelineKey = bookingRouting.kind === "routed" ? bookingRouting.pipelineKey : defaultPipelineKey
 

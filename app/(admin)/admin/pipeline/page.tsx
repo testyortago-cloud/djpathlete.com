@@ -55,7 +55,18 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   // exactly as unroutable as a key nothing recognises.
   const requestedBoard = (await searchParams).board
   const boards = await listPipelines(businessId)
-  const activeBoard = boards.find((b) => b.key === requestedBoard) ?? boards.find((b) => b.key === DEFAULT_PIPELINE_KEY)
+  //
+  // `?? boards[0]` before the literal key, because an ACTIVE board this tenant
+  // HAS beats a key it may not. `resolvePipeline` does not filter on status, so
+  // for a tenant whose active boards are, say, Camps & Clinics and Assessment,
+  // the literal `coaching` either resolves an ARCHIVED Coaching board — which
+  // appears in no pill, leaving nothing on screen marked active — or, with no
+  // coaching row at all, throws PipelineNotConfiguredError and replaces a
+  // perfectly usable board with the error boundary. The literal survives only
+  // as the last resort for a tenant with NO boards, where there is nothing
+  // better to name and `resolvePipeline` should indeed fail loudly.
+  const activeBoard =
+    boards.find((b) => b.key === requestedBoard) ?? boards.find((b) => b.key === DEFAULT_PIPELINE_KEY) ?? boards[0]
   const activeKey = activeBoard?.key ?? DEFAULT_PIPELINE_KEY
   // The bare word only when the tenant's boards could not be named at all —
   // `listPipelines` returns [] for a tenant with none, and the sentence still

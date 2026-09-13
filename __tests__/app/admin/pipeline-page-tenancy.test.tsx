@@ -44,7 +44,7 @@ import { readBoard, listGrantablePrograms, listPipelines } from "@/lib/db/pipeli
 // below would compare undefined to undefined. Taken from the module that
 // actually defines it.
 import { DEFAULT_PIPELINE_KEY } from "@/lib/lead-engine/pipeline-move"
-import { ASSESSMENT_KEY } from "@/lib/lead-engine/pipeline-route"
+import { ASSESSMENT_KEY, CAMPS_CLINICS_KEY } from "@/lib/lead-engine/pipeline-route"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import PipelinePage from "@/app/(admin)/admin/pipeline/page"
 
@@ -153,6 +153,38 @@ describe("PipelinePage — which board it reads", () => {
     ])
 
     await PipelinePage(props(ASSESSMENT_KEY))
+
+    expect(readBoard).toHaveBeenCalledWith(DEFAULT_PIPELINE_KEY, BUSINESS_ID)
+  })
+
+  it("falls back to a board the tenant HAS when it has no default board", async () => {
+    // MUTANT: fall straight through to the literal DEFAULT_PIPELINE_KEY when no
+    // row matches. `resolvePipeline` does not filter on status, so for a tenant
+    // whose active boards are Camps & Clinics and Assessment that literal
+    // either renders an ARCHIVED Coaching board — present in no pill, so
+    // nothing on screen is marked active — or, with no coaching row at all,
+    // throws PipelineNotConfiguredError and replaces a perfectly usable board
+    // with the admin error boundary.
+    ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "pipe-camps", key: CAMPS_CLINICS_KEY, name: "Camps & Clinics" },
+      { id: "pipe-assessment", key: ASSESSMENT_KEY, name: "Assessment" },
+    ])
+
+    await PipelinePage(props())
+
+    expect(readBoard).toHaveBeenCalledWith(CAMPS_CLINICS_KEY, BUSINESS_ID)
+  })
+
+  it("still prefers the default board when the tenant actually has one (control)", async () => {
+    // The presence control for the test above: an implementation that simply
+    // took `boards[0]` unconditionally would pass it, and would then ignore
+    // the default board for any tenant whose coaching row is not listed first.
+    ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "pipe-assessment", key: ASSESSMENT_KEY, name: "Assessment" },
+      { id: "pipe-coaching", key: DEFAULT_PIPELINE_KEY, name: "Coaching" },
+    ])
+
+    await PipelinePage(props())
 
     expect(readBoard).toHaveBeenCalledWith(DEFAULT_PIPELINE_KEY, BUSINESS_ID)
   })

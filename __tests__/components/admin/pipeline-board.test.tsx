@@ -162,6 +162,22 @@ describe("<PipelinePage>", () => {
       expect(container.querySelector("h1")?.textContent).toBe("Pipeline") // presence control
     })
 
+    it("names the board it fell back to when the tenant has no default board", async () => {
+      // MUTANT: fall through to the literal "coaching" for the heading. The
+      // page would then read "The coaching pipeline." over a board that is not
+      // Coaching — and, worse, would have asked readBoard for a key this
+      // tenant does not have.
+      ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: "pipe-camps", key: "camps_clinics", name: "Camps & Clinics" },
+        { id: "pipe-assessment", key: "assessment", name: "Assessment" },
+      ])
+
+      render(await PipelinePage({ searchParams: Promise.resolve({}) }))
+
+      expect(screen.getByText(/^The Camps & Clinics pipeline\./)).toBeInTheDocument()
+      expect(readBoard).toHaveBeenCalledWith("camps_clinics", "biz-resolved")
+    })
+
     it("renders a pill per board, with the active one marked, when the tenant has several", async () => {
       ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
         { id: "pipe-coaching", key: "coaching", name: "Coaching" },
