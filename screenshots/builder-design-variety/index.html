@@ -35,11 +35,16 @@
   <section>
     <h2>At a glance</h2>
     <table>
-      <tr><th>Brief</th><th>Palette</th><th>Tone (as built)</th><th>Font</th><th>Density</th><th>Radius</th><th>Sections</th></tr>
+      <tr><th>Brief</th><th>Palette</th><th>Tone (stored)</th><th>Font</th><th>Density</th><th>Radius</th><th>Sections</th></tr>
       <tr><td>Waitlist (calm, minimal)</td><td>default</td><td>light</td><td>default</td><td>default</td><td>soft</td><td>6 — form, proof, bullets, faq, cta, footer</td></tr>
       <tr><td>Sales (bold, dark, urgent)</td><td>ink</td><td>dark</td><td>bold</td><td>tight</td><td>sharp</td><td>9 — hero, bullets, proof, steps, testimonial, pricing, faq, cta, footer</td></tr>
-      <tr><td>Camp (vibrant, playful)</td><td>ember</td><td>light</td><td>bold</td><td>tight</td><td>round</td><td>9 — hero, proof, bullets, steps, testimonial, pricing, faq, cta, footer</td></tr>
+      <tr><td>Camp (vibrant, playful)</td><td>ember</td><td>light*</td><td>bold</td><td>tight</td><td>round</td><td>9 — hero, proof, bullets, steps, testimonial, pricing, faq, cta, footer</td></tr>
     </table>
+    <p class="meta">
+      * "Tone (stored)" is the value in the <code>Page design</code> panel, not a description of how the
+      page actually looks. Ember is a dark-seeded palette (near-black paper, white ink), so the camp page
+      reads as a dark page even with "Tone" left on "Light" — see the fix note below.
+    </p>
   </section>
 
   <section>
@@ -71,22 +76,50 @@
   <section>
     <h2>07-09 — Camp: "vibrant, playful, family-friendly... energetic, colourful"</h2>
     <p class="meta">/admin/funnels/&lt;id&gt;/edit/&lt;stepId&gt; and /preview/camp-kfcsg</p>
-    <img src="07-camp-builder-theme-panel.png" alt="The builder screen for the camp page, mid self-review, with the Page design panel open showing the Ember palette.">
-    <img src="08-camp-preview-light.png" alt="The camp page as the AI built it: bright red, green and black, 9 sections including a day-by-day schedule.">
-    <img src="09-camp-preview-dark.png" alt="The same camp page after switching Tone to dark by hand.">
+    <img src="07-camp-builder-theme-panel.png" alt="The builder screen for the camp page, with the Page design panel open showing the Ember palette, after a stylesheet fix.">
+    <img src="08-camp-preview-light.png" alt="The camp page as the AI built it, after the fix: the FAQ section is now a readable near-black band instead of white-on-white.">
+    <img src="09-camp-preview-dark.png" alt="The same camp page with Tone switched to Dark by hand: the FAQ band turns Ember's red brand colour instead of near-black.">
   </section>
 
   <section class="note">
-    <h2>A real bug this check found</h2>
-    <img src="10-sales-pricing-contrast-bug.png" alt="The pricing section's heading and price rendered in dark navy text on a near-black card, almost unreadable.">
+    <h2>Bug #1 (found here, now fixed): a dark-seeded palette on a "light" page was unreadable</h2>
     <p>
-      This is not a screenshot artefact and not caused by the light/dark toggle below — it is present
-      on the AI's own finished page, in its own chosen "dark" tone, before any hand edit. The
-      <code>pricing</code> section's <code>style.tone: "muted"</code> resolves to a card whose heading
-      and price text stay a dark ink colour instead of switching to something readable against a
-      near-black background. It reproduces in both the as-built dark render and the hand-toggled light
-      one. Filed here rather than fixed, since Task 12 is verification, not a design-system patch —
-      see <code>task-12-report.md</code> for the exact section/style values.
+      Screenshots 07-09 above were re-captured after this landed. The page wrapper (<code>.djp-page</code>)
+      never painted the active palette's own background — only <code>data-page-tone="dark"</code> had a
+      rule, and it painted the brand colour, never the palette's "paper" tone. "Ember" seeds a DARK paper
+      (near-black) with a light ink (white), so on this camp page — <code>theme.tone: "light"</code> — the
+      wrapper stayed the host's own unpainted white, and any section relying on that page background
+      (here, the FAQ) rendered Ember's white ink text on that white ground: <strong>invisible questions</strong>.
+      Five of the twelve presets are dark-seeded and were affected the same way. Fixed in commit
+      <code>54ed0449</code>: the wrapper now paints the palette's own background/foreground pair, so a
+      dark-seeded palette reads as a dark page — correctly — even when "Tone" is still set to "Light".
+      Toggling "Tone" to "Dark" (09) now does something different from what it would on a light-seeded
+      palette: it paints the page's brand colour (a red) over those same sections instead of the palette's
+      near-black paper, since the tone override always wins over the palette's own ground.
+    </p>
+  </section>
+
+  <section class="note">
+    <h2>Bug #2 (found here): the pricing section — <em>partially</em> fixed, not fully</h2>
+    <img src="10-sales-pricing-contrast-bug.png" alt="The pricing section's price is now white and readable; its own heading is still dark navy on a near-black card.">
+    <p>
+      Originally reported here: the sales page's <code>pricing</code> section (<code>style.tone: "muted"</code>)
+      rendered both its heading ("One block, one price") and its price ("$1,200") in dark navy ink on a
+      near-black card — <code>.djp-plan-price</code> was hardcoded to <code>color: var(--primary)</code>
+      with no override for a muted section, the same way <code>accent</code>/<code>dark</code> sections
+      already had one. Commit <code>3954dde7</code> fixed <strong>the price</strong> by extending that same
+      <code>color: inherit</code> treatment to <code>.djp-plan-price</code> on a muted tone — confirmed
+      above, it is now white and reads clearly.
+    </p>
+    <p>
+      <strong>It did not fix the section's own heading.</strong> <code>.djp-hd</code> (every section
+      heading in this design system) is separately hardcoded to <code>color: var(--primary)</code>, and
+      only <code>accent</code>/<code>dark</code> tones get a <code>color: inherit</code> override for it —
+      <code>muted</code> still does not. So "One block, one price" is still dark navy on a near-black card,
+      on the AI's own live page, right now, with no hand edit involved. This is the same root cause as bug
+      #1 above (a hardcoded token never proven against a tone/palette combination it can actually meet),
+      recurring in a different element. Reported, not fixed — see <code>task-12-report.md</code> for the
+      exact lines.
     </p>
   </section>
 
@@ -126,6 +159,14 @@
         kept revising it afterwards (the pricing copy and price changed after the first capture), so
         05/06 were re-shot once the document was confirmed to have stopped changing for good. The
         waitlist and camp pages did not drift.
+      </li>
+      <li>
+        <strong>07-09 and 05/06 were re-captured after two stylesheet fixes landed</strong> (bugs #1 and #2
+        above) — same stored documents, same builder settings, only the CSS changed. 10 was re-shot to
+        show the current, still-partial state rather than leave a fixed screenshot captioned as broken, or
+        a broken one captioned as fixed. 01-04 and 02/03 (waitlist) were checked and confirmed unaffected —
+        waitlist has no active palette and no <code>pricing</code> section, so neither fix's gate applies
+        to it; verified by probing <code>.djp-page</code>'s computed background directly, not assumed.
       </li>
     </ul>
   </section>
