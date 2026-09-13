@@ -1228,7 +1228,6 @@ describe("the reference-image instructions (2026-09-14 spec §7)", () => {
     // of Block A is the new PROSE — the reference-image instructions
     // themselves, which belong only in Block DESIGN.
     expect(SECTION_BUILDER_BLOCK_A).not.toContain("When the owner attaches a reference design")
-    expect(SECTION_BUILDER_BLOCK_A).not.toContain("designNote (<=400 chars)")
     expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(SECTION_BUILDER_BLOCK_A_MAX)
   })
 

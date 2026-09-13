@@ -2262,7 +2262,17 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
           onSend={send}
           currentRevision={revision}
           onRestore={restore}
-          busy={busy === "building"}
+          // FINDING 5 (2026-09-14 review): this used to read `busy === "building"`
+          // only. `send`'s own guard is `busy !== "idle"` — it rejects a submit
+          // during "publishing" and "restoring" too — but the composer here was
+          // left LOOKING actionable through both, so pressing Send did nothing
+          // for the text (the parent never clears `input` on a rejected send)
+          // while ChatPane's `submit` cleared the staged reference image
+          // regardless. Widening this to the same `!== "idle"` the real guard
+          // uses is what keeps the image behaving exactly like the text: Send
+          // is truly disabled whenever a submit would be a no-op, so `submit`
+          // never fires and never has a wrong case to clear the image in.
+          busy={busy !== "idle"}
           // AND WHILE THE QUEUE OWNS THIS STEP. An enabled composer here is a
           // literal invitation to open a second build on a page already being
           // written — see `queueOwnsThisStep`. It comes back the moment the

@@ -158,6 +158,14 @@ export function ChatPane({
   // TURN, not to the session — leaving it pinned would silently re-send it on
   // every later turn, spending vision tokens the owner did not ask for and
   // confusing "make the headline bolder" with a fresh brief.
+  //
+  // THIS ONLY STAYS SYMMETRIC WITH THE TEXT because `busy` (from the caller)
+  // is now true for every state in which `onSend`'s own guard would reject the
+  // call, not just "building" — see the call site in FunnelBuilder. The text
+  // survives a rejected send "for free" (the caller only clears its `value`
+  // on acceptance); `submit` has no such signal for the image and clears it
+  // unconditionally, so the only way to keep the two in sync is to make sure
+  // `submit` is never reachable in a state `onSend` would reject.
   const submit = (text: string) => {
     onSend(text, image ?? undefined)
     setImage(null)
@@ -274,7 +282,16 @@ export function ChatPane({
             // rather than being silently ignored.
             const file = event.clipboardData?.files?.[0]
             if (!file) return
-            event.preventDefault()
+            // An inline image copied out of Gmail or Google Docs carries a
+            // FILE *and* plain text on the same clipboard (the image, plus its
+            // alt text or the surrounding line) — `preventDefault()` fired
+            // unconditionally here would swallow that text along with the
+            // image, even though nothing about attaching the image requires
+            // it. Only suppress the default paste when there is no meaningful
+            // text to lose; otherwise let the browser paste the text AND
+            // attach the image.
+            const text = event.clipboardData?.getData("text/plain") ?? ""
+            if (text.trim() === "") event.preventDefault()
             void attach(file)
           }}
           onKeyDown={(event) => {
@@ -292,7 +309,12 @@ export function ChatPane({
               : "Enter to send · Shift+Enter for a new line"}
           </span>
           <div className="flex shrink-0 items-center gap-2">
-            <label className="inline-flex cursor-pointer items-center" aria-label="Attach a reference image">
+            <label
+              className={`inline-flex items-center ${
+                busy || composerDisabled ? "cursor-not-allowed" : "cursor-pointer"
+              }`}
+              aria-label="Attach a reference image"
+            >
               <input
                 type="file"
                 accept="image/*"
@@ -305,7 +327,15 @@ export function ChatPane({
                   event.target.value = ""
                 }}
               />
-              <span className="inline-flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:border-accent">
+              {/* Matches the other disabled controls in this file (e.g. the
+                  textarea's `disabled:opacity-50`): a dimmed, non-hovering
+                  affordance during a build, rather than one that still invites
+                  a click that the `disabled` input silently swallows. */}
+              <span
+                className={`inline-flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground ${
+                  busy || composerDisabled ? "opacity-50" : "hover:border-accent"
+                }`}
+              >
                 <Paperclip className="size-4" aria-hidden />
               </span>
             </label>

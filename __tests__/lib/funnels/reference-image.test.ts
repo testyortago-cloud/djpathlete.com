@@ -5,8 +5,9 @@
 // canvas — jsdom has no real 2D context, so a test that went through
 // `prepareReferenceImage` could only ever assert that a stub was called.
 import { describe, it, expect } from "vitest"
-import { scaledDimensions, referenceImageRejection } from "@/lib/funnels/reference-image"
+import { scaledDimensions, referenceImageRejection, needsReencode } from "@/lib/funnels/reference-image"
 import {
+  BUILDER_REFERENCE_IMAGE_MAX_BASE64,
   BUILDER_REFERENCE_IMAGE_MAX_EDGE,
   BUILDER_REFERENCE_IMAGE_MAX_SOURCE_BYTES,
 } from "@/lib/funnels/sections/builder-config"
@@ -73,5 +74,68 @@ describe("referenceImageRejection", () => {
     expect(
       referenceImageRejection({ type: "image/png", size: BUILDER_REFERENCE_IMAGE_MAX_SOURCE_BYTES }),
     ).toBeNull()
+  })
+})
+
+describe("needsReencode", () => {
+  // FINDING 1: `prepareReferenceImage`'s "already small enough" shortcut keeps
+  // the ORIGINAL bytes whenever pixels are within the bound — but the ROUTE
+  // caps ENCODED CHARACTERS (`BUILDER_REFERENCE_IMAGE_MAX_BASE64`), a
+  // different unit than the client's only other check
+  // (`BUILDER_REFERENCE_IMAGE_MAX_SOURCE_BYTES`, on raw bytes). A small-pixel,
+  // heavy-byte PNG (a photo-heavy brand board) passes every client gate at
+  // full size and is rejected by the route with no actionable message. This
+  // function is the decision `prepareReferenceImage` cannot be honestly
+  // tested making (jsdom has no canvas), so the decision itself is pulled out
+  // and tested exhaustively at its bounds instead.
+
+  it("does not need a re-encode when both pixels and bytes are within bounds", () => {
+    expect(needsReencode({ width: 800, height: 600, encodedLength: 400_000 })).toBe(false)
+  })
+
+  it("needs a re-encode when pixels exceed the long-edge bound, even if bytes are tiny", () => {
+    expect(needsReencode({ width: 3840, height: 2160, encodedLength: 1_000 })).toBe(true)
+  })
+
+  it("needs a re-encode when bytes exceed the base64 cap, even if pixels are tiny", () => {
+    // The finding's exact scenario: a 1400x1200 image (well under 1568px) that
+    // is still heavy in bytes. Pixels alone would wrongly say "keep as-is".
+    expect(
+      needsReencode({
+        width: 1400,
+        height: 1200,
+        encodedLength: BUILDER_REFERENCE_IMAGE_MAX_BASE64 + 1,
+      }),
+    ).toBe(true)
+  })
+
+  it("is false exactly at both bounds (no over-eager re-encode on a legal file)", () => {
+    expect(
+      needsReencode({
+        width: BUILDER_REFERENCE_IMAGE_MAX_EDGE,
+        height: 400,
+        encodedLength: BUILDER_REFERENCE_IMAGE_MAX_BASE64,
+      }),
+    ).toBe(false)
+  })
+
+  it("flips true one character past the base64 bound", () => {
+    expect(
+      needsReencode({
+        width: 800,
+        height: 600,
+        encodedLength: BUILDER_REFERENCE_IMAGE_MAX_BASE64 + 1,
+      }),
+    ).toBe(true)
+  })
+
+  it("flips true one pixel past the long-edge bound", () => {
+    expect(
+      needsReencode({
+        width: BUILDER_REFERENCE_IMAGE_MAX_EDGE + 1,
+        height: 400,
+        encodedLength: 100,
+      }),
+    ).toBe(true)
   })
 })

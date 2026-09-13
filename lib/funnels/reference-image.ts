@@ -20,6 +20,7 @@
 // and they are testable on their own.
 
 import {
+  BUILDER_REFERENCE_IMAGE_MAX_BASE64,
   BUILDER_REFERENCE_IMAGE_MAX_EDGE,
   BUILDER_REFERENCE_IMAGE_MAX_SOURCE_BYTES,
   BUILDER_REFERENCE_IMAGE_MEDIA_TYPES,
@@ -78,6 +79,51 @@ export function referenceImageRejection(file: { type: string; size: number }): s
   return null
 }
 
+/**
+ * Standard (unpadded-alphabet, padded-output) base64 length for `bytes` raw
+ * bytes — the exact figure `FileReader.readAsDataURL` produces, so this can be
+ * computed from `file.size` alone, before ever reading the file.
+ */
+function estimatedBase64Length(bytes: number): number {
+  return Math.ceil(bytes / 3) * 4
+}
+
+/**
+ * Whether the "already small enough, keep the original bytes" shortcut is
+ * SAFE to take.
+ *
+ * There are TWO independent bounds here, in TWO different units, checked by
+ * TWO different layers:
+ *  - `scaledDimensions`/`BUILDER_REFERENCE_IMAGE_MAX_EDGE` bounds PIXELS, and
+ *    is enforced by the code below (re-encoding through the canvas).
+ *  - `BUILDER_REFERENCE_IMAGE_MAX_BASE64` bounds ENCODED CHARACTERS, and is
+ *    enforced by the build route.
+ * A file can be small in pixels (a 1400x1200 PNG is well under the 1568px
+ * edge) while still being large in bytes (a photo-heavy brand board saved as
+ * PNG can weigh several MB) — PNG's compression ratio depends on the image
+ * content, not its dimensions. `BUILDER_REFERENCE_IMAGE_MAX_SOURCE_BYTES`
+ * (10 MB) does not catch this either: it is a generous "don't hang the tab"
+ * ceiling, not a proxy for the route's much tighter 2,000,000-char cap.
+ *
+ * So the "keep original bytes" shortcut must be gated on BOTH bounds. Gating
+ * it on pixels alone is exactly how a client-accepted file becomes a
+ * route-rejected payload: the chip already shows, the request goes out, and
+ * the route's generic "Invalid request" is the owner's first sign anything was
+ * wrong, with no way to tell what to do differently.
+ *
+ * `builder-config.test.ts` asserts the source-byte bound is looser than the
+ * encoded-char bound as a DESIRABLE property (checking early is cheap, and a
+ * tight source bound would reject files a re-encode could still shrink to
+ * fit). That is only actually safe once every path that CAN exceed the
+ * encoded bound re-encodes when it must — this function is that gate.
+ */
+export function needsReencode(input: { width: number; height: number; encodedLength: number }): boolean {
+  const target = scaledDimensions(input.width, input.height)
+  const tooManyPixels = target.width !== input.width || target.height !== input.height
+  const tooManyBytes = input.encodedLength > BUILDER_REFERENCE_IMAGE_MAX_BASE64
+  return tooManyPixels || tooManyBytes
+}
+
 /** `Blob` -> bare base64, with the `data:<type>;base64,` prefix stripped. */
 async function toBareBase64(blob: Blob): Promise<string> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -93,8 +139,10 @@ async function toBareBase64(blob: Blob): Promise<string> {
 /**
  * Decode, downscale if needed, and encode for the wire.
  *
- * An image already inside the bound keeps its ORIGINAL BYTES and media type —
- * re-encoding a small PNG costs quality for nothing.
+ * An image already inside BOTH bounds — pixels AND encoded size — keeps its
+ * ORIGINAL BYTES and media type; re-encoding a small PNG costs quality for
+ * nothing. Anything over EITHER bound goes through the canvas re-encode, per
+ * `needsReencode`'s reasoning.
  *
  * The canvas is filled WHITE before `drawImage`. A PNG with an alpha channel
  * flattens onto black otherwise, and a brand board with a transparent
@@ -106,8 +154,12 @@ export async function prepareReferenceImage(file: File): Promise<ReferenceImage>
 
   const bitmap = await createImageBitmap(file)
   try {
-    const target = scaledDimensions(bitmap.width, bitmap.height)
-    if (target.width === bitmap.width && target.height === bitmap.height) {
+    const shouldReencode = needsReencode({
+      width: bitmap.width,
+      height: bitmap.height,
+      encodedLength: estimatedBase64Length(file.size),
+    })
+    if (!shouldReencode) {
       return {
         mediaType: file.type as BuilderReferenceImageMediaType,
         data: await toBareBase64(file),
@@ -116,6 +168,11 @@ export async function prepareReferenceImage(file: File): Promise<ReferenceImage>
       }
     }
 
+    // `scaledDimensions` is a no-op on width/height when only the BYTE bound
+    // tripped `needsReencode` (a small-pixel, heavy-byte image) — the canvas
+    // still re-encodes at the same dimensions, which is what shrinks it: a
+    // JPEG at q0.85 is routinely a fraction of an equivalent PNG's size.
+    const target = scaledDimensions(bitmap.width, bitmap.height)
     const canvas = document.createElement("canvas")
     canvas.width = target.width
     canvas.height = target.height
@@ -133,9 +190,17 @@ export async function prepareReferenceImage(file: File): Promise<ReferenceImage>
     )
     if (!blob) throw new Error("That image could not be prepared in this browser.")
 
+    const data = await toBareBase64(blob)
+    if (data.length > BUILDER_REFERENCE_IMAGE_MAX_BASE64) {
+      // Pathological input: even a 1568px q0.85 JPEG didn't fit. Name the real
+      // problem rather than surface the route's generic rejection — `attach()`
+      // in ChatPane renders this message as a visible red line.
+      throw new Error("That image is too complex to send as a reference, even after shrinking it. Try a simpler image or crop it down.")
+    }
+
     return {
       mediaType: "image/jpeg",
-      data: await toBareBase64(blob),
+      data,
       name: file.name || "reference",
       bytes: blob.size,
     }
