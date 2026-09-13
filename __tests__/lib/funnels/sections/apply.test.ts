@@ -19,7 +19,12 @@
 //     of batch order) — so this file pins the ordering the other way
 //     around, which only a correctly-sequential implementation gets right.
 import { describe, it, expect } from "vitest"
-import { sectionStyleSchema, type SectionDoc, type Section } from "@/lib/funnels/sections/registry"
+import {
+  sectionStyleSchema,
+  sectionDocThemeSchema,
+  type SectionDoc,
+  type Section,
+} from "@/lib/funnels/sections/registry"
 import {
   applyOps,
   opSchema,
@@ -563,6 +568,84 @@ describe("applyOps — update_section.props merges shallowly per top-level key",
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.doc.theme).toEqual({ tone: "light", accent: "primary", radius: "round" })
+  })
+})
+
+// ===========================================================================
+// Final whole-branch review, finding 3 (2026-09-13): an explicit `null` in a
+// THEME patch also means "delete this key" — mirroring `style` exactly, per
+// the describe block above. Before this fix, `sectionDocThemeSchema.partial()`
+// (the schema `opSchema` validated a `set_theme` patch against) rejected
+// `null` outright, so a page that took a palette (`theme.palette`) had no way
+// back to "use the tenant brand kit" — `prompt.ts` tells the model that
+// leaving `palette` unset means exactly that, and it was unreachable after
+// turn 1. `tone`/`accent`/`radius` are REQUIRED on the stored theme, unlike
+// every `style` key, so they get the opposite treatment: nulling one must be
+// refused, not silently accepted and left to fail somewhere downstream.
+// ===========================================================================
+
+describe("applyOps — set_theme.theme: an explicit null deletes an optional theme key", () => {
+  it("nulling theme.palette removes the key entirely and succeeds", () => {
+    const doc = baseDoc({
+      theme: { tone: "light", accent: "accent", radius: "soft", palette: { preset: "ember" } },
+      sections: nineSections(),
+    })
+    const result = applyOps(doc, [{ op: "set_theme", theme: { palette: null } }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect("palette" in result.doc.theme).toBe(false)
+    // Sibling theme keys are untouched by the deletion.
+    expect(result.doc.theme.tone).toBe("light")
+    expect(result.doc.theme.radius).toBe("soft")
+  })
+
+  it("nulling theme.font removes it too, and a sibling optional key survives", () => {
+    const doc = baseDoc({
+      theme: { tone: "light", accent: "accent", radius: "soft", font: "editorial", density: "airy" },
+      sections: nineSections(),
+    })
+    const result = applyOps(doc, [{ op: "set_theme", theme: { font: null } }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect("font" in result.doc.theme).toBe(false)
+    expect(result.doc.theme.density).toBe("airy")
+  })
+
+  it("opSchema itself accepts a null value for an optional theme key — the schema half of the fix", () => {
+    expect(opSchema.safeParse({ op: "set_theme", theme: { palette: null } }).success).toBe(true)
+  })
+
+  // Every OPTIONAL theme key (palette/font/density/width/rhythm) accepts a
+  // null patch value — confirmed for all five, not just the one the review
+  // happened to name.
+  it("every optional theme key accepts a null patch value", () => {
+    const optionalKeys = Object.entries(sectionDocThemeSchema.shape)
+      .filter(([, schema]) => schema.isOptional())
+      .map(([key]) => key)
+    expect(optionalKeys.sort()).toEqual(["density", "font", "palette", "rhythm", "width"].sort())
+    for (const key of optionalKeys) {
+      const parsed = opSchema.safeParse({ op: "set_theme", theme: { [key]: null } })
+      expect(parsed.success, `theme.${key} rejected a null patch value`).toBe(true)
+    }
+  })
+
+  // The mirror image: tone/accent/radius are REQUIRED on the stored theme, so
+  // nulling any of them must be refused at THIS layer — op-schema validation
+  // — never allowed through to produce a document `sectionDocSchema` would
+  // then have to reject downstream.
+  it("nulling a REQUIRED theme key (tone, accent, or radius) is rejected by opSchema itself", () => {
+    for (const key of ["tone", "accent", "radius"] as const) {
+      const parsed = opSchema.safeParse({ op: "set_theme", theme: { [key]: null } })
+      expect(parsed.success, `theme.${key} accepted a null patch value but is required`).toBe(false)
+    }
+  })
+
+  it("a batch nulling a required theme key is rejected wholesale by applyOps, doc untouched", () => {
+    const doc = baseDoc({ theme: { tone: "light", accent: "accent", radius: "soft" }, sections: nineSections() })
+    const themeBefore = doc.theme
+    const result = applyOps(doc, [{ op: "set_theme", theme: { tone: null } }])
+    expect(result.ok).toBe(false)
+    expect(doc.theme).toBe(themeBefore)
   })
 })
 

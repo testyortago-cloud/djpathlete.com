@@ -83,7 +83,7 @@ import { PublishReview } from "./builder/PublishReview"
 import { SectionInspector } from "./builder/SectionInspector"
 import { ThemePanel, type ThemePanelBrandKit, type BrandKitPatch } from "./builder/ThemePanel"
 import { patchForPath, valueAtPath } from "@/lib/funnels/sections/patch"
-import type { SectionDocTheme } from "@/lib/funnels/sections/registry"
+import type { SectionDocThemePatch } from "@/lib/funnels/sections/registry"
 import { usePublishStepConnections, useRegisterRepair, useDraftQueue } from "./connections-context"
 // THE SENTENCES, SHARED. `publishFunnel` itself is deliberately not used here —
 // this screen has a transcript to write a refusal into, which is strictly more
@@ -638,7 +638,7 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   // `ThemePanel.tsx`'s own header for why this split (patch in, op out) is
   // where the "no second write path" rule is actually enforced.
   const changeTheme = useCallback(
-    (patch: Partial<SectionDocTheme>) => {
+    (patch: SectionDocThemePatch) => {
       sendOps([{ op: "set_theme", theme: patch }])
     },
     [sendOps],

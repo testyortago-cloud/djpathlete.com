@@ -66,6 +66,52 @@ describe("ThemePanel", () => {
     expect(tone.value).toBe("light")
   })
 
+  // Final whole-branch review, finding 3 (2026-09-13): before this fix there
+  // was no way to send a page's palette back to "use the tenant's brand kit"
+  // — `set_theme` had no delete sentinel. These pin the control that closes
+  // that gap, and that it is a genuinely different write from "My brand
+  // colours" (a snapshot), not a relabelled shortcut to the same patch.
+  describe("clearing an optional theme key", () => {
+    it("offers no Clear button when no palette is set — there is nothing to clear", () => {
+      render(<ThemePanel theme={theme} onChange={noop} brandKit={null} />)
+      expect(screen.queryByRole("button", { name: /^clear$/i })).toBeNull()
+    })
+
+    it("offers a Clear button once a palette is set, and it deletes the palette rather than snapshotting one", async () => {
+      const onChange = vi.fn()
+      const themed: SectionDocTheme = { ...theme, palette: { preset: "ember" } }
+      render(<ThemePanel theme={themed} onChange={onChange} brandKit={null} />)
+      await userEvent.click(screen.getByRole("button", { name: /^clear$/i }))
+      expect(onChange).toHaveBeenCalledWith({ palette: null })
+    })
+
+    it("choosing 'Page default' for an optional key like font pairing deletes it, not sets it to a string", async () => {
+      const onChange = vi.fn()
+      const themed: SectionDocTheme = { ...theme, font: "editorial" }
+      render(<ThemePanel theme={themed} onChange={onChange} brandKit={null} />)
+      await userEvent.selectOptions(screen.getByLabelText(/font pairing/i), "")
+      expect(onChange).toHaveBeenCalledWith({ font: null })
+    })
+
+    it("the four optional theme selects always offer 'Page default', even once a real value is already chosen", () => {
+      const themed: SectionDocTheme = { ...theme, font: "editorial", density: "airy", width: "wide", rhythm: "banded" }
+      render(<ThemePanel theme={themed} onChange={noop} brandKit={null} />)
+      for (const label of [/font pairing/i, /^density$/i, /page width/i, /section rhythm/i]) {
+        const select = screen.getByLabelText(label) as HTMLSelectElement
+        expect(Array.from(select.options).map((o) => o.value), label.source).toContain("")
+      }
+    })
+
+    it("the required tone/accent/radius selects never gain a 'Page default' option, even indirectly", () => {
+      const themed: SectionDocTheme = { tone: "dark", accent: "primary", radius: "round" }
+      render(<ThemePanel theme={themed} onChange={noop} brandKit={null} />)
+      for (const label of [/^tone$/i, /accent colour/i, /corner radius/i]) {
+        const select = screen.getByLabelText(label) as HTMLSelectElement
+        expect(Array.from(select.options).map((o) => o.value), label.source).not.toContain("")
+      }
+    })
+  })
+
   it("saving a brand kit calls onSaveBrandKit with the hex patch and never onChange", async () => {
     const onChange = vi.fn()
     const onSaveBrandKit = vi.fn().mockResolvedValue(undefined)

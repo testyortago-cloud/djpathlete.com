@@ -80,7 +80,7 @@ import { z } from "zod"
 import {
   sectionSchema,
   sectionStylePatchSchema,
-  sectionDocThemeSchema,
+  sectionDocThemePatchSchema,
   sectionDocSchema,
   SECTION_REGISTRY,
   parseSection,
@@ -134,7 +134,15 @@ export const opSchema = z.discriminatedUnion("op", [
   }),
   z.object({ op: z.literal("move_section"), id: sectionIdRefSchema, after: afterAnchorSchema }),
   z.object({ op: z.literal("remove_section"), id: sectionIdRefSchema }),
-  z.object({ op: z.literal("set_theme"), theme: sectionDocThemeSchema.partial() }),
+  // `sectionDocThemePatchSchema`, NOT `sectionDocThemeSchema.partial()` (final
+  // whole-branch review, finding 3): `.partial()` only lets a key be OMITTED,
+  // never explicitly DELETED, so a page that took a palette had no way back
+  // to "match our other pages" (registry.ts's own comment on the patch schema
+  // has the full history — this is the same shape fix `sectionStylePatchSchema`
+  // already got for `style`). `tone`/`accent`/`radius` stay non-nullable: they
+  // are required on the stored `SectionDocTheme`, so `{ tone: null }` fails
+  // right here, at op-schema validation, before any merge is attempted.
+  z.object({ op: z.literal("set_theme"), theme: sectionDocThemePatchSchema }),
 ])
 
 export type SectionOp = z.infer<typeof opSchema>
@@ -593,10 +601,17 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
     }
 
     if (op.op === "set_theme") {
-      // Partial merge over the existing theme (plan §4, line 351/355):
-      // `{...theme, ...op.theme}`. `sections` is left as whatever it
-      // already was — untouched by this op, so if nothing else in the
-      // batch touched it, it is still the literal `doc.sections` array.
+      // Partial merge over the existing theme (plan §4, line 351/355), now
+      // via `applyDeletingPatch` instead of a plain `{...theme, ...op.theme}`
+      // spread (final whole-branch review, finding 3, 2026-09-13) — same
+      // reasoning as `style` above: a plain spread can ADD and REPLACE a key
+      // but never REMOVE one, so there was no way to send a page's palette
+      // back to "use the tenant brand kit". `sectionDocThemePatchSchema`
+      // (registry.ts) is what lets `null` reach here at all, and only for
+      // the keys that are actually optional on the stored theme —
+      // `tone`/`accent`/`radius` are required there, so a patch naming one of
+      // them `null` never gets this far; it fails Phase 1's `opSchema`
+      // validation above.
       //
       // An EMPTY theme patch (`{op:"set_theme", theme:{}}`) is a valid op
       // shape but genuinely changes nothing, so `themeChanged` is only set
@@ -604,7 +619,7 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
       // receipt would claim a theme change that didn't happen (Fix round 1,
       // minor).
       if (Object.keys(op.theme).length > 0) {
-        theme = { ...theme, ...op.theme }
+        theme = applyDeletingPatch(theme, op.theme as Record<string, unknown>) as SectionDocTheme
         themeChanged = true
       }
       continue

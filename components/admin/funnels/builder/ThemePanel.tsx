@@ -20,12 +20,26 @@
 // this tenant owns should see the new brand kit too. It goes through
 // `onSaveBrandKit`, which the caller wires to the dedicated write route
 // (`app/api/admin/businesses/brand/route.ts`), never to `onOps`.
+//
+// CLEARING A PALETTE (final whole-branch review, finding 3, 2026-09-13):
+// `PaletteField`'s "Clear" button below is a THIRD, distinct write from the
+// two above — `onChange({ palette: null })` — and it is the one this panel
+// was MISSING. "My brand colours" SNAPSHOTS the tenant's current brand/accent
+// into this page's own `theme.palette`, frozen at today's values; clearing
+// instead DELETES `theme.palette` entirely, returning the page to
+// `paletteTokens`'s fallback (doc.ts) — dynamically the tenant's brand kit
+// if they have one, or the app default if not — so it keeps tracking the
+// brand kit if it changes later, exactly what `prompt.ts` already tells the
+// model "leave `palette` unset" means. Before this fix there was no way back:
+// `set_theme` had no delete sentinel for any optional key, so a page that
+// took a palette could only be moved to ANOTHER palette, never returned to
+// "no palette at all".
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { PALETTE_PRESETS, PALETTE_TABLE, type PaletteName } from "@/lib/funnels/sections/palettes"
-import type { SectionDocTheme } from "@/lib/funnels/sections/registry"
+import type { SectionDocTheme, SectionDocThemePatch } from "@/lib/funnels/sections/registry"
 
 /** The two tenant colours this panel can offer and can write. Optional accent, same as `BrandKit`. */
 export interface ThemePanelBrandKit {
@@ -41,8 +55,14 @@ export interface BrandKitPatch {
 
 export interface ThemePanelProps {
   theme: SectionDocTheme
-  /** A partial `SectionDocTheme` patch. The caller turns this into a `set_theme` op. */
-  onChange: (patch: Partial<SectionDocTheme>) => void
+  /**
+   * A theme patch. The caller turns this into a `set_theme` op.
+   * `SectionDocThemePatch`, not `Partial<SectionDocTheme>` (final
+   * whole-branch review, finding 3): the optional keys accept `null` as an
+   * explicit delete sentinel, same shape `SectionInspector.tsx` already
+   * sends for `style`/`props` — required keys (tone/accent/radius) do not.
+   */
+  onChange: (patch: SectionDocThemePatch) => void
   /** `null` when this tenant has not chosen a brand yet — see `resolveBrandKit`. */
   brandKit: ThemePanelBrandKit | null
   /**
@@ -68,13 +88,27 @@ function ThemeSelect({
   value,
   options,
   disabled,
+  clearable = false,
   onChange,
 }: {
   label: string
   value: string | undefined
   options: readonly string[]
   disabled: boolean
-  onChange: (next: string) => void
+  /**
+   * Whether "Page default" is a REAL, always-available choice that sends
+   * `null` — clearing the key back to its default — rather than just a
+   * placeholder shown while nothing has been picked yet. Only true for the
+   * four OPTIONAL theme keys (font/density/width/rhythm): Tone/Accent
+   * colour/Corner radius are required on the stored theme
+   * (`sectionDocThemeSchema`), so `sectionDocThemePatchSchema` does not make
+   * them nullable — `set_theme` refuses a null there at validation, so this
+   * control never offers it (final whole-branch review, finding 3,
+   * 2026-09-13; this used to be true of every key here, see the git history
+   * for the fix that closed it for the other four).
+   */
+  clearable?: boolean
+  onChange: (next: string | null) => void
 }) {
   const id = `theme-${label.toLowerCase().replace(/\s+/g, "-")}`
   return (
@@ -87,14 +121,17 @@ function ThemeSelect({
         className="h-9 w-full rounded-md border border-border bg-white px-2 text-sm"
         value={value ?? ""}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => onChange(event.target.value === "" ? null : event.target.value)}
       >
-        {/* Shown only while nothing has been chosen yet — there is no way to
-            unset an optional theme key once one is picked (`set_theme` merges
-            these shallowly and has no delete sentinel for them, unlike a
-            section prop's `null`), so this option disappears the moment a
-            real one is selected and never reappears. */}
-        {value === undefined ? (
+        {clearable ? (
+          // A REAL, always-selectable choice — picking it sends `null`,
+          // deleting the key via `sectionDocThemePatchSchema`'s delete
+          // sentinel, same shape a section style patch already uses.
+          <option value="">Page default</option>
+        ) : value === undefined ? (
+          // Required key, nothing picked yet: a disabled placeholder only,
+          // never re-offered once a real value is chosen — clearing a
+          // required key must stay impossible, not just discouraged.
           <option value="" disabled>
             Not set
           </option>
@@ -110,12 +147,16 @@ function ThemeSelect({
 }
 
 /**
- * The twelve preset swatches plus a custom two-colour option.
+ * The twelve preset swatches, a custom two-colour option, and a "Clear"
+ * control that deletes `theme.palette` entirely.
  *
  * Presets write `{ preset }`; custom writes `{ brand, accent }` — the exact
  * two shapes `paletteSchema` accepts (design spec §3.1). Every swatch's own
  * accent and surface tokens are DERIVED (`PALETTE_TABLE`), never chosen here,
- * so this panel cannot drift from what `themeCss` actually paints.
+ * so this panel cannot drift from what `themeCss` actually paints. Clearing
+ * writes `{ palette: null }`, NOT another shape of `{ brand, accent }` — see
+ * this file's header for why that is a different write than "My brand
+ * colours" and not merely a shorter path to the same one.
  */
 function PaletteField({
   value,
@@ -126,7 +167,7 @@ function PaletteField({
   value: SectionDocTheme["palette"]
   brandKit: ThemePanelBrandKit | null
   disabled: boolean
-  onChange: (patch: Partial<SectionDocTheme>) => void
+  onChange: (patch: SectionDocThemePatch) => void
 }) {
   const activePreset = value && "preset" in value ? value.preset : null
   const activeCustom = value && "brand" in value ? value : null
@@ -139,7 +180,26 @@ function PaletteField({
   return (
     <div className="col-span-2 space-y-3">
       <div>
-        <p className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">Palette</p>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Palette</p>
+          {/* Only offered once a palette is actually set — there is nothing
+              to clear otherwise. Sends `{ palette: null }`, the delete
+              sentinel `sectionDocThemePatchSchema` now accepts, NOT another
+              `{ brand, accent }` write: this returns the page to NO stored
+              palette (paletteTokens' own fallback in doc.ts), which keeps
+              tracking the tenant's brand kit if it changes later, unlike "My
+              brand colours" below, which snapshots today's values. */}
+          {value !== undefined ? (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange({ palette: null })}
+              className="text-xs text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground disabled:opacity-50"
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
         <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
           {PALETTE_PRESETS.map((name) => {
             const tokens = PALETTE_TABLE[name]
@@ -343,28 +403,32 @@ export function ThemePanel({ theme, onChange, brandKit, onSaveBrandKit, busy = f
           value={theme.font}
           options={["athletic", "editorial", "clean", "bold", "technical"]}
           disabled={busy}
-          onChange={(next) => onChange({ font: next as SectionDocTheme["font"] })}
+          clearable
+          onChange={(next) => onChange({ font: next as SectionDocTheme["font"] | null })}
         />
         <ThemeSelect
           label="Density"
           value={theme.density}
           options={["tight", "normal", "airy"]}
           disabled={busy}
-          onChange={(next) => onChange({ density: next as SectionDocTheme["density"] })}
+          clearable
+          onChange={(next) => onChange({ density: next as SectionDocTheme["density"] | null })}
         />
         <ThemeSelect
           label="Page width"
           value={theme.width}
           options={["narrow", "normal", "wide", "full"]}
           disabled={busy}
-          onChange={(next) => onChange({ width: next as SectionDocTheme["width"] })}
+          clearable
+          onChange={(next) => onChange({ width: next as SectionDocTheme["width"] | null })}
         />
         <ThemeSelect
           label="Section rhythm"
           value={theme.rhythm}
           options={["flat", "alternating", "banded"]}
           disabled={busy}
-          onChange={(next) => onChange({ rhythm: next as SectionDocTheme["rhythm"] })}
+          clearable
+          onChange={(next) => onChange({ rhythm: next as SectionDocTheme["rhythm"] | null })}
         />
 
         <div className="col-span-2 border-t border-border pt-3">
@@ -375,21 +439,25 @@ export function ThemePanel({ theme, onChange, brandKit, onSaveBrandKit, busy = f
               value={theme.tone}
               options={["light", "dark"]}
               disabled={busy}
-              onChange={(next) => onChange({ tone: next as SectionDocTheme["tone"] })}
+              // Not clearable: required on the stored theme (see ThemeSelect's
+              // own comment) — `next` here is never actually null, since
+              // `clearable` is false and this select never offers a
+              // null-sending option, but the guard keeps the type honest.
+              onChange={(next) => next !== null && onChange({ tone: next as SectionDocTheme["tone"] })}
             />
             <ThemeSelect
               label="Accent colour"
               value={theme.accent}
               options={["accent", "primary"]}
               disabled={busy}
-              onChange={(next) => onChange({ accent: next as SectionDocTheme["accent"] })}
+              onChange={(next) => next !== null && onChange({ accent: next as SectionDocTheme["accent"] })}
             />
             <ThemeSelect
               label="Corner radius"
               value={theme.radius}
               options={["sharp", "soft", "round"]}
               disabled={busy}
-              onChange={(next) => onChange({ radius: next as SectionDocTheme["radius"] })}
+              onChange={(next) => next !== null && onChange({ radius: next as SectionDocTheme["radius"] })}
             />
           </div>
         </div>

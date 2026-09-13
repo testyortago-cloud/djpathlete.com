@@ -488,8 +488,9 @@ export const BUILDER_RULES: readonly string[] = [
     "`lines`, `steps`) is REPLACED WHOLESALE. To change one bullet, send the whole array back with that one " +
     "element edited — there is no element-level patch.",
 
-  "A props OR style key whose patch value is `null` is DELETED. That is the only way to remove an optional field, " +
-    "because `undefined` does not survive JSON. Nulling a REQUIRED field fails validation and rejects the batch.",
+  "A props, style, or theme key whose patch value is `null` is DELETED. That is the only way to remove an " +
+    "optional field, because `undefined` does not survive JSON. Nulling a REQUIRED field fails validation and " +
+    "rejects the batch.",
 
   "`after: null` means INSERT AT THE VERY TOP, on both `add_section` and `move_section`. It is not 'append' and " +
     "it is not an error — it is how you put something above the hero.",

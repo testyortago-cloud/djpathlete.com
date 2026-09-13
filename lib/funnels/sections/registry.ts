@@ -303,6 +303,54 @@ export const sectionDocThemeSchema = z.object({
 export type SectionDocTheme = z.infer<typeof sectionDocThemeSchema>
 
 // ---------------------------------------------------------------------------
+// The THEME PATCH shape `set_theme.theme` actually accepts (apply.ts) —
+// final whole-branch review, finding 3 (2026-09-13). `sectionDocThemeSchema`
+// above is the STORED shape, and until this fix `apply.ts` validated a patch
+// against `sectionDocThemeSchema.partial()` — the exact same shape
+// `sectionStylePatchSchema`'s own comment already diagnosed as wrong for
+// `style`, ported over unfixed to `theme`: `.partial()` only lets a key be
+// OMITTED, never explicitly DELETED, so `{ palette: null }` — "go back to the
+// tenant's brand kit" — parsed as `undefined` was dropped by JSON, or was
+// rejected outright depending on how the caller shaped it, and there was no
+// spelling that survived the wire and meant "remove this". A page that took
+// a palette had no way back; `prompt.ts` tells the model "leaving `palette`
+// unset means match our other pages", which is unreachable after turn 1.
+//
+// UNLIKE `sectionStylePatchSchema`, not every key here is nullable:
+// `tone`/`accent`/`radius` are REQUIRED on `SectionDocTheme` (unchanged since
+// before the design-system widening), so nulling one would let `set_theme`
+// produce a document `sectionDocSchema` itself would refuse. Rather than
+// hand-listing which three are exempt, this asks `sectionDocThemeSchema`
+// itself: a key that is ALREADY optional there may be explicitly deleted
+// (`.nullable()`, same delete-sentinel shape as the style patch); a key that
+// is required there may only be OMITTED from a patch (`.optional()`, no
+// `.nullable()`) — so `{ tone: null }` fails Zod validation at
+// `opSchema.safeParse` (apply.ts Phase 1), before `applyOps` ever gets a
+// candidate document to merge, exactly like an invalid enum value would.
+// ---------------------------------------------------------------------------
+
+export const sectionDocThemePatchSchema = z.object(
+  Object.fromEntries(
+    Object.entries(sectionDocThemeSchema.shape).map(([key, schema]) => {
+      const s = schema as z.ZodTypeAny
+      return [key, s.isOptional() ? s.nullable() : s.optional()]
+    }),
+  ),
+) as z.ZodType<SectionDocThemePatch>
+
+// Derived from `SectionDocTheme` itself, not a hand-typed `"tone" | "accent" |
+// "radius"` list: a key is "required" here exactly when it does NOT already
+// accept `undefined` on the stored shape, mirroring the runtime `isOptional()`
+// check above so the type can never drift from the validator it describes.
+type RequiredThemeKeys = { [K in keyof SectionDocTheme]-?: undefined extends SectionDocTheme[K] ? never : K }[keyof SectionDocTheme]
+
+export type SectionDocThemePatch = {
+  [K in RequiredThemeKeys]?: SectionDocTheme[K]
+} & {
+  [K in Exclude<keyof SectionDocTheme, RequiredThemeKeys>]?: SectionDocTheme[K] | null
+}
+
+// ---------------------------------------------------------------------------
 // Section kinds — a closed set (plan §2 table, lines 190-200, plus `proof`).
 // Deliberately no `nav`: a landing page's job is to remove exits.
 //
