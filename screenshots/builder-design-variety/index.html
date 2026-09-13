@@ -1,0 +1,132 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Builder design variety — three briefs, three real pages</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 48px 32px 96px; background: #f6f7f8; color: #16303a;
+         font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  .lede { color: #5c6b70; margin: 0 0 36px; max-width: 78ch; }
+  section { background: #fff; border: 1px solid #e2e6e8; border-radius: 14px; padding: 24px; margin: 0 0 28px; }
+  h2 { font-size: 19px; margin: 0 0 4px; }
+  .meta { color: #5c6b70; font-size: 14px; margin: 0 0 16px; }
+  img { display: block; width: 100%; height: auto; border: 1px solid #e2e6e8; border-radius: 8px; }
+  code { background: #eef1f2; padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+  ul { margin: 10px 0 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .note { background: #fff8e8; border: 1px solid #f0e0b8; border-radius: 10px; padding: 16px 20px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .grid3 img { height: 180px; object-fit: cover; object-position: top; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { border: 1px solid #e2e6e8; padding: 6px 10px; text-align: left; }
+</style>
+<main>
+  <h1>Three briefs, three real pages</h1>
+  <p class="lede">
+    The owner's complaint was "why is the layout of it always the same." Every page below was
+    created through the real "New funnel" dialog on <code>/admin/funnels</code>, given a
+    deliberately different brief in the "Describe it" field, and built by the real page-builder
+    chat — the app composes that field into the first real chat turn, so this is a genuine model
+    call spending real credits, not a fixture. Script:
+    <code>scripts/capture-builder-design-variety.mjs</code>.
+  </p>
+
+  <section>
+    <h2>At a glance</h2>
+    <table>
+      <tr><th>Brief</th><th>Palette</th><th>Tone (as built)</th><th>Font</th><th>Density</th><th>Radius</th><th>Sections</th></tr>
+      <tr><td>Waitlist (calm, minimal)</td><td>default</td><td>light</td><td>default</td><td>default</td><td>soft</td><td>6 — form, proof, bullets, faq, cta, footer</td></tr>
+      <tr><td>Sales (bold, dark, urgent)</td><td>ink</td><td>dark</td><td>bold</td><td>tight</td><td>sharp</td><td>9 — hero, bullets, proof, steps, testimonial, pricing, faq, cta, footer</td></tr>
+      <tr><td>Camp (vibrant, playful)</td><td>ember</td><td>light</td><td>bold</td><td>tight</td><td>round</td><td>9 — hero, proof, bullets, steps, testimonial, pricing, faq, cta, footer</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>The headline comparison</h2>
+    <p class="meta">Same viewport, same builder, three different briefs — first screen of each real page.</p>
+    <div class="grid3">
+      <img src="02-waitlist-preview-light.png" alt="Waitlist page — calm, light, tan accent.">
+      <img src="06-sales-preview-light.png" alt="Sales page — dark, bold, red accent.">
+      <img src="08-camp-preview-light.png" alt="Camp page — bright red and green, playful.">
+    </div>
+  </section>
+
+  <section>
+    <h2>01-03 — Waitlist: "a calm, minimal waitlist signup... nothing loud"</h2>
+    <p class="meta">/admin/funnels/&lt;id&gt;/edit/&lt;stepId&gt; and /preview/waitlist-k9m0w</p>
+    <img src="01-waitlist-builder-theme-panel.png" alt="The builder screen for the waitlist page, with the Page design panel open.">
+    <img src="02-waitlist-preview-light.png" alt="The waitlist page as the AI built it: light, spacious, tan accent, 6 sections.">
+    <img src="03-waitlist-preview-dark.png" alt="The same waitlist page after switching Tone to dark by hand in the Page design panel.">
+  </section>
+
+  <section>
+    <h2>04-06 — Sales: "bold, intense, long-form... dark, dramatic, high-contrast"</h2>
+    <p class="meta">/admin/funnels/&lt;id&gt;/edit/&lt;stepId&gt; and /preview/sales-k9m0w</p>
+    <img src="04-sales-builder-theme-panel.png" alt="The builder screen for the sales page, with the Page design panel open.">
+    <img src="05-sales-preview-dark.png" alt="The sales page as the AI built it: dark navy, deep-red accent, 9 sections including pricing and a guarantee.">
+    <img src="06-sales-preview-light.png" alt="The same sales page after switching Tone to light by hand.">
+  </section>
+
+  <section>
+    <h2>07-09 — Camp: "vibrant, playful, family-friendly... energetic, colourful"</h2>
+    <p class="meta">/admin/funnels/&lt;id&gt;/edit/&lt;stepId&gt; and /preview/camp-kfcsg</p>
+    <img src="07-camp-builder-theme-panel.png" alt="The builder screen for the camp page, mid self-review, with the Page design panel open showing the Ember palette.">
+    <img src="08-camp-preview-light.png" alt="The camp page as the AI built it: bright red, green and black, 9 sections including a day-by-day schedule.">
+    <img src="09-camp-preview-dark.png" alt="The same camp page after switching Tone to dark by hand.">
+  </section>
+
+  <section class="note">
+    <h2>A real bug this check found</h2>
+    <img src="10-sales-pricing-contrast-bug.png" alt="The pricing section's heading and price rendered in dark navy text on a near-black card, almost unreadable.">
+    <p>
+      This is not a screenshot artefact and not caused by the light/dark toggle below — it is present
+      on the AI's own finished page, in its own chosen "dark" tone, before any hand edit. The
+      <code>pricing</code> section's <code>style.tone: "muted"</code> resolves to a card whose heading
+      and price text stay a dark ink colour instead of switching to something readable against a
+      near-black background. It reproduces in both the as-built dark render and the hand-toggled light
+      one. Filed here rather than fixed, since Task 12 is verification, not a design-system patch —
+      see <code>task-12-report.md</code> for the exact section/style values.
+    </p>
+  </section>
+
+  <section class="note">
+    <h2>What this does and does not prove</h2>
+    <ul>
+      <li>
+        <strong>Real variety, unprompted about design mechanics.</strong> Each brief named only mood,
+        audience and content priorities — never a palette name, a recipe name, or a theme key. The
+        model chose "ink" (near-black/red) for the sales page, "ember" (red/green) for the camp page,
+        and left the waitlist page on defaults; it chose a 6-section capture-style layout for the
+        waitlist and 9-section long-form layouts for the other two. None of that was dictated.
+      </li>
+        <li>
+        <strong>The light/dark pairs are a control, not a third design.</strong> Toggling "Tone" in the
+        Page design panel is a plain, non-AI edit — the same op path a click-to-edit uses. It proves the
+        control is reachable by hand and that every page repaints correctly in both tones; it is not a
+        second example of the AI choosing a look.
+      </li>
+      <li>
+        <strong>The waitlist page under-uses the new knobs.</strong> Its stored theme only sets
+        <code>tone</code>, <code>accent</code> and <code>radius</code> — font, density, width and
+        rhythm were left unset and fall back to defaults. That is a legitimate choice for a
+        deliberately plain, "nothing loud" brief, but it means one of the three pages is a weaker
+        demonstration of the new controls than the other two.
+      </li>
+      <li>
+        <strong>Real credits were spent.</strong> Three first drafts plus each page's own
+        review/self-critique pass — visible mid-run in the camp builder screenshot — are genuine
+        model calls against the dev clone, not fixtures.
+      </li>
+      <li>
+        <strong>The sales page's review pass outran this script's own wait.</strong> The capture
+        script waited for the stored document to stop changing for 20 seconds before treating a first
+        draft as final — matching <code>capture-ai-colour-turn.mjs</code>'s "wait on the document, not
+        a spinner" rule. For the sales page that was not long enough: the review/self-critique pass
+        kept revising it afterwards (the pricing copy and price changed after the first capture), so
+        05/06 were re-shot once the document was confirmed to have stopped changing for good. The
+        waitlist and camp pages did not drift.
+      </li>
+    </ul>
+  </section>
+</main>

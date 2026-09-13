@@ -15,19 +15,19 @@ enough that most pages come out looking the same.
 
 | ID | Area | What the owner cannot do | Constrained at | Severity | Status |
 |---|---|---|---|---|---|
-| G1 | Theme | Choose from more than 12 total page looks — `theme.tone`(2) × `theme.accent`(2) × `theme.radius`(3) | `lib/funnels/sections/registry.ts:167` | High | closing in 2026-09-13 build |
-| G2 | Colour | Set any hex/colour value anywhere in the document — the prompt tells the model outright that "no hex or colour field exists anywhere in this document" | `lib/funnels/sections/prompt.ts` `BUILDER_RULES` rule 6 | High | closing in 2026-09-13 build |
-| G3 | Typography | Choose a font; heading/body font-family are hardcoded to Lexend Exa / Lexend Deca with no document-level override | `lib/funnels/sections/styles.ts:352` | Medium | closing in 2026-09-13 build |
-| G4 | Layout | Change the page container width; every section's content is capped at a fixed `max-width: 72rem` | `lib/funnels/sections/styles.ts:191` | Medium | closing in 2026-09-13 build |
-| G5 | Section style | Right-align a section; `align` only offers `left` / `center` | `lib/funnels/sections/registry.ts:143` | Low | closing in 2026-09-13 build |
-| G6 | Section style | Give a section its own background colour/image or an overlay — `sectionStyleSchema` has no such field | `lib/funnels/sections/registry.ts:141` | Medium | closing in 2026-09-13 build |
-| G7 | Section style | Add a visual divider between two sections — `sectionStyleSchema` has no such field | `lib/funnels/sections/registry.ts:141` | Low | closing in 2026-09-13 build |
-| G8 | Variants | Flip a split layout (which side the pitch/media sits on); `.djp-v-split` CSS hardcodes the order both for `hero` and `form` | `lib/funnels/sections/styles.ts:964` | Low | closing in 2026-09-13 build |
-| G9 | Variants | Get a second look for `faq` or `quiz` — each has exactly one variant | `lib/funnels/sections/registry.ts:360,424` | Medium | closing in 2026-09-13 build |
-| G10 | Variants | Get a third look for `proof`, `steps`, `testimonial`, `pricing`, `cta` or `footer` — each has exactly two | `lib/funnels/sections/registry.ts:246,286,309,335,440,454` | Low | closing in 2026-09-13 build |
-| G11 | Media | Put an image anywhere except the hero section — `heroMediaSchema` is the document's only media-carrying field | `lib/funnels/sections/registry.ts:223` | Medium | closing in 2026-09-13 build |
-| G12 | Page shape | Get anything other than the fixed leadgen skeleton (form first, `variant:"split"`, proof near the top, thin footer) regardless of what the page is actually for — `LEADGEN_RULES` prescribes one shape for every page | `lib/funnels/sections/prompt.ts:521` | High | closing in 2026-09-13 build |
-| G13 | Variation | Get a different page from an identical brief — the first-draft seed document is one fixed literal (`theme: light/accent/soft`, a single footer placeholder) and nothing in the turn carries a variation input | `app/api/admin/funnels/steps/[stepId]/build/route.ts:191` | Medium | closing in 2026-09-13 build |
+| G1 | Theme | Choose from more than 12 total page looks — `theme.tone`(2) × `theme.accent`(2) × `theme.radius`(3) | `lib/funnels/sections/registry.ts:167` | High | closed |
+| G2 | Colour | Set any hex/colour value anywhere in the document — the prompt tells the model outright that "no hex or colour field exists anywhere in this document" | `lib/funnels/sections/prompt.ts` `BUILDER_RULES` rule 6 | High | closed |
+| G3 | Typography | Choose a font; heading/body font-family are hardcoded to Lexend Exa / Lexend Deca with no document-level override | `lib/funnels/sections/styles.ts:352` | Medium | closed |
+| G4 | Layout | Change the page container width; every section's content is capped at a fixed `max-width: 72rem` | `lib/funnels/sections/styles.ts:191` | Medium | closed |
+| G5 | Section style | Right-align a section; `align` only offers `left` / `center` | `lib/funnels/sections/registry.ts:143` | Low | closed |
+| G6 | Section style | Give a section its own background colour/image or an overlay — `sectionStyleSchema` has no such field | `lib/funnels/sections/registry.ts:141` | Medium | closed |
+| G7 | Section style | Add a visual divider between two sections — `sectionStyleSchema` has no such field | `lib/funnels/sections/registry.ts:141` | Low | closed |
+| G8 | Variants | Flip a split layout (which side the pitch/media sits on); `.djp-v-split` CSS hardcodes the order both for `hero` and `form` | `lib/funnels/sections/styles.ts:964` | Low | closed |
+| G9 | Variants | Get a second look for `faq` or `quiz` — each has exactly one variant | `lib/funnels/sections/registry.ts:360,424` | Medium | closed |
+| G10 | Variants | Get a third look for `proof`, `steps`, `testimonial`, `pricing`, `cta` or `footer` — each has exactly two | `lib/funnels/sections/registry.ts:246,286,309,335,440,454` | Low | closed |
+| G11 | Media | Put an image anywhere except the hero section — `heroMediaSchema` is the document's only media-carrying field | `lib/funnels/sections/registry.ts:223` | Medium | closed |
+| G12 | Page shape | Get anything other than the fixed leadgen skeleton (form first, `variant:"split"`, proof near the top, thin footer) regardless of what the page is actually for — `LEADGEN_RULES` prescribes one shape for every page | `lib/funnels/sections/prompt.ts:521` | High | closed |
+| G13 | Variation | Get a different page from an identical brief — the first-draft seed document is one fixed literal (`theme: light/accent/soft`, a single footer placeholder) and nothing in the turn carries a variation input | `app/api/admin/funnels/steps/[stepId]/build/route.ts:191` | Medium | closed |
 
 ## Capability gaps
 
