@@ -114,9 +114,29 @@ const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 
 const paletteSchema = z.union([
   z.object({ preset: z.enum(PALETTE_PRESETS) }),
-  z.object({ brand: hex, brandInk: hex, surface: hex, ink: hex }),
+  z.object({ brand: hex, accent: hex.optional(), mode: z.enum(["light","dark"]).optional() }),
 ])
 ```
+
+**A custom palette is two colours, not seven, and the rest is derived.** This was changed
+from a seven-value object during planning and the reason is worth stating: asking a model to
+hand-pick seven mutually-contrasting hex values is asking it to do colour theory in a JSON
+field, and it will sometimes produce an unreadable page. Instead `resolvePalette()` takes
+`brand` (plus an optional `accent` and `mode`) and derives the full seven-token row
+deterministically — ink chosen black-or-white by **measuring contrast against both candidates
+and taking the winner** (never by a luminance threshold, which picks the losing colour for
+mid-luminance and very bright brands alike), `surface` as brand mixed a few percent into the
+paper, `accent` complemented from `brand` when not given. So "make it purple" produces a
+coherent, readable purple page, which is
+exactly the behaviour the owner asked for, and contrast is a **property of the function**
+rather than a hope about the model.
+
+**The palette needs no change to `styles.ts` whatsoever.** Every colour rule in that 56 KB
+file already resolves through `var(--primary)`, `var(--primary-foreground)`, `var(--accent)`,
+`var(--accent-foreground)`, `var(--surface)`, `var(--foreground)` and `var(--background)`
+(see `styles.ts:206-212`). `themeCss()` redefining those seven custom properties under
+`#djp-funnel-root` repaints every section, every card, every button and every tone band at
+once. This is the single highest-leverage change in the build and it is roughly twenty lines.
 
 `PALETTE_PRESETS` is a named, contrast-checked set of **twelve** so the model can pick a
 coherent palette by name without doing colour theory in a JSON field, and so a preset can be
@@ -128,10 +148,12 @@ answer:
 `slate` · `midnight` · `forest` · `sand` · `clay` · `ember` · `ocean` · `steel` ·
 `bone` · `moss` · `plum` · `ink`
 
-Each preset is four hex values (`brand`, `brandInk`, `surface`, `ink`) held in one table in
-`lib/funnels/sections/palettes.ts`, every pair checked to at least WCAG AA (4.5:1) for body
-text and 3:1 for large text. The contrast check is a **test**, not a comment — a preset that
-fails it cannot ship.
+Each preset is a full seven-token row (`brand`, `brandInk`, `accent`, `accentInk`, `surface`,
+`ink`, `paper`) held in one table in `lib/funnels/sections/palettes.ts`, every foreground /
+background pair checked to at least WCAG AA — 4.5:1 for body text, 3:1 for large text. The
+contrast check is a **test over the real table**, not a comment: a preset that fails it
+cannot ship, and the same assertion runs over `resolvePalette()`'s derived output for a
+spread of brand hues so the custom path is held to the identical standard.
 
 **Resolution order, and why absence matters:**
 
@@ -339,15 +361,19 @@ is extended to the new design block.
 
 ```sql
 ALTER TABLE public.business_settings
-  ADD COLUMN IF NOT EXISTS brand_color   text,
-  ADD COLUMN IF NOT EXISTS brand_ink     text,
-  ADD COLUMN IF NOT EXISTS surface_color text,
-  ADD COLUMN IF NOT EXISTS ink_color     text;
+  ADD COLUMN IF NOT EXISTS brand_color  text,
+  ADD COLUMN IF NOT EXISTS accent_color text;
 ```
+
+Two columns, not seven, for the same reason the custom palette is two values (§3.1): the rest
+is derived by `resolvePalette()`, so a coach sets their brand colour and everything else
+follows and stays readable.
 
 Nullable with no default, deliberately: `NULL` means "this tenant has not set a brand", which
 is what makes rule 3 of §3.1 resolve to today's `var(--primary)` behaviour. A default would
-make every existing tenant claim a brand it never chose.
+make every existing tenant claim a brand it never chose. A `CHECK` constrains both to
+`^#[0-9a-fA-F]{6}$` so the database refuses what the Zod regex refuses — the value reaches
+CSS, so one guard is not enough.
 
 **The reader is named before the column is written**, per the standing rule: `themeCss()`
 reads it as the palette default, and the builder's theme panel reads it to render the
