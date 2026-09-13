@@ -243,6 +243,56 @@ export async function updateSmsStatusBySid(
 }
 
 /**
+ * `twilioSid` is nullable on the `sent` arm because
+ * `sendRenderedSequenceSms` types its `providerMessageId` as
+ * `string | null`: Twilio answering 2xx without a sid is pathological, but
+ * the row must still stop saying `queued` when it happens, and `twilio_sid`
+ * is a nullable column. An empty string would be a worse answer than null —
+ * this repo already has one column whose `''` default matches everything.
+ */
+export type SmsOutcome = { kind: "sent"; twilioSid: string | null } | { kind: "failed"; errorCode: string | null }
+
+/**
+ * Stamps the result of one send onto the row that was already written for it.
+ *
+ * `sendManualSms` inserts a `queued` row BEFORE the Twilio POST and calls
+ * this afterwards, which is the only way the row can exist while the status
+ * callback for it is in flight. BE PRECISE ABOUT WHAT THAT BUYS: it does NOT
+ * close the race. The Twilio sid is not known until the POST RETURNS, and
+ * `updateSmsStatusBySid` finds the row by `twilio_sid`, so a status callback
+ * that arrives before this function writes the sid still resolves to
+ * `unknown_message`. What changes is the size of the window -- from "the
+ * whole Twilio POST latency plus an INSERT" down to "the response landing,
+ * then one UPDATE". Narrower, not gone.
+ *
+ * MONOTONIC, the same rule and for the same reason as `updateSmsStatusBySid`
+ * above and `applyDeliveryStatus` (lib/db/sequences.ts): a row the database
+ * already knows is `delivered` is never written back down. That is not
+ * theoretical here -- it is precisely the ordering this function's window
+ * leaves open. If the sid write and a fast `delivered` callback interleave
+ * badly, an unconditional update would regress a delivered text to `sent`
+ * in the conversation view, which is the one thing that view exists to get
+ * right. The guard is a `.neq("status", "delivered")` evaluated against the
+ * row's CURRENT state at UPDATE time, so no stale in-memory read is involved.
+ *
+ * Throws on a write error rather than resolving quietly. The caller
+ * deliberately logs and carries on (losing this row must not report a text
+ * that really went out as failed), but it can only make that choice if it is
+ * told the write failed.
+ */
+export async function markSmsMessageOutcome(id: string, outcome: SmsOutcome): Promise<void> {
+  const patch: Record<string, unknown> =
+    outcome.kind === "sent"
+      ? { status: "sent", twilio_sid: outcome.twilioSid }
+      : // `error_code` is written even when null: a failure with no carrier
+        // code is still a failure, and the row must stop saying `queued`.
+        { status: "failed", error_code: outcome.errorCode }
+
+  const { error } = await getClient().from("sms_messages").update(patch).eq("id", id).neq("status", "delivered")
+  if (error) throw new Error(`markSmsMessageOutcome failed (${error.code}): ${error.message}`)
+}
+
+/**
  * Whether we have sent this phone an outbound text within the last
  * `withinDays` days, scoped to the tenant. Used to decide whether a legal
  * opt-out sentence still needs to be appended to a new outbound message.

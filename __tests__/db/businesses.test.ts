@@ -38,7 +38,14 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-import { createBusiness, listBusinesses, updateBusiness, SlugTakenError, getBusinessBySmsNumber } from "@/lib/db/businesses"
+import {
+  createBusiness,
+  listBusinesses,
+  updateBusiness,
+  SlugTakenError,
+  getBusinessBySmsNumber,
+  getBusinessByMessagingServiceSid,
+} from "@/lib/db/businesses"
 
 const ROW = {
   id: "b1",
@@ -149,8 +156,48 @@ describe("updateBusiness", () => {
   })
 })
 
-// The To number is the ONLY tenant evidence an inbound SMS carries. These
-// pin the DAL function directly: the query it builds, and the two ways an
+// The SECOND piece of tenant evidence, and the only one that resolves
+// anything in production today: every live business_settings row has
+// sms_sender_phone empty and only sms_messaging_service_sid filled in. Same
+// contract as the twin below, pinned separately because a shared contract is
+// not a shared implementation.
+describe("getBusinessByMessagingServiceSid", () => {
+  it("resolves the business_id for a matching sms_messaging_service_sid", async () => {
+    selectResult = { data: { business_id: "bbb" }, error: null }
+    const result = await getBusinessByMessagingServiceSid("MG123")
+    expect(result).toBe("bbb")
+    // Names the COLUMN and the VALUE: querying sms_sender_phone with a SID
+    // (the obvious copy-paste slip) fails right here.
+    expect(calls.eq).toEqual([["sms_messaging_service_sid", "MG123"]])
+  })
+
+  it("returns null when no business claims the Messaging Service", async () => {
+    selectResult = { data: null, error: null }
+    expect(await getBusinessByMessagingServiceSid("MGnobody")).toBeNull()
+  })
+
+  // sms_messaging_service_sid is NOT NULL DEFAULT '' exactly like
+  // sms_sender_phone, and has NO unique index of its own (00221 adds the
+  // column; no migration indexes it), so a query for '' would match every
+  // business that has never configured a Messaging Service.
+  it("does NOT query an empty SID", async () => {
+    expect(await getBusinessByMessagingServiceSid("")).toBeNull()
+    expect(calls.eq).toEqual([])
+  })
+
+  it("does not query a SID that is only whitespace either", async () => {
+    expect(await getBusinessByMessagingServiceSid("   ")).toBeNull()
+    expect(calls.eq).toEqual([])
+  })
+
+  it("throws on a read error, rather than silently matching the no-business-claims-it case", async () => {
+    selectResult = { data: null, error: { code: "42501", message: "permission denied" } }
+    await expect(getBusinessByMessagingServiceSid("MG123")).rejects.toThrow(/42501|permission denied/)
+  })
+})
+
+// The To number is the OTHER piece of tenant evidence an inbound SMS
+// carries, consulted second. These pin the DAL function directly: the query it builds, and the two ways an
 // unmatched number must NOT be confused with an error.
 describe("getBusinessBySmsNumber", () => {
   it("resolves the business_id for a matching sms_sender_phone", async () => {

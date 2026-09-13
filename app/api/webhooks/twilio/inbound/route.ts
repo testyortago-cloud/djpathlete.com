@@ -7,7 +7,7 @@ import { normalisePhone } from "@/lib/lead-engine/identity"
 import { findContactByIdentifiers } from "@/lib/db/contacts"
 import { recordConsent, suppress, unsuppress } from "@/lib/db/contact-consents"
 import { exitRunsForContact } from "@/lib/db/sequences"
-import { getBusinessSettings, getBusinessBySmsNumber } from "@/lib/db/businesses"
+import { getBusinessSettings, getBusinessBySmsNumber, getBusinessByMessagingServiceSid } from "@/lib/db/businesses"
 import { renderSequenceEmail, sendRenderedSequenceEmail } from "@/lib/lead-engine/email"
 import { insertSmsMessage } from "@/lib/db/sms-messages"
 
@@ -25,6 +25,12 @@ import { insertSmsMessage } from "@/lib/db/sms-messages"
  * Twilio Setup: Console -> Phone Numbers / Messaging Service -> the number
  * this business receives on -> "A Message Comes In" webhook URL, set to
  * this route's public URL.
+ *
+ * WHICH TENANT an inbound text belongs to is resolved from TWO pieces of
+ * evidence Twilio posts, most specific first: `MessagingServiceSid` (the
+ * only one every live row in this product actually carries), then the `To`
+ * number, then the platform business as the fallback. See the resolution
+ * site below.
  *
  * FOUR outcomes, by body content (trimmed, trailing punctuation stripped,
  * uppercased, exact match against a fixed keyword set — NOT a
@@ -235,16 +241,32 @@ export async function POST(request: Request) {
     const rawBody = params.Body ?? ""
     const rawFrom = params.From ?? ""
     const rawTo = params.To ?? ""
+    // Twilio posts this whenever the receiving number belongs to a Messaging
+    // Service. Absent otherwise, hence the `?? ""` -- both lookups treat the
+    // empty string as "no evidence" and return null without querying.
+    const messagingServiceSid = params.MessagingServiceSid ?? ""
 
-    // The To number is the ONLY tenant evidence an inbound SMS carries.
+    // TWO pieces of tenant evidence, tried MOST SPECIFIC FIRST. The
+    // Messaging Service SID wins over the To number because a Messaging
+    // Service owns its numbers (one service holds many, and a number can be
+    // re-pointed between services), and because it is the only identity that
+    // resolves anything today: every live business_settings row has
+    // sms_sender_phone EMPTY and only sms_messaging_service_sid filled in,
+    // so a To-number-only lookup sent EVERY inbound text to the platform
+    // business.
+    //
     // Resolved ONCE, here, and threaded through every call below -- a
     // request that resolves business B for one call and defaults to the
     // singleton for the next is worse than either alone, because the rows
-    // disagree. An unmatched number falls back to the platform business
-    // (the honest seam, not the raw constant): the ordinary case today,
-    // since sms_sender_phone defaults to '' and the platform's own number
-    // still lives in the environment.
-    const businessId = (await getBusinessBySmsNumber(rawTo)) ?? platformBusinessId()
+    // disagree. With NEITHER matching, this falls back to the platform
+    // business (the honest seam, not the raw constant): still the ordinary
+    // case, since both columns default to ''. A failed READ is not a
+    // no-match -- both helpers throw, and that throw becomes the 500 Twilio
+    // retries rather than a silent write under the wrong tenant.
+    const businessId =
+      (await getBusinessByMessagingServiceSid(messagingServiceSid)) ??
+      (await getBusinessBySmsNumber(rawTo)) ??
+      platformBusinessId()
 
     const phone = normalisePhone(rawFrom)
     // Suppression is identifier-keyed, not contact-keyed, so it needs SOME

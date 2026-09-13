@@ -5,13 +5,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // factories close over must themselves be created inside vi.hoisted() — a
 // bare `const isSuppressed = vi.fn()` referenced below throws "Cannot access
 // before initialization" (repo convention: see chat-escalate.test.ts's `h`).
-const { isSuppressed, insertSmsMessage } = vi.hoisted(() => ({
+const { isSuppressed, insertSmsMessage, markSmsMessageOutcome } = vi.hoisted(() => ({
   isSuppressed: vi.fn(),
   insertSmsMessage: vi.fn(),
+  markSmsMessageOutcome: vi.fn(),
 }))
 
 vi.mock("@/lib/db/contact-consents", () => ({ isSuppressed }))
-vi.mock("@/lib/db/sms-messages", () => ({ insertSmsMessage }))
+vi.mock("@/lib/db/sms-messages", () => ({ insertSmsMessage, markSmsMessageOutcome }))
 
 import {
   sendManualSms,
@@ -44,6 +45,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   isSuppressed.mockResolvedValue(false)
   insertSmsMessage.mockResolvedValue({ id: "m1" })
+  markSmsMessageOutcome.mockResolvedValue(undefined)
   vi.stubEnv("TWILIO_ACCOUNT_SID", "AC1")
   vi.stubEnv("TWILIO_MAIN_SID", "SK1")
   vi.stubEnv("TWILIO_CLIENT_SECRET", "secret")
@@ -163,7 +165,50 @@ describe("sendManualSms — the send", () => {
     expect(body).not.toContain("From=")
   })
 
-  it("records the message with the provider sid and the sender", async () => {
+  // Task 7. THE ROW IS WRITTEN BEFORE THE SEND, as `queued`, and the outcome
+  // is stamped onto it afterwards. Why: a status callback that reaches
+  // /api/webhooks/twilio/status before the row exists resolves to
+  // `unknown_message` and the report is dropped on the floor.
+  //
+  // This does NOT close the race and the test must not be read as claiming it
+  // does: the sid only exists once the POST returns, so a callback landing
+  // between the response and the outcome UPDATE still finds no row by sid.
+  // The window shrinks from "POST latency + an INSERT" to "response -> one
+  // UPDATE".
+  it("writes the queued row BEFORE the Twilio call, with no sid yet", async () => {
+    // MUTANT: insert after the send. The call-order assertion is the only
+    // thing that can fail on it — every field assertion below stays green.
+    await sendManualSms({
+      phone: PHONE,
+      body: "hi",
+      settings: CONFIGURED,
+      businessId: BIZ,
+      contactId: "c1",
+      sentBy: "u1",
+      appendOptOut: false,
+    })
+
+    expect(insertSmsMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        businessId: BIZ,
+        contactId: "c1",
+        phone: PHONE,
+        direction: "outbound",
+        body: "hi",
+        status: "queued",
+        sentBy: "u1",
+      }),
+    )
+    // The sid is not knowable yet — asserting its ABSENCE is what pins the
+    // ordering claim to reality rather than to the word "queued".
+    const insertArg = insertSmsMessage.mock.calls[0][0]
+    expect(insertArg.twilioSid ?? null).toBeNull()
+    expect(insertSmsMessage.mock.invocationCallOrder[0]).toBeLessThan(
+      (global.fetch as unknown as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
+    )
+  })
+
+  it("stamps the provider sid onto THAT row afterwards, rather than inserting a second one", async () => {
     const out = await sendManualSms({
       phone: PHONE,
       body: "hi",
@@ -175,18 +220,9 @@ describe("sendManualSms — the send", () => {
     })
 
     expect(out).toMatchObject({ messageId: "m1", providerMessageId: "SM123", text: "hi" })
-    expect(insertSmsMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        businessId: BIZ,
-        contactId: "c1",
-        phone: PHONE,
-        direction: "outbound",
-        body: "hi",
-        twilioSid: "SM123",
-        status: "sent",
-        sentBy: "u1",
-      }),
-    )
+    expect(markSmsMessageOutcome).toHaveBeenCalledWith("m1", { kind: "sent", twilioSid: "SM123" })
+    // Presence control for the absence assertion: exactly ONE row per text.
+    expect(insertSmsMessage).toHaveBeenCalledTimes(1)
   })
 
   it("appends the opt-out sentence when told to, and sends THAT text", async () => {
@@ -221,7 +257,12 @@ describe("sendManualSms — the send", () => {
       }),
     ).rejects.toThrow(/blocked/)
 
-    expect(insertSmsMessage).toHaveBeenCalledWith(expect.objectContaining({ status: "failed", errorCode: "21610" }))
+    // The queued row already exists, so the failure is an UPDATE onto it —
+    // not a second row. MUTANT: insert a failed row here too and the
+    // conversation shows the same text twice.
+    expect(markSmsMessageOutcome).toHaveBeenCalledWith("m1", { kind: "failed", errorCode: "21610" })
+    expect(insertSmsMessage).toHaveBeenCalledTimes(1)
+    expect(insertSmsMessage).toHaveBeenCalledWith(expect.objectContaining({ status: "queued" }))
   })
 
   it("propagates the original provider error, not a failed record-write's own error", async () => {
@@ -234,6 +275,7 @@ describe("sendManualSms — the send", () => {
       json: async () => ({ code: 21610, message: "blocked by carrier" }),
     }) as unknown as typeof fetch
     insertSmsMessage.mockRejectedValue(new Error("db unavailable"))
+    markSmsMessageOutcome.mockRejectedValue(new Error("db unavailable"))
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
 
     await expect(
@@ -269,6 +311,62 @@ describe("sendManualSms — the send", () => {
     expect(out).toMatchObject({ messageId: null, providerMessageId: "SM123", text: "hi" })
     expect(global.fetch).toHaveBeenCalledTimes(1)
     expect(consoleError).toHaveBeenCalled()
+    consoleError.mockRestore()
+  })
+})
+
+describe("sendManualSms — a DB blip before the send", () => {
+  // A failure to write the queued row must NOT silence a coach's reply. The
+  // send goes ahead, the outcome update is skipped (there is no row id to
+  // stamp), and the message is still recorded afterwards so the conversation
+  // is not left with a gap — the pre-Task-7 insert-after behaviour, kept as
+  // the fallback it now is.
+  it("still sends, and still records the message, when the queued row could not be written", async () => {
+    insertSmsMessage.mockRejectedValueOnce(new Error("db unavailable")).mockResolvedValue({ id: "m2" })
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const out = await sendManualSms({
+      phone: PHONE,
+      body: "hi",
+      settings: CONFIGURED,
+      businessId: BIZ,
+      appendOptOut: false,
+    })
+
+    // MUTANT: rethrow the insert error instead of logging it — the text would
+    // never be sent because a row could not be written about it.
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    expect(consoleError).toHaveBeenCalled()
+    // No row id existed to stamp, so the outcome update is skipped entirely
+    // rather than called with a null id.
+    expect(markSmsMessageOutcome).not.toHaveBeenCalled()
+    expect(insertSmsMessage).toHaveBeenLastCalledWith(expect.objectContaining({ status: "sent", twilioSid: "SM123" }))
+    expect(out).toMatchObject({ messageId: "m2", providerMessageId: "SM123", text: "hi" })
+
+    consoleError.mockRestore()
+  })
+
+  it("records a FAILED row directly when both the queued write and the send fail", async () => {
+    insertSmsMessage.mockRejectedValueOnce(new Error("db unavailable")).mockResolvedValue({ id: "m2" })
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ code: 21610, message: "blocked" }),
+    }) as unknown as typeof fetch
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    await expect(
+      sendManualSms({
+        phone: PHONE,
+        body: "hi",
+        settings: CONFIGURED,
+        businessId: BIZ,
+        appendOptOut: false,
+      }),
+    ).rejects.toThrow(/blocked/)
+
+    expect(markSmsMessageOutcome).not.toHaveBeenCalled()
+    expect(insertSmsMessage).toHaveBeenLastCalledWith(expect.objectContaining({ status: "failed", errorCode: "21610" }))
+
     consoleError.mockRestore()
   })
 })

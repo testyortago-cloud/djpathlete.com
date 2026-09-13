@@ -134,6 +134,60 @@ describe("SmsComposer — texting not set up", () => {
   })
 })
 
+// Task 7 (audit §4 #11). A SECOND, INDEPENDENT gate. `notConfigured` means
+// "nobody has filled in a sender in Settings"; this means "this deployment
+// has no Twilio credentials at all". The two need separate wording because
+// they need separate fixes — one is a coach's job, the other is an
+// operator's — and a box that says "add a text sender in Settings" to
+// somebody whose Settings are already filled in sends them to the wrong
+// place entirely.
+describe("SmsComposer — Twilio credentials missing from this server", () => {
+  it("disables the box and says the SERVER is missing credentials", () => {
+    // MUTANT: leave envMissing out of `blocked`. The message would render
+    // while the box stayed typeable and the route answered 503 on click.
+    render(<SmsComposer {...base} envMissing />)
+    expect(screen.getByRole("textbox")).toBeDisabled()
+    expect(screen.getByText(/Twilio credentials are not set on this server/i)).toBeInTheDocument()
+  })
+
+  it("cannot be typed into or sent, even with a body already in hand", async () => {
+    // `disabled` on an empty box proves nothing — Send is disabled on an
+    // empty body anyway. Pin what the attribute is actually for: neither
+    // typing nor clicking may reach `onSend`.
+    const onSend = vi.fn()
+    render(<SmsComposer {...base} envMissing onSend={onSend} />)
+    await userEvent.type(screen.getByRole("textbox"), "are we live yet")
+    expect(screen.getByRole("textbox")).toHaveValue("")
+    await userEvent.click(screen.getByRole("button", { name: /send/i }))
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("says something DIFFERENT from the not-set-up-yet message", () => {
+    // The presence control for the absence assertion below: the two states
+    // must not collapse into one sentence.
+    render(<SmsComposer {...base} envMissing />)
+    expect(screen.queryByText(/not set up/i)).not.toBeInTheDocument()
+    cleanup()
+    render(<SmsComposer {...base} notConfigured />)
+    expect(screen.getByText(/not set up/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Twilio credentials are not set on this server/i)).not.toBeInTheDocument()
+  })
+
+  it("shows only the env message when BOTH are wrong, not two stacked banners", () => {
+    render(<SmsComposer {...base} envMissing notConfigured />)
+    expect(screen.getByText(/Twilio credentials are not set on this server/i)).toBeInTheDocument()
+    expect(screen.queryByText(/not set up/i)).not.toBeInTheDocument()
+  })
+
+  it("leaves the box usable when the env is fine", () => {
+    // Without this, a component that disabled the box unconditionally would
+    // pass every assertion above.
+    render(<SmsComposer {...base} />)
+    expect(screen.getByRole("textbox")).not.toBeDisabled()
+    expect(screen.queryByText(/Twilio credentials are not set on this server/i)).not.toBeInTheDocument()
+  })
+})
+
 // ---------------------------------------------------------------------------
 // THE REAL SEND PATH.
 //

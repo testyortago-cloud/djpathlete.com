@@ -17,7 +17,7 @@
 
 import type { BusinessSettings } from "@/lib/db/businesses"
 import { isSuppressed } from "@/lib/db/contact-consents"
-import { insertSmsMessage } from "@/lib/db/sms-messages"
+import { insertSmsMessage, markSmsMessageOutcome } from "@/lib/db/sms-messages"
 import { normalisePhone } from "@/lib/lead-engine/identity"
 import { countSmsSegments } from "@/lib/lead-engine/sms-segments"
 
@@ -313,11 +313,19 @@ export class SmsTooLongError extends Error {
  * provider call still writes a `failed` row before rethrowing, so the
  * conversation shows what happened.
  *
- * The one exception is the FINAL record write, after Twilio has already
- * accepted the message: if that `insertSmsMessage` call itself fails, the
- * text has already gone out, so throwing here would misreport a delivered
- * message as unsent. That failure is logged, not thrown, and `messageId`
- * comes back `null` because there is no row to point to.
+ * THE ROW IS WRITTEN BEFORE THE SEND, as `queued`, and the outcome is
+ * stamped onto it afterwards (`markSmsMessageOutcome`) — so a status
+ * callback racing the send finds a row rather than answering
+ * `unknown_message`. Read that function's doc comment for exactly how much
+ * of the race that removes: the window narrows, it does not close, because
+ * the sid only exists once Twilio has answered.
+ *
+ * NEITHER of the two DB writes is allowed to throw out of this function.
+ * A failed QUEUED write must not silence a coach's reply (the send goes
+ * ahead and the pre-existing insert-after path records it instead), and a
+ * failed OUTCOME write comes after Twilio has already accepted the message,
+ * so throwing would misreport a delivered text as unsent. Both are logged,
+ * and `messageId` comes back `null` when no row could be written at all.
  */
 export async function sendManualSms(args: {
   phone: string
@@ -354,6 +362,43 @@ export async function sendManualSms(args: {
     throw new SmsTooLongError(counted.segments, MANUAL_SMS_MAX_SEGMENTS)
   }
 
+  // 4. The row, BEFORE the send, as `queued`.
+  //
+  // WHY THIS ORDER: the status callback (/api/webhooks/twilio/status) finds
+  // its row by `twilio_sid`, and it can arrive within milliseconds of the
+  // POST returning. Inserting after the send meant a fast callback found no
+  // row at all and `updateSmsStatusBySid` answered `unknown_message` — the
+  // carrier's own delivery report, dropped on the floor.
+  //
+  // BE HONEST ABOUT WHAT THIS FIXES: it does NOT close the race. The Twilio
+  // sid does not exist until the POST RETURNS, so a callback that lands
+  // between the response and the `markSmsMessageOutcome` UPDATE below still
+  // resolves to `unknown_message`. What changes is the size of the window —
+  // from "the whole Twilio POST latency plus an INSERT" down to "the
+  // response landing, then one UPDATE". Narrower, not gone. Closing it
+  // entirely would need an identity Twilio accepts BEFORE the send (a
+  // client-generated key it echoes back), which the Messaging API does not
+  // offer.
+  //
+  // A failure here is logged, never thrown: a DB blip must not silence a
+  // coach's reply. `messageId` stays null and the pre-Task-7 insert-after
+  // behaviour below takes over, so the conversation still gets its row.
+  let messageId: string | null = null
+  try {
+    const queued = await insertSmsMessage({
+      businessId,
+      contactId: args.contactId ?? null,
+      phone,
+      direction: "outbound",
+      body: text,
+      status: "queued",
+      sentBy: args.sentBy ?? null,
+    })
+    messageId = queued.id
+  } catch (err) {
+    console.error(`[lead-engine/sms] sendManualSms: could not write the queued row for ${phone}; sending anyway:`, err)
+  }
+
   let providerMessageId: string | null = null
   try {
     ;({ providerMessageId } = await sendRenderedSequenceSms({
@@ -366,23 +411,30 @@ export async function sendManualSms(args: {
     const message = err instanceof Error ? err.message : String(err)
     // Record the attempt before rethrowing: the conversation has to show a
     // failed message, not a gap. This write has its OWN try/catch: `err` is
-    // the real cause (Twilio refused the send), and if `insertSmsMessage`
-    // itself throws here (a DB fault on top of the provider fault), that
-    // second error must not replace the first as what gets reported —
-    // the caller needs to know the send failed and why, not that the
-    // failure record also failed to write.
+    // the real cause (Twilio refused the send), and if the DAL call itself
+    // throws here (a DB fault on top of the provider fault), that second
+    // error must not replace the first as what gets reported — the caller
+    // needs to know the send failed and why, not that the failure record
+    // also failed to write.
     const codeMatch = message.match(/\[(\d+)\]/)
+    const errorCode = codeMatch ? codeMatch[1] : null
     try {
-      await insertSmsMessage({
-        businessId,
-        contactId: args.contactId ?? null,
-        phone,
-        direction: "outbound",
-        body: text,
-        status: "failed",
-        errorCode: codeMatch ? codeMatch[1] : null,
-        sentBy: args.sentBy ?? null,
-      })
+      if (messageId) {
+        // The queued row is already there: stamp the outcome onto it. A
+        // second insert would show the same text twice in the thread.
+        await markSmsMessageOutcome(messageId, { kind: "failed", errorCode })
+      } else {
+        await insertSmsMessage({
+          businessId,
+          contactId: args.contactId ?? null,
+          phone,
+          direction: "outbound",
+          body: text,
+          status: "failed",
+          errorCode,
+          sentBy: args.sentBy ?? null,
+        })
+      }
     } catch (recordErr) {
       console.error(`[lead-engine/sms] sendManualSms: failed to record the failed-send row for ${phone}:`, recordErr)
     }
@@ -393,19 +445,22 @@ export async function sendManualSms(args: {
   // not be reported as a failure to SEND — that would report a delivered
   // text as lost, the same gap-in-the-conversation failure mode the catch
   // block above exists to prevent on the other side.
-  let messageId: string | null = null
   try {
-    const inserted = await insertSmsMessage({
-      businessId,
-      contactId: args.contactId ?? null,
-      phone,
-      direction: "outbound",
-      body: text,
-      twilioSid: providerMessageId,
-      status: "sent",
-      sentBy: args.sentBy ?? null,
-    })
-    messageId = inserted.id
+    if (messageId) {
+      await markSmsMessageOutcome(messageId, { kind: "sent", twilioSid: providerMessageId })
+    } else {
+      const inserted = await insertSmsMessage({
+        businessId,
+        contactId: args.contactId ?? null,
+        phone,
+        direction: "outbound",
+        body: text,
+        twilioSid: providerMessageId,
+        status: "sent",
+        sentBy: args.sentBy ?? null,
+      })
+      messageId = inserted.id
+    }
   } catch (err) {
     console.error(
       `[lead-engine/sms] sendManualSms: message to ${phone} sent (provider id ${providerMessageId}) but recording it failed:`,
