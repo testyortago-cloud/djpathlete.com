@@ -118,8 +118,16 @@ beforeEach(() => {
     fields: CHECKOUT_FIELDS,
   })
   createSubmission.mockReset().mockResolvedValue({ id: "sub1" })
-  getFunnelById.mockReset().mockResolvedValue({ id: FUNNEL_ID, slug: "summer-camp-2026", name: "Summer Camp 2026" })
-  getStep.mockReset().mockResolvedValue({ id: STEP_ID, slug: "register", name: "Register" })
+  getFunnelById.mockReset().mockResolvedValue({
+    id: FUNNEL_ID,
+    slug: "summer-camp-2026",
+    name: "Summer Camp 2026",
+    // Task 4 (later) 404s the route unless this is "published" — added now so
+    // this suite survives that change too.
+    status: "published",
+    notify_emails: null,
+  })
+  getStep.mockReset().mockResolvedValue({ id: STEP_ID, funnel_id: FUNNEL_ID, slug: "register", name: "Register" })
   listSteps.mockReset().mockResolvedValue([
     { id: STEP_ID, slug: "register", name: "Register", position: 2 },
     { id: "zzz", slug: "thank-you", name: "Confirmation", position: 4 },

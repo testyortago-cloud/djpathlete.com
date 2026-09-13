@@ -360,4 +360,16 @@ describe("EXPECTED_CRONS roster", () => {
     const cron = EXPECTED_CRONS.find((c) => c.name === "autoBlogCron")
     expect(cron!.reports_to_cron_runs).toBeUndefined()
   })
+
+  it("watches funnelWindowCron for a first success, from when its route started logging", () => {
+    // MUTANT: leaving funnelWindowCron in the no-cron_runs group (its home
+    // before task 5 / audit §4 #9). The route now calls logCronStart, so a
+    // flag-off OR broken run finally writes a row — an entry with no
+    // reports_to_cron_runs/watch_from would mean "never succeeded once" can
+    // never fire for it even though the route now supports that judgment.
+    const cron = EXPECTED_CRONS.find((c) => c.name === "funnelWindowCron")
+    expect(cron).toBeTruthy()
+    expect(cron!.reports_to_cron_runs).toBe(true)
+    expect(cron!.watch_from).toBe("2026-09-13")
+  })
 })

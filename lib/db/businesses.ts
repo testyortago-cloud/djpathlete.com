@@ -156,8 +156,10 @@ export async function updateBusiness(businessId: string, patch: UpdateBusinessPa
 }
 
 /**
- * Which business owns this inbound number. The To number is the only tenant
- * evidence an inbound SMS carries, and business_settings.sms_sender_phone
+ * Which business owns this inbound number. The To number is ONE of the two
+ * pieces of tenant evidence an inbound SMS carries (the other is
+ * `MessagingServiceSid` -- see `getBusinessByMessagingServiceSid` below,
+ * which the webhook consults FIRST), and business_settings.sms_sender_phone
  * (00221) already holds it.
  *
  * Returns null rather than throwing on NO MATCH: an unmatched number is the
@@ -196,5 +198,54 @@ export async function getBusinessBySmsNumber(toNumber: string): Promise<string |
     .eq("sms_sender_phone", to)
     .maybeSingle()
   if (error) throw new Error(`getBusinessBySmsNumber failed (${error.code}): ${error.message}`)
+  return (data as { business_id: string } | null)?.business_id ?? null
+}
+
+/**
+ * Which business owns this Messaging Service. The second piece of tenant
+ * evidence an inbound SMS carries, and in practice the ONLY one that
+ * resolves today: every live `business_settings` row has `sms_sender_phone`
+ * empty and only `sms_messaging_service_sid` (00221) filled in, so matching
+ * on the To number alone sends every inbound text to the platform business.
+ * Twilio posts `MessagingServiceSid` on the inbound webhook whenever the
+ * receiving number belongs to a Messaging Service.
+ *
+ * SAME CONTRACT as `getBusinessBySmsNumber` above, deliberately -- read its
+ * doc comment for the full reasoning, which applies here unchanged:
+ *   - empty string -> `null` BEFORE querying, because the column is
+ *     NOT NULL DEFAULT '' and a bare `.eq()` on '' matches every business
+ *     that has not configured a Messaging Service;
+ *   - no match -> `null` (the ordinary case; the caller falls back);
+ *   - a genuine READ ERROR -> THROWS, never the same `null`. PostgREST
+ *     resolves rather than throwing, so `{data: null, error}` and
+ *     `{data: null, error: null}` are indistinguishable unless the error is
+ *     checked, and falling back to the platform business on a transient
+ *     failure would record a coach's STOP under the WRONG tenant. The
+ *     inbound route turns the throw into a 500 and Twilio retries.
+ *
+ * ONE DIFFERENCE, and it is a real one: there is NO unique index on
+ * `sms_messaging_service_sid`. `sms_sender_phone` has 00247's partial unique
+ * index (`WHERE sms_sender_phone <> ''`), which makes "two businesses claim
+ * the same number" unreachable at the database; `sms_messaging_service_sid`
+ * appears in exactly one migration (00221, which adds the column) and in no
+ * index at all. So the `.maybeSingle()` PGRST116 throw below is the PRIMARY
+ * guard against two businesses sharing a Messaging Service, not defense in
+ * depth -- and it fails closed (a 500 Twilio retries), which is the right
+ * direction for an ambiguous tenant. No migration is added here: adding a
+ * unique index is a schema decision with its own backfill question about the
+ * rows already sitting on '', and it belongs in its own task.
+ */
+export async function getBusinessByMessagingServiceSid(sid: string): Promise<string | null> {
+  const messagingServiceSid = sid.trim()
+  // '' would match every business that has not configured a Messaging Service.
+  if (!messagingServiceSid) return null
+  const { data, error } = await getClient()
+    .from("business_settings")
+    .select("business_id")
+    .eq("sms_messaging_service_sid", messagingServiceSid)
+    .maybeSingle()
+  if (error) {
+    throw new Error(`getBusinessByMessagingServiceSid failed (${error.code}): ${error.message}`)
+  }
   return (data as { business_id: string } | null)?.business_id ?? null
 }

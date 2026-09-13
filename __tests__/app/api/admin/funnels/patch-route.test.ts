@@ -29,6 +29,7 @@ import { PATCH } from "@/app/api/admin/funnels/[id]/route"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { getFunnelById, updateFunnel } from "@/lib/db/funnels"
+import { recordAudit } from "@/lib/audit/record"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
 
@@ -130,11 +131,16 @@ describe("PATCH /api/admin/funnels/[id]", () => {
   })
 
   // -------------------------------------------------------------------------
-  // `kind` IS FROZEN AT CREATION. Until 2026-08-31 this route accepted
+  // `kind` NEVER CHANGES THROUGH THIS ROUTE. Until 2026-08-31 it accepted
   // `{kind:"funnel"}` for the Convert-to-funnel dialog, which made `kind` a
-  // door in the publish guard (demote to "page", then publish ungated). The
-  // owner ruled the concepts never cross, the dialog is gone, and any body
-  // that so much as NAMES kind is refused before the schema can strip it.
+  // door in the publish guard (demote to "page", then publish ungated).
+  //
+  // Conversion came BACK on 2026-09-08 — `POST /api/admin/funnels/[id]/convert`
+  // moves a row between the two boards from either card — so the reason this
+  // refusal stays is no longer "the concepts never cross". It is that the
+  // convert route runs guards this one cannot (exactly one step for
+  // funnel → page), and letting `kind` ride in on a PATCH would put the
+  // conversion and the publish in one handler again.
   // -------------------------------------------------------------------------
 
   it("refuses a kind change in either direction, and writes NOTHING", async () => {
@@ -146,7 +152,13 @@ describe("PATCH /api/admin/funnels/[id]", () => {
       const response = await PATCH(patch({ kind }) as never, ctx as never)
       expect(response.status).toBe(400)
       const body = await response.json()
-      expect(body.error).toContain("kind it was created with")
+      // Pins the REASON, not just a 400: the refusal must send the caller to
+      // the convert action, because that action exists. MUTANT: restoring the
+      // old "Neither converts into the other." message, which has been false
+      // since 2026-09-08 and tells an owner a supported operation is
+      // impossible.
+      expect(body.error).toMatch(/convert/i)
+      expect(body.error).not.toMatch(/neither converts/i)
     }
     expect(mock(updateFunnel)).not.toHaveBeenCalled()
     // The refusal needs no row: it is about the request, not the funnel.
@@ -171,5 +183,46 @@ describe("PATCH /api/admin/funnels/[id]", () => {
 
     expect(response.status).toBe(200)
     expect(mock(updateFunnel)).toHaveBeenCalledWith(FUNNEL_ID, { description: "Updated" })
+  })
+
+  // -------------------------------------------------------------------------
+  // AUDIT §4 #12: this route's audit rows carried `target_id null` and
+  // `metadata {}` — the exact reason the 2026-09-11 19:50 UTC unpublish of
+  // Athlete Quiz could not be tied to a row. `withAudit`'s target/metadata
+  // resolvers now read the funnel row off the RESPONSE `updateFunnel`
+  // returns, since that is the only place a name lives — `ctx.params` alone
+  // only ever had the id.
+  // -------------------------------------------------------------------------
+
+  it("records the funnel as the audit target, and the fields/status/slug/kind as metadata", async () => {
+    const response = await PATCH(patch({ status: "draft" }) as never, ctx as never)
+    expect(response.status).toBe(200)
+
+    // MUTANT: options without `target` (or without `metadata`). Either drop
+    // reproduces the exact defect this task exists to close — a row with no
+    // way back to the funnel it changed.
+    expect(mock(recordAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { type: "funnel", id: FUNNEL_ID, label: "Free Trial Week" },
+        metadata: { fields: ["status"], status: "draft", slug: "free-trial-week", kind: "funnel" },
+      }),
+    )
+  })
+
+  it("still lets the real caller read the updated funnel back — the resolvers only see a clone", async () => {
+    const response = await PATCH(patch({ status: "draft" }) as never, ctx as never)
+    const body = await response.json()
+    expect(body.funnel.status).toBe("draft")
+  })
+
+  it("falls back to an id-only target with no label when the write is refused", async () => {
+    // The funnel-publish refusal answers 400 with `{error: "..."}` — no
+    // `funnel` key for the resolver to read a name from.
+    const response = await PATCH(patch({ status: "published" }) as never, ctx as never)
+    expect(response.status).toBe(400)
+
+    expect(mock(recordAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({ target: { type: "funnel", id: FUNNEL_ID } }),
+    )
   })
 })

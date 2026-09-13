@@ -5,7 +5,7 @@ import {
   ATTR_COOKIE_MAX_AGE,
   generateSessionId,
 } from "@/lib/marketing/cookies"
-import { extractTrackingParamsFromUrl, hasAnyTrackingParam } from "@/lib/marketing/attribution"
+import { extractTrackingParamsFromUrl, hasAnyTrackingParam, landingUrlFor } from "@/lib/marketing/attribution"
 import {
   canAccessPath,
   staffHomePath,
@@ -30,10 +30,38 @@ function redirectToLogin(req: NextRequest): NextResponse {
  * and fire a non-blocking POST to /api/public/attribution/track with the
  * resolved session_id. Returns the (possibly modified) NextResponse to be
  * returned to the client — caller may set further cookies/redirects on it.
+ *
+ * WHO EARNS A SESSION: any landing carrying one of the nine tracking
+ * identifiers (gclid/gbraid/wbraid/fbclid/utm_*), PLUS every /go/<slug>
+ * landing, tagged or not.
+ *
+ * /go is the only untagged path that earns one, and deliberately so. It is
+ * the funnel serve route: the only public path that exists solely to convert,
+ * so a visit to it is always a landing on something we published for that
+ * purpose — whether the person clicked an ad, followed a link in a text, or
+ * scanned a QR code on a flyer. Before this, an organic /go visitor got no
+ * cookie, so their submission's attribution_session_id and their contact's
+ * first_touch_session_id were null forever: on production, 0 of 170 contacts
+ * were linked to a session while the 521 attribution rows were all ad clicks
+ * (audit 2026-09-13 §3.5).
+ *
+ * This is NOT "stamp every visitor". The marketing pages, the blog and the
+ * client app keep the tagged-only rule; widening it further is a product
+ * decision about tracking, not a bug fix.
  */
 function captureAttribution(req: NextRequest, res: NextResponse): NextResponse {
   const params = extractTrackingParamsFromUrl(req.nextUrl)
-  if (!hasAnyTrackingParam(params)) return res
+  const funnelLanding = req.nextUrl.pathname.startsWith("/go/")
+  if (!hasAnyTrackingParam(params) && !funnelLanding) return res
+
+  // extractTrackingParamsFromUrl only sets landing_url when one of the nine
+  // keys is present, so an untagged /go landing arrives here with nothing but
+  // a session id — and the track route (rightly) refuses a body that says
+  // nothing about where the visitor came from. The path IS what it says here,
+  // so supply it. Never overwrite one the URL already produced.
+  if (funnelLanding && !params.landing_url) {
+    params.landing_url = landingUrlFor(req.nextUrl)
+  }
 
   let sessionId = req.cookies.get(ATTR_COOKIE_NAME)?.value
   if (!sessionId || !/^[A-Za-z0-9_-]+$/.test(sessionId)) {

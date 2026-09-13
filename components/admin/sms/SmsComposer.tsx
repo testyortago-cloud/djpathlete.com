@@ -13,6 +13,12 @@
 //    the coach knows things this box does not, and a text that had to wait
 //    eight hours is frequently worse than a text sent at 11pm.
 //
+// 2a. TWO INDEPENDENT REASONS TEXTING CAN BE OFF, and they get DIFFERENT
+//    words: `notConfigured` (nobody has filled in a sender in Settings — a
+//    coach's job) and `envMissing` (this deployment has no Twilio
+//    credentials — an operator's job). Only one banner shows at a time,
+//    `envMissing` first, because it is the one that Settings cannot fix.
+//
 // 2. A SUPPRESSED NUMBER CAN NEVER BE TEXTED. The box is disabled and says
 //    why. THE ROUTE REFUSES TOO — that is deliberate defence in depth, not
 //    duplication, and neither half may be removed on the grounds that the
@@ -72,6 +78,13 @@ export interface SmsComposerProps {
   quietHoursEnd?: number
   /** No Twilio sender on this business — the route answers 503. */
   notConfigured?: boolean
+  /**
+   * This DEPLOYMENT has no Twilio credentials (`smsEnvPresent()` is false).
+   * A separate gate from `notConfigured`, and separate on purpose: that one
+   * is a coach filling in Settings, this one is an operator setting env vars,
+   * and telling the wrong person to fix it is worse than saying nothing.
+   */
+  envMissing?: boolean
   /** Injected by tests; production uses the internal POST below. */
   onSend?: (submission: SmsComposeSubmission) => void | Promise<void>
 }
@@ -108,6 +121,7 @@ export function SmsComposer({
   quietHoursStart = 8,
   quietHoursEnd = 21,
   notConfigured = false,
+  envMissing = false,
   onSend,
 }: SmsComposerProps) {
   const router = useRouter()
@@ -123,7 +137,7 @@ export function SmsComposer({
   const who = contactName ?? phone
   const counted = countSmsSegments(body)
   const quiet = isQuietHour(contactLocalHour, quietHoursStart, quietHoursEnd)
-  const blocked = suppressed || notConfigured
+  const blocked = suppressed || notConfigured || envMissing
   const canSend = !blocked && !sending && body.trim().length > 0
 
   async function post(submission: SmsComposeSubmission): Promise<{ warning?: string }> {
@@ -186,7 +200,17 @@ export function SmsComposer({
         </p>
       ) : null}
 
-      {notConfigured && !suppressed ? (
+      {envMissing && !suppressed ? (
+        <p className="mb-3 flex items-start gap-2 rounded-md border border-accent/30 bg-accent/10 p-3 text-sm text-accent">
+          <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+          <span>
+            Texting is switched off here because the Twilio credentials are not set on this server. Ask whoever runs
+            this site to add them — filling in Settings will not fix this one.
+          </span>
+        </p>
+      ) : null}
+
+      {notConfigured && !suppressed && !envMissing ? (
         <p className="mb-3 flex items-start gap-2 rounded-md border border-accent/30 bg-accent/10 p-3 text-sm text-accent">
           <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
           <span>

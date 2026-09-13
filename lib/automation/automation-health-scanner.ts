@@ -66,10 +66,6 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
   { name: "clientRiskScanCron", sla_hours: 30 },       // daily 05:00
   { name: "revenueDigestCron", sla_hours: 192 },       // weekly Mon
   { name: "packRenewalScanCron", sla_hours: 30 },      // daily 09:00
-  // Watched even though it ships disabled: a funnel set to auto-close while
-  // this never runs is the failure mode the detail screen warns about, and a
-  // silent cron death is how it would become permanent.
-  { name: "funnelWindowCron", sla_hours: 30 },          // daily 04:00
 
   // — Crons that call logCronStart. These are also judged on "never succeeded
   //   once", measured from watch_from (the date their logging shipped).
@@ -196,6 +192,20 @@ export const EXPECTED_CRONS: ExpectedCron[] = [
     watch_from: "2026-08-21",
     enabled_flag: "cron_content_schedule_enabled",
     enabled_flag_default: true, // a silent scheduler is worse than a dormant one
+  },
+  {
+    // Funnel run-window closer — daily 04:00, off by default. Moved here
+    // 2026-09-13 (audit §4 #9): the route previously never called
+    // logCronStart at all, so it lived in the no-cron_runs group above. Now
+    // that it logs, a funnel set to auto-close while this cron is silently
+    // dead is exactly the failure mode the funnel detail screen warns about —
+    // watched from the date the logging shipped, not from further back.
+    name: "funnelWindowCron",
+    sla_hours: 30,
+    reports_to_cron_runs: true,
+    watch_from: "2026-09-13",
+    enabled_flag: "cron_funnel_window_enabled",
+    enabled_flag_default: false,
   },
 ]
 

@@ -8,6 +8,17 @@ type TargetResolver =
   | ((
       request: Request,
       context: { params: Promise<Record<string, string>> },
+      /**
+       * The handler's own response, cloned — OPTIONAL, and every existing
+       * resolver in the app ignores it unchanged. It exists for a target that
+       * only comes into being inside the handler: a CREATED row's id (no
+       * dynamic segment names it), or an UPDATED/DELETED row's label, which
+       * `ctx.params` can give an id for but never a name. `undefined` when
+       * the handler threw (nothing to read) or the response is a stream (see
+       * `isStreamingResponse` below — reading it here would hold the whole
+       * response the same way the `metadata` callback used to).
+       */
+      response?: Response,
     ) => Promise<AuditTarget | undefined> | AuditTarget | undefined)
 
 export interface WithAuditOptions {
@@ -87,6 +98,27 @@ async function maybeReadError(response: Response): Promise<{ code?: string; mess
   }
 }
 
+/**
+ * Resolves `options.target`, handing a function resolver the response too —
+ * see `TargetResolver`'s own comment for why. `response` is already the
+ * caller's clone (or `undefined`); this function never clones anything
+ * itself. A throwing or rejecting resolver degrades to `undefined` rather
+ * than losing the whole audit row over a broken label lookup.
+ */
+async function resolveTarget(
+  target: WithAuditOptions["target"],
+  request: Request,
+  context: { params: Promise<Record<string, string>> },
+  response?: Response,
+): Promise<AuditTarget | undefined> {
+  if (typeof target !== "function") return target
+  try {
+    return (await target(request, context, response)) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
 export function withAudit(options: WithAuditOptions, handler: Handler): Handler {
   return async (request, context) => {
     let response: Response | null = null
@@ -97,18 +129,18 @@ export function withAudit(options: WithAuditOptions, handler: Handler): Handler 
       thrown = err
     }
 
-    let target: AuditTarget | undefined
-    if (typeof options.target === "function") {
-      try {
-        target = (await options.target(request, context)) ?? undefined
-      } catch {
-        target = undefined
-      }
-    } else {
-      target = options.target
-    }
-
     if (thrown) {
+      // TARGET RESOLUTION HAPPENS HERE, AFTER THE THROW CHECK, ON PURPOSE:
+      // there is no response to hand the resolver on this path (the handler
+      // never produced one), so it resolves from `(request, context)` alone —
+      // e.g. the id out of `ctx.params` — exactly as it did before this
+      // function grew a third argument. Resolving target before this check
+      // (the previous shape) would have been fine for THIS branch too, but it
+      // meant a route whose target depends on the response could never be
+      // reached from below without duplicating this call — hence the shared
+      // `resolveTarget` helper instead of inlining the function-vs-static
+      // check twice.
+      const target = await resolveTarget(options.target, request, context)
       void recordAudit({
         action: options.action,
         category: options.category,
@@ -123,6 +155,20 @@ export function withAudit(options: WithAuditOptions, handler: Handler): Handler 
     const resp = response as Response
     const outcome = classifyOutcome(resp.status)
     const error = await maybeReadError(resp)
+
+    // A CLONE, never `resp` itself — `resp` is what this wrapper eventually
+    // returns to the real caller, and a resolver that read the original body
+    // would leave nothing for them. Streaming gets `undefined` for the same
+    // reason `metadata` below does: `.clone().json()` on an open
+    // `text/event-stream` response tees the stream and does not settle until
+    // it closes, holding the whole response hostage (see
+    // `isStreamingResponse`'s own comment).
+    const target = await resolveTarget(
+      options.target,
+      request,
+      context,
+      isStreamingResponse(resp) ? undefined : resp.clone(),
+    )
 
     let extra: Record<string, unknown> = {}
     if (options.metadata) {

@@ -29,3 +29,28 @@ describe("captureLead tenancy", () => {
     expect(forwarded.businessId).not.toBe("00000000-0000-0000-0000-000000000001")
   })
 })
+
+describe("captureLead attribution session", () => {
+  beforeEach(() => recordContactEventMock.mockClear())
+
+  it("forwards attributionSessionId to the contact spine", async () => {
+    // MUTANT KILLED: dropping `attributionSessionId` from the object
+    // captureLead forwards to recordContactEvent. RecordContactEventInput has
+    // always had the field; CaptureLeadInput did not, so every non-funnel
+    // entry point (newsletter, contact, inquiry, chat, shop, events) silently
+    // dropped the visitor's session on the floor — audit §3.5.
+    await captureLead({
+      source: "newsletter",
+      email: "a@b.com",
+      businessId: "00000000-0000-0000-0000-0000000000b2",
+      attributionSessionId: "sess-1",
+    })
+    expect(recordContactEventMock).toHaveBeenCalledWith(expect.objectContaining({ attributionSessionId: "sess-1" }))
+  })
+
+  it("forwards undefined when the caller has no session, rather than inventing one", async () => {
+    await captureLead({ source: "newsletter", email: "a@b.com", businessId: "biz-1" })
+    const forwarded = recordContactEventMock.mock.calls[0][0] as { attributionSessionId?: string | null }
+    expect(forwarded.attributionSessionId ?? null).toBeNull()
+  })
+})

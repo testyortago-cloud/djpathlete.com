@@ -66,10 +66,24 @@ export interface FunnelPublishPlan {
  * the failure into an empty `unresolved` list. Catching it per step and
  * reporting "no blockers" would be exactly that fail-open. The route's own
  * try/catch turns it into a 422 that names the reason.
+ *
+ * `connectivity` answers "what is wrong with where this page LEADS", in
+ * sentences already written for the owner. It is separate from `gate` because
+ * the two see different things: the gate sees ONE document, and "this page
+ * leads nowhere" is only answerable across the whole funnel at once
+ * (`funnelConnections`). Injected for the same reason the gate is — it keeps
+ * this module a leaf, and keeps a decision that blocks publishing testable
+ * without a database.
+ *
+ * It DEFAULTS to "nothing wrong" rather than being required, because the
+ * planner is also driven from callers that have no funnel-wide view; a
+ * required parameter would have turned a missing argument into a refusal to
+ * publish anything.
  */
 export function funnelPublishPlan(
   steps: StepToPublish[],
   gate: (doc: SectionDoc) => { ok: boolean; blockers: string[] },
+  connectivity: (stepId: string) => string[] = () => [],
 ): FunnelPublishPlan {
   // POSITION ORDER, not input order. The entry page is written first, so a
   // write that dies half way leaves the funnel more coherent rather than less.
@@ -93,9 +107,28 @@ export function funnelPublishPlan(
       continue
     }
 
+    // NOT ASKED ABOUT A DOC-LESS STEP — the `continue`s above are what keep it
+    // that way. A page with nothing on it is already reported as a blank page,
+    // and "it leads nowhere" is true of it and useless: `blank` is what selects
+    // "Generate it now" in the UI, and a page carrying both problems would
+    // point the owner at the connect button instead.
+    const extra = connectivity(step.id)
+
     const verdict = gate(step.doc)
     if (!verdict.ok) {
-      problems.push({ stepId: step.id, stepName: step.name, problems: verdict.blockers, blank: false })
+      // ONE ENTRY PER PAGE, both reasons inside it. The UI keys its list on the
+      // page, so a second entry for the same step renders that page twice and
+      // sends the owner back after they fixed one of the two.
+      problems.push({
+        stepId: step.id,
+        stepName: step.name,
+        problems: [...verdict.blockers, ...extra],
+        blank: false,
+      })
+      continue
+    }
+    if (extra.length > 0) {
+      problems.push({ stepId: step.id, stepName: step.name, problems: extra, blank: false })
       continue
     }
     publish.push({ stepId: step.id, stepName: step.name, doc: step.doc })

@@ -80,7 +80,15 @@ export const POST = withAudit({ action: "newsletter.subscribed", category: "mark
     // this successful subscribe into an error response. The subscriber is
     // still a contact regardless of whether they consented to marketing, so
     // this always runs.
-    const contactId = await captureLead({ source: "newsletter", email: result.data.email, businessId })
+    const contactId = await captureLead({
+      source: "newsletter",
+      email: result.data.email,
+      businessId,
+      // The same cookie the subscriber row above was written with (audit
+      // §3.5) — the newsletter row has always stored the session; the CONTACT
+      // did not, so first_touch_session_id stayed null.
+      attributionSessionId: sessionId ?? null,
+    })
 
     // A consent row is only ever filed for an actual consent act. Not
     // ticking the box (or this submission's schema-defaulted-false absence

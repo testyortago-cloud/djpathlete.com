@@ -101,8 +101,16 @@ beforeEach(() => {
   })
   recordAudit.mockReset()
   sendNewFunnelLeadEmail.mockReset().mockResolvedValue(undefined)
-  getFunnelById.mockReset().mockResolvedValue({ id: FUNNEL_ID, slug: "camp", name: "Camp" })
-  getStep.mockReset().mockResolvedValue({ id: STEP_ID, slug: "optin", name: "Opt in" })
+  getFunnelById.mockReset().mockResolvedValue({
+    id: FUNNEL_ID,
+    slug: "camp",
+    name: "Camp",
+    // Task 4 (later) 404s the route unless this is "published" — added now so
+    // this suite survives that change too.
+    status: "published",
+    notify_emails: null,
+  })
+  getStep.mockReset().mockResolvedValue({ id: STEP_ID, funnel_id: FUNNEL_ID, slug: "optin", name: "Opt in" })
 })
 
 /** recordConsent runs fire-and-forget; give its microtask chain a turn. */
@@ -199,5 +207,73 @@ describe("POST /api/funnels/submit — tenant", () => {
     expect(captureContactFromSubmission.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
     expect(getBusinessSettings).toHaveBeenCalledWith("host-biz")
     expect(recordConsent.mock.calls[0][0]).toMatchObject({ businessId: "host-biz" })
+  })
+})
+
+describe("POST /api/funnels/submit — funnel status gate (audit §3.6)", () => {
+  it("404s when the funnel is not published, without ever writing the submission", async () => {
+    // MUTANT: no status check in the submit route. The step's
+    // published_version_id survives an unpublish, so without this gate a
+    // direct POST would keep capturing and enrolling leads for a funnel /go
+    // was already 404ing.
+    getFunnelById.mockResolvedValue({
+      id: FUNNEL_ID,
+      name: "Camp",
+      status: "draft",
+      notify_emails: null,
+    })
+    const res = await POST(request({ sms_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: "This page is no longer live." })
+    expect(createSubmission).not.toHaveBeenCalled()
+    // Presence control: this isn't "the mock happened to return nothing" —
+    // getFunnelById really was called, with the id off the request body.
+    expect(getFunnelById).toHaveBeenCalledWith(FUNNEL_ID)
+  })
+})
+
+describe("POST /api/funnels/submit — funnel read failure (review round 1, finding 1)", () => {
+  it("500s and logs when getFunnelById throws, instead of folding it into the same 404 an unpublished funnel gets", async () => {
+    // MUTANT: `getFunnelById(...).catch(() => null)` — that maps a genuine
+    // DB/connectivity failure onto the SAME 404 a real draft funnel gets,
+    // silently (no console.error). A transient blip on a live funnel would
+    // tell a real lead the page is gone, invisibly to monitoring.
+    const err = vi.spyOn(console, "error").mockImplementation(() => {})
+    getFunnelById.mockRejectedValue(new Error("connection reset"))
+    const res = await POST(request({ sms_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: "Something went wrong. Please try again." })
+    expect(createSubmission).not.toHaveBeenCalled()
+    expect(err).toHaveBeenCalledWith("[funnels/submit] funnel read failed:", expect.any(Error))
+    err.mockRestore()
+  })
+})
+
+describe("POST /api/funnels/submit — step/funnel cross-check (review round 1, finding 2)", () => {
+  it("404s when the step's funnel_id does not match the request's funnelId, without reading the funnel or writing the submission", async () => {
+    // MUTANT: no cross-check between stepId and funnelId.
+    // getPublishedFormConfig resolves purely from stepId and the status gate
+    // resolves purely from funnelId — without this, a request could pair a
+    // stale/unpublished funnel's own real stepId+formKey with a DIFFERENT,
+    // currently-published funnel's funnelId, pass the gate, and still write
+    // a submission against the stale funnel's form.
+    getStep.mockResolvedValue({
+      id: STEP_ID,
+      funnel_id: "ffffffff-9999-4999-8999-ffffffffffff",
+      slug: "optin",
+      name: "Opt in",
+    })
+    const res = await POST(request({ sms_consent: true }))
+    await flush()
+
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: "This page is no longer live." })
+    expect(createSubmission).not.toHaveBeenCalled()
+    // The mismatch must be caught BEFORE the funnel is ever read.
+    expect(getFunnelById).not.toHaveBeenCalled()
   })
 })

@@ -50,8 +50,9 @@ vi.mock("@/lib/tenancy/resolve", () => ({
 import { DELETE } from "@/app/api/admin/funnels/[id]/route"
 import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
-import { deleteFunnel, listSteps, listStepDocuments } from "@/lib/db/funnels"
+import { deleteFunnel, getFunnelById, listSteps, listStepDocuments } from "@/lib/db/funnels"
 import { deleteQuiz } from "@/lib/db/quizzes"
+import { recordAudit } from "@/lib/audit/record"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
 
@@ -72,6 +73,8 @@ const quizSection = (quizId: string) => ({
 })
 const heroSection = () => ({ id: "h1", kind: "hero", variant: "centered", style: {}, props: { headline: "Hi" } })
 
+const FUNNEL_ROW = { id: FUNNEL_ID, slug: "quiz-funnel", name: "Rotational Reboot Check", kind: "funnel", status: "published" }
+
 const step = (over: Record<string, unknown> = {}) => ({
   id: "s1",
   funnel_id: FUNNEL_ID,
@@ -89,6 +92,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mock(auth).mockResolvedValue({ user: { id: ADMIN_ID, role: "admin" } })
   mock(canAccessAdminPath).mockResolvedValue(true)
+  mock(getFunnelById).mockResolvedValue(FUNNEL_ROW)
   mock(deleteFunnel).mockResolvedValue(undefined)
   mock(deleteQuiz).mockResolvedValue(undefined)
   mock(listSteps).mockResolvedValue([step()])
@@ -103,11 +107,17 @@ describe("DELETE /api/admin/funnels/[id] and the quiz its pages ran", () => {
     expect(deleteQuiz).toHaveBeenCalledWith(BUSINESS_ID, QUIZ_ID)
   })
 
-  it("reads the funnel's pages BEFORE deleting it, or there is nothing left to read", async () => {
-    // `funnel_steps.funnel_id` is ON DELETE CASCADE: after the funnel row goes,
-    // its steps are gone and the quiz pointer with them. Order is the whole
+  it("reads the funnel row AND its pages BEFORE deleting it, or there is nothing left to read", async () => {
+    // `deleteFunnel` removes the `funnels` row outright, and
+    // `funnel_steps.funnel_id` is ON DELETE CASCADE -- after that runs, both
+    // the slug/name/kind/status this route now hands the audit trail AND the
+    // quiz pointer inside the steps' documents are gone. Order is the whole
     // mechanism, so it is asserted rather than assumed.
     const order: string[] = []
+    mock(getFunnelById).mockImplementation(async () => {
+      order.push("getFunnelById")
+      return FUNNEL_ROW
+    })
     mock(listSteps).mockImplementation(async () => {
       order.push("listSteps")
       return [step()]
@@ -116,7 +126,43 @@ describe("DELETE /api/admin/funnels/[id] and the quiz its pages ran", () => {
       order.push("deleteFunnel")
     })
     await DELETE(request(), ctx)
-    expect(order).toEqual(["listSteps", "deleteFunnel"])
+    expect(order).toEqual(["getFunnelById", "listSteps", "deleteFunnel"])
+  })
+
+  // -------------------------------------------------------------------------
+  // AUDIT §4 #12: `funnel.deleted` rows carried `target_id null` and
+  // `metadata {}` because `deleteFunnel` leaves nothing behind for the
+  // resolvers to read. The response now answers `deleted: {...}` with the
+  // PRE-delete row, precisely so `withAudit`'s target/metadata resolvers have
+  // something to read it from.
+  // -------------------------------------------------------------------------
+
+  it("answers with the pre-delete row, and records it as the audit target + metadata", async () => {
+    const res = await DELETE(request(), ctx)
+    expect(res.status).toBe(200)
+    const body = await res.clone().json()
+    // MUTANT: answering the old bare `{ok:true}`. The resolvers below would
+    // have nothing to read and this is the only place that would show it.
+    expect(body).toEqual({
+      ok: true,
+      deleted: { id: FUNNEL_ID, slug: "quiz-funnel", name: "Rotational Reboot Check", kind: "funnel", status: "published" },
+    })
+
+    // MUTANT: dropping `target` or `metadata` from the DELETE options.
+    expect(mock(recordAudit)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { type: "funnel", id: FUNNEL_ID, label: "Rotational Reboot Check" },
+        metadata: { slug: "quiz-funnel", kind: "funnel", status: "published" },
+      }),
+    )
+  })
+
+  it("falls back to an id-only target when the funnel row could not be read first", async () => {
+    mock(getFunnelById).mockResolvedValue(null)
+    const res = await DELETE(request(), ctx)
+    expect(res.status).toBe(200)
+
+    expect(mock(recordAudit)).toHaveBeenCalledWith(expect.objectContaining({ target: { type: "funnel", id: FUNNEL_ID } }))
   })
 
   it("NEVER deletes a quiz another funnel's page still points at", async () => {

@@ -71,6 +71,7 @@ import { NextResponse } from "next/server"
 import { getSetting } from "@/lib/db/system-settings"
 import { countRecentConversationsByIp, getConversation, markCaptured } from "@/lib/db/chat"
 import { captureLead } from "@/lib/lead-engine/capture"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { recordAudit } from "@/lib/audit/record"
@@ -270,6 +271,15 @@ export async function POST(request: Request) {
     // here would put the lead under the wrong coach the moment a second one
     // exists.
     businessId: conversation.business_id,
+    // The visitor's attribution session (audit §3.5). The cookie comes FIRST
+    // because it is this request's own session — the one proxy.ts stamped or
+    // re-read moments ago. The conversation row's `attribution_session_id` is
+    // a legitimate fallback rather than a guess: this same person's chat
+    // recorded it when the conversation began, so if the cookie has since been
+    // cleared (or the chat outlived it) it is still the session that brought
+    // them here. It is not an overwrite risk either — the spine only ever
+    // FILLS a null first_touch_session_id, never replaces one.
+    attributionSessionId: parseAttrCookie(request.headers.get("cookie")) ?? conversation.attribution_session_id,
     metadata: {
       chat_conversation_id: conversationId,
       landing_path: conversation.landing_path,

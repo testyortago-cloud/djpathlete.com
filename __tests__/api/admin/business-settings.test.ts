@@ -46,6 +46,24 @@ let session: unknown = { user: { id: "u", role: "staff" } }
 vi.mock("@/lib/auth", () => ({ auth: () => Promise.resolve(session) }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: () => Promise.resolve() }))
 
+// Partial mock: keep the real senderDomainVerdict (pure exact-match logic,
+// already covered by __tests__/lib/email/sender-domains.test.ts) and control
+// only the network-touching listVerifiedSenderDomains per test.
+let listDomainsCalls = 0
+let listDomainsImpl: () => Promise<
+  { ok: true; domains: string[] } | { ok: false; reason: "no_api_key" | "api_error" }
+> = () => Promise.resolve({ ok: true, domains: ["send.darrenjpaul.com"] })
+vi.mock("@/lib/email/sender-domains", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/email/sender-domains")>()
+  return {
+    ...actual,
+    listVerifiedSenderDomains: () => {
+      listDomainsCalls++
+      return listDomainsImpl()
+    },
+  }
+})
+
 import { PATCH } from "@/app/api/admin/businesses/[id]/route"
 
 function req(body: unknown) {
@@ -67,6 +85,8 @@ beforeEach(() => {
     getSettingsCalls.push(id)
     return Promise.resolve({ business_id: id, display_name: "B" })
   }
+  listDomainsCalls = 0
+  listDomainsImpl = () => Promise.resolve({ ok: true, domains: ["send.darrenjpaul.com"] })
 })
 
 describe("PATCH /api/admin/businesses/[id]", () => {
@@ -165,5 +185,104 @@ describe("PATCH /api/admin/businesses/[id]", () => {
     const res = await PATCH(req({ settings: { display_name: "X" } }), { params: Promise.resolve({ id: "bbb" }) })
     expect(res.status).toBe(404)
     expect(settingsCalls).toHaveLength(0)
+  })
+})
+
+describe("PATCH /api/admin/businesses/[id] -- sender_email domain verification (audit §4 #1)", () => {
+  it("REFUSES a sender_email on a domain Resend has not verified, and writes nothing -- MUTANT: dropping the whole check reintroduces the 08-31 fault (apex typed back in while only the subdomain is verified)", async () => {
+    listDomainsImpl = () => Promise.resolve({ ok: true, domains: ["send.darrenjpaul.com"] })
+    const res = await PATCH(req({ settings: { sender_email: "noreply@darrenjpaul.com" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.error).toMatch(/darrenjpaul\.com.*not verified/i)
+    expect(settingsCalls).toHaveLength(0)
+  })
+
+  it("names the domain they MEANT, and never the rest of the Resend account", async () => {
+    // Resend domains are ACCOUNT-wide, not per-business: one account backs
+    // every tenant. The refusal used to render `verified.domains.join(", ")`,
+    // so a coach who mistyped their own sender address was shown every other
+    // coach's sending domains.
+    //
+    // MUTANT: putting `verified.domains.join(", ")` back -- "coach-two.com"
+    // appears in a message shown to somebody who has nothing to do with it.
+    listDomainsImpl = () =>
+      Promise.resolve({ ok: true, domains: ["send.darrenjpaul.com", "mail.coach-two.com", "coach-three.io"] })
+    const res = await PATCH(req({ settings: { sender_email: "noreply@darrenjpaul.com" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    // Still useful: it names the subdomain the address should have been on.
+    expect(body.error).toContain("send.darrenjpaul.com")
+    // And nothing else from the account.
+    expect(body.error).not.toContain("coach-two")
+    expect(body.error).not.toContain("coach-three")
+  })
+
+  it("says so plainly when nothing in the account relates to what was typed", async () => {
+    // MUTANT: naming a substitute anyway (e.g. the first verified domain).
+    // "Use an address on mail.coach-two.com" is both a disclosure and advice
+    // this admin cannot act on.
+    listDomainsImpl = () => Promise.resolve({ ok: true, domains: ["mail.coach-two.com"] })
+    const res = await PATCH(req({ settings: { sender_email: "noreply@brand-new.com" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.error).toMatch(/brand-new\.com.*not verified/i)
+    expect(body.error).not.toContain("coach-two")
+    expect(body.error).toMatch(/verify that domain at resend/i)
+  })
+
+  it("accepts a sender_email whose exact domain is verified", async () => {
+    listDomainsImpl = () => Promise.resolve({ ok: true, domains: ["send.darrenjpaul.com"] })
+    const res = await PATCH(req({ settings: { sender_email: "noreply@send.darrenjpaul.com" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    expect(res.status).toBe(200)
+    expect(settingsCalls).toHaveLength(1)
+  })
+
+  it("always allows clearing the field, without asking Resend -- MUTANT: checking '' against the verified list would 400 every attempt to clear sender_email", async () => {
+    const res = await PATCH(req({ settings: { sender_email: "" } }), { params: Promise.resolve({ id: "bbb" }) })
+    expect(res.status).toBe(200)
+    expect(settingsCalls).toHaveLength(1)
+    expect(listDomainsCalls).toBe(0)
+  })
+
+  it("fails closed and writes nothing when Resend cannot be asked right now", async () => {
+    listDomainsImpl = () => Promise.resolve({ ok: false, reason: "api_error" })
+    const res = await PATCH(req({ settings: { sender_email: "noreply@send.darrenjpaul.com" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.error).toMatch(/could not confirm/i)
+    expect(settingsCalls).toHaveLength(0)
+  })
+
+  it("fails closed with the not-configured message when Resend has no API key, and writes nothing -- this is the seam review round 1's finding 1 lives in: the route must render THIS message for reason:no_api_key, distinct from the api_error message above", async () => {
+    listDomainsImpl = () => Promise.resolve({ ok: false, reason: "no_api_key" })
+    const res = await PATCH(req({ settings: { sender_email: "noreply@send.darrenjpaul.com" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.error).toMatch(/not configured on this server/i)
+    expect(settingsCalls).toHaveLength(0)
+  })
+
+  it("presence control: never calls listVerifiedSenderDomains when the patch doesn't touch sender_email", async () => {
+    // Without this control, the four tests above could be passing because
+    // listVerifiedSenderDomains runs (and is mocked permissively) on every
+    // request, not because the route gates on sender_email's presence.
+    const res = await PATCH(req({ settings: { display_name: "New Name" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    expect(res.status).toBe(200)
+    expect(listDomainsCalls).toBe(0)
   })
 })

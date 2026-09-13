@@ -11,6 +11,7 @@ import {
   getSmsThread,
   listSmsThreads,
   updateSmsStatusBySid,
+  markSmsMessageOutcome,
   recentOutboundExists,
   ROW_FETCH_CAP,
 } from "@/lib/db/sms-messages"
@@ -147,6 +148,87 @@ describe("updateSmsStatusBySid", () => {
     mockFrom.mockReturnValue({ select: () => ({ eq: () => ({ maybeSingle }) }), update })
 
     expect(await updateSmsStatusBySid("SM1", "failed")).toBe("ignored")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// markSmsMessageOutcome (Task 7) — the SECOND half of the queued-row-first
+// write. `sendManualSms` now inserts a `queued` row BEFORE the Twilio POST
+// and stamps the outcome onto it afterwards, so this is the only place the
+// provider's sid ever reaches an existing row.
+// ---------------------------------------------------------------------------
+describe("markSmsMessageOutcome", () => {
+  it("stamps the provider sid and `sent` onto the queued row, by id", async () => {
+    const neq = vi.fn().mockResolvedValue({ error: null })
+    const eqId = vi.fn().mockReturnValue({ neq })
+    const update = vi.fn().mockReturnValue({ eq: eqId })
+    mockFrom.mockReturnValue({ update })
+
+    await markSmsMessageOutcome("m1", { kind: "sent", twilioSid: "SM123" })
+
+    expect(mockFrom).toHaveBeenCalledWith("sms_messages")
+    expect(update).toHaveBeenCalledWith({ status: "sent", twilio_sid: "SM123" })
+    // Mutating either VALUE must fail this — an argument-blind mock tolerates
+    // a wrong predicate.
+    expect(eqId).toHaveBeenCalledWith("id", "m1")
+    // MUTANT: drop the .neq guard. Twilio does not guarantee callback order,
+    // so a `delivered` callback can land on the row (keyed on twilio_sid the
+    // instant this write lands it) before the send path returns here; an
+    // unconditional update would then regress a DELIVERED text back to
+    // `sent`, which is exactly what updateSmsStatusBySid's monotonic rule
+    // exists to prevent.
+    expect(neq).toHaveBeenCalledWith("status", "delivered")
+  })
+
+  it("marks it sent with a NULL sid when the provider answered without one", async () => {
+    // Pathological but typed: sendRenderedSequenceSms returns
+    // `providerMessageId: string | null`. The row must still leave `queued`;
+    // a null sid simply means no status callback can ever find it.
+    const neq = vi.fn().mockResolvedValue({ error: null })
+    const update = vi.fn().mockReturnValue({ eq: () => ({ neq }) })
+    mockFrom.mockReturnValue({ update })
+
+    await markSmsMessageOutcome("m1", { kind: "sent", twilioSid: null })
+
+    expect(update).toHaveBeenCalledWith({ status: "sent", twilio_sid: null })
+  })
+
+  it("writes `failed` and the carrier's error code, by id", async () => {
+    const neq = vi.fn().mockResolvedValue({ error: null })
+    const eqId = vi.fn().mockReturnValue({ neq })
+    const update = vi.fn().mockReturnValue({ eq: eqId })
+    mockFrom.mockReturnValue({ update })
+
+    await markSmsMessageOutcome("m1", { kind: "failed", errorCode: "21610" })
+
+    expect(update).toHaveBeenCalledWith({ status: "failed", error_code: "21610" })
+    expect(eqId).toHaveBeenCalledWith("id", "m1")
+    expect(neq).toHaveBeenCalledWith("status", "delivered")
+  })
+
+  it("records a failure with no code as `failed` and a null code, never as still-queued", async () => {
+    // Twilio does not always give a numeric code (a network fault has none).
+    // The row must still stop saying `queued`, or the conversation shows a
+    // text that never went anywhere as if it were on its way forever.
+    const neq = vi.fn().mockResolvedValue({ error: null })
+    const update = vi.fn().mockReturnValue({ eq: () => ({ neq }) })
+    mockFrom.mockReturnValue({ update })
+
+    await markSmsMessageOutcome("m1", { kind: "failed", errorCode: null })
+
+    expect(update).toHaveBeenCalledWith({ status: "failed", error_code: null })
+  })
+
+  it("throws rather than resolving quietly when the update fails", async () => {
+    // MUTANT: swallow the error. The caller logs and carries on deliberately
+    // (a lost row must not report a delivered text as failed), but it can
+    // only do that if it is TOLD — a silent resolve makes a lost sid
+    // invisible.
+    const neq = vi.fn().mockResolvedValue({ error: { message: "boom", code: "42P01" } })
+    const update = vi.fn().mockReturnValue({ eq: () => ({ neq }) })
+    mockFrom.mockReturnValue({ update })
+
+    await expect(markSmsMessageOutcome("m1", { kind: "sent", twilioSid: "SM123" })).rejects.toThrow(/boom/)
   })
 })
 

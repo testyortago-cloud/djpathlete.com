@@ -437,6 +437,16 @@ interface PageContext {
    * than connect something to a page it is guessing at.
    */
   nextStepSlug: string | null
+  /**
+   * The funnel's own address slug, for the PROMPT — `null` when the read
+   * failed, exactly like `allPages`.
+   *
+   * `funnelBasePath` already carries it, and deriving this from that string
+   * would be the wrong seam: that field exists for the RENDERER and is a path,
+   * so a renderer change to its shape would silently change what the model is
+   * told the funnel is called. This is the value itself, read once.
+   */
+  funnelSlug: string | null
   faqPageKeys: string[]
 }
 
@@ -463,6 +473,7 @@ async function loadPageContext(funnelId: string, thisStepSlug: string): Promise<
       stepSlugs: steps.map((s) => s.slug).filter((slug) => slug !== thisStepSlug),
       allPages: steps.map((s) => ({ slug: s.slug, name: s.name })),
       nextStepSlug: next?.slug ?? null,
+      funnelSlug: funnel?.slug ?? null,
       faqPageKeys: Object.keys(faqCounts).sort(),
     }
   } catch (error) {
@@ -475,6 +486,11 @@ async function loadPageContext(funnelId: string, thisStepSlug: string): Promise<
       stepSlugs: [],
       allPages: null,
       nextStepSlug: null,
+      // `null`, so Block B tells the model to leave the form on "message"
+      // rather than to guess the funnel's address. `nextStepSlug` being null
+      // here already suppresses the redirect line; this is the honest value
+      // for the field regardless, and the two degrade independently.
+      funnelSlug: null,
       faqPageKeys: [],
     }
   }
@@ -1142,6 +1158,7 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
     faqPageKeys: context.faqPageKeys,
     stepSlugs: context.stepSlugs,
     nextStepSlug: context.nextStepSlug,
+    funnelSlug: context.funnelSlug,
   })
   const baseTurnMessage = buildTurnMessage({ doc: draft.doc, history, message })
 

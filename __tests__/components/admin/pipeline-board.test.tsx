@@ -12,6 +12,16 @@
 
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { render, screen } from "@testing-library/react"
+
+// <BoardSwitcher> (Task 8) renders next/link pills. Spreads every prop so
+// `aria-current` survives onto the anchor.
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}))
 import { PipelineBoard } from "@/components/admin/pipeline-board"
 import type { BoardColumn } from "@/lib/db/pipeline"
 
@@ -26,12 +36,12 @@ vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
 vi.mock("@/lib/tenancy/resolve", () => ({ resolveAdminTenant: vi.fn() }))
 vi.mock("@/lib/db/pipeline", async () => {
   const actual = await vi.importActual<typeof import("@/lib/db/pipeline")>("@/lib/db/pipeline")
-  return { ...actual, readBoard: vi.fn() }
+  return { ...actual, readBoard: vi.fn(), listPipelines: vi.fn() }
 })
 
 import { requirePermission } from "@/lib/permissions/guard"
 import { getBusinessSettings } from "@/lib/db/businesses"
-import { readBoard } from "@/lib/db/pipeline"
+import { readBoard, listPipelines } from "@/lib/db/pipeline"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import PipelinePage from "@/app/(admin)/admin/pipeline/page"
 
@@ -89,6 +99,10 @@ describe("<PipelinePage>", () => {
     vi.clearAllMocks()
     ;(requirePermission as ReturnType<typeof vi.fn>).mockResolvedValue({ user: { id: "u1", role: "admin" } })
     ;(readBoard as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    // One board — the shape every tenant create_business() seeds (00249).
+    ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "pipe-coaching", key: "coaching", name: "Coaching" },
+    ])
     ;(resolveAdminTenant as ReturnType<typeof vi.fn>).mockResolvedValue({
       businessId: "biz-resolved",
       choices: [],
@@ -104,7 +118,7 @@ describe("<PipelinePage>", () => {
   // front of it.
   it("falls back to neutral copy, with no stray leading apostrophe, when display_name is blank", async () => {
     ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ display_name: "" })
-    const { container } = render(await PipelinePage())
+    const { container } = render(await PipelinePage({ searchParams: Promise.resolve({}) }))
     // Scoped to the intro paragraph itself, not the whole body — the
     // paragraph sits directly after the "Pipeline" <h1> with no
     // whitespace between their textContent, so a body-wide scan for
@@ -112,18 +126,71 @@ describe("<PipelinePage>", () => {
     // reads as "...Pipeline's coaching..." with the apostrophe glued to
     // the heading, not standing alone at a word boundary).
     const intro = container.querySelector("p")
-    expect(intro?.textContent).toMatch(/^The coaching pipeline\. Drag a card to move it between stages/)
+    // "Coaching", capitalised, is now the BOARD'S OWN NAME out of
+    // `pipelines.name` (Task 8) rather than a word baked into this sentence —
+    // the same sentence has to read correctly for "Camps & Clinics" too.
+    expect(intro?.textContent).toMatch(/^The Coaching pipeline\. Drag a card to move it between stages/)
     expect(intro?.textContent).not.toMatch(/^[’']s\b/)
     // Both reads take the tenant the SESSION resolved to, threaded once.
-    expect(readBoard).toHaveBeenCalledWith(undefined, "biz-resolved")
+    expect(readBoard).toHaveBeenCalledWith("coaching", "biz-resolved")
     expect(getBusinessSettings).toHaveBeenCalledWith("biz-resolved")
   })
 
   it("still renders the possessive when display_name is a real name", async () => {
     ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ display_name: "Acme Coaching" })
-    render(await PipelinePage())
+    render(await PipelinePage({ searchParams: Promise.resolve({}) }))
     expect(
-      screen.getByText(/^Acme Coaching’s coaching pipeline\. Drag a card to move it between stages/),
+      screen.getByText(/^Acme Coaching’s Coaching pipeline\. Drag a card to move it between stages/),
     ).toBeInTheDocument()
+  })
+
+  // Task 8 (audit §4 #7). Production has three boards (migration 00257) and
+  // this page could only ever show one of them.
+  describe("the board switcher", () => {
+    beforeEach(() => {
+      ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ display_name: "" })
+    })
+
+    it("is not rendered when the tenant has only one board", async () => {
+      // MUTANT: render it unconditionally — every single-board tenant (which
+      // is every tenant create_business() has ever made) gets a one-pill
+      // switcher that does nothing. The control below proves this assertion
+      // is not simply passing because nothing rendered.
+      const { container } = render(await PipelinePage({ searchParams: Promise.resolve({}) }))
+
+      expect(container.querySelector("nav")).toBeNull()
+      expect(container.querySelector("h1")?.textContent).toBe("Pipeline") // presence control
+    })
+
+    it("names the board it fell back to when the tenant has no default board", async () => {
+      // MUTANT: fall through to the literal "coaching" for the heading. The
+      // page would then read "The coaching pipeline." over a board that is not
+      // Coaching — and, worse, would have asked readBoard for a key this
+      // tenant does not have.
+      ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: "pipe-camps", key: "camps_clinics", name: "Camps & Clinics" },
+        { id: "pipe-assessment", key: "assessment", name: "Assessment" },
+      ])
+
+      render(await PipelinePage({ searchParams: Promise.resolve({}) }))
+
+      expect(screen.getByText(/^The Camps & Clinics pipeline\./)).toBeInTheDocument()
+      expect(readBoard).toHaveBeenCalledWith("camps_clinics", "biz-resolved")
+    })
+
+    it("renders a pill per board, with the active one marked, when the tenant has several", async () => {
+      ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { id: "pipe-coaching", key: "coaching", name: "Coaching" },
+        { id: "pipe-assessment", key: "assessment", name: "Assessment" },
+      ])
+
+      render(await PipelinePage({ searchParams: Promise.resolve({ board: "assessment" }) }))
+
+      expect(screen.getByRole("link", { name: "Coaching" })).toHaveAttribute("href", "/admin/pipeline?board=coaching")
+      expect(screen.getByRole("link", { name: "Assessment" })).toHaveAttribute("aria-current", "page")
+      // The heading follows the board that is actually being shown, not the
+      // default one — MUTANT: name the heading from DEFAULT_PIPELINE_KEY.
+      expect(screen.getByText(/^The Assessment pipeline\./)).toBeInTheDocument()
+    })
   })
 })

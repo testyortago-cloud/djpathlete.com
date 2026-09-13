@@ -671,10 +671,10 @@ https URL. "booking" needs nothing else.
 
 The catalogue names THE NEXT PAGE. When there is one, this page leads to it: its main action
 is a \`{ kind: "step", stepSlug }\` CTA with that slug, and any \`form\` gets
-\`successMode: "redirect"\` plus \`redirectUrl: "/go/<funnel-slug>/<next-page-slug>"\`. A form
-left on the default \`"message"\` captures the lead and stops there — the commonest way a
-funnel breaks. Never write the next page's content into this one, and never invent a slug
-that is not listed. When it says this is the last page, it ends.
+\`successMode: "redirect"\` plus the \`redirectUrl\` the catalogue gives, copied exactly — never
+build the path yourself. A form left on the default \`"message"\` captures the lead and stops
+there — the commonest way a funnel breaks. Never write the next page's content into this one,
+and never invent a slug that is not listed. When it says this is the last page, it ends.
 
 ## You never write a UUID
 ${
@@ -779,6 +779,15 @@ export interface BuilderCatalogueInput {
    * Stable for the life of a page, so Block B stays cacheable.
    */
   nextStepSlug: string | null
+  /**
+   * The funnel's REAL address slug, or `null` when the page context could not
+   * be read. The model has to write `redirectUrl: "/go/<this>/<next>"` for a
+   * form, and until this field existed it invented the slug from the funnel's
+   * NAME — right whenever address == slugify(name), a 404 after submit the
+   * first time they differ (audit 2026-09-13 §3.1). Stable for the life of a
+   * page except across a rename, which only costs a prompt-cache miss.
+   */
+  funnelSlug: string | null
 }
 
 function nameList(names: string[]): string {
@@ -795,7 +804,7 @@ function nameList(names: string[]): string {
  * turn, no ordering that depends on anything but the source rows.
  */
 export function buildCatalogueBlock(input: BuilderCatalogueInput): string {
-  const { catalogue, faqPageKeys, stepSlugs, nextStepSlug } = input
+  const { catalogue, faqPageKeys, stepSlugs, nextStepSlug, funnelSlug } = input
   return `
 ## The catalogue — the only names a CTA may reference
 
@@ -825,7 +834,24 @@ ${
   nextStepSlug === null
     ? "  (none — this is the last page of the funnel, so it ends here)"
     : `  ${JSON.stringify(nextStepSlug)}`
-}
+}${
+    // THE WHOLE PATH, NOT ITS SHAPE. Block A used to spell this out as
+    // "/go/<funnel-slug>/<next-page-slug>" and leave the model to fill the first
+    // half in — which it did from the funnel's NAME, since that is the only
+    // funnel-level string it was ever shown. That is right exactly while
+    // `slug === slugify(name)` and a 404 after submit the moment they differ
+    // (audit 2026-09-13 §3.1). Rendered only here, where the real slug is, and
+    // only when there is a page to redirect TO.
+    nextStepSlug === null
+      ? ""
+      : funnelSlug === null
+        ? `\n\nThe funnel's address could not be read, so do not write a redirectUrl for a form on this` +
+          ` page — leave successMode "message"; the owner connects it afterwards.`
+        : `\n\nAny form on this page redirects there: successMode "redirect" and redirectUrl exactly` +
+          ` ${JSON.stringify(`/go/${funnelSlug}/${nextStepSlug}`)}. A form already on successMode` +
+          ` "checkout" is the exception — leave it exactly as it is; Stripe returns the payer to` +
+          ` the funnel's last page by itself.`
+  }
 `.trim()
 }
 

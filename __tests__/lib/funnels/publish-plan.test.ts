@@ -165,6 +165,75 @@ describe("funnelPublishPlan", () => {
     expect(funnelPublishPlan([], CLEAN)).toEqual({ ok: true, publish: [], problems: [] })
   })
 
+  // ---------------------------------------------------------------------------
+  // The connectivity check — injected, for the same reason the gate is.
+  //
+  // "This page leads nowhere" was a rail WARNING with Publish still enabled, so
+  // every already-built funnel with a dead end could go live: the owner reaches
+  // page one, submits the form, and the funnel stops in front of a thank-you
+  // page that was built and never linked (audit 2026-09-13 §3.1). Computing it
+  // needs `funnelConnections`, which needs every page at once — so it arrives
+  // as a parameter and this module stays a leaf.
+  // ---------------------------------------------------------------------------
+  it("REFUSES a page the connectivity check says leads nowhere, under that page's name", () => {
+    // MUTANT: ignoring the third argument.
+    const plan = funnelPublishPlan(
+      [step({ id: "a", name: "Signup", position: 1 }), step({ id: "b", name: "Thanks", position: 2 })],
+      CLEAN,
+      (stepId) =>
+        stepId === "a"
+          ? ["Signup leads nowhere: no button or form on it goes to another page of this funnel."]
+          : [],
+    )
+    expect(plan.ok).toBe(false)
+    // Both, for the reason the blank-page test above gives: a planner that
+    // reports the problem and still hands back page "b" would publish half a
+    // funnel.
+    expect(plan.publish).toEqual([])
+    expect(plan.problems).toEqual([
+      { stepId: "a", stepName: "Signup", problems: [expect.stringContaining("leads nowhere")], blank: false },
+    ])
+  })
+
+  it("merges connectivity problems into a page the gate ALSO blocked, as one entry", () => {
+    // MUTANT: pushing a SECOND problem entry for the same step. The UI keys its
+    // list on the page, so two entries render the same page twice and the
+    // owner fixes one and is sent back for the other.
+    const plan = funnelPublishPlan(
+      [step({ id: "a", name: "Signup", position: 1 }), step({ id: "b", name: "Thanks", position: 2 })],
+      (doc) => (doc === DOC ? { ok: false, blockers: ["Missing a headline."] } : { ok: true, blockers: [] }),
+      (stepId) => (stepId === "a" ? ["Signup leads nowhere."] : []),
+    )
+    expect(plan.problems.filter((problem) => problem.stepId === "a")).toHaveLength(1)
+    expect(plan.problems[0].problems).toEqual(["Missing a headline.", "Signup leads nowhere."])
+  })
+
+  it("does NOT ask the connectivity check about a page that was never built", () => {
+    // MUTANT: calling it for every step. A blank page is ALREADY reported as a
+    // blank page, and "it leads nowhere" is both true and useless about a page
+    // with nothing on it — it would send the owner to the connect button when
+    // what they need is "Generate it now", which `blank` selects.
+    const asked: string[] = []
+    funnelPublishPlan(
+      [step({ id: "a", name: "Signup", doc: null, position: 1 }), step({ id: "b", name: "Thanks", position: 2 })],
+      CLEAN,
+      (stepId) => {
+        asked.push(stepId)
+        return []
+      },
+    )
+    expect(asked).toEqual(["b"])
+  })
+
+  it("publishes as before when no connectivity check is supplied", () => {
+    // MUTANT: a required third parameter, or a default that reports a problem.
+    // Every other caller of this planner passes two arguments, and a default
+    // that refused would freeze publishing for all of them.
+    const plan = funnelPublishPlan([step({ id: "a" }), step({ id: "b", name: "Thanks", position: 1 })], CLEAN)
+    expect(plan.ok).toBe(true)
+    expect(plan.publish.map((entry) => entry.stepId)).toEqual(["a", "b"])
+  })
+
   it("lets a throwing gate escape", () => {
     const boom = () => { throw new Error("catalogue truncated") }
     // MUTANT: a try/catch per step that degrades to `{ok:true}`. `resolveDoc`

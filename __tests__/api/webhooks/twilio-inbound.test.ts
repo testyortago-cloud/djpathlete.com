@@ -60,6 +60,12 @@ const KNOWN_TABLES = new Set([
 // business_id-keyed read of the SAME table.
 let businessSettingsReadError: { code: string; message: string } | null = null
 
+// Task 7: the SAME throw-on-read-error contract, for the new
+// sms_messaging_service_sid-keyed lookup. Scoped to that query's own filter
+// so injecting it does not also break getBusinessSettings's business_id-keyed
+// read of the same table, nor the sms_sender_phone lookup above.
+let messagingServiceReadError: { code: string; message: string } | null = null
+
 function collectionFor(table: string): Row[] {
   switch (table) {
     case "contacts":
@@ -141,6 +147,13 @@ vi.mock("@/lib/supabase", () => ({
           ) {
             return { data: null, error: businessSettingsReadError }
           }
+          if (
+            table === "business_settings" &&
+            messagingServiceReadError &&
+            filters.some(([k]) => k === "sms_messaging_service_sid")
+          ) {
+            return { data: null, error: messagingServiceReadError }
+          }
           const rows = applyFilter(collectionFor(table))
           return { data: rows[0] ?? null, error: null }
         },
@@ -216,6 +229,20 @@ const OTHER_BUSINESS_PHONE = "+16175559911" // real, libphonenumber-valid
 const OTHER_BUSINESS_CONTACT = "contact-bbb-1"
 const UNCLAIMED_TO = "+15550009999" // no business_settings row claims this
 
+// Task 7. PRODUCTION SHAPE: business_settings.sms_sender_phone is EMPTY on
+// every live row and only sms_messaging_service_sid is filled in, so the To
+// number resolves nothing and every inbound text lands on the platform
+// business. These fixtures are that shape exactly.
+const MS_BUSINESS = "biz-ms"
+const MS_SID = "MG123"
+const MS_TO = "+12025550199"
+const MS_PHONE = "+16175559911" // real, libphonenumber-valid
+const MS_CONTACT = "contact-ms-1"
+// A DIFFERENT business that claims MS_TO as its own sender number, for the
+// "both match, the SID wins" case.
+const PHONE_BUSINESS = "44444444-4444-4444-4444-444444444444"
+const PHONE_BUSINESS_CONTACT = "contact-phone-1"
+
 function sign(params: Record<string, string>, authToken = AUTH_TOKEN): string {
   const url = `${ORIGIN}${PATH}`
   const sortedKeys = Object.keys(params).sort()
@@ -266,6 +293,7 @@ beforeEach(() => {
   ]
   store.businessSettings = [{ ...SETTINGS }]
   businessSettingsReadError = null
+  messagingServiceReadError = null
   process.env.TWILIO_AUTH_TOKEN = AUTH_TOKEN
   process.env.NEXTAUTH_URL = ORIGIN
   vi.clearAllMocks()
@@ -914,6 +942,143 @@ describe("POST /api/webhooks/twilio/inbound — tenant resolution", () => {
     expect(store.timeline[0]).toMatchObject({ contact_id: OTHER_BUSINESS_CONTACT, business_id: OTHER_BUSINESS })
     const sendArg = (sendRenderedSequenceEmail as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(sendArg.to).toBe("other-biz-ops@example.test")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Tenant resolution by MESSAGING SERVICE SID (Task 7, audit §4 #11).
+//
+// The To number is NOT the only tenant evidence an inbound SMS carries: when
+// the receiving number belongs to a Twilio Messaging Service, Twilio also
+// posts `MessagingServiceSid`, and that is the identity every live row in
+// this product actually has — production's business_settings rows have
+// sms_sender_phone EMPTY and only sms_messaging_service_sid filled in, so
+// resolving on the number alone sends EVERY inbound text to the platform
+// business.
+// ---------------------------------------------------------------------------
+describe("POST /api/webhooks/twilio/inbound — tenant resolution by messaging service SID", () => {
+  beforeEach(() => {
+    store.businessSettings = [
+      // The platform's own row keeps a number and a DIFFERENT SID, so nothing
+      // below can pass by accidentally matching it.
+      { ...SETTINGS, sms_messaging_service_sid: "MGplatform" },
+      { ...SETTINGS, business_id: MS_BUSINESS, sms_sender_phone: "", sms_messaging_service_sid: MS_SID },
+    ]
+    store.contacts.push({
+      id: MS_CONTACT,
+      business_id: MS_BUSINESS,
+      email: "ms-lead@example.com",
+      phone_e164: MS_PHONE,
+    })
+    store.sequenceRuns.push({ id: "run-ms-1", contact_id: MS_CONTACT, business_id: MS_BUSINESS, status: "active" })
+  })
+
+  it("resolves the tenant from MessagingServiceSid when no business claims the To number", async () => {
+    // MUTANT: resolve on `To` only. MS_TO is claimed by nobody here, so every
+    // row below would be stamped with the PLATFORM business instead.
+    const res = await POST(inboundRequest({ ...smsBody("STOP", MS_PHONE, MS_TO), MessagingServiceSid: MS_SID }))
+
+    expect(res.status).toBe(200)
+    expect(store.suppressions[0]).toMatchObject({ business_id: MS_BUSINESS })
+    expect(store.consents[0]).toMatchObject({ contact_id: MS_CONTACT, business_id: MS_BUSINESS })
+    expect(store.timeline[0]).toMatchObject({ contact_id: MS_CONTACT, business_id: MS_BUSINESS })
+    expect(store.sequenceRuns.find((r) => r.id === "run-ms-1")?.status).toBe("exited")
+    // Presence control for the assertions above: the platform's own run is
+    // untouched, so "everything is on biz-ms" is a real scoping claim and not
+    // an artefact of nothing having been written.
+    expect(store.sequenceRuns.find((r) => r.id === "run-1")?.status).toBe("active")
+  })
+
+  it("prefers the SID over the To number when the two point at DIFFERENT businesses", async () => {
+    // The SID is the more specific identity: a Messaging Service can hold many
+    // numbers, and a number can be re-pointed. MUTANT: swap the ?? order, or
+    // resolve on `To` only — both stamp PHONE_BUSINESS here.
+    store.businessSettings.push({
+      ...SETTINGS,
+      business_id: PHONE_BUSINESS,
+      sms_sender_phone: MS_TO,
+      sms_messaging_service_sid: "MGsomeoneelse",
+    })
+    store.contacts.push({
+      id: PHONE_BUSINESS_CONTACT,
+      business_id: PHONE_BUSINESS,
+      email: "phone-biz-lead@example.com",
+      phone_e164: MS_PHONE,
+    })
+
+    const res = await POST(inboundRequest({ ...smsBody("STOP", MS_PHONE, MS_TO), MessagingServiceSid: MS_SID }))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline[0]).toMatchObject({ contact_id: MS_CONTACT, business_id: MS_BUSINESS })
+    expect(store.suppressions[0]).toMatchObject({ business_id: MS_BUSINESS })
+    expect(store.consents[0]).toMatchObject({ business_id: MS_BUSINESS })
+  })
+
+  it("still falls back to the To number when the inbound carries no MessagingServiceSid", async () => {
+    // A number NOT in a Messaging Service posts no SID at all, and that path
+    // must keep working — this is the case every pre-Task-7 test covers.
+    store.businessSettings.push({
+      ...SETTINGS,
+      business_id: PHONE_BUSINESS,
+      sms_sender_phone: MS_TO,
+      sms_messaging_service_sid: "MGsomeoneelse",
+    })
+    store.contacts.push({
+      id: PHONE_BUSINESS_CONTACT,
+      business_id: PHONE_BUSINESS,
+      email: "phone-biz-lead@example.com",
+      phone_e164: MS_PHONE,
+    })
+
+    const res = await POST(inboundRequest(smsBody("STOP", MS_PHONE, MS_TO)))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline[0]).toMatchObject({ contact_id: PHONE_BUSINESS_CONTACT, business_id: PHONE_BUSINESS })
+  })
+
+  it("falls back to the platform business when NEITHER the SID nor the To number matches", async () => {
+    const res = await POST(
+      inboundRequest({ ...smsBody("STOP", PHONE, UNCLAIMED_TO), MessagingServiceSid: "MGnobodyhasthis" }),
+    )
+
+    expect(res.status).toBe(200)
+    expect(store.timeline[0]).toMatchObject({ contact_id: CONTACT, business_id: SINGLETON_BUSINESS_ID })
+  })
+
+  // sms_messaging_service_sid is NOT NULL DEFAULT '' exactly like
+  // sms_sender_phone, so a query that does not short-circuit on the empty
+  // string matches every business that has not configured a Messaging
+  // Service. MUTANT: drop the `if (!sid) return null` guard.
+  it("does NOT look up an empty SID, even when another business's row also has an empty sms_messaging_service_sid", async () => {
+    store.businessSettings.push({
+      ...SETTINGS,
+      business_id: "55555555-5555-5555-5555-555555555555",
+      sms_sender_phone: "",
+      sms_messaging_service_sid: "",
+    })
+
+    const res = await POST(inboundRequest({ ...smsBody("STOP", PHONE, UNCLAIMED_TO), MessagingServiceSid: "" }))
+
+    expect(res.status).toBe(200)
+    expect(store.timeline[0]).toMatchObject({ contact_id: CONTACT, business_id: SINGLETON_BUSINESS_ID })
+  })
+
+  // Same contract as getBusinessBySmsNumber (fix round 1, Important 1): a
+  // failed read is not "no business claims this SID". Collapsing them would
+  // route a coach's STOP to the platform tenant on a transient blip.
+  it("a SID read failure is a retryable 500, NOT a silent fallback to the platform business", async () => {
+    messagingServiceReadError = { code: "53300", message: "too many connections" }
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const res = await POST(inboundRequest({ ...smsBody("STOP", MS_PHONE, MS_TO), MessagingServiceSid: MS_SID }))
+
+    expect(res.status).toBe(500)
+    expect(store.suppressions).toHaveLength(0)
+    expect(store.consents).toHaveLength(0)
+    expect(store.timeline).toHaveLength(0)
+    expect(consoleErrorSpy).toHaveBeenCalled()
+
+    consoleErrorSpy.mockRestore()
   })
 })
 

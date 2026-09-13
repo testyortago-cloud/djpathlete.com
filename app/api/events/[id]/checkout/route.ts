@@ -104,6 +104,10 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       phone: parsed.data.parent_phone,
       name: parsed.data.parent_name,
       businessId,
+      // The same cookie this route already read above for its attribution
+      // lookup — reused, not re-parsed — so the contact row can carry a
+      // first_touch_session_id (audit §3.5).
+      attributionSessionId: attrSessionId,
     })
 
     // SMS consent (Lead Engine Stage 4). AWAITED — NOT fire-and-forget like

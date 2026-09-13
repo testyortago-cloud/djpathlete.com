@@ -32,17 +32,34 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // outside a request scope", which is a broken test, not a boundary.
 vi.mock("@/lib/permissions/guard", () => ({ requirePermission: vi.fn() }))
 vi.mock("@/lib/tenancy/resolve", () => ({ resolveAdminTenant: vi.fn() }))
-vi.mock("@/lib/db/pipeline", () => ({ readBoard: vi.fn(), listGrantablePrograms: vi.fn() }))
+vi.mock("@/lib/db/pipeline", () => ({ readBoard: vi.fn(), listGrantablePrograms: vi.fn(), listPipelines: vi.fn() }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
 vi.mock("@/components/admin/pipeline-board", () => ({ PipelineBoard: () => null }))
 
 import { requirePermission } from "@/lib/permissions/guard"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
-import { readBoard, listGrantablePrograms } from "@/lib/db/pipeline"
+import { readBoard, listGrantablePrograms, listPipelines } from "@/lib/db/pipeline"
+// NOT from "@/lib/db/pipeline" — that module is mocked above, so its
+// re-export of this constant would come back undefined and every assertion
+// below would compare undefined to undefined. Taken from the module that
+// actually defines it.
+import { DEFAULT_PIPELINE_KEY } from "@/lib/lead-engine/pipeline-move"
+import { ASSESSMENT_KEY, CAMPS_CLINICS_KEY } from "@/lib/lead-engine/pipeline-route"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import PipelinePage from "@/app/(admin)/admin/pipeline/page"
 
 const BUSINESS_ID = "33333333-3333-3333-3333-333333333333"
+
+/** The two boards migration 00257 seeded on production, as listPipelines reports them. */
+const TWO_BOARDS = [
+  { id: "pipe-coaching", key: DEFAULT_PIPELINE_KEY, name: "Coaching" },
+  { id: "pipe-assessment", key: ASSESSMENT_KEY, name: "Assessment" },
+]
+
+/** The page's props. Next 16 hands `searchParams` in as a Promise. */
+function props(board?: string) {
+  return { searchParams: Promise.resolve(board === undefined ? {} : { board }) }
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -55,6 +72,9 @@ beforeEach(() => {
   ;(readBoard as ReturnType<typeof vi.fn>).mockResolvedValue([])
   ;(getBusinessSettings as ReturnType<typeof vi.fn>).mockResolvedValue({ display_name: "Trailhead Strength" })
   ;(listGrantablePrograms as ReturnType<typeof vi.fn>).mockResolvedValue([])
+  ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
+    { id: "pipe-coaching", key: DEFAULT_PIPELINE_KEY, name: "Coaching" },
+  ])
 })
 
 describe("PipelinePage — tenancy scoping", () => {
@@ -65,7 +85,7 @@ describe("PipelinePage — tenancy scoping", () => {
   // permission would still compile, still redirect somebody, and silently gate
   // this screen on an unrelated grant.
   it("guards on the `contacts` permission", async () => {
-    await PipelinePage()
+    await PipelinePage(props())
     expect(requirePermission).toHaveBeenCalledWith("contacts")
   })
 
@@ -73,18 +93,104 @@ describe("PipelinePage — tenancy scoping", () => {
     // MUTANT: `readBoard()` with no second argument. That is exactly the
     // bug this test exists to catch -- the pipeline would silently show the
     // platform's own board under a different business's name.
-    await PipelinePage()
-    expect(readBoard).toHaveBeenCalledWith(undefined, BUSINESS_ID)
+    //
+    // RETARGETED by Task 8: the first argument used to be a literal
+    // `undefined` (readBoard's own default), and is now the resolved board
+    // key. Same claim about the tenant argument, stated against the call the
+    // page actually makes.
+    await PipelinePage(props())
+    expect(readBoard).toHaveBeenCalledWith(DEFAULT_PIPELINE_KEY, BUSINESS_ID)
   })
 
   it("passes the resolved businessId to getBusinessSettings, not the SINGLETON default", async () => {
     // MUTANT: `getBusinessSettings()` with no argument.
-    await PipelinePage()
+    await PipelinePage(props())
     expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
   })
 
   it("still resolves the tenant before reading the board (presence control)", async () => {
-    await PipelinePage()
+    await PipelinePage(props())
     expect(resolveAdminTenant).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 8 (audit §4 #7): `?board=<key>` picks which of this tenant's boards is
+// shown. Before this, `/admin/pipeline` read the DEFAULT board only, so cards
+// `routeToPipeline` filed on `camps_clinics` or `assessment` had no surface.
+// ---------------------------------------------------------------------------
+
+describe("PipelinePage — which board it reads", () => {
+  it("reads the requested board when the tenant actually has it", async () => {
+    // MUTANT: `readBoard(DEFAULT_PIPELINE_KEY, ...)` unconditionally — the
+    // switcher renders, the URL changes, and the same board comes back.
+    ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue(TWO_BOARDS)
+
+    await PipelinePage(props(ASSESSMENT_KEY))
+
+    expect(readBoard).toHaveBeenCalledWith(ASSESSMENT_KEY, BUSINESS_ID)
+  })
+
+  it("falls back to the default board when the key names nothing this tenant has", async () => {
+    // MUTANT: pass the raw `?board` value straight to readBoard. `resolvePipeline`
+    // then throws PipelineNotConfiguredError for a hand-typed key and the whole
+    // page becomes the admin error boundary — reachable by editing the URL.
+    ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue(TWO_BOARDS)
+
+    await PipelinePage(props("nope"))
+
+    expect(readBoard).toHaveBeenCalledWith(DEFAULT_PIPELINE_KEY, BUSINESS_ID)
+  })
+
+  it("validates the key against THIS tenant's boards, not a hardcoded list of keys", async () => {
+    // The mutant the test above cannot kill on its own: a validator checking
+    // `["coaching","camps_clinics","assessment"].includes(requested)` passes it
+    // too. Here the tenant has NOT been seeded with Assessment (only `coaching`
+    // is seeded by create_business, 00249), so a key-list validator would send
+    // "assessment" through and 500 the page.
+    ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "pipe-coaching", key: DEFAULT_PIPELINE_KEY, name: "Coaching" },
+    ])
+
+    await PipelinePage(props(ASSESSMENT_KEY))
+
+    expect(readBoard).toHaveBeenCalledWith(DEFAULT_PIPELINE_KEY, BUSINESS_ID)
+  })
+
+  it("falls back to a board the tenant HAS when it has no default board", async () => {
+    // MUTANT: fall straight through to the literal DEFAULT_PIPELINE_KEY when no
+    // row matches. `resolvePipeline` does not filter on status, so for a tenant
+    // whose active boards are Camps & Clinics and Assessment that literal
+    // either renders an ARCHIVED Coaching board — present in no pill, so
+    // nothing on screen is marked active — or, with no coaching row at all,
+    // throws PipelineNotConfiguredError and replaces a perfectly usable board
+    // with the admin error boundary.
+    ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "pipe-camps", key: CAMPS_CLINICS_KEY, name: "Camps & Clinics" },
+      { id: "pipe-assessment", key: ASSESSMENT_KEY, name: "Assessment" },
+    ])
+
+    await PipelinePage(props())
+
+    expect(readBoard).toHaveBeenCalledWith(CAMPS_CLINICS_KEY, BUSINESS_ID)
+  })
+
+  it("still prefers the default board when the tenant actually has one (control)", async () => {
+    // The presence control for the test above: an implementation that simply
+    // took `boards[0]` unconditionally would pass it, and would then ignore
+    // the default board for any tenant whose coaching row is not listed first.
+    ;(listPipelines as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: "pipe-assessment", key: ASSESSMENT_KEY, name: "Assessment" },
+      { id: "pipe-coaching", key: DEFAULT_PIPELINE_KEY, name: "Coaching" },
+    ])
+
+    await PipelinePage(props())
+
+    expect(readBoard).toHaveBeenCalledWith(DEFAULT_PIPELINE_KEY, BUSINESS_ID)
+  })
+
+  it("asks for this tenant's boards, not the platform's", async () => {
+    await PipelinePage(props())
+    expect(listPipelines).toHaveBeenCalledWith(BUSINESS_ID)
   })
 })

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lead Engine audit fixes — annotated evidence</title>
+<style>
+  :root { --ink:#0E3F50; --accent:#C8763C; --muted:#5b6b72; --line:#e4e8ea; --paper:#fbfaf8; }
+  body { margin:0; background:var(--paper); color:var(--ink);
+         font-family:"Lexend Deca", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height:1.55; }
+  main { max-width:1100px; margin:0 auto; padding:48px 24px 96px; }
+  h1 { font-size:30px; margin:0 0 6px; letter-spacing:-0.01em; }
+  .sub { color:var(--muted); margin:0 0 28px; font-size:15px; }
+  section { margin:0 0 56px; padding:0 0 40px; border-bottom:1px solid var(--line); }
+  section:last-of-type { border-bottom:0; }
+  h2 { font-size:19px; margin:0 0 4px; }
+  h2 .n { color:var(--accent); font-variant-numeric:tabular-nums; margin-right:10px; }
+  .what { color:var(--muted); font-size:14px; margin:0 0 16px; }
+  img { width:100%; height:auto; display:block; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  dl { margin:18px 0 0; display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:14px; }
+  dt { color:var(--accent); font-variant-numeric:tabular-nums; font-weight:600; }
+  dd { margin:0; }
+  .note { background:#fff; border:1px solid var(--line); border-left:3px solid var(--accent);
+          border-radius:6px; padding:12px 16px; margin:18px 0 0; font-size:14px; color:var(--muted); }
+  .note strong { color:var(--ink); }
+  code { font-family:"JetBrains Mono", ui-monospace, SFMono-Regular, monospace; font-size:0.9em; }
+  .lede { background:#fff; border:1px solid var(--line); border-radius:10px; padding:18px 22px; margin:0 0 40px; font-size:14px; }
+  .lede p { margin:0 0 10px; } .lede p:last-child { margin:0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lead Engine audit fixes — annotated evidence</h1>
+  <p class="sub">Branch <code>fix/lead-engine-audit-2026-09-13</code> · captured 13 September 2026 against the real admin on the dev clone</p>
+
+  <div class="lede">
+    <p>Every image below is the actual product screen at its real route, driven with Playwright by
+       <code>scripts/capture-lead-engine-fixes.mjs</code>. Nothing here is a mockup or a preview harness.
+       The callouts are burned into each PNG, so any file opens on its own and explains itself.</p>
+    <p>The admin is light-only by design (see CLAUDE.md), so there is no dark pass to take.</p>
+  </div>
+
+  <section>
+    <h2><span class="n">01</span>The Pipeline screen names every board</h2>
+    <p class="what">Audit §4 item 7. <code>/admin/pipeline</code> always read the Coaching board, so cards routed to
+       Camps &amp; Clinics or Assessment existed in the database and could not be seen by anyone.</p>
+    <img src="01-pipeline-board-switcher.png" alt="The Pipeline screen showing a row of board buttons above the Coaching board's cards" />
+    <dl>
+      <dt>1</dt><dd>One button per board the tenant actually has, read from <code>pipelines</code> and scoped to that tenant.</dd>
+      <dt>2</dt><dd>The board being shown is filled in and carries <code>aria-current</code>, so it is announced, not only coloured.</dd>
+      <dt>3</dt><dd>The heading and the sentence under it name the same board as the cards.</dd>
+    </dl>
+    <div class="note"><strong>Worth noticing:</strong> the order is Coaching, Assessment, Camps &amp; Clinics —
+      alphabetical after Coaching. Migration <code>00257</code> inserted the last two in one transaction, so they carry
+      identical <code>created_at</code> and the old single-key sort let them swap between page loads. The final review
+      caught that; a secondary sort on <code>key</code> now fixes the order.</div>
+  </section>
+
+  <section>
+    <h2><span class="n">02</span>Switching to a different board</h2>
+    <p class="what">The board is chosen by <code>?board=&lt;key&gt;</code> on the same screen — no new route, and the value is
+       validated against the tenant's own boards before it reaches the query.</p>
+    <img src="02-pipeline-camps-board.png" alt="The Camps and Clinics board with its own stage names and three cards" />
+    <dl>
+      <dt>1</dt><dd>Camps &amp; Clinics is now the filled-in button.</dd>
+      <dt>2</dt><dd>Its own stages — Interested, Registered — not Coaching's, so this is genuinely a different board.</dd>
+    </dl>
+    <div class="note"><strong>Disclosure:</strong> this board was empty on the dev clone, which would have made the
+      screenshot argue against its own point. Three cards were seeded for real contacts on the clone so the shot shows the
+      feature doing its job. Production has real cards here; that is what the audit found.</div>
+  </section>
+
+  <section>
+    <h2><span class="n">03</span>An unverified sender address is refused</h2>
+    <p class="what">Audit §4 item 1. On 31 August the sender address pointed at a domain Resend has never verified and
+       73 emails were silently dropped. The field was validated for format only, so it could be typed straight back in.</p>
+    <img src="03-sender-email-refused.png" alt="The business settings form refusing noreply@darrenjpaul.com, with the same message in a banner and a toast" />
+    <dl>
+      <dt>1</dt><dd>The refusal names the domain that failed and the one to use instead. Nothing was saved.</dd>
+      <dt>2</dt><dd>The address as typed. The exact address that caused the 31 August fault.</dd>
+    </dl>
+    <div class="note"><strong>Two review findings are visible here.</strong> The message appears twice — inline and as a
+      toast — because the Save button sits at the bottom of a long form and the banner alone was above the fold nobody was
+      looking at. And it names only the related domain rather than listing every domain on the Resend account: those are
+      account-wide, so listing them would show one coach another coach's sending domains.</div>
+  </section>
+
+  <section>
+    <h2><span class="n">04</span>The builder says a page leads nowhere</h2>
+    <p class="what">Audit §3.1. The builder already showed this warning — and let you publish anyway.</p>
+    <img src="04-builder-leads-nowhere.png" alt="The builder's page rail showing 'leads nowhere' under the Signup page" />
+    <dl>
+      <dt>1</dt><dd>The rail's existing warning. Nothing on the Signup page opens the Thank you page.</dd>
+    </dl>
+    <div class="note"><strong>Setup, disclosed:</strong> the page was made a dead end by putting its form's
+      <em>After submit</em> back to "Show a message". Driving that through the inspector needs a click inside the canvas
+      iframe that did not resolve reliably in the recorder, so the draft was edited directly on the dev clone. Everything
+      in the two shots is the real screen: the real rail, the real button, the real refusal.</div>
+  </section>
+
+  <section>
+    <h2><span class="n">05</span>Publishing now refuses, and names the page</h2>
+    <p class="what">This is the headline fix. Before it, the button published a funnel whose form redirected to an address
+       the model had guessed from the funnel's name, and the visitor who filled the form landed on "Page not found".</p>
+    <img src="05-publish-refused-dead-end.png" alt="The builder refusing to publish, naming the Signup page and what to do about it" />
+    <dl>
+      <dt>1</dt><dd>The refusal names the page and says what to do. It no longer repeats the page name twice, and it no
+        longer tells the owner to press a control whose label is actually "Connect to Thank you".</dd>
+    </dl>
+    <div class="note"><strong>Also visible:</strong> "Fix 1 blocker" in the toolbar, and the rail's own
+      "Connect to Thank you" button — the one-click repair for exactly this shape.</div>
+  </section>
+
+  <section>
+    <h2><span class="n">06</span>A text conversation says when the server cannot send</h2>
+    <p class="what">Audit §4 item 11. The compose box looked ready whether or not the deployment had Twilio credentials;
+       the send failed afterwards with a bare error code.</p>
+    <img src="06-sms-env-missing.png" alt="A text conversation with a notice that Twilio credentials are not set, and the Send button disabled" />
+    <dl>
+      <dt>1</dt><dd>Names the missing setup before you type, and says that filling in Settings will not fix it — because
+        this is server configuration, not business configuration. Send is disabled.</dd>
+    </dl>
+    <div class="note"><strong>Setup, disclosed:</strong> the dev clone does have Twilio credentials, so this notice cannot
+      appear normally. The dev server was restarted with those three variables blank, the shot taken, and the server put
+      back. The conversation itself is the clone's existing seeded thread.</div>
+  </section>
+</main>
+</body>
+</html>

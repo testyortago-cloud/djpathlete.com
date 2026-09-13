@@ -33,7 +33,14 @@ vi.mock("next/navigation", () => ({
   }),
 }))
 vi.mock("@/components/admin/sms/SmsThread", () => ({ SmsThread: () => null }))
-vi.mock("@/components/admin/sms/SmsComposer", () => ({ SmsComposer: () => null }))
+// Kept as a named stub rather than an inline arrow so the returned element
+// tree can be searched for it: the page is called directly (never rendered),
+// so a mock component is never INVOKED and cannot record its own props.
+vi.mock("@/components/admin/sms/SmsComposer", () => ({
+  SmsComposer: function SmsComposerStub() {
+    return null
+  },
+}))
 
 import { requirePermission } from "@/lib/permissions/guard"
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
@@ -41,6 +48,7 @@ import { getSmsThread } from "@/lib/db/sms-messages"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { getContactById } from "@/lib/db/contact-detail"
 import { isSuppressed } from "@/lib/db/contact-consents"
+import { SmsComposer } from "@/components/admin/sms/SmsComposer"
 import AdminSmsThreadPage from "@/app/(admin)/admin/sms/[phone]/page"
 
 const BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
@@ -48,6 +56,19 @@ const PHONE = "+12025550123"
 
 function renderPage(phone: string) {
   return AdminSmsThreadPage({ params: Promise.resolve({ phone }) })
+}
+
+/** The props the page handed `<SmsComposer />`, found in the element tree. */
+function composerProps(tree: unknown): Record<string, unknown> | null {
+  const node = tree as { type?: unknown; props?: { children?: unknown } } | null
+  if (!node || typeof node !== "object") return null
+  if (node.type === SmsComposer) return (node.props ?? {}) as Record<string, unknown>
+  const children = node.props?.children
+  for (const child of Array.isArray(children) ? children : [children]) {
+    const found = composerProps(child)
+    if (found) return found
+  }
+  return null
 }
 
 beforeEach(() => {
@@ -109,6 +130,39 @@ describe("AdminSmsThreadPage", () => {
   it("404s an unparseable number rather than showing an empty conversation", async () => {
     await expect(renderPage("banana")).rejects.toThrow("NEXT_NOT_FOUND")
     expect(getSmsThread).not.toHaveBeenCalled()
+  })
+
+  // Task 7 (audit §4 #11). `smsConfigured` (the DB columns) and
+  // `smsEnvPresent` (this deployment's Twilio credentials) are INDEPENDENT
+  // gates with distinct failure modes. The page only ever checked the first,
+  // so a deployment missing TWILIO_ACCOUNT_SID showed a perfectly enabled
+  // compose box that answers 503 on click.
+  it("tells the composer when this deployment has no Twilio credentials", async () => {
+    // MUTANT: drop envMissing from the page (or compute it off the DB
+    // columns) — the composer is told nothing and the box stays enabled.
+    vi.stubEnv("TWILIO_ACCOUNT_SID", "")
+    vi.stubEnv("TWILIO_MAIN_SID", "SK1")
+    vi.stubEnv("TWILIO_CLIENT_SECRET", "secret")
+
+    const props = composerProps(await renderPage(encodeURIComponent(PHONE)))
+
+    expect(props).not.toBeNull()
+    expect(props?.envMissing).toBe(true)
+    // The DB columns are fine here — proof the two gates are separate and
+    // this is not just notConfigured under another name.
+    expect(props?.notConfigured).toBe(false)
+  })
+
+  it("does not claim the env is missing when all three Twilio vars are set", async () => {
+    // The presence control: without it, a page hardcoding `envMissing: true`
+    // would pass the test above.
+    vi.stubEnv("TWILIO_ACCOUNT_SID", "AC1")
+    vi.stubEnv("TWILIO_MAIN_SID", "SK1")
+    vi.stubEnv("TWILIO_CLIENT_SECRET", "secret")
+
+    const props = composerProps(await renderPage(encodeURIComponent(PHONE)))
+
+    expect(props?.envMissing).toBe(false)
   })
 
   it("does not swallow a failed read into an empty conversation", async () => {

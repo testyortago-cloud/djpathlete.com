@@ -1036,6 +1036,32 @@ describe("POST .../build — the prompt", () => {
     expect(firstDraftBudget).toBeLessThanOrEqual(SECTION_BUILDER_MAX_TOKENS_CEILING)
   })
 
+  it("gives the model the funnel's REAL address slug, not one derived from its name", async () => {
+    // MUTANT: passing `funnelSlug: slugify(funnel.name)`, or dropping the field
+    // so Block A goes back to teaching "/go/<funnel-slug>/<next-page-slug>".
+    //
+    // The fixture's slug is DELIBERATELY not slugify(its name): the default
+    // FUNNEL is "Summer camp" / "summer-camp", where the two agree and the bug
+    // is invisible. Every funnel whose slug was ever deduplicated or renamed
+    // looks like this one, and the form's redirect 404s after submit.
+    mock(getFunnelById).mockResolvedValue({ ...FUNNEL, name: "Summer camp", slug: "summer-camp-2027" })
+    await runTurn({ message: "hi", revision: 4 })
+    const system = mock(streamAgent).mock.calls[0][0] as string
+    expect(system).toContain('"/go/summer-camp-2027/thanks"')
+    expect(system).not.toContain('"/go/summer-camp/thanks"')
+  })
+
+  it("tells the model NOT to write a redirect when the funnel could not be read", async () => {
+    // MUTANT: degrading `funnelSlug` to the funnel's name, its id, or "" — any
+    // of which is a path the model would write into a live page.
+    // `loadPageContext` degrades rather than throws, so this is a reachable
+    // state on a Supabase blip, not a theoretical one.
+    mock(getFunnelById).mockRejectedValue(new Error("supabase down"))
+    await runTurn({ message: "hi", revision: 4 })
+    const system = mock(streamAgent).mock.calls[0][0] as string
+    expect(system).not.toContain("/go/")
+  })
+
   it("offers the funnel's OTHER steps, never this one", async () => {
     // MUTANT: passing every step. A CTA pointing at the page it is on is a
     // no-op link the owner cannot diagnose.

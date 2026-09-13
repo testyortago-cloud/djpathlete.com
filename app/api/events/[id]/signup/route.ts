@@ -6,6 +6,7 @@ import { getActiveDocument } from "@/lib/db/legal-documents"
 import { sendEventSignupReceivedEmail, sendAdminNewSignupEmail } from "@/lib/email"
 import { withAudit } from "@/lib/audit/with-audit"
 import { captureLead } from "@/lib/lead-engine/capture"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
@@ -80,6 +81,9 @@ export const POST = withAudit(
         phone: signup.parent_phone,
         name: signup.parent_name,
         businessId,
+        // The visitor's djp_attr cookie (audit §3.5), so the contact row can
+        // carry a first_touch_session_id.
+        attributionSessionId: parseAttrCookie(request.headers.get("cookie")),
         // enrollIfTriggered matches a sequence's trigger filter against this
         // bag by exact key equality. Without signup_type, an interest signup
         // and a paid registration are indistinguishable, and a sequence that

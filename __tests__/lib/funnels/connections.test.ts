@@ -311,6 +311,77 @@ describe("funnelConnections — robustness", () => {
 // and "it connected my pages" is easy to notice while "it silently re-pointed
 // my buy button" is not.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// A CHECKOUT FORM LEADS ON — through Stripe, not through `redirectUrl`.
+//
+// `successMode: "checkout"` has no `redirectUrl` at all. Where the payer lands
+// is decided server-side: `funnelReturnUrls()` in app/api/funnels/submit/route.ts
+// builds `successUrl` as the funnel's LAST STEP BY POSITION. Reading that shape
+// as `{kind:"none"}` made a perfectly normal camp-signup page a dead end, which
+// (since the publish blocker) would have REFUSED it — while the rail told the
+// owner to press a "connect this page" button that has nothing to offer a
+// checkout form.
+// ---------------------------------------------------------------------------
+describe("funnelConnections — a checkout form", () => {
+  /** A one-form page that takes payment. No `redirectUrl` — there is never one. */
+  const checkoutForm = () => formWith({ successMode: "checkout", eventId: "ev-1" })
+
+  it("reads a checkout form as a connection to the funnel's LAST page", () => {
+    // MUTANT: treating checkout as `{kind:"none"}`, which is where this started.
+    const result = funnelConnections("camp", twoPages(checkoutForm()))
+    expect(result.connections).toContainEqual(
+      expect.objectContaining({
+        fromStepId: "s1",
+        sectionId: "fo1",
+        field: "redirectUrl",
+        label: "Form submit",
+        via: "form",
+        to: { kind: "step", slug: "thanks", exists: true },
+      }),
+    )
+    expect(result.broken).toEqual([])
+  })
+
+  it("does NOT call a page with a checkout form a dead end", () => {
+    // The whole point. MUTANT: special-casing `deadEnds` to skip checkout pages
+    // instead — that would silence the refusal without ever showing the owner
+    // the arrow in the rail, so the two surfaces would disagree again.
+    expect(funnelConnections("camp", twoPages(checkoutForm())).deadEnds).toEqual([])
+  })
+
+  it("points at the last page BY POSITION, not by array order", () => {
+    // MUTANT: `steps.at(-1)`. `funnelReturnUrls` sorts by position before
+    // taking the last one, and this module must name the same page or the rail
+    // draws an arrow to somewhere Stripe will not send anybody.
+    const unsorted: StepWithDoc[] = [
+      { id: "s3", name: "Paid", slug: "paid", position: 2, isEntry: false, doc: null },
+      { id: "s1", name: "Sign up", slug: "index", position: 0, isEntry: true, doc: checkoutForm() },
+      { id: "s2", name: "Details", slug: "details", position: 1, isEntry: false, doc: null },
+    ]
+    const form = funnelConnections("camp", unsorted).connections.find((entry) => entry.via === "form")
+    expect(form?.to).toEqual({ kind: "step", slug: "paid", exists: true })
+  })
+
+  it("reports a checkout form ON the last page as going nowhere in this funnel", () => {
+    // Stripe sends the payer back to the page they are already on, so there is
+    // no arrow to draw. MUTANT: a self-link, which would render an arrow from a
+    // page to itself in the rail. The last page is exempt from `deadEnds`
+    // anyway, so nothing is refused either way.
+    const onlyPage: StepWithDoc[] = [
+      { id: "s1", name: "Sign up", slug: "index", position: 0, isEntry: true, doc: checkoutForm() },
+    ]
+    const result = funnelConnections("camp", onlyPage)
+    expect(result.connections[0].to).toEqual({ kind: "none" })
+    expect(result.deadEnds).toEqual([])
+  })
+
+  it("still calls a message-only form a dead end — only checkout leads on by itself", () => {
+    // THE CONTROL. Without it, "checkout is not a dead end" passes just as well
+    // from a mutant that stopped reporting dead ends at all.
+    expect(funnelConnections("camp", twoPages(formWith({ successMode: "message" }))).deadEnds).toEqual(["s1"])
+  })
+})
+
 describe("autoConnectOps", () => {
   const TARGET = { funnelSlug: "camp", nextStepSlug: "thanks" }
 
@@ -377,6 +448,71 @@ describe("autoConnectOps", () => {
     // discard the only evidence of what the owner meant.
     const doc = formWith({ successMode: "message", redirectUrl: "/go/camp/somewhere-else" })
     expect(autoConnectOps(doc, TARGET).ops).toEqual([])
+  })
+
+  // -------------------------------------------------------------------------
+  // WRONG FUNNEL, RIGHT PAGE — the one non-empty redirect this tool may touch.
+  //
+  // The builder was told to write "/go/<funnel-slug>/<next-page-slug>" and had
+  // to supply the first half itself, which it did from the funnel's NAME. On
+  // every funnel whose slug is not slugify(name) that produced a URL naming
+  // the CORRECT next page under a funnel that does not exist — a 404 after
+  // submit (audit 2026-09-13 §3.1). The rail already flagged those pages; it
+  // had no repair to offer, because "half-configured is still configured" sent
+  // this branch home.
+  // -------------------------------------------------------------------------
+  it("repairs a form redirect that names the RIGHT next page under the WRONG funnel slug", () => {
+    // MUTANT: keeping "half-configured is still configured" for this exact shape.
+    const doc = formWith({ successMode: "redirect", redirectUrl: "/go/camp-2026/thanks" })
+    const plan = autoConnectOps(doc, TARGET)
+    expect(plan.ops).toEqual([
+      {
+        op: "update_section",
+        id: "fo1",
+        props: { successMode: "redirect", redirectUrl: "/go/camp/thanks" },
+      },
+    ])
+    expect(plan.changes).toEqual([
+      expect.objectContaining({ field: "redirectUrl", to: "thanks" }),
+    ])
+  })
+
+  it("leaves a redirect to a DIFFERENT page of another funnel alone — that is a choice", () => {
+    // MUTANT: keying the repair on the funnel slug alone. Only the page half
+    // matching the next step makes it recognisable as the builder's guess
+    // rather than a deliberate hand-off to another funnel.
+    const doc = formWith({ successMode: "redirect", redirectUrl: "/go/other-funnel/pricing" })
+    expect(autoConnectOps(doc, TARGET).ops).toEqual([])
+  })
+
+  it("leaves an https redirect alone", () => {
+    // MUTANT: matching on "ends with the next page's slug" rather than on the
+    // /go/<funnel>/<page> shape. An off-site thank-you page is somebody's
+    // integration, and overwriting it would silently unhook it.
+    const doc = formWith({ successMode: "redirect", redirectUrl: "https://example.com/thanks" })
+    expect(autoConnectOps(doc, TARGET).ops).toEqual([])
+  })
+
+  it("leaves a DEEPER path under the wrong funnel alone", () => {
+    // MUTANT: a looser regex (or a `split("/")[3]` with no shape check), which
+    // would match "/go/other/thanks/extra" — three segments the builder never
+    // writes, so it is somebody's real URL.
+    const doc = formWith({ successMode: "redirect", redirectUrl: "/go/other-funnel/thanks/extra" })
+    expect(autoConnectOps(doc, TARGET).ops).toEqual([])
+  })
+
+  it("repairs the wrong funnel slug even when successMode was left on message", () => {
+    // The exact shape the builder produced is the URL; `successMode` is the
+    // half it sometimes forgot. MUTANT: requiring `successMode === "redirect"`
+    // before repairing, which leaves the commonest broken page unfixable.
+    const doc = formWith({ successMode: "message", redirectUrl: "/go/camp-2026/thanks" })
+    expect(autoConnectOps(doc, TARGET).ops).toEqual([
+      {
+        op: "update_section",
+        id: "fo1",
+        props: { successMode: "redirect", redirectUrl: "/go/camp/thanks" },
+      },
+    ])
   })
 
   it("returns nothing when there is nothing to connect, so the button can say so", () => {

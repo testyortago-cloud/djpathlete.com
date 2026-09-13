@@ -34,6 +34,7 @@ import { getBusinessSettings } from "@/lib/db/businesses"
 import { getContactById } from "@/lib/db/contact-detail"
 import { isSuppressed } from "@/lib/db/contact-consents"
 import { normalisePhone } from "@/lib/lead-engine/identity"
+import { smsEnvPresent } from "@/lib/lead-engine/sms"
 import { resolveTimezone } from "@/lib/lead-engine/guardrails"
 import { SmsThread } from "@/components/admin/sms/SmsThread"
 import { SmsComposer } from "@/components/admin/sms/SmsComposer"
@@ -81,6 +82,14 @@ export default async function AdminSmsThreadPage({ params }: { params: Promise<{
   // checks. Saying so up front beats a 503 after the admin has typed.
   const notConfigured = !settings.sms_messaging_service_sid && !settings.sms_sender_phone
 
+  // The SECOND gate, and the one this page used to be blind to: the send
+  // route needs `smsConfigured(settings) && smsEnvPresent()`, and a
+  // deployment missing TWILIO_ACCOUNT_SID / TWILIO_MAIN_SID /
+  // TWILIO_CLIENT_SECRET answers 503 no matter how complete Settings is.
+  // The composer says which of the two it is, because the two have
+  // different people fixing them.
+  const envMissing = !smsEnvPresent()
+
   return (
     <div className="space-y-4">
       <div>
@@ -106,6 +115,7 @@ export default async function AdminSmsThreadPage({ params }: { params: Promise<{
         contactName={contact?.name ?? null}
         suppressed={suppressed}
         notConfigured={notConfigured}
+        envMissing={envMissing}
         contactLocalHour={hourIn(contactTimezone)}
         contactTimezone={contactTimezone}
         quietHoursStart={settings.quiet_hours_start}

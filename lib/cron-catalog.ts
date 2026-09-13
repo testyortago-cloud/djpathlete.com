@@ -19,6 +19,7 @@ export type CronJobName =
   | "sequence-tick"
   | "contact-timeline-retention"
   | "pipeline-reconcile"
+  | "funnel-window"
   | "content-schedule"
 
 export interface CronJob {
@@ -219,13 +220,26 @@ export const CRON_CATALOG: readonly CronJob[] = [
     name: "pipeline-reconcile",
     label: "Pipeline board repair",
     description:
-      "Every hour, checks for a booking or a payment whose card move failed to record and fixes it — so a dropped hook never leaves a deal silently missing from the board. OFF by default; flip the toggle to enable.",
+      "Every hour, checks for a booking or a payment whose card move failed to record and fixes it — so a dropped hook never leaves a deal silently missing from the board. OFF by default, and it should stay off for now: it can add a second card for the same person on a different board from the one they are already on, leaving you two cards for one deal to tidy up by hand.",
     schedule: "20 * * * *",
     timezone: "UTC",
     humanSchedule: "Every hour at :20",
     firebaseFunction: "pipelineReconcileCron",
     phase: "lead-engine-1c",
     enabledKey: "cron_pipeline_reconcile_enabled",
+    defaultEnabled: false,
+  },
+  {
+    name: "funnel-window",
+    label: "Close funnels whose run window has ended",
+    description:
+      "Every day, takes offline any published funnel or landing page whose end date has passed and whose owner asked for it to close automatically. OFF by default; flip the toggle to enable.",
+    schedule: "0 4 * * *",
+    timezone: "UTC",
+    humanSchedule: "Daily at 04:00 UTC",
+    firebaseFunction: "funnelWindowCron",
+    phase: "lead-engine-1c",
+    enabledKey: "cron_funnel_window_enabled",
     defaultEnabled: false,
   },
   {

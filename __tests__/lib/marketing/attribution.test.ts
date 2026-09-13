@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { extractTrackingParamsFromUrl, hasAnyTrackingParam } from "@/lib/marketing/attribution"
+import { extractTrackingParamsFromUrl, hasAnyTrackingParam, landingUrlFor } from "@/lib/marketing/attribution"
 
 describe("extractTrackingParamsFromUrl", () => {
   it("extracts gclid", () => {
@@ -54,5 +54,28 @@ describe("hasAnyTrackingParam", () => {
 
   it("returns false on empty object", () => {
     expect(hasAnyTrackingParam({})).toBe(false)
+  })
+})
+
+describe("landingUrlFor", () => {
+  // Exported for proxy.ts, which needs the same landing_url an ad click would
+  // have produced for a /go visitor who arrived with no tracking param at all
+  // (audit §3.5). It exists so the middleware does not hand-roll the clip and
+  // drift from extractTrackingParamsFromUrl's own.
+  it("is the origin plus pathname, with the query and fragment dropped", () => {
+    expect(landingUrlFor(new URL("https://x.example/go/camp?utm_source=ig&x=1#top"))).toBe("https://x.example/go/camp")
+  })
+
+  it("clips to the 2000-char cap the schema enforces", () => {
+    // MUTANT KILLED: clipping at MAX_PARAM_LEN (200) instead of MAX_URL_LEN,
+    // or not clipping at all — landing_url is `z.string().url().max(2000)`, so
+    // an over-long path would make the track route 400 the whole body.
+    const long = "a".repeat(3000)
+    expect(landingUrlFor(new URL(`https://x.example/go/${long}`)).length).toBe(2000)
+  })
+
+  it("agrees with extractTrackingParamsFromUrl's own landing_url", () => {
+    const url = new URL("https://x.example/go/camp?gclid=abc")
+    expect(extractTrackingParamsFromUrl(url).landing_url).toBe(landingUrlFor(url))
   })
 })

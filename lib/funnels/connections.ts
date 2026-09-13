@@ -84,7 +84,14 @@ export interface FunnelConnections {
   broken: Connection[]
   /**
    * Page ids with no WORKING link to another page, excluding the one with the
-   * highest `position` — which is supposed to end. Warns only.
+   * highest `position` — which is supposed to end.
+   *
+   * BLOCKS PUBLISH, same as `broken`. It used to warn only, which is how a
+   * funnel went live whose form redirected to a page that did not exist; since
+   * the 2026-09-13 audit (§3.1) `app/api/admin/funnels/[id]/publish/route.ts`
+   * feeds this list into `funnelPublishPlan` and answers 422 naming every page
+   * in it. The rail still only warns, because the rail is not a gate — but
+   * nothing downstream of this field treats it as advisory any more.
    */
   deadEnds: string[]
 }
@@ -216,6 +223,13 @@ function connectionsForPage(
   funnelSlug: string,
   known: Set<string>,
   entrySlug: string,
+  /**
+   * The funnel's LAST page by position, or `null` on an empty funnel. Passed in
+   * rather than derived, so this function stays pure and so it and `deadEnds`
+   * below cannot disagree about which page that is. It is where a CHECKOUT
+   * form sends the payer — see the branch that reads it.
+   */
+  lastStep: StepWithDoc | null,
 ): Connection[] {
   const sections = step.doc?.sections
   if (!Array.isArray(sections)) return []
@@ -248,6 +262,27 @@ function connectionsForPage(
       const record = props as Record<string, unknown>
       const redirectUrl = typeof record.redirectUrl === "string" ? record.redirectUrl : ""
       const redirecting = record.successMode === "redirect" && redirectUrl !== ""
+
+      // CHECKOUT LEADS ON, AND NOT THROUGH `redirectUrl` — there is never one
+      // on a checkout form. Where the payer lands is decided server-side:
+      // `funnelReturnUrls()` in app/api/funnels/submit/route.ts builds
+      // `successUrl` as the funnel's LAST STEP BY POSITION. Reading this shape
+      // as "nobody has chosen yet" made an ordinary camp-signup page a dead
+      // end — and once a dead end blocks publish, it made that page
+      // unpublishable, with the rail offering a repair (`autoConnectOps`) that
+      // has nothing to do to a checkout form.
+      //
+      // `exists: true` is a fact, not an assumption: `lastStep` is drawn from
+      // the same list `known` is built from.
+      //
+      // ON the last page itself there is no arrow to draw — Stripe returns the
+      // payer to the page they are already on — so that case falls through to
+      // `none`. It costs nothing: the last page is exempt from `deadEnds`.
+      const checkoutLandsOn: Destination | null =
+        record.successMode === "checkout" && lastStep !== null && lastStep.id !== step.id
+          ? { kind: "step", slug: lastStep.slug, exists: true }
+          : null
+
       found.push({
         fromStepId: step.id,
         sectionId,
@@ -257,12 +292,14 @@ function connectionsForPage(
         field: "redirectUrl",
         label: FORM_SUBMIT_LABEL,
         via: "form",
-        to: redirecting
-          ? (internalPage(redirectUrl, funnelSlug, known, entrySlug) ?? {
-              kind: "external",
-              href: redirectUrl,
-            })
-          : { kind: "none" },
+        to:
+          checkoutLandsOn ??
+          (redirecting
+            ? (internalPage(redirectUrl, funnelSlug, known, entrySlug) ?? {
+                kind: "external",
+                href: redirectUrl,
+              })
+            : { kind: "none" }),
       })
     }
   }
@@ -284,19 +321,25 @@ export function funnelConnections(funnelSlug: string, steps: StepWithDoc[]): Fun
   const known = new Set(steps.map((step) => step.slug))
   const entrySlug = steps.find((step) => step.isEntry)?.slug ?? steps[0]?.slug ?? ""
 
+  // BY POSITION, not by array order. A caller that hands these over unsorted
+  // must not turn the entry page into "the last page" and silence its warning.
+  //
+  // Computed BEFORE the loop because it is now needed twice: `deadEnds` exempts
+  // this page, and a CHECKOUT form on any other page leads to it. Deriving it
+  // once is what stops those two answers drifting apart — the same reason
+  // `funnelReturnUrls()` sorts by position rather than taking the array's tail.
+  const lastStep =
+    steps.length === 0
+      ? null
+      : steps.reduce((furthest, step) => (step.position > furthest.position ? step : furthest))
+  const lastId = lastStep?.id ?? null
+
   const connections: Connection[] = []
   for (const step of steps) {
-    connections.push(...connectionsForPage(step, funnelSlug, known, entrySlug))
+    connections.push(...connectionsForPage(step, funnelSlug, known, entrySlug, lastStep))
   }
 
   const broken = connections.filter((entry) => entry.to.kind === "step" && !entry.to.exists)
-
-  // BY POSITION, not by array order. A caller that hands these over unsorted
-  // must not turn the entry page into "the last page" and silence its warning.
-  const lastId =
-    steps.length === 0
-      ? null
-      : steps.reduce((furthest, step) => (step.position > furthest.position ? step : furthest)).id
 
   // A BROKEN link is not an exit. A page whose only way out 404s is worse off
   // than one with no way out, not better — so `exists` is required here.
@@ -414,7 +457,26 @@ export function autoConnectOps(doc: SectionDoc, target: AutoConnectTarget): Auto
       // left alone even if `successMode` was never switched over, because that
       // URL is the only evidence of what the owner meant.
       const untouched = !hasUrl && (mode === undefined || mode === "message")
-      if (untouched) {
+
+      // WRONG FUNNEL, RIGHT PAGE. The builder used to write the next page's
+      // slug under a slug it invented from the funnel NAME (audit 2026-09-13
+      // §3.1). That exact shape — "/go/<not this funnel>/<exactly the next
+      // page>" — is the model's guess, not the owner's choice, so it is the
+      // one non-empty URL this function may correct. Anything else that is
+      // non-empty stays untouched.
+      //
+      // All THREE conditions carry weight. The shape regex refuses a deeper
+      // path, a query or a fragment, none of which the builder writes. The
+      // prefix test is what makes it the WRONG funnel. And the last segment
+      // having to equal `nextStepSlug` is what makes it a guess at THIS
+      // hand-off rather than a deliberate link into another funnel.
+      const current = hasUrl ? (record.redirectUrl as string) : ""
+      const wrongFunnelRightPage =
+        /^\/go\/[^/?#]+\/[^/?#]+$/.test(current) &&
+        !current.startsWith(`/go/${target.funnelSlug}/`) &&
+        current.split("/")[3] === target.nextStepSlug
+
+      if (untouched || wrongFunnelRightPage) {
         // BOTH KEYS TOGETHER. `formIslandSchema`'s superRefine rejects
         // `successMode: "redirect"` with no `redirectUrl`, so writing one
         // without the other is an op `applyOps` refuses outright.

@@ -25,7 +25,38 @@ export async function GET() {
 }
 
 export const POST = withAudit(
-  { action: "funnel.created", category: "admin_write" },
+  {
+    action: "funnel.created",
+    category: "admin_write",
+    // AUDIT §4 #12: unlike PATCH/DELETE on `[id]/route.ts`, THIS ROUTE HAS NO
+    // DYNAMIC SEGMENT -- there is no `ctx.params` id to fall back to at all,
+    // so before `withAudit` grew a response-aware resolver this row could
+    // never have carried a target. The created funnel's id only exists once
+    // `createFunnel` has run, i.e. only in the response body. A refused
+    // create (validation, duplicate slug, tenant) has no `funnel` key, so
+    // this correctly resolves to no target rather than inventing one.
+    target: async (_request, _ctx, response) => {
+      if (!response) return undefined
+      try {
+        const body = (await response.json()) as { funnel?: { id?: string; name?: string } }
+        return body.funnel?.id
+          ? { type: "funnel", id: body.funnel.id, ...(body.funnel.name ? { label: body.funnel.name } : {}) }
+          : undefined
+      } catch {
+        return undefined
+      }
+    },
+    metadata: async (_request, response) => {
+      try {
+        const body = (await response.json()) as {
+          funnel?: { slug?: string; kind?: string; template?: string | null }
+        }
+        return { slug: body.funnel?.slug, kind: body.funnel?.kind, template: body.funnel?.template ?? null }
+      } catch {
+        return {}
+      }
+    },
+  },
   async (request) => {
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {

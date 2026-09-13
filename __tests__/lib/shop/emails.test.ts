@@ -17,6 +17,12 @@ vi.mock("react-dom/server", () => ({
   renderToStaticMarkup: vi.fn().mockReturnValue("<html>mock</html>"),
 }))
 
+// ── Mock the signed-URL minter sendFreeDownloadEmail imports dynamically ──────
+
+vi.mock("@/lib/shop/downloads", () => ({
+  generateSignedDownloadUrl: vi.fn().mockResolvedValue("https://signed.example/file.pdf"),
+}))
+
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 import {
@@ -25,6 +31,7 @@ import {
   sendOrderShippedEmail,
   sendOrderCanceledEmail,
   sendOrderRefundedEmail,
+  sendFreeDownloadEmail,
 } from "@/lib/shop/emails"
 import { resend } from "@/lib/resend"
 
@@ -220,6 +227,74 @@ describe("sendOrderRefundedEmail", () => {
 
     await expect(sendOrderRefundedEmail(baseOrder)).resolves.toBeUndefined()
 
+    expect(resend.emails.send).not.toHaveBeenCalled()
+  })
+})
+
+// ── sendFreeDownloadEmail ─────────────────────────────────────────────────────
+//
+// This one is different from the five above, and deliberately so. Its only
+// caller — app/api/shop/leads/route.ts — wraps it in try/catch and answers the
+// visitor 502 when it throws. The download links ARE the thing the visitor was
+// promised in exchange for their address, so "we could not send it" has to
+// reach them; the other five are notifications about an order that already
+// exists, where a failed send is logged and the order still stands.
+
+type ShopProductFile = import("@/types/database").ShopProductFile
+/** Exactly the fields sendFreeDownloadEmail reads off a product file row. */
+type ReadFields = Pick<ShopProductFile, "display_name" | "storage_path">
+
+const freeDownloadInput = {
+  to: "lead@example.com",
+  productName: "Speed Primer",
+  // A checked partial, not an `as unknown as ShopProductFile[]`: the sender
+  // reads only these two fields, and the `satisfies` keeps tsc verifying that
+  // both still exist on the real row type with these value types. A blanket
+  // cast through `unknown` would let a renamed or retyped column through.
+  files: [
+    { display_name: "primer.pdf", storage_path: "shop/primer.pdf" } satisfies ReadFields,
+  ] as ShopProductFile[],
+  ttlSeconds: 900,
+}
+
+describe("sendFreeDownloadEmail", () => {
+  it("sends the links when the key is set and the provider accepts", async () => {
+    // Presence control for the two absence assertions below.
+    await expect(sendFreeDownloadEmail(freeDownloadInput)).resolves.toBeUndefined()
+
+    expect(resend.emails.send).toHaveBeenCalledOnce()
+    expect(resend.emails.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "lead@example.com",
+        subject: expect.stringContaining("Speed Primer"),
+      }),
+    )
+  })
+
+  it("rejects when the provider rejects the send", async () => {
+    // MUTANT: drop the `if (error) throw` and go back to a bare
+    // `await resend.emails.send(...)`. The route then answers 200 and the
+    // visitor waits for a download email Resend never accepted. This is the
+    // half of the fix that is live in production, which HAS the key.
+    vi.mocked(resend.emails.send).mockResolvedValueOnce({
+      data: null,
+      error: { name: "validation_error", message: "bad" },
+    } as unknown as Awaited<ReturnType<typeof resend.emails.send>>)
+
+    await expect(sendFreeDownloadEmail(freeDownloadInput)).rejects.toThrow(/bad/)
+  })
+
+  it("rejects naming RESEND_API_KEY, and mints no links, when the key is unset", async () => {
+    // MUTANT: restore `warnMissingKey(...); return` — the route answers 200
+    // and the visitor is told their download is on its way.
+    //
+    // Reachable in a real process only if lib/resend.ts stopped building its
+    // client eagerly: `new Resend(process.env.RESEND_API_KEY!)` throws at
+    // import when the key is unset, so today this branch is a test-only
+    // guard. It is still the honest answer for the branch to give.
+    vi.stubEnv("RESEND_API_KEY", "")
+
+    await expect(sendFreeDownloadEmail(freeDownloadInput)).rejects.toThrow(/RESEND_API_KEY/)
     expect(resend.emails.send).not.toHaveBeenCalled()
   })
 })
