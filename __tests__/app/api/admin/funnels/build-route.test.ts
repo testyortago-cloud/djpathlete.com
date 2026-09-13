@@ -93,6 +93,8 @@ import { getEvents, getPublishedEvents } from "@/lib/db/events"
 import { reviewDoc } from "@/lib/funnels/sections/review/pipeline"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import {
+  BUILDER_REFERENCE_IMAGE_MAX_BASE64,
+  BUILDER_REFERENCE_IMAGE_MEDIA_TYPES,
   SECTION_BUILDER_EDIT_MAX_TOKENS,
   SECTION_BUILDER_MAX_TOKENS_CEILING,
   SECTION_BUILDER_RATE_LIMIT_MAX,
@@ -1881,5 +1883,77 @@ describe("POST .../build — accepting a proposed polish", () => {
 
     expect(res.headers.get("content-type")).toContain("application/json")
     expect(await res.json()).toMatchObject({ source: "review", revision: 5 })
+  })
+})
+
+describe("a pasted reference image (2026-09-14 spec §4)", () => {
+  const IMAGE = { mediaType: "image/jpeg", data: "QUJDREVG" }
+
+  it("reaches streamAgent as an images option", async () => {
+    await runTurn({ message: "match this look", revision: 4, image: IMAGE })
+    // The claim is the ARGUMENT, not that the call happened. The mutant is a
+    // route that validates the image and then forgets to forward it — the
+    // feature would be silently text-only with a working UI.
+    const options = mock(streamAgent).mock.calls[0][3] as { images?: unknown }
+    expect(options.images).toEqual([{ mediaType: "image/jpeg", data: "QUJDREVG" }])
+  })
+
+  it("passes NO images option when the body carries no image", async () => {
+    await runTurn({ message: "make it shorter", revision: 4 })
+    const options = mock(streamAgent).mock.calls[0][3] as { images?: unknown }
+    expect(options.images).toBeUndefined()
+  })
+
+  // THE PRIVACY CLAIM, asserted against every argument rather than one field.
+  // A brand board is private commercial material and a competitor screenshot
+  // is someone else's copyright; neither becomes a row.
+  it("never writes the image to the turn log", async () => {
+    await runTurn({ message: "match this look", revision: 4, image: IMAGE })
+    expect(mock(appendTurn)).toHaveBeenCalled()
+    for (const call of mock(appendTurn).mock.calls) {
+      expect(JSON.stringify(call)).not.toContain("QUJDREVG")
+    }
+    // ...and the control: the owner's own words DO reach it, so the assertion
+    // above is not passing because appendTurn was called with nothing useful.
+    const userCall = mock(appendTurn).mock.calls.find(
+      (call) => (call[0] as { role?: string }).role === "user",
+    )
+    expect((userCall?.[0] as { message?: string })?.message).toBe("match this look")
+  })
+
+  it("rejects a media type Anthropic cannot read", async () => {
+    const res = await POST(req({ message: "hi", revision: 4, image: { mediaType: "image/avif", data: "QQ" } }), ctx)
+    expect(res.status).toBe(400)
+    expect(mock(streamAgent)).not.toHaveBeenCalled()
+  })
+
+  it("rejects a non-image media type outright", async () => {
+    const res = await POST(req({ message: "hi", revision: 4, image: { mediaType: "text/html", data: "QQ" } }), ctx)
+    expect(res.status).toBe(400)
+  })
+
+  it("accepts each of the four allowed media types", async () => {
+    // Derived from the allowlist constant, NOT a hand-listed table — a
+    // hand-maintained "known-good pairs" table is where four bugs hid last
+    // session.
+    for (const mediaType of BUILDER_REFERENCE_IMAGE_MEDIA_TYPES) {
+      vi.clearAllMocks()
+      mock(auth).mockResolvedValue(freshAdmin())
+      mock(canAccessAdminPath).mockResolvedValue(true)
+      const res = await POST(req({ message: "hi", revision: 4, image: { mediaType, data: "QQ" } }), ctx)
+      expect(res.status, `${mediaType} should be accepted`).not.toBe(400)
+    }
+  })
+
+  it("rejects a payload one character over the cap", async () => {
+    const res = await POST(
+      req({
+        message: "hi",
+        revision: 4,
+        image: { mediaType: "image/png", data: "A".repeat(BUILDER_REFERENCE_IMAGE_MAX_BASE64 + 1) },
+      }),
+      ctx,
+    )
+    expect(res.status).toBe(400)
   })
 })
