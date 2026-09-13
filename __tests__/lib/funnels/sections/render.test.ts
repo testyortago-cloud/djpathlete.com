@@ -21,7 +21,7 @@ import { parseIslandProps } from "@/lib/funnels/islands"
 import { escapeHtml, renderSection, type RenderContext } from "@/lib/funnels/sections/render"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import { THEME_CSS, SECTION_CSS } from "@/lib/funnels/sections/styles"
-import { PALETTE_TABLE, contrastRatio, type PaletteName } from "@/lib/funnels/sections/palettes"
+import { PALETTE_TABLE, PALETTE_PRESETS, contrastRatio, type PaletteName } from "@/lib/funnels/sections/palettes"
 import {
   SECTION_KINDS,
   SECTION_ICONS,
@@ -191,8 +191,14 @@ const READABLE_ON: Record<string, readonly string[]> = {
   "--accent": ["--accent-foreground", "--primary"],
   // The two neutral surfaces share one foreground family, and brand tokens
   // read as accents on them (that is what `.djp-hd` and `.djp-plan-price` are).
-  "--background": ["--foreground", "--muted-foreground", "--primary", "--accent"],
-  "--surface": ["--foreground", "--muted-foreground", "--primary", "--accent"],
+  // `--primary-on-paper` (contrast-sweep fix, 2026-09-13) is the token those
+  // two rules actually resolve to now — `palettes.ts`'s `deriveBrandOnPaper`,
+  // proven >= 4.5:1 against both `paper` and `surface` for every preset (see
+  // palettes.test.ts) — so it belongs in exactly this pairing list, not
+  // instead of `--primary`, which stays legal for a document with no palette
+  // (styles.ts falls back to bare `--primary` there).
+  "--background": ["--foreground", "--muted-foreground", "--primary", "--primary-on-paper", "--accent"],
+  "--surface": ["--foreground", "--muted-foreground", "--primary", "--primary-on-paper", "--accent"],
 }
 
 const INHERIT = "INHERIT"
@@ -680,6 +686,8 @@ function paletteHex(preset: PaletteName, token: string): string | null {
       return t.ink
     case "--background":
       return t.paper
+    case "--primary-on-paper":
+      return t.brandOnPaper
     default:
       return null
   }
@@ -690,20 +698,26 @@ function paletteHex(preset: PaletteName, token: string): string | null {
 // live on /preview/sales-k9m0w.
 const REPRESENTATIVE_PRESETS: readonly PaletteName[] = ["slate", "ember", "ink", "midnight", "steel", "plum"]
 
-// Deliberately NOT `ALL_TONES`. `default` is a real, separate finding — see
-// the contrast-sweep report — but it is a DIFFERENT bug than the one this
-// sweep fixes: `.djp-hd` / `.djp-plan-price` / `.djp-proof-value` hardcode
-// `--primary`, and `--primary` is not guaranteed readable against
-// `--background` (paper) for EVERY preset, dark-seeded or not — deriveSurface
-// only proves ink-vs-surface, never brand-vs-anything. Fixing that with the
-// same `color: inherit` move used below would remove brand-coloured headings
-// from every LIGHT palette too (slate/forest/sand/clay/ocean/bone/moss all
-// pass today), which is a design regression this CSS-only sweep should not
-// make unilaterally — it needs a derived, guaranteed-safe "heading" token in
-// palettes.ts (mirroring how `pickInk` derives `ink`), not a tone rule. This
-// suite is scoped to exactly the bug class the task describes: an element
-// whose colour is hardcoded to a token that does not follow "the SECTION'S
-// tone" when that tone is muted, accent, or dark.
+// Deliberately NOT `ALL_TONES`. `default` WAS a real, separate finding here
+// (see the contrast-sweep report) — `.djp-hd` / `.djp-plan-price` /
+// `.djp-proof-value` hardcoded `--primary` at the default, untoned section,
+// and `--primary` was never guaranteed readable against `--background`/
+// `--surface` for every preset (`deriveSurface` only proves ink-vs-surface).
+// That has since been fixed by pointing those three rules at
+// `--primary-on-paper` (`palettes.ts`'s `deriveBrandOnPaper`, guaranteed
+// >= 4.5:1 against both paper and surface for every preset — see
+// palettes.test.ts) rather than bare `--primary`, which is exactly why fixing
+// it did NOT mean "make brand-coloured headings resolve to plain foreground
+// on every light palette too" — see the dedicated describe block below for
+// that check.
+//
+// `default` still is NOT added to `SWEEP_TONES` here, though: this describe
+// block's `readContrast` walks EVERY text node, including `.djp-eyebrow` /
+// `.djp-ic` (hardcoded `--accent`), which has no default-tone fix and is a
+// separate, out-of-scope finding for a future pass. This suite stays scoped
+// to exactly the bug class this sweep targets: an element whose colour is
+// hardcoded to a token that does not follow "the SECTION'S tone" when that
+// tone is muted, accent, or dark.
 const SWEEP_TONES = ["muted", "accent", "dark"] as const satisfies readonly (typeof ALL_TONES)[number][]
 
 /** `readContrast(tone)` re-renders and re-parses every kind/variant; cached
@@ -748,6 +762,43 @@ describe("real palette contrast: hardcoded tokens actually clear 4.5:1 against t
       (reading) => paletteHex("ember", reading.colour) !== null && paletteHex("ember", reading.background) !== null,
     )
     expect(resolvable.length).toBeGreaterThan(10)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// DEFAULT-TONE BRAND TEXT — the follow-up fix. `.djp-hd` / `.djp-plan-price` /
+// `.djp-proof-value` are the ONLY three rules in styles.ts that paint
+// `--primary` as text at the default (untoned) section, and they now resolve
+// to `--primary-on-paper` instead. Checked across ALL TWELVE presets (not
+// just the six representative ones above) because `brandOnPaper`'s guarantee
+// is unconditional — palettes.test.ts proves it for the full wheel of hues,
+// so there is no "representative subset" here, only "does styles.ts actually
+// use the token it was given".
+//
+// MUTANT THIS KILLS: pointing any one of the three rules back at bare
+// `--primary` turns every preset/kind combination for that element red,
+// naming the preset and the real measured ratio (verified — see the report).
+// ---------------------------------------------------------------------------
+
+describe("default-tone brand text: .djp-hd / .djp-plan-price / .djp-proof-value use the paper-safe token", () => {
+  const TARGET_CLASSES = ["djp-hd", "djp-plan-price", "djp-proof-value"]
+
+  it.each(PALETTE_PRESETS)("preset '%s': every default-tone brand-text node clears 4.5:1", (preset) => {
+    const readings = cachedContrast("default")
+    const targets = readings.filter((reading) => TARGET_CLASSES.some((cls) => reading.node.includes(cls)))
+    expect(targets.length, "no .djp-hd/.djp-plan-price/.djp-proof-value rendered at tone 'default'").toBeGreaterThan(0)
+    const violations = targets.flatMap((reading) => {
+      const fg = paletteHex(preset, reading.colour)
+      const bg = paletteHex(preset, reading.background)
+      if (fg === null || bg === null) {
+        return [`${reading.case}: ${reading.node} resolved to un-mapped token ${reading.colour} on ${reading.background}`]
+      }
+      const ratio = contrastRatio(fg, bg)
+      return ratio < 4.5
+        ? [`${reading.case}: ${reading.node} — ${reading.colour} (${fg}) on ${reading.background} (${bg}) = ${ratio.toFixed(2)}:1`]
+        : []
+    })
+    expect(violations, violations.join("\n")).toEqual([])
   })
 })
 

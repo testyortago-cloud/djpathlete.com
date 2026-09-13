@@ -306,12 +306,23 @@ function themeCss(theme: SectionDocTheme, brandKit?: BrandKit | null): string {
   // Colour is a security boundary (palettes.ts, styles.ts): every value below
   // reaches CSS ONLY as the right-hand side of a custom-property declaration,
   // never interpolated into a selector or a shorthand. When `palette` is
-  // `null` this block is the empty string — not seven declarations that
+  // `null` this block is the empty string — not eight declarations that
   // happen to match today's defaults, NOTHING — because "no palette" is the
   // 3-key theme every existing stored document already has, and that case
   // must render byte-for-byte as it does today.
+  //
+  // `--primary-on-paper` (contrast-sweep fix, 2026-09-13): `--primary` is
+  // guaranteed readable only paired with `--primary-foreground` as a
+  // BACKGROUND — never proven as TEXT on `--background`/`--surface`, which is
+  // exactly how `.djp-hd` etc. use it at the default (untoned) section. This
+  // is `palette.brandOnPaper` — see palettes.ts's `deriveBrandOnPaper` for the
+  // derivation and the measured worst case (`ink` was 1.10:1 before this).
+  // styles.ts's rules fall back to bare `--primary` when this is undefined
+  // (no palette on the document), which is exactly the "no palette" case
+  // above and keeps that byte-for-byte behaviour intact.
   const paletteBlock = palette
     ? `${ROOT} { --primary: ${palette.brand}; --primary-foreground: ${palette.brandInk}; ` +
+      `--primary-on-paper: ${palette.brandOnPaper}; ` +
       `--accent: ${palette.accent}; --accent-foreground: ${palette.accentInk}; ` +
       `--surface: ${palette.surface}; --foreground: ${palette.ink}; --background: ${palette.paper}; }`
     : ""

@@ -32,6 +32,31 @@ describe("PALETTE_TABLE", () => {
       expect(contrastRatio(p.accentInk, p.accent), `${name}: text on accent band`).toBeGreaterThanOrEqual(4.5)
     }
   })
+  // THE GUARANTEE `brand` NEVER HAD. `brand` is paired with `brandInk` only as
+  // a BACKGROUND (the assertion above, "text on brand band"); as TEXT on the
+  // page's own ground (.djp-hd / .djp-plan-price / .djp-proof-value, painted
+  // var(--primary) at the DEFAULT, untoned section) nothing ever proved it —
+  // deriveSurface only proves ink-vs-surface. Measured before this fix:
+  // `ink` (brand #111827, itself near-black) scored 1.10:1 against paper,
+  // decisively below even the large-text 3:1 floor; `midnight` (1.88),
+  // `steel` (2.19) and `plum` (2.74) also failed outright; only `ember`
+  // cleared 3:1, and only by 0.01 (3.007:1) — a margin that thin is luck, not
+  // a guarantee, especially for `.djp-plan-price`/`.djp-proof-value`, which
+  // are not reliably "large text" the way a heading is.
+  //
+  // `brandOnPaper` targets 4.5:1 (body-text AA), not the 3:1 large-text floor
+  // that produced the 3.007 near-miss — checked against BOTH `paper` and
+  // `surface`, because `surface` measured uniformly slightly worse than
+  // `paper` in every row, so paper alone would just move the bug one band
+  // over. Worst case after this fix, across all twelve presets: `ember` at
+  // 4.510:1 against surface (still comfortably >= 4.5) — see the report for
+  // the full measured table.
+  it("guarantees brandOnPaper reads on the page's own ground, not just the brand band", () => {
+    for (const [name, p] of Object.entries(PALETTE_TABLE)) {
+      expect(contrastRatio(p.brandOnPaper, p.paper), `${name}: brandOnPaper on paper`).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(p.brandOnPaper, p.surface), `${name}: brandOnPaper on surface`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
   // THE POINT OF *TWELVE* PRESETS. Every row is `resolvePalette(seed)`, so the
   // AA test above can only fail if `resolvePalette` itself is broken — it says
   // nothing about whether two SEEDS picked the same colour under different
@@ -79,6 +104,25 @@ describe("resolvePalette", () => {
       expect(contrastRatio(p.ink, p.surface), `hue ${hue}: body on surface`).toBeGreaterThanOrEqual(4.5)
       expect(contrastRatio(p.brandInk, p.brand), `hue ${hue}: text on brand`).toBeGreaterThanOrEqual(4.5)
       expect(contrastRatio(p.accentInk, p.accent), `hue ${hue}: text on accent`).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(p.brandOnPaper, p.paper), `hue ${hue}: brandOnPaper on paper`).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(p.brandOnPaper, p.surface), `hue ${hue}: brandOnPaper on surface`).toBeGreaterThanOrEqual(
+        4.5,
+      )
+    }
+  })
+  // Both modes, not just light: dark mode's paper is near-black, which is
+  // exactly the case that broke `ink`/`midnight`/`steel`/`plum` above.
+  it("meets brandOnPaper's 4.5:1 in dark mode too, all the way round the wheel", () => {
+    for (let hue = 0; hue < 360; hue += 15) {
+      const brand = hslToHex(hue, 0.65, 0.45)
+      const p = resolvePalette({ brand, mode: "dark" })
+      expect(contrastRatio(p.brandOnPaper, p.paper), `hue ${hue} (dark): brandOnPaper on paper`).toBeGreaterThanOrEqual(
+        4.5,
+      )
+      expect(
+        contrastRatio(p.brandOnPaper, p.surface),
+        `hue ${hue} (dark): brandOnPaper on surface`,
+      ).toBeGreaterThanOrEqual(4.5)
     }
   })
   it("survives the extremes that break a naive luminance split", () => {

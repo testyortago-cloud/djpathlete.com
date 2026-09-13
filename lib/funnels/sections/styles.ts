@@ -510,12 +510,23 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-steps .djp-step-item::before {
   color: var(--accent-foreground);
 }
 
-/* headline knob */
+/* headline knob
+   color: var(--primary-on-paper, var(--primary)) — contrast-sweep fix,
+   2026-09-13. This rule is the DEFAULT-tone ground state only: accent/dark
+   already override to color: inherit above (THEME_CSS's data-tone knob),
+   and muted got the same override in the same fix wave, so this base rule is
+   reached only when the section carries no repainted tone at all — i.e. text
+   directly on the page's own --background/--surface, never on a
+   --primary-painted band. --primary alone was never proven safe there
+   (deriveSurface only proves ink-vs-surface); --primary-on-paper is
+   (palettes.ts's deriveBrandOnPaper). The fallback to bare --primary
+   keeps a document with no palette rendering exactly as before — doc.ts only
+   emits --primary-on-paper inside its palette block. */
 ${ROOT} .djp-hd {
   font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
   font-weight: 700;
   line-height: 1.1;
-  color: var(--primary);
+  color: var(--primary-on-paper, var(--primary));
   margin: 0 0 0.75rem;
   font-size: clamp(1.5rem, 3.4vw, 2.25rem);
 }
@@ -927,7 +938,11 @@ ${ROOT} .djp-s-pricing .djp-plan-name {
   margin: 0;
   font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
-${ROOT} .djp-s-pricing .djp-plan-price { margin: 0; font-size: 2rem; font-weight: 700; color: var(--primary); }
+/* color: var(--primary-on-paper, var(--primary)) — same contrast-sweep fix as
+   .djp-hd above: this is the default-tone ground state (accent/dark/muted
+   all already override to color: inherit elsewhere in this pass), so it
+   paints text directly on --background/--surface, never a --primary band. */
+${ROOT} .djp-s-pricing .djp-plan-price { margin: 0; font-size: 2rem; font-weight: 700; color: var(--primary-on-paper, var(--primary)); }
 ${ROOT} .djp-s-pricing .djp-plan-cadence {
   margin-left: 0.35rem;
   font-size: 0.9rem;
@@ -1483,12 +1498,15 @@ ${ROOT} .djp-s-proof .djp-proof-list {
 }
 ${ROOT} .djp-s-proof[data-align="center"] .djp-proof-list { justify-content: center; }
 ${ROOT} .djp-s-proof .djp-proof-item { flex: 0 1 auto; }
+/* color: var(--primary-on-paper, var(--primary)) — same contrast-sweep fix:
+   default-tone ground state, text on --background/--surface, never a
+   --primary band (accent/dark/muted already override to inherit). */
 ${ROOT} .djp-s-proof .djp-proof-value {
   font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
   font-size: 1.65rem;
   font-weight: 700;
   line-height: 1.1;
-  color: var(--primary);
+  color: var(--primary-on-paper, var(--primary));
   margin: 0;
 }
 ${ROOT} .djp-s-proof .djp-proof-label {

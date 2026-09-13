@@ -199,6 +199,7 @@ export type PaletteName = (typeof PALETTE_PRESETS)[number]
 export interface PaletteTokens {
   brand: string
   brandInk: string
+  brandOnPaper: string
   accent: string
   accentInk: string
   surface: string
@@ -225,6 +226,58 @@ function deriveSurface(paper: string, brand: string, ink: string): string {
     if (contrastRatio(ink, candidate) >= MIN_AA) return candidate
   }
   return paper
+}
+
+// ---------------------------------------------------------------------------
+// brandOnPaper — `brand` adjusted until it reads as TEXT on the page's own
+// ground (paper AND surface), never a repainted band.
+//
+// `brand` does two different jobs, and only one of them was ever guaranteed.
+// As a BACKGROUND (`--primary` behind a `dark`-toned section, paired with
+// `brandInk`) `pickInk`'s proof already covers it. As TEXT on the page ground
+// (`.djp-hd` / `.djp-plan-price` / `.djp-proof-value`, painted
+// `var(--primary)` on `--background`/`--surface` at the default, untoned
+// section) nothing ever proved it — `deriveSurface` above only proves
+// ink-vs-surface. Measured across all twelve `PALETTE_TABLE` presets before
+// this fix: `ink` (brand `#111827`, itself near-black) scored 1.10:1 against
+// paper, decisively below even the large-text 3:1 floor; `midnight` (1.88),
+// `steel` (2.19) and `plum` (2.74) also failed outright; only `ember` cleared
+// 3:1, and only by 0.01 (3.007:1) — which is what let the bug through in the
+// first place: `.djp-hd` is large bold text (20px/700 minimum, clamp(1.25rem,
+// ...) at data-h="sm"), so 3:1 is the technically-correct WCAG floor for it,
+// but a margin that thin is luck, not a guarantee, and `.djp-plan-price` /
+// `.djp-proof-value` are not reliably "large text" the same way.
+//
+// `brandOnPaper` keeps brand's HUE — so it still reads as the brand — and
+// nudges LIGHTNESS one step at a time away from paper's own lightness,
+// re-measuring against BOTH paper and surface (surface measured uniformly
+// slightly worse than paper in every row above, so checking paper alone would
+// just move the bug one band over) until BOTH clear 4.5:1 — body-text AA, not
+// the large-text 3:1 that produced the 3.007 near-miss. Targeting the higher
+// bar costs little and makes the token safe to use for body text too, not
+// just headings.
+//
+// The loop is guaranteed to terminate: `hslToRgb`'s `a = s * min(l, 1 - l)`
+// hits zero at l=1 or l=0 regardless of hue/saturation, collapsing the
+// candidate to pure white or pure black — and white/black on ANY background
+// clears AA by the same AM-GM proof `pickInk` relies on in the file banner
+// above. 100 steps of 1% lightness is more than enough to reach either
+// extreme from any starting lightness.
+// ---------------------------------------------------------------------------
+
+function deriveBrandOnPaper(brand: string, paper: string, surface: string): string {
+  const [r, g, b] = hexToRgb(brand)
+  const [h, s, l0] = rgbToHsl(r, g, b)
+  const paperIsDark = relativeLuminance(paper) < 0.5
+  let l = l0
+  for (let step = 0; step < 100; step++) {
+    const [cr, cg, cb] = hslToRgb(h, s, l)
+    const candidate = rgbToHex(cr, cg, cb)
+    if (contrastRatio(candidate, paper) >= MIN_AA && contrastRatio(candidate, surface) >= MIN_AA) return candidate
+    l = paperIsDark ? Math.min(1, l + 0.01) : Math.max(0, l - 0.01)
+  }
+  // Unreachable per the proof above — fail loudly rather than ship a losing pair.
+  throw new Error(`palettes: could not derive a readable brandOnPaper for ${brand} on ${paper}`)
 }
 
 /**
@@ -258,8 +311,9 @@ export function resolvePalette(input: { brand: string; accent?: string; mode?: "
   const ink = pickInk(paper).ink
 
   const surface = deriveSurface(paper, brand, ink)
+  const brandOnPaper = deriveBrandOnPaper(brand, paper, surface)
 
-  return { brand, brandInk, accent, accentInk, surface, ink, paper }
+  return { brand, brandInk, brandOnPaper, accent, accentInk, surface, ink, paper }
 }
 
 // ---------------------------------------------------------------------------
