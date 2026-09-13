@@ -16,6 +16,7 @@ import { render, screen, fireEvent, within } from "@testing-library/react"
 import { SectionInspector, nextSectionId } from "@/components/admin/funnels/builder/SectionInspector"
 import { ConnectionsProvider } from "@/components/admin/funnels/connections-context"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
+import { applyOps } from "@/lib/funnels/sections/apply"
 
 function aDoc(): SectionDoc {
   return {
@@ -570,18 +571,53 @@ describe("SectionInspector — what happens after a form is submitted", () => {
       ])
     })
 
-    it("clears the background with the delete sentinel rather than {kind:'none'}", () => {
-      mount({
-        doc: {
-          ...aDoc(),
-          sections: [
-            { ...aDoc().sections[0], style: { bg: { kind: "gradient", from: "#111111", to: "#222222" } } },
-            aDoc().sections[1],
-          ],
-        },
-      })
+    it("clears the background with the delete sentinel rather than {kind:'none'}, and the real schema/merge actually clears it (fix-wave bug 1)", () => {
+      // Asserting only the shape handed to a MOCKED onOps is exactly how this
+      // bug shipped invisibly: `style: { bg: null }` looked right here while
+      // failing `opSchema` for real, because `sectionStyleSchema.partial()`
+      // was `.optional()` on every key but never `.nullable()`. This test now
+      // runs the op the button produces through the REAL `opSchema` (inside
+      // `applyOps`) and asserts the background is actually gone from the
+      // resulting document, not merely that a mock was called with a
+      // particular object.
+      const doc: SectionDoc = {
+        ...aDoc(),
+        sections: [
+          { ...aDoc().sections[0], style: { bg: { kind: "gradient", from: "#111111", to: "#222222" } } },
+          aDoc().sections[1],
+        ],
+      }
+      mount({ doc })
       fireEvent.click(screen.getByRole("button", { name: /^none$/i }))
       expect(onOps).toHaveBeenCalledWith([{ op: "update_section", id: "h1", style: { bg: null } }])
+
+      const [ops] = onOps.mock.calls[0]
+      const result = applyOps(doc, ops)
+      expect(result.ok, !result.ok ? result.errors.join(" | ") : "").toBe(true)
+      if (!result.ok) return
+      const style = result.doc.sections[0].style as Record<string, unknown>
+      expect("bg" in style).toBe(false)
+    })
+
+    it("clears the tone with the pre-existing 'use the page default' delete sentinel, verified through the real schema/merge too", () => {
+      // `ToneField`'s own "use the page default" button predates this build
+      // and sends the identical `style: { tone: null }` shape — broken by the
+      // SAME schema gap bug 1 fixes, just never covered by a test at all
+      // (mocked or otherwise) until now.
+      const doc: SectionDoc = {
+        ...aDoc(),
+        sections: [{ ...aDoc().sections[0], style: { tone: "accent" } }, aDoc().sections[1]],
+      }
+      mount({ doc })
+      fireEvent.click(screen.getByRole("button", { name: /use the page default/i }))
+      expect(onOps).toHaveBeenCalledWith([{ op: "update_section", id: "h1", style: { tone: null } }])
+
+      const [ops] = onOps.mock.calls[0]
+      const result = applyOps(doc, ops)
+      expect(result.ok, !result.ok ? result.errors.join(" | ") : "").toBe(true)
+      if (!result.ok) return
+      const style = result.doc.sections[0].style as Record<string, unknown>
+      expect("tone" in style).toBe(false)
     })
 
     it("shows the gradient colours already stored on the section, not the schema default", () => {

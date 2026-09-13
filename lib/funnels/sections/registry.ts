@@ -235,6 +235,38 @@ export const sectionStyleSchema = z.object({
 export type SectionStyleKnobs = z.infer<typeof sectionStyleSchema>
 
 // ---------------------------------------------------------------------------
+// The STYLE PATCH shape `update_section.style` actually accepts (apply.ts) —
+// fix-wave bug 1. `sectionStyleSchema` above is the STORED shape (what a
+// `Section.style` on the document itself may hold), and every one of its
+// eight keys is `.optional()` there for the reason its own comment gives:
+// deleting any of them is legal and just means "fall back to the default".
+// But "optional" only ever meant "may be OMITTED from a patch" — an
+// omitted key is left alone by a shallow merge, never a way to REMOVE a key
+// that is already set. `null` is the only delete sentinel that survives JSON
+// (`undefined` does not), and until this fix `sectionStyleSchema.partial()`
+// (the schema `apply.ts` actually validated a patch against) still rejected
+// `null` outright: `{ style: { bg: null } }` — the inspector's own "None"
+// button for a section background, and the pre-existing "use the page
+// default" tone control — failed Zod validation before `applyOps` ever got a
+// chance to merge anything.
+//
+// Derived from `sectionStyleSchema.shape` (not restated key-by-key) so a
+// ninth knob added there is nullable here for free, the same "ask the
+// validator, never restate it" reasoning `apply.ts`'s own comments already
+// apply to the size cap and the duplicate-id check. Every key stays
+// `.optional()` too (via `.nullable()` wrapping an already-optional inner
+// schema): a patch may still omit a key entirely to leave it untouched.
+// ---------------------------------------------------------------------------
+
+export const sectionStylePatchSchema = z.object(
+  Object.fromEntries(
+    Object.entries(sectionStyleSchema.shape).map(([key, schema]) => [key, (schema as z.ZodTypeAny).nullable()]),
+  ),
+) as z.ZodType<{ [K in keyof SectionStyleKnobs]?: SectionStyleKnobs[K] | null }>
+
+export type SectionStylePatch = z.infer<typeof sectionStylePatchSchema>
+
+// ---------------------------------------------------------------------------
 // Section id — short, stable, and also used as the HTML anchor target for
 // `CtaTarget.kind === "anchor"`. Constrained to safe id/URL-fragment
 // characters (mirrors the `formKey` convention in islands.ts).

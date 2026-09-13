@@ -79,7 +79,7 @@
 import { z } from "zod"
 import {
   sectionSchema,
-  sectionStyleSchema,
+  sectionStylePatchSchema,
   sectionDocThemeSchema,
   sectionDocSchema,
   SECTION_REGISTRY,
@@ -121,7 +121,15 @@ export const opSchema = z.discriminatedUnion("op", [
     op: z.literal("update_section"),
     id: sectionIdRefSchema,
     props: propsPatchSchema.optional(),
-    style: sectionStyleSchema.partial().optional(),
+    // `sectionStylePatchSchema`, NOT `sectionStyleSchema.partial()` (fix-wave
+    // bug 1): every key is also NULLABLE, so `{ bg: null }` — the delete
+    // sentinel the inspector's "None" background button and "use the page
+    // default" tone control both send — parses instead of being rejected
+    // before `applyOps` ever gets to merge it. See `sectionStylePatchSchema`'s
+    // own comment in registry.ts for why this is a schema-shape fix, not a
+    // relaxation: every style key was already optional to OMIT, this only
+    // makes explicit REMOVAL of an already-set key expressible over JSON.
+    style: sectionStylePatchSchema.optional(),
     variant: z.string().optional(),
   }),
   z.object({ op: z.literal("move_section"), id: sectionIdRefSchema, after: afterAnchorSchema }),
@@ -188,12 +196,15 @@ function zodIssuesToStrings(error: z.ZodError): string[] {
 }
 
 /**
- * Shallow-merges a props patch over the current props, treating an explicit
+ * Shallow-merges a patch over a current object — `props` or `style` alike
+ * (fix-wave bug 1 generalised this from props-only) — treating an explicit
  * `null` in the patch as "delete this key" rather than "set it to null" —
  * the only way to express removing an optional field over a wire format
- * (JSON) with no `undefined`. See the CRITICAL 2 comment at the call site.
+ * (JSON) with no `undefined`. See the CRITICAL 2 comment at the `props` call
+ * site, and `sectionStylePatchSchema` (registry.ts) for why `style` can now
+ * reach this function with a `null` in it at all.
  */
-function applyPropsPatch(current: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+function applyDeletingPatch(current: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
   const next: Record<string, unknown> = { ...current }
   for (const [key, value] of Object.entries(patch)) {
     if (value === null) {
@@ -463,8 +474,18 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
       // REQUIRED field still fails below, at the post-merge `parseSection`
       // check — deleting `hero.headline` produces a candidate missing a
       // required key, which is exactly what that check exists to catch.
-      const mergedProps = propsPatch ? applyPropsPatch(current.props, propsPatch) : current.props
-      const mergedStyle = stylePatch ? { ...current.style, ...stylePatch } : current.style
+      const mergedProps = propsPatch ? applyDeletingPatch(current.props, propsPatch) : current.props
+      // `applyDeletingPatch`, NOT a plain `{...current.style, ...stylePatch}`
+      // spread (fix-wave bug 1): a plain spread can ADD and REPLACE a style
+      // key but never REMOVE one — `{ bg: null }` would have SET `style.bg`
+      // to the literal value `null` instead of deleting it, which
+      // `sectionStyleSchema` (the STORED shape, still non-nullable) would
+      // then reject at the `parseSection` check below. Every style key is
+      // optional (registry.ts), so deleting any of them is legal and just
+      // means "fall back to the default" — exactly like `props` above.
+      const mergedStyle = stylePatch
+        ? (applyDeletingPatch(current.style, stylePatch as Record<string, unknown>) as typeof current.style)
+        : current.style
       const mergedVariant = op.variant ?? current.variant
       const candidate = {
         id: current.id,

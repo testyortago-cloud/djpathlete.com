@@ -609,6 +609,79 @@ describe("applyOps — update_section.props: an explicit null deletes an optiona
 })
 
 // ===========================================================================
+// Fix-wave bug 1: an explicit `null` in a STYLE patch also means "delete this
+// key" — mirroring props exactly, per the section above. Before this fix,
+// `sectionStyleSchema.partial()` (the schema `opSchema` validated a style
+// patch against) rejected `null` outright, so `{ style: { bg: null } }` —
+// the inspector's own "None" background button (SectionInspector.tsx's
+// `BgField`) and the pre-existing "use the page default" tone control
+// (`ToneField`) — never reached `applyOps` at all: the save failed at
+// validation. These tests exercise the REAL `opSchema` and the REAL
+// `applyOps`, not a mocked `onOps` — a component test asserting only the
+// SHAPE handed to a mock can pass while this exact bug is live, which is
+// what happened here (see `section-inspector.test.tsx`'s own test of the
+// same button).
+// ===========================================================================
+
+describe("applyOps — update_section.style: an explicit null deletes an optional style key", () => {
+  function heroWithBg(doc: SectionDoc): SectionDoc {
+    const hero = doc.sections[0]
+    return {
+      ...doc,
+      sections: [
+        { ...hero, style: { ...hero.style, bg: { kind: "gradient" as const, from: "#111111", to: "#222222" } } },
+        ...doc.sections.slice(1),
+      ],
+    }
+  }
+
+  it("nulling style.bg removes the key entirely and succeeds", () => {
+    const doc = heroWithBg(baseDoc({ sections: nineSections() }))
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1", style: { bg: null } }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const style = result.doc.sections[0].style as Record<string, unknown>
+    expect("bg" in style).toBe(false)
+    // A sibling style key survives the deletion.
+    expect(style.tone).toBe("accent")
+  })
+
+  it("nulling style.tone (the pre-existing 'use the page default' control) removes it too", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1", style: { tone: null } }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const style = result.doc.sections[0].style as Record<string, unknown>
+    expect("tone" in style).toBe(false)
+    // A sibling style key survives the deletion.
+    expect(style.headline).toBe("lg")
+  })
+
+  it("opSchema itself accepts a null style value — the schema half of the fix", () => {
+    expect(opSchema.safeParse({ op: "update_section", id: "hero1", style: { bg: null } }).success).toBe(true)
+  })
+
+  // Every one of the eight style knobs is `.optional()` on `sectionStyleSchema`
+  // (registry.ts's own comment says so), so deleting any of them is legal —
+  // confirmed here rather than assumed, for all eight, not just the two the
+  // inspector happens to expose a button for today.
+  it("every style key accepts a null patch value, not just bg and tone", () => {
+    for (const key of Object.keys(sectionStyleSchema.shape)) {
+      const parsed = opSchema.safeParse({ op: "update_section", id: "hero1", style: { [key]: null } })
+      expect(parsed.success, `style.${key} rejected a null patch value`).toBe(true)
+    }
+  })
+
+  it("the diff receipt reports the deleted style key by its friendly label", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1", style: { tone: null } }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.receipt.changed[0].reasons).toEqual([STYLE_CHANGE_LABEL.tone])
+  })
+})
+
+// ===========================================================================
 // A no-op update_section carries no EFFECTIVE change, and there are two ways
 // to spell one: omit props/style/variant entirely, or send them EMPTY. Both
 // are rejected. An empty object is truthy, so before the emptiness test
