@@ -29,7 +29,7 @@
 // working in the caller's favour.
 //
 // ---------------------------------------------------------------------------
-// NOTHING BELOW MAY 500. Five failure paths, each one a real defect found by
+// NOTHING BELOW MAY 500. Six failure paths, each one a real defect found by
 // review in an earlier stage:
 //
 //   (a) `applyOps` SEMANTIC errors feed the auto-retry, not just Zod errors.
@@ -40,6 +40,10 @@
 //   (e) `stale_revision` is a 409 carrying the current revision; a model
 //       refusal or an unparseable response is a 200 with an honest reply and
 //       the draft untouched.
+//   (f) The tenant brand kit read (`loadBrandKitSafely`) THROWS too — a
+//       revoked staff membership or a `business_settings` read failure
+//       degrades to `null` (today's host-site-colours behaviour) rather than
+//       failing the turn, same shape as (d).
 // ---------------------------------------------------------------------------
 //
 // ---------------------------------------------------------------------------

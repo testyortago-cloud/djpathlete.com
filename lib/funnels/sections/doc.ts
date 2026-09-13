@@ -71,11 +71,20 @@ const RADIUS_CSS_VALUE: Record<SectionDocTheme["radius"], string> = {
 // from the "explicitly normal" one.
 // ---------------------------------------------------------------------------
 
+// `full` is `none`, NOT `100%` (final whole-branch review minor,
+// 2026-09-13) — matching the section-level `data-width="full"` knob
+// (styles.ts's `${ROOT} .djp-s[data-width="full"] { --djp-maxw: none; }`,
+// design-system spec §3.3) exactly, rather than a second spelling of the
+// same "no cap" intent. Both values remove `.djp-s > *`'s max-width the same
+// way in practice (a section this wide already has nothing to clamp
+// against), but a THEME-level page default and a PER-SECTION override
+// silently disagreeing on how they say "uncapped" is exactly the kind of
+// drift that turns into a real bug the next time either site is touched.
 const WIDTH_CSS_VALUE: Record<NonNullable<SectionDocTheme["width"]>, string> = {
   narrow: "56rem",
   normal: "72rem",
   wide: "88rem",
-  full: "100%",
+  full: "none",
 }
 
 // A unitless multiplier, not a length: styles.ts's three `data-pad` rules
