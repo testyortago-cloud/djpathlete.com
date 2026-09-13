@@ -269,7 +269,14 @@ try {
       "The real composer on /admin/funnels/[id]/edit/[stepId]. Ctrl+V of a brand board — no upload dialog, no URL, nothing stored.",
     markers: [
       await markerOn(page, page.getByText(/meridian-brand-board\.png/i).first(), `The pasted image, shown by name and by its size AFTER the browser shrank it. ${chipLabel.replace(/\n/g, " ")} — the original is 2800px wide; it is resized to 1568px in the browser, because that is what the model downscales to anyway.`, { place: "after" }),
-      await markerOn(page, page.getByRole("button", { name: /remove reference image/i }).first(), "It can be taken back off the turn before anything is spent.", { place: "after", dx: 34, dy: -40 }),
+      // `place: "left"`, NOT `"after"`. The chip spans the composer's full
+      // width, so anchoring +22px past the remove "×" put this marker inside
+      // the preview iframe, captioning "One price, everything included" as the
+      // way to take an image back off a turn. `markerOn` warns loudly when a
+      // target is MISSING but cannot know that an offset left the pane — so
+      // anchor inside the element, never past its far edge, on anything that
+      // sits at a boundary.
+      await markerOn(page, page.getByRole("button", { name: /remove reference image/i }).first(), "It can be taken back off the turn before anything is spent.", { place: "left", dx: -6, dy: -34 }),
       await markerOn(page, box, `What was typed alongside it: “${ASK}”`, { place: "left", dy: 10 }),
     ],
   })
