@@ -58,6 +58,8 @@ const SETTINGS: BusinessSettings = {
   sms_help_text: "Reply HELP for help.",
   sms_messaging_service_sid: "",
   sms_sender_phone: "+15550101234",
+  brand_color: null,
+  accent_color: null,
 }
 
 const PUBLIC_PROGRAMME = {

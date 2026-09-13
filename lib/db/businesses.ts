@@ -15,6 +15,15 @@ export type BusinessSettings = {
   sms_help_text: string
   sms_messaging_service_sid: string
   sms_sender_phone: string
+  /**
+   * Tenant brand kit for the page builder's palette default (migration
+   * 00260). NULL means "this tenant has not chosen a brand" -- the page
+   * builder's `resolvePalette()` falls through to today's var(--primary)
+   * behaviour in that case. Never defaulted: a default would make every
+   * existing tenant claim a brand it never set.
+   */
+  brand_color: string | null
+  accent_color: string | null
 }
 
 function getClient() {

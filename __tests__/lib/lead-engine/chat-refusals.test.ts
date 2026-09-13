@@ -187,6 +187,8 @@ const SETTINGS: BusinessSettings = {
   sms_help_text: "Reply HELP for help",
   sms_messaging_service_sid: "",
   sms_sender_phone: "",
+  brand_color: null,
+  accent_color: null,
 }
 
 function conversation(over: Partial<ChatConversation> = {}): ChatConversation {
