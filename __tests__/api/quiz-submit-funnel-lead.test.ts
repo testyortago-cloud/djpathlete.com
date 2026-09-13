@@ -65,6 +65,8 @@ const getBusinessSettings = vi.fn()
 const applyPipelineEvent = vi.fn()
 const sendQuizAlert = vi.fn()
 const createSubmission = vi.fn()
+const getStep = vi.fn()
+const getFunnelById = vi.fn()
 const recordAudit = vi.fn()
 
 vi.mock("@/lib/db/quizzes", () => ({
@@ -73,7 +75,11 @@ vi.mock("@/lib/db/quizzes", () => ({
   completeAttempt: (...a: unknown[]) => completeAttempt(...a),
   setAttemptAlert: (...a: unknown[]) => setAttemptAlert(...a),
 }))
-vi.mock("@/lib/db/funnels", () => ({ createSubmission: (...a: unknown[]) => createSubmission(...a) }))
+vi.mock("@/lib/db/funnels", () => ({
+  createSubmission: (...a: unknown[]) => createSubmission(...a),
+  getStep: (...a: unknown[]) => getStep(...a),
+  getFunnelById: (...a: unknown[]) => getFunnelById(...a),
+}))
 vi.mock("@/lib/db/pipeline", () => ({ applyPipelineEvent: (...a: unknown[]) => applyPipelineEvent(...a) }))
 vi.mock("@/lib/quizzes/alert", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/quizzes/alert")>()),
@@ -133,6 +139,9 @@ beforeEach(() => {
   applyPipelineEvent.mockResolvedValue({ decision: { kind: "noop", reason: "x" }, opportunityId: null })
   sendQuizAlert.mockResolvedValue({ delivered: true })
   createSubmission.mockResolvedValue({ id: "sub-1" })
+  // The happy path: the step really is this funnel's, and the funnel is live.
+  getStep.mockResolvedValue({ id: STEP_ID, funnel_id: FUNNEL_ID })
+  getFunnelById.mockResolvedValue({ id: FUNNEL_ID, status: "published" })
 })
 
 describe("POST /api/quiz/submit -- the funnel lead", () => {
@@ -247,5 +256,169 @@ describe("POST /api/quiz/submit -- the funnel lead", () => {
     const res = await post()
     expect(res.status).toBe(404)
     expect(createSubmission).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// THE PAGE HAS TO BE REAL AND LIVE -- BUT THE VISITOR STILL GETS THEIR RESULT.
+//
+// The form path got these two checks; this route -- which writes the same
+// submission, contact, consent row and pipeline card -- did not, so a direct
+// POST here still captured and enrolled a lead for a funnel whose /go URL was
+// already 404ing (audit 2026-09-13 §3.6).
+//
+// IT IS A VERDICT HERE, NOT A REFUSAL, and the difference is the point of this
+// whole block. On the form path a 404 costs the visitor nothing they wanted.
+// Here they answered a series of questions and the readout IS what they came
+// for, so a funnel the coach unpublished mid-quiz must not take it away from
+// them. THE SECURITY CLAIM IS ABOUT WRITES, NOT ABOUT THE STATUS CODE -- so
+// every case below asserts the ABSENCE at each writer, and a presence control
+// proves those absences are not vacuous.
+// ---------------------------------------------------------------------------
+describe("POST /api/quiz/submit -- the page this quiz claims to be on", () => {
+  /** Every funnel-linked write audit §3.6 is about. None may run on a bad link. */
+  function expectNoLeadWork() {
+    expect(createSubmission).not.toHaveBeenCalled()
+    // recordContactEvent is where enrolIfTriggered runs, so this assertion is
+    // the "and enrolled it" half of the §3.6 sentence.
+    expect(recordContactEvent).not.toHaveBeenCalled()
+    expect(applyPipelineEvent).not.toHaveBeenCalled()
+    expect(recordConsent).not.toHaveBeenCalled()
+    expect(recordAudit).not.toHaveBeenCalled()
+    // The alert carries the visitor's name, email and phone to the coach.
+    expect(sendQuizAlert).not.toHaveBeenCalled()
+  }
+
+  it("does NO lead work for a stepId that belongs to a different funnel, and still returns the result", async () => {
+    // MUTANT: drop the `step.funnel_id !== body.funnelId` cross-check. The
+    // request pairs a stale funnel's real step with a live funnel's id, the
+    // published check passes on the LIVE funnel, and the lead is filed against
+    // the wrong one.
+    getStep.mockResolvedValue({ id: STEP_ID, funnel_id: "99999999-1111-4111-8111-999999999999" })
+
+    const res = await post()
+
+    // The visitor answered the questions. They get the readout.
+    expect(res.status).toBe(200)
+    expect((await res.json()).tier.key).toBe("green")
+    expect(completeAttempt).toHaveBeenCalled()
+    expectNoLeadWork()
+  })
+
+  it("does NO lead work for a step nobody can find, and still returns the result", async () => {
+    getStep.mockResolvedValue(null)
+
+    const res = await post()
+
+    expect(res.status).toBe(200)
+    expect(completeAttempt).toHaveBeenCalled()
+    expectNoLeadWork()
+  })
+
+  it("does NO lead work for a funnel that is not published, and still returns the result", async () => {
+    // MUTANT: drop the `funnel.status !== "published"` check. A funnel taken
+    // offline keeps capturing and enrolling leads through a direct POST,
+    // because the step's published_version_id survives the unpublish.
+    getFunnelById.mockResolvedValue({ id: FUNNEL_ID, status: "draft" })
+
+    const res = await post()
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).tier.key).toBe("green")
+    expect(completeAttempt).toHaveBeenCalled()
+    expectNoLeadWork()
+  })
+
+  it("says in the log which check failed and that the visitor still got their result", async () => {
+    // MUTANT: returning from the handoff silently. A client posting a stale
+    // stepId would then lose every lead it sends with no signal anywhere --
+    // and whoever eventually noticed would go hunting a visitor-facing outage
+    // that does not exist.
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {})
+    getFunnelById.mockResolvedValue({ id: FUNNEL_ID, status: "draft" })
+
+    await post()
+
+    const line = logged.mock.calls.map((call) => JSON.stringify(call)).join(" ")
+    expect(line).toMatch(/funnel link check/i)
+    expect(line).toMatch(/not published/i)
+    expect(line).toMatch(/returned to the visitor/i)
+    logged.mockRestore()
+  })
+
+  it("PRESENCE CONTROL: a legitimate published pairing DOES all the lead work", async () => {
+    // Without this every "not.toHaveBeenCalled" above passes just as well for
+    // a route that stopped writing anything at all.
+    const res = await post()
+
+    expect(res.status).toBe(200)
+    expect(createSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({ funnel_id: FUNNEL_ID, step_id: STEP_ID }),
+    )
+    expect(recordContactEvent).toHaveBeenCalled()
+    expect(applyPipelineEvent).toHaveBeenCalled()
+    expect(recordAudit).toHaveBeenCalled()
+  })
+
+  it("reads the funnel by the STEP's funnel_id, not the body's", async () => {
+    // MUTANT: `getFunnelById(body.funnelId)`. Identical here only because the
+    // cross-check has already proven they agree -- asserting it pins the order
+    // (cross-check BEFORE the funnel read) rather than the values.
+    await post()
+    expect(getFunnelById).toHaveBeenCalledWith(FUNNEL_ID)
+  })
+
+  it("does not even ASK about the funnel once the cross-check has failed", async () => {
+    // MUTANT: checking the step and the funnel independently instead of
+    // short-circuiting. Same order as the form path, and a wasted read on
+    // every forged pairing.
+    getStep.mockResolvedValue({ id: STEP_ID, funnel_id: "99999999-1111-4111-8111-999999999999" })
+    await post()
+    expect(getFunnelById).not.toHaveBeenCalled()
+  })
+
+  it("still accepts a quiz taken outside any funnel, contact spine and all", async () => {
+    // MUTANT: applying the check unconditionally. Both ids are optional -- a
+    // quiz island can stand on a page that is not a funnel step, and a page
+    // published before those ids shipped posts neither -- so NO LINK would be
+    // read as a BAD LINK, stripping every such visitor of their contact
+    // record, their pipeline card and their enrolment.
+    const res = await post({ funnelId: undefined, stepId: undefined })
+
+    expect(res.status).toBe(200)
+    expect((await res.json()).tier.key).toBe("green")
+    expect(getStep).not.toHaveBeenCalled()
+    expect(getFunnelById).not.toHaveBeenCalled()
+    expect(completeAttempt).toHaveBeenCalled()
+    expect(recordContactEvent).toHaveBeenCalled()
+    expect(applyPipelineEvent).toHaveBeenCalled()
+  })
+
+  it("500s when the step read THROWS, and writes nothing at all", async () => {
+    // A THROW IS NOT A VERDICT. It says we do not KNOW whether the link is
+    // good, and guessing is wrong in a different direction each way: guess
+    // good and §3.6 is back, guess bad and a real lead on a real live page is
+    // dropped. 500 lets the client retry the whole submission.
+    //
+    // MUTANT: treating the throw as a failed check (set funnelLinkProblem and
+    // carry on) -- a transient database blip then silently costs the coach
+    // every lead that arrives during it.
+    getStep.mockRejectedValue(new Error("connection reset"))
+
+    const res = await post()
+
+    expect(res.status).toBe(500)
+    expect(completeAttempt).not.toHaveBeenCalled()
+    expectNoLeadWork()
+  })
+
+  it("500s when the funnel read THROWS, and writes nothing at all", async () => {
+    getFunnelById.mockRejectedValue(new Error("connection reset"))
+
+    const res = await post()
+
+    expect(res.status).toBe(500)
+    expect(completeAttempt).not.toHaveBeenCalled()
+    expectNoLeadWork()
   })
 })

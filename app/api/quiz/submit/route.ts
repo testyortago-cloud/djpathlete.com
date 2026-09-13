@@ -8,6 +8,9 @@
 // the response and the stored row carry the computed value.
 //
 // ORDER OF WRITES, AND IT MATTERS (spec §4.3):
+//   0. verify the funnel/step pairing, if one was posted — a VERDICT, not a
+//      refusal; see the block in POST for why this route diverges there from
+//      /api/funnels/submit
 //   1. score (pure, no I/O)
 //   2. complete the attempt row
 //   3. createSubmission — the lead on the funnel, so a completion appears
@@ -18,8 +21,12 @@
 //   6. pipeline + operator alert, both non-fatally
 //   7. return the result
 //
-// THE VISITOR'S RESULT IS RETURNED EVEN IF 3-6 THROW. They answered twelve
-// questions; a failure in our marketing plumbing is not their problem.
+// THE VISITOR'S RESULT IS RETURNED EVEN IF 3-6 THROW, AND EVEN IF STEP 0
+// REFUSES TO VOUCH FOR THE PAGE. They answered twelve questions; neither a
+// failure in our marketing plumbing nor a funnel the coach took offline
+// mid-quiz is their problem. Steps 3-6 are the only things a step-0 VERDICT
+// can cost — a step-0 READ THAT THROWS is a different answer and 500s before
+// step 2, costing them the result as well.
 //
 // NEVER LOG A RAW POSTGREST ERROR. `error.details` embeds the literal email
 // address on a unique violation, and the house DAL convention rethrows a raw
@@ -31,7 +38,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { completeAttempt, getAttempt, getQuizDefinition, setAttemptAlert } from "@/lib/db/quizzes"
-import { createSubmission } from "@/lib/db/funnels"
+import { createSubmission, getFunnelById, getStep } from "@/lib/db/funnels"
 import { quizAnswerPayload } from "@/lib/quizzes/answer-payload"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { recordAudit } from "@/lib/audit/record"
@@ -129,6 +136,84 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not found." }, { status: 404 })
   }
 
+  // THE PAGE THIS QUIZ CLAIMS TO BE ON HAS TO BE REAL, AND LIVE —
+  // BUT THE VISITOR IS NOT THE ONE WHO PAYS FOR IT NOT BEING.
+  //
+  // The same two checks `/api/funnels/submit` runs (audit 2026-09-13 §3.6):
+  // prove the step belongs to the funnel it was posted with, then prove that
+  // funnel is published. Without them a direct POST here captured and enrolled
+  // a lead for a funnel whose `/go` URL was already 404ing, and could pair one
+  // funnel's real stepId with a DIFFERENT, currently-published funnel's
+  // funnelId. This route writes the same submission, contact, consent row and
+  // pipeline card the form path does, so it needs the same proof.
+  //
+  // ---------------------------------------------------------------------
+  // A VERDICT, NOT A REFUSAL — AND THAT IS WHERE THIS DELIBERATELY DIVERGES
+  // FROM `/api/funnels/submit`. DO NOT "FIX" THE ASYMMETRY BACK.
+  // ---------------------------------------------------------------------
+  // The two routes are not symmetric in what a refusal costs. On the form
+  // path the only thing at stake is the coach's lead: the visitor typed a
+  // name and an email, and a 404 costs them nothing they wanted. Here the
+  // visitor has answered a series of questions and `presentResult` at the
+  // bottom of this file IS their output — the readout is the thing they came
+  // for, not a by-product of capturing them. Refusing would punish the
+  // visitor for something the COACH did (unpublishing the funnel) while they
+  // were halfway through.
+  //
+  // So a failed check records a PROBLEM rather than returning: the attempt
+  // still completes, the result still goes back, and what the verdict gates
+  // is the funnel-linked lead work in `handoff` — the `funnel_submissions`
+  // row, the contact and consent writes, the pipeline card and the enrolment
+  // that rides along inside `recordContactEvent`. That is the whole of the
+  // §3.6 hazard, and none of it is the visitor's readout.
+  //
+  // ONLY WHEN BOTH IDS ARE PRESENT. Both are optional on the wire (see the
+  // schema above): a quiz island can stand on a page that is not a funnel
+  // step, and a page published before those ids shipped posts neither. NO
+  // LINK IS NOT A BAD LINK — a standalone submission has nothing to verify,
+  // leaves `funnelLinkProblem` null, and reaches the contact spine exactly as
+  // it did before this branch. Checking unconditionally would strip every
+  // such visitor of their contact record and their enrolment.
+  //
+  // SAME ORDER AS THE FORM PATH: step read → cross-check → funnel read →
+  // published check, with the funnel read skipped entirely once the
+  // cross-check has already failed.
+  //
+  // A THROWN READ IS STILL A 500, and that is not an inconsistency. A throw
+  // is an infrastructure fault, not a verdict: it says we do not KNOW whether
+  // the link is good, and guessing it either way is wrong in a different
+  // direction each time (guess good → the §3.6 hazard is back; guess bad →
+  // a real lead on a real live page is silently dropped). Answering 500 lets
+  // the client retry the whole submission, which is the only honest move.
+  let funnelLinkProblem: string | null = null
+  if (body.funnelId && body.stepId) {
+    let step: Awaited<ReturnType<typeof getStep>>
+    try {
+      step = await getStep(body.stepId)
+    } catch (error) {
+      logFailure("step read", error, { attemptId: body.attemptId, quizId: body.quizId })
+      return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
+    }
+    if (!step || step.funnel_id !== body.funnelId) {
+      funnelLinkProblem = "the step posted with this quiz does not belong to the funnel posted with it"
+    } else {
+      // Read by `step.funnel_id` — just proven to match `body.funnelId` —
+      // rather than trusting the request body's id a second time. The step's
+      // `published_version_id` survives an unpublish; only the funnel row
+      // says whether the page is live.
+      let funnel: Awaited<ReturnType<typeof getFunnelById>>
+      try {
+        funnel = await getFunnelById(step.funnel_id)
+      } catch (error) {
+        logFailure("funnel read", error, { attemptId: body.attemptId, quizId: body.quizId })
+        return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 })
+      }
+      if (!funnel || funnel.status !== "published") {
+        funnelLinkProblem = "the funnel this quiz was posted against is not published"
+      }
+    }
+  }
+
   // THE TENANT IS THE ATTEMPT'S. `quiz_attempts.business_id` was stamped when
   // /api/quiz/progress created the attempt, so every write below — the
   // contact, the pipeline card, the settings read, the consent row — lands on
@@ -161,7 +246,7 @@ export async function POST(request: Request) {
   }
 
   // 3-5. EVERYTHING BELOW IS NON-FATAL.
-  await handoff({ body, definition, result, answers, ip, request, businessId }).catch((error: unknown) => {
+  await handoff({ body, definition, result, answers, ip, request, businessId, funnelLinkProblem }).catch((error: unknown) => {
     logFailure("handoff", error, { attemptId: body.attemptId, quizId: body.quizId })
   })
 
@@ -181,9 +266,42 @@ async function handoff(input: {
   ip: string
   request: Request
   businessId: string
+  /** `null` when the funnel link checked out, or when there was none to check. */
+  funnelLinkProblem: string | null
 }): Promise<void> {
   const { body, definition, result, ip, request, businessId } = input
   const correlation = { attemptId: body.attemptId, quizId: body.quizId }
+
+  // THE VERDICT FROM `POST` GATES EVERYTHING BELOW IT, AND IT IS LOUD.
+  //
+  // This function IS the lead work — the submission row, the contact and
+  // consent writes, the pipeline card, the enrolment inside
+  // `recordContactEvent`, and the operator alert that carries the visitor's
+  // name, email and phone to the coach. A pairing that could not be trusted
+  // withholds ALL of it; that is the whole of audit §3.6. Note the writes
+  // below are not funnel-ONLY: for a quiz posted with no funnel ids at all
+  // the verdict is null, and everything except the submission row (which has
+  // no funnel to file under) runs exactly as it always did.
+  //
+  // LOGGED, NEVER SILENT. A genuinely misconfigured client — one posting a
+  // stale stepId from a cached page, say — would otherwise lose every lead it
+  // sends with no signal anywhere that it was happening, which is the same
+  // `silent_gate_reads_as_broken` failure this branch exists to remove. The
+  // line says which check failed AND that the visitor still got their result,
+  // so whoever reads it is not hunting a visitor-facing outage that is not
+  // there. `logFailure` rather than a bare console.error: this file's rule is
+  // that nothing here ever prints a raw PostgREST object.
+  if (input.funnelLinkProblem) {
+    logFailure(
+      "funnel link check",
+      new Error(
+        `${input.funnelLinkProblem} — the quiz result was returned to the visitor, and no lead, ` +
+          `contact, consent row, pipeline card or alert was recorded`,
+      ),
+      correlation,
+    )
+    return
+  }
 
   // ONE ANSWER TO "WHICH VISIT WAS THIS", shared by the lead and the contact
   // below. The client may send it explicitly; otherwise it is read from the

@@ -68,3 +68,29 @@ export function senderDomainVerdict(email: string, verified: string[]): { ok: tr
   const domain = email.trim().toLowerCase().split("@")[1] ?? ""
   return verified.includes(domain) ? { ok: true as const } : { ok: false as const, domain }
 }
+
+/**
+ * The verified domains that the TYPED domain should plausibly have been —
+ * `send.darrenjpaul.com` for someone who typed `darrenjpaul.com`, and the
+ * reverse. Nothing else.
+ *
+ * WHY NOT JUST LIST THE VERIFIED SET. Resend domains are ACCOUNT-wide, not
+ * per-business: one Resend account backs every tenant on the platform. The
+ * refusal used to render `verified.domains.join(", ")`, so any admin who
+ * fat-fingered a sender address was shown every other coach's sending domain.
+ * Under the white-label direction that is a disclosure, and it was never the
+ * useful part of the message — the useful part is the one domain they meant.
+ *
+ * NOT A RELAXATION OF `senderDomainVerdict`. That stays an exact match, for
+ * the reason given above it; this is presentation only, and runs only after
+ * the verdict has already refused.
+ *
+ * Returns `[]` when nothing in the account relates to what was typed — a
+ * genuinely unknown domain — and the caller says so in words rather than
+ * naming a substitute it cannot justify.
+ */
+export function relatedVerifiedDomains(domain: string, verified: string[]): string[] {
+  const typed = domain.trim().toLowerCase()
+  if (!typed) return []
+  return verified.filter((candidate) => candidate.endsWith(`.${typed}`) || typed.endsWith(`.${candidate}`))
+}

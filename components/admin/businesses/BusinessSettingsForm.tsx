@@ -73,7 +73,16 @@ export function BusinessSettingsForm({
     }
 
     const json = await res.json().catch(() => ({}))
-    setServerError(json.error ?? "Something went wrong. Please try again.")
+    const message = json.error ?? "Something went wrong. Please try again."
+    // BOTH, AND BOTH ARE NEEDED. The inline banner renders above the FIRST
+    // card and this form is long enough that the Save button sits well below
+    // the fold — a refusal shown only there is a refusal nobody reads, which
+    // is the whole failure mode the sender-domain check exists to prevent
+    // (the 08-31 fault was a wrong sending domain being saved unnoticed). The
+    // toast follows the owner to wherever they pressed Save; the banner is
+    // what is still on screen after the toast has gone.
+    setServerError(message)
+    toast.error(message)
   }
 
   return (

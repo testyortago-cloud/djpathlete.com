@@ -131,11 +131,16 @@ describe("PATCH /api/admin/funnels/[id]", () => {
   })
 
   // -------------------------------------------------------------------------
-  // `kind` IS FROZEN AT CREATION. Until 2026-08-31 this route accepted
+  // `kind` NEVER CHANGES THROUGH THIS ROUTE. Until 2026-08-31 it accepted
   // `{kind:"funnel"}` for the Convert-to-funnel dialog, which made `kind` a
-  // door in the publish guard (demote to "page", then publish ungated). The
-  // owner ruled the concepts never cross, the dialog is gone, and any body
-  // that so much as NAMES kind is refused before the schema can strip it.
+  // door in the publish guard (demote to "page", then publish ungated).
+  //
+  // Conversion came BACK on 2026-09-08 — `POST /api/admin/funnels/[id]/convert`
+  // moves a row between the two boards from either card — so the reason this
+  // refusal stays is no longer "the concepts never cross". It is that the
+  // convert route runs guards this one cannot (exactly one step for
+  // funnel → page), and letting `kind` ride in on a PATCH would put the
+  // conversion and the publish in one handler again.
   // -------------------------------------------------------------------------
 
   it("refuses a kind change in either direction, and writes NOTHING", async () => {
@@ -147,7 +152,13 @@ describe("PATCH /api/admin/funnels/[id]", () => {
       const response = await PATCH(patch({ kind }) as never, ctx as never)
       expect(response.status).toBe(400)
       const body = await response.json()
-      expect(body.error).toContain("kind it was created with")
+      // Pins the REASON, not just a 400: the refusal must send the caller to
+      // the convert action, because that action exists. MUTANT: restoring the
+      // old "Neither converts into the other." message, which has been false
+      // since 2026-09-08 and tells an owner a supported operation is
+      // impossible.
+      expect(body.error).toMatch(/convert/i)
+      expect(body.error).not.toMatch(/neither converts/i)
     }
     expect(mock(updateFunnel)).not.toHaveBeenCalled()
     // The refusal needs no row: it is about the request, not the funnel.

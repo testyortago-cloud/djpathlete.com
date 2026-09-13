@@ -1361,8 +1361,16 @@ async function readContactNames(
  * ACTIVE ONLY. `pipelines.status` is `'active' | 'archived'` (00219); an
  * archived board is one the coach retired, and offering it as a pill would
  * invite them back into it. Ordered by `created_at` so the pills keep a
- * stable, meaningful order across page loads — `coaching` is seeded first for
- * every tenant (`create_business()`, 00249), so the default board leads.
+ * meaningful order — `coaching` is seeded first for every tenant
+ * (`create_business()`, 00249), so the default board leads.
+ *
+ * `key` IS THE SECOND SORT, AND IT IS LOAD-BEARING. Boards seeded by the SAME
+ * migration are inserted in one transaction and carry byte-identical
+ * `created_at`: on production `assessment` and `camps_clinics` were both
+ * written by 00257 at 2026-09-08 15:27:23.683926+00. Postgres gives no
+ * tiebreak of its own, so on `created_at` alone those two pills could swap
+ * position between page loads. Any future migration seeding several boards at
+ * once reproduces that, so this is not a one-off repair of 00257.
  *
  * Returns `[]` for a tenant with no boards. That is a real answer (a tenant
  * genuinely can have none yet), never a stand-in for a failed read: a Supabase
@@ -1381,6 +1389,7 @@ export async function listPipelines(businessId: string): Promise<Array<{ id: str
     .eq("business_id", businessId)
     .eq("status", "active")
     .order("created_at", { ascending: true })
+    .order("key", { ascending: true })
   // Not a bare `throw error`: a raw PostgREST object logs as [object Object]
   // and the reason is gone by the time anyone reads it.
   if (error) throw new Error(`pipelines read failed: ${error.message}`)

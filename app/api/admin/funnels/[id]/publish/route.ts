@@ -253,8 +253,22 @@ export const POST = withAudit(
         (stepId) =>
           deadEndNames.has(stepId)
             ? [
-                `${deadEndNames.get(stepId)} leads nowhere: no button or form on this page goes to ` +
-                  `another page of this funnel. Use "connect this page" in the rail, or make it the last page.`,
+                // NO STEP NAME IN HERE. Both renderers already print it: the
+                // 422 body is per-page, `refusalMessage` prefixes
+                // `${page.stepName}: ` and ChatPane lists the problems under
+                // the page's own heading. Naming it again read "Signup:
+                // Signup leads nowhere: …".
+                //
+                // AND NO BUTTON LABEL. The rail's control reads "Connect to
+                // <next page name>" and only appears while the builder is
+                // open on that page — but this refusal is also reachable from
+                // the board's Go live, where there is no rail at all. A
+                // quoted label that varies sends the owner hunting for text
+                // that is not on their screen, so this describes the repair
+                // instead.
+                `This page leads nowhere — no button or form on it goes to another page of this ` +
+                  `funnel. Open it in the builder and connect it to the next page, or move it to the ` +
+                  `end so it is the last page.`,
               ]
             : [],
       )

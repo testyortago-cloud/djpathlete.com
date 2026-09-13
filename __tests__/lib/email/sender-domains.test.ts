@@ -19,7 +19,7 @@ vi.mock("resend", () => ({
 }))
 
 import { Resend } from "resend"
-import { listVerifiedSenderDomains, senderDomainVerdict } from "@/lib/email/sender-domains"
+import { listVerifiedSenderDomains, relatedVerifiedDomains, senderDomainVerdict } from "@/lib/email/sender-domains"
 
 const ResendCtor = Resend as unknown as ReturnType<typeof vi.fn>
 
@@ -140,5 +140,47 @@ describe("listVerifiedSenderDomains -- decoupled from the shared client (review 
     const result = await mod.listVerifiedSenderDomains()
     expect(result).toEqual({ ok: false, reason: "no_api_key" })
     expect(freshResendCtor).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WHAT THE REFUSAL IS ALLOWED TO NAME.
+//
+// Resend domains are ACCOUNT-wide: one Resend account backs every tenant on
+// the platform, so rendering the whole verified list in an error message shows
+// one coach another coach's sending domains.
+// ---------------------------------------------------------------------------
+describe("relatedVerifiedDomains", () => {
+  it("names the verified SUBDOMAIN of an apex that was typed -- the 08-31 shape", () => {
+    expect(relatedVerifiedDomains("darrenjpaul.com", ["send.darrenjpaul.com"])).toEqual(["send.darrenjpaul.com"])
+  })
+
+  it("names the verified APEX when a subdomain was typed -- the mirror direction", () => {
+    // MUTANT: checking only one direction. Someone who typed
+    // mail.example.com while example.com is the verified domain gets a
+    // refusal with no idea what to type instead.
+    expect(relatedVerifiedDomains("mail.example.com", ["example.com"])).toEqual(["example.com"])
+  })
+
+  it("returns NOTHING for the rest of the account -- MUTANT: returning the full verified list leaks every other coach's sending domain into one coach's error message", () => {
+    expect(
+      relatedVerifiedDomains("brand-new.com", ["send.darrenjpaul.com", "mail.coach-two.com", "coach-three.io"]),
+    ).toEqual([])
+  })
+
+  it("does not treat a shared SUFFIX as related -- MUTANT: `endsWith(typed)` without the dot separator matches notdarrenjpaul.com", () => {
+    expect(relatedVerifiedDomains("notdarrenjpaul.com", ["send.darrenjpaul.com"])).toEqual([])
+    expect(relatedVerifiedDomains("darrenjpaul.com", ["sendxdarrenjpaul.com"])).toEqual([])
+  })
+
+  it("is presentation only: it does NOT make senderDomainVerdict accept a relative", () => {
+    // CONTROL. The verdict stays an exact match -- that is the whole 08-31
+    // lesson -- and this helper runs only after it has already refused.
+    // MUTANT: wiring relatedVerifiedDomains into senderDomainVerdict, which
+    // would accept the apex because a subdomain of it is verified.
+    expect(senderDomainVerdict("noreply@darrenjpaul.com", ["send.darrenjpaul.com"])).toEqual({
+      ok: false,
+      domain: "darrenjpaul.com",
+    })
   })
 })

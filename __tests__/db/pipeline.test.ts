@@ -164,8 +164,12 @@ vi.mock("@/lib/supabase", () => ({
       const filters: Array<[string, any]> = []
       const gteFilters: Array<[string, any]> = []
       const ltFilters: Array<[string, any]> = []
-      let orderCol: string | null = null
-      let orderAscending = true
+      // CHAINED `.order()` CALLS ACCUMULATE, first one primary — the real
+      // PostgREST contract (`.order("a").order("b")` is `ORDER BY a, b`).
+      // Held as a list rather than a single column because `listPipelines`
+      // sorts on `created_at` then `key`, and a last-call-wins implementation
+      // would silently drop the primary key and pin nothing.
+      const orderBys: Array<[string, boolean]> = []
       let limitN: number | null = null
       let mode: "select" | "insert" | "update" = "select"
       let payload: Row | null = null
@@ -177,13 +181,18 @@ vi.mock("@/lib/supabase", () => ({
 
       const matched = (): Row[] => {
         let result = rows.filter(passesFilters)
-        if (orderCol) {
-          const col = orderCol
+        if (orderBys.length > 0) {
+          // Insertion order is the final tiebreak, and it follows the LAST
+          // key's direction so a single descending `.order()` behaves exactly
+          // as it did when this was one column plus a `reverse()`.
+          const lastAscending = orderBys[orderBys.length - 1][1]
           result = [...result].sort((a, b) => {
-            if (a[col] === b[col]) return a._seq - b._seq
-            return a[col] > b[col] ? 1 : -1
+            for (const [col, ascending] of orderBys) {
+              if (a[col] === b[col]) continue
+              return (a[col] > b[col] ? 1 : -1) * (ascending ? 1 : -1)
+            }
+            return (a._seq - b._seq) * (lastAscending ? 1 : -1)
           })
-          if (!orderAscending) result.reverse()
         }
         if (limitN != null) result = result.slice(0, limitN)
         return result
@@ -244,8 +253,7 @@ vi.mock("@/lib/supabase", () => ({
           return api
         },
         order: (col: string, opts?: { ascending?: boolean }) => {
-          orderCol = col
-          orderAscending = opts?.ascending ?? true
+          orderBys.push([col, opts?.ascending ?? true])
           return api
         },
         limit: (n: number) => {
@@ -2122,6 +2130,42 @@ describe("listPipelines", () => {
     const boards = await listPipelines(SINGLETON_BUSINESS_ID)
 
     expect(boards.map((b) => b.key)).toEqual([DEFAULT_PIPELINE_KEY, CAMPS_CLINICS_KEY, ASSESSMENT_KEY])
+  })
+
+  it("breaks a created_at tie on key, so two boards seeded by one migration cannot swap places", async () => {
+    // MUTANT: drop `.order("key", …)` — with `created_at` identical Postgres
+    // gives no tiebreak, the two pills come back in whatever order the table
+    // hands them over, and they can swap between page loads.
+    //
+    // NOT A HYPOTHETICAL TIE. Migration 00257 inserted `assessment` and
+    // `camps_clinics` in one transaction, and on production both rows carry
+    // created_at 2026-09-08 15:27:23.683926+00 to the microsecond.
+    //
+    // Seeded in the order that DISAGREES with key order — "camps_clinics" <
+    // "assessment" is false — so a fixture already in key order cannot make
+    // this green by accident.
+    const SHARED = "2026-09-08T15:27:23.683926Z"
+    seedPipelineRow("pipe-camps", CAMPS_CLINICS_KEY, "Camps & Clinics", { createdAt: SHARED })
+    seedPipelineRow("pipe-assessment", ASSESSMENT_KEY, "Assessment", { createdAt: SHARED })
+
+    const boards = await listPipelines(SINGLETON_BUSINESS_ID)
+
+    expect(boards.map((b) => b.key)).toEqual([ASSESSMENT_KEY, CAMPS_CLINICS_KEY])
+  })
+
+  it("keeps created_at as the PRIMARY sort, with key only breaking a tie", async () => {
+    // The control for the test above: a key-only sort would pass it just as
+    // well. Here `coaching` is oldest but sorts LAST alphabetically, so only
+    // created_at-then-key produces this order.
+    //
+    // MUTANT: swapping the two `.order()` calls, or dropping the created_at
+    // one — the default board stops leading the pills.
+    seedPipelineRow("pipe-coaching", DEFAULT_PIPELINE_KEY, "Coaching", { createdAt: "2026-01-01T00:00:00.000Z" })
+    seedPipelineRow("pipe-assessment", ASSESSMENT_KEY, "Assessment", { createdAt: "2026-02-01T00:00:00.000Z" })
+
+    const boards = await listPipelines(SINGLETON_BUSINESS_ID)
+
+    expect(boards.map((b) => b.key)).toEqual([DEFAULT_PIPELINE_KEY, ASSESSMENT_KEY])
   })
 
   it("carries the id, key and name the switcher needs", async () => {

@@ -81,16 +81,29 @@ export const PATCH = withAudit(
     // the original available for that later read.
     const body = await request.clone().json().catch(() => null)
 
-    // `kind` IS SET AT CREATION AND NEVER CHANGES. The Convert-to-funnel
-    // control was removed on the owner's ruling that landing pages and
-    // funnels are separate things which never turn into each other. The
-    // schema below no longer carries the field, and Zod would silently STRIP
-    // it — reporting success for a change that did not happen — so a body
-    // naming it is refused out loud instead. Checked on the RAW body, before
-    // parsing, precisely because the parsed shape can no longer see it.
+    // `kind` NEVER CHANGES THROUGH THIS ROUTE. A row CAN move between the two
+    // boards — `POST /api/admin/funnels/[id]/convert` has done that since
+    // 2026-09-08, from either card — but only there, because only there do the
+    // guards run: `funnel → page` requires the row to have exactly one step,
+    // and `POST /api/admin/funnels/steps` refuses a second step on a
+    // `kind='page'` parent afterwards.
+    //
+    // Letting `kind` ride in on this PATCH would put the conversion and the
+    // publish in ONE handler, separated by nothing but the order two `if`s
+    // run in. That is not hypothetical: the old two-request bypass demoted a
+    // broken four-page funnel to a "page", then `PATCH {status:"published"}`
+    // — which this route legitimately allows for a page — and put it live with
+    // three of its four pages never built.
+    //
+    // Checked on the RAW body, before parsing: `updateFunnelSchema` does not
+    // carry the field, so Zod would silently STRIP it and this route would
+    // answer 200 for a change that never happened.
     if (body !== null && typeof body === "object" && "kind" in body) {
       return NextResponse.json(
-        { error: "A landing page or funnel keeps the kind it was created with. Neither converts into the other." },
+        {
+          error:
+            "Changing a landing page into a funnel, or back, has its own step — it runs checks this one cannot. Use the convert action on the card instead.",
+        },
         { status: 400 },
       )
     }

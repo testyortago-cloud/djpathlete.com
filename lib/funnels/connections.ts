@@ -84,7 +84,14 @@ export interface FunnelConnections {
   broken: Connection[]
   /**
    * Page ids with no WORKING link to another page, excluding the one with the
-   * highest `position` — which is supposed to end. Warns only.
+   * highest `position` — which is supposed to end.
+   *
+   * BLOCKS PUBLISH, same as `broken`. It used to warn only, which is how a
+   * funnel went live whose form redirected to a page that did not exist; since
+   * the 2026-09-13 audit (§3.1) `app/api/admin/funnels/[id]/publish/route.ts`
+   * feeds this list into `funnelPublishPlan` and answers 422 naming every page
+   * in it. The rail still only warns, because the rail is not a gate — but
+   * nothing downstream of this field treats it as advisory any more.
    */
   deadEnds: string[]
 }

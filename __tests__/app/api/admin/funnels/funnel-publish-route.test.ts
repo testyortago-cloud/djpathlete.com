@@ -510,6 +510,19 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     expect(body.pages[0].stepName).toBe("Signup")
     expect(body.pages[0].blank).toBe(false)
     expect(body.pages[0].problems[0]).toMatch(/leads nowhere/)
+    // The sentence is rendered UNDER the page's name on both surfaces --
+    // `refusalMessage` prefixes `${stepName}: `, ChatPane heads the list with
+    // it -- so repeating the name here produced "Signup: Signup leads
+    // nowhere: ...". MUTANT: putting `${deadEndNames.get(stepId)} ` back on
+    // the front of the message.
+    expect(body.pages[0].problems[0]).not.toMatch(/Signup/)
+    // It must not quote a control label either. The rail's button reads
+    // "Connect to <next page name>" and only exists while the builder is open
+    // on that page, while this refusal is also reachable from the board's Go
+    // live. MUTANT: naming a literal button ("connect this page") -- the owner
+    // goes looking for text that is not on their screen.
+    expect(body.pages[0].problems[0]).not.toMatch(/connect this page/i)
+    expect(body.pages[0].problems[0]).toMatch(/open it in the builder/i)
     expect(mock(publishStep)).not.toHaveBeenCalled()
     expect(mock(updateFunnel)).not.toHaveBeenCalled()
   })
@@ -556,9 +569,9 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     // support the shape (`ensureCheckoutCampsPriced` exists only to walk drafts
     // for it) and the registry tells the model to preserve it.
     //
-    // MUTANT: `{kind:"none"}` for a checkout form in `connectionsForPage`. This
-    // funnel then 422s with "Signup leads nowhere", pointing the owner at a
-    // rail button that has nothing to offer a checkout form.
+    // MUTANT: `{kind:"none"}` for a checkout form in `connectionsForPage`.
+    // This funnel then 422s saying the signup page leads nowhere, telling the
+    // owner to connect a form that is already doing its job.
     mock(listSteps).mockResolvedValue([
       stepRow(),
       stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false }),

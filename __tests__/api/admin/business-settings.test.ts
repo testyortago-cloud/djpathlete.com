@@ -200,6 +200,43 @@ describe("PATCH /api/admin/businesses/[id] -- sender_email domain verification (
     expect(settingsCalls).toHaveLength(0)
   })
 
+  it("names the domain they MEANT, and never the rest of the Resend account", async () => {
+    // Resend domains are ACCOUNT-wide, not per-business: one account backs
+    // every tenant. The refusal used to render `verified.domains.join(", ")`,
+    // so a coach who mistyped their own sender address was shown every other
+    // coach's sending domains.
+    //
+    // MUTANT: putting `verified.domains.join(", ")` back -- "coach-two.com"
+    // appears in a message shown to somebody who has nothing to do with it.
+    listDomainsImpl = () =>
+      Promise.resolve({ ok: true, domains: ["send.darrenjpaul.com", "mail.coach-two.com", "coach-three.io"] })
+    const res = await PATCH(req({ settings: { sender_email: "noreply@darrenjpaul.com" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    // Still useful: it names the subdomain the address should have been on.
+    expect(body.error).toContain("send.darrenjpaul.com")
+    // And nothing else from the account.
+    expect(body.error).not.toContain("coach-two")
+    expect(body.error).not.toContain("coach-three")
+  })
+
+  it("says so plainly when nothing in the account relates to what was typed", async () => {
+    // MUTANT: naming a substitute anyway (e.g. the first verified domain).
+    // "Use an address on mail.coach-two.com" is both a disclosure and advice
+    // this admin cannot act on.
+    listDomainsImpl = () => Promise.resolve({ ok: true, domains: ["mail.coach-two.com"] })
+    const res = await PATCH(req({ settings: { sender_email: "noreply@brand-new.com" } }), {
+      params: Promise.resolve({ id: "bbb" }),
+    })
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.error).toMatch(/brand-new\.com.*not verified/i)
+    expect(body.error).not.toContain("coach-two")
+    expect(body.error).toMatch(/verify that domain at resend/i)
+  })
+
   it("accepts a sender_email whose exact domain is verified", async () => {
     listDomainsImpl = () => Promise.resolve({ ok: true, domains: ["send.darrenjpaul.com"] })
     const res = await PATCH(req({ settings: { sender_email: "noreply@send.darrenjpaul.com" } }), {

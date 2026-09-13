@@ -6,7 +6,7 @@ import {
 import { businessPatchSchema, businessSettingsPatchSchema } from "@/lib/validators/business"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { recordAudit } from "@/lib/audit/record"
-import { listVerifiedSenderDomains, senderDomainVerdict } from "@/lib/email/sender-domains"
+import { listVerifiedSenderDomains, relatedVerifiedDomains, senderDomainVerdict } from "@/lib/email/sender-domains"
 import { z } from "zod"
 
 const bodySchema = z.object({
@@ -70,9 +70,20 @@ export async function PATCH(request: Request, ctx: { params: Promise<Record<stri
     }
     const verdict = senderDomainVerdict(senderEmail, verified.domains)
     if (!verdict.ok) {
+      // NAMES ONLY WHAT THEY MEANT, NEVER THE ACCOUNT. This used to render
+      // `verified.domains.join(", ")` -- the WHOLE verified list -- and Resend
+      // domains are account-wide, so it showed one coach every other coach's
+      // sending domains. `relatedVerifiedDomains` narrows that to the
+      // subdomain/apex of the address actually typed, which is the only part
+      // that was ever useful (and is exactly the 08-31 shape: apex typed in
+      // where the subdomain is verified).
+      const meant = relatedVerifiedDomains(verdict.domain, verified.domains)
       return NextResponse.json(
         {
-          error: `${verdict.domain} is not verified at Resend, so email sent from it would be dropped. Use an address on a verified domain (${verified.domains.join(", ") || "none yet"}).`,
+          error:
+            meant.length > 0
+              ? `${verdict.domain} is not verified at Resend, so email sent from it would be dropped. Use an address on ${meant.join(" or ")} instead.`
+              : `${verdict.domain} is not verified at Resend, so email sent from it would be dropped. Verify that domain at Resend first, or use an address on a domain that is already set up for this business.`,
         },
         { status: 400 },
       )
