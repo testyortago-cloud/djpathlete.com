@@ -48,7 +48,7 @@ import {
 import { SECTION_KINDS, SECTION_REGISTRY, type Section, type SectionDoc } from "@/lib/funnels/sections/registry"
 import { CHECKOUT_REQUIRED_ROLES, FORM_FIELD_ROLES, ISLAND_LIST, SAFE_LINK } from "@/lib/funnels/islands"
 import { applyOps, opSchema } from "@/lib/funnels/sections/apply"
-import { reassemble } from "@/lib/funnels/sections/doc"
+import { reassemble, FONT_STACKS } from "@/lib/funnels/sections/doc"
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -426,6 +426,43 @@ describe("the prompt no longer claims the stylesheet owns the design", () => {
 
   it("tells the model it owns the palette", () => {
     expect(buildSystemPrompt(input)).toMatch(/palette/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// FONT PAIRING LABEL AGREES WITH FONT_STACKS — final whole-branch review,
+// finding 2 (2026-09-13). `BLOCK_DESIGN`'s `theme.font` paragraph used to call
+// "athletic" "(today's pairing)". That was true when it was written; a later
+// fix wave rebuilt `FONT_STACKS` (doc.ts) and "athletic" became a rounded
+// heading on a MONO body, while "clean" (Lexend Exa/Lexend Deca) became the
+// actual default — nothing coupled the prose to the table, so the label
+// silently went stale. A brief nudging the model toward "athletic" as the
+// safe no-change choice would ship monospace body copy across a whole page.
+//
+// This derives the answer instead of hand-asserting a key name: the "real"
+// default is whichever `FONT_STACKS` entry actually uses the Lexend Exa /
+// Lexend Deca pairing (the fonts `doc.ts`'s own `DEFAULT_FONT_HEAD`/
+// `DEFAULT_FONT_BODY` fall back to when `theme.font` is unset), and the prose
+// must label exactly that key as the default — no more, no fewer.
+// ---------------------------------------------------------------------------
+
+describe("the font-pairing prose agrees with FONT_STACKS", () => {
+  it("labels the FONT_STACKS entry that actually IS the Lexend default as the default, and no other", () => {
+    const realDefaultKeys = (Object.keys(FONT_STACKS) as Array<keyof typeof FONT_STACKS>).filter(
+      (key) => FONT_STACKS[key].head.includes("Lexend Exa") && FONT_STACKS[key].body.includes("Lexend Deca"),
+    )
+    // Anti-vacuity: if FONT_STACKS ever stopped carrying the Lexend/Lexend
+    // pairing under any name, this test should say so loudly rather than
+    // silently pass every "labelled as default" check below as vacuously true.
+    expect(realDefaultKeys, "no FONT_STACKS entry pairs Lexend Exa with Lexend Deca").toHaveLength(1)
+    for (const key of Object.keys(FONT_STACKS)) {
+      const labelledDefault = new RegExp(`"${key}"[^)]*today's default`, "i").test(SECTION_BUILDER_BLOCK_DESIGN)
+      if (realDefaultKeys.includes(key as keyof typeof FONT_STACKS)) {
+        expect(labelledDefault, `"${key}" IS the real default pairing but the prompt does not say so`).toBe(true)
+      } else {
+        expect(labelledDefault, `"${key}" is NOT the default pairing but the prompt calls it one`).toBe(false)
+      }
+    }
   })
 })
 

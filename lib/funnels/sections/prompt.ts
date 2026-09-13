@@ -893,10 +893,11 @@ Leave \`palette\` unset and the page uses the owner's own brand colours if they 
 today's green/tan if not — so "match our other pages" means leaving it unset, never copying a
 preset name you have seen used before.
 
-\`theme.font\` — five pairings, all reusing fonts the page already loads: "athletic" (today's
-pairing), "editorial" (a serif heading, for a considered pitch), "clean" (sans-on-sans, minimal),
-"bold" (condensed, numbers-forward — pricing and event pages), "technical" (mono headings, for an
-assessment or data feel).
+\`theme.font\` — five pairings, all reusing fonts the page already loads: "clean" (Lexend
+Exa/Lexend Deca — today's default, same as leaving \`font\` unset), "editorial" (a serif heading,
+for a considered pitch), "bold" (condensed, numbers-forward — pricing and event pages),
+"technical" (mono headings, for an assessment or data feel), "athletic" (rounded headings on a
+mono body — a sporty stat-sheet feel).
 
 \`theme.density\` — "tight" (compact, more above the fold), "normal" (today), "airy" (generous,
 upscale spacing).
