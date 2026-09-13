@@ -437,8 +437,19 @@ ${ROOT} .djp-s[data-tone="dark"] .djp-quote-name { color: inherit; }
    .djp-quote-name is NOT added here: its own hardcoded token is already
    var(--foreground) (.djp-s-testimonial .djp-quote-name, further down), the
    same value inherit would resolve to on a muted section — nothing to fix.
+
+   CONTRAST-SWEEP FIX (2026-09-13): .djp-hd (below) is the exact same hazard
+   and was missed by the same first pass — it is hardcoded color: var(--primary)
+   too, and accent/dark already carry it to color: inherit (the .djp-hd /
+   .djp-sub rule above the tone knob), but muted never did. Measured against
+   the real PALETTE_TABLE presets, --primary on --surface is 1.09:1 (ink),
+   1.82:1 (midnight), 2.11:1 (steel), 2.65:1 (plum), 2.92:1 (ember) — nowhere
+   close to 4.5:1. This is the live bug verified at /preview/sales-k9m0w: the
+   heading "One block, one price" dark-on-near-black inside a muted pricing
+   section. Same fix, same reasoning as .djp-plan-price above.
    NO BACKTICKS in this comment — one closes the template literal. */
-${ROOT} .djp-s[data-tone="muted"] .djp-plan-price { color: inherit; }
+${ROOT} .djp-s[data-tone="muted"] .djp-plan-price,
+${ROOT} .djp-s[data-tone="muted"] .djp-hd { color: inherit; }
 
 /* ...then all nine --muted-foreground classes. Opacity, not a second colour
    token, is what keeps them subordinate. */
@@ -464,10 +475,31 @@ ${ROOT} .djp-s[data-tone="dark"] .djp-footer-legal { color: inherit; opacity: 0.
 /* Move 3: shapes painted in their own background's token. The second .djp-ic
    selector is not a duplicate — PRICING_CSS's .djp-plan-features .djp-ic ties
    on specificity and wins on source order, so the icon inside a plan needs
-   the deeper selector to be reached at all. */
+   the deeper selector to be reached at all.
+
+   DARK and MUTED join ACCENT here (contrast-sweep fix, 2026-09-13). The
+   eyebrow and icons are hardcoded color: var(--accent). On ACCENT this is an
+   exact same-token collision against the section's own var(--accent)
+   background — the hazard this rule was originally written for. But DARK
+   (background: var(--primary)) and MUTED (background: var(--surface)) are
+   not an exact collision, and READABLE_ON (the pairing table in
+   render.test.ts) treats --accent as legal on --primary as a scope-invariant
+   fact about app/globals.css's four fixed themes — which is exactly the
+   assumption that does not hold for an arbitrary derived palette. Measured
+   against the real PALETTE_TABLE presets: accent-on-primary is 1.02:1 (ink),
+   1.31:1 (midnight), 1.56:1 (steel), 2.53:1 (ember); accent-on-surface is
+   1.11:1 (ink), 1.35:1 (steel), 2.40:1 (midnight). color: inherit resolves
+   to the tone's own guaranteed pair — primary-foreground on dark, the base
+   --foreground on muted — exactly like every other rule in this pass. */
 ${ROOT} .djp-s[data-tone="accent"] .djp-eyebrow,
 ${ROOT} .djp-s[data-tone="accent"] .djp-ic,
-${ROOT} .djp-s[data-tone="accent"] .djp-plan-features .djp-ic { color: inherit; }
+${ROOT} .djp-s[data-tone="accent"] .djp-plan-features .djp-ic,
+${ROOT} .djp-s[data-tone="dark"] .djp-eyebrow,
+${ROOT} .djp-s[data-tone="dark"] .djp-ic,
+${ROOT} .djp-s[data-tone="dark"] .djp-plan-features .djp-ic,
+${ROOT} .djp-s[data-tone="muted"] .djp-eyebrow,
+${ROOT} .djp-s[data-tone="muted"] .djp-ic,
+${ROOT} .djp-s[data-tone="muted"] .djp-plan-features .djp-ic { color: inherit; }
 ${ROOT} .djp-s[data-tone="accent"] .djp-btn-primary,
 ${ROOT} .djp-s[data-tone="accent"].djp-s-bullets.djp-v-numbered .djp-bullet-item::before {
   background: var(--primary);
@@ -988,8 +1020,14 @@ ${ROOT} .djp-s-faq .djp-faq-details > summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
+/* MUTED joins accent/dark here (contrast-sweep fix, 2026-09-13) — the "+"/"−"
+   toggle is hardcoded color: var(--accent), the same unpaired brand-vs-neutral
+   hazard as the eyebrow/icon Move 3 above (accent-on-surface measures well
+   under 4.5:1 for several PALETTE_TABLE presets). color: inherit resolves to
+   the base --foreground muted never repaints away from. */
 ${ROOT} .djp-s[data-tone="accent"].djp-s-faq .djp-faq-details > summary::after,
-${ROOT} .djp-s[data-tone="dark"].djp-s-faq .djp-faq-details > summary::after { color: inherit; }
+${ROOT} .djp-s[data-tone="dark"].djp-s-faq .djp-faq-details > summary::after,
+${ROOT} .djp-s[data-tone="muted"].djp-s-faq .djp-faq-details > summary::after { color: inherit; }
 
 /* two-col (design-system spec §5.1) — drops the base list's centred
    46rem column for a two-up grid that uses the section's full width. */
@@ -1245,6 +1283,15 @@ ${ROOT} .djp-s[data-tone="dark"] .djp-req { color: inherit; }
 ${ROOT} .djp-s[data-tone="accent"] .djp-consent,
 ${ROOT} .djp-s[data-tone="dark"] .djp-consent { opacity: 0.85; }
 
+/* .djp-req (the required-field asterisk) needs the same muted treatment
+   .djp-field-label does not: .djp-field-label is already var(--foreground)
+   (safe on --surface by construction) and .djp-consent is
+   var(--muted-foreground) (a fixed app token the palette never touches), but
+   .djp-req is hardcoded color: var(--accent) — the same unpaired
+   brand-vs-neutral hazard as the eyebrow/icon Move 3 above. Contrast-sweep
+   fix, 2026-09-13. */
+${ROOT} .djp-s[data-tone="muted"] .djp-req { color: inherit; }
+
 /* The error and success panels take the tone's own pair.
    --error and --success are readable on a light page and undefined against
    --accent or --primary, so on a repainted section the panel keeps the tone's
@@ -1348,8 +1395,14 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-form.djp-v-split .djp-form-card {
 ${ROOT} .djp-s[data-tone="muted"].djp-s-form.djp-v-split .djp-form-card {
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
 }
+/* MUTED joins accent/dark here too (contrast-sweep fix, 2026-09-13): the proof
+   icon is hardcoded color: var(--accent), the same unpaired brand-vs-neutral
+   hazard as every other Move-3 icon above. The card's own background lifts
+   for muted (above) but never resets its text colour, so inherit still
+   resolves to the base --foreground — safe on --surface by construction. */
 ${ROOT} .djp-s[data-tone="accent"].djp-s-form.djp-v-split .djp-form-proof .djp-ic,
-${ROOT} .djp-s[data-tone="dark"].djp-s-form.djp-v-split .djp-form-proof .djp-ic { color: inherit; }
+${ROOT} .djp-s[data-tone="dark"].djp-s-form.djp-v-split .djp-form-proof .djp-ic,
+${ROOT} .djp-s[data-tone="muted"].djp-s-form.djp-v-split .djp-form-proof .djp-ic { color: inherit; }
 `.trim()
 
 /* reverse knob (design-system spec §4): `cta.djp-v-split` has NO
@@ -1454,9 +1507,15 @@ ${ROOT} .djp-s-proof.djp-v-stats .djp-proof-item {
 ${ROOT} .djp-s-proof.djp-v-stats .djp-proof-item:first-child { border-left: 0; padding-left: 0; }
 
 /* Both halves travel with a repainted tone — the value is --primary, which on
-   a dark section IS the background. */
+   a dark section IS the background.
+   MUTED joins here too (contrast-sweep fix, 2026-09-13): the value is not an
+   exact-token collision on muted (background: var(--surface), not
+   var(--primary)), but it is the identical unpaired brand-vs-neutral hazard
+   as .djp-hd / .djp-plan-price above — measured primary-on-surface is
+   1.09-2.92:1 across the dark-seeded PALETTE_TABLE presets, never 4.5:1. */
 ${ROOT} .djp-s[data-tone="accent"].djp-s-proof .djp-proof-value,
-${ROOT} .djp-s[data-tone="dark"].djp-s-proof .djp-proof-value { color: inherit; }
+${ROOT} .djp-s[data-tone="dark"].djp-s-proof .djp-proof-value,
+${ROOT} .djp-s[data-tone="muted"].djp-s-proof .djp-proof-value { color: inherit; }
 ${ROOT} .djp-s[data-tone="accent"].djp-s-proof .djp-proof-label,
 ${ROOT} .djp-s[data-tone="dark"].djp-s-proof .djp-proof-label { color: inherit; opacity: 0.85; }
 ${ROOT} .djp-s[data-tone="accent"].djp-s-proof.djp-v-stats .djp-proof-item {

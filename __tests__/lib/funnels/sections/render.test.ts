@@ -21,6 +21,7 @@ import { parseIslandProps } from "@/lib/funnels/islands"
 import { escapeHtml, renderSection, type RenderContext } from "@/lib/funnels/sections/render"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import { THEME_CSS, SECTION_CSS } from "@/lib/funnels/sections/styles"
+import { PALETTE_TABLE, contrastRatio, type PaletteName } from "@/lib/funnels/sections/palettes"
 import {
   SECTION_KINDS,
   SECTION_ICONS,
@@ -614,6 +615,139 @@ describe("tone contrast: no per-kind colour is left behind by the tone knob", ()
     expect(values.length).toBeGreaterThan(20)
     const unmodelled = values.map(colourToken).filter((token) => token.startsWith("UNMODELLED"))
     expect(unmodelled, unmodelled.join(", ")).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// REAL PALETTE CONTRAST — the thing the PAIRING check above admits, in its own
+// header comment, that it does not do.
+//
+// READABLE_ON is a table of TOKEN NAMES, and its own comment says exactly why:
+// "app/globals.css declares these tokens in four scopes with opposite
+// polarity ... only the PAIRING is invariant". That is true for the app's own
+// four fixed themes. It is false for a funnel's PALETTE_TABLE preset, where
+// `--primary` and `--accent` are independently DERIVED colours (palettes.ts:
+// `hueRotate(brand, 150)` for accent, a background-driven `deriveSurface` for
+// surface) with no contrast relationship to each other guaranteed anywhere.
+// READABLE_ON legally allows `--accent` on `--primary` (and vice versa) and
+// legally allows `--primary`/`--accent` on `--surface`/`--background` — which
+// is exactly how all three real bugs this sweep exists for (djp-faq-q's page
+// wrapper, djp-plan-price, djp-hd) shipped green through that check. A token
+// PAIRING is a necessary condition for this stylesheet; it was never a
+// sufficient one.
+//
+// This suite resolves the SAME token readings `readContrast` already computes
+// (same rendered markup, same real cascade, same inherit/wash resolution) to
+// REAL #rrggbb values from the actual `PALETTE_TABLE`, and checks the REAL
+// number with `contrastRatio` from palettes.ts — the exact colours that will
+// really meet on screen, not a pair that is only true in the abstract.
+//
+// SCOPE, STATED HONESTLY: only the seven tokens `doc.ts` actually overrides
+// per document (`--primary`, `--primary-foreground`, `--accent`,
+// `--accent-foreground`, `--surface`, `--foreground`, `--background` — see
+// doc.ts:314-316) have a palette-derived hex value to resolve through. Every
+// other var this stylesheet reads (`--muted-foreground`, `--border`,
+// `--error`, `--success`, `--warning`) is a fixed app-level token the funnel
+// palette never touches — it cannot be "hardcoded to a specific PALETTE
+// token" in the sense this sweep is chasing, and `contrastRatio` has no hex
+// to resolve it against here. `paletteHex` returns `null` for those and the
+// reading is skipped, not silently passed: this is the harness's honestly
+// documented boundary, not a gap pretending to be coverage.
+//
+// MUTANTS THIS KILLS: reverting any one of the six contrast-sweep fixes above
+// (.djp-hd / .djp-eyebrow+.djp-ic / .djp-faq toggle / .djp-req /
+// .djp-form-proof .djp-ic / .djp-proof-value muted-or-dark overrides) turns
+// the corresponding preset/tone case red, naming the exact node and the
+// measured ratio — see the report for the observed failure text.
+// ---------------------------------------------------------------------------
+
+/** `null` for any token this file's stylesheet uses that the palette does not
+ * derive (see the scope note above) — never a guess. */
+function paletteHex(preset: PaletteName, token: string): string | null {
+  const t = PALETTE_TABLE[preset]
+  switch (token) {
+    case "--primary":
+      return t.brand
+    case "--primary-foreground":
+      return t.brandInk
+    case "--accent":
+      return t.accent
+    case "--accent-foreground":
+      return t.accentInk
+    case "--surface":
+      return t.surface
+    case "--foreground":
+      return t.ink
+    case "--background":
+      return t.paper
+    default:
+      return null
+  }
+}
+
+// slate: the light-mode control. ember/ink/midnight/steel/plum: every
+// dark-seeded preset named in the bug report, not just the one already caught
+// live on /preview/sales-k9m0w.
+const REPRESENTATIVE_PRESETS: readonly PaletteName[] = ["slate", "ember", "ink", "midnight", "steel", "plum"]
+
+// Deliberately NOT `ALL_TONES`. `default` is a real, separate finding — see
+// the contrast-sweep report — but it is a DIFFERENT bug than the one this
+// sweep fixes: `.djp-hd` / `.djp-plan-price` / `.djp-proof-value` hardcode
+// `--primary`, and `--primary` is not guaranteed readable against
+// `--background` (paper) for EVERY preset, dark-seeded or not — deriveSurface
+// only proves ink-vs-surface, never brand-vs-anything. Fixing that with the
+// same `color: inherit` move used below would remove brand-coloured headings
+// from every LIGHT palette too (slate/forest/sand/clay/ocean/bone/moss all
+// pass today), which is a design regression this CSS-only sweep should not
+// make unilaterally — it needs a derived, guaranteed-safe "heading" token in
+// palettes.ts (mirroring how `pickInk` derives `ink`), not a tone rule. This
+// suite is scoped to exactly the bug class the task describes: an element
+// whose colour is hardcoded to a token that does not follow "the SECTION'S
+// tone" when that tone is muted, accent, or dark.
+const SWEEP_TONES = ["muted", "accent", "dark"] as const satisfies readonly (typeof ALL_TONES)[number][]
+
+/** `readContrast(tone)` re-renders and re-parses every kind/variant; cached
+ * per tone so six presets share one pass instead of re-running it six times. */
+const toneReadingCache = new Map<(typeof ALL_TONES)[number], ContrastReading[]>()
+function cachedContrast(tone: (typeof ALL_TONES)[number]): ContrastReading[] {
+  const cached = toneReadingCache.get(tone)
+  if (cached) return cached
+  const readings = readContrast(tone)
+  toneReadingCache.set(tone, readings)
+  return readings
+}
+
+describe("real palette contrast: hardcoded tokens actually clear 4.5:1 against their REAL rendered background", () => {
+  const cases = REPRESENTATIVE_PRESETS.flatMap((preset) => SWEEP_TONES.map((tone) => ({ preset, tone })))
+
+  it.each(cases)(
+    "preset '$preset' / tone '$tone': every palette-derived text node clears WCAG AA",
+    ({ preset, tone }) => {
+      const readings = cachedContrast(tone)
+      const violations = readings.flatMap((reading) => {
+        const fg = paletteHex(preset, reading.colour)
+        const bg = paletteHex(preset, reading.background)
+        if (fg === null || bg === null) return [] // out of scope — see header comment
+        const ratio = contrastRatio(fg, bg)
+        return ratio < 4.5
+          ? [
+              `${reading.case}: ${reading.node} — ${reading.colour} (${fg}) on ${reading.background} (${bg}) = ${ratio.toFixed(2)}:1`,
+            ]
+          : []
+      })
+      expect(violations, violations.join("\n")).toEqual([])
+    },
+  )
+
+  it("actually exercises the palette-derived tokens, not just skips everything as out of scope", () => {
+    // Without this, every case above passes vacuously the moment `paletteHex`
+    // stops recognising anything real — exactly the "claims coverage, tests
+    // nothing" failure mode this whole report exists to avoid.
+    const readings = cachedContrast("muted")
+    const resolvable = readings.filter(
+      (reading) => paletteHex("ember", reading.colour) !== null && paletteHex("ember", reading.background) !== null,
+    )
+    expect(resolvable.length).toBeGreaterThan(10)
   })
 })
 
