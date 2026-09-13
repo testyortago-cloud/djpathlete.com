@@ -111,6 +111,8 @@ const CONFIGURED_SETTINGS: BusinessSettings = {
   sms_help_text: "Reply STOP to opt out.",
   sms_messaging_service_sid: "MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   sms_sender_phone: "",
+  brand_color: null,
+  accent_color: null,
 }
 
 const UNCONFIGURED_SETTINGS: BusinessSettings = {

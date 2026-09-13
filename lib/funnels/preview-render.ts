@@ -36,6 +36,8 @@ import { compileFunnelStep } from "@/lib/funnels/compile"
 import { getDraft } from "@/lib/db/funnel-builder"
 import { listSteps } from "@/lib/db/funnels"
 import { reassemble } from "@/lib/funnels/sections/doc"
+import type { BrandKit } from "@/lib/funnels/sections/render"
+import { resolveBrandKit } from "@/lib/funnels/brand-kit"
 import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
 import type { FunnelNode } from "@/lib/funnels/compile/types"
 
@@ -64,6 +66,15 @@ export interface DraftPreviewInput {
    * slug-addressed URL must never reach edit mode.
    */
   editable?: boolean
+  /**
+   * The tenant whose brand kit should back this render's palette default, or
+   * `null` when it could not be resolved. Optional (defaults to `null`) so
+   * existing callers that predate the brand kit keep compiling unchanged.
+   * A failed `business_settings` read degrades to `null` INSIDE this
+   * function -- it never becomes its own `DraftPreviewResult` kind, because a
+   * missing brand is not a reason to stop showing the draft.
+   */
+  businessId?: string | null
 }
 
 export async function renderDraftPreview({
@@ -71,11 +82,24 @@ export async function renderDraftPreview({
   funnelId,
   funnelBasePath,
   editable = false,
+  businessId = null,
 }: DraftPreviewInput): Promise<DraftPreviewResult> {
   const draft = await getDraft(stepId)
   if (!draft) return { kind: "no-draft" }
   if (draft.docInvalid) return { kind: "doc-invalid" }
   if (!draft.doc) return { kind: "no-draft" }
+
+  // Wrapped independently of the resolve/gate try below: a `business_settings`
+  // read failure must cost only the palette default, not the resolution this
+  // preview shares with publish.
+  let brandKit: BrandKit | null = null
+  if (businessId) {
+    try {
+      brandKit = await resolveBrandKit(businessId)
+    } catch (error) {
+      console.error("[funnels/preview-render] brand kit read failed — continuing without it:", error)
+    }
+  }
 
   // THE SAME RESOLUTION PUBLISH RUNS, so the preview cannot disagree with it
   // about the same document. Both reads are inside the same try, so either
@@ -105,7 +129,7 @@ export async function renderDraftPreview({
   // draft, and "here is what is wrong with it" is strictly more useful.
   let rendered
   try {
-    rendered = reassemble(docToRender, { funnelBasePath, editable })
+    rendered = reassemble(docToRender, { funnelBasePath, editable, brandKit })
   } catch (error) {
     return { kind: "render-failed", message: (error as Error).message }
   }

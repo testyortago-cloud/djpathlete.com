@@ -18,10 +18,11 @@ import {
   type SectionDoc,
   type SectionDocTheme,
 } from "@/lib/funnels/sections/registry"
-import { renderSection, type RenderContext } from "@/lib/funnels/sections/render"
+import { renderSection, type RenderContext, type BrandKit } from "@/lib/funnels/sections/render"
 import { THEME_CSS, SECTION_CSS } from "@/lib/funnels/sections/styles"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile"
 import { FUNNEL_STEP_HTML_MAX_LENGTH, FUNNEL_STEP_CSS_MAX_LENGTH } from "@/lib/validators/funnel"
+import { PALETTE_TABLE, resolvePalette, type PaletteTokens } from "@/lib/funnels/sections/palettes"
 
 const ROOT = `#${FUNNEL_ROOT_ID}`
 
@@ -57,6 +58,151 @@ const RADIUS_CSS_VALUE: Record<SectionDocTheme["radius"], string> = {
   sharp: "0.125rem",
   soft: "0.6rem",
   round: "1.75rem",
+}
+
+// ---------------------------------------------------------------------------
+// Width, density and font (design-system spec §3). Every value below is
+// keyed by the FULL enum from `sectionDocThemeSchema`, including the value
+// that already matches today's hardcoded output ("normal" width = 72rem,
+// "normal" density = the ×1 no-op multiplier) — so `theme.width ?? "normal"`
+// and `theme.density ?? "normal"` reach the exact same row a doc with no
+// theme keys at all resolves to. That is what keeps an untouched page
+// byte-for-byte unchanged: there is no separate "absent" branch to drift
+// from the "explicitly normal" one.
+// ---------------------------------------------------------------------------
+
+// `full` is `none`, NOT `100%` (final whole-branch review minor,
+// 2026-09-13) — matching the section-level `data-width="full"` knob
+// (styles.ts's `${ROOT} .djp-s[data-width="full"] { --djp-maxw: none; }`,
+// design-system spec §3.3) exactly, rather than a second spelling of the
+// same "no cap" intent. Both values remove `.djp-s > *`'s max-width the same
+// way in practice (a section this wide already has nothing to clamp
+// against), but a THEME-level page default and a PER-SECTION override
+// silently disagreeing on how they say "uncapped" is exactly the kind of
+// drift that turns into a real bug the next time either site is touched.
+const WIDTH_CSS_VALUE: Record<NonNullable<SectionDocTheme["width"]>, string> = {
+  narrow: "56rem",
+  normal: "72rem",
+  wide: "88rem",
+  full: "none",
+}
+
+// A unitless multiplier, not a length: styles.ts's three `data-pad` rules
+// each read it via `calc(<today's length> * var(--djp-density, 1))`, so one
+// knob scales all three without restating them here. Values match
+// design-system spec §3.3 (tight ~0.75x, normal = 1, airy ~1.4x) exactly —
+// do not widen this range without writing down what the extreme
+// combinations compute to and why they're still usable, the way this
+// comment now does for the spec's own numbers: tight x tight = 1.125rem,
+// airy x roomy = 7.7rem, both comfortably inside a usable padding range.
+const DENSITY_MULTIPLIER: Record<NonNullable<SectionDocTheme["density"]>, number> = {
+  tight: 0.75,
+  normal: 1,
+  airy: 1.4,
+}
+
+// ---------------------------------------------------------------------------
+// ALLOWED_FONT_FAMILIES — the only families FONT_STACKS (below) may ever
+// name. Three are the exact fonts `app/layout.tsx` loads via
+// `next/font/google` (that file's lines ~11-25): Lexend Exa, Lexend Deca and
+// JetBrains Mono, each stamped as a CSS custom property on `<body>`
+// (`--font-lexend-exa`, `--font-lexend-deca`, `--font-jetbrains-mono`) — the
+// funnel route inherits only the ROOT layout, so these three are the entire
+// font budget any funnel page has, ever. Everything else in this set is a
+// CSS Fonts Level 4 generic/system keyword (`ui-serif`, `ui-sans-serif`,
+// `ui-rounded`, `system-ui`, the four legacy generics) or a condensed
+// display face common enough to already be installed on Windows, macOS or
+// Android — never a face this app would have to download.
+//
+// A family here that ISN'T on this list — "Playfair Display",
+// "Barlow Condensed", "Inter", "Archivo Black" all shipped in an earlier
+// draft of `FONT_STACKS` — costs nothing to type and changes nothing to
+// ship: the browser silently falls through to whatever generic ends that
+// declaration's own chain, so four of that draft's five `theme.font`
+// choices rendered byte-identical to each other. That is this build's own
+// complaint ("why does every page look the same") reappearing inside the
+// feature meant to cure it. `doc.test.ts` asserts every token in every
+// `FONT_STACKS` entry is a member of this set specifically so a name like
+// that can never sneak back in unnoticed.
+// ---------------------------------------------------------------------------
+export const ALLOWED_FONT_FAMILIES = new Set([
+  // the three fonts app/layout.tsx actually loads, both as the CSS variable
+  // next/font stamps and as the literal family name that variable resolves to
+  "var(--font-lexend-exa)",
+  "var(--font-lexend-deca)",
+  "var(--font-jetbrains-mono)",
+  "lexend exa",
+  "lexend deca",
+  "jetbrains mono",
+  // CSS Fonts Level 4 generic/system keywords — resolved by the browser from
+  // whatever is already installed, never a network request
+  "ui-serif",
+  "ui-sans-serif",
+  "ui-monospace",
+  "ui-rounded",
+  "system-ui",
+  "serif",
+  "sans-serif",
+  "monospace",
+  "cursive",
+  "fantasy",
+  // widely pre-installed system faces (Windows/macOS/Android ship these, so
+  // no download is ever triggered even when they resolve rather than fall
+  // through to the generic at the end of their own chain)
+  "georgia",
+  "arial narrow",
+  "helvetica neue condensed",
+  "roboto condensed",
+])
+
+const EXA_CHAIN = `var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif`
+const DECA_CHAIN = `var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif`
+const MONO_CHAIN = `var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace`
+const SERIF_CHAIN = `ui-serif, Georgia, serif`
+const CONDENSED_CHAIN = `"Arial Narrow", "Helvetica Neue Condensed", "Roboto Condensed", ui-sans-serif, sans-serif`
+const ROUNDED_CHAIN = `ui-rounded, system-ui, sans-serif`
+
+// Heading/body font-family stacks per `theme.font`. Every stack is built
+// ONLY from `ALLOWED_FONT_FAMILIES` (design-system spec §3.2: "recombines
+// fonts the page already loads... plus system serif / sans / condensed
+// stacks. No new network request, no CSP change, no font-loading flash") —
+// five DIFFERENT (head, body) pairings, not five different-looking strings
+// that resolve to the same three fonts. `doc.test.ts` checks both: the
+// allowlist membership, and that all five pairings are pairwise distinct.
+export const FONT_STACKS: Record<NonNullable<SectionDocTheme["font"]>, { head: string; body: string }> = {
+  clean: { head: EXA_CHAIN, body: DECA_CHAIN },
+  technical: { head: MONO_CHAIN, body: DECA_CHAIN },
+  bold: { head: CONDENSED_CHAIN, body: DECA_CHAIN },
+  editorial: { head: SERIF_CHAIN, body: SERIF_CHAIN },
+  athletic: { head: ROUNDED_CHAIN, body: MONO_CHAIN },
+}
+
+// The default a doc with no `theme.font` renders at TODAY: the exact same
+// full fallback chain styles.ts already hardcodes at every `font-family`
+// call site. Setting `--djp-font-head`/`--djp-font-body` to this (rather
+// than leaving them undeclared) is what lets `themeCss` "always emit" these
+// two properties (spec) with zero visual change — styles.ts's own
+// `var(--djp-font-head, <same chain>)` fallback then never has to fire.
+const DEFAULT_FONT_HEAD = `var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif)`
+const DEFAULT_FONT_BODY = `var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif)`
+
+// ---------------------------------------------------------------------------
+// Palette resolution order (design-system spec §3.1): a document's own
+// `theme.palette` outranks the tenant's `brandKit`, which outranks nothing —
+// no palette at all is `null`, and `null` MUST leave `themeCss` emitting no
+// colour override whatsoever. That is the regression guard for every one of
+// today's live pages: they carry a 3-key theme with no `palette`, and their
+// stylesheet's `--primary` etc. come solely from `app/globals.css`'s bare
+// `:root`. Emitting a matching-by-coincidence override here would still be a
+// behaviour change the moment `globals.css` itself changes those tokens.
+// ---------------------------------------------------------------------------
+
+function paletteTokens(theme: SectionDocTheme, brandKit?: BrandKit | null): PaletteTokens | null {
+  if (theme.palette) {
+    return "preset" in theme.palette ? PALETTE_TABLE[theme.palette.preset] : resolvePalette(theme.palette)
+  }
+  if (brandKit?.brand) return resolvePalette(brandKit)
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -113,26 +259,155 @@ const RADIUS_CSS_VALUE: Record<SectionDocTheme["radius"], string> = {
  * is the failure `ask_the_validator_never_restate_it` names — and here the
  * wrong copy would be silent, because a missing finding looks exactly like a
  * clean page.
+ *
+ * `index` is the section's position in `doc.sections` — optional so every
+ * pre-rhythm caller still compiles and, per `index === undefined` below,
+ * still behaves byte-for-byte as it did before `theme.rhythm` existed.
+ * `theme.rhythm` ("design-system spec" Task 5) governs what a section that
+ * sets NO tone of its own renders as when a POSITION is known: `"flat"` (or
+ * absent) is today's behaviour — every untoned section falls back to the
+ * single page-tone default. `"alternating"` toggles that default with
+ * `"muted"` every other section. `"banded"` keeps the default for two
+ * sections out of three and takes the theme's `"accent"` tone on every
+ * third, so the page reads as groups punctuated by a highlight colour
+ * rather than another two-tone checkerboard at a different frequency. An
+ * explicit `section.style.tone` (the `own` guard above)
+ * always outranks rhythm, exactly as it already outranks the page tone —
+ * losing that precedence would silently break the inspector's own tone
+ * control the moment a page rhythm was set.
  */
 export function effectiveTone(
   section: Section,
   theme: SectionDocTheme,
+  index?: number,
 ): NonNullable<Section["style"]["tone"]> {
   const own = section.style.tone
   if (own !== undefined && own !== "default") return own
-  return theme.tone === "dark" ? "dark" : "default"
+
+  const pageTone: NonNullable<Section["style"]["tone"]> = theme.tone === "dark" ? "dark" : "default"
+  const rhythm = theme.rhythm ?? "flat"
+  if (rhythm === "flat" || index === undefined) return pageTone
+
+  if (rhythm === "alternating") return index % 2 === 0 ? pageTone : "muted"
+
+  // "banded" (design-system spec §3.3): untoned sections run the page-tone
+  // default, and every THIRD one takes the theme's accent tone — a highlight
+  // punctuating groups, not another two-tone checkerboard at a different
+  // frequency. `alternating` already covers "toggle between two tones"; if
+  // `banded` also only toggled two tones (even at a different period) it
+  // would be the exact complaint this build exists to fix, reappearing
+  // inside the fix. 1-indexed "every third" (positions 3, 6, 9, ...) is
+  // `(index + 1) % 3 === 0` in this 0-indexed `index`.
+  return (index + 1) % 3 === 0 ? "accent" : pageTone
 }
 
-function sectionForPage(section: Section, theme: SectionDocTheme): Section {
-  if (theme.tone !== "dark") return section
-  const tone = effectiveTone(section, theme)
+function sectionForPage(section: Section, theme: SectionDocTheme, index?: number): Section {
+  const hasPagePattern = theme.tone === "dark" || (theme.rhythm !== undefined && theme.rhythm !== "flat")
+  if (!hasPagePattern) return section
+  const tone = effectiveTone(section, theme, index)
   if (tone === section.style.tone) return section
   return { ...section, style: { ...section.style, tone } }
 }
 
-function themeCss(theme: SectionDocTheme): string {
+function themeCss(theme: SectionDocTheme, brandKit?: BrandKit | null): string {
+  const palette = paletteTokens(theme, brandKit)
+
+  // Colour is a security boundary (palettes.ts, styles.ts): every value below
+  // reaches CSS ONLY as the right-hand side of a custom-property declaration,
+  // never interpolated into a selector or a shorthand. When `palette` is
+  // `null` this block is the empty string — not eight declarations that
+  // happen to match today's defaults, NOTHING — because "no palette" is the
+  // 3-key theme every existing stored document already has, and that case
+  // must render byte-for-byte as it does today.
+  //
+  // `--primary-on-paper` (contrast-sweep fix, 2026-09-13): `--primary` is
+  // guaranteed readable only paired with `--primary-foreground` as a
+  // BACKGROUND — never proven as TEXT on `--background`/`--surface`, which is
+  // exactly how `.djp-hd` etc. use it at the default (untoned) section. This
+  // is `palette.brandOnPaper` — see palettes.ts's `deriveBrandOnPaper` for the
+  // derivation and the measured worst case (`ink` was 1.10:1 before this).
+  // styles.ts's rules fall back to bare `--primary` when this is undefined
+  // (no palette on the document), which is exactly the "no palette" case
+  // above and keeps that byte-for-byte behaviour intact.
+  //
+  // `--accent-on-paper` (final whole-branch review, finding 1, 2026-09-13):
+  // the identical gap on the OTHER brand token. `.djp-eyebrow` / `.djp-ic` /
+  // `.djp-req` painted bare `--accent` as text at the default (untoned)
+  // section, and the tone-contrast sweep that added `--primary-on-paper`
+  // above only covered the accent/dark/muted TONES for `--accent`, never the
+  // untoned default ground `--accent` itself sits on. This is
+  // `palette.accentOnPaper` — see palettes.ts's `deriveAccentOnPaper` for the
+  // derivation and the measured worst case (`ink` was 1.11:1 before this).
+  const paletteBlock = palette
+    ? `${ROOT} { --primary: ${palette.brand}; --primary-foreground: ${palette.brandInk}; ` +
+      `--primary-on-paper: ${palette.brandOnPaper}; ` +
+      `--accent: ${palette.accent}; --accent-foreground: ${palette.accentInk}; ` +
+      `--accent-on-paper: ${palette.accentOnPaper}; ` +
+      `--surface: ${palette.surface}; --foreground: ${palette.ink}; --background: ${palette.paper}; }`
+    : ""
+
+  const maxw = WIDTH_CSS_VALUE[theme.width ?? "normal"]
+  const density = DENSITY_MULTIPLIER[theme.density ?? "normal"]
+  const fontHead = theme.font ? FONT_STACKS[theme.font].head : DEFAULT_FONT_HEAD
+  const fontBody = theme.font ? FONT_STACKS[theme.font].body : DEFAULT_FONT_BODY
+
+  const sizingCssLine =
+    `${ROOT} { --djp-radius: ${RADIUS_CSS_VALUE[theme.radius]}; --djp-maxw: ${maxw}; --djp-density: ${density}; ` +
+    `--djp-font-head: ${fontHead}; --djp-font-body: ${fontBody}; }`
+
+  // THE MISSING READER (fix-wave bug 3). `paletteBlock` above has ALWAYS
+  // emitted `--background`/`--foreground` (a palette's `paper`/`ink`) the
+  // moment a palette is active, but nothing ever painted them onto anything —
+  // `.djp-page[data-page-tone="dark"]` below paints `--primary`, never
+  // `--background`, and there was no rule at all for `data-page-tone="light"`.
+  // `.djp-s`'s own base rule (styles.ts) sets `color: var(--foreground)`
+  // unconditionally, so every untoned section ALREADY rendered the palette's
+  // ink — but with nothing underneath it painting the matching paper, that
+  // ink landed on whatever the HOST page's own background happens to be
+  // (`app/globals.css`'s bare `:root`, i.e. plain white). Half of a
+  // proven-AA pair with the other half silently discarded is exactly as
+  // unreadable as no pair at all: five presets seed `paper: "#0b0d10"` /
+  // `ink: "#ffffff"` (`midnight`, `ember`, `steel`, `plum`, `ink` —
+  // palettes.ts's `mode: "dark"` seeds), so those five rendered white text on
+  // an unpainted white page regardless of `theme.tone`.
+  //
+  // `theme.tone` and a palette's own paper/ink are DELIBERATELY two different
+  // axes, not one collapsed into the other:
+  //   - a PALETTE's `paper`/`ink` is "what an untoned section's own ground
+  //     looks like" — derived once, AA-guaranteed by `resolvePalette`, and
+  //     independent of `theme.tone`. `ember` is a dark-mode-seeded palette an
+  //     owner can pick on a page whose `theme.tone` is still `"light"`; nothing
+  //     about the tone knob should stop that palette rendering as itself.
+  //   - `theme.tone: "dark"` is a STRONGER, separate directive — "make this
+  //     page read as a bold band of my BRAND colour" — implemented (see
+  //     "PAGE TONE IS A SECTION-TONE DEFAULT" above) by promoting every
+  //     untoned SECTION to the `dark` SECTION tone, which paints
+  //     `--primary`/`--primary-foreground`, not `--background`/`--foreground`.
+  //     That promotion, and the wrapper rule below that mirrors it, are
+  //     UNCHANGED by this fix: a page that asked for its brand colour still
+  //     gets its brand colour, never the palette's neutral paper.
+  // So the new rule below paints the palette's real paper/ink onto the page
+  // ground UNCONDITIONALLY (whenever a palette is active), and the existing
+  // `[data-page-tone="dark"]` rule is left exactly as it was — its higher
+  // selector specificity (an attribute selector beats a bare class) already
+  // makes it win over the new rule on a dark-toned page, so the two rules
+  // don't fight: `dark` still means "paint the brand pair", `light` (or no
+  // tone override at all) now correctly means "paint the palette's own
+  // paper/ink pair" instead of silently meaning "paint nothing".
+  //
+  // Gated on `palette` exactly like `paletteBlock`: a document with NO
+  // palette (every page stored before this build, and every page today that
+  // never set `theme.palette` or a tenant brand kit) must render
+  // byte-identically to what `reassemble()` produced before this fix — its
+  // `--background`/`--foreground` are the plain, unmodified tokens
+  // `app/globals.css` already provides, and painting them here would be a
+  // behaviour change for a page that asked for none.
+  const pageGroundCss = palette ? `${ROOT} .djp-page { background: var(--background); color: var(--foreground); }` : ""
+
   return `
-${ROOT} { --djp-radius: ${RADIUS_CSS_VALUE[theme.radius]}; }
+${paletteBlock}
+${sizingCssLine}
+${pageGroundCss}
 ${ROOT} .djp-page[data-page-tone="dark"] { background: var(--primary); color: var(--primary-foreground); }
 ${ROOT} .djp-page[data-page-accent="primary"] .djp-btn-primary { background: var(--primary); color: var(--primary-foreground); }
 ${ROOT} .djp-page[data-page-accent="primary"] .djp-s[data-tone="dark"] .djp-btn-primary { background: var(--accent); color: var(--accent-foreground); }
@@ -248,14 +523,14 @@ export function reassemble(doc: SectionDoc, ctx: RenderContext = {}): Reassemble
   sectionDocSchema.parse(doc)
 
   const sectionsHtml = doc.sections
-    .map((section) => renderSection(sectionForPage(section, doc.theme), ctx))
+    .map((section, index) => renderSection(sectionForPage(section, doc.theme, index), ctx))
     .join("\n")
   const html = `${pageWrapperOpenTag(doc.theme)}${sectionsHtml}</div>`
 
   const usedKinds = SECTION_KINDS.filter((kind) => doc.sections.some((section) => section.kind === kind))
   const usedCss = usedKinds.map((kind) => SECTION_CSS[kind]).join("\n")
 
-  const css = `${THEME_CSS}\n${usedCss}\n${themeCss(doc.theme)}`
+  const css = `${THEME_CSS}\n${usedCss}\n${themeCss(doc.theme, ctx.brandKit)}`
 
   return { html, css, problems: checkSizeCaps(html, css) }
 }

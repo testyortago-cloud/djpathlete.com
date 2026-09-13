@@ -79,8 +79,8 @@
 import { z } from "zod"
 import {
   sectionSchema,
-  sectionStyleSchema,
-  sectionDocThemeSchema,
+  sectionStylePatchSchema,
+  sectionDocThemePatchSchema,
   sectionDocSchema,
   SECTION_REGISTRY,
   parseSection,
@@ -121,12 +121,28 @@ export const opSchema = z.discriminatedUnion("op", [
     op: z.literal("update_section"),
     id: sectionIdRefSchema,
     props: propsPatchSchema.optional(),
-    style: sectionStyleSchema.partial().optional(),
+    // `sectionStylePatchSchema`, NOT `sectionStyleSchema.partial()` (fix-wave
+    // bug 1): every key is also NULLABLE, so `{ bg: null }` — the delete
+    // sentinel the inspector's "None" background button and "use the page
+    // default" tone control both send — parses instead of being rejected
+    // before `applyOps` ever gets to merge it. See `sectionStylePatchSchema`'s
+    // own comment in registry.ts for why this is a schema-shape fix, not a
+    // relaxation: every style key was already optional to OMIT, this only
+    // makes explicit REMOVAL of an already-set key expressible over JSON.
+    style: sectionStylePatchSchema.optional(),
     variant: z.string().optional(),
   }),
   z.object({ op: z.literal("move_section"), id: sectionIdRefSchema, after: afterAnchorSchema }),
   z.object({ op: z.literal("remove_section"), id: sectionIdRefSchema }),
-  z.object({ op: z.literal("set_theme"), theme: sectionDocThemeSchema.partial() }),
+  // `sectionDocThemePatchSchema`, NOT `sectionDocThemeSchema.partial()` (final
+  // whole-branch review, finding 3): `.partial()` only lets a key be OMITTED,
+  // never explicitly DELETED, so a page that took a palette had no way back
+  // to "match our other pages" (registry.ts's own comment on the patch schema
+  // has the full history — this is the same shape fix `sectionStylePatchSchema`
+  // already got for `style`). `tone`/`accent`/`radius` stay non-nullable: they
+  // are required on the stored `SectionDocTheme`, so `{ tone: null }` fails
+  // right here, at op-schema validation, before any merge is attempted.
+  z.object({ op: z.literal("set_theme"), theme: sectionDocThemePatchSchema }),
 ])
 
 export type SectionOp = z.infer<typeof opSchema>
@@ -169,11 +185,15 @@ export type ApplyOpsResult = { ok: true; doc: SectionDoc; receipt: DiffReceipt }
 
 // Friendly labels for which style knob changed — matches the plan's own
 // illustrative receipt text ("Hero (headline size)").
-const STYLE_CHANGE_LABEL: Record<keyof SectionStyleKnobs, string> = {
+export const STYLE_CHANGE_LABEL: Record<keyof SectionStyleKnobs, string> = {
   headline: "headline size",
   align: "alignment",
   tone: "tone",
   pad: "padding",
+  bg: "background",
+  width: "width",
+  divider: "divider",
+  reverse: "reversed layout",
 }
 
 function zodIssuesToStrings(error: z.ZodError): string[] {
@@ -184,12 +204,15 @@ function zodIssuesToStrings(error: z.ZodError): string[] {
 }
 
 /**
- * Shallow-merges a props patch over the current props, treating an explicit
+ * Shallow-merges a patch over a current object — `props` or `style` alike
+ * (fix-wave bug 1 generalised this from props-only) — treating an explicit
  * `null` in the patch as "delete this key" rather than "set it to null" —
  * the only way to express removing an optional field over a wire format
- * (JSON) with no `undefined`. See the CRITICAL 2 comment at the call site.
+ * (JSON) with no `undefined`. See the CRITICAL 2 comment at the `props` call
+ * site, and `sectionStylePatchSchema` (registry.ts) for why `style` can now
+ * reach this function with a `null` in it at all.
  */
-function applyPropsPatch(current: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+function applyDeletingPatch(current: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
   const next: Record<string, unknown> = { ...current }
   for (const [key, value] of Object.entries(patch)) {
     if (value === null) {
@@ -459,8 +482,18 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
       // REQUIRED field still fails below, at the post-merge `parseSection`
       // check — deleting `hero.headline` produces a candidate missing a
       // required key, which is exactly what that check exists to catch.
-      const mergedProps = propsPatch ? applyPropsPatch(current.props, propsPatch) : current.props
-      const mergedStyle = stylePatch ? { ...current.style, ...stylePatch } : current.style
+      const mergedProps = propsPatch ? applyDeletingPatch(current.props, propsPatch) : current.props
+      // `applyDeletingPatch`, NOT a plain `{...current.style, ...stylePatch}`
+      // spread (fix-wave bug 1): a plain spread can ADD and REPLACE a style
+      // key but never REMOVE one — `{ bg: null }` would have SET `style.bg`
+      // to the literal value `null` instead of deleting it, which
+      // `sectionStyleSchema` (the STORED shape, still non-nullable) would
+      // then reject at the `parseSection` check below. Every style key is
+      // optional (registry.ts), so deleting any of them is legal and just
+      // means "fall back to the default" — exactly like `props` above.
+      const mergedStyle = stylePatch
+        ? (applyDeletingPatch(current.style, stylePatch as Record<string, unknown>) as typeof current.style)
+        : current.style
       const mergedVariant = op.variant ?? current.variant
       const candidate = {
         id: current.id,
@@ -568,10 +601,17 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
     }
 
     if (op.op === "set_theme") {
-      // Partial merge over the existing theme (plan §4, line 351/355):
-      // `{...theme, ...op.theme}`. `sections` is left as whatever it
-      // already was — untouched by this op, so if nothing else in the
-      // batch touched it, it is still the literal `doc.sections` array.
+      // Partial merge over the existing theme (plan §4, line 351/355), now
+      // via `applyDeletingPatch` instead of a plain `{...theme, ...op.theme}`
+      // spread (final whole-branch review, finding 3, 2026-09-13) — same
+      // reasoning as `style` above: a plain spread can ADD and REPLACE a key
+      // but never REMOVE one, so there was no way to send a page's palette
+      // back to "use the tenant brand kit". `sectionDocThemePatchSchema`
+      // (registry.ts) is what lets `null` reach here at all, and only for
+      // the keys that are actually optional on the stored theme —
+      // `tone`/`accent`/`radius` are required there, so a patch naming one of
+      // them `null` never gets this far; it fails Phase 1's `opSchema`
+      // validation above.
       //
       // An EMPTY theme patch (`{op:"set_theme", theme:{}}`) is a valid op
       // shape but genuinely changes nothing, so `themeChanged` is only set
@@ -579,7 +619,7 @@ export function applyOps(doc: SectionDoc, rawOps: unknown): ApplyOpsResult {
       // receipt would claim a theme change that didn't happen (Fix round 1,
       // minor).
       if (Object.keys(op.theme).length > 0) {
-        theme = { ...theme, ...op.theme }
+        theme = applyDeletingPatch(theme, op.theme as Record<string, unknown>) as SectionDocTheme
         themeChanged = true
       }
       continue

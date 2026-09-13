@@ -62,6 +62,9 @@ import { auth } from "@/lib/auth"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
 import { reassemble } from "@/lib/funnels/sections/doc"
+import type { BrandKit } from "@/lib/funnels/sections/render"
+import { resolveBrandKit } from "@/lib/funnels/brand-kit"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { sectionDocSchema } from "@/lib/funnels/sections/registry"
 import { loadCatalogues, publishGate, resolveDoc } from "@/lib/funnels/sections/resolve"
 import type { RenderForPublishResult, SectionDoc } from "./types"
@@ -75,10 +78,7 @@ import type { RenderForPublishResult, SectionDoc } from "./types"
  * below is still made, because a server action is a public POST endpoint and
  * a bound argument is not an authorisation.
  */
-export async function renderDocForPublish(
-  stepId: string,
-  doc: SectionDoc,
-): Promise<RenderForPublishResult> {
+export async function renderDocForPublish(stepId: string, doc: SectionDoc): Promise<RenderForPublishResult> {
   const session = await auth()
   if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
     return { ok: false, blockers: ["You do not have permission to publish this page."], warnings: [] }
@@ -129,18 +129,26 @@ export async function renderDocForPublish(
     console.error("[funnels/publish-actions] could not check this page's links:", error)
     return {
       ok: false,
-      blockers: [
-        `This page's links could not be checked, so it was not published: ${(error as Error).message}`,
-      ],
+      blockers: [`This page's links could not be checked, so it was not published: ${(error as Error).message}`],
       warnings: [],
     }
   }
 
+  // The tenant's brand kit, for `reassemble`'s palette default -- the same
+  // wiring as the build route, the funnel-wide publish route and both draft
+  // previews, so a page previewed with a tenant's colours publishes with the
+  // same ones. Wrapped: a failed read must cost only the palette default,
+  // never this publish.
+  let brandKit: BrandKit | null = null
   try {
-    const { html, css, problems } = reassemble(
-      resolvedDoc,
-      funnelBasePath ? { funnelBasePath } : {},
-    )
+    const { businessId } = await resolveAdminTenant()
+    brandKit = await resolveBrandKit(businessId)
+  } catch (error) {
+    console.error("[funnels/publish-actions] brand kit read failed — continuing without it:", error)
+  }
+
+  try {
+    const { html, css, problems } = reassemble(resolvedDoc, { ...(funnelBasePath ? { funnelBasePath } : {}), brandKit })
     return { ok: true, html, css, problems: problems.map((p) => p.message), warnings: gateWarnings }
   } catch (error) {
     return {

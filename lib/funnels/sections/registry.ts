@@ -18,6 +18,7 @@
 
 import { z } from "zod"
 import { formIslandSchema, quizIslandSchema, SAFE_LINK } from "@/lib/funnels/islands"
+import { PALETTE_PRESETS } from "@/lib/funnels/sections/palettes"
 
 // ---------------------------------------------------------------------------
 // SectionDoc / Section — the data model (plan §1a, lines 58-83, copied
@@ -29,11 +30,11 @@ import { formIslandSchema, quizIslandSchema, SAFE_LINK } from "@/lib/funnels/isl
 export interface SectionDoc {
   v: 1
   engine: "sections"
-  theme: {
-    tone: "light" | "dark"
-    accent: "accent" | "primary"
-    radius: "sharp" | "soft" | "round"
-  }
+  // `tone`/`accent`/`radius` stay required; `palette`/`font`/`density`/`width`/`rhythm`
+  // are the design-system widening (spec §3) — every one OPTIONAL, so a stored
+  // three-key theme keeps parsing forever. See `SectionDocTheme` (z.infer'd from
+  // `sectionDocThemeSchema` below) for the authoritative shape.
+  theme: SectionDocTheme
   sections: Section[] // 1..24
 }
 
@@ -41,12 +42,9 @@ export interface Section {
   id: string // short, stable: "h1", "b2" — also the anchor target
   kind: SectionKind // one of 9
   variant: string // constrained per kind
-  style: {
-    headline?: "sm" | "md" | "lg" | "xl"
-    align?: "left" | "center"
-    tone?: "default" | "muted" | "accent" | "dark"
-    pad?: "tight" | "normal" | "roomy"
-  }
+  // See `SectionStyleKnobs` (z.infer'd from `sectionStyleSchema` below) for the
+  // authoritative shape — the per-section style widening (spec §4).
+  style: SectionStyleKnobs
   props: Record<string, unknown> // validated by the kind's Zod schema
 }
 
@@ -127,6 +125,31 @@ export type SectionIcon = (typeof SECTION_ICONS)[number]
 const sectionIconSchema = z.enum(SECTION_ICONS)
 
 // ---------------------------------------------------------------------------
+// Item media (design-system spec §5.2) — "media beyond the hero". Until now
+// `heroMediaSchema` was the document's ONLY image field; this is the same
+// URL-goes-through-`safeUrl` discipline (Task 6's background image, the
+// hero's own media) applied to a single decorative photo on a repeating item:
+// a bullet, a step, a testimonial quote, a pricing plan, or the cta section.
+//
+// Deliberately NOT `heroMediaSchema`: no `kind:"youtube"` (an item photo is
+// decorative, not an above-the-fold embed) and no required `w`/`h` — the
+// hero's dimensions exist to reserve layout space for the page's biggest,
+// most likely LCP element; an item thumbnail is never that.
+//
+// EVERY FIELD BUT `src` IS OPTIONAL, AND `media` ITSELF IS ALWAYS OPTIONAL ON
+// ITS PARENT. Same reasoning as every other Task-6/7 widening: `SectionDoc`
+// is stored JSON and `reassemble()` parses it on every render, so an item with
+// no `media` key must keep parsing exactly as it always has.
+// ---------------------------------------------------------------------------
+
+export const itemMediaSchema = z.object({
+  src: z.string().min(1).max(500),
+  alt: z.string().max(200).optional(),
+})
+
+export type ItemMedia = z.infer<typeof itemMediaSchema>
+
+// ---------------------------------------------------------------------------
 // Shared style knobs (plan §1a). All optional — a section with `style: {}`
 // renders at every default. Rendered as `data-h` / `data-align` / `data-tone`
 // / `data-pad` attributes (constraint 3, §2 lines 206): NEVER `data-djp-*`,
@@ -138,14 +161,110 @@ const sectionIconSchema = z.enum(SECTION_ICONS)
 // `:229` / `:234` by the time anyone checked them.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Colour — the security boundary (design-system spec §3.1 / §4).
+//
+// Every hex value below is emitted as a CSS custom property declaration
+// (`themeCss()`, a later task) or an inline style attribute. `safeStyle`
+// (lib/funnels/compile/sanitize.ts) drops `javascript:`, `expression(`,
+// `@import`, `behavior:` and `-moz-binding` — and passes everything else,
+// including `url(https://attacker.example/x)`. This regex is what actually
+// stands between a model's colour choice and CSS injection: anything not
+// matching `^#[0-9a-fA-F]{6}$` must fail here, before it ever reaches CSS.
+// ---------------------------------------------------------------------------
+
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Colour must be a six-digit hex like #3a7d44")
+
+// ---------------------------------------------------------------------------
+// Palette (design-system spec §3.1). A custom palette is two colours, not
+// seven — `resolvePalette()` (palettes.ts) derives the full seven-token row
+// deterministically, with contrast as a property of that function rather
+// than a hope about the model. `PALETTE_PRESETS` is Task 2's contrast-
+// checked table of twelve names.
+// ---------------------------------------------------------------------------
+
+export const paletteSchema = z.union([
+  z.object({ preset: z.enum(PALETTE_PRESETS) }),
+  z.object({ brand: hexColor, accent: hexColor.optional(), mode: z.enum(["light", "dark"]).optional() }),
+])
+
+export type SectionPalette = z.infer<typeof paletteSchema>
+
+// ---------------------------------------------------------------------------
+// Section background (design-system spec §4). `kind:"image"` is the one
+// knob in this whole build that emits an inline style rather than a data
+// attribute, because the URL is per-section data and cannot live in a
+// stylesheet — the renderer (a later task) passes `src` through `safeUrl`
+// the same way the hero's media already does, and the model may never
+// invent one: `kind:"image"` is only legal with a `src` the owner supplied.
+// ---------------------------------------------------------------------------
+
+export const sectionBgSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("none") }),
+  z.object({
+    kind: z.literal("gradient"),
+    from: hexColor,
+    to: hexColor,
+    angle: z.number().int().min(0).max(360).optional(),
+  }),
+  z.object({
+    kind: z.literal("image"),
+    src: z.string().min(1).max(500),
+    overlay: z.number().min(0).max(0.9).optional(),
+    position: z.enum(["center", "top", "bottom"]).optional(),
+  }),
+])
+
+export type SectionBg = z.infer<typeof sectionBgSchema>
+
 export const sectionStyleSchema = z.object({
   headline: z.enum(["sm", "md", "lg", "xl"]).optional(),
-  align: z.enum(["left", "center"]).optional(),
+  align: z.enum(["left", "center", "right"]).optional(),
   tone: z.enum(["default", "muted", "accent", "dark"]).optional(),
   pad: z.enum(["tight", "normal", "roomy"]).optional(),
+
+  // New per-section knobs (design-system spec §4). Every one optional, same
+  // reason as the theme widening: `style: {}` must keep rendering at every
+  // default forever.
+  bg: sectionBgSchema.optional(),
+  width: z.enum(["narrow", "normal", "wide", "full"]).optional(),
+  divider: z.enum(["none", "line", "angle", "curve", "fade"]).optional(),
+  reverse: z.boolean().optional(),
 })
 
 export type SectionStyleKnobs = z.infer<typeof sectionStyleSchema>
+
+// ---------------------------------------------------------------------------
+// The STYLE PATCH shape `update_section.style` actually accepts (apply.ts) —
+// fix-wave bug 1. `sectionStyleSchema` above is the STORED shape (what a
+// `Section.style` on the document itself may hold), and every one of its
+// eight keys is `.optional()` there for the reason its own comment gives:
+// deleting any of them is legal and just means "fall back to the default".
+// But "optional" only ever meant "may be OMITTED from a patch" — an
+// omitted key is left alone by a shallow merge, never a way to REMOVE a key
+// that is already set. `null` is the only delete sentinel that survives JSON
+// (`undefined` does not), and until this fix `sectionStyleSchema.partial()`
+// (the schema `apply.ts` actually validated a patch against) still rejected
+// `null` outright: `{ style: { bg: null } }` — the inspector's own "None"
+// button for a section background, and the pre-existing "use the page
+// default" tone control — failed Zod validation before `applyOps` ever got a
+// chance to merge anything.
+//
+// Derived from `sectionStyleSchema.shape` (not restated key-by-key) so a
+// ninth knob added there is nullable here for free, the same "ask the
+// validator, never restate it" reasoning `apply.ts`'s own comments already
+// apply to the size cap and the duplicate-id check. Every key stays
+// `.optional()` too (via `.nullable()` wrapping an already-optional inner
+// schema): a patch may still omit a key entirely to leave it untouched.
+// ---------------------------------------------------------------------------
+
+export const sectionStylePatchSchema = z.object(
+  Object.fromEntries(
+    Object.entries(sectionStyleSchema.shape).map(([key, schema]) => [key, (schema as z.ZodTypeAny).nullable()]),
+  ),
+) as z.ZodType<{ [K in keyof SectionStyleKnobs]?: SectionStyleKnobs[K] | null }>
+
+export type SectionStylePatch = z.infer<typeof sectionStylePatchSchema>
 
 // ---------------------------------------------------------------------------
 // Section id — short, stable, and also used as the HTML anchor target for
@@ -165,12 +284,71 @@ const sectionIdSchema = z
 // ---------------------------------------------------------------------------
 
 export const sectionDocThemeSchema = z.object({
+  // existing, required, unchanged
   tone: z.enum(["light", "dark"]),
   accent: z.enum(["accent", "primary"]),
   radius: z.enum(["sharp", "soft", "round"]),
+
+  // new (design-system spec §3), every one OPTIONAL. `SectionDoc` is stored as
+  // JSON in `funnel_steps.project_data` and `reassemble()` parses it on every
+  // render — every existing draft holds a 3-key theme, so a required new key
+  // does not fail a migration, it fails every existing page, forever.
+  palette: paletteSchema.optional(),
+  font: z.enum(["athletic", "editorial", "clean", "bold", "technical"]).optional(),
+  density: z.enum(["tight", "normal", "airy"]).optional(),
+  width: z.enum(["narrow", "normal", "wide", "full"]).optional(),
+  rhythm: z.enum(["flat", "alternating", "banded"]).optional(),
 })
 
 export type SectionDocTheme = z.infer<typeof sectionDocThemeSchema>
+
+// ---------------------------------------------------------------------------
+// The THEME PATCH shape `set_theme.theme` actually accepts (apply.ts) —
+// final whole-branch review, finding 3 (2026-09-13). `sectionDocThemeSchema`
+// above is the STORED shape, and until this fix `apply.ts` validated a patch
+// against `sectionDocThemeSchema.partial()` — the exact same shape
+// `sectionStylePatchSchema`'s own comment already diagnosed as wrong for
+// `style`, ported over unfixed to `theme`: `.partial()` only lets a key be
+// OMITTED, never explicitly DELETED, so `{ palette: null }` — "go back to the
+// tenant's brand kit" — parsed as `undefined` was dropped by JSON, or was
+// rejected outright depending on how the caller shaped it, and there was no
+// spelling that survived the wire and meant "remove this". A page that took
+// a palette had no way back; `prompt.ts` tells the model "leaving `palette`
+// unset means match our other pages", which is unreachable after turn 1.
+//
+// UNLIKE `sectionStylePatchSchema`, not every key here is nullable:
+// `tone`/`accent`/`radius` are REQUIRED on `SectionDocTheme` (unchanged since
+// before the design-system widening), so nulling one would let `set_theme`
+// produce a document `sectionDocSchema` itself would refuse. Rather than
+// hand-listing which three are exempt, this asks `sectionDocThemeSchema`
+// itself: a key that is ALREADY optional there may be explicitly deleted
+// (`.nullable()`, same delete-sentinel shape as the style patch); a key that
+// is required there may only be OMITTED from a patch (`.optional()`, no
+// `.nullable()`) — so `{ tone: null }` fails Zod validation at
+// `opSchema.safeParse` (apply.ts Phase 1), before `applyOps` ever gets a
+// candidate document to merge, exactly like an invalid enum value would.
+// ---------------------------------------------------------------------------
+
+export const sectionDocThemePatchSchema = z.object(
+  Object.fromEntries(
+    Object.entries(sectionDocThemeSchema.shape).map(([key, schema]) => {
+      const s = schema as z.ZodTypeAny
+      return [key, s.isOptional() ? s.nullable() : s.optional()]
+    }),
+  ),
+) as z.ZodType<SectionDocThemePatch>
+
+// Derived from `SectionDocTheme` itself, not a hand-typed `"tone" | "accent" |
+// "radius"` list: a key is "required" here exactly when it does NOT already
+// accept `undefined` on the stored shape, mirroring the runtime `isOptional()`
+// check above so the type can never drift from the validator it describes.
+type RequiredThemeKeys = { [K in keyof SectionDocTheme]-?: undefined extends SectionDocTheme[K] ? never : K }[keyof SectionDocTheme]
+
+export type SectionDocThemePatch = {
+  [K in RequiredThemeKeys]?: SectionDocTheme[K]
+} & {
+  [K in Exclude<keyof SectionDocTheme, RequiredThemeKeys>]?: SectionDocTheme[K] | null
+}
 
 // ---------------------------------------------------------------------------
 // Section kinds — a closed set (plan §2 table, lines 190-200, plus `proof`).
@@ -206,7 +384,7 @@ export function isSectionKind(value: unknown): value is SectionKind {
 // hero
 // ---------------------------------------------------------------------------
 
-const HERO_VARIANTS = ["centered", "split", "image-bg"] as const
+const HERO_VARIANTS = ["centered", "split", "image-bg", "stacked", "side-form"] as const
 
 const heroMediaSchema = z.object({
   kind: z.enum(["image", "youtube"]),
@@ -243,7 +421,7 @@ export type HeroSectionProps = z.infer<typeof heroPropsSchema>
 // needs an asset picker, not a prompt.
 // ---------------------------------------------------------------------------
 
-const PROOF_VARIANTS = ["strip", "stats"] as const
+const PROOF_VARIANTS = ["strip", "stats", "cards", "inline"] as const
 
 const proofItemSchema = z.object({
   /** The number or short claim: "500+", "12 years", "World Champion". */
@@ -263,12 +441,13 @@ export type ProofSectionProps = z.infer<typeof proofPropsSchema>
 // bullets
 // ---------------------------------------------------------------------------
 
-const BULLETS_VARIANTS = ["cards", "list", "numbered"] as const
+const BULLETS_VARIANTS = ["cards", "list", "numbered", "grid-2", "icon-row"] as const
 
 const bulletItemSchema = z.object({
   title: z.string().min(1).max(100),
   body: z.string().max(300).optional(),
   icon: sectionIconSchema.optional(),
+  media: itemMediaSchema.optional(),
 })
 
 export const bulletsPropsSchema = z.object({
@@ -283,11 +462,12 @@ export type BulletsSectionProps = z.infer<typeof bulletsPropsSchema>
 // steps
 // ---------------------------------------------------------------------------
 
-const STEPS_VARIANTS = ["numbered", "timeline"] as const
+const STEPS_VARIANTS = ["numbered", "timeline", "cards", "alternating"] as const
 
 const stepItemSchema = z.object({
   title: z.string().min(1).max(100),
   body: z.string().max(300).optional(),
+  media: itemMediaSchema.optional(),
 })
 
 export const stepsPropsSchema = z.object({
@@ -306,12 +486,13 @@ export type StepsSectionProps = z.infer<typeof stepsPropsSchema>
 // simultaneously both or neither.
 // ---------------------------------------------------------------------------
 
-const TESTIMONIAL_VARIANTS = ["stack", "grid"] as const
+const TESTIMONIAL_VARIANTS = ["stack", "grid", "feature", "carousel-static"] as const
 
 const testimonialQuoteSchema = z.object({
   quote: z.string().min(1).max(500),
   name: z.string().min(1).max(120),
   detail: z.string().max(160).optional(),
+  media: itemMediaSchema.optional(),
 })
 
 export const testimonialPropsSchema = z.discriminatedUnion("source", [
@@ -332,7 +513,7 @@ export type TestimonialSectionProps = z.infer<typeof testimonialPropsSchema>
 // pricing
 // ---------------------------------------------------------------------------
 
-const PRICING_VARIANTS = ["cards", "single"] as const
+const PRICING_VARIANTS = ["cards", "single", "table", "highlight"] as const
 
 const pricingPlanSchema = z.object({
   name: z.string().min(1).max(60),
@@ -342,6 +523,7 @@ const pricingPlanSchema = z.object({
   features: z.array(z.string().min(1).max(160)).min(1).max(8),
   cta: ctaWithLabelSchema,
   highlight: z.boolean().optional(),
+  media: itemMediaSchema.optional(),
 })
 
 export const pricingPropsSchema = z.object({
@@ -357,7 +539,7 @@ export type PricingSectionProps = z.infer<typeof pricingPropsSchema>
 // testimonial above.
 // ---------------------------------------------------------------------------
 
-const FAQ_VARIANTS = ["stack"] as const
+const FAQ_VARIANTS = ["stack", "two-col", "cards", "bordered"] as const
 
 const faqInlineItemSchema = z.object({
   q: z.string().min(1).max(200),
@@ -393,7 +575,7 @@ export type FaqSectionProps = z.infer<typeof faqPropsSchema>
 // inside a different wrapper. `proofPoints` are the two or three lines of
 // reassurance that sit beside a form ("No payment now", "Coached in person"),
 // and the other two variants ignore them.
-const FORM_VARIANTS = ["boxed", "band", "split"] as const
+const FORM_VARIANTS = ["boxed", "band", "split", "stacked"] as const
 
 export const formSectionPropsSchema = z.intersection(
   z.object({
@@ -418,10 +600,14 @@ export type FormSectionProps = z.infer<typeof formSectionPropsSchema>
 // The design assumed adding to ISLAND_NAMES was sufficient; it is not.
 // ---------------------------------------------------------------------------
 
-// ONE variant, like `faq`. A second was declared briefly and removed: nothing
-// in QUIZ_CSS distinguished it from `boxed`, so it was a choice the owner could
-// make that changed nothing on the page. Add `band` the day it has styling.
-const QUIZ_VARIANTS = ["boxed"] as const
+// A second variant (`band`) was declared briefly and removed once before:
+// nothing in QUIZ_CSS distinguished it from `boxed`, so it was a choice the
+// owner could make that changed nothing on the page. `band` and `split` are
+// reintroduced here as part of the design-system widening (spec §5.1) with
+// real CSS landing in a later task — quiz sits behind `NOT_OFFERED_TO_THE_BUILDER`
+// (prompt.ts), so the extra names cost nothing in the model's prompt and are
+// reachable only through the inspector.
+const QUIZ_VARIANTS = ["boxed", "band", "split"] as const
 
 export const quizSectionPropsSchema = z.intersection(
   z.object({
@@ -437,12 +623,13 @@ export type QuizSectionProps = z.infer<typeof quizSectionPropsSchema>
 // cta
 // ---------------------------------------------------------------------------
 
-const CTA_VARIANTS = ["band", "boxed"] as const
+const CTA_VARIANTS = ["band", "boxed", "split", "minimal"] as const
 
 export const ctaPropsSchema = z.object({
   headline: z.string().min(1).max(160),
   sub: z.string().max(300).optional(),
   cta: ctaWithLabelSchema,
+  media: itemMediaSchema.optional(),
 })
 
 export type CtaSectionProps = z.infer<typeof ctaPropsSchema>
@@ -451,7 +638,7 @@ export type CtaSectionProps = z.infer<typeof ctaPropsSchema>
 // footer
 // ---------------------------------------------------------------------------
 
-const FOOTER_VARIANTS = ["simple", "columns"] as const
+const FOOTER_VARIANTS = ["simple", "columns", "centered"] as const
 
 // `{label, target}` is exactly `ctaWithLabelSchema` — this is the shape the
 // reviewer told the rest of the CTA sites to mirror, so footer reuses the
@@ -593,16 +780,20 @@ const formDef: SectionDef<"form"> = {
     // and cannot tell from them that a checkout form with a missing role is
     // REFUSED AT PUBLISH. Said here rather than in prompt.ts so it travels with
     // the schema it constrains.
-    'NEVER WRITE successMode "checkout" AND NEVER WRITE eventId. A form that sells a camp ' +
-    "needs a camp id that only the owner can supply, in the builder, so a checkout form you " +
-    "wrote yourself could never be completed — and because eventId is required for that mode, " +
-    "the whole batch of ops would be rejected and the owner's turn would fail. Write " +
-    'successMode "message" or "redirect".' +
-    " IF A FORM ALREADY HAS successMode \"checkout\", KEEP IT AND KEEP ITS eventId EXACTLY AS " +
-    "THEY ARE — the owner switched that on deliberately. Such a form must keep a field for each " +
-    "of parent_name, parent_email, athlete_name, athlete_age and waiver_accepted, each carrying " +
-    "that value in its `role`, with the waiver field a required checkbox. Dropping any of them, " +
-    "or the eventId, makes the page impossible to publish.",
+    //
+    // COMPACTED 2026-09-13 (task 10): the prohibition and the "already has
+    // checkout" exception used to each be stated three times over (once as the
+    // rule, once as the reason, once again at the end). Every fact below is
+    // stated exactly once; the required-role names are also carried by the
+    // generated `role` enum in the signature above, so dropping them here loses
+    // no coverage — `prompt.test.ts` pins the required substrings by name.
+    'NEVER WRITE successMode "checkout" and never write eventId — only the owner can supply a ' +
+    "real eventId, and a checkout form you invent has no way to be completed, so the whole " +
+    'batch is rejected and cannot be published. Write successMode "message" or "redirect" ' +
+    'instead. A form that already has successMode "checkout": KEEP IT AND KEEP ITS eventId ' +
+    "exactly as they are, along with its parent_name, parent_email, athlete_name, athlete_age " +
+    "and waiver_accepted fields (each carrying that value in `role`, waiver_accepted a required " +
+    "checkbox) — dropping any of them also makes the page impossible to publish.",
   variants: FORM_VARIANTS,
   propsSchema: formSectionPropsSchema,
   schema: formSchema,

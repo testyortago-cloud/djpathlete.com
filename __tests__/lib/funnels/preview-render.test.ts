@@ -12,6 +12,7 @@ vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.f
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
+vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
 
 import { renderDraftPreview } from "@/lib/funnels/preview-render"
 import { getDraft } from "@/lib/db/funnel-builder"
@@ -20,6 +21,7 @@ import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
+import { getBusinessSettings } from "@/lib/db/businesses"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
@@ -149,5 +151,97 @@ describe("renderDraftPreview", () => {
     const normalise = (s: string) => s.split("/preview/summer-camp").join("/go/summer-camp")
     expect(normalise(JSON.stringify(preview.nodes))).toBe(JSON.stringify(live.nodes))
     expect(preview.css).toBe(live.css)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The tenant brand kit — Task 9's wiring. Preview and publish disagreeing
+// about the same document is this subsystem's worst failure mode (see the
+// file header), so the load-bearing claim here is not just "the colour shows
+// up" but "the SAME businessId produces the SAME css every time it is asked",
+// which is exactly what both `/funnel-preview` and `/preview` depend on.
+// ---------------------------------------------------------------------------
+
+const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
+
+describe("renderDraftPreview — the tenant brand kit", () => {
+  it("passes the tenant's brand colour into the rendered css", async () => {
+    mock(getDraft).mockResolvedValue({ doc: DOC, docInvalid: false, revision: 3 })
+    mock(getBusinessSettings).mockResolvedValue({ brand_color: "#6d28d9", accent_color: null })
+
+    const result = await renderDraftPreview({
+      stepId: STEP_ID,
+      funnelId: FUNNEL_ID,
+      funnelBasePath: "/preview/summer-camp",
+      businessId: BUSINESS_ID,
+    })
+
+    expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
+    if (result.kind !== "ok") throw new Error("expected the draft to render")
+    expect(result.css).toContain("--primary: #6d28d9")
+  })
+
+  it("skips the read entirely when no businessId is given (the default)", async () => {
+    // MUTANT: calling `getBusinessSettings` with a falsy id instead of
+    // short-circuiting. Existing callers of this function predate the brand
+    // kit and pass no `businessId` at all — this is what keeps them rendering
+    // exactly as they did before Task 9.
+    mock(getDraft).mockResolvedValue({ doc: DOC, docInvalid: false, revision: 3 })
+    const result = await renderDraftPreview({
+      stepId: STEP_ID,
+      funnelId: FUNNEL_ID,
+      funnelBasePath: "/preview/summer-camp",
+    })
+    expect(getBusinessSettings).not.toHaveBeenCalled()
+    if (result.kind !== "ok") throw new Error("expected the draft to render")
+    expect(result.css).not.toMatch(/--primary:/)
+  })
+
+  it("degrades to no brand kit when the business_settings read throws — still renders", async () => {
+    // MUTANT: an unwrapped brand-kit read turning "look at my draft" into an
+    // error page — exactly the failure mode this module's header warns is the
+    // one place preview may differ from publish (it fails SOFT).
+    mock(getDraft).mockResolvedValue({ doc: DOC, docInvalid: false, revision: 3 })
+    mock(getBusinessSettings).mockRejectedValue(new Error("business_settings unreachable"))
+
+    const result = await renderDraftPreview({
+      stepId: STEP_ID,
+      funnelId: FUNNEL_ID,
+      funnelBasePath: "/preview/summer-camp",
+      businessId: BUSINESS_ID,
+    })
+
+    if (result.kind !== "ok") throw new Error("a brand-kit failure must not turn the draft into an error page")
+    expect(result.css).not.toMatch(/--primary:/)
+  })
+
+  it("PREVIEW AND PUBLISH PARITY: the same businessId resolves the same brand kit for the same document", async () => {
+    // This is the constraint the whole shared-renderer module exists to
+    // guarantee, extended to the brand kit: `/funnel-preview` (the builder's
+    // iframe, `/go/<slug>` base) and `/preview` (the full-screen draft,
+    // `/preview/<slug>` base) both call this same function with the same
+    // businessId for the same step, and must never disagree about colour.
+    mock(getBusinessSettings).mockResolvedValue({ brand_color: "#6d28d9", accent_color: "#f59e0b" })
+
+    mock(getDraft).mockResolvedValue({ doc: DOC, docInvalid: false, revision: 3 })
+    const iframe = await renderDraftPreview({
+      stepId: STEP_ID,
+      funnelId: FUNNEL_ID,
+      funnelBasePath: "/go/summer-camp",
+      businessId: BUSINESS_ID,
+    })
+    mock(getDraft).mockResolvedValue({ doc: DOC, docInvalid: false, revision: 3 })
+    const fullScreen = await renderDraftPreview({
+      stepId: STEP_ID,
+      funnelId: FUNNEL_ID,
+      funnelBasePath: "/preview/summer-camp",
+      businessId: BUSINESS_ID,
+    })
+
+    if (iframe.kind !== "ok" || fullScreen.kind !== "ok") throw new Error("both should render")
+    const normalise = (s: string) => s.split("/preview/summer-camp").join("/go/summer-camp")
+    expect(normalise(fullScreen.css)).toBe(iframe.css)
+    expect(iframe.css).toContain("--primary: #6d28d9")
+    expect(iframe.css).toContain("--accent: #f59e0b")
   })
 })

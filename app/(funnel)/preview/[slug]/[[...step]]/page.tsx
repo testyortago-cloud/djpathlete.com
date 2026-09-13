@@ -31,6 +31,7 @@
 
 import { notFound } from "next/navigation"
 import { auth } from "@/lib/auth"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { NodeRenderer } from "@/components/funnels/NodeRenderer"
 import { PreviewPill } from "@/components/funnels/PreviewPill"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile"
@@ -111,6 +112,16 @@ export default async function DraftPreviewPage({ params }: PageProps) {
   const target = stepSlug ? steps.find((s) => s.slug === stepSlug) : steps.find((s) => s.is_entry)
   if (!target) notFound()
 
+  // The tenant's brand kit, so this preview agrees with publish about the same
+  // document -- see `renderDraftPreview`'s own comment on why a failed read
+  // degrades to `null` rather than costing the preview anything.
+  let businessId: string | null = null
+  try {
+    ;({ businessId } = await resolveAdminTenant())
+  } catch (error) {
+    console.error("[preview] tenant resolution for brand kit failed — continuing without it:", error)
+  }
+
   const result = await renderDraftPreview({
     stepId: target.id,
     funnelId: funnel.id,
@@ -118,6 +129,7 @@ export default async function DraftPreviewPage({ params }: PageProps) {
     funnelBasePath: previewBasePath(funnel.slug),
     // NEVER from the URL — see the header.
     editable: false,
+    businessId,
   })
 
   // Rendered in every branch, including the ones that are not a page: an owner

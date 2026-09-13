@@ -183,17 +183,21 @@ ${ROOT}, ${ROOT} *, ${ROOT} *::before, ${ROOT} *::after { box-sizing: border-box
    future rule in this file remembering not to write margin. The section
    keeps its full-bleed background; only its CONTENT is inset. */
 ${ROOT} .djp-s {
-  font-family: var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif);
+  font-family: var(--djp-font-body, var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif));
   color: var(--foreground);
   padding-block: 3rem;
-  padding-inline: max(1.25rem, calc((100% - 72rem) / 2));
+  padding-inline: max(1.25rem, calc((100% - var(--djp-maxw, 72rem)) / 2));
 }
-${ROOT} .djp-s > * { max-width: 72rem; margin-inline: auto; }
+${ROOT} .djp-s > * { max-width: var(--djp-maxw, 72rem); margin-inline: auto; }
 
-/* pad knob */
-${ROOT} .djp-s[data-pad="tight"] { padding-block: 1.5rem; }
-${ROOT} .djp-s[data-pad="normal"] { padding-block: 3rem; }
-${ROOT} .djp-s[data-pad="roomy"] { padding-block: 5.5rem; }
+/* pad knob — each length scaled by the density multiplier doc.ts's themeCss
+   emits as --djp-density (a unitless x1 no-op when absent, so an untouched
+   page's computed padding is identical to the bare length below). NO
+   BACKTICKS in this comment — see the note above on why one would stop the
+   whole file parsing. */
+${ROOT} .djp-s[data-pad="tight"] { padding-block: calc(1.5rem * var(--djp-density, 1)); }
+${ROOT} .djp-s[data-pad="normal"] { padding-block: calc(3rem * var(--djp-density, 1)); }
+${ROOT} .djp-s[data-pad="roomy"] { padding-block: calc(5.5rem * var(--djp-density, 1)); }
 
 /* align knob */
 ${ROOT} .djp-s[data-align="left"] { text-align: left; }
@@ -210,6 +214,92 @@ ${ROOT} .djp-s[data-tone="accent"] .djp-hd,
 ${ROOT} .djp-s[data-tone="dark"] .djp-hd { color: inherit; }
 ${ROOT} .djp-s[data-tone="accent"] .djp-sub,
 ${ROOT} .djp-s[data-tone="dark"] .djp-sub { color: inherit; opacity: 0.85; }
+
+/* width knob (design-system spec §4). Overrides --djp-maxw FOR THIS SECTION
+   ONLY — the variable is read by the .djp-s > * rule above; the pad knob's
+   density calc has nothing to do with it, so redeclaring it here on the
+   section element cascades down to its own children without touching any
+   sibling. "normal" is not its own case: 72rem is already the bare fallback
+   the var() supplies when no override is present, so an untouched section
+   (no width set, no data-width attribute at all) and one explicitly set to
+   "normal" render identically without a rule needed for the latter.
+   NO BACKTICKS in this comment — one closes the template literal. */
+${ROOT} .djp-s[data-width="narrow"] { --djp-maxw: 48rem; }
+${ROOT} .djp-s[data-width="wide"] { --djp-maxw: 88rem; }
+${ROOT} .djp-s[data-width="full"] { --djp-maxw: none; }
+
+/* divider knob (design-system spec §4) — a decorative treatment on the
+   section's own lower edge, entirely via ::after so it adds NO DOM: an
+   authored divider must never become a fourth thing a screen reader
+   announces or a click-to-edit anchor could ever target. Every colour comes
+   from a token already in this file (--border / --background), never a new
+   hardcoded value, so a divider on a dark or accent-toned section still
+   resolves the same way the rest of that section's palette does.
+
+   EVERY FILL BELOW IS background-image, NEVER PLAIN background OR
+   background-color. Two independent reasons, both load-bearing:
+     1. render.test.ts's tone-contrast harness (parseRules) reads exactly the
+        background / background-color / color properties off EVERY rule in
+        the stylesheet to model contrast, and its ::after handling is
+        selector-only: the pseudo flag is set from the SELECTOR STRING,
+        matched against ::before specifically. A ::after rule's pseudo flag
+        comes back null, so a background declared here would be attributed
+        to the REAL section element it is stripped down to, not to a
+        pseudo-element that does not exist in that model at all, corrupting
+        the exact contrast check this file exists to keep honest.
+        background-image is not one of the three properties the harness
+        reads, so it is invisible to that model by construction, not by
+        coincidence.
+     2. A flat, solid-colour linear-gradient(var(--x), var(--x)) is
+        otherwise indistinguishable from a plain fill — it just accomplishes
+        it through a property the harness does not model.
+   NO BACKTICKS in this comment — one closes the template literal. */
+${ROOT} .djp-s[data-divider="line"] { position: relative; }
+${ROOT} .djp-s[data-divider="line"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background-image: linear-gradient(var(--border), var(--border));
+  pointer-events: none;
+}
+${ROOT} .djp-s[data-divider="angle"] { position: relative; overflow: hidden; }
+${ROOT} .djp-s[data-divider="angle"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3rem;
+  background-image: linear-gradient(var(--background), var(--background));
+  clip-path: polygon(0 100%, 100% 0, 100% 100%);
+  pointer-events: none;
+}
+${ROOT} .djp-s[data-divider="curve"] { position: relative; overflow: hidden; }
+${ROOT} .djp-s[data-divider="curve"]::after {
+  content: "";
+  position: absolute;
+  left: -5%;
+  right: -5%;
+  bottom: -1px;
+  height: 3rem;
+  background-image: linear-gradient(var(--background), var(--background));
+  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  pointer-events: none;
+}
+${ROOT} .djp-s[data-divider="fade"] { position: relative; }
+${ROOT} .djp-s[data-divider="fade"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4rem;
+  background-image: linear-gradient(to bottom, transparent, var(--background));
+  pointer-events: none;
+}
 
 /* SECTION BOUNDARY — the fix for "the spacing looks off".
 
@@ -255,14 +345,30 @@ ${ROOT} .djp-s[data-tone="dark"] + .djp-s[data-tone="dark"] {
 }
 
 /* TONE CONTRAST PASS — see the block comment above THEME_CSS. Move 1:
-   a panel inside a repainted section LIFTS, it does not switch to --surface. */
+   a panel inside a repainted section LIFTS, it does not switch to --surface.
+
+   Task 7 fix round: proof.djp-v-cards / steps.djp-v-cards / faq.djp-v-cards
+   were added here alongside bullets.djp-v-cards for the same reason —
+   without this, giving those three items a plain var(--surface) background
+   (to match bullets.djp-v-cards, per review) reproduces exactly the
+   collision this pass exists to prevent: on tone="muted" the item paints
+   the SAME token as the section behind it (gone), and on tone="accent"/
+   "dark" the item's inherited text (already forced to the tone's foreground
+   by the --muted-foreground override list below) sits on --surface, which
+   is not in that foreground's READABLE_ON pairing. */
 ${ROOT} .djp-s[data-tone="accent"].djp-s-bullets.djp-v-cards .djp-bullet-item,
+${ROOT} .djp-s[data-tone="accent"].djp-s-proof.djp-v-cards .djp-proof-item,
+${ROOT} .djp-s[data-tone="accent"].djp-s-steps.djp-v-cards .djp-step-item,
+${ROOT} .djp-s[data-tone="accent"].djp-s-faq.djp-v-cards .djp-faq-item,
 ${ROOT} .djp-s[data-tone="accent"] .djp-quote,
 ${ROOT} .djp-s[data-tone="accent"] .djp-plan,
 ${ROOT} .djp-s[data-tone="accent"].djp-s-cta.djp-v-boxed .djp-cta-inner {
   background: color-mix(in oklch, var(--accent-foreground) 12%, transparent);
 }
 ${ROOT} .djp-s[data-tone="dark"].djp-s-bullets.djp-v-cards .djp-bullet-item,
+${ROOT} .djp-s[data-tone="dark"].djp-s-proof.djp-v-cards .djp-proof-item,
+${ROOT} .djp-s[data-tone="dark"].djp-s-steps.djp-v-cards .djp-step-item,
+${ROOT} .djp-s[data-tone="dark"].djp-s-faq.djp-v-cards .djp-faq-item,
 ${ROOT} .djp-s[data-tone="dark"] .djp-quote,
 ${ROOT} .djp-s[data-tone="dark"] .djp-plan,
 ${ROOT} .djp-s[data-tone="dark"].djp-s-cta.djp-v-boxed .djp-cta-inner {
@@ -270,14 +376,17 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-cta.djp-v-boxed .djp-cta-inner {
 }
 
 /* Move 1 for the THIRD repainting tone. The "muted" tone paints the section
-   var(--surface) — the SAME token these five panels paint THEMSELVES — so
-   every card, plan, quote and boxed CTA on a muted section was a shape in its
-   own background's colour: not low-contrast, GONE. It is the accent/dark
+   var(--surface) — the SAME token these panels paint THEMSELVES — so every
+   card, plan, quote and boxed CTA on a muted section was a shape in its own
+   background's colour: not low-contrast, GONE. It is the accent/dark
    collision one pair over, and the same lift fixes it, washed with the
    NEUTRAL pair's foreground because that is the pair a muted section is in.
    (The first tone pass ran its collision check on "accent" and "dark" only,
    which is how this survived it; the suite now runs all four tones.) */
 ${ROOT} .djp-s[data-tone="muted"].djp-s-bullets.djp-v-cards .djp-bullet-item,
+${ROOT} .djp-s[data-tone="muted"].djp-s-proof.djp-v-cards .djp-proof-item,
+${ROOT} .djp-s[data-tone="muted"].djp-s-steps.djp-v-cards .djp-step-item,
+${ROOT} .djp-s[data-tone="muted"].djp-s-faq.djp-v-cards .djp-faq-item,
 ${ROOT} .djp-s[data-tone="muted"] .djp-quote,
 ${ROOT} .djp-s[data-tone="muted"] .djp-plan,
 ${ROOT} .djp-s[data-tone="muted"].djp-s-cta.djp-v-boxed .djp-cta-inner,
@@ -309,6 +418,39 @@ ${ROOT} .djp-s[data-tone="accent"] .djp-quote-name,
 ${ROOT} .djp-s[data-tone="dark"] .djp-plan-price,
 ${ROOT} .djp-s[data-tone="dark"] .djp-quote-name { color: inherit; }
 
+/* Move 2 for "muted", which the first pass of this rule missed entirely
+   (fix-wave bug 2). .djp-plan-price (below, PRICING_CSS) is hardcoded
+   color: var(--primary) — a fine pairing against a --primary-toned card
+   (accent/dark, fixed above), but .djp-plan's own background is --surface
+   on every OTHER tone, muted included, and nothing guarantees --primary
+   reads on --surface: deriveSurface (palettes.ts) only proves ink-vs-surface
+   clears AA, never brand-vs-surface. A dark-seeded palette (ember, midnight,
+   ...) can put a mid-tone brand red on a near-black surface, which is
+   exactly the "price unreadable on a muted pricing section" bug this rule
+   fixes.
+   color: inherit resolves to .djp-s[data-tone="muted"]'s own colour — which
+   muted never repaints (only background: above), so it is still the base
+   .djp-s { color: var(--foreground) } — the SAME ink token deriveSurface
+   already proved against --surface. No new colour is introduced; this only
+   stops .djp-plan-price opting itself out of a pair the page already
+   guarantees.
+   .djp-quote-name is NOT added here: its own hardcoded token is already
+   var(--foreground) (.djp-s-testimonial .djp-quote-name, further down), the
+   same value inherit would resolve to on a muted section — nothing to fix.
+
+   CONTRAST-SWEEP FIX (2026-09-13): .djp-hd (below) is the exact same hazard
+   and was missed by the same first pass — it is hardcoded color: var(--primary)
+   too, and accent/dark already carry it to color: inherit (the .djp-hd /
+   .djp-sub rule above the tone knob), but muted never did. Measured against
+   the real PALETTE_TABLE presets, --primary on --surface is 1.09:1 (ink),
+   1.82:1 (midnight), 2.11:1 (steel), 2.65:1 (plum), 2.92:1 (ember) — nowhere
+   close to 4.5:1. This is the live bug verified at /preview/sales-k9m0w: the
+   heading "One block, one price" dark-on-near-black inside a muted pricing
+   section. Same fix, same reasoning as .djp-plan-price above.
+   NO BACKTICKS in this comment — one closes the template literal. */
+${ROOT} .djp-s[data-tone="muted"] .djp-plan-price,
+${ROOT} .djp-s[data-tone="muted"] .djp-hd { color: inherit; }
+
 /* ...then all nine --muted-foreground classes. Opacity, not a second colour
    token, is what keeps them subordinate. */
 ${ROOT} .djp-s[data-tone="accent"] .djp-bullet-text,
@@ -333,10 +475,38 @@ ${ROOT} .djp-s[data-tone="dark"] .djp-footer-legal { color: inherit; opacity: 0.
 /* Move 3: shapes painted in their own background's token. The second .djp-ic
    selector is not a duplicate — PRICING_CSS's .djp-plan-features .djp-ic ties
    on specificity and wins on source order, so the icon inside a plan needs
-   the deeper selector to be reached at all. */
+   the deeper selector to be reached at all.
+
+   DARK and MUTED join ACCENT here (contrast-sweep fix, 2026-09-13). The
+   eyebrow and icons are hardcoded color: var(--accent). On ACCENT this is an
+   exact same-token collision against the section's own var(--accent)
+   background — the hazard this rule was originally written for. But DARK
+   (background: var(--primary)) and MUTED (background: var(--surface)) are
+   not an exact collision, and READABLE_ON (the pairing table in
+   render.test.ts) treats --accent as legal on --primary as a scope-invariant
+   fact about app/globals.css's four fixed themes — which is exactly the
+   assumption that does not hold for an arbitrary derived palette. Measured
+   against the real PALETTE_TABLE presets: accent-on-primary is 1.02:1 (ink),
+   1.31:1 (midnight), 1.56:1 (steel), 2.53:1 (ember); accent-on-surface is
+   1.11:1 (ink), 1.35:1 (steel), 2.40:1 (midnight). color: inherit resolves
+   to the tone's own guaranteed pair — primary-foreground on dark, the base
+   --foreground on muted — exactly like every other rule in this pass.
+
+   This sweep covers the ACCENT/DARK/MUTED tones only — it does NOT cover the
+   DEFAULT (untoned) case, where these same elements fall through to the base
+   rules below and paint bare --accent directly on --background/--surface.
+   That gap was a separate, real bug (final whole-branch review, finding 1,
+   2026-09-13) — see the --accent-on-paper fix on .djp-eyebrow / .djp-ic /
+   .djp-req below and in the FAQ/form-proof/quiz-progress rules further down. */
 ${ROOT} .djp-s[data-tone="accent"] .djp-eyebrow,
 ${ROOT} .djp-s[data-tone="accent"] .djp-ic,
-${ROOT} .djp-s[data-tone="accent"] .djp-plan-features .djp-ic { color: inherit; }
+${ROOT} .djp-s[data-tone="accent"] .djp-plan-features .djp-ic,
+${ROOT} .djp-s[data-tone="dark"] .djp-eyebrow,
+${ROOT} .djp-s[data-tone="dark"] .djp-ic,
+${ROOT} .djp-s[data-tone="dark"] .djp-plan-features .djp-ic,
+${ROOT} .djp-s[data-tone="muted"] .djp-eyebrow,
+${ROOT} .djp-s[data-tone="muted"] .djp-ic,
+${ROOT} .djp-s[data-tone="muted"] .djp-plan-features .djp-ic { color: inherit; }
 ${ROOT} .djp-s[data-tone="accent"] .djp-btn-primary,
 ${ROOT} .djp-s[data-tone="accent"].djp-s-bullets.djp-v-numbered .djp-bullet-item::before {
   background: var(--primary);
@@ -347,12 +517,23 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-steps .djp-step-item::before {
   color: var(--accent-foreground);
 }
 
-/* headline knob */
+/* headline knob
+   color: var(--primary-on-paper, var(--primary)) — contrast-sweep fix,
+   2026-09-13. This rule is the DEFAULT-tone ground state only: accent/dark
+   already override to color: inherit above (THEME_CSS's data-tone knob),
+   and muted got the same override in the same fix wave, so this base rule is
+   reached only when the section carries no repainted tone at all — i.e. text
+   directly on the page's own --background/--surface, never on a
+   --primary-painted band. --primary alone was never proven safe there
+   (deriveSurface only proves ink-vs-surface); --primary-on-paper is
+   (palettes.ts's deriveBrandOnPaper). The fallback to bare --primary
+   keeps a document with no palette rendering exactly as before — doc.ts only
+   emits --primary-on-paper inside its palette block. */
 ${ROOT} .djp-hd {
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
   font-weight: 700;
   line-height: 1.1;
-  color: var(--primary);
+  color: var(--primary-on-paper, var(--primary));
   margin: 0 0 0.75rem;
   font-size: clamp(1.5rem, 3.4vw, 2.25rem);
 }
@@ -369,12 +550,21 @@ ${ROOT} .djp-sub {
   max-width: 46rem;
 }
 
+/* color: var(--accent-on-paper, var(--accent)) — final whole-branch review,
+   finding 1 (2026-09-13). This is the DEFAULT-tone ground state only:
+   accent/dark/muted already override to color: inherit above (Move 3). Bare
+   --accent was never proven safe here (deriveSurface only proves
+   ink-vs-surface); --accent-on-paper is (palettes.ts's deriveAccentOnPaper),
+   the same fix already applied to --primary via --primary-on-paper. The
+   fallback to bare --accent keeps a document with no palette rendering
+   exactly as before — doc.ts only emits --accent-on-paper inside its
+   palette block. */
 ${ROOT} .djp-eyebrow {
   font-family: var(--font-mono, var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.8rem;
-  color: var(--accent);
+  color: var(--accent-on-paper, var(--accent));
   margin: 0 0 0.5rem;
 }
 
@@ -386,7 +576,7 @@ ${ROOT} .djp-btn {
   gap: 0.4rem;
   padding: 0.75rem 1.5rem;
   border-radius: var(--djp-radius, 0.6rem);
-  font-family: var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif);
+  font-family: var(--djp-font-body, var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif));
   font-weight: 600;
   text-decoration: none;
   border: 2px solid transparent;
@@ -483,6 +673,38 @@ ${ROOT} .djp-s-hero.djp-v-image-bg .djp-hero-copy {
   padding: 2rem;
   border-radius: var(--djp-radius, 0.6rem);
 }
+
+/* reverse knob (design-system spec §4) — swaps which side the copy vs. the
+   media sit on. Scoped to the two-column layouts only ("centered" is a
+   COLUMN, and "image-bg"'s media is absolutely positioned full-bleed behind
+   the copy) — a bare .djp-s-hero .djp-hero-inner rule at the same
+   specificity would land AFTER the centered variant's own flex-direction:
+   column in source order and silently flip it back to a row whenever an
+   author also set reverse: true.
+   NO BACKTICKS in this comment — one closes the template literal. */
+${ROOT} .djp-s[data-reverse="true"].djp-s-hero:not(.djp-v-centered):not(.djp-v-image-bg) .djp-hero-inner {
+  flex-direction: row-reverse;
+}
+
+/* stacked (design-system spec §5.1) — copy above media, both full width,
+   never side-by-side. Unlike "centered" (a column that also centres every
+   line of text via the align knob), stacked keeps whatever align the author
+   chose; it only changes which axis the two blocks stack on. */
+${ROOT} .djp-s-hero.djp-v-stacked .djp-hero-inner { flex-direction: column; }
+${ROOT} .djp-s-hero.djp-v-stacked .djp-hero-copy,
+${ROOT} .djp-s-hero.djp-v-stacked .djp-hero-media { flex: 1 1 auto; width: 100%; }
+
+/* side-form — media reads as a framed panel beside the copy rather than a
+   full-bleed photo, so a form island dropped in beside it (a later editor
+   move, not this renderer) reads as one composed layout. Border only, no
+   background: the panel's box is bordered, its ground stays whatever the
+   section itself already resolves to. */
+${ROOT} .djp-s-hero.djp-v-side-form .djp-hero-inner { align-items: stretch; }
+${ROOT} .djp-s-hero.djp-v-side-form .djp-hero-media {
+  flex: 1 1 20rem;
+  border: 1px solid var(--border);
+  padding: 0.75rem;
+}
 `.trim()
 
 export const BULLETS_CSS = `
@@ -496,12 +718,25 @@ ${ROOT} .djp-s-bullets .djp-bullets-list {
 }
 ${ROOT} .djp-s-bullets .djp-bullet-item { display: flex; gap: 0.85rem; align-items: flex-start; }
 ${ROOT} .djp-s-bullets .djp-bullet-title {
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
   font-size: 1.05rem;
   margin: 0 0 0.25rem;
 }
 ${ROOT} .djp-s-bullets .djp-bullet-text { margin: 0; color: var(--muted-foreground); font-size: 0.95rem; }
-${ROOT} .djp-s-bullets .djp-ic { color: var(--accent); margin-top: 0.2rem; }
+/* color: var(--accent-on-paper, var(--accent)) — same default-tone fix as
+   .djp-eyebrow above (final whole-branch review, finding 1). */
+${ROOT} .djp-s-bullets .djp-ic { color: var(--accent-on-paper, var(--accent)); margin-top: 0.2rem; }
+
+/* item media (design-system spec §5.2) — a small thumbnail beside the icon.
+   Absent on a bullet with no media: renderItemMedia emits nothing at all,
+   so this rule targets an element that may simply not exist. */
+${ROOT} .djp-s-bullets .djp-bullet-media {
+  width: 3.5rem;
+  height: 3.5rem;
+  object-fit: cover;
+  border-radius: var(--djp-radius, 0.6rem);
+  flex-shrink: 0;
+}
 
 ${ROOT} .djp-s-bullets.djp-v-cards .djp-bullet-item {
   flex-direction: column;
@@ -527,6 +762,17 @@ ${ROOT} .djp-s-bullets.djp-v-numbered .djp-bullet-item::before {
   font-weight: 700;
   font-size: 0.85rem;
 }
+
+/* grid-2 (design-system spec §5.1) — an explicit two-up grid regardless of
+   viewport width, unlike the base list's auto-fit (which collapses to one
+   column on its own once items no longer fit at 15rem). */
+${ROOT} .djp-s-bullets.djp-v-grid-2 .djp-bullets-list { grid-template-columns: repeat(2, 1fr); }
+
+/* icon-row — the icon leads a centred column instead of sitting beside the
+   text, so a short row of benefits reads like a row of little badges. */
+${ROOT} .djp-s-bullets.djp-v-icon-row .djp-bullet-item { flex-direction: column; align-items: center; text-align: center; }
+${ROOT} .djp-s-bullets.djp-v-icon-row .djp-ic { width: 1.75rem; height: 1.75rem; margin: 0 0 0.4rem; }
+${ROOT} .djp-s-bullets.djp-v-icon-row .djp-bullet-media { margin: 0 0 0.4rem; }
 `.trim()
 
 export const STEPS_CSS = `
@@ -554,14 +800,25 @@ ${ROOT} .djp-s-steps .djp-step-item::before {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
 ${ROOT} .djp-s-steps .djp-step-title {
   margin: 0 0 0.25rem;
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
   font-size: 1.05rem;
 }
 ${ROOT} .djp-s-steps .djp-step-text { margin: 0; color: var(--muted-foreground); font-size: 0.95rem; }
+
+/* item media (design-system spec §5.2) — sits above the step's own title,
+   inside .djp-step-item, ahead of the counter's own text block. */
+${ROOT} .djp-s-steps .djp-step-media {
+  display: block;
+  width: 100%;
+  height: 8rem;
+  object-fit: cover;
+  border-radius: var(--djp-radius, 0.6rem);
+  margin-bottom: 0.75rem;
+}
 
 ${ROOT} .djp-s-steps.djp-v-timeline .djp-steps-list { grid-template-columns: 1fr; gap: 0; }
 ${ROOT} .djp-s-steps.djp-v-timeline .djp-step-item {
@@ -572,6 +829,31 @@ ${ROOT} .djp-s-steps.djp-v-timeline .djp-step-item {
 }
 ${ROOT} .djp-s-steps.djp-v-timeline .djp-step-item::before { left: -1.1rem; width: 2.2rem; height: 2.2rem; }
 ${ROOT} .djp-s-steps.djp-v-timeline .djp-step-item:last-child { border-left-color: transparent; }
+
+/* cards (design-system spec §5.1) — a bordered, filled card per step, the
+   counter badge still overlapping the top-left corner exactly as it does at
+   the base padding-left of 3rem. Matches bullets.djp-v-cards's own panel
+   (border + var(--surface)), not a bare outline — the tone-contrast pass in
+   THEME_CSS above lists .djp-step-item alongside .djp-bullet-item so this
+   panel lifts on a repainted section exactly the way that one does. */
+${ROOT} .djp-s-steps.djp-v-cards .djp-step-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--djp-radius, 0.6rem);
+  padding: 1.5rem 1.5rem 1.5rem 3.5rem;
+}
+
+/* alternating — a single column that zig-zags the counter/text block from
+   left to right on every other item. Reuses the base ::before entirely
+   (position, size, colour, and every tone override already defined above);
+   this only repositions it. */
+${ROOT} .djp-s-steps.djp-v-alternating .djp-steps-list { grid-template-columns: 1fr; gap: 2rem; }
+${ROOT} .djp-s-steps.djp-v-alternating .djp-step-item:nth-child(even) {
+  padding-left: 0;
+  padding-right: 3rem;
+  text-align: right;
+}
+${ROOT} .djp-s-steps.djp-v-alternating .djp-step-item:nth-child(even)::before { left: auto; right: 0; }
 `.trim()
 
 export const TESTIMONIAL_CSS = `
@@ -586,6 +868,16 @@ ${ROOT} .djp-s-testimonial .djp-quote {
   background: var(--surface);
   border-radius: var(--djp-radius, 0.6rem);
   padding: 1.5rem;
+}
+/* item media (design-system spec §5.2) — a small round portrait above the
+   quote text. Absent on an authored quote with no media field — renderItemMedia
+   emits nothing, so this targets an element that may simply not exist. */
+${ROOT} .djp-s-testimonial .djp-quote-media {
+  width: 3rem;
+  height: 3rem;
+  object-fit: cover;
+  border-radius: 999px;
+  margin-bottom: 0.75rem;
 }
 ${ROOT} .djp-s-testimonial .djp-quote-text { margin: 0 0 1rem; font-size: 1.05rem; line-height: 1.5; }
 ${ROOT} .djp-s-testimonial .djp-quote-attribution {
@@ -608,6 +900,30 @@ ${ROOT} .djp-s-testimonial.djp-v-stack .djp-testimonial-grid {
   max-width: 42rem;
   margin-inline: auto;
 }
+
+/* feature (design-system spec §5.1) — one large, single-column quote, set
+   larger than the base grid's card text so it reads as the page's featured
+   piece of social proof rather than one card among several. */
+${ROOT} .djp-s-testimonial.djp-v-feature .djp-testimonial-grid {
+  grid-template-columns: 1fr;
+  max-width: 50rem;
+  margin-inline: auto;
+}
+${ROOT} .djp-s-testimonial.djp-v-feature .djp-quote-text { font-size: 1.4rem; line-height: 1.5; }
+
+/* carousel-static — a horizontally scrolling row of cards with no JS: pure
+   CSS scroll-snap, so it degrades to "just scroll" on any input device. */
+${ROOT} .djp-s-testimonial.djp-v-carousel-static .djp-testimonial-grid {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  gap: 1.5rem;
+  padding-bottom: 0.5rem;
+}
+${ROOT} .djp-s-testimonial.djp-v-carousel-static .djp-quote {
+  flex: 0 0 minmax(16rem, 22rem);
+  scroll-snap-align: start;
+}
 `.trim()
 
 export const PRICING_CSS = `
@@ -627,11 +943,24 @@ ${ROOT} .djp-s-pricing .djp-plan {
   padding: 2rem;
 }
 ${ROOT} .djp-s-pricing .djp-plan-highlight { border-color: var(--accent); }
+
+/* item media (design-system spec §5.2) — a photo at the top of the card,
+   ahead of the plan name. Absent on a plan with no media field. */
+${ROOT} .djp-s-pricing .djp-plan-media {
+  width: 100%;
+  height: 8rem;
+  object-fit: cover;
+  border-radius: var(--djp-radius, 0.6rem);
+}
 ${ROOT} .djp-s-pricing .djp-plan-name {
   margin: 0;
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
-${ROOT} .djp-s-pricing .djp-plan-price { margin: 0; font-size: 2rem; font-weight: 700; color: var(--primary); }
+/* color: var(--primary-on-paper, var(--primary)) — same contrast-sweep fix as
+   .djp-hd above: this is the default-tone ground state (accent/dark/muted
+   all already override to color: inherit elsewhere in this pass), so it
+   paints text directly on --background/--surface, never a --primary band. */
+${ROOT} .djp-s-pricing .djp-plan-price { margin: 0; font-size: 2rem; font-weight: 700; color: var(--primary-on-paper, var(--primary)); }
 ${ROOT} .djp-s-pricing .djp-plan-cadence {
   margin-left: 0.35rem;
   font-size: 0.9rem;
@@ -649,11 +978,35 @@ ${ROOT} .djp-s-pricing .djp-plan-features {
   gap: 0.5rem;
 }
 ${ROOT} .djp-s-pricing .djp-plan-features li { display: flex; gap: 0.5rem; align-items: flex-start; font-size: 0.95rem; }
-${ROOT} .djp-s-pricing .djp-plan-features .djp-ic { color: var(--accent); margin-top: 0.2rem; }
+/* color: var(--accent-on-paper, var(--accent)) — same default-tone fix as
+   .djp-eyebrow above (final whole-branch review, finding 1). */
+${ROOT} .djp-s-pricing .djp-plan-features .djp-ic { color: var(--accent-on-paper, var(--accent)); margin-top: 0.2rem; }
 ${ROOT} .djp-s-pricing .djp-plan-cta { margin-top: auto; }
 ${ROOT} .djp-s-pricing .djp-plan-cta .djp-btn { width: 100%; }
 ${ROOT} .djp-s-pricing.djp-v-single .djp-pricing-grid { grid-template-columns: 1fr; max-width: 24rem; margin-inline: auto; }
 ${ROOT} .djp-s-pricing .djp-footnote { margin-top: 1.5rem; font-size: 0.85rem; color: var(--muted-foreground); text-align: center; }
+
+/* table (design-system spec §5.1) — plans as flush, edge-to-edge columns
+   rather than separated cards, for a page that wants a direct side-by-side
+   comparison. Reuses .djp-plan's own background/border-colour rules (and
+   every tone override already written against that class) unqualified by
+   variant, so this only changes the shape, never the colour. */
+${ROOT} .djp-s-pricing.djp-v-table .djp-pricing-grid { gap: 0; }
+${ROOT} .djp-s-pricing.djp-v-table .djp-plan {
+  border-radius: 0;
+  border-left: 1px solid var(--border);
+  border-right: 0;
+}
+${ROOT} .djp-s-pricing.djp-v-table .djp-plan:first-child { border-left: 0; }
+
+/* highlight — the featured plan is lifted and enlarged rather than merely
+   outlined, so it reads as the recommended choice at a glance. */
+${ROOT} .djp-s-pricing.djp-v-highlight .djp-plan-highlight {
+  transform: scale(1.05);
+  box-shadow: 0 12px 32px -12px rgb(0 0 0 / 0.18);
+  position: relative;
+  z-index: 1;
+}
 `.trim()
 
 export const FAQ_CSS = `
@@ -670,7 +1023,7 @@ ${ROOT} .djp-s-faq .djp-faq-item { border-bottom: 1px solid var(--surface); padd
 ${ROOT} .djp-s-faq .djp-faq-q {
   margin: 0 0 0.4rem;
   font-weight: 700;
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
 ${ROOT} .djp-s-faq .djp-faq-a { margin: 0; color: var(--muted-foreground); }
 
@@ -688,13 +1041,19 @@ ${ROOT} .djp-s-faq .djp-faq-details > summary {
   padding-right: 0.25rem;
 }
 ${ROOT} .djp-s-faq .djp-faq-details > summary::-webkit-details-marker { display: none; }
+/* color: var(--accent-on-paper, var(--accent)) — same default-tone fix as
+   .djp-eyebrow above (final whole-branch review, finding 1). This glyph is
+   rendered client-side by FaqIsland.tsx's real <details>/<summary>, which
+   render.test.ts's static-HTML harness cannot reach — fixed on the strength
+   of the same measured hazard as every other Move-3 site, not a harness
+   assertion. */
 ${ROOT} .djp-s-faq .djp-faq-details > summary::after {
   content: "+";
   flex: none;
   font-weight: 400;
   font-size: 1.4rem;
   line-height: 1;
-  color: var(--accent);
+  color: var(--accent-on-paper, var(--accent));
 }
 ${ROOT} .djp-s-faq .djp-faq-details[open] > summary::after { content: "\\2212"; }
 ${ROOT} .djp-s-faq .djp-faq-details[open] > .djp-faq-a { margin-top: 0.75rem; }
@@ -702,8 +1061,47 @@ ${ROOT} .djp-s-faq .djp-faq-details > summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
+/* MUTED joins accent/dark here (contrast-sweep fix, 2026-09-13) — the "+"/"−"
+   toggle is hardcoded color: var(--accent), the same unpaired brand-vs-neutral
+   hazard as the eyebrow/icon Move 3 above (accent-on-surface measures well
+   under 4.5:1 for several PALETTE_TABLE presets). color: inherit resolves to
+   the base --foreground muted never repaints away from. */
 ${ROOT} .djp-s[data-tone="accent"].djp-s-faq .djp-faq-details > summary::after,
-${ROOT} .djp-s[data-tone="dark"].djp-s-faq .djp-faq-details > summary::after { color: inherit; }
+${ROOT} .djp-s[data-tone="dark"].djp-s-faq .djp-faq-details > summary::after,
+${ROOT} .djp-s[data-tone="muted"].djp-s-faq .djp-faq-details > summary::after { color: inherit; }
+
+/* two-col (design-system spec §5.1) — drops the base list's centred
+   46rem column for a two-up grid that uses the section's full width. */
+${ROOT} .djp-s-faq.djp-v-two-col .djp-faq-list {
+  max-width: none;
+  margin-inline: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1.5rem 2rem;
+}
+
+/* cards — each question becomes its own bordered, filled card instead of a
+   row separated by a bottom border. Matches bullets.djp-v-cards's own panel
+   (border + var(--surface)); the tone-contrast pass in THEME_CSS lists
+   .djp-faq-item alongside .djp-bullet-item so this panel lifts correctly. */
+${ROOT} .djp-s-faq.djp-v-cards .djp-faq-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--djp-radius, 0.6rem);
+  padding: 1.25rem 1.5rem;
+}
+
+/* bordered — one box around the whole list, rather than per-item chrome. */
+${ROOT} .djp-s-faq.djp-v-bordered .djp-faq-list {
+  border: 1px solid var(--border);
+  border-radius: var(--djp-radius, 0.6rem);
+  padding: 1.5rem 1.75rem;
+}
+${ROOT} .djp-s-faq.djp-v-bordered .djp-faq-item:last-child,
+${ROOT} .djp-s-faq.djp-v-bordered .djp-faq-details:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
 `.trim()
 
 // ---------------------------------------------------------------------------
@@ -776,6 +1174,12 @@ ${ROOT} .djp-s-form.djp-v-boxed {
 ${ROOT} .djp-s-form.djp-v-band { max-width: 100%; }
 ${ROOT} .djp-s-form[data-align="center"] { margin-inline: auto; }
 
+/* stacked (design-system spec §5.1) — the plainest layout: no card, no
+   band, just the field list at the base 34rem cap, centred regardless of
+   the align knob so a stacked form always reads as one column in the middle
+   of the page. */
+${ROOT} .djp-s-form.djp-v-stacked { margin-inline: auto; }
+
 /* the form */
 ${ROOT} .djp-form { display: flex; flex-direction: column; gap: 1.15rem; margin-top: 1.5rem; }
 ${ROOT} .djp-form .djp-field { display: flex; flex-direction: column; gap: 0.4rem; }
@@ -816,20 +1220,22 @@ ${ROOT} .djp-form .djp-field[data-djp-field-type="checkbox"] .djp-control {
 }
 
 ${ROOT} .djp-form .djp-field-label {
-  font-family: var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif);
+  font-family: var(--djp-font-body, var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif));
   font-size: 0.9rem;
   font-weight: 600;
   line-height: 1.3;
   color: var(--foreground);
 }
-${ROOT} .djp-form .djp-req { color: var(--accent); }
+/* color: var(--accent-on-paper, var(--accent)) — same default-tone fix as
+   .djp-eyebrow above (final whole-branch review, finding 1). */
+${ROOT} .djp-form .djp-req { color: var(--accent-on-paper, var(--accent)); }
 
 ${ROOT} .djp-form .djp-control {
   width: 100%;
   box-sizing: border-box;
   min-height: 2.9rem;
   padding: 0.7rem 0.9rem;
-  font-family: var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif);
+  font-family: var(--djp-font-body, var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif));
   font-size: 1rem;
   line-height: 1.4;
   color: var(--foreground);
@@ -920,6 +1326,15 @@ ${ROOT} .djp-s[data-tone="dark"] .djp-req { color: inherit; }
 ${ROOT} .djp-s[data-tone="accent"] .djp-consent,
 ${ROOT} .djp-s[data-tone="dark"] .djp-consent { opacity: 0.85; }
 
+/* .djp-req (the required-field asterisk) needs the same muted treatment
+   .djp-field-label does not: .djp-field-label is already var(--foreground)
+   (safe on --surface by construction) and .djp-consent is
+   var(--muted-foreground) (a fixed app token the palette never touches), but
+   .djp-req is hardcoded color: var(--accent) — the same unpaired
+   brand-vs-neutral hazard as the eyebrow/icon Move 3 above. Contrast-sweep
+   fix, 2026-09-13. */
+${ROOT} .djp-s[data-tone="muted"] .djp-req { color: inherit; }
+
 /* The error and success panels take the tone's own pair.
    --error and --success are readable on a light page and undefined against
    --accent or --primary, so on a repainted section the panel keeps the tone's
@@ -997,7 +1412,20 @@ ${ROOT} .djp-s-form.djp-v-split .djp-form-proof li {
   align-items: flex-start;
   font-size: 0.98rem;
 }
-${ROOT} .djp-s-form.djp-v-split .djp-form-proof .djp-ic { color: var(--accent); margin-top: 0.15rem; }
+/* color: var(--accent-on-paper, var(--accent)) — same default-tone fix as
+   .djp-eyebrow above (final whole-branch review, finding 1). This card's
+   ground is --surface on the default tone (its own rule above), which is
+   exactly the untoned "default ground" this whole finding is about — the
+   review's own line list under-counted this site by one; it has the
+   identical hazard as .djp-s-bullets .djp-ic and
+   .djp-s-pricing .djp-plan-features .djp-ic. */
+${ROOT} .djp-s-form.djp-v-split .djp-form-proof .djp-ic { color: var(--accent-on-paper, var(--accent)); margin-top: 0.15rem; }
+
+/* reverse knob (design-system spec §4) — swaps pitch and card sides. Scoped
+   to .djp-v-split, the only form variant with two side-by-side columns. */
+${ROOT} .djp-s[data-reverse="true"].djp-s-form.djp-v-split .djp-form-split {
+  flex-direction: row-reverse;
+}
 
 /* The split card is a panel inside a possibly-repainted section, so it obeys
    Move 1 from the tone pass: it LIFTS off the tone rather than switching to a
@@ -1017,10 +1445,22 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-form.djp-v-split .djp-form-card {
 ${ROOT} .djp-s[data-tone="muted"].djp-s-form.djp-v-split .djp-form-card {
   background: color-mix(in oklch, var(--foreground) 8%, transparent);
 }
+/* MUTED joins accent/dark here too (contrast-sweep fix, 2026-09-13): the proof
+   icon is hardcoded color: var(--accent), the same unpaired brand-vs-neutral
+   hazard as every other Move-3 icon above. The card's own background lifts
+   for muted (above) but never resets its text colour, so inherit still
+   resolves to the base --foreground — safe on --surface by construction. */
 ${ROOT} .djp-s[data-tone="accent"].djp-s-form.djp-v-split .djp-form-proof .djp-ic,
-${ROOT} .djp-s[data-tone="dark"].djp-s-form.djp-v-split .djp-form-proof .djp-ic { color: inherit; }
+${ROOT} .djp-s[data-tone="dark"].djp-s-form.djp-v-split .djp-form-proof .djp-ic,
+${ROOT} .djp-s[data-tone="muted"].djp-s-form.djp-v-split .djp-form-proof .djp-ic { color: inherit; }
 `.trim()
 
+/* reverse knob (design-system spec §4): `cta.djp-v-split` has NO
+   two-column grid of its own — `.djp-cta-inner` is a single flex COLUMN for
+   every cta variant, `djp-v-boxed` only adds box chrome — so there is
+   nothing here for `data-reverse` to flip. Deliberately no rule, not a gap:
+   see HERO_CSS / FORM_CSS above for the two kinds that actually have a
+   two-column layout `reverse` acts on. */
 export const CTA_CSS = `
 ${ROOT} .djp-s-cta .djp-cta-inner { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; }
 ${ROOT} .djp-s-cta[data-align="center"] .djp-cta-inner { align-items: center; }
@@ -1029,6 +1469,38 @@ ${ROOT} .djp-s-cta.djp-v-boxed .djp-cta-inner {
   border-radius: var(--djp-radius, 0.6rem);
   padding: 2.5rem;
 }
+
+/* item media (design-system spec §5.2) — one optional image ahead of the
+   headline. Absent when the cta carries no media field. */
+${ROOT} .djp-s-cta .djp-cta-media {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--djp-radius, 0.6rem);
+}
+
+/* split (design-system spec §5.1) — headline+sub on one side, the button on
+   the other, on wide viewports; wraps to the base stacked column below that.
+   render.ts groups the headline and sub into ONE element, .djp-cta-copy —
+   without that wrapper, the headline, the sub AND the button are three
+   independent flex items, so a naive two-up rule reads as three columns
+   (headline / sub / button) rather than copy-block / button. This rule
+   targets that wrapper, not .djp-hd/.djp-sub directly. */
+${ROOT} .djp-s-cta.djp-v-split .djp-cta-inner {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+}
+${ROOT} .djp-s-cta.djp-v-split .djp-cta-inner > .djp-cta-copy {
+  flex: 1 1 20rem;
+}
+
+/* minimal — the smallest possible footprint: a smaller headline, a tighter
+   gap, no card, no split. For a cta wedged between two already-heavy
+   sections that only needs one more nudge, not another full band. */
+${ROOT} .djp-s-cta.djp-v-minimal .djp-cta-inner { gap: 0.5rem; }
+${ROOT} .djp-s-cta.djp-v-minimal .djp-hd { font-size: clamp(1.25rem, 2.6vw, 1.75rem); }
 `.trim()
 
 export const FOOTER_CSS = `
@@ -1036,13 +1508,19 @@ ${ROOT} .djp-s-footer .djp-footer-inner { display: flex; flex-direction: column;
 ${ROOT} .djp-s-footer .djp-footer-business {
   margin: 0;
   font-weight: 700;
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
 ${ROOT} .djp-s-footer .djp-footer-lines { display: flex; flex-direction: column; gap: 0.2rem; }
 ${ROOT} .djp-s-footer .djp-footer-line { margin: 0; font-size: 0.9rem; color: var(--muted-foreground); }
 ${ROOT} .djp-s-footer .djp-footer-links { list-style: none; display: flex; flex-wrap: wrap; gap: 1rem; margin: 0; padding: 0; }
 ${ROOT} .djp-s-footer .djp-footer-legal { margin: 0; font-size: 0.8rem; color: var(--muted-foreground); }
 ${ROOT} .djp-s-footer.djp-v-columns .djp-footer-inner { flex-direction: row; flex-wrap: wrap; justify-content: space-between; }
+
+/* centered (design-system spec §5.1) — every row centred, for a footer
+   that's the last thing on a short, single-column page rather than the
+   base of a wider site with columns to fill. */
+${ROOT} .djp-s-footer.djp-v-centered .djp-footer-inner { align-items: center; text-align: center; }
+${ROOT} .djp-s-footer.djp-v-centered .djp-footer-links { justify-content: center; }
 `.trim()
 
 export const PROOF_CSS = `
@@ -1055,12 +1533,15 @@ ${ROOT} .djp-s-proof .djp-proof-list {
 }
 ${ROOT} .djp-s-proof[data-align="center"] .djp-proof-list { justify-content: center; }
 ${ROOT} .djp-s-proof .djp-proof-item { flex: 0 1 auto; }
+/* color: var(--primary-on-paper, var(--primary)) — same contrast-sweep fix:
+   default-tone ground state, text on --background/--surface, never a
+   --primary band (accent/dark/muted already override to inherit). */
 ${ROOT} .djp-s-proof .djp-proof-value {
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
   font-size: 1.65rem;
   font-weight: 700;
   line-height: 1.1;
-  color: var(--primary);
+  color: var(--primary-on-paper, var(--primary));
   margin: 0;
 }
 ${ROOT} .djp-s-proof .djp-proof-label {
@@ -1079,9 +1560,15 @@ ${ROOT} .djp-s-proof.djp-v-stats .djp-proof-item {
 ${ROOT} .djp-s-proof.djp-v-stats .djp-proof-item:first-child { border-left: 0; padding-left: 0; }
 
 /* Both halves travel with a repainted tone — the value is --primary, which on
-   a dark section IS the background. */
+   a dark section IS the background.
+   MUTED joins here too (contrast-sweep fix, 2026-09-13): the value is not an
+   exact-token collision on muted (background: var(--surface), not
+   var(--primary)), but it is the identical unpaired brand-vs-neutral hazard
+   as .djp-hd / .djp-plan-price above — measured primary-on-surface is
+   1.09-2.92:1 across the dark-seeded PALETTE_TABLE presets, never 4.5:1. */
 ${ROOT} .djp-s[data-tone="accent"].djp-s-proof .djp-proof-value,
-${ROOT} .djp-s[data-tone="dark"].djp-s-proof .djp-proof-value { color: inherit; }
+${ROOT} .djp-s[data-tone="dark"].djp-s-proof .djp-proof-value,
+${ROOT} .djp-s[data-tone="muted"].djp-s-proof .djp-proof-value { color: inherit; }
 ${ROOT} .djp-s[data-tone="accent"].djp-s-proof .djp-proof-label,
 ${ROOT} .djp-s[data-tone="dark"].djp-s-proof .djp-proof-label { color: inherit; opacity: 0.85; }
 ${ROOT} .djp-s[data-tone="accent"].djp-s-proof.djp-v-stats .djp-proof-item {
@@ -1092,6 +1579,27 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-proof.djp-v-stats .djp-proof-item {
 }
 ${ROOT} .djp-s[data-tone="accent"].djp-s-proof.djp-v-stats .djp-proof-item:first-child,
 ${ROOT} .djp-s[data-tone="dark"].djp-s-proof.djp-v-stats .djp-proof-item:first-child { border-left: 0; }
+
+/* cards (design-system spec §5.1) — each stat becomes its own bordered,
+   filled box instead of a run of inline items, for a strip that wants to
+   read as discrete credentials rather than one continuous line. Matches
+   bullets.djp-v-cards's own panel (border + var(--surface)); the
+   tone-contrast pass in THEME_CSS lists .djp-proof-item alongside
+   .djp-bullet-item so this panel lifts correctly. */
+${ROOT} .djp-s-proof.djp-v-cards .djp-proof-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--djp-radius, 0.6rem);
+  padding: 1.25rem 1.5rem;
+  flex: 1 1 12rem;
+}
+
+/* inline — the smallest footprint: value and label run together on one
+   baseline instead of stacking, for a strip that wants to read almost like
+   a sentence ("500+ athletes trained · 12 years coaching"). */
+${ROOT} .djp-s-proof.djp-v-inline .djp-proof-item { display: flex; align-items: baseline; gap: 0.4rem; }
+${ROOT} .djp-s-proof.djp-v-inline .djp-proof-value { font-size: 1.1rem; }
+${ROOT} .djp-s-proof.djp-v-inline .djp-proof-label { margin: 0; }
 `.trim()
 
 /** One CSS string per kind — `doc.ts` pulls only the kinds a doc actually uses. */
@@ -1142,7 +1650,17 @@ ${ROOT} .djp-s-quiz .djp-quiz-progress {
   overflow: hidden;
   margin-bottom: 1.5rem;
 }
-${ROOT} .djp-s-quiz .djp-quiz-progress-bar { height: 100%; background: var(--accent); transition: width 0.25s ease; }
+/* background: var(--accent-on-paper, var(--accent)) — final whole-branch
+   review, finding 1 (2026-09-13). The quiz card above is ALWAYS painted
+   var(--background)/var(--surface) regardless of the section's own tone (see
+   the comment above .djp-quiz), so the filled portion of this progress bar
+   always sits on the untoned page ground — the same default-ground hazard as
+   .djp-eyebrow, just for a decorative fill instead of text: on a low-contrast
+   preset the filled bar all but disappears into its own track
+   (var(--surface)). --accent-on-paper is proven >= 4.5:1 against both
+   --background and --surface (palettes.ts's deriveAccentOnPaper), so it
+   keeps the fill visibly distinct from the track it sits inside. */
+${ROOT} .djp-s-quiz .djp-quiz-progress-bar { height: 100%; background: var(--accent-on-paper, var(--accent)); transition: width 0.25s ease; }
 ${ROOT} .djp-s-quiz .djp-quiz-step {
   font-size: 0.8125rem;
   letter-spacing: 0.04em;
@@ -1154,7 +1672,7 @@ ${ROOT} .djp-s-quiz .djp-quiz-prompt {
   font-size: 1.375rem;
   line-height: 1.3;
   margin: 0 0 1.25rem;
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
 ${ROOT} .djp-s-quiz .djp-quiz-help { font-size: 0.9375rem; color: var(--muted-foreground); margin: -0.75rem 0 1.25rem; }
 ${ROOT} .djp-s-quiz .djp-quiz-options {
@@ -1227,7 +1745,65 @@ ${ROOT} .djp-s-quiz .djp-quiz-scale { font-size: 0.8125rem; color: var(--muted-f
 ${ROOT} .djp-s-quiz .djp-quiz-profile { padding: 1rem; border-radius: var(--radius); background: var(--surface); margin: 1.25rem 0; }
 ${ROOT} .djp-s-quiz .djp-quiz-profile-name { font-weight: 700; margin: 0 0 0.25rem; }
 ${ROOT} .djp-s-quiz .djp-quiz-profile-body { margin: 0; color: var(--muted-foreground); }
+
+/* band (design-system spec §5.1) — the quiz sits directly on the section's
+   own band with no card chrome, for a page where the surrounding sections
+   already carry a tone and a second white card would read as a third layer.
+   background: transparent — never omitted — so the card's base
+   var(--background) fill does not win on source order; transparent is a
+   value the tone-contrast harness already models explicitly (it simply means
+   "look further up the ancestor chain for what's really behind this text"). */
+${ROOT} .djp-s-quiz.djp-v-band .djp-quiz {
+  max-width: 44rem;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+/* split — the intro copy and the quiz card side by side, so the pitch for
+   taking the quiz sits beside the quiz itself instead of above it. Both are
+   direct children of the grid .djp-s-quiz already establishes; naming two
+   explicit columns is the only change needed for them to land side by side. */
+${ROOT} .djp-s-quiz.djp-v-split { grid-template-columns: 1fr 1fr; align-items: center; gap: 2.5rem; text-align: left; }
+${ROOT} .djp-s-quiz.djp-v-split .djp-quiz-head { margin-bottom: 0; }
 `.trim()
+
+// ---------------------------------------------------------------------------
+// VARIANTS_STYLED_BY_BASE_RULE — the nine (kind, variant) pairs that carry
+// NO `djp-v-<name>` selector anywhere in their kind's CSS, because the
+// variant IS that kind's unqualified base rule: `styles.test.ts` iterates
+// every variant the registry advertises and asserts `SECTION_CSS[kind]`
+// contains `djp-v-<variant>`, and these nine would fail that — not because
+// they are unstyled, but because they predate the `djp-v-` convention this
+// kind's OTHER variants narrow away from.
+//
+// Measured against this file at the branch point for the design-system
+// widening (2026-09-13), before any of Task 7's own additions:
+//   grep -o 'djp-v-[a-z0-9-]*' lib/funnels/sections/styles.ts | sort -u
+// came back with none of these nine, even though every one is a real,
+// registry-advertised variant that predates this build (`hero.split` /
+// `proof.strip` / `steps.numbered` / `testimonial.grid` / `pricing.cards` /
+// `faq.stack` / `quiz.boxed` / `cta.band` / `footer.simple`).
+//
+// THIS IS A RECORD OF PRE-EXISTING BASE CASES, NOT AN ESCAPE HATCH. Every
+// variant Task 7 itself adds earns a real `djp-v-` rule (see the per-kind
+// CSS above) — none of them are listed here, and none should be. A future
+// variant that genuinely needs no CSS of its own is a finding for that
+// task's report, never a line added to this array to make a red test green.
+// ---------------------------------------------------------------------------
+
+export const VARIANTS_STYLED_BY_BASE_RULE: readonly string[] = [
+  "hero.split",
+  "proof.strip",
+  "steps.numbered",
+  "testimonial.grid",
+  "pricing.cards",
+  "faq.stack",
+  "quiz.boxed",
+  "cta.band",
+  "footer.simple",
+]
 
 export const SECTION_CSS: Record<SectionKind, string> = {
   hero: HERO_CSS,

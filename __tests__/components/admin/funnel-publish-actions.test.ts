@@ -44,6 +44,8 @@ vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.f
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
+vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
+vi.mock("@/lib/tenancy/resolve", () => ({ resolveAdminTenant: vi.fn() }))
 
 import { renderDocForPublish } from "@/components/admin/funnels/builder/publish-actions"
 import { auth } from "@/lib/auth"
@@ -53,6 +55,8 @@ import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
+import { getBusinessSettings } from "@/lib/db/businesses"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
 const mock = (fn: unknown) => fn as ReturnType<typeof vi.fn>
@@ -67,6 +71,7 @@ const PROGRAM_ID = "11111111-2222-4333-8444-555555555555"
 const PACK_ID = "66666666-7777-4888-8999-aaaaaaaaaaaa"
 const PROGRAM_NAME = "Comeback Code"
 const PACK_NAME = "Ten Session Pack"
+const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 
 /**
  * A page whose CTAs are written the way the MODEL writes them: by NAME.
@@ -158,6 +163,15 @@ beforeEach(() => {
   mock(getEvents).mockResolvedValue([])
   mock(getPublishedEvents).mockResolvedValue([])
   mock(getFaqCountsByPage).mockResolvedValue({ camps: 3 })
+
+  // No brand chosen by default — every pre-existing test above renders with
+  // no `--primary` override, exactly as it did before Task 9.
+  mock(resolveAdminTenant).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "DJP Athlete", slug: "djp-athlete" }],
+    isOperator: true,
+  })
+  mock(getBusinessSettings).mockResolvedValue({ brand_color: null, accent_color: null })
 })
 
 // ---------------------------------------------------------------------------
@@ -267,10 +281,7 @@ describe("renderDocForPublish — refusals", () => {
     // unresolved `program` ref renders a disabled placeholder and compiles to
     // `ok: true, warnings: []` — the compiler has zero signal to give. The
     // blocker text has to come from `publishGate`, and it names the slot.
-    const result = await renderDocForPublish(
-      STEP_ID,
-      docWithCta({ kind: "program", ref: "Winter Throwing Intensive" }),
-    )
+    const result = await renderDocForPublish(STEP_ID, docWithCta({ kind: "program", ref: "Winter Throwing Intensive" }))
 
     expect(result.ok).toBe(false)
     if (result.ok) return
@@ -339,5 +350,50 @@ describe("renderDocForPublish — warnings", () => {
     if (!result.ok) return
     expect(result.warnings).toHaveLength(1)
     expect(result.warnings[0]).toContain("#pricing")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The tenant brand kit — Task 9's wiring. This is the SINGLE-STEP publish
+// path: the "Publish" button in the builder calls this action to get
+// `{html, css}` before POSTing to the publish route, so it must resolve the
+// SAME brand kit as the preview the owner was just looking at
+// (`/funnel-preview/<stepId>`, which also calls `resolveAdminTenant()`).
+// ---------------------------------------------------------------------------
+
+describe("renderDocForPublish — the tenant brand kit", () => {
+  it("bakes the tenant's brand colour into the published css", async () => {
+    mock(getBusinessSettings).mockResolvedValue({ brand_color: "#6d28d9", accent_color: null })
+
+    const result = await renderDocForPublish(STEP_ID, docWithNamedCtas())
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
+    expect(result.css).toContain("--primary: #6d28d9")
+  })
+
+  it("degrades to no brand kit when resolveAdminTenant throws — still publishes", async () => {
+    // MUTANT: joining this to the fail-closed catalogue/resolve try above it,
+    // which would turn a cosmetic read failure into a publish refusal for a
+    // page whose links are perfectly fine.
+    mock(resolveAdminTenant).mockRejectedValue(new Error("no accessible business"))
+
+    const result = await renderDocForPublish(STEP_ID, docWithNamedCtas())
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(getBusinessSettings).not.toHaveBeenCalled()
+    expect(result.css).not.toMatch(/--primary:/)
+  })
+
+  it("degrades to no brand kit when the business_settings read throws — still publishes", async () => {
+    mock(getBusinessSettings).mockRejectedValue(new Error("business_settings unreachable"))
+
+    const result = await renderDocForPublish(STEP_ID, docWithNamedCtas())
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.css).not.toMatch(/--primary:/)
   })
 })

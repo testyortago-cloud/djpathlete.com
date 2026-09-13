@@ -100,6 +100,8 @@ const SETTINGS: BusinessSettings = {
   sms_help_text: "Reply STOP to opt out.",
   sms_messaging_service_sid: "",
   sms_sender_phone: "",
+  brand_color: null,
+  accent_color: null,
 }
 
 function makeRun(id: string, overrides: Partial<SequenceRunRow> = {}): SequenceRunRow {

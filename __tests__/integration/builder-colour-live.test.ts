@@ -71,11 +71,16 @@ async function runTurn(message: string) {
     nextStepSlug: null,
     funnelSlug: null,
   })
-  const stream = streamAgent(systemPrompt, buildTurnMessage({ doc: DOC, history: [], message }), buildResultSchema, {
-    model: SECTION_BUILDER_MODEL,
-    maxTokens: SECTION_BUILDER_EDIT_MAX_TOKENS,
-    cacheSystemPrompt: true,
-  })
+  const stream = streamAgent(
+    systemPrompt,
+    buildTurnMessage({ doc: DOC, history: [], message, variationSeed: crypto.randomUUID() }),
+    buildResultSchema,
+    {
+      model: SECTION_BUILDER_MODEL,
+      maxTokens: SECTION_BUILDER_EDIT_MAX_TOKENS,
+      cacheSystemPrompt: true,
+    },
+  )
   // CLAIM THE REJECTION BEFORE DRAINING, like the route does. `stream.object`
   // can reject during the transform, and an unclaimed rejection surfaces as an
   // unhandled one — which reads as a bug in the model's answer rather than in

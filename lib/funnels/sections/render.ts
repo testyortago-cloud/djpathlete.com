@@ -26,6 +26,7 @@ import {
   type Section,
   type SectionKind,
   type SectionStyleKnobs,
+  type SectionBg,
   type SectionIcon,
   type CtaWithLabel,
   type CtaTarget,
@@ -40,6 +41,7 @@ import {
   type ProofSectionProps,
   type CtaSectionProps,
   type FooterSectionProps,
+  type ItemMedia,
 } from "@/lib/funnels/sections/registry"
 import { parseIslandProps, SAFE_LINK, type IslandName } from "@/lib/funnels/islands"
 import { safeUrl } from "@/lib/funnels/compile/sanitize"
@@ -75,6 +77,17 @@ export function escapeHtml(value: string): string {
 // href away with zero warning.
 // ---------------------------------------------------------------------------
 
+/**
+ * The tenant-level colour identity a business sets once (Settings, not per
+ * page). Deliberately just two colours, the same shape `resolvePalette`
+ * (palettes.ts) takes as input — a document's own `theme.palette` always
+ * outranks this when both are present; see `paletteTokens` in doc.ts.
+ */
+export interface BrandKit {
+  brand: string
+  accent?: string
+}
+
 export interface RenderContext {
   /** e.g. "/go/summer-camp" — no trailing slash. */
   funnelBasePath?: string
@@ -86,6 +99,13 @@ export interface RenderContext {
    * identity between `{}` and `{ editable: false }` for all ten kinds.
    */
   editable?: boolean
+  /**
+   * The tenant's brand kit, used by `doc.ts`'s `themeCss` as the palette
+   * fallback when the document itself carries no `theme.palette`. Unused by
+   * `renderSection` itself — threaded through only because `RenderContext` is
+   * the one bag of caller-supplied context `reassemble` already has.
+   */
+  brandKit?: BrandKit | null
 }
 
 // ---------------------------------------------------------------------------
@@ -267,9 +287,19 @@ function optionalText(
 
 interface ResolvedStyle {
   headline: "sm" | "md" | "lg" | "xl"
-  align: "left" | "center"
+  // "right" added alongside sectionStyleSchema's widened `align` (design-system
+  // spec §4).
+  align: "left" | "center" | "right"
   tone: "default" | "muted" | "accent" | "dark"
   pad: "tight" | "normal" | "roomy"
+  // Task 6: the four remaining per-section knobs. `width` is the one knob
+  // whose DEFAULT is "no override" rather than a concrete enum member — see
+  // `sectionOpenTag`, which only emits `data-width` when it is set. The other
+  // three always resolve to a concrete value, same as the four knobs above.
+  bg: SectionBg
+  width: "narrow" | "normal" | "wide" | "full" | undefined
+  divider: "none" | "line" | "angle" | "curve" | "fade"
+  reverse: boolean
 }
 
 function resolveStyle(style: SectionStyleKnobs): ResolvedStyle {
@@ -279,11 +309,62 @@ function resolveStyle(style: SectionStyleKnobs): ResolvedStyle {
     align: validated.align ?? "left",
     tone: validated.tone ?? "default",
     pad: validated.pad ?? "normal",
+    bg: validated.bg ?? { kind: "none" },
+    width: validated.width,
+    divider: validated.divider ?? "none",
+    reverse: validated.reverse ?? false,
   }
 }
 
+// ---------------------------------------------------------------------------
+// Background -> a CSS declaration string, or `undefined` for "emit nothing".
+//
+// THE SECURITY BOUNDARY (design-system spec §4). `kind:"image"` is the only
+// per-section knob that reaches CSS as an inline `style` rather than a
+// `data-*` attribute, because the URL is per-document data that cannot live
+// in a stylesheet. `safeStyle` (compile/sanitize.ts) does NOT gate this: it
+// only drops declarations containing `javascript:` / `expression(` /
+// `@import` / `behavior:` / `-moz-binding` and passes everything else,
+// including `url(https://attacker.example/x)` — so THIS function is the
+// guard. `safeUrl` (the same one `renderMedia`'s hero image already calls,
+// with the same `allowDataImage` option) is what actually decides whether
+// `src` may reach the page at all; `undefined` here means "render no
+// background", never a partial one.
+//
+// The returned string is raw CSS text, NOT yet attribute-safe — every caller
+// must still run it through `escapeHtml` before interpolating it into a
+// `style="..."` attribute, because an embedded `"` (or `'`) in a URL that
+// otherwise passed `safeUrl` (e.g. `https://ok.example/a" onload=...`) must
+// never be allowed to close the attribute early. `escapeHtml` encodes both
+// quote characters into entities, which the browser decodes before its CSS
+// parser ever sees the text back, restoring the byte-for-byte declaration —
+// this round trip is what actually stands between untrusted URL data and an
+// attribute-breakout, not `safeUrl`'s own prefix check.
+// ---------------------------------------------------------------------------
+
+function backgroundDeclaration(bg: SectionBg): string | undefined {
+  if (bg.kind === "none") return undefined
+  if (bg.kind === "gradient") {
+    const angle = bg.angle ?? 135
+    return `background-image:linear-gradient(${angle}deg, ${bg.from}, ${bg.to})`
+  }
+  // bg.kind === "image"
+  const src = safeUrl(bg.src, { allowDataImage: true })
+  if (!src) return undefined
+  const position = bg.position ?? "center"
+  const layers: string[] = []
+  if (bg.overlay !== undefined && bg.overlay > 0) {
+    layers.push(`linear-gradient(rgba(0,0,0,${bg.overlay}), rgba(0,0,0,${bg.overlay}))`)
+  }
+  layers.push(`url("${src}")`)
+  return (
+    `background-image:${layers.join(",")};background-size:cover;` +
+    `background-repeat:no-repeat;background-position:${position}`
+  )
+}
+
 function sectionOpenTag(section: Section, ctx: RenderContext): string {
-  const { headline, align, tone, pad } = resolveStyle(section.style)
+  const { headline, align, tone, pad, bg, width, divider, reverse } = resolveStyle(section.style)
   const classes = `djp-s djp-s-${section.kind} djp-v-${section.variant}`
   // `data-sec` duplicates `id` on purpose. `id` is the ANCHOR TARGET — it is
   // what `CtaTarget.kind === "anchor"` links to and it is published — whereas
@@ -291,9 +372,16 @@ function sectionOpenTag(section: Section, ctx: RenderContext): string {
   // editor's selection off `id` would mean the canvas could not tell a section
   // wrapper from any other element an author gave an id to.
   const editorHandle = ctx.editable ? ` data-sec="${escapeHtml(section.id)}"` : ""
+  // `width` is the one knob left off entirely when unset — see the comment on
+  // `ResolvedStyle`. The other three (divider/reverse/bg) always resolve to a
+  // concrete value and are always emitted, same rule as headline/align/tone/pad.
+  const widthAttr = width !== undefined ? ` data-width="${width}"` : ""
+  const bgDecl = backgroundDeclaration(bg)
+  const styleAttr = bgDecl ? ` style="${escapeHtml(bgDecl)}"` : ""
   return (
     `<section id="${escapeHtml(section.id)}" class="${escapeHtml(classes)}" ` +
-    `data-h="${headline}" data-align="${align}" data-tone="${tone}" data-pad="${pad}"${editorHandle}>`
+    `data-h="${headline}" data-align="${align}" data-tone="${tone}" data-pad="${pad}" ` +
+    `data-divider="${divider}" data-reverse="${reverse}"${widthAttr}${editorHandle}${styleAttr}>`
   )
 }
 
@@ -561,6 +649,31 @@ function renderMedia(
 }
 
 // ---------------------------------------------------------------------------
+// Item media (design-system spec §5.2) — "media beyond the hero": an
+// optional decorative image on a bullet, a step, a testimonial quote, a
+// pricing plan, or the cta section itself.
+//
+// SAME `safeUrl` DISCIPLINE AS THE HERO AND THE SECTION BACKGROUND (Task 6),
+// deliberately reusing the exact function and the same `allowDataImage: true`
+// option rather than a hand-rolled second check. Unlike `renderMedia`
+// (hero), a rejected OR ABSENT image renders NOTHING — no placeholder, no
+// invalid-media box. The hero's placeholder exists because a hero with no
+// media leaves a layout gap above the fold and (in the editor) needs a click
+// target to fill it; every one of these five sites already renders correctly
+// with no media at all, which is the untouched, pre-Task-7 shape every
+// stored document relies on — a rejected URL must degrade to that same
+// shape, not to a new, worse one.
+// ---------------------------------------------------------------------------
+
+function renderItemMedia(media: ItemMedia | undefined, className: string, ctx: RenderContext, path: string): string {
+  if (!media) return ""
+  const src = safeUrl(media.src, { allowDataImage: true })
+  if (!src) return ""
+  const alt = media.alt ?? ""
+  return `<img class="${className}" src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy"${mediaSlotAttr(ctx, path)} />`
+}
+
+// ---------------------------------------------------------------------------
 // hero
 // ---------------------------------------------------------------------------
 
@@ -593,6 +706,7 @@ function renderBulletsSection(section: Section, ctx: RenderContext): string {
   parts.push(`<ul class="djp-bullets-list">`)
   props.items.forEach((item, index) => {
     parts.push(`<li class="djp-bullet-item"${itemAttr(ctx, index)}>`)
+    parts.push(renderItemMedia(item.media, "djp-bullet-media", ctx, `items.${index}.media`))
     parts.push(renderIcon(item.icon))
     parts.push(`<div class="djp-bullet-body">`)
     parts.push(textEl(ctx, "h3", "djp-bullet-title", `items.${index}.title`, item.title))
@@ -618,6 +732,7 @@ function renderStepsSection(section: Section, ctx: RenderContext): string {
   parts.push(`<ol class="djp-steps-list">`)
   props.steps.forEach((step, index) => {
     parts.push(`<li class="djp-step-item"${itemAttr(ctx, index)}>`)
+    parts.push(renderItemMedia(step.media, "djp-step-media", ctx, `steps.${index}.media`))
     parts.push(`<div class="djp-step-body">`)
     parts.push(textEl(ctx, "h3", "djp-step-title", `steps.${index}.title`, step.title))
     parts.push(
@@ -654,6 +769,7 @@ function renderTestimonialSection(section: Section, ctx: RenderContext): string 
     parts.push(`<div class="djp-testimonial-grid">`)
     props.quotes.forEach((quote, index) => {
       parts.push(`<blockquote class="djp-quote"${itemAttr(ctx, index)}>`)
+      parts.push(renderItemMedia(quote.media, "djp-quote-media", ctx, `quotes.${index}.media`))
       parts.push(textEl(ctx, "p", "djp-quote-text", `quotes.${index}.quote`, quote.quote))
       parts.push(`<footer class="djp-quote-attribution">`)
       parts.push(textEl(ctx, "span", "djp-quote-name", `quotes.${index}.name`, quote.name))
@@ -680,6 +796,7 @@ function renderPricingSection(section: Section, ctx: RenderContext): string {
   props.plans.forEach((plan, index) => {
     const highlightClass = plan.highlight ? " djp-plan-highlight" : ""
     parts.push(`<article class="djp-plan${highlightClass}"${itemAttr(ctx, index)}>`)
+    parts.push(renderItemMedia(plan.media, "djp-plan-media", ctx, `plans.${index}.media`))
     parts.push(textEl(ctx, "h3", "djp-plan-name", `plans.${index}.name`, plan.name))
     parts.push(`<p class="djp-plan-price">`)
     parts.push(anchoredRun(ctx, "djp-plan-amount", `plans.${index}.price`, plan.price))
@@ -813,8 +930,19 @@ function renderProofSection(section: Section, ctx: RenderContext): string {
 function renderCtaSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.cta.propsSchema.parse(section.props) as CtaSectionProps
   const parts: string[] = [sectionOpenTag(section, ctx), `<div class="djp-cta-inner">`]
+  parts.push(renderItemMedia(props.media, "djp-cta-media", ctx, "media"))
+  // `.djp-cta-copy` groups the headline and sub into ONE flex item.
+  // `djp-v-split`'s CSS needs a single "copy" side and a single "button"
+  // side — with no wrapper, a headline, a sub AND the button were three
+  // independent siblings of `.djp-cta-inner`, so a two-up split rendered as
+  // three columns instead of two (the sub sat between the headline and the
+  // button rather than under the headline). Emitted unconditionally, like
+  // `.djp-hero-copy` above, so every variant shares one markup shape and
+  // only the stylesheet differs per variant.
+  parts.push(`<div class="djp-cta-copy">`)
   parts.push(textEl(ctx, "h2", "djp-hd", "headline", props.headline))
   parts.push(optionalText(ctx, "p", "djp-sub", "sub", props.sub, "Add a subheading"))
+  parts.push(`</div>`)
   parts.push(renderCtaButton(props.cta, "primary", ctx, "cta"))
   parts.push(`</div>`, `</section>`)
   return parts.join("")

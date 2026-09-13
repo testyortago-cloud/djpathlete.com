@@ -25,24 +25,30 @@ import { describe, it, expect } from "vitest"
 import { z } from "zod"
 import {
   SECTION_BUILDER_BLOCK_A,
+  SECTION_BUILDER_BLOCK_DESIGN,
   BUILDER_RULES,
+  LEADGEN_RULES,
+  PAGE_RECIPES,
   WORKED_EXAMPLES,
   buildCatalogueBlock,
   buildSystemPrompt,
   buildTurnMessage,
   buildResultSchema,
   type BuilderCatalogueInput,
+  type BuilderTurnInput,
   NOT_OFFERED_TO_THE_BUILDER,
 } from "@/lib/funnels/sections/prompt"
 import {
   SECTION_BUILDER_HISTORY_TURNS,
   SECTION_BUILDER_MAX_OPS,
   SECTION_BUILDER_MAX_REPLY_LENGTH,
+  SECTION_BUILDER_BLOCK_A_MAX,
+  SECTION_BUILDER_BLOCK_DESIGN_MAX,
 } from "@/lib/funnels/sections/builder-config"
 import { SECTION_KINDS, SECTION_REGISTRY, type Section, type SectionDoc } from "@/lib/funnels/sections/registry"
 import { CHECKOUT_REQUIRED_ROLES, FORM_FIELD_ROLES, ISLAND_LIST, SAFE_LINK } from "@/lib/funnels/islands"
 import { applyOps, opSchema } from "@/lib/funnels/sections/apply"
-import { reassemble } from "@/lib/funnels/sections/doc"
+import { reassemble, FONT_STACKS } from "@/lib/funnels/sections/doc"
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -114,6 +120,15 @@ function catalogueInput(): BuilderCatalogueInput {
     // from the name pass every assertion below.
     funnelSlug: "off-season-speed-camp-dxf8",
   }
+}
+
+/** Shared fixtures for the design-vocabulary / recipes / variation-seed tests below. */
+const input: BuilderCatalogueInput = catalogueInput()
+const turnInput: BuilderTurnInput = {
+  doc: null,
+  history: [],
+  message: "Build me a page for the winter camp.",
+  variationSeed: "fixture-seed-shared",
 }
 
 /**
@@ -316,13 +331,14 @@ describe("Block A is built once, at module load", () => {
   })
 
   it("stays under the size ceiling the token budget assumes", () => {
-    // ~4 characters per token for English prose, so 17000 characters is
-    // roughly 4250 tokens. The design budgets Block A at ~3000 tokens; it
-    // measures ~4050 today. The ceiling is deliberately close, not generous:
-    // Block A is written into the cache on the first turn of every page, and
-    // the thing that would silently blow it up is someone inlining the nine
-    // props schemas as raw JSON Schema (11119 characters on its own) instead
-    // of the compact signatures. This goes red long before that reaches prod.
+    // ~4 characters per token for English prose. The ceiling is deliberately
+    // close, not generous: Block A is written into the cache on the first
+    // turn of every page, and the thing that would silently blow it up is
+    // someone inlining the nine props schemas as raw JSON Schema (11119
+    // characters on its own) instead of the compact signatures. This goes red
+    // long before that reaches prod. `SECTION_BUILDER_BLOCK_A_MAX` lives in
+    // builder-config.ts, alongside the model's other tunables; the history of
+    // what it has cost lives here, next to the number it is guarding.
     //
     // RAISED FROM 16000 on 2026-08-17, by 138 characters of real content: the
     // form field's `role` enum (rendered ONCE, in the field signature) and
@@ -345,16 +361,196 @@ describe("Block A is built once, at module load", () => {
     // nothing connected the word green to `tone: "dark"`. A rule that costs 411
     // characters and stops the builder refusing colour requests outright is the
     // kind of real content this ceiling was always meant to make room for.
-    // NOT RAISED on 2026-09-13. The form redirect rule was reworded to say to
-    // COPY the catalogue's `redirectUrl` rather than showing the
-    // "/go/<funnel-slug>/<next-page-slug>" template the model filled in from
-    // the funnel's NAME (audit 2026-09-13 §3.1). It cost +34 characters against
-    // 41 of headroom, so compacting the new sentence paid for it outright and
-    // the ceiling stayed where it was.
-    expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(17_400)
+    // NOT RAISED on 2026-09-13 (pre-task-10 audit fix). The form redirect rule
+    // was reworded to say to COPY the catalogue's `redirectUrl` rather than
+    // showing the "/go/<funnel-slug>/<next-page-slug>" template the model
+    // filled in from the funnel's NAME (audit 2026-09-13 §3.1). It cost +34
+    // characters against 41 of headroom, so compacting the new sentence paid
+    // for it outright and the ceiling stayed where it was.
+    //
+    // RAISED AGAIN TO 20700 on 2026-09-13 (task 10) — this is the raise the
+    // ceiling had been known-red against since task 3 widened the variant
+    // lists (measured 19026 against 17400, 1626 over, at this branch's base).
+    // COMPACTED FIRST, per the design-system spec's §5.3 order:
+    //   - the `form` description in registry.ts, ~1200 chars restating the
+    //     checkout rule three times over -> 662 chars stating each rule once
+    //     (-189, measured before this raise).
+    //   - rule 6's closing sentence (colour), rewritten rather than merely
+    //     re-cut, because the rule it stated ("no hex or colour field exists
+    //     anywhere in this document") became FALSE the moment `theme.palette`
+    //     landed and had to be corrected, not just shortened.
+    // ADDED, and this is genuinely new content, not duplication: the model
+    // now owns a page's visual DIRECTION as well as its structure and copy
+    // (task 10's whole point), so it needs to know:
+    //   - the design vocabulary itself is NOT here — that went into its own
+    //     `SECTION_BUILDER_BLOCK_DESIGN`, under a SEPARATE ceiling, exactly so
+    //     this number keeps meaning "duplication across the nine kinds" and
+    //     does not silently become a dumping ground for the new vocabulary;
+    //   - which of SIX named page shapes to build (`PAGE_RECIPES`), replacing
+    //     the single implicit "every page is a capture page" skeleton this
+    //     prompt used to assume. Only ONE of the six old `LEADGEN_RULES`
+    //     (form goes first, `variant: "split"`) moved INTO `capture-split`,
+    //     where it is genuinely recipe-specific; the other five — including
+    //     "KEEP IT SHORT", which already scopes itself to "a capture page" in
+    //     its own wording — stay universal. "KEEP IT SHORT" staying put is
+    //     also load-bearing, not just tidy: `audit-prompt-agreement.test.ts`'s
+    //     "section-count" audit code keys on the literal phrase "Six to nine
+    //     sections" appearing in `LEADGEN_RULES`, and that auditor (a separate
+    //     subsystem, out of this task's file list) has no notion of "recipe" —
+    //     moving the rule would have silently decoupled it from the prompt.
+    // The tripwire property survives the raise: see the "still blows up if
+    // someone inlines a raw JSON Schema" test below, which checks it against
+    // the CURRENT measured length rather than a number typed once and left.
+    expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(SECTION_BUILDER_BLOCK_A_MAX)
     // Not a "non-empty" check — `" "` would pass that. The floor is set below
     // the current size but far above any degenerate render.
     expect(SECTION_BUILDER_BLOCK_A.length).toBeGreaterThan(8_000)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 10: the model owns the design, not just the structure
+// ---------------------------------------------------------------------------
+
+describe("the prompt no longer claims the stylesheet owns the design", () => {
+  // Inverted assertions: they pass only once the sentence is GONE, so putting
+  // it back goes red. A plain "contains the new text" test would not catch a
+  // revert.
+  it("has dropped the sentence that caused every page to look the same", () => {
+    expect(SECTION_BUILDER_BLOCK_A).not.toContain("already handles every visual decision")
+  })
+
+  it("has dropped the absolute that made the model refuse colour requests", () => {
+    expect(buildSystemPrompt(input)).not.toContain("no hex or colour field exists")
+  })
+
+  it("tells the model it owns the palette", () => {
+    expect(buildSystemPrompt(input)).toMatch(/palette/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// FONT PAIRING LABEL AGREES WITH FONT_STACKS — final whole-branch review,
+// finding 2 (2026-09-13). `BLOCK_DESIGN`'s `theme.font` paragraph used to call
+// "athletic" "(today's pairing)". That was true when it was written; a later
+// fix wave rebuilt `FONT_STACKS` (doc.ts) and "athletic" became a rounded
+// heading on a MONO body, while "clean" (Lexend Exa/Lexend Deca) became the
+// actual default — nothing coupled the prose to the table, so the label
+// silently went stale. A brief nudging the model toward "athletic" as the
+// safe no-change choice would ship monospace body copy across a whole page.
+//
+// This derives the answer instead of hand-asserting a key name: the "real"
+// default is whichever `FONT_STACKS` entry actually uses the Lexend Exa /
+// Lexend Deca pairing (the fonts `doc.ts`'s own `DEFAULT_FONT_HEAD`/
+// `DEFAULT_FONT_BODY` fall back to when `theme.font` is unset), and the prose
+// must label exactly that key as the default — no more, no fewer.
+// ---------------------------------------------------------------------------
+
+describe("the font-pairing prose agrees with FONT_STACKS", () => {
+  it("labels the FONT_STACKS entry that actually IS the Lexend default as the default, and no other", () => {
+    const realDefaultKeys = (Object.keys(FONT_STACKS) as Array<keyof typeof FONT_STACKS>).filter(
+      (key) => FONT_STACKS[key].head.includes("Lexend Exa") && FONT_STACKS[key].body.includes("Lexend Deca"),
+    )
+    // Anti-vacuity: if FONT_STACKS ever stopped carrying the Lexend/Lexend
+    // pairing under any name, this test should say so loudly rather than
+    // silently pass every "labelled as default" check below as vacuously true.
+    expect(realDefaultKeys, "no FONT_STACKS entry pairs Lexend Exa with Lexend Deca").toHaveLength(1)
+    for (const key of Object.keys(FONT_STACKS)) {
+      const labelledDefault = new RegExp(`"${key}"[^)]*today's default`, "i").test(SECTION_BUILDER_BLOCK_DESIGN)
+      if (realDefaultKeys.includes(key as keyof typeof FONT_STACKS)) {
+        expect(labelledDefault, `"${key}" IS the real default pairing but the prompt does not say so`).toBe(true)
+      } else {
+        expect(labelledDefault, `"${key}" is NOT the default pairing but the prompt calls it one`).toBe(false)
+      }
+    }
+  })
+})
+
+describe("page recipes", () => {
+  it("offers more than one page shape", () => {
+    expect(PAGE_RECIPES.length).toBeGreaterThanOrEqual(6)
+  })
+
+  it("names every recipe in the prompt", () => {
+    for (const recipe of PAGE_RECIPES) expect(buildSystemPrompt(input)).toContain(recipe.name)
+  })
+
+  // These rules each exist because a real page shipped broken. Making the
+  // SHAPE plural must not make the CONVERSION rules optional.
+  it("keeps the universal conversion rules outside the recipes", () => {
+    const prompt = buildSystemPrompt(input)
+    expect(prompt).toContain("ONE OFFER, ONE ACTION")
+    expect(prompt).toMatch(/NEVER USE `faq` WITH `source: "live"` ON A CAMPAIGN PAGE/)
+    expect(prompt).toContain("PROOF GOES NEAR THE TOP")
+  })
+
+  it("carries every universal rule, and every recipe, into Block A", () => {
+    // MUTANT: exporting LEADGEN_RULES / PAGE_RECIPES and never interpolating
+    // them into Block A — they would be unit-tested, shipped, and never seen
+    // by the model. Mirrors leadgen.test.ts's own pin on the same property.
+    for (const rule of LEADGEN_RULES) expect(SECTION_BUILDER_BLOCK_A).toContain(rule)
+    for (const recipe of PAGE_RECIPES) expect(SECTION_BUILDER_BLOCK_A).toContain(recipe.spine)
+  })
+
+  it("still tells the model the capture-split form goes first, with no hero above it", () => {
+    // The re-cut moved this out of the universal LEADGEN_RULES and into the
+    // capture-split recipe. This pins that the instruction itself survived
+    // the move, not just that SOME recipe named "capture-split" exists.
+    const recipe = PAGE_RECIPES.find((r) => r.name === "capture-split")
+    expect(recipe).toBeDefined()
+    expect(recipe?.spine).toMatch(/no hero above/i)
+    expect(recipe?.spine).toContain('variant: "split"')
+  })
+})
+
+describe("the cached prefix stays cacheable", () => {
+  it("is byte-identical across two renders with the same input", () => {
+    expect(buildSystemPrompt(input)).toBe(buildSystemPrompt(input))
+  })
+
+  it("carries no timestamp and no long digit run", () => {
+    const prompt = buildSystemPrompt(input)
+    expect(prompt).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/)
+    expect(prompt).not.toMatch(/\b\d{10,}\b/)
+  })
+
+  it("keeps the variation seed OUT of the system prompt entirely", () => {
+    expect(buildSystemPrompt(input)).not.toContain("seed-abc-123")
+    expect(buildTurnMessage({ ...turnInput, variationSeed: "seed-abc-123" })).toContain("seed-abc-123")
+  })
+
+  it("two turns with different seeds differ only in Block C", () => {
+    const a = buildTurnMessage({ ...turnInput, variationSeed: "one" })
+    const b = buildTurnMessage({ ...turnInput, variationSeed: "two" })
+    expect(a).not.toBe(b)
+    expect(buildSystemPrompt(input)).toBe(buildSystemPrompt(input))
+  })
+
+  it("Block DESIGN sits BETWEEN Block A and Block B in the system string", () => {
+    // Anthropic's cache is a strict prefix match: DESIGN must sit after the
+    // frozen A and before the per-page B, or a per-page value in B would
+    // invalidate the shared A+DESIGN prefix on every page.
+    const prompt = buildSystemPrompt(input)
+    const indexA = prompt.indexOf(SECTION_BUILDER_BLOCK_A)
+    const indexDesign = prompt.indexOf(SECTION_BUILDER_BLOCK_DESIGN)
+    expect(indexA).toBe(0)
+    expect(indexDesign).toBeGreaterThan(indexA)
+    expect(prompt.startsWith(`${SECTION_BUILDER_BLOCK_A}\n\n${SECTION_BUILDER_BLOCK_DESIGN}`)).toBe(true)
+  })
+})
+
+describe("size ceilings", () => {
+  it("keeps Block A under its ceiling", () => {
+    expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(SECTION_BUILDER_BLOCK_A_MAX)
+  })
+
+  it("keeps the design block under its own", () => {
+    expect(SECTION_BUILDER_BLOCK_DESIGN.length).toBeLessThan(SECTION_BUILDER_BLOCK_DESIGN_MAX)
+  })
+
+  // The tripwire this ceiling has always existed for.
+  it("still blows up if someone inlines a raw JSON Schema", () => {
+    expect(SECTION_BUILDER_BLOCK_A.length + 11_119).toBeGreaterThan(SECTION_BUILDER_BLOCK_A_MAX)
   })
 })
 
@@ -407,24 +603,23 @@ describe("every registry entry reaches the prompt", () => {
     }
   })
 
-  it.each(ISLAND_LIST.filter((i) => !NOT_OFFERED_TO_THE_BUILDER.has(i.name)).map((island) => [island.name, island] as const))(
-    "island %s is named IN the islands block",
-    (_name, island) => {
-      // Fix round 1, M3: the first spelling was `toContain(name)` over the
-      // whole of Block A, and all six names already occur outside
-      // `ISLANDS_BLOCK` — `checkout` and `testimonials` in the paragraph above
-      // it ("a real checkout, ... live testimonials pulled from the
-      // database"), the rest throughout the kinds and CTA sections. Deleting
-      // `ISLANDS_BLOCK` outright left the suite green. The intro prose lives
-      // inside this same `##` section, so scoping alone is not enough: the
-      // list-item form and the island's own description are what exist
-      // nowhere else. The drift mutant (a seventh island) still fails too.
-      const section = blockASection("What the interactive parts become")
-      expect(section).not.toBe("")
-      expect(section).toContain(`- ${island.name} (`)
-      expect(section).toContain(island.description)
-    },
-  )
+  it.each(
+    ISLAND_LIST.filter((i) => !NOT_OFFERED_TO_THE_BUILDER.has(i.name)).map((island) => [island.name, island] as const),
+  )("island %s is named IN the islands block", (_name, island) => {
+    // Fix round 1, M3: the first spelling was `toContain(name)` over the
+    // whole of Block A, and all six names already occur outside
+    // `ISLANDS_BLOCK` — `checkout` and `testimonials` in the paragraph above
+    // it ("a real checkout, ... live testimonials pulled from the
+    // database"), the rest throughout the kinds and CTA sections. Deleting
+    // `ISLANDS_BLOCK` outright left the suite green. The intro prose lives
+    // inside this same `##` section, so scoping alone is not enough: the
+    // list-item form and the island's own description are what exist
+    // nowhere else. The drift mutant (a seventh island) still fails too.
+    const section = blockASection("What the interactive parts become")
+    expect(section).not.toBe("")
+    expect(section).toContain(`- ${island.name} (`)
+    expect(section).toContain(island.description)
+  })
 
   it("describes every op that opSchema accepts, and no phantom op", () => {
     // Derived from the validator, not from a list here: a seventh op added to
@@ -699,7 +894,12 @@ describe("Block B carries names and never ids", () => {
 describe("Block C sends the document, never the page", () => {
   it("includes the live document and the new message", () => {
     const doc = docWithExampleIds()
-    const turn = buildTurnMessage({ doc, history: [], message: "Make the pricing single-plan." })
+    const turn = buildTurnMessage({
+      doc,
+      history: [],
+      message: "Make the pricing single-plan.",
+      variationSeed: "fixture-seed-1",
+    })
     expect(turn).toContain("Train like an athlete")
     expect(turn).toContain("Make the pricing single-plan.")
     expect(turn).toContain('"id": "bullets"')
@@ -711,7 +911,7 @@ describe("Block C sends the document, never the page", () => {
     // `reassemble(doc).html` "for context" cannot pass.
     const doc = docWithExampleIds()
     const { html, css } = reassemble(doc)
-    const turn = buildTurnMessage({ doc, history: [], message: "tweak it" })
+    const turn = buildTurnMessage({ doc, history: [], message: "tweak it", variationSeed: "fixture-seed-2" })
     expect(html.length).toBeGreaterThan(200)
     expect(turn).not.toContain(html)
     expect(turn).not.toContain(css)
@@ -731,7 +931,12 @@ describe("Block C sends the document, never the page", () => {
       role: index % 2 === 0 ? ("owner" as const) : ("builder" as const),
       text: marker(index),
     }))
-    const turn = buildTurnMessage({ doc: docWithExampleIds(), history, message: "next" })
+    const turn = buildTurnMessage({
+      doc: docWithExampleIds(),
+      history,
+      message: "next",
+      variationSeed: "fixture-seed-3",
+    })
     // The oldest four are gone...
     for (let index = 0; index < 4; index++) {
       expect(turn).not.toContain(marker(index))
@@ -743,7 +948,12 @@ describe("Block C sends the document, never the page", () => {
   })
 
   it("handles the first turn, when no document exists yet", () => {
-    const turn = buildTurnMessage({ doc: null, history: [], message: "Build me a page for the winter camp." })
+    const turn = buildTurnMessage({
+      doc: null,
+      history: [],
+      message: "Build me a page for the winter camp.",
+      variationSeed: "fixture-seed-4",
+    })
     expect(turn).toContain("set_page")
     expect(turn).toContain("Build me a page for the winter camp.")
     expect(turn).not.toContain("null")

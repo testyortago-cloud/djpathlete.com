@@ -16,9 +16,12 @@ import type { SectionDoc, Section } from "@/lib/funnels/sections/registry"
 import {
   reassemble,
   checkSizeCaps,
+  FONT_STACKS,
+  ALLOWED_FONT_FAMILIES,
   type SectionDocProblem,
 } from "@/lib/funnels/sections/doc"
 import { FUNNEL_STEP_HTML_MAX_LENGTH, FUNNEL_STEP_CSS_MAX_LENGTH } from "@/lib/validators/funnel"
+import { PALETTE_TABLE, PALETTE_PRESETS, contrastRatio } from "@/lib/funnels/sections/palettes"
 
 const urlCta = { label: "Learn more", target: { kind: "url" as const, href: "/thanks" } }
 const bookingCta = { label: "Book a call", target: { kind: "booking" as const } }
@@ -373,5 +376,255 @@ describe("checkSizeCaps — publish caps enforced at draft time", () => {
       "a".repeat(FUNNEL_STEP_CSS_MAX_LENGTH + 1),
     )
     expect(problems.map((p) => p.code).sort()).toEqual(["css_too_large", "html_too_large"])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 4: palette, width, density and font reaching the emitted CSS.
+// ---------------------------------------------------------------------------
+
+const themeDoc = (theme: Record<string, unknown>) =>
+  ({
+    v: 1,
+    engine: "sections",
+    theme: { tone: "light", accent: "accent", radius: "soft", ...theme },
+    sections: [
+      {
+        id: "hero",
+        kind: "hero",
+        variant: "centered",
+        style: {},
+        props: { headline: "Get strong", primaryCta: { label: "Start", target: { kind: "booking" } } },
+      },
+    ],
+  }) as never
+
+describe("palette resolution order", () => {
+  it("uses the document's own palette when it has one", () => {
+    const css = reassemble(themeDoc({ palette: { preset: "ember" } })).css
+    expect(css).toContain(`--primary: ${PALETTE_TABLE.ember.brand}`)
+  })
+
+  it("falls back to the tenant brand kit when the document has none", () => {
+    const css = reassemble(themeDoc({}), { brandKit: { brand: "#6d28d9" } } as never).css
+    expect(css).toContain("--primary: #6d28d9")
+  })
+
+  it("a document palette outranks the tenant brand kit", () => {
+    const css = reassemble(themeDoc({ palette: { preset: "ocean" } }), {
+      brandKit: { brand: "#6d28d9" },
+    } as never).css
+    expect(css).toContain(`--primary: ${PALETTE_TABLE.ocean.brand}`)
+    expect(css).not.toContain("--primary: #6d28d9")
+  })
+
+  // The no-regression guard: an untouched page must render exactly as it
+  // does today.
+  it("emits no palette override at all when neither is present", () => {
+    expect(reassemble(themeDoc({})).css).not.toMatch(/--primary:/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fix-wave bug 3: `--background`/`--foreground` (a palette's paper/ink) were
+// emitted by `paletteBlock` but never PAINTED anywhere. `.djp-page` had a rule
+// for `data-page-tone="dark"` only, and even that painted `--primary`, never
+// `--background`. Five of twelve presets seed a dark `paper`/light `ink`
+// (`midnight`, `ember`, `steel`, `plum`, `ink`), so any of those on a
+// `theme.tone: "light"` page (or a page with no tone override at all) put the
+// palette's light ink straight onto the HOST page's own unpainted background
+// — white text on white, an unreadable page, reachable through nothing more
+// exotic than the model choosing a preset it is free to choose.
+// ---------------------------------------------------------------------------
+
+describe("page ground colour — a palette must paint what it emits", () => {
+  it("paints the page wrapper's background/colour from the palette's own tokens when a palette is active", () => {
+    const css = reassemble(themeDoc({ palette: { preset: "ember" } })).css
+    expect(css).toContain(".djp-page { background: var(--background); color: var(--foreground); }")
+  })
+
+  // The no-regression guard, same shape as "emits no palette override at all
+  // when neither is present" above: an untouched page must still render
+  // byte-identically, so this new rule must be ABSENT, not merely inert.
+  it("emits no page-ground override at all when no palette is present", () => {
+    const css = reassemble(themeDoc({})).css
+    expect(css).not.toContain(".djp-page { background: var(--background)")
+  })
+
+  // `theme.tone: "dark"` is a stronger, separate directive ("paint this page
+  // in my brand colour") than a palette's own paper/ink, and must still win:
+  // the dark-tone rule's attribute selector outranks the new bare-class rule
+  // on specificity regardless of source order, so both can be emitted without
+  // fighting. Pinned here as a textual fact (both rules present, in this
+  // order) — render.test.ts's cascade model is what actually proves which one
+  // wins for a real element.
+  it("still emits the brand-pair rule for an explicit dark page tone, alongside the new paper/ink rule", () => {
+    const css = reassemble(themeDoc({ tone: "dark", palette: { preset: "ember" } })).css
+    expect(css).toContain(".djp-page { background: var(--background); color: var(--foreground); }")
+    expect(css).toContain('.djp-page[data-page-tone="dark"] { background: var(--primary); color: var(--primary-foreground); }')
+  })
+
+  // The real invariant bug 3 walked past: not "ink vs paper score >= 4.5 as a
+  // pair in a table" (palettes.test.ts already proves that, for every
+  // preset), but that the pairing this test just proved gets PAINTED is the
+  // exact same pairing that clears AA. Combined with the two tests above,
+  // this closes the gap between "the tokens are correct" and "the tokens are
+  // ever applied to anything a reader looks at".
+  it("every preset's ink clears AA against the paper the page will actually paint", () => {
+    for (const name of PALETTE_PRESETS) {
+      const css = reassemble(themeDoc({ palette: { preset: name } })).css
+      expect(css, `${name}: page ground was never painted`).toContain(
+        ".djp-page { background: var(--background); color: var(--foreground); }",
+      )
+      const { ink, paper } = PALETTE_TABLE[name]
+      expect(contrastRatio(ink, paper), `${name}: ink ${ink} on paper ${paper}`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+})
+
+describe("palette values reach CSS only as custom properties", () => {
+  it("never interpolates a palette value into a selector", () => {
+    const css = reassemble(themeDoc({ palette: { brand: "#6d28d9" } })).css
+    for (const line of css.split("\n")) {
+      const brace = line.indexOf("{")
+      const selector = brace === -1 ? line : line.slice(0, brace)
+      expect(selector, line).not.toContain("#6d28d9")
+    }
+  })
+})
+
+describe("width, density and font", () => {
+  it("narrow and wide change the emitted max width", () => {
+    expect(reassemble(themeDoc({ width: "narrow" })).css).toContain("--djp-maxw: 56rem")
+    expect(reassemble(themeDoc({ width: "wide" })).css).toContain("--djp-maxw: 88rem")
+  })
+
+  it("defaults to today's 72rem when width is absent", () => {
+    expect(reassemble(themeDoc({})).css).toContain("--djp-maxw: 72rem")
+  })
+
+  it("density scales the padding ramp", () => {
+    expect(reassemble(themeDoc({ density: "airy" })).css).toContain("--djp-density")
+    expect(reassemble(themeDoc({ density: "airy" })).css).not.toBe(reassemble(themeDoc({ density: "tight" })).css)
+  })
+
+  it("font swaps the heading and body stacks", () => {
+    const a = reassemble(themeDoc({ font: "editorial" })).css
+    const b = reassemble(themeDoc({ font: "technical" })).css
+    expect(a).toContain("--djp-font-head")
+    expect(a).not.toBe(b)
+  })
+})
+
+describe("two different themes produce two different stylesheets", () => {
+  it("is the whole point of the build", () => {
+    const a = reassemble(
+      themeDoc({ palette: { preset: "ember" }, font: "bold", width: "narrow", density: "tight" }),
+    ).css
+    const b = reassemble(
+      themeDoc({ palette: { preset: "ocean" }, font: "editorial", width: "wide", density: "airy" }),
+    ).css
+    expect(a).not.toBe(b)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// FONT_STACKS must resolve to genuinely different fonts, not just different
+// STRINGS. A stack that names a face this app never loads (e.g. "Playfair
+// Display") silently degrades to whatever generic ends its own chain, so a
+// string-level "these differ" check is not enough — the old five pairings
+// differed as strings too, and four of them rendered identically. These
+// tests check what actually gets resolved: every family named has to be one
+// of the three fonts app/layout.tsx loads, or a real generic/system keyword.
+// ---------------------------------------------------------------------------
+
+function fontFamilyTokens(stack: string): string[] {
+  return stack.split(",").map((token) => token.trim().replace(/^"|"$/g, "").toLowerCase())
+}
+
+describe("FONT_STACKS only names fonts this app actually loads, or true system generics", () => {
+  it("every family in every pairing's head and body stack is on the allowed list", () => {
+    for (const [font, { head, body }] of Object.entries(FONT_STACKS)) {
+      for (const [role, stack] of [
+        ["head", head],
+        ["body", body],
+      ] as const) {
+        for (const token of fontFamilyTokens(stack)) {
+          expect(
+            ALLOWED_FONT_FAMILIES.has(token),
+            `theme.font="${font}" names "${token}" in its ${role} stack, which is not a font this app loads or a recognised generic`,
+          ).toBe(true)
+        }
+      }
+    }
+  })
+
+  it("all five pairings are pairwise distinct — the whole point of the knob", () => {
+    const pairs = Object.entries(FONT_STACKS).map(([font, { head, body }]) => ({
+      font,
+      key: `${head}|${body}`,
+    }))
+    const seen = new Map<string, string>()
+    for (const { font, key } of pairs) {
+      const clashesWith = seen.get(key)
+      expect(clashesWith, `theme.font="${font}" resolves identically to theme.font="${clashesWith}"`).toBeUndefined()
+      seen.set(key, font)
+    }
+  })
+})
+
+describe("rhythm", () => {
+  const page = (rhythm?: string) => ({
+    v: 1, engine: "sections",
+    theme: { tone: "light", accent: "accent", radius: "soft", ...(rhythm ? { rhythm } : {}) },
+    sections: ["a","b","c","d","e","f"].map((id) => ({
+      id, kind: "bullets", variant: "list", style: {},
+      props: { items: [{ title: "One" }, { title: "Two" }] },
+    })),
+  } as never)
+  const tones = (html: string) => [...html.matchAll(/data-tone="([a-z]+)"/g)].map((m) => m[1])
+
+  it("flat is today's behaviour: every untoned section renders default", () => {
+    expect(new Set(tones(reassemble(page("flat")).html))).toEqual(new Set(["default"]))
+  })
+  it("absent rhythm is identical to flat", () => {
+    expect(tones(reassemble(page()).html)).toEqual(tones(reassemble(page("flat")).html))
+  })
+  // Regression guard for every existing stored light-themed page on both
+  // boards: `sectionForPage` was widened to also run when rhythm is set,
+  // but a light page with no `rhythm` key must still take the untouched
+  // early-return path and render exactly as it did before rhythm existed —
+  // pinned as a concrete sequence, not just "it did not throw".
+  it("a light page with no rhythm key renders exactly as it did before rhythm existed", () => {
+    expect(tones(reassemble(page()).html)).toEqual([
+      "default", "default", "default", "default", "default", "default",
+    ])
+  })
+  it("alternating alternates untoned sections", () => {
+    expect(tones(reassemble(page("alternating")).html))
+      .toEqual(["default","muted","default","muted","default","muted"])
+  })
+  // Spec §3.3: untoned sections run the page-tone default, and every THIRD
+  // one takes the theme's accent tone — groups punctuated by a highlight
+  // colour, not another two-tone checkerboard at a different frequency from
+  // `alternating`. All three assertions matter: the exact sequence pins the
+  // "every third" period, the inequality with `alternating`'s own output on
+  // the same doc proves this isn't just a slower checkerboard, and the
+  // "accent" membership proves the highlight tone is actually reached (a
+  // sequence could satisfy "not equal to alternating" and still never emit
+  // it, e.g. by using a different two-tone pair).
+  it("banded groups the page with an accent highlight every third section", () => {
+    const banded = tones(reassemble(page("banded")).html)
+    const alternating = tones(reassemble(page("alternating")).html)
+    expect(banded).toEqual(["default", "default", "accent", "default", "default", "accent"])
+    expect(banded).not.toEqual(alternating)
+    expect(banded).toContain("accent")
+  })
+  // An explicit choice outranks a page default. This is already true of theme.tone
+  // and must stay true of rhythm, or the inspector's tone control stops working.
+  it("never overrides a section's own tone", () => {
+    const doc = page("alternating") as never as { sections: { style: Record<string, string> }[] }
+    doc.sections[1].style.tone = "accent"
+    expect(tones(reassemble(doc as never).html)[1]).toBe("accent")
   })
 })

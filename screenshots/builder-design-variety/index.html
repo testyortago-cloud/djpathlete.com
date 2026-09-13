@@ -1,0 +1,207 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Builder design variety — three briefs, three real pages</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 48px 32px 96px; background: #f6f7f8; color: #16303a;
+         font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  .lede { color: #5c6b70; margin: 0 0 36px; max-width: 78ch; }
+  section { background: #fff; border: 1px solid #e2e6e8; border-radius: 14px; padding: 24px; margin: 0 0 28px; }
+  h2 { font-size: 19px; margin: 0 0 4px; }
+  .meta { color: #5c6b70; font-size: 14px; margin: 0 0 16px; }
+  img { display: block; width: 100%; height: auto; border: 1px solid #e2e6e8; border-radius: 8px; }
+  code { background: #eef1f2; padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+  ul { margin: 10px 0 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .note { background: #fff8e8; border: 1px solid #f0e0b8; border-radius: 10px; padding: 16px 20px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .grid3 img { height: 180px; object-fit: cover; object-position: top; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td, th { border: 1px solid #e2e6e8; padding: 6px 10px; text-align: left; }
+</style>
+<main>
+  <h1>Three briefs, three real pages</h1>
+  <p class="lede">
+    The owner's complaint was "why is the layout of it always the same." Every page below was
+    created through the real "New funnel" dialog on <code>/admin/funnels</code>, given a
+    deliberately different brief in the "Describe it" field, and built by the real page-builder
+    chat — the app composes that field into the first real chat turn, so this is a genuine model
+    call spending real credits, not a fixture. Script:
+    <code>scripts/capture-builder-design-variety.mjs</code>.
+  </p>
+
+  <section>
+    <h2>At a glance</h2>
+    <table>
+      <tr><th>Brief</th><th>Palette</th><th>Tone (stored)</th><th>Font</th><th>Density</th><th>Radius</th><th>Sections</th></tr>
+      <tr><td>Waitlist (calm, minimal)</td><td>default</td><td>light</td><td>default</td><td>default</td><td>soft</td><td>6 — form, proof, bullets, faq, cta, footer</td></tr>
+      <tr><td>Sales (bold, dark, urgent)</td><td>ink</td><td>dark</td><td>bold</td><td>tight</td><td>sharp</td><td>9 — hero, bullets, proof, steps, testimonial, pricing, faq, cta, footer</td></tr>
+      <tr><td>Camp (vibrant, playful)</td><td>ember</td><td>light*</td><td>bold</td><td>tight</td><td>round</td><td>9 — hero, proof, bullets, steps, testimonial, pricing, faq, cta, footer</td></tr>
+    </table>
+    <p class="meta">
+      * "Tone (stored)" is the value in the <code>Page design</code> panel, not a description of how the
+      page actually looks. Ember is a dark-seeded palette (near-black paper, white ink), so the camp page
+      reads as a dark page even with "Tone" left on "Light" — see the fix note below.
+    </p>
+  </section>
+
+  <section>
+    <h2>The headline comparison</h2>
+    <p class="meta">Same viewport, same builder, three different briefs — first screen of each real page.</p>
+    <div class="grid3">
+      <img src="02-waitlist-preview-light.png" alt="Waitlist page — calm, light, tan accent.">
+      <img src="06-sales-preview-light.png" alt="Sales page — dark, bold, red accent.">
+      <img src="08-camp-preview-light.png" alt="Camp page — bright red and green, playful.">
+    </div>
+  </section>
+
+  <section>
+    <h2>01-03 — Waitlist: "a calm, minimal waitlist signup... nothing loud"</h2>
+    <p class="meta">/admin/funnels/&lt;id&gt;/edit/&lt;stepId&gt; and /preview/waitlist-k9m0w</p>
+    <img src="01-waitlist-builder-theme-panel.png" alt="The builder screen for the waitlist page, with the Page design panel open.">
+    <img src="02-waitlist-preview-light.png" alt="The waitlist page as the AI built it: light, spacious, tan accent, 6 sections.">
+    <img src="03-waitlist-preview-dark.png" alt="The same waitlist page after switching Tone to dark by hand in the Page design panel.">
+  </section>
+
+  <section>
+    <h2>04-06 — Sales: "bold, intense, long-form... dark, dramatic, high-contrast"</h2>
+    <p class="meta">/admin/funnels/&lt;id&gt;/edit/&lt;stepId&gt; and /preview/sales-k9m0w</p>
+    <img src="04-sales-builder-theme-panel.png" alt="The builder screen for the sales page, with the Page design panel open.">
+    <img src="05-sales-preview-dark.png" alt="The sales page as the AI built it: dark navy, deep-red accent, 9 sections including pricing and a guarantee.">
+    <img src="06-sales-preview-light.png" alt="The same sales page after switching Tone to light by hand.">
+  </section>
+
+  <section>
+    <h2>07-09 — Camp: "vibrant, playful, family-friendly... energetic, colourful"</h2>
+    <p class="meta">/admin/funnels/&lt;id&gt;/edit/&lt;stepId&gt; and /preview/camp-kfcsg</p>
+    <img src="07-camp-builder-theme-panel.png" alt="The builder screen for the camp page, with the Page design panel open showing the Ember palette, after a stylesheet fix.">
+    <img src="08-camp-preview-light.png" alt="The camp page as the AI built it: the FAQ heading is a clearly-readable warm red, after both stylesheet fixes.">
+    <img src="09-camp-preview-dark.png" alt="The same camp page with Tone switched to Dark by hand: the FAQ band turns Ember's red brand colour instead of near-black.">
+  </section>
+
+  <section class="note">
+    <h2>Bug #1 (found here, fixed): a dark-seeded palette on a "light" page was unreadable</h2>
+    <p>
+      The page wrapper (<code>.djp-page</code>) never painted the active palette's own background — only
+      <code>data-page-tone="dark"</code> had a rule, and it painted the brand colour, never the palette's
+      "paper" tone. "Ember" seeds a DARK paper (near-black) with a light ink (white), so on this camp page —
+      <code>theme.tone: "light"</code> — the wrapper stayed the host's own unpainted white, and any section
+      relying on that page background (the FAQ) rendered Ember's white ink text on that white ground:
+      <strong>invisible questions</strong>. Five of the twelve presets are dark-seeded and were affected the
+      same way. Fixed in commit <code>54ed0449</code>: the wrapper now paints the palette's own
+      background/foreground pair, so a dark-seeded palette reads as a dark page — correctly — even when
+      "Tone" is still set to "Light". Toggling "Tone" to "Dark" (09) does something different from what it
+      would on a light-seeded palette: it paints the page's brand colour (a red) over those same sections
+      instead of the palette's near-black paper, since the tone override always wins over the palette's own
+      ground.
+    </p>
+  </section>
+
+  <section class="note">
+    <h2>Bug #2 (found here, fixed): brand colour was never proven readable as text on the page itself</h2>
+    <img src="10-sales-pricing-contrast-bug.png" alt="Before/after: the pricing card's heading and price, dark-on-near-black on the left, white and readable on the right.">
+    <p>
+      Originally reported here as one narrow symptom — the sales page's <code>pricing</code> section
+      rendered its heading ("One block, one price") and price ("$1,200") in dark navy ink on a near-black
+      card. Commit <code>3954dde7</code> fixed the price alone. Re-verifying afterwards found the SAME
+      defect still live on the section's own heading, which pointed at the real shape of the bug: <code>brand</code>
+      was only ever guaranteed readable as a BACKGROUND (paired with <code>brandInk</code>), never as TEXT painted
+      directly on the page's own ground — which is exactly how <code>.djp-hd</code>, <code>.djp-plan-price</code> and
+      <code>.djp-proof-value</code> use it outside an explicitly-toned band.
+    </p>
+    <p>
+      Two follow-up commits closed it properly. <code>a4e37d25</code> swept every other element with the
+      same hardcoded-brand pattern (icons, eyebrows, form required-marks, the FAQ disclosure marker) into
+      the existing tone-contrast mechanism. <code>5d7bbcfb</code> then measured brand-vs-paper across all
+      twelve presets and found it was never a near-miss on one preset — <strong>four of twelve failed AA
+      outright</strong> (<code>ink</code> 1.10:1, <code>midnight</code> 1.88:1, <code>steel</code> 2.19:1, <code>plum</code> 2.74:1; even the best,
+      <code>ember</code>, cleared the 3:1 floor by only 0.01), and added a derived <code>brandOnPaper</code> token that
+      guarantees 4.5:1 against both paper and surface for all twelve. Verified directly on the live pages
+      above: the sales pricing heading and the camp FAQ heading both now read clearly, with no hand edit.
+    </p>
+  </section>
+
+  <section class="note">
+    <h2>Bug #3 (found by a whole-branch review, fixed): the same pattern, a fourth time — <code>accent</code></h2>
+    <p>
+      Same shape again, this time for <code>--accent</code> rather than <code>--primary</code>:
+      <code>.djp-eyebrow</code>, the bullet/pricing/form-proof checkmark icons, the required-field mark, the
+      FAQ toggle glyph and the quiz progress bar all painted accent directly as TEXT on a default (untoned)
+      section's own ground — never proven safe there. Measured: <code>ink</code> 1.11:1, <code>steel</code>
+      1.40:1, <code>midnight</code> 2.47:1, against a 4.5:1 floor. Fixed in <code>0f2d2087</code> with an
+      <code>accentOnPaper</code> token, the same derivation as <code>brandOnPaper</code> above. Visible on
+      06: the bullet icons in "Why the last three years went nowhere" were an unreadable near-black smudge
+      on the previous capture and are now a warm, legible brown.
+    </p>
+    <p>
+      This is the fourth time this exact class of bug shipped, and the reason it kept getting past a green
+      suite is named directly in <code>0f2d2087</code>'s own commit message:
+      <code>render.test.ts</code> had a hand-maintained table declaring <code>--accent</code> "legal" on
+      <code>--background</code>/<code>--surface</code> as a scope-invariant fact — true for the app's four
+      fixed default themes, false for every one of the twelve derived palettes. Even the PRIOR fix wave
+      added <code>--primary-on-paper</code> to that same table without asking why <code>--accent</code> was
+      sitting in it unproven. The table is gone now, replaced by a check that measures the real palettes
+      directly instead of trusting a list of pairs someone once believed were safe.
+    </p>
+  </section>
+
+  <section class="note">
+    <h2>What this does and does not prove</h2>
+    <ul>
+      <li>
+        <strong>Real variety, unprompted about design mechanics.</strong> Each brief named only mood,
+        audience and content priorities — never a palette name, a recipe name, or a theme key. The
+        model chose "ink" (near-black/red) for the sales page, "ember" (red/green) for the camp page,
+        and left the waitlist page on defaults; it chose a 6-section capture-style layout for the
+        waitlist and 9-section long-form layouts for the other two. None of that was dictated.
+      </li>
+        <li>
+        <strong>The light/dark pairs are a control, not a third design.</strong> Toggling "Tone" in the
+        Page design panel is a plain, non-AI edit — the same op path a click-to-edit uses. It proves the
+        control is reachable by hand and that every page repaints correctly in both tones; it is not a
+        second example of the AI choosing a look.
+      </li>
+      <li>
+        <strong>The waitlist page under-uses the new knobs.</strong> Its stored theme only sets
+        <code>tone</code>, <code>accent</code> and <code>radius</code> — font, density, width and
+        rhythm were left unset and fall back to defaults. That is a legitimate choice for a
+        deliberately plain, "nothing loud" brief, but it means one of the three pages is a weaker
+        demonstration of the new controls than the other two.
+      </li>
+      <li>
+        <strong>Real credits were spent.</strong> Three first drafts plus each page's own
+        review/self-critique pass — visible mid-run in the camp builder screenshot — are genuine
+        model calls against the dev clone, not fixtures.
+      </li>
+      <li>
+        <strong>The sales page's review pass outran this script's own wait.</strong> The capture
+        script waited for the stored document to stop changing for 20 seconds before treating a first
+        draft as final — matching <code>capture-ai-colour-turn.mjs</code>'s "wait on the document, not
+        a spinner" rule. For the sales page that was not long enough: the review/self-critique pass
+        kept revising it afterwards (the pricing copy and price changed after the first capture), so
+        05/06 were re-shot once the document was confirmed to have stopped changing for good. The
+        waitlist and camp pages did not drift.
+      </li>
+      <li>
+        <strong>This set went through four re-capture passes as fixes landed</strong> — never a rebuild,
+        always the same stored documents. Pass 1: <code>54ed0449</code>/<code>3954dde7</code> (camp's page
+        wrapper, sales's price) — re-shot 05-10. Pass 2: <code>a4e37d25</code>/<code>5d7bbcfb</code> (the
+        brand-on-paper sweep) — re-shot 05, 06, 08, and 10 again, as a clean before/after instead of a
+        "partially fixed" caption. Pass 3: <code>0f2d2087</code> (the matching accent-on-paper sweep,
+        instance #4 of the same class) — re-shot 06 only, once probing confirmed it was the sole page whose
+        rendered colours actually moved. Every pass, every one of the nine page PNGs was checked, not just
+        the ones expected to move: verified by probing computed
+        <code>color</code>/<code>background-color</code> on the live DOM (<code>.djp-page</code>,
+        <code>.djp-hd</code>, <code>.djp-plan-price</code>, <code>.djp-eyebrow</code>, <code>.djp-ic</code>
+        and more) and by opening a fresh screenshot of every route side by side with the committed one.
+        01-05, 02/03, 07/09 and 10 stayed as they were across pass 3 specifically: sales's as-built page has
+        no default-tone section for the accent fix to reach; camp's only default-tone section (its FAQ) has
+        no eyebrow, icon or required-mark for it to touch; waitlist has no active palette; and the pricing
+        card in 10 uses icons that were already fixed a pass earlier (they're on a <code>muted</code>-toned
+        section, not <code>default</code>).
+      </li>
+    </ul>
+  </section>
+</main>

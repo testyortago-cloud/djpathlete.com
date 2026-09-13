@@ -70,6 +70,8 @@ import { getDraft } from "@/lib/db/funnel-builder"
 import { ensureEventPriced } from "@/lib/events/ensure-priced"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { reassemble } from "@/lib/funnels/sections/doc"
+import type { BrandKit } from "@/lib/funnels/sections/render"
+import { resolveBrandKit } from "@/lib/funnels/brand-kit"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import { loadCatalogues, publishGate, resolveDoc, type PublishGate } from "@/lib/funnels/sections/resolve"
 import { funnelPublishPlan, type PagePublishProblem, type StepToPublish } from "@/lib/funnels/publish-plan"
@@ -283,6 +285,21 @@ export const POST = withAudit(
       const funnelBasePath = `/go/${funnel.slug}`
       const warnings: string[] = []
 
+      // The tenant's brand kit, for `reassemble`'s palette default -- the same
+      // wiring as the build route and both draft previews, so a page that
+      // previewed with a tenant's colours publishes with the same ones rather
+      // than falling back to the host site's. Wrapped independently of the
+      // catalogue/resolve reads above: a `business_settings` read failure must
+      // cost only the palette default, never the publish itself, which is why
+      // this does not join the fail-closed `try` this whole handler already
+      // runs inside.
+      let brandKit: BrandKit | null = null
+      try {
+        brandKit = await resolveBrandKit(businessId)
+      } catch (error) {
+        console.error("[funnels/publish] brand kit read failed — continuing without it:", error)
+      }
+
       // ---------------------------------------------------------------------
       // GATE TWO AND THREE, FOR EVERY PAGE, BEFORE THE WRITE LOOP.
       // ---------------------------------------------------------------------
@@ -304,7 +321,7 @@ export const POST = withAudit(
       const prepared: { stepId: string; stepName: string; doc: SectionDoc; html: string; css: string }[] = []
 
       for (const entry of plan.publish) {
-        const rendered = reassemble(entry.doc, { funnelBasePath })
+        const rendered = reassemble(entry.doc, { funnelBasePath, brandKit })
         if (rendered.problems.length > 0) {
           renderProblems.push({
             stepId: entry.stepId,

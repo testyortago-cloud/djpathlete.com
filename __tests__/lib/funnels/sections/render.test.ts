@@ -21,6 +21,7 @@ import { parseIslandProps } from "@/lib/funnels/islands"
 import { escapeHtml, renderSection, type RenderContext } from "@/lib/funnels/sections/render"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import { THEME_CSS, SECTION_CSS } from "@/lib/funnels/sections/styles"
+import { PALETTE_TABLE, PALETTE_PRESETS, contrastRatio, type PaletteName } from "@/lib/funnels/sections/palettes"
 import {
   SECTION_KINDS,
   SECTION_ICONS,
@@ -132,9 +133,17 @@ describe("THEME_CSS + SECTION_CSS", () => {
     expect(THEME_CSS).toContain(`.djp-ic-${icon} { -webkit-mask-image: url("data:image/svg+xml,`)
   })
 
+  // The chain now sits one level deeper than the literal these two lines used
+  // to check for: `--djp-font-head`/`--djp-font-body` (design-system spec §3,
+  // wired in doc.ts's themeCss) are the OUTERMOST var(), with this exact
+  // fallback chain preserved as their default — so a doc with no `theme.font`
+  // still resolves the font exactly as before.
   it("uses the documented font fallback chain, never assuming @theme inline vars resolve", () => {
     expect(THEME_CSS).toContain(
-      'font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);',
+      'font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));',
+    )
+    expect(THEME_CSS).toContain(
+      'font-family: var(--djp-font-body, var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif));',
     )
   })
 })
@@ -173,17 +182,108 @@ describe("THEME_CSS + SECTION_CSS", () => {
 //     understand (it is reported as UNMODELLED rather than skipped).
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// DERIVED neutral-ground legality (final whole-branch review, finding 1,
+// 2026-09-13). `--background`/`--surface`'s entries below used to be a
+// hand-picked list that DECLARED `--accent` (and, before `--primary-on-paper`
+// existed, `--primary`) legal there as "a scope-invariant fact about
+// app/globals.css's four fixed themes". That was true for THOSE four themes
+// and false the moment a document has any `PALETTE_TABLE` preset active:
+// `ink` measured accent-on-paper at 1.11:1, steel at 1.40:1 — the exact
+// hazard `.djp-eyebrow`/`.djp-ic`/`.djp-req` shipped with, hidden by a table
+// entry nobody re-derived against a real palette. Fixing the three shipped
+// instances of this bug class each time by hand-editing the table (adding
+// `--primary`, then `--primary-on-paper`, next presumably `--accent-on-paper`)
+// is exactly the pattern the review flagged as the root cause, so instead of
+// adding one more hand-typed entry, `neutralGroundForeground` COMPUTES which
+// foreground tokens are legal on a neutral ground by actually measuring every
+// `PALETTE_TABLE` preset's real hex with `contrastRatio` — the same numbers
+// `paletteHex` (below) already resolves for the "real palette contrast" suite
+// — so a future preset, or a future on-paper derivation that stops clearing
+// AA, fails this file's own build instead of shipping quietly behind a table
+// that says "legal" without checking.
+//
+// Only `--foreground`/`--muted-foreground`/`--primary-on-paper`/
+// `--accent-on-paper` are even candidates: those are the ONLY tokens this
+// stylesheet ever paints as text directly on `--background`/`--surface`
+// (verified by "understands every colour value..." below, which fails loudly
+// on anything else). Bare `--primary`/`--accent` are deliberately NOT
+// candidates — they are exactly the two tokens this finding proves are NOT
+// safe there for an arbitrary derived palette, and no rule needs them to be:
+// every rule that used to hardcode them now falls back to bare `--primary`/
+// `--accent` only via `var(--primary-on-paper, var(--primary))`-style CSS,
+// which `colourToken` below resolves to the OUTER (on-paper) name regardless
+// of whether a palette is active, so the bare name is simply never produced
+// as a resolved reading for a default-tone text node.
+// ---------------------------------------------------------------------------
+
+/** `null` for any token this file's stylesheet uses that the palette does not
+ * derive (see the scope note near the "real palette contrast" suite below)
+ * — never a guess. Declared with `function` (hoisted) so `READABLE_ON` below
+ * can call it despite appearing earlier in the file. */
+function paletteHex(preset: PaletteName, token: string): string | null {
+  const t = PALETTE_TABLE[preset]
+  switch (token) {
+    case "--primary":
+      return t.brand
+    case "--primary-foreground":
+      return t.brandInk
+    case "--accent":
+      return t.accent
+    case "--accent-foreground":
+      return t.accentInk
+    case "--surface":
+      return t.surface
+    case "--foreground":
+      return t.ink
+    case "--background":
+      return t.paper
+    case "--primary-on-paper":
+      return t.brandOnPaper
+    case "--accent-on-paper":
+      return t.accentOnPaper
+    default:
+      return null
+  }
+}
+
+const NEUTRAL_TEXT_CANDIDATES = ["--foreground", "--muted-foreground", "--primary-on-paper", "--accent-on-paper"] as const
+
+function neutralGroundForeground(bgToken: "--background" | "--surface"): string[] {
+  return NEUTRAL_TEXT_CANDIDATES.filter((fg) =>
+    PALETTE_PRESETS.every((preset) => {
+      const fgHex = paletteHex(preset, fg)
+      const bgHex = paletteHex(preset, bgToken)
+      // `--muted-foreground` is a FIXED app token no palette derives
+      // (paletteHex returns null for it) — scope-invariant by construction,
+      // not something a per-preset hex check can measure either way.
+      if (fgHex === null || bgHex === null) return true
+      return contrastRatio(fgHex, bgHex) >= 4.5
+    }),
+  )
+}
+
 /** Which foreground tokens may legally sit on which background token. */
 const READABLE_ON: Record<string, readonly string[]> = {
   // A repainted section takes its own paired foreground. `--accent` is also
   // legal ON `--primary` and vice versa: those are the two BRAND tokens, and
   // globals.css defines them as contrasting in every scope it declares.
+  // SCOPE, STATED HONESTLY (per the review): this cross-pairing is true for
+  // app/globals.css's four fixed themes and is NOT proven for an arbitrary
+  // `PALETTE_TABLE` preset — measured accent-on-primary as low as 1.02:1
+  // (ink) — but no rule currently paints `--accent` as text directly on a
+  // `--primary` background (every such rule was already fixed to
+  // `color: inherit`, see Move 3 above), so this entry names no live bug
+  // today. A future rule relying on this pairing for a derived palette would
+  // need the same on-paper treatment as `--background`/`--surface` below.
   "--primary": ["--primary-foreground", "--accent"],
   "--accent": ["--accent-foreground", "--primary"],
-  // The two neutral surfaces share one foreground family, and brand tokens
-  // read as accents on them (that is what `.djp-hd` and `.djp-plan-price` are).
-  "--background": ["--foreground", "--muted-foreground", "--primary", "--accent"],
-  "--surface": ["--foreground", "--muted-foreground", "--primary", "--accent"],
+  // DERIVED, not hand-listed — see the block comment above. Resolves today to
+  // `["--foreground", "--muted-foreground", "--primary-on-paper",
+  // "--accent-on-paper"]`; whatever it resolves to is proven against the real
+  // palette table on every test run, not merely asserted in a comment.
+  "--background": neutralGroundForeground("--background"),
+  "--surface": neutralGroundForeground("--surface"),
 }
 
 const INHERIT = "INHERIT"
@@ -532,6 +632,35 @@ describe("tone contrast: no per-kind colour is left behind by the tone knob", ()
     },
   )
 
+  // Fix-wave bug 2. The blanket PAIRED-colour check above CANNOT catch this
+  // one on its own: `--primary` is declared legal on `--surface` in
+  // `READABLE_ON` (a scope-invariant fact about app/globals.css's four fixed
+  // themes — "brand tokens read as accents on neutral surfaces"), so a
+  // hardcoded `--primary` price and a correctly-inherited `--foreground`
+  // price are BOTH "allowed" by that table. What actually distinguished them
+  // — real, palette-dependent contrast between a derived `brand` and a
+  // derived `surface` — is exactly the numeric fact this file's own header
+  // says it deliberately does NOT model (contrast is "true in one scope and
+  // false in the next"; palettes.ts's `deriveSurface` only proves
+  // ink-vs-surface, never brand-vs-surface). So this test pins the one thing
+  // about it that IS scope-invariant instead: a muted-toned pricing price
+  // must resolve to muted's OWN foreground token, the same one `.djp-hd`
+  // already uses on a muted section — never a token muted does not itself
+  // repaint to. Reverting the `.djp-s[data-tone="muted"] .djp-plan-price`
+  // rule in styles.ts (Move 2) turns this red: the price falls back to its
+  // hardcoded `color: var(--primary)`.
+  it("a muted pricing plan's price resolves to muted's own foreground, not a hardcoded brand token", () => {
+    const readings = readContrast("muted")
+    const priceReadings = readings.filter(
+      (reading) => reading.case.startsWith("pricing/") && reading.node.includes("djp-plan-price"),
+    )
+    expect(priceReadings.length, "no fixture rendered .djp-plan-price on tone 'muted'").toBeGreaterThan(0)
+    for (const reading of priceReadings) {
+      expect(reading.colour, JSON.stringify(reading)).toBe("--foreground")
+      expect(reading.background, JSON.stringify(reading)).toBe("--surface")
+    }
+  })
+
   // Without this the two tests above pass vacuously the moment a fixture stops
   // rendering a class — which is exactly how a "dark tone is covered" claim
   // gets made about a stylesheet nobody checked.
@@ -581,6 +710,216 @@ describe("tone contrast: no per-kind colour is left behind by the tone knob", ()
 })
 
 // ---------------------------------------------------------------------------
+// REAL PALETTE CONTRAST — the thing the PAIRING check above admits, in its own
+// header comment, that it does not do.
+//
+// READABLE_ON's `--primary`/`--accent` entries are still a table of TOKEN
+// NAMES: "app/globals.css declares these tokens in four scopes with opposite
+// polarity ... only the PAIRING is invariant" is true for the app's own four
+// fixed themes and NOT proven for a funnel's PALETTE_TABLE preset, where
+// `--primary` and `--accent` are independently DERIVED colours (palettes.ts:
+// `hueRotate(brand, 150)` for accent, a background-driven `deriveSurface` for
+// surface) with no contrast relationship to each other guaranteed anywhere —
+// see the scope note on that entry above. `--background`/`--surface` no
+// longer work this way (see `neutralGroundForeground` above): those two are
+// now DERIVED from real measured contrast, precisely because a hand-picked
+// "legal" list for them is what let `--accent` on paper/surface ship green —
+// the fourth instance of this bug class, after `djp-faq-q`'s page wrapper,
+// `djp-plan-price`, and `djp-hd`. A token PAIRING is a necessary condition
+// for this stylesheet; a hand-listed one was never a sufficient one.
+//
+// This suite resolves the SAME token readings `readContrast` already computes
+// (same rendered markup, same real cascade, same inherit/wash resolution) to
+// REAL #rrggbb values from the actual `PALETTE_TABLE`, and checks the REAL
+// number with `contrastRatio` from palettes.ts — the exact colours that will
+// really meet on screen, not a pair that is only true in the abstract.
+//
+// SCOPE, STATED HONESTLY: only the eight tokens `doc.ts` actually overrides
+// per document (`--primary`, `--primary-foreground`, `--accent`,
+// `--accent-foreground`, `--accent-on-paper`, `--surface`, `--foreground`,
+// `--background` — see doc.ts's `paletteBlock`, plus `--primary-on-paper`)
+// have a palette-derived hex value to resolve through. Every other var this
+// stylesheet reads (`--muted-foreground`, `--border`, `--error`, `--success`,
+// `--warning`) is a fixed app-level token the funnel palette never touches —
+// it cannot be "hardcoded to a specific PALETTE token" in the sense this
+// sweep is chasing, and `contrastRatio` has no hex to resolve it against
+// here. `paletteHex` (defined near `READABLE_ON` above, since that table now
+// calls it too) returns `null` for those and the reading is skipped, not
+// silently passed: this is the harness's honestly documented boundary, not a
+// gap pretending to be coverage.
+//
+// MUTANTS THIS KILLS: reverting any one of the contrast-sweep fixes above
+// (.djp-hd / .djp-eyebrow+.djp-ic / .djp-faq toggle / .djp-req /
+// .djp-form-proof .djp-ic / .djp-proof-value muted-or-dark overrides, plus
+// the default-tone --accent-on-paper fixes from the final whole-branch
+// review) turns the corresponding preset/tone case red, naming the exact
+// node and the measured ratio — see the report for the observed failure text.
+// ---------------------------------------------------------------------------
+
+// slate: the light-mode control. ember/ink/midnight/steel/plum: every
+// dark-seeded preset named in the bug report, not just the one already caught
+// live on /preview/sales-k9m0w.
+const REPRESENTATIVE_PRESETS: readonly PaletteName[] = ["slate", "ember", "ink", "midnight", "steel", "plum"]
+
+// Deliberately NOT `ALL_TONES`. `default` WAS a real, separate finding here
+// (see the contrast-sweep report) — `.djp-hd` / `.djp-plan-price` /
+// `.djp-proof-value` hardcoded `--primary` at the default, untoned section,
+// and `--primary` was never guaranteed readable against `--background`/
+// `--surface` for every preset (`deriveSurface` only proves ink-vs-surface).
+// That has since been fixed by pointing those three rules at
+// `--primary-on-paper` (`palettes.ts`'s `deriveBrandOnPaper`, guaranteed
+// >= 4.5:1 against both paper and surface for every preset — see
+// palettes.test.ts) rather than bare `--primary`, which is exactly why fixing
+// it did NOT mean "make brand-coloured headings resolve to plain foreground
+// on every light palette too" — see the dedicated describe block below for
+// that check.
+//
+// `default` still is NOT added to `SWEEP_TONES` here, though: this describe
+// block stays scoped to exactly the bug class this sweep targets — an
+// element whose colour does not follow "the SECTION'S tone" when that tone is
+// muted, accent, or dark. `.djp-eyebrow` / `.djp-ic` / `.djp-req` hardcoding
+// `--accent` at the UNTONED default section was a real, separate finding
+// (final whole-branch review, finding 1, 2026-09-13) — now fixed the same way
+// as the brand case, and checked in its own "default-tone accent text"
+// describe block below, for the same reason the brand fix got its own block:
+// a fix to "does the tone knob work" says nothing about "is the untoned
+// default itself readable".
+const SWEEP_TONES = ["muted", "accent", "dark"] as const satisfies readonly (typeof ALL_TONES)[number][]
+
+/** `readContrast(tone)` re-renders and re-parses every kind/variant; cached
+ * per tone so six presets share one pass instead of re-running it six times. */
+const toneReadingCache = new Map<(typeof ALL_TONES)[number], ContrastReading[]>()
+function cachedContrast(tone: (typeof ALL_TONES)[number]): ContrastReading[] {
+  const cached = toneReadingCache.get(tone)
+  if (cached) return cached
+  const readings = readContrast(tone)
+  toneReadingCache.set(tone, readings)
+  return readings
+}
+
+describe("real palette contrast: hardcoded tokens actually clear 4.5:1 against their REAL rendered background", () => {
+  const cases = REPRESENTATIVE_PRESETS.flatMap((preset) => SWEEP_TONES.map((tone) => ({ preset, tone })))
+
+  it.each(cases)(
+    "preset '$preset' / tone '$tone': every palette-derived text node clears WCAG AA",
+    ({ preset, tone }) => {
+      const readings = cachedContrast(tone)
+      const violations = readings.flatMap((reading) => {
+        const fg = paletteHex(preset, reading.colour)
+        const bg = paletteHex(preset, reading.background)
+        if (fg === null || bg === null) return [] // out of scope — see header comment
+        const ratio = contrastRatio(fg, bg)
+        return ratio < 4.5
+          ? [
+              `${reading.case}: ${reading.node} — ${reading.colour} (${fg}) on ${reading.background} (${bg}) = ${ratio.toFixed(2)}:1`,
+            ]
+          : []
+      })
+      expect(violations, violations.join("\n")).toEqual([])
+    },
+  )
+
+  it("actually exercises the palette-derived tokens, not just skips everything as out of scope", () => {
+    // Without this, every case above passes vacuously the moment `paletteHex`
+    // stops recognising anything real — exactly the "claims coverage, tests
+    // nothing" failure mode this whole report exists to avoid.
+    const readings = cachedContrast("muted")
+    const resolvable = readings.filter(
+      (reading) => paletteHex("ember", reading.colour) !== null && paletteHex("ember", reading.background) !== null,
+    )
+    expect(resolvable.length).toBeGreaterThan(10)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// DEFAULT-TONE BRAND TEXT — the follow-up fix. `.djp-hd` / `.djp-plan-price` /
+// `.djp-proof-value` are the ONLY three rules in styles.ts that paint
+// `--primary` as text at the default (untoned) section, and they now resolve
+// to `--primary-on-paper` instead. Checked across ALL TWELVE presets (not
+// just the six representative ones above) because `brandOnPaper`'s guarantee
+// is unconditional — palettes.test.ts proves it for the full wheel of hues,
+// so there is no "representative subset" here, only "does styles.ts actually
+// use the token it was given".
+//
+// MUTANT THIS KILLS: pointing any one of the three rules back at bare
+// `--primary` turns every preset/kind combination for that element red,
+// naming the preset and the real measured ratio (verified — see the report).
+// ---------------------------------------------------------------------------
+
+describe("default-tone brand text: .djp-hd / .djp-plan-price / .djp-proof-value use the paper-safe token", () => {
+  const TARGET_CLASSES = ["djp-hd", "djp-plan-price", "djp-proof-value"]
+
+  it.each(PALETTE_PRESETS)("preset '%s': every default-tone brand-text node clears 4.5:1", (preset) => {
+    const readings = cachedContrast("default")
+    const targets = readings.filter((reading) => TARGET_CLASSES.some((cls) => reading.node.includes(cls)))
+    expect(targets.length, "no .djp-hd/.djp-plan-price/.djp-proof-value rendered at tone 'default'").toBeGreaterThan(0)
+    const violations = targets.flatMap((reading) => {
+      const fg = paletteHex(preset, reading.colour)
+      const bg = paletteHex(preset, reading.background)
+      if (fg === null || bg === null) {
+        return [`${reading.case}: ${reading.node} resolved to un-mapped token ${reading.colour} on ${reading.background}`]
+      }
+      const ratio = contrastRatio(fg, bg)
+      return ratio < 4.5
+        ? [`${reading.case}: ${reading.node} — ${reading.colour} (${fg}) on ${reading.background} (${bg}) = ${ratio.toFixed(2)}:1`]
+        : []
+    })
+    expect(violations, violations.join("\n")).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// DEFAULT-TONE ACCENT TEXT — final whole-branch review, finding 1
+// (2026-09-13). `.djp-eyebrow` / `.djp-ic` (bullets, pricing plan features,
+// split-form proof) / `.djp-req` all painted bare `--accent` as text at the
+// default (untoned) section — the identical hazard `.djp-hd` had before
+// `--primary-on-paper` existed, just for the OTHER brand token, and missed by
+// the tone-contrast sweep (styles.ts's Move 3) because that sweep only ever
+// covered the accent/dark/muted TONES, never the untoned default ground.
+// Measured worst case before this fix: `ink` 1.11:1, `steel` 1.40:1 — the
+// same order of magnitude as the 1.10:1 `brandOnPaper` defect already treated
+// as Critical. Fixed the same way: `--accent-on-paper`
+// (palettes.ts's `deriveAccentOnPaper`), proven >= 4.5:1 against both `paper`
+// and `surface` for every preset (see palettes.test.ts). Checked across ALL
+// TWELVE presets, same reasoning as the brand block above: the guarantee is
+// unconditional, so there is no "representative subset" here.
+//
+// The FAQ "+"/"−" toggle and the quiz progress-bar fill have the identical
+// fix in styles.ts but are NOT checked here: the FAQ glyph is rendered
+// client-side by `FaqIsland.tsx`'s real `<details>`/`<summary>`, and the
+// progress-bar fill is a `background`, not a `color` — neither is a text
+// node this harness's static-HTML `readContrast` can reach. Fixed on the
+// strength of the same measured hazard as the checked sites, not a harness
+// assertion.
+//
+// MUTANT THIS KILLS: pointing any one of these rules back at bare `--accent`
+// turns every preset for that element red, naming the preset and the real
+// measured ratio.
+// ---------------------------------------------------------------------------
+
+describe("default-tone accent text: .djp-eyebrow / .djp-ic / .djp-req use the paper-safe token", () => {
+  const TARGET_CLASSES = ["djp-eyebrow", "djp-ic", "djp-req"]
+
+  it.each(PALETTE_PRESETS)("preset '%s': every default-tone accent-text node clears 4.5:1", (preset) => {
+    const readings = cachedContrast("default")
+    const targets = readings.filter((reading) => TARGET_CLASSES.some((cls) => reading.node.includes(cls)))
+    expect(targets.length, "no .djp-eyebrow/.djp-ic/.djp-req rendered at tone 'default'").toBeGreaterThan(0)
+    const violations = targets.flatMap((reading) => {
+      const fg = paletteHex(preset, reading.colour)
+      const bg = paletteHex(preset, reading.background)
+      if (fg === null || bg === null) {
+        return [`${reading.case}: ${reading.node} resolved to un-mapped token ${reading.colour} on ${reading.background}`]
+      }
+      const ratio = contrastRatio(fg, bg)
+      return ratio < 4.5
+        ? [`${reading.case}: ${reading.node} — ${reading.colour} (${fg}) on ${reading.background} (${bg}) = ${ratio.toFixed(2)}:1`]
+        : []
+    })
+    expect(violations, violations.join("\n")).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
 // PAGE-LEVEL TONE CONTRAST — the SAME harness above, one level up, driven by
 // the real `reassemble()` instead of `THEME_CSS + SECTION_CSS[kind]`.
 //
@@ -624,35 +963,50 @@ const PAGE_THEMES: readonly SectionDocTheme[] = [
 const SECTION_TONES = ["default", "muted", "accent", "dark"] as const
 
 /**
- * One doc holding EVERY (kind, variant) case at one section tone. `toneCases()`
- * yields 20, under `sectionDocSchema`'s 24-section cap, so a single
- * `reassemble()` call exercises the whole surface at once — including the
- * per-kind CSS selection, which is part of what decides the cascade.
+ * `pageDoc` puts one CHUNK of (kind, variant) pairs in ONE document, and
+ * `sectionDocSchema` caps a document at 24 sections. Those two facts were on
+ * a collision course: the design-system widening (2026-09-13) took
+ * `toneCases()` from 20 to 45, past the cap in a single page. `toneCaseChunks()`
+ * below splits the full case list into pages of at most `PAGE_DOC_CHUNK_SIZE`,
+ * and `withAllChunks` runs the same assertion machinery over every chunk and
+ * concatenates the results — so every (kind, variant) pair is still covered
+ * by one `reassemble()` call each, and the product's 24-section cap is never
+ * the thing that moves.
  */
-/**
- * `pageDoc` puts EVERY (kind, variant) pair in ONE document, and
- * `sectionDocSchema` caps a document at 24 sections. Those two facts are on a
- * collision course: adding the 11th kind (`quiz`) took the count to exactly
- * the cap.
- *
- * Asserted separately so the next person to add a kind or a variant gets this
- * sentence instead of a raw Zod "Too big: expected array to have <=24 items"
- * thrown from inside sixteen unrelated contrast cases. When it fires, split
- * `pageDoc` into chunks of 24 rather than raising the product's cap.
- */
-it("keeps every (kind, variant) pair inside the document cap", () => {
-  expect(
-    toneCases().length,
-    "pageDoc exceeds sectionDocSchema's 24-section cap — chunk pageDoc, do not raise the cap",
-  ).toBeLessThanOrEqual(24)
+const PAGE_DOC_CHUNK_SIZE = 24
+
+function toneCaseChunks(): Array<{ label: string; section: Section }>[] {
+  const cases = toneCases()
+  const chunks: Array<{ label: string; section: Section }>[] = []
+  for (let i = 0; i < cases.length; i += PAGE_DOC_CHUNK_SIZE) chunks.push(cases.slice(i, i + PAGE_DOC_CHUNK_SIZE))
+  return chunks
+}
+
+// Asserted separately so the next person to add a kind or a variant gets this
+// sentence instead of a raw Zod "Too big: expected array to have <=24 items"
+// thrown from inside sixteen unrelated contrast cases. When a single chunk
+// itself exceeds the cap, shrink `PAGE_DOC_CHUNK_SIZE` rather than raising
+// the product's cap.
+it("keeps every page-doc chunk inside the document cap", () => {
+  const chunks = toneCaseChunks()
+  expect(chunks.length, "toneCaseChunks() produced no chunks").toBeGreaterThan(0)
+  for (const chunk of chunks) {
+    expect(chunk.length, "a chunk exceeds sectionDocSchema's 24-section cap").toBeLessThanOrEqual(24)
+  }
+  // Anti-vacuity: chunking must not drop or duplicate a case.
+  expect(chunks.flat().length).toBe(toneCases().length)
 })
 
-function pageDoc(theme: SectionDocTheme, tone: (typeof SECTION_TONES)[number]): SectionDoc {
+function pageDoc(
+  theme: SectionDocTheme,
+  tone: (typeof SECTION_TONES)[number],
+  chunk: Array<{ label: string; section: Section }>,
+): SectionDoc {
   return {
     v: 1,
     engine: "sections",
     theme,
-    sections: toneCases().map(({ section }, index) => ({
+    sections: chunk.map(({ section }, index) => ({
       ...section,
       id: `s${index}`,
       // "default" means the author set NO tone at all — the case B1 broke.
@@ -665,13 +1019,14 @@ function themeLabel(theme: SectionDocTheme): string {
   return `page ${theme.tone}/${theme.accent}`
 }
 
-/** Runs one whole reassembled page through the cascade model above. */
+/** Runs one whole reassembled page (one chunk's worth of sections) through the cascade model above. */
 function withPage<T>(
   theme: SectionDocTheme,
   tone: (typeof SECTION_TONES)[number],
+  chunk: Array<{ label: string; section: Section }>,
   fn: (nodes: StyledNode[], rules: StyleRule[]) => T,
 ): T {
-  const { html, css } = reassemble(pageDoc(theme, tone))
+  const { html, css } = reassemble(pageDoc(theme, tone, chunk))
   const rules = parseRules(css)
   const root = document.createElement("div")
   root.id = "djp-funnel-root"
@@ -682,6 +1037,17 @@ function withPage<T>(
   } finally {
     root.remove()
   }
+}
+
+/** Runs `fn` over every chunk's page and concatenates the (array-valued) results. */
+function withAllChunks<T>(
+  theme: SectionDocTheme,
+  tone: (typeof SECTION_TONES)[number],
+  fn: (nodes: StyledNode[], rules: StyleRule[]) => T[],
+): T[] {
+  const results: T[] = []
+  for (const chunk of toneCaseChunks()) results.push(...withPage(theme, tone, chunk, fn))
+  return results
 }
 
 /** `hero/split#s0` — enough to point at the exact fixture that failed. */
@@ -695,7 +1061,7 @@ function readPageContrast(
   theme: SectionDocTheme,
   tone: (typeof SECTION_TONES)[number],
 ): ContrastReading[] {
-  return withPage(theme, tone, (nodes, rules) => {
+  return withAllChunks(theme, tone, (nodes, rules) => {
     const readings: ContrastReading[] = []
     for (const node of nodes) {
       if (node.pseudo === null && !hasOwnText(node.el) && winning(rules, node, "color") === null) continue
@@ -725,7 +1091,7 @@ describe("page tone contrast: reassemble()'s page wrapper and page accent", () =
   })
 
   it.each(matrix)("no SHAPE is painted in the token of the ground behind it on $label", ({ theme, tone }) => {
-    const collisions = withPage(theme, tone, (nodes, rules) => {
+    const collisions = withAllChunks(theme, tone, (nodes, rules) => {
       const found: string[] = []
       for (const node of nodes) {
         // A SECTION's own band is not a shape. Page tone exists precisely so a
@@ -751,17 +1117,25 @@ describe("page tone contrast: reassemble()'s page wrapper and page accent", () =
   // that makes a page's single most important element disappear.
   it("theme.accent 'primary' keeps the primary button visible on a dark section", () => {
     for (const pageTone of ["light", "dark"] as const) {
-      withPage({ tone: pageTone, accent: "primary", radius: "soft" }, "dark", (nodes, rules) => {
-        const buttons = nodes.filter((node) => node.pseudo === null && node.el.classList.contains("djp-btn-primary"))
-        expect(buttons.length, "no fixture rendered a .djp-btn-primary").toBeGreaterThan(0)
-        for (const button of buttons) {
-          const own = colourToken(winning(rules, button, "bg") ?? "transparent")
-          const behind = resolvedBackground(rules, button.parent!)
-          expect(own, `${nodeAddress(button)} on a ${pageTone} page`).not.toBe(behind)
-          const allowed = READABLE_ON[own] ?? []
-          expect(allowed, `${nodeAddress(button)} label colour`).toContain(resolvedColour(rules, button))
-        }
-      })
+      let buttonCount = 0
+      const violations: string[] = []
+      for (const chunk of toneCaseChunks()) {
+        withPage({ tone: pageTone, accent: "primary", radius: "soft" }, "dark", chunk, (nodes, rules) => {
+          const buttons = nodes.filter((node) => node.pseudo === null && node.el.classList.contains("djp-btn-primary"))
+          buttonCount += buttons.length
+          for (const button of buttons) {
+            const own = colourToken(winning(rules, button, "bg") ?? "transparent")
+            const behind = resolvedBackground(rules, button.parent!)
+            if (own === behind) violations.push(`${nodeAddress(button)} on a ${pageTone} page paints ${own} on ${behind}`)
+            const allowed = READABLE_ON[own] ?? []
+            const labelColour = resolvedColour(rules, button)
+            if (!allowed.includes(labelColour))
+              violations.push(`${nodeAddress(button)} label colour ${labelColour} not readable on ${own}`)
+          }
+        })
+      }
+      expect(buttonCount, "no fixture rendered a .djp-btn-primary").toBeGreaterThan(0)
+      expect(violations, violations.join("\n")).toEqual([])
     }
   })
 
@@ -786,10 +1160,12 @@ describe("page tone contrast: reassemble()'s page wrapper and page accent", () =
   it("understands every colour value reassemble() actually emits", () => {
     const values: string[] = []
     for (const theme of PAGE_THEMES) {
-      const { css } = reassemble(pageDoc(theme, "default"))
-      for (const rule of parseRules(css)) {
-        if (rule.color !== undefined) values.push(rule.color)
-        if (rule.bg !== undefined) values.push(rule.bg)
+      for (const chunk of toneCaseChunks()) {
+        const { css } = reassemble(pageDoc(theme, "default", chunk))
+        for (const rule of parseRules(css)) {
+          if (rule.color !== undefined) values.push(rule.color)
+          if (rule.bg !== undefined) values.push(rule.bg)
+        }
       }
     }
     expect(values.length).toBeGreaterThan(20)
@@ -1725,5 +2101,80 @@ describe("a full page assembled from multiple kinds", () => {
     for (const section of sections) {
       expect(serialize(result.nodes)).toContain(`"id":"${section.id}"`)
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 6: the new per-section knobs actually reach the wrapper. Uses
+// `reassemble()` (not `renderSection()` directly + `fullCss`) because the
+// point of these tests is the RENDERER'S OWN OUTPUT — `bg:{kind:"image"}`'s
+// security boundary lives in render.ts itself, not in the frozen compiler
+// (see the module comment above `backgroundDeclaration` in render.ts): a
+// hostile `src` must never reach `html` in the first place, so asserting
+// against the pre-compile HTML is the only way to test the guard that
+// actually matters.
+// ---------------------------------------------------------------------------
+
+/** Builds a minimal one-section doc with the given style and returns its rendered HTML. */
+function renderOne(style: Section["style"]): string {
+  const doc: SectionDoc = {
+    v: 1,
+    engine: "sections",
+    theme: { tone: "light", accent: "accent", radius: "soft" },
+    sections: [
+      {
+        id: "s1",
+        kind: "hero",
+        variant: "centered",
+        style,
+        props: { headline: "Get stronger", primaryCta: urlCta },
+      },
+    ],
+  }
+  return reassemble(doc).html
+}
+
+describe("new style knobs reach the wrapper", () => {
+  it("emits data attributes for divider, width and reverse", () => {
+    const html = renderOne({ divider: "angle", width: "narrow", reverse: true })
+    expect(html).toContain('data-divider="angle"')
+    expect(html).toContain('data-width="narrow"')
+    expect(html).toContain('data-reverse="true"')
+  })
+  it("defaults every new knob so an untouched section is unchanged", () => {
+    const html = renderOne({})
+    expect(html).toContain('data-divider="none"')
+    expect(html).toContain('data-reverse="false"')
+  })
+  it("supports align right", () => {
+    expect(renderOne({ align: "right" })).toContain('data-align="right"')
+  })
+})
+
+describe("background images are a URL boundary", () => {
+  it("renders a safe image background", () => {
+    const html = renderOne({ bg: { kind: "image", src: "/uploads/a.png" } })
+    expect(html).toContain("background-image")
+    expect(html).toContain("/uploads/a.png")
+  })
+  // safeStyle does NOT stop this — it only drops javascript:/expression(/@import/
+  // behavior:/-moz-binding. The renderer is the guard, so this test is the guard's test.
+  it.each([
+    "javascript:alert(1)",
+    'x.png"); background-image: url("https://evil.example/x.png',
+    "data:text/html,<script>alert(1)</script>",
+    "//evil.example/x.png",
+  ])("renders NO background for hostile src %j", (src) => {
+    const html = renderOne({ bg: { kind: "image", src } })
+    expect(html).not.toContain("evil.example")
+    expect(html).not.toContain("javascript:")
+    expect(html).not.toContain("background-image")
+  })
+  it("renders a gradient background from validated hex", () => {
+    const html = renderOne({ bg: { kind: "gradient", from: "#111111", to: "#333333" } })
+    expect(html).toContain("linear-gradient")
+  })
+  it("kind none emits no background at all", () => {
+    expect(renderOne({ bg: { kind: "none" } })).not.toContain("background-image")
   })
 })

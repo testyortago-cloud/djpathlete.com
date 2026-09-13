@@ -19,8 +19,19 @@
 //     of batch order) — so this file pins the ordering the other way
 //     around, which only a correctly-sequential implementation gets right.
 import { describe, it, expect } from "vitest"
-import type { SectionDoc, Section } from "@/lib/funnels/sections/registry"
-import { applyOps, opSchema, SECTION_REWRITE_THRESHOLD, type SectionOp } from "@/lib/funnels/sections/apply"
+import {
+  sectionStyleSchema,
+  sectionDocThemeSchema,
+  type SectionDoc,
+  type Section,
+} from "@/lib/funnels/sections/registry"
+import {
+  applyOps,
+  opSchema,
+  SECTION_REWRITE_THRESHOLD,
+  STYLE_CHANGE_LABEL,
+  type SectionOp,
+} from "@/lib/funnels/sections/apply"
 
 /**
  * The rejection's own text, joined.
@@ -561,6 +572,84 @@ describe("applyOps — update_section.props merges shallowly per top-level key",
 })
 
 // ===========================================================================
+// Final whole-branch review, finding 3 (2026-09-13): an explicit `null` in a
+// THEME patch also means "delete this key" — mirroring `style` exactly, per
+// the describe block above. Before this fix, `sectionDocThemeSchema.partial()`
+// (the schema `opSchema` validated a `set_theme` patch against) rejected
+// `null` outright, so a page that took a palette (`theme.palette`) had no way
+// back to "use the tenant brand kit" — `prompt.ts` tells the model that
+// leaving `palette` unset means exactly that, and it was unreachable after
+// turn 1. `tone`/`accent`/`radius` are REQUIRED on the stored theme, unlike
+// every `style` key, so they get the opposite treatment: nulling one must be
+// refused, not silently accepted and left to fail somewhere downstream.
+// ===========================================================================
+
+describe("applyOps — set_theme.theme: an explicit null deletes an optional theme key", () => {
+  it("nulling theme.palette removes the key entirely and succeeds", () => {
+    const doc = baseDoc({
+      theme: { tone: "light", accent: "accent", radius: "soft", palette: { preset: "ember" } },
+      sections: nineSections(),
+    })
+    const result = applyOps(doc, [{ op: "set_theme", theme: { palette: null } }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect("palette" in result.doc.theme).toBe(false)
+    // Sibling theme keys are untouched by the deletion.
+    expect(result.doc.theme.tone).toBe("light")
+    expect(result.doc.theme.radius).toBe("soft")
+  })
+
+  it("nulling theme.font removes it too, and a sibling optional key survives", () => {
+    const doc = baseDoc({
+      theme: { tone: "light", accent: "accent", radius: "soft", font: "editorial", density: "airy" },
+      sections: nineSections(),
+    })
+    const result = applyOps(doc, [{ op: "set_theme", theme: { font: null } }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect("font" in result.doc.theme).toBe(false)
+    expect(result.doc.theme.density).toBe("airy")
+  })
+
+  it("opSchema itself accepts a null value for an optional theme key — the schema half of the fix", () => {
+    expect(opSchema.safeParse({ op: "set_theme", theme: { palette: null } }).success).toBe(true)
+  })
+
+  // Every OPTIONAL theme key (palette/font/density/width/rhythm) accepts a
+  // null patch value — confirmed for all five, not just the one the review
+  // happened to name.
+  it("every optional theme key accepts a null patch value", () => {
+    const optionalKeys = Object.entries(sectionDocThemeSchema.shape)
+      .filter(([, schema]) => schema.isOptional())
+      .map(([key]) => key)
+    expect(optionalKeys.sort()).toEqual(["density", "font", "palette", "rhythm", "width"].sort())
+    for (const key of optionalKeys) {
+      const parsed = opSchema.safeParse({ op: "set_theme", theme: { [key]: null } })
+      expect(parsed.success, `theme.${key} rejected a null patch value`).toBe(true)
+    }
+  })
+
+  // The mirror image: tone/accent/radius are REQUIRED on the stored theme, so
+  // nulling any of them must be refused at THIS layer — op-schema validation
+  // — never allowed through to produce a document `sectionDocSchema` would
+  // then have to reject downstream.
+  it("nulling a REQUIRED theme key (tone, accent, or radius) is rejected by opSchema itself", () => {
+    for (const key of ["tone", "accent", "radius"] as const) {
+      const parsed = opSchema.safeParse({ op: "set_theme", theme: { [key]: null } })
+      expect(parsed.success, `theme.${key} accepted a null patch value but is required`).toBe(false)
+    }
+  })
+
+  it("a batch nulling a required theme key is rejected wholesale by applyOps, doc untouched", () => {
+    const doc = baseDoc({ theme: { tone: "light", accent: "accent", radius: "soft" }, sections: nineSections() })
+    const themeBefore = doc.theme
+    const result = applyOps(doc, [{ op: "set_theme", theme: { tone: null } }])
+    expect(result.ok).toBe(false)
+    expect(doc.theme).toBe(themeBefore)
+  })
+})
+
+// ===========================================================================
 // An explicit `null` in a props patch means "delete this key" (Fix round 1,
 // CRITICAL 2). A shallow spread can add and replace a key but never remove
 // one, and `undefined` doesn't survive JSON — so before this fix there was
@@ -599,6 +688,79 @@ describe("applyOps — update_section.props: an explicit null deletes an optiona
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.receipt.changed[0].reasons.sort()).toEqual(["content: secondaryCta removed", "content: sub"].sort())
+  })
+})
+
+// ===========================================================================
+// Fix-wave bug 1: an explicit `null` in a STYLE patch also means "delete this
+// key" — mirroring props exactly, per the section above. Before this fix,
+// `sectionStyleSchema.partial()` (the schema `opSchema` validated a style
+// patch against) rejected `null` outright, so `{ style: { bg: null } }` —
+// the inspector's own "None" background button (SectionInspector.tsx's
+// `BgField`) and the pre-existing "use the page default" tone control
+// (`ToneField`) — never reached `applyOps` at all: the save failed at
+// validation. These tests exercise the REAL `opSchema` and the REAL
+// `applyOps`, not a mocked `onOps` — a component test asserting only the
+// SHAPE handed to a mock can pass while this exact bug is live, which is
+// what happened here (see `section-inspector.test.tsx`'s own test of the
+// same button).
+// ===========================================================================
+
+describe("applyOps — update_section.style: an explicit null deletes an optional style key", () => {
+  function heroWithBg(doc: SectionDoc): SectionDoc {
+    const hero = doc.sections[0]
+    return {
+      ...doc,
+      sections: [
+        { ...hero, style: { ...hero.style, bg: { kind: "gradient" as const, from: "#111111", to: "#222222" } } },
+        ...doc.sections.slice(1),
+      ],
+    }
+  }
+
+  it("nulling style.bg removes the key entirely and succeeds", () => {
+    const doc = heroWithBg(baseDoc({ sections: nineSections() }))
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1", style: { bg: null } }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const style = result.doc.sections[0].style as Record<string, unknown>
+    expect("bg" in style).toBe(false)
+    // A sibling style key survives the deletion.
+    expect(style.tone).toBe("accent")
+  })
+
+  it("nulling style.tone (the pre-existing 'use the page default' control) removes it too", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1", style: { tone: null } }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const style = result.doc.sections[0].style as Record<string, unknown>
+    expect("tone" in style).toBe(false)
+    // A sibling style key survives the deletion.
+    expect(style.headline).toBe("lg")
+  })
+
+  it("opSchema itself accepts a null style value — the schema half of the fix", () => {
+    expect(opSchema.safeParse({ op: "update_section", id: "hero1", style: { bg: null } }).success).toBe(true)
+  })
+
+  // Every one of the eight style knobs is `.optional()` on `sectionStyleSchema`
+  // (registry.ts's own comment says so), so deleting any of them is legal —
+  // confirmed here rather than assumed, for all eight, not just the two the
+  // inspector happens to expose a button for today.
+  it("every style key accepts a null patch value, not just bg and tone", () => {
+    for (const key of Object.keys(sectionStyleSchema.shape)) {
+      const parsed = opSchema.safeParse({ op: "update_section", id: "hero1", style: { [key]: null } })
+      expect(parsed.success, `style.${key} rejected a null patch value`).toBe(true)
+    }
+  })
+
+  it("the diff receipt reports the deleted style key by its friendly label", () => {
+    const doc = baseDoc({ sections: nineSections() })
+    const result = applyOps(doc, [{ op: "update_section", id: "hero1", style: { tone: null } }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.receipt.changed[0].reasons).toEqual([STYLE_CHANGE_LABEL.tone])
   })
 })
 
@@ -1090,5 +1252,30 @@ describe("applyOps — purity", () => {
     expect(a).toEqual(b)
     // But not the SAME object graph — each call builds its own new doc.
     if (a.ok && b.ok) expect(a.doc).not.toBe(b.doc)
+  })
+})
+
+describe("STYLE_CHANGE_LABEL covers every sectionStyleSchema knob", () => {
+  // A missing key here is a compile error (STYLE_CHANGE_LABEL is typed
+  // Record<keyof SectionStyleKnobs, string>) but ONLY when it's a whole
+  // missing property — tsc caught exactly that once, when the theme/style
+  // widening (2026-09-13) added bg/width/divider/reverse and this map did not
+  // follow. Nothing in the SUITE asserted it, which is why the compile error
+  // reached review before a test did. This test derives the expected key set
+  // from the schema itself (never a hardcoded list) so it keeps working the
+  // next time a knob is added.
+  const expectedKeys = Object.keys(sectionStyleSchema.shape).sort()
+
+  it("has a label for every key sectionStyleSchema declares", () => {
+    const labelKeys = Object.keys(STYLE_CHANGE_LABEL).sort()
+    expect(labelKeys).toEqual(expectedKeys)
+  })
+
+  it("every label is a short, plain, owner-facing phrase — not the field name", () => {
+    for (const key of expectedKeys) {
+      const label = STYLE_CHANGE_LABEL[key as keyof typeof STYLE_CHANGE_LABEL]
+      expect(label, key).toBeTruthy()
+      expect(label.length, key).toBeLessThanOrEqual(30)
+    }
   })
 })

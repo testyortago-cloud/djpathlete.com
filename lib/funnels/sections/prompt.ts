@@ -58,6 +58,7 @@ import {
 } from "@/lib/funnels/sections/registry"
 import { ISLAND_LIST } from "@/lib/funnels/islands"
 import { TONE_COLOUR_LEGEND } from "@/lib/funnels/sections/tone-legend"
+import { PALETTE_PRESETS } from "@/lib/funnels/sections/palettes"
 import type { Catalogue } from "@/lib/funnels/sections/resolve"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 import {
@@ -455,6 +456,20 @@ const OPS_BLOCK = OP_OPTIONS.map((option) => {
 // Whoever fixes or changes that residual should rewrite this rule and
 // prompt.test.ts's matching REQUIRED_CONCEPTS row in the same commit — the
 // test pins the CLAIM, so a stale claim fights a correct rewrite.
+//
+// RULE 6 WAS REWRITTEN AGAIN ON 2026-09-13 (task 10), for the same reason as
+// the first rewrite: the closing sentence went stale, not wrong-in-spirit.
+// "no hex or colour field exists anywhere in this document, so these four
+// tones ARE the colour control" was TRUE the day it was written — verified
+// against the live model, which answered a plain "a green background with
+// white text" request by refusing the whole turn — and is FALSE the moment
+// `theme.palette` (design-system spec §3.1) lands: there IS a colour field
+// now, and telling the model there still isn't one would teach it to refuse a
+// request it can satisfy. `TONE_COLOUR_LEGEND` and the "owners name tones by
+// colour" framing stay, because that mapping (their words -> the tone enum)
+// remains exactly as true as it ever was; only the closing claim changes, to
+// say what tone controls (RHYTHM: which of the page's already-paired colours
+// a section takes) versus what the palette controls (the BRAND colour itself).
 // ---------------------------------------------------------------------------
 
 /**
@@ -473,8 +488,9 @@ export const BUILDER_RULES: readonly string[] = [
     "`lines`, `steps`) is REPLACED WHOLESALE. To change one bullet, send the whole array back with that one " +
     "element edited — there is no element-level patch.",
 
-  "A props key whose patch value is `null` is DELETED. That is the only way to remove an optional field, because " +
-    "`undefined` does not survive JSON. Nulling a REQUIRED field fails validation and rejects the batch.",
+  "A props, style, or theme key whose patch value is `null` is DELETED. That is the only way to remove an " +
+    "optional field, because `undefined` does not survive JSON. Nulling a REQUIRED field fails validation and " +
+    "rejects the batch.",
 
   "`after: null` means INSERT AT THE VERY TOP, on both `add_section` and `move_section`. It is not 'append' and " +
     "it is not an error — it is how you put something above the hero.",
@@ -487,10 +503,12 @@ export const BUILDER_RULES: readonly string[] = [
     'tone of its own renders dark and a section you give `style.tone: "muted"` there is a LIGHT band, not a ' +
     'darker one; and a form with `variant: "boxed"` is its own band, so on a dark page its box merges with the ' +
     'page and only its narrower width still reads — use `variant: "band"`, or `style.tone: "muted"` to keep ' +
-    "the box. OWNERS NAME TONES BY COLOUR: " +
+    "the box. OWNERS NAME TONES BY COLOUR, on today's default palette: " +
     TONE_COLOUR_LEGEND +
-    '. So "green with white text" means `style.tone: "dark"`. Never reply that you cannot change a colour: no ' +
-    "hex or colour field exists anywhere in this document, so these four tones ARE the colour control.",
+    ' — so "green with white text" means `style.tone: "dark"`, UNLESS `theme.palette` is set, in which case ' +
+    '"accent"/"dark" repaint to THAT palette\'s colours instead. Tone picks WHICH paired colour a section takes, ' +
+    "for rhythm; the BRAND colour itself is `theme.palette` (a named preset or a custom brand hex — see the " +
+    "design vocabulary below). Never reply that you cannot change a colour.",
 
   "An `update_section` op MUST carry at least one of `props`, `style` or `variant`, and it must be non-empty — " +
     "`{}` counts as absent. An op with none of them is not a tolerated no-op: it REJECTS THE ENTIRE BATCH, " +
@@ -503,7 +521,7 @@ export const BUILDER_RULES: readonly string[] = [
 const RULES_BLOCK = BUILDER_RULES.map((rule, index) => `${index + 1}. ${rule}`).join("\n\n")
 
 // ---------------------------------------------------------------------------
-// Page craft.
+// Page craft: universal rules + named recipes (design-system spec §6.2).
 //
 // Everything else in Block A is generated from the registry, so it describes
 // what the model MAY write. This block is the only part that says what it
@@ -514,18 +532,34 @@ const RULES_BLOCK = BUILDER_RULES.map((rule, index) => `${index + 1}. ${rule}`).
 // handling with "What is DJP Athlete and what services do you offer?".
 //
 // Neither was a bug in any module. Both were the model doing something
-// reasonable that nobody had told it not to do. Exported so the rules and the
-// tests that pin them read the same strings.
+// reasonable that nobody had told it not to do.
+//
+// RE-CUT ON 2026-09-13 (task 10). Until now this was ONE skeleton
+// (`LEADGEN_RULES`, six items) implicitly assuming every page is a capture
+// page. Making the page SHAPE plural must not make the CONVERSION rules
+// optional — each one below still exists because a real page shipped broken —
+// so the ones that are genuinely shape-independent, OR ALREADY SCOPE
+// THEMSELVES IN THEIR OWN TEXT, stay under the name `LEADGEN_RULES` (kept for
+// `leadgen.test.ts`, which already imports it) and apply to every recipe.
+// Only the truly capture-specific instruction (form goes first, `variant:
+// "split"`) moves into `capture-split` below, where it belongs.
+//
+// "KEEP IT SHORT" stays here rather than moving with it, for a reason beyond
+// spec-tidiness: its OWN wording already says "for a capture page", so it
+// does not contradict `long-form-sales` wanting more sections — and, load-
+// bearing, `audit-prompt-agreement.test.ts`'s "section-count" audit code
+// keys on the literal phrase "Six to nine sections" appearing EXACTLY ONCE
+// in `LEADGEN_RULES`. `lib/funnels/sections/review/audit.ts` (a separate,
+// pre-existing subsystem, out of this task's file list) enforces that same
+// bound in code with no notion of "recipe" — moving this rule out from under
+// `LEADGEN_RULES` would silently decouple the auditor from the instruction
+// that produced it, which is exactly the drift that test file exists to
+// catch. Fixing the auditor to be recipe-aware is real future work; it is
+// not this task's to do by accident. Exported so the rules, the recipes and
+// the tests that pin them all read the same strings.
 // ---------------------------------------------------------------------------
 
 export const LEADGEN_RULES: readonly string[] = [
-  "IF THE PAGE'S JOB IS TO COLLECT DETAILS — a waitlist, an opt-in, a free guide, an enquiry — the `form` " +
-    'section goes FIRST, with `variant: "split"`. That variant puts the pitch on one side and the fields on the ' +
-    "other, so someone who is already sold can act without scrolling. Put the headline and the offer in the " +
-    'form\'s own `heading` and `sub`, add two or three `proofPoints` ("No payment now", "Coached in person", ' +
-    '"12 spots"), and do not also add a hero above it — two headlines in the first screen compete and neither ' +
-    "wins. A sales page or a long-form pitch still opens with a hero; this rule is about capture pages.",
-
   "ONE OFFER, ONE ACTION. Every CTA on the page points at the SAME place. A page that offers a waitlist and a " +
     "consultation and a program purchase converts on none of them. If the owner asks for a second action, put it " +
     "in the footer as a link, not as a competing button.",
@@ -547,6 +581,79 @@ export const LEADGEN_RULES: readonly string[] = [
 ]
 
 const LEADGEN_BLOCK = LEADGEN_RULES.map((rule) => `- ${rule}`).join("\n\n")
+
+/** One named page shape: who it is for, and the section order that answers that job. */
+export interface PageRecipe {
+  name: string
+  /** The job this shape exists for — when to pick it over the other five. */
+  job: string
+  /** The section spine, in order, as prose — not a literal Section[] the model must copy verbatim. */
+  spine: string
+}
+
+/**
+ * Six named recipes, replacing the single implicit "every page is a capture
+ * page" skeleton this file used to assume. The model picks one and says which
+ * (Block C asks for this on a first draft) — none of it is enforced by a
+ * schema, because the section grammar has no notion of "recipe"; it is
+ * guidance for a first draft, not a constraint `applyOps` checks.
+ */
+export const PAGE_RECIPES: readonly PageRecipe[] = [
+  {
+    name: "capture-split",
+    job: "The default for a bare opt-in (waitlist, free guide, enquiry) that needs no persuading.",
+    spine:
+      '`form` FIRST, `variant: "split"` — pitch on one side, fields on the other, so someone already sold can ' +
+      "act without scrolling. Headline/offer in the form's own `heading`/`sub`, plus 2-3 `proofPoints` (\"No " +
+      'payment now", "Coached in person", "12 spots"). NO hero above it — two headlines in the first screen ' +
+      "compete (see the length rule above).",
+  },
+  {
+    name: "capture-hero-first",
+    job:
+      "Traffic that does not already know the offer and needs a screen or two of persuading before the form " +
+      "feels reasonable to fill in.",
+    spine:
+      "hero (the pitch), proof, a short case (bullets or steps), then the form — the hero earns the form's " +
+      "place instead of replacing it (see the length rule above).",
+  },
+  {
+    name: "long-form-sales",
+    job:
+      "A considered purchase — a program, a coaching package — that needs the full case made before someone " + "pays.",
+    spine:
+      "hero, problem, proof, method (steps), pricing, objections (faq, inline), cta. Length is earned here, " +
+      "not a defect: this is the one recipe where more sections is normal.",
+  },
+  {
+    name: "event",
+    job:
+      "A camp, clinic or one-off event, where the date, place and price decide the click more than the pitch " +
+      "does.",
+    spine:
+      "hero naming the date/place/price up front, bullets or steps on what is included, pricing, then a " +
+      "form or cta to register.",
+  },
+  {
+    name: "application",
+    job: "High-ticket, where friction is the point: the form should qualify, not convert everyone who lands.",
+    spine:
+      'hero, proof, bullets on who this is for, then a form (`successMode` "message" or "redirect", never ' +
+      '"checkout") asking enough to filter a fit from a browser.',
+  },
+  {
+    name: "thank-you",
+    job: "The page someone lands on right after converting.",
+    spine:
+      "one short cta confirming what just happened and naming the SINGLE next action (add to calendar, " +
+      "join a group, watch a video) — nothing else competes with it, and it never links onward into another " +
+      "capture form.",
+  },
+]
+
+const RECIPES_BLOCK = PAGE_RECIPES.map(
+  (recipe) => `### ${recipe.name}\nFor: ${recipe.job}\nSpine: ${recipe.spine}`,
+).join("\n\n")
 
 // ---------------------------------------------------------------------------
 // Worked examples
@@ -625,9 +732,10 @@ export const SECTION_BUILDER_BLOCK_A = `
 You build landing pages for a strength-and-conditioning coaching business by editing a
 TYPED DOCUMENT. You never write HTML. You never write CSS. You never write a UUID.
 
-A server-side renderer turns the document into markup; a hand-authored stylesheet already
-handles every visual decision. Your job is structure and copy: which sections, in what
-order, saying what.
+A server-side renderer turns the document into markup from a hand-authored stylesheet — but
+that stylesheet no longer makes every visual decision on its own. Your job is structure and
+copy AND the page's visual direction: which sections, in what order, saying what, in what
+palette, font, density, width and rhythm (see the design vocabulary below).
 
 ## The document
 
@@ -713,9 +821,15 @@ ${OPS_BLOCK}
 
 ${RULES_BLOCK}
 
-## How to build a page that actually gets leads
+## How to build a page that converts — for EVERY recipe below
 
 ${LEADGEN_BLOCK}
+
+## Page recipes — pick one and say which
+
+Default to \`capture-split\` for a bare opt-in with no other signal.
+
+${RECIPES_BLOCK}
 
 ## How to write
 
@@ -731,6 +845,88 @@ ${LEADGEN_BLOCK}
 ## Worked examples
 
 ${EXAMPLES_BLOCK}
+`.trim()
+
+// ---------------------------------------------------------------------------
+// BLOCK DESIGN — frozen, built once, cached. Concatenated between Block A and
+// Block B (design-system spec §5.3). A SEPARATE const with a SEPARATE ceiling
+// test, on purpose: Block A's own ceiling exists as a tripwire against
+// per-KIND duplication (someone inlining the nine props schemas as raw JSON
+// Schema instead of the compact signatures — see NOT_OFFERED_TO_THE_BUILDER's
+// comment for the exact number that tripwire watches for), and folding the new
+// design vocabulary into that same budget would turn a specific tripwire into
+// a general one that no longer catches the thing it was built to catch.
+//
+// EVERYTHING HERE IS PROSE OVER SHAPES BLOCK A ALREADY PRINTS. `theme` and
+// `style`'s machine-readable signatures — palette/font/density/width/rhythm,
+// bg/width/divider/reverse — are already in Block A's "## The document"
+// section, generated from `sectionDocThemeSchema` / `sectionStyleSchema` the
+// same anti-drift way as everything else there. What is missing, and what
+// this block exists to say, is WHEN to reach for each one — a model that can
+// see `rhythm: "flat" | "alternating" | "banded"` has no way to know that
+// `"banded"` is the single highest-leverage knob for "it looks the same".
+//
+// PALETTE NAMES ARE DERIVED FROM `PALETTE_PRESETS`, never retyped, for the
+// same reason the section kinds are derived from the registry: a thirteenth
+// preset added to palettes.ts must reach the model without anyone remembering
+// to edit a second list here.
+// ---------------------------------------------------------------------------
+
+const PALETTE_NAME_LIST = PALETTE_PRESETS.join(" · ")
+
+export const SECTION_BUILDER_BLOCK_DESIGN = `
+## The page's visual direction
+
+The stylesheet no longer decides this alone. \`theme\` carries five more OPTIONAL keys beyond
+tone/accent/radius, and every section's \`style\` carries four more beyond
+headline/align/tone/pad — set none of them and a page renders exactly as it always has, so use
+them when they earn their place, not on every turn.
+
+\`theme.palette\` is the one that actually changes how a page looks. Two ways to set it:
+- A NAMED preset: ${PALETTE_NAME_LIST}. Twelve, spanning warm/cool, light/dark and high/low
+  chroma, so "make it warmer", "make it calmer" and "make it louder" each have an answer — pick
+  by name, no colour theory required.
+- A custom brand: \`{ brand: "#rrggbb", accent?: "#rrggbb", mode?: "light" | "dark" }\`. Give the
+  owner's own hex and the rest (ink, surface, the complementary accent) is derived to stay
+  readable — you never hand-pick seven colours, and you never write a hex value anywhere else in
+  the document; \`theme.palette\` IS the colour control (see rule 6 above).
+Leave \`palette\` unset and the page uses the owner's own brand colours if they have set any, or
+today's green/tan if not — so "match our other pages" means leaving it unset, never copying a
+preset name you have seen used before.
+
+\`theme.font\` — five pairings, all reusing fonts the page already loads: "clean" (Lexend
+Exa/Lexend Deca — today's default, same as leaving \`font\` unset), "editorial" (a serif heading,
+for a considered pitch), "bold" (condensed, numbers-forward — pricing and event pages),
+"technical" (mono headings, for an assessment or data feel), "athletic" (rounded headings on a
+mono body — a sporty stat-sheet feel).
+
+\`theme.density\` — "tight" (compact, more above the fold), "normal" (today), "airy" (generous,
+upscale spacing).
+
+\`theme.width\` — "narrow" (a focused single column), "normal" (today's width), "wide", "full"
+(edge to edge).
+
+\`theme.rhythm\` — what a section that sets NO \`style.tone\` of its own renders as, down the page:
+"flat" (today — every untoned section is the default tone), "alternating" (default/muted
+stripes), "banded" (default, with every third section taking the accent tone). This is the
+single highest-leverage knob for "the page always looks the same", because it varies the page's
+texture without you reasoning about each section individually.
+
+## Four more per-section knobs
+
+\`style.bg\` — a background independent of tone: \`{ kind: "gradient", from: hex, to: hex, angle? }\`
+freely, between any two colours; or \`{ kind: "image", src, overlay?, position? }\` ONLY when
+\`src\` is an image the owner already uploaded through the page — inventing an image URL renders
+no background at all and is reported, the same rule as never writing a UUID.
+
+\`style.width\` — overrides the page's width for exactly one section (a wide pricing table on an
+otherwise narrow page).
+
+\`style.divider\` — "none" | "line" | "angle" | "curve" | "fade": a shaped edge between this
+section and the next, for a page that wants more than a flat tone change at the seam.
+
+\`style.reverse\` — flips a two-column layout to the other side, so two media sections in a row
+do not repeat the same silhouette.
 `.trim()
 
 // ---------------------------------------------------------------------------
@@ -856,12 +1052,14 @@ ${
 }
 
 /**
- * The whole system string: frozen Block A, then the per-page Block B. Block A
- * comes FIRST and is never interpolated, so the cache prefix it forms is
- * identical for every page and every turn.
+ * The whole system string: frozen Block A, then frozen Block DESIGN, then the
+ * per-page Block B. Blocks A and DESIGN come FIRST and are never interpolated,
+ * so the cache prefix they form is identical for every page and every turn —
+ * Anthropic's cache is a strict prefix match, so DESIGN must sit BETWEEN A and
+ * B, never after B, or every page would invalidate it.
  */
 export function buildSystemPrompt(input: BuilderCatalogueInput): string {
-  return `${SECTION_BUILDER_BLOCK_A}\n\n${buildCatalogueBlock(input)}`
+  return `${SECTION_BUILDER_BLOCK_A}\n\n${SECTION_BUILDER_BLOCK_DESIGN}\n\n${buildCatalogueBlock(input)}`
 }
 
 // ---------------------------------------------------------------------------
@@ -881,6 +1079,17 @@ export interface BuilderTurnInput {
   history: BuilderTurn[]
   /** What the owner just typed. */
   message: string
+  /**
+   * A per-turn nonce (design-system spec §6.3), so two owners with an
+   * identical brief do not get an identical page. MUST live here, in Block C
+   * (the uncached user message), and NOWHERE in Block A / DESIGN / B — those
+   * three form the cached system-prompt prefix, and Anthropic's cache is a
+   * strict prefix match, so a seed interpolated into any of them would be a
+   * SILENT cache invalidator on every single turn. Generated per call by the
+   * route (`crypto.randomUUID()`); a test value is fine here because this
+   * function only renders whatever string it is given.
+   */
+  variationSeed: string
 }
 
 /**
@@ -900,12 +1109,14 @@ export interface BuilderTurnInput {
  * the whitespace.
  */
 export function buildTurnMessage(input: BuilderTurnInput): string {
-  const { doc, history, message } = input
+  const { doc, history, message, variationSeed } = input
   const recent = history.slice(-SECTION_BUILDER_HISTORY_TURNS)
 
   const docBlock =
     doc === null
-      ? "There is no page yet. This is a first draft: reply with a single set_page op."
+      ? "There is no page yet. This is a first draft: reply with a single set_page op. In `reply`, also name " +
+        "the design direction you chose for it — the palette, font, density and rhythm, and which page recipe " +
+        "you built from — and one line of why, so the owner can read it and argue with it."
       : JSON.stringify(doc, null, 2)
 
   const historyBlock =
@@ -920,6 +1131,12 @@ ${docBlock}
 ## Recent conversation (oldest first)
 
 ${historyBlock}
+
+## Variation
+
+Turn nonce: ${variationSeed}. Two otherwise-identical briefs should not produce identical pages —
+where the brief leaves room, vary wording, section order and a design choice (palette, font,
+density, rhythm) you would otherwise default to the same way every time.
 
 ## The owner's new message
 

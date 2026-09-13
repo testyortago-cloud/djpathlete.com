@@ -1,0 +1,60 @@
+[
+  {
+    "key": "waitlist",
+    "name": "Morning Mobility Waitlist k9m0w",
+    "slug": "waitlist-k9m0w",
+    "funnelId": "3f4e2ad6-180f-4703-b3ad-6ddc989698d6",
+    "stepId": "eaea1094-1eec-485e-9470-e297eaf2e217",
+    "brief": "A calm, minimal waitlist signup for a quiet 15-minute morning mobility routine. No hard sell — one honest paragraph and the form. Airy, spacious, soft neutral colours, gentle and understated, nothing loud.",
+    "sectionCount": 6,
+    "sectionKinds": "form, proof, bullets, faq, cta, footer",
+    "asBuiltTone": "light",
+    "theme": {
+      "tone": "light",
+      "accent": "accent",
+      "radius": "soft"
+    }
+  },
+  {
+    "key": "sales",
+    "name": "Forged Strength Program k9m0w",
+    "slug": "sales-k9m0w",
+    "funnelId": "a2f55365-ef3b-4bb1-8c76-2123575b3ac4",
+    "stepId": "5ac26645-ab35-4035-b917-fba1dd6f6f66",
+    "brief": "A bold, intense, long-form sales page for a demanding 12-week strength transformation. Make the full case: the problem, proof it works, the method, pricing, a guarantee, and objections answered. Dark, dramatic, high-contrast, urgent — not soft.",
+    "sectionCount": 9,
+    "sectionKinds": "hero, bullets, proof, steps, testimonial, pricing, faq, cta, footer",
+    "asBuiltTone": "dark",
+    "theme": {
+      "font": "bold",
+      "tone": "dark",
+      "width": "normal",
+      "accent": "accent",
+      "radius": "sharp",
+      "rhythm": "banded",
+      "density": "tight",
+      "palette": { "preset": "ink" }
+    }
+  },
+  {
+    "key": "camp",
+    "name": "Summer Sports Camp kfcsg",
+    "slug": "camp-kfcsg",
+    "funnelId": "15dafa11-5d79-4d6a-91ad-8d0ad57f64ef",
+    "stepId": "2416d255-aa8d-4cc0-a177-dfef1d653534",
+    "brief": "A vibrant, playful, family-friendly summer sports camp registration page. Lead with the dates, location and price up front, then what is included. Energetic, colourful, warm and welcoming — this is for excited kids and reassured parents, not athletes.",
+    "sectionCount": 9,
+    "sectionKinds": "hero, proof, bullets, steps, testimonial, pricing, faq, cta, footer",
+    "asBuiltTone": "light",
+    "theme": {
+      "font": "bold",
+      "tone": "light",
+      "width": "normal",
+      "accent": "accent",
+      "radius": "round",
+      "rhythm": "banded",
+      "density": "tight",
+      "palette": { "preset": "ember" }
+    }
+  }
+]

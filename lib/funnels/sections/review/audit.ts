@@ -262,7 +262,28 @@ const ALIGN_CHANGE_LIMIT = 3
 const PAD_RUN_LIMIT = 4
 
 const SECTION_COUNT_MIN = 6
-const SECTION_COUNT_MAX = 9
+/**
+ * RAISED FROM 9 to 16 on 2026-09-13 (task 10 review fix).
+ *
+ * 6..9 encoded a single implied page shape, from when `prompt.ts` had exactly
+ * one skeleton (`LEADGEN_RULES`) and every page was assumed to be a short
+ * capture page. Task 10 added `PAGE_RECIPES`, and `long-form-sales` is
+ * deliberately long — its own prompt text says "Length is earned here, not a
+ * defect... more sections is normal." This auditor has NO notion of which
+ * recipe a page was built from (`SectionDoc` carries no recipe field), so a
+ * hard 9-section ceiling applied to every page fired on every long-form-sales
+ * page the model was just told to build, and the reviser dutifully cut it
+ * back down — two guards fighting each other over the recipe's own defining
+ * characteristic.
+ *
+ * 16 is a compromise, not a real per-recipe bound: it is loose for the five
+ * short recipes and still a real guard against genuine bloat, since the
+ * document cap is 24 — a 20-section page still gets flagged. The correct fix
+ * is recipe-aware bounds, which needs `SectionDoc` to carry the chosen
+ * recipe; that is a schema change and is deliberately not done here. See
+ * `docs/builder-gaps.md` (C11).
+ */
+const SECTION_COUNT_MAX = 16
 
 /**
  * Everything wrong with a page that can be decided by inspection.
@@ -275,7 +296,15 @@ const SECTION_COUNT_MAX = 9
 export function auditDoc(doc: SectionDoc): Finding[] {
   const findings: Finding[] = []
   const sections = doc.sections
-  const tones = sections.map((section) => effectiveTone(section, doc.theme))
+  // `index` is passed through so a `theme.rhythm` of `alternating`/`banded`
+  // is seen here exactly as `reassemble` renders it — both iterate
+  // `doc.sections` in the same order, so the same position means the same
+  // section in both places. Without it this auditor would read every
+  // untoned section as the single flat page-tone default while the page
+  // itself alternates or bands them: the same "auditor disagrees with the
+  // renderer" failure `effectiveTone`'s own doc comment warns about, just
+  // triggered by rhythm instead of by page tone.
+  const tones = sections.map((section, index) => effectiveTone(section, doc.theme, index))
 
   // --- tone-run: "the spacing looks off" ---------------------------------
   //
