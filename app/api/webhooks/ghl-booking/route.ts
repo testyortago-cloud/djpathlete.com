@@ -133,6 +133,10 @@ export async function POST(request: Request) {
       durationMinutes: data.duration_minutes,
       status: data.status,
       notes: data.notes ?? null,
+      // Explicit, not omitted: GoHighLevel's appointment payload carries
+      // nothing that names the service, so every GHL booking routes to
+      // Coaching. Writing the null says that was decided rather than missed.
+      serviceType: null,
       clickIds: {
         gclid: data.gclid ?? null,
         gbraid: data.gbraid ?? null,

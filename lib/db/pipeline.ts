@@ -1349,6 +1349,45 @@ async function readContactNames(
 }
 
 /**
+ * Every board this tenant can actually look at, for the board switcher on
+ * /admin/pipeline (Task 8, audit §4 #7).
+ *
+ * Exists because the page used to read the DEFAULT board and nothing else, so
+ * on production — where migration 00257 seeded `camps_clinics` and
+ * `assessment` alongside `coaching` — `routeToPipeline` could file a card on a
+ * board that had no surface at all. Cards on it were not lost; they were
+ * invisible, which is worse than lost because nobody goes looking.
+ *
+ * ACTIVE ONLY. `pipelines.status` is `'active' | 'archived'` (00219); an
+ * archived board is one the coach retired, and offering it as a pill would
+ * invite them back into it. Ordered by `created_at` so the pills keep a
+ * stable, meaningful order across page loads — `coaching` is seeded first for
+ * every tenant (`create_business()`, 00249), so the default board leads.
+ *
+ * Returns `[]` for a tenant with no boards. That is a real answer (a tenant
+ * genuinely can have none yet), never a stand-in for a failed read: a Supabase
+ * error is thrown, with its own message in the text, so the page's error
+ * boundary shows a fault rather than an empty switcher.
+ *
+ * Deliberately NOT a board-CREATION surface, and it has no writer here: this
+ * lists what the migrations seeded. Adding boards stays a migration's job
+ * until there is a customer for a board editor.
+ */
+export async function listPipelines(businessId: string): Promise<Array<{ id: string; key: string; name: string }>> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("pipelines")
+    .select("id, key, name")
+    .eq("business_id", businessId)
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+  // Not a bare `throw error`: a raw PostgREST object logs as [object Object]
+  // and the reason is gone by the time anyone reads it.
+  if (error) throw new Error(`pipelines read failed: ${error.message}`)
+  return (data ?? []) as Array<{ id: string; key: string; name: string }>
+}
+
+/**
  * One column per stage, in position order. Staleness is computed here, at
  * read time, and never stored — `stalenessOf` is the same pure function
  * `decideMove`'s caller never had to duplicate.
@@ -1366,9 +1405,14 @@ async function readContactNames(
 // string` — a bare `?` marks a parameter optional in the ordering sense TS
 // enforces, and a required parameter (businessId, no default) cannot follow
 // one of those (TS1016). Typed as a union instead, it is not "optional" to
-// the compiler even though the one caller (app/(admin)/admin/pipeline/page.tsx)
-// still passes `undefined` explicitly — same call shape, same runtime
-// behavior, no reordering.
+// the compiler.
+//
+// The `?? DEFAULT_PIPELINE_KEY` below is now belt-and-braces rather than the
+// live path: since Task 8 the admin board page resolves a real key (validated
+// against the tenant's own boards) and passes it, so nothing in the app calls
+// this with `undefined` any more. Kept because the default is the same answer
+// the page's own fallback gives, and removing it would make the signature a
+// lie for no gain.
 export async function readBoard(pipelineKey: string | undefined, businessId: string): Promise<BoardColumn[]> {
   const key = pipelineKey ?? DEFAULT_PIPELINE_KEY
   const supabase = getClient()

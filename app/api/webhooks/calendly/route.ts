@@ -271,6 +271,15 @@ export async function POST(request: Request) {
       durationMinutes: durationMinutes(data.scheduled_event.start_time, data.scheduled_event.end_time),
       status: cancelled ? "cancelled" : "scheduled",
       notes,
+      // The event type's NAME is the only thing in a Calendly payload that
+      // says what was booked — there is no service field on the invitee, the
+      // scheduled event, or our own coach_calendar_connections row. So the
+      // heuristic is a word match on a label a human typed, with all the
+      // fragility that implies, and it is the honest ceiling of what this
+      // payload can support. `\b` rather than `includes`, so "Reassessments"
+      // is not read as an assessment; `?? ""` because `name` is nullable and
+      // optional in this route's own schema above.
+      serviceType: /\bassessment\b/i.test(data.scheduled_event.name ?? "") ? "assessment" : null,
       clickIds: { gclid: tracking.gclid, gbraid: tracking.gbraid, wbraid: tracking.wbraid, fbclid: tracking.fbclid },
       columns: {
         calendly_event_uri: data.scheduled_event.uri,

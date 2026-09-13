@@ -264,6 +264,59 @@ describe("invitee.created", () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Task 8 (audit §4 #7): the ONE service-type signal a Calendly booking
+// carries. There is no `service_type` column on coach_calendar_connections or
+// bookings — the event type's own name is all the payload has, so the adapter
+// reads it and the ingest routes on it.
+// ---------------------------------------------------------------------------
+
+describe("the service type it reads off the event name", () => {
+  it("reports an assessment when the event's name says so", async () => {
+    // MUTANT: never set serviceType (or always set it null) — the booking
+    // lands on Coaching and the Assessment board stays empty.
+    await post(
+      signedRequest(
+        envelope({}, { scheduled_event: { ...FIXTURE.payload.scheduled_event, name: "Movement Assessment (30 min)" } }),
+      ),
+    )
+
+    expect(ingestBookingMock.mock.calls[0][0].serviceType).toBe("assessment")
+  })
+
+  it("reports nothing for an event name that is not an assessment (control)", async () => {
+    // The fixture's own name is "Consultation"; this names it explicitly so
+    // the control cannot drift when the fixture is edited. Without this, an
+    // adapter hardcoding "assessment" for every booking would be green.
+    await post(signedRequest(envelope({}, { scheduled_event: { ...FIXTURE.payload.scheduled_event, name: "Intro Call" } })))
+
+    expect(ingestBookingMock.mock.calls[0][0].serviceType).toBeNull()
+  })
+
+  it("does not match 'assessment' inside a longer word", async () => {
+    // MUTANT: `name.toLowerCase().includes("assessment")` instead of the
+    // word-boundary regex. "Reassessments" is a real thing a coach would name
+    // an event type, and it is not the same service.
+    await post(
+      signedRequest(envelope({}, { scheduled_event: { ...FIXTURE.payload.scheduled_event, name: "Preassessmentary" } })),
+    )
+
+    expect(ingestBookingMock.mock.calls[0][0].serviceType).toBeNull()
+  })
+
+  it("reports nothing when the event carries no name at all", async () => {
+    // `scheduled_event.name` is nullable+optional in this route's own schema,
+    // so the heuristic has to survive it. MUTANT: `.test(data.scheduled_event.name)`
+    // without the `?? ""` — a null name throws inside the adapter and the
+    // webhook 500s, which Calendly then retries forever.
+    const { name: _dropped, ...withoutName } = FIXTURE.payload.scheduled_event
+    const res = await post(signedRequest(envelope({}, { scheduled_event: withoutName })))
+
+    expect(res.status).toBe(201)
+    expect(ingestBookingMock.mock.calls[0][0].serviceType).toBeNull()
+  })
+})
+
 describe("invitee.canceled", () => {
   it("marks the booking cancelled with the reason, and lets the ingest close the card", async () => {
     const res = await post(

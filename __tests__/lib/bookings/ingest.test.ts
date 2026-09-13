@@ -14,6 +14,7 @@
 // routes by __tests__/api/webhooks/{pipeline-hooks,sequence-exit-hooks}.test.ts.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
+import { ASSESSMENT_KEY, DEFAULT_PIPELINE_KEY } from "@/lib/lead-engine/pipeline-route"
 
 const findContactByIdentifiersMock = vi.fn(async (..._a: any[]) => null as string | null)
 const getContactUserIdMock = vi.fn(async (..._a: any[]) => null as string | null)
@@ -469,6 +470,53 @@ describe("what counts as a NEW booking (review findings 3 and 4)", () => {
 })
 
 const BUSINESS_B = "00000000-0000-0000-0000-0000000000b2"
+
+// ---------------------------------------------------------------------------
+// Task 8 (audit §4 #7). Every booking used to route to Coaching because this
+// file called `routeToPipeline({ event: "booking" })` with no subject beyond
+// the event kind — so an assessment booked through Calendly opened a card on
+// the Coaching board, where nobody running assessments would look for it.
+// `routeToPipeline` has checked `serviceType === "assessment"` since Task 3;
+// nothing was ever passing it.
+// ---------------------------------------------------------------------------
+
+describe("the booking's service type decides its board", () => {
+  it("routes an assessment booking to the Assessment board", async () => {
+    // MUTANT: drop `serviceType` from the routeToPipeline subject (i.e. go
+    // back to `routeToPipeline({ event: "booking" })`) — the card silently
+    // lands on Coaching and nothing anywhere reports it.
+    findContactByIdentifiersMock.mockResolvedValueOnce("c-assess")
+
+    await ingestBooking(input({ serviceType: "assessment" }))
+
+    expect(applyPipelineEventMock).toHaveBeenCalledWith(expect.objectContaining({ pipelineKey: ASSESSMENT_KEY }))
+  })
+
+  it("routes a booking with no service type to Coaching (control)", async () => {
+    // The presence control for the test above: without it, an implementation
+    // that hardcoded `pipelineKey: ASSESSMENT_KEY` for every booking would be
+    // green. Also pins that the new field did not change the common case.
+    findContactByIdentifiersMock.mockResolvedValueOnce("c-plain")
+
+    await ingestBooking(input({ serviceType: null }))
+
+    expect(applyPipelineEventMock).toHaveBeenCalledWith(expect.objectContaining({ pipelineKey: DEFAULT_PIPELINE_KEY }))
+  })
+
+  it("treats an absent serviceType exactly like an explicit null", async () => {
+    // The GHL adapter passes null; every other caller of ingestBooking (and
+    // every fixture written before this field existed) passes nothing at all.
+    // MUTANT: `serviceType: input.serviceType` without the `?? null` — the
+    // subject carries `undefined`, which routeToPipeline already treats as no
+    // signal, so this is about the contract staying honest rather than about
+    // today's behaviour changing.
+    findContactByIdentifiersMock.mockResolvedValueOnce("c-absent")
+
+    await ingestBooking(input())
+
+    expect(applyPipelineEventMock).toHaveBeenCalledWith(expect.objectContaining({ pipelineKey: DEFAULT_PIPELINE_KEY }))
+  })
+})
 
 describe("tenant threading", () => {
   it("passes the input's business to every consequence and stamps it on the row", async () => {

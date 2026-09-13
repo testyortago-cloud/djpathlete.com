@@ -83,6 +83,27 @@ export type BookingIngestInput = {
   durationMinutes: number
   status: BookingStatus
   notes: string | null
+  /**
+   * What the booking is FOR, when the vendor gives us anything to say so.
+   * Handed straight to `routeToPipeline`, which sends `"assessment"` to the
+   * Assessment board and everything else (including null) to Coaching.
+   *
+   * TODAY THERE IS EXACTLY ONE SIGNAL, AND IT IS A STRING MATCH ON A HUMAN
+   * LABEL. Calendly's payload carries no service field at all — the only fact
+   * about what was booked is `scheduled_event.name`, the event type's own
+   * name, so the Calendly adapter sets this to `"assessment"` when that name
+   * contains the word "assessment" and null otherwise. GoHighLevel carries
+   * nothing comparable and passes null.
+   *
+   * The right long-term home is a `service_type` column on
+   * `coach_calendar_connections` — the coach says once, when connecting an
+   * event type, what that event type sells — and it is deliberately NOT added
+   * here: nothing would write it (no connection UI collects it) and nothing
+   * would show it, which is a labelling gap wearing a feature's clothes. When
+   * that column exists, the adapter reads it and this field stops depending on
+   * how somebody happened to name their calendar.
+   */
+  serviceType?: string | null
   /** Whatever the payload itself carried. The email-match fallback fills gaps. */
   clickIds: ClickIds
   /** Vendor columns to write on INSERT. The key column is added automatically. */
@@ -309,12 +330,15 @@ async function runContactConsequences(ctx: IngestCtx, input: BookingIngestInput)
       if (input.status === "scheduled" || input.status === "completed") {
         await exitRunsForContact(contactId, "booking", input.businessId)
       }
-      // Task 3 (spec §3.2): a booking always routes to Coaching — this call
-      // never carries a checkoutType/serviceType to route on — but it still
-      // goes through the same routing table as every other event rather than
-      // a bare hardcoded key, so a future rule in that table (e.g. an
-      // assessment booking) reaches this call site for free.
-      const routing = routeToPipeline({ event: "booking" })
+      // Task 3 (spec §3.2) put every event through the same routing table
+      // rather than a hardcoded key, so that a future rule would reach this
+      // call site for free. Task 8 is that future: `routeToPipeline` has
+      // checked `serviceType === "assessment"` since it was written, and this
+      // was the caller that never passed one — so an assessment booked through
+      // Calendly opened its card on Coaching, where nobody running assessments
+      // would think to look. A booking with no service type still routes to
+      // Coaching, exactly as before.
+      const routing = routeToPipeline({ event: "booking", serviceType: input.serviceType ?? null })
       await applyPipelineEvent({
         contactId,
         event: { kind: "booking", status: input.status, occurredAt: new Date() },

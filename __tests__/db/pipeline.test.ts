@@ -286,6 +286,7 @@ import {
   moveOpportunityBySequence,
   moveOpportunityManually,
   readBoard,
+  listPipelines,
   resolvePipeline,
   readMostRecentOpportunity,
   readMostRecentWonOpportunity,
@@ -2057,6 +2058,95 @@ describe("readBoard", () => {
     expect(card.contactName).toBe("Jane Doe")
     expect(card.valueCents).toBe(25000)
     expect(card.contactId).toBe("c-1")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// listPipelines — the menu behind the board switcher on /admin/pipeline
+// (Task 8, audit §4 #7). Before it existed the page read the DEFAULT board and
+// nothing else, so production's `camps_clinics` and `assessment` boards held
+// cards nobody could see.
+// ---------------------------------------------------------------------------
+
+function seedPipelineRow(
+  id: string,
+  key: string,
+  name: string,
+  opts: { businessId?: string; status?: string; createdAt?: string } = {},
+) {
+  store.pipelines.push({
+    id,
+    business_id: opts.businessId ?? SINGLETON_BUSINESS_ID,
+    key,
+    name,
+    status: opts.status ?? "active",
+    created_at: opts.createdAt ?? "2026-01-01T00:00:00.000Z",
+  })
+}
+
+describe("listPipelines", () => {
+  it("returns only the asked-for tenant's boards", async () => {
+    // MUTANT: drop `.eq("business_id", businessId)` — OTHER_BUSINESS_ID's
+    // "Coaching" row comes back as well, and the switcher offers a second
+    // coach's board to whoever is looking at this page.
+    seedPipelineRow("pipe-mine", DEFAULT_PIPELINE_KEY, "Coaching")
+    seedPipelineRow("pipe-theirs", DEFAULT_PIPELINE_KEY, "Their Coaching", { businessId: OTHER_BUSINESS_ID })
+
+    const boards = await listPipelines(SINGLETON_BUSINESS_ID)
+
+    expect(boards.map((b) => b.id)).toEqual(["pipe-mine"])
+  })
+
+  it("omits archived boards", async () => {
+    // MUTANT: drop `.eq("status", "active")` — the archived board is offered
+    // as a pill, and clicking it shows a board the coach retired.
+    seedPipelineRow("pipe-active", DEFAULT_PIPELINE_KEY, "Coaching")
+    seedPipelineRow("pipe-archived", "old_intake", "Old Intake", { status: "archived" })
+
+    const boards = await listPipelines(SINGLETON_BUSINESS_ID)
+
+    expect(boards.map((b) => b.key)).toEqual([DEFAULT_PIPELINE_KEY])
+  })
+
+  it("orders by created_at, not by whatever order the rows come back in", async () => {
+    // MUTANT: drop `.order("created_at", ...)` — the pills render in the
+    // table's own order, which here puts Assessment (created last) first and
+    // Coaching (the default board, created first) in the middle.
+    //
+    // Seeded so insertion order and created_at order genuinely DISAGREE: a
+    // fixture whose rows are already in date order is green either way.
+    seedPipelineRow("pipe-assessment", ASSESSMENT_KEY, "Assessment", { createdAt: "2026-01-03T00:00:00.000Z" })
+    seedPipelineRow("pipe-coaching", DEFAULT_PIPELINE_KEY, "Coaching", { createdAt: "2026-01-01T00:00:00.000Z" })
+    seedPipelineRow("pipe-camps", CAMPS_CLINICS_KEY, "Camps & Clinics", { createdAt: "2026-01-02T00:00:00.000Z" })
+
+    const boards = await listPipelines(SINGLETON_BUSINESS_ID)
+
+    expect(boards.map((b) => b.key)).toEqual([DEFAULT_PIPELINE_KEY, CAMPS_CLINICS_KEY, ASSESSMENT_KEY])
+  })
+
+  it("carries the id, key and name the switcher needs", async () => {
+    // Asserts WHICH values came back, not merely that something did: a pill
+    // labelled with the key ("camps_clinics") instead of the configured name
+    // ("Camps & Clinics") would satisfy a shape-only assertion.
+    seedPipelineRow("pipe-camps", CAMPS_CLINICS_KEY, "Camps & Clinics")
+
+    const boards = await listPipelines(SINGLETON_BUSINESS_ID)
+
+    // `toMatchObject`, not `toEqual`: this harness's `.select()` is
+    // column-blind and hands back the whole stored row, so the PROJECTION is
+    // not something this file can pin. The VALUES are, and they are the point.
+    expect(boards).toHaveLength(1)
+    expect(boards[0]).toMatchObject({ id: "pipe-camps", key: CAMPS_CLINICS_KEY, name: "Camps & Clinics" })
+  })
+
+  it("returns an empty list for a tenant with no boards, rather than throwing", async () => {
+    // `[]` and a failed read are different answers, and this one is real: a
+    // brand-new tenant genuinely has nothing yet. A read ERROR still throws —
+    // see the page's own header on why an empty board must not stand in for a
+    // broken query.
+    const boards = await listPipelines(OTHER_BUSINESS_ID)
+
+    expect(boards).toEqual([])
   })
 })
 
