@@ -490,7 +490,14 @@ ${ROOT} .djp-s[data-tone="dark"] .djp-footer-legal { color: inherit; opacity: 0.
    1.31:1 (midnight), 1.56:1 (steel), 2.53:1 (ember); accent-on-surface is
    1.11:1 (ink), 1.35:1 (steel), 2.40:1 (midnight). color: inherit resolves
    to the tone's own guaranteed pair — primary-foreground on dark, the base
-   --foreground on muted — exactly like every other rule in this pass. */
+   --foreground on muted — exactly like every other rule in this pass.
+
+   This sweep covers the ACCENT/DARK/MUTED tones only — it does NOT cover the
+   DEFAULT (untoned) case, where these same elements fall through to the base
+   rules below and paint bare --accent directly on --background/--surface.
+   That gap was a separate, real bug (final whole-branch review, finding 1,
+   2026-09-13) — see the --accent-on-paper fix on .djp-eyebrow / .djp-ic /
+   .djp-req below and in the FAQ/form-proof/quiz-progress rules further down. */
 ${ROOT} .djp-s[data-tone="accent"] .djp-eyebrow,
 ${ROOT} .djp-s[data-tone="accent"] .djp-ic,
 ${ROOT} .djp-s[data-tone="accent"] .djp-plan-features .djp-ic,
@@ -543,12 +550,21 @@ ${ROOT} .djp-sub {
   max-width: 46rem;
 }
 
+/* color: var(--accent-on-paper, var(--accent)) — final whole-branch review,
+   finding 1 (2026-09-13). This is the DEFAULT-tone ground state only:
+   accent/dark/muted already override to color: inherit above (Move 3). Bare
+   --accent was never proven safe here (deriveSurface only proves
+   ink-vs-surface); --accent-on-paper is (palettes.ts's deriveAccentOnPaper),
+   the same fix already applied to --primary via --primary-on-paper. The
+   fallback to bare --accent keeps a document with no palette rendering
+   exactly as before — doc.ts only emits --accent-on-paper inside its
+   palette block. */
 ${ROOT} .djp-eyebrow {
   font-family: var(--font-mono, var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.8rem;
-  color: var(--accent);
+  color: var(--accent-on-paper, var(--accent));
   margin: 0 0 0.5rem;
 }
 
@@ -707,7 +723,9 @@ ${ROOT} .djp-s-bullets .djp-bullet-title {
   margin: 0 0 0.25rem;
 }
 ${ROOT} .djp-s-bullets .djp-bullet-text { margin: 0; color: var(--muted-foreground); font-size: 0.95rem; }
-${ROOT} .djp-s-bullets .djp-ic { color: var(--accent); margin-top: 0.2rem; }
+/* color: var(--accent-on-paper, var(--accent)) — same default-tone fix as
+   .djp-eyebrow above (final whole-branch review, finding 1). */
+${ROOT} .djp-s-bullets .djp-ic { color: var(--accent-on-paper, var(--accent)); margin-top: 0.2rem; }
 
 /* item media (design-system spec §5.2) — a small thumbnail beside the icon.
    Absent on a bullet with no media: renderItemMedia emits nothing at all,
@@ -960,7 +978,9 @@ ${ROOT} .djp-s-pricing .djp-plan-features {
   gap: 0.5rem;
 }
 ${ROOT} .djp-s-pricing .djp-plan-features li { display: flex; gap: 0.5rem; align-items: flex-start; font-size: 0.95rem; }
-${ROOT} .djp-s-pricing .djp-plan-features .djp-ic { color: var(--accent); margin-top: 0.2rem; }
+/* color: var(--accent-on-paper, var(--accent)) — same default-tone fix as
+   .djp-eyebrow above (final whole-branch review, finding 1). */
+${ROOT} .djp-s-pricing .djp-plan-features .djp-ic { color: var(--accent-on-paper, var(--accent)); margin-top: 0.2rem; }
 ${ROOT} .djp-s-pricing .djp-plan-cta { margin-top: auto; }
 ${ROOT} .djp-s-pricing .djp-plan-cta .djp-btn { width: 100%; }
 ${ROOT} .djp-s-pricing.djp-v-single .djp-pricing-grid { grid-template-columns: 1fr; max-width: 24rem; margin-inline: auto; }
@@ -1021,13 +1041,19 @@ ${ROOT} .djp-s-faq .djp-faq-details > summary {
   padding-right: 0.25rem;
 }
 ${ROOT} .djp-s-faq .djp-faq-details > summary::-webkit-details-marker { display: none; }
+/* color: var(--accent-on-paper, var(--accent)) — same default-tone fix as
+   .djp-eyebrow above (final whole-branch review, finding 1). This glyph is
+   rendered client-side by FaqIsland.tsx's real <details>/<summary>, which
+   render.test.ts's static-HTML harness cannot reach — fixed on the strength
+   of the same measured hazard as every other Move-3 site, not a harness
+   assertion. */
 ${ROOT} .djp-s-faq .djp-faq-details > summary::after {
   content: "+";
   flex: none;
   font-weight: 400;
   font-size: 1.4rem;
   line-height: 1;
-  color: var(--accent);
+  color: var(--accent-on-paper, var(--accent));
 }
 ${ROOT} .djp-s-faq .djp-faq-details[open] > summary::after { content: "\\2212"; }
 ${ROOT} .djp-s-faq .djp-faq-details[open] > .djp-faq-a { margin-top: 0.75rem; }
@@ -1200,7 +1226,9 @@ ${ROOT} .djp-form .djp-field-label {
   line-height: 1.3;
   color: var(--foreground);
 }
-${ROOT} .djp-form .djp-req { color: var(--accent); }
+/* color: var(--accent-on-paper, var(--accent)) — same default-tone fix as
+   .djp-eyebrow above (final whole-branch review, finding 1). */
+${ROOT} .djp-form .djp-req { color: var(--accent-on-paper, var(--accent)); }
 
 ${ROOT} .djp-form .djp-control {
   width: 100%;
@@ -1384,7 +1412,14 @@ ${ROOT} .djp-s-form.djp-v-split .djp-form-proof li {
   align-items: flex-start;
   font-size: 0.98rem;
 }
-${ROOT} .djp-s-form.djp-v-split .djp-form-proof .djp-ic { color: var(--accent); margin-top: 0.15rem; }
+/* color: var(--accent-on-paper, var(--accent)) — same default-tone fix as
+   .djp-eyebrow above (final whole-branch review, finding 1). This card's
+   ground is --surface on the default tone (its own rule above), which is
+   exactly the untoned "default ground" this whole finding is about — the
+   review's own line list under-counted this site by one; it has the
+   identical hazard as .djp-s-bullets .djp-ic and
+   .djp-s-pricing .djp-plan-features .djp-ic. */
+${ROOT} .djp-s-form.djp-v-split .djp-form-proof .djp-ic { color: var(--accent-on-paper, var(--accent)); margin-top: 0.15rem; }
 
 /* reverse knob (design-system spec §4) — swaps pitch and card sides. Scoped
    to .djp-v-split, the only form variant with two side-by-side columns. */
@@ -1615,7 +1650,17 @@ ${ROOT} .djp-s-quiz .djp-quiz-progress {
   overflow: hidden;
   margin-bottom: 1.5rem;
 }
-${ROOT} .djp-s-quiz .djp-quiz-progress-bar { height: 100%; background: var(--accent); transition: width 0.25s ease; }
+/* background: var(--accent-on-paper, var(--accent)) — final whole-branch
+   review, finding 1 (2026-09-13). The quiz card above is ALWAYS painted
+   var(--background)/var(--surface) regardless of the section's own tone (see
+   the comment above .djp-quiz), so the filled portion of this progress bar
+   always sits on the untoned page ground — the same default-ground hazard as
+   .djp-eyebrow, just for a decorative fill instead of text: on a low-contrast
+   preset the filled bar all but disappears into its own track
+   (var(--surface)). --accent-on-paper is proven >= 4.5:1 against both
+   --background and --surface (palettes.ts's deriveAccentOnPaper), so it
+   keeps the fill visibly distinct from the track it sits inside. */
+${ROOT} .djp-s-quiz .djp-quiz-progress-bar { height: 100%; background: var(--accent-on-paper, var(--accent)); transition: width 0.25s ease; }
 ${ROOT} .djp-s-quiz .djp-quiz-step {
   font-size: 0.8125rem;
   letter-spacing: 0.04em;

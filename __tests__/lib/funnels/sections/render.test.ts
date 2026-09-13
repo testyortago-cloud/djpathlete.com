@@ -182,23 +182,108 @@ describe("THEME_CSS + SECTION_CSS", () => {
 //     understand (it is reported as UNMODELLED rather than skipped).
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// DERIVED neutral-ground legality (final whole-branch review, finding 1,
+// 2026-09-13). `--background`/`--surface`'s entries below used to be a
+// hand-picked list that DECLARED `--accent` (and, before `--primary-on-paper`
+// existed, `--primary`) legal there as "a scope-invariant fact about
+// app/globals.css's four fixed themes". That was true for THOSE four themes
+// and false the moment a document has any `PALETTE_TABLE` preset active:
+// `ink` measured accent-on-paper at 1.11:1, steel at 1.40:1 — the exact
+// hazard `.djp-eyebrow`/`.djp-ic`/`.djp-req` shipped with, hidden by a table
+// entry nobody re-derived against a real palette. Fixing the three shipped
+// instances of this bug class each time by hand-editing the table (adding
+// `--primary`, then `--primary-on-paper`, next presumably `--accent-on-paper`)
+// is exactly the pattern the review flagged as the root cause, so instead of
+// adding one more hand-typed entry, `neutralGroundForeground` COMPUTES which
+// foreground tokens are legal on a neutral ground by actually measuring every
+// `PALETTE_TABLE` preset's real hex with `contrastRatio` — the same numbers
+// `paletteHex` (below) already resolves for the "real palette contrast" suite
+// — so a future preset, or a future on-paper derivation that stops clearing
+// AA, fails this file's own build instead of shipping quietly behind a table
+// that says "legal" without checking.
+//
+// Only `--foreground`/`--muted-foreground`/`--primary-on-paper`/
+// `--accent-on-paper` are even candidates: those are the ONLY tokens this
+// stylesheet ever paints as text directly on `--background`/`--surface`
+// (verified by "understands every colour value..." below, which fails loudly
+// on anything else). Bare `--primary`/`--accent` are deliberately NOT
+// candidates — they are exactly the two tokens this finding proves are NOT
+// safe there for an arbitrary derived palette, and no rule needs them to be:
+// every rule that used to hardcode them now falls back to bare `--primary`/
+// `--accent` only via `var(--primary-on-paper, var(--primary))`-style CSS,
+// which `colourToken` below resolves to the OUTER (on-paper) name regardless
+// of whether a palette is active, so the bare name is simply never produced
+// as a resolved reading for a default-tone text node.
+// ---------------------------------------------------------------------------
+
+/** `null` for any token this file's stylesheet uses that the palette does not
+ * derive (see the scope note near the "real palette contrast" suite below)
+ * — never a guess. Declared with `function` (hoisted) so `READABLE_ON` below
+ * can call it despite appearing earlier in the file. */
+function paletteHex(preset: PaletteName, token: string): string | null {
+  const t = PALETTE_TABLE[preset]
+  switch (token) {
+    case "--primary":
+      return t.brand
+    case "--primary-foreground":
+      return t.brandInk
+    case "--accent":
+      return t.accent
+    case "--accent-foreground":
+      return t.accentInk
+    case "--surface":
+      return t.surface
+    case "--foreground":
+      return t.ink
+    case "--background":
+      return t.paper
+    case "--primary-on-paper":
+      return t.brandOnPaper
+    case "--accent-on-paper":
+      return t.accentOnPaper
+    default:
+      return null
+  }
+}
+
+const NEUTRAL_TEXT_CANDIDATES = ["--foreground", "--muted-foreground", "--primary-on-paper", "--accent-on-paper"] as const
+
+function neutralGroundForeground(bgToken: "--background" | "--surface"): string[] {
+  return NEUTRAL_TEXT_CANDIDATES.filter((fg) =>
+    PALETTE_PRESETS.every((preset) => {
+      const fgHex = paletteHex(preset, fg)
+      const bgHex = paletteHex(preset, bgToken)
+      // `--muted-foreground` is a FIXED app token no palette derives
+      // (paletteHex returns null for it) — scope-invariant by construction,
+      // not something a per-preset hex check can measure either way.
+      if (fgHex === null || bgHex === null) return true
+      return contrastRatio(fgHex, bgHex) >= 4.5
+    }),
+  )
+}
+
 /** Which foreground tokens may legally sit on which background token. */
 const READABLE_ON: Record<string, readonly string[]> = {
   // A repainted section takes its own paired foreground. `--accent` is also
   // legal ON `--primary` and vice versa: those are the two BRAND tokens, and
   // globals.css defines them as contrasting in every scope it declares.
+  // SCOPE, STATED HONESTLY (per the review): this cross-pairing is true for
+  // app/globals.css's four fixed themes and is NOT proven for an arbitrary
+  // `PALETTE_TABLE` preset — measured accent-on-primary as low as 1.02:1
+  // (ink) — but no rule currently paints `--accent` as text directly on a
+  // `--primary` background (every such rule was already fixed to
+  // `color: inherit`, see Move 3 above), so this entry names no live bug
+  // today. A future rule relying on this pairing for a derived palette would
+  // need the same on-paper treatment as `--background`/`--surface` below.
   "--primary": ["--primary-foreground", "--accent"],
   "--accent": ["--accent-foreground", "--primary"],
-  // The two neutral surfaces share one foreground family, and brand tokens
-  // read as accents on them (that is what `.djp-hd` and `.djp-plan-price` are).
-  // `--primary-on-paper` (contrast-sweep fix, 2026-09-13) is the token those
-  // two rules actually resolve to now — `palettes.ts`'s `deriveBrandOnPaper`,
-  // proven >= 4.5:1 against both `paper` and `surface` for every preset (see
-  // palettes.test.ts) — so it belongs in exactly this pairing list, not
-  // instead of `--primary`, which stays legal for a document with no palette
-  // (styles.ts falls back to bare `--primary` there).
-  "--background": ["--foreground", "--muted-foreground", "--primary", "--primary-on-paper", "--accent"],
-  "--surface": ["--foreground", "--muted-foreground", "--primary", "--primary-on-paper", "--accent"],
+  // DERIVED, not hand-listed — see the block comment above. Resolves today to
+  // `["--foreground", "--muted-foreground", "--primary-on-paper",
+  // "--accent-on-paper"]`; whatever it resolves to is proven against the real
+  // palette table on every test run, not merely asserted in a comment.
+  "--background": neutralGroundForeground("--background"),
+  "--surface": neutralGroundForeground("--surface"),
 }
 
 const INHERIT = "INHERIT"
@@ -628,19 +713,20 @@ describe("tone contrast: no per-kind colour is left behind by the tone knob", ()
 // REAL PALETTE CONTRAST — the thing the PAIRING check above admits, in its own
 // header comment, that it does not do.
 //
-// READABLE_ON is a table of TOKEN NAMES, and its own comment says exactly why:
-// "app/globals.css declares these tokens in four scopes with opposite
-// polarity ... only the PAIRING is invariant". That is true for the app's own
-// four fixed themes. It is false for a funnel's PALETTE_TABLE preset, where
+// READABLE_ON's `--primary`/`--accent` entries are still a table of TOKEN
+// NAMES: "app/globals.css declares these tokens in four scopes with opposite
+// polarity ... only the PAIRING is invariant" is true for the app's own four
+// fixed themes and NOT proven for a funnel's PALETTE_TABLE preset, where
 // `--primary` and `--accent` are independently DERIVED colours (palettes.ts:
 // `hueRotate(brand, 150)` for accent, a background-driven `deriveSurface` for
-// surface) with no contrast relationship to each other guaranteed anywhere.
-// READABLE_ON legally allows `--accent` on `--primary` (and vice versa) and
-// legally allows `--primary`/`--accent` on `--surface`/`--background` — which
-// is exactly how all three real bugs this sweep exists for (djp-faq-q's page
-// wrapper, djp-plan-price, djp-hd) shipped green through that check. A token
-// PAIRING is a necessary condition for this stylesheet; it was never a
-// sufficient one.
+// surface) with no contrast relationship to each other guaranteed anywhere —
+// see the scope note on that entry above. `--background`/`--surface` no
+// longer work this way (see `neutralGroundForeground` above): those two are
+// now DERIVED from real measured contrast, precisely because a hand-picked
+// "legal" list for them is what let `--accent` on paper/surface ship green —
+// the fourth instance of this bug class, after `djp-faq-q`'s page wrapper,
+// `djp-plan-price`, and `djp-hd`. A token PAIRING is a necessary condition
+// for this stylesheet; a hand-listed one was never a sufficient one.
 //
 // This suite resolves the SAME token readings `readContrast` already computes
 // (same rendered markup, same real cascade, same inherit/wash resolution) to
@@ -648,50 +734,27 @@ describe("tone contrast: no per-kind colour is left behind by the tone knob", ()
 // number with `contrastRatio` from palettes.ts — the exact colours that will
 // really meet on screen, not a pair that is only true in the abstract.
 //
-// SCOPE, STATED HONESTLY: only the seven tokens `doc.ts` actually overrides
+// SCOPE, STATED HONESTLY: only the eight tokens `doc.ts` actually overrides
 // per document (`--primary`, `--primary-foreground`, `--accent`,
-// `--accent-foreground`, `--surface`, `--foreground`, `--background` — see
-// doc.ts:314-316) have a palette-derived hex value to resolve through. Every
-// other var this stylesheet reads (`--muted-foreground`, `--border`,
-// `--error`, `--success`, `--warning`) is a fixed app-level token the funnel
-// palette never touches — it cannot be "hardcoded to a specific PALETTE
-// token" in the sense this sweep is chasing, and `contrastRatio` has no hex
-// to resolve it against here. `paletteHex` returns `null` for those and the
-// reading is skipped, not silently passed: this is the harness's honestly
-// documented boundary, not a gap pretending to be coverage.
+// `--accent-foreground`, `--accent-on-paper`, `--surface`, `--foreground`,
+// `--background` — see doc.ts's `paletteBlock`, plus `--primary-on-paper`)
+// have a palette-derived hex value to resolve through. Every other var this
+// stylesheet reads (`--muted-foreground`, `--border`, `--error`, `--success`,
+// `--warning`) is a fixed app-level token the funnel palette never touches —
+// it cannot be "hardcoded to a specific PALETTE token" in the sense this
+// sweep is chasing, and `contrastRatio` has no hex to resolve it against
+// here. `paletteHex` (defined near `READABLE_ON` above, since that table now
+// calls it too) returns `null` for those and the reading is skipped, not
+// silently passed: this is the harness's honestly documented boundary, not a
+// gap pretending to be coverage.
 //
-// MUTANTS THIS KILLS: reverting any one of the six contrast-sweep fixes above
+// MUTANTS THIS KILLS: reverting any one of the contrast-sweep fixes above
 // (.djp-hd / .djp-eyebrow+.djp-ic / .djp-faq toggle / .djp-req /
-// .djp-form-proof .djp-ic / .djp-proof-value muted-or-dark overrides) turns
-// the corresponding preset/tone case red, naming the exact node and the
-// measured ratio — see the report for the observed failure text.
+// .djp-form-proof .djp-ic / .djp-proof-value muted-or-dark overrides, plus
+// the default-tone --accent-on-paper fixes from the final whole-branch
+// review) turns the corresponding preset/tone case red, naming the exact
+// node and the measured ratio — see the report for the observed failure text.
 // ---------------------------------------------------------------------------
-
-/** `null` for any token this file's stylesheet uses that the palette does not
- * derive (see the scope note above) — never a guess. */
-function paletteHex(preset: PaletteName, token: string): string | null {
-  const t = PALETTE_TABLE[preset]
-  switch (token) {
-    case "--primary":
-      return t.brand
-    case "--primary-foreground":
-      return t.brandInk
-    case "--accent":
-      return t.accent
-    case "--accent-foreground":
-      return t.accentInk
-    case "--surface":
-      return t.surface
-    case "--foreground":
-      return t.ink
-    case "--background":
-      return t.paper
-    case "--primary-on-paper":
-      return t.brandOnPaper
-    default:
-      return null
-  }
-}
 
 // slate: the light-mode control. ember/ink/midnight/steel/plum: every
 // dark-seeded preset named in the bug report, not just the one already caught
@@ -712,12 +775,15 @@ const REPRESENTATIVE_PRESETS: readonly PaletteName[] = ["slate", "ember", "ink",
 // that check.
 //
 // `default` still is NOT added to `SWEEP_TONES` here, though: this describe
-// block's `readContrast` walks EVERY text node, including `.djp-eyebrow` /
-// `.djp-ic` (hardcoded `--accent`), which has no default-tone fix and is a
-// separate, out-of-scope finding for a future pass. This suite stays scoped
-// to exactly the bug class this sweep targets: an element whose colour is
-// hardcoded to a token that does not follow "the SECTION'S tone" when that
-// tone is muted, accent, or dark.
+// block stays scoped to exactly the bug class this sweep targets — an
+// element whose colour does not follow "the SECTION'S tone" when that tone is
+// muted, accent, or dark. `.djp-eyebrow` / `.djp-ic` / `.djp-req` hardcoding
+// `--accent` at the UNTONED default section was a real, separate finding
+// (final whole-branch review, finding 1, 2026-09-13) — now fixed the same way
+// as the brand case, and checked in its own "default-tone accent text"
+// describe block below, for the same reason the brand fix got its own block:
+// a fix to "does the tone knob work" says nothing about "is the untoned
+// default itself readable".
 const SWEEP_TONES = ["muted", "accent", "dark"] as const satisfies readonly (typeof ALL_TONES)[number][]
 
 /** `readContrast(tone)` re-renders and re-parses every kind/variant; cached
@@ -787,6 +853,57 @@ describe("default-tone brand text: .djp-hd / .djp-plan-price / .djp-proof-value 
     const readings = cachedContrast("default")
     const targets = readings.filter((reading) => TARGET_CLASSES.some((cls) => reading.node.includes(cls)))
     expect(targets.length, "no .djp-hd/.djp-plan-price/.djp-proof-value rendered at tone 'default'").toBeGreaterThan(0)
+    const violations = targets.flatMap((reading) => {
+      const fg = paletteHex(preset, reading.colour)
+      const bg = paletteHex(preset, reading.background)
+      if (fg === null || bg === null) {
+        return [`${reading.case}: ${reading.node} resolved to un-mapped token ${reading.colour} on ${reading.background}`]
+      }
+      const ratio = contrastRatio(fg, bg)
+      return ratio < 4.5
+        ? [`${reading.case}: ${reading.node} — ${reading.colour} (${fg}) on ${reading.background} (${bg}) = ${ratio.toFixed(2)}:1`]
+        : []
+    })
+    expect(violations, violations.join("\n")).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// DEFAULT-TONE ACCENT TEXT — final whole-branch review, finding 1
+// (2026-09-13). `.djp-eyebrow` / `.djp-ic` (bullets, pricing plan features,
+// split-form proof) / `.djp-req` all painted bare `--accent` as text at the
+// default (untoned) section — the identical hazard `.djp-hd` had before
+// `--primary-on-paper` existed, just for the OTHER brand token, and missed by
+// the tone-contrast sweep (styles.ts's Move 3) because that sweep only ever
+// covered the accent/dark/muted TONES, never the untoned default ground.
+// Measured worst case before this fix: `ink` 1.11:1, `steel` 1.40:1 — the
+// same order of magnitude as the 1.10:1 `brandOnPaper` defect already treated
+// as Critical. Fixed the same way: `--accent-on-paper`
+// (palettes.ts's `deriveAccentOnPaper`), proven >= 4.5:1 against both `paper`
+// and `surface` for every preset (see palettes.test.ts). Checked across ALL
+// TWELVE presets, same reasoning as the brand block above: the guarantee is
+// unconditional, so there is no "representative subset" here.
+//
+// The FAQ "+"/"−" toggle and the quiz progress-bar fill have the identical
+// fix in styles.ts but are NOT checked here: the FAQ glyph is rendered
+// client-side by `FaqIsland.tsx`'s real `<details>`/`<summary>`, and the
+// progress-bar fill is a `background`, not a `color` — neither is a text
+// node this harness's static-HTML `readContrast` can reach. Fixed on the
+// strength of the same measured hazard as the checked sites, not a harness
+// assertion.
+//
+// MUTANT THIS KILLS: pointing any one of these rules back at bare `--accent`
+// turns every preset for that element red, naming the preset and the real
+// measured ratio.
+// ---------------------------------------------------------------------------
+
+describe("default-tone accent text: .djp-eyebrow / .djp-ic / .djp-req use the paper-safe token", () => {
+  const TARGET_CLASSES = ["djp-eyebrow", "djp-ic", "djp-req"]
+
+  it.each(PALETTE_PRESETS)("preset '%s': every default-tone accent-text node clears 4.5:1", (preset) => {
+    const readings = cachedContrast("default")
+    const targets = readings.filter((reading) => TARGET_CLASSES.some((cls) => reading.node.includes(cls)))
+    expect(targets.length, "no .djp-eyebrow/.djp-ic/.djp-req rendered at tone 'default'").toBeGreaterThan(0)
     const violations = targets.flatMap((reading) => {
       const fg = paletteHex(preset, reading.colour)
       const bg = paletteHex(preset, reading.background)

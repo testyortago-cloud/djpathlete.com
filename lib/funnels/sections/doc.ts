@@ -320,10 +320,20 @@ function themeCss(theme: SectionDocTheme, brandKit?: BrandKit | null): string {
   // styles.ts's rules fall back to bare `--primary` when this is undefined
   // (no palette on the document), which is exactly the "no palette" case
   // above and keeps that byte-for-byte behaviour intact.
+  //
+  // `--accent-on-paper` (final whole-branch review, finding 1, 2026-09-13):
+  // the identical gap on the OTHER brand token. `.djp-eyebrow` / `.djp-ic` /
+  // `.djp-req` painted bare `--accent` as text at the default (untoned)
+  // section, and the tone-contrast sweep that added `--primary-on-paper`
+  // above only covered the accent/dark/muted TONES for `--accent`, never the
+  // untoned default ground `--accent` itself sits on. This is
+  // `palette.accentOnPaper` — see palettes.ts's `deriveAccentOnPaper` for the
+  // derivation and the measured worst case (`ink` was 1.11:1 before this).
   const paletteBlock = palette
     ? `${ROOT} { --primary: ${palette.brand}; --primary-foreground: ${palette.brandInk}; ` +
       `--primary-on-paper: ${palette.brandOnPaper}; ` +
       `--accent: ${palette.accent}; --accent-foreground: ${palette.accentInk}; ` +
+      `--accent-on-paper: ${palette.accentOnPaper}; ` +
       `--surface: ${palette.surface}; --foreground: ${palette.ink}; --background: ${palette.paper}; }`
     : ""
 

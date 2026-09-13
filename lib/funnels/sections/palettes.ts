@@ -202,6 +202,7 @@ export interface PaletteTokens {
   brandOnPaper: string
   accent: string
   accentInk: string
+  accentOnPaper: string
   surface: string
   ink: string
   paper: string
@@ -229,33 +230,40 @@ function deriveSurface(paper: string, brand: string, ink: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// brandOnPaper — `brand` adjusted until it reads as TEXT on the page's own
-// ground (paper AND surface), never a repainted band.
+// brandOnPaper / accentOnPaper — a brand token adjusted until it reads as
+// TEXT on the page's own ground (paper AND surface), never a repainted band.
 //
-// `brand` does two different jobs, and only one of them was ever guaranteed.
-// As a BACKGROUND (`--primary` behind a `dark`-toned section, paired with
-// `brandInk`) `pickInk`'s proof already covers it. As TEXT on the page ground
-// (`.djp-hd` / `.djp-plan-price` / `.djp-proof-value`, painted
-// `var(--primary)` on `--background`/`--surface` at the default, untoned
-// section) nothing ever proved it — `deriveSurface` above only proves
-// ink-vs-surface. Measured across all twelve `PALETTE_TABLE` presets before
-// this fix: `ink` (brand `#111827`, itself near-black) scored 1.10:1 against
-// paper, decisively below even the large-text 3:1 floor; `midnight` (1.88),
-// `steel` (2.19) and `plum` (2.74) also failed outright; only `ember` cleared
-// 3:1, and only by 0.01 (3.007:1) — which is what let the bug through in the
+// Both `brand` and `accent` do two different jobs, and only one of them was
+// ever guaranteed. As a BACKGROUND (`--primary` behind a `dark`-toned
+// section paired with `brandInk`; `--accent` behind an `accent`-toned
+// section paired with `accentInk`) `pickInk`'s proof already covers it. As
+// TEXT on the page ground (`.djp-hd` / `.djp-plan-price` / `.djp-proof-value`
+// for brand; `.djp-eyebrow` / `.djp-ic` / `.djp-req` for accent — painted
+// directly on `--background`/`--surface` at the default, untoned section)
+// nothing ever proved it — `deriveSurface` above only proves ink-vs-surface.
+// Measured across all twelve `PALETTE_TABLE` presets before the brand fix:
+// `ink` (brand `#111827`, itself near-black) scored 1.10:1 against paper,
+// decisively below even the large-text 3:1 floor; `midnight` (1.88), `steel`
+// (2.19) and `plum` (2.74) also failed outright; only `ember` cleared 3:1,
+// and only by 0.01 (3.007:1) — which is what let the bug through in the
 // first place: `.djp-hd` is large bold text (20px/700 minimum, clamp(1.25rem,
 // ...) at data-h="sm"), so 3:1 is the technically-correct WCAG floor for it,
 // but a margin that thin is luck, not a guarantee, and `.djp-plan-price` /
-// `.djp-proof-value` are not reliably "large text" the same way.
+// `.djp-proof-value` are not reliably "large text" the same way. The
+// identical hazard existed for `accent` and was missed by the first fix
+// wave's tone-contrast sweep (styles.ts:493-502), which covered the
+// accent/dark/muted TONES but never the untoned default ground: measured
+// accent-vs-paper before this fix, `ink` 1.11:1, `steel` 1.40:1 — the same
+// order of magnitude as the brand defect above.
 //
-// `brandOnPaper` keeps brand's HUE — so it still reads as the brand — and
-// nudges LIGHTNESS one step at a time away from paper's own lightness,
-// re-measuring against BOTH paper and surface (surface measured uniformly
-// slightly worse than paper in every row above, so checking paper alone would
-// just move the bug one band over) until BOTH clear 4.5:1 — body-text AA, not
-// the large-text 3:1 that produced the 3.007 near-miss. Targeting the higher
-// bar costs little and makes the token safe to use for body text too, not
-// just headings.
+// `deriveOnPaper` keeps the seed colour's HUE — so it still reads as brand or
+// accent — and nudges LIGHTNESS one step at a time away from paper's own
+// lightness, re-measuring against BOTH paper and surface (surface measured
+// uniformly slightly worse than paper in every row above, so checking paper
+// alone would just move the bug one band over) until BOTH clear 4.5:1 —
+// body-text AA, not the large-text 3:1 that produced the 3.007 near-miss.
+// Targeting the higher bar costs little and makes the token safe to use for
+// body text too, not just headings.
 //
 // The loop is guaranteed to terminate: `hslToRgb`'s `a = s * min(l, 1 - l)`
 // hits zero at l=1 or l=0 regardless of hue/saturation, collapsing the
@@ -265,8 +273,8 @@ function deriveSurface(paper: string, brand: string, ink: string): string {
 // extreme from any starting lightness.
 // ---------------------------------------------------------------------------
 
-function deriveBrandOnPaper(brand: string, paper: string, surface: string): string {
-  const [r, g, b] = hexToRgb(brand)
+function deriveOnPaper(seed: string, paper: string, surface: string): string {
+  const [r, g, b] = hexToRgb(seed)
   const [h, s, l0] = rgbToHsl(r, g, b)
   const paperIsDark = relativeLuminance(paper) < 0.5
   let l = l0
@@ -277,7 +285,15 @@ function deriveBrandOnPaper(brand: string, paper: string, surface: string): stri
     l = paperIsDark ? Math.min(1, l + 0.01) : Math.max(0, l - 0.01)
   }
   // Unreachable per the proof above — fail loudly rather than ship a losing pair.
-  throw new Error(`palettes: could not derive a readable brandOnPaper for ${brand} on ${paper}`)
+  throw new Error(`palettes: could not derive a readable on-paper token for ${seed} on ${paper}`)
+}
+
+function deriveBrandOnPaper(brand: string, paper: string, surface: string): string {
+  return deriveOnPaper(brand, paper, surface)
+}
+
+function deriveAccentOnPaper(accent: string, paper: string, surface: string): string {
+  return deriveOnPaper(accent, paper, surface)
 }
 
 /**
@@ -312,8 +328,9 @@ export function resolvePalette(input: { brand: string; accent?: string; mode?: "
 
   const surface = deriveSurface(paper, brand, ink)
   const brandOnPaper = deriveBrandOnPaper(brand, paper, surface)
+  const accentOnPaper = deriveAccentOnPaper(accent, paper, surface)
 
-  return { brand, brandInk, brandOnPaper, accent, accentInk, surface, ink, paper }
+  return { brand, brandInk, brandOnPaper, accent, accentInk, accentOnPaper, surface, ink, paper }
 }
 
 // ---------------------------------------------------------------------------

@@ -57,6 +57,21 @@ describe("PALETTE_TABLE", () => {
       expect(contrastRatio(p.brandOnPaper, p.surface), `${name}: brandOnPaper on surface`).toBeGreaterThanOrEqual(4.5)
     }
   })
+  // THE SAME GUARANTEE `accent` NEVER HAD — final whole-branch review, finding
+  // 1 (2026-09-13). `accent` is paired with `accentInk` only as a BACKGROUND
+  // (the AA test above, "text on accent band"); as TEXT on the page's own
+  // ground (`.djp-eyebrow` / `.djp-ic` / `.djp-req`, painted `var(--accent)`
+  // at the DEFAULT, untoned section) nothing ever proved it. Measured before
+  // this fix: `ink` 1.11:1, `steel` 1.40:1, `midnight` 2.47 — the same order
+  // of magnitude as the `brandOnPaper` defect above, missed by the
+  // tone-contrast sweep in styles.ts because that sweep only ever covered the
+  // accent/dark/muted TONES, never the untoned default ground.
+  it("guarantees accentOnPaper reads on the page's own ground, not just the accent band", () => {
+    for (const [name, p] of Object.entries(PALETTE_TABLE)) {
+      expect(contrastRatio(p.accentOnPaper, p.paper), `${name}: accentOnPaper on paper`).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(p.accentOnPaper, p.surface), `${name}: accentOnPaper on surface`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
   // THE POINT OF *TWELVE* PRESETS. Every row is `resolvePalette(seed)`, so the
   // AA test above can only fail if `resolvePalette` itself is broken — it says
   // nothing about whether two SEEDS picked the same colour under different
@@ -108,11 +123,15 @@ describe("resolvePalette", () => {
       expect(contrastRatio(p.brandOnPaper, p.surface), `hue ${hue}: brandOnPaper on surface`).toBeGreaterThanOrEqual(
         4.5,
       )
+      expect(contrastRatio(p.accentOnPaper, p.paper), `hue ${hue}: accentOnPaper on paper`).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(p.accentOnPaper, p.surface), `hue ${hue}: accentOnPaper on surface`).toBeGreaterThanOrEqual(
+        4.5,
+      )
     }
   })
   // Both modes, not just light: dark mode's paper is near-black, which is
   // exactly the case that broke `ink`/`midnight`/`steel`/`plum` above.
-  it("meets brandOnPaper's 4.5:1 in dark mode too, all the way round the wheel", () => {
+  it("meets brandOnPaper's and accentOnPaper's 4.5:1 in dark mode too, all the way round the wheel", () => {
     for (let hue = 0; hue < 360; hue += 15) {
       const brand = hslToHex(hue, 0.65, 0.45)
       const p = resolvePalette({ brand, mode: "dark" })
@@ -122,6 +141,14 @@ describe("resolvePalette", () => {
       expect(
         contrastRatio(p.brandOnPaper, p.surface),
         `hue ${hue} (dark): brandOnPaper on surface`,
+      ).toBeGreaterThanOrEqual(4.5)
+      expect(
+        contrastRatio(p.accentOnPaper, p.paper),
+        `hue ${hue} (dark): accentOnPaper on paper`,
+      ).toBeGreaterThanOrEqual(4.5)
+      expect(
+        contrastRatio(p.accentOnPaper, p.surface),
+        `hue ${hue} (dark): accentOnPaper on surface`,
       ).toBeGreaterThanOrEqual(4.5)
     }
   })
