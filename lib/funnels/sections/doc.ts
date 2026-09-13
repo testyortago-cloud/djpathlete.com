@@ -258,9 +258,11 @@ function paletteTokens(theme: SectionDocTheme, brandKit?: BrandKit | null): Pale
  * sets NO tone of its own renders as when a POSITION is known: `"flat"` (or
  * absent) is today's behaviour — every untoned section falls back to the
  * single page-tone default. `"alternating"` toggles that default with
- * `"muted"` every other section. `"banded"` does the same but in pairs, so
- * the page reads as a handful of blocks rather than a strict per-section
- * checker pattern. An explicit `section.style.tone` (the `own` guard above)
+ * `"muted"` every other section. `"banded"` keeps the default for two
+ * sections out of three and takes the theme's `"accent"` tone on every
+ * third, so the page reads as groups punctuated by a highlight colour
+ * rather than another two-tone checkerboard at a different frequency. An
+ * explicit `section.style.tone` (the `own` guard above)
  * always outranks rhythm, exactly as it already outranks the page tone —
  * losing that precedence would silently break the inspector's own tone
  * control the moment a page rhythm was set.
@@ -279,10 +281,15 @@ export function effectiveTone(
 
   if (rhythm === "alternating") return index % 2 === 0 ? pageTone : "muted"
 
-  // "banded": pairs of sections share a tone before the next pair flips, so
-  // the page groups into blocks instead of listing alternating rows.
-  const band = Math.floor(index / 2)
-  return band % 2 === 0 ? pageTone : "muted"
+  // "banded" (design-system spec §3.3): untoned sections run the page-tone
+  // default, and every THIRD one takes the theme's accent tone — a highlight
+  // punctuating groups, not another two-tone checkerboard at a different
+  // frequency. `alternating` already covers "toggle between two tones"; if
+  // `banded` also only toggled two tones (even at a different period) it
+  // would be the exact complaint this build exists to fix, reappearing
+  // inside the fix. 1-indexed "every third" (positions 3, 6, 9, ...) is
+  // `(index + 1) % 3 === 0` in this 0-indexed `index`.
+  return (index + 1) % 3 === 0 ? "accent" : pageTone
 }
 
 function sectionForPage(section: Section, theme: SectionDocTheme, index?: number): Section {

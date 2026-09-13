@@ -533,14 +533,35 @@ describe("rhythm", () => {
   it("absent rhythm is identical to flat", () => {
     expect(tones(reassemble(page()).html)).toEqual(tones(reassemble(page("flat")).html))
   })
+  // Regression guard for every existing stored light-themed page on both
+  // boards: `sectionForPage` was widened to also run when rhythm is set,
+  // but a light page with no `rhythm` key must still take the untouched
+  // early-return path and render exactly as it did before rhythm existed —
+  // pinned as a concrete sequence, not just "it did not throw".
+  it("a light page with no rhythm key renders exactly as it did before rhythm existed", () => {
+    expect(tones(reassemble(page()).html)).toEqual([
+      "default", "default", "default", "default", "default", "default",
+    ])
+  })
   it("alternating alternates untoned sections", () => {
     expect(tones(reassemble(page("alternating")).html))
       .toEqual(["default","muted","default","muted","default","muted"])
   })
-  it("banded groups the page instead of listing it", () => {
-    const t = tones(reassemble(page("banded")).html)
-    expect(new Set(t).size).toBeGreaterThan(1)
-    expect(t.length).toBe(6)
+  // Spec §3.3: untoned sections run the page-tone default, and every THIRD
+  // one takes the theme's accent tone — groups punctuated by a highlight
+  // colour, not another two-tone checkerboard at a different frequency from
+  // `alternating`. All three assertions matter: the exact sequence pins the
+  // "every third" period, the inequality with `alternating`'s own output on
+  // the same doc proves this isn't just a slower checkerboard, and the
+  // "accent" membership proves the highlight tone is actually reached (a
+  // sequence could satisfy "not equal to alternating" and still never emit
+  // it, e.g. by using a different two-tone pair).
+  it("banded groups the page with an accent highlight every third section", () => {
+    const banded = tones(reassemble(page("banded")).html)
+    const alternating = tones(reassemble(page("alternating")).html)
+    expect(banded).toEqual(["default", "default", "accent", "default", "default", "accent"])
+    expect(banded).not.toEqual(alternating)
+    expect(banded).toContain("accent")
   })
   // An explicit choice outranks a page default. This is already true of theme.tone
   // and must stay true of rhythm, or the inspector's tone control stops working.
