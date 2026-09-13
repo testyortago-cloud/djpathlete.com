@@ -1,10 +1,13 @@
 // What `lib/email.ts` does when RESEND_API_KEY is missing.
 //
 // The wrapper at the top of that file used to answer `{ data: null, error:
-// null }` — the exact shape of a successful send — so all ~38 senders reported
-// success for a message nothing transmitted. It now answers an `error`, which
-// every sender already knows how to handle: the log-only ones log, the
-// throwing ones throw, and the batch counter counts the batch as failed.
+// null }` — the exact shape of a successful send — so a sender that reads
+// `error` reported success for a message nothing transmitted. It now answers
+// an `error`, which each of them already knows how to handle: the log-only
+// ones log, the throwing ones throw, and the batch counter counts the batch as
+// failed. `sendChatEscalationEmail` and `sendQuizAlertEmail` were never part
+// of that: they check the key themselves and have always answered
+// `{ delivered: false }`.
 //
 // Two things this file is careful about:
 //

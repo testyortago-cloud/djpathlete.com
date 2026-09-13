@@ -240,12 +240,20 @@ describe("sendOrderRefundedEmail", () => {
 // reach them; the other five are notifications about an order that already
 // exists, where a failed send is logged and the order still stands.
 
+type ShopProductFile = import("@/types/database").ShopProductFile
+/** Exactly the fields sendFreeDownloadEmail reads off a product file row. */
+type ReadFields = Pick<ShopProductFile, "display_name" | "storage_path">
+
 const freeDownloadInput = {
   to: "lead@example.com",
   productName: "Speed Primer",
+  // A checked partial, not an `as unknown as ShopProductFile[]`: the sender
+  // reads only these two fields, and the `satisfies` keeps tsc verifying that
+  // both still exist on the real row type with these value types. A blanket
+  // cast through `unknown` would let a renamed or retyped column through.
   files: [
-    { display_name: "primer.pdf", storage_path: "shop/primer.pdf" },
-  ] as unknown as import("@/types/database").ShopProductFile[],
+    { display_name: "primer.pdf", storage_path: "shop/primer.pdf" } satisfies ReadFields,
+  ] as ShopProductFile[],
   ttlSeconds: 900,
 }
 

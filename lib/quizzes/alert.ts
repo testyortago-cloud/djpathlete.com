@@ -6,11 +6,12 @@
 // to ignore the alert, which is the same as not sending it.
 //
 // THE DIFFERENCE BETWEEN SENDING AND NOT THROWING is the whole point of this
-// module. Most of the ~38 senders in `lib/email.ts` only log when a send
-// fails, so their callers cannot tell whether anything was delivered; this one
-// returns the mailer's own `delivered` flag and the caller writes it onto the
-// attempt. An attempt marked `sent` when nothing left the building is worse
-// than one marked `failed`: nobody goes looking for it.
+// module. `lib/email.ts` has 38 sender call sites: 20 throw on a failed send,
+// 14 only log it, and 4 discard the result entirely. A caller of one of the 20
+// can tell delivery failed, by catching; a caller of the other 18 cannot. This
+// one returns the mailer's own `delivered` flag instead, and the caller writes
+// it onto the attempt. An attempt marked `sent` when nothing left the building
+// is worse than one marked `failed`: nobody goes looking for it.
 //
 // Spec: docs/superpowers/specs/2026-08-23-athlete-quiz-funnel-design.md §5.4
 

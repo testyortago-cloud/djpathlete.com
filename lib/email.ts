@@ -24,11 +24,13 @@ function client(): Resend {
 
 // Wrap the SDK so a missing API key is reported as a SEND ERROR rather than as
 // a successful send. It used to return `{ data: null, error: null }` — the
-// exact shape of a delivered message — so every sender below that reads
-// `error` reported success for something nothing transmitted. Each of them
-// already logs or throws on `error`, so a missing key now says so out loud
-// through the path each sender already has. (The four event-signup senders
-// ignore the send result entirely and are unaffected either way.)
+// exact shape of a delivered message — so a sender below that reads `error`
+// reported success for something nothing transmitted. Each of them already
+// logs or throws on `error`, so a missing key now says so out loud through the
+// path each sender already has. Two exceptions, both unchanged by this:
+// `sendChatEscalationEmail` and `sendQuizAlertEmail` check the key themselves
+// before calling in, and have always answered `{ delivered: false }`. The four
+// event-signup senders discard the send result and are unaffected either way.
 //
 // What this branch is, honestly: an alarm for env drift, not a routine path.
 // Production has the key, and so do tests — `vitest.config.ts` sets a
@@ -46,7 +48,7 @@ const resend = {
         return {
           data: null,
           error: {
-            name: "missing_required_field",
+            name: "missing_api_key",
             message: `RESEND_API_KEY is not set — "${args.subject}" was not sent`,
           },
         } as Awaited<ReturnType<Resend["emails"]["send"]>>
@@ -62,7 +64,7 @@ const resend = {
         return {
           data: null,
           error: {
-            name: "missing_required_field",
+            name: "missing_api_key",
             message: `RESEND_API_KEY is not set — a batch of ${count} was not sent`,
           },
         } as Awaited<ReturnType<Resend["batch"]["send"]>>
