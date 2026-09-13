@@ -624,35 +624,50 @@ const PAGE_THEMES: readonly SectionDocTheme[] = [
 const SECTION_TONES = ["default", "muted", "accent", "dark"] as const
 
 /**
- * One doc holding EVERY (kind, variant) case at one section tone. `toneCases()`
- * yields 20, under `sectionDocSchema`'s 24-section cap, so a single
- * `reassemble()` call exercises the whole surface at once — including the
- * per-kind CSS selection, which is part of what decides the cascade.
+ * `pageDoc` puts one CHUNK of (kind, variant) pairs in ONE document, and
+ * `sectionDocSchema` caps a document at 24 sections. Those two facts were on
+ * a collision course: the design-system widening (2026-09-13) took
+ * `toneCases()` from 20 to 45, past the cap in a single page. `toneCaseChunks()`
+ * below splits the full case list into pages of at most `PAGE_DOC_CHUNK_SIZE`,
+ * and `withAllChunks` runs the same assertion machinery over every chunk and
+ * concatenates the results — so every (kind, variant) pair is still covered
+ * by one `reassemble()` call each, and the product's 24-section cap is never
+ * the thing that moves.
  */
-/**
- * `pageDoc` puts EVERY (kind, variant) pair in ONE document, and
- * `sectionDocSchema` caps a document at 24 sections. Those two facts are on a
- * collision course: adding the 11th kind (`quiz`) took the count to exactly
- * the cap.
- *
- * Asserted separately so the next person to add a kind or a variant gets this
- * sentence instead of a raw Zod "Too big: expected array to have <=24 items"
- * thrown from inside sixteen unrelated contrast cases. When it fires, split
- * `pageDoc` into chunks of 24 rather than raising the product's cap.
- */
-it("keeps every (kind, variant) pair inside the document cap", () => {
-  expect(
-    toneCases().length,
-    "pageDoc exceeds sectionDocSchema's 24-section cap — chunk pageDoc, do not raise the cap",
-  ).toBeLessThanOrEqual(24)
+const PAGE_DOC_CHUNK_SIZE = 24
+
+function toneCaseChunks(): Array<{ label: string; section: Section }>[] {
+  const cases = toneCases()
+  const chunks: Array<{ label: string; section: Section }>[] = []
+  for (let i = 0; i < cases.length; i += PAGE_DOC_CHUNK_SIZE) chunks.push(cases.slice(i, i + PAGE_DOC_CHUNK_SIZE))
+  return chunks
+}
+
+// Asserted separately so the next person to add a kind or a variant gets this
+// sentence instead of a raw Zod "Too big: expected array to have <=24 items"
+// thrown from inside sixteen unrelated contrast cases. When a single chunk
+// itself exceeds the cap, shrink `PAGE_DOC_CHUNK_SIZE` rather than raising
+// the product's cap.
+it("keeps every page-doc chunk inside the document cap", () => {
+  const chunks = toneCaseChunks()
+  expect(chunks.length, "toneCaseChunks() produced no chunks").toBeGreaterThan(0)
+  for (const chunk of chunks) {
+    expect(chunk.length, "a chunk exceeds sectionDocSchema's 24-section cap").toBeLessThanOrEqual(24)
+  }
+  // Anti-vacuity: chunking must not drop or duplicate a case.
+  expect(chunks.flat().length).toBe(toneCases().length)
 })
 
-function pageDoc(theme: SectionDocTheme, tone: (typeof SECTION_TONES)[number]): SectionDoc {
+function pageDoc(
+  theme: SectionDocTheme,
+  tone: (typeof SECTION_TONES)[number],
+  chunk: Array<{ label: string; section: Section }>,
+): SectionDoc {
   return {
     v: 1,
     engine: "sections",
     theme,
-    sections: toneCases().map(({ section }, index) => ({
+    sections: chunk.map(({ section }, index) => ({
       ...section,
       id: `s${index}`,
       // "default" means the author set NO tone at all — the case B1 broke.
@@ -665,13 +680,14 @@ function themeLabel(theme: SectionDocTheme): string {
   return `page ${theme.tone}/${theme.accent}`
 }
 
-/** Runs one whole reassembled page through the cascade model above. */
+/** Runs one whole reassembled page (one chunk's worth of sections) through the cascade model above. */
 function withPage<T>(
   theme: SectionDocTheme,
   tone: (typeof SECTION_TONES)[number],
+  chunk: Array<{ label: string; section: Section }>,
   fn: (nodes: StyledNode[], rules: StyleRule[]) => T,
 ): T {
-  const { html, css } = reassemble(pageDoc(theme, tone))
+  const { html, css } = reassemble(pageDoc(theme, tone, chunk))
   const rules = parseRules(css)
   const root = document.createElement("div")
   root.id = "djp-funnel-root"
@@ -682,6 +698,17 @@ function withPage<T>(
   } finally {
     root.remove()
   }
+}
+
+/** Runs `fn` over every chunk's page and concatenates the (array-valued) results. */
+function withAllChunks<T>(
+  theme: SectionDocTheme,
+  tone: (typeof SECTION_TONES)[number],
+  fn: (nodes: StyledNode[], rules: StyleRule[]) => T[],
+): T[] {
+  const results: T[] = []
+  for (const chunk of toneCaseChunks()) results.push(...withPage(theme, tone, chunk, fn))
+  return results
 }
 
 /** `hero/split#s0` — enough to point at the exact fixture that failed. */
@@ -695,7 +722,7 @@ function readPageContrast(
   theme: SectionDocTheme,
   tone: (typeof SECTION_TONES)[number],
 ): ContrastReading[] {
-  return withPage(theme, tone, (nodes, rules) => {
+  return withAllChunks(theme, tone, (nodes, rules) => {
     const readings: ContrastReading[] = []
     for (const node of nodes) {
       if (node.pseudo === null && !hasOwnText(node.el) && winning(rules, node, "color") === null) continue
@@ -725,7 +752,7 @@ describe("page tone contrast: reassemble()'s page wrapper and page accent", () =
   })
 
   it.each(matrix)("no SHAPE is painted in the token of the ground behind it on $label", ({ theme, tone }) => {
-    const collisions = withPage(theme, tone, (nodes, rules) => {
+    const collisions = withAllChunks(theme, tone, (nodes, rules) => {
       const found: string[] = []
       for (const node of nodes) {
         // A SECTION's own band is not a shape. Page tone exists precisely so a
@@ -751,17 +778,25 @@ describe("page tone contrast: reassemble()'s page wrapper and page accent", () =
   // that makes a page's single most important element disappear.
   it("theme.accent 'primary' keeps the primary button visible on a dark section", () => {
     for (const pageTone of ["light", "dark"] as const) {
-      withPage({ tone: pageTone, accent: "primary", radius: "soft" }, "dark", (nodes, rules) => {
-        const buttons = nodes.filter((node) => node.pseudo === null && node.el.classList.contains("djp-btn-primary"))
-        expect(buttons.length, "no fixture rendered a .djp-btn-primary").toBeGreaterThan(0)
-        for (const button of buttons) {
-          const own = colourToken(winning(rules, button, "bg") ?? "transparent")
-          const behind = resolvedBackground(rules, button.parent!)
-          expect(own, `${nodeAddress(button)} on a ${pageTone} page`).not.toBe(behind)
-          const allowed = READABLE_ON[own] ?? []
-          expect(allowed, `${nodeAddress(button)} label colour`).toContain(resolvedColour(rules, button))
-        }
-      })
+      let buttonCount = 0
+      const violations: string[] = []
+      for (const chunk of toneCaseChunks()) {
+        withPage({ tone: pageTone, accent: "primary", radius: "soft" }, "dark", chunk, (nodes, rules) => {
+          const buttons = nodes.filter((node) => node.pseudo === null && node.el.classList.contains("djp-btn-primary"))
+          buttonCount += buttons.length
+          for (const button of buttons) {
+            const own = colourToken(winning(rules, button, "bg") ?? "transparent")
+            const behind = resolvedBackground(rules, button.parent!)
+            if (own === behind) violations.push(`${nodeAddress(button)} on a ${pageTone} page paints ${own} on ${behind}`)
+            const allowed = READABLE_ON[own] ?? []
+            const labelColour = resolvedColour(rules, button)
+            if (!allowed.includes(labelColour))
+              violations.push(`${nodeAddress(button)} label colour ${labelColour} not readable on ${own}`)
+          }
+        })
+      }
+      expect(buttonCount, "no fixture rendered a .djp-btn-primary").toBeGreaterThan(0)
+      expect(violations, violations.join("\n")).toEqual([])
     }
   })
 
@@ -786,10 +821,12 @@ describe("page tone contrast: reassemble()'s page wrapper and page accent", () =
   it("understands every colour value reassemble() actually emits", () => {
     const values: string[] = []
     for (const theme of PAGE_THEMES) {
-      const { css } = reassemble(pageDoc(theme, "default"))
-      for (const rule of parseRules(css)) {
-        if (rule.color !== undefined) values.push(rule.color)
-        if (rule.bg !== undefined) values.push(rule.bg)
+      for (const chunk of toneCaseChunks()) {
+        const { css } = reassemble(pageDoc(theme, "default", chunk))
+        for (const rule of parseRules(css)) {
+          if (rule.color !== undefined) values.push(rule.color)
+          if (rule.bg !== undefined) values.push(rule.bg)
+        }
       }
     }
     expect(values.length).toBeGreaterThan(20)

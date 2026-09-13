@@ -18,6 +18,7 @@
 
 import { z } from "zod"
 import { formIslandSchema, quizIslandSchema, SAFE_LINK } from "@/lib/funnels/islands"
+import { PALETTE_PRESETS } from "@/lib/funnels/sections/palettes"
 
 // ---------------------------------------------------------------------------
 // SectionDoc / Section — the data model (plan §1a, lines 58-83, copied
@@ -29,11 +30,11 @@ import { formIslandSchema, quizIslandSchema, SAFE_LINK } from "@/lib/funnels/isl
 export interface SectionDoc {
   v: 1
   engine: "sections"
-  theme: {
-    tone: "light" | "dark"
-    accent: "accent" | "primary"
-    radius: "sharp" | "soft" | "round"
-  }
+  // `tone`/`accent`/`radius` stay required; `palette`/`font`/`density`/`width`/`rhythm`
+  // are the design-system widening (spec §3) — every one OPTIONAL, so a stored
+  // three-key theme keeps parsing forever. See `SectionDocTheme` (z.infer'd from
+  // `sectionDocThemeSchema` below) for the authoritative shape.
+  theme: SectionDocTheme
   sections: Section[] // 1..24
 }
 
@@ -41,12 +42,9 @@ export interface Section {
   id: string // short, stable: "h1", "b2" — also the anchor target
   kind: SectionKind // one of 9
   variant: string // constrained per kind
-  style: {
-    headline?: "sm" | "md" | "lg" | "xl"
-    align?: "left" | "center"
-    tone?: "default" | "muted" | "accent" | "dark"
-    pad?: "tight" | "normal" | "roomy"
-  }
+  // See `SectionStyleKnobs` (z.infer'd from `sectionStyleSchema` below) for the
+  // authoritative shape — the per-section style widening (spec §4).
+  style: SectionStyleKnobs
   props: Record<string, unknown> // validated by the kind's Zod schema
 }
 
@@ -138,11 +136,75 @@ const sectionIconSchema = z.enum(SECTION_ICONS)
 // `:229` / `:234` by the time anyone checked them.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Colour — the security boundary (design-system spec §3.1 / §4).
+//
+// Every hex value below is emitted as a CSS custom property declaration
+// (`themeCss()`, a later task) or an inline style attribute. `safeStyle`
+// (lib/funnels/compile/sanitize.ts) drops `javascript:`, `expression(`,
+// `@import`, `behavior:` and `-moz-binding` — and passes everything else,
+// including `url(https://attacker.example/x)`. This regex is what actually
+// stands between a model's colour choice and CSS injection: anything not
+// matching `^#[0-9a-fA-F]{6}$` must fail here, before it ever reaches CSS.
+// ---------------------------------------------------------------------------
+
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Colour must be a six-digit hex like #3a7d44")
+
+// ---------------------------------------------------------------------------
+// Palette (design-system spec §3.1). A custom palette is two colours, not
+// seven — `resolvePalette()` (palettes.ts) derives the full seven-token row
+// deterministically, with contrast as a property of that function rather
+// than a hope about the model. `PALETTE_PRESETS` is Task 2's contrast-
+// checked table of twelve names.
+// ---------------------------------------------------------------------------
+
+export const paletteSchema = z.union([
+  z.object({ preset: z.enum(PALETTE_PRESETS) }),
+  z.object({ brand: hexColor, accent: hexColor.optional(), mode: z.enum(["light", "dark"]).optional() }),
+])
+
+export type SectionPalette = z.infer<typeof paletteSchema>
+
+// ---------------------------------------------------------------------------
+// Section background (design-system spec §4). `kind:"image"` is the one
+// knob in this whole build that emits an inline style rather than a data
+// attribute, because the URL is per-section data and cannot live in a
+// stylesheet — the renderer (a later task) passes `src` through `safeUrl`
+// the same way the hero's media already does, and the model may never
+// invent one: `kind:"image"` is only legal with a `src` the owner supplied.
+// ---------------------------------------------------------------------------
+
+export const sectionBgSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("none") }),
+  z.object({
+    kind: z.literal("gradient"),
+    from: hexColor,
+    to: hexColor,
+    angle: z.number().int().min(0).max(360).optional(),
+  }),
+  z.object({
+    kind: z.literal("image"),
+    src: z.string().min(1).max(500),
+    overlay: z.number().min(0).max(0.9).optional(),
+    position: z.enum(["center", "top", "bottom"]).optional(),
+  }),
+])
+
+export type SectionBg = z.infer<typeof sectionBgSchema>
+
 export const sectionStyleSchema = z.object({
   headline: z.enum(["sm", "md", "lg", "xl"]).optional(),
-  align: z.enum(["left", "center"]).optional(),
+  align: z.enum(["left", "center", "right"]).optional(),
   tone: z.enum(["default", "muted", "accent", "dark"]).optional(),
   pad: z.enum(["tight", "normal", "roomy"]).optional(),
+
+  // New per-section knobs (design-system spec §4). Every one optional, same
+  // reason as the theme widening: `style: {}` must keep rendering at every
+  // default forever.
+  bg: sectionBgSchema.optional(),
+  width: z.enum(["narrow", "normal", "wide", "full"]).optional(),
+  divider: z.enum(["none", "line", "angle", "curve", "fade"]).optional(),
+  reverse: z.boolean().optional(),
 })
 
 export type SectionStyleKnobs = z.infer<typeof sectionStyleSchema>
@@ -165,9 +227,20 @@ const sectionIdSchema = z
 // ---------------------------------------------------------------------------
 
 export const sectionDocThemeSchema = z.object({
+  // existing, required, unchanged
   tone: z.enum(["light", "dark"]),
   accent: z.enum(["accent", "primary"]),
   radius: z.enum(["sharp", "soft", "round"]),
+
+  // new (design-system spec §3), every one OPTIONAL. `SectionDoc` is stored as
+  // JSON in `funnel_steps.project_data` and `reassemble()` parses it on every
+  // render — every existing draft holds a 3-key theme, so a required new key
+  // does not fail a migration, it fails every existing page, forever.
+  palette: paletteSchema.optional(),
+  font: z.enum(["athletic", "editorial", "clean", "bold", "technical"]).optional(),
+  density: z.enum(["tight", "normal", "airy"]).optional(),
+  width: z.enum(["narrow", "normal", "wide", "full"]).optional(),
+  rhythm: z.enum(["flat", "alternating", "banded"]).optional(),
 })
 
 export type SectionDocTheme = z.infer<typeof sectionDocThemeSchema>
@@ -206,7 +279,7 @@ export function isSectionKind(value: unknown): value is SectionKind {
 // hero
 // ---------------------------------------------------------------------------
 
-const HERO_VARIANTS = ["centered", "split", "image-bg"] as const
+const HERO_VARIANTS = ["centered", "split", "image-bg", "stacked", "side-form"] as const
 
 const heroMediaSchema = z.object({
   kind: z.enum(["image", "youtube"]),
@@ -243,7 +316,7 @@ export type HeroSectionProps = z.infer<typeof heroPropsSchema>
 // needs an asset picker, not a prompt.
 // ---------------------------------------------------------------------------
 
-const PROOF_VARIANTS = ["strip", "stats"] as const
+const PROOF_VARIANTS = ["strip", "stats", "cards", "inline"] as const
 
 const proofItemSchema = z.object({
   /** The number or short claim: "500+", "12 years", "World Champion". */
@@ -263,7 +336,7 @@ export type ProofSectionProps = z.infer<typeof proofPropsSchema>
 // bullets
 // ---------------------------------------------------------------------------
 
-const BULLETS_VARIANTS = ["cards", "list", "numbered"] as const
+const BULLETS_VARIANTS = ["cards", "list", "numbered", "grid-2", "icon-row"] as const
 
 const bulletItemSchema = z.object({
   title: z.string().min(1).max(100),
@@ -283,7 +356,7 @@ export type BulletsSectionProps = z.infer<typeof bulletsPropsSchema>
 // steps
 // ---------------------------------------------------------------------------
 
-const STEPS_VARIANTS = ["numbered", "timeline"] as const
+const STEPS_VARIANTS = ["numbered", "timeline", "cards", "alternating"] as const
 
 const stepItemSchema = z.object({
   title: z.string().min(1).max(100),
@@ -306,7 +379,7 @@ export type StepsSectionProps = z.infer<typeof stepsPropsSchema>
 // simultaneously both or neither.
 // ---------------------------------------------------------------------------
 
-const TESTIMONIAL_VARIANTS = ["stack", "grid"] as const
+const TESTIMONIAL_VARIANTS = ["stack", "grid", "feature", "carousel-static"] as const
 
 const testimonialQuoteSchema = z.object({
   quote: z.string().min(1).max(500),
@@ -332,7 +405,7 @@ export type TestimonialSectionProps = z.infer<typeof testimonialPropsSchema>
 // pricing
 // ---------------------------------------------------------------------------
 
-const PRICING_VARIANTS = ["cards", "single"] as const
+const PRICING_VARIANTS = ["cards", "single", "table", "highlight"] as const
 
 const pricingPlanSchema = z.object({
   name: z.string().min(1).max(60),
@@ -357,7 +430,7 @@ export type PricingSectionProps = z.infer<typeof pricingPropsSchema>
 // testimonial above.
 // ---------------------------------------------------------------------------
 
-const FAQ_VARIANTS = ["stack"] as const
+const FAQ_VARIANTS = ["stack", "two-col", "cards", "bordered"] as const
 
 const faqInlineItemSchema = z.object({
   q: z.string().min(1).max(200),
@@ -393,7 +466,7 @@ export type FaqSectionProps = z.infer<typeof faqPropsSchema>
 // inside a different wrapper. `proofPoints` are the two or three lines of
 // reassurance that sit beside a form ("No payment now", "Coached in person"),
 // and the other two variants ignore them.
-const FORM_VARIANTS = ["boxed", "band", "split"] as const
+const FORM_VARIANTS = ["boxed", "band", "split", "stacked"] as const
 
 export const formSectionPropsSchema = z.intersection(
   z.object({
@@ -418,10 +491,14 @@ export type FormSectionProps = z.infer<typeof formSectionPropsSchema>
 // The design assumed adding to ISLAND_NAMES was sufficient; it is not.
 // ---------------------------------------------------------------------------
 
-// ONE variant, like `faq`. A second was declared briefly and removed: nothing
-// in QUIZ_CSS distinguished it from `boxed`, so it was a choice the owner could
-// make that changed nothing on the page. Add `band` the day it has styling.
-const QUIZ_VARIANTS = ["boxed"] as const
+// A second variant (`band`) was declared briefly and removed once before:
+// nothing in QUIZ_CSS distinguished it from `boxed`, so it was a choice the
+// owner could make that changed nothing on the page. `band` and `split` are
+// reintroduced here as part of the design-system widening (spec §5.1) with
+// real CSS landing in a later task — quiz sits behind `NOT_OFFERED_TO_THE_BUILDER`
+// (prompt.ts), so the extra names cost nothing in the model's prompt and are
+// reachable only through the inspector.
+const QUIZ_VARIANTS = ["boxed", "band", "split"] as const
 
 export const quizSectionPropsSchema = z.intersection(
   z.object({
@@ -437,7 +514,7 @@ export type QuizSectionProps = z.infer<typeof quizSectionPropsSchema>
 // cta
 // ---------------------------------------------------------------------------
 
-const CTA_VARIANTS = ["band", "boxed"] as const
+const CTA_VARIANTS = ["band", "boxed", "split", "minimal"] as const
 
 export const ctaPropsSchema = z.object({
   headline: z.string().min(1).max(160),
@@ -451,7 +528,7 @@ export type CtaSectionProps = z.infer<typeof ctaPropsSchema>
 // footer
 // ---------------------------------------------------------------------------
 
-const FOOTER_VARIANTS = ["simple", "columns"] as const
+const FOOTER_VARIANTS = ["simple", "columns", "centered"] as const
 
 // `{label, target}` is exactly `ctaWithLabelSchema` — this is the shape the
 // reviewer told the rest of the CTA sites to mirror, so footer reuses the

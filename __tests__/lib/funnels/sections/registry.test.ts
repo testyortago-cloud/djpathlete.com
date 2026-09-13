@@ -9,6 +9,8 @@ import {
   ctaTargetSchema,
   ctaWithLabelSchema,
   sectionDocSchema,
+  sectionDocThemeSchema,
+  sectionStyleSchema,
   sectionSchema,
   parseSection,
   isSectionKind,
@@ -817,5 +819,113 @@ describe("sectionDocSchema", () => {
       sections: [heroSection],
     })
     expect(result.success).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 3: widened theme + section-style schemas (design system build).
+// ---------------------------------------------------------------------------
+
+describe("theme schema stays backward compatible", () => {
+  // THE ONE THAT MATTERS. Every stored draft on both boards holds a 3-key
+  // theme, and reassemble() parses on every render — so a required new key
+  // does not fail a migration, it fails every existing page, forever.
+  it("parses a stored three-key theme", () => {
+    const stored = { tone: "light", accent: "accent", radius: "soft" }
+    expect(sectionDocThemeSchema.parse(stored)).toEqual(stored)
+  })
+  it("parses a whole stored document that predates every new key", () => {
+    const doc = {
+      v: 1,
+      engine: "sections",
+      theme: { tone: "dark", accent: "primary", radius: "round" },
+      sections: [
+        {
+          id: "hero",
+          kind: "hero",
+          variant: "centered",
+          style: {},
+          // NOTE: the brief's fixture wrote `heading`, but `heroPropsSchema` has no
+          // such field — it requires `headline`. Fixed here; unrelated to the
+          // theme-widening behaviour this test is actually pinning.
+          props: { headline: "Get strong", primaryCta: { label: "Start", target: { kind: "booking" } } },
+        },
+      ],
+    }
+    expect(() => sectionDocSchema.parse(doc)).not.toThrow()
+  })
+  it("accepts every new key and rejects an unknown value for each", () => {
+    const base = { tone: "light", accent: "accent", radius: "soft" }
+    expect(() =>
+      sectionDocThemeSchema.parse({
+        ...base,
+        palette: { preset: "ember" },
+        font: "editorial",
+        density: "airy",
+        width: "wide",
+        rhythm: "alternating",
+      }),
+    ).not.toThrow()
+    expect(() => sectionDocThemeSchema.parse({ ...base, font: "comic" })).toThrow()
+    expect(() => sectionDocThemeSchema.parse({ ...base, rhythm: "swirly" })).toThrow()
+    expect(() => sectionDocThemeSchema.parse({ ...base, palette: { preset: "chartreuse" } })).toThrow()
+  })
+})
+
+describe("palette hex is a security boundary, not a formatting preference", () => {
+  const base = { tone: "light", accent: "accent", radius: "soft" }
+  const reject = [
+    "url(https://x/y)",
+    "expression(alert(1))",
+    "red",
+    "#12345",
+    "#1234567",
+    "#ggghhh",
+    "#fff",
+    "",
+    "#123456;background:url(https://x)",
+  ]
+  it.each(reject)("rejects %j as a brand colour", (brand) => {
+    expect(() => sectionDocThemeSchema.parse({ ...base, palette: { brand } })).toThrow()
+  })
+  it("accepts a plain six-digit hex in either case", () => {
+    expect(() => sectionDocThemeSchema.parse({ ...base, palette: { brand: "#6D28D9" } })).not.toThrow()
+  })
+})
+
+describe("section style knobs", () => {
+  it("still accepts an empty style object", () => {
+    expect(sectionStyleSchema.parse({})).toEqual({})
+  })
+  it("accepts the new knobs", () => {
+    expect(() =>
+      sectionStyleSchema.parse({
+        align: "right",
+        width: "narrow",
+        divider: "angle",
+        reverse: true,
+        bg: { kind: "gradient", from: "#111111", to: "#333333", angle: 180 },
+      }),
+    ).not.toThrow()
+  })
+  it("rejects a hostile background image url at the schema, before render", () => {
+    expect(() => sectionStyleSchema.parse({ bg: { kind: "image", src: "" } })).toThrow()
+    expect(() => sectionStyleSchema.parse({ bg: { kind: "gradient", from: "url(x)", to: "#fff" } })).toThrow()
+  })
+  it("bounds the overlay so a background cannot black out its own copy", () => {
+    expect(() => sectionStyleSchema.parse({ bg: { kind: "image", src: "/a.png", overlay: 1.5 } })).toThrow()
+    expect(() => sectionStyleSchema.parse({ bg: { kind: "image", src: "/a.png", overlay: 0.5 } })).not.toThrow()
+  })
+})
+
+describe("variants", () => {
+  it("gives every kind at least three", () => {
+    for (const kind of SECTION_KINDS) expect(SECTION_REGISTRY[kind].variants.length, kind).toBeGreaterThanOrEqual(3)
+  })
+  it("lists no duplicates", () => {
+    for (const kind of SECTION_KINDS) {
+      const v = SECTION_REGISTRY[kind].variants
+      expect(new Set(v).size, kind).toBe(v.length)
+    }
   })
 })
