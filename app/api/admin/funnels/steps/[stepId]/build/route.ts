@@ -647,6 +647,7 @@ export const POST = withAudit(
         draft,
         message: parsed.data.message,
         expectedRevision: parsed.data.revision,
+        referenceImage: parsed.data.image,
         userId,
         request,
       })
@@ -876,6 +877,12 @@ interface BuildArgs {
   expectedRevision: number
   userId: string
   request: Request
+  /**
+   * A pasted reference design, this turn only — see `buildMessageRequestSchema`
+   * in `lib/validators/funnel.ts`. Threaded to `streamAgent` and nowhere else:
+   * never to `appendTurn`, never to the document.
+   */
+  referenceImage?: { mediaType: string; data: string }
 }
 
 /**
@@ -1120,7 +1127,7 @@ async function handlePolish(args: PolishArgs): Promise<Response> {
 }
 
 async function handleBuild(args: BuildArgs): Promise<Response> {
-  const { stepId, funnelId, stepSlug, draft, message, expectedRevision, userId, request } = args
+  const { stepId, funnelId, stepSlug, draft, message, expectedRevision, userId, request, referenceImage } = args
 
   // (b) REFUSE, NEVER OVERWRITE. `project_data` holds something that is not a
   // `SectionDoc`: legacy GrapesJS state, corruption, or a document the
@@ -1234,6 +1241,7 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
       catalogues,
       catalogueError,
       revisionAfterUserTurn,
+      referenceImage,
     }),
   )
 }
@@ -1268,11 +1276,16 @@ async function streamOneAttempt(opts: {
   turnMessage: string
   maxTokens: number
   onUsage: (usage: { tokensUsed: number; cacheCreation: number; cacheRead: number }) => void
+  /** A pasted reference design, this turn only — see `BuildArgs.referenceImage`. */
+  referenceImage?: { mediaType: string; data: string }
 }): Promise<BuildResult> {
   const stream = streamAgent(opts.systemPrompt, opts.turnMessage, buildResultSchema, {
     model: SECTION_BUILDER_MODEL,
     maxTokens: opts.maxTokens,
     cacheSystemPrompt: true,
+    // ONE image, this turn only. Absent when the owner attached nothing, so
+    // the request shape is unchanged for the overwhelming majority of turns.
+    ...(opts.referenceImage ? { images: [opts.referenceImage] } : {}),
   })
 
   const objectPromise = stream.object
@@ -1372,6 +1385,8 @@ interface TurnRunArgs {
   catalogues: Catalogues | null
   catalogueError: string | null
   revisionAfterUserTurn: number
+  /** Threaded unchanged from `BuildArgs` into `streamOneAttempt`'s options. */
+  referenceImage?: { mediaType: string; data: string }
 }
 
 /**
@@ -1401,6 +1416,7 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
     catalogues,
     catalogueError,
     revisionAfterUserTurn,
+    referenceImage,
   } = args
 
   emit({ type: "phase", phase: "reading" })
@@ -1502,6 +1518,7 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
         systemPrompt,
         turnMessage,
         maxTokens,
+        referenceImage,
         onUsage: (usage) => {
           // `+=` across attempts, never `=`: a retry that succeeds still cost
           // the tokens the rejected attempt burned, and a spend log that

@@ -134,3 +134,57 @@ describe("ThemePanel", () => {
     expect(screen.getByLabelText(/font pairing/i)).toBeDisabled()
   })
 })
+
+describe("the design-direction note", () => {
+  it("shows the note the document is carrying", () => {
+    render(
+      <ThemePanel
+        theme={{ ...theme, designNote: "Warm sand palette, editorial serif." }}
+        onChange={noop}
+        brandKit={null}
+      />,
+    )
+    expect((screen.getByLabelText(/design direction/i) as HTMLTextAreaElement).value).toBe(
+      "Warm sand palette, editorial serif.",
+    )
+  })
+
+  it("commits ONE patch on blur, not one per keystroke", async () => {
+    const onChange = vi.fn()
+    render(<ThemePanel theme={theme} onChange={onChange} brandKit={null} />)
+    const field = screen.getByLabelText(/design direction/i)
+    await userEvent.type(field, "Serif")
+    // The mutant: a controlled textarea firing `onChange` per character. Every
+    // one is a `set_theme` op — one turn, one revision, one row in
+    // `funnel_step_turns` — PER LETTER.
+    expect(onChange).not.toHaveBeenCalled()
+    await userEvent.tab()
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(onChange).toHaveBeenCalledWith({ designNote: "Serif" })
+  })
+
+  it("an emptied box clears the note with null, not an empty string", async () => {
+    const onChange = vi.fn()
+    render(<ThemePanel theme={{ ...theme, designNote: "Serif" }} onChange={onChange} brandKit={null} />)
+    await userEvent.clear(screen.getByLabelText(/design direction/i))
+    await userEvent.tab()
+    // `""` is a field the model reads as "the direction is: nothing", which is
+    // not what an owner who cleared the box meant. `null` is the delete
+    // sentinel `sectionDocThemePatchSchema` derives for every optional key.
+    expect(onChange).toHaveBeenCalledWith({ designNote: null })
+  })
+
+  it("sends nothing when the note was not actually changed", async () => {
+    const onChange = vi.fn()
+    render(<ThemePanel theme={{ ...theme, designNote: "Serif" }} onChange={onChange} brandKit={null} />)
+    await userEvent.click(screen.getByLabelText(/design direction/i))
+    await userEvent.tab()
+    // A blur that always patches would burn a revision for a stray click.
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it("stops the owner at the schema's own bound rather than after the fact", () => {
+    render(<ThemePanel theme={theme} onChange={noop} brandKit={null} />)
+    expect(screen.getByLabelText(/design direction/i).getAttribute("maxlength")).toBe("400")
+  })
+})

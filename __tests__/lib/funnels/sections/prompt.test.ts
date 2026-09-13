@@ -545,6 +545,17 @@ describe("size ceilings", () => {
   })
 
   it("keeps the design block under its own", () => {
+    // RAISED TO 4500 on 2026-09-14 (reference-image build). Block DESIGN was
+    // compacted first — 91 characters recovered from the palette paragraph
+    // and the font-pairing list, neither of which lost a rule — and the
+    // ceiling was then raised by the MEASURED remainder, not a round number
+    // picked in advance. What it bought is genuinely new content, not
+    // duplication: the model now has to know what to read out of an attached
+    // reference image, that it must record the direction in
+    // `theme.designNote` (because the image itself is never kept), and that
+    // it must say out loud what the vocabulary could not express. Block A is
+    // untouched at 20670 — the two ceilings stay separate constants for the
+    // reason builder-config.ts gives.
     expect(SECTION_BUILDER_BLOCK_DESIGN.length).toBeLessThan(SECTION_BUILDER_BLOCK_DESIGN_MAX)
   })
 
@@ -1177,5 +1188,62 @@ describe("the prompt describes a form that takes payment", () => {
 
   it("says the waiver field must be a required checkbox", () => {
     expect(SECTION_BUILDER_BLOCK_A).toMatch(/required checkbox/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 7: the model reads a pasted reference image
+// ---------------------------------------------------------------------------
+
+describe("the reference-image instructions (2026-09-14 spec §7)", () => {
+  it("tell the model what to read an attached image FOR", () => {
+    // The five things the typed vocabulary can actually express, plus the page
+    // shape. Asserted as concepts the block must name, not as one exact
+    // sentence, so rewording the prose does not go red for no reason.
+    expect(SECTION_BUILDER_BLOCK_DESIGN).toMatch(/reference|attach/i)
+    for (const knob of ["palette", "font", "density", "width", "rhythm"]) {
+      expect(SECTION_BUILDER_BLOCK_DESIGN, `block must name ${knob}`).toContain(knob)
+    }
+  })
+
+  it("tell the model to record what it took in theme.designNote", () => {
+    expect(SECTION_BUILDER_BLOCK_DESIGN).toContain("designNote")
+  })
+
+  it("tell the model to say what it could NOT match", () => {
+    // The owner explicitly chose this honesty over silently approximating. A
+    // page that quietly dropped the thing the owner was pointing at teaches
+    // them the AI is bad at its job.
+    expect(SECTION_BUILDER_BLOCK_DESIGN).toMatch(/could ?n[o']t|cannot|can't/i)
+  })
+
+  it("keeps ALL of it out of Block A, which has no headroom", () => {
+    // CORRECTED from the brief's `not.toContain("designNote")`: Block A
+    // legitimately prints "designNote?: string(<=400)" already, as part of
+    // the auto-generated `theme` schema signature in its "## The document"
+    // section (task 3, committed before this task started) — that field name
+    // is derived from `sectionDocThemeSchema`, the same anti-drift mechanism
+    // that prints `palette`/`font`/`density` there, so asserting its absence
+    // would pin a regression, not a guarantee. What THIS task must keep out
+    // of Block A is the new PROSE — the reference-image instructions
+    // themselves, which belong only in Block DESIGN.
+    expect(SECTION_BUILDER_BLOCK_A).not.toContain("When the owner attaches a reference design")
+    expect(SECTION_BUILDER_BLOCK_A.length).toBeLessThan(SECTION_BUILDER_BLOCK_A_MAX)
+  })
+
+  // THE CACHE CLAIM. The instructions are unconditionally present and
+  // conditionally relevant ("when the owner attaches a reference image…"),
+  // never conditionally rendered — the system prompt is a cached prefix and
+  // Anthropic's cache is a strict prefix match, so anything per-turn in it is
+  // a silent invalidator on every turn of every page, including the vast
+  // majority that carry no image at all.
+  it("does not make the system prompt depend on whether an image is attached", () => {
+    const first = buildSystemPrompt(input)
+    const second = buildSystemPrompt(input)
+    expect(first).toBe(second)
+    // There is no image-shaped input to `buildSystemPrompt` AT ALL, which is
+    // the structural guarantee behind the byte-stability above.
+    expect(Object.keys(input)).not.toContain("image")
+    expect(Object.keys(input)).not.toContain("images")
   })
 })

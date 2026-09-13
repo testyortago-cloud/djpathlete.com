@@ -3,6 +3,8 @@ import { z } from "zod"
 // does not drag server code into any bundle that imports a validator.
 import { opSchema } from "@/lib/funnels/sections/apply"
 import {
+  BUILDER_REFERENCE_IMAGE_MAX_BASE64,
+  BUILDER_REFERENCE_IMAGE_MEDIA_TYPES,
   SECTION_BUILDER_MAX_MESSAGE_LENGTH,
   SECTION_BUILDER_MAX_OPS,
   SECTION_REVIEW_MAX_ROUNDS,
@@ -378,6 +380,31 @@ export const buildMessageRequestSchema = z.object({
   action: z.literal("build").optional(),
   message: z.string().trim().min(1).max(SECTION_BUILDER_MAX_MESSAGE_LENGTH),
   revision: z.number().int().min(0),
+  /**
+   * A PASTED REFERENCE DESIGN, for this turn only (2026-09-14 spec §4).
+   *
+   * TRANSIENT MEANS TRANSIENT. This never becomes a stored object: not a row
+   * in `funnel_step_turns` (the route passes only `message` to `appendTurn`),
+   * not a file in Firebase Storage (which exists to make funnel media PUBLICLY
+   * READABLE FOREVER — precisely the wrong property for a private brand board
+   * or someone else's copyrighted page), and not a document field (which would
+   * be published to anonymous visitors). It lives in one request body, is
+   * handed to the model, and is garbage after the response.
+   *
+   * `data` is bare base64 with no `data:` prefix. The media-type allowlist and
+   * the cap are IMPORTED, never restated — see `builder-config.ts` for which
+   * list this is and why it is NOT the funnel-image upload route's list.
+   *
+   * Optional, so the documented `{message, revision}` body keeps working
+   * verbatim; it appears on exactly one member of `buildRequestSchema` and
+   * carries no `action` literal, so it cannot make a body match two members.
+   */
+  image: z
+    .object({
+      mediaType: z.enum(BUILDER_REFERENCE_IMAGE_MEDIA_TYPES),
+      data: z.string().min(1).max(BUILDER_REFERENCE_IMAGE_MAX_BASE64),
+    })
+    .optional(),
 })
 
 /**

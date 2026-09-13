@@ -385,6 +385,62 @@ function BrandKitEditor({
   )
 }
 
+/**
+ * "Design direction" — the page's own note about what its look is based on.
+ *
+ * COMMITTED ON BLUR, NOT PER KEYSTROKE, and this is the whole reason it is a
+ * component rather than three inline lines. Every other control in this panel
+ * is a `<select>` that fires once; a controlled textarea calling `onChange` per
+ * character would emit one `set_theme` op — one turn, one revision, one row in
+ * `funnel_step_turns` — PER LETTER.
+ *
+ * An emptied box sends `null`, the delete sentinel
+ * `sectionDocThemePatchSchema` derives for every optional key — not `""`,
+ * which the model would read as "the direction is: nothing".
+ */
+function DesignNoteField({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string | undefined
+  disabled: boolean
+  onChange: (patch: SectionDocThemePatch) => void
+}) {
+  const [draft, setDraft] = useState(value ?? "")
+
+  // Re-sync when the document changes underneath (an AI turn wrote a note).
+  useEffect(() => {
+    setDraft(value ?? "")
+  }, [value])
+
+  return (
+    <div className="col-span-2 space-y-1.5">
+      <Label htmlFor="theme-design-note" className="text-xs uppercase tracking-wide text-muted-foreground">
+        Design direction
+      </Label>
+      <textarea
+        id="theme-design-note"
+        value={draft}
+        maxLength={400}
+        rows={3}
+        disabled={disabled}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => {
+          const next = draft.trim()
+          const current = value ?? ""
+          if (next === current) return
+          onChange({ designNote: next === "" ? null : next })
+        }}
+        className="w-full resize-none rounded-xl border border-border bg-white p-2 text-sm shadow-sm outline-none focus-visible:border-accent disabled:opacity-50"
+      />
+      <p className="text-xs text-muted-foreground">
+        What this page&rsquo;s look is based on. The AI reads this on every change.
+      </p>
+    </div>
+  )
+}
+
 export function ThemePanel({ theme, onChange, brandKit, onSaveBrandKit, busy = false, className }: ThemePanelProps) {
   return (
     <aside className={className}>
@@ -430,6 +486,8 @@ export function ThemePanel({ theme, onChange, brandKit, onSaveBrandKit, busy = f
           clearable
           onChange={(next) => onChange({ rhythm: next as SectionDocTheme["rhythm"] | null })}
         />
+
+        <DesignNoteField value={theme.designNote} disabled={busy} onChange={onChange} />
 
         <div className="col-span-2 border-t border-border pt-3">
           <p className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">Base theme</p>
