@@ -615,14 +615,14 @@ describe("applyOps — set_theme.theme: an explicit null deletes an optional the
     expect(opSchema.safeParse({ op: "set_theme", theme: { palette: null } }).success).toBe(true)
   })
 
-  // Every OPTIONAL theme key (palette/font/density/width/rhythm) accepts a
-  // null patch value — confirmed for all five, not just the one the review
-  // happened to name.
+  // Every OPTIONAL theme key (palette/font/density/width/rhythm/designNote)
+  // accepts a null patch value — confirmed for all six, not just the one the
+  // review happened to name.
   it("every optional theme key accepts a null patch value", () => {
     const optionalKeys = Object.entries(sectionDocThemeSchema.shape)
       .filter(([, schema]) => schema.isOptional())
       .map(([key]) => key)
-    expect(optionalKeys.sort()).toEqual(["density", "font", "palette", "rhythm", "width"].sort())
+    expect(optionalKeys.sort()).toEqual(["density", "designNote", "font", "palette", "rhythm", "width"].sort())
     for (const key of optionalKeys) {
       const parsed = opSchema.safeParse({ op: "set_theme", theme: { [key]: null } })
       expect(parsed.success, `theme.${key} rejected a null patch value`).toBe(true)

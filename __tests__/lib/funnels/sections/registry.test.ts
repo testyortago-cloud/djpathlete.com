@@ -10,6 +10,7 @@ import {
   ctaWithLabelSchema,
   sectionDocSchema,
   sectionDocThemeSchema,
+  sectionDocThemePatchSchema,
   sectionStyleSchema,
   sectionSchema,
   parseSection,
@@ -927,5 +928,78 @@ describe("variants", () => {
       const v = SECTION_REGISTRY[kind].variants
       expect(new Set(v).size, kind).toBe(v.length)
     }
+  })
+})
+
+describe("theme.designNote (2026-09-14 reference-image spec §6)", () => {
+  const baseTheme = { tone: "light", accent: "primary", radius: "soft" } as const
+  const heroSection = {
+    id: "h1",
+    kind: "hero" as const,
+    variant: "centered",
+    style: {},
+    // `primaryCta` is required by `heroPropsSchema` (not part of what this
+    // describe block is pinning) — added here so the fixture is a valid
+    // section and the invariant under test is isolated to `designNote`.
+    props: {
+      headline: "Rotational power in eight weeks",
+      primaryCta: { label: "Book now", target: urlCta },
+    },
+  }
+  const docWith = (theme: unknown) =>
+    sectionDocSchema.safeParse({ v: 1, engine: "sections", theme, sections: [heroSection] })
+
+  // THE STORED-DRAFT INVARIANT. `SectionDoc` is JSON in
+  // `funnel_steps.project_data` and `reassemble()` parses it on EVERY render,
+  // on both boards. A required new key does not fail a migration — it fails
+  // every page that already exists, forever. This is the shape every draft
+  // written before today actually holds.
+  it("a document with NO designNote still parses", () => {
+    const result = docWith(baseTheme)
+    expect(result.success, JSON.stringify(!result.success && result.error.issues)).toBe(true)
+  })
+
+  it("accepts a note", () => {
+    const result = docWith({ ...baseTheme, designNote: "Warm sand palette, editorial serif, airy spacing." })
+    expect(result.success).toBe(true)
+    expect(result.success && result.data.theme.designNote).toBe(
+      "Warm sand palette, editorial serif, airy spacing.",
+    )
+  })
+
+  // The bound is probed AT ITS EDGE, both sides. "a long string fails" would
+  // pass for a cap of 40 as readily as 400.
+  it("accepts exactly 400 characters and rejects 401", () => {
+    expect(docWith({ ...baseTheme, designNote: "x".repeat(400) }).success).toBe(true)
+    expect(docWith({ ...baseTheme, designNote: "x".repeat(401) }).success).toBe(false)
+  })
+
+  it("rejects a non-string note", () => {
+    expect(docWith({ ...baseTheme, designNote: 12 }).success).toBe(false)
+  })
+})
+
+describe("sectionDocThemePatchSchema covers designNote", () => {
+  // The delete sentinel is DERIVED, not hand-listed: the patch schema maps
+  // every key already optional on the stored schema to `.nullable()`. This
+  // pins that the derivation actually reached the new key — the mutant is
+  // someone adding `designNote` to a hand-written patch type instead, which
+  // would leave `{designNote: null}` rejected and the note un-clearable, the
+  // exact bug `palette` had before the 2026-09-13 whole-branch review.
+  it("accepts an explicit null as the delete sentinel", () => {
+    expect(sectionDocThemePatchSchema.safeParse({ designNote: null }).success).toBe(true)
+  })
+
+  it("accepts a note", () => {
+    expect(sectionDocThemePatchSchema.safeParse({ designNote: "Serif, airy." }).success).toBe(true)
+  })
+
+  it("still refuses a null for a REQUIRED key", () => {
+    expect(sectionDocThemePatchSchema.safeParse({ tone: null }).success).toBe(false)
+  })
+
+  it("enforces the same 400-char bound on a patch as on the stored shape", () => {
+    expect(sectionDocThemePatchSchema.safeParse({ designNote: "x".repeat(400) }).success).toBe(true)
+    expect(sectionDocThemePatchSchema.safeParse({ designNote: "x".repeat(401) }).success).toBe(false)
   })
 })

@@ -298,6 +298,36 @@ export const sectionDocThemeSchema = z.object({
   density: z.enum(["tight", "normal", "airy"]).optional(),
   width: z.enum(["narrow", "normal", "wide", "full"]).optional(),
   rhythm: z.enum(["flat", "alternating", "banded"]).optional(),
+
+  /**
+   * WHAT THIS PAGE'S LOOK IS BASED ON, in the owner's or the model's words
+   * (2026-09-14 reference-image spec §6).
+   *
+   * WHY IT EXISTS. A pasted reference image is transient — it rides in one
+   * request body and is never stored. Without a durable record the reference
+   * would influence exactly one turn, and the owner's fifth follow-up ("make
+   * the headline bolder") would be answered by a model with no idea a brand
+   * board was ever involved. `buildTurnMessage` already sends the WHOLE
+   * document every turn, so a note written here is in front of the model
+   * forever at no extra plumbing cost. The document is the per-turn context.
+   *
+   * PURELY ADVISORY. No renderer reads it: `styles.ts`, `render.ts`,
+   * `resolve.ts` and the publish gate are all untouched. It changes what the
+   * MODEL does, never what the page emits — and `/go/<slug>` renders
+   * `funnel_step_versions.nodes`/`.css`, never `project_data`, so it is not
+   * visitor-visible. (It IS copied into the version row by `publishStep`,
+   * like the rest of the document.)
+   *
+   * 400 characters: a paragraph. Enough for "Warm sand palette, editorial
+   * serif headings, generous spacing, photography-led" plus a line of intent;
+   * short enough that it cannot become a second document smuggled into the
+   * theme. It is a note, not a brief — and it costs context on EVERY future
+   * turn, so the cost is permanent.
+   *
+   * OPTIONAL, like every key above it, for the reason their shared comment
+   * gives: a required key fails every existing stored draft, not a migration.
+   */
+  designNote: z.string().max(400).optional(),
 })
 
 export type SectionDocTheme = z.infer<typeof sectionDocThemeSchema>
