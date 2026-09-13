@@ -128,7 +128,7 @@ interface Restorable {
 
 /** One entry in the transcript. */
 export type BuilderMessage =
-  | ({ id: string; role: "owner"; text: string } & Restorable)
+  | ({ id: string; role: "owner"; text: string; hadReferenceImage?: boolean } & Restorable)
   | ({
       id: string
       role: "builder"

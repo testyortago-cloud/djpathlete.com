@@ -15,12 +15,13 @@
 //     cheapest possible fix and it is printed after every turn that produced a
 //     document, including the ones where the answer is "nothing".
 
-import { useEffect, useRef, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import Link from "next/link"
-import { AlertTriangle, Link2Off, Loader2, Send, Sparkles, Undo2, Wrench } from "lucide-react"
+import { AlertTriangle, Link2Off, Loader2, Paperclip, Send, Sparkles, Undo2, Wrench, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { formatReceipt, fixPublishProblemsMessage } from "./format"
 import { adminStepHref } from "@/lib/funnels/admin-path"
+import { prepareReferenceImage, referenceImageRejection, type ReferenceImage } from "@/lib/funnels/reference-image"
 import type { BuilderMessage } from "./types"
 
 /**
@@ -43,7 +44,7 @@ interface ChatPaneProps {
   maxMessageLength: number
   value: string
   onChange: (value: string) => void
-  onSend: (text: string) => void
+  onSend: (text: string, image?: ReferenceImage) => void
   busy: boolean
   /** Set when the draft cannot be read at all; the composer would be useless. */
   composerDisabled?: boolean
@@ -128,6 +129,40 @@ export function ChatPane({
   onDraftStep,
 }: ChatPaneProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const [image, setImage] = useState<ReferenceImage | null>(null)
+  const [imageError, setImageError] = useState<string | null>(null)
+
+  // ONE image per turn. A second attachment REPLACES the first rather than
+  // accumulating: the route takes one, so a UI that let two pile up would
+  // silently drop one.
+  const attach = async (file: File) => {
+    const rejection = referenceImageRejection(file)
+    if (rejection) {
+      setImageError(rejection)
+      setImage(null)
+      return
+    }
+    setImageError(null)
+    try {
+      setImage(await prepareReferenceImage(file))
+    } catch (error) {
+      // LOUD, not a silent no-op. A helper that degrades politely turns a
+      // broken effect into nothing happening, which is indistinguishable from
+      // the owner mis-clicking.
+      setImageError(error instanceof Error ? error.message : "That image could not be attached.")
+      setImage(null)
+    }
+  }
+
+  // The chip clears on send, like the composer text. An image is attached to a
+  // TURN, not to the session — leaving it pinned would silently re-send it on
+  // every later turn, spending vision tokens the owner did not ask for and
+  // confusing "make the headline bolder" with a fresh brief.
+  const submit = (text: string) => {
+    onSend(text, image ?? undefined)
+    setImage(null)
+    setImageError(null)
+  }
 
   useEffect(() => {
     const el = scrollRef.current
@@ -205,6 +240,23 @@ export function ChatPane({
         <label htmlFor="builder-composer" className="sr-only">
           Describe the change you want
         </label>
+        {image ? (
+          <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-surface/50 px-2 py-1.5 text-xs">
+            <Paperclip className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-foreground">
+              {image.name} · {Math.round(image.bytes / 1024)} KB
+            </span>
+            <button
+              type="button"
+              aria-label="Remove reference image"
+              onClick={() => setImage(null)}
+              className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-3.5" aria-hidden />
+            </button>
+          </div>
+        ) : null}
+        {imageError ? <p className="mb-2 text-xs text-[var(--error)]">{imageError}</p> : null}
         <textarea
           id="builder-composer"
           value={value}
@@ -213,10 +265,22 @@ export function ChatPane({
           rows={3}
           placeholder="Make the headline shorter and add a second testimonial…"
           onChange={(event) => onChange(event.target.value)}
+          onPaste={(event) => {
+            // Only intervene when a FILE was pasted. A handler that called
+            // preventDefault unconditionally would break ordinary text paste
+            // into the composer. Whether that file is actually usable as a
+            // reference image is `attach`'s job (via `referenceImageRejection`)
+            // — not filtered here, so a pasted PDF still gets an explanation
+            // rather than being silently ignored.
+            const file = event.clipboardData?.files?.[0]
+            if (!file) return
+            event.preventDefault()
+            void attach(file)
+          }}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault()
-              if (canSend) onSend(value)
+              if (canSend) submit(value)
             }
           }}
           className="w-full resize-none rounded-xl border border-border bg-white p-2 text-sm shadow-sm outline-none focus-visible:border-accent disabled:opacity-50"
@@ -228,6 +292,23 @@ export function ChatPane({
               : "Enter to send · Shift+Enter for a new line"}
           </span>
           <div className="flex shrink-0 items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center" aria-label="Attach a reference image">
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                disabled={busy || composerDisabled}
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  if (file) void attach(file)
+                  // Cleared so re-picking the SAME file fires a change event.
+                  event.target.value = ""
+                }}
+              />
+              <span className="inline-flex size-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:border-accent">
+                <Paperclip className="size-4" aria-hidden />
+              </span>
+            </label>
             {/*
               POLISH sits beside Send rather than in a menu, and it is HIDDEN
               rather than disabled when there is no page: a control that cannot
@@ -240,7 +321,7 @@ export function ChatPane({
                 Polish
               </Button>
             ) : null}
-            <Button size="sm" disabled={!canSend} onClick={() => onSend(value)}>
+            <Button size="sm" disabled={!canSend} onClick={() => submit(value)}>
               {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Send className="size-4" aria-hidden />}
               Send
             </Button>
@@ -305,6 +386,12 @@ function MessageCard({
     return (
       <div className="ml-6 rounded-xl border border-border bg-surface/60 p-3 text-sm shadow-sm">
         <p className="whitespace-pre-wrap text-foreground">{message.text}</p>
+        {message.hadReferenceImage ? (
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Paperclip className="size-3 shrink-0" aria-hidden />
+            Reference image attached
+          </p>
+        ) : null}
         {restore}
       </div>
     )
