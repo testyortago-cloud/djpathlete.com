@@ -19,7 +19,12 @@ import { SECTION_CSS, THEME_CSS } from "@/lib/funnels/sections/styles"
 import { CANVAS_EDIT_CSS } from "@/lib/funnels/sections/edit-css"
 import { renderSection } from "@/lib/funnels/sections/render"
 import { reassemble } from "@/lib/funnels/sections/doc"
-import { SECTION_BUILDER_BLOCK_A, LEADGEN_RULES, NOT_OFFERED_TO_THE_BUILDER } from "@/lib/funnels/sections/prompt"
+import {
+  SECTION_BUILDER_BLOCK_A,
+  LEADGEN_RULES,
+  PAGE_RECIPES,
+  NOT_OFFERED_TO_THE_BUILDER,
+} from "@/lib/funnels/sections/prompt"
 import { SECTION_KINDS, SECTION_REGISTRY, type Section } from "@/lib/funnels/sections/registry"
 
 const ALL_CSS = [THEME_CSS, ...Object.values(SECTION_CSS)].join("\n")
@@ -101,9 +106,7 @@ describe("every class an island emits is a class the stylesheet defines", () => 
     // correct AS LONG AS it is only emitted while editing — asserted for real,
     // by rendering, in funnel-form-editable.test.tsx, because a source scan
     // cannot tell a gated class from an ungated one.
-    const undefined_ = classes.filter(
-      (cls) => !ALL_CSS.includes(`.${cls}`) && !CANVAS_EDIT_CSS.includes(`.${cls}`),
-    )
+    const undefined_ = classes.filter((cls) => !ALL_CSS.includes(`.${cls}`) && !CANVAS_EDIT_CSS.includes(`.${cls}`))
     expect(undefined_, `${file} emits classes neither stylesheet targets`).toEqual([])
   })
 })
@@ -158,9 +161,7 @@ describe("the form is actually styled", () => {
     // assertion in this file still passes — the layout, the focus ring and the
     // class coverage are all unaffected by whether the tick is visible.
     const rules = css.replace(/\/\*[\s\S]*?\*\//g, "")
-    const checkboxRule = rules.match(
-      /\.djp-field\[data-djp-field-type="checkbox"\]\s+\.djp-control\s*\{([^}]*)\}/,
-    )?.[1]
+    const checkboxRule = rules.match(/\.djp-field\[data-djp-field-type="checkbox"\]\s+\.djp-control\s*\{([^}]*)\}/)?.[1]
     expect(checkboxRule, "the checkbox control rule is gone").toBeDefined()
     // Anchored so `-webkit-appearance` cannot satisfy it. It did on the first
     // run of this test: deleting the standard property left the prefixed one and
@@ -257,6 +258,50 @@ describe("the prompt teaches page craft, not just the schema", () => {
     // the rules would be unit-tested, shipped, and never seen by the model.
     for (const rule of LEADGEN_RULES) {
       expect(SECTION_BUILDER_BLOCK_A).toContain(rule)
+    }
+  })
+
+  // RE-CUT ON 2026-09-13 (task 10): a single implicit "every page is a
+  // capture page" skeleton became six named `PAGE_RECIPES`. Making the SHAPE
+  // plural must not make the CONVERSION rules above optional — the assertion
+  // above still covers that — and it must not silently drop the rule that was
+  // really "how a CAPTURE page is built" (form goes first, `variant:
+  // "split"`), which moved INTO `capture-split` below rather than vanishing.
+  it("carries every page recipe, by name and by spine", () => {
+    // Same MUTANT as above, retargeted: a recipe exported and never
+    // interpolated into Block A would be unit-tested and never seen by the
+    // model.
+    for (const recipe of PAGE_RECIPES) {
+      expect(SECTION_BUILDER_BLOCK_A).toContain(recipe.name)
+      expect(SECTION_BUILDER_BLOCK_A).toContain(recipe.spine)
+    }
+  })
+
+  it("still tells the model the capture-split form goes first, with no hero above it", () => {
+    // THE RULE THIS TEST USED TO PIN DIRECTLY ON `LEADGEN_RULES[0]`, before
+    // the re-cut. It did not stop mattering when the skeleton became plural:
+    // this is the recipe a bare "build me an opt-in page" request still
+    // resolves to, so losing the instruction here is exactly as costly as
+    // losing it from the old monolithic rule list was.
+    const recipe = PAGE_RECIPES.find((r) => r.name === "capture-split")
+    expect(recipe).toBeDefined()
+    expect(recipe?.spine).toMatch(/no hero above/i)
+    expect(recipe?.spine).toContain('variant: "split"')
+  })
+
+  it("keeps 'KEEP IT SHORT' universal rather than moving it to the recipes", () => {
+    // THE RULE THAT DID NOT MOVE, DELIBERATELY. It reads as capture-specific
+    // ("Six to nine sections for a capture page"), so `long-form-sales`
+    // wanting more sections is not a contradiction — the rule already scopes
+    // itself. It stays under `LEADGEN_RULES` rather than moving to
+    // `capture-split` / `capture-hero-first` because
+    // `audit-prompt-agreement.test.ts`'s "section-count" audit code keys on
+    // this EXACT phrase appearing in `LEADGEN_RULES` (checked with
+    // `toHaveLength(1)` there): moving it would decouple the code auditor
+    // from the prompt rule it enforces, silently, in a different test file.
+    expect(LEADGEN_RULES.some((rule) => /Six to nine sections/.test(rule))).toBe(true)
+    for (const recipe of PAGE_RECIPES) {
+      expect(recipe.spine).not.toMatch(/six to nine sections/i)
     }
   })
 

@@ -1207,7 +1207,11 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
     nextStepSlug: context.nextStepSlug,
     funnelSlug: context.funnelSlug,
   })
-  const baseTurnMessage = buildTurnMessage({ doc: draft.doc, history, message })
+  // A fresh nonce PER CALL, in Block C only (design-system spec §6.3) — never
+  // in `systemPrompt` above, which is the cached prefix. So two otherwise-
+  // identical turns do not produce an identical page, without touching the
+  // cache Anthropic keys on that prefix.
+  const baseTurnMessage = buildTurnMessage({ doc: draft.doc, history, message, variationSeed: crypto.randomUUID() })
 
   // Everything above this line can still be an ordinary HTTP failure with a
   // status the client branches on. Everything below it happens inside an open

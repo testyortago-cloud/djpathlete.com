@@ -154,6 +154,36 @@ export const SECTION_BUILDER_MAX_OPS = 24
 /** Max characters of the prose `reply` shown in chat. */
 export const SECTION_BUILDER_MAX_REPLY_LENGTH = 1_200
 
+// ---------------------------------------------------------------------------
+// Block A / Block DESIGN size ceilings (design-system spec §5.3).
+//
+// See `prompt.test.ts`'s "stays under the size ceiling" test for the full
+// history of Block A's raises (2026-08-17, 2026-09-08, task 10 on
+// 2026-09-13) and what each one paid for. The two ceilings are DELIBERATELY
+// SEPARATE constants rather than one shared budget: Block A's ceiling exists
+// as a tripwire against per-KIND duplication (inlining the nine props
+// schemas as raw JSON Schema instead of the compact signatures), and folding
+// the new design vocabulary into that same number would turn a SPECIFIC
+// tripwire into a general one that no longer catches the thing it was built
+// to catch — splitting the assertion does not hide cost, it keeps each
+// number interpretable, exactly as the spec's §5.3 puts it.
+// ---------------------------------------------------------------------------
+
+/** Ceiling for `SECTION_BUILDER_BLOCK_A.length`. See `prompt.test.ts` for the raise history. */
+export const SECTION_BUILDER_BLOCK_A_MAX = 20_700
+
+/**
+ * Ceiling for `SECTION_BUILDER_BLOCK_DESIGN.length`.
+ *
+ * Measured at 3,110 characters as written (task 10, 2026-09-13): the twelve
+ * palette names, the custom-brand shape, five font pairings, density/width/
+ * rhythm and the four per-section knobs, all in prose — the machine-readable
+ * shapes themselves are already in Block A's "## The document" section and
+ * cost nothing twice. Set with headroom for a thirteenth palette preset or a
+ * sixth font pairing, not for a restatement of content Block A already has.
+ */
+export const SECTION_BUILDER_BLOCK_DESIGN_MAX = 3_400
+
 /**
  * Rate limit: max builder calls per user per window. Lower than the admin
  * chatbot's 10/min in requests-per-minute terms would be wrong (an owner

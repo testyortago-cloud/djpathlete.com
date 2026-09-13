@@ -700,16 +700,20 @@ const formDef: SectionDef<"form"> = {
     // and cannot tell from them that a checkout form with a missing role is
     // REFUSED AT PUBLISH. Said here rather than in prompt.ts so it travels with
     // the schema it constrains.
-    'NEVER WRITE successMode "checkout" AND NEVER WRITE eventId. A form that sells a camp ' +
-    "needs a camp id that only the owner can supply, in the builder, so a checkout form you " +
-    "wrote yourself could never be completed — and because eventId is required for that mode, " +
-    "the whole batch of ops would be rejected and the owner's turn would fail. Write " +
-    'successMode "message" or "redirect".' +
-    " IF A FORM ALREADY HAS successMode \"checkout\", KEEP IT AND KEEP ITS eventId EXACTLY AS " +
-    "THEY ARE — the owner switched that on deliberately. Such a form must keep a field for each " +
-    "of parent_name, parent_email, athlete_name, athlete_age and waiver_accepted, each carrying " +
-    "that value in its `role`, with the waiver field a required checkbox. Dropping any of them, " +
-    "or the eventId, makes the page impossible to publish.",
+    //
+    // COMPACTED 2026-09-13 (task 10): the prohibition and the "already has
+    // checkout" exception used to each be stated three times over (once as the
+    // rule, once as the reason, once again at the end). Every fact below is
+    // stated exactly once; the required-role names are also carried by the
+    // generated `role` enum in the signature above, so dropping them here loses
+    // no coverage — `prompt.test.ts` pins the required substrings by name.
+    'NEVER WRITE successMode "checkout" and never write eventId — only the owner can supply a ' +
+    "real eventId, and a checkout form you invent has no way to be completed, so the whole " +
+    'batch is rejected and cannot be published. Write successMode "message" or "redirect" ' +
+    'instead. A form that already has successMode "checkout": KEEP IT AND KEEP ITS eventId ' +
+    "exactly as they are, along with its parent_name, parent_email, athlete_name, athlete_age " +
+    "and waiver_accepted fields (each carrying that value in `role`, waiver_accepted a required " +
+    "checkbox) — dropping any of them also makes the page impossible to publish.",
   variants: FORM_VARIANTS,
   propsSchema: formSectionPropsSchema,
   schema: formSchema,
