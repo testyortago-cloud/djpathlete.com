@@ -585,6 +585,26 @@ ${ROOT} .djp-s-hero.djp-v-image-bg .djp-hero-copy {
 ${ROOT} .djp-s[data-reverse="true"].djp-s-hero:not(.djp-v-centered):not(.djp-v-image-bg) .djp-hero-inner {
   flex-direction: row-reverse;
 }
+
+/* stacked (design-system spec §5.1) — copy above media, both full width,
+   never side-by-side. Unlike "centered" (a column that also centres every
+   line of text via the align knob), stacked keeps whatever align the author
+   chose; it only changes which axis the two blocks stack on. */
+${ROOT} .djp-s-hero.djp-v-stacked .djp-hero-inner { flex-direction: column; }
+${ROOT} .djp-s-hero.djp-v-stacked .djp-hero-copy,
+${ROOT} .djp-s-hero.djp-v-stacked .djp-hero-media { flex: 1 1 auto; width: 100%; }
+
+/* side-form — media reads as a framed panel beside the copy rather than a
+   full-bleed photo, so a form island dropped in beside it (a later editor
+   move, not this renderer) reads as one composed layout. Border only, no
+   background: the panel's box is bordered, its ground stays whatever the
+   section itself already resolves to. */
+${ROOT} .djp-s-hero.djp-v-side-form .djp-hero-inner { align-items: stretch; }
+${ROOT} .djp-s-hero.djp-v-side-form .djp-hero-media {
+  flex: 1 1 20rem;
+  border: 1px solid var(--border);
+  padding: 0.75rem;
+}
 `.trim()
 
 export const BULLETS_CSS = `
@@ -604,6 +624,17 @@ ${ROOT} .djp-s-bullets .djp-bullet-title {
 }
 ${ROOT} .djp-s-bullets .djp-bullet-text { margin: 0; color: var(--muted-foreground); font-size: 0.95rem; }
 ${ROOT} .djp-s-bullets .djp-ic { color: var(--accent); margin-top: 0.2rem; }
+
+/* item media (design-system spec §5.2) — a small thumbnail beside the icon.
+   Absent on a bullet with no media: renderItemMedia emits nothing at all,
+   so this rule targets an element that may simply not exist. */
+${ROOT} .djp-s-bullets .djp-bullet-media {
+  width: 3.5rem;
+  height: 3.5rem;
+  object-fit: cover;
+  border-radius: var(--djp-radius, 0.6rem);
+  flex-shrink: 0;
+}
 
 ${ROOT} .djp-s-bullets.djp-v-cards .djp-bullet-item {
   flex-direction: column;
@@ -629,6 +660,17 @@ ${ROOT} .djp-s-bullets.djp-v-numbered .djp-bullet-item::before {
   font-weight: 700;
   font-size: 0.85rem;
 }
+
+/* grid-2 (design-system spec §5.1) — an explicit two-up grid regardless of
+   viewport width, unlike the base list's auto-fit (which collapses to one
+   column on its own once items no longer fit at 15rem). */
+${ROOT} .djp-s-bullets.djp-v-grid-2 .djp-bullets-list { grid-template-columns: repeat(2, 1fr); }
+
+/* icon-row — the icon leads a centred column instead of sitting beside the
+   text, so a short row of benefits reads like a row of little badges. */
+${ROOT} .djp-s-bullets.djp-v-icon-row .djp-bullet-item { flex-direction: column; align-items: center; text-align: center; }
+${ROOT} .djp-s-bullets.djp-v-icon-row .djp-ic { width: 1.75rem; height: 1.75rem; margin: 0 0 0.4rem; }
+${ROOT} .djp-s-bullets.djp-v-icon-row .djp-bullet-media { margin: 0 0 0.4rem; }
 `.trim()
 
 export const STEPS_CSS = `
@@ -665,6 +707,17 @@ ${ROOT} .djp-s-steps .djp-step-title {
 }
 ${ROOT} .djp-s-steps .djp-step-text { margin: 0; color: var(--muted-foreground); font-size: 0.95rem; }
 
+/* item media (design-system spec §5.2) — sits above the step's own title,
+   inside .djp-step-item, ahead of the counter's own text block. */
+${ROOT} .djp-s-steps .djp-step-media {
+  display: block;
+  width: 100%;
+  height: 8rem;
+  object-fit: cover;
+  border-radius: var(--djp-radius, 0.6rem);
+  margin-bottom: 0.75rem;
+}
+
 ${ROOT} .djp-s-steps.djp-v-timeline .djp-steps-list { grid-template-columns: 1fr; gap: 0; }
 ${ROOT} .djp-s-steps.djp-v-timeline .djp-step-item {
   padding-bottom: 2rem;
@@ -674,6 +727,27 @@ ${ROOT} .djp-s-steps.djp-v-timeline .djp-step-item {
 }
 ${ROOT} .djp-s-steps.djp-v-timeline .djp-step-item::before { left: -1.1rem; width: 2.2rem; height: 2.2rem; }
 ${ROOT} .djp-s-steps.djp-v-timeline .djp-step-item:last-child { border-left-color: transparent; }
+
+/* cards (design-system spec §5.1) — a bordered card per step, the counter
+   badge still overlapping the top-left corner exactly as it does at the
+   base padding-left of 3rem. Border only, no new background. */
+${ROOT} .djp-s-steps.djp-v-cards .djp-step-item {
+  border: 1px solid var(--border);
+  border-radius: var(--djp-radius, 0.6rem);
+  padding: 1.5rem 1.5rem 1.5rem 3.5rem;
+}
+
+/* alternating — a single column that zig-zags the counter/text block from
+   left to right on every other item. Reuses the base ::before entirely
+   (position, size, colour, and every tone override already defined above);
+   this only repositions it. */
+${ROOT} .djp-s-steps.djp-v-alternating .djp-steps-list { grid-template-columns: 1fr; gap: 2rem; }
+${ROOT} .djp-s-steps.djp-v-alternating .djp-step-item:nth-child(even) {
+  padding-left: 0;
+  padding-right: 3rem;
+  text-align: right;
+}
+${ROOT} .djp-s-steps.djp-v-alternating .djp-step-item:nth-child(even)::before { left: auto; right: 0; }
 `.trim()
 
 export const TESTIMONIAL_CSS = `
@@ -688,6 +762,16 @@ ${ROOT} .djp-s-testimonial .djp-quote {
   background: var(--surface);
   border-radius: var(--djp-radius, 0.6rem);
   padding: 1.5rem;
+}
+/* item media (design-system spec §5.2) — a small round portrait above the
+   quote text. Absent on an authored quote with no media field — renderItemMedia
+   emits nothing, so this targets an element that may simply not exist. */
+${ROOT} .djp-s-testimonial .djp-quote-media {
+  width: 3rem;
+  height: 3rem;
+  object-fit: cover;
+  border-radius: 999px;
+  margin-bottom: 0.75rem;
 }
 ${ROOT} .djp-s-testimonial .djp-quote-text { margin: 0 0 1rem; font-size: 1.05rem; line-height: 1.5; }
 ${ROOT} .djp-s-testimonial .djp-quote-attribution {
@@ -710,6 +794,30 @@ ${ROOT} .djp-s-testimonial.djp-v-stack .djp-testimonial-grid {
   max-width: 42rem;
   margin-inline: auto;
 }
+
+/* feature (design-system spec §5.1) — one large, single-column quote, set
+   larger than the base grid's card text so it reads as the page's featured
+   piece of social proof rather than one card among several. */
+${ROOT} .djp-s-testimonial.djp-v-feature .djp-testimonial-grid {
+  grid-template-columns: 1fr;
+  max-width: 50rem;
+  margin-inline: auto;
+}
+${ROOT} .djp-s-testimonial.djp-v-feature .djp-quote-text { font-size: 1.4rem; line-height: 1.5; }
+
+/* carousel-static — a horizontally scrolling row of cards with no JS: pure
+   CSS scroll-snap, so it degrades to "just scroll" on any input device. */
+${ROOT} .djp-s-testimonial.djp-v-carousel-static .djp-testimonial-grid {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  gap: 1.5rem;
+  padding-bottom: 0.5rem;
+}
+${ROOT} .djp-s-testimonial.djp-v-carousel-static .djp-quote {
+  flex: 0 0 minmax(16rem, 22rem);
+  scroll-snap-align: start;
+}
 `.trim()
 
 export const PRICING_CSS = `
@@ -729,6 +837,15 @@ ${ROOT} .djp-s-pricing .djp-plan {
   padding: 2rem;
 }
 ${ROOT} .djp-s-pricing .djp-plan-highlight { border-color: var(--accent); }
+
+/* item media (design-system spec §5.2) — a photo at the top of the card,
+   ahead of the plan name. Absent on a plan with no media field. */
+${ROOT} .djp-s-pricing .djp-plan-media {
+  width: 100%;
+  height: 8rem;
+  object-fit: cover;
+  border-radius: var(--djp-radius, 0.6rem);
+}
 ${ROOT} .djp-s-pricing .djp-plan-name {
   margin: 0;
   font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
@@ -756,6 +873,28 @@ ${ROOT} .djp-s-pricing .djp-plan-cta { margin-top: auto; }
 ${ROOT} .djp-s-pricing .djp-plan-cta .djp-btn { width: 100%; }
 ${ROOT} .djp-s-pricing.djp-v-single .djp-pricing-grid { grid-template-columns: 1fr; max-width: 24rem; margin-inline: auto; }
 ${ROOT} .djp-s-pricing .djp-footnote { margin-top: 1.5rem; font-size: 0.85rem; color: var(--muted-foreground); text-align: center; }
+
+/* table (design-system spec §5.1) — plans as flush, edge-to-edge columns
+   rather than separated cards, for a page that wants a direct side-by-side
+   comparison. Reuses .djp-plan's own background/border-colour rules (and
+   every tone override already written against that class) unqualified by
+   variant, so this only changes the shape, never the colour. */
+${ROOT} .djp-s-pricing.djp-v-table .djp-pricing-grid { gap: 0; }
+${ROOT} .djp-s-pricing.djp-v-table .djp-plan {
+  border-radius: 0;
+  border-left: 1px solid var(--border);
+  border-right: 0;
+}
+${ROOT} .djp-s-pricing.djp-v-table .djp-plan:first-child { border-left: 0; }
+
+/* highlight — the featured plan is lifted and enlarged rather than merely
+   outlined, so it reads as the recommended choice at a glance. */
+${ROOT} .djp-s-pricing.djp-v-highlight .djp-plan-highlight {
+  transform: scale(1.05);
+  box-shadow: 0 12px 32px -12px rgb(0 0 0 / 0.18);
+  position: relative;
+  z-index: 1;
+}
 `.trim()
 
 export const FAQ_CSS = `
@@ -806,6 +945,37 @@ ${ROOT} .djp-s-faq .djp-faq-details > summary:focus-visible {
 }
 ${ROOT} .djp-s[data-tone="accent"].djp-s-faq .djp-faq-details > summary::after,
 ${ROOT} .djp-s[data-tone="dark"].djp-s-faq .djp-faq-details > summary::after { color: inherit; }
+
+/* two-col (design-system spec §5.1) — drops the base list's centred
+   46rem column for a two-up grid that uses the section's full width. */
+${ROOT} .djp-s-faq.djp-v-two-col .djp-faq-list {
+  max-width: none;
+  margin-inline: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 1.5rem 2rem;
+}
+
+/* cards — each question becomes its own bordered card instead of a row
+   separated by a bottom border. */
+${ROOT} .djp-s-faq.djp-v-cards .djp-faq-item {
+  border: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--djp-radius, 0.6rem);
+  padding: 1.25rem 1.5rem;
+}
+
+/* bordered — one box around the whole list, rather than per-item chrome. */
+${ROOT} .djp-s-faq.djp-v-bordered .djp-faq-list {
+  border: 1px solid var(--border);
+  border-radius: var(--djp-radius, 0.6rem);
+  padding: 1.5rem 1.75rem;
+}
+${ROOT} .djp-s-faq.djp-v-bordered .djp-faq-item:last-child,
+${ROOT} .djp-s-faq.djp-v-bordered .djp-faq-details:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
 `.trim()
 
 // ---------------------------------------------------------------------------
@@ -877,6 +1047,12 @@ ${ROOT} .djp-s-form.djp-v-boxed {
 }
 ${ROOT} .djp-s-form.djp-v-band { max-width: 100%; }
 ${ROOT} .djp-s-form[data-align="center"] { margin-inline: auto; }
+
+/* stacked (design-system spec §5.1) — the plainest layout: no card, no
+   band, just the field list at the base 34rem cap, centred regardless of
+   the align knob so a stacked form always reads as one column in the middle
+   of the page. */
+${ROOT} .djp-s-form.djp-v-stacked { margin-inline: auto; }
 
 /* the form */
 ${ROOT} .djp-form { display: flex; flex-direction: column; gap: 1.15rem; margin-top: 1.5rem; }
@@ -1143,6 +1319,39 @@ ${ROOT} .djp-s-cta.djp-v-boxed .djp-cta-inner {
   border-radius: var(--djp-radius, 0.6rem);
   padding: 2.5rem;
 }
+
+/* item media (design-system spec §5.2) — one optional image ahead of the
+   headline. Absent when the cta carries no media field. */
+${ROOT} .djp-s-cta .djp-cta-media {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--djp-radius, 0.6rem);
+}
+
+/* split (design-system spec §5.1) — headline/sub on one side, the button on
+   the other, on wide viewports; wraps to the base stacked column below that.
+   .djp-hd/.djp-sub already reset their own bottom margin here so the two
+   sit flush inside their shared flex item instead of leaving the gap that
+   margin exists for in the stacked layout. */
+${ROOT} .djp-s-cta.djp-v-split .djp-cta-inner {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+}
+${ROOT} .djp-s-cta.djp-v-split .djp-cta-inner > .djp-hd,
+${ROOT} .djp-s-cta.djp-v-split .djp-cta-inner > .djp-sub {
+  flex: 1 1 20rem;
+  margin: 0;
+  max-width: none;
+}
+
+/* minimal — the smallest possible footprint: a smaller headline, a tighter
+   gap, no card, no split. For a cta wedged between two already-heavy
+   sections that only needs one more nudge, not another full band. */
+${ROOT} .djp-s-cta.djp-v-minimal .djp-cta-inner { gap: 0.5rem; }
+${ROOT} .djp-s-cta.djp-v-minimal .djp-hd { font-size: clamp(1.25rem, 2.6vw, 1.75rem); }
 `.trim()
 
 export const FOOTER_CSS = `
@@ -1157,6 +1366,12 @@ ${ROOT} .djp-s-footer .djp-footer-line { margin: 0; font-size: 0.9rem; color: va
 ${ROOT} .djp-s-footer .djp-footer-links { list-style: none; display: flex; flex-wrap: wrap; gap: 1rem; margin: 0; padding: 0; }
 ${ROOT} .djp-s-footer .djp-footer-legal { margin: 0; font-size: 0.8rem; color: var(--muted-foreground); }
 ${ROOT} .djp-s-footer.djp-v-columns .djp-footer-inner { flex-direction: row; flex-wrap: wrap; justify-content: space-between; }
+
+/* centered (design-system spec §5.1) — every row centred, for a footer
+   that's the last thing on a short, single-column page rather than the
+   base of a wider site with columns to fill. */
+${ROOT} .djp-s-footer.djp-v-centered .djp-footer-inner { align-items: center; text-align: center; }
+${ROOT} .djp-s-footer.djp-v-centered .djp-footer-links { justify-content: center; }
 `.trim()
 
 export const PROOF_CSS = `
@@ -1206,6 +1421,24 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-proof.djp-v-stats .djp-proof-item {
 }
 ${ROOT} .djp-s[data-tone="accent"].djp-s-proof.djp-v-stats .djp-proof-item:first-child,
 ${ROOT} .djp-s[data-tone="dark"].djp-s-proof.djp-v-stats .djp-proof-item:first-child { border-left: 0; }
+
+/* cards (design-system spec §5.1) — each stat becomes its own bordered box
+   instead of a run of inline items, for a strip that wants to read as
+   discrete credentials rather than one continuous line. Border only, no
+   new background. */
+${ROOT} .djp-s-proof.djp-v-cards .djp-proof-item {
+  border: 1px solid var(--border);
+  border-radius: var(--djp-radius, 0.6rem);
+  padding: 1.25rem 1.5rem;
+  flex: 1 1 12rem;
+}
+
+/* inline — the smallest footprint: value and label run together on one
+   baseline instead of stacking, for a strip that wants to read almost like
+   a sentence ("500+ athletes trained · 12 years coaching"). */
+${ROOT} .djp-s-proof.djp-v-inline .djp-proof-item { display: flex; align-items: baseline; gap: 0.4rem; }
+${ROOT} .djp-s-proof.djp-v-inline .djp-proof-value { font-size: 1.1rem; }
+${ROOT} .djp-s-proof.djp-v-inline .djp-proof-label { margin: 0; }
 `.trim()
 
 /** One CSS string per kind — `doc.ts` pulls only the kinds a doc actually uses. */
@@ -1341,7 +1574,65 @@ ${ROOT} .djp-s-quiz .djp-quiz-scale { font-size: 0.8125rem; color: var(--muted-f
 ${ROOT} .djp-s-quiz .djp-quiz-profile { padding: 1rem; border-radius: var(--radius); background: var(--surface); margin: 1.25rem 0; }
 ${ROOT} .djp-s-quiz .djp-quiz-profile-name { font-weight: 700; margin: 0 0 0.25rem; }
 ${ROOT} .djp-s-quiz .djp-quiz-profile-body { margin: 0; color: var(--muted-foreground); }
+
+/* band (design-system spec §5.1) — the quiz sits directly on the section's
+   own band with no card chrome, for a page where the surrounding sections
+   already carry a tone and a second white card would read as a third layer.
+   background: transparent — never omitted — so the card's base
+   var(--background) fill does not win on source order; transparent is a
+   value the tone-contrast harness already models explicitly (it simply means
+   "look further up the ancestor chain for what's really behind this text"). */
+${ROOT} .djp-s-quiz.djp-v-band .djp-quiz {
+  max-width: 44rem;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+/* split — the intro copy and the quiz card side by side, so the pitch for
+   taking the quiz sits beside the quiz itself instead of above it. Both are
+   direct children of the grid .djp-s-quiz already establishes; naming two
+   explicit columns is the only change needed for them to land side by side. */
+${ROOT} .djp-s-quiz.djp-v-split { grid-template-columns: 1fr 1fr; align-items: center; gap: 2.5rem; text-align: left; }
+${ROOT} .djp-s-quiz.djp-v-split .djp-quiz-head { margin-bottom: 0; }
 `.trim()
+
+// ---------------------------------------------------------------------------
+// VARIANTS_STYLED_BY_BASE_RULE — the nine (kind, variant) pairs that carry
+// NO `djp-v-<name>` selector anywhere in their kind's CSS, because the
+// variant IS that kind's unqualified base rule: `styles.test.ts` iterates
+// every variant the registry advertises and asserts `SECTION_CSS[kind]`
+// contains `djp-v-<variant>`, and these nine would fail that — not because
+// they are unstyled, but because they predate the `djp-v-` convention this
+// kind's OTHER variants narrow away from.
+//
+// Measured against this file at the branch point for the design-system
+// widening (2026-09-13), before any of Task 7's own additions:
+//   grep -o 'djp-v-[a-z0-9-]*' lib/funnels/sections/styles.ts | sort -u
+// came back with none of these nine, even though every one is a real,
+// registry-advertised variant that predates this build (`hero.split` /
+// `proof.strip` / `steps.numbered` / `testimonial.grid` / `pricing.cards` /
+// `faq.stack` / `quiz.boxed` / `cta.band` / `footer.simple`).
+//
+// THIS IS A RECORD OF PRE-EXISTING BASE CASES, NOT AN ESCAPE HATCH. Every
+// variant Task 7 itself adds earns a real `djp-v-` rule (see the per-kind
+// CSS above) — none of them are listed here, and none should be. A future
+// variant that genuinely needs no CSS of its own is a finding for that
+// task's report, never a line added to this array to make a red test green.
+// ---------------------------------------------------------------------------
+
+export const VARIANTS_STYLED_BY_BASE_RULE: readonly string[] = [
+  "hero.split",
+  "proof.strip",
+  "steps.numbered",
+  "testimonial.grid",
+  "pricing.cards",
+  "faq.stack",
+  "quiz.boxed",
+  "cta.band",
+  "footer.simple",
+]
 
 export const SECTION_CSS: Record<SectionKind, string> = {
   hero: HERO_CSS,

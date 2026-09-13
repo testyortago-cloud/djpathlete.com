@@ -125,6 +125,31 @@ export type SectionIcon = (typeof SECTION_ICONS)[number]
 const sectionIconSchema = z.enum(SECTION_ICONS)
 
 // ---------------------------------------------------------------------------
+// Item media (design-system spec §5.2) — "media beyond the hero". Until now
+// `heroMediaSchema` was the document's ONLY image field; this is the same
+// URL-goes-through-`safeUrl` discipline (Task 6's background image, the
+// hero's own media) applied to a single decorative photo on a repeating item:
+// a bullet, a step, a testimonial quote, a pricing plan, or the cta section.
+//
+// Deliberately NOT `heroMediaSchema`: no `kind:"youtube"` (an item photo is
+// decorative, not an above-the-fold embed) and no required `w`/`h` — the
+// hero's dimensions exist to reserve layout space for the page's biggest,
+// most likely LCP element; an item thumbnail is never that.
+//
+// EVERY FIELD BUT `src` IS OPTIONAL, AND `media` ITSELF IS ALWAYS OPTIONAL ON
+// ITS PARENT. Same reasoning as every other Task-6/7 widening: `SectionDoc`
+// is stored JSON and `reassemble()` parses it on every render, so an item with
+// no `media` key must keep parsing exactly as it always has.
+// ---------------------------------------------------------------------------
+
+export const itemMediaSchema = z.object({
+  src: z.string().min(1).max(500),
+  alt: z.string().max(200).optional(),
+})
+
+export type ItemMedia = z.infer<typeof itemMediaSchema>
+
+// ---------------------------------------------------------------------------
 // Shared style knobs (plan §1a). All optional — a section with `style: {}`
 // renders at every default. Rendered as `data-h` / `data-align` / `data-tone`
 // / `data-pad` attributes (constraint 3, §2 lines 206): NEVER `data-djp-*`,
@@ -342,6 +367,7 @@ const bulletItemSchema = z.object({
   title: z.string().min(1).max(100),
   body: z.string().max(300).optional(),
   icon: sectionIconSchema.optional(),
+  media: itemMediaSchema.optional(),
 })
 
 export const bulletsPropsSchema = z.object({
@@ -361,6 +387,7 @@ const STEPS_VARIANTS = ["numbered", "timeline", "cards", "alternating"] as const
 const stepItemSchema = z.object({
   title: z.string().min(1).max(100),
   body: z.string().max(300).optional(),
+  media: itemMediaSchema.optional(),
 })
 
 export const stepsPropsSchema = z.object({
@@ -385,6 +412,7 @@ const testimonialQuoteSchema = z.object({
   quote: z.string().min(1).max(500),
   name: z.string().min(1).max(120),
   detail: z.string().max(160).optional(),
+  media: itemMediaSchema.optional(),
 })
 
 export const testimonialPropsSchema = z.discriminatedUnion("source", [
@@ -415,6 +443,7 @@ const pricingPlanSchema = z.object({
   features: z.array(z.string().min(1).max(160)).min(1).max(8),
   cta: ctaWithLabelSchema,
   highlight: z.boolean().optional(),
+  media: itemMediaSchema.optional(),
 })
 
 export const pricingPropsSchema = z.object({
@@ -520,6 +549,7 @@ export const ctaPropsSchema = z.object({
   headline: z.string().min(1).max(160),
   sub: z.string().max(300).optional(),
   cta: ctaWithLabelSchema,
+  media: itemMediaSchema.optional(),
 })
 
 export type CtaSectionProps = z.infer<typeof ctaPropsSchema>

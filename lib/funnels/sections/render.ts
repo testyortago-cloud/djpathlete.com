@@ -41,6 +41,7 @@ import {
   type ProofSectionProps,
   type CtaSectionProps,
   type FooterSectionProps,
+  type ItemMedia,
 } from "@/lib/funnels/sections/registry"
 import { parseIslandProps, SAFE_LINK, type IslandName } from "@/lib/funnels/islands"
 import { safeUrl } from "@/lib/funnels/compile/sanitize"
@@ -648,6 +649,31 @@ function renderMedia(
 }
 
 // ---------------------------------------------------------------------------
+// Item media (design-system spec §5.2) — "media beyond the hero": an
+// optional decorative image on a bullet, a step, a testimonial quote, a
+// pricing plan, or the cta section itself.
+//
+// SAME `safeUrl` DISCIPLINE AS THE HERO AND THE SECTION BACKGROUND (Task 6),
+// deliberately reusing the exact function and the same `allowDataImage: true`
+// option rather than a hand-rolled second check. Unlike `renderMedia`
+// (hero), a rejected OR ABSENT image renders NOTHING — no placeholder, no
+// invalid-media box. The hero's placeholder exists because a hero with no
+// media leaves a layout gap above the fold and (in the editor) needs a click
+// target to fill it; every one of these five sites already renders correctly
+// with no media at all, which is the untouched, pre-Task-7 shape every
+// stored document relies on — a rejected URL must degrade to that same
+// shape, not to a new, worse one.
+// ---------------------------------------------------------------------------
+
+function renderItemMedia(media: ItemMedia | undefined, className: string, ctx: RenderContext, path: string): string {
+  if (!media) return ""
+  const src = safeUrl(media.src, { allowDataImage: true })
+  if (!src) return ""
+  const alt = media.alt ?? ""
+  return `<img class="${className}" src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy"${mediaSlotAttr(ctx, path)} />`
+}
+
+// ---------------------------------------------------------------------------
 // hero
 // ---------------------------------------------------------------------------
 
@@ -680,6 +706,7 @@ function renderBulletsSection(section: Section, ctx: RenderContext): string {
   parts.push(`<ul class="djp-bullets-list">`)
   props.items.forEach((item, index) => {
     parts.push(`<li class="djp-bullet-item"${itemAttr(ctx, index)}>`)
+    parts.push(renderItemMedia(item.media, "djp-bullet-media", ctx, `items.${index}.media`))
     parts.push(renderIcon(item.icon))
     parts.push(`<div class="djp-bullet-body">`)
     parts.push(textEl(ctx, "h3", "djp-bullet-title", `items.${index}.title`, item.title))
@@ -705,6 +732,7 @@ function renderStepsSection(section: Section, ctx: RenderContext): string {
   parts.push(`<ol class="djp-steps-list">`)
   props.steps.forEach((step, index) => {
     parts.push(`<li class="djp-step-item"${itemAttr(ctx, index)}>`)
+    parts.push(renderItemMedia(step.media, "djp-step-media", ctx, `steps.${index}.media`))
     parts.push(`<div class="djp-step-body">`)
     parts.push(textEl(ctx, "h3", "djp-step-title", `steps.${index}.title`, step.title))
     parts.push(
@@ -741,6 +769,7 @@ function renderTestimonialSection(section: Section, ctx: RenderContext): string 
     parts.push(`<div class="djp-testimonial-grid">`)
     props.quotes.forEach((quote, index) => {
       parts.push(`<blockquote class="djp-quote"${itemAttr(ctx, index)}>`)
+      parts.push(renderItemMedia(quote.media, "djp-quote-media", ctx, `quotes.${index}.media`))
       parts.push(textEl(ctx, "p", "djp-quote-text", `quotes.${index}.quote`, quote.quote))
       parts.push(`<footer class="djp-quote-attribution">`)
       parts.push(textEl(ctx, "span", "djp-quote-name", `quotes.${index}.name`, quote.name))
@@ -767,6 +796,7 @@ function renderPricingSection(section: Section, ctx: RenderContext): string {
   props.plans.forEach((plan, index) => {
     const highlightClass = plan.highlight ? " djp-plan-highlight" : ""
     parts.push(`<article class="djp-plan${highlightClass}"${itemAttr(ctx, index)}>`)
+    parts.push(renderItemMedia(plan.media, "djp-plan-media", ctx, `plans.${index}.media`))
     parts.push(textEl(ctx, "h3", "djp-plan-name", `plans.${index}.name`, plan.name))
     parts.push(`<p class="djp-plan-price">`)
     parts.push(anchoredRun(ctx, "djp-plan-amount", `plans.${index}.price`, plan.price))
@@ -900,6 +930,7 @@ function renderProofSection(section: Section, ctx: RenderContext): string {
 function renderCtaSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.cta.propsSchema.parse(section.props) as CtaSectionProps
   const parts: string[] = [sectionOpenTag(section, ctx), `<div class="djp-cta-inner">`]
+  parts.push(renderItemMedia(props.media, "djp-cta-media", ctx, "media"))
   parts.push(textEl(ctx, "h2", "djp-hd", "headline", props.headline))
   parts.push(optionalText(ctx, "p", "djp-sub", "sub", props.sub, "Add a subheading"))
   parts.push(renderCtaButton(props.cta, "primary", ctx, "cta"))
