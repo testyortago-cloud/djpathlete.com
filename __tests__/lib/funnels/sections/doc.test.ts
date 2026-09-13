@@ -21,7 +21,7 @@ import {
   type SectionDocProblem,
 } from "@/lib/funnels/sections/doc"
 import { FUNNEL_STEP_HTML_MAX_LENGTH, FUNNEL_STEP_CSS_MAX_LENGTH } from "@/lib/validators/funnel"
-import { PALETTE_TABLE } from "@/lib/funnels/sections/palettes"
+import { PALETTE_TABLE, PALETTE_PRESETS, contrastRatio } from "@/lib/funnels/sections/palettes"
 
 const urlCta = { label: "Learn more", target: { kind: "url" as const, href: "/thanks" } }
 const bookingCta = { label: "Book a call", target: { kind: "booking" as const } }
@@ -422,6 +422,63 @@ describe("palette resolution order", () => {
   // does today.
   it("emits no palette override at all when neither is present", () => {
     expect(reassemble(themeDoc({})).css).not.toMatch(/--primary:/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fix-wave bug 3: `--background`/`--foreground` (a palette's paper/ink) were
+// emitted by `paletteBlock` but never PAINTED anywhere. `.djp-page` had a rule
+// for `data-page-tone="dark"` only, and even that painted `--primary`, never
+// `--background`. Five of twelve presets seed a dark `paper`/light `ink`
+// (`midnight`, `ember`, `steel`, `plum`, `ink`), so any of those on a
+// `theme.tone: "light"` page (or a page with no tone override at all) put the
+// palette's light ink straight onto the HOST page's own unpainted background
+// — white text on white, an unreadable page, reachable through nothing more
+// exotic than the model choosing a preset it is free to choose.
+// ---------------------------------------------------------------------------
+
+describe("page ground colour — a palette must paint what it emits", () => {
+  it("paints the page wrapper's background/colour from the palette's own tokens when a palette is active", () => {
+    const css = reassemble(themeDoc({ palette: { preset: "ember" } })).css
+    expect(css).toContain(".djp-page { background: var(--background); color: var(--foreground); }")
+  })
+
+  // The no-regression guard, same shape as "emits no palette override at all
+  // when neither is present" above: an untouched page must still render
+  // byte-identically, so this new rule must be ABSENT, not merely inert.
+  it("emits no page-ground override at all when no palette is present", () => {
+    const css = reassemble(themeDoc({})).css
+    expect(css).not.toContain(".djp-page { background: var(--background)")
+  })
+
+  // `theme.tone: "dark"` is a stronger, separate directive ("paint this page
+  // in my brand colour") than a palette's own paper/ink, and must still win:
+  // the dark-tone rule's attribute selector outranks the new bare-class rule
+  // on specificity regardless of source order, so both can be emitted without
+  // fighting. Pinned here as a textual fact (both rules present, in this
+  // order) — render.test.ts's cascade model is what actually proves which one
+  // wins for a real element.
+  it("still emits the brand-pair rule for an explicit dark page tone, alongside the new paper/ink rule", () => {
+    const css = reassemble(themeDoc({ tone: "dark", palette: { preset: "ember" } })).css
+    expect(css).toContain(".djp-page { background: var(--background); color: var(--foreground); }")
+    expect(css).toContain('.djp-page[data-page-tone="dark"] { background: var(--primary); color: var(--primary-foreground); }')
+  })
+
+  // The real invariant bug 3 walked past: not "ink vs paper score >= 4.5 as a
+  // pair in a table" (palettes.test.ts already proves that, for every
+  // preset), but that the pairing this test just proved gets PAINTED is the
+  // exact same pairing that clears AA. Combined with the two tests above,
+  // this closes the gap between "the tokens are correct" and "the tokens are
+  // ever applied to anything a reader looks at".
+  it("every preset's ink clears AA against the paper the page will actually paint", () => {
+    for (const name of PALETTE_PRESETS) {
+      const css = reassemble(themeDoc({ palette: { preset: name } })).css
+      expect(css, `${name}: page ground was never painted`).toContain(
+        ".djp-page { background: var(--background); color: var(--foreground); }",
+      )
+      const { ink, paper } = PALETTE_TABLE[name]
+      expect(contrastRatio(ink, paper), `${name}: ink ${ink} on paper ${paper}`).toBeGreaterThanOrEqual(4.5)
+    }
   })
 })
 

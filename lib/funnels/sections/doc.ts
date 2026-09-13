@@ -325,9 +325,59 @@ function themeCss(theme: SectionDocTheme, brandKit?: BrandKit | null): string {
     `${ROOT} { --djp-radius: ${RADIUS_CSS_VALUE[theme.radius]}; --djp-maxw: ${maxw}; --djp-density: ${density}; ` +
     `--djp-font-head: ${fontHead}; --djp-font-body: ${fontBody}; }`
 
+  // THE MISSING READER (fix-wave bug 3). `paletteBlock` above has ALWAYS
+  // emitted `--background`/`--foreground` (a palette's `paper`/`ink`) the
+  // moment a palette is active, but nothing ever painted them onto anything —
+  // `.djp-page[data-page-tone="dark"]` below paints `--primary`, never
+  // `--background`, and there was no rule at all for `data-page-tone="light"`.
+  // `.djp-s`'s own base rule (styles.ts) sets `color: var(--foreground)`
+  // unconditionally, so every untoned section ALREADY rendered the palette's
+  // ink — but with nothing underneath it painting the matching paper, that
+  // ink landed on whatever the HOST page's own background happens to be
+  // (`app/globals.css`'s bare `:root`, i.e. plain white). Half of a
+  // proven-AA pair with the other half silently discarded is exactly as
+  // unreadable as no pair at all: five presets seed `paper: "#0b0d10"` /
+  // `ink: "#ffffff"` (`midnight`, `ember`, `steel`, `plum`, `ink` —
+  // palettes.ts's `mode: "dark"` seeds), so those five rendered white text on
+  // an unpainted white page regardless of `theme.tone`.
+  //
+  // `theme.tone` and a palette's own paper/ink are DELIBERATELY two different
+  // axes, not one collapsed into the other:
+  //   - a PALETTE's `paper`/`ink` is "what an untoned section's own ground
+  //     looks like" — derived once, AA-guaranteed by `resolvePalette`, and
+  //     independent of `theme.tone`. `ember` is a dark-mode-seeded palette an
+  //     owner can pick on a page whose `theme.tone` is still `"light"`; nothing
+  //     about the tone knob should stop that palette rendering as itself.
+  //   - `theme.tone: "dark"` is a STRONGER, separate directive — "make this
+  //     page read as a bold band of my BRAND colour" — implemented (see
+  //     "PAGE TONE IS A SECTION-TONE DEFAULT" above) by promoting every
+  //     untoned SECTION to the `dark` SECTION tone, which paints
+  //     `--primary`/`--primary-foreground`, not `--background`/`--foreground`.
+  //     That promotion, and the wrapper rule below that mirrors it, are
+  //     UNCHANGED by this fix: a page that asked for its brand colour still
+  //     gets its brand colour, never the palette's neutral paper.
+  // So the new rule below paints the palette's real paper/ink onto the page
+  // ground UNCONDITIONALLY (whenever a palette is active), and the existing
+  // `[data-page-tone="dark"]` rule is left exactly as it was — its higher
+  // selector specificity (an attribute selector beats a bare class) already
+  // makes it win over the new rule on a dark-toned page, so the two rules
+  // don't fight: `dark` still means "paint the brand pair", `light` (or no
+  // tone override at all) now correctly means "paint the palette's own
+  // paper/ink pair" instead of silently meaning "paint nothing".
+  //
+  // Gated on `palette` exactly like `paletteBlock`: a document with NO
+  // palette (every page stored before this build, and every page today that
+  // never set `theme.palette` or a tenant brand kit) must render
+  // byte-identically to what `reassemble()` produced before this fix — its
+  // `--background`/`--foreground` are the plain, unmodified tokens
+  // `app/globals.css` already provides, and painting them here would be a
+  // behaviour change for a page that asked for none.
+  const pageGroundCss = palette ? `${ROOT} .djp-page { background: var(--background); color: var(--foreground); }` : ""
+
   return `
 ${paletteBlock}
 ${sizingCssLine}
+${pageGroundCss}
 ${ROOT} .djp-page[data-page-tone="dark"] { background: var(--primary); color: var(--primary-foreground); }
 ${ROOT} .djp-page[data-page-accent="primary"] .djp-btn-primary { background: var(--primary); color: var(--primary-foreground); }
 ${ROOT} .djp-page[data-page-accent="primary"] .djp-s[data-tone="dark"] .djp-btn-primary { background: var(--accent); color: var(--accent-foreground); }
