@@ -371,8 +371,21 @@ describe("individual rules", () => {
     )
   })
 
-  it("section-count fires below six and above nine", () => {
+  it("section-count fires below six and above sixteen", () => {
+    // RAISED FROM 9 to 16 on 2026-09-13 (task 10 review fix): a hard 9-section
+    // ceiling fired on every `long-form-sales` page the model was told to
+    // build, and the reviser cut it back down — see SECTION_COUNT_MAX's own
+    // comment in audit.ts and docs/builder-gaps.md (C11).
     expect(codes(docOf([cta("a", { tone: "accent" })]))).toContain("section-count")
+    const seventeen = Array.from({ length: 17 }, (_, index) => cta(`s${index}`, { tone: "accent" }))
+    expect(codes(docOf(seventeen))).toContain("section-count")
+  })
+
+  it("section-count does not fire on a long-form-sales-sized page", () => {
+    // The whole point of the raise: a deliberately long page must not be
+    // flagged just for being long.
+    const sixteen = Array.from({ length: 16 }, (_, index) => cta(`s${index}`, { tone: "accent" }))
+    expect(codes(docOf(sixteen))).not.toContain("section-count")
   })
 
   it("length-strain fires on copy that nearly fills its schema cap", () => {

@@ -45,7 +45,15 @@ const ENFORCED: ReadonlyArray<{ code: string; concept: RegExp; why: string }> = 
   {
     code: "section-count",
     concept: /Six to nine sections/,
-    why: "the auditor bounds the page at 6..9 sections",
+    // The auditor's own bound was raised to 6..16 on 2026-09-13 (task 10
+    // review fix, so `long-form-sales` pages are not flagged for being
+    // long — see audit.ts's SECTION_COUNT_MAX comment and docs/builder-gaps.md
+    // C11). The PROMPT rule stays "six to nine" on purpose: it is advice
+    // specific to a capture page ("KEEP IT SHORT... for a capture page" —
+    // LEADGEN_RULES applies to every recipe, but this rule's own wording
+    // already scopes itself), and 6-9 is a stricter subset of the auditor's
+    // 6-16 floor/ceiling, not a contradiction of it.
+    why: "the auditor bounds every page at 6..16 sections; the prompt rule this concept matches is a tighter, capture-specific recommendation within that range",
   },
 ]
 
