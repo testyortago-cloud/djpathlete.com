@@ -540,6 +540,35 @@ describe("tone contrast: no per-kind colour is left behind by the tone knob", ()
     },
   )
 
+  // Fix-wave bug 2. The blanket PAIRED-colour check above CANNOT catch this
+  // one on its own: `--primary` is declared legal on `--surface` in
+  // `READABLE_ON` (a scope-invariant fact about app/globals.css's four fixed
+  // themes — "brand tokens read as accents on neutral surfaces"), so a
+  // hardcoded `--primary` price and a correctly-inherited `--foreground`
+  // price are BOTH "allowed" by that table. What actually distinguished them
+  // — real, palette-dependent contrast between a derived `brand` and a
+  // derived `surface` — is exactly the numeric fact this file's own header
+  // says it deliberately does NOT model (contrast is "true in one scope and
+  // false in the next"; palettes.ts's `deriveSurface` only proves
+  // ink-vs-surface, never brand-vs-surface). So this test pins the one thing
+  // about it that IS scope-invariant instead: a muted-toned pricing price
+  // must resolve to muted's OWN foreground token, the same one `.djp-hd`
+  // already uses on a muted section — never a token muted does not itself
+  // repaint to. Reverting the `.djp-s[data-tone="muted"] .djp-plan-price`
+  // rule in styles.ts (Move 2) turns this red: the price falls back to its
+  // hardcoded `color: var(--primary)`.
+  it("a muted pricing plan's price resolves to muted's own foreground, not a hardcoded brand token", () => {
+    const readings = readContrast("muted")
+    const priceReadings = readings.filter(
+      (reading) => reading.case.startsWith("pricing/") && reading.node.includes("djp-plan-price"),
+    )
+    expect(priceReadings.length, "no fixture rendered .djp-plan-price on tone 'muted'").toBeGreaterThan(0)
+    for (const reading of priceReadings) {
+      expect(reading.colour, JSON.stringify(reading)).toBe("--foreground")
+      expect(reading.background, JSON.stringify(reading)).toBe("--surface")
+    }
+  })
+
   // Without this the two tests above pass vacuously the moment a fixture stops
   // rendering a class — which is exactly how a "dark tone is covered" claim
   // gets made about a stylesheet nobody checked.

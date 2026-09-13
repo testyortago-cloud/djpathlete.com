@@ -418,6 +418,28 @@ ${ROOT} .djp-s[data-tone="accent"] .djp-quote-name,
 ${ROOT} .djp-s[data-tone="dark"] .djp-plan-price,
 ${ROOT} .djp-s[data-tone="dark"] .djp-quote-name { color: inherit; }
 
+/* Move 2 for "muted", which the first pass of this rule missed entirely
+   (fix-wave bug 2). .djp-plan-price (below, PRICING_CSS) is hardcoded
+   color: var(--primary) — a fine pairing against a --primary-toned card
+   (accent/dark, fixed above), but .djp-plan's own background is --surface
+   on every OTHER tone, muted included, and nothing guarantees --primary
+   reads on --surface: deriveSurface (palettes.ts) only proves ink-vs-surface
+   clears AA, never brand-vs-surface. A dark-seeded palette (ember, midnight,
+   ...) can put a mid-tone brand red on a near-black surface, which is
+   exactly the "price unreadable on a muted pricing section" bug this rule
+   fixes.
+   color: inherit resolves to .djp-s[data-tone="muted"]'s own colour — which
+   muted never repaints (only background: above), so it is still the base
+   .djp-s { color: var(--foreground) } — the SAME ink token deriveSurface
+   already proved against --surface. No new colour is introduced; this only
+   stops .djp-plan-price opting itself out of a pair the page already
+   guarantees.
+   .djp-quote-name is NOT added here: its own hardcoded token is already
+   var(--foreground) (.djp-s-testimonial .djp-quote-name, further down), the
+   same value inherit would resolve to on a muted section — nothing to fix.
+   NO BACKTICKS in this comment — one closes the template literal. */
+${ROOT} .djp-s[data-tone="muted"] .djp-plan-price { color: inherit; }
+
 /* ...then all nine --muted-foreground classes. Opacity, not a second colour
    token, is what keeps them subordinate. */
 ${ROOT} .djp-s[data-tone="accent"] .djp-bullet-text,
