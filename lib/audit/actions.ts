@@ -644,6 +644,11 @@ export const AUDIT_ACTIONS = [
   { slug: "business.updated", category: "admin_write", description: "Business name or status changed" },
   { slug: "business.settings_updated", category: "admin_write", description: "Business settings changed" },
   {
+    slug: "business.brand_kit_updated",
+    category: "admin_write",
+    description: "Tenant brand colours (business_settings.brand_color / .accent_color) changed from the page builder",
+  },
+  {
     slug: "business.member_invited",
     category: "admin_write",
     description: "A coach or staff member was invited to a business",

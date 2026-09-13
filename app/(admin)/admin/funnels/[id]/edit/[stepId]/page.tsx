@@ -332,6 +332,7 @@ export async function FunnelBuilderScreen({
       initialPrompt={initialPrompt}
       maxMessageLength={SECTION_BUILDER_MAX_MESSAGE_LENGTH}
       renderForPublish={renderDocForPublish.bind(null, step.id)}
+      initialBrandKit={brandKit}
     />
   )
 }

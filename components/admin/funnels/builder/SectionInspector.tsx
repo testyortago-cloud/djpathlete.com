@@ -14,7 +14,7 @@
 // server does all three, transactionally. The panel's job is to describe the
 // change the owner asked for.
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { Trash2, ChevronUp, ChevronDown, Copy, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -333,7 +333,22 @@ export function SectionInspector({ doc, selectedId, selectedPath, onOps, busy, c
 
   const setStyle = (path: string, raw: unknown) => {
     const value = raw === "" ? null : raw
-    onOps([{ op: "update_section", id: section.id, style: { [path]: value } } as unknown as SectionOp])
+    // `patchForPath`, NOT `{ [path]: value }`. `sectionStyleSchema` grew a
+    // NESTED key (`bg: {kind, from, to, ...}` — design spec §4) alongside the
+    // flat ones it already had, and `applyOps` merges `style` shallowly per
+    // TOP-LEVEL key exactly like it does `props` (`apply.ts`'s own comment
+    // says so). A literal `{"bg.kind": value}` would therefore write a key
+    // named `"bg.kind"` — with a dot in it — onto the style object instead of
+    // nesting into `bg`, which is invalid against the schema and would have
+    // failed on the very first save. `patchForPath` is the same helper
+    // `setProp` below already uses for the identical reason on `props`.
+    onOps([
+      {
+        op: "update_section",
+        id: section.id,
+        style: patchForPath((section.style ?? {}) as Record<string, unknown>, path, value),
+      } as unknown as SectionOp,
+    ])
   }
 
   const move = (direction: -1 | 1) => {
@@ -475,6 +490,19 @@ export function SectionInspector({ doc, selectedId, selectedPath, onOps, busy, c
                   onChange={setStyle}
                   disabled={busy}
                 />
+              ) : field.path === "bg.kind" ? (
+                // `styleFields()` walks `sectionStyleSchema` with an EMPTY
+                // value (see its own comment), so a discriminated union like
+                // `bg` always reports its FIRST branch's fields ("none" has
+                // none) — it can never see that a real section already has a
+                // gradient or an image set. `BgField` reads the section's
+                // ACTUAL `style.bg` itself instead of trusting this field.
+                <BgField
+                  key="bg"
+                  value={(section.style as Record<string, unknown> | undefined)?.bg}
+                  onChange={setStyle}
+                  disabled={busy}
+                />
               ) : (
                 <FieldControl
                   key={field.path}
@@ -571,6 +599,149 @@ function ToneField({
       </button>
     </div>
   )
+}
+
+/**
+ * A section's background — `sectionStyleSchema.bg` (design spec §4).
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS NOT THE GENERIC `select` + text inputs
+ * ---------------------------------------------------------------------------
+ * `sectionBgSchema` is a discriminated union, and the generic renderer
+ * (`fields.ts`'s `unionFields`) picks which branch's fields to show from the
+ * VALUE it is walked with — but `styleFields()` walks with `{}` (see its own
+ * comment), so it always reports the "none" branch, forever, no matter what a
+ * section's `style.bg` actually holds. A gradient or image already set on the
+ * page would therefore be invisible in this panel and silently overwritten
+ * the moment anything else in Style was touched. This component reads
+ * `section.style.bg` directly instead.
+ *
+ * `kind:"image"` needs a NON-EMPTY `src` before it is a legal value at all
+ * (`sectionBgSchema`'s `min(1)`) — so choosing "Image" cannot itself send an
+ * op; it opens the URL box and waits for it to be filled in, the same rule
+ * the CTA label control above applies for the same reason.
+ */
+function BgField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: unknown
+  onChange: (path: string, raw: unknown) => void
+  disabled: boolean
+}) {
+  const stored = (value && typeof value === "object" ? (value as Record<string, unknown>) : {}) as {
+    kind?: unknown
+    from?: unknown
+    to?: unknown
+    src?: unknown
+    overlay?: unknown
+    position?: unknown
+  }
+  const storedFrom = typeof stored.from === "string" ? stored.from : "#0b0d10"
+  const storedTo = typeof stored.to === "string" ? stored.to : "#ffffff"
+  const storedKind = typeof stored.kind === "string" ? stored.kind : "none"
+
+  const [awaitingImageUrl, setAwaitingImageUrl] = useState(false)
+  const kind = awaitingImageUrl ? "image" : storedKind
+
+  const choose = (next: "none" | "gradient" | "image") => {
+    if (next === "gradient") {
+      setAwaitingImageUrl(false)
+      onChange("bg", { kind: "gradient", from: storedFrom, to: storedTo })
+      return
+    }
+    if (next === "none") {
+      setAwaitingImageUrl(false)
+      // `null`, not `{kind:"none"}` — the delete sentinel `patchForPath`
+      // passes straight through, so an unset `bg` behaves exactly like a
+      // section that never had one, rather than carrying a stored-but-inert
+      // value forward.
+      onChange("bg", null)
+      return
+    }
+    // "image" with the URL box already open, or already the stored kind —
+    // nothing to change yet either way.
+    if (storedKind !== "image") setAwaitingImageUrl(true)
+  }
+
+  const commitImageSrc = (raw: string) => {
+    const src = raw.trim()
+    if (src === "") return // stays in the "awaiting a URL" state
+    setAwaitingImageUrl(false)
+    onChange("bg", {
+      kind: "image",
+      src,
+      ...(typeof stored.overlay === "number" ? { overlay: stored.overlay } : {}),
+      ...(typeof stored.position === "string" ? { position: stored.position } : {}),
+    })
+  }
+
+  return (
+    <div className="col-span-2 space-y-2">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">Background</p>
+      <div className="grid grid-cols-3 gap-1.5">
+        {(["none", "gradient", "image"] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            disabled={disabled}
+            aria-pressed={kind === option}
+            onClick={() => choose(option)}
+            className={`rounded-md border px-2 py-1.5 text-xs transition-colors disabled:opacity-50 ${
+              kind === option ? "border-primary ring-1 ring-primary" : "border-border hover:bg-surface/50"
+            }`}
+          >
+            {option === "none" ? "None" : optionLabel(option)}
+          </button>
+        ))}
+      </div>
+
+      {kind === "gradient" ? (
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            From
+            <input
+              type="color"
+              disabled={disabled}
+              value={storedFrom}
+              onChange={(event) => onChange("bg", { kind: "gradient", from: event.target.value, to: storedTo })}
+              className="h-7 w-9 cursor-pointer rounded border border-border disabled:cursor-not-allowed"
+            />
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            To
+            <input
+              type="color"
+              disabled={disabled}
+              value={storedTo}
+              onChange={(event) => onChange("bg", { kind: "gradient", from: storedFrom, to: event.target.value })}
+              className="h-7 w-9 cursor-pointer rounded border border-border disabled:cursor-not-allowed"
+            />
+          </label>
+        </div>
+      ) : null}
+
+      {kind === "image" ? (
+        <div className="space-y-1">
+          <Input
+            disabled={disabled}
+            autoFocus={!storedKind || storedKind === "none"}
+            defaultValue={typeof stored.src === "string" ? stored.src : ""}
+            placeholder="https://…"
+            onBlur={(event) => commitImageSrc(event.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">A site path like /thanks, or an https:// link.</p>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/** Turns a lowercase-with-hyphens id into "Title case", matching `fields.ts`'s own `optionLabel`. */
+function optionLabel(value: string): string {
+  const spaced = value.replace(/[-_]/g, " ")
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
 /**

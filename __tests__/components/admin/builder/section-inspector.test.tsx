@@ -553,4 +553,71 @@ describe("SectionInspector — what happens after a form is submitted", () => {
     mountForm()
     expect(screen.queryByLabelText(/redirect url/i)).toBeNull()
   })
+
+  describe("background", () => {
+    // `styleFields()` always reports the "none" branch's fields (it walks the
+    // schema with an EMPTY value — see `BgField`'s own comment), so these tests
+    // pin the panel reading the SECTION'S ACTUAL `style.bg`, not the field list.
+
+    it("sends a nested style.bg patch, not a literal 'bg.kind' key", () => {
+      // MUTANT KILLED: reverting `setStyle` to `{ [path]: value }` sends
+      // `style: {"bg.kind": "gradient"}` — a key with a dot in it, which
+      // `sectionStyleSchema` rejects outright.
+      mount()
+      fireEvent.click(screen.getByRole("button", { name: /^gradient$/i }))
+      expect(onOps).toHaveBeenCalledWith([
+        { op: "update_section", id: "h1", style: { bg: { kind: "gradient", from: "#0b0d10", to: "#ffffff" } } },
+      ])
+    })
+
+    it("clears the background with the delete sentinel rather than {kind:'none'}", () => {
+      mount({
+        doc: {
+          ...aDoc(),
+          sections: [
+            { ...aDoc().sections[0], style: { bg: { kind: "gradient", from: "#111111", to: "#222222" } } },
+            aDoc().sections[1],
+          ],
+        },
+      })
+      fireEvent.click(screen.getByRole("button", { name: /^none$/i }))
+      expect(onOps).toHaveBeenCalledWith([{ op: "update_section", id: "h1", style: { bg: null } }])
+    })
+
+    it("shows the gradient colours already stored on the section, not the schema default", () => {
+      // Proves the panel does NOT rely on `styleFields()` for the current
+      // value: a fresh mount must show what is actually saved.
+      mount({
+        doc: {
+          ...aDoc(),
+          sections: [
+            { ...aDoc().sections[0], style: { bg: { kind: "gradient", from: "#123456", to: "#abcdef" } } },
+            aDoc().sections[1],
+          ],
+        },
+      })
+      expect(screen.getByRole("button", { name: /^gradient$/i })).toHaveAttribute("aria-pressed", "true")
+    })
+
+    it("does not send an op for 'image' until a URL is typed", () => {
+      mount()
+      fireEvent.click(screen.getByRole("button", { name: /^image$/i }))
+      expect(onOps).not.toHaveBeenCalled()
+      const input = screen.getByPlaceholderText("https://…")
+      fireEvent.change(input, { target: { value: "" } })
+      fireEvent.blur(input)
+      expect(onOps).not.toHaveBeenCalled()
+    })
+
+    it("commits an image background once a URL is entered and left", () => {
+      mount()
+      fireEvent.click(screen.getByRole("button", { name: /^image$/i }))
+      const input = screen.getByPlaceholderText("https://…")
+      fireEvent.change(input, { target: { value: "/hero.jpg" } })
+      fireEvent.blur(input)
+      expect(onOps).toHaveBeenCalledWith([
+        { op: "update_section", id: "h1", style: { bg: { kind: "image", src: "/hero.jpg" } } },
+      ])
+    })
+  })
 })

@@ -81,7 +81,9 @@ import { GenerationStage, BUILD_STAGE_WRAPPER_CLASS } from "./builder/Generation
 import { PreviewPane, type PreviewDevice } from "./builder/PreviewPane"
 import { PublishReview } from "./builder/PublishReview"
 import { SectionInspector } from "./builder/SectionInspector"
+import { ThemePanel, type ThemePanelBrandKit, type BrandKitPatch } from "./builder/ThemePanel"
 import { patchForPath, valueAtPath } from "@/lib/funnels/sections/patch"
+import type { SectionDocTheme } from "@/lib/funnels/sections/registry"
 import { usePublishStepConnections, useRegisterRepair, useDraftQueue } from "./connections-context"
 // THE SENTENCES, SHARED. `publishFunnel` itself is deliberately not used here —
 // this screen has a transcript to write a refusal into, which is strictly more
@@ -209,6 +211,14 @@ export interface FunnelBuilderProps {
   maxMessageLength: number
   /** Server action: `SectionDoc` -> `{html, css}` for the publish route. */
   renderForPublish: RenderForPublish
+  /**
+   * The tenant's brand kit, resolved server-side the same way the preview's
+   * palette default already is (`resolveBrandKit`, threaded through
+   * `FunnelBuilderScreen`) — `null` means this tenant has not chosen a brand
+   * yet, never that the read failed (a failed read degrades to `null` at the
+   * call site, exactly like the palette default does).
+   */
+  initialBrandKit?: ThemePanelBrandKit | null
 }
 
 type Busy = "idle" | "building" | "restoring" | "publishing"
@@ -311,6 +321,12 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   const router = useRouter()
 
   const [doc, setDoc] = useState<SectionDoc | null>(props.initialDoc)
+  // Which panel occupies the inspector rail — the section under the cursor,
+  // or the whole page's design. Independent of `tab` (chat vs. preview, for
+  // narrow screens): that is which COLUMN is visible, this is which PANEL
+  // fills the rail column once it is.
+  const [rightPanel, setRightPanel] = useState<"section" | "theme">("section")
+  const [brandKit, setBrandKit] = useState<ThemePanelBrandKit | null>(props.initialBrandKit ?? null)
   const [revision, setRevision] = useState(props.initialRevision)
   const [previewRevision, setPreviewRevision] = useState(props.initialRevision)
   const [unresolved, setUnresolved] = useState(props.initialUnresolved)
@@ -611,6 +627,45 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   // takes the same revision check, the same 409 handling and the same
   // transcript turn as any other edit — which is what makes it undoable.
   useRegisterRepair(props.stepId, sendOps)
+
+  // THE THEME PANEL'S ENTIRE WRITE PATH. `ThemePanel` itself never calls
+  // `onOps` or `fetch` — it emits a plain patch object, and THIS is where
+  // that patch becomes a `set_theme` op through the exact same `sendOps`
+  // `SectionInspector`'s `onOps` prop already uses. A hand edit to the theme
+  // and an AI turn that calls `set_theme` therefore go through one function,
+  // one revision check, one 409 handler and one transcript — never two
+  // competing ways to change the document. See the design spec §7a and
+  // `ThemePanel.tsx`'s own header for why this split (patch in, op out) is
+  // where the "no second write path" rule is actually enforced.
+  const changeTheme = useCallback(
+    (patch: Partial<SectionDocTheme>) => {
+      sendOps([{ op: "set_theme", theme: patch }])
+    },
+    [sendOps],
+  )
+
+  // The BRAND KIT is a different write on purpose (see `ThemePanel.tsx`'s
+  // header): it changes `business_settings`, a tenant-wide row with no
+  // relationship to this one page's document, so it does NOT go through
+  // `sendOps` / `applyOps` at all — there is no op for "change what every
+  // other page's palette default resolves to". This is the one fetch this
+  // file makes that is not an edit to `doc`.
+  const saveBrandKit = useCallback(async (patch: BrandKitPatch) => {
+    const response = await fetch("/api/admin/businesses/brand", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    })
+    const body = (await response.json().catch(() => null)) as {
+      brand_color?: string | null
+      accent_color?: string | null
+      error?: string
+    } | null
+    if (!response.ok || typeof body?.brand_color !== "string") {
+      throw new Error(body?.error ?? "Could not save your brand colours.")
+    }
+    setBrandKit({ brand: body.brand_color, accent: body.accent_color ?? undefined })
+  }, [])
 
   const handleCanvasSelect = useCallback((selection: CanvasSelection) => {
     setSelected(selection)
@@ -2326,16 +2381,46 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
         </div>
 
         {/* The inspector, beside the canvas. Hidden below lg for the same
-            reason the sidebar is: there is no room for three columns. */}
+            reason the sidebar is: there is no room for three columns.
+
+            TWO PANELS SHARE THIS RAIL: the selected section (SectionInspector)
+            and the whole page's design (ThemePanel). A pill switches between
+            them rather than stacking both, because they answer different
+            questions ("what does THIS section look like" vs. "what does the
+            PAGE look like") and showing both at once would read as one long,
+            unscoped form. */}
         {mode === "edit" && doc !== null && !docInvalid ? (
-          <SectionInspector
-            className={`${tab === "preview" ? "block" : "hidden"} w-80 shrink-0 overflow-y-auto border-l border-border bg-white lg:block`}
-            doc={doc}
-            selectedId={selected?.sectionId ?? null}
-            selectedPath={selected?.path ?? null}
-            onOps={sendOps}
-            busy={busy !== "idle"}
-          />
+          <div
+            className={`${tab === "preview" ? "flex" : "hidden"} w-80 shrink-0 flex-col overflow-hidden border-l border-border bg-white lg:flex`}
+          >
+            <div className="flex shrink-0 gap-1 border-b border-border px-2 py-2">
+              <TabButton active={rightPanel === "section"} onClick={() => setRightPanel("section")}>
+                Section
+              </TabButton>
+              <TabButton active={rightPanel === "theme"} onClick={() => setRightPanel("theme")}>
+                Page design
+              </TabButton>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {rightPanel === "section" ? (
+                <SectionInspector
+                  doc={doc}
+                  selectedId={selected?.sectionId ?? null}
+                  selectedPath={selected?.path ?? null}
+                  onOps={sendOps}
+                  busy={busy !== "idle"}
+                />
+              ) : (
+                <ThemePanel
+                  theme={doc.theme}
+                  onChange={changeTheme}
+                  brandKit={brandKit}
+                  onSaveBrandKit={saveBrandKit}
+                  busy={busy !== "idle"}
+                />
+              )}
+            </div>
+          </div>
         ) : null}
       </div>
 
