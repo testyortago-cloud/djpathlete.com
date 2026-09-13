@@ -18,10 +18,11 @@ import {
   type SectionDoc,
   type SectionDocTheme,
 } from "@/lib/funnels/sections/registry"
-import { renderSection, type RenderContext } from "@/lib/funnels/sections/render"
+import { renderSection, type RenderContext, type BrandKit } from "@/lib/funnels/sections/render"
 import { THEME_CSS, SECTION_CSS } from "@/lib/funnels/sections/styles"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile"
 import { FUNNEL_STEP_HTML_MAX_LENGTH, FUNNEL_STEP_CSS_MAX_LENGTH } from "@/lib/validators/funnel"
+import { PALETTE_TABLE, resolvePalette, type PaletteTokens } from "@/lib/funnels/sections/palettes"
 
 const ROOT = `#${FUNNEL_ROOT_ID}`
 
@@ -57,6 +58,89 @@ const RADIUS_CSS_VALUE: Record<SectionDocTheme["radius"], string> = {
   sharp: "0.125rem",
   soft: "0.6rem",
   round: "1.75rem",
+}
+
+// ---------------------------------------------------------------------------
+// Width, density and font (design-system spec §3). Every value below is
+// keyed by the FULL enum from `sectionDocThemeSchema`, including the value
+// that already matches today's hardcoded output ("normal" width = 72rem,
+// "normal" density = the ×1 no-op multiplier) — so `theme.width ?? "normal"`
+// and `theme.density ?? "normal"` reach the exact same row a doc with no
+// theme keys at all resolves to. That is what keeps an untouched page
+// byte-for-byte unchanged: there is no separate "absent" branch to drift
+// from the "explicitly normal" one.
+// ---------------------------------------------------------------------------
+
+const WIDTH_CSS_VALUE: Record<NonNullable<SectionDocTheme["width"]>, string> = {
+  narrow: "56rem",
+  normal: "72rem",
+  wide: "88rem",
+  full: "100%",
+}
+
+// A unitless multiplier, not a length: styles.ts's three `data-pad` rules
+// each read it via `calc(<today's length> * var(--djp-density, 1))`, so one
+// knob scales all three without restating them here.
+const DENSITY_MULTIPLIER: Record<NonNullable<SectionDocTheme["density"]>, number> = {
+  tight: 0.6,
+  normal: 1,
+  airy: 1.5,
+}
+
+// Heading/body font-family stacks per `theme.font`. Real web fonts are a
+// later concern (nothing here calls `next/font`) — these are CSS-safe stack
+// strings that fall back through system fonts exactly like styles.ts's own
+// hardcoded stacks already do, so choosing an unloaded name degrades to a
+// system font rather than breaking anything.
+const FONT_STACKS: Record<NonNullable<SectionDocTheme["font"]>, { head: string; body: string }> = {
+  athletic: {
+    head: `"Barlow Condensed", "Lexend Exa", system-ui, sans-serif`,
+    body: `Barlow, "Lexend Deca", system-ui, sans-serif`,
+  },
+  editorial: {
+    head: `"Playfair Display", Georgia, "Lexend Exa", serif`,
+    body: `Georgia, "Lexend Deca", serif`,
+  },
+  clean: {
+    head: `Inter, "Lexend Exa", system-ui, sans-serif`,
+    body: `Inter, "Lexend Deca", system-ui, sans-serif`,
+  },
+  bold: {
+    head: `"Archivo Black", "Lexend Exa", system-ui, sans-serif`,
+    body: `Archivo, "Lexend Deca", system-ui, sans-serif`,
+  },
+  technical: {
+    head: `"JetBrains Mono", "Lexend Exa", ui-monospace, monospace`,
+    body: `"IBM Plex Mono", "Lexend Deca", ui-monospace, monospace`,
+  },
+}
+
+// The default a doc with no `theme.font` renders at TODAY: the exact same
+// full fallback chain styles.ts already hardcodes at every `font-family`
+// call site. Setting `--djp-font-head`/`--djp-font-body` to this (rather
+// than leaving them undeclared) is what lets `themeCss` "always emit" these
+// two properties (spec) with zero visual change — styles.ts's own
+// `var(--djp-font-head, <same chain>)` fallback then never has to fire.
+const DEFAULT_FONT_HEAD = `var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif)`
+const DEFAULT_FONT_BODY = `var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif)`
+
+// ---------------------------------------------------------------------------
+// Palette resolution order (design-system spec §3.1): a document's own
+// `theme.palette` outranks the tenant's `brandKit`, which outranks nothing —
+// no palette at all is `null`, and `null` MUST leave `themeCss` emitting no
+// colour override whatsoever. That is the regression guard for every one of
+// today's live pages: they carry a 3-key theme with no `palette`, and their
+// stylesheet's `--primary` etc. come solely from `app/globals.css`'s bare
+// `:root`. Emitting a matching-by-coincidence override here would still be a
+// behaviour change the moment `globals.css` itself changes those tokens.
+// ---------------------------------------------------------------------------
+
+function paletteTokens(theme: SectionDocTheme, brandKit?: BrandKit | null): PaletteTokens | null {
+  if (theme.palette) {
+    return "preset" in theme.palette ? PALETTE_TABLE[theme.palette.preset] : resolvePalette(theme.palette)
+  }
+  if (brandKit?.brand) return resolvePalette(brandKit)
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -130,9 +214,34 @@ function sectionForPage(section: Section, theme: SectionDocTheme): Section {
   return { ...section, style: { ...section.style, tone } }
 }
 
-function themeCss(theme: SectionDocTheme): string {
+function themeCss(theme: SectionDocTheme, brandKit?: BrandKit | null): string {
+  const palette = paletteTokens(theme, brandKit)
+
+  // Colour is a security boundary (palettes.ts, styles.ts): every value below
+  // reaches CSS ONLY as the right-hand side of a custom-property declaration,
+  // never interpolated into a selector or a shorthand. When `palette` is
+  // `null` this block is the empty string — not seven declarations that
+  // happen to match today's defaults, NOTHING — because "no palette" is the
+  // 3-key theme every existing stored document already has, and that case
+  // must render byte-for-byte as it does today.
+  const paletteBlock = palette
+    ? `${ROOT} { --primary: ${palette.brand}; --primary-foreground: ${palette.brandInk}; ` +
+      `--accent: ${palette.accent}; --accent-foreground: ${palette.accentInk}; ` +
+      `--surface: ${palette.surface}; --foreground: ${palette.ink}; --background: ${palette.paper}; }`
+    : ""
+
+  const maxw = WIDTH_CSS_VALUE[theme.width ?? "normal"]
+  const density = DENSITY_MULTIPLIER[theme.density ?? "normal"]
+  const fontHead = theme.font ? FONT_STACKS[theme.font].head : DEFAULT_FONT_HEAD
+  const fontBody = theme.font ? FONT_STACKS[theme.font].body : DEFAULT_FONT_BODY
+
+  const sizingCssLine =
+    `${ROOT} { --djp-radius: ${RADIUS_CSS_VALUE[theme.radius]}; --djp-maxw: ${maxw}; --djp-density: ${density}; ` +
+    `--djp-font-head: ${fontHead}; --djp-font-body: ${fontBody}; }`
+
   return `
-${ROOT} { --djp-radius: ${RADIUS_CSS_VALUE[theme.radius]}; }
+${paletteBlock}
+${sizingCssLine}
 ${ROOT} .djp-page[data-page-tone="dark"] { background: var(--primary); color: var(--primary-foreground); }
 ${ROOT} .djp-page[data-page-accent="primary"] .djp-btn-primary { background: var(--primary); color: var(--primary-foreground); }
 ${ROOT} .djp-page[data-page-accent="primary"] .djp-s[data-tone="dark"] .djp-btn-primary { background: var(--accent); color: var(--accent-foreground); }
@@ -255,7 +364,7 @@ export function reassemble(doc: SectionDoc, ctx: RenderContext = {}): Reassemble
   const usedKinds = SECTION_KINDS.filter((kind) => doc.sections.some((section) => section.kind === kind))
   const usedCss = usedKinds.map((kind) => SECTION_CSS[kind]).join("\n")
 
-  const css = `${THEME_CSS}\n${usedCss}\n${themeCss(doc.theme)}`
+  const css = `${THEME_CSS}\n${usedCss}\n${themeCss(doc.theme, ctx.brandKit)}`
 
   return { html, css, problems: checkSizeCaps(html, css) }
 }

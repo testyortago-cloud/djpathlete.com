@@ -183,17 +183,21 @@ ${ROOT}, ${ROOT} *, ${ROOT} *::before, ${ROOT} *::after { box-sizing: border-box
    future rule in this file remembering not to write margin. The section
    keeps its full-bleed background; only its CONTENT is inset. */
 ${ROOT} .djp-s {
-  font-family: var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif);
+  font-family: var(--djp-font-body, var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif));
   color: var(--foreground);
   padding-block: 3rem;
-  padding-inline: max(1.25rem, calc((100% - 72rem) / 2));
+  padding-inline: max(1.25rem, calc((100% - var(--djp-maxw, 72rem)) / 2));
 }
-${ROOT} .djp-s > * { max-width: 72rem; margin-inline: auto; }
+${ROOT} .djp-s > * { max-width: var(--djp-maxw, 72rem); margin-inline: auto; }
 
-/* pad knob */
-${ROOT} .djp-s[data-pad="tight"] { padding-block: 1.5rem; }
-${ROOT} .djp-s[data-pad="normal"] { padding-block: 3rem; }
-${ROOT} .djp-s[data-pad="roomy"] { padding-block: 5.5rem; }
+/* pad knob — each length scaled by the density multiplier doc.ts's themeCss
+   emits as --djp-density (a unitless x1 no-op when absent, so an untouched
+   page's computed padding is identical to the bare length below). NO
+   BACKTICKS in this comment — see the note above on why one would stop the
+   whole file parsing. */
+${ROOT} .djp-s[data-pad="tight"] { padding-block: calc(1.5rem * var(--djp-density, 1)); }
+${ROOT} .djp-s[data-pad="normal"] { padding-block: calc(3rem * var(--djp-density, 1)); }
+${ROOT} .djp-s[data-pad="roomy"] { padding-block: calc(5.5rem * var(--djp-density, 1)); }
 
 /* align knob */
 ${ROOT} .djp-s[data-align="left"] { text-align: left; }
@@ -349,7 +353,7 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-steps .djp-step-item::before {
 
 /* headline knob */
 ${ROOT} .djp-hd {
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
   font-weight: 700;
   line-height: 1.1;
   color: var(--primary);
@@ -386,7 +390,7 @@ ${ROOT} .djp-btn {
   gap: 0.4rem;
   padding: 0.75rem 1.5rem;
   border-radius: var(--djp-radius, 0.6rem);
-  font-family: var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif);
+  font-family: var(--djp-font-body, var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif));
   font-weight: 600;
   text-decoration: none;
   border: 2px solid transparent;
@@ -496,7 +500,7 @@ ${ROOT} .djp-s-bullets .djp-bullets-list {
 }
 ${ROOT} .djp-s-bullets .djp-bullet-item { display: flex; gap: 0.85rem; align-items: flex-start; }
 ${ROOT} .djp-s-bullets .djp-bullet-title {
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
   font-size: 1.05rem;
   margin: 0 0 0.25rem;
 }
@@ -554,11 +558,11 @@ ${ROOT} .djp-s-steps .djp-step-item::before {
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
 ${ROOT} .djp-s-steps .djp-step-title {
   margin: 0 0 0.25rem;
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
   font-size: 1.05rem;
 }
 ${ROOT} .djp-s-steps .djp-step-text { margin: 0; color: var(--muted-foreground); font-size: 0.95rem; }
@@ -629,7 +633,7 @@ ${ROOT} .djp-s-pricing .djp-plan {
 ${ROOT} .djp-s-pricing .djp-plan-highlight { border-color: var(--accent); }
 ${ROOT} .djp-s-pricing .djp-plan-name {
   margin: 0;
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
 ${ROOT} .djp-s-pricing .djp-plan-price { margin: 0; font-size: 2rem; font-weight: 700; color: var(--primary); }
 ${ROOT} .djp-s-pricing .djp-plan-cadence {
@@ -670,7 +674,7 @@ ${ROOT} .djp-s-faq .djp-faq-item { border-bottom: 1px solid var(--surface); padd
 ${ROOT} .djp-s-faq .djp-faq-q {
   margin: 0 0 0.4rem;
   font-weight: 700;
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
 ${ROOT} .djp-s-faq .djp-faq-a { margin: 0; color: var(--muted-foreground); }
 
@@ -816,7 +820,7 @@ ${ROOT} .djp-form .djp-field[data-djp-field-type="checkbox"] .djp-control {
 }
 
 ${ROOT} .djp-form .djp-field-label {
-  font-family: var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif);
+  font-family: var(--djp-font-body, var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif));
   font-size: 0.9rem;
   font-weight: 600;
   line-height: 1.3;
@@ -829,7 +833,7 @@ ${ROOT} .djp-form .djp-control {
   box-sizing: border-box;
   min-height: 2.9rem;
   padding: 0.7rem 0.9rem;
-  font-family: var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif);
+  font-family: var(--djp-font-body, var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif));
   font-size: 1rem;
   line-height: 1.4;
   color: var(--foreground);
@@ -1036,7 +1040,7 @@ ${ROOT} .djp-s-footer .djp-footer-inner { display: flex; flex-direction: column;
 ${ROOT} .djp-s-footer .djp-footer-business {
   margin: 0;
   font-weight: 700;
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
 ${ROOT} .djp-s-footer .djp-footer-lines { display: flex; flex-direction: column; gap: 0.2rem; }
 ${ROOT} .djp-s-footer .djp-footer-line { margin: 0; font-size: 0.9rem; color: var(--muted-foreground); }
@@ -1056,7 +1060,7 @@ ${ROOT} .djp-s-proof .djp-proof-list {
 ${ROOT} .djp-s-proof[data-align="center"] .djp-proof-list { justify-content: center; }
 ${ROOT} .djp-s-proof .djp-proof-item { flex: 0 1 auto; }
 ${ROOT} .djp-s-proof .djp-proof-value {
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
   font-size: 1.65rem;
   font-weight: 700;
   line-height: 1.1;
@@ -1154,7 +1158,7 @@ ${ROOT} .djp-s-quiz .djp-quiz-prompt {
   font-size: 1.375rem;
   line-height: 1.3;
   margin: 0 0 1.25rem;
-  font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);
+  font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
 ${ROOT} .djp-s-quiz .djp-quiz-help { font-size: 0.9375rem; color: var(--muted-foreground); margin: -0.75rem 0 1.25rem; }
 ${ROOT} .djp-s-quiz .djp-quiz-options {

@@ -75,6 +75,17 @@ export function escapeHtml(value: string): string {
 // href away with zero warning.
 // ---------------------------------------------------------------------------
 
+/**
+ * The tenant-level colour identity a business sets once (Settings, not per
+ * page). Deliberately just two colours, the same shape `resolvePalette`
+ * (palettes.ts) takes as input — a document's own `theme.palette` always
+ * outranks this when both are present; see `paletteTokens` in doc.ts.
+ */
+export interface BrandKit {
+  brand: string
+  accent?: string
+}
+
 export interface RenderContext {
   /** e.g. "/go/summer-camp" — no trailing slash. */
   funnelBasePath?: string
@@ -86,6 +97,13 @@ export interface RenderContext {
    * identity between `{}` and `{ editable: false }` for all ten kinds.
    */
   editable?: boolean
+  /**
+   * The tenant's brand kit, used by `doc.ts`'s `themeCss` as the palette
+   * fallback when the document itself carries no `theme.palette`. Unused by
+   * `renderSection` itself — threaded through only because `RenderContext` is
+   * the one bag of caller-supplied context `reassemble` already has.
+   */
+  brandKit?: BrandKit | null
 }
 
 // ---------------------------------------------------------------------------

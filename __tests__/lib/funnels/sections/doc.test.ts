@@ -19,6 +19,7 @@ import {
   type SectionDocProblem,
 } from "@/lib/funnels/sections/doc"
 import { FUNNEL_STEP_HTML_MAX_LENGTH, FUNNEL_STEP_CSS_MAX_LENGTH } from "@/lib/validators/funnel"
+import { PALETTE_TABLE } from "@/lib/funnels/sections/palettes"
 
 const urlCta = { label: "Learn more", target: { kind: "url" as const, href: "/thanks" } }
 const bookingCta = { label: "Book a call", target: { kind: "booking" as const } }
@@ -373,5 +374,97 @@ describe("checkSizeCaps — publish caps enforced at draft time", () => {
       "a".repeat(FUNNEL_STEP_CSS_MAX_LENGTH + 1),
     )
     expect(problems.map((p) => p.code).sort()).toEqual(["css_too_large", "html_too_large"])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 4: palette, width, density and font reaching the emitted CSS.
+// ---------------------------------------------------------------------------
+
+const themeDoc = (theme: Record<string, unknown>) =>
+  ({
+    v: 1,
+    engine: "sections",
+    theme: { tone: "light", accent: "accent", radius: "soft", ...theme },
+    sections: [
+      {
+        id: "hero",
+        kind: "hero",
+        variant: "centered",
+        style: {},
+        props: { headline: "Get strong", primaryCta: { label: "Start", target: { kind: "booking" } } },
+      },
+    ],
+  }) as never
+
+describe("palette resolution order", () => {
+  it("uses the document's own palette when it has one", () => {
+    const css = reassemble(themeDoc({ palette: { preset: "ember" } })).css
+    expect(css).toContain(`--primary: ${PALETTE_TABLE.ember.brand}`)
+  })
+
+  it("falls back to the tenant brand kit when the document has none", () => {
+    const css = reassemble(themeDoc({}), { brandKit: { brand: "#6d28d9" } } as never).css
+    expect(css).toContain("--primary: #6d28d9")
+  })
+
+  it("a document palette outranks the tenant brand kit", () => {
+    const css = reassemble(themeDoc({ palette: { preset: "ocean" } }), {
+      brandKit: { brand: "#6d28d9" },
+    } as never).css
+    expect(css).toContain(`--primary: ${PALETTE_TABLE.ocean.brand}`)
+    expect(css).not.toContain("--primary: #6d28d9")
+  })
+
+  // The no-regression guard: an untouched page must render exactly as it
+  // does today.
+  it("emits no palette override at all when neither is present", () => {
+    expect(reassemble(themeDoc({})).css).not.toMatch(/--primary:/)
+  })
+})
+
+describe("palette values reach CSS only as custom properties", () => {
+  it("never interpolates a palette value into a selector", () => {
+    const css = reassemble(themeDoc({ palette: { brand: "#6d28d9" } })).css
+    for (const line of css.split("\n")) {
+      const brace = line.indexOf("{")
+      const selector = brace === -1 ? line : line.slice(0, brace)
+      expect(selector, line).not.toContain("#6d28d9")
+    }
+  })
+})
+
+describe("width, density and font", () => {
+  it("narrow and wide change the emitted max width", () => {
+    expect(reassemble(themeDoc({ width: "narrow" })).css).toContain("--djp-maxw: 56rem")
+    expect(reassemble(themeDoc({ width: "wide" })).css).toContain("--djp-maxw: 88rem")
+  })
+
+  it("defaults to today's 72rem when width is absent", () => {
+    expect(reassemble(themeDoc({})).css).toContain("--djp-maxw: 72rem")
+  })
+
+  it("density scales the padding ramp", () => {
+    expect(reassemble(themeDoc({ density: "airy" })).css).toContain("--djp-density")
+    expect(reassemble(themeDoc({ density: "airy" })).css).not.toBe(reassemble(themeDoc({ density: "tight" })).css)
+  })
+
+  it("font swaps the heading and body stacks", () => {
+    const a = reassemble(themeDoc({ font: "editorial" })).css
+    const b = reassemble(themeDoc({ font: "technical" })).css
+    expect(a).toContain("--djp-font-head")
+    expect(a).not.toBe(b)
+  })
+})
+
+describe("two different themes produce two different stylesheets", () => {
+  it("is the whole point of the build", () => {
+    const a = reassemble(
+      themeDoc({ palette: { preset: "ember" }, font: "bold", width: "narrow", density: "tight" }),
+    ).css
+    const b = reassemble(
+      themeDoc({ palette: { preset: "ocean" }, font: "editorial", width: "wide", density: "airy" }),
+    ).css
+    expect(a).not.toBe(b)
   })
 })

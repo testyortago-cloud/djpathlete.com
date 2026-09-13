@@ -132,9 +132,17 @@ describe("THEME_CSS + SECTION_CSS", () => {
     expect(THEME_CSS).toContain(`.djp-ic-${icon} { -webkit-mask-image: url("data:image/svg+xml,`)
   })
 
+  // The chain now sits one level deeper than the literal these two lines used
+  // to check for: `--djp-font-head`/`--djp-font-body` (design-system spec §3,
+  // wired in doc.ts's themeCss) are the OUTERMOST var(), with this exact
+  // fallback chain preserved as their default — so a doc with no `theme.font`
+  // still resolves the font exactly as before.
   it("uses the documented font fallback chain, never assuming @theme inline vars resolve", () => {
     expect(THEME_CSS).toContain(
-      'font-family: var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif);',
+      'font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));',
+    )
+    expect(THEME_CSS).toContain(
+      'font-family: var(--djp-font-body, var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif));',
     )
   })
 })
