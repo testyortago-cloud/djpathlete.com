@@ -32,6 +32,35 @@ describe("PALETTE_TABLE", () => {
       expect(contrastRatio(p.accentInk, p.accent), `${name}: text on accent band`).toBeGreaterThanOrEqual(4.5)
     }
   })
+  // THE POINT OF *TWELVE* PRESETS. Every row is `resolvePalette(seed)`, so the
+  // AA test above can only fail if `resolvePalette` itself is broken — it says
+  // nothing about whether two SEEDS picked the same colour under different
+  // names. "12 presets" that are secretly 3 colours is the exact bug this
+  // whole build exists to fix, wearing a new hat. Plain RGB distance is not
+  // good enough here (it calls #000080 and #008000 far apart when they read
+  // as similar dark colours to a person) so this measures perceptual distance
+  // — CIE76 ΔE over CIE Lab.
+  //
+  // Threshold picked by MEASURING the actual twelve `brand` seeds: the
+  // closest real pair is `sand` (#b45309) / `clay` (#9a3412) at ΔE ≈ 16.82.
+  // 15 sits just below that with a margin for floating point, so it still
+  // catches a genuine near-collision without being tripped by two
+  // legitimately-close-but-distinct earth tones. (`steel` used to collide
+  // with `slate` at ΔE ≈ 8.6 — same Tailwind slate scale, two shades of one
+  // colour — which is why `steel`'s seed was changed rather than the
+  // threshold being lowered to fit it.)
+  it("keeps every preset's brand colour perceptually distinct from every other", () => {
+    const MIN_DELTA_E = 15
+    const names = Object.keys(PALETTE_TABLE)
+    for (let i = 0; i < names.length; i++) {
+      for (let j = i + 1; j < names.length; j++) {
+        const a = names[i]
+        const b = names[j]
+        const delta = deltaE76(PALETTE_TABLE[a as keyof typeof PALETTE_TABLE].brand, PALETTE_TABLE[b as keyof typeof PALETTE_TABLE].brand)
+        expect(delta, `${a} vs ${b}`).toBeGreaterThanOrEqual(MIN_DELTA_E)
+      }
+    }
+  })
 })
 
 describe("resolvePalette", () => {
@@ -68,7 +97,61 @@ describe("resolvePalette", () => {
   it("is deterministic", () => {
     expect(resolvePalette({ brand: "#3a7d44" })).toEqual(resolvePalette({ brand: "#3a7d44" }))
   })
+  it("normalises an uppercase input to lowercase output", () => {
+    expect(resolvePalette({ brand: "#6D28D9" }).brand).toBe("#6d28d9")
+  })
 })
+
+// ---------------------------------------------------------------------------
+// CIE76 ΔE over CIE Lab (D65), used only by the distinctness test above. Not
+// exported from the module under test: this is a test-only measuring stick,
+// deliberately independent of anything `palettes.ts` does internally.
+// ---------------------------------------------------------------------------
+
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16)
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff]
+}
+
+function srgbToLinear(channelByte: number): number {
+  const c = channelByte / 255
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+}
+
+function rgbToXyz(r: number, g: number, b: number): [number, number, number] {
+  const R = srgbToLinear(r)
+  const G = srgbToLinear(g)
+  const B = srgbToLinear(b)
+  return [
+    R * 0.4124564 + G * 0.3575761 + B * 0.1804375,
+    R * 0.2126729 + G * 0.7151522 + B * 0.072175,
+    R * 0.0193339 + G * 0.119192 + B * 0.9503041,
+  ]
+}
+
+function xyzToLab(x: number, y: number, z: number): [number, number, number] {
+  const xn = 0.95047
+  const yn = 1.0
+  const zn = 1.08883
+  const delta = 6 / 29
+  const f = (t: number) => (t > delta ** 3 ? Math.cbrt(t) : t / (3 * delta ** 2) + 4 / 29)
+  const fx = f(x / xn)
+  const fy = f(y / yn)
+  const fz = f(z / zn)
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)]
+}
+
+function hexToLab(hex: string): [number, number, number] {
+  const [r, g, b] = hexToRgb(hex)
+  const [x, y, z] = rgbToXyz(r, g, b)
+  return xyzToLab(x, y, z)
+}
+
+function deltaE76(hexA: string, hexB: string): number {
+  const [l1, a1, b1] = hexToLab(hexA)
+  const [l2, a2, b2] = hexToLab(hexB)
+  return Math.sqrt((l1 - l2) ** 2 + (a1 - a2) ** 2 + (b1 - b2) ** 2)
+}
 
 function hslToHex(h: number, s: number, l: number): string {
   const k = (n: number) => (n + h / 30) % 12

@@ -237,10 +237,15 @@ export function resolvePalette(input: { brand: string; accent?: string; mode?: "
   if (input.accent !== undefined) assertHex(input.accent)
   const mode = input.mode ?? "light"
 
-  const brand = input.brand
+  // Normalised to lowercase on the way in: every token this module emits is
+  // documented as lowercase `#rrggbb` (see the `PALETTE_TABLE` hex-shape
+  // test), and `brand`/`accent` are the only two tokens that come from the
+  // caller rather than being derived — an uppercase input would otherwise be
+  // the one way to violate that invariant.
+  const brand = input.brand.toLowerCase()
   const brandInk = pickInk(brand).ink
 
-  const accent = input.accent ?? hueRotate(brand, ACCENT_HUE_ROTATION)
+  const accent = (input.accent ?? hueRotate(brand, ACCENT_HUE_ROTATION)).toLowerCase()
   const accentInk = pickInk(accent).ink
 
   // Light mode: paper is plain white. Dark mode: a near-black, slightly
@@ -280,7 +285,13 @@ const PALETTE_SEEDS: Record<PaletteName, { brand: string; accent?: string; mode?
   clay: { brand: "#9a3412", mode: "light" },
   ember: { brand: "#b91c1c", mode: "dark" },
   ocean: { brand: "#0e7490", mode: "light" },
-  steel: { brand: "#334155", mode: "dark" },
+  // Was "#334155" (Tailwind slate-800) — same hue family as `slate`
+  // ("#475569", slate-600), just a different shade of the SAME colour. That
+  // measured a CIE76 ΔE of only ~8.6 against `slate`, well inside "secretly
+  // the same colour" territory — exactly the bug this palette module exists
+  // to prevent. Moved to a genuinely different hue (a dark teal) rather than
+  // lowering the distinctness threshold to fit the old value.
+  steel: { brand: "#0f5257", mode: "dark" },
   bone: { brand: "#78716c", mode: "light" },
   moss: { brand: "#4d7c0f", mode: "light" },
   plum: { brand: "#6d28d9", mode: "dark" },
