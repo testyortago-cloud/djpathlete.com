@@ -162,6 +162,11 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       name,
       attribution: { gclid, gbraid, wbraid, fbclid },
       businessId,
+      // The same cookie this route already read above for its server-side
+      // gclid lookup — reused, not re-parsed. Without it the contact row's
+      // first_touch_session_id stayed null even here, where the session was
+      // sitting in a local variable the whole time (audit §3.5).
+      attributionSessionId: attrSessionId,
     })
 
     // Lead Engine pipeline (gap #8 phase 1.5, spec

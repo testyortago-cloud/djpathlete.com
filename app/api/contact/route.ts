@@ -5,6 +5,7 @@ import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { sendContactFormEmail, sendContactAutoReply } from "@/lib/email"
 import { withAudit } from "@/lib/audit/with-audit"
 import { captureLead } from "@/lib/lead-engine/capture"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 export const POST = withAudit({ action: "contact.submitted", category: "marketing" }, async (request) => {
@@ -65,7 +66,17 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
     // Join the contact spine. captureLead never throws (lib/lead-engine/capture.ts
     // swallows its own errors), so a contact-write failure here can never
     // change this route's response or the writes/emails below.
-    await captureLead({ source: "contact_form", email, name, businessId })
+    // `attributionSessionId` is the visitor's djp_attr cookie (audit §3.5):
+    // proxy.ts stamps it on every tagged landing and every /go funnel landing,
+    // and passing it here is what lets the contact row carry a
+    // first_touch_session_id, so the campaign behind this lead stays knowable.
+    await captureLead({
+      source: "contact_form",
+      email,
+      name,
+      businessId,
+      attributionSessionId: parseAttrCookie(request.headers.get("cookie")),
+    })
 
     // Find all admin users to notify
     const { data: admins, error: adminsError } = await supabase.from("users").select("id").eq("role", "admin")

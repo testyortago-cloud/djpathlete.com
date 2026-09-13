@@ -71,6 +71,7 @@ import { NextResponse } from "next/server"
 import { getSetting } from "@/lib/db/system-settings"
 import { countRecentConversationsByIp, getConversation, markCaptured } from "@/lib/db/chat"
 import { captureLead } from "@/lib/lead-engine/capture"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { recordAudit } from "@/lib/audit/record"
@@ -270,6 +271,10 @@ export async function POST(request: Request) {
     // here would put the lead under the wrong coach the moment a second one
     // exists.
     businessId: conversation.business_id,
+    // The visitor's djp_attr cookie (audit §3.5). The conversation row's own
+    // `attribution_session_id` goes into metadata below as it always has —
+    // this is the spine column, read from the request in front of us.
+    attributionSessionId: parseAttrCookie(request.headers.get("cookie")),
     metadata: {
       chat_conversation_id: conversationId,
       landing_path: conversation.landing_path,

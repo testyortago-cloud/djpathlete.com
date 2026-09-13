@@ -133,7 +133,7 @@ async function findMatchCandidates(
   if (email) {
     const { data, error } = await supabase
       .from("contacts")
-      .select("id,email,phone_e164,created_at")
+      .select("id,email,phone_e164,created_at,first_touch_session_id")
       .eq("business_id", businessId)
       .eq("email", email)
     if (error) throw error
@@ -143,7 +143,7 @@ async function findMatchCandidates(
   if (phone) {
     const { data, error } = await supabase
       .from("contacts")
-      .select("id,email,phone_e164,created_at")
+      .select("id,email,phone_e164,created_at,first_touch_session_id")
       .eq("business_id", businessId)
       .eq("phone_e164", phone)
     if (error) throw error
@@ -163,6 +163,32 @@ async function updateContact(
 ) {
   const { error } = await supabase.from("contacts").update(patch).eq("id", contactId)
   if (error) throw error
+}
+
+/**
+ * FIRST TOUCH WINS. The session that brought this person in the first time is
+ * the one that gets credit for whatever they eventually buy, so this patch
+ * only ever FILLS a null — never replaces a session already on file, which
+ * would re-credit the latest visit and quietly rewrite the contact's history.
+ *
+ * It exists at all because the column used to be written on the CREATE branch
+ * only: someone whose contact row predates their first stamped session (or
+ * who first arrived organically, before /go landings earned a cookie) stayed
+ * null forever, since every later submission takes the update or merge branch.
+ * On production that was 0 of 170 contacts linked to a session
+ * (audit 2026-09-13 §3.5).
+ *
+ * `existingSessionId` is "the session this person already had before this
+ * request", which on the merge path means EITHER of the two rows being merged
+ * — see the caller.
+ */
+function firstTouchSessionPatch(
+  existingSessionId: string | null | undefined,
+  attributionSessionId: string | null | undefined,
+): Record<string, unknown> {
+  if (existingSessionId != null) return {}
+  if (!attributionSessionId) return {}
+  return { first_touch_session_id: attributionSessionId }
 }
 
 export type IdentifierConflict = { field: "email" | "phone"; submitted: string; existing: string }
@@ -271,6 +297,7 @@ export async function upsertContactIdentity(input: UpsertContactIdentityInput): 
     identifierConflicts = built.conflicts
     await updateContact(supabase, contactId, {
       ...built.patch,
+      ...firstTouchSessionPatch(existing?.first_touch_session_id, input.attributionSessionId),
       name: input.name ?? undefined,
       updated_at: new Date().toISOString(),
     })
@@ -280,11 +307,24 @@ export async function upsertContactIdentity(input: UpsertContactIdentityInput): 
     // Pre-merge candidates already include the survivor's current identifier
     // values; the merge itself never touches them, so this lookup stays valid.
     const existing = found.find((c) => c.id === contactId) ?? null
+    const mergedCandidate = found.find((c) => c.id === decision.mergedId) ?? null
     await mergeContacts(decision.survivorId, decision.mergedId, businessId)
     const built = buildIdentifierPatch(existing, email, phone)
     identifierConflicts = built.conflicts
     await updateContact(supabase, contactId, {
       ...built.patch,
+      // Same first-touch rule as the update branch, but read against BOTH
+      // pre-merge rows. `merge_contacts` (migration 00238) does write this
+      // column: when the loser has a session the survivor lacks, it moves the
+      // loser's over, because first touch must be the EARLIER of the two. So
+      // the survivor's own pre-merge null does not mean "this person has no
+      // session" — it may mean the RPC just filled it, moments ago, with a
+      // truer one than the session in front of us. Backfill only when neither
+      // row had one.
+      ...firstTouchSessionPatch(
+        existing?.first_touch_session_id ?? mergedCandidate?.first_touch_session_id,
+        input.attributionSessionId,
+      ),
       name: input.name ?? undefined,
       updated_at: new Date().toISOString(),
     })

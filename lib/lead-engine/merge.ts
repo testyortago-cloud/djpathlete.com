@@ -10,6 +10,14 @@ export type MatchCandidate = {
   email: string | null
   phone_e164: string | null
   created_at: string
+  /**
+   * Not read by decideMerge — it rides along so the caller
+   * (`upsertContactIdentity`) can tell whether the contact it is about to
+   * update ALREADY has a first-touch session before backfilling one.
+   * Required rather than optional on purpose: a query that forgets to select
+   * it would otherwise read as "no session on file" and overwrite a real one.
+   */
+  first_touch_session_id: string | null
 }
 
 export type MergeDecision =

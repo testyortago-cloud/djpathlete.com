@@ -10,6 +10,22 @@ function clip(s: string | null | undefined, max: number): string | undefined {
 }
 
 /**
+ * The landing_url we record for a visit: origin + pathname, with the query
+ * string and fragment dropped (they carry the tracking params themselves, and
+ * often a session's worth of personal detail besides), clipped to the 2000
+ * chars the Zod schema allows.
+ *
+ * Exported because proxy.ts needs exactly this string for an ORGANIC /go
+ * landing, where `extractTrackingParamsFromUrl` below deliberately leaves
+ * landing_url unset (no tracking param was present to hang it off). The
+ * middleware calling this rather than re-doing `origin + pathname` by hand is
+ * what stops the two clips drifting apart.
+ */
+export function landingUrlFor(url: URL): string {
+  return (url.origin + url.pathname).slice(0, MAX_URL_LEN)
+}
+
+/**
  * Pull tracking params out of a URL's query string. Truncates oversize values
  * to 200 chars (Zod schema enforces the same).
  */
@@ -21,7 +37,7 @@ export function extractTrackingParamsFromUrl(url: URL): TrackingParams {
   }
   // landing_url = origin + pathname (no query/fragment), only set if any tracking param is present
   if (Object.keys(out).length > 0) {
-    out.landing_url = clip(url.origin + url.pathname, MAX_URL_LEN)
+    out.landing_url = landingUrlFor(url)
   }
   return out
 }

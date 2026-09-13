@@ -43,6 +43,20 @@ export type CaptureLeadInput = {
    * here is how a coach's lead would silently file under the platform.
    */
   businessId: string
+  /**
+   * The visitor's djp_attr session, parsed from the request's own Cookie
+   * header by the caller (`parseAttrCookie`, lib/marketing/cookies.ts).
+   *
+   * The route parses it rather than this function, because only the route has
+   * the request: captureLead is also reached from places with no browser at
+   * all (the Stripe webhook), where there is legitimately no cookie to read
+   * and inventing one would be worse than a null. Carried through to
+   * `RecordContactEventInput.attributionSessionId`, which has always had the
+   * field — until now nothing outside the funnel submit route ever filled it,
+   * so every newsletter/contact/inquiry/chat/shop/event lead joined the spine
+   * with no session at all (audit 2026-09-13 §3.5).
+   */
+  attributionSessionId?: string | null
   attribution?: {
     gclid?: string | null
     gbraid?: string | null
@@ -75,6 +89,7 @@ export async function captureLead(input: CaptureLeadInput): Promise<string | nul
       name: input.name,
       source: input.source,
       businessId: input.businessId,
+      attributionSessionId: input.attributionSessionId,
       metadata: { ...(input.metadata ?? {}), ...(input.attribution ?? {}) },
     })
     return contactId

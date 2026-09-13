@@ -4,6 +4,7 @@ import { NextRequest } from "next/server"
 const mocks = vi.hoisted(() => ({
   addSubscriberWithAttribution: vi.fn(),
   ghlCreateContact: vi.fn(),
+  captureLead: vi.fn(),
 }))
 
 vi.mock("@/lib/db/newsletter", () => ({
@@ -11,6 +12,13 @@ vi.mock("@/lib/db/newsletter", () => ({
   addSubscriber: vi.fn(),
 }))
 vi.mock("@/lib/ghl", () => ({ ghlCreateContact: mocks.ghlCreateContact }))
+// Partial mock: the route imports NEWSLETTER_CONSENT_WORDING from the same
+// module and the real constant is what the consent test below quotes, so only
+// captureLead is replaced.
+vi.mock("@/lib/lead-engine/capture", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/lead-engine/capture")>()
+  return { ...actual, captureLead: mocks.captureLead }
+})
 // The route resolves its tenant from the request's Host through the ONE Host
 // boundary (lib/tenancy/public.ts). Mocked to a sentinel that is not the
 // platform's, so a route that hard-codes platformBusinessId() cannot pass.
@@ -36,6 +44,7 @@ describe("POST /api/newsletter — attribution capture", () => {
     vi.clearAllMocks()
     mocks.addSubscriberWithAttribution.mockResolvedValue({ subscriber_id: "sub-1" })
     mocks.ghlCreateContact.mockResolvedValue(undefined)
+    mocks.captureLead.mockResolvedValue("contact-1")
   })
 
   it("400 on invalid email", async () => {
@@ -72,5 +81,24 @@ describe("POST /api/newsletter — attribution capture", () => {
     expect(mocks.addSubscriberWithAttribution).toHaveBeenCalledWith(
       expect.objectContaining({ consent_marketing: false }),
     )
+  })
+
+  it("carries the djp_attr session id into the contact spine", async () => {
+    // MUTANT KILLED: dropping `attributionSessionId` from this route's
+    // captureLead call. The newsletter row already stored the session
+    // (addSubscriberWithAttribution above); the CONTACT did not, which is the
+    // caller-side half of audit §3.5.
+    await POST(jsonRequest({ email: "a@b.com", consent_marketing: true }, "djp_attr=abc123; foo=bar"), {
+      params: Promise.resolve({}),
+    })
+    expect(mocks.captureLead).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "newsletter", attributionSessionId: "abc123" }),
+    )
+  })
+
+  it("passes a null session when there is no cookie, rather than omitting the field", async () => {
+    await POST(jsonRequest({ email: "a@b.com", consent_marketing: true }), { params: Promise.resolve({}) })
+    const arg = mocks.captureLead.mock.calls[0][0] as { attributionSessionId?: string | null }
+    expect(arg.attributionSessionId ?? null).toBeNull()
   })
 })

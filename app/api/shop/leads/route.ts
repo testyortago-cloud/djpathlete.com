@@ -9,6 +9,7 @@ import { isShopDigitalEnabled } from "@/lib/shop/feature-flag"
 import { rateLimit } from "@/lib/shop/rate-limit"
 import { recordAudit } from "@/lib/audit/record"
 import { captureLead } from "@/lib/lead-engine/capture"
+import { parseAttrCookie } from "@/lib/marketing/cookies"
 import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 export async function POST(req: Request) {
@@ -50,7 +51,15 @@ export async function POST(req: Request) {
   // this can never change what happens next, including a later 502 from the
   // download email. The delivery is transactional, not marketing consent,
   // so no consent row is written here.
-  await captureLead({ source: "lead_magnet", email, metadata: { product_id }, businessId })
+  // `attributionSessionId` is the visitor's djp_attr cookie (audit §3.5), so
+  // the contact row can carry a first_touch_session_id.
+  await captureLead({
+    source: "lead_magnet",
+    email,
+    metadata: { product_id },
+    businessId,
+    attributionSessionId: parseAttrCookie(req.headers.get("cookie")),
+  })
 
   try {
     await sendFreeDownloadEmail({

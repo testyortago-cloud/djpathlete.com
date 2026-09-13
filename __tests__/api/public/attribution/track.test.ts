@@ -39,9 +39,29 @@ describe("POST /api/public/attribution/track", () => {
     expect(res.status).toBe(400)
   })
 
-  it("400 when no tracking param is present", async () => {
+  it("400 when the body carries neither a tracking param NOR a landing_url", async () => {
+    // MUTANT KILLED: dropping the guard entirely. A body with no tracking key
+    // and no landing_url says nothing about where the visitor came from, so
+    // writing a row for it would be an empty attribution record.
     const res = await POST(jsonRequest({ session_id: "abc12345" }))
     expect(res.status).toBe(400)
+    expect(mocks.upsertAttributionBySession).not.toHaveBeenCalled()
+  })
+
+  it("204 and writes the row for a landing-only body (the organic /go visitor)", async () => {
+    // MUTANT KILLED: restoring `if (!hasAnyTrackingParam(params))` without the
+    // `&& !params.landing_url` half. This is the exact body proxy.ts now posts
+    // for an untagged /go landing (audit §3.5); under the old guard it 400'd,
+    // which is the second half of why 0 of 170 production contacts had a
+    // session — the cookie fix alone would still have written no row.
+    const res = await POST(
+      jsonRequest({ session_id: "abc12345", landing_url: "https://x.example/go/a" }),
+    )
+    expect(res.status).toBe(204)
+    expect(mocks.upsertAttributionBySession).toHaveBeenCalledWith(
+      "abc12345",
+      expect.objectContaining({ landing_url: "https://x.example/go/a" }),
+    )
   })
 
   it("204 when valid body with at least one tracking param", async () => {

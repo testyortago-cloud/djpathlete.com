@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
  */
 
 const createLeadInquiryMock = vi.fn()
+const captureLeadMock = vi.fn()
 const getAttributionBySessionMock = vi.fn()
 const claimAttributionMock = vi.fn()
 const usersInsertSingleMock = vi.fn()
@@ -34,6 +35,10 @@ vi.mock("@/lib/email", () => ({
   sendInquiryEmail: vi.fn(),
   sendInquiryAutoReply: vi.fn(),
 }))
+vi.mock("@/lib/lead-engine/capture", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/lead-engine/capture")>()
+  return { ...actual, captureLead: (...a: unknown[]) => captureLeadMock(...a) }
+})
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 vi.mock("@/lib/audit/with-audit", () => ({
   withAudit: (_cfg: unknown, handler: unknown) => handler,
@@ -106,6 +111,7 @@ beforeEach(() => {
   createLeadInquiryMock.mockResolvedValue({ id: "inquiry-1" })
   claimAttributionMock.mockResolvedValue(undefined)
   getAttributionBySessionMock.mockResolvedValue(null)
+  captureLeadMock.mockResolvedValue(null)
 })
 
 describe("POST /api/inquiry — Google Ads attribution", () => {
@@ -207,5 +213,22 @@ describe("POST /api/inquiry — Google Ads attribution", () => {
     const res = await post(VALID_BODY, "djp_attr=sess-abc")
     expect(res.status).toBe(200)
     expect(createLeadInquiryMock).toHaveBeenCalled()
+  })
+
+  it("carries the djp_attr session id into the contact spine", async () => {
+    // MUTANT KILLED: dropping `attributionSessionId` from this route's
+    // captureLead call. This route already parsed the cookie for its own
+    // server-side gclid lookup; the contact spine simply never received it
+    // (audit §3.5), so `contacts.first_touch_session_id` stayed null.
+    await post(VALID_BODY, "djp_attr=sess-abc")
+    expect(captureLeadMock).toHaveBeenCalledWith(
+      expect.objectContaining({ attributionSessionId: "sess-abc" }),
+    )
+  })
+
+  it("passes a null session when there is no cookie", async () => {
+    await post(VALID_BODY)
+    const arg = captureLeadMock.mock.calls[0][0] as { attributionSessionId?: string | null }
+    expect(arg.attributionSessionId ?? null).toBeNull()
   })
 })

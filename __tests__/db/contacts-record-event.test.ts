@@ -356,6 +356,123 @@ describe("recordContactEvent", () => {
     })
   })
 
+  it("backfills first_touch_session_id on an existing contact that has none", async () => {
+    // MUTANT KILLED: leaving the session write on the CREATE branch only
+    // (audit §3.5). Someone who first arrived before /go landings stamped a
+    // cookie — or who arrived organically at all — has a contact row with a
+    // null first_touch_session_id forever, because every later submission
+    // takes the update branch and the update branch never wrote the column.
+    state.rows.push({
+      id: "contact-no-session",
+      business_id: "00000000-0000-0000-0000-000000000001",
+      email: "nosession@example.com",
+      phone_e164: null,
+      first_touch_session_id: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+
+    await recordContactEvent({
+      email: "nosession@example.com",
+      source: "newsletter",
+      attributionSessionId: "sess-2",
+      businessId: "00000000-0000-0000-0000-000000000001",
+    })
+
+    const row = state.rows.find((r) => r.id === "contact-no-session")
+    expect(row.first_touch_session_id).toBe("sess-2")
+  })
+
+  it("never overwrites a first_touch_session_id already on file", async () => {
+    // MUTANT KILLED: dropping the `existing?.first_touch_session_id == null`
+    // guard so the patch always writes. FIRST touch is the whole point of the
+    // column: the session that brought this person in the first time is the
+    // one that gets credit for the eventual sale. Overwriting it on every
+    // later visit would re-credit the last touch and quietly rewrite history.
+    state.rows.push({
+      id: "contact-has-session",
+      business_id: "00000000-0000-0000-0000-000000000001",
+      email: "hassession@example.com",
+      phone_e164: null,
+      first_touch_session_id: "sess-1",
+      created_at: "2020-01-01T00:00:00Z",
+    })
+
+    await recordContactEvent({
+      email: "hassession@example.com",
+      source: "newsletter",
+      attributionSessionId: "sess-2",
+      businessId: "00000000-0000-0000-0000-000000000001",
+    })
+
+    const row = state.rows.find((r) => r.id === "contact-has-session")
+    expect(row.first_touch_session_id).toBe("sess-1")
+  })
+
+  it("leaves a null first_touch_session_id alone when the event carries no session", async () => {
+    // The absence of a session is not a session. Writing null over null is
+    // harmless, but writing an empty string (or "undefined") would not be, and
+    // this pins that the patch simply does not fire.
+    state.rows.push({
+      id: "contact-still-null",
+      business_id: "00000000-0000-0000-0000-000000000001",
+      email: "stillnull@example.com",
+      phone_e164: null,
+      first_touch_session_id: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+
+    await recordContactEvent({
+      email: "stillnull@example.com",
+      source: "newsletter",
+      businessId: "00000000-0000-0000-0000-000000000001",
+    })
+
+    const row = state.rows.find((r) => r.id === "contact-still-null")
+    expect(row.first_touch_session_id).toBeNull()
+  })
+
+  it("does not backfill over a merge, where the LOSER carried the earlier session", async () => {
+    // MUTANT KILLED: reading only the survivor's pre-merge row on the merge
+    // branch (`existing?.first_touch_session_id` alone). `merge_contacts`
+    // (migration 00238) moves the loser's session onto a survivor that has
+    // none, because first touch must be the EARLIER of the two — so a
+    // survivor whose pre-merge value is null may have just been given a truer
+    // session than the one in front of us. Writing ours over it would
+    // misattribute every dollar of this contact's revenue to the wrong
+    // campaign, which is the exact thing that SQL block exists to prevent.
+    state.rows.push({
+      id: "survivor-older",
+      business_id: "00000000-0000-0000-0000-000000000001",
+      email: "merge@example.com",
+      phone_e164: null,
+      first_touch_session_id: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.rows.push({
+      id: "loser-newer",
+      business_id: "00000000-0000-0000-0000-000000000001",
+      email: null,
+      phone_e164: "+16176504548",
+      first_touch_session_id: "sess-loser",
+      created_at: "2021-01-01T00:00:00Z",
+    })
+
+    const out = await recordContactEvent({
+      email: "merge@example.com",
+      phone: "617-650-4548",
+      source: "newsletter",
+      attributionSessionId: "sess-now",
+      businessId: "00000000-0000-0000-0000-000000000001",
+    })
+
+    expect(out.merged).toBe(true)
+    expect(out.contactId).toBe("survivor-older")
+    // The real merge_contacts RPC is stubbed here, so the survivor's column is
+    // still null; what this pins is that OUR patch did not write to it.
+    const row = state.rows.find((r) => r.id === "survivor-older")
+    expect(row.first_touch_session_id).not.toBe("sess-now")
+  })
+
   it("throws when the contact UPDATE fails", async () => {
     state.rows.push({
       id: "existing-2",
