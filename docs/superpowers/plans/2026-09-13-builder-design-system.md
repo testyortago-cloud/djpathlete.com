@@ -246,7 +246,7 @@ describe("theme schema stays backward compatible", () => {
       v: 1, engine: "sections",
       theme: { tone: "dark", accent: "primary", radius: "round" },
       sections: [{ id: "hero", kind: "hero", variant: "centered", style: {},
-                   props: { heading: "Get strong", primaryCta: { label: "Start", target: { kind: "booking" } } } }],
+                   props: { headline: "Get strong", primaryCta: { label: "Start", target: { kind: "booking" } } } }],
     }
     expect(() => sectionDocSchema.parse(doc)).not.toThrow()
   })
@@ -389,7 +389,7 @@ import { PALETTE_TABLE } from "@/lib/funnels/sections/palettes"
 const doc = (theme: Record<string, unknown>) => ({
   v: 1, engine: "sections", theme: { tone: "light", accent: "accent", radius: "soft", ...theme },
   sections: [{ id: "hero", kind: "hero", variant: "centered", style: {},
-               props: { heading: "Get strong", primaryCta: { label: "Start", target: { kind: "booking" } } } }],
+               props: { headline: "Get strong", primaryCta: { label: "Start", target: { kind: "booking" } } } }],
 } as never)
 
 describe("palette resolution order", () => {
@@ -529,7 +529,7 @@ describe("rhythm", () => {
     theme: { tone: "light", accent: "accent", radius: "soft", ...(rhythm ? { rhythm } : {}) },
     sections: ["a","b","c","d","e","f"].map((id) => ({
       id, kind: "bullets", variant: "list", style: {},
-      props: { items: [{ text: "one" }, { text: "two" }] },
+      props: { items: [{ title: "One" }, { title: "Two" }] },
     })),
   } as never)
   const tones = (html: string) => [...html.matchAll(/data-tone="([a-z]+)"/g)].map((m) => m[1])
