@@ -285,7 +285,11 @@ function optionalText(
 
 interface ResolvedStyle {
   headline: "sm" | "md" | "lg" | "xl"
-  align: "left" | "center"
+  // "right" added alongside sectionStyleSchema's widened `align` (design-system
+  // spec §4). The other three new knobs (bg/width/divider/reverse) are
+  // deliberately NOT resolved here yet — that is a later task's job
+  // (resolveStyle + its rendering), and doing it here would collide with it.
+  align: "left" | "center" | "right"
   tone: "default" | "muted" | "accent" | "dark"
   pad: "tight" | "normal" | "roomy"
 }

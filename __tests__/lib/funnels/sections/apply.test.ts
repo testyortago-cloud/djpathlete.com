@@ -19,8 +19,14 @@
 //     of batch order) — so this file pins the ordering the other way
 //     around, which only a correctly-sequential implementation gets right.
 import { describe, it, expect } from "vitest"
-import type { SectionDoc, Section } from "@/lib/funnels/sections/registry"
-import { applyOps, opSchema, SECTION_REWRITE_THRESHOLD, type SectionOp } from "@/lib/funnels/sections/apply"
+import { sectionStyleSchema, type SectionDoc, type Section } from "@/lib/funnels/sections/registry"
+import {
+  applyOps,
+  opSchema,
+  SECTION_REWRITE_THRESHOLD,
+  STYLE_CHANGE_LABEL,
+  type SectionOp,
+} from "@/lib/funnels/sections/apply"
 
 /**
  * The rejection's own text, joined.
@@ -1090,5 +1096,30 @@ describe("applyOps — purity", () => {
     expect(a).toEqual(b)
     // But not the SAME object graph — each call builds its own new doc.
     if (a.ok && b.ok) expect(a.doc).not.toBe(b.doc)
+  })
+})
+
+describe("STYLE_CHANGE_LABEL covers every sectionStyleSchema knob", () => {
+  // A missing key here is a compile error (STYLE_CHANGE_LABEL is typed
+  // Record<keyof SectionStyleKnobs, string>) but ONLY when it's a whole
+  // missing property — tsc caught exactly that once, when the theme/style
+  // widening (2026-09-13) added bg/width/divider/reverse and this map did not
+  // follow. Nothing in the SUITE asserted it, which is why the compile error
+  // reached review before a test did. This test derives the expected key set
+  // from the schema itself (never a hardcoded list) so it keeps working the
+  // next time a knob is added.
+  const expectedKeys = Object.keys(sectionStyleSchema.shape).sort()
+
+  it("has a label for every key sectionStyleSchema declares", () => {
+    const labelKeys = Object.keys(STYLE_CHANGE_LABEL).sort()
+    expect(labelKeys).toEqual(expectedKeys)
+  })
+
+  it("every label is a short, plain, owner-facing phrase — not the field name", () => {
+    for (const key of expectedKeys) {
+      const label = STYLE_CHANGE_LABEL[key as keyof typeof STYLE_CHANGE_LABEL]
+      expect(label, key).toBeTruthy()
+      expect(label.length, key).toBeLessThanOrEqual(30)
+    }
   })
 })

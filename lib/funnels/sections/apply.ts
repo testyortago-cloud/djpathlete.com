@@ -169,11 +169,15 @@ export type ApplyOpsResult = { ok: true; doc: SectionDoc; receipt: DiffReceipt }
 
 // Friendly labels for which style knob changed — matches the plan's own
 // illustrative receipt text ("Hero (headline size)").
-const STYLE_CHANGE_LABEL: Record<keyof SectionStyleKnobs, string> = {
+export const STYLE_CHANGE_LABEL: Record<keyof SectionStyleKnobs, string> = {
   headline: "headline size",
   align: "alignment",
   tone: "tone",
   pad: "padding",
+  bg: "background",
+  width: "width",
+  divider: "divider",
+  reverse: "reversed layout",
 }
 
 function zodIssuesToStrings(error: z.ZodError): string[] {
