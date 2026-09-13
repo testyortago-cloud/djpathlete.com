@@ -275,7 +275,15 @@ const SECTION_COUNT_MAX = 9
 export function auditDoc(doc: SectionDoc): Finding[] {
   const findings: Finding[] = []
   const sections = doc.sections
-  const tones = sections.map((section) => effectiveTone(section, doc.theme))
+  // `index` is passed through so a `theme.rhythm` of `alternating`/`banded`
+  // is seen here exactly as `reassemble` renders it — both iterate
+  // `doc.sections` in the same order, so the same position means the same
+  // section in both places. Without it this auditor would read every
+  // untoned section as the single flat page-tone default while the page
+  // itself alternates or bands them: the same "auditor disagrees with the
+  // renderer" failure `effectiveTone`'s own doc comment warns about, just
+  // triggered by rhythm instead of by page tone.
+  const tones = sections.map((section, index) => effectiveTone(section, doc.theme, index))
 
   // --- tone-run: "the spacing looks off" ---------------------------------
   //

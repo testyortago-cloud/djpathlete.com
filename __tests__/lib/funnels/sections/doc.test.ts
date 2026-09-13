@@ -515,3 +515,38 @@ describe("FONT_STACKS only names fonts this app actually loads, or true system g
     }
   })
 })
+
+describe("rhythm", () => {
+  const page = (rhythm?: string) => ({
+    v: 1, engine: "sections",
+    theme: { tone: "light", accent: "accent", radius: "soft", ...(rhythm ? { rhythm } : {}) },
+    sections: ["a","b","c","d","e","f"].map((id) => ({
+      id, kind: "bullets", variant: "list", style: {},
+      props: { items: [{ title: "One" }, { title: "Two" }] },
+    })),
+  } as never)
+  const tones = (html: string) => [...html.matchAll(/data-tone="([a-z]+)"/g)].map((m) => m[1])
+
+  it("flat is today's behaviour: every untoned section renders default", () => {
+    expect(new Set(tones(reassemble(page("flat")).html))).toEqual(new Set(["default"]))
+  })
+  it("absent rhythm is identical to flat", () => {
+    expect(tones(reassemble(page()).html)).toEqual(tones(reassemble(page("flat")).html))
+  })
+  it("alternating alternates untoned sections", () => {
+    expect(tones(reassemble(page("alternating")).html))
+      .toEqual(["default","muted","default","muted","default","muted"])
+  })
+  it("banded groups the page instead of listing it", () => {
+    const t = tones(reassemble(page("banded")).html)
+    expect(new Set(t).size).toBeGreaterThan(1)
+    expect(t.length).toBe(6)
+  })
+  // An explicit choice outranks a page default. This is already true of theme.tone
+  // and must stay true of rhythm, or the inspector's tone control stops working.
+  it("never overrides a section's own tone", () => {
+    const doc = page("alternating") as never as { sections: { style: Record<string, string> }[] }
+    doc.sections[1].style.tone = "accent"
+    expect(tones(reassemble(doc as never).html)[1]).toBe("accent")
+  })
+})

@@ -250,19 +250,45 @@ function paletteTokens(theme: SectionDocTheme, brandKit?: BrandKit | null): Pale
  * is the failure `ask_the_validator_never_restate_it` names — and here the
  * wrong copy would be silent, because a missing finding looks exactly like a
  * clean page.
+ *
+ * `index` is the section's position in `doc.sections` — optional so every
+ * pre-rhythm caller still compiles and, per `index === undefined` below,
+ * still behaves byte-for-byte as it did before `theme.rhythm` existed.
+ * `theme.rhythm` ("design-system spec" Task 5) governs what a section that
+ * sets NO tone of its own renders as when a POSITION is known: `"flat"` (or
+ * absent) is today's behaviour — every untoned section falls back to the
+ * single page-tone default. `"alternating"` toggles that default with
+ * `"muted"` every other section. `"banded"` does the same but in pairs, so
+ * the page reads as a handful of blocks rather than a strict per-section
+ * checker pattern. An explicit `section.style.tone` (the `own` guard above)
+ * always outranks rhythm, exactly as it already outranks the page tone —
+ * losing that precedence would silently break the inspector's own tone
+ * control the moment a page rhythm was set.
  */
 export function effectiveTone(
   section: Section,
   theme: SectionDocTheme,
+  index?: number,
 ): NonNullable<Section["style"]["tone"]> {
   const own = section.style.tone
   if (own !== undefined && own !== "default") return own
-  return theme.tone === "dark" ? "dark" : "default"
+
+  const pageTone: NonNullable<Section["style"]["tone"]> = theme.tone === "dark" ? "dark" : "default"
+  const rhythm = theme.rhythm ?? "flat"
+  if (rhythm === "flat" || index === undefined) return pageTone
+
+  if (rhythm === "alternating") return index % 2 === 0 ? pageTone : "muted"
+
+  // "banded": pairs of sections share a tone before the next pair flips, so
+  // the page groups into blocks instead of listing alternating rows.
+  const band = Math.floor(index / 2)
+  return band % 2 === 0 ? pageTone : "muted"
 }
 
-function sectionForPage(section: Section, theme: SectionDocTheme): Section {
-  if (theme.tone !== "dark") return section
-  const tone = effectiveTone(section, theme)
+function sectionForPage(section: Section, theme: SectionDocTheme, index?: number): Section {
+  const hasPagePattern = theme.tone === "dark" || (theme.rhythm !== undefined && theme.rhythm !== "flat")
+  if (!hasPagePattern) return section
+  const tone = effectiveTone(section, theme, index)
   if (tone === section.style.tone) return section
   return { ...section, style: { ...section.style, tone } }
 }
@@ -410,7 +436,7 @@ export function reassemble(doc: SectionDoc, ctx: RenderContext = {}): Reassemble
   sectionDocSchema.parse(doc)
 
   const sectionsHtml = doc.sections
-    .map((section) => renderSection(sectionForPage(section, doc.theme), ctx))
+    .map((section, index) => renderSection(sectionForPage(section, doc.theme, index), ctx))
     .join("\n")
   const html = `${pageWrapperOpenTag(doc.theme)}${sectionsHtml}</div>`
 
