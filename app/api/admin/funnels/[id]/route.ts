@@ -25,7 +25,49 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
 }
 
 export const PATCH = withAudit(
-  { action: "funnel.updated", category: "admin_write" },
+  {
+    action: "funnel.updated",
+    category: "admin_write",
+    // AUDIT §4 #12: this row used to carry `target_id null` -- `ctx.params`
+    // only ever had the id, never a name, and a name is what makes a row
+    // findable. Reads the funnel `updateFunnel` just wrote off the RESPONSE,
+    // cloned so the real caller's body is untouched. A refused write (the
+    // 400s above, a 404, a 409) has no `funnel` key in its body, so this
+    // degrades to an id-only target with no label rather than throwing.
+    target: async (_request, ctx, response) => {
+      const { id } = await ctx.params
+      if (!response) return { type: "funnel", id }
+      try {
+        const body = (await response.json()) as { funnel?: { name?: string } }
+        return { type: "funnel", id, ...(body.funnel?.name ? { label: body.funnel.name } : {}) }
+      } catch {
+        return { type: "funnel", id }
+      }
+    },
+    // `fields` reads the ORIGINAL, still-unconsumed request -- the handler
+    // below parses a CLONE of it instead (same split `pipeline/move/route.ts`
+    // uses), so this is the first real read of the request body regardless of
+    // which branch the handler took. `status`/`slug`/`kind` come from the
+    // RESPONSE rather than echoing the request back: a PATCH that only sends
+    // `{name}` should still show the funnel's CURRENT status/slug/kind, and
+    // naming exactly what changed plus what the row looks like afterward is
+    // the whole fix for the unpublish this task exists to make traceable.
+    metadata: async (request, response) => {
+      let fields: string[] = []
+      try {
+        const body = (await request.json()) as Record<string, unknown> | null
+        fields = body && typeof body === "object" ? Object.keys(body) : []
+      } catch {
+        fields = []
+      }
+      try {
+        const body = (await response.json()) as { funnel?: { status?: string; slug?: string; kind?: string } }
+        return { fields, status: body.funnel?.status, slug: body.funnel?.slug, kind: body.funnel?.kind }
+      } catch {
+        return { fields }
+      }
+    },
+  },
   async (request, ctx) => {
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
@@ -33,7 +75,11 @@ export const PATCH = withAudit(
     }
     const { id } = await ctx.params
 
-    const body = await request.json().catch(() => null)
+    // A CLONE: the `metadata` resolver above reads the ORIGINAL request for
+    // which fields the caller asked to change, and a body can only be read
+    // once. Reading the clone here (instead of the original) is what leaves
+    // the original available for that later read.
+    const body = await request.clone().json().catch(() => null)
 
     // `kind` IS SET AT CREATION AND NEVER CHANGES. The Convert-to-funnel
     // control was removed on the owner's ruling that landing pages and
@@ -121,7 +167,35 @@ export const PATCH = withAudit(
 )
 
 export const DELETE = withAudit(
-  { action: "funnel.deleted", category: "admin_write" },
+  {
+    action: "funnel.deleted",
+    category: "admin_write",
+    // AUDIT §4 #12: same defect as PATCH above, one step worse -- `deleteFunnel`
+    // removes the row outright, so there is no ROW LEFT to read a name from
+    // after the fact at all. That is why the handler below now reads it
+    // FIRST and echoes it back in `deleted: {...}`; this resolver reads that
+    // off the response rather than re-querying a row that no longer exists.
+    target: async (_request, ctx, response) => {
+      const { id } = await ctx.params
+      if (!response) return { type: "funnel", id }
+      try {
+        const body = (await response.json()) as { deleted?: { name?: string | null } }
+        return { type: "funnel", id, ...(body.deleted?.name ? { label: body.deleted.name } : {}) }
+      } catch {
+        return { type: "funnel", id }
+      }
+    },
+    metadata: async (_request, response) => {
+      try {
+        const body = (await response.json()) as {
+          deleted?: { slug?: string | null; kind?: string | null; status?: string | null }
+        }
+        return { slug: body.deleted?.slug ?? null, kind: body.deleted?.kind ?? null, status: body.deleted?.status ?? null }
+      } catch {
+        return {}
+      }
+    },
+  },
   async (request, ctx) => {
     const session = await auth()
     if (!session?.user?.id || !(await canAccessAdminPath(session.user))) {
@@ -140,13 +214,18 @@ export const DELETE = withAudit(
 
     const { id } = await ctx.params
     try {
-      // READ THE PAGES FIRST. `funnel_steps.funnel_id` is ON DELETE CASCADE, so
-      // once the funnel row goes its steps go with it -- and the quiz pointer
-      // lives inside those steps' documents. After the delete there is nothing
-      // left to ask.
+      // READ THE ROW, AND ITS PAGES, FIRST. `deleteFunnel` removes the
+      // `funnels` row outright, and `funnel_steps.funnel_id` is ON DELETE
+      // CASCADE, so once it runs there is nothing left to ask -- not the
+      // slug/name/kind/status this route now hands back for the audit trail
+      // (see the `target`/`metadata` resolvers above), and not the quiz
+      // pointer that lives inside the steps' documents.
       //
-      // Degrades to "no quizzes" rather than blocking the delete: a funnel the
-      // owner asked to remove should not survive because one read failed.
+      // Both reads degrade rather than block the delete: a funnel the owner
+      // asked to remove should not survive because one read failed, and an id
+      // that no longer names a row (already deleted, a stale request) simply
+      // falls back to an id-only response/audit row below.
+      const funnel = await getFunnelById(id).catch(() => null)
       const quizUses = await listSteps(id)
         .then(quizUsesInSteps)
         .catch((error) => {
@@ -168,7 +247,16 @@ export const DELETE = withAudit(
       // owner is told what goes before they confirm (see FunnelList).
       if (quizUses.length > 0) await cleanUpOrphanedQuizzes(businessId, quizUses.map((use) => use.quizId))
 
-      return NextResponse.json({ ok: true })
+      return NextResponse.json({
+        ok: true,
+        deleted: {
+          id,
+          slug: funnel?.slug ?? null,
+          name: funnel?.name ?? null,
+          kind: funnel?.kind ?? null,
+          status: funnel?.status ?? null,
+        },
+      })
     } catch (error) {
       console.error("[DELETE /api/admin/funnels/:id]", error)
       return NextResponse.json({ error: "Internal server error" }, { status: 500 })
