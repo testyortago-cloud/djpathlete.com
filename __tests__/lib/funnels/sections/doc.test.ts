@@ -16,6 +16,8 @@ import type { SectionDoc, Section } from "@/lib/funnels/sections/registry"
 import {
   reassemble,
   checkSizeCaps,
+  FONT_STACKS,
+  ALLOWED_FONT_FAMILIES,
   type SectionDocProblem,
 } from "@/lib/funnels/sections/doc"
 import { FUNNEL_STEP_HTML_MAX_LENGTH, FUNNEL_STEP_CSS_MAX_LENGTH } from "@/lib/validators/funnel"
@@ -466,5 +468,50 @@ describe("two different themes produce two different stylesheets", () => {
       themeDoc({ palette: { preset: "ocean" }, font: "editorial", width: "wide", density: "airy" }),
     ).css
     expect(a).not.toBe(b)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// FONT_STACKS must resolve to genuinely different fonts, not just different
+// STRINGS. A stack that names a face this app never loads (e.g. "Playfair
+// Display") silently degrades to whatever generic ends its own chain, so a
+// string-level "these differ" check is not enough — the old five pairings
+// differed as strings too, and four of them rendered identically. These
+// tests check what actually gets resolved: every family named has to be one
+// of the three fonts app/layout.tsx loads, or a real generic/system keyword.
+// ---------------------------------------------------------------------------
+
+function fontFamilyTokens(stack: string): string[] {
+  return stack.split(",").map((token) => token.trim().replace(/^"|"$/g, "").toLowerCase())
+}
+
+describe("FONT_STACKS only names fonts this app actually loads, or true system generics", () => {
+  it("every family in every pairing's head and body stack is on the allowed list", () => {
+    for (const [font, { head, body }] of Object.entries(FONT_STACKS)) {
+      for (const [role, stack] of [
+        ["head", head],
+        ["body", body],
+      ] as const) {
+        for (const token of fontFamilyTokens(stack)) {
+          expect(
+            ALLOWED_FONT_FAMILIES.has(token),
+            `theme.font="${font}" names "${token}" in its ${role} stack, which is not a font this app loads or a recognised generic`,
+          ).toBe(true)
+        }
+      }
+    }
+  })
+
+  it("all five pairings are pairwise distinct — the whole point of the knob", () => {
+    const pairs = Object.entries(FONT_STACKS).map(([font, { head, body }]) => ({
+      font,
+      key: `${head}|${body}`,
+    }))
+    const seen = new Map<string, string>()
+    for (const { font, key } of pairs) {
+      const clashesWith = seen.get(key)
+      expect(clashesWith, `theme.font="${font}" resolves identically to theme.font="${clashesWith}"`).toBeUndefined()
+      seen.set(key, font)
+    }
   })
 })

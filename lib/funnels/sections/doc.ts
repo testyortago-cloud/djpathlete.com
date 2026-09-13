@@ -80,39 +80,92 @@ const WIDTH_CSS_VALUE: Record<NonNullable<SectionDocTheme["width"]>, string> = {
 
 // A unitless multiplier, not a length: styles.ts's three `data-pad` rules
 // each read it via `calc(<today's length> * var(--djp-density, 1))`, so one
-// knob scales all three without restating them here.
+// knob scales all three without restating them here. Values match
+// design-system spec §3.3 (tight ~0.75x, normal = 1, airy ~1.4x) exactly —
+// do not widen this range without writing down what the extreme
+// combinations compute to and why they're still usable, the way this
+// comment now does for the spec's own numbers: tight x tight = 1.125rem,
+// airy x roomy = 7.7rem, both comfortably inside a usable padding range.
 const DENSITY_MULTIPLIER: Record<NonNullable<SectionDocTheme["density"]>, number> = {
-  tight: 0.6,
+  tight: 0.75,
   normal: 1,
-  airy: 1.5,
+  airy: 1.4,
 }
 
-// Heading/body font-family stacks per `theme.font`. Real web fonts are a
-// later concern (nothing here calls `next/font`) — these are CSS-safe stack
-// strings that fall back through system fonts exactly like styles.ts's own
-// hardcoded stacks already do, so choosing an unloaded name degrades to a
-// system font rather than breaking anything.
-const FONT_STACKS: Record<NonNullable<SectionDocTheme["font"]>, { head: string; body: string }> = {
-  athletic: {
-    head: `"Barlow Condensed", "Lexend Exa", system-ui, sans-serif`,
-    body: `Barlow, "Lexend Deca", system-ui, sans-serif`,
-  },
-  editorial: {
-    head: `"Playfair Display", Georgia, "Lexend Exa", serif`,
-    body: `Georgia, "Lexend Deca", serif`,
-  },
-  clean: {
-    head: `Inter, "Lexend Exa", system-ui, sans-serif`,
-    body: `Inter, "Lexend Deca", system-ui, sans-serif`,
-  },
-  bold: {
-    head: `"Archivo Black", "Lexend Exa", system-ui, sans-serif`,
-    body: `Archivo, "Lexend Deca", system-ui, sans-serif`,
-  },
-  technical: {
-    head: `"JetBrains Mono", "Lexend Exa", ui-monospace, monospace`,
-    body: `"IBM Plex Mono", "Lexend Deca", ui-monospace, monospace`,
-  },
+// ---------------------------------------------------------------------------
+// ALLOWED_FONT_FAMILIES — the only families FONT_STACKS (below) may ever
+// name. Three are the exact fonts `app/layout.tsx` loads via
+// `next/font/google` (that file's lines ~11-25): Lexend Exa, Lexend Deca and
+// JetBrains Mono, each stamped as a CSS custom property on `<body>`
+// (`--font-lexend-exa`, `--font-lexend-deca`, `--font-jetbrains-mono`) — the
+// funnel route inherits only the ROOT layout, so these three are the entire
+// font budget any funnel page has, ever. Everything else in this set is a
+// CSS Fonts Level 4 generic/system keyword (`ui-serif`, `ui-sans-serif`,
+// `ui-rounded`, `system-ui`, the four legacy generics) or a condensed
+// display face common enough to already be installed on Windows, macOS or
+// Android — never a face this app would have to download.
+//
+// A family here that ISN'T on this list — "Playfair Display",
+// "Barlow Condensed", "Inter", "Archivo Black" all shipped in an earlier
+// draft of `FONT_STACKS` — costs nothing to type and changes nothing to
+// ship: the browser silently falls through to whatever generic ends that
+// declaration's own chain, so four of that draft's five `theme.font`
+// choices rendered byte-identical to each other. That is this build's own
+// complaint ("why does every page look the same") reappearing inside the
+// feature meant to cure it. `doc.test.ts` asserts every token in every
+// `FONT_STACKS` entry is a member of this set specifically so a name like
+// that can never sneak back in unnoticed.
+// ---------------------------------------------------------------------------
+export const ALLOWED_FONT_FAMILIES = new Set([
+  // the three fonts app/layout.tsx actually loads, both as the CSS variable
+  // next/font stamps and as the literal family name that variable resolves to
+  "var(--font-lexend-exa)",
+  "var(--font-lexend-deca)",
+  "var(--font-jetbrains-mono)",
+  "lexend exa",
+  "lexend deca",
+  "jetbrains mono",
+  // CSS Fonts Level 4 generic/system keywords — resolved by the browser from
+  // whatever is already installed, never a network request
+  "ui-serif",
+  "ui-sans-serif",
+  "ui-monospace",
+  "ui-rounded",
+  "system-ui",
+  "serif",
+  "sans-serif",
+  "monospace",
+  "cursive",
+  "fantasy",
+  // widely pre-installed system faces (Windows/macOS/Android ship these, so
+  // no download is ever triggered even when they resolve rather than fall
+  // through to the generic at the end of their own chain)
+  "georgia",
+  "arial narrow",
+  "helvetica neue condensed",
+  "roboto condensed",
+])
+
+const EXA_CHAIN = `var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif`
+const DECA_CHAIN = `var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif`
+const MONO_CHAIN = `var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, monospace`
+const SERIF_CHAIN = `ui-serif, Georgia, serif`
+const CONDENSED_CHAIN = `"Arial Narrow", "Helvetica Neue Condensed", "Roboto Condensed", ui-sans-serif, sans-serif`
+const ROUNDED_CHAIN = `ui-rounded, system-ui, sans-serif`
+
+// Heading/body font-family stacks per `theme.font`. Every stack is built
+// ONLY from `ALLOWED_FONT_FAMILIES` (design-system spec §3.2: "recombines
+// fonts the page already loads... plus system serif / sans / condensed
+// stacks. No new network request, no CSP change, no font-loading flash") —
+// five DIFFERENT (head, body) pairings, not five different-looking strings
+// that resolve to the same three fonts. `doc.test.ts` checks both: the
+// allowlist membership, and that all five pairings are pairwise distinct.
+export const FONT_STACKS: Record<NonNullable<SectionDocTheme["font"]>, { head: string; body: string }> = {
+  clean: { head: EXA_CHAIN, body: DECA_CHAIN },
+  technical: { head: MONO_CHAIN, body: DECA_CHAIN },
+  bold: { head: CONDENSED_CHAIN, body: DECA_CHAIN },
+  editorial: { head: SERIF_CHAIN, body: SERIF_CHAIN },
+  athletic: { head: ROUNDED_CHAIN, body: MONO_CHAIN },
 }
 
 // The default a doc with no `theme.font` renders at TODAY: the exact same
