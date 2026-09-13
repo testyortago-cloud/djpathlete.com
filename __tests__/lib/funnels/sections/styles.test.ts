@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // __tests__/lib/funnels/sections/styles.test.ts
 //
 // Task 3 widened every section kind's variant list, and the registry now
@@ -200,6 +201,43 @@ describe("item media beyond the hero", () => {
       props: { headline: "Spots are limited", cta: urlCta },
     }
     expect(renderSection(section)).not.toContain("djp-cta-media")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// cta.split structure — review fix (task-7-report.md). renderCtaSection
+// used to emit the headline, the sub and the button as three independent
+// siblings of .djp-cta-inner. djp-v-split's CSS put .djp-cta-inner into a
+// two-up flex row and gave the headline AND the sub their own flex-basis,
+// which produced THREE columns (headline / sub / button) instead of the
+// intended two (copy / button). The fix groups the headline and sub into
+// one .djp-cta-copy wrapper; this pins that grouping so a regression back
+// to independent siblings fails here rather than only looking wrong in a
+// browser.
+// ---------------------------------------------------------------------------
+
+describe("cta markup groups headline and sub into one copy block", () => {
+  it("wraps the headline and sub in .djp-cta-copy, as siblings of the button — not three independent flex items", () => {
+    const html = renderSection({
+      id: "c1",
+      kind: "cta",
+      variant: "split",
+      style: {},
+      props: { headline: "Spots are limited", sub: "Summer camp starts June 1", cta: urlCta },
+    })
+    const root = document.createElement("div")
+    root.innerHTML = html
+    const inner = root.querySelector(".djp-cta-inner")
+    expect(inner).not.toBeNull()
+    // .djp-cta-inner's direct children must be [.djp-cta-copy, <a|span> (the
+    // button)] — exactly two items — never .djp-hd/.djp-sub as direct
+    // children of .djp-cta-inner.
+    const directChildren = Array.from(inner!.children).map((el) => el.className)
+    expect(directChildren).toEqual(["djp-cta-copy", "djp-btn djp-btn-primary"])
+    const copy = inner!.querySelector(":scope > .djp-cta-copy")
+    expect(copy).not.toBeNull()
+    expect(copy!.querySelector(".djp-hd")).not.toBeNull()
+    expect(copy!.querySelector(".djp-sub")).not.toBeNull()
   })
 })
 

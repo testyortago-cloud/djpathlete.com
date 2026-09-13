@@ -345,14 +345,30 @@ ${ROOT} .djp-s[data-tone="dark"] + .djp-s[data-tone="dark"] {
 }
 
 /* TONE CONTRAST PASS — see the block comment above THEME_CSS. Move 1:
-   a panel inside a repainted section LIFTS, it does not switch to --surface. */
+   a panel inside a repainted section LIFTS, it does not switch to --surface.
+
+   Task 7 fix round: proof.djp-v-cards / steps.djp-v-cards / faq.djp-v-cards
+   were added here alongside bullets.djp-v-cards for the same reason —
+   without this, giving those three items a plain var(--surface) background
+   (to match bullets.djp-v-cards, per review) reproduces exactly the
+   collision this pass exists to prevent: on tone="muted" the item paints
+   the SAME token as the section behind it (gone), and on tone="accent"/
+   "dark" the item's inherited text (already forced to the tone's foreground
+   by the --muted-foreground override list below) sits on --surface, which
+   is not in that foreground's READABLE_ON pairing. */
 ${ROOT} .djp-s[data-tone="accent"].djp-s-bullets.djp-v-cards .djp-bullet-item,
+${ROOT} .djp-s[data-tone="accent"].djp-s-proof.djp-v-cards .djp-proof-item,
+${ROOT} .djp-s[data-tone="accent"].djp-s-steps.djp-v-cards .djp-step-item,
+${ROOT} .djp-s[data-tone="accent"].djp-s-faq.djp-v-cards .djp-faq-item,
 ${ROOT} .djp-s[data-tone="accent"] .djp-quote,
 ${ROOT} .djp-s[data-tone="accent"] .djp-plan,
 ${ROOT} .djp-s[data-tone="accent"].djp-s-cta.djp-v-boxed .djp-cta-inner {
   background: color-mix(in oklch, var(--accent-foreground) 12%, transparent);
 }
 ${ROOT} .djp-s[data-tone="dark"].djp-s-bullets.djp-v-cards .djp-bullet-item,
+${ROOT} .djp-s[data-tone="dark"].djp-s-proof.djp-v-cards .djp-proof-item,
+${ROOT} .djp-s[data-tone="dark"].djp-s-steps.djp-v-cards .djp-step-item,
+${ROOT} .djp-s[data-tone="dark"].djp-s-faq.djp-v-cards .djp-faq-item,
 ${ROOT} .djp-s[data-tone="dark"] .djp-quote,
 ${ROOT} .djp-s[data-tone="dark"] .djp-plan,
 ${ROOT} .djp-s[data-tone="dark"].djp-s-cta.djp-v-boxed .djp-cta-inner {
@@ -360,14 +376,17 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-cta.djp-v-boxed .djp-cta-inner {
 }
 
 /* Move 1 for the THIRD repainting tone. The "muted" tone paints the section
-   var(--surface) — the SAME token these five panels paint THEMSELVES — so
-   every card, plan, quote and boxed CTA on a muted section was a shape in its
-   own background's colour: not low-contrast, GONE. It is the accent/dark
+   var(--surface) — the SAME token these panels paint THEMSELVES — so every
+   card, plan, quote and boxed CTA on a muted section was a shape in its own
+   background's colour: not low-contrast, GONE. It is the accent/dark
    collision one pair over, and the same lift fixes it, washed with the
    NEUTRAL pair's foreground because that is the pair a muted section is in.
    (The first tone pass ran its collision check on "accent" and "dark" only,
    which is how this survived it; the suite now runs all four tones.) */
 ${ROOT} .djp-s[data-tone="muted"].djp-s-bullets.djp-v-cards .djp-bullet-item,
+${ROOT} .djp-s[data-tone="muted"].djp-s-proof.djp-v-cards .djp-proof-item,
+${ROOT} .djp-s[data-tone="muted"].djp-s-steps.djp-v-cards .djp-step-item,
+${ROOT} .djp-s[data-tone="muted"].djp-s-faq.djp-v-cards .djp-faq-item,
 ${ROOT} .djp-s[data-tone="muted"] .djp-quote,
 ${ROOT} .djp-s[data-tone="muted"] .djp-plan,
 ${ROOT} .djp-s[data-tone="muted"].djp-s-cta.djp-v-boxed .djp-cta-inner,
@@ -728,10 +747,14 @@ ${ROOT} .djp-s-steps.djp-v-timeline .djp-step-item {
 ${ROOT} .djp-s-steps.djp-v-timeline .djp-step-item::before { left: -1.1rem; width: 2.2rem; height: 2.2rem; }
 ${ROOT} .djp-s-steps.djp-v-timeline .djp-step-item:last-child { border-left-color: transparent; }
 
-/* cards (design-system spec §5.1) — a bordered card per step, the counter
-   badge still overlapping the top-left corner exactly as it does at the
-   base padding-left of 3rem. Border only, no new background. */
+/* cards (design-system spec §5.1) — a bordered, filled card per step, the
+   counter badge still overlapping the top-left corner exactly as it does at
+   the base padding-left of 3rem. Matches bullets.djp-v-cards's own panel
+   (border + var(--surface)), not a bare outline — the tone-contrast pass in
+   THEME_CSS above lists .djp-step-item alongside .djp-bullet-item so this
+   panel lifts on a repainted section exactly the way that one does. */
 ${ROOT} .djp-s-steps.djp-v-cards .djp-step-item {
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--djp-radius, 0.6rem);
   padding: 1.5rem 1.5rem 1.5rem 3.5rem;
@@ -956,11 +979,13 @@ ${ROOT} .djp-s-faq.djp-v-two-col .djp-faq-list {
   gap: 1.5rem 2rem;
 }
 
-/* cards — each question becomes its own bordered card instead of a row
-   separated by a bottom border. */
+/* cards — each question becomes its own bordered, filled card instead of a
+   row separated by a bottom border. Matches bullets.djp-v-cards's own panel
+   (border + var(--surface)); the tone-contrast pass in THEME_CSS lists
+   .djp-faq-item alongside .djp-bullet-item so this panel lifts correctly. */
 ${ROOT} .djp-s-faq.djp-v-cards .djp-faq-item {
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
   border-radius: var(--djp-radius, 0.6rem);
   padding: 1.25rem 1.5rem;
 }
@@ -1328,11 +1353,13 @@ ${ROOT} .djp-s-cta .djp-cta-media {
   border-radius: var(--djp-radius, 0.6rem);
 }
 
-/* split (design-system spec §5.1) — headline/sub on one side, the button on
+/* split (design-system spec §5.1) — headline+sub on one side, the button on
    the other, on wide viewports; wraps to the base stacked column below that.
-   .djp-hd/.djp-sub already reset their own bottom margin here so the two
-   sit flush inside their shared flex item instead of leaving the gap that
-   margin exists for in the stacked layout. */
+   render.ts groups the headline and sub into ONE element, .djp-cta-copy —
+   without that wrapper, the headline, the sub AND the button are three
+   independent flex items, so a naive two-up rule reads as three columns
+   (headline / sub / button) rather than copy-block / button. This rule
+   targets that wrapper, not .djp-hd/.djp-sub directly. */
 ${ROOT} .djp-s-cta.djp-v-split .djp-cta-inner {
   flex-direction: row;
   flex-wrap: wrap;
@@ -1340,11 +1367,8 @@ ${ROOT} .djp-s-cta.djp-v-split .djp-cta-inner {
   justify-content: space-between;
   gap: 1rem 2rem;
 }
-${ROOT} .djp-s-cta.djp-v-split .djp-cta-inner > .djp-hd,
-${ROOT} .djp-s-cta.djp-v-split .djp-cta-inner > .djp-sub {
+${ROOT} .djp-s-cta.djp-v-split .djp-cta-inner > .djp-cta-copy {
   flex: 1 1 20rem;
-  margin: 0;
-  max-width: none;
 }
 
 /* minimal — the smallest possible footprint: a smaller headline, a tighter
@@ -1422,11 +1446,14 @@ ${ROOT} .djp-s[data-tone="dark"].djp-s-proof.djp-v-stats .djp-proof-item {
 ${ROOT} .djp-s[data-tone="accent"].djp-s-proof.djp-v-stats .djp-proof-item:first-child,
 ${ROOT} .djp-s[data-tone="dark"].djp-s-proof.djp-v-stats .djp-proof-item:first-child { border-left: 0; }
 
-/* cards (design-system spec §5.1) — each stat becomes its own bordered box
-   instead of a run of inline items, for a strip that wants to read as
-   discrete credentials rather than one continuous line. Border only, no
-   new background. */
+/* cards (design-system spec §5.1) — each stat becomes its own bordered,
+   filled box instead of a run of inline items, for a strip that wants to
+   read as discrete credentials rather than one continuous line. Matches
+   bullets.djp-v-cards's own panel (border + var(--surface)); the
+   tone-contrast pass in THEME_CSS lists .djp-proof-item alongside
+   .djp-bullet-item so this panel lifts correctly. */
 ${ROOT} .djp-s-proof.djp-v-cards .djp-proof-item {
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--djp-radius, 0.6rem);
   padding: 1.25rem 1.5rem;

@@ -931,8 +931,18 @@ function renderCtaSection(section: Section, ctx: RenderContext): string {
   const props = SECTION_REGISTRY.cta.propsSchema.parse(section.props) as CtaSectionProps
   const parts: string[] = [sectionOpenTag(section, ctx), `<div class="djp-cta-inner">`]
   parts.push(renderItemMedia(props.media, "djp-cta-media", ctx, "media"))
+  // `.djp-cta-copy` groups the headline and sub into ONE flex item.
+  // `djp-v-split`'s CSS needs a single "copy" side and a single "button"
+  // side — with no wrapper, a headline, a sub AND the button were three
+  // independent siblings of `.djp-cta-inner`, so a two-up split rendered as
+  // three columns instead of two (the sub sat between the headline and the
+  // button rather than under the headline). Emitted unconditionally, like
+  // `.djp-hero-copy` above, so every variant shares one markup shape and
+  // only the stylesheet differs per variant.
+  parts.push(`<div class="djp-cta-copy">`)
   parts.push(textEl(ctx, "h2", "djp-hd", "headline", props.headline))
   parts.push(optionalText(ctx, "p", "djp-sub", "sub", props.sub, "Add a subheading"))
+  parts.push(`</div>`)
   parts.push(renderCtaButton(props.cta, "primary", ctx, "cta"))
   parts.push(`</div>`, `</section>`)
   return parts.join("")
