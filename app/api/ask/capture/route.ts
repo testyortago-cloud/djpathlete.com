@@ -271,10 +271,15 @@ export async function POST(request: Request) {
     // here would put the lead under the wrong coach the moment a second one
     // exists.
     businessId: conversation.business_id,
-    // The visitor's djp_attr cookie (audit §3.5). The conversation row's own
-    // `attribution_session_id` goes into metadata below as it always has —
-    // this is the spine column, read from the request in front of us.
-    attributionSessionId: parseAttrCookie(request.headers.get("cookie")),
+    // The visitor's attribution session (audit §3.5). The cookie comes FIRST
+    // because it is this request's own session — the one proxy.ts stamped or
+    // re-read moments ago. The conversation row's `attribution_session_id` is
+    // a legitimate fallback rather than a guess: this same person's chat
+    // recorded it when the conversation began, so if the cookie has since been
+    // cleared (or the chat outlived it) it is still the session that brought
+    // them here. It is not an overwrite risk either — the spine only ever
+    // FILLS a null first_touch_session_id, never replaces one.
+    attributionSessionId: parseAttrCookie(request.headers.get("cookie")) ?? conversation.attribution_session_id,
     metadata: {
       chat_conversation_id: conversationId,
       landing_path: conversation.landing_path,

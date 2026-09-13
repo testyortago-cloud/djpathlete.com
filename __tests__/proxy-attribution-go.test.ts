@@ -132,6 +132,18 @@ describe("proxy.ts — attribution on a /go landing", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it("PRESENCE CONTROL: a path that merely SHARES the prefix is not a funnel landing", async () => {
+    // MUTANT KILLED: `startsWith("/go")` instead of `startsWith("/go/")`. The
+    // rule is a path SEGMENT, not a string prefix: only /go/<slug> is served
+    // by the funnel route. "/gone" is a prefix decoy — no such page exists,
+    // and that is the point: the middleware runs on every non-asset path
+    // whether or not it resolves, so the only thing standing between a decoy
+    // and a session is the trailing slash.
+    const res = await (middleware as Handler)(visit("/gone"))
+    expect(setCookieHeader(res)).not.toContain(`${ATTR_COOKIE_NAME}=`)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it("PRESENCE CONTROL: a tagged non-/go page still gets the cookie (old behaviour intact)", async () => {
     const res = await (middleware as Handler)(visit("/programs?gclid=abc123"))
     expect(setCookieHeader(res)).toContain(`${ATTR_COOKIE_NAME}=`)

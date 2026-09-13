@@ -8,9 +8,20 @@ const state: {
   consents: any[]
   sequences: any[]
   sequenceRuns: any[]
+  selects: Array<{ table: string; columns: string }>
   rpcCalls: Array<{ name: string; args: any }>
   errors: { contactsUpdate?: any; timelineInsert?: any; sequencesSelect?: any; mergeContactsRpc?: any }
-} = { rows: [], merges: [], timelineEvents: [], consents: [], sequences: [], sequenceRuns: [], rpcCalls: [], errors: {} }
+} = {
+  rows: [],
+  merges: [],
+  timelineEvents: [],
+  consents: [],
+  sequences: [],
+  sequenceRuns: [],
+  selects: [],
+  rpcCalls: [],
+  errors: {},
+}
 
 function collectionFor(table: string): any[] {
   if (table === "contacts") return state.rows
@@ -38,7 +49,14 @@ function makeTable(table: string) {
   }
 
   const api: any = {
-    select() {
+    // Deliberately projection-BLIND for the data it returns (filterRows below
+    // hands back whole seeded rows whatever the select string says), but the
+    // string itself is recorded: `findMatchCandidates` casts PostgREST's
+    // untyped `data` with `as MatchCandidate[]`, so a column missing from a
+    // projection is invisible to tsc and invisible to every other test here.
+    // Recording it is what lets a test assert the projection directly.
+    select(columns?: string) {
+      state.selects.push({ table, columns: columns ?? "" })
       return api
     },
     eq(field: string, value: any) {
@@ -183,6 +201,7 @@ beforeEach(() => {
   state.consents = []
   state.sequences = []
   state.sequenceRuns = []
+  state.selects = []
   state.rpcCalls = []
   state.errors = {}
   vi.clearAllMocks()
@@ -470,7 +489,37 @@ describe("recordContactEvent", () => {
     // The real merge_contacts RPC is stubbed here, so the survivor's column is
     // still null; what this pins is that OUR patch did not write to it.
     const row = state.rows.find((r) => r.id === "survivor-older")
-    expect(row.first_touch_session_id).not.toBe("sess-now")
+    // The exact invariant, not merely "something other than ours": our patch
+    // wrote nothing at all, and the real merge_contacts RPC (stubbed here) is
+    // the only thing entitled to fill this column on a merge.
+    expect(row.first_touch_session_id).toBeNull()
+  })
+
+  it("selects first_touch_session_id in BOTH match queries, not just one", async () => {
+    // MUTANT KILLED: dropping `first_touch_session_id` from either projection
+    // in findMatchCandidates (the email query or the phone query).
+    //
+    // Nothing else in this repo can catch that. `findMatchCandidates` casts
+    // PostgREST's untyped `data` with `as MatchCandidate[]`, and a cast from a
+    // narrower shape is always legal, so tsc sees no error however required
+    // the field is on the type. And this file's own table mock is projection-
+    // blind: it returns the whole seeded row regardless of the select string,
+    // so every other test here would stay green. In production the omission
+    // reads as `undefined` — indistinguishable from "no session on file" to
+    // firstTouchSessionPatch, which would then overwrite a genuine first touch
+    // with the current request's on the very next submission.
+    await recordContactEvent({
+      email: "projection@example.com",
+      phone: "617-650-4548",
+      source: "newsletter",
+      businessId: "00000000-0000-0000-0000-000000000001",
+    })
+
+    const contactSelects = state.selects.filter((s) => s.table === "contacts")
+    expect(contactSelects).toHaveLength(2)
+    for (const sel of contactSelects) {
+      expect(sel.columns).toContain("first_touch_session_id")
+    }
   })
 
   it("throws when the contact UPDATE fails", async () => {

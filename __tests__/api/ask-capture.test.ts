@@ -112,11 +112,12 @@ function conversation(over: Partial<ChatConversation> = {}): ChatConversation {
   }
 }
 
-function req(body: Record<string, unknown>, ip: string = currentIp): Request {
+function req(body: Record<string, unknown>, ip: string = currentIp, cookie?: string): Request {
   return new Request("http://localhost/api/ask/capture", {
     method: "POST",
     headers: {
       "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
       // Two hops, so the test also pins that only the FIRST is read. Taking
       // the whole header would give one visitor a new identity — and a fresh
       // budget — every time an edge region changed.
@@ -191,6 +192,42 @@ describe("POST /api/ask/capture — the only contact-write path", () => {
       }),
     )
     expect(h.markCaptured).toHaveBeenCalledWith(CONVERSATION_ID, "contact-1")
+  })
+
+  it("carries the visitor's djp_attr cookie into the contact spine", async () => {
+    // MUTANT KILLED: dropping `attributionSessionId` from this route's
+    // captureLead call. Audit §3.5: without it the contact's
+    // first_touch_session_id stays null and the campaign behind the lead is
+    // unknowable.
+    const res = await POST(req(submission(), currentIp, "djp_attr=sess-cookie"))
+
+    expect(res.status).toBe(200)
+    expect(h.captureLead).toHaveBeenCalledWith(expect.objectContaining({ attributionSessionId: "sess-cookie" }))
+  })
+
+  it("falls back to the session the conversation recorded when the cookie is gone", async () => {
+    // MUTANT KILLED: dropping the `?? conversation.attribution_session_id`
+    // fallback. A visitor who clears cookies mid-chat still has a session on
+    // file — the one this same conversation recorded when it began — and
+    // discarding it would throw away a session the route is literally holding.
+    h.getConversation.mockResolvedValue(conversation({ attribution_session_id: "sess-conversation" }))
+
+    const res = await POST(req(submission()))
+
+    expect(res.status).toBe(200)
+    expect(h.captureLead).toHaveBeenCalledWith(expect.objectContaining({ attributionSessionId: "sess-conversation" }))
+  })
+
+  it("prefers the cookie over the conversation's stored session — this request's own wins", async () => {
+    // MUTANT KILLED: reversing the fallback
+    // (`conversation.attribution_session_id ?? parseAttrCookie(...)`). The
+    // cookie is the session the visitor is browsing under right now; the
+    // stored one can predate a cleared cookie or a re-stamp.
+    h.getConversation.mockResolvedValue(conversation({ attribution_session_id: "sess-conversation" }))
+
+    await POST(req(submission(), currentIp, "djp_attr=sess-cookie"))
+
+    expect(h.captureLead).toHaveBeenCalledWith(expect.objectContaining({ attributionSessionId: "sess-cookie" }))
   })
 
   it("files NO consent row when the marketing box was not ticked", async () => {

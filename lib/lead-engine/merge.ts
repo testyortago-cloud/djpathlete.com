@@ -14,8 +14,18 @@ export type MatchCandidate = {
    * Not read by decideMerge — it rides along so the caller
    * (`upsertContactIdentity`) can tell whether the contact it is about to
    * update ALREADY has a first-touch session before backfilling one.
-   * Required rather than optional on purpose: a query that forgets to select
-   * it would otherwise read as "no session on file" and overwrite a real one.
+   *
+   * Required rather than optional to DOCUMENT that every producer must select
+   * it — but be clear about what that does and does not buy: it is not a
+   * compile-time guarantee. `findMatchCandidates` (lib/db/contacts.ts) casts
+   * PostgREST's untyped `data` with `as MatchCandidate[]`, and a cast from a
+   * narrower shape is always legal, so dropping the column from either query's
+   * projection compiles cleanly. What actually holds the line is the test
+   * "selects first_touch_session_id in BOTH match queries, not just one" in
+   * __tests__/db/contacts-record-event.test.ts, which reads the select strings
+   * themselves. The stakes: a missing column reads as `undefined`, which
+   * `firstTouchSessionPatch` cannot tell apart from "no session on file", and
+   * it would overwrite a genuine first touch on the next submission.
    */
   first_touch_session_id: string | null
 }
