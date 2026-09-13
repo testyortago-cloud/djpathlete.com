@@ -70,6 +70,80 @@ function isTransientError(error: unknown): boolean {
   return false
 }
 
+/**
+ * One image attached to a single model call (2026-09-14 spec §3).
+ *
+ * `data` is bare base64 — no `data:<type>;base64,` prefix. `{type:"image",
+ * image, mediaType}` is the AI SDK v6 `ImagePart` shape (verified against
+ * `node_modules/@ai-sdk/provider-utils/dist/index.d.ts:568`); the provider
+ * converts it to Anthropic's `{type:"image", source:{type:"base64", ...}}`.
+ */
+export interface AgentImage {
+  mediaType: string
+  data: string
+}
+
+/**
+ * The one message shape `promptOrMessages` ever sends: a single user turn
+ * carrying the owner's text and (optionally) one or more images.
+ */
+type AgentUserMessage = {
+  role: "user"
+  content: Array<{ type: "text"; text: string } | { type: "image"; image: string; mediaType: string }>
+}
+
+/**
+ * Builds the `prompt`-or-`messages` half of an AI SDK call.
+ *
+ * TWO COMPLETE OBJECTS, NOT A CONDITIONAL SPREAD. The SDK's `Prompt` type is a
+ * union whose branches carry `messages?: never` / `prompt?: never`, so a
+ * spread like `{...(images ? {messages} : {prompt})}` widens BOTH keys to
+ * `X | undefined` and matches neither branch. The type error it produces points
+ * at the call site rather than at the spread, which costs a confusing half-hour.
+ *
+ * A zero-length array is "no image": `if (images)` alone would be true for `[]`
+ * and would silently switch every caller that defaults the option to a
+ * one-text-part `messages` list, changing the request shape forever for no
+ * reason.
+ *
+ * THE IMAGE RIDES HERE, IN THE USER MESSAGE, AND NOWHERE ELSE. The system
+ * prompt is a cached prefix and Anthropic's cache is a strict prefix match —
+ * anything per-turn in it is a silent cache invalidator on every turn of every
+ * page.
+ *
+ * THE EXPLICIT RETURN TYPE ANNOTATION IS LOAD-BEARING, not decoration. Without
+ * it, TS infers the return type from the two `return` statements, and once one
+ * branch is `as const` (needed for the `{prompt}` branch, which has no array to
+ * fight with) and the other isn't, narrowing a `const source = promptOrMessages(...)`
+ * with `"messages" in source` at the call site stops excluding the `{prompt}`
+ * branch cleanly — `source.messages` comes out typed `AgentUserMessage[] |
+ * undefined` and the call below fails to typecheck with an error that blames
+ * `messages: ... | undefined` and gives no hint that the fix is here.
+ */
+function promptOrMessages(
+  userMessage: string,
+  images?: readonly AgentImage[],
+): { prompt: string } | { messages: AgentUserMessage[] } {
+  if (!images || images.length === 0) return { prompt: userMessage }
+  return {
+    messages: [
+      {
+        role: "user",
+        content: [
+          // Text FIRST: it is the whole turn context, and the instruction to
+          // read the attachment belongs in front of the attachment.
+          { type: "text", text: userMessage },
+          ...images.map((image) => ({
+            type: "image" as const,
+            image: image.data,
+            mediaType: image.mediaType,
+          })),
+        ],
+      },
+    ],
+  }
+}
+
 // ─── callAgent: structured output via generateObject ─────────────────────────
 
 export async function callAgent<T>(
@@ -80,6 +154,7 @@ export async function callAgent<T>(
     maxTokens?: number
     model?: string
     cacheSystemPrompt?: boolean
+    images?: readonly AgentImage[]
   },
 ): Promise<AgentCallResult<T>> {
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
@@ -87,7 +162,11 @@ export async function callAgent<T>(
 
   const result = await pRetry(
     async () => {
-      const res = await generateObject({
+      // TWO COMPLETE CALLS, NOT A CONDITIONAL SPREAD. See `promptOrMessages`
+      // above: the AI SDK's `Prompt` type is a union whose branches carry
+      // `messages?: never` / `prompt?: never`, so spreading its result here
+      // widens both keys to `X | undefined` and matches neither branch.
+      const common = {
         model: provider(modelId),
         maxOutputTokens: maxTokens,
         // Force the tool-based JSON path. The default ("auto") uses Anthropic
@@ -103,7 +182,7 @@ export async function callAgent<T>(
         // in production — which accepts all constraints; Zod still validates
         // the response client-side.
         providerOptions: {
-          anthropic: { structuredOutputMode: "jsonTool" },
+          anthropic: { structuredOutputMode: "jsonTool" as const },
         },
         system: options?.cacheSystemPrompt
           ? [
@@ -116,9 +195,12 @@ export async function callAgent<T>(
               },
             ]
           : systemPrompt,
-        prompt: userMessage,
         schema,
-      })
+      }
+      const source = promptOrMessages(userMessage, options?.images)
+      const res = await ("messages" in source
+        ? generateObject({ ...common, messages: source.messages })
+        : generateObject({ ...common, prompt: source.prompt }))
       return res
     },
     {
@@ -249,16 +331,19 @@ export function streamAgent<T>(
     maxTokens?: number
     model?: string
     cacheSystemPrompt?: boolean
+    images?: readonly AgentImage[]
   },
 ) {
   const maxTokens = options?.maxTokens ?? DEFAULT_MAX_TOKENS
   const modelId = options?.model ?? MODEL_SONNET
 
-  return streamObject({
+  // TWO COMPLETE CALLS, NOT A CONDITIONAL SPREAD — see `promptOrMessages` and
+  // the matching comment in `callAgent` above.
+  const common = {
     model: provider(modelId),
     maxOutputTokens: maxTokens,
     providerOptions: {
-      anthropic: { structuredOutputMode: "jsonTool" },
+      anthropic: { structuredOutputMode: "jsonTool" as const },
     },
     system: options?.cacheSystemPrompt
       ? [
@@ -271,7 +356,10 @@ export function streamAgent<T>(
           },
         ]
       : systemPrompt,
-    prompt: userMessage,
     schema,
-  })
+  }
+  const source = promptOrMessages(userMessage, options?.images)
+  return "messages" in source
+    ? streamObject({ ...common, messages: source.messages })
+    : streamObject({ ...common, prompt: source.prompt })
 }
