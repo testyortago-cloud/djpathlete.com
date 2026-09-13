@@ -181,8 +181,26 @@ export const SECTION_BUILDER_BLOCK_A_MAX = 20_700
  * shapes themselves are already in Block A's "## The document" section and
  * cost nothing twice. Set with headroom for a thirteenth palette preset or a
  * sixth font pairing, not for a restatement of content Block A already has.
+ *
+ * RAISED TO 4,500 on 2026-09-14 (reference-image build, task 7). Block DESIGN
+ * measured 3,202 at the start of this task (32 characters over the note
+ * above — a later task widened `theme.palette`'s prose, not accounted for
+ * here until now). It was compacted FIRST, per the house procedure: the
+ * `theme.palette` paragraph and the `theme.font` pairing list, the two most
+ * redundant passages, dropped 91 characters (3,202 -> 3,111) without losing
+ * a rule — the twelve preset names, the custom-brand shape, all five font
+ * pairings and the default label are all still there, just without
+ * restating "for a …" per pairing or re-explaining the preset count twice.
+ * Only THEN did the new "## When the owner attaches a reference design"
+ * section get appended, landing Block DESIGN at 4,433 measured. That is
+ * genuinely new content, not duplication: the model now has to know what a
+ * pasted reference image maps to in this vocabulary, that the image itself
+ * is discarded after the turn so `theme.designNote` is its only surviving
+ * memory, and that it must say out loud what it could not match rather than
+ * silently approximating. 4,500 is that measured 4,433 rounded up to the
+ * next 100 — not a round number picked in advance of the measurement.
  */
-export const SECTION_BUILDER_BLOCK_DESIGN_MAX = 3_400
+export const SECTION_BUILDER_BLOCK_DESIGN_MAX = 4_500
 
 /**
  * Rate limit: max builder calls per user per window. Lower than the admin
