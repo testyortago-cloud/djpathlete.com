@@ -1,0 +1,49 @@
+# Page builder — tracked gap inventory
+
+Every row's `Constrained at` cites a real `file:line`, opened and confirmed against this
+worktree at branch point `b3544283` (2026-09-13). This doc is re-read by Task 12, which ticks
+rows off — do not renumber IDs once a later task references one.
+
+`Status` is one of `open` / `closing in 2026-09-13 build` / `closed`.
+
+## Design gaps
+
+These are all things the *2026-09-13 build* (this branch) is closing. They exist because
+`prompt.ts`'s stylesheet-decides-everything model was correct when the engine shipped and has
+since been paid for long enough to see the cost: the model is handed a design surface small
+enough that most pages come out looking the same.
+
+| ID | Area | What the owner cannot do | Constrained at | Severity | Status |
+|---|---|---|---|---|---|
+| G1 | Theme | Choose from more than 12 total page looks — `theme.tone`(2) × `theme.accent`(2) × `theme.radius`(3) | `lib/funnels/sections/registry.ts:167` | High | closing in 2026-09-13 build |
+| G2 | Colour | Set any hex/colour value anywhere in the document — the prompt tells the model outright that "no hex or colour field exists anywhere in this document" | `lib/funnels/sections/prompt.ts` `BUILDER_RULES` rule 6 | High | closing in 2026-09-13 build |
+| G3 | Typography | Choose a font; heading/body font-family are hardcoded to Lexend Exa / Lexend Deca with no document-level override | `lib/funnels/sections/styles.ts:352` | Medium | closing in 2026-09-13 build |
+| G4 | Layout | Change the page container width; every section's content is capped at a fixed `max-width: 72rem` | `lib/funnels/sections/styles.ts:191` | Medium | closing in 2026-09-13 build |
+| G5 | Section style | Right-align a section; `align` only offers `left` / `center` | `lib/funnels/sections/registry.ts:143` | Low | closing in 2026-09-13 build |
+| G6 | Section style | Give a section its own background colour/image or an overlay — `sectionStyleSchema` has no such field | `lib/funnels/sections/registry.ts:141` | Medium | closing in 2026-09-13 build |
+| G7 | Section style | Add a visual divider between two sections — `sectionStyleSchema` has no such field | `lib/funnels/sections/registry.ts:141` | Low | closing in 2026-09-13 build |
+| G8 | Variants | Flip a split layout (which side the pitch/media sits on); `.djp-v-split` CSS hardcodes the order both for `hero` and `form` | `lib/funnels/sections/styles.ts:964` | Low | closing in 2026-09-13 build |
+| G9 | Variants | Get a second look for `faq` or `quiz` — each has exactly one variant | `lib/funnels/sections/registry.ts:360,424` | Medium | closing in 2026-09-13 build |
+| G10 | Variants | Get a third look for `proof`, `steps`, `testimonial`, `pricing`, `cta` or `footer` — each has exactly two | `lib/funnels/sections/registry.ts:246,286,309,335,440,454` | Low | closing in 2026-09-13 build |
+| G11 | Media | Put an image anywhere except the hero section — `heroMediaSchema` is the document's only media-carrying field | `lib/funnels/sections/registry.ts:223` | Medium | closing in 2026-09-13 build |
+| G12 | Page shape | Get anything other than the fixed leadgen skeleton (form first, `variant:"split"`, proof near the top, thin footer) regardless of what the page is actually for — `LEADGEN_RULES` prescribes one shape for every page | `lib/funnels/sections/prompt.ts:521` | High | closing in 2026-09-13 build |
+| G13 | Variation | Get a different page from an identical brief — the first-draft seed document is one fixed literal (`theme: light/accent/soft`, a single footer placeholder) and nothing in the turn carries a variation input | `app/api/admin/funnels/steps/[stepId]/build/route.ts:191` | Medium | closing in 2026-09-13 build |
+
+## Capability gaps
+
+These are explicitly **not** part of the 2026-09-13 build (see spec §9). Logged here so the
+owner can see the whole shape of what the builder can't do yet, not just the slice this build
+closes.
+
+| ID | Area | What the owner cannot do | Constrained at | Severity | Status |
+|---|---|---|---|---|---|
+| C1 | Styling | Write free-form CSS for a section — the typed `sectionStyleSchema` is the only style surface, by deliberate choice (a CSS escape hatch would let preview and publish diverge) | `lib/funnels/sections/registry.ts:141` | Medium | open |
+| C2 | Section kinds | Add a `gallery`, logo-strip, comparison-table, countdown, guarantee-badge, contact/map or before-after section — `SECTION_KINDS` lists 11 kinds and none of these are among them | `lib/funnels/sections/registry.ts:185` | Medium | open |
+| C3 | Input | Paste a reference design or brand board image into chat — `ChatPane.tsx` has no attachment/image path and the build route takes text only | `components/admin/funnels/builder/ChatPane.tsx` (no attachment path anywhere in the file) | Medium | open |
+| C4 | Feedback loop | Have the model see its own rendered page; `buildTurnMessage` sends only the pretty-printed JSON doc, never the compiled `{html, css}` | `lib/funnels/sections/prompt.ts:902` (`buildTurnMessage`) | Medium | open |
+| C5 | Multi-page edits | Ask for a change that applies across every page of a funnel in one turn — a turn's input is a single step's `SectionDoc`, not the funnel | `lib/funnels/sections/prompt.ts:879` (`BuilderTurnInput.doc`) | Low | open |
+| C6 | Funnel structure | Have the model add, reorder or rename funnel steps — `opSchema` is a closed union of section-level ops only (`set_page`, `add_section`, `update_section`, `move_section`, `remove_section`, `set_theme`) | `lib/funnels/sections/apply.ts:117` (`opSchema`) | Low | open |
+| C7 | Typography | Use a custom web font beyond the three app-wide fonts (Lexend Exa / Lexend Deca / JetBrains Mono) | `lib/funnels/sections/styles.ts:26` (font caveat comment) and `:186` (hardcoded chain) | Low | open |
+| C8 | Media | Generate an image or search stock photography from chat — `heroMediaSchema.src` requires a URL the owner or model must already have; nothing produces one | `lib/funnels/sections/registry.ts:211` (`heroMediaSchema`) | Low | open |
+| C9 | Identifiers | Have the model set `eventId`, `quizId`, or any other UUID itself. **This one is `open` and correct by design, not a gap to close** — the publish gate refuses a page whose quiz/event id is missing or invalid, so a model-authored id is a batch that can never publish; only the owner can supply one from the builder | `lib/funnels/sections/prompt.ts:319-329` | N/A — by design | open |
+| C10 | Memory | Have the model recall its own past ops beyond the last 8 prose turns of history — history carries prose only, replaying old ops was rejected as redundant and self-reinforcing | `lib/funnels/sections/builder-config.ts:71` (`SECTION_BUILDER_HISTORY_TURNS = 8`) | Low | open |
