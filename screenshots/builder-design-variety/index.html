@@ -124,6 +124,30 @@
   </section>
 
   <section class="note">
+    <h2>Bug #3 (found by a whole-branch review, fixed): the same pattern, a fourth time — <code>accent</code></h2>
+    <p>
+      Same shape again, this time for <code>--accent</code> rather than <code>--primary</code>:
+      <code>.djp-eyebrow</code>, the bullet/pricing/form-proof checkmark icons, the required-field mark, the
+      FAQ toggle glyph and the quiz progress bar all painted accent directly as TEXT on a default (untoned)
+      section's own ground — never proven safe there. Measured: <code>ink</code> 1.11:1, <code>steel</code>
+      1.40:1, <code>midnight</code> 2.47:1, against a 4.5:1 floor. Fixed in <code>0f2d2087</code> with an
+      <code>accentOnPaper</code> token, the same derivation as <code>brandOnPaper</code> above. Visible on
+      06: the bullet icons in "Why the last three years went nowhere" were an unreadable near-black smudge
+      on the previous capture and are now a warm, legible brown.
+    </p>
+    <p>
+      This is the fourth time this exact class of bug shipped, and the reason it kept getting past a green
+      suite is named directly in <code>0f2d2087</code>'s own commit message:
+      <code>render.test.ts</code> had a hand-maintained table declaring <code>--accent</code> "legal" on
+      <code>--background</code>/<code>--surface</code> as a scope-invariant fact — true for the app's four
+      fixed default themes, false for every one of the twelve derived palettes. Even the PRIOR fix wave
+      added <code>--primary-on-paper</code> to that same table without asking why <code>--accent</code> was
+      sitting in it unproven. The table is gone now, replaced by a check that measures the real palettes
+      directly instead of trusting a list of pairs someone once believed were safe.
+    </p>
+  </section>
+
+  <section class="note">
     <h2>What this does and does not prove</h2>
     <ul>
       <li>
@@ -161,20 +185,22 @@
         waitlist and camp pages did not drift.
       </li>
       <li>
-        <strong>This set went through three re-capture passes as fixes landed</strong> — never a rebuild,
+        <strong>This set went through four re-capture passes as fixes landed</strong> — never a rebuild,
         always the same stored documents. Pass 1: <code>54ed0449</code>/<code>3954dde7</code> (camp's page
         wrapper, sales's price) — re-shot 05-10. Pass 2: <code>a4e37d25</code>/<code>5d7bbcfb</code> (the
-        brand-on-paper sweep) — re-shot 05, 06, 08, and 10 again, this time as a clean before/after of the
-        whole defect rather than a "partially fixed" caption. Every pass, every one of the nine page PNGs
-        was checked, not just the ones expected to move: verified by probing computed
+        brand-on-paper sweep) — re-shot 05, 06, 08, and 10 again, as a clean before/after instead of a
+        "partially fixed" caption. Pass 3: <code>0f2d2087</code> (the matching accent-on-paper sweep,
+        instance #4 of the same class) — re-shot 06 only, once probing confirmed it was the sole page whose
+        rendered colours actually moved. Every pass, every one of the nine page PNGs was checked, not just
+        the ones expected to move: verified by probing computed
         <code>color</code>/<code>background-color</code> on the live DOM (<code>.djp-page</code>,
-        <code>.djp-hd</code>, <code>.djp-plan-price</code> and more) and by opening a fresh screenshot of
-        every route side by side with the committed one. 01-04, 02/03 and 07/09 stayed as they were: 01-04
-        because the two things that changed (the FAQ heading, the pricing heading) are both below the fold
-        in the builder's own small preview pane; 02/03 because waitlist has no active palette and no
-        <code>pricing</code> section, so none of these fixes' gates apply to it; 07/09 because their
-        visible content — the theme panel, and the FAQ band once it takes the page's brand colour under a
-        forced dark tone — was already correct before this last pass.
+        <code>.djp-hd</code>, <code>.djp-plan-price</code>, <code>.djp-eyebrow</code>, <code>.djp-ic</code>
+        and more) and by opening a fresh screenshot of every route side by side with the committed one.
+        01-05, 02/03, 07/09 and 10 stayed as they were across pass 3 specifically: sales's as-built page has
+        no default-tone section for the accent fix to reach; camp's only default-tone section (its FAQ) has
+        no eyebrow, icon or required-mark for it to touch; waitlist has no active palette; and the pricing
+        card in 10 uses icons that were already fixed a pass earlier (they're on a <code>muted</code>-toned
+        section, not <code>default</code>).
       </li>
     </ul>
   </section>
