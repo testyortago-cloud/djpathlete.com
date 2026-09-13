@@ -6,32 +6,69 @@ import type { Event, EventSignup } from "@/types/database"
 import type { LeadAnalysisResult } from "@/lib/ai/lead-analysis"
 import { buildLeadMailtoLink, buildTelLink } from "@/lib/leads/build-mailto-link"
 
-const _resendClient = new Resend(process.env.RESEND_API_KEY)
+// Built per send, INSIDE the wrapper below, never at module scope. The SDK's
+// own constructor throws synchronously when no key is available
+// (node_modules/resend/dist/index.mjs: `if (!this.key) throw new Error(
+// "Missing API key. ...")`), so a module-scope client would mean an unset
+// RESEND_API_KEY takes down every route that imports this file at IMPORT time,
+// before the guard below could run — and would leave that guard reachable only
+// under a mocked SDK. Constructing after the guard is what makes the guard a
+// guard. Same reasoning, same shape, as lib/email/sender-domains.ts.
+//
+// Deliberately not memoised: the client is a thin holder of headers and
+// endpoint wrappers, so the allocation is nothing next to the network call it
+// is about to make, and nothing can go stale.
+function client(): Resend {
+  return new Resend(process.env.RESEND_API_KEY)
+}
 
-// Wrap the SDK so every callsite short-circuits when the API key is missing.
-// Protects production if the env ever drifts and prevents tests from hitting
-// the live API even when they forget to mock the `resend` module.
+// Wrap the SDK so a missing API key is reported as a SEND ERROR rather than as
+// a successful send. It used to return `{ data: null, error: null }` — the
+// exact shape of a delivered message — so every sender below that reads
+// `error` reported success for something nothing transmitted. Each of them
+// already logs or throws on `error`, so a missing key now says so out loud
+// through the path each sender already has. (The four event-signup senders
+// ignore the send result entirely and are unaffected either way.)
+//
+// What this branch is, honestly: an alarm for env drift, not a routine path.
+// Production has the key, and so do tests — `vitest.config.ts` sets a
+// placeholder — so a suite only reaches this branch by deleting the key on
+// purpose. What keeps a suite that forgot to mock `resend` off the live API is
+// not this guard but __tests__/setup.tsx's global mock of the module.
 //
 // Both `emails.send` (single) and `batch.send` (bulk newsletter) are wrapped
 // so the same env-key guard applies uniformly.
 const resend = {
   emails: {
-    send: (async (args: Parameters<typeof _resendClient.emails.send>[0]) => {
+    send: (async (args: Parameters<Resend["emails"]["send"]>[0]) => {
       if (!process.env.RESEND_API_KEY) {
         console.warn(`[email] RESEND_API_KEY not set — skipping "${args.subject}"`)
-        return { data: null, error: null }
+        return {
+          data: null,
+          error: {
+            name: "missing_required_field",
+            message: `RESEND_API_KEY is not set — "${args.subject}" was not sent`,
+          },
+        } as Awaited<ReturnType<Resend["emails"]["send"]>>
       }
-      return _resendClient.emails.send(args)
-    }) as typeof _resendClient.emails.send,
+      return client().emails.send(args)
+    }) as Resend["emails"]["send"],
   },
   batch: {
-    send: (async (args: Parameters<typeof _resendClient.batch.send>[0]) => {
+    send: (async (args: Parameters<Resend["batch"]["send"]>[0]) => {
       if (!process.env.RESEND_API_KEY) {
-        console.warn(`[email] RESEND_API_KEY not set — skipping batch of ${Array.isArray(args) ? args.length : 0}`)
-        return { data: null, error: null }
+        const count = Array.isArray(args) ? args.length : 0
+        console.warn(`[email] RESEND_API_KEY not set — skipping batch of ${count}`)
+        return {
+          data: null,
+          error: {
+            name: "missing_required_field",
+            message: `RESEND_API_KEY is not set — a batch of ${count} was not sent`,
+          },
+        } as Awaited<ReturnType<Resend["batch"]["send"]>>
       }
-      return _resendClient.batch.send(args)
-    }) as typeof _resendClient.batch.send,
+      return client().batch.send(args)
+    }) as Resend["batch"]["send"],
   },
 }
 
@@ -1692,10 +1729,12 @@ export type ChatEscalationTurn = {
  *  2. **No `replyTo`.** The visitor is anonymous. There may be no address to
  *     reply to at all, and guessing one would put the operator's answer in front
  *     of the wrong person.
- *  3. **It reports whether it delivered.** The Resend wrapper at the top of this
- *     file returns a SUCCESS shape when `RESEND_API_KEY` is missing, so "no
- *     exception" is not "somebody was told". The caller decides what a visitor is
- *     promised on the strength of this flag, so it has to be the truth.
+ *  3. **It reports whether it delivered.** The caller decides what a visitor is
+ *     promised on the strength of this flag, so it has to be the truth. The
+ *     early key check below stays even though the wrapper at the top of this
+ *     file now reports a missing key as an `error`: that error would reach the
+ *     `if (error)` arm and THROW, and this function's contract with its caller
+ *     is `{ delivered: false }`, not an exception.
  *
  * Every string below except the labels is text an anonymous visitor typed, so
  * all of it goes through `escapeHtml`. This is the only place that happens in
@@ -1811,12 +1850,13 @@ export async function sendChatEscalationEmail({
  * Tells the operator a Red or Orange quiz result just came in.
  *
  * IT REPORTS WHETHER IT DELIVERED, for the same reason
- * `sendChatEscalationEmail` above does: the Resend wrapper at the top of this
- * file returns a SUCCESS shape when `RESEND_API_KEY` is missing, so "no
- * exception" is not "somebody was told". The caller writes that flag onto the
+ * `sendChatEscalationEmail` above does: the caller writes that flag onto the
  * attempt, and the admin surface shows the honest state — an attempt marked
  * `sent` when nothing left the building is worse than one marked `failed`,
- * because nobody goes looking for it.
+ * because nobody goes looking for it. The early key check below is kept for
+ * the warning it names the attempt in; the wrapper at the top of this file
+ * would otherwise report the missing key as an `error`, which this function
+ * already turns into `{ delivered: false }` anyway.
  *
  * Every visitor-typed string goes through `escapeHtml`.
  */

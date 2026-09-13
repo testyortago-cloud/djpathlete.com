@@ -6,11 +6,11 @@
 // to ignore the alert, which is the same as not sending it.
 //
 // THE DIFFERENCE BETWEEN SENDING AND NOT THROWING is the whole point of this
-// module. `lib/email.ts` returns a success shape when `RESEND_API_KEY` is
-// unset — roughly 38 senders in this app cannot tell whether anything was
-// delivered — so this returns the mailer's own `delivered` flag and the caller
-// writes it onto the attempt. An attempt marked `sent` when nothing left the
-// building is worse than one marked `failed`: nobody goes looking for it.
+// module. Most of the ~38 senders in `lib/email.ts` only log when a send
+// fails, so their callers cannot tell whether anything was delivered; this one
+// returns the mailer's own `delivered` flag and the caller writes it onto the
+// attempt. An attempt marked `sent` when nothing left the building is worse
+// than one marked `failed`: nobody goes looking for it.
 //
 // Spec: docs/superpowers/specs/2026-08-23-athlete-quiz-funnel-design.md §5.4
 

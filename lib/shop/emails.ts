@@ -160,6 +160,22 @@ export async function sendDigitalFulfillmentEmail(input: {
   })
 }
 
+/**
+ * The download links a visitor was promised in exchange for their address.
+ *
+ * FAILS LOUD, unlike the order notifications above, because this email IS the
+ * thing the visitor asked for: a swallowed failure here means they are shown
+ * "check your inbox" for a message that will never arrive. Its only caller,
+ * app/api/shop/leads/route.ts, catches and answers 502, so the visitor is told.
+ * The order emails are notifications ABOUT an order that already exists, where
+ * a logged failure and a standing order is the right trade.
+ *
+ * The no-key throw is honest but, today, only reachable in tests: `lib/resend
+ * .ts` builds its client eagerly (`new Resend(process.env.RESEND_API_KEY!)`)
+ * and the SDK's constructor throws when the key is unset, so in a real process
+ * importing this module already fails first. Production has the key, so the
+ * live half of this function's error reporting is the send-result check below.
+ */
 export async function sendFreeDownloadEmail(input: {
   to: string
   productName: string
@@ -167,8 +183,7 @@ export async function sendFreeDownloadEmail(input: {
   ttlSeconds: number
 }) {
   if (!hasApiKey()) {
-    warnMissingKey("sendFreeDownloadEmail")
-    return
+    throw new Error("RESEND_API_KEY is not set — the download email cannot be sent")
   }
   const { generateSignedDownloadUrl } = await import("@/lib/shop/downloads")
   const urls = await Promise.all(
@@ -187,10 +202,14 @@ export async function sendFreeDownloadEmail(input: {
     <ul>${linksHtml}</ul>
     <p>Links expire in ${ttlMinutes} minutes. Re-submit the form on the product page if you need fresh links.</p>
   `
-  await resend.emails.send({
+  const { error } = await resend.emails.send({
     from: FROM_EMAIL,
     to: input.to,
     subject: `Your free download — ${input.productName}`,
     html,
   })
+
+  if (error) {
+    throw new Error(`free download email failed: ${error.message}`)
+  }
 }

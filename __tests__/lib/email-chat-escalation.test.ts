@@ -6,10 +6,11 @@
 //  1. Every line of this message is text an ANONYMOUS visitor typed into a
 //     public box. It is rendered into HTML that lands in the operator's own
 //     inbox, so it is escaped. Nothing else in this flow escapes it.
-//  2. The function reports whether it actually delivered. The Resend wrapper
-//     in lib/email.ts returns a success SHAPE when RESEND_API_KEY is unset,
-//     so "it did not throw" is not the same as "somebody was told" — and the
-//     caller uses that distinction to decide what the visitor is promised.
+//  2. The function reports whether it actually delivered, and the caller uses
+//     that flag to decide what the visitor is promised. Its own RESEND_API_KEY
+//     check is what produces `{ delivered: false }`: the wrapper in
+//     lib/email.ts reports a missing key as an `error`, which this sender's
+//     `if (error)` arm would turn into a THROW, not into the flag.
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const sendMock = vi.fn()
