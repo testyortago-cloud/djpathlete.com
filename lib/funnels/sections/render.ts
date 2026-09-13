@@ -26,6 +26,7 @@ import {
   type Section,
   type SectionKind,
   type SectionStyleKnobs,
+  type SectionBg,
   type SectionIcon,
   type CtaWithLabel,
   type CtaTarget,
@@ -286,12 +287,18 @@ function optionalText(
 interface ResolvedStyle {
   headline: "sm" | "md" | "lg" | "xl"
   // "right" added alongside sectionStyleSchema's widened `align` (design-system
-  // spec §4). The other three new knobs (bg/width/divider/reverse) are
-  // deliberately NOT resolved here yet — that is a later task's job
-  // (resolveStyle + its rendering), and doing it here would collide with it.
+  // spec §4).
   align: "left" | "center" | "right"
   tone: "default" | "muted" | "accent" | "dark"
   pad: "tight" | "normal" | "roomy"
+  // Task 6: the four remaining per-section knobs. `width` is the one knob
+  // whose DEFAULT is "no override" rather than a concrete enum member — see
+  // `sectionOpenTag`, which only emits `data-width` when it is set. The other
+  // three always resolve to a concrete value, same as the four knobs above.
+  bg: SectionBg
+  width: "narrow" | "normal" | "wide" | "full" | undefined
+  divider: "none" | "line" | "angle" | "curve" | "fade"
+  reverse: boolean
 }
 
 function resolveStyle(style: SectionStyleKnobs): ResolvedStyle {
@@ -301,11 +308,62 @@ function resolveStyle(style: SectionStyleKnobs): ResolvedStyle {
     align: validated.align ?? "left",
     tone: validated.tone ?? "default",
     pad: validated.pad ?? "normal",
+    bg: validated.bg ?? { kind: "none" },
+    width: validated.width,
+    divider: validated.divider ?? "none",
+    reverse: validated.reverse ?? false,
   }
 }
 
+// ---------------------------------------------------------------------------
+// Background -> a CSS declaration string, or `undefined` for "emit nothing".
+//
+// THE SECURITY BOUNDARY (design-system spec §4). `kind:"image"` is the only
+// per-section knob that reaches CSS as an inline `style` rather than a
+// `data-*` attribute, because the URL is per-document data that cannot live
+// in a stylesheet. `safeStyle` (compile/sanitize.ts) does NOT gate this: it
+// only drops declarations containing `javascript:` / `expression(` /
+// `@import` / `behavior:` / `-moz-binding` and passes everything else,
+// including `url(https://attacker.example/x)` — so THIS function is the
+// guard. `safeUrl` (the same one `renderMedia`'s hero image already calls,
+// with the same `allowDataImage` option) is what actually decides whether
+// `src` may reach the page at all; `undefined` here means "render no
+// background", never a partial one.
+//
+// The returned string is raw CSS text, NOT yet attribute-safe — every caller
+// must still run it through `escapeHtml` before interpolating it into a
+// `style="..."` attribute, because an embedded `"` (or `'`) in a URL that
+// otherwise passed `safeUrl` (e.g. `https://ok.example/a" onload=...`) must
+// never be allowed to close the attribute early. `escapeHtml` encodes both
+// quote characters into entities, which the browser decodes before its CSS
+// parser ever sees the text back, restoring the byte-for-byte declaration —
+// this round trip is what actually stands between untrusted URL data and an
+// attribute-breakout, not `safeUrl`'s own prefix check.
+// ---------------------------------------------------------------------------
+
+function backgroundDeclaration(bg: SectionBg): string | undefined {
+  if (bg.kind === "none") return undefined
+  if (bg.kind === "gradient") {
+    const angle = bg.angle ?? 135
+    return `background-image:linear-gradient(${angle}deg, ${bg.from}, ${bg.to})`
+  }
+  // bg.kind === "image"
+  const src = safeUrl(bg.src, { allowDataImage: true })
+  if (!src) return undefined
+  const position = bg.position ?? "center"
+  const layers: string[] = []
+  if (bg.overlay !== undefined && bg.overlay > 0) {
+    layers.push(`linear-gradient(rgba(0,0,0,${bg.overlay}), rgba(0,0,0,${bg.overlay}))`)
+  }
+  layers.push(`url("${src}")`)
+  return (
+    `background-image:${layers.join(",")};background-size:cover;` +
+    `background-repeat:no-repeat;background-position:${position}`
+  )
+}
+
 function sectionOpenTag(section: Section, ctx: RenderContext): string {
-  const { headline, align, tone, pad } = resolveStyle(section.style)
+  const { headline, align, tone, pad, bg, width, divider, reverse } = resolveStyle(section.style)
   const classes = `djp-s djp-s-${section.kind} djp-v-${section.variant}`
   // `data-sec` duplicates `id` on purpose. `id` is the ANCHOR TARGET — it is
   // what `CtaTarget.kind === "anchor"` links to and it is published — whereas
@@ -313,9 +371,16 @@ function sectionOpenTag(section: Section, ctx: RenderContext): string {
   // editor's selection off `id` would mean the canvas could not tell a section
   // wrapper from any other element an author gave an id to.
   const editorHandle = ctx.editable ? ` data-sec="${escapeHtml(section.id)}"` : ""
+  // `width` is the one knob left off entirely when unset — see the comment on
+  // `ResolvedStyle`. The other three (divider/reverse/bg) always resolve to a
+  // concrete value and are always emitted, same rule as headline/align/tone/pad.
+  const widthAttr = width !== undefined ? ` data-width="${width}"` : ""
+  const bgDecl = backgroundDeclaration(bg)
+  const styleAttr = bgDecl ? ` style="${escapeHtml(bgDecl)}"` : ""
   return (
     `<section id="${escapeHtml(section.id)}" class="${escapeHtml(classes)}" ` +
-    `data-h="${headline}" data-align="${align}" data-tone="${tone}" data-pad="${pad}"${editorHandle}>`
+    `data-h="${headline}" data-align="${align}" data-tone="${tone}" data-pad="${pad}" ` +
+    `data-divider="${divider}" data-reverse="${reverse}"${widthAttr}${editorHandle}${styleAttr}>`
   )
 }
 

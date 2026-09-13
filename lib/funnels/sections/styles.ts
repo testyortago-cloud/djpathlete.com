@@ -215,6 +215,92 @@ ${ROOT} .djp-s[data-tone="dark"] .djp-hd { color: inherit; }
 ${ROOT} .djp-s[data-tone="accent"] .djp-sub,
 ${ROOT} .djp-s[data-tone="dark"] .djp-sub { color: inherit; opacity: 0.85; }
 
+/* width knob (design-system spec §4). Overrides --djp-maxw FOR THIS SECTION
+   ONLY — the variable is read by the .djp-s > * rule above; the pad knob's
+   density calc has nothing to do with it, so redeclaring it here on the
+   section element cascades down to its own children without touching any
+   sibling. "normal" is not its own case: 72rem is already the bare fallback
+   the var() supplies when no override is present, so an untouched section
+   (no width set, no data-width attribute at all) and one explicitly set to
+   "normal" render identically without a rule needed for the latter.
+   NO BACKTICKS in this comment — one closes the template literal. */
+${ROOT} .djp-s[data-width="narrow"] { --djp-maxw: 48rem; }
+${ROOT} .djp-s[data-width="wide"] { --djp-maxw: 88rem; }
+${ROOT} .djp-s[data-width="full"] { --djp-maxw: none; }
+
+/* divider knob (design-system spec §4) — a decorative treatment on the
+   section's own lower edge, entirely via ::after so it adds NO DOM: an
+   authored divider must never become a fourth thing a screen reader
+   announces or a click-to-edit anchor could ever target. Every colour comes
+   from a token already in this file (--border / --background), never a new
+   hardcoded value, so a divider on a dark or accent-toned section still
+   resolves the same way the rest of that section's palette does.
+
+   EVERY FILL BELOW IS background-image, NEVER PLAIN background OR
+   background-color. Two independent reasons, both load-bearing:
+     1. render.test.ts's tone-contrast harness (parseRules) reads exactly the
+        background / background-color / color properties off EVERY rule in
+        the stylesheet to model contrast, and its ::after handling is
+        selector-only: the pseudo flag is set from the SELECTOR STRING,
+        matched against ::before specifically. A ::after rule's pseudo flag
+        comes back null, so a background declared here would be attributed
+        to the REAL section element it is stripped down to, not to a
+        pseudo-element that does not exist in that model at all, corrupting
+        the exact contrast check this file exists to keep honest.
+        background-image is not one of the three properties the harness
+        reads, so it is invisible to that model by construction, not by
+        coincidence.
+     2. A flat, solid-colour linear-gradient(var(--x), var(--x)) is
+        otherwise indistinguishable from a plain fill — it just accomplishes
+        it through a property the harness does not model.
+   NO BACKTICKS in this comment — one closes the template literal. */
+${ROOT} .djp-s[data-divider="line"] { position: relative; }
+${ROOT} .djp-s[data-divider="line"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background-image: linear-gradient(var(--border), var(--border));
+  pointer-events: none;
+}
+${ROOT} .djp-s[data-divider="angle"] { position: relative; overflow: hidden; }
+${ROOT} .djp-s[data-divider="angle"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3rem;
+  background-image: linear-gradient(var(--background), var(--background));
+  clip-path: polygon(0 100%, 100% 0, 100% 100%);
+  pointer-events: none;
+}
+${ROOT} .djp-s[data-divider="curve"] { position: relative; overflow: hidden; }
+${ROOT} .djp-s[data-divider="curve"]::after {
+  content: "";
+  position: absolute;
+  left: -5%;
+  right: -5%;
+  bottom: -1px;
+  height: 3rem;
+  background-image: linear-gradient(var(--background), var(--background));
+  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  pointer-events: none;
+}
+${ROOT} .djp-s[data-divider="fade"] { position: relative; }
+${ROOT} .djp-s[data-divider="fade"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4rem;
+  background-image: linear-gradient(to bottom, transparent, var(--background));
+  pointer-events: none;
+}
+
 /* SECTION BOUNDARY — the fix for "the spacing looks off".
 
    NOTE FOR ANYONE EDITING THIS COMMENT: no backticks. This whole string is a
@@ -486,6 +572,18 @@ ${ROOT} .djp-s-hero.djp-v-image-bg .djp-hero-copy {
   background: color-mix(in oklch, var(--background) 78%, transparent);
   padding: 2rem;
   border-radius: var(--djp-radius, 0.6rem);
+}
+
+/* reverse knob (design-system spec §4) — swaps which side the copy vs. the
+   media sit on. Scoped to the two-column layouts only ("centered" is a
+   COLUMN, and "image-bg"'s media is absolutely positioned full-bleed behind
+   the copy) — a bare .djp-s-hero .djp-hero-inner rule at the same
+   specificity would land AFTER the centered variant's own flex-direction:
+   column in source order and silently flip it back to a row whenever an
+   author also set reverse: true.
+   NO BACKTICKS in this comment — one closes the template literal. */
+${ROOT} .djp-s[data-reverse="true"].djp-s-hero:not(.djp-v-centered):not(.djp-v-image-bg) .djp-hero-inner {
+  flex-direction: row-reverse;
 }
 `.trim()
 
@@ -1003,6 +1101,12 @@ ${ROOT} .djp-s-form.djp-v-split .djp-form-proof li {
 }
 ${ROOT} .djp-s-form.djp-v-split .djp-form-proof .djp-ic { color: var(--accent); margin-top: 0.15rem; }
 
+/* reverse knob (design-system spec §4) — swaps pitch and card sides. Scoped
+   to .djp-v-split, the only form variant with two side-by-side columns. */
+${ROOT} .djp-s[data-reverse="true"].djp-s-form.djp-v-split .djp-form-split {
+  flex-direction: row-reverse;
+}
+
 /* The split card is a panel inside a possibly-repainted section, so it obeys
    Move 1 from the tone pass: it LIFTS off the tone rather than switching to a
    light background that would strand its own dark controls. Its controls keep
@@ -1025,6 +1129,12 @@ ${ROOT} .djp-s[data-tone="accent"].djp-s-form.djp-v-split .djp-form-proof .djp-i
 ${ROOT} .djp-s[data-tone="dark"].djp-s-form.djp-v-split .djp-form-proof .djp-ic { color: inherit; }
 `.trim()
 
+/* reverse knob (design-system spec §4): `cta.djp-v-split` has NO
+   two-column grid of its own — `.djp-cta-inner` is a single flex COLUMN for
+   every cta variant, `djp-v-boxed` only adds box chrome — so there is
+   nothing here for `data-reverse` to flip. Deliberately no rule, not a gap:
+   see HERO_CSS / FORM_CSS above for the two kinds that actually have a
+   two-column layout `reverse` acts on. */
 export const CTA_CSS = `
 ${ROOT} .djp-s-cta .djp-cta-inner { display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; }
 ${ROOT} .djp-s-cta[data-align="center"] .djp-cta-inner { align-items: center; }

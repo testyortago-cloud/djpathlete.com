@@ -1772,3 +1772,78 @@ describe("a full page assembled from multiple kinds", () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// Task 6: the new per-section knobs actually reach the wrapper. Uses
+// `reassemble()` (not `renderSection()` directly + `fullCss`) because the
+// point of these tests is the RENDERER'S OWN OUTPUT — `bg:{kind:"image"}`'s
+// security boundary lives in render.ts itself, not in the frozen compiler
+// (see the module comment above `backgroundDeclaration` in render.ts): a
+// hostile `src` must never reach `html` in the first place, so asserting
+// against the pre-compile HTML is the only way to test the guard that
+// actually matters.
+// ---------------------------------------------------------------------------
+
+/** Builds a minimal one-section doc with the given style and returns its rendered HTML. */
+function renderOne(style: Section["style"]): string {
+  const doc: SectionDoc = {
+    v: 1,
+    engine: "sections",
+    theme: { tone: "light", accent: "accent", radius: "soft" },
+    sections: [
+      {
+        id: "s1",
+        kind: "hero",
+        variant: "centered",
+        style,
+        props: { headline: "Get stronger", primaryCta: urlCta },
+      },
+    ],
+  }
+  return reassemble(doc).html
+}
+
+describe("new style knobs reach the wrapper", () => {
+  it("emits data attributes for divider, width and reverse", () => {
+    const html = renderOne({ divider: "angle", width: "narrow", reverse: true })
+    expect(html).toContain('data-divider="angle"')
+    expect(html).toContain('data-width="narrow"')
+    expect(html).toContain('data-reverse="true"')
+  })
+  it("defaults every new knob so an untouched section is unchanged", () => {
+    const html = renderOne({})
+    expect(html).toContain('data-divider="none"')
+    expect(html).toContain('data-reverse="false"')
+  })
+  it("supports align right", () => {
+    expect(renderOne({ align: "right" })).toContain('data-align="right"')
+  })
+})
+
+describe("background images are a URL boundary", () => {
+  it("renders a safe image background", () => {
+    const html = renderOne({ bg: { kind: "image", src: "/uploads/a.png" } })
+    expect(html).toContain("background-image")
+    expect(html).toContain("/uploads/a.png")
+  })
+  // safeStyle does NOT stop this — it only drops javascript:/expression(/@import/
+  // behavior:/-moz-binding. The renderer is the guard, so this test is the guard's test.
+  it.each([
+    "javascript:alert(1)",
+    'x.png"); background-image: url("https://evil.example/x.png',
+    "data:text/html,<script>alert(1)</script>",
+    "//evil.example/x.png",
+  ])("renders NO background for hostile src %j", (src) => {
+    const html = renderOne({ bg: { kind: "image", src } })
+    expect(html).not.toContain("evil.example")
+    expect(html).not.toContain("javascript:")
+    expect(html).not.toContain("background-image")
+  })
+  it("renders a gradient background from validated hex", () => {
+    const html = renderOne({ bg: { kind: "gradient", from: "#111111", to: "#333333" } })
+    expect(html).toContain("linear-gradient")
+  })
+  it("kind none emits no background at all", () => {
+    expect(renderOne({ bg: { kind: "none" } })).not.toContain("background-image")
+  })
+})
