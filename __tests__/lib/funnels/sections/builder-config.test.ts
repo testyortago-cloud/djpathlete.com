@@ -193,3 +193,44 @@ describe("review configuration", () => {
     expect(config.SECTION_REVIEW_CRITIC_MODEL).not.toBe(config.SECTION_BUILDER_MODEL)
   })
 })
+
+describe("reference-image tunables", () => {
+  // The allowlist is what ANTHROPIC'S VISION ENDPOINT accepts, which is NOT the
+  // same list as `app/api/upload/funnel-image/route.ts` (that one also takes
+  // image/avif, which Anthropic does not). Two lists that look alike and differ
+  // in one member is this repo's divergent-regex bug class; this test states
+  // which list this one IS.
+  it("allows exactly the four types Anthropic's vision endpoint takes", () => {
+    expect([...config.BUILDER_REFERENCE_IMAGE_MEDIA_TYPES].sort()).toEqual([
+      "image/gif",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ])
+  })
+
+  it("does NOT allow avif, which the funnel-image upload route does", () => {
+    expect(config.BUILDER_REFERENCE_IMAGE_MEDIA_TYPES).not.toContain("image/avif")
+  })
+
+  // 1568px is what Claude downscales to anyway. A larger number would upload
+  // pixels the model discards; a smaller one throws away fidelity for free.
+  it("targets the long edge Claude itself downscales to", () => {
+    expect(config.BUILDER_REFERENCE_IMAGE_MAX_EDGE).toBe(1568)
+  })
+
+  // The base64 cap must sit ABOVE a realistic worst case for a 1568px JPEG
+  // (~540 KB base64) — a cap below that would reject ordinary screenshots — and
+  // the source bound must be looser still, since it is checked BEFORE downscale.
+  it("caps base64 above a realistic post-downscale worst case", () => {
+    expect(config.BUILDER_REFERENCE_IMAGE_MAX_BASE64).toBeGreaterThan(540_000)
+    expect(config.BUILDER_REFERENCE_IMAGE_MAX_BASE64).toBe(2_000_000)
+  })
+
+  it("bounds the source file more loosely than the encoded payload", () => {
+    expect(config.BUILDER_REFERENCE_IMAGE_MAX_SOURCE_BYTES).toBeGreaterThan(
+      config.BUILDER_REFERENCE_IMAGE_MAX_BASE64 * 0.75,
+    )
+    expect(config.BUILDER_REFERENCE_IMAGE_MAX_SOURCE_BYTES).toBe(10 * 1024 * 1024)
+  })
+})

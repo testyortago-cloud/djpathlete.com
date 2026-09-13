@@ -293,3 +293,58 @@ export const SECTION_REVIEW_TIMEOUT_MS = 90_000
  * not polishing.
  */
 export const SECTION_REVIEW_MAX_FINDINGS = 24
+
+// ---------------------------------------------------------------------------
+// THE PASTED REFERENCE IMAGE (2026-09-14 spec §4, §5).
+//
+// A reference image is TRANSIENT: it rides in one request body, is handed to
+// the model, and is never written to `funnel_step_turns`, to storage, or to the
+// document. These four numbers are the whole of its budget.
+// ---------------------------------------------------------------------------
+
+/**
+ * What ANTHROPIC'S VISION ENDPOINT accepts. This is deliberately NOT the same
+ * list as `app/api/upload/funnel-image/route.ts`'s `ALLOWED_TYPES`, which also
+ * takes `image/avif` — that route uploads to storage for a page to display,
+ * this one hands bytes to a model that does not read AVIF. Neither list imports
+ * the other, because they are lists of different things; each says which.
+ */
+export const BUILDER_REFERENCE_IMAGE_MEDIA_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+] as const
+
+export type BuilderReferenceImageMediaType = (typeof BUILDER_REFERENCE_IMAGE_MEDIA_TYPES)[number]
+
+/**
+ * The long edge the CLIENT downscales to before upload.
+ *
+ * Claude downscales every image to ~1568px on the long edge before the model
+ * sees it, so sending more costs upload time and request size and buys nothing.
+ * Doing it in the browser rather than the route follows the same reasoning
+ * `app/api/upload/funnel-image/route.ts` already states for width/height: the
+ * browser has the decoded image, and the alternative is a `sharp`-class
+ * dependency in a route to redo work the picker already did.
+ */
+export const BUILDER_REFERENCE_IMAGE_MAX_EDGE = 1568
+
+/**
+ * Cap on the base64 `data` string the route accepts, in characters.
+ *
+ * A 1568px JPEG at q0.85 is typically 150-400 KB binary (~200-540 KB base64),
+ * so 2,000,000 (~1.5 MB binary) sits well above the realistic worst case and
+ * well below any platform body limit.
+ */
+export const BUILDER_REFERENCE_IMAGE_MAX_BASE64 = 2_000_000
+
+/**
+ * Cap on the ORIGINAL file, checked in the browser BEFORE decoding.
+ *
+ * A separate, looser bound with a different purpose from the one above: it
+ * exists so dropping a 200 MB TIFF in fails immediately with a sentence,
+ * instead of hanging the tab on a canvas draw that was always going to be
+ * rejected.
+ */
+export const BUILDER_REFERENCE_IMAGE_MAX_SOURCE_BYTES = 10 * 1024 * 1024
