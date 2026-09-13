@@ -58,6 +58,7 @@
 
 import { notFound } from "next/navigation"
 import { auth } from "@/lib/auth"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { NodeRenderer } from "@/components/funnels/NodeRenderer"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile"
 import { getFunnelById, getStep } from "@/lib/db/funnels"
@@ -158,6 +159,19 @@ export default async function FunnelDraftPreviewPage({ params, searchParams }: P
   const funnel = await getFunnelById(step.funnel_id)
   if (!funnel) notFound()
 
+  // The tenant's brand kit, so this preview shows the same colours publish
+  // ships -- see `renderDraftPreview`'s own comment on why a failed read
+  // degrades to `null` rather than costing the preview anything. Wrapped here
+  // too: `resolveAdminTenant` can throw `NoAccessibleBusinessError` for a
+  // staff account whose membership was revoked mid-session, and that is not a
+  // reason to fail a page the owner only wants to look at.
+  let businessId: string | null = null
+  try {
+    ;({ businessId } = await resolveAdminTenant())
+  } catch (error) {
+    console.error("[funnel-preview] tenant resolution for brand kit failed — continuing without it:", error)
+  }
+
   // `/go/<slug>` and NOT the preview base. This route is the builder's iframe:
   // its links must read the way the published page's links read, because the
   // owner is judging the page, not walking it. The full-screen preview passes
@@ -167,6 +181,7 @@ export default async function FunnelDraftPreviewPage({ params, searchParams }: P
     funnelId: funnel.id,
     funnelBasePath: `/go/${funnel.slug}`,
     editable,
+    businessId,
   })
 
   if (result.kind === "doc-invalid") {

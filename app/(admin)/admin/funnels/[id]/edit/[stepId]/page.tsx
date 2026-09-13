@@ -25,6 +25,9 @@ import { getFunnelById, getStep, getVersionNumber, listSteps } from "@/lib/db/fu
 import { getDraft, listTurns } from "@/lib/db/funnel-builder"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import { reassemble } from "@/lib/funnels/sections/doc"
+import type { BrandKit } from "@/lib/funnels/sections/render"
+import { resolveBrandKit } from "@/lib/funnels/brand-kit"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import {
   loadCatalogues,
@@ -87,6 +90,11 @@ async function resolveAndCompile(
   // in the publish route: losing the check costs this screen a warning, and
   // nothing on it may turn a page the owner wants to edit into an error.
   pages: FunnelStepRef[] | null,
+  // Already resolved (and already wrapped) by the caller -- see
+  // `FunnelBuilderScreen`'s own read of it, alongside `turns` and
+  // `publishedVersion`, which follow the same "neither read is allowed to
+  // take the editor down" rule this file's header states.
+  brandKit: BrandKit | null,
 ): Promise<InitialState> {
   let resolvedDoc = doc
   let unresolved: UnresolvedCta[] = []
@@ -110,7 +118,7 @@ async function resolveAndCompile(
 
   let compile: CompileSummary
   try {
-    const rendered = reassemble(resolvedDoc, { funnelBasePath })
+    const rendered = reassemble(resolvedDoc, { funnelBasePath, brandKit })
     const compiled = compileFunnelStep({ html: rendered.html, css: rendered.css })
     compile = compiled.ok
       ? {
@@ -165,7 +173,7 @@ export async function FunnelBuilderScreen({
   // Neither read is allowed to take the editor down: a transcript that cannot
   // be listed costs the owner their history, not their page. The same goes for
   // the live version number, which is a label — the editor opens without it.
-  const [draft, turns, publishedVersion, pages] = await Promise.all([
+  const [draft, turns, publishedVersion, pages, brandKit] = await Promise.all([
     getDraft(stepId),
     listTurns(stepId).catch((error) => {
       console.error("[funnels/edit] transcript read failed — opening without history:", error)
@@ -186,11 +194,22 @@ export async function FunnelBuilderScreen({
         console.error("[funnels/edit] could not read the page list — links unchecked:", error)
         return null
       }),
+    // The tenant's brand kit, for `reassemble`'s palette default -- same
+    // wiring as the build route and both draft previews, so this editor's
+    // compile status agrees with what the owner sees elsewhere. A resolution
+    // or `business_settings` failure costs only the palette default, exactly
+    // like every other read in this list.
+    resolveAdminTenant()
+      .then(({ businessId }) => resolveBrandKit(businessId))
+      .catch((error) => {
+        console.error("[funnels/edit] brand kit read failed — continuing without it:", error)
+        return null
+      }),
   ])
   if (!draft) notFound()
 
   const initial: InitialState = draft.doc
-    ? await resolveAndCompile(draft.doc, funnelBasePath, pages)
+    ? await resolveAndCompile(draft.doc, funnelBasePath, pages, brandKit)
     : { doc: null, unresolved: [], danglingAnchors: [], compile: null, resolutionError: null }
 
   // WHICH TURNS CAN BE GONE BACK TO: the ones whose stored document still
@@ -271,8 +290,7 @@ export async function FunnelBuilderScreen({
   // TRUE, which would fire the creation prompt on every untouched step of every
   // funnel that predates templates. Truthiness covers null, undefined and the
   // empty string alike.
-  const wantsFirstDraft =
-    (start === "1" || Boolean(funnel.template)) && draft.doc === null && turns.length === 0
+  const wantsFirstDraft = (start === "1" || Boolean(funnel.template)) && draft.doc === null && turns.length === 0
 
   // The sibling read happens ONLY when a draft is actually wanted — which is
   // once in a step's life. Hoisting it above the guard would put an extra query

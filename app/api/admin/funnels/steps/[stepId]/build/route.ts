@@ -85,6 +85,9 @@ import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
 import { applyOps, type DiffReceipt, type SectionOp } from "@/lib/funnels/sections/apply"
 import { reassemble } from "@/lib/funnels/sections/doc"
+import type { BrandKit } from "@/lib/funnels/sections/render"
+import { resolveBrandKit } from "@/lib/funnels/brand-kit"
+import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import { compileFunnelStep } from "@/lib/funnels/compile"
 import {
   buildResultSchema,
@@ -283,9 +286,9 @@ interface TurnResponse {
  * safely computed — so it is caught and reported as a compile problem, which
  * is exactly what an owner needs to see either way.
  */
-function compileDoc(doc: SectionDoc, funnelBasePath: string | undefined): CompileSummary {
+function compileDoc(doc: SectionDoc, funnelBasePath: string | undefined, brandKit: BrandKit | null): CompileSummary {
   try {
-    const { html, css, problems } = reassemble(doc, funnelBasePath ? { funnelBasePath } : {})
+    const { html, css, problems } = reassemble(doc, { ...(funnelBasePath ? { funnelBasePath } : {}), brandKit })
     const compiled = compileFunnelStep({ html, css })
     if (!compiled.ok) {
       return {
@@ -330,6 +333,26 @@ async function loadCataloguesSafely(): Promise<{ catalogues: Catalogues | null; 
   } catch (error) {
     console.error("[funnels/build] catalogue load failed — continuing without it:", error)
     return { catalogues: null, error: (error as Error).message }
+  }
+}
+
+/**
+ * The tenant's brand kit, for `reassemble`'s palette default. Wrapped exactly
+ * like `loadCataloguesSafely` above: this is a NEW dependency on a route whose
+ * whole contract is that nothing in it may 500, and neither a business-id
+ * resolution failure (no accessible business — e.g. a staff account whose
+ * membership was revoked mid-session) nor a `business_settings` read failure
+ * may take the turn down. `null` degrades to today's behaviour: the page
+ * renders with the host site's own colours, which is what happens regardless
+ * of whether a tenant or a brand kit could be resolved.
+ */
+async function loadBrandKitSafely(request: Request): Promise<BrandKit | null> {
+  try {
+    const { businessId } = await resolveAdminTenantForRequest(request)
+    return await resolveBrandKit(businessId)
+  } catch (error) {
+    console.error("[funnels/build] brand kit read failed — continuing without it:", error)
+    return null
   }
 }
 
@@ -448,9 +471,21 @@ interface PageContext {
    */
   funnelSlug: string | null
   faqPageKeys: string[]
+  /**
+   * The tenant's brand kit, threaded into `reassemble` as the page's palette
+   * default when the document itself carries none (Task 4's `themeCss`
+   * fallback). `null` on a business-id resolution failure or a
+   * `business_settings` read failure, resolved independently of the
+   * `Promise.all` below — a brand-kit miss must cost only the palette
+   * default, never `funnelBasePath`/`stepSlugs`/`allPages`, which are
+   * correctness-critical and degrade on their own. See `loadBrandKitSafely`.
+   */
+  brandKit: BrandKit | null
 }
 
-async function loadPageContext(funnelId: string, thisStepSlug: string): Promise<PageContext> {
+async function loadPageContext(funnelId: string, thisStepSlug: string, request: Request): Promise<PageContext> {
+  const brandKit = await loadBrandKitSafely(request)
+
   // Degrades rather than throws: none of this is correctness-critical (a
   // missing base path makes a step CTA a disabled placeholder, a missing slug
   // list just means the model is not offered step targets), and a 500 on a
@@ -475,6 +510,7 @@ async function loadPageContext(funnelId: string, thisStepSlug: string): Promise<
       nextStepSlug: next?.slug ?? null,
       funnelSlug: funnel?.slug ?? null,
       faqPageKeys: Object.keys(faqCounts).sort(),
+      brandKit,
     }
   } catch (error) {
     console.error("[funnels/build] page context load failed — continuing degraded:", error)
@@ -492,6 +528,7 @@ async function loadPageContext(funnelId: string, thisStepSlug: string): Promise<
       // for the field regardless, and the two degrade independently.
       funnelSlug: null,
       faqPageKeys: [],
+      brandKit,
     }
   }
 }
@@ -571,7 +608,7 @@ export const POST = withAudit(
       if (!draft || !step) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
       if (parsed.data.action === "reset") {
-        return await handleReset(stepId, step.funnel_id, step.slug, parsed.data.toRevision, userId)
+        return await handleReset(stepId, step.funnel_id, step.slug, parsed.data.toRevision, userId, request)
       }
 
       if (parsed.data.action === "polish") {
@@ -582,6 +619,7 @@ export const POST = withAudit(
           draft,
           expectedRevision: parsed.data.revision,
           userId,
+          request,
         })
       }
 
@@ -594,6 +632,7 @@ export const POST = withAudit(
           expectedRevision: parsed.data.revision,
           ops: parsed.data.ops,
           userId,
+          request,
         })
       }
 
@@ -605,6 +644,7 @@ export const POST = withAudit(
         message: parsed.data.message,
         expectedRevision: parsed.data.revision,
         userId,
+        request,
       })
     } catch (error) {
       console.error("[POST /api/admin/funnels/steps/:stepId/build]", error)
@@ -623,6 +663,7 @@ async function handleReset(
   stepSlug: string,
   toRevision: number,
   userId: string,
+  request: Request,
 ): Promise<Response> {
   const result = await revertToRevision({ stepId, toRevision, createdBy: userId })
   if (!result.ok) {
@@ -646,7 +687,7 @@ async function handleReset(
   }
 
   const restored = result.turn.doc as SectionDoc
-  const context = await loadPageContext(funnelId, stepSlug)
+  const context = await loadPageContext(funnelId, stepSlug, request)
 
   // RE-RESOLVED, not read off the restored turn row. `revertToRevision` copies
   // that turn's `unresolved` forward as a display cache computed against the
@@ -655,7 +696,7 @@ async function handleReset(
   // chat tell the owner a page is publishable when it is not.
   const { catalogues, error: catalogueError } = await loadCataloguesSafely()
   const resolution = resolveSafely(restored, catalogues, catalogueError, context.allPages)
-  const compile = compileDoc(resolution.doc, context.funnelBasePath)
+  const compile = compileDoc(resolution.doc, context.funnelBasePath, context.brandKit)
 
   const response: TurnResponse = {
     revision: result.revision,
@@ -696,10 +737,11 @@ interface ApplyPolishArgs {
   expectedRevision: number
   ops: SectionOp[]
   userId: string
+  request: Request
 }
 
 async function handleApplyPolish(args: ApplyPolishArgs): Promise<Response> {
-  const { stepId, funnelId, stepSlug, draft, expectedRevision, ops, userId } = args
+  const { stepId, funnelId, stepSlug, draft, expectedRevision, ops, userId, request } = args
 
   // Same refusal as the build path, for the same reason: a document no op can
   // repair cannot be polished either, and `applyOps` would reject it at its
@@ -745,10 +787,10 @@ async function handleApplyPolish(args: ApplyPolishArgs): Promise<Response> {
     )
   }
 
-  const context = await loadPageContext(funnelId, stepSlug)
+  const context = await loadPageContext(funnelId, stepSlug, request)
   const { catalogues, error: catalogueError } = await loadCataloguesSafely()
   const resolution = resolveSafely(applied.doc, catalogues, catalogueError, context.allPages)
-  const compile = compileDoc(resolution.doc, context.funnelBasePath)
+  const compile = compileDoc(resolution.doc, context.funnelBasePath, context.brandKit)
 
   const turn = await appendTurn({
     stepId,
@@ -829,6 +871,7 @@ interface BuildArgs {
   message: string
   expectedRevision: number
   userId: string
+  request: Request
 }
 
 /**
@@ -989,10 +1032,11 @@ interface PolishArgs {
   draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>
   expectedRevision: number
   userId: string
+  request: Request
 }
 
 async function handlePolish(args: PolishArgs): Promise<Response> {
-  const { stepId, funnelId, stepSlug, draft, expectedRevision, userId } = args
+  const { stepId, funnelId, stepSlug, draft, expectedRevision, userId, request } = args
   const startTime = Date.now()
 
   if (draft.docInvalid) {
@@ -1042,7 +1086,10 @@ async function handlePolish(args: PolishArgs): Promise<Response> {
     return NextResponse.json({ error: "Page review is switched off right now." }, { status: 503 })
   }
 
-  const [context, catalogueLoad] = await Promise.all([loadPageContext(funnelId, stepSlug), loadCataloguesSafely()])
+  const [context, catalogueLoad] = await Promise.all([
+    loadPageContext(funnelId, stepSlug, request),
+    loadCataloguesSafely(),
+  ])
   const { catalogues, error: catalogueError } = catalogueLoad
   const doc = draft.doc
 
@@ -1069,7 +1116,7 @@ async function handlePolish(args: PolishArgs): Promise<Response> {
 }
 
 async function handleBuild(args: BuildArgs): Promise<Response> {
-  const { stepId, funnelId, stepSlug, draft, message, expectedRevision, userId } = args
+  const { stepId, funnelId, stepSlug, draft, message, expectedRevision, userId, request } = args
 
   // (b) REFUSE, NEVER OVERWRITE. `project_data` holds something that is not a
   // `SectionDoc`: legacy GrapesJS state, corruption, or a document the
@@ -1118,7 +1165,7 @@ async function handleBuild(args: BuildArgs): Promise<Response> {
   const baseDoc = draft.doc ?? seedDoc()
 
   const [context, history, catalogueLoad] = await Promise.all([
-    loadPageContext(funnelId, stepSlug),
+    loadPageContext(funnelId, stepSlug, request),
     loadHistorySafely(stepId),
     loadCataloguesSafely(),
   ])
@@ -1606,7 +1653,7 @@ async function runTurn(args: TurnRunArgs): Promise<void> {
   // BEFORE the compile and why the RESOLVED document is what gets stored.
   // -------------------------------------------------------------------------
   const resolution = resolveSafely(outcome.doc, catalogues, catalogueError, context.allPages)
-  const compile = compileDoc(resolution.doc, context.funnelBasePath)
+  const compile = compileDoc(resolution.doc, context.funnelBasePath, context.brandKit)
 
   if (logId) {
     await updateGenerationLog(logId, {
@@ -1813,7 +1860,7 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
   // mean previewing a document with an unresolved CTA in it and discovering
   // that only after saying yes.
   const resolution = resolveSafely(review.doc, catalogues, catalogueError, context.allPages)
-  const compile = compileDoc(resolution.doc, context.funnelBasePath)
+  const compile = compileDoc(resolution.doc, context.funnelBasePath, context.brandKit)
 
   if (mode === "propose") {
     // THE WHOLE FEATURE, IN ONE EARLY RETURN. No `appendTurn`, so no row, no

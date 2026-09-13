@@ -28,6 +28,7 @@ vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.f
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
+vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
 vi.mock("@/lib/tenancy/resolve", () => ({
   resolveAdminTenantForRequest: vi.fn(),
   NoAccessibleBusinessError: class NoAccessibleBusinessError extends Error {},
@@ -43,6 +44,7 @@ import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
+import { getBusinessSettings } from "@/lib/db/businesses"
 import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/tenancy/resolve"
 import { platformBusinessId } from "@/lib/tenancy/platform"
 import { ensureEventPriced } from "@/lib/events/ensure-priced"
@@ -275,11 +277,17 @@ beforeEach(() => {
   mock(getPublishedEvents).mockResolvedValue([])
   mock(getFaqCountsByPage).mockResolvedValue({})
   mock(ensureEventPriced).mockResolvedValue({ ok: true, changed: false })
+  // No brand chosen by default — every pre-existing test below publishes with
+  // no `--primary` override, exactly as it did before Task 9.
+  mock(getBusinessSettings).mockResolvedValue({ brand_color: null, accent_color: null })
 })
 
 describe("POST /api/admin/funnels/[id]/publish", () => {
   it("publishes every page AND takes the funnel live", async () => {
-    mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false })])
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false }),
+    ])
     mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thank-you"), docInvalid: false, revision: 1 })
 
     const response = await POST(request(), ctx)
@@ -360,7 +368,10 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
   })
 
   it("returns the published pages, versions and warnings a caller reads", async () => {
-    mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false })])
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false }),
+    ])
     mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thank-you"), docInvalid: false, revision: 1 })
     mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) => ({
       ok: true,
@@ -398,7 +409,10 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
   })
 
   it("REFUSES when a page has never been built, and writes NOTHING", async () => {
-    mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false })])
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Thank you", slug: "thank-you", position: 1, is_entry: false }),
+    ])
     mock(getDraft).mockImplementation(async (stepId: string) =>
       stepId === "s1"
         ? { doc: docWithCta(PROGRAM_NAME, "thank-you"), docInvalid: false, revision: 1 }
@@ -421,7 +435,10 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
   })
 
   it("REFUSES on an unresolved CTA and names the page it is on", async () => {
-    mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Offer", slug: "offer", position: 1, is_entry: false })])
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Offer", slug: "offer", position: 1, is_entry: false }),
+    ])
     mock(getDraft).mockImplementation(async (stepId: string) => ({
       doc: stepId === "s2" ? docWithCta(DEAD_REF) : docWithCta(PROGRAM_NAME, "offer"),
       docInvalid: false,
@@ -603,8 +620,8 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     mock(getDraft).mockImplementation(async (stepId: string) =>
       stepId === "s1"
         ? { doc: docWithCta(PROGRAM_NAME, "old"), docInvalid: false, revision: 1 }
-        // What `getDraft` reports for legacy GrapesJS state.
-        : { doc: null, docInvalid: true, revision: 0 },
+        : // What `getDraft` reports for legacy GrapesJS state.
+          { doc: null, docInvalid: true, revision: 0 },
     )
 
     const response = await POST(request(), ctx)
@@ -633,7 +650,10 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
   })
 
   it("does not claim nothing was published when a write threw part way through", async () => {
-    mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false })])
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
+    ])
     mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thanks"), docInvalid: false, revision: 1 })
     // `publishStep` THROWS rather than returning `ok:false` — any Supabase
     // error does — after page 1 already has a version row.
@@ -763,10 +783,15 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
   })
 
   it("does not flip the funnel row when a page fails to compile", async () => {
-    mock(listSteps).mockResolvedValue([stepRow(), stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false })])
+    mock(listSteps).mockResolvedValue([
+      stepRow(),
+      stepRow({ id: "s2", name: "Thanks", slug: "thanks", position: 1, is_entry: false }),
+    ])
     mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME, "thanks"), docInvalid: false, revision: 1 })
     mock(publishStep).mockImplementation(async ({ stepId }: { stepId: string }) =>
-      stepId === "s2" ? { ok: false, errors: [{ message: "too big" }] } : { ok: true, version: { id: "v1", version: 1 }, warnings: [] },
+      stepId === "s2"
+        ? { ok: false, errors: [{ message: "too big" }] }
+        : { ok: true, version: { id: "v1", version: 1 }, warnings: [] },
     )
 
     const response = await POST(request(), ctx)
@@ -783,5 +808,40 @@ describe("POST /api/admin/funnels/[id]/publish", () => {
     // untouched. It must not become a mid-loop `return` of a 422, which would
     // reinstate the partial write silently.
     expect(mock(updateFunnel)).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The tenant brand kit — Task 9's wiring. `publishStep` is mocked, so its
+// recorded call args are the actual `{html, css}` this route computed via the
+// REAL `reassemble` — the same one the build route and the draft preview run.
+// ---------------------------------------------------------------------------
+
+describe("POST /api/admin/funnels/[id]/publish — the tenant brand kit", () => {
+  it("bakes the resolved businessId's brand colour into the published css", async () => {
+    // MUTANT: reading a brand kit under some other id, or never reading one at
+    // all. `resolveAdminTenantForRequest` already resolves `BUSINESS_ID` for
+    // this route's Stripe-pricing call; the brand kit must use the SAME one.
+    mock(getBusinessSettings).mockResolvedValue({ brand_color: "#6d28d9", accent_color: null })
+    mock(listSteps).mockResolvedValue([stepRow()])
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+
+    const response = await POST(request(), ctx)
+    expect(response.status).toBe(200)
+    expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
+    expect(mock(publishStep).mock.calls[0][0].css).toContain("--primary: #6d28d9")
+  })
+
+  it("degrades to no brand kit when the business_settings read throws — still publishes", async () => {
+    // MUTANT: an unwrapped brand-kit read joining the fail-closed try this
+    // handler already runs inside, which would turn a cosmetic read failure
+    // into "This funnel could not be published."
+    mock(getBusinessSettings).mockRejectedValue(new Error("business_settings unreachable"))
+    mock(listSteps).mockResolvedValue([stepRow()])
+    mock(getDraft).mockResolvedValue({ doc: docWithCta(PROGRAM_NAME), docInvalid: false, revision: 1 })
+
+    const response = await POST(request(), ctx)
+    expect(response.status).toBe(200)
+    expect(mock(publishStep).mock.calls[0][0].css).not.toMatch(/--primary:/)
   })
 })

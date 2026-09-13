@@ -17,6 +17,12 @@
 // makes the REAL `loadCatalogues` throw, by handing its recognition read 1000
 // rows, rather than a `mockRejectedValue` that proves only that try/catch
 // catches.
+//
+// `reassemble` IS SPIED, NOT REPLACED: `vi.fn(original.reassemble)` still runs
+// the real function on every call (so `compile.ok`/`problems`/`warnings` below
+// are the genuine verdict), it just also records what it was called WITH —
+// which is the only way to see `ctx.brandKit` from outside this route, since
+// `TurnResponse` never carries raw CSS.
 
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -43,6 +49,11 @@ vi.mock("@/lib/db/funnels", () => ({
   listSteps: vi.fn(),
 }))
 vi.mock("@/lib/db/faqs", () => ({ getFaqCountsByPage: vi.fn() }))
+vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: vi.fn() }))
+vi.mock("@/lib/tenancy/resolve", () => ({
+  resolveAdminTenantForRequest: vi.fn(),
+  NoAccessibleBusinessError: class NoAccessibleBusinessError extends Error {},
+}))
 // The review stage. MOCKED FOR A CORRECTNESS REASON, NOT A SPEED ONE: only
 // `streamAgent` is faked above, so `callAgent` is the real one — and the review
 // runs automatically on every `set_page`, which is what the first-draft tests
@@ -57,6 +68,14 @@ vi.mock("@/lib/funnels/sections/review/pipeline", async (importOriginal) => ({
 vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.fn() }))
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
 vi.mock("@/lib/db/events", () => ({ getEvents: vi.fn(), getPublishedEvents: vi.fn() }))
+vi.mock("@/lib/funnels/sections/doc", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/funnels/sections/doc")>()
+  // `vi.fn(original.reassemble)`, NOT a bare `vi.fn()`: every call still runs
+  // the real function (so `compile.ok`/`problems`/`warnings` stay the genuine
+  // verdict for every pre-existing test), it just also records what it was
+  // called WITH.
+  return { ...original, reassemble: vi.fn(original.reassemble) }
+})
 
 import { POST, maxDuration } from "@/app/api/admin/funnels/steps/[stepId]/build/route"
 import { auth } from "@/lib/auth"
@@ -66,10 +85,13 @@ import { createGenerationLog, updateGenerationLog } from "@/lib/db/ai-generation
 import { appendTurn, getDraft, listTurns, revertToRevision } from "@/lib/db/funnel-builder"
 import { getFunnelById, getStep, listSteps } from "@/lib/db/funnels"
 import { getFaqCountsByPage } from "@/lib/db/faqs"
+import { getBusinessSettings } from "@/lib/db/businesses"
+import { resolveAdminTenantForRequest } from "@/lib/tenancy/resolve"
 import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
 import { reviewDoc } from "@/lib/funnels/sections/review/pipeline"
+import { reassemble } from "@/lib/funnels/sections/doc"
 import {
   SECTION_BUILDER_EDIT_MAX_TOKENS,
   SECTION_BUILDER_MAX_TOKENS_CEILING,
@@ -90,6 +112,28 @@ const PROGRAM_NAME = "Comeback Code"
 
 const STEP = { id: STEP_ID, funnel_id: "ffffffff-1111-4222-8333-444444444444", slug: "apply", name: "Apply" }
 const FUNNEL = { id: STEP.funnel_id, slug: "summer-camp", name: "Summer camp", status: "draft" }
+
+const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
+
+/** A full `BusinessSettings` row shape — `getBusinessSettings` returns `SELECT *`. */
+const BUSINESS_SETTINGS = {
+  business_id: BUSINESS_ID,
+  display_name: "DJP Athlete",
+  sender_name: "DJP Athlete",
+  sender_email: "hello@djpathlete.com",
+  reply_to: "hello@djpathlete.com",
+  logo_url: null,
+  timezone: "America/New_York",
+  quiet_hours_start: 21,
+  quiet_hours_end: 8,
+  daily_message_cap: 50,
+  postal_address: "",
+  sms_help_text: "",
+  sms_messaging_service_sid: "",
+  sms_sender_phone: "",
+  brand_color: null as string | null,
+  accent_color: null as string | null,
+}
 
 function doc(headline = "Rotational power in eight weeks"): SectionDoc {
   return {
@@ -295,6 +339,17 @@ beforeEach(() => {
   mock(getFaqCountsByPage).mockResolvedValue({ coaching: 4 })
   mock(listTurns).mockResolvedValue([])
 
+  // No brand chosen by default (`brand_color: null`, exactly the column's own
+  // "never defaulted" contract) — every pre-existing test below sees today's
+  // behaviour, no `--primary` override anywhere. The brand-kit tests override
+  // both mocks.
+  mock(resolveAdminTenantForRequest).mockResolvedValue({
+    businessId: BUSINESS_ID,
+    choices: [{ id: BUSINESS_ID, name: "DJP Athlete", slug: "djp-athlete" }],
+    isOperator: true,
+  })
+  mock(getBusinessSettings).mockResolvedValue({ ...BUSINESS_SETTINGS, brand_color: null, accent_color: null })
+
   mock(getAllPrograms).mockResolvedValue([{ id: PROGRAM_ID, name: PROGRAM_NAME }])
   mock(getPrograms).mockResolvedValue([{ id: PROGRAM_ID, name: PROGRAM_NAME }])
   mock(listAllProducts).mockResolvedValue([])
@@ -481,7 +536,10 @@ describe("POST .../build — a draft this builder cannot read", () => {
     // MUTANT: defaulting `resetToRevision` to the current revision, or to 1 —
     // the client would then offer a reset button that always fails.
     mock(getDraft).mockResolvedValue({ doc: null, docInvalid: true, revision: 3 })
-    mock(listTurns).mockResolvedValue([{ revision: 1, doc: null }, { revision: 2, doc: { not: "a doc" } }])
+    mock(listTurns).mockResolvedValue([
+      { revision: 1, doc: null },
+      { revision: 2, doc: { not: "a doc" } },
+    ])
     const body = await readTurn(await POST(req({ message: "hi", revision: 3 }), ctx))
     expect(body.resetToRevision).toBeNull()
   })
@@ -567,7 +625,9 @@ describe("POST .../build — the one-shot retry", () => {
     expect(body.reply).toBe("I couldn't build that — try describing it differently.")
     expect(body.doc.sections[0].props.headline).toBe("Rotational power in eight weeks")
 
-    const assistantWrite = mock(appendTurn).mock.calls.map((c) => c[0]).filter((i) => i.role === "assistant")
+    const assistantWrite = mock(appendTurn)
+      .mock.calls.map((c) => c[0])
+      .filter((i) => i.role === "assistant")
     expect(assistantWrite).toHaveLength(1)
     expect(assistantWrite[0].status).toBe("failed")
     expect(assistantWrite[0].doc).toBeUndefined()
@@ -614,6 +674,77 @@ describe("POST .../build — a catalogue that cannot be read", () => {
 })
 
 // ---------------------------------------------------------------------------
+// The tenant brand kit — Task 9's wiring.
+// ---------------------------------------------------------------------------
+
+describe("POST .../build — the tenant brand kit", () => {
+  it("passes the tenant's brand colour through to reassemble", async () => {
+    // MUTANT: never resolving a business id, or resolving one but not reading
+    // its `business_settings` row, or reading it but dropping `brand_color`
+    // before it reaches `reassemble`'s `ctx`. `reassemble` is spied (not
+    // replaced — see the header note), so this is the real function's own
+    // verdict on what it was called with, not a restatement of the wiring.
+    mock(getBusinessSettings).mockResolvedValue({ ...BUSINESS_SETTINGS, brand_color: "#6d28d9", accent_color: null })
+
+    const res = await runTurn({ message: "hi", revision: 4 })
+    expect(res.status).toBe(200)
+
+    expect(resolveAdminTenantForRequest).toHaveBeenCalled()
+    expect(getBusinessSettings).toHaveBeenCalledWith(BUSINESS_ID)
+
+    const calls = mock(reassemble).mock.calls
+    expect(calls.length).toBeGreaterThan(0)
+    for (const [, ctx] of calls) {
+      expect(ctx?.brandKit).toEqual({ brand: "#6d28d9", accent: undefined })
+    }
+  })
+
+  it("degrades to no brand kit when the business_settings read throws — never a 500", async () => {
+    // MUTANT: an unwrapped brand-kit read. This route's whole contract (see
+    // the file header) is that nothing in it may 500; a brand-kit read is a
+    // NEW dependency and must degrade exactly like `loadCatalogues` does.
+    mock(getBusinessSettings).mockRejectedValue(new Error("business_settings unreachable"))
+
+    const res = await runTurn({ message: "hi", revision: 4 })
+    expect(res.status).toBe(200)
+
+    const body = await readTurn(res)
+    expect(body.compile.ok).toBe(true)
+
+    for (const [, ctx] of mock(reassemble).mock.calls) {
+      expect(ctx?.brandKit ?? null).toBeNull()
+    }
+  })
+
+  it("degrades to no brand kit when the tenant cannot be resolved — never a 500", async () => {
+    // A second, independent failure mode: the business-id resolution itself
+    // throws (e.g. `NoAccessibleBusinessError` for a staff account whose
+    // membership was revoked mid-session). Same contract: degrade, do not 500.
+    mock(resolveAdminTenantForRequest).mockRejectedValue(new Error("no accessible business"))
+
+    const res = await runTurn({ message: "hi", revision: 4 })
+    expect(res.status).toBe(200)
+    expect(getBusinessSettings).not.toHaveBeenCalled()
+
+    for (const [, ctx] of mock(reassemble).mock.calls) {
+      expect(ctx?.brandKit ?? null).toBeNull()
+    }
+  })
+
+  it("renders no palette override when the tenant has not chosen a brand", async () => {
+    // `brand_color: null` is the column's own "never defaulted" contract — a
+    // MUTANT that defaulted it to some colour would paint every tenant that
+    // never opened brand settings.
+    mock(getBusinessSettings).mockResolvedValue({ ...BUSINESS_SETTINGS, brand_color: null, accent_color: null })
+    const res = await runTurn({ message: "hi", revision: 4 })
+    expect(res.status).toBe(200)
+    for (const [, ctx] of mock(reassemble).mock.calls) {
+      expect(ctx?.brandKit ?? null).toBeNull()
+    }
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Resolution, compilation and what gets stored
 // ---------------------------------------------------------------------------
 
@@ -629,7 +760,9 @@ describe("POST .../build — resolve, compile, store", () => {
     const res = await runTurn({ message: "hi", revision: 4 })
     expect(res.status).toBe(200)
 
-    const stored = mock(appendTurn).mock.calls.map((c) => c[0]).find((i) => i.doc)
+    const stored = mock(appendTurn)
+      .mock.calls.map((c) => c[0])
+      .find((i) => i.doc)
     expect(stored).toBeDefined()
     expect(stored.doc.sections[0].props.primaryCta.target.ref).toBe(PROGRAM_ID)
 
@@ -684,9 +817,7 @@ describe("POST .../build — resolve, compile, store", () => {
       }),
     )
     const body = await readTurn(await POST(req({ message: "hi", revision: 4 }), ctx))
-    expect(body.danglingAnchors).toEqual([
-      { sectionId: "hero", field: "primaryCta", target: "pricing" },
-    ])
+    expect(body.danglingAnchors).toEqual([{ sectionId: "hero", field: "primaryCta", target: "pricing" }])
     // Reported, NOT blocking: the compile is still clean and the doc is saved.
     expect(body.compile.ok).toBe(true)
     expect(body.compile.warnings).toEqual([])
@@ -722,7 +853,9 @@ describe("POST .../build — resolve, compile, store", () => {
     expect(body.compile.problems.join(" ")).toMatch(/over the 500000-character publish cap/)
 
     // ... and it was saved anyway, with the verdict recorded next to it.
-    const stored = mock(appendTurn).mock.calls.map((c) => c[0]).find((i) => i.doc)
+    const stored = mock(appendTurn)
+      .mock.calls.map((c) => c[0])
+      .find((i) => i.doc)
     expect(stored).toBeDefined()
     expect(stored.doc.sections).toHaveLength(8)
     expect(stored.compileStatus).toBe("failed")
@@ -740,7 +873,9 @@ describe("POST .../build — resolve, compile, store", () => {
     mock(getAllPrograms).mockResolvedValue(Array.from({ length: 1000 }, (_, i) => ({ id: `p${i}`, name: `P${i}` })))
 
     await runTurn({ message: "hi", revision: 4 })
-    const stored = mock(appendTurn).mock.calls.map((c) => c[0]).find((i) => i.doc)
+    const stored = mock(appendTurn)
+      .mock.calls.map((c) => c[0])
+      .find((i) => i.doc)
     expect(stored).toBeDefined()
     expect(Array.isArray(stored.unresolved)).toBe(false)
     expect(stored.unresolved).toMatchObject({ checked: false })
@@ -754,7 +889,9 @@ describe("POST .../build — resolve, compile, store", () => {
     mock(getPrograms).mockResolvedValue([])
     mock(getAllPrograms).mockResolvedValue([])
     await runTurn({ message: "hi", revision: 4 })
-    const stored = mock(appendTurn).mock.calls.map((c) => c[0]).find((i) => i.doc)
+    const stored = mock(appendTurn)
+      .mock.calls.map((c) => c[0])
+      .find((i) => i.doc)
     expect(Array.isArray(stored.unresolved)).toBe(true)
     expect(stored.unresolved).toHaveLength(1)
     expect(stored.unresolved[0].ref).toBe(PROGRAM_NAME)
@@ -853,7 +990,9 @@ describe("POST .../build — blocked", () => {
     expect(body.blocked).toBe(true)
     expect(body.doc.sections).toHaveLength(1)
 
-    const assistant = mock(appendTurn).mock.calls.map((c) => c[0]).find((i) => i.role === "assistant")
+    const assistant = mock(appendTurn)
+      .mock.calls.map((c) => c[0])
+      .find((i) => i.role === "assistant")
     expect(assistant.blocked).toBe(true)
     expect(assistant.doc).toBeUndefined()
   })
@@ -880,7 +1019,11 @@ describe("POST .../build — the first draft", () => {
         }),
       )
       .mockImplementationOnce(() =>
-        agentResult({ reply: "Built the page.", blocked: false, ops: [{ op: "set_page", sections: fullPageSections() }] }),
+        agentResult({
+          reply: "Built the page.",
+          blocked: false,
+          ops: [{ op: "set_page", sections: fullPageSections() }],
+        }),
       )
 
     const res = await runTurn({ message: "build me a camp page", revision: 0 })
@@ -1416,9 +1559,7 @@ describe("POST .../build — the review stage runs AFTER the page is safe", () =
 
     await readEvents(await POST(req({ message: "build", revision: 4 }), ctx))
 
-    const reviewWrite = mock(appendTurn).mock.calls.find(
-      (call) => (call[0] as { source: string }).source === "review",
-    )
+    const reviewWrite = mock(appendTurn).mock.calls.find((call) => (call[0] as { source: string }).source === "review")
     expect(reviewWrite).toBeDefined()
     expect(reviewWrite?.[0]).toMatchObject({
       role: "assistant",
