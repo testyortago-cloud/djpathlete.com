@@ -20,6 +20,7 @@ import {
   SECTION_REVIEW_MAX_ROUNDS,
   SECTION_REVIEW_TIMEOUT_MS,
 } from "@/lib/funnels/sections/builder-config"
+import type { RenderedPage } from "@/lib/funnels/render-image"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 import { auditDoc } from "@/lib/funnels/sections/review/audit"
 import { runCritics } from "@/lib/funnels/sections/review/critics"
@@ -30,6 +31,16 @@ export interface ReviewInput {
   doc: SectionDoc
   /** Called as each finding lands, so the route can stream it to the owner. */
   onFinding?: (finding: Finding) => void
+  /**
+   * Screenshots of this document as a browser drew it, for the lens that can
+   * use them.
+   *
+   * PRODUCED BY THE CALLER, never in here. Calling the renderer from this
+   * module would put a browser dependency inside the stage whose whole promise
+   * is that it cannot cost the owner their page — and would make every test of
+   * this pipeline need a Chrome.
+   */
+  render?: RenderedPage | null
 }
 
 export interface ReviewOutcome {
@@ -151,14 +162,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 export async function reviewDoc(input: ReviewInput): Promise<ReviewOutcome> {
-  const { doc, onFinding } = input
+  const { doc, onFinding, render } = input
 
   // The kill switch. `0` means the stage is off, and off must cost nothing —
   // not even the deterministic pass.
   if (SECTION_REVIEW_MAX_ROUNDS < 1) return unchanged(doc, [], null)
 
   try {
-    return await withTimeout(runReview(doc, onFinding), SECTION_REVIEW_TIMEOUT_MS, "review")
+    return await withTimeout(runReview(doc, onFinding, render), SECTION_REVIEW_TIMEOUT_MS, "review")
   } catch (error) {
     // Includes the timeout, and anything `runReview` failed to contain. The
     // page the builder made stands.
@@ -167,7 +178,11 @@ export async function reviewDoc(input: ReviewInput): Promise<ReviewOutcome> {
   }
 }
 
-async function runReview(doc: SectionDoc, onFinding?: (finding: Finding) => void): Promise<ReviewOutcome> {
+async function runReview(
+  doc: SectionDoc,
+  onFinding?: (finding: Finding) => void,
+  render?: RenderedPage | null,
+): Promise<ReviewOutcome> {
   // --- 1. The deterministic pass. Free, pure, and it cannot fail. ---------
   const auditFindings = auditDoc(doc)
   for (const finding of auditFindings) onFinding?.(finding)
@@ -180,7 +195,7 @@ async function runReview(doc: SectionDoc, onFinding?: (finding: Finding) => void
   let criticFindings: Finding[] = []
   let tokensUsed = 0
   try {
-    const returned = await runCritics(doc, auditFindings)
+    const returned = await runCritics(doc, auditFindings, render)
     // Defended rather than trusted. A schema change or a partially-applied
     // refactor that made this return the wrong shape would otherwise take the
     // WHOLE review down at the merge — losing the deterministic findings,
