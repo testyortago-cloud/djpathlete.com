@@ -1,0 +1,46 @@
+step 7f5da342-aa37-42aa-bed3-020842893da9 ("index") in funnel "Summer Speed Camp" (/test)
+doc_revision at start: 83
+hero headline in the stored document: "Twelve sessions. Two timed tests. Four weeks."
+signed in — landed on http://localhost:3061/admin/dashboard
+builder: http://localhost:3061/admin/funnels/a7450381-3042-4f0b-9236-abf3bf8e10ad/edit/7f5da342-aa37-42aa-bed3-020842893da9
+builder preview confirmed: headline words ["twelve","sessions","timed","tests"] are on screen
+  01 3200x2446
+
+headless Chrome processes before Polish: 0
+pressed Polish — this is a real review (3 Sonnet critics + 1 Opus reviser)…
+headless Chrome processes peak during the review: 2
+findings on the stream: 21 (7 from the art lens)
+  [art/high] empty-band (proof)
+      The testimonial band ('proof') renders as a large solid dark-brown rectangle with no visible content — the featured testimonial is either missing or failed to load, leaving a full viewport-height empty block between the stats row and the bullets section.
+  [art/high] empty-band (signup)
+      In the form section the right-hand column — which in the 'split' variant should contain the form fields — renders as a featureless dark rectangle with no inputs visible, suggesting the form panel failed to paint.
+  [art/high] low-contrast-text (weeks)
+      In the 'How the four weeks run' steps section, body text and step-title text are rendered in a near-identical tan/muted colour against the clay-brown dark background, making the step descriptions very hard to read.
+  [art/medium] empty-gap (hero)
+      There is a large empty white gap below the hero CTA button and above the stats band — roughly half a viewport tall — created by the 'roomy' padding on the hero combined with no image or supporting element filling that space.
+  [art/medium] low-contrast-text (pricing)
+      The pricing card sits on the accent tan (#C99A6B) background, and the card itself renders in a slightly lighter tan, making the 'Reserve a place' CTA button and card border nearly invisible — the card blends into the section background.
+  [art/medium] empty-gap (faq)
+      The FAQ section has a large empty white area at the bottom (visible between the last answer 'When do we pay?' and the form section divider) caused by the 'roomy' pad on a muted band that follows another roomy band.
+  [art/low] faq-indented-column (faq)
+      The FAQ items in the 'bordered' variant are indented significantly from the left — the questions and answers occupy only the centre ~60% of the page width — while the section heading 'Questions parents ask' sits at full width, creating a visual mismatch.
+
+sections that are BLANK in the reviewer's copy (unfilled islands): {"proof":["testimonials"],"signup":["form"]}
+art findings: 7 total — 5 picture-only and about the real page, 2 about a section that is blank ONLY in the reviewer's copy
+
+the finding this capture is about: [high] low-contrast-text — In the 'How the four weeks run' steps section, body text and step-title text are rendered in a near-identical tan/muted colour against the clay-brown dark background, making the step descriptions very hard to read.
+the artefact this capture also documents: [high] empty-band — The testimonial band ('proof') renders as a large solid dark-brown rectangle with no visible content — the featured testimonial is either missing or failed to load, leaving a full viewport-height empty block between the stats row and the bullets section.
+  02 3200x2806
+
+preview: http://localhost:3061/preview/test/index
+preview confirmed: headline words ["twelve","sessions","timed","tests"] are on the page
+  03 2400x2222
+  05 2400x2312
+the "proof" band actually contains: He initiates a unique approach to his work and the training he provides which compliments what I do and it makes me feel right at home as I train towards performance. Wayde van Niekerk 400m Athletics
+
+the proposal carries 10 ops; 2 of them target a section that is blank only in the reviewer's copy
+  update_section proof: {"source":"quote","quotes":[{"quote":"Mateo came in at 5.31 in the 40 and retested at 5.12 in week four. What sold us was the coaching — his start looks like a different athlete's.","name":"Rachel D.","detail":"Parent of
+  update_section signup: {"proofPoints":["Mon / Wed / Fri mornings","Groups capped at eight","Meridian Performance, 4th St N"],"sub":"Spots are held by group, not by the camp as a whole. This is how we hold yours — registration closes June 2."}
+  04 3200x2446
+
+doc_revision at end: 83 (started at 83)

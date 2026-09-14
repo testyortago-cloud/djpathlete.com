@@ -117,7 +117,9 @@ import {
   SECTION_BUILDER_MODEL,
   SECTION_BUILDER_RATE_LIMIT_MAX,
   SECTION_BUILDER_RATE_LIMIT_WINDOW_MS,
+  SECTION_RENDER_ENABLED,
 } from "@/lib/funnels/sections/builder-config"
+import { renderDocToImages } from "@/lib/funnels/render-image"
 
 /**
  * A first draft is a whole page in one response and an iterative turn can be a
@@ -1835,8 +1837,27 @@ async function runReviewStage(args: ReviewStageArgs): Promise<void> {
   const reviewStartedAt = Date.now()
   emit({ type: "phase", phase: "reviewing" })
 
+  // THE RENDER. Both review paths come through here — the automatic one on a
+  // first draft and the Polish button — so this one insertion covers both.
+  //
+  // NO NEW STREAM PHASE. `BUILD_PHASES` has four consumers, and widening it
+  // for a sub-step of a phase that already exists would cost four files to buy
+  // a label. Rendering IS part of reviewing.
+  const render = SECTION_RENDER_ENABLED
+    ? await renderDocToImages(doc, {
+        ...(context.funnelBasePath ? { funnelBasePath: context.funnelBasePath } : {}),
+        brandKit: context.brandKit,
+      })
+    : null
+
+  // Logged, never emitted. On the automatic path the owner has a page; telling
+  // them a background improvement was slightly less well-informed reads as a
+  // failure of the thing that worked.
+  if (render?.error) console.warn("[funnels/build] render for review did not complete:", render.error)
+
   const review = await reviewDoc({
     doc,
+    ...(render ? { render } : {}),
     onFinding: (finding) => emit({ type: "finding", finding }),
   })
 

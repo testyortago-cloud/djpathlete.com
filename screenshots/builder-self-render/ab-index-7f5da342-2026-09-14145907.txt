@@ -1,0 +1,195 @@
+step 7f5da342-aa37-42aa-bed3-020842893da9 ("index", funnel a7450381-3042-4f0b-9236-abf3bf8e10ad, doc_revision 83)
+sections: hero:centered, proof:stats, testimonial:feature, bullets:grid-2, steps:timeline, bullets:list, pricing:single, faq:bordered, form:split, footer:centered
+brandKit: null   theme.palette: {"mode":"light","brand":"#A8563A","accent":"#C99A6B"}
+
+render: 5 images, page 1200x5161px, truncated=false, typographyFaithful=false, error=none, 1057ms
+  wrote screenshots/builder-self-render/render-tiles/index-7f5da342-00-overview.png (484KB decoded)
+  wrote screenshots/builder-self-render/render-tiles/index-7f5da342-01-slice-1.png (120KB decoded)
+  wrote screenshots/builder-self-render/render-tiles/index-7f5da342-02-slice-2.png (136KB decoded)
+  wrote screenshots/builder-self-render/render-tiles/index-7f5da342-03-slice-3.png (161KB decoded)
+  wrote screenshots/builder-self-render/render-tiles/index-7f5da342-04-slice-4.png (67KB decoded)
+
+deterministic audit findings (identical in both arms):
+  - [audit/high] tone-run (signup, footer) [visual-vocabulary]
+      issue:      "signup" and "footer" both render at the dark tone, so they paint as one continuous band with both sections' padding stacked into a single gap and no visible boundary between them.
+      suggestion: Give one of them a different style.tone so the page has a seam there — muted beside default, or accent to mark a turn in the argument.
+  - [audit/medium] align-thrash (whole page) [visual-vocabulary]
+      issue:      Text alignment changes 4 times down the page. Each flip is defensible on its own; together they read as inconsistency rather than as intent.
+      suggestion: Pick one alignment as the page's default and depart from it only to mark something. A centred hero and a centred closing CTA around a left-aligned body is a pattern; alternating is not.
+  - [audit/low] headline-punctuation (hero)
+      issue:      "hero" ends a headline with a full stop ("Twelve sessions. Two timed tests. Four weeks."). Headlines are labels, not sentences.
+      suggestion: Drop the trailing period. Keep question marks — those are doing work.
+
+==============================================================================
+ROUND 1 of 1
+==============================================================================
+
+--- ARM A: no pictures (today's behaviour) — 17726 tokens, 18734ms ---
+all findings:
+  - [art/high] dead-band (numbers) [visual-vocabulary]
+      issue:      The proof band uses 'tight' padding and a 'stats' variant that renders four numbers in a single shallow strip — in the screenshot this band reads as nearly empty whitespace between the hero and testimonial, with the stat labels too small to anchor the eye at scroll speed.
+      suggestion: Increase pad to 'roomy' so the four stats have visual breathing room, or switch the variant to one that gives each stat a card or column so they hold the eye rather than disappearing.
+  - [art/high] contrast-risk (pricing) [visual-vocabulary]
+      issue:      The pricing section renders on the 'accent' tone (tan #C99A6B background), and the screenshot shows the price figure, feature list text and CTA label all appearing in a mid-weight colour against that warm mid-tone — there is insufficient contrast between the text and the accent background to read comfortably.
+      suggestion: Switch the pricing tone to 'dark' or 'default' so body text and the price figure sit against a high-contrast ground, or ensure the accent variant forces near-black (#2A1D16) text throughout.
+  - [art/medium] rhythm-flatline (included, coach) [visual-vocabulary]
+      issue:      Both 'included' and 'coach' are bullets sections with 'roomy'/'tight' pad, left-aligned text and a plain background — in the screenshot they read as the same visual band repeated, with no surface, width or weight change to signal a topic shift between 'what they work on' and 'who is coaching'.
+      suggestion: Give one of the two sections a contrasting tone (e.g. 'muted' vs 'default') or swap the 'coach' variant to 'feature' or a single-column layout so a visitor scrolling fast can see the content has changed.
+  - [art/medium] section-width-mismatch (pricing) [visual-vocabulary]
+      issue:      The pricing section is the only section set to width 'normal' on a page where every other content band is 'wide', and in the screenshot the single pricing card appears as a narrow column that looks orphaned in the centre of the viewport rather than confidently anchoring the conversion moment.
+      suggestion: Widen the pricing card to match the page's 'wide' rhythm, or use a two-column layout variant so the card fills the measure the visitor's eye has been trained to expect.
+  - [art/low] orphaned-heading (weeks) [visual-vocabulary]
+      issue:      In the screenshot the 'How the four weeks run' heading on the dark-tone steps band sits with noticeably more space above it than below, making it appear detached from the three timeline steps it introduces.
+      suggestion: Reduce the top padding inside the steps heading or tighten the gap between the heading and the first step so the heading reads as belonging to its content rather than floating at the base of the previous band.
+  - [copy/medium] subhead-restates-headline (included)
+      issue:      The subhead 'What your athlete works on every session' and the intro 'Speed is a skill. Everything below is coachable in four weeks.' both frame the same list, so the intro adds no information before the bullets begin.
+      suggestion: Cut the intro line entirely, or replace it with one concrete claim that earns the list — e.g. the specific reason mechanics transfer faster than most parents expect.
+  - [copy/medium] duplicate-proof-points (numbers, pricing)
+      issue:      The proof section stat '8 — Athletes maximum per group' and the pricing feature 'Small groups, never more than eight athletes' repeat the identical fact in two consecutive sections, making one of them feel like filler.
+      suggestion: Remove the small-group line from the pricing features list, since the stat section above has already made the point with more visual weight.
+  - [copy/high] vague-result-promise (included)
+      issue:      The bullet 'Cuts you can trust' promises a safety outcome ('without losing the ball or the ankle') that no four-week camp can guarantee for every athlete.
+      suggestion: Reframe around the coached skill, not the guaranteed result — e.g. 'Deceleration and planting mechanics coached in every session, so the movement is drilled before your season demands it.'
+  - [copy/low] brochure-language (weeks)
+      issue:      The step heading 'The middle weeks — build' is generic and could describe any training block anywhere; it says nothing about what actually happens in those sessions.
+      suggestion: Name what is actually built — e.g. 'Weeks two and three — acceleration and cut work, every rep coached' — so the timeline reads as a concrete programme, not a placeholder.
+  - [copy/low] jargon-unexplained (included)
+      issue:      The bullet body 'Start position, shin angle and ground contact' uses coaching jargon ('shin angle') that a parent booking for their teenager is unlikely to understand or search for.
+      suggestion: Replace 'shin angle' with a plain-language phrase that describes the visible behaviour — e.g. 'how your athlete leans into each stride' — so the benefit lands without a translation step.
+  - [conversion/high] proof-placement-too-late (proof)
+      issue:      The single testimonial is the third section on the page, but it is a live/featured pull with no visible copy in the document — a parent scanning the page gets no social proof from a real voice before or during the decision moment at the pricing and form sections.
+      suggestion: Move the testimonial section to just above or below the pricing section so it is present when the parent is deciding whether $449 is worth it, and ensure the featured testimonial copy speaks to a measurable result a parent would care about.
+  - [conversion/high] no-session-schedule (faq, signup)
+      issue:      The FAQ answers 'What days and times?' with 'Three mornings a week for four weeks — pick your preferred morning slot on the form,' but the actual days of the week (e.g., Monday/Wednesday/Friday) are never stated anywhere on the page, which is a commitment parents need before they can register.
+      suggestion: State the specific days of the week the camp runs in the FAQ answer and in the hero sub-copy so parents can check their calendars before they reach the form.
+  - [conversion/medium] vague-offer-commitment (hero, pricing)
+      issue:      The page never says what 'registration' actually commits the parent to — the hero says 'Reserve a place' and pricing says 'No payment today,' but there is no plain statement of what happens next (timeline, how payment is collected, or what confirms the spot).
+      suggestion: Add one sentence in the hero or pricing section stating the sequence explicitly, e.g., 'Submit this form → we email your confirmed group time within 24 hours → payment link follows by [date].'
+  - [conversion/low] sibling-team-rate-buried (pricing)
+      issue:      The pricing footnote mentions 'sibling and team rates' but gives no indication of the discount range, making it a teaser that creates a question ('how much?') the page does not answer.
+      suggestion: Either state the discount ('siblings save $50 each') or remove the mention entirely; an unanswered discount hint creates friction rather than removing it.
+ART LENS ONLY:
+  - [art/high] dead-band (numbers) [visual-vocabulary]
+      issue:      The proof band uses 'tight' padding and a 'stats' variant that renders four numbers in a single shallow strip — in the screenshot this band reads as nearly empty whitespace between the hero and testimonial, with the stat labels too small to anchor the eye at scroll speed.
+      suggestion: Increase pad to 'roomy' so the four stats have visual breathing room, or switch the variant to one that gives each stat a card or column so they hold the eye rather than disappearing.
+  - [art/high] contrast-risk (pricing) [visual-vocabulary]
+      issue:      The pricing section renders on the 'accent' tone (tan #C99A6B background), and the screenshot shows the price figure, feature list text and CTA label all appearing in a mid-weight colour against that warm mid-tone — there is insufficient contrast between the text and the accent background to read comfortably.
+      suggestion: Switch the pricing tone to 'dark' or 'default' so body text and the price figure sit against a high-contrast ground, or ensure the accent variant forces near-black (#2A1D16) text throughout.
+  - [art/medium] rhythm-flatline (included, coach) [visual-vocabulary]
+      issue:      Both 'included' and 'coach' are bullets sections with 'roomy'/'tight' pad, left-aligned text and a plain background — in the screenshot they read as the same visual band repeated, with no surface, width or weight change to signal a topic shift between 'what they work on' and 'who is coaching'.
+      suggestion: Give one of the two sections a contrasting tone (e.g. 'muted' vs 'default') or swap the 'coach' variant to 'feature' or a single-column layout so a visitor scrolling fast can see the content has changed.
+  - [art/medium] section-width-mismatch (pricing) [visual-vocabulary]
+      issue:      The pricing section is the only section set to width 'normal' on a page where every other content band is 'wide', and in the screenshot the single pricing card appears as a narrow column that looks orphaned in the centre of the viewport rather than confidently anchoring the conversion moment.
+      suggestion: Widen the pricing card to match the page's 'wide' rhythm, or use a two-column layout variant so the card fills the measure the visitor's eye has been trained to expect.
+  - [art/low] orphaned-heading (weeks) [visual-vocabulary]
+      issue:      In the screenshot the 'How the four weeks run' heading on the dark-tone steps band sits with noticeably more space above it than below, making it appear detached from the three timeline steps it introduces.
+      suggestion: Reduce the top padding inside the steps heading or tighten the gap between the heading and the first step so the heading reads as belonging to its content rather than floating at the base of the previous band.
+
+--- ARM B: 5 pictures to the art lens — 25193 tokens, 23981ms ---
+all findings:
+  - [art/high] empty-band (proof) [visual-vocabulary]
+      issue:      The testimonial section renders as a large solid dark-brown rectangle with no visible content — the 'live' source has produced nothing, leaving a full viewport-height empty band between the proof stats and the bullets section.
+      suggestion: Replace the live-source testimonial with at least one inline hardcoded testimonial, or remove the section entirely, so no empty band appears between 'numbers' and 'included'.
+  - [art/high] empty-band (signup) [visual-vocabulary]
+      issue:      The right-hand column of the split form renders as a featureless dark rectangle with no form fields visible — the form panel has not painted, leaving the entire input area blank.
+      suggestion: Verify the split-variant form column is rendering correctly; if the right pane consistently fails to paint, switch to a single-column form variant until the layout is resolved.
+  - [art/high] low-contrast-text (pricing) [visual-vocabulary]
+      issue:      The pricing card sits on the tan accent background and is itself rendered in a similar tan/sand tone, making the card boundary and the body text inside it very low contrast against the band behind it.
+      suggestion: Give the pricing card a white or near-white fill so it lifts clearly off the tan accent band, restoring legible contrast for the price, features list and CTA button.
+  - [art/medium] orphaned-heading (faq) [visual-vocabulary]
+      issue:      The 'Questions parents ask' heading is marooned at the top of a very tall light band with a large empty gap above it before the content begins, making the section feel disconnected from its own questions.
+      suggestion: Reduce the top padding on the faq section from 'roomy' to 'normal', or tighten the bottom padding on the pricing section, so the heading sits closer to where the eye arrives after the preceding band ends.
+  - [art/medium] rhythm-flatness (included, coach) [visual-vocabulary]
+      issue:      The 'included' bullets section (light/default tone, roomy pad) and the 'coach' bullets section (muted tone, tight pad) are both left-aligned bullet lists with the same heading size and identical visual grammar, making them read as one undifferentiated stretch.
+      suggestion: Give one of the two sections a visually distinct treatment — for example, switch 'coach' to a dark or accent tone, or change its variant — so the page has a clear break between 'what they work on' and 'who coaches them'.
+  - [art/low] hero-gap (hero) [visual-vocabulary]
+      issue:      There is a large empty space below the hero CTA button before the proof stats band begins, creating a visual dead zone at the first scroll position.
+      suggestion: Reduce the hero bottom padding or remove the divider gap so the stats band begins closer to the fold, keeping the reader moving without a blank stretch.
+  - [copy/high] vague-headline (hero)
+      issue:      The headline 'Twelve sessions. Two timed tests. Four weeks.' describes the container, not the outcome — it could be the structure of any camp in any sport and gives no reason to choose this one over a competitor.
+      suggestion: Lead with what the athlete gains: something like 'Get faster in four weeks — or know exactly why you didn't' puts the measurable outcome and the accountability promise front and centre.
+  - [copy/medium] redundant-repetition (hero, numbers, pricing)
+      issue:      The sub-copy in the hero ('twelve sessions, three mornings a week, four weeks, groups of no more than eight, $449'), the proof stats section, and the pricing feature list all restate the same four or five facts in nearly identical words, creating no new information across three sections.
+      suggestion: Confine the structural facts (12 sessions, 8 athletes, $449) to one place — the pricing section is the right home — and use the hero sub and proof stats to say something each section alone can say.
+  - [copy/medium] subhead-restates-headline (included)
+      issue:      The intro line 'Speed is a skill. Everything below is coachable in four weeks.' restates the same promise the hero and the steps section already make, rather than advancing the reader's understanding before they read the bullet items.
+      suggestion: Replace with a line that frames why these four skills — and not others — were chosen, e.g. 'These are the four things that separate a slow first step from a fast one; everything else is secondary.'
+  - [copy/medium] jargon-for-audience (included) [visual-vocabulary]
+      issue:      The bullet body 'Start position, shin angle and ground contact, drilled until they hold up at full speed' uses coaching-room jargon ('shin angle', 'ground contact') that a parent booking for their teenager is unlikely to decode without effort.
+      suggestion: Translate into outcome language first, then add the technical term in parentheses if it builds credibility: e.g. 'How your athlete lines up and pushes off — the mechanics that determine whether a first step is fast or wasted.'
+  - [copy/high] unearned-promise (included)
+      issue:      The bullet intro 'Speed is a skill. Everything below is coachable in four weeks.' makes an absolute promise no coach can guarantee — implying every athlete will master every item in the list in four weeks regardless of starting point.
+      suggestion: Soften to something honest and still compelling: 'Speed is a skill — and four weeks is enough to move the needle on all of these.'
+  - [copy/low] brochure-language (coach)
+      issue:      The heading 'Who is coaching your athlete' is generic enough to appear on any coaching-services page and does no work to differentiate Coach Dan Reyes before the reader reaches the bullets.
+      suggestion: Name the coach in the heading itself: 'Coach Dan Reyes — twelve years, Tampa, on the floor every session' puts the credential and the differentiator where skimmers will actually see it.
+  - [copy/low] redundant-repetition (pricing, signup)
+      issue:      The pricing blurb ('No payment today — we confirm your group time first, then send payment details') and the FAQ answer to 'When do we pay?' and the signup sub-copy all say the same thing in nearly identical sentences.
+      suggestion: Keep the payment-flow explanation in the pricing blurb only, and replace the signup sub-copy with a line that addresses the hesitation a parent feels at the moment of submitting the form.
+  - [conversion/high] proof-placement-too-late (proof)
+      issue:      The single testimonial sits third on the page, after the hero and a stats bar, but before the parent has learned what the camp includes, how it runs, or who coaches it — so the testimonial lands before the reader has enough context to know whether it is relevant to them.
+      suggestion: Move the testimonial section to directly after the 'coach' or 'pricing' sections, where a real parent's voice answers the doubt that arises at the moment of commitment, not at the moment of curiosity.
+  - [conversion/medium] missing-session-schedule-detail (faq, weeks)
+      issue:      The FAQ says 'three mornings a week' and the form offers 7:00 am, 8:30 am, and 10:00 am slots, but nowhere on the page are the actual days of the week stated — a parent cannot check a family calendar before deciding to register.
+      suggestion: Add the specific days (e.g. 'Monday, Wednesday, Friday mornings') to the 'weeks' steps section or as a line in the FAQ answer for 'What days and times?'.
+  - [conversion/medium] no-sibling-team-rate-detail (pricing)
+      issue:      The pricing footnote mentions 'Ask about sibling and team rates when you sign up' but gives no indication of what those rates are or how much they save, leaving a financially motivated parent with an unanswered question at the exact moment they are weighing the price.
+      suggestion: Either state the discount (e.g. '$50 off per sibling') in the footnote, or remove the mention and surface it only after registration to avoid dangling an unquantified incentive at the decision point.
+  - [conversion/medium] missing-physical-requirements (faq)
+      issue:      The FAQ answers whether an athlete needs to be fast already and addresses injuries, but never addresses the basic physical readiness question a cautious parent will have: what condition or fitness level is the minimum to start, especially for a de-conditioned or overweight athlete.
+      suggestion: Add a FAQ item such as 'Is there a minimum fitness level?' with an honest answer about what the camp expects on day one, so parents self-select appropriately rather than registering and withdrawing.
+  - [conversion/low] no-location-confirmation-before-form (signup)
+      issue:      The form's proof points list 'Meridian Performance, 4th St N' without a cross-street or any map link, and this is the last place the address appears before a parent commits — the footer repeats it but only after the form.
+      suggestion: Add the full address ('4th Street North at 22nd Avenue, Tampa') to the form's proof points, or add a brief 'Where we train' line directly above the form submit button so the parent can confirm the location before clicking.
+ART LENS ONLY:
+  - [art/high] empty-band (proof) [visual-vocabulary]
+      issue:      The testimonial section renders as a large solid dark-brown rectangle with no visible content — the 'live' source has produced nothing, leaving a full viewport-height empty band between the proof stats and the bullets section.
+      suggestion: Replace the live-source testimonial with at least one inline hardcoded testimonial, or remove the section entirely, so no empty band appears between 'numbers' and 'included'.
+  - [art/high] empty-band (signup) [visual-vocabulary]
+      issue:      The right-hand column of the split form renders as a featureless dark rectangle with no form fields visible — the form panel has not painted, leaving the entire input area blank.
+      suggestion: Verify the split-variant form column is rendering correctly; if the right pane consistently fails to paint, switch to a single-column form variant until the layout is resolved.
+  - [art/high] low-contrast-text (pricing) [visual-vocabulary]
+      issue:      The pricing card sits on the tan accent background and is itself rendered in a similar tan/sand tone, making the card boundary and the body text inside it very low contrast against the band behind it.
+      suggestion: Give the pricing card a white or near-white fill so it lifts clearly off the tan accent band, restoring legible contrast for the price, features list and CTA button.
+  - [art/medium] orphaned-heading (faq) [visual-vocabulary]
+      issue:      The 'Questions parents ask' heading is marooned at the top of a very tall light band with a large empty gap above it before the content begins, making the section feel disconnected from its own questions.
+      suggestion: Reduce the top padding on the faq section from 'roomy' to 'normal', or tighten the bottom padding on the pricing section, so the heading sits closer to where the eye arrives after the preceding band ends.
+  - [art/medium] rhythm-flatness (included, coach) [visual-vocabulary]
+      issue:      The 'included' bullets section (light/default tone, roomy pad) and the 'coach' bullets section (muted tone, tight pad) are both left-aligned bullet lists with the same heading size and identical visual grammar, making them read as one undifferentiated stretch.
+      suggestion: Give one of the two sections a visually distinct treatment — for example, switch 'coach' to a dark or accent tone, or change its variant — so the page has a clear break between 'what they work on' and 'who coaches them'.
+  - [art/low] hero-gap (hero) [visual-vocabulary]
+      issue:      There is a large empty space below the hero CTA button before the proof stats band begins, creating a visual dead zone at the first scroll position.
+      suggestion: Reduce the hero bottom padding or remove the divider gap so the stats band begins closer to the fold, keeping the reader moving without a blank stretch.
+
+token delta (B - A): 7467  — the vision tokens, on a stage that already makes four calls.
+
+------------------------------------------------------------------------------
+ART FINDINGS PRESENT ONLY WITH PICTURES (5 of 6):
+  - [art/high] empty-band (proof) [visual-vocabulary]
+      issue:      The testimonial section renders as a large solid dark-brown rectangle with no visible content — the 'live' source has produced nothing, leaving a full viewport-height empty band between the proof stats and the bullets section.
+      suggestion: Replace the live-source testimonial with at least one inline hardcoded testimonial, or remove the section entirely, so no empty band appears between 'numbers' and 'included'.
+  - [art/high] empty-band (signup) [visual-vocabulary]
+      issue:      The right-hand column of the split form renders as a featureless dark rectangle with no form fields visible — the form panel has not painted, leaving the entire input area blank.
+      suggestion: Verify the split-variant form column is rendering correctly; if the right pane consistently fails to paint, switch to a single-column form variant until the layout is resolved.
+  - [art/high] low-contrast-text (pricing) [visual-vocabulary]
+      issue:      The pricing card sits on the tan accent background and is itself rendered in a similar tan/sand tone, making the card boundary and the body text inside it very low contrast against the band behind it.
+      suggestion: Give the pricing card a white or near-white fill so it lifts clearly off the tan accent band, restoring legible contrast for the price, features list and CTA button.
+  - [art/medium] rhythm-flatness (included, coach) [visual-vocabulary]
+      issue:      The 'included' bullets section (light/default tone, roomy pad) and the 'coach' bullets section (muted tone, tight pad) are both left-aligned bullet lists with the same heading size and identical visual grammar, making them read as one undifferentiated stretch.
+      suggestion: Give one of the two sections a visually distinct treatment — for example, switch 'coach' to a dark or accent tone, or change its variant — so the page has a clear break between 'what they work on' and 'who coaches them'.
+  - [art/low] hero-gap (hero) [visual-vocabulary]
+      issue:      There is a large empty space below the hero CTA button before the proof stats band begins, creating a visual dead zone at the first scroll position.
+      suggestion: Reduce the hero bottom padding or remove the divider gap so the stats band begins closer to the fold, keeping the reader moving without a blank stretch.
+ART FINDINGS LOST WHEN PICTURES WERE ADDED (4):
+  - [art/high] dead-band (numbers) [visual-vocabulary]
+      issue:      The proof band uses 'tight' padding and a 'stats' variant that renders four numbers in a single shallow strip — in the screenshot this band reads as nearly empty whitespace between the hero and testimonial, with the stat labels too small to anchor the eye at scroll speed.
+      suggestion: Increase pad to 'roomy' so the four stats have visual breathing room, or switch the variant to one that gives each stat a card or column so they hold the eye rather than disappearing.
+  - [art/high] contrast-risk (pricing) [visual-vocabulary]
+      issue:      The pricing section renders on the 'accent' tone (tan #C99A6B background), and the screenshot shows the price figure, feature list text and CTA label all appearing in a mid-weight colour against that warm mid-tone — there is insufficient contrast between the text and the accent background to read comfortably.
+      suggestion: Switch the pricing tone to 'dark' or 'default' so body text and the price figure sit against a high-contrast ground, or ensure the accent variant forces near-black (#2A1D16) text throughout.
+  - [art/medium] rhythm-flatline (included, coach) [visual-vocabulary]
+      issue:      Both 'included' and 'coach' are bullets sections with 'roomy'/'tight' pad, left-aligned text and a plain background — in the screenshot they read as the same visual band repeated, with no surface, width or weight change to signal a topic shift between 'what they work on' and 'who is coaching'.
+      suggestion: Give one of the two sections a contrasting tone (e.g. 'muted' vs 'default') or swap the 'coach' variant to 'feature' or a single-column layout so a visitor scrolling fast can see the content has changed.
+  - [art/medium] section-width-mismatch (pricing) [visual-vocabulary]
+      issue:      The pricing section is the only section set to width 'normal' on a page where every other content band is 'wide', and in the screenshot the single pricing card appears as a narrow column that looks orphaned in the centre of the viewport rather than confidently anchoring the conversion moment.
+      suggestion: Widen the pricing card to match the page's 'wide' rhythm, or use a two-column layout variant so the card fills the measure the visitor's eye has been trained to expect.

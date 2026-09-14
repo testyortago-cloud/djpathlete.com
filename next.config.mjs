@@ -24,6 +24,14 @@ const nextConfig = {
     // sharp ships a native binary; bundling it breaks the quote-card JPEG
     // (Instagram) render path. Keep it loaded as a native node module.
     "sharp",
+    // @sparticuz/chromium reads a brotli-compressed Chromium binary off disk
+    // at runtime, and puppeteer-core uses dynamic requires to load it —
+    // bundling either breaks both. This is the page-builder self-render
+    // (lib/funnels/render-image.ts): its failure mode is DELIBERATELY silent
+    // (console.warn, never surfaced), so a bundling break here would not
+    // throw — it would make the whole feature a permanent, invisible no-op.
+    "puppeteer-core",
+    "@sparticuz/chromium",
   ],
   experimental: {
     optimizePackageImports: ["lucide-react"],

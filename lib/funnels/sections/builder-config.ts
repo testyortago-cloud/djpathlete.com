@@ -366,3 +366,85 @@ export const BUILDER_REFERENCE_IMAGE_MAX_BASE64 = 2_000_000
  * rejected.
  */
 export const BUILDER_REFERENCE_IMAGE_MAX_SOURCE_BYTES = 10 * 1024 * 1024
+
+// ---------------------------------------------------------------------------
+// THE SELF-RENDER (Phase 2 of "give the builder's AI eyes")
+// ---------------------------------------------------------------------------
+// The review stage renders the page and shows it to the art director, whose
+// lens is "how the page LOOKS as somebody scrolls it" and which until now was
+// handed only JSON.
+
+/**
+ * The kill switch. `false` means no render is attempted and the review runs
+ * exactly as it did before this feature — which is also what happens when no
+ * browser can be launched, so the off path is continuously exercised rather
+ * than being a branch nobody takes.
+ */
+export const SECTION_RENDER_ENABLED = true
+
+/**
+ * Desktop width. Chosen because the funnel stylesheet's widest `--djp-maxw`
+ * is 88rem and this shows it without horizontal slack.
+ *
+ * Deliberately under 1568: Anthropic downscales an image to ~1568px on its
+ * LONG edge, so a tile wider than that would be shrunk and its body copy
+ * would stop being readable. Mobile is a second render and is out of scope
+ * for this phase — see the spec's §12.
+ */
+export const SECTION_RENDER_VIEWPORT_WIDTH = 1200
+
+/**
+ * How tall each slice is.
+ *
+ * Under 1568 for the same reason as the width: at 1200x1400 a tile is passed
+ * through at full size and every word on it is legible. Measured on a real
+ * 10-section page, a single full-page image instead arrives at 359x1568 with
+ * roughly 4px body text.
+ */
+export const SECTION_RENDER_TILE_HEIGHT = 1400
+
+/**
+ * The cap on slices, and so on cost: roughly 2,240 vision tokens each.
+ *
+ * A page longer than `SECTION_RENDER_MAX_TILES * SECTION_RENDER_TILE_HEIGHT`
+ * is reported to the critic as truncated rather than being silently cut,
+ * because a critic that thinks it has seen the whole page will say the page
+ * ends where the image does.
+ */
+export const SECTION_RENDER_MAX_TILES = 5
+
+/**
+ * The whole render: the launch, `setContent`, the webfont wait, the height
+ * read and every screenshot.
+ *
+ * IT COVERS ALL OF THAT ONLY BECAUSE `lib/funnels/browser.ts` PASSES IT AS
+ * PUPPETEER'S `protocolTimeout`. The font probe, the height read and the
+ * screenshots take no timeout argument of their own; as puppeteer's `timeout`
+ * alone this bounded the launch and `setContent` and nothing else, leaving the
+ * rest on puppeteer's 180_000ms default.
+ *
+ * IT IS NOT INSIDE THE REVIEW STAGE, AND `SECTION_REVIEW_TIMEOUT_MS` DOES NOT
+ * BOUND IT. `renderDocToImages` is called by the BUILD ROUTE, in
+ * `runReviewStage`, BEFORE `reviewDoc` — the review timeout wraps `runReview`
+ * alone, inside `pipeline.ts`. The two run one after the other, and what
+ * bounds the PAIR is the route's own `maxDuration`
+ * (`app/api/admin/funnels/steps/[stepId]/build/route.ts`). This timeout
+ * bounds each of those calls individually, not the render as a whole — what
+ * it buys is turning a single stalled call from a 180s hang into a 20s one.
+ * The first call to time out aborts the whole render, so the arithmetic
+ * below is the realistic case, not a guaranteed ceiling; a strict upper
+ * bound is the per-call limit times the number of calls above:
+ *
+ *     20s render + 90s review = 110s realistic case, inside a 300s ceiling
+ *
+ * Overrunning `maxDuration` is not a slow turn, it is a killed function: the
+ * stream ends with no terminal event, which that route's own doc comment notes
+ * reads to the client as a dropped connection. `builder-config.test.ts` pins
+ * that arithmetic against the real `maxDuration`, not against a copy of 300.
+ *
+ * Measured locally: ~1.5s for a four-tile page, so this is mostly protection
+ * against a hung font request in an egress-less container — which is exactly
+ * why the font wait is bounded by this and never by an unbounded
+ * `networkidle`.
+ */
+export const SECTION_RENDER_TIMEOUT_MS = 20_000

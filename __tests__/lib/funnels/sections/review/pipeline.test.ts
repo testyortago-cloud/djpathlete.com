@@ -29,6 +29,7 @@ import { reviewDoc, shouldReview } from "@/lib/funnels/sections/review/pipeline"
 import { auditDoc } from "@/lib/funnels/sections/review/audit"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 import type { Finding } from "@/lib/funnels/sections/review/findings"
+import type { RenderedPage } from "@/lib/funnels/render-image"
 import fixture from "./fixtures/production-consultation-page.json"
 
 const PROD: SectionDoc = sectionDocSchema.parse(fixture) as SectionDoc
@@ -334,6 +335,34 @@ describe("streaming", () => {
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 120 })
     runReviser.mockResolvedValue({ summary: "s", ops: [], tokensUsed: 900 })
     await expect(reviewDoc({ doc: PROD })).resolves.toBeDefined()
+  })
+})
+
+describe("threading the render to the critic panel", () => {
+  it("hands the render to the critic panel", async () => {
+    const render: RenderedPage = {
+      images: [{ mediaType: "image/png", data: "AAAA" }],
+      height: 900,
+      truncated: false,
+      typographyFaithful: true,
+      dynamicRegions: [],
+      error: null,
+    }
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 0 })
+    runReviser.mockResolvedValue({ summary: "", ops: [], tokensUsed: 0 })
+
+    await reviewDoc({ doc: PROD, render })
+
+    expect(runCritics).toHaveBeenCalledWith(PROD, expect.anything(), render)
+  })
+
+  it("passes undefined when there is no render, leaving today's call shape", async () => {
+    runCritics.mockResolvedValue({ findings: [], tokensUsed: 0 })
+    runReviser.mockResolvedValue({ summary: "", ops: [], tokensUsed: 0 })
+
+    await reviewDoc({ doc: PROD })
+
+    expect(runCritics).toHaveBeenCalledWith(PROD, expect.anything(), undefined)
   })
 })
 

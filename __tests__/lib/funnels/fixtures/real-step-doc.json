@@ -1,0 +1,392 @@
+{
+  "v": 1,
+  "theme": {
+    "font": "bold",
+    "tone": "light",
+    "width": "wide",
+    "accent": "accent",
+    "radius": "sharp",
+    "rhythm": "banded",
+    "density": "airy",
+    "palette": {
+      "mode": "light",
+      "brand": "#A8563A",
+      "accent": "#C99A6B"
+    },
+    "designNote": "Brand board 2026 'Meridian Strength': warm paper #FBF6EE, deep clay #A8563A, tan #C99A6B, near-black #2A1D16. Board asked for Playfair/Inter Light; owner then asked for a bolder headline, so type is the condensed 'bold' pairing rather than editorial serif — revert to editorial if the serif matters more than the weight. Airy spacing, wide measure, sharp corners, one idea in view."
+  },
+  "engine": "sections",
+  "sections": [
+    {
+      "id": "hero",
+      "kind": "hero",
+      "props": {
+        "sub": "A summer speed camp for high school athletes at Meridian Performance, 4th Street North at 22nd Avenue. Sprint mechanics, acceleration and change of direction, three mornings a week, in groups of no more than eight. $449 for the block, registration closes June 2.",
+        "eyebrow": "Tampa · Camp begins June 9 · 4 weeks",
+        "headline": "Twelve sessions. Two timed tests. Four weeks.",
+        "primaryCta": {
+          "label": "Reserve a place",
+          "target": {
+            "kind": "anchor",
+            "sectionId": "signup"
+          }
+        }
+      },
+      "style": {
+        "pad": "roomy",
+        "tone": "default",
+        "align": "center",
+        "width": "wide",
+        "divider": "line",
+        "headline": "xl"
+      },
+      "variant": "centered"
+    },
+    {
+      "id": "numbers",
+      "kind": "proof",
+      "props": {
+        "items": [
+          {
+            "label": "Coached sessions across four weeks",
+            "value": "12"
+          },
+          {
+            "label": "Athletes maximum per group",
+            "value": "8"
+          },
+          {
+            "label": "Timed test days, week one and week four",
+            "value": "2"
+          },
+          {
+            "label": "Coach-to-athlete ratio, every session",
+            "value": "1:8"
+          }
+        ]
+      },
+      "style": {
+        "pad": "tight",
+        "tone": "muted",
+        "align": "center",
+        "headline": "md"
+      },
+      "variant": "stats"
+    },
+    {
+      "id": "proof",
+      "kind": "testimonial",
+      "props": {
+        "limit": 1,
+        "source": "live",
+        "featuredOnly": true
+      },
+      "style": {
+        "pad": "roomy",
+        "tone": "dark",
+        "align": "center",
+        "headline": "md"
+      },
+      "variant": "feature"
+    },
+    {
+      "id": "included",
+      "kind": "bullets",
+      "props": {
+        "intro": "Speed is a skill. Everything below is coachable in four weeks.",
+        "items": [
+          {
+            "body": "Start position, shin angle and ground contact, drilled until they hold up at full speed. Acceleration is where games are won.",
+            "icon": "bolt",
+            "title": "First-step mechanics"
+          },
+          {
+            "body": "Decelerate, plant and go again without losing the ball or the ankle. Change-of-direction work in every session.",
+            "icon": "shield",
+            "title": "Cuts you can trust"
+          },
+          {
+            "body": "Timed 10 and 40, broad jump and a change-of-direction test, week one and week four, side by side.",
+            "icon": "check",
+            "title": "Numbers, not opinions"
+          },
+          {
+            "body": "You leave with a written plan for what to keep doing once your season starts, not a camp T-shirt.",
+            "icon": "arrow",
+            "title": "A plan for preseason"
+          }
+        ],
+        "heading": "What your athlete works on every session"
+      },
+      "style": {
+        "pad": "roomy",
+        "align": "left",
+        "width": "wide",
+        "headline": "lg"
+      },
+      "variant": "grid-2"
+    },
+    {
+      "id": "weeks",
+      "kind": "steps",
+      "props": {
+        "steps": [
+          {
+            "body": "A timed baseline and a short movement screen, so we know where your athlete is starting and what to prioritise.",
+            "title": "Week one — testing day"
+          },
+          {
+            "body": "Speed and mechanics early in the morning, strength and conditioning after. Groups small enough that every rep gets coached.",
+            "title": "The middle weeks — build"
+          },
+          {
+            "body": "Same tests, side by side with the baseline, plus written guidance for carrying the work into preseason.",
+            "title": "Week four — retest and plan"
+          }
+        ],
+        "heading": "How the four weeks run"
+      },
+      "style": {
+        "pad": "roomy",
+        "tone": "dark",
+        "align": "left",
+        "headline": "lg"
+      },
+      "variant": "timeline"
+    },
+    {
+      "id": "coach",
+      "kind": "bullets",
+      "props": {
+        "items": [
+          {
+            "body": "Certified Strength and Conditioning Specialist (CSCS) and USATF Level 2 sprints, twelve years coaching high school and college athletes in Tampa.",
+            "icon": "star",
+            "title": "Coach Dan Reyes, head of speed"
+          },
+          {
+            "body": "Football, soccer, lacrosse and track athletes across eight Hillsborough and Pinellas high schools, including summer blocks run since 2018.",
+            "icon": "check",
+            "title": "Over 400 athletes coached"
+          },
+          {
+            "body": "No interns running groups. The coach who tests your athlete in week one is the coach who retests them in week four.",
+            "icon": "shield",
+            "title": "On the floor, every session"
+          }
+        ],
+        "heading": "Who is coaching your athlete"
+      },
+      "style": {
+        "pad": "tight",
+        "tone": "muted",
+        "align": "left",
+        "headline": "lg"
+      },
+      "variant": "list"
+    },
+    {
+      "id": "pricing",
+      "kind": "pricing",
+      "props": {
+        "plans": [
+          {
+            "cta": {
+              "label": "Reserve a place",
+              "target": {
+                "kind": "anchor",
+                "sectionId": "signup"
+              }
+            },
+            "name": "Summer Speed Camp",
+            "blurb": "No payment today — we confirm your group time first, then send payment details and the schedule.",
+            "price": "$449",
+            "cadence": "for the four weeks",
+            "features": [
+              "12 sessions, three mornings a week",
+              "Baseline and week-four testing",
+              "Small groups, never more than eight athletes",
+              "Sprint mechanics, acceleration and change of direction",
+              "Written plan for preseason"
+            ],
+            "highlight": true
+          }
+        ],
+        "heading": "One price, everything included",
+        "footnote": "Spots are limited by group size. Ask about sibling and team rates when you sign up."
+      },
+      "style": {
+        "pad": "roomy",
+        "tone": "accent",
+        "align": "center",
+        "width": "normal",
+        "headline": "lg"
+      },
+      "variant": "single"
+    },
+    {
+      "id": "faq",
+      "kind": "faq",
+      "props": {
+        "items": [
+          {
+            "a": "The first session is Monday June 9 and registration closes June 2, or earlier if the groups fill. Later four-week blocks run through August — ask and we'll tell you what's open.",
+            "q": "When does the camp start and when do we need to register?"
+          },
+          {
+            "a": "High school athletes, roughly rising 9th through 12th grade. Groups are set by age and training age, so a rising freshman is never training alongside a senior.",
+            "q": "What ages is the camp for?"
+          },
+          {
+            "a": "Three mornings a week for four weeks. Pick your preferred morning slot on the form and we'll confirm a group time that fits.",
+            "q": "What days and times?"
+          },
+          {
+            "a": "Full refund if you cancel seven or more days before the first session. Inside seven days, or after the block starts, we don't refund — but if your athlete is injured mid-block we'll carry the unused sessions to the next camp.",
+            "q": "What if we cancel, or my athlete gets injured?"
+          },
+          {
+            "a": "Tell us in advance and we'll slot your athlete into another group that week where there's room. Missed sessions aren't credited, but we'd rather move you than lose you.",
+            "q": "What if we miss a session?"
+          },
+          {
+            "a": "No. The block is built around mechanics, and the athletes who start furthest from clean technique usually move their numbers most.",
+            "q": "Does my athlete need to be fast already?"
+          },
+          {
+            "a": "Let us know on the form. If your athlete is cleared for sport we can coach around most things; if they're mid-rehab we'll tell you honestly whether to wait.",
+            "q": "What about an existing injury?"
+          },
+          {
+            "a": "Nothing is due on this form. We confirm a group time first, then send payment details and the full schedule.",
+            "q": "When do we pay?"
+          }
+        ],
+        "source": "inline",
+        "heading": "Questions parents ask"
+      },
+      "style": {
+        "pad": "roomy",
+        "tone": "muted",
+        "align": "left",
+        "headline": "lg"
+      },
+      "variant": "bordered"
+    },
+    {
+      "id": "signup",
+      "kind": "form",
+      "props": {
+        "sub": "Spots are held by group, not by the camp as a whole. This is how we hold yours — registration closes June 2.",
+        "fields": [
+          {
+            "name": "athlete_name",
+            "role": "athlete_name",
+            "type": "text",
+            "label": "Athlete name",
+            "required": true
+          },
+          {
+            "name": "parent_name",
+            "role": "parent_name",
+            "type": "text",
+            "label": "Parent or guardian name",
+            "required": true
+          },
+          {
+            "name": "email",
+            "role": "parent_email",
+            "type": "email",
+            "label": "Email address",
+            "required": true
+          },
+          {
+            "name": "phone",
+            "role": "parent_phone",
+            "type": "tel",
+            "label": "Phone",
+            "required": false
+          },
+          {
+            "name": "grade",
+            "type": "select",
+            "label": "Grade this fall",
+            "options": [
+              "9th grade",
+              "10th",
+              "11th",
+              "12th"
+            ],
+            "required": false
+          },
+          {
+            "name": "availability",
+            "type": "select",
+            "label": "Preferred morning slot",
+            "options": [
+              "Early — 7:00am",
+              "Mid — 8:30am",
+              "Late — 10:00am",
+              "Any of these works"
+            ],
+            "required": true
+          },
+          {
+            "name": "sport",
+            "role": "sport",
+            "type": "text",
+            "label": "Primary sport",
+            "required": false,
+            "placeholder": "Football, soccer, lacrosse..."
+          },
+          {
+            "name": "notes",
+            "role": "notes",
+            "type": "textarea",
+            "label": "Anything we should know?",
+            "required": false,
+            "placeholder": "Injuries, schedule conflicts, goals"
+          }
+        ],
+        "formKey": "summer-speed-camp",
+        "heading": "Reserve a place in the summer camp",
+        "consentText": "We'll only use your details to talk about the camp.",
+        "proofPoints": [
+          "No payment now",
+          "Groups capped at eight",
+          "Meridian Performance, 4th St N"
+        ],
+        "redirectUrl": "/go/test/thanks",
+        "submitLabel": "Reserve my athlete's spot",
+        "successMode": "redirect"
+      },
+      "style": {
+        "pad": "roomy",
+        "tone": "dark",
+        "align": "left",
+        "width": "wide",
+        "headline": "lg"
+      },
+      "variant": "split"
+    },
+    {
+      "id": "footer",
+      "kind": "footer",
+      "props": {
+        "legal": "Training programs are for healthy athletes cleared for sport participation.",
+        "lines": [
+          "Meridian Performance, 4th Street North at 22nd Avenue, Tampa",
+          "Camp begins June 9 · registration closes June 2"
+        ],
+        "links": [],
+        "businessName": "Tampa Speed & Strength"
+      },
+      "style": {
+        "pad": "normal",
+        "tone": "dark",
+        "align": "center"
+      },
+      "variant": "centered"
+    }
+  ]
+}
