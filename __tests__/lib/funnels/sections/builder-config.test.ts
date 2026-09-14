@@ -234,3 +234,30 @@ describe("reference-image tunables", () => {
     expect(config.BUILDER_REFERENCE_IMAGE_MAX_SOURCE_BYTES).toBe(10 * 1024 * 1024)
   })
 })
+
+// ---------------------------------------------------------------------------
+// The self-render tunables (Phase 2, "give the builder's AI eyes").
+// ---------------------------------------------------------------------------
+
+describe("self-render tunables", () => {
+  it("keeps every tile's long edge under Anthropic's 1568px downscale threshold", () => {
+    // The whole point of tiling: a tile that gets downscaled is a tile the
+    // critic has to guess at. Measured: a full 1200x5242 page arrives as
+    // 359x1568 with ~4px body copy.
+    expect(config.SECTION_RENDER_TILE_HEIGHT).toBeLessThan(1568)
+    expect(config.SECTION_RENDER_VIEWPORT_WIDTH).toBeLessThan(1568)
+  })
+
+  it("cannot outlive the review stage that contains it", () => {
+    expect(config.SECTION_RENDER_TIMEOUT_MS).toBeLessThan(config.SECTION_REVIEW_TIMEOUT_MS)
+  })
+
+  it("bounds the worst-case image count", () => {
+    expect(config.SECTION_RENDER_MAX_TILES).toBeGreaterThan(0)
+    expect(config.SECTION_RENDER_MAX_TILES).toBeLessThanOrEqual(8)
+  })
+
+  it("is on by default", () => {
+    expect(config.SECTION_RENDER_ENABLED).toBe(true)
+  })
+})

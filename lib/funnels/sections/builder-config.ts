@@ -366,3 +366,60 @@ export const BUILDER_REFERENCE_IMAGE_MAX_BASE64 = 2_000_000
  * rejected.
  */
 export const BUILDER_REFERENCE_IMAGE_MAX_SOURCE_BYTES = 10 * 1024 * 1024
+
+// ---------------------------------------------------------------------------
+// THE SELF-RENDER (Phase 2 of "give the builder's AI eyes")
+// ---------------------------------------------------------------------------
+// The review stage renders the page and shows it to the art director, whose
+// lens is "how the page LOOKS as somebody scrolls it" and which until now was
+// handed only JSON.
+
+/**
+ * The kill switch. `false` means no render is attempted and the review runs
+ * exactly as it did before this feature — which is also what happens when no
+ * browser can be launched, so the off path is continuously exercised rather
+ * than being a branch nobody takes.
+ */
+export const SECTION_RENDER_ENABLED = true
+
+/**
+ * Desktop width. Chosen because the funnel stylesheet's widest `--djp-maxw`
+ * is 88rem and this shows it without horizontal slack.
+ *
+ * Deliberately under 1568: Anthropic downscales an image to ~1568px on its
+ * LONG edge, so a tile wider than that would be shrunk and its body copy
+ * would stop being readable. Mobile is a second render and is out of scope
+ * for this phase — see the spec's §12.
+ */
+export const SECTION_RENDER_VIEWPORT_WIDTH = 1200
+
+/**
+ * How tall each slice is.
+ *
+ * Under 1568 for the same reason as the width: at 1200x1400 a tile is passed
+ * through at full size and every word on it is legible. Measured on a real
+ * 10-section page, a single full-page image instead arrives at 359x1568 with
+ * roughly 4px body text.
+ */
+export const SECTION_RENDER_TILE_HEIGHT = 1400
+
+/**
+ * The cap on slices, and so on cost: roughly 2,240 vision tokens each.
+ *
+ * A page longer than `SECTION_RENDER_MAX_TILES * SECTION_RENDER_TILE_HEIGHT`
+ * is reported to the critic as truncated rather than being silently cut,
+ * because a critic that thinks it has seen the whole page will say the page
+ * ends where the image does.
+ */
+export const SECTION_RENDER_MAX_TILES = 5
+
+/**
+ * The whole render, including waiting for webfonts.
+ *
+ * MUST stay below `SECTION_REVIEW_TIMEOUT_MS` (90s), which bounds the stage
+ * this runs inside. Measured locally: ~1.5s for a four-tile page, so this is
+ * mostly protection against a hung font request in an egress-less container —
+ * which is exactly why the font wait is bounded by this and never by an
+ * unbounded `networkidle`.
+ */
+export const SECTION_RENDER_TIMEOUT_MS = 20_000
