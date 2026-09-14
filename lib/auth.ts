@@ -5,6 +5,7 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { decode as defaultDecode } from "next-auth/jwt"
 import { recordAudit } from "@/lib/audit/record"
 import { sanitizePermissionMap, type PermissionMap } from "@/lib/permissions/registry"
+import { applyAbsoluteCap, SESSION_IDLE_MAX_AGE_SECONDS } from "@/lib/session-policy"
 import type { UserRole } from "@/types/database"
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -111,6 +112,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.permissions = (user.permissions as PermissionMap | undefined) ?? {}
       }
 
+      // Absolute cap. `maxAge` below is a SLIDING window — it renews on every
+      // page load — so on its own it can be extended forever and a device that
+      // walks away stays signed in. `loginAt` is stamped once at sign-in and
+      // never moves, so this is the clock no amount of activity can reset.
+      // A null return destroys the session: @auth/core clears the cookie rather
+      // than re-signing it, and SessionExpiryGuard takes the browser to /login.
+      if (applyAbsoluteCap(token, Boolean(user), Date.now()) === null) return null
+
       // On session update or subsequent requests, refresh from DB.
       // Permissions ride along here on purpose: revoking a teammate's access
       // then takes effect on their next request rather than waiting out the
@@ -149,6 +158,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   session: {
     strategy: "jwt",
-    maxAge: 24 * 60 * 60, // 24 hours
+    // Idle window, not a fixed lifetime — see lib/session-policy.ts for why
+    // this slides and what stops it sliding forever.
+    maxAge: SESSION_IDLE_MAX_AGE_SECONDS,
   },
 })
