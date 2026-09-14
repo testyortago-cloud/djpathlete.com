@@ -48,7 +48,7 @@ loadEnv()
 import { mkdirSync, writeFileSync } from "node:fs"
 
 import { resolveBrandKit } from "@/lib/funnels/brand-kit"
-import { renderDocToImages, type RenderedPage } from "@/lib/funnels/render-image"
+import { RENDER_IMAGE_WIDTH, renderDocToImages, type RenderedPage } from "@/lib/funnels/render-image"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 import { auditDoc } from "@/lib/funnels/sections/review/audit"
 import { runCritics } from "@/lib/funnels/sections/review/critics"
@@ -164,7 +164,7 @@ async function main() {
   const startedRender = Date.now()
   const render: RenderedPage = await renderDocToImages(doc, { ...(funnelBasePath ? { funnelBasePath } : {}), brandKit })
   say(
-    `\nrender: ${render.images.length} images, page ${render.width}x${render.height}px, ` +
+    `\nrender: ${render.images.length} images, page ${RENDER_IMAGE_WIDTH}x${render.height}px, ` +
       `truncated=${render.truncated}, typographyFaithful=${render.typographyFaithful}, ` +
       `error=${render.error ?? "none"}, ${Date.now() - startedRender}ms`,
   )

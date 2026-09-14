@@ -5,6 +5,7 @@
  * reports success for a feature nobody ran.
  */
 import { describe, expect, it } from "vitest"
+import type { LaunchRenderBrowser } from "@/lib/funnels/browser"
 import { chromeExecutablePath, launchRenderBrowser } from "@/lib/funnels/browser"
 import { buildRenderDocument } from "@/lib/funnels/render-image"
 
@@ -253,5 +254,64 @@ describe.skipIf(!chrome)("a real browser", () => {
     } finally {
       await browser!.close()
     }
+  }, 60_000)
+
+  // -------------------------------------------------------------------------
+  // THE WALL-CLOCK BOUND. This is the one degrade that was NOT covered.
+  //
+  // `timeout` bounds the launch and `setContent`'s own option bounds that one
+  // call. `fontsInUseLoaded`, `pageHeight` and `shoot` take no timeout at all,
+  // so before `protocolTimeout` was passed they fell back to puppeteer's
+  // default of 180_000ms — and the render runs BEFORE `reviewDoc`, outside
+  // `SECTION_REVIEW_TIMEOUT_MS`, inside the route's `maxDuration = 300`.
+  //
+  // The stall is simulated at `document.fonts.ready` rather than by stalling a
+  // real socket, deliberately: a `@font-face` whose URL never answers ALSO
+  // holds up the `load` event, so `setContent`'s existing timeout catches it
+  // and the unbounded calls are never reached (measured — the socket version
+  // failed at `setContent` with "Navigation timeout of 2000 ms exceeded", which
+  // would have made this test pass for the wrong reason). A page whose fonts
+  // arrive late enough to clear `load` and then stall is the case that gets
+  // through, and a never-settling `fonts.ready` is exactly what that looks
+  // like from `fontsInUseLoaded`'s side.
+  //
+  // 2_000ms, not SECTION_RENDER_TIMEOUT_MS, so this costs ~3s instead of ~21s.
+  // The bound proved is the mechanism, not the number.
+  //
+  // CONTROL RUN: with `protocolTimeout` removed, this same page was still
+  // hanging at 30_000ms against the same 2_000ms budget.
+  // -------------------------------------------------------------------------
+  const STALL_FONTS_READY =
+    `<script>Object.defineProperty(document.fonts, "ready", ` + `{ get: () => new Promise(() => {}) })</script>`
+
+  it("abandons a render whose font probe never settles, instead of hanging for 180s", async () => {
+    const { renderDocToImages } = await import("@/lib/funnels/render-image")
+    const { readFileSync } = await import("node:fs")
+    const doc = JSON.parse(readFileSync(`${__dirname}/fixtures/real-step-doc.json`, "utf8"))
+
+    // The real browser, the real document — with one script injected into the
+    // page that makes its font probe hang. Everything else is the real path.
+    const stalling: LaunchRenderBrowser = async () => {
+      const real = await launchRenderBrowser(2_000)
+      if (!real) return null
+      return {
+        close: () => real.close(),
+        async newPage() {
+          const page = await real.newPage()
+          return { ...page, setContent: (html) => page.setContent(html.replace("<body", `${STALL_FONTS_READY}<body`)) }
+        },
+      }
+    }
+
+    const startedAt = Date.now()
+    const result = await renderDocToImages(doc, { brandKit: null }, stalling)
+    const elapsed = Date.now() - startedAt
+
+    // The design's promise: a render fault degrades, it never throws and never
+    // costs the owner their turn.
+    expect(result.images).toEqual([])
+    expect(result.error).toMatch(/timed out/i)
+    // ...within roughly the budget, not within puppeteer's 180s default.
+    expect(elapsed).toBeLessThan(15_000)
   }, 60_000)
 })

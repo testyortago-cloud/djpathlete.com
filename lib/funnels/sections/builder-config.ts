@@ -414,12 +414,32 @@ export const SECTION_RENDER_TILE_HEIGHT = 1400
 export const SECTION_RENDER_MAX_TILES = 5
 
 /**
- * The whole render, including waiting for webfonts.
+ * The whole render: the launch, `setContent`, the webfont wait, the height
+ * read and every screenshot.
  *
- * MUST stay below `SECTION_REVIEW_TIMEOUT_MS` (90s), which bounds the stage
- * this runs inside. Measured locally: ~1.5s for a four-tile page, so this is
- * mostly protection against a hung font request in an egress-less container —
- * which is exactly why the font wait is bounded by this and never by an
- * unbounded `networkidle`.
+ * IT COVERS ALL OF THAT ONLY BECAUSE `lib/funnels/browser.ts` PASSES IT AS
+ * PUPPETEER'S `protocolTimeout`. The font probe, the height read and the
+ * screenshots take no timeout argument of their own; as puppeteer's `timeout`
+ * alone this bounded the launch and `setContent` and nothing else, leaving the
+ * rest on puppeteer's 180_000ms default.
+ *
+ * IT IS NOT INSIDE THE REVIEW STAGE, AND `SECTION_REVIEW_TIMEOUT_MS` DOES NOT
+ * BOUND IT. `renderDocToImages` is called by the BUILD ROUTE, in
+ * `runReviewStage`, BEFORE `reviewDoc` — the review timeout wraps `runReview`
+ * alone, inside `pipeline.ts`. The two run one after the other, and what
+ * bounds the PAIR is the route's own `maxDuration`
+ * (`app/api/admin/funnels/steps/[stepId]/build/route.ts`):
+ *
+ *     20s render + 90s review = 110s worst case, inside a 300s ceiling
+ *
+ * Overrunning `maxDuration` is not a slow turn, it is a killed function: the
+ * stream ends with no terminal event, which that route's own doc comment notes
+ * reads to the client as a dropped connection. `builder-config.test.ts` pins
+ * that arithmetic against the real `maxDuration`, not against a copy of 300.
+ *
+ * Measured locally: ~1.5s for a four-tile page, so this is mostly protection
+ * against a hung font request in an egress-less container — which is exactly
+ * why the font wait is bounded by this and never by an unbounded
+ * `networkidle`.
  */
 export const SECTION_RENDER_TIMEOUT_MS = 20_000

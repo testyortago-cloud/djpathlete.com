@@ -297,7 +297,21 @@ export type { AgentImage }
 export interface RenderedPage {
   /** `[overview, slice 1..N]`. Empty when `error` is set. */
   images: AgentImage[]
-  width: number
+  /**
+   * The rendered page's `scrollHeight`, in CSS pixels. `0` when `error` is set.
+   *
+   * DIAGNOSTIC, not input to anything the critic reads. It is the one number
+   * that says whether a page came out the length its author expected, and it
+   * is what decides `truncated`, so the success log below reports it — a
+   * truncated review whose cause nobody can see is the failure this exists to
+   * make visible.
+   *
+   * There was a `width` alongside it until 2026-09-15. It was removed: it was
+   * always exactly `RENDER_IMAGE_WIDTH` — the viewport constant this module
+   * sets itself — so it carried no information, and its only reader outside
+   * the tests was one diagnostic script printing it. That script now prints
+   * the constant, which is what it was printing all along.
+   */
   height: number
   /** The page was taller than `MAX_TILES * TILE_HEIGHT`. */
   truncated: boolean
@@ -326,7 +340,6 @@ export interface RenderedPage {
 function failed(message: string): RenderedPage {
   return {
     images: [],
-    width: 0,
     height: 0,
     truncated: false,
     typographyFaithful: false,
@@ -379,9 +392,18 @@ export async function renderDocToImages(
       images.push({ mediaType: "image/png", data: shot.toString("base64") })
     }
 
+    // THE READER FOR `height`, and the only line a successful render leaves in
+    // a production log. The route logs the failures; without this a render that
+    // quietly truncated, or came back in a fallback face, is invisible after
+    // the fact — and both of those change what the critic was looking at.
+    console.info(
+      `[funnels/render] ${images.length} images of a ${height}px page` +
+        `${plan.truncated ? " (TRUNCATED — the critic is told)" : ""}, ` +
+        `typography ${typographyFaithful ? "faithful" : "FALLBACK"}`,
+    )
+
     return {
       images,
-      width: RENDER_IMAGE_WIDTH,
       height,
       truncated: plan.truncated,
       typographyFaithful,

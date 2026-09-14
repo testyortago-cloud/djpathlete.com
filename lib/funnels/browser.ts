@@ -76,7 +76,21 @@ function isServerless(env: NodeJS.ProcessEnv): boolean {
   return Boolean(env.VERCEL || env.AWS_LAMBDA_FUNCTION_NAME)
 }
 
-export const launchRenderBrowser: LaunchRenderBrowser = async () => {
+/**
+ * @param timeoutMs Bounds BOTH the launch and every CDP command afterwards.
+ *   Defaults to `SECTION_RENDER_TIMEOUT_MS`; the override exists so a test can
+ *   prove that bound in two seconds instead of twenty.
+ *
+ * DECLARED AS A FUNCTION, NOT `const x: LaunchRenderBrowser = …`. The port type
+ * is deliberately zero-arg, and an annotation wins over the implementation at
+ * every call site: with it, the parameter exists but `launchRenderBrowser(2_000)`
+ * is still a TS2554. Nothing is lost by dropping it — `renderDocToImages`'s
+ * `launch: LaunchRenderBrowser = launchRenderBrowser` default IS the port
+ * check, and it stops compiling the moment a REQUIRED parameter appears here.
+ */
+export async function launchRenderBrowser(
+  timeoutMs: number = SECTION_RENDER_TIMEOUT_MS,
+): Promise<RenderBrowser | null> {
   try {
     const puppeteer = (await import("puppeteer-core")).default
 
@@ -98,7 +112,28 @@ export const launchRenderBrowser: LaunchRenderBrowser = async () => {
 
     if (!launchOptions) return null
 
-    const browser = await puppeteer.launch({ ...launchOptions, timeout: SECTION_RENDER_TIMEOUT_MS })
+    // `protocolTimeout` IS THE ONLY WALL-CLOCK BOUND ON THE RENDER. `timeout`
+    // covers the launch and `setContent`'s own option covers that one call —
+    // and NOTHING ELSE. `fontsInUseLoaded`, `pageHeight` and `shoot` take no
+    // timeout argument, so without this they fall back to puppeteer's default
+    // protocolTimeout of 180_000ms.
+    //
+    // That is not theoretical. The font probe awaits `document.fonts.ready`,
+    // which never resolves while a `fonts.gstatic.com` woff2 socket is STALLED
+    // rather than refused — a connection the `load` event does not wait for, so
+    // `setContent` is long since satisfied. The render then sat for up to 180s
+    // BEFORE `reviewDoc`'s own 90s even began, and the pair runs inside the
+    // build route's `maxDuration = 300`: 20 + 180 + 90 = 290s of a 300s budget,
+    // and the function is killed mid-stream. On the Polish path the owner
+    // pressed a button and gets a stream with no terminal event, which reads to
+    // the client as a dropped connection. MEASURED before this line existed:
+    // a page whose font probe never settles still had `renderDocToImages`
+    // hanging at 25_003ms.
+    const browser = await puppeteer.launch({
+      ...launchOptions,
+      timeout: timeoutMs,
+      protocolTimeout: timeoutMs,
+    })
 
     return {
       async newPage(): Promise<RenderPage> {
@@ -109,7 +144,7 @@ export const launchRenderBrowser: LaunchRenderBrowser = async () => {
             // "load", never "networkidle0": the font stylesheet is a remote
             // request, and in a container with no egress `networkidle0` waits
             // for a quiet period that never begins. The timeout is the bound.
-            await page.setContent(html, { waitUntil: "load", timeout: SECTION_RENDER_TIMEOUT_MS })
+            await page.setContent(html, { waitUntil: "load", timeout: timeoutMs })
           },
           async fontsInUseLoaded(families) {
             // A STRING, not a function literal. Bundlers rewrite a named

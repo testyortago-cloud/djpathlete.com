@@ -19,6 +19,10 @@ import { join } from "node:path"
 import * as anthropic from "@/lib/ai/anthropic"
 import * as models from "@/lib/ai/models"
 import * as config from "@/lib/funnels/sections/builder-config"
+// The REAL ceiling the render and the review share, imported rather than
+// copied: `SECTION_RENDER_TIMEOUT_MS` is not inside the review stage, so this
+// is the only number that actually bounds the two of them together.
+import { maxDuration as BUILD_ROUTE_MAX_DURATION } from "@/app/api/admin/funnels/steps/[stepId]/build/route"
 
 const ROOT = process.cwd()
 
@@ -248,8 +252,22 @@ describe("self-render tunables", () => {
     expect(config.SECTION_RENDER_VIEWPORT_WIDTH).toBeLessThan(1568)
   })
 
-  it("cannot outlive the review stage that contains it", () => {
-    expect(config.SECTION_RENDER_TIMEOUT_MS).toBeLessThan(config.SECTION_REVIEW_TIMEOUT_MS)
+  it("leaves the build route headroom for the render AND the review it precedes", () => {
+    // THIS USED TO ASSERT `RENDER < REVIEW` UNDER THE NAME "cannot outlive the
+    // review stage that contains it". No stage contains it: the route calls
+    // `renderDocToImages` in `runReviewStage` BEFORE `reviewDoc`, and
+    // SECTION_REVIEW_TIMEOUT_MS wraps `runReview` alone inside pipeline.ts. So
+    // the inequality was true, unrelated to its name, and could not fail for
+    // the reason it claimed. The two budgets are SEQUENTIAL, and the only
+    // thing bounding the pair is the route's own maxDuration — imported here
+    // rather than copied, so moving it moves this test with it.
+    const budget = config.SECTION_RENDER_TIMEOUT_MS + config.SECTION_REVIEW_TIMEOUT_MS
+    expect(budget).toBeLessThan(BUILD_ROUTE_MAX_DURATION * 1000)
+    // ...with room left for the rest of the turn — the catalogue reads, the
+    // save, and the flush of the terminal event after the review returns.
+    // Overrunning maxDuration kills the function mid-stream, and a stream that
+    // ends with no terminal event reads to the client as a dropped connection.
+    expect(BUILD_ROUTE_MAX_DURATION * 1000 - budget).toBeGreaterThanOrEqual(120_000)
   })
 
   it("bounds the worst-case image count", () => {

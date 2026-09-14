@@ -91,10 +91,21 @@ describe("the panel", () => {
     expect(new Set(systems).size).toBe(3)
   })
 
-  it("shows each critic the SAME page", async () => {
-    // The lens lives entirely in the system prompt. If the user messages
-    // differed, two critics agreeing would prove nothing — one of them might
-    // simply have been shown more.
+  it("shows each critic the SAME page when there is no render", async () => {
+    // WHEN THERE IS NO RENDER — which is what `runCritics(DOC, [])` is, and
+    // what every degrade path is: no browser, launch failure, screenshot
+    // failure, render disabled.
+    //
+    // The three messages were once identical on EVERY turn, so that two critics
+    // agreeing meant two lenses reaching the same conclusion rather than one
+    // having been shown more. This branch deliberately amended that: the art
+    // lens's own message now additionally carries `renderNote()` when there are
+    // pictures attached to its call. What survives the amendment is what this
+    // test pins — the three see the same DOCUMENT and the same deterministic
+    // findings, the art lens is the ONLY one that ever diverges, and it
+    // diverges ONLY when there is a render to diverge about. Off that path the
+    // three calls are still byte-identical, so nothing about the old guarantee
+    // is lost on the turns it used to cover.
     callAgent.mockImplementation(() => Promise.resolve(reply("x")))
     await runCritics(DOC, [])
     const messages = callAgent.mock.calls.map((call) => call[1] as string)
@@ -213,7 +224,6 @@ const RENDER: RenderedPage = {
     { mediaType: "image/png", data: "AAAA" },
     { mediaType: "image/png", data: "BBBB" },
   ],
-  width: 1200,
   height: 2000,
   truncated: false,
   typographyFaithful: true,

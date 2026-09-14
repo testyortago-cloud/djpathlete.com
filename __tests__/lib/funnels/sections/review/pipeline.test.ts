@@ -342,7 +342,6 @@ describe("threading the render to the critic panel", () => {
   it("hands the render to the critic panel", async () => {
     const render: RenderedPage = {
       images: [{ mediaType: "image/png", data: "AAAA" }],
-      width: 1200,
       height: 900,
       truncated: false,
       typographyFaithful: true,

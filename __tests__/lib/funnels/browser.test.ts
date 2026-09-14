@@ -22,6 +22,8 @@ describe("chromeExecutablePath", () => {
   })
 
   it("ignores an empty PUPPETEER_EXECUTABLE_PATH rather than launching ''", () => {
-    expect(chromeExecutablePath({ PUPPETEER_EXECUTABLE_PATH: "" } as unknown as NodeJS.ProcessEnv, ["/nope"])).toBeNull()
+    expect(
+      chromeExecutablePath({ PUPPETEER_EXECUTABLE_PATH: "" } as unknown as NodeJS.ProcessEnv, ["/nope"]),
+    ).toBeNull()
   })
 })

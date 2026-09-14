@@ -184,7 +184,10 @@ function findingsBlock(findings: Finding[]): string {
 }
 
 /**
- * The user message, identical for all three critics.
+ * The user message: the same page for all three critics, and byte-identical
+ * across all three on any turn with no render — which is every degrade path.
+ * The art lens's own call has `renderNote()` appended to this when there are
+ * pictures with it; see below for why that amendment is safe.
  *
  * The three calls were once byte-identical, so that agreement between two
  * critics meant two perspectives reaching the same conclusion rather than one
