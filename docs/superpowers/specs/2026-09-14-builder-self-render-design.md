@@ -58,9 +58,9 @@ Five changes, in dependency order:
    `null` rather than throwing when it cannot (§4).
 2. **A renderer** — `lib/funnels/render-image.ts`, which turns a `SectionDoc` into base64 PNG
    tiles and never throws (§5).
-3. **The critic panel** — `runCritics` gains an optional `images`, and the art director alone
-   receives them (§6).
-4. **The pipeline** — `reviewDoc` threads `images` through (§7).
+3. **The critic panel** — `runCritics` gains an optional `render`, and the art director alone
+   receives its pictures (§6).
+4. **The pipeline** — `reviewDoc` threads the `render` through (§7).
 5. **The route** — `runReviewStage` renders before it reviews, on both the automatic path and
    the Polish button (§8).
 
@@ -123,8 +123,13 @@ Both packages are compatible with this repo's `engines.node: "24.x"`
 ### 4.2 It returns `null`, it does not throw
 
 ```ts
-export async function launchRenderBrowser(): Promise<RenderBrowser | null>
+export async function launchRenderBrowser(timeoutMs?: number): Promise<RenderBrowser | null>
 ```
+
+`timeoutMs` defaults to `SECTION_RENDER_TIMEOUT_MS` and becomes puppeteer's `timeout` AND its
+`protocolTimeout` — see §5.5 for why both, and why the override exists (a test proving the
+bound in 2s rather than 20). `LaunchRenderBrowser`, the port `render-image.ts` sees, stays
+zero-arg, so no production caller can pass one.
 
 No browser is a **normal outcome**, not an error: a dev machine with no Chrome, a platform
 that will not launch one, a cold start that ran out of room. Every one of those must end as a
@@ -142,8 +147,8 @@ route is the hottest route in the builder and most of its turns never render any
 ```ts
 export interface RenderedPage {
   images: AgentImage[]          // [overview, slice 1..N], bare base64 PNG
-  width: number
-  height: number
+  height: number                // the page's scrollHeight. Diagnostic; a `width` alongside
+                                // it was removed 2026-09-15 — always the viewport constant
   truncated: boolean            // page was taller than MAX_TILES * TILE_HEIGHT
   typographyFaithful: boolean   // see 5.3
   dynamicRegions: string[]      // see 5.7 — added 2026-09-14 after the task-8 run
@@ -277,8 +282,32 @@ rather than being left to conclude the page ends there.
 
 Measured locally (Playwright chromium, same engine): `reassemble` 5ms, launch ~700ms cold /
 ~65ms warm, `setContent` 500-710ms, each screenshot ~140ms. About **1.5s** for a four-tile
-page. `SECTION_RENDER_TIMEOUT_MS` bounds it; the review's own budget is
-`SECTION_REVIEW_TIMEOUT_MS` (90s) and the route's is `maxDuration = 300`.
+page.
+
+**CORRECTED 2026-09-15.** `SECTION_RENDER_TIMEOUT_MS` (20s) bounds the render, but only because
+`browser.ts` passes it as puppeteer's **`protocolTimeout`** as well as its `timeout`. As
+`timeout` alone it covered the launch and `setContent` and nothing else — the font probe, the
+height read and the screenshots take no timeout argument, so they fell back to puppeteer's
+180 000ms default. That is reachable: a `fonts.gstatic.com` woff2 socket that **stalls** rather
+than fails leaves `document.fonts.ready` pending, and the `load` event that satisfies
+`setContent` does not wait for it. Measured before the fix: a page whose font probe never
+settles still had `renderDocToImages` hanging at **25 003ms**.
+
+**The render is NOT inside the review's timeout.** `SECTION_REVIEW_TIMEOUT_MS` (90s) wraps
+`runReview` inside `pipeline.ts`; the route calls `renderDocToImages` before `reviewDoc`, so the
+two budgets are **sequential** and the only thing bounding the pair is the route's
+`maxDuration = 300`:
+
+```
+20s render  +  90s review  =  110s worst case,  190s of headroom under 300s
+```
+
+Unfixed the same arithmetic read 20 + 180 + 90 = 290s, which with the rest of the turn
+overruns `maxDuration` — and that is not a slow turn but a killed function: the stream ends
+with no terminal event, which on the Polish path reads to the client as a dropped connection.
+`builder-config.test.ts` pins the headroom against the route's real `maxDuration`, and
+`render-image.browser.test.ts` proves the wall-clock bound against a real Chrome whose font
+probe never settles.
 
 ### 5.6 Nothing is stored
 
@@ -367,17 +396,27 @@ questions.
 
 ### 6.3 Shape
 
+**CORRECTED 2026-09-15.** This section described an `images?: readonly AgentImage[]` parameter.
+What shipped passes the **whole `RenderedPage`**, because the pictures alone are not enough to
+describe themselves: `renderNote()` needs `truncated` (or the critic says the page ends where
+the last tile does), `typographyFaithful` (or it reviews a fallback face as a design choice)
+and `dynamicRegions` (or it reports an unhydrated island as an empty band and the reviser
+invents content to fill it — measured, §5.7). Passing only the images would have re-created
+every failure §5.7 and §6.4 were written to close.
+
 ```ts
 export async function runCritics(
   doc: SectionDoc,
   auditFindings: Finding[],
-  images?: readonly AgentImage[],
+  render?: RenderedPage | null,
 ): Promise<CriticPanelResult>
 ```
 
 `CriticLens` gains `seesRender: boolean`, true for `art` alone — so which critic gets pictures
 is a property of the lens table, not an `if (critic.source === "art")` buried in the fan-out.
-Omitted `images` is byte-for-byte today's behaviour, and a test pins that.
+An omitted `render` is byte-for-byte today's behaviour, and a test pins that. So is a FAILED
+one: `runCritics` treats `images: []` as no render at all rather than switching the transport
+to the multi-part form for a list with no image in it.
 
 ### 6.4 The brief is unconditionally PRESENT and conditionally RELEVANT
 
@@ -399,12 +438,17 @@ picture-claim in the art brief and fails any that is not inside a conditional cl
 
 ## 7. The pipeline
 
-`ReviewInput` gains `images?: readonly AgentImage[]`, passed to `runCritics`. `reviewDoc`'s
-no-throwing-path promise and its `SECTION_REVIEW_MAX_ROUNDS < 1` kill switch are untouched.
+**CORRECTED 2026-09-15, for the same reason as §6.3.** `ReviewInput` gains
+`render?: RenderedPage | null` — not `images?: readonly AgentImage[]` — and hands it straight
+to `runCritics`. `reviewDoc`'s no-throwing-path promise and its `SECTION_REVIEW_MAX_ROUNDS < 1`
+kill switch are untouched.
 
-The renderer is **not** called from inside `reviewDoc`. `reviewDoc` receives images; the route
-produces them. That keeps the pipeline free of a browser dependency and keeps it testable
+The renderer is **not** called from inside `reviewDoc`. `reviewDoc` receives the render; the
+route produces it. That keeps the pipeline free of a browser dependency and keeps it testable
 without one.
+
+`reviewDoc`'s own `SECTION_REVIEW_TIMEOUT_MS` does **not** cover the render, precisely because
+the render happens before it and outside it. See §8 for what does.
 
 ---
 
@@ -417,7 +461,7 @@ emit({type:"phase", phase:"reviewing"})
    |
    +-- renderDocToImages(doc, {funnelBasePath, brandKit})    <-- new, ~1.5s, never throws
    |
-   +-- reviewDoc({doc, images, onFinding})
+   +-- reviewDoc({doc, render, onFinding})
 ```
 
 `runReviewStage` is shared by **both** paths — the automatic review (`mode:"apply"`, line
