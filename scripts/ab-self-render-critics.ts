@@ -95,10 +95,9 @@ const rest = { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` }
 
 async function readStep(): Promise<{ doc: SectionDoc; slug: string; funnelId: string; revision: number }> {
   const rows = (await (
-    await fetch(
-      `${supabaseUrl}/rest/v1/funnel_steps?select=project_data,slug,funnel_id,doc_revision&id=eq.${stepId}`,
-      { headers: rest },
-    )
+    await fetch(`${supabaseUrl}/rest/v1/funnel_steps?select=project_data,slug,funnel_id,doc_revision&id=eq.${stepId}`, {
+      headers: rest,
+    })
   ).json()) as Array<{ project_data: unknown; slug: string; funnel_id: string; doc_revision: number }>
   const row = rows[0]
   if (!row) throw new Error(`no funnel_steps row with id ${stepId}`)
@@ -181,7 +180,7 @@ async function main() {
     const name = index === 0 ? "00-overview" : `${String(index).padStart(2, "0")}-slice-${index}`
     const path = `${tileDir}/${slug}-${stepId.slice(0, 8)}-${name}.png`
     writeFileSync(path, Buffer.from(image.data, "base64"))
-    say(`  wrote ${path} (${Math.round(image.data.length * 0.75 / 1024)}KB decoded)`)
+    say(`  wrote ${path} (${Math.round((image.data.length * 0.75) / 1024)}KB decoded)`)
     // BARE BASE64, NOT A DATA URL — the wire format the transport requires, and
     // a `data:` prefix would be accepted by the type and rejected by the
     // provider. Checked here because this script is the only place the payload
@@ -206,7 +205,12 @@ async function main() {
       `\n--- ARM A: no pictures (today's behaviour) — ${without.tokensUsed} tokens, ${Date.now() - withoutStarted}ms ---`,
     )
     say(block("all findings:", without.findings))
-    say(block("ART LENS ONLY:", without.findings.filter((f) => f.source === "art")))
+    say(
+      block(
+        "ART LENS ONLY:",
+        without.findings.filter((f) => f.source === "art"),
+      ),
+    )
 
     const withStarted = Date.now()
     const withPictures = await runCritics(doc, audit, render)
@@ -214,7 +218,12 @@ async function main() {
       `\n--- ARM B: ${render.images.length} pictures to the art lens — ${withPictures.tokensUsed} tokens, ${Date.now() - withStarted}ms ---`,
     )
     say(block("all findings:", withPictures.findings))
-    say(block("ART LENS ONLY:", withPictures.findings.filter((f) => f.source === "art")))
+    say(
+      block(
+        "ART LENS ONLY:",
+        withPictures.findings.filter((f) => f.source === "art"),
+      ),
+    )
 
     say(
       `\ntoken delta (B - A): ${withPictures.tokensUsed - without.tokensUsed}` +
@@ -232,7 +241,12 @@ async function main() {
     say(`\n${"-".repeat(78)}`)
     say(block(`ART FINDINGS PRESENT ONLY WITH PICTURES (${onlyB.length} of ${artB.length}):`, onlyB))
     const codesB = new Set(artB.map((f) => f.code))
-    say(block(`ART FINDINGS LOST WHEN PICTURES WERE ADDED (${artA.filter((f) => !codesB.has(f.code)).length}):`, artA.filter((f) => !codesB.has(f.code))))
+    say(
+      block(
+        `ART FINDINGS LOST WHEN PICTURES WERE ADDED (${artA.filter((f) => !codesB.has(f.code)).length}):`,
+        artA.filter((f) => !codesB.has(f.code)),
+      ),
+    )
 
     // REFUSAL 2. An empty art lens is a broken run, not a clean page.
     if (artB.length === 0) {

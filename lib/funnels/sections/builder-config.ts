@@ -428,9 +428,14 @@ export const SECTION_RENDER_MAX_TILES = 5
  * `runReviewStage`, BEFORE `reviewDoc` — the review timeout wraps `runReview`
  * alone, inside `pipeline.ts`. The two run one after the other, and what
  * bounds the PAIR is the route's own `maxDuration`
- * (`app/api/admin/funnels/steps/[stepId]/build/route.ts`):
+ * (`app/api/admin/funnels/steps/[stepId]/build/route.ts`). This timeout
+ * bounds each of those calls individually, not the render as a whole — what
+ * it buys is turning a single stalled call from a 180s hang into a 20s one.
+ * The first call to time out aborts the whole render, so the arithmetic
+ * below is the realistic case, not a guaranteed ceiling; a strict upper
+ * bound is the per-call limit times the number of calls above:
  *
- *     20s render + 90s review = 110s worst case, inside a 300s ceiling
+ *     20s render + 90s review = 110s realistic case, inside a 300s ceiling
  *
  * Overrunning `maxDuration` is not a slow turn, it is a killed function: the
  * stream ends with no terminal event, which that route's own doc comment notes

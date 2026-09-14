@@ -284,11 +284,12 @@ Measured locally (Playwright chromium, same engine): `reassemble` 5ms, launch ~7
 ~65ms warm, `setContent` 500-710ms, each screenshot ~140ms. About **1.5s** for a four-tile
 page.
 
-**CORRECTED 2026-09-15.** `SECTION_RENDER_TIMEOUT_MS` (20s) bounds the render, but only because
-`browser.ts` passes it as puppeteer's **`protocolTimeout`** as well as its `timeout`. As
-`timeout` alone it covered the launch and `setContent` and nothing else — the font probe, the
-height read and the screenshots take no timeout argument, so they fell back to puppeteer's
-180 000ms default. That is reachable: a `fonts.gstatic.com` woff2 socket that **stalls** rather
+**CORRECTED 2026-09-15.** `SECTION_RENDER_TIMEOUT_MS` (20s) bounds each individual browser call
+in the render, not the render as a whole, because `browser.ts` passes it as puppeteer's
+**`protocolTimeout`** as well as its `timeout`. As `timeout` alone it covered the launch and
+`setContent` and nothing else — the font probe, the height read and the screenshots take no
+timeout argument, so they fell back to puppeteer's 180 000ms default. That is reachable: a
+`fonts.gstatic.com` woff2 socket that **stalls** rather
 than fails leaves `document.fonts.ready` pending, and the `load` event that satisfies
 `setContent` does not wait for it. Measured before the fix: a page whose font probe never
 settles still had `renderDocToImages` hanging at **25 003ms**.
@@ -296,10 +297,12 @@ settles still had `renderDocToImages` hanging at **25 003ms**.
 **The render is NOT inside the review's timeout.** `SECTION_REVIEW_TIMEOUT_MS` (90s) wraps
 `runReview` inside `pipeline.ts`; the route calls `renderDocToImages` before `reviewDoc`, so the
 two budgets are **sequential** and the only thing bounding the pair is the route's
-`maxDuration = 300`:
+`maxDuration = 300`. The first call to time out aborts the whole render, so the arithmetic
+below is the realistic case, not a guaranteed ceiling — a strict upper bound would be the
+per-call limit times the number of calls:
 
 ```
-20s render  +  90s review  =  110s worst case,  190s of headroom under 300s
+20s render  +  90s review  =  110s realistic case,  190s of headroom under 300s
 ```
 
 Unfixed the same arithmetic read 20 + 180 + 90 = 290s, which with the rest of the turn
