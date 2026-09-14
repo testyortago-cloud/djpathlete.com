@@ -346,6 +346,7 @@ describe("threading the render to the critic panel", () => {
       height: 900,
       truncated: false,
       typographyFaithful: true,
+      dynamicRegions: [],
       error: null,
     }
     runCritics.mockResolvedValue({ findings: [], tokensUsed: 0 })

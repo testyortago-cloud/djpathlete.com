@@ -32,7 +32,7 @@ import { config as loadEnv } from "dotenv"
 loadEnv({ path: ".env.local" })
 loadEnv()
 
-import { ISLAND_ATTR } from "@/lib/funnels/islands"
+import { islandsBySection } from "@/lib/funnels/render-image"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 
@@ -53,14 +53,8 @@ if (!Array.isArray(doc?.sections)) throw new Error(`step ${stepId} has no readab
 
 const { html } = reassemble(doc, { brandKit: null })
 
-// Sections are top-level in the emitted html and never nested, so splitting on
-// the opening tag attributes each island to the section it is inside.
-const islands: Record<string, string[]> = {}
-for (const chunk of html.split("<section ").slice(1)) {
-  const id = chunk.match(/id="([^"]+)"/)?.[1]
-  if (!id) continue
-  const body = chunk.split("</section>")[0]
-  const names = [...body.matchAll(new RegExp(`${ISLAND_ATTR}="([^"]+)"`, "g"))].map((m) => m[1])
-  if (names.length > 0) islands[id] = names
-}
-console.log(JSON.stringify(islands))
+// THE SAME SCAN THE RENDERER USES. `islandsBySection` is what fills
+// `RenderedPage.dynamicRegions`, the list the art critic is told not to report
+// as empty — so this probe and the prompt cannot disagree about which bands are
+// blank, which is the only way this script's verdicts stay worth anything.
+console.log(JSON.stringify(islandsBySection(html)))

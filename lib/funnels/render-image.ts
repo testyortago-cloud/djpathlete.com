@@ -11,6 +11,7 @@
 import type { AgentImage } from "@/lib/ai/anthropic"
 import { launchRenderBrowser, type LaunchRenderBrowser } from "@/lib/funnels/browser"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile"
+import { ISLAND_ATTR, isIslandName, type IslandName } from "@/lib/funnels/islands"
 import {
   SECTION_RENDER_MAX_TILES,
   SECTION_RENDER_TILE_HEIGHT,
@@ -58,6 +59,98 @@ export function buildRenderDocument(html: string, css: string): string {
   )
 }
 
+// ---------------------------------------------------------------------------
+// ISLANDS — THE PARTS OF THE PAGE THAT ARE NOT IN THE PICTURE.
+// ---------------------------------------------------------------------------
+// `reassemble()` emits every interactive region as an EMPTY placeholder div
+// (`renderIsland`, render.ts) that only the real page ever fills, and this
+// module screenshots with `setContent` and no scripts. So a form, a live
+// testimonial feed, a live FAQ, a checkout button, an event or booking button
+// and a quiz are all blank rectangles in the picture and full of content on the
+// page a visitor sees.
+//
+// Handed to a critic with no warning, that is not a harmless omission. Observed
+// end to end on 2026-09-14: the art director filed the unhydrated testimonial
+// band as a high-severity empty band, and the reviser then replaced a working
+// live feed carrying a real athlete's quote with a testimonial it INVENTED,
+// attributed to a named person with an invented 40-yard-dash time, and told the
+// owner the band now "carries an authored quote with a real 40-time result".
+// A fabricated endorsement heading for a live coaching page.
+//
+// THE LIST IS READ OUT OF THE EMITTED HTML, NEVER RE-DERIVED FROM THE DOCUMENT.
+// Which sections hold an island depends on a `source: "live"` discriminant on
+// two kinds, on a CTA's target kind on several more, and on validation passing
+// inside `renderIslandIfValid`. A second implementation of those rules here
+// would be right on the day it was written and silently wrong afterwards —
+// which is the whole bug class this guard exists to close. The html `reassemble`
+// returned is the same html that was screenshotted, so it cannot drift.
+
+/**
+ * What each island is, in words a critic (and the owner reading the finding it
+ * does not write) can act on.
+ *
+ * A `Record<IslandName, …>` on purpose: a new island in `ISLAND_NAMES` fails to
+ * compile until somebody says what it looks like to a visitor.
+ */
+const ISLAND_LABELS: Record<IslandName, string> = {
+  form: "a form",
+  checkout: "a checkout button",
+  event: "an event sign-up button",
+  booking: "a booking widget",
+  testimonials: "a live testimonial feed",
+  faq: "a live FAQ list",
+  quiz: "a quiz",
+}
+
+// One pass, in document order, matching EITHER a section open tag or an island
+// attribute — so each island is attributed to the section it sits inside
+// without parsing the html. Sections are top-level and never nested
+// (`renderSection` emits exactly one `<section>` per section), and every
+// authored string reaches the markup through `escapeHtml`, which turns `<`,
+// `>`, `"` and `'` into entities — so no copy an owner can type forges either
+// half of this pattern.
+const SECTION_OR_ISLAND = new RegExp(`<section\\b[^>]*?\\sid="([^"]*)"|\\b${ISLAND_ATTR}="([^"]*)"`, "g")
+
+/**
+ * Every island in `html`, keyed by the section it sits inside, in document
+ * order. Sections holding none are absent; an island outside every section —
+ * which the renderers cannot currently produce — lands under `""` rather than
+ * being dropped, because a region nobody is warned about is the whole failure.
+ *
+ * `scripts/_render-islands.ts` reads this too, so the verification tooling and
+ * the prompt can never disagree about which bands are blank.
+ */
+export function islandsBySection(html: string): Record<string, string[]> {
+  const found: Record<string, string[]> = {}
+  let current = ""
+
+  for (const [, sectionId, island] of html.matchAll(SECTION_OR_ISLAND)) {
+    if (sectionId !== undefined) {
+      current = sectionId
+      continue
+    }
+    if (island === undefined) continue
+    const bucket = (found[current] ??= [])
+    if (!bucket.includes(island)) bucket.push(island)
+  }
+  return found
+}
+
+/**
+ * The regions of `html` that are interactive — blank in a scripts-off
+ * screenshot, filled in on the real page — as `section-id (what it is)`.
+ *
+ * Empty for a page with no islands at all. That direction matters as much as
+ * the other: a note telling the critic to ignore regions that do not exist
+ * would teach it to ignore genuine empty bands.
+ */
+export function dynamicRegionsIn(html: string): string[] {
+  return Object.entries(islandsBySection(html)).map(([sectionId, islands]) => {
+    const labels = islands.map((island) => (isIslandName(island) ? ISLAND_LABELS[island] : island))
+    return sectionId ? `${sectionId} (${labels.join(", ")})` : labels.join(", ")
+  })
+}
+
 export interface TilePlan {
   slices: Array<{ y: number; height: number }>
   truncated: boolean
@@ -103,12 +196,29 @@ export interface RenderedPage {
    * a page height shift of ~4% and letterforms no visitor will ever see.
    */
   typographyFaithful: boolean
+  /**
+   * Regions that are interactive on the real page and therefore BLANK in
+   * `images`, as `section-id (what it is)`. See the islands block above — this
+   * is the difference between the page and the picture, and a critic not told
+   * about it reports the difference as a defect and invents content to fill it.
+   *
+   * Empty whenever `images` is: it describes the pictures, and there are none.
+   */
+  dynamicRegions: string[]
   /** Set when `images` is empty. NEVER thrown. */
   error: string | null
 }
 
 function failed(message: string): RenderedPage {
-  return { images: [], width: 0, height: 0, truncated: false, typographyFaithful: false, error: message }
+  return {
+    images: [],
+    width: 0,
+    height: 0,
+    truncated: false,
+    typographyFaithful: false,
+    dynamicRegions: [],
+    error: message,
+  }
 }
 
 function message(error: unknown): string {
@@ -144,7 +254,7 @@ export async function renderDocToImages(
     const page = await browser.newPage()
     await page.setContent(buildRenderDocument(html, css))
 
-    const typographyFaithful = await page.fontsLoaded(RENDER_FONT_FAMILIES)
+    const typographyFaithful = await page.fontsInUseLoaded(RENDER_FONT_FAMILIES)
     const height = await page.pageHeight()
     const plan = planTiles(height)
 
@@ -161,6 +271,8 @@ export async function renderDocToImages(
       height,
       truncated: plan.truncated,
       typographyFaithful,
+      // From the html that was just screenshotted, not from `doc`.
+      dynamicRegions: dynamicRegionsIn(html),
       error: null,
     }
   } catch (error) {

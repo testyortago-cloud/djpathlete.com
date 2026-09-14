@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile"
 import type { RenderBrowser } from "@/lib/funnels/browser"
-import { buildRenderDocument, planTiles, RENDER_FONT_FAMILIES, renderDocToImages } from "@/lib/funnels/render-image"
+import {
+  buildRenderDocument,
+  dynamicRegionsIn,
+  islandsBySection,
+  planTiles,
+  RENDER_FONT_FAMILIES,
+  renderDocToImages,
+} from "@/lib/funnels/render-image"
+import { reassemble } from "@/lib/funnels/sections/doc"
 import { sectionDocSchema, type SectionDoc } from "@/lib/funnels/sections/registry"
 
 describe("buildRenderDocument", () => {
@@ -112,13 +120,34 @@ const DOC = sectionDocSchema.parse({
   // interface rather than loosen anything the assertions below check.
 }) as SectionDoc
 
+// The same document with the form taken out — the CONTROL for every assertion
+// about islands below. "No region is reported" is worth nothing unless the
+// same code reports one on a page that has one.
+const DOC_WITHOUT_ISLANDS = sectionDocSchema.parse({
+  v: 1,
+  engine: "sections",
+  theme: { tone: "light", accent: "accent", radius: "sharp" },
+  sections: [
+    {
+      id: "hero",
+      kind: "hero",
+      variant: "centered",
+      style: { headline: "xl", align: "center", tone: "default", pad: "roomy" },
+      props: {
+        headline: "Twelve sessions",
+        primaryCta: { label: "Read more", target: { kind: "url", href: "https://example.com/x" } },
+      },
+    },
+  ],
+}) as SectionDoc
+
 function fakeBrowser(over: Partial<{ height: number; fonts: boolean; shootThrows: boolean }> = {}) {
   const closed = { value: false }
   const browser: RenderBrowser = {
     async newPage() {
       return {
         async setContent() {},
-        async fontsLoaded() {
+        async fontsInUseLoaded() {
           return over.fonts ?? true
         },
         async pageHeight() {
@@ -201,11 +230,94 @@ describe("renderDocToImages", () => {
     expect(result.error).toContain("screenshot exploded")
   })
 
+  it("reports the regions the pictures cannot show", async () => {
+    // THE FABRICATED-TESTIMONIAL GUARD. Without this list the art critic reads
+    // an unhydrated island as an empty band, and the reviser fills it with
+    // content it invented — observed end to end on 2026-09-14, on a live page,
+    // with a named person and a made-up 40-yard-dash time.
+    const { browser } = fakeBrowser()
+    const result = await renderDocToImages(DOC, { brandKit: null }, async () => browser)
+    expect(result.dynamicRegions).toEqual(["signup (a form)"])
+  })
+
+  it("reports no regions for a page that has none — the absence control", async () => {
+    const { browser } = fakeBrowser()
+    const result = await renderDocToImages(DOC_WITHOUT_ISLANDS, { brandKit: null }, async () => browser)
+    expect(result.dynamicRegions).toEqual([])
+    // The render still happened, so the empty list is an answer and not a
+    // silent failure earlier in the function.
+    expect(result.error).toBeNull()
+    expect(result.images.length).toBeGreaterThan(0)
+  })
+
+  it("claims no regions when there are no pictures to describe", async () => {
+    const result = await renderDocToImages(DOC, { brandKit: null }, async () => null)
+    expect(result.dynamicRegions).toEqual([])
+  })
+
   it("closes the browser even when the render fails", async () => {
     // A leaked Chrome in a serverless container is a memory leak that outlives
     // the request.
     const { browser, closed } = fakeBrowser({ shootThrows: true })
     await renderDocToImages(DOC, { brandKit: null }, async () => browser)
     expect(closed.value).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The island scan. READ OUT OF THE EMITTED HTML, never re-derived from the
+// document: which sections hold an island depends on a `source:"live"`
+// discriminant on two kinds, a CTA's target kind on several more, and
+// validation passing inside `renderIslandIfValid`. A second copy of those rules
+// would be right on the day it was written and wrong afterwards, which is the
+// bug class that produced the fabricated testimonial in the first place.
+// ---------------------------------------------------------------------------
+describe("islandsBySection", () => {
+  it("attributes an island to the section it sits inside", () => {
+    const { html } = reassemble(DOC, { brandKit: null })
+    expect(islandsBySection(html)).toEqual({ signup: ["form"] })
+  })
+
+  it("reads the real markup, not a guess — the form island IS in that html", () => {
+    // Pins the two halves to each other: if `renderIsland` ever stops emitting
+    // this attribute, this fails rather than the scan quietly returning
+    // nothing for every page forever.
+    const { html } = reassemble(DOC, { brandKit: null })
+    expect(html).toContain('data-djp-island="form"')
+  })
+
+  it("returns nothing for a page with no island — the presence control's twin", () => {
+    const { html } = reassemble(DOC_WITHOUT_ISLANDS, { brandKit: null })
+    expect(html).not.toContain("data-djp-island")
+    expect(islandsBySection(html)).toEqual({})
+  })
+
+  it("keeps two different islands in one section apart, and two sections apart", () => {
+    const html =
+      `<section id="alpha" class="djp-s"><div data-djp-island="form" data-djp-props='{}'></div>` +
+      `<div data-djp-island="checkout" data-djp-props='{}'></div></section>` +
+      `<section id="beta" class="djp-s"><div data-djp-island="faq" data-djp-props='{}'></div></section>`
+    expect(islandsBySection(html)).toEqual({ alpha: ["form", "checkout"], beta: ["faq"] })
+  })
+})
+
+describe("dynamicRegionsIn", () => {
+  it("names the section AND what is in it, because 'form' alone is not actionable", () => {
+    const { html } = reassemble(DOC, { brandKit: null })
+    expect(dynamicRegionsIn(html)).toEqual(["signup (a form)"])
+  })
+
+  it("describes each island in words a critic can act on", () => {
+    const html =
+      `<section id="proof" class="djp-s"><div data-djp-island="testimonials" data-djp-props='{}'></div></section>` +
+      `<section id="questions" class="djp-s"><div data-djp-island="faq" data-djp-props='{}'></div></section>`
+    expect(dynamicRegionsIn(html)).toEqual(["proof (a live testimonial feed)", "questions (a live FAQ list)"])
+  })
+
+  it("still reports an island it cannot attribute to a section", () => {
+    // Cannot happen today — every renderer emits islands inside a <section>.
+    // It must not silently vanish if that changes: a region nobody warns the
+    // critic about is the entire defect this list exists to prevent.
+    expect(dynamicRegionsIn(`<div data-djp-island="form" data-djp-props='{}'></div>`)).toEqual(["a form"])
   })
 })

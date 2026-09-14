@@ -21,8 +21,19 @@ import { SECTION_RENDER_TIMEOUT_MS, SECTION_RENDER_VIEWPORT_WIDTH } from "@/lib/
 
 export interface RenderPage {
   setContent(html: string): Promise<void>
-  /** True when every named family actually loaded. See render-image.ts §fonts. */
-  fontsLoaded(families: readonly string[]): Promise<boolean>
+  /**
+   * True when every downloadable family THE PAGE'S TEXT ACTUALLY USES has a
+   * loaded face — i.e. when the type in the picture is the type a visitor sees.
+   *
+   * NOT "every family in `families` loaded". Only one of the five `FONT_STACKS`
+   * pairings names Lexend Exa, and a browser downloads a webfont only when
+   * something on the page asks for it, so the every-family form reported false
+   * on every render whose typography was perfectly correct (measured
+   * 2026-09-14: Exa false, Deca true, Mono true, on a page whose type was
+   * right). `families` is the list of faces this render DOWNLOADS, used to tell
+   * a webfont apart from a system face — not a list of faces to demand.
+   */
+  fontsInUseLoaded(families: readonly string[]): Promise<boolean>
   pageHeight(): Promise<number>
   /** `null` clip means the whole page. */
   shoot(clip: { y: number; height: number } | null): Promise<Buffer>
@@ -100,13 +111,52 @@ export const launchRenderBrowser: LaunchRenderBrowser = async () => {
             // for a quiet period that never begins. The timeout is the bound.
             await page.setContent(html, { waitUntil: "load", timeout: SECTION_RENDER_TIMEOUT_MS })
           },
-          async fontsLoaded(families) {
+          async fontsInUseLoaded(families) {
             // A STRING, not a function literal. Bundlers rewrite a named
             // function inside an evaluate callback into a helper that does not
             // exist in the browser, and the whole evaluate then throws.
+            //
+            // TWO STEPS, AND NEITHER IS `document.fonts.check` ALONE.
+            //
+            // 1. WHICH of the downloadable families does this page's text
+            //    actually ask for? Walk the text nodes and read the computed
+            //    `font-family` of the element each one sits in — `var()` is
+            //    already substituted at computed-value time, so this is the
+            //    resolved stack. A family nothing asks for is never downloaded
+            //    and is not part of what the picture shows.
+            //
+            // 2. Did each of those arrive? `document.fonts.check` answers the
+            //    WRONG question here: it returns TRUE for a family that is not
+            //    in the set at all, so a render whose font stylesheet never
+            //    arrived — the exact degrade this flag exists to report — would
+            //    read as faithful (verified in Chrome: a page using an
+            //    undeclared "Lexend Exa" answers check() true). Ask the
+            //    FontFaceSet instead: the family must be declared AND have at
+            //    least one face with status "loaded". One loaded face is the
+            //    right bar, not all of them — a Google `css2` stylesheet
+            //    declares a face per unicode subset and downloads only the
+            //    subsets the copy on the page actually needs.
+            //
+            // No used families at all (a page of system faces) is faithful:
+            // there was nothing to download and nothing to fall back from.
             const probe = `(async () => {
               await document.fonts.ready
-              return ${JSON.stringify(families)}.every((f) => document.fonts.check('16px "' + f + '"'))
+              const wanted = ${JSON.stringify(families)}
+              const used = new Set()
+              const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+              let node = walker.nextNode()
+              while (node) {
+                if (node.nodeValue && node.nodeValue.trim() && node.parentElement) {
+                  const stack = getComputedStyle(node.parentElement).fontFamily
+                  for (const family of wanted) { if (stack.includes(family)) used.add(family) }
+                }
+                node = walker.nextNode()
+              }
+              const loaded = new Set()
+              document.fonts.forEach((face) => {
+                if (face.status === 'loaded') loaded.add(face.family.replace(/^['"]|['"]$/g, ''))
+              })
+              return [...used].every((family) => loaded.has(family))
             })()`
             return Boolean(await page.evaluate(probe))
           },
