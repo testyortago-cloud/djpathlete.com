@@ -85,6 +85,25 @@ const PROGRAM_NAME = "Comeback Code"
 const STEP = { id: STEP_ID, funnel_id: "ffffffff-1111-4222-8333-444444444444", slug: "apply", name: "Apply" }
 const FUNNEL = { id: STEP.funnel_id, slug: "summer-camp", name: "Summer camp", status: "draft" }
 
+/**
+ * What `loadPageContext` derives from `FUNNEL.slug`, and therefore the exact
+ * string the render must be given. Written out rather than interpolated: the
+ * claim is that the ROUTE'S OWN base path reaches the render, and an
+ * expectation built from the same expression as the code cannot fail when the
+ * code stops passing it.
+ */
+const EXPECTED_BASE_PATH = "/go/summer-camp"
+
+/**
+ * A REAL brand, not the column's `null` default. `resolveBrandKit` returns
+ * `null` for an unbranded tenant, and `null` is also what a mutant that drops
+ * the argument entirely produces — so an unbranded fixture would make the
+ * brand-kit half of the assertion unfalsifiable.
+ */
+const BRAND_COLOR = "#2f5d62"
+const ACCENT_COLOR = "#d08c3f"
+const EXPECTED_BRAND_KIT = { brand: BRAND_COLOR, accent: ACCENT_COLOR }
+
 const BUSINESS_ID = "bbbbbbbb-1111-4222-8333-444444444444"
 
 const BUSINESS_SETTINGS = {
@@ -173,6 +192,19 @@ async function readEvents(res: Response): Promise<BuildStreamEvent[]> {
   return createBuildStreamDecoder()(await res.text())
 }
 
+/**
+ * The document the build turn actually stored, read back off its own `result`
+ * event. This is what `runReviewStage` is handed and therefore what the render
+ * must be given — taking it from the stream rather than rebuilding it here
+ * keeps the expectation tied to the route's output instead of to a second copy
+ * of the resolver's behaviour maintained in this file.
+ */
+function storedDoc(events: BuildStreamEvent[]): SectionDoc {
+  const result = events.find((e) => e.type === "result")
+  expect(result, "the build turn must have emitted a result before any review").toBeDefined()
+  return (result as { turn: { doc: SectionDoc } }).turn.doc
+}
+
 const req = (body: unknown) =>
   new Request(`http://x/api/admin/funnels/steps/${STEP_ID}/build`, {
     method: "POST",
@@ -225,7 +257,13 @@ beforeEach(() => {
     choices: [{ id: BUSINESS_ID, name: "DJP Athlete", slug: "djp-athlete" }],
     isOperator: true,
   })
-  mock(getBusinessSettings).mockResolvedValue({ ...BUSINESS_SETTINGS, brand_color: null, accent_color: null })
+  // A BRANDED tenant, so `context.brandKit` is a real object rather than the
+  // `null` an unbranded one produces. See `BRAND_COLOR`.
+  mock(getBusinessSettings).mockResolvedValue({
+    ...BUSINESS_SETTINGS,
+    brand_color: BRAND_COLOR,
+    accent_color: ACCENT_COLOR,
+  })
 
   mock(getAllPrograms).mockResolvedValue([{ id: PROGRAM_ID, name: PROGRAM_NAME }])
   mock(getPrograms).mockResolvedValue([{ id: PROGRAM_ID, name: PROGRAM_NAME }])
@@ -237,17 +275,25 @@ beforeEach(() => {
   mock(createGenerationLog).mockResolvedValue({ id: "log-1" })
   mock(updateGenerationLog).mockResolvedValue({})
 
-  // The review finds nothing by default — only its `render` argument is under
-  // test here, not what it decides to change.
+  // THE REVIEW CHANGES SOMETHING, AND THAT IS LOAD-BEARING.
+  //
+  // It used to answer `changed: false`, which sends `runReviewStage` straight
+  // out through `if (!review.changed) { if (mode === "apply") return }` —
+  // BEFORE it reaches its own `appendTurn`. The only turns recorded were then
+  // the two BUILD turns, both written before `render` exists, so the
+  // "no image bytes in the turn log" test could not fail: a mutant that
+  // appended the base64 payload onto the review turn's message was writing to
+  // a call that never happened. A review that rewrites the hero is what makes
+  // the stage run all the way to the write it is being watched for.
   mock(reviewDoc).mockResolvedValue({
-    changed: false,
-    doc: doc(),
-    ops: [],
-    summary: "",
+    changed: true,
+    doc: doc("Reviewed: rotational power in eight weeks"),
+    ops: [{ op: "update_section", id: "hero", props: { headline: "Reviewed: rotational power in eight weeks" } }],
+    summary: "Tightened the hero headline.",
     findings: [],
     surviving: [],
     receipt: null,
-    tokensUsed: 0,
+    tokensUsed: 1200,
     error: null,
   })
 
@@ -287,6 +333,36 @@ describe("POST .../build — the review stage renders before it reviews", () => 
     )
   })
 
+  it("renders the stored document, with this funnel's base path and brand", async () => {
+    mock(streamAgent).mockImplementation(() => agentResult(setPageResult()))
+
+    const events = await readEvents(await POST(req({ message: "build me a page", revision: 4 }), ctx))
+
+    // WHICH DOCUMENT, AND WITH WHAT. The test above pins only that a render
+    // happened; every assertion in it survives rendering an empty document
+    // with no base path and no brand.
+    //
+    // This is the claim that matters. The critic has to be shown the page the
+    // owner will actually get, which is the ALREADY-RESOLVED document the
+    // build turn stored — the same object `appendTurn` was handed and `result`
+    // carried. Render anything else (the model's raw pre-resolution ops, a
+    // fresh empty doc, the draft as it stood before this turn) and the critic
+    // is judging a picture of a page that publish will never ship: this
+    // subsystem's worst failure mode, preview and publish disagreeing about
+    // one document.
+    //
+    // `funnelBasePath` and `brandKit` are half of that same claim. Drop the
+    // base path and every in-funnel button in the screenshot points nowhere;
+    // drop the brand kit and the critic reviews the palette of a page nobody
+    // will ever see. Both come from the ROUTE'S OWN `PageContext` — the object
+    // it already uses to compile what it stores — not from the render's
+    // defaults.
+    expect(renderDocToImages).toHaveBeenCalledWith(
+      storedDoc(events),
+      expect.objectContaining({ funnelBasePath: EXPECTED_BASE_PATH, brandKit: EXPECTED_BRAND_KIT }),
+    )
+  })
+
   it("reviews anyway when the render fails", async () => {
     mock(streamAgent).mockImplementation(() => agentResult(setPageResult()))
     mock(renderDocToImages).mockResolvedValue(renderedFailed())
@@ -304,6 +380,42 @@ describe("POST .../build — the review stage renders before it reviews", () => 
     expect(reviewDoc).toHaveBeenCalledTimes(1)
   })
 
+  it("says nothing to the owner when the render fails", async () => {
+    // THE SILENCE PROMISE, PINNED. `render.error` is `console.warn`ed and
+    // never emitted: on the automatic path the owner already has a finished
+    // page, and an event saying a background improvement was slightly less
+    // well informed reads as a failure of the thing that just worked.
+    //
+    // Asserted by COMPARING THE TWO RUNS rather than by listing forbidden
+    // event types. A run whose render failed must be indistinguishable, in the
+    // stream, from one whose render succeeded — which catches an extra `fail`,
+    // an extra `phase`, a `finding` carrying the browser error, or anything
+    // else a future hand might reach for, without this test having to predict
+    // which.
+    mock(streamAgent).mockImplementation(() => agentResult(setPageResult()))
+
+    const FAILURE = "no browser available for rendering"
+    mock(renderDocToImages).mockResolvedValue(renderedFailed(FAILURE))
+    const failed = await readEvents(await POST(req({ message: "build me a page", revision: 4 }), ctx))
+
+    // The control. A fresh admin so the module-level rate limiter, which is
+    // keyed by user id, does not see this as a second turn from one person.
+    mock(auth).mockResolvedValue(freshAdmin())
+    mock(renderDocToImages).mockResolvedValue(renderedOk())
+    const succeeded = await readEvents(await POST(req({ message: "build me a page", revision: 4 }), ctx))
+
+    // The presence control: an "emitted nothing" assertion passes just as well
+    // when the stream never ran at all.
+    expect(succeeded.map((e) => e.type)).toContain("result")
+    expect(succeeded.map((e) => e.type)).toContain("review")
+
+    expect(failed.map((e) => e.type)).toEqual(succeeded.map((e) => e.type))
+    expect(failed.some((e) => e.type === "fail")).toBe(false)
+    // Belt and braces: not even carried inside an event the successful run
+    // also emits.
+    expect(JSON.stringify(failed)).not.toContain(FAILURE)
+  })
+
   it("never puts image bytes in the turn log", async () => {
     // Phase 1's idiom (see the reference-image tests in build-route.test.ts):
     // assert against the SERIALIZED call list, not one field, so a mutant
@@ -313,7 +425,20 @@ describe("POST .../build — the review stage renders before it reviews", () => 
 
     await readEvents(await POST(req({ message: "build me a page", revision: 4 }), ctx))
 
-    expect(appendTurn).toHaveBeenCalled()
+    // THE PRESENCE CONTROL, AND IT IS THE POINT OF THIS TEST.
+    //
+    // Three turns: the owner's message, the built page, and the review's own
+    // polish. Only the third is written AFTER `render` exists, so if it is
+    // missing, the assertion below is inspecting two turns that were recorded
+    // before there were any bytes to leak and cannot fail. That is exactly
+    // what happened while `reviewDoc` answered `changed: false` — see the note
+    // on the mock in `beforeEach`.
+    const written = mock(appendTurn).mock.calls.map((c) => {
+      const input = c[0] as { role: string; source: string }
+      return `${input.role}/${input.source}`
+    })
+    expect(written).toEqual(["user/ai", "assistant/ai", "assistant/review"])
+
     const serialized = JSON.stringify(mock(appendTurn).mock.calls)
     expect(serialized).not.toContain("AAAA")
   })

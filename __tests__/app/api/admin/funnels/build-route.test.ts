@@ -64,6 +64,17 @@ vi.mock("@/lib/funnels/sections/review/pipeline", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/funnels/sections/review/pipeline")>()),
   reviewDoc: vi.fn(),
 }))
+// The render that now runs INSIDE the review stage. MOCKED FOR THE SAME
+// REASON `reviewDoc` above is: every `set_page` test in this file opens the
+// review gate, and the real `renderDocToImages` launches a headless browser.
+// Left unmocked it made this suite launch one per first-draft test — roughly
+// double the runtime here, and worse than slow, it made the suite test a
+// DIFFERENT code path depending on the machine: where no Chrome is installed
+// the launch fails and every one of these tests silently exercises the render
+// FAILURE branch instead of the success branch it exercises locally. What this
+// file is about is which turns earn a review, not what the render does; the
+// render's own claims live in `build-route-render.test.ts`.
+vi.mock("@/lib/funnels/render-image", () => ({ renderDocToImages: vi.fn() }))
 // The three catalogue reads, so the REAL `loadCatalogues` runs over them.
 vi.mock("@/lib/db/programs", () => ({ getPrograms: vi.fn(), getAllPrograms: vi.fn() }))
 vi.mock("@/lib/db/session-pack-products", () => ({ listActiveProducts: vi.fn(), listAllProducts: vi.fn() }))
@@ -91,6 +102,7 @@ import { getAllPrograms, getPrograms } from "@/lib/db/programs"
 import { listActiveProducts, listAllProducts } from "@/lib/db/session-pack-products"
 import { getEvents, getPublishedEvents } from "@/lib/db/events"
 import { reviewDoc } from "@/lib/funnels/sections/review/pipeline"
+import { renderDocToImages } from "@/lib/funnels/render-image"
 import { reassemble } from "@/lib/funnels/sections/doc"
 import {
   BUILDER_REFERENCE_IMAGE_MAX_BASE64,
@@ -361,6 +373,18 @@ beforeEach(() => {
 
   mock(createGenerationLog).mockResolvedValue({ id: "log-1" })
   mock(updateGenerationLog).mockResolvedValue({})
+
+  // A SUCCESSFUL render by default, so the review stage here sees the same
+  // shape it sees in production rather than the `undefined` a bare `vi.fn()`
+  // would hand it. No test in this file asserts on it.
+  mock(renderDocToImages).mockResolvedValue({
+    images: [{ mediaType: "image/png" as const, data: "AAAA" }],
+    width: 1200,
+    height: 900,
+    truncated: false,
+    typographyFaithful: true,
+    error: null,
+  })
 
   // The review finds nothing by default, so every pre-existing test below sees
   // the behaviour it was written against. The review-specific tests override
