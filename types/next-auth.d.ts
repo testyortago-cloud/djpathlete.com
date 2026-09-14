@@ -24,5 +24,12 @@ declare module "next-auth/jwt" {
     id: string
     role: UserRole
     permissions: PermissionMap
+    /**
+     * Epoch ms of the sign-in this session descends from. Set once, then carried
+     * forward through every re-sign — it is the one clock activity cannot move,
+     * and so the only thing that makes a session ever end. See
+     * `lib/session-policy.ts`.
+     */
+    loginAt?: number
   }
 }
