@@ -361,7 +361,7 @@ the same commit, not left to contradict the code.
 The reasoning for the amendment: the artefact the comment guards against is giving one critic
 **more of the same** information, which manufactures false agreement. This gives one critic a
 **different modality matched to its lens** — the copywriter reading a picture of prose would be
-strictly worse off, and the offer critic has no use for it. Cross-lens agreement between the
+strictly worse off, and the conversion strategist has no use for it. Cross-lens agreement between the
 art director and the copywriter remains meaningful because they are still answering different
 questions.
 
