@@ -146,6 +146,7 @@ export interface RenderedPage {
   height: number
   truncated: boolean            // page was taller than MAX_TILES * TILE_HEIGHT
   typographyFaithful: boolean   // see 5.3
+  dynamicRegions: string[]      // see 5.7 — added 2026-09-14 after the task-8 run
   error: string | null          // set when images is empty. NEVER thrown.
 }
 
@@ -212,6 +213,20 @@ families actually loaded.
 
 `typographyFaithful` is that probe's answer, and it is reported rather than assumed.
 
+**AMENDED 2026-09-14, after the task-8 verification run: the probe asks about the faces the
+page USES, not all three.** The first implementation was
+`families.every((f) => document.fonts.check(…))`, and a browser downloads a webfont only when
+something on the page asks for it — only the `clean` pairing names Lexend Exa — so the flag
+read false on every render whose typography was perfectly correct (measured on a real
+document: Exa false, Deca true, Mono true, on a page whose type was right), and the critic was
+told the type was a fallback face when it was not. The probe now walks the text nodes, reads
+the computed `font-family` each one is rendered in, and asks the FontFaceSet whether each
+downloadable family named there has a face with status `loaded`. `document.fonts.check` alone
+cannot answer this: it returns TRUE for a family that is not in the set at all, so the
+no-egress degrade below — the one case this flag exists to report — would have read as
+faithful. Both directions are pinned by the real-browser suite, with the font supplied as a
+`data:` URI so neither test can pass because Google Fonts happened to answer.
+
 **That link is an outbound network dependency at render time, and it is allowed to fail.** The
 wait is bounded by `SECTION_RENDER_TIMEOUT_MS` — never an unbounded `networkidle`, which in a
 sandboxed container with no egress would hang the render rather than degrade it. If the fonts
@@ -276,6 +291,38 @@ from Phase 1's rationale: the images are large, and they are reproducible from t
 any time, so storing them buys a debugging convenience at a per-review storage cost and one
 more write that can fail on a turn that otherwise succeeded.
 
+### 5.7 The islands are not in the picture, and the critic has to be told
+
+**ADDED 2026-09-14, after the task-8 verification run. This is the most important paragraph in
+§5.** `reassemble()` emits every interactive region as an EMPTY placeholder div that only the
+real page fills — `renderIsland()` in `render.ts`, reached for the form section
+UNCONDITIONALLY, for `source:"live"` testimonials and FAQs, for checkout / event / booking CTAs
+and for the quiz. `renderDocToImages` screenshots with `setContent` and runs no scripts, so
+every one of those is genuinely blank in the picture.
+
+Told nothing, the art director reported them — correctly, from what it could see — as
+high-severity empty bands, and the reviser **acted**: it replaced a working live testimonial
+feed carrying a real athlete's quote with a testimonial it invented, attributed to a named
+person with an invented 40-yard-dash time, and described that to the owner as a fix. A
+fabricated endorsement, on a real coaching page. That is §11's "the critic reports a disaster
+on a good page" risk, realised through a door this spec did not anticipate: §5.1 guarded the
+CSS wrapper and §5.3 guarded the fonts, and nothing guarded the islands.
+
+So `RenderedPage` carries `dynamicRegions: string[]` — `section-id (what it is)`, e.g.
+`proof (a live testimonial feed)` — and `renderNote()` renders it into the art critic's user
+message in plain words: these regions are interactive, a browser fills them in when a visitor
+loads the page, they look blank here, do not report them as empty and do not invent content
+for them. When a page has none, the note says the opposite, so a genuinely empty band is still
+reportable.
+
+**The list is scanned out of the emitted HTML** (`islandsBySection`, keyed on
+`data-djp-island`), never re-derived by walking `doc.sections`. Which sections hold an island
+depends on a `source:"live"` discriminant on two kinds, a CTA's target kind on several more,
+and validation passing inside `renderIslandIfValid`; a second implementation of those rules
+would be right the day it was written and silently wrong afterwards — which is this bug's own
+class. `scripts/_render-islands.ts` reads the same function, so the verification tooling and
+the prompt cannot disagree.
+
 ---
 
 ## 6. The critic panel — one lens gets eyes
@@ -331,6 +378,22 @@ export async function runCritics(
 `CriticLens` gains `seesRender: boolean`, true for `art` alone — so which critic gets pictures
 is a property of the lens table, not an `if (critic.source === "art")` buried in the fan-out.
 Omitted `images` is byte-for-byte today's behaviour, and a test pins that.
+
+### 6.4 The brief is unconditionally PRESENT and conditionally RELEVANT
+
+**AMENDED 2026-09-14, after the task-8 verification run.** The art brief opened "YOU HAVE
+PICTURES. Screenshots … are attached", which is a **static string on the lens table** and is
+therefore sent on every art call — including every degrade this design deliberately builds for
+(no browser, launch failure, screenshot failure), where nothing is attached at all. It
+confabulated: on one real document with no render, **5 of 5** art findings cited "the
+screenshot" and described colours, gaps and spacing nobody had shown the model.
+
+This is §3.1's own rule, not a style preference: the system prompt is a CACHED PREFIX, the
+cache is a strict prefix match, and a sentence that is only true on some turns is per-turn
+content. So the brief now says "WHEN SCREENSHOTS OF THE PAGE ARE ATTACHED, a note at the end
+of the message says so…", and the assertion that pictures exist this turn lives only in
+`renderNote()`, in the user message, where the per-turn content already is. A test walks every
+picture-claim in the art brief and fails any that is not inside a conditional clause.
 
 ---
 
@@ -392,7 +455,7 @@ runReviewStage
    │   setContent → fonts.ready → probe → slice
    │        │
    │        ▼
-   │   RenderedPage { images, typographyFaithful, truncated }
+   │   RenderedPage { images, typographyFaithful, truncated, dynamicRegions }
    │
    ▼
 reviewDoc({doc, images})
