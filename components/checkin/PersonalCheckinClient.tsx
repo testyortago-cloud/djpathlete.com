@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -17,27 +17,55 @@ export function PersonalCheckinClient({ token }: { token: string }) {
   const [submitting, setSubmitting] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
   const [result, setResult] = useState<{ firstName: string; remaining: number } | null>(null)
+  // Set once the check-in lands, so a refresh can never overwrite the "You're
+  // in!" confirmation with the pre-tap screen.
+  const checkedIn = useRef(false)
 
   useEffect(() => {
     if (!token) {
       setStatus("invalid")
       return
     }
-    fetch(`/api/checkin/personal?token=${encodeURIComponent(token)}`)
-      .then(async (r) => {
-        if (r.status === 401) {
-          setStatus("invalid")
-          return
-        }
-        if (!r.ok) {
-          setStatus("error")
-          return
-        }
-        const data = await r.json()
-        setMe({ firstName: data.firstName ?? "there", remaining: data.remaining ?? 0 })
-        setStatus("ready")
-      })
-      .catch(() => setStatus("error"))
+
+    let cancelled = false
+    const load = () => {
+      if (checkedIn.current) return
+      return fetch(`/api/checkin/personal?token=${encodeURIComponent(token)}`, { cache: "no-store" })
+        .then(async (r) => {
+          if (cancelled || checkedIn.current) return
+          if (r.status === 401) {
+            setStatus("invalid")
+            return
+          }
+          if (!r.ok) {
+            setStatus("error")
+            return
+          }
+          const data = await r.json()
+          if (cancelled || checkedIn.current) return
+          setMe({ firstName: data.firstName ?? "there", remaining: data.remaining ?? 0 })
+          setStatus("ready")
+        })
+        .catch(() => {
+          if (!cancelled) setStatus("error")
+        })
+    }
+
+    void load()
+
+    // This link is a permanent bookmark, so the page is routinely opened from a
+    // tab that has been parked on a phone for days — and the coach may have
+    // tapped the client in from the admin side in the meantime. Re-read on every
+    // return to the page, so the number on screen is the number the check-in
+    // will actually deduct from.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void load()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      cancelled = true
+      document.removeEventListener("visibilitychange", onVisible)
+    }
   }, [token])
 
   async function check() {
@@ -63,7 +91,11 @@ export function PersonalCheckinClient({ token }: { token: string }) {
         setErrorMsg(data.error ?? "Something went wrong.")
         return
       }
-      setResult({ firstName: me.firstName, remaining: data.remaining ?? Math.max(0, me.remaining - 1) })
+      checkedIn.current = true
+      setResult({
+        firstName: me.firstName,
+        remaining: data.clientRemaining ?? data.remaining ?? Math.max(0, me.remaining - 1),
+      })
       setStatus("done")
     } catch {
       setErrorMsg("Something went wrong.")

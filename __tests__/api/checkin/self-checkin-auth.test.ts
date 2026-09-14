@@ -9,6 +9,11 @@ vi.mock("@/lib/qr/checkin-token", () => ({ verifyCheckinToken: (...a: unknown[])
 vi.mock("@/lib/services/session-credits", () => ({ checkInClient: (...a: unknown[]) => checkInMock(...a) }))
 vi.mock("@/lib/packs/flags", () => ({ clientSelfCheckinEnabled: () => flagMock() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
+const clientActiveRemainingMock = vi.fn()
+vi.mock("@/lib/services/client-packs-view", () => ({
+  clientActiveRemaining: (...a: unknown[]) => clientActiveRemainingMock(...a),
+}))
+
 const bridgeMock = vi.fn()
 vi.mock("@/lib/services/session-schedule", () => ({
   bridgeCheckinToSchedule: (...a: unknown[]) => bridgeMock(...a),

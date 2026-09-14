@@ -3,7 +3,11 @@
 
 const APP_SHELL_CACHE = "djp-app-shell-v1"
 const STATIC_CACHE = "djp-static-v1"
-const API_CACHE = "djp-api-v2"
+// v3: the v2 entries were written by a stale-while-revalidate strategy and are
+// answers from whenever each URL was last visited. The rename is load-bearing —
+// `activate` deletes every cache not in CURRENT_CACHES, which is what evicts
+// them. Dropping the bump leaves that stale data sitting in every installed PWA.
+const API_CACHE = "djp-api-v3"
 const PAGES_CACHE = "djp-pages-v1"
 
 const CURRENT_CACHES = [APP_SHELL_CACHE, STATIC_CACHE, API_CACHE, PAGES_CACHE]
@@ -37,6 +41,16 @@ self.addEventListener("install", (event) => {
       })
       .then(() => {
         console.log("[SW] App shell pre-cached")
+        // Take over from the previous worker straight away instead of waiting
+        // for every tab it controls to be closed.
+        //
+        // Nothing sends the SKIP_WAITING message below — the handler has never
+        // had a caller — so without this a fixed worker just sits in "waiting"
+        // on any phone with a parked tab, and the OLD one keeps answering. That
+        // is precisely the population this fix is for: clients who leave the
+        // check-in link open for days. Safe here because this worker only
+        // caches; it holds no app state a mid-session handover could tear.
+        return self.skipWaiting()
       }),
   )
 })
@@ -74,6 +88,14 @@ function isStaticAsset(url) {
 // Helper: determine if a request is for an API route (exclude auth endpoints)
 function isApiRequest(url) {
   return url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/auth/")
+}
+
+// Helper: API answers that must never come from a cache, online or off.
+// A session balance is a number the client immediately acts on, and a stale copy
+// is indistinguishable on screen from a live one. Offline, refusing to answer is
+// honest — the check-in itself is a POST and would fail anyway.
+function isLiveOnlyApi(url) {
+  return url.pathname.startsWith("/api/checkin")
 }
 
 // Helper: determine if a request is a navigation (HTML page)
@@ -119,34 +141,42 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // Strategy: API responses — Stale-while-revalidate
+  // Strategy: API responses — Network-first, cache as an OFFLINE fallback only.
+  //
+  // This used to be stale-while-revalidate: answer from the cache immediately,
+  // refresh it in the background for next time. For data the user reads a number
+  // off and then acts on, that is a bug with no visible symptom — every visit
+  // showed the PREVIOUS visit's answer. A client's check-in screen said "5
+  // sessions left" on a pack that held 3 (two coach check-ins had happened since
+  // his last visit), and only tapping Check in — a POST, which the cache never
+  // touched — revealed the real number. Never answer a live figure from a cache
+  // just because it is faster.
   if (isApiRequest(url)) {
+    // Balances are never answered from the cache at all, not even offline.
+    if (isLiveOnlyApi(url)) return
+
     event.respondWith(
-      caches.match(event.request).then((cached) => {
-        const fetchPromise = fetch(event.request)
-          .then((response) => {
-            if (response && response.status === 200) {
-              const responseToCache = response.clone()
-              caches.open(API_CACHE).then((cache) => {
-                cache.put(event.request, responseToCache)
-              })
-            }
-            return response
-          })
-          .catch(() => {
-            // Network failed — cached version was already returned if available
-            return (
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const responseToCache = response.clone()
+            caches.open(API_CACHE).then((cache) => {
+              cache.put(event.request, responseToCache)
+            })
+          }
+          return response
+        })
+        .catch(() =>
+          // Network failed — last known answer, or an honest 503.
+          caches.match(event.request).then(
+            (cached) =>
               cached ||
               new Response(JSON.stringify({ error: "Offline" }), {
                 status: 503,
                 headers: { "Content-Type": "application/json" },
-              })
-            )
-          })
-
-        // Return cached immediately if available, otherwise wait for network
-        return cached || fetchPromise
-      }),
+              }),
+          ),
+        ),
     )
     return
   }

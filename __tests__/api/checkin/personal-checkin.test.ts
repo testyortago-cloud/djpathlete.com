@@ -11,12 +11,14 @@ vi.mock("@/lib/services/session-credits", () => ({ checkInClient: (...a: unknown
 vi.mock("@/lib/packs/flags", () => ({ clientPersonalCheckinEnabled: () => flagMock() }))
 vi.mock("@/lib/db/users", () => ({ getUserById: (...a: unknown[]) => getUserMock(...a) }))
 vi.mock("@/lib/db/client-packages", () => ({ listPackagesForClient: (...a: unknown[]) => listPackagesMock(...a) }))
+const clientActiveRemainingMock = vi.fn()
 vi.mock("@/lib/services/client-packs-view", () => ({
   summarizeClientPacks: (packs: { remaining?: number }[]) => ({
     activeRemaining: packs.reduce((s, p) => s + (p.remaining ?? 0), 0),
     hasActiveCredits: true,
     byAssignment: new Map(),
   }),
+  clientActiveRemaining: (...a: unknown[]) => clientActiveRemainingMock(...a),
 }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
 const bridgeMock = vi.fn()
@@ -41,6 +43,7 @@ beforeEach(() => {
   verifyMock.mockReturnValue({ valid: true, clientUserId: CLIENT })
   getUserMock.mockResolvedValue({ id: CLIENT, first_name: "Aean" })
   listPackagesMock.mockResolvedValue([{ remaining: 4 }])
+  clientActiveRemainingMock.mockResolvedValue(3)
 })
 
 describe("GET /api/checkin/personal (resolve name + balance)", () => {
@@ -58,6 +61,13 @@ describe("GET /api/checkin/personal (resolve name + balance)", () => {
     const res = await GET(getReq("good"))
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ firstName: "Aean", remaining: 4 })
+  })
+
+  it("forbids any cache from keeping one named client's balance", async () => {
+    // Next's default for a dynamic route handler is `public, max-age=0,
+    // must-revalidate`; `public` lets a shared cache store a personal figure.
+    const res = await GET(getReq("good"))
+    expect(res.headers.get("cache-control")).toBe("private, no-store")
   })
 })
 
@@ -81,6 +91,19 @@ describe("POST /api/checkin/personal (check in)", () => {
     expect(checkInMock).toHaveBeenCalledWith(
       expect.objectContaining({ clientUserId: CLIENT, method: "qr_self", createdBy: null }),
     )
+  })
+
+  it("reports the client's whole balance alongside the deducted pack's", async () => {
+    // The pre-tap screen counts every active pack; the check-in only knows the
+    // one pack it took a credit off. Returning just that would make a client
+    // with two packs watch the number lurch on a single tap.
+    checkInMock.mockResolvedValue({ ok: true, remaining: 3, packageId: "p1" })
+    clientActiveRemainingMock.mockResolvedValue(11)
+
+    const body = await (await POST(postReq({ token: "good" }))).json()
+
+    expect(body).toMatchObject({ remaining: 3, clientRemaining: 11 })
+    expect(clientActiveRemainingMock).toHaveBeenCalledWith(CLIENT)
   })
 
   it("409 when the client has no credits", async () => {

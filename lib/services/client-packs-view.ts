@@ -73,6 +73,24 @@ export function summarizeClientPacks(packs: PackSlice[], now: Date): ClientPacks
   return { activeRemaining, hasActiveCredits: activeRemaining > 0, byAssignment }
 }
 
+/**
+ * Total sessions a client can still use, across every pack that would actually
+ * be deducted on a check-in.
+ *
+ * This is the number every check-in screen shows BEFORE the tap. The check-in
+ * itself deducts from ONE pack and knows only that pack's balance, so a
+ * confirmation built from `CheckInResult.remaining` counts differently from the
+ * screen that preceded it: a client holding two packs would watch "12 sessions
+ * left" become "3 sessions left" on a single tap, or — once the older pack runs
+ * dry and the deduct moves to the newer one — watch it go UP. Both numbers are
+ * individually correct; the pair is what misleads. Count the same way on both
+ * sides of the tap.
+ */
+export async function clientActiveRemaining(clientUserId: string, now: Date = new Date()): Promise<number> {
+  const packs = await listPackagesForClient(clientUserId)
+  return summarizeClientPacks(packs, now).activeRemaining
+}
+
 /** Earliest `expires_at` among packs that would actually deduct on check-in
  *  (active, not expired, remaining > 0), or null when none/never expires. */
 export function nearestActiveExpiry(packs: PackSlice[], now: Date): string | null {

@@ -28,7 +28,13 @@ export async function GET(request: Request) {
         })
     }
 
-    return NextResponse.json({ clients: [...byClient.values()].sort((a, b) => a.name.localeCompare(b.name)) })
+    return NextResponse.json(
+      { clients: [...byClient.values()].sort((a, b) => a.name.localeCompare(b.name)) },
+      // Named clients and their balances — never storable by a shared cache, and
+      // never re-servable to this browser. See the same header on the personal
+      // route for why Next's `public, max-age=0` default is wrong here.
+      { headers: { "Cache-Control": "private, no-store" } },
+    )
   } catch (error) {
     console.error("Roster error:", error)
     return NextResponse.json({ error: "Failed to load roster" }, { status: 500 })

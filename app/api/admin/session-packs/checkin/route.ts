@@ -3,6 +3,7 @@ import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { checkInClient } from "@/lib/services/session-credits"
 import { bridgeCheckinToSchedule } from "@/lib/services/session-schedule"
+import { clientActiveRemaining } from "@/lib/services/client-packs-view"
 import { recordAudit } from "@/lib/audit/record"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 
@@ -74,7 +75,15 @@ export async function POST(request: Request) {
       void bridgeCheckinToSchedule(parsed.data.clientUserId, result.checkin?.id ?? null, new Date())
     }
 
-    return NextResponse.json(result)
+    // An unmetered check-in burns no credit and has no balance to report, so it
+    // gets no `clientRemaining` — a 0 there would read as "out of sessions".
+    // Otherwise count the way the client's own screen does; see
+    // `clientActiveRemaining`.
+    return NextResponse.json(
+      result.ok && !result.unmetered
+        ? { ...result, clientRemaining: await clientActiveRemaining(parsed.data.clientUserId) }
+        : result,
+    )
   } catch (error) {
     console.error("Coach check-in error:", error)
     return NextResponse.json({ error: "Failed to check in" }, { status: 500 })

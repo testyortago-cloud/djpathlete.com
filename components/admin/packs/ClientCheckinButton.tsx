@@ -45,7 +45,7 @@ export function ClientCheckinButton({
       // An attendance check-in has no balance to report — saying "0 left" would
       // read as a problem when nothing was ever going to be deducted.
       else if (data.unmetered) toast.success("Checked in — attendance recorded")
-      else toast.success(`Checked in — ${data.remaining} left`)
+      else toast.success(`Checked in — ${data.clientRemaining ?? data.remaining} left`)
       router.refresh()
     } catch {
       toast.error("Something went wrong")

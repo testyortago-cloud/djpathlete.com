@@ -5,7 +5,7 @@ import { bridgeCheckinToSchedule } from "@/lib/services/session-schedule"
 import { clientPersonalCheckinEnabled } from "@/lib/packs/flags"
 import { listPackagesForClient } from "@/lib/db/client-packages"
 import { getUserById } from "@/lib/db/users"
-import { summarizeClientPacks } from "@/lib/services/client-packs-view"
+import { clientActiveRemaining, summarizeClientPacks } from "@/lib/services/client-packs-view"
 import { selfCheckinSchema } from "@/lib/validators/session-packs"
 import { recordAudit } from "@/lib/audit/record"
 
@@ -35,7 +35,14 @@ export async function GET(request: Request) {
       listPackagesForClient(clientUserId),
     ])
     const { activeRemaining } = summarizeClientPacks(packs, new Date())
-    return NextResponse.json({ firstName: user?.first_name ?? "there", remaining: activeRemaining })
+    return NextResponse.json(
+      { firstName: user?.first_name ?? "there", remaining: activeRemaining },
+      // One named client's balance, behind a permanent token — never storable by
+      // a shared cache, and never re-servable to this browser. Next's default for
+      // a dynamic route handler is `public, max-age=0, must-revalidate`, and the
+      // `public` half is wrong for a personal figure.
+      { headers: { "Cache-Control": "private, no-store" } },
+    )
   } catch (error) {
     console.error("Personal check-in resolve error:", error)
     return NextResponse.json({ error: "Failed to load check-in" }, { status: 500 })
@@ -75,7 +82,15 @@ export async function POST(request: Request) {
       void bridgeCheckinToSchedule(clientUserId, result.checkin?.id ?? null, new Date())
     }
 
-    return NextResponse.json({ ok: true, remaining: result.remaining, duplicate: result.reason === "duplicate" })
+    // `remaining` is this PACK's balance; `clientRemaining` is everything the
+    // client can still use. The screen counted the second way before the tap, so
+    // the confirmation has to as well — see `clientActiveRemaining`.
+    return NextResponse.json({
+      ok: true,
+      remaining: result.remaining,
+      clientRemaining: await clientActiveRemaining(clientUserId),
+      duplicate: result.reason === "duplicate",
+    })
   } catch (error) {
     console.error("Personal check-in error:", error)
     return NextResponse.json({ error: "Failed to check in" }, { status: 500 })

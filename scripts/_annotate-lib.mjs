@@ -83,6 +83,15 @@ export async function annotate(src, out, opts) {
   const lineH = Math.round(capSize * 1.5)
   const perLine = Math.floor(W / (capSize * 0.56))
 
+  // The title wraps for the same reason the subtitle does (see below): SVG
+  // clips a <text> line at the band's right edge and says nothing. On a PHONE
+  // capture the band is only ~430 CSS px wide, so a title of ordinary length
+  // lost its second half — "BEFORE — the number is one visit out of date"
+  // rendered as "BEFORE — the number is o".
+  const titleLines = wrap(title, Math.max(10, Math.floor(W / (titleSize * 0.56)) - 2))
+  const titleLineH = Math.round(titleSize * 1.2)
+  const titleBlockH = titleLines.length * titleLineH
+
   const capLines = []
   markers.forEach((m, i) => {
     const wrapped = wrap(m.caption, perLine - 5)
@@ -98,7 +107,7 @@ export async function annotate(src, out, opts) {
 
   const bandH =
     pad +
-    titleSize +
+    titleBlockH +
     subBlockH +
     Math.round(12 * scale) +
     capLines.length * lineH +
@@ -119,16 +128,21 @@ export async function annotate(src, out, opts) {
   </style>
   <rect x="0" y="${H}" width="${W}" height="${bandH}" fill="${PAPER}"/>
   <rect x="0" y="${H}" width="${W}" height="${Math.max(2, Math.round(3 * scale))}" fill="${ACCENT}"/>
-  <text class="t title" x="${pad}" y="${H + pad + titleSize * 0.82}">${esc(title)}</text>
+  ${titleLines
+    .map(
+      (l, i) =>
+        `<text class="t title" x="${pad}" y="${H + pad + (i + 1) * titleLineH - Math.round(titleLineH * 0.3)}">${esc(l)}</text>`,
+    )
+    .join("\n  ")}
   ${subLines
-    .map((l, i) => `<text class="t sub" x="${pad}" y="${H + pad + titleSize + Math.round(subSize * 0.4) + (i + 1) * subLineH - Math.round(subLineH * 0.3)}">${esc(l)}</text>`)
+    .map((l, i) => `<text class="t sub" x="${pad}" y="${H + pad + titleBlockH + Math.round(subSize * 0.4) + (i + 1) * subLineH - Math.round(subLineH * 0.3)}">${esc(l)}</text>`)
     .join("\n  ")}
   ${capLines
     .map((l, i) => {
       const y =
         H +
         pad +
-        titleSize +
+        titleBlockH +
         subBlockH +
         Math.round(12 * scale) +
         (i + 1) * lineH -

@@ -5,6 +5,7 @@ import { verifyCheckinToken } from "@/lib/qr/checkin-token"
 import { checkInClient } from "@/lib/services/session-credits"
 import { bridgeCheckinToSchedule } from "@/lib/services/session-schedule"
 import { clientSelfCheckinEnabled } from "@/lib/packs/flags"
+import { clientActiveRemaining } from "@/lib/services/client-packs-view"
 import { recordAudit } from "@/lib/audit/record"
 
 /**
@@ -60,7 +61,15 @@ export async function POST(request: Request) {
       void bridgeCheckinToSchedule(clientUserId, result.checkin?.id ?? null, new Date())
     }
 
-    return NextResponse.json({ ok: true, remaining: result.remaining, duplicate: result.reason === "duplicate" })
+    // `remaining` is this PACK's balance; `clientRemaining` is everything the
+    // client can still use. The screen counted the second way before the tap, so
+    // the confirmation has to as well — see `clientActiveRemaining`.
+    return NextResponse.json({
+      ok: true,
+      remaining: result.remaining,
+      clientRemaining: await clientActiveRemaining(clientUserId),
+      duplicate: result.reason === "duplicate",
+    })
   } catch (error) {
     console.error("Self check-in error:", error)
     return NextResponse.json({ error: "Failed to check in" }, { status: 500 })

@@ -7,6 +7,11 @@ vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/services/session-credits", () => ({ checkInClient: (...a: unknown[]) => checkInClientMock(...a) }))
 vi.mock("@/lib/services/session-schedule", () => ({ bridgeCheckinToSchedule: vi.fn() }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: vi.fn() }))
+const clientActiveRemainingMock = vi.fn()
+vi.mock("@/lib/services/client-packs-view", () => ({
+  clientActiveRemaining: (...a: unknown[]) => clientActiveRemainingMock(...a),
+}))
+
 
 import { POST } from "@/app/api/admin/session-packs/checkin/route"
 

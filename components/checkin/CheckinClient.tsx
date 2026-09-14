@@ -77,7 +77,10 @@ export function CheckinClient({
         setErrorMsg(data.error ?? "Something went wrong.")
         return
       }
-      setResult({ name: me!.firstName, remaining: data.remaining ?? Math.max(0, me!.remaining - 1) })
+      setResult({
+        name: me!.firstName,
+        remaining: data.clientRemaining ?? data.remaining ?? Math.max(0, me!.remaining - 1),
+      })
       setStatus("done")
     } catch {
       setErrorMsg("Something went wrong.")
@@ -113,7 +116,7 @@ export function CheckinClient({
         setErrorMsg(data.error ?? "Something went wrong.")
         return
       }
-      setResult({ name: c.name, remaining: data.remaining ?? Math.max(0, c.remaining - 1) })
+      setResult({ name: c.name, remaining: data.clientRemaining ?? data.remaining ?? Math.max(0, c.remaining - 1) })
       setStatus("done")
     } catch {
       setErrorMsg("Something went wrong.")
