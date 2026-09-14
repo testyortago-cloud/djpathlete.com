@@ -25,6 +25,7 @@
 // `lib/agents/self-critique.ts`.
 
 import { callAgent } from "@/lib/ai/anthropic"
+import type { RenderedPage } from "@/lib/funnels/render-image"
 import {
   SECTION_REVIEW_CRITIC_MAX_TOKENS,
   SECTION_REVIEW_CRITIC_MODEL,
@@ -66,26 +67,50 @@ export interface CriticLens {
   source: Exclude<FindingSource, "audit">
   label: string
   system: string
+  /**
+   * Whether this lens is shown screenshots of the rendered page.
+   *
+   * A PROPERTY OF THE TABLE, not an `if (source === "art")` in the fan-out, so
+   * that adding a fourth critic cannot silently start spending vision tokens
+   * on it. Exactly one lens has this today and a test pins that.
+   */
+  seesRender: boolean
 }
 
 export const CRITICS: readonly CriticLens[] = [
   {
     source: "art",
     label: "Art director",
+    seesRender: true,
     system: `${SHARED_ENVELOPE}
 
 YOUR LENS: how the page LOOKS as somebody scrolls it. Nobody else is looking at
 this.
 
-Ask where the page goes flat. A landing page needs a rhythm — bands that
-alternate, sections that breathe differently, a shape the eye can follow down
-the screen. Look for tone that never changes, padding that never changes,
-variants that were clearly taken as defaults rather than chosen, alignment that
-flips without meaning anything, and a middle section of the page where every
-band is interchangeable with the one above it.
+YOU HAVE PICTURES. Screenshots of this page as a browser actually drew it are
+attached: a whole-page view first for shape, then slices down the page for
+detail. Read them. The document tells you what was asked for; the pictures tell
+you what came out.
 
-Look for the opposite failure too: a page alternating so hard that nothing
-stands out, or a second section loud enough to compete with the hero.
+Look first for what only a picture can show:
+- a band with nothing in it, or nearly nothing, taking up a whole screen
+- text you cannot read against what sits behind it
+- a list whose items do not line up with each other
+- words that overflow their box, collide, or get cut off
+- a heading marooned from its own content by a wide empty gap
+- an image that crops badly or is stretched out of shape
+
+Then the rhythm, which you can also see here: where the page goes flat, tone
+and padding that never change, variants clearly taken as defaults rather than
+chosen, a middle stretch where every band is interchangeable with the one above
+it. And the opposite failure: alternating so hard that nothing stands out, or a
+second section loud enough to compete with the hero.
+
+WHAT THE PICTURES DO NOT TELL YOU: which typeface was used. Three of this
+builder's font choices resolve to whatever face the machine happens to have, so
+the letterforms you are looking at are not the ones a visitor sees.
+NEVER FILE A FINDING ABOUT THE TYPEFACE or which font was chosen. Size, weight,
+spacing and line length are real and are fair game.
 
 The other two reviewers cover the words and the offer. Say nothing about either
 except where LAYOUT is what makes them fail — a strong testimonial buried in
@@ -94,6 +119,7 @@ the middle of five identical bands is your finding; a weak testimonial is not.`,
   {
     source: "copy",
     label: "Copywriter",
+    seesRender: false,
     system: `${SHARED_ENVELOPE}
 
 YOUR LENS: the words. Nobody else is reading them closely.
@@ -114,6 +140,7 @@ The other two reviewers cover the layout and the offer. Judge the writing.`,
   {
     source: "conversion",
     label: "Conversion strategist",
+    seesRender: false,
     system: `${SHARED_ENVELOPE}
 
 YOUR LENS: whether somebody who wants this can actually act on it. Nobody else
@@ -148,11 +175,18 @@ function findingsBlock(findings: Finding[]): string {
 /**
  * The user message, identical for all three critics.
  *
- * Identical ON PURPOSE, beyond saving the obvious: the lens lives entirely in
- * the system prompt, so the only variable between the three calls is the
- * instruction. If two critics ever return the same finding, that is genuine
- * agreement between two perspectives rather than an artefact of one having
- * been shown more of the page than the other.
+ * The three calls were once byte-identical, so that agreement between two
+ * critics meant two perspectives reaching the same conclusion rather than one
+ * having been shown more than the other. That still holds for the DOCUMENT:
+ * every lens sees the same JSON and the same deterministic findings.
+ *
+ * The art director additionally receives screenshots of the rendered page
+ * (2026-09-14). This is a deliberate amendment, not an oversight. The artefact
+ * the old rule guarded against is giving one critic MORE OF THE SAME
+ * information, which manufactures false agreement; a picture is a DIFFERENT
+ * MODALITY matched to one lens's question. The copywriter reading a picture of
+ * prose would be strictly worse off and the offer critic has no use for one, so
+ * cross-lens agreement still means what it always meant.
  *
  * The deterministic findings go in so the critics do not spend their budget
  * rediscovering that six sections share a padding value — and, more usefully,
@@ -169,6 +203,35 @@ ${JSON.stringify(doc, null, 2)}
 ${findingsBlock(auditFindings)}
 
 Report what your lens finds. Return JSON only.`
+}
+
+/**
+ * What the art critic is told about the pictures it is looking at.
+ *
+ * Appended ONLY to the lens that receives them. Telling the copywriter about
+ * screenshots it cannot see would have it reasoning about evidence it does not
+ * have, which is worse than not mentioning them.
+ */
+function renderNote(render: RenderedPage): string {
+  const slices = render.images.length - 1
+  const lines = [
+    "",
+    "## The page as a browser drew it",
+    "",
+    `${render.images.length} screenshots are attached: a whole-page view first, then ${slices} ` +
+      `slice${slices === 1 ? "" : "s"} from the top of the page to the bottom.`,
+  ]
+  if (render.truncated) {
+    lines.push(
+      "",
+      "The page is longer than what was captured — the last slice is NOT the end of the page. " +
+        "Do not comment on how the page ends.",
+    )
+  }
+  if (!render.typographyFaithful) {
+    lines.push("", "The webfonts did not load for these pictures, so the type is a fallback face.")
+  }
+  return lines.join("\n")
 }
 
 /**
@@ -195,15 +258,29 @@ export interface CriticPanelResult {
   tokensUsed: number
 }
 
-export async function runCritics(doc: SectionDoc, auditFindings: Finding[]): Promise<CriticPanelResult> {
+export async function runCritics(
+  doc: SectionDoc,
+  auditFindings: Finding[],
+  render?: RenderedPage | null,
+): Promise<CriticPanelResult> {
   const message = userMessage(doc, auditFindings)
+  // A failed render is an absent render. `images: []` would switch the
+  // transport to the `messages` form for a list with no image in it.
+  const usable = render && render.images.length > 0 ? render : null
 
   const settled = await Promise.allSettled(
     CRITICS.map(async (critic) => {
-      const result = await callAgent(critic.system, message, criticFindingsSchema, {
-        model: SECTION_REVIEW_CRITIC_MODEL,
-        maxTokens: SECTION_REVIEW_CRITIC_MAX_TOKENS,
-      })
+      const showPictures = critic.seesRender && usable !== null
+      const result = await callAgent(
+        critic.system,
+        showPictures ? `${message}\n${renderNote(usable)}` : message,
+        criticFindingsSchema,
+        {
+          model: SECTION_REVIEW_CRITIC_MODEL,
+          maxTokens: SECTION_REVIEW_CRITIC_MAX_TOKENS,
+          ...(showPictures ? { images: usable.images } : {}),
+        },
+      )
       // `source` is stamped HERE, never read from the model. A model asked to
       // label its own lens occasionally labels it as one of the other two, and
       // the merge would then silently collapse two independent observations

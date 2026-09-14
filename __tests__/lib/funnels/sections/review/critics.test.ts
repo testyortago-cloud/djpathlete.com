@@ -22,6 +22,7 @@ import { CRITICS, runCritics } from "@/lib/funnels/sections/review/critics"
 import { SECTION_REVIEW_CRITIC_MAX_TOKENS, SECTION_REVIEW_CRITIC_MODEL } from "@/lib/funnels/sections/builder-config"
 import type { SectionDoc } from "@/lib/funnels/sections/registry"
 import type { Finding } from "@/lib/funnels/sections/review/findings"
+import type { RenderedPage } from "@/lib/funnels/render-image"
 
 const DOC: SectionDoc = {
   v: 1,
@@ -204,5 +205,98 @@ describe("the lenses", () => {
         expect(SECTION_KINDS).toContain(kind)
       }
     }
+  })
+})
+
+const RENDER: RenderedPage = {
+  images: [
+    { mediaType: "image/png", data: "AAAA" },
+    { mediaType: "image/png", data: "BBBB" },
+  ],
+  width: 1200,
+  height: 2000,
+  truncated: false,
+  typographyFaithful: true,
+  error: null,
+}
+
+describe("who gets to see the page", () => {
+  it("marks exactly one lens as seeing the render", () => {
+    // Derived from the table, never hand-listed: adding a fourth critic must
+    // not silently start sending it pictures.
+    expect(CRITICS.filter((lens) => lens.seesRender)).toHaveLength(1)
+    expect(CRITICS.find((lens) => lens.seesRender)?.source).toBe("art")
+  })
+
+  it("passes images to the art critic and to nobody else", async () => {
+    // Assert the ARGUMENT OBJECT of each call, not that the call happened.
+    callAgent.mockResolvedValue({ content: { findings: [] }, tokens_used: 1 })
+    await runCritics(DOC, [], RENDER)
+
+    expect(callAgent).toHaveBeenCalledTimes(3)
+    const byLens = new Map(
+      callAgent.mock.calls.map((call) => {
+        const lens = CRITICS.find((candidate) => candidate.system === call[0])
+        return [lens?.source, call[3]]
+      }),
+    )
+    expect(byLens.get("art")?.images).toHaveLength(2)
+    expect(byLens.get("copy")).not.toHaveProperty("images")
+    expect(byLens.get("conversion")).not.toHaveProperty("images")
+  })
+
+  it("tells the art critic how many pictures there are and where they came from", async () => {
+    callAgent.mockResolvedValue({ content: { findings: [] }, tokens_used: 1 })
+    await runCritics(DOC, [], RENDER)
+    const artCall = callAgent.mock.calls.find(
+      (call) => CRITICS.find((lens) => lens.system === call[0])?.source === "art",
+    )
+    expect(artCall?.[1]).toMatch(/whole-page view/i)
+    // The others must not be told about pictures they cannot see.
+    const copyCall = callAgent.mock.calls.find(
+      (call) => CRITICS.find((lens) => lens.system === call[0])?.source === "copy",
+    )
+    expect(copyCall?.[1]).not.toMatch(/whole-page view/i)
+  })
+
+  it("warns the art critic when the page was cut off", async () => {
+    callAgent.mockResolvedValue({ content: { findings: [] }, tokens_used: 1 })
+    await runCritics(DOC, [], { ...RENDER, truncated: true })
+    const artCall = callAgent.mock.calls.find(
+      (call) => CRITICS.find((lens) => lens.system === call[0])?.source === "art",
+    )
+    expect(artCall?.[1]).toMatch(/not the end of the page/i)
+  })
+
+  it("is byte-identical to today when no render is supplied", async () => {
+    callAgent.mockResolvedValue({ content: { findings: [] }, tokens_used: 1 })
+    await runCritics(DOC, [])
+    for (const call of callAgent.mock.calls) {
+      expect(call[3]).not.toHaveProperty("images")
+      expect(call[1]).not.toMatch(/whole-page view/i)
+    }
+  })
+
+  it("sends no images when the render failed, even though it was supplied", async () => {
+    callAgent.mockResolvedValue({ content: { findings: [] }, tokens_used: 1 })
+    await runCritics(DOC, [], { ...RENDER, images: [], error: "no browser available for rendering" })
+    for (const call of callAgent.mock.calls) {
+      expect(call[3]).not.toHaveProperty("images")
+    }
+  })
+})
+
+describe("the art director's brief", () => {
+  it("forbids findings about the typeface", () => {
+    // Three of five FONT_STACKS pairings resolve to system faces that differ
+    // per platform, so the faces in the picture are not the faces a visitor
+    // sees. A finding about them would be confidently wrong.
+    const art = CRITICS.find((lens) => lens.source === "art")!
+    expect(art.system).toMatch(/never file a finding about the typeface/i)
+  })
+
+  it("still tells the critic to stay out of the other lanes", () => {
+    const art = CRITICS.find((lens) => lens.source === "art")!
+    expect(art.system).toMatch(/other two reviewers/i)
   })
 })
