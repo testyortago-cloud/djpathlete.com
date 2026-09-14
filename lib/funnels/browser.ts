@@ -114,14 +114,17 @@ export const launchRenderBrowser: LaunchRenderBrowser = async () => {
             return Number(await page.evaluate("document.documentElement.scrollHeight"))
           },
           async shoot(clip) {
-            const shot = await page.screenshot({
-              type: "png",
-              fullPage: true,
-              // Playwright and puppeteer agree here: a clip without fullPage is
-              // bounded by the VIEWPORT, so a slice below the fold errors with
-              // "Clipped area is either empty or outside the resulting image".
-              ...(clip ? { clip: { x: 0, y: clip.y, width: SECTION_RENDER_VIEWPORT_WIDTH, height: clip.height } } : {}),
-            })
+            // `clip` and `fullPage` are MUTUALLY EXCLUSIVE on this
+            // puppeteer-core — passing both throws "'clip' and 'fullPage' are
+            // mutually exclusive" (verified against puppeteer-core@25.11.0,
+            // caught by render-image.browser.test.ts's real-document test).
+            // A `clip` alone is NOT bounded by the viewport: puppeteer
+            // captures beyond it, so a slice below the fold still works.
+            const shot = await page.screenshot(
+              clip
+                ? { type: "png", clip: { x: 0, y: clip.y, width: SECTION_RENDER_VIEWPORT_WIDTH, height: clip.height } }
+                : { type: "png", fullPage: true },
+            )
             return Buffer.from(shot)
           },
         }
