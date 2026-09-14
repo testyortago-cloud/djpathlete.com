@@ -252,23 +252,34 @@ function renderNote(render: RenderedPage): string {
   if (!render.typographyFaithful) {
     lines.push("", "The webfonts did not load for these pictures, so the type is a fallback face.")
   }
-  // THE ONE THING THAT STOPS A FABRICATED TESTIMONIAL. These regions are empty
-  // divs in a scripts-off screenshot and full of real content on the live page;
-  // the art critic filed them as high-severity empty bands and the reviser
-  // invented a named person's quote to fill one. See render-image.ts §islands.
+  // HALF OF WHAT STOPS A FABRICATED TESTIMONIAL. These regions are empty divs
+  // in a scripts-off screenshot and full of real content on the live page; the
+  // art critic filed them as high-severity empty bands and the reviser invented
+  // a named person's quote to fill one.
+  //
+  // THIS NOTE ON ITS OWN WAS MEASURED AND WAS NOT ENOUGH — the critic still
+  // filed the band as empty, because it could see that it was. The other half
+  // is `islandPlaceholderCss` (render-image.ts §islands), which paints each one
+  // as a labelled dashed box so the picture and this note now agree.
   if (render.dynamicRegions.length > 0) {
     lines.push(
       "",
       "### Parts of this page that are NOT in the pictures",
       "",
-      "These parts are interactive. The browser fills them in when a visitor loads the page, so they " +
-        "are blank rectangles in these screenshots and have real content on the page itself:",
+      "These parts are interactive. The browser fills them in when a visitor loads the page. In these " +
+        "screenshots each one is drawn as a dashed box with a line of text saying what goes there, and " +
+        "on the page itself it holds real content:",
       "",
       ...render.dynamicRegions.map((region) => `- ${region}`),
       "",
       "Do NOT report any of them as empty, blank, thin or unfinished — that is this picture, not the " +
         "page. Do NOT write a quote, a name, a number, a question or any other content to fill one; " +
-        "content you invent for these would go out under this coach's name. Judge what surrounds them.",
+        "content you invent for these would go out under this coach's name. The dashed box is not " +
+        "part of the design either, so do not comment on its outline, its colour or its wording. " +
+        "The box is also a PLACEHOLDER SIZE, not the real one — the live content decides how tall " +
+        "the band ends up — so do not report the space above, below or around one as too much, too " +
+        "little or unbalanced, and do not judge that section's padding from it. Judge what " +
+        "surrounds them.",
     )
   } else {
     lines.push(

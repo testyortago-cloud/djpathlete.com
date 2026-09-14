@@ -43,6 +43,47 @@ describe("buildRenderDocument", () => {
       expect(doc).toContain(family)
     }
   })
+
+  // -------------------------------------------------------------------------
+  // THE PLACEHOLDER SHEET. These four say what the template is SUPPOSED to
+  // contain; they cannot say whether a browser applies any of it, and a
+  // template that looks exactly like this can still render a blank band if the
+  // page's own CSS out-specifies it. render-image.browser.test.ts measures the
+  // rendered height of the island element, on the real stored document, which
+  // is the assertion that would have caught the original fault.
+  // -------------------------------------------------------------------------
+  it("paints every island as a placeholder rather than leaving a blank band", () => {
+    const doc = buildRenderDocument(`<div data-djp-island="testimonials" data-djp-props='{}'></div>`, "")
+    expect(doc).toContain("[data-djp-island]")
+    expect(doc).toContain("dashed")
+    expect(doc).toMatch(/min-height:\d+px/)
+  })
+
+  it("labels each island in English, naming what fills it on the real page", () => {
+    // "testimonials" alone is a slug, and a critic shown a box saying
+    // "testimonials" learns nothing about why it is not drawn.
+    const doc = buildRenderDocument("<p>x</p>", "")
+    expect(doc).toContain('[data-djp-island="testimonials"]::before')
+    expect(doc).toContain("A live testimonial feed appears here when a visitor opens the page.")
+    expect(doc).toContain("A form appears here when a visitor opens the page.")
+    expect(doc).toContain("A checkout button appears here when a visitor opens the page.")
+  })
+
+  it("still names an island it has no wording for, via attr()", () => {
+    // ISLAND_LABELS is a Record<IslandName, …> so this cannot happen today.
+    // It must degrade to naming itself rather than to a generic string: a box
+    // that says nothing specific is the failure this sheet exists to end.
+    expect(buildRenderDocument("<p>x</p>", "")).toContain("content:attr(data-djp-island)")
+  })
+
+  it("puts the placeholder sheet AFTER the page's own css, never inside it", () => {
+    // Two reasons. Specificity ties go to the later rule, and — the one that
+    // matters — this sheet must live in the renderer's own document and nowhere
+    // a visitor can reach. `reassemble`'s css is passed through untouched.
+    const doc = buildRenderDocument("<p>x</p>", ".sentinel{color:blue}")
+    expect(doc.indexOf(".sentinel{color:blue}")).toBeLessThan(doc.indexOf("[data-djp-island]"))
+    expect(doc).toContain("render-only")
+  })
 })
 
 describe("planTiles", () => {
@@ -319,5 +360,32 @@ describe("dynamicRegionsIn", () => {
     // It must not silently vanish if that changes: a region nobody warns the
     // critic about is the entire defect this list exists to prevent.
     expect(dynamicRegionsIn(`<div data-djp-island="form" data-djp-props='{}'></div>`)).toEqual(["a form"])
+  })
+})
+
+describe("the placeholder sheet is render-only", () => {
+  const MARKER = "appears here when a visitor opens the page"
+
+  it("is not in what reassemble() hands the publisher", async () => {
+    // The whole reason this treatment is safe. `reassemble` produces the css
+    // that `compileFunnelStep` publishes and that /go, /preview and
+    // /funnel-preview all serve; a dashed placeholder reaching any of them
+    // would put "A form appears here" on a live page, in front of a visitor.
+    const { html, css } = reassemble(DOC, { brandKit: null })
+    expect(html).toContain("data-djp-island") // the presence control: there IS an island here
+    expect(css).not.toContain(MARKER)
+    expect(css).not.toContain("dashed currentColor")
+
+    // ...and the same css, once this module has wrapped it, does carry it. An
+    // absence assertion with no presence control passes just as well when the
+    // string was never anywhere.
+    expect(buildRenderDocument(html, css)).toContain(MARKER)
+  })
+
+  it("is not in the published stylesheet source", async () => {
+    const { readFileSync } = await import("node:fs")
+    const styles = readFileSync(`${__dirname}/../../../lib/funnels/sections/styles.ts`, "utf8")
+    expect(styles).not.toContain(MARKER)
+    expect(styles).not.toContain("data-djp-island")
   })
 })

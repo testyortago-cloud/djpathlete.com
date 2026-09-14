@@ -54,7 +54,11 @@ const FONT_HEAD =
 export function buildRenderDocument(html: string, css: string): string {
   return (
     `<!doctype html><html><head><meta charset="utf-8">${FONT_HEAD}` +
-    `<style>${css}</style></head>` +
+    `<style>${css}</style>` +
+    // LAST, and ONLY here. See `islandPlaceholderCss` below: this sheet exists
+    // so the picture stops containing a blank band the real page does not have.
+    // It is built into THIS document only — nothing a visitor loads gets it.
+    `<style>${islandPlaceholderCss()}</style></head>` +
     `<body style="margin:0"><div id="${FUNNEL_ROOT_ID}">${html}</div></body></html>`
   )
 }
@@ -77,6 +81,11 @@ export function buildRenderDocument(html: string, css: string): string {
 // owner the band now "carries an authored quote with a real 40-time result".
 // A fabricated endorsement heading for a live coaching page.
 //
+// TWO THINGS ANSWER THAT, AND BOTH ARE NEEDED. The list below goes into the
+// critic's brief as prose, and `islandPlaceholderCss` paints each region in the
+// picture as a labelled placeholder so there is no blank band to report in the
+// first place. The prose alone was measured and was not enough.
+//
 // THE LIST IS READ OUT OF THE EMITTED HTML, NEVER RE-DERIVED FROM THE DOCUMENT.
 // Which sections hold an island depends on a `source: "live"` discriminant on
 // two kinds, on a CTA's target kind on several more, and on validation passing
@@ -86,20 +95,124 @@ export function buildRenderDocument(html: string, css: string): string {
 // returned is the same html that was screenshotted, so it cannot drift.
 
 /**
+ * How much room an island takes up on the real page.
+ *
+ * `checkout`, `event` and `booking` are CTA BUTTONS — `renderCtaTarget`
+ * (render.ts) reaches all three through `anchoredIsland`, and CLAUDE.md records
+ * that they are pure `<Link>` navigation. The rest fill a whole band. Painting
+ * a button-sized island at band size would distort the very proportions the art
+ * director is judging: the same fault as the blank band, wearing a hat.
+ */
+type IslandShape = "band" | "button"
+
+/**
  * What each island is, in words a critic (and the owner reading the finding it
- * does not write) can act on.
+ * does not write) can act on, plus how big it is.
  *
  * A `Record<IslandName, …>` on purpose: a new island in `ISLAND_NAMES` fails to
- * compile until somebody says what it looks like to a visitor.
+ * compile until somebody says what it looks like to a visitor. `what` reaches
+ * the critic twice — as prose in `dynamicRegions`, and burned into the picture
+ * itself by `islandPlaceholderCss` — so those two can never disagree.
  */
-const ISLAND_LABELS: Record<IslandName, string> = {
-  form: "a form",
-  checkout: "a checkout button",
-  event: "an event sign-up button",
-  booking: "a booking widget",
-  testimonials: "a live testimonial feed",
-  faq: "a live FAQ list",
-  quiz: "a quiz",
+const ISLAND_LABELS: Record<IslandName, { what: string; shape: IslandShape }> = {
+  form: { what: "a form", shape: "band" },
+  checkout: { what: "a checkout button", shape: "button" },
+  event: { what: "an event sign-up button", shape: "button" },
+  booking: { what: "a booking widget", shape: "button" },
+  testimonials: { what: "a live testimonial feed", shape: "band" },
+  faq: { what: "a live FAQ list", shape: "band" },
+  quiz: { what: "a quiz", shape: "band" },
+}
+
+// ---------------------------------------------------------------------------
+// THE PLACEHOLDER — CHANGE THE EVIDENCE, NOT THE INSTRUCTION.
+// ---------------------------------------------------------------------------
+// `dynamicRegions` and the note `critics.ts` builds out of it tell the art
+// director that these regions are filled in live. That was measured against a
+// real model on 2026-09-14 and IT WAS NOT ENOUGH. It did stop the fabrication —
+// the suggestion became a padding change — but the critic still filed
+// `[art/high] empty-band (proof)`: "a large solid clay-coloured rectangle with
+// no visible content, occupying roughly a full viewport height". Telling a
+// model to disregard something it can plainly see does not work, and that is
+// not really the model's fault: the picture it was handed did contain a blank
+// band.
+//
+// So the picture stops containing one. Every island is painted as a dashed,
+// muted, centred box that SAYS what fills it on the real page. There is then
+// nothing to report as empty — and nothing that could be mistaken for a design
+// element whose styling is worth critiquing.
+//
+// THE SHEET IS RENDER-ONLY. It is assembled here and injected by
+// `buildRenderDocument` into the standalone document THIS MODULE screenshots.
+// It is not in `lib/funnels/sections/styles.ts`, it is not in what `reassemble`
+// returns, and no published page, `/go` route or preview route can reach it.
+// Nothing a visitor loads changes.
+
+/** A CSS string literal. `"` and `\` are the only two characters that can break one. */
+function cssString(text: string): string {
+  return `"${text.replace(/[\\"]/g, "\\$&")}"`
+}
+
+/** "a live testimonial feed" -> "A live testimonial feed appears here when a visitor opens the page." */
+function placeholderSentence(what: string): string {
+  return `${what.charAt(0).toUpperCase()}${what.slice(1)} appears here when a visitor opens the page.`
+}
+
+const SHAPE_CSS: Record<IslandShape, string> = {
+  // Tall enough that the band still occupies the rhythm the real content does,
+  // and no taller. An invented height would misreport the page's proportions
+  // just as badly as an invented emptiness does.
+  band: "display:flex;flex-direction:column;gap:10px;min-height:180px;padding:28px 24px;border-radius:14px;font-size:17px;",
+  button:
+    "display:inline-flex;flex-direction:column;gap:4px;min-height:52px;padding:12px 22px;border-radius:999px;font-size:14px;max-width:34ch;",
+}
+
+/**
+ * The render-only sheet that paints every `[data-djp-island]` as a labelled
+ * placeholder.
+ *
+ * UNCONDITIONAL, never "only when this html holds an island". A second answer
+ * to "does this page hold one" is a second implementation of a rule that lives
+ * on a `source:"live"` discriminant, on a CTA's target kind and on a schema
+ * parse — the exact drift `islandsBySection` exists to avoid. A sheet that
+ * matches nothing costs nothing.
+ *
+ * `currentColor`, never a fixed grey: a section carries `tone: "light" |
+ * "dark"`, so the one colour guaranteed to be legible against the band behind
+ * the placeholder is the colour that band's own text is already using.
+ */
+function islandPlaceholderCss(): string {
+  const scope = `#${FUNNEL_ROOT_ID} [${ISLAND_ATTR}]`
+  const base =
+    `${scope}{${SHAPE_CSS.band}` +
+    `align-items:center;justify-content:center;box-sizing:border-box;` +
+    `border:2px dashed currentColor;background:none;color:inherit;opacity:.7;` +
+    `font-family:ui-sans-serif,system-ui,-apple-system,sans-serif;` +
+    `font-weight:600;line-height:1.45;letter-spacing:normal;text-align:center;text-transform:none;` +
+    `}` +
+    // `attr()`, so an island nobody has written wording for still NAMES ITSELF
+    // rather than degrading to a generic string. Every island the product can
+    // emit overrides this with a real sentence below — and `ISLAND_LABELS` is a
+    // `Record<IslandName, …>`, so that set cannot fall behind `ISLAND_NAMES`.
+    `${scope}::before{content:attr(${ISLAND_ATTR}) " appears here when a visitor opens the page.";` +
+    `display:block;max-width:44ch;}` +
+    `${scope}::after{content:${cssString("This dashed box only marks where that goes. It is not part of the page design.")};` +
+    `display:block;max-width:44ch;font-size:14px;font-weight:400;}`
+
+  // Same specificity as `base`, and later in the sheet, so these win the tie.
+  const perIsland = Object.entries(ISLAND_LABELS)
+    .map(([name, { what, shape }]) => {
+      const sel = `#${FUNNEL_ROOT_ID} [${ISLAND_ATTR}="${name}"]`
+      return (
+        `${sel}{${SHAPE_CSS[shape]}}` +
+        `${sel}::before{content:${cssString(placeholderSentence(what))};}` +
+        // A second line would double a button's height into a band's.
+        (shape === "button" ? `${sel}::after{content:none;}` : "")
+      )
+    })
+    .join("")
+
+  return `/* render-only: island placeholders. Never published. */${base}${perIsland}`
 }
 
 // One pass, in document order, matching EITHER a section open tag or an island
@@ -146,7 +259,7 @@ export function islandsBySection(html: string): Record<string, string[]> {
  */
 export function dynamicRegionsIn(html: string): string[] {
   return Object.entries(islandsBySection(html)).map(([sectionId, islands]) => {
-    const labels = islands.map((island) => (isIslandName(island) ? ISLAND_LABELS[island] : island))
+    const labels = islands.map((island) => (isIslandName(island) ? ISLAND_LABELS[island].what : island))
     return sectionId ? `${sectionId} (${labels.join(", ")})` : labels.join(", ")
   })
 }
@@ -197,10 +310,11 @@ export interface RenderedPage {
    */
   typographyFaithful: boolean
   /**
-   * Regions that are interactive on the real page and therefore BLANK in
-   * `images`, as `section-id (what it is)`. See the islands block above — this
-   * is the difference between the page and the picture, and a critic not told
-   * about it reports the difference as a defect and invents content to fill it.
+   * Regions that are interactive on the real page and therefore carry a LABELLED
+   * PLACEHOLDER in `images` rather than their real content, as
+   * `section-id (what it is)`. See the islands block above — this is the
+   * difference between the page and the picture, and a critic not told about it
+   * reports the difference as a defect and invents content to fill it.
    *
    * Empty whenever `images` is: it describes the pictures, and there are none.
    */
