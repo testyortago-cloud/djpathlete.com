@@ -146,100 +146,107 @@ const say = (text: string) => {
   log.push(text)
 }
 
-const { doc, slug, funnelId, revision } = await readStep()
-const brandKit = await resolveBrandKit(PRIMARY_BUSINESS_ID)
+async function main() {
+  const { doc, slug, funnelId, revision } = await readStep()
+  const brandKit = await resolveBrandKit(PRIMARY_BUSINESS_ID)
 
-say(`step ${stepId} ("${slug}", funnel ${funnelId}, doc_revision ${revision})`)
-say(`sections: ${doc.sections.map((s) => `${s.kind}:${(s as { variant?: string }).variant ?? "-"}`).join(", ")}`)
-say(`brandKit: ${JSON.stringify(brandKit)}   theme.palette: ${JSON.stringify(doc.theme?.palette ?? null)}`)
+  say(`step ${stepId} ("${slug}", funnel ${funnelId}, doc_revision ${revision})`)
+  say(`sections: ${doc.sections.map((s) => `${s.kind}:${(s as { variant?: string }).variant ?? "-"}`).join(", ")}`)
+  say(`brandKit: ${JSON.stringify(brandKit)}   theme.palette: ${JSON.stringify(doc.theme?.palette ?? null)}`)
 
-// --- the render, once. Both arms of every round share it, so a difference
-// between rounds can never be a difference between two renders. --------------
-const funnelSlugRows = (await (
-  await fetch(`${supabaseUrl}/rest/v1/funnels?select=slug,name&id=eq.${funnelId}`, { headers: rest })
-).json()) as Array<{ slug: string; name: string }>
-const funnelBasePath = funnelSlugRows[0] ? `/go/${funnelSlugRows[0].slug}` : undefined
+  // --- the render, once. Both arms of every round share it, so a difference
+  // between rounds can never be a difference between two renders. --------------
+  const funnelSlugRows = (await (
+    await fetch(`${supabaseUrl}/rest/v1/funnels?select=slug,name&id=eq.${funnelId}`, { headers: rest })
+  ).json()) as Array<{ slug: string; name: string }>
+  const funnelBasePath = funnelSlugRows[0] ? `/go/${funnelSlugRows[0].slug}` : undefined
 
-const startedRender = Date.now()
-const render: RenderedPage = await renderDocToImages(doc, { ...(funnelBasePath ? { funnelBasePath } : {}), brandKit })
-say(
-  `\nrender: ${render.images.length} images, page ${render.width}x${render.height}px, ` +
-    `truncated=${render.truncated}, typographyFaithful=${render.typographyFaithful}, ` +
-    `error=${render.error ?? "none"}, ${Date.now() - startedRender}ms`,
-)
-
-// REFUSAL 1. With no images the "with" arm IS the "without" arm.
-if (render.images.length === 0) {
-  throw new Error(`the render produced no images (${render.error}) — there is no A/B to run. Refusing.`)
-}
-
-// The pictures the model was handed, on disk, at the size it was handed them.
-const tileDir = `${OUT}/render-tiles`
-mkdirSync(tileDir, { recursive: true })
-render.images.forEach((image, index) => {
-  const name = index === 0 ? "00-overview" : `${String(index).padStart(2, "0")}-slice-${index}`
-  const path = `${tileDir}/${slug}-${stepId.slice(0, 8)}-${name}.png`
-  writeFileSync(path, Buffer.from(image.data, "base64"))
-  say(`  wrote ${path} (${Math.round(image.data.length * 0.75 / 1024)}KB decoded)`)
-  // BARE BASE64, NOT A DATA URL — the wire format the transport requires, and
-  // a `data:` prefix would be accepted by the type and rejected by the
-  // provider. Checked here because this script is the only place the payload
-  // is ever written to disk.
-  if (image.data.startsWith("data:")) throw new Error(`image ${index} carries a data: prefix`)
-})
-
-// --- the deterministic pass, once. Both arms get the SAME audit findings, so
-// the critics are not being handed different briefs. -------------------------
-const audit = auditDoc(doc)
-say(`\n${block("deterministic audit findings (identical in both arms):", audit)}`)
-
-for (let round = 1; round <= rounds; round += 1) {
-  say(`\n${"=".repeat(78)}\nROUND ${round} of ${rounds}\n${"=".repeat(78)}`)
-
-  // WITHOUT first, so the control is never the run that benefited from a warm
-  // anything. `undefined`, not `{images: []}` — an empty list would still
-  // switch the transport to the messages form.
-  const withoutStarted = Date.now()
-  const without = await runCritics(doc, audit)
+  const startedRender = Date.now()
+  const render: RenderedPage = await renderDocToImages(doc, { ...(funnelBasePath ? { funnelBasePath } : {}), brandKit })
   say(
-    `\n--- ARM A: no pictures (today's behaviour) — ${without.tokensUsed} tokens, ${Date.now() - withoutStarted}ms ---`,
-  )
-  say(block("all findings:", without.findings))
-  say(block("ART LENS ONLY:", without.findings.filter((f) => f.source === "art")))
-
-  const withStarted = Date.now()
-  const withPictures = await runCritics(doc, audit, render)
-  say(
-    `\n--- ARM B: ${render.images.length} pictures to the art lens — ${withPictures.tokensUsed} tokens, ${Date.now() - withStarted}ms ---`,
-  )
-  say(block("all findings:", withPictures.findings))
-  say(block("ART LENS ONLY:", withPictures.findings.filter((f) => f.source === "art")))
-
-  say(
-    `\ntoken delta (B - A): ${withPictures.tokensUsed - without.tokensUsed}` +
-      `  — the vision tokens, on a stage that already makes four calls.`,
+    `\nrender: ${render.images.length} images, page ${render.width}x${render.height}px, ` +
+      `truncated=${render.truncated}, typographyFaithful=${render.typographyFaithful}, ` +
+      `error=${render.error ?? "none"}, ${Date.now() - startedRender}ms`,
   )
 
-  // --- the diff. By `code`, because that is the slug the panel's own dedupe
-  // keys on, so two arms naming the same problem collapse the way the product
-  // would collapse them. -----------------------------------------------------
-  const artA = without.findings.filter((f) => f.source === "art")
-  const artB = withPictures.findings.filter((f) => f.source === "art")
-  const codesA = new Set(artA.map((f) => f.code))
-  const onlyB = artB.filter((f) => !codesA.has(f.code))
-
-  say(`\n${"-".repeat(78)}`)
-  say(block(`ART FINDINGS PRESENT ONLY WITH PICTURES (${onlyB.length} of ${artB.length}):`, onlyB))
-  const codesB = new Set(artB.map((f) => f.code))
-  say(block(`ART FINDINGS LOST WHEN PICTURES WERE ADDED (${artA.filter((f) => !codesB.has(f.code)).length}):`, artA.filter((f) => !codesB.has(f.code))))
-
-  // REFUSAL 2. An empty art lens is a broken run, not a clean page.
-  if (artB.length === 0) {
-    throw new Error(`the with-pictures arm returned NO art-lens findings at all — that is a failed run, not a result`)
+  // REFUSAL 1. With no images the "with" arm IS the "without" arm.
+  if (render.images.length === 0) {
+    throw new Error(`the render produced no images (${render.error}) — there is no A/B to run. Refusing.`)
   }
+
+  // The pictures the model was handed, on disk, at the size it was handed them.
+  const tileDir = `${OUT}/render-tiles`
+  mkdirSync(tileDir, { recursive: true })
+  render.images.forEach((image, index) => {
+    const name = index === 0 ? "00-overview" : `${String(index).padStart(2, "0")}-slice-${index}`
+    const path = `${tileDir}/${slug}-${stepId.slice(0, 8)}-${name}.png`
+    writeFileSync(path, Buffer.from(image.data, "base64"))
+    say(`  wrote ${path} (${Math.round(image.data.length * 0.75 / 1024)}KB decoded)`)
+    // BARE BASE64, NOT A DATA URL — the wire format the transport requires, and
+    // a `data:` prefix would be accepted by the type and rejected by the
+    // provider. Checked here because this script is the only place the payload
+    // is ever written to disk.
+    if (image.data.startsWith("data:")) throw new Error(`image ${index} carries a data: prefix`)
+  })
+
+  // --- the deterministic pass, once. Both arms get the SAME audit findings, so
+  // the critics are not being handed different briefs. -------------------------
+  const audit = auditDoc(doc)
+  say(`\n${block("deterministic audit findings (identical in both arms):", audit)}`)
+
+  for (let round = 1; round <= rounds; round += 1) {
+    say(`\n${"=".repeat(78)}\nROUND ${round} of ${rounds}\n${"=".repeat(78)}`)
+
+    // WITHOUT first, so the control is never the run that benefited from a warm
+    // anything. `undefined`, not `{images: []}` — an empty list would still
+    // switch the transport to the messages form.
+    const withoutStarted = Date.now()
+    const without = await runCritics(doc, audit)
+    say(
+      `\n--- ARM A: no pictures (today's behaviour) — ${without.tokensUsed} tokens, ${Date.now() - withoutStarted}ms ---`,
+    )
+    say(block("all findings:", without.findings))
+    say(block("ART LENS ONLY:", without.findings.filter((f) => f.source === "art")))
+
+    const withStarted = Date.now()
+    const withPictures = await runCritics(doc, audit, render)
+    say(
+      `\n--- ARM B: ${render.images.length} pictures to the art lens — ${withPictures.tokensUsed} tokens, ${Date.now() - withStarted}ms ---`,
+    )
+    say(block("all findings:", withPictures.findings))
+    say(block("ART LENS ONLY:", withPictures.findings.filter((f) => f.source === "art")))
+
+    say(
+      `\ntoken delta (B - A): ${withPictures.tokensUsed - without.tokensUsed}` +
+        `  — the vision tokens, on a stage that already makes four calls.`,
+    )
+
+    // --- the diff. By `code`, because that is the slug the panel's own dedupe
+    // keys on, so two arms naming the same problem collapse the way the product
+    // would collapse them. -----------------------------------------------------
+    const artA = without.findings.filter((f) => f.source === "art")
+    const artB = withPictures.findings.filter((f) => f.source === "art")
+    const codesA = new Set(artA.map((f) => f.code))
+    const onlyB = artB.filter((f) => !codesA.has(f.code))
+
+    say(`\n${"-".repeat(78)}`)
+    say(block(`ART FINDINGS PRESENT ONLY WITH PICTURES (${onlyB.length} of ${artB.length}):`, onlyB))
+    const codesB = new Set(artB.map((f) => f.code))
+    say(block(`ART FINDINGS LOST WHEN PICTURES WERE ADDED (${artA.filter((f) => !codesB.has(f.code)).length}):`, artA.filter((f) => !codesB.has(f.code))))
+
+    // REFUSAL 2. An empty art lens is a broken run, not a clean page.
+    if (artB.length === 0) {
+      throw new Error(`the with-pictures arm returned NO art-lens findings at all — that is a failed run, not a result`)
+    }
+  }
+
+  const logPath = `${OUT}/ab-${slug}-${stepId.slice(0, 8)}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "")}.txt`
+  mkdirSync(OUT, { recursive: true })
+  writeFileSync(logPath, log.join("\n") + "\n")
+  console.log(`\nwrote ${logPath}`)
 }
 
-const logPath = `${OUT}/ab-${slug}-${stepId.slice(0, 8)}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "")}.txt`
-mkdirSync(OUT, { recursive: true })
-writeFileSync(logPath, log.join("\n") + "\n")
-console.log(`\nwrote ${logPath}`)
+main().catch((err) => {
+  console.error(err)
+  process.exit(1)
+})
