@@ -29,6 +29,7 @@ vi.mock("@/lib/db/client-packages", () => ({
   listDepletedAutoRenewPackages: (...a: unknown[]) => listDepletedAutoRenewPackagesMock(...a),
 }))
 vi.mock("@/lib/db/pack-renewal-attempts", () => ({
+  listRenewalsAwaitingPayment: async () => [],
   countStalePendingRenewalAttempts: (...a: unknown[]) => countStalePendingRenewalAttemptsMock(...a),
   countRenewalsAwaitingPayment: (...a: unknown[]) => countRenewalsAwaitingPaymentMock(...a),
 }))
@@ -37,9 +38,21 @@ vi.mock("@/lib/db/users", () => ({
   getUsers: (...a: unknown[]) => getUsersMock(...a),
 }))
 vi.mock("@/lib/db/notifications", () => ({ createNotification: (...a: unknown[]) => createNotificationMock(...a) }))
-vi.mock("@/lib/email", () => ({ sendPackRenewalEmail: (...a: unknown[]) => sendPackRenewalEmailMock(...a) }))
-vi.mock("@/lib/services/pack-renewal", () => ({ attemptPackRenewal: (...a: unknown[]) => attemptPackRenewalMock(...a) }))
+vi.mock("@/lib/email", () => ({
+  sendPackRenewalEmail: (...a: unknown[]) => sendPackRenewalEmailMock(...a),
+  sendPackAutoRenewWarningEmail: vi.fn(),
+  sendPackPaymentLinkEmail: vi.fn(),
+}))
+vi.mock("@/lib/services/pack-renewal", () => ({
+  attemptPackRenewal: (...a: unknown[]) => attemptPackRenewalMock(...a),
+}))
 vi.mock("@/lib/packs/flags", () => ({
+  // Present but OFF, on purpose. The route calls the re-send pass inside its own
+  // try/catch, so an ABSENT export degrades to a silent no-op and this suite
+  // would go on passing while the pass was broken. Naming it here makes the
+  // no-op deliberate instead of accidental.
+  packLinkResendEnabled: async () => false,
+  packLinkResendMax: async () => 3,
   PACK_RENEWALS_CRON_KEY: "cron_pack_renewals_enabled",
   packReminderLowAt: async () => 2,
   packReminderExpiryDays: async () => 7,
@@ -240,7 +253,7 @@ describe("POST /api/admin/internal/pack-renewals — auto-renew sweep", () => {
 
     it("is zero and does not notify admins when nothing is stuck", async () => {
       countStalePendingRenewalAttemptsMock.mockResolvedValue(0)
-  countRenewalsAwaitingPaymentMock.mockResolvedValue(0)
+      countRenewalsAwaitingPaymentMock.mockResolvedValue(0)
       const res = await POST(req())
       const json = await res.json()
       expect(json.stalePendingRenewals).toBe(0)
@@ -260,9 +273,7 @@ describe("POST /api/admin/internal/pack-renewals — auto-renew sweep", () => {
       expect(createNotificationMock).toHaveBeenCalledWith(
         expect.objectContaining({ user_id: "admin-1", title: expect.stringContaining("stuck") }),
       )
-      expect(createNotificationMock).toHaveBeenCalledWith(
-        expect.objectContaining({ user_id: "admin-2" }),
-      )
+      expect(createNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ user_id: "admin-2" }))
     })
 
     it("runs even when pack_auto_renew_enabled is off — a stuck row can predate the flag flipping", async () => {

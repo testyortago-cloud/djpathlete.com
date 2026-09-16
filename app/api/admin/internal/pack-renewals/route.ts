@@ -7,7 +7,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { listActivePackages, listDepletedAutoRenewPackages, updateClientPackage } from "@/lib/db/client-packages"
-import { countStalePendingRenewalAttempts, countRenewalsAwaitingPayment } from "@/lib/db/pack-renewal-attempts"
+import {
+  countStalePendingRenewalAttempts,
+  countRenewalsAwaitingPayment,
+  listRenewalsAwaitingPayment,
+} from "@/lib/db/pack-renewal-attempts"
 import { selectPacksNeedingReminder, classifyPackReminders } from "@/lib/automation/pack-renewal-scanner"
 import { remainingCredits } from "@/lib/services/session-credits"
 import { attemptPackRenewal } from "@/lib/services/pack-renewal"
@@ -15,13 +19,17 @@ import { resolveBillingUserId } from "@/lib/services/billing-payer"
 import { getDefaultPaymentMethod } from "@/lib/db/payment-methods"
 import { getUserById, getUsers } from "@/lib/db/users"
 import { createNotification } from "@/lib/db/notifications"
-import { sendPackRenewalEmail, sendPackAutoRenewWarningEmail } from "@/lib/email"
+import { sendPackRenewalEmail, sendPackAutoRenewWarningEmail, sendPackPaymentLinkEmail } from "@/lib/email"
+import { resolvePackPaymentLink } from "@/lib/services/pack-payment-link"
+import { selectPacksDueLinkResend, PACK_LINK_RESEND_THROTTLE_MS } from "@/lib/automation/pack-link-resend"
 import {
   PACK_RENEWALS_CRON_KEY,
   packReminderLowAt,
   packReminderExpiryDays,
   packAutoRenewEnabled,
   packAutoRenewMaxAgeDays,
+  packLinkResendEnabled,
+  packLinkResendMax,
 } from "@/lib/packs/flags"
 
 export const runtime = "nodejs"
@@ -173,7 +181,11 @@ export async function POST(request: NextRequest) {
       // something it looks up itself).
       const contexts = new Map<
         string,
-        { payer: Awaited<ReturnType<typeof getUserById>>; trainee: Awaited<ReturnType<typeof getUserById>>; card: Awaited<ReturnType<typeof getDefaultPaymentMethod>> }
+        {
+          payer: Awaited<ReturnType<typeof getUserById>>
+          trainee: Awaited<ReturnType<typeof getUserById>>
+          card: Awaited<ReturnType<typeof getDefaultPaymentMethod>>
+        }
       >()
       for (const { pkg } of candidates) {
         try {
@@ -359,6 +371,89 @@ export async function POST(request: NextRequest) {
     console.error("[pack-renewals] awaiting-payment check failed:", err)
   }
 
+  // The action arm of the watch directly above. That one tells the coach a
+  // renewal is still unpaid; this one goes back to the PAYER when the reason
+  // they haven't paid is that the link in their inbox is dead.
+  //
+  // A Stripe Checkout session lives 24 hours. The no-card fallback emails
+  // exactly one link, so a payer who doesn't act that day is left holding a URL
+  // that 404s, with nothing scheduled to ever tell them — while the replacement
+  // pack is already `active` and their athlete is already spending its credits.
+  //
+  // "Is the link dead" is not decided here. resolvePackPaymentLink owns that,
+  // and its rules are the safe ones: re-mint only on a verified `expired`,
+  // never on `complete` (paid, webhook in flight — repointing would strand the
+  // payment), never on a transient Stripe error. Its `refreshed` flag is
+  // therefore exactly the send signal, and re-implementing any of it here would
+  // be a second opinion on the one question that must have a single answer.
+  //
+  // Own try/catch, like the two watches above, for the same reason: three
+  // independent passes sharing one would let the oldest failing take the
+  // newest down with it.
+  let linksResent = 0
+  let linkResendsFailed = 0
+  try {
+    if (await packLinkResendEnabled()) {
+      const [maxResends, awaiting] = await Promise.all([packLinkResendMax(), listRenewalsAwaitingPayment()])
+      const due = selectPacksDueLinkResend(awaiting, now, {
+        maxResends,
+        throttleMs: PACK_LINK_RESEND_THROTTLE_MS,
+      })
+
+      for (const pack of due) {
+        try {
+          const link = await resolvePackPaymentLink(pack)
+          // Stripe unreachable, or the pack turned out to be paid / not
+          // awaiting a card. Nothing to send and nothing to stamp — the next
+          // run re-reads the truth from Stripe rather than trusting a cache.
+          if (!link.ok) continue
+          // The existing link is STILL OPEN. The payer can use it; a duplicate
+          // of a live link is nagging, not helping.
+          if (!link.refreshed) continue
+
+          // Stamp BEFORE the send, deliberately, and in that order for two
+          // separate reasons. (1) These columns arrive in migration 00261 and
+          // Vercel races migrations on merge, so this write is the designated
+          // place for an old schema to stop us: failing here costs one inert
+          // deploy, whereas failing AFTER the email would re-email the payer
+          // every single day until the migration landed. (2) If the email
+          // itself then throws, we have spent a budget slot without sending —
+          // under-sending by one is the right way round for a $1,500 request.
+          await updateClientPackage(pack.id, {
+            payment_link_resent_count: (pack.payment_link_resent_count ?? 0) + 1,
+            payment_link_resent_at: now.toISOString(),
+          })
+
+          const billingUserId = await resolveBillingUserId(pack.client_user_id)
+          const [payer, trainee] = await Promise.all([getUserById(billingUserId), getUserById(pack.client_user_id)])
+          // The same addressing rule the first fallback used (see
+          // lib/services/pack-renewal.ts): an explicit bill_to_email wins,
+          // because that is what Stripe pinned customer_email to when the
+          // session was minted. Emailing anyone else hands them a link they
+          // cannot pay.
+          const to = pack.bill_to_email ?? payer.email ?? trainee.email
+          if (!to) continue
+          const clientName = `${trainee.first_name ?? ""} ${trainee.last_name ?? ""}`.trim() || "your athlete"
+
+          await sendPackPaymentLinkEmail({
+            to,
+            ccClientEmail: trainee.email && trainee.email !== to ? trainee.email : null,
+            clientName,
+            packLabel: `${pack.credits_total}× ${pack.session_type}`,
+            amountCents: pack.price_cents,
+            url: link.url,
+          })
+          linksResent += 1
+        } catch (err) {
+          linkResendsFailed += 1
+          console.error(`[pack-renewals] payment-link re-send failed for pack ${pack.id}:`, err)
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[pack-renewals] payment-link re-send pass failed:", err)
+  }
+
   return NextResponse.json(
     {
       skipped: gate.skipped ? gate.reason : undefined,
@@ -373,6 +468,8 @@ export async function POST(request: NextRequest) {
       renewalsFailed,
       stalePendingRenewals,
       renewalsAwaitingPayment,
+      linksResent,
+      linkResendsFailed,
     },
     { status: 200 },
   )
