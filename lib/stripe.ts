@@ -141,6 +141,17 @@ export async function archiveAndCreateNewPrice(opts: {
 
 // ─── New: Customer management ────────────────────────────────────────────────
 
+/** Case- and whitespace-insensitive email equality.
+ *
+ *  Both matter against real rows: addresses in this DB are stored as typed
+ *  ("Sid@chennadi.com"), and sibling fields on the same users carry trailing
+ *  spaces. An exact `===` would drop those families onto the no-card path
+ *  silently, which is the bug this comparison exists to prevent rather than
+ *  reintroduce one spelling later. */
+function sameEmail(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase()
+}
+
 export async function getOrCreateStripeCustomer(userId: string, email: string): Promise<string> {
   const user = await getUserById(userId)
 
@@ -490,10 +501,23 @@ export async function createPackCheckoutSession(opts: {
   // Addressee + card capture. Stripe rejects `customer` and `customer_email`
   // together, so this is a branch, not a merge:
   //
-  //   explicit billToEmail  → customer_email, NO card saved. The payer has no
-  //                           users row, and saving their card against the
-  //                           trainee's user_id would assert a card belongs to
-  //                           someone who does not own it — which
+  //   explicit billToEmail  → customer_email, and a card saved ONLY when that
+  //                           address is the household payer's own. The
+  //                           original rule here was "an explicit bill-to
+  //                           address means an outsider with no users row, so
+  //                           never save a card" — true of a one-off address,
+  //                           FALSE of the case this field mostly carries: a
+  //                           parent who is a registered payer. That premise
+  //                           cost a real $1,500 renewal, which skipped with
+  //                           `no_card` because a pack armed for auto-renew
+  //                           had no way to leave a card behind. When the
+  //                           address resolves to the payer we attach THEIR
+  //                           customer, so the card is saved against the
+  //                           person who owns it. When it resolves to nobody
+  //                           the old behaviour stands, and for the old
+  //                           reason: saving that card against the trainee's
+  //                           user_id would assert a card belongs to someone
+  //                           who does not own it — which
   //                           getDefaultPaymentMethod would then charge for
   //                           unrelated fees. They keep using payment links.
   //   otherwise             → resolve the household payer (or the client) and
@@ -512,6 +536,20 @@ export async function createPackCheckoutSession(opts: {
   // receipt landed in the wrong inbox. Reintroducing it now would be worse —
   // the saved card would also attach to the wrong person and auto-renewal
   // would charge them.
+  // I5: card_on_file_enabled is the spec's documented kill switch for card
+  // CAPTURE — separate from pack_auto_renew_enabled, which only gates the
+  // later CHARGE. Before this, `opts.autoRenew` alone controlled
+  // setup_future_usage, so there was no way to stop new cards from attaching
+  // without also touching the auto-renew flag. Behaviourally a no-op today
+  // (card_on_file_enabled defaults true in production) — this is insurance
+  // for if cards ever start attaching to the wrong customers.
+  //
+  // Read BEFORE the addressee branch below, because it now decides whether
+  // that branch does an identity lookup at all: with no card to capture, an
+  // explicit bill-to address gains nothing from resolving one, and the money
+  // path keeps the round-trip it used to skip.
+  const captureCard = Boolean(opts.autoRenew) && (await cardOnFileEnabled())
+
   let customerEmail: string | undefined
   let customerId: string | undefined
   // Stamped into metadata below so the webhook can save the card against
@@ -523,6 +561,30 @@ export async function createPackCheckoutSession(opts: {
   let resolvedBillingUserId: string | undefined
   if (opts.billToEmail) {
     customerEmail = opts.billToEmail
+    if (captureCard) {
+      // Attach a customer ONLY when the bill-to address is provably the
+      // household payer's own. Matching on the RESOLVED payer (rather than
+      // looking up whichever user happens to own that address) is what keeps
+      // this safe: it cannot attach the customer of someone with no billing
+      // relationship to this trainee.
+      try {
+        const billingUserId = await resolveBillingUserId(opts.clientUserId)
+        const payer = await getUserById(billingUserId)
+        if (payer?.email && sameEmail(payer.email, opts.billToEmail)) {
+          customerId = await getOrCreateStripeCustomer(billingUserId, payer.email)
+          // Stripe rejects `customer` and `customer_email` together. Clearing
+          // this is safe precisely because the two were just proven equal —
+          // the payment page shows the same address either way.
+          customerEmail = undefined
+          resolvedBillingUserId = billingUserId
+        }
+      } catch {
+        // Non-fatal, and deliberately silent about the card: the pinned
+        // address above still stands, so the sale proceeds addressed
+        // correctly and simply saves no card. Failing the checkout to protect
+        // a convenience feature would be the worse trade.
+      }
+    }
   } else {
     let billingUserId: string | undefined
     let payer: { email: string | null } | null = null
@@ -546,15 +608,6 @@ export async function createPackCheckoutSession(opts: {
       }
     }
   }
-
-  // I5: card_on_file_enabled is the spec's documented kill switch for card
-  // CAPTURE — separate from pack_auto_renew_enabled, which only gates the
-  // later CHARGE. Before this, `opts.autoRenew` alone controlled
-  // setup_future_usage, so there was no way to stop new cards from attaching
-  // without also touching the auto-renew flag. Behaviourally a no-op today
-  // (card_on_file_enabled defaults true in production) — this is insurance
-  // for if cards ever start attaching to the wrong customers.
-  const captureCard = opts.autoRenew && (await cardOnFileEnabled())
 
   return stripe.checkout.sessions.create({
     mode: "payment",
