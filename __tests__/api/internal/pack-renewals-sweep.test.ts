@@ -19,6 +19,7 @@ const attemptPackRenewalMock = vi.fn()
 const packAutoRenewEnabledMock = vi.fn()
 const packAutoRenewMaxAgeDaysMock = vi.fn()
 const countStalePendingRenewalAttemptsMock = vi.fn()
+const countRenewalsAwaitingPaymentMock = vi.fn()
 
 vi.mock("@/lib/db/system-settings", () => ({ isCronSkipped: (...a: unknown[]) => isCronSkippedMock(...a) }))
 vi.mock("@/lib/supabase", () => ({ createServiceRoleClient: () => ({}) }))
@@ -29,6 +30,7 @@ vi.mock("@/lib/db/client-packages", () => ({
 }))
 vi.mock("@/lib/db/pack-renewal-attempts", () => ({
   countStalePendingRenewalAttempts: (...a: unknown[]) => countStalePendingRenewalAttemptsMock(...a),
+  countRenewalsAwaitingPayment: (...a: unknown[]) => countRenewalsAwaitingPaymentMock(...a),
 }))
 vi.mock("@/lib/db/users", () => ({
   getUserById: (...a: unknown[]) => getUserByIdMock(...a),
@@ -92,6 +94,7 @@ beforeEach(() => {
   packAutoRenewMaxAgeDaysMock.mockResolvedValue(7)
   listDepletedAutoRenewPackagesMock.mockResolvedValue([])
   countStalePendingRenewalAttemptsMock.mockResolvedValue(0)
+  countRenewalsAwaitingPaymentMock.mockResolvedValue(0)
 })
 
 describe("POST /api/admin/internal/pack-renewals — auto-renew sweep", () => {
@@ -237,6 +240,7 @@ describe("POST /api/admin/internal/pack-renewals — auto-renew sweep", () => {
 
     it("is zero and does not notify admins when nothing is stuck", async () => {
       countStalePendingRenewalAttemptsMock.mockResolvedValue(0)
+  countRenewalsAwaitingPaymentMock.mockResolvedValue(0)
       const res = await POST(req())
       const json = await res.json()
       expect(json.stalePendingRenewals).toBe(0)
@@ -280,5 +284,57 @@ describe("POST /api/admin/internal/pack-renewals — auto-renew sweep", () => {
       expect(res.status).toBe(200)
       expect(json.stalePendingRenewals).toBe(0)
     })
+  })
+})
+
+// A renewal that resolves to `skipped`/`failed` mints an unpaid replacement
+// pack and is supposed to tell a human, from the inline path in
+// attemptPackRenewal. That path runs fire-and-forget AFTER the check-in
+// response, so anything it still had to do can simply not happen: a real
+// $1,500 renewal skipped with `no_card`, the payment link went out, and the
+// admin notification never landed — the coach found it by eye days later. The
+// stale-pending check above cannot see it, because that attempt is not stuck,
+// it is finished. This is the watch for "finished, and still nobody paid".
+describe("renewals awaiting payment", () => {
+  it("includes the awaiting-payment count in the JSON response", async () => {
+    countRenewalsAwaitingPaymentMock.mockResolvedValue(1)
+    const res = await POST(req())
+    const json = await res.json()
+    expect(json.renewalsAwaitingPayment).toBe(1)
+  })
+
+  it("notifies every admin when a resolved renewal is still unpaid", async () => {
+    countRenewalsAwaitingPaymentMock.mockResolvedValue(2)
+    getUsersMock.mockResolvedValue([
+      { id: "admin-1", role: "admin" },
+      { id: "admin-2", role: "admin" },
+      { id: "client-1", role: "client" },
+    ])
+    await POST(req())
+    const targets = createNotificationMock.mock.calls.map((c) => c[0].user_id)
+    expect(targets).toEqual(["admin-1", "admin-2"])
+    // The count is the whole point — an alert that does not say how many, or
+    // that says "1" when two families are waiting, is not worth the interrupt.
+    expect(createNotificationMock.mock.calls[0][0].message).toContain("2")
+  })
+
+  it("says nothing when every resolved renewal has been paid", async () => {
+    countRenewalsAwaitingPaymentMock.mockResolvedValue(0)
+    const res = await POST(req())
+    const json = await res.json()
+    expect(json.renewalsAwaitingPayment).toBe(0)
+    // Self-clearing: paying the link flips the pack to `paid`, which drops it
+    // out of the count. Without this the daily alert would nag forever.
+    expect(createNotificationMock).not.toHaveBeenCalled()
+  })
+
+  it("still reports the count when the stale-pending check throws", async () => {
+    countStalePendingRenewalAttemptsMock.mockRejectedValue(new Error("db down"))
+    countRenewalsAwaitingPaymentMock.mockResolvedValue(1)
+    const res = await POST(req())
+    const json = await res.json()
+    // Two independent watches. Sharing one try/catch would mean the older one
+    // failing silently takes the newer one down with it.
+    expect(json.renewalsAwaitingPayment).toBe(1)
   })
 })

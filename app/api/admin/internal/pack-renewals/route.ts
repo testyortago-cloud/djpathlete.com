@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { isCronSkipped } from "@/lib/db/system-settings"
 import { listActivePackages, listDepletedAutoRenewPackages, updateClientPackage } from "@/lib/db/client-packages"
-import { countStalePendingRenewalAttempts } from "@/lib/db/pack-renewal-attempts"
+import { countStalePendingRenewalAttempts, countRenewalsAwaitingPayment } from "@/lib/db/pack-renewal-attempts"
 import { selectPacksNeedingReminder, classifyPackReminders } from "@/lib/automation/pack-renewal-scanner"
 import { remainingCredits } from "@/lib/services/session-credits"
 import { attemptPackRenewal } from "@/lib/services/pack-renewal"
@@ -325,6 +325,40 @@ export async function POST(request: NextRequest) {
     console.error("[pack-renewals] stale-pending-attempt check failed:", err)
   }
 
+  // The companion to the check above, and the one that was missing. That one
+  // watches for an attempt stuck mid-flight; this one watches for an attempt
+  // that FINISHED into "somebody has to pay this by hand" and then went quiet.
+  // attemptPackRenewal already emails the link and alerts the admins itself —
+  // but from the inline check-in path, which is fire-and-forget by design, so
+  // everything it had left to do after the status update is free to simply not
+  // happen. It didn't: a $1,500 renewal skipped with `no_card`, the link went
+  // out, the alert never landed, and the athlete kept training on the unpaid
+  // pack until the coach happened to notice.
+  //
+  // Its own try/catch, not folded into the block above: these are two
+  // independent watches, and sharing one would let the older one failing take
+  // the newer one down with it. Unconditional for the same reason as above —
+  // an unpaid pack from before the flag was turned off is still money owed.
+  let renewalsAwaitingPayment = 0
+  try {
+    renewalsAwaitingPayment = await countRenewalsAwaitingPayment()
+    if (renewalsAwaitingPayment > 0) {
+      const admins = (await getUsers()).filter((u) => u.role === "admin")
+      for (const admin of admins) {
+        await createNotification({
+          user_id: admin.id,
+          title: "Pack renewals waiting to be paid",
+          message: `${renewalsAwaitingPayment} auto-renewal${renewalsAwaitingPayment === 1 ? " has" : "s have"} fallen back to a payment link and ${renewalsAwaitingPayment === 1 ? "is" : "are"} still unpaid. The replacement pack${renewalsAwaitingPayment === 1 ? " is" : "s are"} already usable, so the sessions are being taken either way — chase the payment, or add a card on file so the next one charges itself.`,
+          type: "warning",
+          is_read: false,
+          link: "/admin/clients",
+        })
+      }
+    }
+  } catch (err) {
+    console.error("[pack-renewals] awaiting-payment check failed:", err)
+  }
+
   return NextResponse.json(
     {
       skipped: gate.skipped ? gate.reason : undefined,
@@ -338,6 +372,7 @@ export async function POST(request: NextRequest) {
       renewed,
       renewalsFailed,
       stalePendingRenewals,
+      renewalsAwaitingPayment,
     },
     { status: 200 },
   )

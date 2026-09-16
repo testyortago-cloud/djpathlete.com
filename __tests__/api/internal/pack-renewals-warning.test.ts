@@ -31,6 +31,9 @@ vi.mock("@/lib/db/client-packages", () => ({
 }))
 vi.mock("@/lib/db/pack-renewal-attempts", () => ({
   countStalePendingRenewalAttempts: (...a: unknown[]) => countStalePendingRenewalAttemptsMock(...a),
+  // Present so a missing export cannot degrade to a silent no-op — see the
+  // same note in pack-renewals.test.ts.
+  countRenewalsAwaitingPayment: async () => 0,
 }))
 vi.mock("@/lib/db/users", () => ({
   getUserById: (...a: unknown[]) => getUserByIdMock(...a),

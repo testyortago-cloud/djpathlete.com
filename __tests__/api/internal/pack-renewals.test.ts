@@ -18,7 +18,13 @@ vi.mock("@/lib/db/client-packages", () => ({
 // This suite doesn't exercise the I2 stale-pending-attempt check either (see
 // pack-renewals-sweep.test.ts) — default it to zero so the check no-ops
 // cleanly instead of throwing on a missing mock export.
-vi.mock("@/lib/db/pack-renewal-attempts", () => ({ countStalePendingRenewalAttempts: async () => 0 }))
+vi.mock("@/lib/db/pack-renewal-attempts", () => ({
+  countStalePendingRenewalAttempts: async () => 0,
+  // Must be present even though this suite ignores it: the route calls it
+  // inside a try/catch, so a missing export degrades to a silent no-op and
+  // this file would keep passing while the watch it guards did nothing.
+  countRenewalsAwaitingPayment: async () => 0,
+}))
 vi.mock("@/lib/db/users", () => ({
   getUserById: (...a: unknown[]) => getUserByIdMock(...a),
   getUsers: (...a: unknown[]) => getUsersMock(...a),
