@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hidden exercise parameters — review sheet</title>
+    <style>
+      :root { --ink:#0E3F50; --accent:#C8763C; --muted:#5b6b72; --line:#e3e8ea; }
+      body { margin:0; padding:40px 24px 80px; background:#fafafa; color:var(--ink);
+             font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
+      .wrap { max-width:1100px; margin:0 auto; }
+      h1 { font-size:30px; margin:0 0 6px; letter-spacing:-.01em; }
+      .sub { color:var(--muted); margin:0 0 32px; }
+      h2 { font-size:19px; margin:44px 0 4px; }
+      .meta { color:var(--muted); font-size:14px; margin:0 0 14px; }
+      img { width:100%; display:block; border:1px solid var(--line); border-radius:10px; background:#fff; }
+      table { border-collapse:collapse; width:100%; margin:14px 0 0; font-size:14.5px; }
+      th, td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+      th { background:#f1f4f5; font-weight:600; }
+      code { font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f1f4f5;
+             padding:1px 5px; border-radius:4px; }
+      .bad { color:#a8321f; font-weight:600; }
+      .good { color:#1d7a4c; font-weight:600; }
+      .note { border-left:3px solid var(--accent); padding:2px 0 2px 14px; margin:20px 0; color:var(--muted); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>The editor hid values the card was showing — and erased them on save</h1>
+      <p class="sub">
+        Reported 2026-09-16 from the program builder. Every shot below is the real app on its real route,
+        driven with Playwright; the two halves of each pair were captured against two real builds, with the
+        source change reverted for the “before” pass.
+      </p>
+
+      <div class="note">
+        <strong>What was wrong.</strong> The edit dialog chose its fields from the exercise’s
+        <em>category</em> alone. A <code>flexibility</code> exercise never got Reps, Rest or RPE — even when
+        the coach had set all three. Worse, the form submitted <code>null</code> for every input it did not
+        render, and the PATCH route writes every key it is handed, so saving an unrelated tweak wiped them.
+      </div>
+
+      <h2>1 — Coach’s view, before</h2>
+      <p class="meta">
+        <code>/admin/programs/5fb09c3b…</code> · “Cannon Baller!” Week 4 Friday · Hamstring stretch_Hamstring
+        (<code>flexibility</code>, 3 sets / 8 reps / 45s rest / RPE 8 / Tempo 4-2-4)
+      </p>
+      <img src="01-before.png" alt="The edit dialog offering only Sets, Duration and Method" />
+
+      <h2>2 — Coach’s view, after</h2>
+      <p class="meta">Same route, same exercise, same week and day.</p>
+      <img src="02-after.png" alt="The edit dialog now offering Reps 8, Rest 45 and RPE Target 8" />
+
+      <h2>3 — Athlete’s view, before</h2>
+      <p class="meta">
+        <code>/client/workouts</code> signed in as a demo athlete · “Hian Operation Athlete Build” Week 2 Day 2 ·
+        Back stretch thoracic_Back (<code>flexibility</code>, prescribed “6 each position”)
+      </p>
+      <img src="03-athlete-before.png" alt="The stretch card showing Sets, Rest, Tempo and Intensity but no Reps" />
+
+      <h2>4 — Athlete’s view, after</h2>
+      <img src="04-athlete-after.png" alt="The same card now showing Reps: 6 each position" />
+
+      <h2>What the PATCH actually carried</h2>
+      <p class="meta">Captured by intercepting the real request from the real Save button. Nothing was written.</p>
+      <table>
+        <tr><th>Field</th><th>Stored value</th><th>Before — sent on save</th><th>After — sent on save</th></tr>
+        <tr><td><code>reps</code></td><td>"8"</td><td class="bad">null — erased</td><td class="good">"8"</td></tr>
+        <tr><td><code>rest_seconds</code></td><td>45</td><td class="bad">null — erased</td><td class="good">"45"</td></tr>
+        <tr><td><code>rpe_target</code></td><td>8</td><td class="bad">null — erased</td><td class="good">"8"</td></tr>
+        <tr><td><code>tempo</code></td><td>"4-2-4"</td><td>"4-2-4"</td><td>"4-2-4"</td></tr>
+        <tr><td><code>intensity_pct</code></td><td>null</td><td>null (harmless here)</td><td class="good">key omitted</td></tr>
+      </table>
+
+      <h2>How far it reaches, in production</h2>
+      <table>
+        <tr><th>Field the editor hid but the row carries</th><th>Rows affected</th></tr>
+        <tr><td><code>rest_seconds</code></td><td>470</td></tr>
+        <tr><td><code>reps</code></td><td>169</td></tr>
+        <tr><td><code>rpe_target</code></td><td>118</td></tr>
+        <tr><td><code>suggested_weight_kg</code> / <code>intensity_pct</code></td><td>0</td></tr>
+      </table>
+      <p class="meta">Counted over 7,452 <code>program_exercises</code> rows on 2026-09-16.</p>
+
+      <h2>Reproducing these shots</h2>
+      <table>
+        <tr><th>Step</th><th>Command</th></tr>
+        <tr><td>Dev server</td><td><code>npm run dev</code> (port 3050)</td></tr>
+        <tr><td>Coach’s view</td><td><code>node scripts/capture-hidden-exercise-params.mjs --phase after</code></td></tr>
+        <tr><td>Athlete’s view</td><td><code>node scripts/capture-athlete-prescription.mjs --phase after</code></td></tr>
+        <tr><td>“Before” halves</td>
+            <td>revert the three source files, let dev recompile, then run each with <code>--phase before</code></td></tr>
+      </table>
+      <p class="meta">
+        Both scripts refuse to run against anything but the dev clone, assert the session before photographing,
+        and assert the expected field state for the phase — so a stale build fails loudly instead of quietly
+        mislabelling a screenshot.
+      </p>
+    </div>
+  </body>
+</html>
