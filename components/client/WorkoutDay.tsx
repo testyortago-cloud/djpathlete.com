@@ -552,7 +552,11 @@ function ExerciseCard({
               {/* Prescription — labeled + bold, always visible so clients never lose their sets/reps */}
               <div className="mt-1.5 flex flex-wrap gap-x-3.5 gap-y-1">
                 {pe.sets != null && <PrescriptionCell label="Sets">{pe.sets}</PrescriptionCell>}
-                {fields.showReps && pe.reps && <PrescriptionCell label="Reps">{pe.reps}</PrescriptionCell>}
+                {/* Value-driven like Rest / Tempo / Intensity below: a category that
+                    hides reps by default (flexibility, say) must not swallow reps the
+                    coach actually prescribed. Only the SET-LOGGING table stays gated
+                    on the category — see fields.showReps further down. */}
+                {pe.reps && <PrescriptionCell label="Reps">{pe.reps}</PrescriptionCell>}
                 {fields.showDuration === "prominent" && pe.duration_seconds ? (
                   <PrescriptionCell label="Hold">{formatRestTime(pe.duration_seconds)}</PrescriptionCell>
                 ) : null}

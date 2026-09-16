@@ -20,7 +20,7 @@ import { FormTour } from "@/components/admin/FormTour"
 import { TourButton } from "@/components/admin/TourButton"
 import { EDIT_EXERCISE_TOUR_STEPS } from "@/lib/tour-steps"
 import type { Exercise, ExerciseCategory, ProgramExercise } from "@/types/database"
-import { getCategoryFields } from "@/lib/exercise-fields"
+import { getCategoryFields, withPopulatedFields } from "@/lib/exercise-fields"
 import {
   TRAINING_TECHNIQUE_OPTIONS,
   GROUPED_TECHNIQUES,
@@ -121,6 +121,14 @@ export function EditExerciseDialog({
 
   if (!programExercise) return null
 
+  // Which inputs this dialog renders. The category picks the defaults, then any
+  // field the saved row already has a value for is added back — otherwise a
+  // coach can neither see nor keep it (see withPopulatedFields).
+  const catFields = withPopulatedFields(
+    getCategoryFields(programExercise.exercises.category as ExerciseCategory[]),
+    programExercise,
+  )
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!programExercise) return
@@ -142,22 +150,27 @@ export function EditExerciseDialog({
       groupTag = `${letter}${linkedCount + 1}`
     }
 
+    // Send ONLY the fields this form rendered. An input that isn't on screen
+    // contributes nothing to FormData, so including its key would PATCH null over
+    // a real value — the route writes every key present in the body.
     const body: Record<string, unknown> = {
       technique,
       sets: formData.get("sets") || null,
-      reps: formData.get("reps") || null,
-      rest_seconds: formData.get("rest_seconds") || null,
-      duration_seconds: formData.get("duration_seconds") || null,
       notes: formData.get("notes") || null,
-      rpe_target: formData.get("rpe_target") || null,
-      intensity_pct: formData.get("intensity_pct") || null,
-      suggested_weight_kg: formData.get("suggested_weight_kg")
-        ? toKg(Number(formData.get("suggested_weight_kg")))
-        : null,
-      tempo: formData.get("tempo") || null,
       group_tag: groupTag,
       requires_video: formData.get("requires_video") === "on",
     }
+    if (catFields.showReps) body.reps = formData.get("reps") || null
+    if (catFields.showRest) body.rest_seconds = formData.get("rest_seconds") || null
+    if (catFields.showDuration) body.duration_seconds = formData.get("duration_seconds") || null
+    if (catFields.showRpe) body.rpe_target = formData.get("rpe_target") || null
+    if (catFields.showIntensity) body.intensity_pct = formData.get("intensity_pct") || null
+    if (catFields.showWeight) {
+      body.suggested_weight_kg = formData.get("suggested_weight_kg")
+        ? toKg(Number(formData.get("suggested_weight_kg")))
+        : null
+    }
+    if (catFields.showTempo) body.tempo = formData.get("tempo") || null
 
     try {
       const response = await fetch(`/api/admin/programs/${programId}/exercises/${programExercise.id}`, {
@@ -249,208 +262,198 @@ export function EditExerciseDialog({
           <DialogDescription>Update parameters for {programExercise.exercises.name}.</DialogDescription>
         </DialogHeader>
 
-        {(() => {
-          const catFields = getCategoryFields(programExercise.exercises.category as ExerciseCategory[])
-          return (
-            <form id="edit-exercise-form" onSubmit={handleSubmit} className="space-y-4 overflow-y-auto min-h-0 pr-1">
-              <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={FIELD_LABELS} />
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-sets">Sets *</Label>
-                  <Input
-                    id="edit-sets"
-                    name="sets"
-                    type="number"
-                    min={1}
-                    defaultValue={programExercise.sets ?? ""}
-                    placeholder="e.g. 3"
-                  />
-                </div>
-                {catFields.showReps && (
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-reps">Reps *</Label>
-                    <Input
-                      id="edit-reps"
-                      name="reps"
-                      defaultValue={programExercise.reps ?? ""}
-                      placeholder="e.g. 8-12"
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                {catFields.showRest && (
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-rest">Rest (seconds)</Label>
-                    <Input
-                      id="edit-rest"
-                      name="rest_seconds"
-                      type="number"
-                      min={0}
-                      defaultValue={programExercise.rest_seconds ?? ""}
-                      placeholder="e.g. 60"
-                    />
-                  </div>
-                )}
-                {catFields.showDuration && (
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-duration">
-                      Duration per set (sec){catFields.showDuration === "prominent" ? " *" : ""}
-                    </Label>
-                    <Input
-                      id="edit-duration"
-                      name="duration_seconds"
-                      type="number"
-                      min={0}
-                      defaultValue={programExercise.duration_seconds ?? ""}
-                      placeholder="e.g. 30"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Weight & Intensity fields */}
-              {(catFields.showWeight || catFields.showRpe || catFields.showIntensity) && (
-                <div className="grid grid-cols-2 gap-4">
-                  {catFields.showWeight && (
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-weight">Suggested Weight ({unitLabel()})</Label>
-                      <Input
-                        id="edit-weight"
-                        name="suggested_weight_kg"
-                        type="number"
-                        min={0}
-                        step={0.5}
-                        defaultValue={
-                          programExercise.suggested_weight_kg != null
-                            ? (displayWeight(programExercise.suggested_weight_kg) ?? "")
-                            : ""
-                        }
-                        placeholder={unit === "lbs" ? "e.g. 135" : "e.g. 60"}
-                        key={unit}
-                      />
-                    </div>
-                  )}
-                  {catFields.showIntensity && (
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-intensity">Intensity (%1RM)</Label>
-                      <Input
-                        id="edit-intensity"
-                        name="intensity_pct"
-                        type="number"
-                        min={0}
-                        max={100}
-                        defaultValue={programExercise.intensity_pct ?? ""}
-                        placeholder="e.g. 75"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {catFields.showRpe && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-rpe">RPE Target (1-10)</Label>
-                    <Input
-                      id="edit-rpe"
-                      name="rpe_target"
-                      type="number"
-                      min={1}
-                      max={10}
-                      step={0.5}
-                      defaultValue={programExercise.rpe_target ?? ""}
-                      placeholder="e.g. 7"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Technique picker */}
+        <form id="edit-exercise-form" onSubmit={handleSubmit} className="space-y-4 overflow-y-auto min-h-0 pr-1">
+          <FormErrorBanner message={formError} fieldErrors={fieldErrors} labels={FIELD_LABELS} />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-sets">Sets *</Label>
+              <Input
+                id="edit-sets"
+                name="sets"
+                type="number"
+                min={1}
+                defaultValue={programExercise.sets ?? ""}
+                placeholder="e.g. 3"
+              />
+            </div>
+            {catFields.showReps && (
               <div className="space-y-2">
-                <Label>Method</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {TRAINING_TECHNIQUE_OPTIONS.map((t) => {
-                    const config = TECHNIQUE_CONFIG[t]
-                    const isSelected = technique === t
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => {
-                          setTechnique(t)
-                          if (!GROUPED_TECHNIQUES.includes(t)) {
-                            setLinkedExerciseIds([])
-                          }
-                        }}
-                        className={`flex flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors ${
-                          isSelected
-                            ? "border-primary bg-primary/5 ring-1 ring-primary"
-                            : "border-border hover:bg-surface/50"
-                        }`}
-                      >
-                        <span className="text-sm font-medium">{config.label}</span>
-                        <span className="text-[11px] text-muted-foreground leading-tight">{config.description}</span>
-                      </button>
-                    )
-                  })}
-                </div>
+                <Label htmlFor="edit-reps">Reps *</Label>
+                <Input id="edit-reps" name="reps" defaultValue={programExercise.reps ?? ""} placeholder="e.g. 8-12" />
               </div>
+            )}
+          </div>
 
-              {/* Exercise linker — shown for grouped techniques */}
-              {needsGrouping && (
-                <ExerciseLinker
-                  technique={technique as "superset" | "giant_set" | "circuit"}
-                  dayExercises={dayExercises}
-                  excludeId={programExercise.id}
-                  selectedIds={linkedExerciseIds}
-                  onSelectionChange={setLinkedExerciseIds}
+          <div className="grid grid-cols-2 gap-4">
+            {catFields.showRest && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-rest">Rest (seconds)</Label>
+                <Input
+                  id="edit-rest"
+                  name="rest_seconds"
+                  type="number"
+                  min={0}
+                  defaultValue={programExercise.rest_seconds ?? ""}
+                  placeholder="e.g. 60"
                 />
-              )}
-
-              {catFields.showTempo && (
-                <div className="space-y-2">
-                  <Label htmlFor="edit-tempo">Tempo</Label>
-                  <Input
-                    id="edit-tempo"
-                    name="tempo"
-                    defaultValue={programExercise.tempo ?? ""}
-                    placeholder="e.g. 3-1-2-0"
-                  />
-                </div>
-              )}
-
-              {/* Requires-video toggle — shows a 🎥 "Record" marker to the client */}
-              <div className="flex items-center gap-2">
-                <input
-                  id="edit-requires-video"
-                  name="requires_video"
-                  type="checkbox"
-                  defaultChecked={programExercise.requires_video ?? false}
-                  className="size-4 rounded border-input accent-primary"
-                />
-                <Label htmlFor="edit-requires-video" className="font-normal">
-                  Client must record a video of this exercise
+              </div>
+            )}
+            {catFields.showDuration && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-duration">
+                  Duration per set (sec){catFields.showDuration === "prominent" ? " *" : ""}
                 </Label>
-              </div>
-
-              <ExerciseInstructionsHint instructions={programExercise.exercises.instructions} />
-
-              <div className="space-y-2">
-                <Label htmlFor="edit-notes">Notes</Label>
-                <textarea
-                  id="edit-notes"
-                  name="notes"
-                  rows={2}
-                  defaultValue={programExercise.notes ?? ""}
-                  placeholder="Any specific instructions..."
-                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                <Input
+                  id="edit-duration"
+                  name="duration_seconds"
+                  type="number"
+                  min={0}
+                  defaultValue={programExercise.duration_seconds ?? ""}
+                  placeholder="e.g. 30"
                 />
               </div>
-            </form>
-          )
-        })()}
+            )}
+          </div>
+
+          {/* Weight & Intensity fields */}
+          {(catFields.showWeight || catFields.showRpe || catFields.showIntensity) && (
+            <div className="grid grid-cols-2 gap-4">
+              {catFields.showWeight && (
+                <div className="space-y-2">
+                  <Label htmlFor="edit-weight">Suggested Weight ({unitLabel()})</Label>
+                  <Input
+                    id="edit-weight"
+                    name="suggested_weight_kg"
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    defaultValue={
+                      programExercise.suggested_weight_kg != null
+                        ? (displayWeight(programExercise.suggested_weight_kg) ?? "")
+                        : ""
+                    }
+                    placeholder={unit === "lbs" ? "e.g. 135" : "e.g. 60"}
+                    key={unit}
+                  />
+                </div>
+              )}
+              {catFields.showIntensity && (
+                <div className="space-y-2">
+                  <Label htmlFor="edit-intensity">Intensity (%1RM)</Label>
+                  <Input
+                    id="edit-intensity"
+                    name="intensity_pct"
+                    type="number"
+                    min={0}
+                    max={100}
+                    defaultValue={programExercise.intensity_pct ?? ""}
+                    placeholder="e.g. 75"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {catFields.showRpe && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-rpe">RPE Target (1-10)</Label>
+                <Input
+                  id="edit-rpe"
+                  name="rpe_target"
+                  type="number"
+                  min={1}
+                  max={10}
+                  step={0.5}
+                  defaultValue={programExercise.rpe_target ?? ""}
+                  placeholder="e.g. 7"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Technique picker */}
+          <div className="space-y-2">
+            <Label>Method</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {TRAINING_TECHNIQUE_OPTIONS.map((t) => {
+                const config = TECHNIQUE_CONFIG[t]
+                const isSelected = technique === t
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      setTechnique(t)
+                      if (!GROUPED_TECHNIQUES.includes(t)) {
+                        setLinkedExerciseIds([])
+                      }
+                    }}
+                    className={`flex flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors ${
+                      isSelected
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border hover:bg-surface/50"
+                    }`}
+                  >
+                    <span className="text-sm font-medium">{config.label}</span>
+                    <span className="text-[11px] text-muted-foreground leading-tight">{config.description}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Exercise linker — shown for grouped techniques */}
+          {needsGrouping && (
+            <ExerciseLinker
+              technique={technique as "superset" | "giant_set" | "circuit"}
+              dayExercises={dayExercises}
+              excludeId={programExercise.id}
+              selectedIds={linkedExerciseIds}
+              onSelectionChange={setLinkedExerciseIds}
+            />
+          )}
+
+          {catFields.showTempo && (
+            <div className="space-y-2">
+              <Label htmlFor="edit-tempo">Tempo</Label>
+              <Input
+                id="edit-tempo"
+                name="tempo"
+                defaultValue={programExercise.tempo ?? ""}
+                placeholder="e.g. 3-1-2-0"
+              />
+            </div>
+          )}
+
+          {/* Requires-video toggle — shows a 🎥 "Record" marker to the client */}
+          <div className="flex items-center gap-2">
+            <input
+              id="edit-requires-video"
+              name="requires_video"
+              type="checkbox"
+              defaultChecked={programExercise.requires_video ?? false}
+              className="size-4 rounded border-input accent-primary"
+            />
+            <Label htmlFor="edit-requires-video" className="font-normal">
+              Client must record a video of this exercise
+            </Label>
+          </div>
+
+          <ExerciseInstructionsHint instructions={programExercise.exercises.instructions} />
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-notes">Notes</Label>
+            <textarea
+              id="edit-notes"
+              name="notes"
+              rows={2}
+              defaultValue={programExercise.notes ?? ""}
+              placeholder="Any specific instructions..."
+              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+            />
+          </div>
+        </form>
 
         <DialogFooter className="shrink-0 border-t border-border pt-4">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
