@@ -406,7 +406,14 @@ export async function POST(request: NextRequest) {
           // Stripe unreachable, or the pack turned out to be paid / not
           // awaiting a card. Nothing to send and nothing to stamp — the next
           // run re-reads the truth from Stripe rather than trusting a cache.
-          if (!link.ok) continue
+          // Logged rather than counted as a failure: a 409 here means "already
+          // paid", which is a good outcome, while a 502 means Stripe is down.
+          // Counting both would cry wolf; counting neither would make an
+          // outage look identical to a quiet night, so say which it was.
+          if (!link.ok) {
+            console.warn(`[pack-renewals] no link to re-send for pack ${pack.id}: ${link.status} ${link.error}`)
+            continue
+          }
           // The existing link is STILL OPEN. The payer can use it; a duplicate
           // of a live link is nagging, not helping.
           if (!link.refreshed) continue
@@ -432,7 +439,16 @@ export async function POST(request: NextRequest) {
           // session was minted. Emailing anyone else hands them a link they
           // cannot pay.
           const to = pack.bill_to_email ?? payer.email ?? trainee.email
-          if (!to) continue
+          // THROW rather than `continue`. The stamp above has already spent a
+          // re-send slot, so skipping quietly here would burn this pack's whole
+          // budget over three days, send nothing, and report neither a send nor
+          // a failure — a silent no-op that looks exactly like a quiet night.
+          // Throwing routes it into the per-pack catch, which counts and logs.
+          if (!to) {
+            throw new Error(
+              `no address to send the payment link to (payer ${billingUserId}, trainee ${pack.client_user_id})`,
+            )
+          }
           const clientName = `${trainee.first_name ?? ""} ${trainee.last_name ?? ""}`.trim() || "your athlete"
 
           await sendPackPaymentLinkEmail({

@@ -282,6 +282,23 @@ describe("POST /api/admin/internal/pack-renewals — expired payment-link re-sen
     expect(sent.ccClientEmail).toBeNull()
   })
 
+  it("counts a failure rather than going quiet when there is no address to send to", async () => {
+    // The stamp has already spent a slot by this point, so skipping silently
+    // would burn the pack's whole budget across three runs, send nothing, and
+    // report neither a send nor a failure.
+    listRenewalsAwaitingPaymentMock.mockResolvedValue([pendingPack({ bill_to_email: null })])
+    resolvePackPaymentLinkMock.mockResolvedValue({ ok: true, url: "https://pay/new", refreshed: true })
+    resolveBillingUserIdMock.mockResolvedValue("payer-1")
+    getUserByIdMock.mockResolvedValue({ id: "x", email: null, first_name: null, last_name: null })
+
+    const res = await POST(req())
+    const json = await res.json()
+
+    expect(json.linksResent).toBe(0)
+    expect(json.linkResendsFailed).toBe(1)
+    expect(sendPackPaymentLinkEmailMock).not.toHaveBeenCalled()
+  })
+
   it("keeps going after one pack throws", async () => {
     listRenewalsAwaitingPaymentMock.mockResolvedValue([pendingPack({ id: "bad" }), pendingPack({ id: "good" })])
     resolvePackPaymentLinkMock
