@@ -2946,6 +2946,20 @@ export interface ClientPackage {
   auto_renew: boolean
   renewed_from_package_id: string | null
   renewal_attempted_at: string | null
+  /** How many times an EXPIRED payment link has been auto-re-minted and re-emailed.
+   *  Stopping rule for the pack-renewals cron — migration 00261.
+   *
+   *  OPTIONAL for two real reasons, not laziness. The column is NOT NULL DEFAULT 0,
+   *  so an INSERT payload must be allowed to omit it (pack-renewal-rules.ts and
+   *  session-credits.ts both build Omit<ClientPackage, …> insert shapes). And
+   *  migrations race Vercel on merge, so for one deploy a SELECT genuinely comes
+   *  back without the column — code that reads it must default, and the type
+   *  should say so rather than promise a number that isn't there. */
+  payment_link_resent_count?: number
+  /** When the last automatic re-send went out. Throttle against a daily cron
+   *  racing Stripe's 24h session expiry — migration 00261. Optional for the same
+   *  two reasons as the count above. */
+  payment_link_resent_at?: string | null
   created_by: string | null
   created_at: string
   updated_at: string

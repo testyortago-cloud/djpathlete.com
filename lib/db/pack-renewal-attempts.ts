@@ -1,5 +1,5 @@
 import { createServiceRoleClient } from "@/lib/supabase"
-import type { PackRenewalAttempt } from "@/types/database"
+import type { ClientPackage, PackRenewalAttempt } from "@/types/database"
 
 function getClient() {
   return createServiceRoleClient()
@@ -24,12 +24,7 @@ export async function createRenewalAttemptIfAbsent(a: Omit<PackRenewalAttempt, "
 
 export async function updateRenewalAttempt(id: string, patch: Partial<PackRenewalAttempt>) {
   const supabase = getClient()
-  const { data, error } = await supabase
-    .from("pack_renewal_attempts")
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single()
+  const { data, error } = await supabase.from("pack_renewal_attempts").update(patch).eq("id", id).select().single()
   if (error) throw error
   return data as PackRenewalAttempt
 }
@@ -112,6 +107,35 @@ export async function countRenewalsAwaitingPayment(): Promise<number> {
     .eq("status", "active")
   if (packError) throw packError
   return count ?? 0
+}
+
+/**
+ * The same set countRenewalsAwaitingPayment counts, as rows the cron can act on.
+ *
+ * DELIBERATELY NOT sharing a query with that function. Its shape was validated
+ * against production and its failure mode is counting too many, which is how a
+ * real alert gets ignored; a refactor that quietly widened it would be invisible
+ * until an alert fired for a pack that was fine. If you change the filters in
+ * one of these, change them in the other — they are two readings of one rule.
+ */
+export async function listRenewalsAwaitingPayment(): Promise<ClientPackage[]> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("pack_renewal_attempts")
+    .select("new_package_id")
+    .in("status", ["skipped", "failed"])
+    .not("new_package_id", "is", null)
+  if (error) throw error
+  const ids = (data ?? []).map((row) => (row as { new_package_id: string }).new_package_id)
+  if (ids.length === 0) return []
+  const { data: packs, error: packError } = await supabase
+    .from("client_packages")
+    .select("*")
+    .in("id", ids)
+    .eq("payment_status", "pending")
+    .eq("status", "active")
+  if (packError) throw packError
+  return (packs ?? []) as ClientPackage[]
 }
 
 export async function listRenewalAttempts(limit = 100) {

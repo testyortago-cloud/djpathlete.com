@@ -30,6 +30,7 @@ vi.mock("@/lib/db/client-packages", () => ({
   listDepletedAutoRenewPackages: (...a: unknown[]) => listDepletedAutoRenewPackagesMock(...a),
 }))
 vi.mock("@/lib/db/pack-renewal-attempts", () => ({
+  listRenewalsAwaitingPayment: async () => [],
   countStalePendingRenewalAttempts: (...a: unknown[]) => countStalePendingRenewalAttemptsMock(...a),
   // Present so a missing export cannot degrade to a silent no-op — see the
   // same note in pack-renewals.test.ts.
@@ -47,11 +48,20 @@ vi.mock("@/lib/services/billing-payer", () => ({
   resolveBillingUserId: (...a: unknown[]) => resolveBillingUserIdMock(...a),
 }))
 vi.mock("@/lib/email", () => ({
+  sendPackPaymentLinkEmail: vi.fn(),
   sendPackRenewalEmail: (...a: unknown[]) => sendPackRenewalEmailMock(...a),
   sendPackAutoRenewWarningEmail: (...a: unknown[]) => sendPackAutoRenewWarningEmailMock(...a),
 }))
-vi.mock("@/lib/services/pack-renewal", () => ({ attemptPackRenewal: (...a: unknown[]) => attemptPackRenewalMock(...a) }))
+vi.mock("@/lib/services/pack-renewal", () => ({
+  attemptPackRenewal: (...a: unknown[]) => attemptPackRenewalMock(...a),
+}))
 vi.mock("@/lib/packs/flags", () => ({
+  // Present but OFF, on purpose. The route calls the re-send pass inside its own
+  // try/catch, so an ABSENT export degrades to a silent no-op and this suite
+  // would go on passing while the pass was broken. Naming it here makes the
+  // no-op deliberate instead of accidental.
+  packLinkResendEnabled: async () => false,
+  packLinkResendMax: async () => 3,
   PACK_RENEWALS_CRON_KEY: "cron_pack_renewals_enabled",
   packReminderLowAt: async () => 2,
   packReminderExpiryDays: async () => 7,
@@ -224,7 +234,13 @@ describe("POST /api/admin/internal/pack-renewals — auto-renew warning pass", (
     resolveBillingUserIdMock.mockResolvedValue("payer-1")
     getUserByIdMock.mockImplementation(async (id: string) =>
       id === "payer-1"
-        ? { id: "payer-1", email: "parent@x.com", first_name: "Pat", last_name: "Doe", stripe_customer_id: "cus_parent" }
+        ? {
+            id: "payer-1",
+            email: "parent@x.com",
+            first_name: "Pat",
+            last_name: "Doe",
+            stripe_customer_id: "cus_parent",
+          }
         : { id: "trainee-1", email: "kid@x.com", first_name: "Kim", last_name: "Doe" },
     )
     getDefaultPaymentMethodMock.mockResolvedValue({ brand: "visa", last4: "4242" })

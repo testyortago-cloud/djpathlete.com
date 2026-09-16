@@ -67,3 +67,21 @@ export const PACK_AUTO_RENEW_MAX_AGE_DAYS_KEY = "pack_auto_renew_max_age_days"
 export const PACK_AUTO_RENEW_MAX_AGE_DAYS_DEFAULT = 7
 export const packAutoRenewMaxAgeDays = () =>
   getSetting<number>(PACK_AUTO_RENEW_MAX_AGE_DAYS_KEY, PACK_AUTO_RENEW_MAX_AGE_DAYS_DEFAULT)
+
+// ── Automatic re-send of an EXPIRED pack payment link ─────────────────────────
+// Default ON, the kill-switch convention used by session_fee_payer_notify above
+// rather than the opt-in convention used by the reminder cron. The distinction
+// is what the flag protects: the reminder cron decides whether to start a
+// conversation with every client on the roster, which a coach may reasonably
+// never want. This only ever fires for a payer who was ALREADY emailed a link
+// for a pack their athlete is already training on, and only once that link is
+// verifiably dead. Leaving it off by default would ship the fix for the exact
+// silence it exists to break.
+export const PACK_LINK_RESEND_KEY = "cron_pack_link_resend_enabled"
+export const packLinkResendEnabled = () => getSetting<boolean>(PACK_LINK_RESEND_KEY, true)
+
+// How many automatic re-sends one pack may get before the cron stops emailing
+// and leaves it to the daily "renewals waiting to be paid" admin alert.
+export const PACK_LINK_RESEND_MAX_KEY = "pack_link_resend_max"
+export const PACK_LINK_RESEND_MAX_DEFAULT = 3
+export const packLinkResendMax = () => getSetting<number>(PACK_LINK_RESEND_MAX_KEY, PACK_LINK_RESEND_MAX_DEFAULT)

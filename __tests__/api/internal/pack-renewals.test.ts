@@ -19,6 +19,7 @@ vi.mock("@/lib/db/client-packages", () => ({
 // pack-renewals-sweep.test.ts) — default it to zero so the check no-ops
 // cleanly instead of throwing on a missing mock export.
 vi.mock("@/lib/db/pack-renewal-attempts", () => ({
+  listRenewalsAwaitingPayment: async () => [],
   countStalePendingRenewalAttempts: async () => 0,
   // Must be present even though this suite ignores it: the route calls it
   // inside a try/catch, so a missing export degrades to a silent no-op and
@@ -30,8 +31,18 @@ vi.mock("@/lib/db/users", () => ({
   getUsers: (...a: unknown[]) => getUsersMock(...a),
 }))
 vi.mock("@/lib/db/notifications", () => ({ createNotification: (...a: unknown[]) => createNotificationMock(...a) }))
-vi.mock("@/lib/email", () => ({ sendPackRenewalEmail: (...a: unknown[]) => sendPackRenewalEmailMock(...a) }))
+vi.mock("@/lib/email", () => ({
+  sendPackRenewalEmail: (...a: unknown[]) => sendPackRenewalEmailMock(...a),
+  sendPackAutoRenewWarningEmail: vi.fn(),
+  sendPackPaymentLinkEmail: vi.fn(),
+}))
 vi.mock("@/lib/packs/flags", () => ({
+  // Present but OFF, on purpose. The route calls the re-send pass inside its own
+  // try/catch, so an ABSENT export degrades to a silent no-op and this suite
+  // would go on passing while the pass was broken. Naming it here makes the
+  // no-op deliberate instead of accidental.
+  packLinkResendEnabled: async () => false,
+  packLinkResendMax: async () => 3,
   PACK_RENEWALS_CRON_KEY: "cron_pack_renewals_enabled",
   packReminderLowAt: async () => 2,
   packReminderExpiryDays: async () => 7,
@@ -109,7 +120,9 @@ describe("POST /api/admin/internal/pack-renewals", () => {
 
     expect(json).toMatchObject({ scanned: 3, reminders: 1, emailed: 1, notified: 1, errors: 0 })
     expect(sendPackRenewalEmailMock).toHaveBeenCalledTimes(1)
-    expect(sendPackRenewalEmailMock).toHaveBeenCalledWith(expect.objectContaining({ threshold: "empty", to: "c1@x.com" }))
+    expect(sendPackRenewalEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({ threshold: "empty", to: "c1@x.com" }),
+    )
     expect(updateClientPackageMock).toHaveBeenCalledWith("empty", { last_reminded_threshold: "empty" })
     // one client in-app notification + one coach summary notification
     expect(createNotificationMock).toHaveBeenCalledTimes(2)
