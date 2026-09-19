@@ -103,8 +103,12 @@ describe("the builder's back link", () => {
       <FunnelBuilder
         funnelId="f1"
         funnelName="Free Trial"
+        funnelSlug="free-trial"
         stepId="s1"
         stepName="Landing page"
+        stepSlug="index"
+        stepIsEntry={true}
+        initialSeo={{ seo_title: null, seo_description: null, og_image_url: null, noindex: false }}
         publicUrl="/go/free-trial"
         previewUrl="/preview/free-trial"
         funnelStatus="published"

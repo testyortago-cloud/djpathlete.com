@@ -535,6 +535,100 @@ export async function getPublishedStep(
 }
 
 // ---------------------------------------------------------------------------
+// Sitemap
+// ---------------------------------------------------------------------------
+
+/** One indexable public funnel page, as `app/sitemap.ts` needs it. */
+export interface PublishedFunnelStepRef {
+  funnel: Pick<Funnel, "name" | "slug">
+  step: Pick<
+    FunnelStep,
+    "name" | "slug" | "is_entry" | "seo_title" | "seo_description" | "og_image_url" | "noindex"
+  >
+  updatedAt: string
+}
+
+/**
+ * Every `/go/` page that belongs in the sitemap.
+ *
+ * THREE CONDITIONS, AND ALL THREE ARE LOAD-BEARING:
+ *
+ *   1. `funnels.status = 'published'` — a draft funnel's steps 404 on /go.
+ *   2. `published_version_id is not null` — a step with no version row also
+ *      404s, even inside a published funnel. This is the `StepList` /
+ *      `StepRail` rule ("a version row alone is not live"), read from the
+ *      other side: BOTH have to be true.
+ *   3. `noindex = false` — listing a URL in the sitemap and then serving it
+ *      with `robots: noindex` are contradictory instructions to a crawler.
+ *      The sitemap is a request to index; excluding the row is the only way to
+ *      keep the two signals agreeing.
+ *
+ * TENANCY, STATED HONESTLY RATHER THAN IMPLIED: there is no predicate here
+ * because there is nothing to predicate on — `funnels` has no `business_id`
+ * column (18 columns, none of them a tenant key; checked against
+ * `information_schema` on 2026-09-19). The sibling event reader in
+ * `app/sitemap.ts` filters by `platformBusinessId()`; doing the same here
+ * would mean inventing a column, and writing the constant in would be a new
+ * `SINGLETON_BUSINESS_ID` reference in all but name. When `funnels` becomes
+ * tenant-scoped this reader needs the predicate — it is a reader with no
+ * tenant filter, which the repo's own rule calls a leak with a fuse in it.
+ *
+ * Two queries rather than one embedded select: `.in()` keeps it at two round
+ * trips regardless of row count, and an embedded filter on the child of a
+ * PostgREST join is the kind of thing that silently returns parents with empty
+ * children instead of no parents.
+ */
+export async function listPublishedFunnelSteps(): Promise<PublishedFunnelStepRef[]> {
+  const supabase = getClient()
+
+  const { data: funnelRows, error: funnelError } = await supabase
+    .from("funnels")
+    .select("id, name, slug")
+    .eq("status", "published")
+  if (funnelError) throw new Error(`listPublishedFunnelSteps(funnels): ${funnelError.message}`)
+
+  const funnels = (funnelRows ?? []) as { id: string; name: string; slug: string }[]
+  if (funnels.length === 0) return []
+
+  const { data: stepRows, error: stepError } = await supabase
+    .from("funnel_steps")
+    .select(
+      "funnel_id, name, slug, is_entry, seo_title, seo_description, og_image_url, noindex, updated_at, published_version_id",
+    )
+    .in(
+      "funnel_id",
+      funnels.map((row) => row.id),
+    )
+    .not("published_version_id", "is", null)
+    .eq("noindex", false)
+  if (stepError) throw new Error(`listPublishedFunnelSteps(steps): ${stepError.message}`)
+
+  const byId = new Map(funnels.map((row) => [row.id, row]))
+
+  return ((stepRows ?? []) as (FunnelStep & { funnel_id: string })[]).flatMap((step) => {
+    const funnel = byId.get(step.funnel_id)
+    // Cannot happen — the `.in()` came from these ids. Dropped rather than
+    // thrown so one odd row cannot cost the whole sitemap its funnel section.
+    if (!funnel) return []
+    return [
+      {
+        funnel: { name: funnel.name, slug: funnel.slug },
+        step: {
+          name: step.name,
+          slug: step.slug,
+          is_entry: step.is_entry,
+          seo_title: step.seo_title,
+          seo_description: step.seo_description,
+          og_image_url: step.og_image_url,
+          noindex: step.noindex,
+        },
+        updatedAt: step.updated_at,
+      },
+    ]
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Submissions
 // ---------------------------------------------------------------------------
 

@@ -2,6 +2,8 @@ import type { MetadataRoute } from "next"
 import { getPublishedBlogPosts } from "@/lib/db/blog-posts"
 import { getPublishedEvents } from "@/lib/db/events"
 import { listActiveProducts } from "@/lib/db/shop-products"
+import { listPublishedFunnelSteps } from "@/lib/db/funnels"
+import { funnelStepPath } from "@/lib/funnels/seo"
 import { SITE_URL } from "@/lib/constants"
 import { SPORTS } from "@/lib/data/sports"
 import { platformBusinessId } from "@/lib/tenancy/platform"
@@ -124,5 +126,38 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // If DB is unavailable, return without shop pages
   }
 
-  return [...staticPages, ...blogPages, ...eventPages, ...shopPages]
+  // Published funnel and landing pages (/go/...).
+  //
+  // robots.txt has always ALLOWED /go/, so these pages were crawlable and
+  // simply undiscoverable — 34 URLs in this file and none of them a funnel.
+  //
+  // `listPublishedFunnelSteps` owns the three conditions (funnel published,
+  // step has a live version, step not noindexed); this block owns only the
+  // URL shape, and it takes that from `funnelStepPath` — the SAME helper
+  // `generateMetadata` builds its canonical from. That is the point of sharing
+  // it: a sitemap that advertises `/go/x/start` while the page canonicalises
+  // to `/go/x` is a sitemap arguing with the page it points at.
+  //
+  // NOTE this does not fix the orphan-page problem on its own. Nothing on the
+  // marketing site links to /go/athlete-quiz, and a sitemap entry makes a page
+  // discoverable without passing it any authority. See
+  // `docs/funnel-seo-audit-2026-09-19.md` §7.
+  let funnelPages: MetadataRoute.Sitemap = []
+  try {
+    const steps = await listPublishedFunnelSteps()
+    funnelPages = steps.map((entry) => ({
+      url: `${BASE_URL}${funnelStepPath(entry.funnel.slug, entry.step)}`,
+      lastModified: new Date(entry.updatedAt),
+      changeFrequency: "weekly" as const,
+      // Level with the money pages' neighbours, below them. A live funnel is a
+      // conversion surface, but it is also a page the owner can unpublish on a
+      // whim, which /in-person is not.
+      priority: 0.7,
+    }))
+  } catch {
+    // Same degrade as every other dynamic block here: the static sitemap is
+    // worth more than an error page.
+  }
+
+  return [...staticPages, ...blogPages, ...eventPages, ...shopPages, ...funnelPages]
 }

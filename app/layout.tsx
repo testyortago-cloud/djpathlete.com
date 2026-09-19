@@ -5,7 +5,7 @@ import { SessionProvider } from "@/components/providers/SessionProvider"
 import { Toaster } from "@/components/ui/sonner"
 import { GoogleAnalytics } from "@/components/shared/GoogleAnalytics"
 import { CaptureGclid } from "@/components/analytics/CaptureGclid"
-import { SITE_URL } from "@/lib/constants"
+import { SITE_URL, SITE_BRAND } from "@/lib/constants"
 import "./globals.css"
 
 const lexendExa = Lexend_Exa({
@@ -30,7 +30,9 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
     default: "DJP Athlete — Elite Sports Performance Coaching",
-    template: "%s | DJP Athlete",
+    // The one definition. `lib/funnels/seo.ts` appends the same constant to
+    // OG/Twitter titles, which do not pass through this template.
+    template: `%s | ${SITE_BRAND}`,
   },
   description:
     "Elite sports performance coaching by Darren J Paul, PhD. Assessment-led, individualized programming for serious athletes — in-person, online, and return-to-performance.",

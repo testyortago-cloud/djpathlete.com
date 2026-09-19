@@ -6,6 +6,16 @@
 export const SITE_URL = "https://www.darrenjpaul.com"
 
 /**
+ * The brand the root layout's title template appends (`%s | DJP Athlete`).
+ *
+ * Exported because OG and Twitter titles do NOT go through that template and
+ * have to append it themselves — see `.agents/slug-and-metadata-convention.md`.
+ * Two copies of this string is two strings that can drift, and the drift shows
+ * up as a share card whose brand disagrees with the page's own <title>.
+ */
+export const SITE_BRAND = "DJP Athlete"
+
+/**
  * Hardcoded coach email — every AI generation notification, weekly digest,
  * and admin alert lands here regardless of which admin clicked the button.
  * Server-side COACH_EMAIL env var should match; this constant is for

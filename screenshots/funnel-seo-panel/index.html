@@ -1,0 +1,130 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Funnel SEO — the Search panel, and what it fixes</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 48px 32px 96px; background: #f6f7f8; color: #16303a;
+         font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  .lede { color: #5c6b70; margin: 0 0 36px; max-width: 72ch; }
+  section { background: #fff; border: 1px solid #e2e6e8; border-radius: 14px; padding: 24px; margin: 0 0 28px; }
+  h2 { font-size: 19px; margin: 0 0 4px; }
+  .meta { color: #5c6b70; font-size: 14px; margin: 0 0 16px; }
+  img { display: block; width: 100%; height: auto; border: 1px solid #e2e6e8; border-radius: 8px; }
+  code { background: #eef1f2; padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+  ul { margin: 10px 0 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .note { background: #fff8e8; border: 1px solid #f0e0b8; border-radius: 10px; padding: 16px 20px; margin: 0 0 28px; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; margin-top: 10px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #e8ecee; vertical-align: top; }
+  th { color: #5c6b70; font-weight: 600; }
+  .was { color: #a33; }
+  .now { color: #2c6e49; }
+</style>
+<main>
+  <h1>Funnel SEO — the “Search” panel, and the four things it fixes</h1>
+  <p class="lede">
+    Every shot is the real builder on its real route
+    (<code>/admin/funnels/&lt;id&gt;/edit/&lt;stepId&gt;</code>), driven with Playwright against the dev
+    clone and photographed inside the real shell — the real rail, the real canvas, the real header.
+    Nothing is a storybook or a scratch mount of the component. Annotations are burned into each PNG.
+    Chromium 1600×1280 @2x. The floating Messages dock and Next's dev overlay are hidden from the
+    recorder only, never by editing the app.
+  </p>
+
+  <div class="note">
+    <strong>Light only, deliberately.</strong> The admin UI has no dark variant — <code>.dark</code> is
+    a class these components were never built against — so a dark-mode shot would photograph a
+    pre-existing bug rather than this feature.
+  </div>
+
+  <section>
+    <h2>What changed on the live page</h2>
+    <p class="meta">
+      <code>/go/athlete-quiz</code>, measured against production before and after. The copy was applied
+      with <code>scripts/apply-funnel-seo-copy.ts</code>; the OG, canonical and Twitter tags need the
+      code deploy.
+    </p>
+    <table>
+      <tr><th></th><th>Before</th><th>After</th></tr>
+      <tr>
+        <td><code>&lt;title&gt;</code></td>
+        <td class="was">Start | DJP Athlete</td>
+        <td class="now">Athlete Performance Quiz — 5 Questions, Free | DJP Athlete</td>
+      </tr>
+      <tr>
+        <td>description</td>
+        <td class="was">The RPI quiz funnel.</td>
+        <td class="now">Free athlete performance quiz for ages 13-25. Answer five questions and see the one gap limiting your speed and power — and what to fix first. No email.</td>
+      </tr>
+      <tr>
+        <td><code>og:</code> tags</td>
+        <td class="was">0 — the whole block was deleted by an explicit <code>undefined</code></td>
+        <td class="now">5 (title, description, url, image, type)</td>
+      </tr>
+      <tr>
+        <td>canonical</td>
+        <td class="was">none; the page answered on two URLs</td>
+        <td class="now"><code>/go/athlete-quiz</code>, from both URLs</td>
+      </tr>
+      <tr>
+        <td>in sitemap.xml</td>
+        <td class="was">no — 0 of 34 URLs were <code>/go/</code></td>
+        <td class="now">yes, and excluded when <code>noindex</code> is on</td>
+      </tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>01 — The fallback state: what every published page looks like today</h2>
+    <p class="meta">
+      <code>01-fallback-state.png</code> · subject <code>off-season-speed-camp-dxf8</code>, chosen
+      <em>because</em> it has no SEO copy — the state all ten production rows are in. A subject that
+      already had copy would silently demonstrate the other branch.
+    </p>
+    <img src="01-fallback-state.png" alt="The funnel builder with the new Search tab open on a step with no SEO copy, showing the fallback preview and the empty-field notes.">
+    <ul>
+      <li>The preview runs the <em>same</em> resolver the public page does, so an empty row shows the fallback — the funnel's name — rather than a blank box.</li>
+      <li>“No description set” is stated as a choice, not an error: with none, Google writes a better one from the page than the internal builder note that used to be served.</li>
+      <li>Counters read <code>0/47</code> and <code>0/160</code>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>02 — The filled state, with the counters doing their job</h2>
+    <p class="meta">
+      <code>02-real-copy-and-counters.png</code> · subject <code>athlete-quiz</code>, holding the copy
+      that is now in production.
+    </p>
+    <img src="02-real-copy-and-counters.png" alt="The Search panel on the athlete quiz step, showing the real title and description with character counters at 44 of 47 and 152 of 160.">
+    <ul>
+      <li><code>44/47</code> — the budget is 47, not 60, because the layout template appends “ | DJP Athlete”. A counter set to 60 walks you past the truncation point while reading green.</li>
+      <li>“Shows as 58 characters” — the rendered length, which is the number Google actually truncates and the one the owner cannot otherwise see.</li>
+      <li><code>152/160</code> on the description; the counter flags “short” under 150 and “long” over 160.</li>
+      <li>The closing line — <em>“Saving updates the live page straight away — no need to publish again”</em> — exists because these four columns are read per request, outside the frozen published version. Everything else in this builder needs a publish, so without that sentence a saved-but-unchanged live page reads as a failed save.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>03 — The two states that are not the happy path</h2>
+    <p class="meta">
+      <code>03-the-two-guards.png</code> · neither was saved; nothing on this shot was written to the
+      database.
+    </p>
+    <img src="03-the-two-guards.png" alt="The Search panel showing a red error under the sharing picture field, a disabled Save button, and the Hide from Google toggle switched on with a warning in the preview.">
+    <ul>
+      <li><code>og_image_url</code> is <code>z.string().url()</code> on the API, and the route answers a bare “Invalid request” naming no field. A path starting with <code>/</code> is the obvious thing to type — every other image field in this app takes one — so the panel refuses it here, with the reason, and disables Save.</li>
+      <li>“Hide from Google” restates itself in the preview in the strongest words the panel uses. It also drops the page from the sitemap: advertising a URL and then telling the crawler to ignore it are contradictory instructions.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Known gap, not fixed here</h2>
+    <p class="meta">Worth deciding on, but out of scope for this pass.</p>
+    <ul>
+      <li><strong>There is no purpose-built share card.</strong> <code>og_image_url</code> is left NULL and the page falls back to the site-wide <code>gym-training-01.jpg</code>, so a real <code>og:image</code> is served — but it is a general gym photo, not a 1200×630 card for this quiz. Creating one is a design task.</li>
+      <li><strong>The sitemap does not fix the orphan-page problem.</strong> Nothing on the marketing site links to <code>/go/athlete-quiz</code>. A sitemap entry makes it discoverable; an internal link is what passes authority.</li>
+    </ul>
+  </section>
+</main>

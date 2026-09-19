@@ -313,8 +313,20 @@ export async function FunnelBuilderScreen({
     <FunnelBuilder
       funnelId={funnel.id}
       funnelName={funnel.name}
+      funnelSlug={funnel.slug}
       stepId={step.id}
       stepName={step.name}
+      stepSlug={step.slug}
+      stepIsEntry={step.is_entry}
+      // The four SEO columns, straight off the row. Passed rather than read in
+      // the client because they are already in hand — `getStep` is a
+      // `select("*")` this screen was making anyway.
+      initialSeo={{
+        seo_title: step.seo_title,
+        seo_description: step.seo_description,
+        og_image_url: step.og_image_url,
+        noindex: step.noindex,
+      }}
       publicUrl={publicUrl}
       previewUrl={previewUrl}
       funnelStatus={funnel.status}

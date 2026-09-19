@@ -126,8 +126,12 @@ function baseProps(overrides: Partial<FunnelBuilderProps> = {}): FunnelBuilderPr
   return {
     funnelId: FUNNEL_ID,
     funnelName: "Free trial week",
+    funnelSlug: "summer-camp",
     stepId: STEP_ID,
     stepName: "Landing",
+    stepSlug: "start",
+    stepIsEntry: true,
+    initialSeo: { seo_title: null, seo_description: null, og_image_url: null, noindex: false },
     publicUrl: "/go/free-trial-week",
     previewUrl: "/preview/summer-camp",
     // A DRAFT FUNNEL, because that is the state the owner publishes from: the

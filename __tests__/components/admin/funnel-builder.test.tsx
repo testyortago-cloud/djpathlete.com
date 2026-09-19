@@ -145,8 +145,12 @@ function baseProps(overrides: Partial<FunnelBuilderProps> = {}): FunnelBuilderPr
   return {
     funnelId: "funnel-1",
     funnelName: "Summer camp",
+    funnelSlug: "summer-camp",
     stepId: "step-1",
     stepName: "Landing",
+    stepSlug: "start",
+    stepIsEntry: true,
+    initialSeo: { seo_title: null, seo_description: null, og_image_url: null, noindex: false },
     publicUrl: "/go/summer-camp",
     previewUrl: "/preview/summer-camp",
     // Default to a LIVE funnel so the existing gate tests keep testing the

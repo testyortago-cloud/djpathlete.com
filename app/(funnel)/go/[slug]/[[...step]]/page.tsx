@@ -14,6 +14,7 @@ import { auth } from "@/lib/auth"
 import { getPublishedStep } from "@/lib/db/funnels"
 import { NodeRenderer } from "@/components/funnels/NodeRenderer"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile/css-scope"
+import { resolveFunnelStepSeo } from "@/lib/funnels/seo"
 
 interface PageProps {
   params: Promise<{ slug: string; step?: string[] }>
@@ -30,6 +31,31 @@ async function resolvePreview(
   return role === "admin" || role === "staff"
 }
 
+/**
+ * What a searcher and a share card see.
+ *
+ * Every decision here lives in `lib/funnels/seo.ts`, which is pure and shared
+ * with the sitemap and the admin panel. This function's whole job is to map
+ * that answer onto Next's `Metadata` shape. Putting a rule in here instead
+ * would put it somewhere the other two callers cannot reach.
+ *
+ * ---------------------------------------------------------------------------
+ * `openGraph` IS ALWAYS AN OBJECT. NEVER `undefined`.
+ * ---------------------------------------------------------------------------
+ * This is the fix, not a tidy-up. The previous version returned
+ * `openGraph: stepRow.og_image_url ? {...} : undefined`, and an explicit
+ * `undefined` from a child route does not mean "inherit" — it OVERRIDES the
+ * root layout's `openGraph` and deletes it. `app/layout.tsx` defines a full OG
+ * block; every published funnel page was emitting zero `og:` tags, verified
+ * against production on 2026-09-19 with `/online` as the control (3 tags there,
+ * 0 here). A funnel link shared to Facebook, LinkedIn, WhatsApp or iMessage
+ * rendered as a bare URL — on pages whose entire purpose is to be sent to an
+ * athlete.
+ *
+ * `twitter` is set for the same reason in reverse: the child never named it, so
+ * it inherited, and the page served the SITE-WIDE Twitter copy under a
+ * page-specific `<title>`. An X share of the quiz advertised the homepage.
+ */
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug, step } = await params
   const stepSlug = step?.[0]
@@ -38,11 +64,28 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   if (!published) return {}
 
   const { funnel, step: stepRow } = published
+  const seo = resolveFunnelStepSeo(funnel, stepRow)
+
   return {
-    title: stepRow.seo_title ?? stepRow.name ?? funnel.name,
-    description: stepRow.seo_description ?? funnel.description ?? undefined,
-    openGraph: stepRow.og_image_url ? { images: [stepRow.og_image_url] } : undefined,
-    robots: stepRow.noindex ? { index: false, follow: false } : undefined,
+    title: seo.title,
+    // `?? undefined` and not `?? something`: a null description is a decision
+    // this route must not quietly undo. See `resolveFunnelStepSeo`.
+    description: seo.description ?? undefined,
+    alternates: { canonical: seo.canonicalPath },
+    openGraph: {
+      title: seo.socialTitle,
+      description: seo.description ?? undefined,
+      url: seo.canonicalPath,
+      type: "website",
+      images: [seo.ogImage],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: seo.socialTitle,
+      description: seo.description ?? undefined,
+      images: [seo.ogImage],
+    },
+    robots: seo.noindex ? { index: false, follow: false } : undefined,
   }
 }
 

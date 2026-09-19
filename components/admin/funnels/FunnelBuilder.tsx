@@ -80,6 +80,7 @@ import { ChatPane } from "./builder/ChatPane"
 import { GenerationStage, BUILD_STAGE_WRAPPER_CLASS } from "./builder/GenerationStage"
 import { PreviewPane, type PreviewDevice } from "./builder/PreviewPane"
 import { PublishReview } from "./builder/PublishReview"
+import { SeoPanel, type SeoPanelValue } from "./builder/SeoPanel"
 import { SectionInspector } from "./builder/SectionInspector"
 import { ThemePanel, type ThemePanelBrandKit, type BrandKitPatch } from "./builder/ThemePanel"
 import { patchForPath, valueAtPath } from "@/lib/funnels/sections/patch"
@@ -127,8 +128,22 @@ import { PolishProposalBanner } from "./builder/PolishProposalBanner"
 export interface FunnelBuilderProps {
   funnelId: string
   funnelName: string
+  /** The funnel's public slug — `/go/<slug>`. Used to preview the search result. */
+  funnelSlug: string
   stepId: string
   stepName: string
+  /** This step's slug and whether it is the entry step, for the same preview. */
+  stepSlug: string
+  stepIsEntry: boolean
+  /**
+   * The four SEO columns as they stand on the step row.
+   *
+   * NOT part of `initialDoc`, and that is the whole reason they need their own
+   * prop: they live on `funnel_steps`, outside the compiled document, so they
+   * survive a revert and reach the live page without a re-publish. See
+   * `SeoPanel.tsx`.
+   */
+  initialSeo: SeoPanelValue
   /** Where "open the live page" goes. 404s until the funnel is published. */
   publicUrl: string
   /**
@@ -326,7 +341,8 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
   // or the whole page's design. Independent of `tab` (chat vs. preview, for
   // narrow screens): that is which COLUMN is visible, this is which PANEL
   // fills the rail column once it is.
-  const [rightPanel, setRightPanel] = useState<"section" | "theme">("section")
+  const [rightPanel, setRightPanel] = useState<"section" | "theme" | "seo">("section")
+  const [seo, setSeo] = useState<SeoPanelValue>(props.initialSeo)
   const [brandKit, setBrandKit] = useState<ThemePanelBrandKit | null>(props.initialBrandKit ?? null)
   const [revision, setRevision] = useState(props.initialRevision)
   const [previewRevision, setPreviewRevision] = useState(props.initialRevision)
@@ -667,6 +683,47 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
     }
     setBrandKit({ brand: body.brand_color, accent: body.accent_color ?? undefined })
   }, [])
+
+  // THE SEO COLUMNS, and the SECOND write on this screen that is not an edit
+  // to `doc` — same reasoning as `saveBrandKit` directly above, one level
+  // narrower. `seo_title`/`seo_description`/`og_image_url`/`noindex` live on
+  // the `funnel_steps` ROW, not inside the document, so there is no op that
+  // could carry them and putting them through `sendOps` would make an SEO edit
+  // undoable by an undo aimed at a headline.
+  //
+  // `setSeo` on success and not before. An optimistic update here would leave
+  // the panel showing copy that is not in the database if the write failed,
+  // and the panel's whole job is to show what the page will actually serve.
+  const saveSeo = useCallback(
+    async (next: SeoPanelValue) => {
+      const response = await fetch(`/api/admin/funnels/steps/${props.stepId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      })
+      const body = (await response.json().catch(() => null)) as { error?: string } | null
+      if (!response.ok) {
+        const message = body?.error ?? "Could not save the search settings."
+        toast.error(message)
+        throw new Error(message)
+      }
+      setSeo(next)
+      toast.success("Search settings saved.")
+    },
+    [props.stepId],
+  )
+
+  /**
+   * Whether the two document-backed panels can render at all.
+   *
+   * `activePanel` then FORCES "seo" when they cannot, rather than leaving
+   * `rightPanel` pointing at a tab that is no longer on screen — the stored
+   * value survives navigation between steps, so a page opened straight after
+   * one with a readable document would otherwise render an empty rail with no
+   * tab highlighted and no way to tell what went wrong.
+   */
+  const docReady = doc !== null && !docInvalid
+  const activePanel = docReady ? rightPanel : "seo"
 
   const handleCanvasSelect = useCallback((selection: CanvasSelection) => {
     setSelected(selection)
@@ -2409,20 +2466,49 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
             questions ("what does THIS section look like" vs. "what does the
             PAGE look like") and showing both at once would read as one long,
             unscoped form. */}
-        {mode === "edit" && doc !== null && !docInvalid ? (
+        {/* THE RAIL IS NO LONGER GATED ON THERE BEING A DOCUMENT, and that
+            change is load-bearing rather than cosmetic.
+
+            "Search" is the third panel here, and unlike the other two it does
+            not read `doc` at all — the four SEO columns live on the step ROW.
+            Keeping the old `doc !== null && !docInvalid` gate around the whole
+            rail would have locked the SEO fields away from exactly the pages
+            that most need them: a LEGACY GrapesJS step fails
+            `sectionDocSchema`, so it arrives here as `docInvalid`, and it can
+            still be carrying a published version and serving real traffic (see
+            the edit layout's note on `publish-plan.ts`). A live page that
+            cannot be given a title is the bug this whole task exists to fix,
+            reintroduced one layer up.
+
+            So the gate moved INWARD: Section and Page design still require a
+            readable document, Search never did. */}
+        {mode === "edit" ? (
           <div
             className={`${tab === "preview" ? "flex" : "hidden"} w-80 shrink-0 flex-col overflow-hidden border-l border-border bg-white lg:flex`}
           >
             <div className="flex shrink-0 gap-1 border-b border-border px-2 py-2">
-              <TabButton active={rightPanel === "section"} onClick={() => setRightPanel("section")}>
-                Section
-              </TabButton>
-              <TabButton active={rightPanel === "theme"} onClick={() => setRightPanel("theme")}>
-                Page design
+              {docReady ? (
+                <>
+                  <TabButton
+                    active={activePanel === "section"}
+                    onClick={() => setRightPanel("section")}
+                  >
+                    Section
+                  </TabButton>
+                  <TabButton
+                    active={activePanel === "theme"}
+                    onClick={() => setRightPanel("theme")}
+                  >
+                    Page design
+                  </TabButton>
+                </>
+              ) : null}
+              <TabButton active={activePanel === "seo"} onClick={() => setRightPanel("seo")}>
+                Search
               </TabButton>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {rightPanel === "section" ? (
+              {activePanel === "section" && doc !== null ? (
                 <SectionInspector
                   doc={doc}
                   selectedId={selected?.sectionId ?? null}
@@ -2430,12 +2516,24 @@ export function FunnelBuilder(props: FunnelBuilderProps) {
                   onOps={sendOps}
                   busy={busy !== "idle"}
                 />
-              ) : (
+              ) : activePanel === "theme" && doc !== null ? (
                 <ThemePanel
                   theme={doc.theme}
                   onChange={changeTheme}
                   brandKit={brandKit}
                   onSaveBrandKit={saveBrandKit}
+                  busy={busy !== "idle"}
+                />
+              ) : (
+                <SeoPanel
+                  funnelName={props.funnelName}
+                  funnelSlug={props.funnelSlug}
+                  stepName={props.stepName}
+                  stepSlug={props.stepSlug}
+                  isEntry={props.stepIsEntry}
+                  funnelIsPublished={props.funnelStatus === "published"}
+                  value={seo}
+                  onSave={saveSeo}
                   busy={busy !== "idle"}
                 />
               )}
