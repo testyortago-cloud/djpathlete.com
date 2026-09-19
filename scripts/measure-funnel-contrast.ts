@@ -238,6 +238,63 @@ function main(): void {
     )
   }
 
+  // ── G21: the quiz card, where the container and the variant disagree ──────
+  //
+  // `.djp-s-quiz .djp-quiz` paints itself `var(--background)` on EVERY tone, so
+  // its children are in the neutral pair whatever the section is doing. But
+  // nothing sets `color` on it, so on an accent or dark section every unstyled
+  // child inherits the SECTION's foreground onto that neutral card.
+  //
+  // The `band` variant then inverts the problem: it sets the quiz
+  // `background: transparent`, so the quiz IS the band again — and there the
+  // section's pair is the right one, while the neutral one is wrong.
+  //
+  // So the two variants need OPPOSITE answers, and a fix that gets one right
+  // gets the other wrong. Both columns below are printed for that reason.
+  section("G21 — quiz text and ring, per variant, where the two answers differ")
+  console.log("card variant: quiz paints --background. Its children must use the NEUTRAL pair.")
+  console.log("band variant: quiz is transparent. Its children must use the SECTION's pair.\n")
+  let worstCardText = Number.POSITIVE_INFINITY
+  let worstCardAt = ""
+  let worstBandRing = Number.POSITIVE_INFINITY
+  let worstBandAt = ""
+  for (const tone of ["default", "muted", "dark", "accent"] as const) {
+    console.log(`── tone="${tone}" ──`)
+    console.log("preset      CARD: text now  after     BAND: ring now  after")
+    for (const name of PALETTE_PRESETS) {
+      const p = PALETTE_TABLE[name]
+      const band = sectionBackground(p, tone)
+      const sectionFg = pairForeground(p, tone)
+
+      // CARD variant. Ground is --background (paper). Today the text is the
+      // section's foreground; the fix makes it the palette's own ink.
+      const cardTextNow = contrastRatio(sectionFg, p.paper)
+      const cardTextAfter = contrastRatio(p.ink, p.paper)
+
+      // BAND variant. Ground is the section band. Today the RING is
+      // --foreground (the card rule's override leaks into the band variant,
+      // which never gives it back); the fix restores the section's own pair.
+      const bandRingNow = contrastRatio(p.ink, band)
+      const bandRingAfter = contrastRatio(sectionFg, band)
+
+      if (cardTextNow < worstCardText) {
+        worstCardText = cardTextNow
+        worstCardAt = `${name}/${tone}`
+      }
+      if (bandRingNow < worstBandRing) {
+        worstBandRing = bandRingNow
+        worstBandAt = `${name}/${tone}`
+      }
+      console.log(
+        `${name.padEnd(10)}  ${f(cardTextNow)} ${mark(cardTextNow, AA_BODY)}  ${f(cardTextAfter)} ${mark(cardTextAfter, AA_BODY)}   ` +
+          `${f(bandRingNow)} ${mark(bandRingNow, AA_LARGE)}  ${f(bandRingAfter)} ${mark(bandRingAfter, AA_LARGE)}`,
+      )
+    }
+    console.log("")
+  }
+  console.log(`WORST card text today: ${f(worstCardText)} at ${worstCardAt}  (floor ${AA_BODY})`)
+  console.log(`WORST band ring today: ${f(worstBandRing)} at ${worstBandAt}  (floor ${AA_LARGE})`)
+
   // ── The exact document the A/B harness runs ───────────────────────────────
   section("The A/B document's own palette (brand #a8563a, accent #c99a6b, light)")
   const ab = resolvePalette({ brand: "#a8563a", accent: "#c99a6b", mode: "light" })

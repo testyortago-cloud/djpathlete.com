@@ -1775,8 +1775,20 @@ ${ROOT} .djp-s-quiz .djp-quiz {
      presets x 4 tones the ring was 1.00-1.08:1 in 13 of 48 cells — on sand/dark
      it was literally white-on-white — so the one guarantee the ring exists to
      provide was absent exactly where the pair assumption broke. The same rule
-     applies to any future panel that repaints itself. */
+     applies to any future panel that repaints itself.
+
+     AND THE TEXT, NOT ONLY THE RING (gap G21). The variable fixes what SHAPES
+     draw; it does nothing for the card's own prose, and nothing here used to set
+     color. So on an accent or dark section the prompt, the labels, the options
+     and the profile name all inherited the SECTION's foreground onto this
+     neutral card: measured 1.00:1 at worst (slate on a dark section — the
+     identical colour, invisible), failing in 13 of 48 preset x tone cells.
+     Naming the card's own colour takes all 48 to 19.46-21.00.
+
+     Both declarations are handed BACK by the band variant below, which makes
+     this element transparent and therefore stops it being a container at all. */
   --djp-pair-fg: var(--foreground);
+  color: var(--foreground);
   border: 1px solid var(--border);
   border-radius: calc(var(--djp-radius, 0.6rem) * 1.5);
   padding: clamp(1.5rem, 4vw, 3rem);
@@ -1893,9 +1905,29 @@ ${ROOT} .djp-s-quiz .djp-quiz-profile-body { margin: 0; color: var(--muted-foreg
    var(--background) fill does not win on source order; transparent is a
    value the tone-contrast harness already models explicitly (it simply means
    "look further up the ancestor chain for what's really behind this text"). */
+/* THE BAND VARIANT STOPS THIS BEING A CARD, so it hands back both of the things
+   the card rule claimed.
+
+   Making the background transparent puts the quiz back ON the section's own
+   band, and there the neutral pair is the WRONG answer for precisely the reason
+   it is the right one on a card. Leaving the card's overrides standing left the
+   ring at 1.43:1 in the worst case (moss on an accent band) and the text in the
+   neutral ink on a repainted band.
+
+   inherit rather than a repeated token: the correct value IS whatever the
+   section computed, and naming it again here would be a second place to keep in
+   step with the tone rules. Custom properties take the CSS-wide keywords, so
+   --djp-pair-fg: inherit restores the section's value rather than unsetting it.
+
+   This is the third time in this file that a rule has been right for a
+   container and wrong for a variant of it. The pattern to copy: whatever a
+   container CLAIMS about its pair, the variant that dissolves the container
+   gives back. */
 ${ROOT} .djp-s-quiz.djp-v-band .djp-quiz {
   max-width: 44rem;
   background: transparent;
+  color: inherit;
+  --djp-pair-fg: inherit;
   border: 0;
   box-shadow: none;
   padding: 0;

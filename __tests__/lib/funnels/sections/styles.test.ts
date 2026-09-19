@@ -361,6 +361,37 @@ describe("shapes have a boundary against whatever is behind them", () => {
     expect(SECTION_CSS.quiz).toMatch(/\.djp-s-quiz \.djp-quiz \{[\s\S]*?--djp-pair-fg: var\(--foreground\)/)
   })
 
+  // GAP G21 — THE CARD'S TEXT, which the pair variable alone does not fix.
+  //
+  // `.djp-quiz` paints itself `var(--background)` on every tone, but nothing set
+  // `color` on it, so on an accent or dark section every unstyled child — the
+  // prompt, the labels, the options, the profile name — inherited the SECTION's
+  // foreground onto that neutral card. Measured over 12 presets x 4 tones the
+  // card's text was **1.00:1 in the worst case** (slate on a dark section: the
+  // identical colour, invisible), failing in 13 of 48 cells. Setting the card's
+  // own colour takes every one of them to 19.46-21.00.
+  it("gives the quiz card its own text colour, not the section's", () => {
+    expect(SECTION_CSS.quiz).toMatch(/\.djp-s-quiz \.djp-quiz \{[\s\S]*?color: var\(--foreground\)/)
+  })
+
+  // ...AND THE BAND VARIANT HAS TO GIVE BOTH BACK. It sets the quiz
+  // `background: transparent`, so the quiz IS the section band again — there the
+  // neutral pair is the WRONG answer for exactly the same reason it is the right
+  // one above. Leaving the card rule's overrides in place left the ring at
+  // 1.43:1 in the worst case (moss on an accent band), a bug introduced by the
+  // fix two commits earlier.
+  //
+  // This is the same container-vs-variant trap that has now bitten three times
+  // in this file, which is why it gets its own assertion rather than a comment.
+  it("hands the pair and the text back on the band variant, which is not a card", () => {
+    const bandRule = SECTION_CSS.quiz
+      .split("}")
+      .find((rule) => rule.includes(".djp-v-band .djp-quiz") && rule.includes("background: transparent"))
+    expect(bandRule, "the band-variant quiz rule should exist").toBeDefined()
+    expect(bandRule, "band quiz must give back the section's text colour").toContain("color: inherit")
+    expect(bandRule, "band quiz must give back the section's pair").toContain("--djp-pair-fg: inherit")
+  })
+
   // THIS HAS NOW BITTEN TWICE, WHICH IS WHY IT GETS A TEST RATHER THAN A NOTE.
   //
   // `box-shadow` does not merge across rules — a later declaration REPLACES the
