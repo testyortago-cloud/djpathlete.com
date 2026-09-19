@@ -97,3 +97,6 @@ docs/newsletter-audit/*.csv
 
 # Source + encoded media for the quiz (local only, hosted in Firebase Storage)
 media/
+
+# Codex tool-local config, the sibling of .claude/ above
+.codex/
