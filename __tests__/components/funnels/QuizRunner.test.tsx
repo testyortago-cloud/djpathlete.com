@@ -32,18 +32,18 @@ const DEFINITION: PublicQuizDefinition = {
   ],
   questions: [
     {
-      id: "q-router", branchId: null, position: 10, prompt: "Which describes you?", helpText: null,
+      id: "q-router", branchId: null, position: 10, prompt: "Which describes you?", helpText: null, mediaUrl: null, mediaPosterUrl: null,
       options: [
         { id: "o-a", label: "I am an Alpha", routesToBranchId: BRANCH_A },
         { id: "o-b", label: "I am a Beta", routesToBranchId: BRANCH_B },
       ],
     },
     {
-      id: "q-alpha", branchId: BRANCH_A, position: 50, prompt: "An Alpha question", helpText: "Alpha help",
+      id: "q-alpha", branchId: BRANCH_A, position: 50, prompt: "An Alpha question", helpText: "Alpha help", mediaUrl: null, mediaPosterUrl: null,
       options: [{ id: "o-a1", label: "Alpha answer", routesToBranchId: null }],
     },
     {
-      id: "q-beta", branchId: BRANCH_B, position: 50, prompt: "A Beta question", helpText: null,
+      id: "q-beta", branchId: BRANCH_B, position: 50, prompt: "A Beta question", helpText: null, mediaUrl: null, mediaPosterUrl: null,
       options: [{ id: "o-b1", label: "Beta answer", routesToBranchId: null }],
     },
   ],

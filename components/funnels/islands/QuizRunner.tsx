@@ -358,6 +358,29 @@ export function QuizRunner({
       </p>
       <h3 className="djp-quiz-prompt">{current.prompt}</h3>
       {current.helpText ? <p className="djp-quiz-help">{current.helpText}</p> : null}
+      {/*
+        THE DEMO CLIP, AND WHY IT LOOPS SILENTLY WITH CONTROLS.
+        `loop` + `muted` + `playsInline` is what lets it autoplay at all —
+        every browser blocks an unmuted autoplay, and a clip that needs a tap
+        before the movement is visible is a clip most visitors never watch.
+        `controls` stays because the viewer must be able to scrub back: they
+        are being asked to compare their own attempt against it.
+        `preload="none"` with a poster keeps a 12-question walk from fetching
+        nine videos up front over a phone connection.
+      */}
+      {current.mediaUrl ? (
+        <video
+          key={current.mediaUrl}
+          className="djp-quiz-media"
+          src={current.mediaUrl}
+          poster={current.mediaPosterUrl ?? undefined}
+          preload="none"
+          controls
+          loop
+          muted
+          playsInline
+        />
+      ) : null}
       <ul className="djp-quiz-options">
         {current.options.map((option) => (
           <li key={option.id}>

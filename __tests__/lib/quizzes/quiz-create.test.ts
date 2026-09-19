@@ -182,6 +182,11 @@ function rebuildFromInserts(): QuizDefinition {
       branchId: (r.branch_id as string | null) ?? null,
       position: Number(r.position), prompt: String(r.prompt),
       helpText: (r.help_text as string | null) ?? null,
+      // Mirrors the real DAL's read path. A fake re-reader that drops a column
+      // the DAL returns would let `createQuiz` silently stop persisting media
+      // while this suite stayed green.
+      mediaUrl: (r.media_url as string | null) ?? null,
+      mediaPosterUrl: (r.media_poster_url as string | null) ?? null,
       isActive: r.is_active !== false,
       options: optionsByQuestion.get(String(r.id)) ?? [],
     })),

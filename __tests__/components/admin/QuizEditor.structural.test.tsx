@@ -29,12 +29,12 @@ function definition(): QuizDefinition {
     profiles: [{ id: "pf0", quizId: QUIZ_ID, key: "unsure", name: "Unsure", description: "d", position: 0 }],
     tiers: [{ id: "t1", quizId: QUIZ_ID, key: "red", position: 1, minScore: 0, maxScore: 100, headline: "h", body: "b", ctaLabel: null, ctaHref: null }],
     questions: [
-      { id: Q_ROUTER, quizId: QUIZ_ID, branchId: null, position: 10, prompt: "Which describes you?", helpText: null, isActive: true,
+      { id: Q_ROUTER, quizId: QUIZ_ID, branchId: null, position: 10, prompt: "Which describes you?", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [
           { id: "o1", questionId: Q_ROUTER, position: 1, label: "A", weight: 0, routesToBranchId: BRANCH_A, profileId: null },
           { id: "o2", questionId: Q_ROUTER, position: 2, label: "B", weight: 0, routesToBranchId: BRANCH_A, profileId: null },
         ] },
-      { id: Q_A1, quizId: QUIZ_ID, branchId: BRANCH_A, position: 50, prompt: "Alpha question", helpText: null, isActive: true,
+      { id: Q_A1, quizId: QUIZ_ID, branchId: BRANCH_A, position: 50, prompt: "Alpha question", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [
           { id: "o3", questionId: Q_A1, position: 1, label: "Yes", weight: 3, routesToBranchId: null, profileId: null },
           { id: "o4", questionId: Q_A1, position: 2, label: "No", weight: 0, routesToBranchId: null, profileId: null },
@@ -47,7 +47,7 @@ function withRetired(): QuizDefinition {
   const quiz = definition()
   quiz.questions.push({
     id: Q_RETIRED, quizId: QUIZ_ID, branchId: null, position: 20,
-    prompt: "A question somebody already answered", helpText: null, isActive: false,
+    prompt: "A question somebody already answered", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: false,
     options: [{ id: "o9", questionId: Q_RETIRED, position: 1, label: "Only answer", weight: 0, routesToBranchId: null, profileId: null }],
   })
   return quiz
@@ -402,7 +402,7 @@ describe("QuizEditor — a question saved but never turned on", () => {
     quiz.questions.push({
       id: "77777777-7777-4777-8777-777777777771",
       quizId: QUIZ_ID, branchId: null, position: 60,
-      prompt: "New question", helpText: null, isActive: false,
+      prompt: "New question", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: false,
       options: [
         { id: "77777777-7777-4777-8777-777777777772", questionId: "77777777-7777-4777-8777-777777777771", position: 1, label: "Option 1", weight: 0, routesToBranchId: null, profileId: null },
         { id: "77777777-7777-4777-8777-777777777773", questionId: "77777777-7777-4777-8777-777777777771", position: 2, label: "Option 2", weight: 0, routesToBranchId: null, profileId: null },

@@ -27,22 +27,22 @@ function healthy(): QuizDefinition {
     profiles: [{ id: "pf0", quizId: QUIZ_ID, key: "unsure", name: "Not sure", description: "d", position: 0 }],
     tiers: [{ id: "t1", quizId: QUIZ_ID, key: "red", position: 1, minScore: 0, maxScore: 100, headline: "Large gaps", body: "b", ctaLabel: null, ctaHref: null }],
     questions: [
-      { id: "q-router", quizId: QUIZ_ID, branchId: null, position: 10, prompt: "Which describes you?", helpText: null, isActive: true,
+      { id: "q-router", quizId: QUIZ_ID, branchId: null, position: 10, prompt: "Which describes you?", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [
           { id: "o-a", questionId: "q-router", position: 1, label: "Alpha", weight: 0, routesToBranchId: BRANCH_A, profileId: "pf0" },
           { id: "o-b", questionId: "q-router", position: 2, label: "Beta", weight: 0, routesToBranchId: BRANCH_B, profileId: null },
         ] },
-      { id: "q-shared", quizId: QUIZ_ID, branchId: null, position: 20, prompt: "Where are you based?", helpText: null, isActive: true,
+      { id: "q-shared", quizId: QUIZ_ID, branchId: null, position: 20, prompt: "Where are you based?", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [
           { id: "o-s1", questionId: "q-shared", position: 1, label: "Tampa", weight: 0, routesToBranchId: null, profileId: null },
           { id: "o-s2", questionId: "q-shared", position: 2, label: "Elsewhere", weight: 0, routesToBranchId: null, profileId: null },
         ] },
-      { id: "q-a1", quizId: QUIZ_ID, branchId: BRANCH_A, position: 50, prompt: "An Alpha question", helpText: null, isActive: true,
+      { id: "q-a1", quizId: QUIZ_ID, branchId: BRANCH_A, position: 50, prompt: "An Alpha question", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [
           { id: "o-a1", questionId: "q-a1", position: 1, label: "Yes", weight: 3, routesToBranchId: null, profileId: null },
           { id: "o-a2", questionId: "q-a1", position: 2, label: "No", weight: 0, routesToBranchId: null, profileId: null },
         ] },
-      { id: "q-b1", quizId: QUIZ_ID, branchId: BRANCH_B, position: 50, prompt: "A Beta question", helpText: null, isActive: true,
+      { id: "q-b1", quizId: QUIZ_ID, branchId: BRANCH_B, position: 50, prompt: "A Beta question", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [
           { id: "o-b1", questionId: "q-b1", position: 1, label: "Yes", weight: 3, routesToBranchId: null, profileId: null },
           { id: "o-b2", questionId: "q-b1", position: 2, label: "No", weight: 0, routesToBranchId: null, profileId: null },

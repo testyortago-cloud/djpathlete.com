@@ -33,6 +33,9 @@ export interface PublicQuizQuestion {
   position: number
   prompt: string
   helpText: string | null
+  /** Ships deliberately: a movement test cannot be answered unseen. */
+  mediaUrl: string | null
+  mediaPosterUrl: string | null
   options: PublicQuizOption[]
 }
 
@@ -74,6 +77,8 @@ export function publicQuizDefinition(definition: QuizDefinition): PublicQuizDefi
         position: question.position,
         prompt: question.prompt,
         helpText: question.helpText,
+        mediaUrl: question.mediaUrl,
+        mediaPosterUrl: question.mediaPosterUrl,
         options: question.options
           .slice()
           .sort((a, b) => a.position - b.position)

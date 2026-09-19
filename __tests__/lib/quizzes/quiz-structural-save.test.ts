@@ -148,6 +148,8 @@ const NEW_QUESTION = {
   position: 99,
   prompt: "How does the shoulder feel overhead?",
   helpText: null,
+  mediaUrl: null,
+  mediaPosterUrl: null,
   isActive: false,
   options: [
     { id: "new-o1", position: 1, label: "Option 1", weight: 0, routesToBranchId: null, profileId: null },

@@ -24,6 +24,8 @@ function question(id: string, position: number, prompt: string, optionId: string
     position,
     prompt,
     helpText: null,
+    mediaUrl: null,
+    mediaPosterUrl: null,
     isActive: true,
     options: [{ id: optionId, questionId: id, position: 1, label, weight: 1, routesToBranchId: null, profileId: null }],
   }

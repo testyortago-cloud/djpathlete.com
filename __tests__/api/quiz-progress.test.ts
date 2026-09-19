@@ -52,6 +52,8 @@ function definition(status = "active"): QuizDefinition {
         position: 10,
         prompt: "Which describes you?",
         helpText: null,
+        mediaUrl: null,
+        mediaPosterUrl: null,
         isActive: true,
         options: [
           { id: O_TO_A, questionId: Q_ROUTER, position: 1, label: "A", weight: 0, routesToBranchId: BRANCH_A, profileId: null },
@@ -65,6 +67,8 @@ function definition(status = "active"): QuizDefinition {
         position: 50,
         prompt: "Alpha one",
         helpText: null,
+        mediaUrl: null,
+        mediaPosterUrl: null,
         isActive: true,
         options: [
           { id: O_A1_BEST, questionId: Q_A1, position: 1, label: "Best", weight: 3, routesToBranchId: null, profileId: null },
@@ -77,6 +81,8 @@ function definition(status = "active"): QuizDefinition {
         position: 60,
         prompt: "Beta one",
         helpText: null,
+        mediaUrl: null,
+        mediaPosterUrl: null,
         isActive: true,
         options: [
           { id: O_OTHER, questionId: Q_OTHER, position: 1, label: "Other", weight: 3, routesToBranchId: null, profileId: null },

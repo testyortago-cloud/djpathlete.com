@@ -137,6 +137,8 @@ async function assemble(quizRow: Row, opts: { includeInactive?: boolean } = {}):
     position: num(row.position),
     prompt: str(row.prompt),
     helpText: strOrNull(row.help_text),
+    mediaUrl: strOrNull(row.media_url),
+    mediaPosterUrl: strOrNull(row.media_poster_url),
     isActive: row.is_active !== false,
     options: optionsByQuestion.get(str(row.id)) ?? [],
   }))
@@ -395,6 +397,8 @@ export async function createQuizFrom(businessId: string, input: { source: QuizDe
     position: question.position,
     prompt: question.prompt,
     help_text: question.helpText,
+    media_url: question.mediaUrl,
+    media_poster_url: question.mediaPosterUrl,
     is_active: question.isActive,
   }))
   await insertMapped(
@@ -476,7 +480,15 @@ export interface QuizSaveInput {
     /** Set null to clear the "reconstructed, unverified" banner. */
     seedMarker?: string | null
   }
-  questions?: { id: string; position?: number; prompt?: string; helpText?: string | null; isActive?: boolean }[]
+  questions?: {
+    id: string
+    position?: number
+    prompt?: string
+    helpText?: string | null
+    mediaUrl?: string | null
+    mediaPosterUrl?: string | null
+    isActive?: boolean
+  }[]
   options?: { id: string; label?: string; weight?: number; routesToBranchId?: string | null; profileId?: string | null }[]
   tiers?: { id: string; minScore?: number; maxScore?: number; headline?: string; body?: string; ctaLabel?: string | null; ctaHref?: string | null }[]
   profiles?: { id: string; name?: string; description?: string; position?: number }[]
@@ -488,6 +500,8 @@ export interface QuizSaveInput {
     position: number
     prompt: string
     helpText: string | null
+    mediaUrl: string | null
+    mediaPosterUrl: string | null
     isActive: boolean
     options: { id: string; position: number; label: string; weight: number; routesToBranchId: string | null; profileId: string | null }[]
   }[]
@@ -683,6 +697,8 @@ export async function saveQuizDefinition(businessId: string, input: QuizSaveInpu
       position: question.position,
       prompt: question.prompt,
       help_text: question.helpText,
+      media_url: question.mediaUrl,
+      media_poster_url: question.mediaPosterUrl,
       is_active: question.isActive,
     })
     if (error) throw error
@@ -745,6 +761,8 @@ export async function saveQuizDefinition(businessId: string, input: QuizSaveInpu
     if (question.position !== undefined) patch.position = question.position
     if (question.prompt !== undefined) patch.prompt = question.prompt
     if (question.helpText !== undefined) patch.help_text = question.helpText
+    if (question.mediaUrl !== undefined) patch.media_url = question.mediaUrl
+    if (question.mediaPosterUrl !== undefined) patch.media_poster_url = question.mediaPosterUrl
     if (question.isActive !== undefined) patch.is_active = question.isActive
     if (Object.keys(patch).length === 0) continue
     const { error } = await supabase.from("quiz_questions").update(patch).eq("id", question.id).eq("quiz_id", quizId)

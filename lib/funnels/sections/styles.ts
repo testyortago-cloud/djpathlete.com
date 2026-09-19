@@ -1675,6 +1675,17 @@ ${ROOT} .djp-s-quiz .djp-quiz-prompt {
   font-family: var(--djp-font-head, var(--font-heading, var(--font-lexend-exa), "Lexend Exa", system-ui, sans-serif));
 }
 ${ROOT} .djp-s-quiz .djp-quiz-help { font-size: 0.9375rem; color: var(--muted-foreground); margin: -0.75rem 0 1.25rem; }
+/* The movement-test demo.
+   NO BACKTICKS IN THIS COMMENT: the whole stylesheet is one TS template
+   literal, so a backtick here closes the string and every suite that imports
+   this module fails to transform. That cost 17 suites once.
+   aspect-ratio matches the encoded clips (1280x720) so the player reserves its
+   box before the poster loads — no layout shift bumping the options out from
+   under a thumb mid-tap. max-height keeps the options above the fold on a
+   short viewport; the visitor has to see the clip AND the options to answer.
+   No background colour: a raw hex is UNMODELLED to the render harness's colour
+   model, and with a matched aspect ratio there is nothing to letterbox. */
+${ROOT} .djp-s-quiz .djp-quiz-media { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 46vh; margin: 0 0 1.25rem; border-radius: 0.75rem; object-fit: contain; }
 ${ROOT} .djp-s-quiz .djp-quiz-options {
   display: flex;
   flex-direction: column;

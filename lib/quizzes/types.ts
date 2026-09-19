@@ -42,6 +42,14 @@ export interface QuizQuestion {
   position: number
   prompt: string
   helpText: string | null
+  /**
+   * A silent demo clip for a movement test, public and DURABLE — see
+   * lib/quiz-media-storage.ts. Null on every question that is not a movement
+   * test, which is all 28 of the athlete quiz's.
+   */
+  mediaUrl: string | null
+  /** Poster frame for `mediaUrl`. Null whenever `mediaUrl` is. */
+  mediaPosterUrl: string | null
   isActive: boolean
   options: QuizOption[]
 }
