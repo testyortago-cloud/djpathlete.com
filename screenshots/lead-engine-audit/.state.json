@@ -1,0 +1,120 @@
+{
+  "slug": "off-season-speed-camp-rx0f",
+  "funnelId": "4dd09176-4d0a-4e23-911e-6d829b5a05f0",
+  "entryStepId": "66a1ef66-fa6b-49ba-8974-7ffeca148c46",
+  "steps": [
+    {
+      "id": "66a1ef66-fa6b-49ba-8974-7ffeca148c46",
+      "slug": "index",
+      "position": 0
+    },
+    {
+      "id": "411b0a4e-3b90-482f-a011-cc358c373dc7",
+      "slug": "thank-you",
+      "position": 1
+    }
+  ],
+  "submitBefore": {
+    "contacts": 1,
+    "funnel_submissions": 0,
+    "timeline": 230,
+    "sequence_runs": 5,
+    "consents": 59,
+    "opportunities": 25,
+    "attribution": 407,
+    "leads": 0
+  },
+  "submitAfter": {
+    "contacts": 1,
+    "funnel_submissions": 0,
+    "timeline": 230,
+    "sequence_runs": 5,
+    "consents": 59,
+    "opportunities": 25,
+    "attribution": 408,
+    "leads": 0
+  },
+  "contactId": "454bfa3e-2095-4125-ae52-42b2a396f680",
+  "nurtureSequenceId": "42b5c695-b66a-4353-b534-5db61539c582",
+  "sendContactId": "95018214-fca2-4b4b-9bce-fc950fc56a63",
+  "previewDiff": {
+    "contacts": 0,
+    "funnel_submissions": 0,
+    "contact_timeline_events": 0,
+    "sequence_runs": 0,
+    "contact_consents": 0,
+    "opportunities": 0,
+    "marketing_attribution": 0,
+    "users": 0,
+    "audit_logs": 0,
+    "lead_inquiries": 0
+  },
+  "previewAnon": {
+    "preview": 404,
+    "funnelPreview": 404
+  },
+  "sms": {
+    "suppressions": [
+      {
+        "identifier": "+12025550177",
+        "reason": "sms_stop"
+      }
+    ],
+    "consents": [
+      {
+        "channel": "sms",
+        "granted": true,
+        "source": "funnel_form",
+        "occurred_at": "2026-09-12T16:59:03.594509+00:00"
+      },
+      {
+        "channel": "sms",
+        "granted": false,
+        "source": "sms_inbound",
+        "occurred_at": "2026-09-12T17:01:17.034214+00:00"
+      }
+    ],
+    "runs": [
+      {
+        "status": "exited",
+        "exit_reason": "sms_stop"
+      }
+    ],
+    "timeline": [
+      {
+        "kind": "entry_point",
+        "source": "funnel_form"
+      },
+      {
+        "kind": "sms_inbound",
+        "source": "twilio_inbound_webhook"
+      },
+      {
+        "kind": "sms_stop_received",
+        "source": "twilio_inbound_webhook"
+      }
+    ]
+  },
+  "pageSlug": "return-to-sport-screen-yce9",
+  "pageId": "0bfa445a-60b8-495c-b640-3dfcfcfd5471",
+  "pageStepId": "0642a6f8-7585-49e6-8c0f-dea7a888eb51",
+  "guards": {
+    "addStepOnPage": 400,
+    "patchKind": 400,
+    "patchStatusAndKind": 400,
+    "convertTwoStepFunnelToPage": 400,
+    "patchPublishFunnel": 400
+  },
+  "pageDetailRedirect": "http://localhost:3050/admin/pages",
+  "convert": {
+    "afterToFunnel": {
+      "kind": "funnel",
+      "status": "published"
+    },
+    "afterToPage": {
+      "kind": "page",
+      "status": "published"
+    },
+    "goAfterConvert": 200
+  }
+}
