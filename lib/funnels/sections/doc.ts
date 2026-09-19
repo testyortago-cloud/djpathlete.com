@@ -338,11 +338,31 @@ function themeCss(theme: SectionDocTheme, brandKit?: BrandKit | null): string {
   // untoned default ground `--accent` itself sits on. This is
   // `palette.accentOnPaper` — see palettes.ts's `deriveAccentOnPaper` for the
   // derivation and the measured worst case (`ink` was 1.11:1 before this).
+  // `--muted-foreground` (gap G16, 2026-09-19): the LAST colour token this
+  // stylesheet consumes that the palette never touched. It stayed at
+  // `app/globals.css`'s fixed mid-grey while `--background` went near-black
+  // underneath it, so secondary body copy measured 3.26:1 on all five
+  // dark-seeded presets against a 4.5:1 floor — and 5.98:1 on the light ones,
+  // making the floor an accident of which preset the coach picked.
+  //
+  // OVERRIDDEN DIRECTLY, not given an `--muted-on-paper` twin like the two
+  // tokens above. Those needed new names because `--primary` and `--accent` are
+  // also BACKGROUNDS, so their values could not move. This token is only ever a
+  // colour — 21 of its 21 uses in `styles.ts` are `color:` — so the value can
+  // simply be made correct, and `styles.ts` needs no edit at all. That matters
+  // beyond tidiness: the alternative was 21 call-site edits, which is a
+  // hand-listed table, and a missed entry would fail silently on dark palettes
+  // only. See `palettes.ts`'s `deriveMutedOnPaper`.
+  //
+  // Inside the `palette ?` arm with everything else, so the no-palette case
+  // above still emits NOTHING and today's live pages keep taking this token
+  // from the bare `:root`.
   const paletteBlock = palette
     ? `${ROOT} { --primary: ${palette.brand}; --primary-foreground: ${palette.brandInk}; ` +
       `--primary-on-paper: ${palette.brandOnPaper}; ` +
       `--accent: ${palette.accent}; --accent-foreground: ${palette.accentInk}; ` +
       `--accent-on-paper: ${palette.accentOnPaper}; ` +
+      `--muted-foreground: ${palette.mutedOnPaper}; ` +
       `--surface: ${palette.surface}; --foreground: ${palette.ink}; --background: ${palette.paper}; }`
     : ""
 

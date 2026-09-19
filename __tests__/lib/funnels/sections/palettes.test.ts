@@ -32,6 +32,31 @@ describe("PALETTE_TABLE", () => {
       expect(contrastRatio(p.accentInk, p.accent), `${name}: text on accent band`).toBeGreaterThanOrEqual(4.5)
     }
   })
+  // GAP G16. `--muted-foreground` was a FIXED app token (app/globals.css:19,
+  // oklch(0.5 0.01 250) = #5f6469) that no preset derived, so it never entered
+  // this file's AA guarantee at all. Measured before the fix it scored 3.26:1
+  // on paper for all five dark-seeded presets (midnight/ember/steel/plum/ink)
+  // against a 4.5:1 body floor, while the seven light ones sat at 5.98 — so the
+  // floor a reader got was an accident of which preset the coach picked.
+  it("guarantees mutedOnPaper reads as body copy on the page's own ground", () => {
+    for (const [name, p] of Object.entries(PALETTE_TABLE)) {
+      expect(contrastRatio(p.mutedOnPaper, p.paper), `${name}: mutedOnPaper on paper`).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(p.mutedOnPaper, p.surface), `${name}: mutedOnPaper on surface`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+  // ...AND IS STILL MUTED. A token that merely cleared 4.5:1 could satisfy the
+  // test above by being `ink` itself, which would silently delete the visual
+  // distinction between a bullet's heading and its body on every page. The
+  // derivation has to land BETWEEN paper and ink, not at either end.
+  it("keeps mutedOnPaper subordinate to ink rather than equal to it", () => {
+    for (const [name, p] of Object.entries(PALETTE_TABLE)) {
+      expect(p.mutedOnPaper, `${name}: mutedOnPaper must not simply be ink`).not.toBe(p.ink)
+      expect(
+        contrastRatio(p.mutedOnPaper, p.paper),
+        `${name}: mutedOnPaper must be dimmer than ink`,
+      ).toBeLessThan(contrastRatio(p.ink, p.paper))
+    }
+  })
   // THE GUARANTEE `brand` NEVER HAD. `brand` is paired with `brandInk` only as
   // a BACKGROUND (the assertion above, "text on brand band"); as TEXT on the
   // page's own ground (.djp-hd / .djp-plan-price / .djp-proof-value, painted
@@ -127,6 +152,10 @@ describe("resolvePalette", () => {
       expect(contrastRatio(p.accentOnPaper, p.surface), `hue ${hue}: accentOnPaper on surface`).toBeGreaterThanOrEqual(
         4.5,
       )
+      expect(contrastRatio(p.mutedOnPaper, p.paper), `hue ${hue}: mutedOnPaper on paper`).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(p.mutedOnPaper, p.surface), `hue ${hue}: mutedOnPaper on surface`).toBeGreaterThanOrEqual(
+        4.5,
+      )
     }
   })
   // Both modes, not just light: dark mode's paper is near-black, which is
@@ -141,6 +170,16 @@ describe("resolvePalette", () => {
       expect(
         contrastRatio(p.brandOnPaper, p.surface),
         `hue ${hue} (dark): brandOnPaper on surface`,
+      ).toBeGreaterThanOrEqual(4.5)
+      // Dark mode IS G16's case: this is the arm where the fixed app token
+      // scored 3.26:1, so a regression here is the original bug returning.
+      expect(
+        contrastRatio(p.mutedOnPaper, p.paper),
+        `hue ${hue} (dark): mutedOnPaper on paper`,
+      ).toBeGreaterThanOrEqual(4.5)
+      expect(
+        contrastRatio(p.mutedOnPaper, p.surface),
+        `hue ${hue} (dark): mutedOnPaper on surface`,
       ).toBeGreaterThanOrEqual(4.5)
       expect(
         contrastRatio(p.accentOnPaper, p.paper),

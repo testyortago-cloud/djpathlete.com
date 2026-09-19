@@ -423,6 +423,29 @@ describe("palette resolution order", () => {
   it("emits no palette override at all when neither is present", () => {
     expect(reassemble(themeDoc({})).css).not.toMatch(/--primary:/)
   })
+
+  // GAP G16. `--muted-foreground` is the ONE colour token styles.ts consumes
+  // (21 times) that the palette block never overrode, so it kept globals.css's
+  // fixed mid-grey while paper went near-black underneath it.
+  //
+  // It is overridden DIRECTLY rather than given an `--muted-on-paper` twin like
+  // --primary and --accent got, because those two also serve as BACKGROUNDS and
+  // so could not have their value changed. This token is only ever a colour —
+  // its sole non-`color:` use in the whole stylesheet is a dashed border on a
+  // render-only placeholder. Overriding it fixes all 21 consumers with no
+  // styles.ts edit, and therefore with no call site to forget.
+  it("overrides --muted-foreground from the palette so body copy is readable on a dark ground", () => {
+    const css = reassemble(themeDoc({ palette: { preset: "ink" } })).css
+    expect(css).toContain(`--muted-foreground: ${PALETTE_TABLE.ink.mutedOnPaper}`)
+  })
+
+  // The same no-regression guard as above, for the same reason: today's live
+  // pages carry a 3-key theme with no palette, and they must keep taking this
+  // token from app/globals.css's bare :root. An override that merely MATCHED
+  // today's value would still be a behaviour change the day globals.css moves.
+  it("emits no --muted-foreground override at all when no palette is present", () => {
+    expect(reassemble(themeDoc({})).css).not.toMatch(/--muted-foreground:/)
+  })
 })
 
 // ---------------------------------------------------------------------------

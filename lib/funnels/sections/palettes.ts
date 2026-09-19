@@ -206,6 +206,17 @@ export interface PaletteTokens {
   surface: string
   ink: string
   paper: string
+  /**
+   * Secondary body copy on the page's own ground — what `doc.ts` emits as
+   * `--muted-foreground`. See `deriveMutedOnPaper` for why this overrides the
+   * app token directly instead of arriving as a third `-on-paper` twin.
+   *
+   * NOT a stored key. `PaletteTokens` is derived at runtime and never written to
+   * `funnel_steps.project_data`, which stores only the palette SEED
+   * (`{preset}` or `{brand, accent, mode}` — `registry.ts`'s `paletteSchema`).
+   * Adding a required field here therefore cannot break an existing draft.
+   */
+  mutedOnPaper: string
 }
 
 // A fixed hue rotation used to derive an accent from a brand colour when the
@@ -296,6 +307,50 @@ function deriveAccentOnPaper(accent: string, paper: string, surface: string): st
   return deriveOnPaper(accent, paper, surface)
 }
 
+// ---------------------------------------------------------------------------
+// mutedOnPaper — secondary body copy that is still body copy. (Gap G16.)
+//
+// `--muted-foreground` was the one colour token the funnel stylesheet consumes
+// that this module never produced: a FIXED app-level value on `app/globals.css`'s
+// bare `:root` (`oklch(0.5 0.01 250)`, about `#5f6469`). It therefore never
+// entered the AA guarantee at all — not "unproven", ABSENT. Measured against
+// every preset before this fix, it scored 5.98:1 on the seven LIGHT presets and
+// 3.26:1 on all five dark-seeded ones (`midnight` `ember` `steel` `plum` `ink`),
+// with `surface` a shade worse again at 3.14-3.24. So whether a visitor could
+// read a bullet's body text came down to which preset the coach had picked.
+//
+// WHY THIS IS NOT ANOTHER `-on-paper` TWIN. `brandOnPaper` and `accentOnPaper`
+// exist because `brand` and `accent` are also BACKGROUNDS, so their own values
+// could not be changed without repainting every band that uses them; the fix had
+// to arrive under a new name that only text reads. `--muted-foreground` has no
+// second job — of its 21 uses in `styles.ts`, all 21 are `color:`, and its only
+// other appearance anywhere is a dashed border on a render-only placeholder. So
+// `doc.ts` overrides that token DIRECTLY with this value, which is what lets all
+// 21 consumers be fixed without editing (and without forgetting) any of them.
+//
+// THE DIRECTION IS OPPOSITE TO `deriveOnPaper`. That one pushes a brand colour
+// AWAY from paper until it is readable enough. This one starts at `ink` — which
+// `pickInk` has already proved against `paper` — and walks it TOWARD paper, i.e.
+// deliberately dimmer, keeping the LAST value that still clears 4.5:1 against
+// both grounds. The result is the most subordinate colour that is still body
+// copy, which is what "muted" ought to mean.
+//
+// Termination and safety: step 0 is `ink` itself, which already clears both
+// grounds, so `best` is never unset and there is no throw path. Contrast falls
+// monotonically as the mix approaches paper, so the first failing step is the
+// boundary and stopping there cannot skip a passing value further along.
+// ---------------------------------------------------------------------------
+
+function deriveMutedOnPaper(ink: string, paper: string, surface: string): string {
+  let best = ink
+  for (let step = 1; step <= 100; step++) {
+    const candidate = mix(ink, paper, step / 100)
+    if (contrastRatio(candidate, paper) < MIN_AA || contrastRatio(candidate, surface) < MIN_AA) break
+    best = candidate
+  }
+  return best
+}
+
 /**
  * Derive a full `PaletteTokens` set from a brand colour (and optionally an
  * accent and a light/dark mode). Every token is `#rrggbb`. Deterministic:
@@ -329,8 +384,9 @@ export function resolvePalette(input: { brand: string; accent?: string; mode?: "
   const surface = deriveSurface(paper, brand, ink)
   const brandOnPaper = deriveBrandOnPaper(brand, paper, surface)
   const accentOnPaper = deriveAccentOnPaper(accent, paper, surface)
+  const mutedOnPaper = deriveMutedOnPaper(ink, paper, surface)
 
-  return { brand, brandInk, brandOnPaper, accent, accentInk, accentOnPaper, surface, ink, paper }
+  return { brand, brandInk, brandOnPaper, accent, accentInk, accentOnPaper, surface, ink, paper, mutedOnPaper }
 }
 
 // ---------------------------------------------------------------------------

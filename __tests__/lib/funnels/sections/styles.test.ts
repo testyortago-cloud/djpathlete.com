@@ -256,3 +256,51 @@ describe("CSS size stays under the publish cap", () => {
     expect(worstCase.length).toBeLessThan(FUNNEL_STEP_CSS_MAX_LENGTH)
   })
 })
+
+// ---------------------------------------------------------------------------
+// THE SHAPE-CONTRAST PASS (2026-09-19).
+//
+// The art-director critic, looking at a real render, filed two art/high
+// findings that no text-contrast rule covers, because neither is about text:
+//
+//   - on a LIGHT palette: "the pricing card ... is rendered in a barely-lighter
+//     tan, giving the card almost no visual separation from the band behind it"
+//   - on the `ink` preset: "a near-black button on a near-black background,
+//     making it almost invisible against the dark card"
+//
+// Measured over all 12 presets x 4 tones: the card fails 3:1 against its band
+// in 48/48 cells, and the button fails against the card in 26/48 (worst 1.08).
+//
+// THE FIX IS AN EDGE, NOT A NEW FILL. A shape gets a boundary drawn in the
+// foreground of the pair it already sits in (--djp-pair-fg), which pickInk has
+// ALREADY proved against that band. No new palette token, and no table of legal
+// pairs — the artefact the last four unreadable-text bugs hid behind.
+// ---------------------------------------------------------------------------
+describe("shapes have a boundary against whatever is behind them", () => {
+  // The variable has to be SET for all four tones, or a shape on the tone it
+  // was forgotten on silently falls back and the bug survives on that tone
+  // alone. `.djp-s`'s base rule covers `default` and `muted` (both sit in the
+  // neutral pair); `accent` and `dark` repaint, so they need their own.
+  it("defines --djp-pair-fg for every tone a section can take", () => {
+    expect(THEME_CSS).toMatch(/\.djp-s \{[^}]*--djp-pair-fg: var\(--foreground\)/)
+    expect(THEME_CSS).toMatch(/\[data-tone="accent"\] \{[^}]*--djp-pair-fg: var\(--accent-foreground\)/)
+    expect(THEME_CSS).toMatch(/\[data-tone="dark"\] \{[^}]*--djp-pair-fg: var\(--primary-foreground\)/)
+  })
+
+  // The button is the WCAG 1.4.11 failure of the two — it is a UI component, so
+  // its boundary must clear 3:1, not merely look tidier.
+  it("rings the primary button in the surrounding pair's foreground", () => {
+    expect(THEME_CSS).toMatch(/\.djp-btn-primary \{[^}]*box-shadow: 0 0 0 1px var\(--djp-pair-fg/)
+  })
+
+  // `currentColor` CANNOT serve as the button's ring. `.djp-btn-primary` sets
+  // its own `color` for its label, so inside the button `currentColor` is the
+  // LABEL colour, not the ground the button sits on — a ring drawn in it would
+  // be the button's own text colour against the button's own fill, which
+  // `pickInk` deliberately makes maximally contrasty and which says nothing
+  // about the card behind it. That is the whole reason the pair's foreground
+  // needed a name of its own.
+  it("does not reach for currentColor, which the button overwrites with its label colour", () => {
+    expect(THEME_CSS).not.toMatch(/\.djp-btn-primary \{[^}]*box-shadow:[^;]*currentColor/)
+  })
+})

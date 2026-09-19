@@ -185,6 +185,19 @@ ${ROOT}, ${ROOT} *, ${ROOT} *::before, ${ROOT} *::after { box-sizing: border-box
 ${ROOT} .djp-s {
   font-family: var(--djp-font-body, var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif));
   color: var(--foreground);
+  /* --djp-pair-fg: the foreground of the PAIR this section is in. Same value as
+     color directly above, under a name a SHAPE can read.
+
+     A shape cannot use currentColor for this. .djp-btn-primary sets its own
+     color for its label, so inside the button currentColor is the label
+     colour — which pickInk deliberately makes maximally contrasty against the
+     BUTTON, and which says nothing about the card the button sits on.
+
+     Set here for default and muted (both sit in the neutral pair); the
+     accent and dark tone rules below override it, because they repaint. Three
+     declarations cover all four tones, and a future shape needing a guaranteed
+     boundary reads the variable instead of earning a new row in a table. */
+  --djp-pair-fg: var(--foreground);
   padding-block: 3rem;
   padding-inline: max(1.25rem, calc((100% - var(--djp-maxw, 72rem)) / 2));
 }
@@ -208,8 +221,8 @@ ${ROOT} .djp-s[data-align="center"] .djp-sub { margin-inline: auto; }
    -foreground tokens for contrast (app/globals.css already pairs them this
    way; this is not a new convention). */
 ${ROOT} .djp-s[data-tone="muted"] { background: var(--surface); }
-${ROOT} .djp-s[data-tone="accent"] { background: var(--accent); color: var(--accent-foreground); }
-${ROOT} .djp-s[data-tone="dark"] { background: var(--primary); color: var(--primary-foreground); }
+${ROOT} .djp-s[data-tone="accent"] { background: var(--accent); color: var(--accent-foreground); --djp-pair-fg: var(--accent-foreground); }
+${ROOT} .djp-s[data-tone="dark"] { background: var(--primary); color: var(--primary-foreground); --djp-pair-fg: var(--primary-foreground); }
 ${ROOT} .djp-s[data-tone="accent"] .djp-hd,
 ${ROOT} .djp-s[data-tone="dark"] .djp-hd { color: inherit; }
 ${ROOT} .djp-s[data-tone="accent"] .djp-sub,
@@ -582,7 +595,39 @@ ${ROOT} .djp-btn {
   border: 2px solid transparent;
   cursor: pointer;
 }
-${ROOT} .djp-btn-primary { background: var(--accent); color: var(--accent-foreground); }
+/* THE BUTTON'S BOUNDARY (2026-09-19 shape-contrast pass).
+
+   background: var(--accent) is paired with --accent-foreground for the
+   LABEL, and pickInk proves that pair. Nothing ever proved the button's FILL
+   against whatever the button is sitting on — and a button is a UI component,
+   so WCAG 1.4.11 wants 3:1 for its boundary, not merely a readable label.
+
+   Measured over all 12 presets x 4 tones, the fill fails 3:1 against the
+   pricing card in 26 of 48 cells; on ink it is 1.08:1, which is the art
+   director's "a near-black button on a near-black background, making it almost
+   invisible against the dark card".
+
+   A RING, NOT A NEW FILL. --djp-pair-fg is the foreground of the pair the
+   button sits in, and pickInk has ALREADY proved that colour against the band;
+   the card is only an 8-12% wash of that same colour into that same band, so
+   the ring moves toward the foreground while the card barely moves. Measured,
+   not assumed: full strength clears 3:1 in all 48 cells, worst 3.75 (bone on
+   an accent tone).
+
+   FULL STRENGTH, NOT THE 22% USED BY THE + sibling DIVIDERS ABOVE. At 22% the
+   ring measures 1.41-2.01 and fails everywhere — copying the house idiom here
+   would have shipped something that looked like a fix and was a no-op. 80% is
+   the lightest passing value and clears by 0.04 at bone/dark; palettes.ts's own
+   banner records a 3.007:1 near-miss as "luck, not a guarantee", so the margin
+   is worth more than the pixel of lightness.
+
+   box-shadow, not border: a border would change the button's box and shift
+   every CTA's layout by 2px. An inset-free ring paints outside the box instead. */
+${ROOT} .djp-btn-primary {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  box-shadow: 0 0 0 1px var(--djp-pair-fg, var(--foreground));
+}
 ${ROOT} .djp-btn-secondary { background: transparent; color: inherit; border-color: currentColor; }
 ${ROOT} .djp-btn-disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
@@ -933,12 +978,24 @@ ${ROOT} .djp-s-pricing .djp-pricing-grid {
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
   align-items: stretch;
 }
+/* THE CARD'S BOUNDARY (2026-09-19 shape-contrast pass).
+
+   border: 2px solid transparent was here so a featured plan could take a
+   colour without shifting layout — but on an ordinary plan it left the card
+   relying entirely on its FILL to separate from the band behind it. Measured
+   over all 12 presets x 4 tones, that fill never once clears 3:1 against its
+   own band: 48 of 48 cells fail, at 1.01-1.42. The art director, looking at a
+   real render, called it "a barely-lighter tan, giving the card almost no
+   visual separation from the band behind it".
+
+   The colour changes, the WIDTH DOES NOT. Narrowing to 1px would move every
+   pricing card's content by a pixel on both axes and buy no contrast. */
 ${ROOT} .djp-s-pricing .djp-plan {
   display: flex;
   flex-direction: column;
   gap: 1rem;
   background: var(--surface);
-  border: 2px solid transparent;
+  border: 2px solid var(--djp-pair-fg, var(--foreground));
   border-radius: var(--djp-radius, 0.6rem);
   padding: 2rem;
 }
