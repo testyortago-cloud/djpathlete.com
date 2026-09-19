@@ -83,6 +83,7 @@ function sequenceFixture(overrides: Partial<SequenceForEdit> = {}): SequenceForE
     steps: [{ id: "step-1", position: 0 }],
     drafts: [EMAIL_STEP("step-1")],
     sentCountByStepId: {},
+    reenrolCooldownDays: 30,
     activeRuns: [],
     ...overrides,
   }

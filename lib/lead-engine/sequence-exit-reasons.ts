@@ -44,6 +44,7 @@
 //   merged_into_survivor      supabase/migrations/00238_merge_contacts_carries_tags.sql
 //   superseded_by_merged_run  supabase/migrations/00238_merge_contacts_carries_tags.sql
 //   sequence_edited           supabase/migrations/00256_sequence_management.sql
+//   manual                    scripts/exit-sequence-run.mjs (a human, by hand)
 //
 // The three "stop contacting me" reasons (unsubscribed / sms_stop /
 // suppressed) get three different sentences, on purpose, even though the list
@@ -63,6 +64,7 @@ const KNOWN_REASONS: Record<string, string> = {
   merged_into_survivor: "Their details were merged into another person's record.",
   superseded_by_merged_run: "They were already in this sequence under another record.",
   sequence_edited: "Stopped because the sequence was edited",
+  manual: "Taken out by hand",
 }
 
 /**

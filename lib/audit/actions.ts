@@ -403,6 +403,14 @@ export const AUDIT_ACTIONS = [
     description: "Admin changed a sequence's steps",
   },
   {
+    // Writer: app/api/admin/sequences/[key]/settings/route.ts. Metadata is
+    // the sequence key, the setting's column name and its before/after value
+    // — never a contact.
+    slug: "sequence.settings_changed",
+    category: "admin_write",
+    description: "Admin changed a sequence's settings",
+  },
+  {
     // `commerce`, not `admin_write`: this creates an account and grants a paid
     // program off the back of a deal somebody closed. It belongs with the
     // money, beside pipeline.opportunity_won.
@@ -420,6 +428,16 @@ export const AUDIT_ACTIONS = [
     slug: "sequence.runs_repaired",
     category: "automation",
     description: "Runs destroyed by a provider configuration fault were reset to active by hand",
+  },
+  {
+    // Writer: scripts/exit-sequence-run.mjs — a human ends one run that a
+    // trigger should never have started (first use: the account holder the
+    // pack payment-link cron enrolled in abandoned_checkout, Sept 2026).
+    // Metadata is the run id, the sequence key, the reason and whether a tag
+    // was removed — never an email address.
+    slug: "sequence.run_exited_by_hand",
+    category: "admin_write",
+    description: "A run was ended by hand with a script",
   },
   {
     slug: "legal_document.published",

@@ -16,6 +16,7 @@ import { DETAIL_PAGE_SIZE, sequenceDetail, type OutcomeBucket } from "@/lib/db/s
 import { loadSequenceForEdit } from "@/lib/db/sequence-admin"
 import { SequenceRunsTable } from "@/components/admin/sequences/SequenceRunsTable"
 import { SequenceSwitch } from "@/components/admin/sequences/SequenceSwitch"
+import { SequenceCooldownField } from "@/components/admin/sequences/SequenceCooldownField"
 import { StepEditor } from "@/components/admin/sequences/StepEditor"
 import { StepEditorDirtyProvider } from "@/components/admin/sequences/StepEditorDirtyProvider"
 import { DataTableBadge } from "@/components/ui/data-table"
@@ -125,6 +126,17 @@ export default async function SequenceDetailPage({
           <p className="mt-1 text-sm text-muted-foreground">
             {detail.stepCount === 1 ? "1 step" : `${detail.stepCount} steps`}
           </p>
+          {isAdmin ? (
+            <SequenceCooldownField
+              // Re-mounts the field when the stored value changes under it (a
+              // save by this admin after router.refresh(), or another admin's),
+              // so its draft never shows a value the row no longer holds.
+              key={forEdit.reenrolCooldownDays}
+              sequenceKey={forEdit.key}
+              sequenceName={forEdit.name}
+              value={forEdit.reenrolCooldownDays}
+            />
+          ) : null}
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">

@@ -470,6 +470,54 @@ describe("timeline labels for sequence side effects", () => {
   })
 })
 
+// enroll.ts writes `enrolment_skipped` when a trigger fired for someone who
+// finished the same sequence inside its cooldown (migration 00263). Without a
+// hand-written arm it would humanise to "Enrolment skipped" — true, but it
+// does not tell the coach which sequence or why.
+describe("timeline label for a cooldown refusal", () => {
+  it("names the sequence and says how long the cooldown is", () => {
+    const described = describeTimelineEvent(
+      event({
+        id: "e",
+        kind: "enrolment_skipped",
+        metadata: { sequence_name: "Abandoned checkout", reason: "cooldown", cooldown_days: 30 },
+      }),
+    )
+    expect(described.title).toBe("Not put back into “Abandoned checkout”")
+    expect(described.detail).toContain("30 days")
+    expect(described.tone).toBe("neutral")
+  })
+
+  it("still reads as a sentence when the metadata is missing", () => {
+    const described = describeTimelineEvent(event({ id: "e", kind: "enrolment_skipped", metadata: {} }))
+    expect(described.title).toBe("Not put back into a sequence")
+    expect(described.detail).toBeNull()
+  })
+})
+
+// scripts/exit-sequence-run.mjs writes this when a human takes someone out of
+// a sequence a trigger should never have started (G02 of the gap ledger).
+describe("timeline label for a run a human ended", () => {
+  it("names the sequence and says a person did it", () => {
+    const described = describeTimelineEvent(
+      event({
+        id: "e",
+        kind: "sequence_run_exited_by_hand",
+        metadata: { sequence_name: "Abandoned checkout", reason: "manual", note: "Renewal link, not a lead." },
+      }),
+    )
+    expect(described.title).toBe("Taken out of “Abandoned checkout” by hand")
+    expect(described.detail).toBe("Renewal link, not a lead.")
+    expect(described.tone).toBe("neutral")
+  })
+
+  it("still reads as a sentence when the metadata is missing", () => {
+    const described = describeTimelineEvent(event({ id: "e", kind: "sequence_run_exited_by_hand", metadata: {} }))
+    expect(described.title).toBe("Taken out of a sequence by hand")
+    expect(described.detail).toBeNull()
+  })
+})
+
 describe("formatMoney", () => {
   it("renders cents as dollars", () => {
     expect(formatMoney(18000, "usd")).toBe("$180.00")

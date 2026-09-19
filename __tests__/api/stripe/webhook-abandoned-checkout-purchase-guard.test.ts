@@ -176,7 +176,7 @@ const BUSINESS = "22222222-2222-2222-2222-222222222222"
 const EMAIL = "funnel-buyer@example.com"
 const CREATED_UNIX = 1_700_000_000 // session A's own `created` (Unix seconds)
 
-function expiredEvent(sessionId: string) {
+function expiredEvent(sessionId: string, metadata: Record<string, string> = {}) {
   verifyMock.mockReturnValueOnce({
     type: "checkout.session.expired",
     id: "evt_1",
@@ -185,7 +185,7 @@ function expiredEvent(sessionId: string) {
         id: sessionId,
         customer_email: EMAIL,
         customer_details: { email: EMAIL },
-        metadata: {},
+        metadata,
         created: CREATED_UNIX,
       },
     },
@@ -261,5 +261,42 @@ describe("checkout.session.expired — the real hasPurchaseSince, not a stubbed 
 
     expect(res.status).toBe(200)
     expect(captureLeadMock).not.toHaveBeenCalled()
+  })
+})
+
+// A `session_pack` Checkout session is only ever minted FOR AN EXISTING CLIENT
+// (`createPackCheckoutSession` in lib/stripe.ts requires `clientUserId`), and
+// since 2026-09-16 the daily pack-renewal cron (`packRenewalScanCron` →
+// /api/admin/internal/pack-renewals; the re-send rule is
+// lib/automation/pack-link-resend.ts) mints a fresh one every morning while a
+// renewal stays unpaid. Each one expires
+// 24 hours later. Before this guard, every one of those expiries captured
+// `checkout_abandoned` and enrolled the payer in the abandoned-checkout nurture:
+// a paying account holder received "You left something half-finished" on 16 and
+// 19 Sept and "Still worth a conversation" on 18 Sept, on top of the daily
+// payment link. The presence control above ("DOES capture … the presence
+// control") is what proves the exclusion below is keyed on the TYPE and not on
+// the route doing nothing.
+describe("checkout.session.expired — a session_pack session is a renewal link lapsing, never a lead going cold", () => {
+  const RENEWAL = { type: "session_pack", clientUserId: "user-1" }
+
+  it("does NOT capture checkout_abandoned for an expired session_pack session", async () => {
+    // No purchase since — on its own this would capture (see the presence control).
+    timelineRows = []
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(expiredEvent("cs_pack_renewal", RENEWAL))
+
+    expect(res.status).toBe(200)
+    expect(captureLeadMock).not.toHaveBeenCalled()
+  })
+
+  it("still reaps the unpaid pack on that same expiry — only the lead capture is excluded", async () => {
+    const { getPackageByStripeSession } = await import("@/lib/db/client-packages")
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    await POST(expiredEvent("cs_pack_renewal", RENEWAL))
+
+    expect(getPackageByStripeSession).toHaveBeenCalledWith("cs_pack_renewal")
   })
 })

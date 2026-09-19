@@ -63,6 +63,15 @@ describe("exitReasonSentence — every reason confirmed to reach the database to
   })
 })
 
+describe("exitReasonSentence — a run taken out by hand", () => {
+  // Written by scripts/exit-sequence-run.mjs (the G02 repair for a person the
+  // renewal cron wrongly enrolled). A coach reading the person list must see
+  // that a human did this, not a system rule.
+  it("manual", () => {
+    expect(exitReasonSentence("manual")).toBe("Taken out by hand")
+  })
+})
+
 describe("exitReasonSentence — no exit reason", () => {
   it("returns null for null, rather than an empty or placeholder string", () => {
     expect(exitReasonSentence(null)).toBeNull()

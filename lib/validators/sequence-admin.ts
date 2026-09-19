@@ -51,3 +51,12 @@ export const saveStepsRequestSchema = z.object({
 export const setSequenceStatusRequestSchema = z.object({
   on: z.boolean(),
 })
+
+/**
+ * PATCH .../settings — `sequences.reenrol_cooldown_days` (migration 00263).
+ * The 0–365 range mirrors the column's CHECK, so a bad value is a 400 here
+ * rather than a 500 from Postgres.
+ */
+export const setSequenceReenrolCooldownRequestSchema = z.object({
+  reenrolCooldownDays: z.number().int().min(0).max(365),
+})

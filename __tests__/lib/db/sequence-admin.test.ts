@@ -62,7 +62,7 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-import { loadSequenceForEdit, saveSequenceSteps, setSequenceStatus } from "@/lib/db/sequence-admin"
+import { loadSequenceForEdit, saveSequenceSteps, setSequenceReenrolCooldown, setSequenceStatus } from "@/lib/db/sequence-admin"
 import type { StepDraft, StepSavePlan } from "@/lib/lead-engine/step-list"
 
 const BUSINESS = "11111111-1111-4111-8111-111111111111"
@@ -81,7 +81,7 @@ const STEP_SELECT =
 describe("loadSequenceForEdit", () => {
   function queueHappyPath() {
     results = [
-      { data: { id: "seq-1", key: "cold_lead", name: "Cold Lead", status: "active" }, error: null },
+      { data: { id: "seq-1", key: "cold_lead", name: "Cold Lead", status: "active", reenrol_cooldown_days: 14 }, error: null },
       {
         data: [
           {
@@ -121,7 +121,11 @@ describe("loadSequenceForEdit", () => {
     await loadSequenceForEdit(BUSINESS, "cold_lead")
 
     expect(calls[0].table).toBe("sequences")
-    expect(calls[0].arg).toBe("id, key, name, status")
+    // "*", not a column list — the sequence row is the one read on this
+    // screen that must survive the deploy→migration window for 00263 (see
+    // the DAL's own comment). The column names it relies on are pinned by
+    // the assembly tests below, not by this select string.
+    expect(calls[0].arg).toBe("*")
 
     expect(calls[1].table).toBe("sequence_steps")
     expect(calls[1].arg).toBe(STEP_SELECT)
@@ -228,6 +232,83 @@ describe("loadSequenceForEdit", () => {
   it("throws rather than swallowing a failed sequence read", async () => {
     results = [{ data: null, error: { message: "boom" } }]
     await expect(loadSequenceForEdit(BUSINESS, "cold_lead")).rejects.toBeTruthy()
+  })
+})
+
+describe("loadSequenceForEdit — the re-enrolment cooldown (migration 00263)", () => {
+  it("returns the row's cooldown as reenrolCooldownDays", async () => {
+    results = [
+      { data: { id: "seq-1", key: "cold_lead", name: "Cold Lead", status: "active", reenrol_cooldown_days: 14 }, error: null },
+      { data: [], error: null },
+      { data: [], error: null },
+    ]
+    const result = await loadSequenceForEdit(BUSINESS, "cold_lead")
+    expect(result?.reenrolCooldownDays).toBe(14)
+  })
+
+  it("reports 0 as 0, not as the default — 0 is what the quiz sequences carry", async () => {
+    results = [
+      { data: { id: "seq-1", key: "quiz_rebuilder", name: "Quiz — Rebuilder", status: "active", reenrol_cooldown_days: 0 }, error: null },
+      { data: [], error: null },
+      { data: [], error: null },
+    ]
+    const result = await loadSequenceForEdit(BUSINESS, "quiz_rebuilder")
+    expect(result?.reenrolCooldownDays).toBe(0)
+  })
+})
+
+describe("setSequenceReenrolCooldown", () => {
+  it("writes reenrol_cooldown_days and updated_at, scoped by id and business_id, and returns the PRIOR value", async () => {
+    results = [
+      { data: { id: "seq-1", reenrol_cooldown_days: 30 }, error: null },
+      { data: null, error: null },
+    ]
+    const result = await setSequenceReenrolCooldown(BUSINESS, "cold_lead", 14)
+    expect(result).toEqual({ id: "seq-1", from: 30 })
+
+    expect(calls[0].table).toBe("sequences")
+    expect(calls[0].op).toBe("select")
+    expect(calls[0].arg).toBe("id, reenrol_cooldown_days")
+    expect(calls[0].ops).toContainEqual(["eq", "key", "cold_lead"])
+    expect(calls[0].ops).toContainEqual(["eq", "business_id", BUSINESS])
+
+    expect(calls[1].table).toBe("sequences")
+    expect(calls[1].op).toBe("update")
+    expect(calls[1].arg).toMatchObject({ reenrol_cooldown_days: 14 })
+    expect((calls[1].arg as Record<string, unknown>).updated_at).toEqual(expect.any(String))
+    expect(calls[1].ops).toContainEqual(["eq", "id", "seq-1"])
+    expect(calls[1].ops).toContainEqual(["eq", "business_id", BUSINESS])
+  })
+
+  it("does NOT let a wrong-tenant value slip through — mutating the VALUE, not the arity", async () => {
+    results = [
+      { data: { id: "seq-1", reenrol_cooldown_days: 30 }, error: null },
+      { data: null, error: null },
+    ]
+    await setSequenceReenrolCooldown(OTHER_BUSINESS, "cold_lead", 14)
+    expect(calls[0].ops).toContainEqual(["eq", "business_id", OTHER_BUSINESS])
+    expect(calls[0].ops).not.toContainEqual(["eq", "business_id", BUSINESS])
+    expect(calls[1].ops).toContainEqual(["eq", "business_id", OTHER_BUSINESS])
+  })
+
+  it("returns null for another tenant's key, and never issues the update", async () => {
+    results = [{ data: null, error: null }]
+    const result = await setSequenceReenrolCooldown(BUSINESS, "someone-elses-key", 14)
+    expect(result).toBeNull()
+    expect(calls.some((c) => c.op === "update")).toBe(false)
+  })
+
+  it("throws rather than swallowing a failed read", async () => {
+    results = [{ data: null, error: { message: "read boom" } }]
+    await expect(setSequenceReenrolCooldown(BUSINESS, "cold_lead", 14)).rejects.toBeTruthy()
+  })
+
+  it("throws rather than swallowing a failed write", async () => {
+    results = [
+      { data: { id: "seq-1", reenrol_cooldown_days: 30 }, error: null },
+      { data: null, error: { message: "write boom" } },
+    ]
+    await expect(setSequenceReenrolCooldown(BUSINESS, "cold_lead", 14)).rejects.toBeTruthy()
   })
 })
 

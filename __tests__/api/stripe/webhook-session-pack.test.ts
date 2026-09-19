@@ -154,9 +154,12 @@ describe("Stripe webhook — session_pack completed", () => {
 })
 
 // Task 2 (Lead Engine, sequence-content-and-branching): checkout.session.expired
-// used to only reap an abandoned session pack. It now ALSO records a
-// checkout_abandoned contact event — this suite's job is to prove the new
-// capture code did not displace the pre-existing reap.
+// used to only reap an abandoned session pack. For a while it ALSO recorded a
+// checkout_abandoned contact event; since 2026-09-20 it deliberately does NOT
+// (EXISTING_CLIENT_CHECKOUT_TYPES in the route — a session pack is only ever
+// minted for an existing client, and the pack payment-link cron re-mints one
+// daily, so its expiry is a renewal link lapsing, not a lead going cold).
+// This suite's job is to prove the reap survives both changes.
 describe("Stripe webhook — session_pack expired", () => {
   it("still reaps an abandoned session pack", async () => {
     verifyMock.mockReturnValue(packExpiredEvent())
@@ -170,18 +173,17 @@ describe("Stripe webhook — session_pack expired", () => {
     expect(res.status).toBe(200)
     expect(updateClientPackageMock).toHaveBeenCalledWith("pkg-2", { status: "cancelled" })
 
-    // "session_pack" is deliberately NOT a member of NON_COACHING_CHECKOUT_TYPES
-    // (that set is {shop_order, event_signup, save_card} — see its own doc
-    // comment in the route) — a session pack is a coaching sale, same as it
-    // is on the completed side, where its capture already runs unconditionally.
-    // So the abandoned-checkout gate, reusing that same set, does NOT exclude
-    // it either: the reap and the lead capture both fire for an abandoned
-    // pack checkout.
-    expect(captureLeadMock).toHaveBeenCalledTimes(1)
-    expect(captureLeadMock.mock.calls[0][0]).toMatchObject({
-      source: "checkout_abandoned",
-      email: "pack-buyer@example.com",
-    })
+    // "session_pack" is still NOT a member of NON_COACHING_CHECKOUT_TYPES — it
+    // IS a coaching sale, and its COMPLETED side keeps the purchase capture.
+    // But an EXPIRED one is excluded from the abandoned-lead capture through
+    // EXISTING_CLIENT_CHECKOUT_TYPES (see the route's comment on that
+    // constant): between 16 and 19 Sept 2026 a paying account holder was
+    // enrolled in the abandoned-checkout nurture twice by the renewal cron's
+    // daily session expiring. The reap fires; the lead capture must not. The
+    // full pair — excluded for session_pack, still captured for a bare
+    // coaching checkout — is pinned in
+    // webhook-abandoned-checkout-purchase-guard.test.ts.
+    expect(captureLeadMock).not.toHaveBeenCalled()
   })
 
   it("does not reap a pack that was already paid before it expired", async () => {

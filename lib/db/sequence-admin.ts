@@ -18,6 +18,7 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { fetchAllRows } from "@/lib/db/paginate"
 import type { StepDraft, SavedStep, RunPointer, StepSavePlan } from "@/lib/lead-engine/step-list"
 import type { StepKind, BranchCondition } from "@/lib/automation/sequence-tick"
+import { DEFAULT_REENROL_COOLDOWN_DAYS } from "@/lib/lead-engine/enroll"
 
 function getClient() {
   return createServiceRoleClient()
@@ -48,6 +49,13 @@ export type SequenceForEdit = {
    */
   sentCountByStepId: Record<string, number>
   activeRuns: RunPointer[]
+  /**
+   * `sequences.reenrol_cooldown_days` (migration 00263): how many days a
+   * contact must be out of this sequence before a trigger may put them back
+   * in. 0 means straight away. Read by lib/lead-engine/enroll.ts; edited on
+   * the detail screen through `setSequenceReenrolCooldown` below.
+   */
+  reenrolCooldownDays: number
 }
 
 type SequenceStepRow = {
@@ -74,13 +82,24 @@ export async function loadSequenceForEdit(businessId: string, key: string): Prom
 
   const { data: sequenceRow, error: sequenceErr } = await supabase
     .from("sequences")
-    .select("id, key, name, status")
+    // `select("*")`, not a column list, for the same reason enroll.ts gives:
+    // `reenrol_cooldown_days` arrives with migration 00263, and naming it
+    // here would 500 the ONE screen that carries the on/off switch and the
+    // step editor for the window between the deploy and the migration
+    // applying. The cast below narrows what this function actually reads.
+    .select("*")
     .eq("key", key)
     .eq("business_id", businessId)
     .maybeSingle()
   if (sequenceErr) throw sequenceErr
   if (!sequenceRow) return null
-  const sequence = sequenceRow as { id: string; key: string; name: string; status: string }
+  const sequence = sequenceRow as {
+    id: string
+    key: string
+    name: string
+    status: string
+    reenrol_cooldown_days: number | null
+  }
 
   // Not paginated: a sequence is a handful of steps — eight is the longest in
   // production per §9 of the design doc — the same reasoning
@@ -153,6 +172,7 @@ export async function loadSequenceForEdit(businessId: string, key: string): Prom
     key: sequence.key,
     name: sequence.name,
     status: sequence.status,
+    reenrolCooldownDays: sequence.reenrol_cooldown_days ?? DEFAULT_REENROL_COOLDOWN_DAYS,
     steps: savedSteps,
     drafts,
     sentCountByStepId,
@@ -194,6 +214,42 @@ export async function setSequenceStatus(
   if (updateErr) throw updateErr
 
   return { id: row.id, from: row.status }
+}
+
+/**
+ * Sets how long a contact must be out of this sequence before a trigger may
+ * put them back in (`sequences.reenrol_cooldown_days`, migration 00263).
+ * Same shape as `setSequenceStatus`: read under the tenant first so another
+ * business's key answers `null` (a 404 at the route), then write scoped by
+ * id AND business_id. Returns the value it had a moment ago so the route can
+ * say what changed. The 0–365 range is enforced by the request schema and by
+ * the column's CHECK; this function does not re-check it.
+ */
+export async function setSequenceReenrolCooldown(
+  businessId: string,
+  key: string,
+  days: number,
+): Promise<{ id: string; from: number } | null> {
+  const supabase = getClient()
+
+  const { data: existing, error: readErr } = await supabase
+    .from("sequences")
+    .select("id, reenrol_cooldown_days")
+    .eq("key", key)
+    .eq("business_id", businessId)
+    .maybeSingle()
+  if (readErr) throw readErr
+  if (!existing) return null
+  const row = existing as { id: string; reenrol_cooldown_days: number | null }
+
+  const { error: updateErr } = await supabase
+    .from("sequences")
+    .update({ reenrol_cooldown_days: days, updated_at: new Date().toISOString() })
+    .eq("id", row.id)
+    .eq("business_id", businessId)
+  if (updateErr) throw updateErr
+
+  return { id: row.id, from: row.reenrol_cooldown_days ?? DEFAULT_REENROL_COOLDOWN_DAYS }
 }
 
 /**

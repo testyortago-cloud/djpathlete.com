@@ -13,7 +13,110 @@ function getClient() {
 
 type CandidateSequence = {
   id: string
+  key?: string | null
+  name?: string | null
   trigger_filter: Record<string, unknown> | null
+  /**
+   * `sequences.reenrol_cooldown_days` (migration 00263). Optional in the TYPE
+   * because the row is read with `select("*")` below, so a deploy that lands
+   * before the migration sees `undefined` here and falls back to the default
+   * — the one-deploy tolerance every schema change in this repo has to keep.
+   */
+  reenrol_cooldown_days?: number | null
+}
+
+/**
+ * How long a contact must be OUT of a sequence before a trigger may put them
+ * back in, when the sequence row carries no value of its own. Mirrors the
+ * column default in migration 00263.
+ */
+export const DEFAULT_REENROL_COOLDOWN_DAYS = 30
+
+/**
+ * Timeline kind written when a trigger is refused by the cooldown, so the
+ * refusal shows on the contact's record instead of vanishing. `source` is
+ * `sequence_engine`, the same source the tick uses for `sequence_tag_applied`.
+ */
+export const ENROLMENT_SKIPPED_TIMELINE_KIND = "enrolment_skipped"
+
+/**
+ * True when this contact has a run of this sequence that COMPLETED or EXITED
+ * inside the last `days` days. The partial unique index
+ * `sequence_runs_one_active_per_sequence` only ever stops a second ACTIVE
+ * run; once a run finishes it drops out of the index, and without this check
+ * the next trigger enrols the same person again at once. That is exactly how
+ * one account holder went through `abandoned_checkout` twice in four days
+ * (16 and 19 Sept 2026): the pack payment-link cron re-fires that trigger
+ * every morning. A `failed` run is deliberately NOT counted — a run that
+ * died on a configuration fault should not also lock the person out of the
+ * repaired sequence.
+ *
+ * Reads every prior run for (business, sequence, contact) and filters in
+ * code, which keeps the query the same shape `enrolContactManually` already
+ * uses for its one-per-contact check. A contact has at most a handful.
+ */
+async function hasRunFinishedWithin(args: {
+  supabase: ReturnType<typeof createServiceRoleClient>
+  businessId: string
+  sequenceId: string
+  contactId: string
+  days: number
+}): Promise<boolean> {
+  const { data, error } = await args.supabase
+    .from("sequence_runs")
+    .select("id, status, updated_at, completed_at")
+    .eq("business_id", args.businessId)
+    .eq("sequence_id", args.sequenceId)
+    .eq("contact_id", args.contactId)
+  if (error) throw error
+
+  const cutoff = Date.now() - args.days * 24 * 60 * 60 * 1000
+  return ((data ?? []) as Array<{ status: string; updated_at?: string | null; completed_at?: string | null }>).some(
+    (run) => {
+      if (run.status !== "completed" && run.status !== "exited") return false
+      // `completed_at` first: it is the moment the run ended. `updated_at`
+      // is the fallback because the merge RPC (migrations 00217/00220/00238)
+      // exits the lagging run with `updated_at = now()` and no
+      // `completed_at` at all — without the fallback a merged-away run would
+      // never count, and a plain `updated_at` alone would be wrong for a run
+      // touched again after it finished.
+      const finishedAt = run.completed_at ?? run.updated_at
+      if (!finishedAt) return false
+      return new Date(finishedAt).getTime() >= cutoff
+    },
+  )
+}
+
+async function recordEnrolmentSkipped(args: {
+  supabase: ReturnType<typeof createServiceRoleClient>
+  businessId: string
+  contactId: string
+  sequence: CandidateSequence
+  cooldownDays: number
+}): Promise<void> {
+  const { error } = await args.supabase.from("contact_timeline_events").insert({
+    business_id: args.businessId,
+    contact_id: args.contactId,
+    kind: ENROLMENT_SKIPPED_TIMELINE_KIND,
+    source: "sequence_engine",
+    // Key and name ride along so the contact record can say WHICH sequence in
+    // words (lib/db/contact-detail.ts) without a second lookup.
+    metadata: {
+      sequence_id: args.sequence.id,
+      sequence_key: args.sequence.key ?? null,
+      sequence_name: args.sequence.name ?? null,
+      reason: "cooldown",
+      cooldown_days: args.cooldownDays,
+    },
+  })
+  if (error) {
+    // The refusal itself already happened; losing its note is a reporting
+    // gap, not a reason to fail the caller's contact write.
+    console.error(
+      `enrollIfTriggered: failed to record the cooldown refusal for contact ${args.contactId} (sequence ${args.sequence.id})`,
+      error,
+    )
+  }
 }
 
 // An empty filter matches everything; a non-empty filter requires every key
@@ -91,9 +194,13 @@ export async function enrollIfTriggered(args: {
   const metadata = args.metadata ?? {}
   const supabase = getClient()
 
+  // `select("*")`, not a column list: `reenrol_cooldown_days` arrives with
+  // migration 00263, and this function runs on every lead capture. Naming the
+  // column here would make every enrolment throw for the window between the
+  // Vercel deploy and the migration applying — see CandidateSequence's note.
   const { data, error } = await supabase
     .from("sequences")
-    .select("id, trigger_filter")
+    .select("*")
     .eq("business_id", businessId)
     .eq("status", "active")
     .eq("trigger_source", args.source)
@@ -104,6 +211,27 @@ export async function enrollIfTriggered(args: {
 
   for (const sequence of candidates) {
     if (!filterMatches(sequence.trigger_filter, metadata)) continue
+
+    const cooldownDays = sequence.reenrol_cooldown_days ?? DEFAULT_REENROL_COOLDOWN_DAYS
+    if (cooldownDays > 0) {
+      const finishedRecently = await hasRunFinishedWithin({
+        supabase,
+        businessId,
+        sequenceId: sequence.id,
+        contactId: args.contactId,
+        days: cooldownDays,
+      })
+      if (finishedRecently) {
+        await recordEnrolmentSkipped({
+          supabase,
+          businessId,
+          contactId: args.contactId,
+          sequence,
+          cooldownDays,
+        })
+        continue
+      }
+    }
 
     const { enrolled: didEnrol } = await insertSequenceRun({
       supabase,

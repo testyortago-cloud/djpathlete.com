@@ -46,6 +46,7 @@
 // provably this contact's, the same way a payment is skipped rather than
 // guessed at when `contact.user_id` is null just below.
 
+import { ENROLMENT_SKIPPED_TIMELINE_KIND } from "@/lib/lead-engine/enroll"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { maskEmail, maskPhone } from "@/lib/lead-engine/mask"
 import { isMissingTagsTable } from "@/lib/db/contact-tags"
@@ -301,6 +302,33 @@ export function describeTimelineEvent(row: TimelineEventRow): {
       return {
         title: tag ? `Tagged “${tag}” automatically` : "Tagged automatically",
         detail: "A sequence added this tag. Nobody had to do it by hand.",
+        tone: "neutral",
+      }
+    }
+
+    // lib/lead-engine/enroll.ts writes this when a trigger fired for someone
+    // who finished the same sequence inside its cooldown (migration 00263).
+    case ENROLMENT_SKIPPED_TIMELINE_KIND: {
+      const name = asString(meta.sequence_name)
+      const days = typeof meta.cooldown_days === "number" ? meta.cooldown_days : null
+      return {
+        title: name ? `Not put back into “${name}”` : "Not put back into a sequence",
+        detail:
+          days !== null
+            ? `They finished it within the last ${days === 1 ? "day" : `${days} days`}, so this trigger did not start it again.`
+            : null,
+        tone: "neutral",
+      }
+    }
+
+    // scripts/exit-sequence-run.mjs writes this when a human takes someone
+    // out of a sequence a trigger should never have started.
+    case "sequence_run_exited_by_hand": {
+      const name = asString(meta.sequence_name)
+      const note = asString(meta.note)
+      return {
+        title: name ? `Taken out of “${name}” by hand` : "Taken out of a sequence by hand",
+        detail: note ? note : null,
         tone: "neutral",
       }
     }

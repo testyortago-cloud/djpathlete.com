@@ -108,6 +108,24 @@ const NO_PIPELINE_CARD_CHECKOUT_TYPES = new Set(["shop_order", "save_card"])
 //   - "event_signup": a ticket abandonment, not a coaching lead gone cold.
 const NON_COACHING_CHECKOUT_TYPES = new Set(["shop_order", "event_signup", "save_card"])
 
+// Checkout types that are only ever minted FOR AN EXISTING CLIENT, so an
+// expired one can never be "a lead going cold". Kept apart from
+// NON_COACHING_CHECKOUT_TYPES because the reason is different: a session pack
+// IS a coaching sale — its COMPLETED delivery still wins a Won card and a
+// purchase capture, unchanged — it just cannot be an abandoned LEAD, because
+// `createPackCheckoutSession` (lib/stripe.ts) requires a `clientUserId` and
+// the daily pack-renewal cron (`packRenewalScanCron` in functions/src/index.ts
+// → POST /api/admin/internal/pack-renewals → lib/services/pack-payment-link.ts;
+// the re-send rule itself is lib/automation/pack-link-resend.ts, since
+// 2026-09-16) re-mints one every morning while a renewal stays unpaid, up to
+// `packLinkResendMax()` times. Each of those expires 24h later. Between 16
+// and 19 Sept 2026 every such expiry
+// captured `checkout_abandoned` and enrolled a paying account holder in the
+// abandoned-checkout nurture — twice, on top of the daily payment link. Read
+// by the `checkout.session.expired` case only; pinned by
+// __tests__/api/stripe/webhook-abandoned-checkout-purchase-guard.test.ts.
+const EXISTING_CLIENT_CHECKOUT_TYPES = new Set(["session_pack"])
+
 // Plan 3.4 — Stripe webhook audit instrumentation. Only the event types in
 // this map get audited; others (e.g. payment_intent.*) pass through silently.
 const stripeAuditSlugByType: Record<string, string> = {
@@ -418,16 +436,21 @@ export async function POST(request: Request) {
         // delivery of this checkout type a coaching lead going cold",
         // unchanged by gap #8: an abandoned "event_signup" is still not that
         // signal, even though a COMPLETED one now wins a pipeline card.
-        // "session_pack" is deliberately NOT a member of that set, the same
-        // as it is not excluded from the completed side's pipeline-card win
-        // or its unconditional purchase capture: a session pack IS a
-        // coaching sale, so its abandonment is a coaching-checkout
-        // abandonment too, and gets captured here the same as any other. Do
-        // not add it to the denylist to "fix" that -- it would just be
-        // reintroducing the divergent definition this gate exists to
-        // prevent. Per that constant's own comment, a new coaching checkout
-        // that forgets to set `metadata.type` still counts as coaching.
-        if (!NON_COACHING_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
+        // "session_pack" is still NOT a member of that set — it IS a coaching
+        // sale, and its completed side keeps the pipeline-card win and the
+        // purchase capture. It is excluded here through
+        // EXISTING_CLIENT_CHECKOUT_TYPES instead, for the reason that
+        // constant's comment gives: a session pack is only ever minted for an
+        // existing client, and the renewal cron re-mints one daily, so its
+        // expiry is a payment link lapsing, never a lead abandoning a
+        // checkout. Per NON_COACHING_CHECKOUT_TYPES's own comment, a new
+        // coaching checkout that forgets to set `metadata.type` still counts
+        // as coaching.
+        const expiredCheckoutType = session.metadata?.type ?? ""
+        if (
+          !NON_COACHING_CHECKOUT_TYPES.has(expiredCheckoutType) &&
+          !EXISTING_CLIENT_CHECKOUT_TYPES.has(expiredCheckoutType)
+        ) {
           // Same tenant resolution the completed case uses: the payer's own
           // contact row when they have one, the platform seam for a
           // first-time payer who does not -- AND for a payer whose contact

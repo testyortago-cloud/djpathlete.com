@@ -3,7 +3,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 
 type Row = Record<string, any>
 
-const store: { sequences: Row[]; sequence_runs: Row[] } = { sequences: [], sequence_runs: [] }
+const store: { sequences: Row[]; sequence_runs: Row[]; contact_timeline_events: Row[] } = {
+  sequences: [],
+  sequence_runs: [],
+  contact_timeline_events: [],
+}
 
 let seqCounter = 0
 function nextId(prefix: string) {
@@ -30,7 +34,7 @@ let appliedEqs: Array<[string, any]> = []
 // not a stub.
 vi.mock("@/lib/supabase", () => ({
   createServiceRoleClient: () => ({
-    from: (table: "sequences" | "sequence_runs") => {
+    from: (table: "sequences" | "sequence_runs" | "contact_timeline_events") => {
       const rows = store[table]
       const filters: Array<[string, any]> = []
       let mode: "select" | "insert" = "select"
@@ -128,6 +132,7 @@ function seedSequence(id: string, overrides: Partial<Row> = {}) {
 beforeEach(() => {
   store.sequences = []
   store.sequence_runs = []
+  store.contact_timeline_events = []
   seqCounter = 0
   appliedEqs = []
 })
@@ -463,5 +468,182 @@ describe("enrolContactManually", () => {
     })
 
     expect(result).toEqual({ outcome: "enrolled" })
+  })
+})
+
+// RE-ENROLMENT COOLDOWN. `sequence_runs_one_active_per_sequence` only stops a
+// second ACTIVE run; once a run completes or exits, a fresh trigger enrols the
+// same contact again immediately. That is how one account holder was put
+// through `abandoned_checkout` twice in four days (16 and 19 Sept 2026) — the
+// pack payment-link cron re-fires the trigger daily. `sequences.reenrol_cooldown_days`
+// (migration 00263; this function is its ONLY reader) says how long a contact
+// must be out of a sequence before a trigger may put them back in. Seeded 30;
+// 0 for the quiz sequences, whose first email IS the result the person asked
+// for, so a retake must still get one.
+function daysAgo(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+}
+
+function seedPriorRun(
+  sequenceId: string,
+  status: "completed" | "exited" | "failed" | "active",
+  updatedAt: string,
+  extra: Record<string, unknown> = {},
+) {
+  store.sequence_runs.push({
+    id: nextId("prior"),
+    business_id: SINGLETON_BUSINESS_ID,
+    sequence_id: sequenceId,
+    contact_id: "contact-1",
+    status,
+    current_position: 3,
+    updated_at: updatedAt,
+    ...extra,
+  })
+}
+
+describe("enrollIfTriggered — re-enrolment cooldown", () => {
+  it("refuses to re-enrol a contact whose run of the same sequence COMPLETED inside the cooldown", async () => {
+    seedSequence("seq-1", { reenrol_cooldown_days: 30 })
+    seedPriorRun("seq-1", "completed", daysAgo(3))
+
+    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form", businessId: SINGLETON_BUSINESS_ID })
+
+    expect(result.enrolled).toEqual([])
+    expect(store.sequence_runs).toHaveLength(1)
+  })
+
+  it("refuses when the prior run EXITED inside the cooldown, too", async () => {
+    seedSequence("seq-1", { reenrol_cooldown_days: 30 })
+    seedPriorRun("seq-1", "exited", daysAgo(3))
+
+    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form", businessId: SINGLETON_BUSINESS_ID })
+
+    expect(result.enrolled).toEqual([])
+    expect(store.sequence_runs).toHaveLength(1)
+  })
+
+  it("re-enrols once the cooldown has passed", async () => {
+    seedSequence("seq-1", { reenrol_cooldown_days: 30 })
+    seedPriorRun("seq-1", "completed", daysAgo(31))
+
+    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form", businessId: SINGLETON_BUSINESS_ID })
+
+    expect(result.enrolled).toEqual(["seq-1"])
+    expect(store.sequence_runs).toHaveLength(2)
+  })
+
+  it("a cooldown of 0 re-enrols straight after a finished run — the quiz sequences", async () => {
+    seedSequence("seq-quiz", { trigger_source: "quiz", reenrol_cooldown_days: 0 })
+    // Stamped one minute in the FUTURE, deliberately: with the real `> 0`
+    // guard the prior runs are never read at all, so this enrols. With the
+    // near-equivalent mutant `>= 0` the cutoff is "now", a future timestamp
+    // is inside the window, and the run is refused — a `daysAgo(0)` stamp
+    // would sit a few milliseconds BEFORE that cutoff and let the mutant
+    // pass.
+    seedPriorRun("seq-quiz", "completed", new Date(Date.now() + 60_000).toISOString())
+
+    const result = await enrollIfTriggered({ contactId: "contact-1", source: "quiz", businessId: SINGLETON_BUSINESS_ID })
+
+    expect(result.enrolled).toEqual(["seq-quiz"])
+    expect(store.sequence_runs).toHaveLength(2)
+    expect(store.contact_timeline_events).toHaveLength(0)
+  })
+
+  it("a FAILED run inside the window does not count — a run that died on a configuration fault must not also lock the person out", async () => {
+    // MUTANT this pins: deleting the status check in hasRunFinishedWithin.
+    seedSequence("seq-1", { reenrol_cooldown_days: 30 })
+    seedPriorRun("seq-1", "failed", daysAgo(3))
+
+    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form", businessId: SINGLETON_BUSINESS_ID })
+
+    expect(result.enrolled).toEqual(["seq-1"])
+    expect(store.sequence_runs).toHaveLength(2)
+    expect(store.contact_timeline_events).toHaveLength(0)
+  })
+
+  it("an ACTIVE run is refused by the unique index, not by the cooldown — so no cooldown note is written", async () => {
+    seedSequence("seq-1", { reenrol_cooldown_days: 30 })
+    seedPriorRun("seq-1", "active", daysAgo(1))
+
+    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form", businessId: SINGLETON_BUSINESS_ID })
+
+    expect(result.enrolled).toEqual([])
+    expect(store.sequence_runs).toHaveLength(1)
+    expect(store.contact_timeline_events).toHaveLength(0)
+  })
+
+  it("prefers completed_at over updated_at when both are present", async () => {
+    // MUTANT this pins: `run.updated_at ?? run.completed_at`. A run that
+    // finished 40 days ago but was touched yesterday is OUT of the window.
+    seedSequence("seq-1", { reenrol_cooldown_days: 30 })
+    seedPriorRun("seq-1", "completed", daysAgo(1), { completed_at: daysAgo(40) })
+
+    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form", businessId: SINGLETON_BUSINESS_ID })
+
+    expect(result.enrolled).toEqual(["seq-1"])
+  })
+
+  it("names the refusal on the contact's timeline: which sequence, and how long the cooldown is", async () => {
+    seedSequence("seq-1", { reenrol_cooldown_days: 30 })
+    seedPriorRun("seq-1", "completed", daysAgo(3))
+
+    await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form", businessId: SINGLETON_BUSINESS_ID })
+
+    expect(store.contact_timeline_events).toHaveLength(1)
+    expect(store.contact_timeline_events[0]).toMatchObject({
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_id: "contact-1",
+      kind: "enrolment_skipped",
+      source: "sequence_engine",
+      metadata: { sequence_id: "seq-1", sequence_key: "seq-seq-1", sequence_name: "Seq", reason: "cooldown", cooldown_days: 30 },
+    })
+  })
+
+  it("writes no timeline row when it enrols normally", async () => {
+    seedSequence("seq-1", { reenrol_cooldown_days: 30 })
+
+    await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form", businessId: SINGLETON_BUSINESS_ID })
+
+    expect(store.contact_timeline_events).toHaveLength(0)
+  })
+
+  it("applies the default of 30 days when the sequence row carries no cooldown at all — the old schema, for one deploy", async () => {
+    // `seedSequence` sets no `reenrol_cooldown_days`; the row looks exactly
+    // like one read before migration 00263 has been applied.
+    seedSequence("seq-1")
+    seedPriorRun("seq-1", "completed", daysAgo(3))
+
+    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form", businessId: SINGLETON_BUSINESS_ID })
+
+    expect(result.enrolled).toEqual([])
+    expect(store.sequence_runs).toHaveLength(1)
+  })
+
+  it("a prior run of a DIFFERENT sequence does not block this one", async () => {
+    seedSequence("seq-1", { reenrol_cooldown_days: 30 })
+    seedSequence("seq-2", { reenrol_cooldown_days: 30, trigger_source: "newsletter" })
+    seedPriorRun("seq-2", "completed", daysAgo(3))
+
+    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form", businessId: SINGLETON_BUSINESS_ID })
+
+    expect(result.enrolled).toEqual(["seq-1"])
+  })
+
+  it("a prior run of ANOTHER contact does not block this one", async () => {
+    seedSequence("seq-1", { reenrol_cooldown_days: 30 })
+    store.sequence_runs.push({
+      id: "someone-elses",
+      business_id: SINGLETON_BUSINESS_ID,
+      sequence_id: "seq-1",
+      contact_id: "contact-2",
+      status: "completed",
+      current_position: 3,
+      updated_at: daysAgo(1),
+    })
+
+    const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form", businessId: SINGLETON_BUSINESS_ID })
+
+    expect(result.enrolled).toEqual(["seq-1"])
   })
 })
