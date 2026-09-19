@@ -323,14 +323,23 @@ and the generated one in competition through a precedence rule ("an explicit
 
 **Worth doing next, not in this pass**
 
-7. **The orphan-page problem is not fixed by the sitemap.** Nothing on the
-   marketing site links to `/go/athlete-quiz`. A sitemap entry makes it
-   discoverable to a crawler; an internal link is what actually passes
-   authority. Worth a link from `/assessment` or the blog.
-8. **No structured data on funnel pages.** The marketing routes carry JSON-LD;
-   `/go/` pages carry none. A quiz funnel is a reasonable `WebPage` at minimum.
-   Deliberately out of scope here — the compiled document is frozen at publish
-   time, so page-level JSON-LD wants its own decision about where it lives.
+7. ~~**The orphan-page problem is not fixed by the sitemap.**~~ **DONE.** Two
+   links now point at `/go/athlete-quiz`: a dashed "Not ready to book" note
+   beside the booking form on `/assessment` (the closest topical match, and a
+   priority-0.9 money page), and a quieter text link under the two apply
+   buttons on `/athletes`. Both are offramps rather than competing calls to
+   action, both use descriptive anchor text, and
+   `__tests__/app/funnel-internal-links.test.ts` stops a later edit removing
+   the only two.
+8. ~~**No structured data on funnel pages.**~~ **DONE**, and the "frozen
+   document" worry turned out not to apply: the JSON-LD is rendered by the
+   ROUTE on every request, from the same resolver `generateMetadata` uses, so
+   it is not in the compiled snapshot and cannot go stale against the title.
+   `lib/seo/build-funnel-page-schema.ts` emits a `WebPage` and deliberately
+   nothing more — no `Quiz` (Google's Quiz markup wants the Q&A visible on the
+   page; these questions are a lead flow scored privately), no
+   `BreadcrumbList` (funnel pages render no navigation by design), no ratings
+   or offers.
 9. **`noindex` policy for thank-you / confirmation steps.** The convention doc
    says booking confirmations should be `{ index: false, follow: false }`.
    Nothing applies that to funnel steps automatically. Now that the toggle has

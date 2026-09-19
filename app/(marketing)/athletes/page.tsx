@@ -212,6 +212,23 @@ export default async function AthletesHubPage() {
                 </Link>
               </Button>
             </div>
+            {/* A TEXT LINK, NOT A THIRD BUTTON. Both buttons above are "apply";
+                a third in the same row would read as a third equal option and
+                flatten the choice. This is the step before applying, so it is
+                quieter than both on purpose.
+
+                It is also the second of the only two internal links to the quiz
+                — see the note on /assessment. */}
+            <p className="mt-6 text-sm text-primary-foreground/70">
+              Not ready to apply?{" "}
+              <Link
+                href="/go/athlete-quiz"
+                className="text-primary-foreground underline underline-offset-4 hover:text-accent"
+              >
+                Take the free Athlete Performance Index
+              </Link>{" "}
+              — five questions, no email.
+            </p>
           </FadeIn>
         </div>
       </section>

@@ -84,6 +84,17 @@ async function markerAt(page, locator, caption, { align = "gutter" } = {}) {
   // description set", which is the single string that shot exists to show.
   // The panel has 12px of padding, so sitting the disc just outside the text's
   // left edge keeps it beside its target and on top of nothing.
+  // "above" is for an INLINE link inside a running sentence. There is no
+  // gutter beside one — the words continue on both sides — so a disc placed
+  // level with it lands on whatever word precedes it ("Not ready to app●ly").
+  // Lifting it clear of the line is the only placement that obscures nothing.
+  if (align === "above") {
+    return {
+      x: Math.round((box.x + box.width / 2) * DSF),
+      y: Math.round((box.y - 20) * DSF),
+      caption,
+    }
+  }
   const x = align === "gutter" ? box.x - 13 : align === "left" ? box.x + 18 : box.x + box.width / 2
   return { x: Math.round(x * DSF), y: Math.round((box.y + box.height / 2) * DSF), caption }
 }
@@ -304,6 +315,65 @@ async function main() {
     ],
   })
   console.log("  wrote 04-the-generated-share-card.png")
+
+  // ------------------------------------------------------------- shots 5-6
+  // THE ORPHAN FIX. Until these two links existed, nothing on the marketing
+  // site pointed at /go/athlete-quiz — it was in the sitemap and allowed by
+  // robots.txt, and inherited authority from nowhere.
+  //
+  // Both are photographed IN PLACE on the real marketing page rather than
+  // cropped, because the question they have to answer is whether the offramp
+  // reads as helpful or as clutter, and that is a question about its
+  // neighbours.
+  const LINKS = [
+    {
+      name: "05-assessment-offramp",
+      url: `${APP}/assessment#apply`,
+      title: "5 — The offramp on /assessment, beside the booking form",
+      subtitle:
+        "A priority-0.9 money page, and the closest topical match: assessment to assessment. Placed by the form rather than in the hero, because it is an offramp for someone deciding not to book — not a third call to action competing with the two above.",
+      caption:
+        "Matches the dashed note box already on this page rather than inventing a new block. Every claim is on the quiz page itself: free, five questions, about three minutes, no email.",
+      // The enclosing dashed box, so the disc sits in its padding rather than
+      // on the sentence.
+      markerTarget: (page) => page.locator('div:has(> p > a[href="/go/athlete-quiz"])').last(),
+      align: "gutter",
+    },
+    {
+      name: "06-athletes-offramp",
+      url: `${APP}/athletes`,
+      title: "6 — The offramp on /athletes, under the two apply buttons",
+      subtitle:
+        "A text link and deliberately not a third button: both buttons above are “apply”, and a third in the same row would read as an equal option and flatten the choice.",
+      caption:
+        "Quieter than both buttons on purpose — this is the step BEFORE applying. The anchor text names the thing (“Athlete Performance Index”), which is the strongest on-page signal about where a link goes.",
+      // Centred running text — no gutter exists, so the disc goes above it.
+      markerTarget: (page) => page.locator('a[href="/go/athlete-quiz"]').first(),
+      align: "above",
+    },
+  ]
+
+  for (const link of LINKS) {
+    await page.goto(link.url, { waitUntil: "networkidle" })
+    await hideDevChrome(page)
+    const anchor = page.locator('a[href="/go/athlete-quiz"]').first()
+    await anchor.waitFor({ state: "visible", timeout: 20_000 })
+    await anchor.scrollIntoViewIfNeeded()
+    // Park the pointer away from the link — a hover underline reads as part
+    // of the design, and Playwright leaves the mouse where it last was.
+    await page.mouse.move(8, 8)
+    await page.waitForTimeout(600)
+
+    const raw = rawPath(link.name)
+    await page.screenshot({ path: raw })
+    await annotate(raw, join(OUT, `${link.name}.png`), {
+      scale: VIEWPORT.width / 1440,
+      title: link.title,
+      subtitle: link.subtitle,
+      markers: [await markerAt(page, link.markerTarget(page), link.caption, { align: link.align })],
+    })
+    console.log(`  wrote ${link.name}.png`)
+  }
 
   await browser.close()
   console.log(`\nDone. ${OUT}/`)

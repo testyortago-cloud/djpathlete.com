@@ -15,6 +15,8 @@ import { getPublishedStep } from "@/lib/db/funnels"
 import { NodeRenderer } from "@/components/funnels/NodeRenderer"
 import { FUNNEL_ROOT_ID } from "@/lib/funnels/compile/css-scope"
 import { resolveFunnelStepSeo } from "@/lib/funnels/seo"
+import { buildFunnelPageSchema } from "@/lib/seo/build-funnel-page-schema"
+import { JsonLd } from "@/components/shared/JsonLd"
 
 interface PageProps {
   params: Promise<{ slug: string; step?: string[] }>
@@ -114,6 +116,18 @@ export default async function FunnelPage({ params, searchParams }: PageProps) {
 
   return (
     <div id={FUNNEL_ROOT_ID}>
+      {/* STRUCTURED DATA, AND IT IS NOT IN THE COMPILED DOCUMENT.
+
+          Everything inside `nodes`/`css` below was frozen into
+          `funnel_step_versions` at publish time and only changes when the
+          funnel is re-published. This <script> is rendered by the route on
+          every request, from the same resolver `generateMetadata` uses — so it
+          reaches a live page the moment the row changes, exactly like the
+          title and description do, and it cannot drift from them.
+
+          Putting it inside the compiled document instead would have made it
+          stale the moment the owner edited a title, with no way to tell. */}
+      <JsonLd data={buildFunnelPageSchema(resolveFunnelStepSeo(funnel, stepRow))} />
       {/* Scoped at publish time — every selector is prefixed with this id. */}
       {css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null}
       {isPreview && funnel.status !== "published" ? (

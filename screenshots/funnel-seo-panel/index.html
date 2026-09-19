@@ -23,7 +23,7 @@
   .now { color: #2c6e49; }
 </style>
 <main>
-  <h1>Funnel SEO — the “Search” panel, the share card, and what they fix</h1>
+  <h1>Funnel SEO — the “Search” panel, the share card, the schema and the links</h1>
   <p class="lede">
     Every shot is the real builder on its real route
     (<code>/admin/funnels/&lt;id&gt;/edit/&lt;stepId&gt;</code>), driven with Playwright against the dev
@@ -74,6 +74,16 @@
         <td>canonical</td>
         <td class="was">none; the page answered on two URLs</td>
         <td class="now"><code>/go/athlete-quiz</code>, from both URLs</td>
+      </tr>
+      <tr>
+        <td>structured data</td>
+        <td class="was">none — marketing routes had JSON-LD, <code>/go/</code> pages had none</td>
+        <td class="now">a <code>WebPage</code> blob built from the same resolver as the title</td>
+      </tr>
+      <tr>
+        <td>internal links in</td>
+        <td class="was">zero — a true orphan page</td>
+        <td class="now">two, from <code>/assessment</code> and <code>/athletes</code></td>
       </tr>
       <tr>
         <td>in sitemap.xml</td>
@@ -139,6 +149,39 @@
       <li><strong>Why a route and not <code>opengraph-image.tsx</code>.</strong> The file convention is the house pattern (<code>app/athlete/[token]/opengraph-image.tsx</code>) and Turbopack refuses it here — <em>“catch all segment must be the last segment modifying the path”</em>. The public funnel page lives under <code>[[...step]]</code>. Found by running it.</li>
       <li><strong>The owner's own image still wins.</strong> Setting <code>og_image_url</code> overrides the card; verified against a running server in both directions.</li>
       <li><strong>It never fails to an error.</strong> An unreadable row or an unknown slug still returns a PNG — a scraper that gets a 500 shows no card at all, which is the state this change exists to fix.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>05 &amp; 06 — The two links that un-orphaned the quiz</h2>
+    <p class="meta">
+      <code>05-assessment-offramp.png</code>, <code>06-athletes-offramp.png</code> ·
+      both photographed in place on the real marketing page, because the question
+      they have to answer is whether the offramp reads as helpful or as clutter —
+      and that is a question about its neighbours.
+    </p>
+    <img src="05-assessment-offramp.png" alt="The assessment page's booking form, with a dashed Not ready to book box beside it linking to the free Athlete Performance Index.">
+    <img src="06-athletes-offramp.png" style="margin-top:14px" alt="The athletes page footer CTA with two apply buttons and, beneath them, a quieter text link to the free Athlete Performance Index.">
+    <ul>
+      <li><strong>The sitemap did not fix this.</strong> A sitemap entry makes a page discoverable; a link is what passes it authority. Until these two, nothing on the site pointed at <code>/go/athlete-quiz</code> at all.</li>
+      <li><strong><code>/assessment</code></strong> — the closest topical match and a priority-0.9 money page. Placed beside the form, not in the hero: it is an offramp for someone deciding <em>not</em> to book, not a third call to action. Reuses the dashed note box already on the page.</li>
+      <li><strong><code>/athletes</code></strong> — a text link, deliberately not a third button. Both buttons above it are “apply”; a third in the same row would read as an equal option and flatten the choice.</li>
+      <li>Both anchors name the destination (“Athlete Performance Index”) rather than “here” — the anchor is the strongest on-page signal about where a link goes, and a test pins that.</li>
+      <li>Every claim in both — free, five questions, about three minutes, no email — is on the quiz page itself.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Structured data</h2>
+    <p class="meta">
+      A <code>WebPage</code> blob, rendered per request by the route — not baked
+      into the compiled document, which is frozen at publish time.
+    </p>
+    <ul>
+      <li><strong>Built from the same resolver as the <code>&lt;title&gt;</code></strong>, so the markup cannot contradict the visible page. Two independent reads of the same columns is how that drift happens.</li>
+      <li><strong>Not a <code>Quiz</code>.</strong> Google's Quiz markup describes educational practice problems with the Q&amp;A visible on the page; this quiz's questions are a lead flow and its answers are scored privately. Marking it up as a Quiz would describe content that does not exist.</li>
+      <li><strong>No <code>BreadcrumbList</code>.</strong> Funnel pages live in their own route group precisely so they render no site navigation — a breadcrumb would describe a path the page deliberately does not offer.</li>
+      <li><strong>No dangling <code>@id</code>.</strong> The repo has shipped one before (<code>lib/brand/author.ts</code> records the fix), so the publisher and website nodes carry their own type, name and url as well as the site's existing ids.</li>
     </ul>
   </section>
 

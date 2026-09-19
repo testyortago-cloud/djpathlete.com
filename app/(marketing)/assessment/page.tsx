@@ -477,6 +477,36 @@ export default function AssessmentPage() {
                     If you are still in active rehab, speak with your medical team first.
                   </p>
                 </div>
+
+                {/* THE LOWER RUNG, and the only internal link to /go/athlete-quiz
+                    on the marketing site.
+
+                    Until this existed the quiz was an ORPHAN: crawlable
+                    (robots.txt allows /go/) and in the sitemap, but with nothing
+                    pointing at it, so it inherited no authority from anywhere. A
+                    sitemap entry makes a page discoverable; a link is what makes
+                    it count.
+
+                    Here rather than in the hero because it is an OFFRAMP, not a
+                    competing call to action — it belongs beside the form, where
+                    someone who is not ready to book is deciding to leave. Every
+                    claim below is on the quiz page itself. */}
+                <div className="mt-4 border border-dashed border-primary/25 rounded-sm px-5 py-4">
+                  <p className="font-mono font-bold text-[10px] uppercase tracking-[0.3em] text-accent mb-2">
+                    Not ready to book
+                  </p>
+                  <p className="text-sm text-muted-foreground leading-6">
+                    Start with the{" "}
+                    <Link
+                      href="/go/athlete-quiz"
+                      className="text-primary underline underline-offset-4 hover:text-accent"
+                    >
+                      free Athlete Performance Index
+                    </Link>{" "}
+                    — five questions, about three minutes, and a written readout on
+                    screen. No email required.
+                  </p>
+                </div>
               </div>
             </FadeIn>
             <FadeIn delay={0.15} className="lg:col-span-3">
