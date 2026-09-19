@@ -1,0 +1,317 @@
+step 5ac26645-ab35-4035-b917-fba1dd6f6f66 ("index", funnel a2f55365-ef3b-4bb1-8c76-2123575b3ac4, doc_revision 19)
+sections: hero:centered, bullets:list, proof:stats, steps:numbered, testimonial:grid, pricing:highlight, faq:bordered, cta:band, footer:simple
+brandKit: null   theme.palette: {"preset":"ink"}
+
+render: 4 images, page 1200x3819px, truncated=false, typographyFaithful=true, error=none, 1037ms
+  wrote screenshots/builder-self-render/render-tiles/index-5ac26645-00-overview.png (490KB decoded)
+  wrote screenshots/builder-self-render/render-tiles/index-5ac26645-01-slice-1.png (201KB decoded)
+  wrote screenshots/builder-self-render/render-tiles/index-5ac26645-02-slice-2.png (154KB decoded)
+  wrote screenshots/builder-self-render/render-tiles/index-5ac26645-03-slice-3.png (133KB decoded)
+
+deterministic audit findings (identical in both arms):
+  - [audit/high] tone-run (hero, problem) [visual-vocabulary]
+      issue:      "hero" and "problem" both render at the dark tone, so they paint as one continuous band with both sections' padding stacked into a single gap and no visible boundary between them.
+      suggestion: Give one of them a different style.tone so the page has a seam there — muted beside default, or accent to mark a turn in the argument.
+  - [audit/medium] align-thrash (whole page) [visual-vocabulary]
+      issue:      Text alignment changes 6 times down the page. Each flip is defensible on its own; together they read as inconsistency rather than as intent.
+      suggestion: Pick one alignment as the page's default and depart from it only to mark something. A centred hero and a centred closing CTA around a left-aligned body is a pattern; alternating is not.
+
+==============================================================================
+ROUND 1 of 2
+==============================================================================
+
+--- ARM A: no pictures (today's behaviour) — 15178 tokens, 17636ms ---
+all findings:
+  - [art/medium] flat-middle-rhythm (voices, pricing, faq) [visual-vocabulary]
+      issue:      Three consecutive bands — testimonial (accent), pricing (muted), faq (default) — each use 'roomy' or 'normal' padding and a 'lg' or 'md' headline, producing a long mid-page stretch where no section is visually dominant enough to anchor the reader's attention.
+      suggestion: Compress the faq pad to 'tight' and pull the pricing section to a wider visual treatment (it already has width:'wide') by adding a divider that separates it clearly from both neighbors, giving that anchor section its own visual weight.
+  - [art/medium] accent-overuse (proof, voices, close)
+      issue:      The accent tone is applied to three separate bands — proof, voices, and close — meaning the accent colour appears at the top third, the middle, and the bottom of the page and loses its ability to signal 'act here'.
+      suggestion: Reserve the accent tone for the closing cta ('close') alone, and shift either 'proof' or 'voices' to a tone that is distinct but not the primary call-to-action colour, such as 'muted' or 'default'.
+  - [art/low] hero-divider-vs-tone-merge (hero) [visual-vocabulary]
+      issue:      The hero uses divider:'angle', which is intended to create a visual transition into the next section, but since the next section ('problem') shares the same dark tone (flagged separately), the angle cut lands against an identical background and the divider shape becomes invisible.
+      suggestion: Change the hero divider to 'none' so no decorative shape is promised and then abandoned; the divider only earns its keep once the tone contrast between the two sections is restored.
+  - [copy/high] unprovable-result-promise (close)
+      issue:      The closing headline 'Twelve weeks of structured work and you will know exactly where you stand' is fine, but the guarantee in the pricing footnote promises 'the next block is free' if retest numbers are not up — this is a result-contingent promise tied to athletic performance no coach can fully control, and it could undermine credibility or invite bad-faith claims.
+      suggestion: Reframe the guarantee around adherence and process delivery rather than a numerical outcome: e.g. 'Run every session as written — if your numbers don't move, we'll work the next block with you at no cost and figure out why together.'
+  - [copy/medium] subhead-restates-headline (proof)
+      issue:      The proof section heading 'How the block is built' restates structural information already covered in the hero sub ('Four phases. Tested numbers. No guesswork.') and immediately repeated in the steps section heading 'The four phases', making three consecutive sections say roughly the same thing.
+      suggestion: Replace 'How the block is built' with a heading that frames the stats as evidence of seriousness — e.g. 'The numbers behind it' — so the section advances the argument rather than recycling it.
+  - [copy/medium] vague-headline (close)
+      issue:      The closing CTA headline 'Twelve weeks of structured work and you will know exactly where you stand' could appear on almost any periodised program page — it names the duration and a vague payoff ('where you stand') but not what the athlete actually gains.
+      suggestion: Anchor the payoff to the page's specific claim — e.g. 'Twelve weeks from now, you will have tested numbers that prove the bar moved — or we run it again.'
+  - [copy/low] jargon-audience-mismatch (problem)
+      issue:      The bullet title 'Intensity is replacing progression' uses a technical periodisation distinction that a recreational 35-year-old lifter who self-programmes may not parse correctly — 'intensity' in coaching means load percentage, not effort level.
+      suggestion: Rewrite to plain language: e.g. 'More soreness, same bar weight' — which names the symptom the athlete actually experiences rather than the coaching term for it.
+  - [copy/low] throat-clearing-opener (faq)
+      issue:      The FAQ heading 'Before you commit' is a throat-clearing label that delays rather than invites — it frames the section as a barrier to buying rather than as useful answers.
+      suggestion: Replace with a heading that positions the FAQ as helpful rather than cautionary — e.g. 'Good questions to have answered now' or simply 'Common questions.'
+  - [conversion/high] no-price-before-cta (hero)
+      issue:      The hero CTA 'Start the block — testing week begins today' links directly to checkout but the price ($1,200) does not appear until five sections later, so visitors are asked to commit before they know what it costs.
+      suggestion: Add the price or at minimum a 'one payment of $1,200' line beneath the primary CTA in the hero so the cost is visible before anyone clicks.
+  - [conversion/high] offer-scope-unclear (hero, proof)
+      issue:      The hero and proof section describe '3x coached sessions per week' but never define what 'coached' means — live video, a written plan, a check-in call — so a reader cannot evaluate whether $1,200 is reasonable before the pricing section clarifies it.
+      suggestion: Add a parenthetical or short line in the hero or proof stat (e.g. '3x live-video coached sessions per week') so the nature of the coaching is established where the claim first appears.
+  - [conversion/medium] missing-intake-qualifier (faq, close) [visual-vocabulary]
+      issue:      The page never tells a prospect how to start or what happens immediately after clicking 'Start the block' — there is no mention of an intake form, onboarding call, or scheduling step, leaving the post-click experience a blank.
+      suggestion: Add a brief step or FAQ answer (e.g. 'After checkout you complete a short intake form and your coach contacts you within 24 hours to schedule testing week') so the buyer knows exactly what they are walking into.
+  - [conversion/medium] capacity-unstated (close, pricing)
+      issue:      Live-video coaching at this price implies limited coach capacity, but the page never signals how many spots are available or whether the block has a fixed start date, removing urgency and raising an unanswered 'can I even get in?' doubt.
+      suggestion: In the pricing or cta section, state the number of open spots or the next cohort start date (e.g. 'Four spots open — block starts the day you buy') to resolve both the urgency and logistics questions.
+  - [conversion/low] vague-button-label (close)
+      issue:      The closing CTA button reads 'Start the block', which describes an action but not an outcome, making it interchangeable with any fitness product's checkout button.
+      suggestion: Rewrite the label to reflect what the buyer is getting, for example 'Book my testing week' or 'Claim my spot — testing week starts today', to echo the specific language used in the hero.
+ART LENS ONLY:
+  - [art/medium] flat-middle-rhythm (voices, pricing, faq) [visual-vocabulary]
+      issue:      Three consecutive bands — testimonial (accent), pricing (muted), faq (default) — each use 'roomy' or 'normal' padding and a 'lg' or 'md' headline, producing a long mid-page stretch where no section is visually dominant enough to anchor the reader's attention.
+      suggestion: Compress the faq pad to 'tight' and pull the pricing section to a wider visual treatment (it already has width:'wide') by adding a divider that separates it clearly from both neighbors, giving that anchor section its own visual weight.
+  - [art/medium] accent-overuse (proof, voices, close)
+      issue:      The accent tone is applied to three separate bands — proof, voices, and close — meaning the accent colour appears at the top third, the middle, and the bottom of the page and loses its ability to signal 'act here'.
+      suggestion: Reserve the accent tone for the closing cta ('close') alone, and shift either 'proof' or 'voices' to a tone that is distinct but not the primary call-to-action colour, such as 'muted' or 'default'.
+  - [art/low] hero-divider-vs-tone-merge (hero) [visual-vocabulary]
+      issue:      The hero uses divider:'angle', which is intended to create a visual transition into the next section, but since the next section ('problem') shares the same dark tone (flagged separately), the angle cut lands against an identical background and the divider shape becomes invisible.
+      suggestion: Change the hero divider to 'none' so no decorative shape is promised and then abandoned; the divider only earns its keep once the tone contrast between the two sections is restored.
+
+--- ARM B: 4 pictures to the art lens — 21422 tokens, 21178ms ---
+all findings:
+  - [art/high] low-contrast-cta (pricing) [visual-vocabulary]
+      issue:      The 'Start the block' CTA button in the pricing section renders as near-black on dark brown — the button fill and the card background are so close in value that the button nearly disappears.
+      suggestion: Switch the pricing CTA button to the accent tone so it has the same contrast punch as the hero primary button and stands out as the page's main conversion action.
+  - [art/medium] faq-narrow-column (faq) [visual-vocabulary]
+      issue:      The FAQ answers render in a column that occupies roughly half the page width, leaving wide empty margins on both sides that make the section feel unfinished and waste readable line length.
+      suggestion: Widen the FAQ content column to match the full content width used by every other section, or switch the variant to one that uses the full band width.
+  - [art/medium] tone-merge (voices, pricing) [visual-vocabulary]
+      issue:      The testimonial band (accent/dark brown) and the pricing section directly below it share a very similar dark background, so the two sections bleed together without a perceptible boundary.
+      suggestion: Change the pricing section tone from 'muted' to 'default' (near-black) so there is a visible step change between the testimonial band and the pricing card.
+  - [art/low] hero-bottom-void (hero) [visual-vocabulary]
+      issue:      The hero band has a large empty gap below the two CTA buttons before the angled divider begins, giving the bottom of the hero an unintentional void that makes the section feel padded beyond its content.
+      suggestion: Reduce the hero pad from 'roomy' to 'normal', or tighten the bottom padding specifically, so the angled divider sits closer to the button row.
+  - [art/low] steps-column-text-density (method) [visual-vocabulary]
+      issue:      In the four-phase steps section the four columns render at a narrow width where the body text in each column breaks into very short line lengths (three to five words per line), making the copy choppy to read.
+      suggestion: Switch the steps variant from a four-column grid to a two-column or stacked layout so each phase description has enough line length to read as flowing prose.
+  - [copy/high] unprovable-result-promise (close)
+      issue:      The closing headline 'Twelve weeks of structured work and you will know exactly where you stand' is fine, but the guarantee in the pricing footnote says 'if your retest numbers are not up on your opening test, the next block is free' — this implies the program guarantees measurable strength gains, which no coach can promise regardless of adherence conditions.
+      suggestion: Reframe the guarantee around effort and accountability rather than outcome: 'run all twelve weeks as written and if we don't see progress, we'll work out why and run the next block together at no cost' keeps the offer generous without promising a specific physiological result.
+  - [copy/medium] subhead-restates-headline (close)
+      issue:      The closing sub 'The block starts the day you buy. First session is your test.' repeats information already stated in the hero CTA label and the steps section, adding nothing new at the moment the page is asking for a decision.
+      suggestion: Use this line to answer the last objection a hesitant buyer has — e.g. 'Spots are limited to eight athletes per block so loading adjustments stay personal' or a forward-looking nudge like 'In twelve weeks you will have tested numbers you can build the next year on.'
+  - [copy/medium] vague-headline (proof)
+      issue:      The proof section heading 'How the block is built' describes the section's structure rather than making a claim — it could head any periodised program's stat bar and says nothing about why these numbers matter.
+      suggestion: Replace with a heading that makes the numbers do work, e.g. 'Four phases, twelve weeks, zero guesswork' — which echoes the hero's language and frames the stats as evidence rather than a contents page.
+  - [copy/low] jargon-barrier (method)
+      issue:      The step title 'Weeks 7-10: Overload' uses the technical term 'overload' without context; a 35-year-old who has been training inconsistently will read this as 'too much' rather than the programming concept of progressive overload.
+      suggestion: Rename to something concrete about what the athlete experiences, e.g. 'Weeks 7-10: Push' or 'Weeks 7-10: Heavy' and move the technical language into the body copy where it is already explained.
+  - [copy/low] throat-clearing-opener (problem)
+      issue:      The bullets intro 'Four structural reasons, each fixable:' front-loads a structural description ('four structural reasons') before the reader has bought into the diagnosis — 'structural' is coach-speak here, not the language of a man who hasn't PR'd in three years.
+      suggestion: Cut 'structural' and rewrite as 'Four reasons — and every one of them is fixable:' to keep the directness of the voice without slipping into methodology language.
+  - [conversion/high] no-price-before-fold (hero, proof, method)
+      issue:      The price ($1,200) does not appear until the sixth section, after the hero, problem, stats, and four-phase walkthrough — a prospect who won't pay that much leaves before they ever see it.
+      suggestion: Add a single line in the hero sub or eyebrow anchoring the investment level, e.g., 'One flat payment of $1,200 — no upsells', so visitors self-qualify before reading the rest of the page.
+  - [conversion/high] mechanism-button-label (close, pricing)
+      issue:      The CTA label 'Start the block' describes what happens next logistically but names no outcome the buyer is purchasing — strength, a number on the bar, a before/after they can point at.
+      suggestion: Rewrite to tie the click to the result, e.g., 'Claim my 12-week block — retest in week 12' or 'Add 20 lb to my total — start today', so the label restates the promise at the moment of commitment.
+  - [conversion/medium] unanswered-objection-solo-vs-group (faq, pricing)
+      issue:      Nothing on the page explains whether 'three coached sessions per week (live video, coach on the call)' means the buyer gets the coach's undivided attention or shares a call with other athletes — a $1,200 buyer will wonder.
+      suggestion: Add a FAQ item or a parenthetical in the pricing feature list clarifying the session format, e.g., '1-on-1 live video' or 'small-group call, max 4 athletes', so the buyer knows exactly what they are paying for.
+  - [conversion/medium] guarantee-buried (pricing, faq)
+      issue:      The results guarantee ('next block is free') and the refund policy are both tucked into the pricing footnote and a FAQ answer — two of the most conversion-relevant facts on the page are the hardest to find.
+      suggestion: Promote the guarantee into a named callout within the pricing section or as a standalone line above the pricing CTA so it is visible to anyone scanning, not just those who read footnotes.
+  - [conversion/medium] missing-post-purchase-picture (close, faq)
+      issue:      The page never tells the buyer what happens in the hours after they click — no onboarding email, no intake form, no call to schedule — so 'the block starts the day you buy' raises more questions than it resolves.
+      suggestion: Add a brief next-steps note near the closing CTA or in the FAQ, e.g., 'After checkout you receive an intake form and a link to book your testing call within 24 hours', to eliminate post-click anxiety.
+  - [conversion/low] testimonials-non-specific (voices)
+      issue:      The testimonial section pulls from a live source with no visible content in the document — if those testimonials don't quote actual numbers (lifts gained, pounds added), they won't reinforce the page's quantified promise.
+      suggestion: Curate or mark as featured only testimonials that name a specific strength outcome ('added 25 lb to my squat in 12 weeks') so social proof directly echoes the page's core offer.
+ART LENS ONLY:
+  - [art/high] low-contrast-cta (pricing) [visual-vocabulary]
+      issue:      The 'Start the block' CTA button in the pricing section renders as near-black on dark brown — the button fill and the card background are so close in value that the button nearly disappears.
+      suggestion: Switch the pricing CTA button to the accent tone so it has the same contrast punch as the hero primary button and stands out as the page's main conversion action.
+  - [art/medium] faq-narrow-column (faq) [visual-vocabulary]
+      issue:      The FAQ answers render in a column that occupies roughly half the page width, leaving wide empty margins on both sides that make the section feel unfinished and waste readable line length.
+      suggestion: Widen the FAQ content column to match the full content width used by every other section, or switch the variant to one that uses the full band width.
+  - [art/medium] tone-merge (voices, pricing) [visual-vocabulary]
+      issue:      The testimonial band (accent/dark brown) and the pricing section directly below it share a very similar dark background, so the two sections bleed together without a perceptible boundary.
+      suggestion: Change the pricing section tone from 'muted' to 'default' (near-black) so there is a visible step change between the testimonial band and the pricing card.
+  - [art/low] hero-bottom-void (hero) [visual-vocabulary]
+      issue:      The hero band has a large empty gap below the two CTA buttons before the angled divider begins, giving the bottom of the hero an unintentional void that makes the section feel padded beyond its content.
+      suggestion: Reduce the hero pad from 'roomy' to 'normal', or tighten the bottom padding specifically, so the angled divider sits closer to the button row.
+  - [art/low] steps-column-text-density (method) [visual-vocabulary]
+      issue:      In the four-phase steps section the four columns render at a narrow width where the body text in each column breaks into very short line lengths (three to five words per line), making the copy choppy to read.
+      suggestion: Switch the steps variant from a four-column grid to a two-column or stacked layout so each phase description has enough line length to read as flowing prose.
+
+token delta (B - A): 6244  — the vision tokens, on a stage that already makes four calls.
+
+------------------------------------------------------------------------------
+ART FINDINGS PRESENT ONLY WITH PICTURES (5 of 5):
+  - [art/high] low-contrast-cta (pricing) [visual-vocabulary]
+      issue:      The 'Start the block' CTA button in the pricing section renders as near-black on dark brown — the button fill and the card background are so close in value that the button nearly disappears.
+      suggestion: Switch the pricing CTA button to the accent tone so it has the same contrast punch as the hero primary button and stands out as the page's main conversion action.
+  - [art/medium] faq-narrow-column (faq) [visual-vocabulary]
+      issue:      The FAQ answers render in a column that occupies roughly half the page width, leaving wide empty margins on both sides that make the section feel unfinished and waste readable line length.
+      suggestion: Widen the FAQ content column to match the full content width used by every other section, or switch the variant to one that uses the full band width.
+  - [art/medium] tone-merge (voices, pricing) [visual-vocabulary]
+      issue:      The testimonial band (accent/dark brown) and the pricing section directly below it share a very similar dark background, so the two sections bleed together without a perceptible boundary.
+      suggestion: Change the pricing section tone from 'muted' to 'default' (near-black) so there is a visible step change between the testimonial band and the pricing card.
+  - [art/low] hero-bottom-void (hero) [visual-vocabulary]
+      issue:      The hero band has a large empty gap below the two CTA buttons before the angled divider begins, giving the bottom of the hero an unintentional void that makes the section feel padded beyond its content.
+      suggestion: Reduce the hero pad from 'roomy' to 'normal', or tighten the bottom padding specifically, so the angled divider sits closer to the button row.
+  - [art/low] steps-column-text-density (method) [visual-vocabulary]
+      issue:      In the four-phase steps section the four columns render at a narrow width where the body text in each column breaks into very short line lengths (three to five words per line), making the copy choppy to read.
+      suggestion: Switch the steps variant from a four-column grid to a two-column or stacked layout so each phase description has enough line length to read as flowing prose.
+ART FINDINGS LOST WHEN PICTURES WERE ADDED (3):
+  - [art/medium] flat-middle-rhythm (voices, pricing, faq) [visual-vocabulary]
+      issue:      Three consecutive bands — testimonial (accent), pricing (muted), faq (default) — each use 'roomy' or 'normal' padding and a 'lg' or 'md' headline, producing a long mid-page stretch where no section is visually dominant enough to anchor the reader's attention.
+      suggestion: Compress the faq pad to 'tight' and pull the pricing section to a wider visual treatment (it already has width:'wide') by adding a divider that separates it clearly from both neighbors, giving that anchor section its own visual weight.
+  - [art/medium] accent-overuse (proof, voices, close)
+      issue:      The accent tone is applied to three separate bands — proof, voices, and close — meaning the accent colour appears at the top third, the middle, and the bottom of the page and loses its ability to signal 'act here'.
+      suggestion: Reserve the accent tone for the closing cta ('close') alone, and shift either 'proof' or 'voices' to a tone that is distinct but not the primary call-to-action colour, such as 'muted' or 'default'.
+  - [art/low] hero-divider-vs-tone-merge (hero) [visual-vocabulary]
+      issue:      The hero uses divider:'angle', which is intended to create a visual transition into the next section, but since the next section ('problem') shares the same dark tone (flagged separately), the angle cut lands against an identical background and the divider shape becomes invisible.
+      suggestion: Change the hero divider to 'none' so no decorative shape is promised and then abandoned; the divider only earns its keep once the tone contrast between the two sections is restored.
+
+==============================================================================
+ROUND 2 of 2
+==============================================================================
+
+--- ARM A: no pictures (today's behaviour) — 15233 tokens, 20459ms ---
+all findings:
+  - [art/medium] rhythm-flatline (problem, proof, method) [visual-vocabulary]
+      issue:      The page's middle stretch cycles dark → accent → dark with roomy padding on both flanks of 'proof', making 'proof' feel like an interruption rather than a landmark; the tight pad on 'proof' surrounded by roomy sections creates an abrupt compression that breaks scroll rhythm without adding emphasis.
+      suggestion: Widen 'proof' padding to 'normal' or match it to its neighbours, and consider a tone that bridges rather than jolts — for example 'muted' — so the stat band reads as a natural beat rather than a pinched break.
+  - [art/medium] closing-band-underweight (close) [visual-vocabulary]
+      issue:      The closing cta uses headline size 'lg', the same size as 'pricing', 'faq', and 'method', so the final call to action carries no more visual authority than the informational sections that precede it.
+      suggestion: Raise the closing cta headline to 'xl' to match the hero and signal to a scrolling eye that this is a decision moment, not another content band.
+  - [art/low] testimonial-tone-collision (voices, close) [visual-vocabulary]
+      issue:      Both 'voices' (testimonial) and 'close' (cta) are set to the accent tone, so they form a second double-band near the bottom of the page that mirrors the unintentional merge already flagged at the top.
+      suggestion: Set 'voices' to tone 'muted' or 'default' so it reads as distinct from the accent cta that follows it and the accent does its job of marking the conversion moment.
+  - [copy/high] unprovable-promise (close)
+      issue:      The closing headline 'Twelve weeks of structured work and you will know exactly where you stand' is fine, but the guarantee in the pricing footnote says 'if your retest numbers are not up on your opening test, the next block is free' — this implicitly promises measurable strength gains to anyone who shows up, a result no coach can guarantee regardless of adherence.
+      suggestion: Reframe the guarantee around the quality of the coaching process rather than a specific outcome: e.g. 'run all twelve weeks as written and if we haven't adjusted the program to your logged numbers every single week, the next block is free.'
+  - [copy/medium] vague-headline (close)
+      issue:      The closing headline 'Twelve weeks of structured work and you will know exactly where you stand' restates the program description rather than closing the sale — it could sit on any periodised program page unchanged.
+      suggestion: Echo the hero's specificity and urgency, e.g. 'The bar stopped moving. Twelve weeks fixes that — testing week starts the day you buy.'
+  - [copy/medium] subhead-restates-headline (proof)
+      issue:      The proof section heading 'How the block is built' does the same job as the method section heading 'The four phases' — both introduce program structure, so one dilutes the other.
+      suggestion: Rewrite the proof heading to frame the stats as outcomes or stakes rather than structure, e.g. 'What twelve weeks actually looks like in numbers.'
+  - [copy/medium] jargon-barrier (method)
+      issue:      The step body for Weeks 7-10 uses 'precisely dosed' — clinical phrasing that reads like a brochure and breaks the blunt, direct voice sustained everywhere else on the page.
+      suggestion: Replace with concrete, plain language: e.g. 'Heavy and repeatable — loads are set so you push hard without digging a hole you can't climb out of by Friday.'
+  - [copy/low] throat-clearing-opener (problem)
+      issue:      The intro line 'Four structural reasons, each fixable:' is redundant because the four bullet titles that follow immediately name and frame each reason themselves.
+      suggestion: Delete the intro line entirely and let the bullet titles do the work, or replace it with a single provocative sentence that earns its place before the list.
+  - [conversion/high] no-price-before-commitment (hero, problem, proof, method, voices)
+      issue:      The $1,200 price is withheld until the sixth section; a visitor who clicks the hero CTA 'Start the block — testing week begins today' is sent straight to checkout without ever seeing the cost.
+      suggestion: Add the price — or at minimum a 'From $1,200 — one payment' line — to the hero sub-copy or as a footnote on the primary CTA, so no one clicks blind.
+  - [conversion/high] button-mechanism-not-outcome (close)
+      issue:      The closing CTA button reads 'Start the block', which names the mechanism (joining the program) rather than the outcome the buyer is chasing (getting stronger, hitting a new number).
+      suggestion: Rewrite the label to name the result, e.g. 'Start adding weight to the bar' or 'Get twelve weeks that actually move the needle', matching the language of the problem section.
+  - [conversion/high] missing-delivery-format-clarity (pricing)
+      issue:      The pricing feature list says 'three coached sessions per week (live video, coach on the call)' but nowhere on the page does it explain what platform is used, how sessions are scheduled, or what timezone constraints apply — a real objection for any buyer outside one timezone.
+      suggestion: Add an FAQ entry or a footnote in the pricing section stating the scheduling process, platform (Zoom, etc.), and any timezone or availability limitations.
+  - [conversion/medium] missing-cohort-or-start-date (hero, close)
+      issue:      The hero CTA says 'testing week begins today' and the closing CTA sub says 'The block starts the day you buy', but there is no indication of whether spots are limited, how many coaches handle clients, or whether capacity exists right now.
+      suggestion: State available spots or a next-available start date (e.g. 'Four spots open — block starts Monday') to make the urgency credible and answer the implied 'will I actually get attention?' objection.
+  - [conversion/medium] guarantee-buried (pricing, faq)
+      issue:      The performance guarantee ('if your retest numbers are not up, the next block is free') is split across a pricing footnote and an FAQ answer, so a reader scanning for risk-reduction never encounters it as a single clear signal.
+      suggestion: Surface the guarantee as a named, visually distinct element inside the pricing section — e.g. a 'Results guarantee' callout block — rather than leaving it in fine-print footnote text.
+  - [conversion/medium] no-post-purchase-picture (faq)
+      issue:      No question or answer addresses what happens after week 12 — whether there is a follow-on block, ongoing coaching, or a clear off-ramp — leaving a buyer unsure whether $1,200 solves the problem once or starts a recurring relationship.
+      suggestion: Add an FAQ item such as 'What comes after week 12?' that explains the retest report, any next-block options, and whether continued coaching is available, removing ambiguity about the total commitment.
+ART LENS ONLY:
+  - [art/medium] rhythm-flatline (problem, proof, method) [visual-vocabulary]
+      issue:      The page's middle stretch cycles dark → accent → dark with roomy padding on both flanks of 'proof', making 'proof' feel like an interruption rather than a landmark; the tight pad on 'proof' surrounded by roomy sections creates an abrupt compression that breaks scroll rhythm without adding emphasis.
+      suggestion: Widen 'proof' padding to 'normal' or match it to its neighbours, and consider a tone that bridges rather than jolts — for example 'muted' — so the stat band reads as a natural beat rather than a pinched break.
+  - [art/medium] closing-band-underweight (close) [visual-vocabulary]
+      issue:      The closing cta uses headline size 'lg', the same size as 'pricing', 'faq', and 'method', so the final call to action carries no more visual authority than the informational sections that precede it.
+      suggestion: Raise the closing cta headline to 'xl' to match the hero and signal to a scrolling eye that this is a decision moment, not another content band.
+  - [art/low] testimonial-tone-collision (voices, close) [visual-vocabulary]
+      issue:      Both 'voices' (testimonial) and 'close' (cta) are set to the accent tone, so they form a second double-band near the bottom of the page that mirrors the unintentional merge already flagged at the top.
+      suggestion: Set 'voices' to tone 'muted' or 'default' so it reads as distinct from the accent cta that follows it and the accent does its job of marking the conversion moment.
+
+--- ARM B: 4 pictures to the art lens — 21289 tokens, 22771ms ---
+all findings:
+  - [art/high] low-contrast-cta (pricing)
+      issue:      The 'Start the block' button in the pricing section renders as a near-black button on a near-black background, making it almost invisible against the dark card.
+      suggestion: Switch the pricing CTA button to the accent tone so it stands out from the dark card surface the way the hero primary CTA does.
+  - [art/medium] faq-narrow-column (faq) [visual-vocabulary]
+      issue:      The FAQ answers render in a column that occupies roughly half the page width, leaving large dead margins on both sides and making each answer feel cramped and hard to scan.
+      suggestion: Widen the FAQ content column to match the full content width used by the rest of the page, or switch the variant so questions and answers span edge to edge.
+  - [art/low] proof-pad-mismatch (proof) [visual-vocabulary]
+      issue:      The stats band uses 'tight' padding while the sections immediately above and below it use 'normal' and 'roomy', making the stat band feel squashed and underweighted relative to the numbers it is presenting.
+      suggestion: Increase the proof section padding to 'normal' so the four stats have enough breathing room to read as landmark figures rather than a footnote.
+  - [art/medium] close-cta-button-lost (close) [visual-vocabulary]
+      issue:      The closing CTA 'Start the block' button renders as a dark navy pill on the dark accent background, giving it very little contrast and making it easy to miss at a glance.
+      suggestion: Set the CTA button in the 'close' section to a lighter or inverted style so it reads as a clear, tappable target against the dark accent band.
+  - [copy/high] unprovable-result-promise (close)
+      issue:      The closing headline 'Twelve weeks of structured work and you will know exactly where you stand' is defensible, but the sub-copy 'The block starts the day you buy. First session is your test.' lands as throat-clearing that adds no new information after the pricing section has already explained the same thing twice.
+      suggestion: Replace the sub-copy with a single concrete stake — e.g. 'Twelve weeks from now you have side-by-side numbers. Either they moved or the next block is free.' — so the closer advances the argument instead of restating it.
+  - [copy/medium] subhead-restates-headline (method)
+      issue:      The section heading 'The four phases' and its intro 'Four phases, each building on the last.' say the same thing in consecutive lines without adding any new information.
+      suggestion: Cut the intro line entirely, or replace it with a single concrete claim that earns the reader's attention — e.g. 'Most men quit between phases two and three. Here is why the sequencing matters.'
+  - [copy/medium] generic-plan-name (pricing)
+      issue:      The plan name 'Forged Strength — 12 Weeks' reads like a product name from any gym supplement brand and does nothing to reinforce the voice of a specific Tampa Bay coach.
+      suggestion: Rename the plan to something that uses the coach's direct, blunt voice and references the page's own framing — e.g. 'The 12-Week Block' — which is plain, owns the concept, and matches the copy register already established everywhere else on the page.
+  - [copy/medium] vague-feature-line (pricing)
+      issue:      The feature line 'Nutrition and recovery targets to support the load' is the only item in the feature list without a concrete detail, making it read like a filler bullet added to pad the list.
+      suggestion: Make it specific — e.g. 'Weekly calorie and protein targets adjusted as phase intensity climbs' — or cut it, since the page voice treats vagueness as the exact problem it is selling against.
+  - [copy/low] hedging-faq-answer (faq)
+      issue:      The answer to 'What if I have not lifted seriously in a year?' opens with 'You can still run it' but the clause 'What you cannot do is run it while also training for something else' introduces a restriction that was never raised as a concern in the question, potentially confusing readers who asked a simple readiness question.
+      suggestion: Separate the two points with a line break or split into two sentences so the reassurance lands first and the constraint reads as useful guidance rather than a buried caveat.
+  - [conversion/high] no-stated-delivery-mechanism (hero, pricing)
+      issue:      The hero CTA says 'Start the block — testing week begins today' and pricing lists 'Three coached sessions per week (live video, coach on the call)' but nowhere on the page is it explained how a buyer actually receives or accesses anything after clicking — no platform, no app, no login, no calendar link mentioned.
+      suggestion: Add one sentence to the pricing section or FAQ explaining what happens immediately after purchase (e.g., 'You'll receive a calendar link and onboarding form within one hour of payment') so the buyer knows what they are committing to mechanically.
+  - [conversion/high] missing-cohort-vs-rolling-clarity (close, hero)
+      issue:      Both the hero ('testing week begins today') and the closing CTA ('The block starts the day you buy') imply instant, rolling enrollment, but three live coached video sessions per week with load adjustments suggests a coach's calendar is involved — the page never resolves whether slots are limited or always available.
+      suggestion: State explicitly in the pricing or CTA section whether availability is open or limited (e.g., 'Coach takes a maximum of 8 athletes per block — current spots: X') so a buyer knows whether hesitation has a cost.
+  - [conversion/medium] unanswered-objection-equipment-home (faq)
+      issue:      The FAQ answers 'Do I need a full gym?' but the answer says 'Message before buying if you are unsure' without providing an email address or link, leaving someone mid-FAQ with no clear path to get that answer.
+      suggestion: Replace 'Message before buying if you are unsure about yours' with a direct contact path, such as 'Email coach@djpathlete.com before buying' to remove the friction for someone on the fence about their setup.
+  - [conversion/medium] guarantee-condition-buried (pricing)
+      issue:      The performance guarantee — 'run all twelve weeks as written and miss no more than two sessions' — is meaningful and competitive, but it is placed in the footnote below the feature list where scanners will miss it entirely.
+      suggestion: Promote the guarantee to a named line item inside the feature list or a callout box within the pricing section so it is seen before the CTA, not after it.
+  - [conversion/medium] no-answer-to-what-comes-after (faq, close)
+      issue:      The page never answers what happens at the end of the 12 weeks — whether there is a follow-on block, ongoing coaching, or the relationship simply ends — which leaves a buyer wondering if $1,200 is a one-time fix or the start of a recurring cost.
+      suggestion: Add a FAQ item or a sentence in the closing CTA section clarifying what post-block options exist (e.g., 'After the retest you can run a second block at a returning-athlete rate, or continue independently with your new numbers') to remove the ambiguity about long-term commitment.
+  - [conversion/low] testimonials-section-unverified (voices)
+      issue:      The testimonial section pulls from a live source with no visible filter for relevance — a buyer cannot tell whether the testimonials shown are from men who completed the 12-week block or from other unrelated products or services by the same coach.
+      suggestion: Add a heading qualifier to the testimonials section such as 'From men who finished the block' or surface a label on each testimonial card indicating it is from a 12-week block graduate, so proof is tied directly to the offer being sold.
+ART LENS ONLY:
+  - [art/high] low-contrast-cta (pricing)
+      issue:      The 'Start the block' button in the pricing section renders as a near-black button on a near-black background, making it almost invisible against the dark card.
+      suggestion: Switch the pricing CTA button to the accent tone so it stands out from the dark card surface the way the hero primary CTA does.
+  - [art/medium] faq-narrow-column (faq) [visual-vocabulary]
+      issue:      The FAQ answers render in a column that occupies roughly half the page width, leaving large dead margins on both sides and making each answer feel cramped and hard to scan.
+      suggestion: Widen the FAQ content column to match the full content width used by the rest of the page, or switch the variant so questions and answers span edge to edge.
+  - [art/low] proof-pad-mismatch (proof) [visual-vocabulary]
+      issue:      The stats band uses 'tight' padding while the sections immediately above and below it use 'normal' and 'roomy', making the stat band feel squashed and underweighted relative to the numbers it is presenting.
+      suggestion: Increase the proof section padding to 'normal' so the four stats have enough breathing room to read as landmark figures rather than a footnote.
+  - [art/medium] close-cta-button-lost (close) [visual-vocabulary]
+      issue:      The closing CTA 'Start the block' button renders as a dark navy pill on the dark accent background, giving it very little contrast and making it easy to miss at a glance.
+      suggestion: Set the CTA button in the 'close' section to a lighter or inverted style so it reads as a clear, tappable target against the dark accent band.
+
+token delta (B - A): 6056  — the vision tokens, on a stage that already makes four calls.
+
+------------------------------------------------------------------------------
+ART FINDINGS PRESENT ONLY WITH PICTURES (4 of 4):
+  - [art/high] low-contrast-cta (pricing)
+      issue:      The 'Start the block' button in the pricing section renders as a near-black button on a near-black background, making it almost invisible against the dark card.
+      suggestion: Switch the pricing CTA button to the accent tone so it stands out from the dark card surface the way the hero primary CTA does.
+  - [art/medium] faq-narrow-column (faq) [visual-vocabulary]
+      issue:      The FAQ answers render in a column that occupies roughly half the page width, leaving large dead margins on both sides and making each answer feel cramped and hard to scan.
+      suggestion: Widen the FAQ content column to match the full content width used by the rest of the page, or switch the variant so questions and answers span edge to edge.
+  - [art/low] proof-pad-mismatch (proof) [visual-vocabulary]
+      issue:      The stats band uses 'tight' padding while the sections immediately above and below it use 'normal' and 'roomy', making the stat band feel squashed and underweighted relative to the numbers it is presenting.
+      suggestion: Increase the proof section padding to 'normal' so the four stats have enough breathing room to read as landmark figures rather than a footnote.
+  - [art/medium] close-cta-button-lost (close) [visual-vocabulary]
+      issue:      The closing CTA 'Start the block' button renders as a dark navy pill on the dark accent background, giving it very little contrast and making it easy to miss at a glance.
+      suggestion: Set the CTA button in the 'close' section to a lighter or inverted style so it reads as a clear, tappable target against the dark accent band.
+ART FINDINGS LOST WHEN PICTURES WERE ADDED (3):
+  - [art/medium] rhythm-flatline (problem, proof, method) [visual-vocabulary]
+      issue:      The page's middle stretch cycles dark → accent → dark with roomy padding on both flanks of 'proof', making 'proof' feel like an interruption rather than a landmark; the tight pad on 'proof' surrounded by roomy sections creates an abrupt compression that breaks scroll rhythm without adding emphasis.
+      suggestion: Widen 'proof' padding to 'normal' or match it to its neighbours, and consider a tone that bridges rather than jolts — for example 'muted' — so the stat band reads as a natural beat rather than a pinched break.
+  - [art/medium] closing-band-underweight (close) [visual-vocabulary]
+      issue:      The closing cta uses headline size 'lg', the same size as 'pricing', 'faq', and 'method', so the final call to action carries no more visual authority than the informational sections that precede it.
+      suggestion: Raise the closing cta headline to 'xl' to match the hero and signal to a scrolling eye that this is a decision moment, not another content band.
+  - [art/low] testimonial-tone-collision (voices, close) [visual-vocabulary]
+      issue:      Both 'voices' (testimonial) and 'close' (cta) are set to the accent tone, so they form a second double-band near the bottom of the page that mirrors the unintentional merge already flagged at the top.
+      suggestion: Set 'voices' to tone 'muted' or 'default' so it reads as distinct from the accent cta that follows it and the accent does its job of marking the conversion moment.
