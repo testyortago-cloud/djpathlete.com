@@ -509,13 +509,28 @@ ${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-help,
 ${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-back,
 ${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-consent,
 ${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-scale,
-${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-profile-body,
 ${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-step,
 ${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-help,
 ${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-back,
 ${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-consent,
-${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-scale,
-${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-profile-body { color: inherit; opacity: 0.85; }
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-scale { color: inherit; opacity: 0.85; }
+
+/* ONE OF THE SIX IS DELIBERATELY ABSENT ABOVE, and it was present, and that was
+   a bug. The quiz profile body is the only one of them with its own container:
+   .djp-s-quiz .djp-quiz-profile repaints itself var(--surface), and the band
+   variant does not reset that. So color: inherit walked straight past it to the
+   SECTION's foreground and painted that on --surface — turning 13 of 24
+   preset x tone cells from 5.38-5.65 (passing) into 1.08-1.12, which is white
+   on near-white. Strictly worse than the regression the rule was written to
+   undo, and the exact hazard the comment above warns about, reached through a
+   different container.
+
+   It keeps reading --muted-foreground, which is already correct there:
+   --surface is one of the three grounds deriveMutedOnPaper guarantees against.
+
+   THE GENERAL RULE, for the next class added to this list: qualify by
+   CONTAINER, not only by variant. A tone says what the SECTION is painted; it
+   says nothing about what the element is actually sitting on. */
 
 /* Move 3: shapes painted in their own background's token. The second .djp-ic
    selector is not a duplicate — PRICING_CSS's .djp-plan-features .djp-ic ties

@@ -317,9 +317,48 @@ describe("shapes have a boundary against whatever is behind them", () => {
   //
   // Asserted against the CSS SOURCE, not a rendered value, because that is the
   // thing that can change independently.
+  // ANCHORED ON THE RULE, NOT THE FILE. Scanning the whole of THEME_CSS for the
+  // percentage looks equivalent and is not: THEME_CSS contains three
+  // `color-mix(in oklch, var(--foreground) N%, transparent)` values — 10% and
+  // 14% for the `+ sibling` dividers sixty lines above, and 8% for this panel.
+  // So a whole-file `toContain` passes for 0.08, 0.10 AND 0.14 (proved by
+  // mutation: 0.10 and 0.14 both survived; only 0.20 died). Those are not
+  // obscure wrong values — they are the neighbouring idiom's, which is exactly
+  // the drift that would silently invalidate the derivation while the page kept
+  // painting 8%. So the assertion names the panel rule itself.
   it("derives against the same muted panel wash the stylesheet actually paints", () => {
     const percent = `${Math.round(MUTED_PANEL_WASH * 100)}%`
-    expect(THEME_CSS).toContain(`color-mix(in oklch, var(--foreground) ${percent}, transparent)`)
+    const panelRule = THEME_CSS.split("}").find(
+      (rule) => rule.includes('[data-tone="muted"]') && rule.includes(".djp-plan") && rule.includes("background:"),
+    )
+    expect(panelRule, "the muted-tone panel rule should exist").toBeDefined()
+    expect(panelRule).toContain(`color-mix(in oklch, var(--foreground) ${percent}, transparent)`)
+  })
+
+  // THE TWO FIXES THAT CAME OUT OF REVIEW HAD NO TEST AT ALL — proved by
+  // mutation: emptying the whole quiz-band rule, and deleting `.djp-quiz`'s
+  // pair declaration, both left 1087/1087 green. That is also how a real bug
+  // (an `inherit` that walked past `.djp-quiz-profile`'s own background) shipped
+  // green in the first place.
+  it("gives the band-variant quiz its section's pair, since it has no card to sit on", () => {
+    expect(THEME_CSS).toMatch(/\.djp-s-quiz\.djp-v-band\[data-tone="accent"\] \.djp-quiz-step/)
+    expect(THEME_CSS).toMatch(/\.djp-s-quiz\.djp-v-band\[data-tone="dark"\] \.djp-quiz-scale \{ color: inherit/)
+  })
+
+  // The container exception, pinned as an ABSENCE with a presence control above:
+  // `.djp-quiz-profile` repaints itself `--surface`, so its body text must keep
+  // reading the neutral token rather than inheriting the section's foreground.
+  it("does not hand the section's foreground to text inside a container that repainted itself", () => {
+    expect(THEME_CSS).not.toMatch(/\.djp-v-band\[data-tone="(accent|dark)"\] \.djp-quiz-profile-body/)
+  })
+
+  // SECTION_CSS.quiz, not THEME_CSS: the card rule is per-kind CSS, and only the
+  // shared tone knobs live in THEME_CSS. Asserting against the wrong sheet was
+  // the first version of this test and it failed loudly, which is the right way
+  // round — a test that searched BOTH sheets would have passed either way and
+  // told me nothing about where the declaration actually is.
+  it("re-declares the pair inside the quiz card, which paints its own background", () => {
+    expect(SECTION_CSS.quiz).toMatch(/\.djp-s-quiz \.djp-quiz \{[\s\S]*?--djp-pair-fg: var\(--foreground\)/)
   })
 
   // THIS HAS NOW BITTEN TWICE, WHICH IS WHY IT GETS A TEST RATHER THAN A NOTE.

@@ -185,6 +185,13 @@ describe("resolvePalette", () => {
       expect(contrastRatio(p.mutedOnPaper, p.surface), `hue ${hue}: mutedOnPaper on surface`).toBeGreaterThanOrEqual(
         4.5,
       )
+      // The PANEL ground too. Without this line an arbitrary coach brand has
+      // exactly the two-ground coverage the first cut shipped with — the 12
+      // presets are pinned for it, and nothing else is.
+      expect(
+        contrastRatio(p.mutedOnPaper, mixHexForTest(p.surface, p.ink, MUTED_PANEL_WASH)),
+        `hue ${hue}: mutedOnPaper on the muted panel`,
+      ).toBeGreaterThanOrEqual(4.5)
     }
   })
   // Both modes, not just light: dark mode's paper is near-black, which is
@@ -209,6 +216,10 @@ describe("resolvePalette", () => {
       expect(
         contrastRatio(p.mutedOnPaper, p.surface),
         `hue ${hue} (dark): mutedOnPaper on surface`,
+      ).toBeGreaterThanOrEqual(4.5)
+      expect(
+        contrastRatio(p.mutedOnPaper, mixHexForTest(p.surface, p.ink, MUTED_PANEL_WASH)),
+        `hue ${hue} (dark): mutedOnPaper on the muted panel`,
       ).toBeGreaterThanOrEqual(4.5)
       expect(
         contrastRatio(p.accentOnPaper, p.paper),
