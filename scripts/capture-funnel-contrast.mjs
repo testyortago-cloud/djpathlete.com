@@ -59,6 +59,21 @@ const SUBJECTS = [
     name: "02-light-custom-palette",
     title: "Light palette (#a8563a / #c99a6b) — the pricing card's boundary",
   },
+  // G21. A quiz card on an accent-toned section: the card paints itself white
+  // whatever the section does, but its text was inheriting the SECTION's
+  // foreground. On a palette whose accent pairs with white, that is white text
+  // on a white card — 1.00:1, gone rather than dim.
+  //
+  // NEEDS A PALETTE AND AN ACCENT TONE, which no dev page carries by default.
+  // Set them on the dev clone before running and restore them after; the script
+  // refuses rather than photographing the wrong configuration.
+  {
+    slug: "athlete-quiz",
+    name: "03-quiz-card-accent-tone",
+    title: "Quiz card on an accent band — text that belonged to the wrong pair",
+    quiz: true,
+    requireTone: "accent",
+  },
 ]
 
 async function launchChromium() {
@@ -185,13 +200,30 @@ async function main() {
     if (!servedTokens) throw new Error(`no #djp-funnel-root on /preview/${subject.slug} — the render failed`)
     console.log(`  [${PHASE}] ${subject.slug} serving --muted-foreground: ${servedTokens}`)
 
-    // The page must actually have a pricing section, or the two shapes this
-    // pass is about are not on screen and the shot proves nothing.
-    const planCount = await page.locator(".djp-plan").count()
-    const btnCount = await page.locator(".djp-btn-primary").count()
-    console.log(`  ${subject.slug}: ${planCount} plan card(s), ${btnCount} primary button(s)`)
-    if (planCount === 0 || btnCount === 0) {
-      throw new Error(`${subject.slug} has no plan card or no primary button — wrong subject for this pass`)
+    if (subject.quiz) {
+      // REFUSE rather than photograph the wrong configuration. A quiz on a
+      // `muted` tone cannot show G21 at all — muted's pair IS the neutral one,
+      // so the card and the section agree and there is nothing to see. A shot
+      // of that would look like a clean result.
+      const tone = await page.locator(".djp-s-quiz").first().getAttribute("data-tone")
+      const cardCount = await page.locator(".djp-quiz").count()
+      console.log(`  ${subject.slug}: quiz tone="${tone}", ${cardCount} card(s)`)
+      if (cardCount === 0) throw new Error(`${subject.slug} rendered no .djp-quiz — wrong subject`)
+      if (subject.requireTone && tone !== subject.requireTone) {
+        throw new Error(
+          `${subject.slug}'s quiz is tone="${tone}", not "${subject.requireTone}" — ` +
+            `that tone cannot show this defect, so the shot would be misleading. Set the tone on the dev clone first.`,
+        )
+      }
+    } else {
+      // The page must actually have a pricing section, or the two shapes this
+      // pass is about are not on screen and the shot proves nothing.
+      const planCount = await page.locator(".djp-plan").count()
+      const btnCount = await page.locator(".djp-btn-primary").count()
+      console.log(`  ${subject.slug}: ${planCount} plan card(s), ${btnCount} primary button(s)`)
+      if (planCount === 0 || btnCount === 0) {
+        throw new Error(`${subject.slug} has no plan card or no primary button — wrong subject for this pass`)
+      }
     }
 
     // Park the pointer away from everything: Playwright's mouse stays where it
@@ -200,10 +232,34 @@ async function main() {
     await page.mouse.move(2, 2)
     await hidePreviewChrome(page)
 
-    await page.locator(".djp-plan").first().scrollIntoViewIfNeeded()
+    await page.locator(subject.quiz ? ".djp-quiz" : ".djp-plan").first().scrollIntoViewIfNeeded()
     await page.waitForTimeout(600)
 
     const markers = []
+
+    if (subject.quiz) {
+      const prompt = await rawBox(page, ".djp-quiz-prompt, .djp-quiz")
+      if (prompt) {
+        markers.push({
+          x: prompt.x + Math.min(prompt.width / 2, 400),
+          y: prompt.y + 20,
+          caption:
+            PHASE === "before"
+              ? "The question is written in white, on a white card. It is not faint — it is not there. The card always paints itself white, but its words were taking their colour from the coloured band around it."
+              : "The question now takes its colour from the card it is printed on, not from the band behind the card. Black on white, on every colour scheme a coach can pick.",
+        })
+      }
+      const file = join(OUT, `${subject.name}.png`)
+      const shot = await page.screenshot({ fullPage: true })
+      await annotate(shot, file, {
+        title: `${subject.title} — ${PHASE.toUpperCase()}`,
+        subtitle: `/preview/${subject.slug} — the real route, ${WIDTH}px, DSF ${DSF}`,
+        markers,
+        scale: (WIDTH * DSF) / 1440,
+      })
+      console.log(`  wrote ${file} (${markers.length} markers)`)
+      continue
+    }
     const plan = await rawBox(page, ".djp-plan")
     if (plan) {
       markers.push({
