@@ -187,7 +187,7 @@ content by one pixel on both axes for no contrast benefit.
    pricing card gains a hairline ring and every primary button gains a 1px
    ring, drawn in `app/globals.css`'s `--foreground` (`#03080f`). That is
    intended — a shape with no boundary is a defect whether or not a palette is
-   set — but it is a visible change to all 13 live pages and is recorded here
+   set — but it is a visible change to all 13 pages and is recorded here
    rather than discovered later.
 
    One number is worth naming because it is thinner than the margin this spec
@@ -201,6 +201,13 @@ content by one pixel on both axes for no contrast benefit.
    `app/globals.css`, which the admin UI also reads.
 3. **Published funnel CSS is frozen.** These changes reach a live page only when
    that funnel is re-published. No cache is involved.
+
+   **Measured 2026-09-19: production has NOTHING published.** All 9 prod funnels
+   (13 step rows) are `status='draft'`, and all carry `palette: null`. So the
+   blast radius of this branch on production today is zero, and the hairline
+   described in invariant 2 arrives the first time somebody publishes — not on
+   deploy. That is the safest possible order, but it also means **deploying this
+   proves nothing about it**: the first publish is the first real exercise.
 4. **`SECTION_BUILDER_BLOCK_A` = 20670 and `SECTION_BUILDER_BLOCK_DESIGN` = 4433.**
    Measured at baseline; `lib/funnels/sections/prompt.ts` is not touched.
 5. **Admin UI is light-only.** Nothing here builds against a `.dark` variant.
