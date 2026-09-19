@@ -149,6 +149,34 @@ describe("the sport router (correction 4)", () => {
   })
 })
 
+describe("where a result sends the visitor", () => {
+  it("gives every tier a CTA — a result with no next step is a dead end", () => {
+    for (const tier of definition.tiers) {
+      expect(tier.ctaLabel).toBeTruthy()
+      expect(tier.ctaHref).toBeTruthy()
+    }
+  })
+
+  // THE ONE THAT WOULD HAVE CAUGHT THE BUG. Three of this funnel's four steps
+  // have `project_data` NULL — never built — so a tier aimed at its own
+  // `offer` step is a live page whose result button leads nowhere. `publishGate`
+  // cannot see it: it validates links inside a SECTION DOCUMENT, and a tier's
+  // ctaHref lives on the quiz row. Nothing but this assertion stands between
+  // that and paid traffic.
+  it("never points a tier back into this funnel's own unbuilt steps", () => {
+    for (const tier of definition.tiers) {
+      expect(tier.ctaHref).not.toContain("/go/rotational-reboot-score")
+    }
+  })
+
+  it("sends the three buying tiers to the live program page", () => {
+    for (const key of ["red", "orange", "yellow"]) {
+      const tier = definition.tiers.find((t) => t.key === key)!
+      expect(tier.ctaHref).toBe("/programs/rotational-reboot")
+    }
+  })
+})
+
 describe("the demo clips", () => {
   const movement = definition.questions.filter((q) => q.mediaUrl !== null)
 

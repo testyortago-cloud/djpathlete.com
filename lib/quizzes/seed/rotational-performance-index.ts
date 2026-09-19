@@ -319,6 +319,13 @@ export const ROTATIONAL_PERFORMANCE_INDEX: SeedQuiz = {
     { key: "strong_but_slow", name: "Strong but slow", description: "Strength is there but it doesn't translate.", position: 4 },
   ],
 
+  // CTAs POINT AT THE REAL PROGRAM PAGE, not at this funnel's own `offer` step.
+  // That step exists in the funnel table with `project_data` NULL — it was never
+  // built — so a CTA aimed at it is a live page whose result button leads
+  // nowhere, which is the failure this repo has already shipped once. The gate
+  // cannot catch it either: `publishGate` validates links INSIDE a section
+  // document, and a tier's ctaHref lives on the quiz row.
+  // /programs/rotational-reboot is live, returns 200, and sells the $79 program.
   // The document's own four names. Cutoffs match the athlete quiz's deliberately,
   // so a colour means the same thing to the operator across both quizzes.
   // Higher is better, so RED IS THE MOST URGENT — which is why red and orange
@@ -332,7 +339,7 @@ export const ROTATIONAL_PERFORMANCE_INDEX: SeedQuiz = {
       headline: "High compensation and disconnection",
       body: "Your body is finding ways around the work rather than doing it. That is the pattern that leaks speed and power, and it is the most fixable one on this list.",
       ctaLabel: "See if Rotational Reboot is right for you",
-      ctaHref: "/go/rotational-reboot-score/offer",
+      ctaHref: "/programs/rotational-reboot",
     },
     {
       key: "orange",
@@ -342,7 +349,7 @@ export const ROTATIONAL_PERFORMANCE_INDEX: SeedQuiz = {
       headline: "Movement inefficiencies limiting performance",
       body: "You held some of it together and lost the rest. The gaps that showed up here are the ones costing you output when you are tired.",
       ctaLabel: "See if Rotational Reboot is right for you",
-      ctaHref: "/go/rotational-reboot-score/offer",
+      ctaHref: "/programs/rotational-reboot",
     },
     {
       key: "yellow",
@@ -352,7 +359,7 @@ export const ROTATIONAL_PERFORMANCE_INDEX: SeedQuiz = {
       headline: "Potential performance leaks",
       body: "A solid base with specific leaks in it. Worth closing before they decide a result for you.",
       ctaLabel: "See if Rotational Reboot is right for you",
-      ctaHref: "/go/rotational-reboot-score/offer",
+      ctaHref: "/programs/rotational-reboot",
     },
     {
       key: "green",
