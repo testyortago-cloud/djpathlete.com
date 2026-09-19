@@ -29,6 +29,16 @@ import { resolveAdminTenantForRequest, NoAccessibleBusinessError } from "@/lib/t
 
 export const runtime = "nodejs"
 
+/**
+ * A demo clip's href, validated here rather than by a CHECK constraint.
+ *
+ * `.url()` is the whole rule: the value is written into a published quiz and
+ * fetched by an anonymous visitor's browser, so a non-URL is the one thing
+ * that certainly breaks. Pinning the Firebase host instead would reject a
+ * perfectly good clip the first time the bucket is renamed.
+ */
+const mediaUrlField = z.string().url().max(2000).nullable()
+
 const bodySchema = z.object({
   quiz: z
     .object({
@@ -49,6 +59,8 @@ const bodySchema = z.object({
         position: z.number().int().min(0).max(10_000).optional(),
         prompt: z.string().min(1).max(500).optional(),
         helpText: z.string().max(500).nullable().optional(),
+        mediaUrl: mediaUrlField.optional(),
+        mediaPosterUrl: mediaUrlField.optional(),
         isActive: z.boolean().optional(),
       }),
     )
@@ -116,6 +128,15 @@ const bodySchema = z.object({
         position: z.number().int().min(0).max(10_000),
         prompt: z.string().min(1).max(500),
         helpText: z.string().max(500).nullable(),
+        // `.default(null)` RATHER THAN REQUIRED-NULLABLE, which is how
+        // `helpText` above is written. Media arrived long after this route
+        // did: a required field rejects every caller that predates it with a
+        // bare 400, and the editor's own payload is not the only one — the
+        // structural tests build theirs by hand. Defaulting keeps the parsed
+        // type `string | null` for the DAL while letting an old payload
+        // through unchanged.
+        mediaUrl: mediaUrlField.default(null),
+        mediaPosterUrl: mediaUrlField.default(null),
         isActive: z.boolean(),
         // TWO IS THE FLOOR, matching the gate's own "fewer than two options"
         // blocker. Accepting zero would let the editor create a question that

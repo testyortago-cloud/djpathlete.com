@@ -32,9 +32,9 @@ function draftDefinition(): QuizDefinition {
     profiles: [{ id: "pf0", quizId: QUIZ_ID, key: "not_sure", name: "Not sure", description: "d", position: 0 }],
     tiers: [{ id: "t2", quizId: QUIZ_ID, key: "green", position: 1, minScore: 0, maxScore: 100, headline: "Well prepared", body: "b", ctaLabel: null, ctaHref: null }],
     questions: [
-      { id: Q_ROUTER, quizId: QUIZ_ID, branchId: null, position: 10, prompt: "Which?", helpText: null, isActive: true,
+      { id: Q_ROUTER, quizId: QUIZ_ID, branchId: null, position: 10, prompt: "Which?", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [{ id: O_TO_A, questionId: Q_ROUTER, position: 1, label: "A", weight: 0, routesToBranchId: BRANCH_A, profileId: null }] },
-      { id: Q_A1, quizId: QUIZ_ID, branchId: BRANCH_A, position: 50, prompt: "How?", helpText: null, isActive: true,
+      { id: Q_A1, quizId: QUIZ_ID, branchId: BRANCH_A, position: 50, prompt: "How?", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [{ id: O_BEST, questionId: Q_A1, position: 1, label: "Great", weight: 3, routesToBranchId: null, profileId: null }] },
     ],
   }

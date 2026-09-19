@@ -51,11 +51,11 @@ function definition(status = "active"): QuizDefinition {
     ],
     questions: [
       {
-        id: Q_ROUTER, quizId: QUIZ_ID, branchId: null, position: 10, prompt: "Which describes you?", helpText: null, isActive: true,
+        id: Q_ROUTER, quizId: QUIZ_ID, branchId: null, position: 10, prompt: "Which describes you?", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [{ id: O_TO_A, questionId: Q_ROUTER, position: 1, label: "A", weight: 0, routesToBranchId: BRANCH_A, profileId: null }],
       },
       {
-        id: Q_A1, quizId: QUIZ_ID, branchId: BRANCH_A, position: 50, prompt: "How is it going?", helpText: null, isActive: true,
+        id: Q_A1, quizId: QUIZ_ID, branchId: BRANCH_A, position: 50, prompt: "How is it going?", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [
           { id: O_BEST, questionId: Q_A1, position: 1, label: "Great", weight: 4, routesToBranchId: null, profileId: null },
           { id: O_WORST, questionId: Q_A1, position: 2, label: "Badly", weight: 0, routesToBranchId: null, profileId: null },

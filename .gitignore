@@ -88,3 +88,12 @@ ghl-export/
 
 # Raw screenshot captures — intermediates, before annotate() burns the callouts in.
 screenshots/**/.raw-*.png
+
+# Newsletter deliverability scan OUTPUT (subscriber email addresses — never commit).
+# The method lives in docs/newsletter-audit/{README.md,scan.sql}, which ARE tracked;
+# only the generated address lists are ignored. Regenerate with:
+#   node scripts/check-email-deliverability.mjs --from-db .env.prod --csv > docs/newsletter-audit/results.csv
+docs/newsletter-audit/*.csv
+
+# Source + encoded media for the quiz (local only, hosted in Firebase Storage)
+media/

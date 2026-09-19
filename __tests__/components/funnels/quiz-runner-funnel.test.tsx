@@ -32,6 +32,8 @@ const DEFINITION: PublicQuizDefinition = {
       position: 10,
       prompt: "Only question",
       helpText: null,
+      mediaUrl: null,
+      mediaPosterUrl: null,
       options: [{ id: "o-yes", label: "Yes", routesToBranchId: null }],
     },
   ],

@@ -122,6 +122,8 @@ export function QuizEditor({
           // first capture run got "Invalid save." and nothing else.
           prompt: "New question",
           helpText: null,
+          mediaUrl: null,
+          mediaPosterUrl: null,
           // SWITCHED OFF. The walk skips inactive questions, so a half-typed
           // one cannot reach a visitor even while the quiz is live — and the
           // gate ignores it, so it cannot block an activation either.
@@ -265,6 +267,8 @@ export function QuizEditor({
               position: q.position,
               prompt: q.prompt,
               helpText: q.helpText,
+              mediaUrl: q.mediaUrl,
+              mediaPosterUrl: q.mediaPosterUrl,
               isActive: q.isActive,
             })),
           options: quiz.questions.flatMap((q) =>
@@ -286,6 +290,8 @@ export function QuizEditor({
               position: q.position,
               prompt: q.prompt,
               helpText: q.helpText,
+              mediaUrl: q.mediaUrl,
+              mediaPosterUrl: q.mediaPosterUrl,
               isActive: q.isActive,
               options: q.options.map((o) => ({
                 id: o.id,

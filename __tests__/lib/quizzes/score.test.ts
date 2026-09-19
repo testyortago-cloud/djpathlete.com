@@ -24,7 +24,7 @@ function option(id: string, questionId: string, position: number, extra: Partial
 }
 
 function question(id: string, position: number, branchId: string | null, options: QuizOption[]): QuizQuestion {
-  return { id, quizId: "q", branchId, position, prompt: id, helpText: null, isActive: true, options }
+  return { id, quizId: "q", branchId, position, prompt: id, helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true, options }
 }
 
 /**

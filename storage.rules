@@ -37,6 +37,18 @@ service firebase.storage {
       allow write: if false;
     }
 
+    // Quiz movement-demo clips — PUBLICLY READABLE, same requirement as
+    // funnel images above. A quiz question's `media_url` is shipped to
+    // anonymous visitors by `publicQuizDefinition` and must be a DURABLE
+    // href: a signed URL expires and the visitor is asked to grade a movement
+    // they cannot see. Writes never happen through this rule — uploads go
+    // through scripts/upload-quiz-media.ts with the admin SDK, which bypasses
+    // these rules entirely. See lib/quiz-media-storage.ts.
+    match /quiz-media/{quizKey}/{fileName} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Deny everything else by default
     match /{allPaths=**} {
       allow read, write: if false;

@@ -36,17 +36,17 @@ function healthy(): QuizDefinition {
     profiles: [{ id: "pf0", quizId: QUIZ_ID, key: "unsure", name: "Unsure", description: "d", position: 0 }],
     tiers: [{ id: "t1", quizId: QUIZ_ID, key: "red", position: 1, minScore: 0, maxScore: 100, headline: "h", body: "b", ctaLabel: null, ctaHref: null }],
     questions: [
-      { id: Q_ROUTER, quizId: QUIZ_ID, branchId: null, position: 10, prompt: "Which?", helpText: null, isActive: true,
+      { id: Q_ROUTER, quizId: QUIZ_ID, branchId: null, position: 10, prompt: "Which?", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [
           { id: O_TO_A, questionId: Q_ROUTER, position: 1, label: "A", weight: 0, routesToBranchId: BRANCH_A, profileId: "pf0" },
           { id: O_TO_B, questionId: Q_ROUTER, position: 2, label: "B", weight: 0, routesToBranchId: BRANCH_B, profileId: null },
         ] },
-      { id: Q_A1, quizId: QUIZ_ID, branchId: BRANCH_A, position: 50, prompt: "Alpha", helpText: null, isActive: true,
+      { id: Q_A1, quizId: QUIZ_ID, branchId: BRANCH_A, position: 50, prompt: "Alpha", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [
           { id: O_A1, questionId: Q_A1, position: 1, label: "Yes", weight: 3, routesToBranchId: null, profileId: null },
           { id: O_A2, questionId: Q_A1, position: 2, label: "No", weight: 0, routesToBranchId: null, profileId: null },
         ] },
-      { id: Q_B1, quizId: QUIZ_ID, branchId: BRANCH_B, position: 50, prompt: "Beta", helpText: null, isActive: true,
+      { id: Q_B1, quizId: QUIZ_ID, branchId: BRANCH_B, position: 50, prompt: "Beta", helpText: null, mediaUrl: null, mediaPosterUrl: null, isActive: true,
         options: [
           { id: O_B1, questionId: Q_B1, position: 1, label: "Yes", weight: 3, routesToBranchId: null, profileId: null },
           { id: O_B2, questionId: Q_B1, position: 2, label: "No", weight: 0, routesToBranchId: null, profileId: null },

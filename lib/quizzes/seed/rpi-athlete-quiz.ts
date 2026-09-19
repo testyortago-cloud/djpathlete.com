@@ -486,6 +486,10 @@ export function toDefinition(seed: SeedQuiz): QuizDefinition {
       position: question.position,
       prompt: question.prompt,
       helpText: null,
+      // The athlete quiz asks about training history, never about a movement
+      // performed on camera, so it carries no media and never will.
+      mediaUrl: null,
+      mediaPosterUrl: null,
       isActive: true,
       options,
     }
