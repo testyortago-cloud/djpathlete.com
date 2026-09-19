@@ -174,10 +174,31 @@ content by one pixel on both axes for no contrast benefit.
    *seed* (`{preset:"ink"}` or `{brand,accent,mode}`), verified against the dev
    clone. Widening `PaletteTokens` therefore cannot break a stored draft. **No
    change to `doc.ts`'s palette zod schema is in scope.**
-2. **A document with NO palette must still emit NO colour override.** The new
-   declaration goes *inside* the existing `palette ? ... : ""` block. All 13
-   production pages currently have `palette: null` (verified), so production
-   rendering is byte-identical until somebody sets a palette.
+2. **A document with NO palette must still emit NO PALETTE override.** The new
+   `--muted-foreground` declaration goes *inside* the existing
+   `palette ? ... : ""` block, and a test asserts a no-palette document emits
+   none. All 13 production pages currently have `palette: null` (verified).
+
+   **This does NOT mean a no-palette page renders byte-identically, and an
+   earlier draft of this spec wrongly said it did.** (Caught in review.) The
+   shape half of the fix is deliberately palette-independent: `--djp-pair-fg`
+   and the two rings live in `THEME_CSS`, which `reassemble` concatenates
+   unconditionally. So on a no-palette page, once it is re-published, every
+   pricing card gains a hairline ring and every primary button gains a 1px
+   ring, drawn in `app/globals.css`'s `--foreground` (`#03080f`). That is
+   intended — a shape with no boundary is a defect whether or not a palette is
+   set — but it is a visible change to all 13 live pages and is recorded here
+   rather than discovered later.
+
+   One number is worth naming because it is thinner than the margin this spec
+   rejected elsewhere: on a no-palette page the accent tone's pair foreground is
+   `app/globals.css`'s `--accent-foreground`, a tinted mid-tone rather than a
+   `pickInk` black or white, so the "pickInk already proved it" argument does
+   **not** apply there. Measured, that edge clears 3:1 by **0.03**. §2's
+   reasoning rejects the 80% option for clearing by 0.04, so the two are not
+   consistent; the derived-palette case is the one the argument holds for. This
+   is left as-is rather than papered over, because the alternative is changing
+   `app/globals.css`, which the admin UI also reads.
 3. **Published funnel CSS is frozen.** These changes reach a live page only when
    that funnel is re-published. No cache is involved.
 4. **`SECTION_BUILDER_BLOCK_A` = 20670 and `SECTION_BUILDER_BLOCK_DESIGN` = 4433.**
@@ -221,9 +242,28 @@ only one Vercel runs.
 - **`card/band` as a hierarchy complaint.** On the untoned ground, `--surface` on
   `--paper` is *designed* to be a whisper (`deriveSurface` mixes ≤ 8%). The edge
   fixes the boundary; it does not try to make every card a landmark.
-- **The quiz classes' absence from the tone override list.** `.djp-quiz-*` reads
-  `--muted-foreground` and is not in `styles.ts`'s accent/dark `color: inherit`
-  list, so on a *light* palette with a *dark-toned* quiz section it is still
-  unguaranteed. Decision 1 does not fix that case. **Logged as a new gap row, not
-  silently folded in.**
 - **`lib/funnels/sections/prompt.ts`** — not touched, per the invariant above.
+- **`--border`, `--error`, `--success`, `--warning`.** An earlier draft called
+  `--muted-foreground` "the last colour token the palette never touched". That
+  was wrong: `--border` is read 11 times in `styles.ts` and the palette block
+  never emits it either, so on a dark palette it stays `#dfe1e4` against a
+  `#0b0d10` page. The accurate claim is "the last colour token used as **text**".
+  `--border` is the same defect class and is glaring rather than invisible;
+  logged as its own gap row, not folded in here.
+- **`.djp-hero-copy`'s scrim.** `.djp-sub` can land on a 78% paper scrim over an
+  arbitrary photograph (`styles.ts`). Worst measured: `slate` 3.66, `midnight`
+  2.94. Unguaranteeable in principle — the ground is whatever image the coach
+  uploaded — so no derivation can close it. Named so the ground list is honest
+  about not being exhaustive.
+
+### Grounds that WERE folded in, having started out of scope
+
+The quiz classes were originally listed here as out of scope. Review showed that
+deriving the token made 7 of 24 preset × tone cells **worse** than the old fixed
+grey on the `band` quiz variant (`plum` on accent 3.41 → 1.95). Every cell was
+far below 4.5 before and after — that ground has never been guaranteed — but a
+fix is not allowed to move anything backwards, so the six classes now follow the
+section's pair on a `band` variant. The ordinary quiz card is deliberately left
+alone: it repaints itself `--background`, so the neutral token is already right
+there, and forcing `color: inherit` would paint an accent section's foreground
+onto a neutral card — a new bug one pair over.
