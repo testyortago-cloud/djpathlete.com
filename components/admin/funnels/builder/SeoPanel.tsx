@@ -324,7 +324,8 @@ export function SeoPanel(props: SeoPanelProps) {
           <p className="text-[11px] text-[var(--error)]">{imageError}</p>
         ) : (
           <p className="text-[11px] text-muted-foreground">
-            Leave empty to use the DJP Athlete picture. Best at 1200×630.
+            Leave this empty and we make a card for you, with the page title on it. Add a web address here only if you
+            want your own photo instead. Best at 1200×630.
           </p>
         )}
       </div>

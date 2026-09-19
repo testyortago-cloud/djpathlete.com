@@ -23,14 +23,16 @@
   .now { color: #2c6e49; }
 </style>
 <main>
-  <h1>Funnel SEO — the “Search” panel, and the four things it fixes</h1>
+  <h1>Funnel SEO — the “Search” panel, the share card, and what they fix</h1>
   <p class="lede">
     Every shot is the real builder on its real route
     (<code>/admin/funnels/&lt;id&gt;/edit/&lt;stepId&gt;</code>), driven with Playwright against the dev
     clone and photographed inside the real shell — the real rail, the real canvas, the real header.
     Nothing is a storybook or a scratch mount of the component. Annotations are burned into each PNG.
-    Chromium 1600×1280 @2x. The floating Messages dock and Next's dev overlay are hidden from the
-    recorder only, never by editing the app.
+    Shots 1–3 are Chromium 1600×1280 @2x; the floating Messages dock and Next's dev overlay are hidden
+    from the recorder only, never by editing the app. Shot 4 is not a screenshot at all — it is the
+    bytes the card route returned. Reproduce all four with
+    <code>node scripts/capture-funnel-seo-panel.mjs --port=3050</code>.
   </p>
 
   <div class="note">
@@ -62,6 +64,11 @@
         <td><code>og:</code> tags</td>
         <td class="was">0 — the whole block was deleted by an explicit <code>undefined</code></td>
         <td class="now">5 (title, description, url, image, type)</td>
+      </tr>
+      <tr>
+        <td><code>og:image</code></td>
+        <td class="was">none</td>
+        <td class="now">a generated 1200&times;630 card carrying the page's own title</td>
       </tr>
       <tr>
         <td>canonical</td>
@@ -120,10 +127,26 @@
   </section>
 
   <section>
+    <h2>04 — The generated share card</h2>
+    <p class="meta">
+      <code>04-the-generated-share-card.png</code> · the bytes
+      <code>/og/funnel/athlete-quiz</code> returned, saved straight to disk. Not a
+      screenshot of a browser showing a PNG.
+    </p>
+    <img src="04-the-generated-share-card.png" alt="A 1200 by 630 share card in deep teal with a tan rule, reading DJP ATHLETE above the quiz title and description.">
+    <ul>
+      <li><strong>Why generated rather than uploaded.</strong> A static PNG closes the gap once — someone makes, uploads and wires one per funnel, and the nine drafts get nothing the day they go live. This closes it permanently: every funnel and landing page, including ones that do not exist yet, gets a card with its own title.</li>
+      <li><strong>Why a route and not <code>opengraph-image.tsx</code>.</strong> The file convention is the house pattern (<code>app/athlete/[token]/opengraph-image.tsx</code>) and Turbopack refuses it here — <em>“catch all segment must be the last segment modifying the path”</em>. The public funnel page lives under <code>[[...step]]</code>. Found by running it.</li>
+      <li><strong>The owner's own image still wins.</strong> Setting <code>og_image_url</code> overrides the card; verified against a running server in both directions.</li>
+      <li><strong>It never fails to an error.</strong> An unreadable row or an unknown slug still returns a PNG — a scraper that gets a 500 shows no card at all, which is the state this change exists to fix.</li>
+    </ul>
+  </section>
+
+  <section>
     <h2>Known gap, not fixed here</h2>
     <p class="meta">Worth deciding on, but out of scope for this pass.</p>
     <ul>
-      <li><strong>There is no purpose-built share card.</strong> <code>og_image_url</code> is left NULL and the page falls back to the site-wide <code>gym-training-01.jpg</code>, so a real <code>og:image</code> is served — but it is a general gym photo, not a 1200×630 card for this quiz. Creating one is a design task.</li>
+      <li><strong>No photography.</strong> The card is typographic. fal is wired in this repo (<code>@fal-ai/client</code>, and blog heroes already go through <code>flux-pro</code>), so a photographic backdrop is available as a deliberate follow-up — it was considered and not taken, because a generated photo of an athlete on the share card of a business whose proof is real named athletes is a claim the brand does not need to make.</li>
       <li><strong>The sitemap does not fix the orphan-page problem.</strong> Nothing on the marketing site links to <code>/go/athlete-quiz</code>. A sitemap entry makes it discoverable; an internal link is what passes authority.</li>
     </ul>
   </section>

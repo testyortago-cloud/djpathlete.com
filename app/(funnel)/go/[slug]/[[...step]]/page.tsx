@@ -77,6 +77,15 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       description: seo.description ?? undefined,
       url: seo.canonicalPath,
       type: "website",
+      // ALWAYS EXPLICIT. `seo.ogImage` is the owner's `og_image_url` if they
+      // set one, otherwise the generated card at `/og/funnel/<slug>` — the
+      // resolver picks, and this route just names the answer.
+      //
+      // Deliberately NOT the `opengraph-image.tsx` file convention, which
+      // would make those two compete through a precedence rule ("an explicit
+      // `images` overrides the file") that is invisible at both call sites.
+      // It is also impossible here: Turbopack refuses an `opengraph-image`
+      // segment after an optional catch-all. See the route's own header.
       images: [seo.ogImage],
     },
     twitter: {

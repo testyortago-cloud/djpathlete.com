@@ -14,6 +14,7 @@ import {
   DEFAULT_FUNNEL_OG_IMAGE,
   FUNNEL_SEO_LIMITS,
   funnelStepPath,
+  ogCardPath,
   resolveFunnelStepSeo,
   type FunnelSeoStep,
 } from "@/lib/funnels/seo"
@@ -137,14 +138,38 @@ describe("resolveFunnelStepSeo — the share image", () => {
     expect(seo.ogImage).toBe("https://cdn.example.com/quiz.jpg")
   })
 
-  it("always yields an image, never null", () => {
-    // MUTANT KILLED: `ogImage: step.og_image_url` — the route spreads this into
-    // `images: [seo.ogImage]`, so a null here emits `<meta og:image>` with no
-    // content and the share card loses its picture. A default is the ONLY
-    // correct answer at this seam because the route cannot conditionally omit
-    // one key without omitting the whole openGraph object, which is the
-    // original bug.
-    expect(resolveFunnelStepSeo(FUNNEL, step({ og_image_url: null })).ogImage).toBe(DEFAULT_FUNNEL_OG_IMAGE)
+  it("falls back to the generated card, NOT the site-wide gym photo", () => {
+    // RETARGETED, not deleted, and the inversion is the point. This used to
+    // assert that a step with no picture fell back to `DEFAULT_FUNNEL_OG_IMAGE`
+    // — one generic gym photo on the share card of every funnel in the
+    // account. The card carries the page's own title instead.
+    //
+    // MUTANT KILLED: restoring `?? DEFAULT_FUNNEL_OG_IMAGE`. Asserted against
+    // the constant BY NAME so re-introducing that exact line is what fails.
+    const resolved = resolveFunnelStepSeo(FUNNEL, step({ og_image_url: null })).ogImage
+    expect(resolved).toBe("/og/funnel/athlete-quiz")
+    expect(resolved).not.toBe(DEFAULT_FUNNEL_OG_IMAGE)
+  })
+
+  it("treats a whitespace-only image as absent", () => {
+    expect(resolveFunnelStepSeo(FUNNEL, step({ og_image_url: "   " })).ogImage).toBe("/og/funnel/athlete-quiz")
+  })
+
+  it("points the card at the same URL shape the page canonicalises to", () => {
+    // The card route reads the slug and step straight back out and looks the
+    // step up again. If these two disagreed, the card would be drawn for a
+    // different page than the one linking to it — and nothing would report it,
+    // because both URLs return 200.
+    const entry = resolveFunnelStepSeo(FUNNEL, step({ is_entry: true }))
+    expect(entry.ogImage).toBe(`/og/funnel${entry.canonicalPath.replace("/go", "")}`)
+
+    const inner = resolveFunnelStepSeo(FUNNEL, step({ is_entry: false, slug: "thank-you" }))
+    expect(inner.ogImage).toBe("/og/funnel/athlete-quiz/thank-you")
+    expect(inner.canonicalPath).toBe("/go/athlete-quiz/thank-you")
+  })
+
+  it("encodes the slug in the card URL too", () => {
+    expect(ogCardPath("a/b", { slug: "c", is_entry: true })).toBe("/og/funnel/a%2Fb")
   })
 })
 

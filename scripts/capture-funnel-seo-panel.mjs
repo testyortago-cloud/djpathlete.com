@@ -24,7 +24,7 @@
 // DEV CLONE ONLY. Refuses any other Supabase ref. It READS, and the only write
 // it makes is typing into a form it never saves.
 
-import { mkdirSync } from "node:fs"
+import { mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { chromium } from "playwright"
 import { annotate } from "./_annotate-lib.mjs"
@@ -251,6 +251,59 @@ async function main() {
     ],
   })
   console.log("  wrote 03-the-two-guards.png")
+
+  // ---------------------------------------------------------------- shot 4
+  // THE CARD ITSELF, fetched from the route rather than screenshotted.
+  //
+  // `page.screenshot()` would photograph a browser displaying a PNG — chrome,
+  // scrollbars, a letterboxed background and whatever zoom the viewport
+  // implies. The route already returns the finished 1200x630 image, so the
+  // honest capture is to save its bytes.
+  const cardUrl = `${APP}/og/funnel/athlete-quiz`
+  const res = await fetch(cardUrl)
+  if (!res.ok) throw new Error(`${cardUrl} returned ${res.status} — refusing to ship a missing card.`)
+  const type = res.headers.get("content-type") ?? ""
+  if (!type.includes("image/png")) throw new Error(`${cardUrl} returned ${type}, not a PNG.`)
+  const bytes = Buffer.from(await res.arrayBuffer())
+  if (bytes.length < 5_000) throw new Error(`${cardUrl} returned only ${bytes.length} bytes.`)
+  writeFileSync(rawPath("04-card"), bytes)
+
+  // Satori renders at the DECLARED size, so this PNG is 1200x630 raw and the
+  // markers below are already in image pixels — no DSF multiply, unlike the
+  // browser shots above.
+  await annotate(rawPath("04-card"), join(OUT, "04-the-generated-share-card.png"), {
+    scale: 1200 / 1440,
+    title: "4 — The generated share card, straight from /og/funnel/athlete-quiz",
+    subtitle:
+      "Not a mockup and not a screenshot: these are the bytes the route returned, 1200x630. Every published funnel and landing page gets one carrying its own title, with nothing to upload and nothing to remember.",
+    markers: [
+      {
+        x: 48,
+        y: 90,
+        caption:
+          "The same eyebrow rule and inset frame as the athlete report card, so the two read as one brand when both land in a chat thread. The three hexes are shared in lib/og/brand.ts rather than copied.",
+      },
+      {
+        x: 48,
+        y: 250,
+        caption:
+          "The page's own seo_title, live from the database. Change it in the Search panel and the card follows on the next fetch — there is nothing to regenerate or re-upload.",
+      },
+      {
+        x: 48,
+        y: 395,
+        caption:
+          "The description, cut on a word boundary by ogClamp. Satori has no text-overflow, so uncut this wraps past the bottom edge and the footer silently leaves the frame.",
+      },
+      {
+        x: 48,
+        y: 543,
+        caption:
+          "1200x630 is what every scraper crops to. Pinned by a test, because a card authored at another size is letterboxed and nothing would report it.",
+      },
+    ],
+  })
+  console.log("  wrote 04-the-generated-share-card.png")
 
   await browser.close()
   console.log(`\nDone. ${OUT}/`)

@@ -272,11 +272,24 @@ the downside of omitting one is small and the downside of a wrong one is not.
 The gap is made **visible** rather than silently papered over: the admin panel
 shows what will actually be served, and flags the step when the field is empty.
 
-### OG image — fall back to the site default, explicitly
+### OG image — fall back to a GENERATED card
 
-`og_image_url ?? /images/gym-training-01.jpg` (the same image `app/layout.tsx`
-uses). Written out explicitly rather than left to inheritance, because a child
-that defines `openGraph` replaces the parent's wholesale.
+`og_image_url ?? /og/funnel/<slug>[/<step>]`.
+
+The first version of this decision was "fall back to the site default"
+(`/images/gym-training-01.jpg`), which would have put one generic gym photo on
+the share card of every funnel in the account. It is superseded: a route at
+`app/og/funnel/[slug]/[[...step]]/route.tsx` draws a 1200x630 card carrying the
+page's OWN title, so the fallback is now better than the thing it fell back
+from, and a funnel that does not exist yet gets one the day it goes live.
+
+Written out explicitly in `generateMetadata` rather than left to Next's
+`opengraph-image.tsx` file convention, for two reasons. The convention is
+IMPOSSIBLE here — Turbopack refuses an `opengraph-image` segment after an
+optional catch-all (`[[...step]]` must be the last segment modifying the path),
+which is a build failure, not a warning. And it would put the owner's own image
+and the generated one in competition through a precedence rule ("an explicit
+`openGraph.images` overrides the file") that is invisible at both call sites.
 
 ---
 
@@ -295,6 +308,18 @@ that defines `openGraph` replaces the parent's wholesale.
    nothing more. (§6)
 5. Emit published `/go/` URLs in the sitemap, honouring `noindex`. (§5)
 6. Write real copy for the one published step. (§2, §3)
+
+**Done after the first pass, on the same branch**
+
+10. **A generated share card.** `og_image_url` stays NULL and
+    `/og/funnel/<slug>` draws a 1200x630 typographic card from the step's own
+    title. fal is wired in this repo (`@fal-ai/client`; blog heroes already go
+    through `flux-pro`) and could draw a photographic one instead — that was
+    considered and deliberately not taken. A generated photograph of an athlete
+    on the share card of a business whose proof is real, named athletes is a
+    claim the brand does not need to make, and a static image would have to be
+    produced once per funnel forever. A photographic backdrop remains available
+    as a follow-up.
 
 **Worth doing next, not in this pass**
 

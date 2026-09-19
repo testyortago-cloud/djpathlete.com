@@ -26,16 +26,19 @@ import { LIVE_BASE } from "./preview-path"
 import { SITE_BRAND } from "@/lib/constants"
 
 /**
- * The share image a step with no `og_image_url` of its own gets.
+ * The site-wide share image, named here only so the funnel code can be seen
+ * NOT to use it.
  *
- * It is the SAME file `app/layout.tsx` uses site-wide, and it is written out
- * here rather than left to metadata inheritance ON PURPOSE. Next.js replaces
- * `openGraph` WHOLESALE when a child route defines it — an omitted `images`
- * key is not an inherited one, it is an absent one. Relying on inheritance is
- * what produced the bug this module fixes (a funnel page with zero `og:` tags
- * under a layout that defines five).
+ * It was this module's fallback until the generated card existed, and putting
+ * it back is a real regression rather than a neutral change: it would serve
+ * one generic gym photo as the share card of every funnel in the account,
+ * replacing a card that carries the page's own title.
+ * `__tests__/lib/funnels/seo.test.ts` pins that.
  */
 export const DEFAULT_FUNNEL_OG_IMAGE = "/images/gym-training-01.jpg"
+
+/** The generated share card's route base. See `ogCardPath`. */
+export const OG_CARD_BASE = "/og/funnel"
 
 /**
  * Character budgets, from `.agents/slug-and-metadata-convention.md`.
@@ -86,6 +89,16 @@ export interface ResolvedFunnelSeo {
    * missing one — see `resolveFunnelStepSeo`.
    */
   description: string | null
+  /**
+   * The share image, ALWAYS set: the owner's own `og_image_url` if they chose
+   * one, otherwise the generated card at `ogCardPath`.
+   *
+   * There is no "no image" answer any more, and no site-wide-photo fallback
+   * either. Before the card existed, a step with no picture of its own fell
+   * back to `gym-training-01.jpg` — the same generic gym photo on every funnel
+   * in the account. The card carries the page's own title instead, so the
+   * fallback is now better than the thing it falls back from.
+   */
   ogImage: string
   /** Path-only, self-referencing. `metadataBase` makes it absolute. */
   canonicalPath: string
@@ -109,6 +122,22 @@ export interface ResolvedFunnelSeo {
  */
 export function funnelStepPath(funnelSlug: string, step: Pick<FunnelSeoStep, "slug" | "is_entry">): string {
   const base = `${LIVE_BASE}/${encodeURIComponent(funnelSlug)}`
+  return step.is_entry ? base : `${base}/${encodeURIComponent(step.slug)}`
+}
+
+/**
+ * Where the generated share card for a step is served from.
+ *
+ * MIRRORS `funnelStepPath` ON PURPOSE — same slug, same entry-step rule, same
+ * encoding — so the card's URL and the page's canonical cannot drift apart.
+ * `app/og/funnel/[slug]/[[...step]]/route.tsx` reads the two segments straight
+ * back out and looks the step up again, so a mismatch here is a card drawn for
+ * the wrong page, which nothing would ever report.
+ *
+ * NOT under `/api/`: `app/robots.ts` disallows that prefix for every crawler.
+ */
+export function ogCardPath(funnelSlug: string, step: Pick<FunnelSeoStep, "slug" | "is_entry">): string {
+  const base = `${OG_CARD_BASE}/${encodeURIComponent(funnelSlug)}`
   return step.is_entry ? base : `${base}/${encodeURIComponent(step.slug)}`
 }
 
@@ -172,7 +201,7 @@ export function resolveFunnelStepSeo(funnel: FunnelSeoFunnel, step: FunnelSeoSte
     title,
     socialTitle: `${title} | ${SITE_BRAND}`,
     description: clean(step.seo_description),
-    ogImage: clean(step.og_image_url) ?? DEFAULT_FUNNEL_OG_IMAGE,
+    ogImage: clean(step.og_image_url) ?? ogCardPath(funnel.slug, step),
     canonicalPath: funnelStepPath(funnel.slug, step),
     noindex: step.noindex === true,
     titleIsFallback: ownTitle === null,
