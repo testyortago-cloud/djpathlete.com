@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Funnel contrast pass — G16 + G17</title>
+    <style>
+      :root {
+        --ink: #17191c;
+        --dim: #5f6469;
+        --line: #e3e5e8;
+        --paper: #fbfbfc;
+        --ok: #1a7f4b;
+        --bad: #a3341f;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 2.5rem 1.25rem 6rem;
+        background: var(--paper);
+        color: var(--ink);
+        font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      }
+      main { max-width: 68rem; margin-inline: auto; }
+      h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 0.4rem; letter-spacing: -0.01em; }
+      h2 { font-size: 1.25rem; margin: 3rem 0 0.5rem; letter-spacing: -0.01em; }
+      .lede { color: var(--dim); margin: 0 0 2rem; max-width: 48rem; }
+      table { border-collapse: collapse; width: 100%; margin: 1rem 0 2rem; font-size: 0.9rem; }
+      th, td { text-align: left; padding: 0.55rem 0.7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { background: #f2f3f5; font-weight: 600; }
+      code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.87em; }
+      .ok { color: var(--ok); font-weight: 600; }
+      .bad { color: var(--bad); font-weight: 600; }
+      .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0 0; }
+      .pair figure { margin: 0; }
+      .pair figcaption {
+        font-size: 0.8rem; color: var(--dim); text-transform: uppercase;
+        letter-spacing: 0.06em; margin-bottom: 0.4rem;
+      }
+      .pair img { width: 100%; border: 1px solid var(--line); border-radius: 6px; display: block; }
+      .note { background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--dim); padding: 0.9rem 1.1rem; border-radius: 0 6px 6px 0; margin: 1.25rem 0; }
+      .note strong { display: block; margin-bottom: 0.2rem; }
+      @media (max-width: 760px) { .pair { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Funnel contrast pass — what changed, and how to check it</h1>
+      <p class="lede">
+        Every image below is the real product: the actual funnel page on its real route
+        (<code>/preview/&lt;slug&gt;</code>), driven in a browser on the dev clone. Nothing is a mockup or a
+        component harness. The numbered callouts are burned into the PNGs, so each file explains itself if you
+        open it on its own.
+      </p>
+
+      <div class="note">
+        <strong>Read the two pages as one pair, not two examples.</strong>
+        Neither page can show the whole fix. The dark page is the only one where the body-copy defect existed at
+        all — on a light palette the old token already scored 5.98:1 and was fine. The light page is where the
+        pricing card's missing boundary reads most clearly. A single "after" screenshot would have proved half
+        the work.
+      </div>
+
+      <h2>1. Dark palette — the <code>ink</code> preset</h2>
+      <table>
+        <tr><th>Marker</th><th>What to look at</th><th>Before</th><th>After</th></tr>
+        <tr>
+          <td>1</td><td>The price card's edge against the band behind it</td>
+          <td class="bad">1.11:1 — measured on the rendered page</td><td class="ok">19.34:1</td>
+        </tr>
+        <tr>
+          <td>2</td><td>The "Start the block" button's boundary</td>
+          <td class="bad">no boundary — the fill is the only cue, 1.20:1</td><td class="ok">20.97:1 ring</td>
+        </tr>
+        <tr>
+          <td>3</td><td>Secondary copy (the blurb and the guarantee footnote)</td>
+          <td class="bad">3.26:1 on paper, 2.92:1 on the card</td><td class="ok">5.45–5.91:1</td>
+        </tr>
+      </table>
+      <div class="pair">
+        <figure>
+          <figcaption>Before</figcaption>
+          <img src="before/01-dark-ink-preset.png" alt="The ink-preset page before the contrast pass" />
+        </figure>
+        <figure>
+          <figcaption>After</figcaption>
+          <img src="after/01-dark-ink-preset.png" alt="The ink-preset page after the contrast pass" />
+        </figure>
+      </div>
+
+      <h2>2. Light palette — a custom brand (#a8563a / #c99a6b)</h2>
+      <p class="lede">
+        The same two shapes, on the palette where the art critic first reported the card problem. Note that the
+        body copy here was already fine before the change — this page is evidence for the shape half only.
+      </p>
+      <div class="pair">
+        <figure>
+          <figcaption>Before</figcaption>
+          <img src="before/02-light-custom-palette.png" alt="The light custom palette page before the contrast pass" />
+        </figure>
+        <figure>
+          <figcaption>After</figcaption>
+          <img src="after/02-light-custom-palette.png" alt="The light custom palette page after the contrast pass" />
+        </figure>
+      </div>
+
+      <h2>What is still wrong, in the "after" shots</h2>
+      <div class="note">
+        <strong>The button's FILL is still dark-on-dark on the ink preset — look at marker 2.</strong>
+        The ring makes its boundary findable, which is the accessibility requirement, but the button still does
+        not look like the thing you are meant to press. That is not this change failing; it is a separate defect
+        one level upstream, logged as <strong>G20</strong>. When a coach does not supply an accent colour, the
+        palette invents one by rotating the brand's hue — and hue rotation keeps the same brightness. The
+        <code>ink</code> brand sits at lightness 0.009 and its invented accent at 0.010, so the two are the same
+        darkness and neither can stand out against the other. Three of the twelve presets have this problem.
+        Fixing it means changing the colour the button is painted, which is a different decision from adding an
+        edge, so it was deliberately not folded into this pass.
+      </div>
+
+      <h2>How these were produced</h2>
+      <table>
+        <tr><th>Step</th><th>Command</th></tr>
+        <tr><td>The screenshots</td><td><code>node --env-file=.env.local scripts/capture-funnel-contrast.mjs --port=3061 --phase=after</code></td></tr>
+        <tr><td>Contrast of every preset × tone</td><td><code>npx tsx scripts/measure-funnel-contrast.ts</code></td></tr>
+        <tr><td>Contrast of the <em>rendered</em> page</td><td><code>node --env-file=.env.local scripts/probe-rendered-contrast.mjs --port=3061 --slug=sales-k9m0w</code></td></tr>
+        <tr><td>The art critic, before and after</td><td><code>npx tsx scripts/ab-self-render-critics.ts --step=&lt;uuid&gt; --rounds=2</code></td></tr>
+      </table>
+      <p class="lede">
+        The third one matters most and was added during this work. The derivation and the rendered page can
+        disagree — and they did: the card's edge measured 1.11:1 on the real page at a point when every test
+        passed and the contrast table said the fix was in. A later CSS rule was quietly overriding it.
+      </p>
+    </main>
+  </body>
+</html>
