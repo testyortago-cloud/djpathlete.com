@@ -185,6 +185,19 @@ ${ROOT}, ${ROOT} *, ${ROOT} *::before, ${ROOT} *::after { box-sizing: border-box
 ${ROOT} .djp-s {
   font-family: var(--djp-font-body, var(--font-body, var(--font-lexend-deca), "Lexend Deca", system-ui, sans-serif));
   color: var(--foreground);
+  /* --djp-pair-fg: the foreground of the PAIR this section is in. Same value as
+     color directly above, under a name a SHAPE can read.
+
+     A shape cannot use currentColor for this. .djp-btn-primary sets its own
+     color for its label, so inside the button currentColor is the label
+     colour — which pickInk deliberately makes maximally contrasty against the
+     BUTTON, and which says nothing about the card the button sits on.
+
+     Set here for default and muted (both sit in the neutral pair); the
+     accent and dark tone rules below override it, because they repaint. Three
+     declarations cover all four tones, and a future shape needing a guaranteed
+     boundary reads the variable instead of earning a new row in a table. */
+  --djp-pair-fg: var(--foreground);
   padding-block: 3rem;
   padding-inline: max(1.25rem, calc((100% - var(--djp-maxw, 72rem)) / 2));
 }
@@ -208,8 +221,8 @@ ${ROOT} .djp-s[data-align="center"] .djp-sub { margin-inline: auto; }
    -foreground tokens for contrast (app/globals.css already pairs them this
    way; this is not a new convention). */
 ${ROOT} .djp-s[data-tone="muted"] { background: var(--surface); }
-${ROOT} .djp-s[data-tone="accent"] { background: var(--accent); color: var(--accent-foreground); }
-${ROOT} .djp-s[data-tone="dark"] { background: var(--primary); color: var(--primary-foreground); }
+${ROOT} .djp-s[data-tone="accent"] { background: var(--accent); color: var(--accent-foreground); --djp-pair-fg: var(--accent-foreground); }
+${ROOT} .djp-s[data-tone="dark"] { background: var(--primary); color: var(--primary-foreground); --djp-pair-fg: var(--primary-foreground); }
 ${ROOT} .djp-s[data-tone="accent"] .djp-hd,
 ${ROOT} .djp-s[data-tone="dark"] .djp-hd { color: inherit; }
 ${ROOT} .djp-s[data-tone="accent"] .djp-sub,
@@ -472,6 +485,53 @@ ${ROOT} .djp-s[data-tone="dark"] .djp-faq-a,
 ${ROOT} .djp-s[data-tone="dark"] .djp-footer-line,
 ${ROOT} .djp-s[data-tone="dark"] .djp-footer-legal { color: inherit; opacity: 0.85; }
 
+/* THE QUIZ'S OWN MUTED COPY, and why it needs the djp-v-band qualifier.
+
+   Six more classes read --muted-foreground (step, help, back, consent, scale,
+   profile-body) and none was in the list above. Normally that is harmless and
+   must stay that way: .djp-quiz repaints itself var(--background), so those
+   six sit in the NEUTRAL pair whatever tone the section takes, and the neutral
+   muted token is exactly the right answer there. Forcing color: inherit on
+   them unqualified would paint an accent section's foreground onto a
+   --background card — a new bug, one pair over.
+
+   The band variant is the exception: it sets the quiz background transparent,
+   dropping all six straight onto the section's own band. There the section's
+   pair is the right one, so they follow it like every other class above.
+
+   Found by a reviewer enumerating grounds, and it matters because deriving the
+   token against paper made SEVEN of twenty-four preset x tone cells here WORSE
+   than the old fixed grey (plum on accent 3.41 -> 1.95, ember 2.33 -> 1.33).
+   Every cell was already far under 4.5 before and after — this ground has never
+   been guaranteed — but a fix is not allowed to move any of them backwards. */
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-step,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-help,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-back,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-consent,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-scale,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-step,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-help,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-back,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-consent,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-scale { color: inherit; opacity: 0.85; }
+
+/* ONE OF THE SIX IS DELIBERATELY ABSENT ABOVE, and it was present, and that was
+   a bug. The quiz profile body is the only one of them with its own container:
+   .djp-s-quiz .djp-quiz-profile repaints itself var(--surface), and the band
+   variant does not reset that. So color: inherit walked straight past it to the
+   SECTION's foreground and painted that on --surface — turning 13 of 24
+   preset x tone cells from 5.38-5.65 (passing) into 1.08-1.12, which is white
+   on near-white. Strictly worse than the regression the rule was written to
+   undo, and the exact hazard the comment above warns about, reached through a
+   different container.
+
+   It keeps reading --muted-foreground, which is already correct there:
+   --surface is one of the three grounds deriveMutedOnPaper guarantees against.
+
+   THE GENERAL RULE, for the next class added to this list: qualify by
+   CONTAINER, not only by variant. A tone says what the SECTION is painted; it
+   says nothing about what the element is actually sitting on. */
+
 /* Move 3: shapes painted in their own background's token. The second .djp-ic
    selector is not a duplicate — PRICING_CSS's .djp-plan-features .djp-ic ties
    on specificity and wins on source order, so the icon inside a plan needs
@@ -582,7 +642,39 @@ ${ROOT} .djp-btn {
   border: 2px solid transparent;
   cursor: pointer;
 }
-${ROOT} .djp-btn-primary { background: var(--accent); color: var(--accent-foreground); }
+/* THE BUTTON'S BOUNDARY (2026-09-19 shape-contrast pass).
+
+   background: var(--accent) is paired with --accent-foreground for the
+   LABEL, and pickInk proves that pair. Nothing ever proved the button's FILL
+   against whatever the button is sitting on — and a button is a UI component,
+   so WCAG 1.4.11 wants 3:1 for its boundary, not merely a readable label.
+
+   Measured over all 12 presets x 4 tones, the fill fails 3:1 against the
+   pricing card in 26 of 48 cells; on ink it is 1.08:1, which is the art
+   director's "a near-black button on a near-black background, making it almost
+   invisible against the dark card".
+
+   A RING, NOT A NEW FILL. --djp-pair-fg is the foreground of the pair the
+   button sits in, and pickInk has ALREADY proved that colour against the band;
+   the card is only an 8-12% wash of that same colour into that same band, so
+   the ring moves toward the foreground while the card barely moves. Measured,
+   not assumed: full strength clears 3:1 in all 48 cells, worst 3.75 (bone on
+   an accent tone).
+
+   FULL STRENGTH, NOT THE 22% USED BY THE + sibling DIVIDERS ABOVE. At 22% the
+   ring measures 1.41-2.01 and fails everywhere — copying the house idiom here
+   would have shipped something that looked like a fix and was a no-op. 80% is
+   the lightest passing value and clears by 0.04 at bone/dark; palettes.ts's own
+   banner records a 3.007:1 near-miss as "luck, not a guarantee", so the margin
+   is worth more than the pixel of lightness.
+
+   box-shadow, not border: a border would change the button's box and shift
+   every CTA's layout by 2px. An inset-free ring paints outside the box instead. */
+${ROOT} .djp-btn-primary {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  box-shadow: 0 0 0 1px var(--djp-pair-fg, var(--foreground));
+}
 ${ROOT} .djp-btn-secondary { background: transparent; color: inherit; border-color: currentColor; }
 ${ROOT} .djp-btn-disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
@@ -933,12 +1025,38 @@ ${ROOT} .djp-s-pricing .djp-pricing-grid {
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
   align-items: stretch;
 }
+/* THE CARD'S BOUNDARY (2026-09-19 shape-contrast pass).
+
+   border: 2px solid transparent was here so a featured plan could take a
+   colour without shifting layout — but on an ordinary plan it left the card
+   relying entirely on its FILL to separate from the band behind it. Measured
+   over all 12 presets x 4 tones, that fill never once clears 3:1 against its
+   own band: 48 of 48 cells fail, at 1.01-1.42. The art director, looking at a
+   real render, called it "a barely-lighter tan, giving the card almost no
+   visual separation from the band behind it".
+
+   A RING, NOT border-color. The first attempt set this rule's border-color and
+   it was DEFEATED on the page that matters most: .djp-plan-highlight below sets
+   border-color: var(--accent) at equal specificity and later source order, so
+   the FEATURED plan — the one card a pricing section is usually built around —
+   kept an unguaranteed edge. Measured on the real rendered page, that border
+   was 1.11:1 against its band while the fix was supposedly in.
+
+   A box-shadow cannot be taken away by a border-color rule, so the guarantee
+   survives that override and every future one like it. The highlight keeps its
+   accent border as the brand signal; the ring underneath it keeps the boundary
+   findable whatever that accent turns out to be.
+
+   The 2px transparent border STAYS. It reserves the space .djp-plan-highlight
+   colours in, so removing it would shift every ordinary card by 2px the moment
+   one plan is featured. */
 ${ROOT} .djp-s-pricing .djp-plan {
   display: flex;
   flex-direction: column;
   gap: 1rem;
   background: var(--surface);
   border: 2px solid transparent;
+  box-shadow: 0 0 0 1px var(--djp-pair-fg, var(--foreground));
   border-radius: var(--djp-radius, 0.6rem);
   padding: 2rem;
 }
@@ -1000,10 +1118,20 @@ ${ROOT} .djp-s-pricing.djp-v-table .djp-plan {
 ${ROOT} .djp-s-pricing.djp-v-table .djp-plan:first-child { border-left: 0; }
 
 /* highlight — the featured plan is lifted and enlarged rather than merely
-   outlined, so it reads as the recommended choice at a glance. */
+   outlined, so it reads as the recommended choice at a glance.
+
+   THE RING IS REPEATED HERE ON PURPOSE. box-shadow does not merge across
+   rules — this declaration REPLACES .djp-plan's whole shadow, so writing only
+   the drop shadow here would silently delete the guaranteed boundary from the
+   one card most likely to carry it. That is the second time a later rule ate
+   this guarantee (the first was .djp-plan-highlight's border-color), which is
+   why the ring is a shadow rather than a border in the first place: it has to
+   be restated somewhere it can be seen, not inherited somewhere it cannot. */
 ${ROOT} .djp-s-pricing.djp-v-highlight .djp-plan-highlight {
   transform: scale(1.05);
-  box-shadow: 0 12px 32px -12px rgb(0 0 0 / 0.18);
+  box-shadow:
+    0 0 0 1px var(--djp-pair-fg, var(--foreground)),
+    0 12px 32px -12px rgb(0 0 0 / 0.18);
   position: relative;
   z-index: 1;
 }
@@ -1637,6 +1765,30 @@ ${ROOT} .djp-s-quiz .djp-quiz {
   margin-inline: auto;
   text-align: left;
   background: var(--background);
+  /* A CONTAINER THAT REPAINTS ITS OWN BACKGROUND LEAVES THE SECTION'S PAIR, so
+     it has to re-declare which pair its children are in. This card paints
+     var(--background) on every tone, so inside it the pair is the neutral one
+     no matter what the section around it is doing.
+
+     Without this line the CTA button inside the quiz draws its ring in the
+     SECTION's foreground while sitting on a --background card: measured over 12
+     presets x 4 tones the ring was 1.00-1.08:1 in 13 of 48 cells — on sand/dark
+     it was literally white-on-white — so the one guarantee the ring exists to
+     provide was absent exactly where the pair assumption broke. The same rule
+     applies to any future panel that repaints itself.
+
+     AND THE TEXT, NOT ONLY THE RING (gap G21). The variable fixes what SHAPES
+     draw; it does nothing for the card's own prose, and nothing here used to set
+     color. So on an accent or dark section the prompt, the labels, the options
+     and the profile name all inherited the SECTION's foreground onto this
+     neutral card: measured 1.00:1 at worst (slate on a dark section — the
+     identical colour, invisible), failing in 13 of 48 preset x tone cells.
+     Naming the card's own colour takes all 48 to 19.46-21.00.
+
+     Both declarations are handed BACK by the band variant below, which makes
+     this element transparent and therefore stops it being a container at all. */
+  --djp-pair-fg: var(--foreground);
+  color: var(--foreground);
   border: 1px solid var(--border);
   border-radius: calc(var(--djp-radius, 0.6rem) * 1.5);
   padding: clamp(1.5rem, 4vw, 3rem);
@@ -1764,9 +1916,29 @@ ${ROOT} .djp-s-quiz .djp-quiz-profile-body { margin: 0; color: var(--muted-foreg
    var(--background) fill does not win on source order; transparent is a
    value the tone-contrast harness already models explicitly (it simply means
    "look further up the ancestor chain for what's really behind this text"). */
+/* THE BAND VARIANT STOPS THIS BEING A CARD, so it hands back both of the things
+   the card rule claimed.
+
+   Making the background transparent puts the quiz back ON the section's own
+   band, and there the neutral pair is the WRONG answer for precisely the reason
+   it is the right one on a card. Leaving the card's overrides standing left the
+   ring at 1.43:1 in the worst case (moss on an accent band) and the text in the
+   neutral ink on a repainted band.
+
+   inherit rather than a repeated token: the correct value IS whatever the
+   section computed, and naming it again here would be a second place to keep in
+   step with the tone rules. Custom properties take the CSS-wide keywords, so
+   --djp-pair-fg: inherit restores the section's value rather than unsetting it.
+
+   This is the third time in this file that a rule has been right for a
+   container and wrong for a variant of it. The pattern to copy: whatever a
+   container CLAIMS about its pair, the variant that dissolves the container
+   gives back. */
 ${ROOT} .djp-s-quiz.djp-v-band .djp-quiz {
   max-width: 44rem;
   background: transparent;
+  color: inherit;
+  --djp-pair-fg: inherit;
   border: 0;
   box-shadow: none;
   padding: 0;

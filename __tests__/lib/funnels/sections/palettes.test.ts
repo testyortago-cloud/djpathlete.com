@@ -1,7 +1,22 @@
 import { describe, it, expect } from "vitest"
 import {
-  PALETTE_PRESETS, PALETTE_TABLE, resolvePalette, contrastRatio,
+  PALETTE_PRESETS, PALETTE_TABLE, resolvePalette, contrastRatio, MUTED_PANEL_WASH,
 } from "@/lib/funnels/sections/palettes"
+
+/**
+ * An INDEPENDENT sRGB mix, written out here rather than imported from
+ * palettes.ts. The point of the muted-panel assertion below is to check the
+ * derivation against a ground computed a second way — reusing the module's own
+ * `mix` would let one bug satisfy both sides of the comparison.
+ */
+function mixHexForTest(a: string, b: string, t: number): string {
+  const channels = (v: string): number[] => [1, 3, 5].map((i) => parseInt(v.slice(i, i + 2), 16))
+  const [ar, ag, ab] = channels(a)
+  const [br, bg, bb] = channels(b)
+  return `#${[ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t]
+    .map((v) => Math.round(v).toString(16).padStart(2, "0"))
+    .join("")}`
+}
 
 describe("contrastRatio", () => {
   it("is 21 for black on white and 1 for a colour on itself", () => {
@@ -30,6 +45,45 @@ describe("PALETTE_TABLE", () => {
       expect(contrastRatio(p.ink, p.surface), `${name}: body text on muted band`).toBeGreaterThanOrEqual(4.5)
       expect(contrastRatio(p.brandInk, p.brand), `${name}: text on brand band`).toBeGreaterThanOrEqual(4.5)
       expect(contrastRatio(p.accentInk, p.accent), `${name}: text on accent band`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+  // GAP G16. `--muted-foreground` was a FIXED app token (app/globals.css:19,
+  // oklch(0.5 0.01 250) = #5f6469) that no preset derived, so it never entered
+  // this file's AA guarantee at all. Measured before the fix it scored 3.26:1
+  // on paper for all five dark-seeded presets (midnight/ember/steel/plum/ink)
+  // against a 4.5:1 body floor, while the seven light ones sat at 5.98 — so the
+  // floor a reader got was an accident of which preset the coach picked.
+  it("guarantees mutedOnPaper reads as body copy on the page's own ground", () => {
+    for (const [name, p] of Object.entries(PALETTE_TABLE)) {
+      expect(contrastRatio(p.mutedOnPaper, p.paper), `${name}: mutedOnPaper on paper`).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(p.mutedOnPaper, p.surface), `${name}: mutedOnPaper on surface`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+  // THE THIRD GROUND, found by the A/B critic and not by any table. These
+  // classes sit inside `.djp-plan` / `.djp-faq-item`, and on a `muted`-toned
+  // section that panel is an 8% wash of --foreground into --surface, not
+  // --surface itself. The two-ground derivation scored 3.70-3.93 here in ALL
+  // TWELVE presets — so this is not the dark-mode-only defect G16 described, it
+  // is a ground nobody had measured.
+  it("guarantees mutedOnPaper on the muted-tone panel, not just on paper and surface", () => {
+    for (const [name, p] of Object.entries(PALETTE_TABLE)) {
+      const panel = mixHexForTest(p.surface, p.ink, MUTED_PANEL_WASH)
+      expect(contrastRatio(p.mutedOnPaper, panel), `${name}: mutedOnPaper on the muted panel`).toBeGreaterThanOrEqual(
+        4.5,
+      )
+    }
+  })
+  // ...AND IS STILL MUTED. A token that merely cleared 4.5:1 could satisfy the
+  // test above by being `ink` itself, which would silently delete the visual
+  // distinction between a bullet's heading and its body on every page. The
+  // derivation has to land BETWEEN paper and ink, not at either end.
+  it("keeps mutedOnPaper subordinate to ink rather than equal to it", () => {
+    for (const [name, p] of Object.entries(PALETTE_TABLE)) {
+      expect(p.mutedOnPaper, `${name}: mutedOnPaper must not simply be ink`).not.toBe(p.ink)
+      expect(
+        contrastRatio(p.mutedOnPaper, p.paper),
+        `${name}: mutedOnPaper must be dimmer than ink`,
+      ).toBeLessThan(contrastRatio(p.ink, p.paper))
     }
   })
   // THE GUARANTEE `brand` NEVER HAD. `brand` is paired with `brandInk` only as
@@ -127,6 +181,17 @@ describe("resolvePalette", () => {
       expect(contrastRatio(p.accentOnPaper, p.surface), `hue ${hue}: accentOnPaper on surface`).toBeGreaterThanOrEqual(
         4.5,
       )
+      expect(contrastRatio(p.mutedOnPaper, p.paper), `hue ${hue}: mutedOnPaper on paper`).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(p.mutedOnPaper, p.surface), `hue ${hue}: mutedOnPaper on surface`).toBeGreaterThanOrEqual(
+        4.5,
+      )
+      // The PANEL ground too. Without this line an arbitrary coach brand has
+      // exactly the two-ground coverage the first cut shipped with — the 12
+      // presets are pinned for it, and nothing else is.
+      expect(
+        contrastRatio(p.mutedOnPaper, mixHexForTest(p.surface, p.ink, MUTED_PANEL_WASH)),
+        `hue ${hue}: mutedOnPaper on the muted panel`,
+      ).toBeGreaterThanOrEqual(4.5)
     }
   })
   // Both modes, not just light: dark mode's paper is near-black, which is
@@ -141,6 +206,20 @@ describe("resolvePalette", () => {
       expect(
         contrastRatio(p.brandOnPaper, p.surface),
         `hue ${hue} (dark): brandOnPaper on surface`,
+      ).toBeGreaterThanOrEqual(4.5)
+      // Dark mode IS G16's case: this is the arm where the fixed app token
+      // scored 3.26:1, so a regression here is the original bug returning.
+      expect(
+        contrastRatio(p.mutedOnPaper, p.paper),
+        `hue ${hue} (dark): mutedOnPaper on paper`,
+      ).toBeGreaterThanOrEqual(4.5)
+      expect(
+        contrastRatio(p.mutedOnPaper, p.surface),
+        `hue ${hue} (dark): mutedOnPaper on surface`,
+      ).toBeGreaterThanOrEqual(4.5)
+      expect(
+        contrastRatio(p.mutedOnPaper, mixHexForTest(p.surface, p.ink, MUTED_PANEL_WASH)),
+        `hue ${hue} (dark): mutedOnPaper on the muted panel`,
       ).toBeGreaterThanOrEqual(4.5)
       expect(
         contrastRatio(p.accentOnPaper, p.paper),

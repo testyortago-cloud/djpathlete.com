@@ -206,6 +206,17 @@ export interface PaletteTokens {
   surface: string
   ink: string
   paper: string
+  /**
+   * Secondary body copy on the page's own ground — what `doc.ts` emits as
+   * `--muted-foreground`. See `deriveMutedOnPaper` for why this overrides the
+   * app token directly instead of arriving as a third `-on-paper` twin.
+   *
+   * NOT a stored key. `PaletteTokens` is derived at runtime and never written to
+   * `funnel_steps.project_data`, which stores only the palette SEED
+   * (`{preset}` or `{brand, accent, mode}` — `registry.ts`'s `paletteSchema`).
+   * Adding a required field here therefore cannot break an existing draft.
+   */
+  mutedOnPaper: string
 }
 
 // A fixed hue rotation used to derive an accent from a brand colour when the
@@ -296,6 +307,94 @@ function deriveAccentOnPaper(accent: string, paper: string, surface: string): st
   return deriveOnPaper(accent, paper, surface)
 }
 
+// ---------------------------------------------------------------------------
+// mutedOnPaper — secondary body copy that is still body copy. (Gap G16.)
+//
+// `--muted-foreground` was the one colour token the funnel stylesheet consumes
+// that this module never produced: a FIXED app-level value on `app/globals.css`'s
+// bare `:root` (`oklch(0.5 0.01 250)`, about `#5f6469`). It therefore never
+// entered the AA guarantee at all — not "unproven", ABSENT. Measured against
+// every preset before this fix, it scored 5.98:1 on the seven LIGHT presets and
+// 3.26:1 on all five dark-seeded ones (`midnight` `ember` `steel` `plum` `ink`),
+// with `surface` a shade worse again at 3.14-3.24. So whether a visitor could
+// read a bullet's body text came down to which preset the coach had picked.
+//
+// WHY THIS IS NOT ANOTHER `-on-paper` TWIN. `brandOnPaper` and `accentOnPaper`
+// exist because `brand` and `accent` are also BACKGROUNDS, so their own values
+// could not be changed without repainting every band that uses them; the fix had
+// to arrive under a new name that only text reads. `--muted-foreground` has no
+// second job — of its 21 uses in `styles.ts`, all 21 are `color:`, and its only
+// other appearance anywhere is a dashed border on a render-only placeholder. So
+// `doc.ts` overrides that token DIRECTLY with this value, which is what lets all
+// 21 consumers be fixed without editing (and without forgetting) any of them.
+//
+// THE DIRECTION IS OPPOSITE TO `deriveOnPaper`. That one pushes a brand colour
+// AWAY from paper until it is readable enough. This one starts at `ink` — which
+// `pickInk` has already proved against `paper` — and walks it TOWARD paper, i.e.
+// deliberately dimmer, keeping the LAST value that still clears 4.5:1 against
+// both grounds. The result is the most subordinate colour that is still body
+// copy, which is what "muted" ought to mean.
+//
+// THERE ARE THREE GROUNDS, NOT TWO, AND ONLY LOOKING FOUND THE THIRD.
+//
+// The first cut of this function checked `paper` and `surface` — the two
+// grounds it was obvious to think of — and the art-director critic, handed a
+// real render, immediately filed three fresh high-severity findings on the very
+// page the fix was for: "the blurb renders in a mid-grey against the near-black
+// muted background, making it visibly harder to read than the surrounding white
+// feature list."
+//
+// `.djp-plan-blurb`, `.djp-footnote` and `.djp-faq-a` are consumers of this
+// token that sit inside a PANEL. On a `muted`-toned section that panel is not
+// `surface`: styles.ts's Move 1 paints it an 8% wash of `--foreground` into
+// `--surface`, which on a dark palette is meaningfully darker again. (Accent and
+// dark tones switch these classes to `color: inherit`, so they never read this
+// token there — `muted` is exactly the tone that override list omits, which is
+// why this is the one ground that bites.)
+//
+// Measured against that third ground, the two-ground derivation scored 3.70-3.93
+// in ALL TWELVE presets, light and dark alike — so this was never the dark-mode
+// problem G16 described. It is simply a ground nobody had measured.
+//
+// The lesson is kept here deliberately: "the grounds I thought of" is not the
+// same set as "the grounds it lands on". A shorter list would still pass a
+// contrast table, because a table only measures the pairs it is handed.
+//
+// Termination and safety: step 0 is `ink` itself, which clears every ground
+// (`pickInk` proves it against `paper`, and the other two grounds are small
+// washes of `ink` and `paper` into each other, strictly between them). So `best`
+// is never unset and there is no throw path. Contrast against each ground falls
+// monotonically as the mix approaches `paper`, so the first failing step is the
+// boundary and stopping there cannot skip a passing value further along.
+// ---------------------------------------------------------------------------
+
+/**
+ * How far styles.ts's Move 1 washes `--foreground` into `--surface` for a panel
+ * on a `muted`-toned section.
+ *
+ * DUPLICATED FROM CSS ON PURPOSE, AND TIED TO IT BY A TEST. This module cannot
+ * import a stylesheet, so the number lives twice;
+ * `styles.test.ts`'s "the muted panel wash this palette derives against is the
+ * one the stylesheet actually paints" fails if the two ever drift apart. Without
+ * that tie, changing the CSS would silently invalidate the derivation and the
+ * only symptom would be unreadable body copy on a pricing card.
+ */
+export const MUTED_PANEL_WASH = 0.08
+
+function deriveMutedOnPaper(ink: string, paper: string, surface: string): string {
+  // Every ground a `--muted-foreground` consumer can actually be painted on.
+  const panel = mix(surface, ink, MUTED_PANEL_WASH)
+  const grounds = [paper, surface, panel]
+
+  let best = ink
+  for (let step = 1; step <= 100; step++) {
+    const candidate = mix(ink, paper, step / 100)
+    if (grounds.some((ground) => contrastRatio(candidate, ground) < MIN_AA)) break
+    best = candidate
+  }
+  return best
+}
+
 /**
  * Derive a full `PaletteTokens` set from a brand colour (and optionally an
  * accent and a light/dark mode). Every token is `#rrggbb`. Deterministic:
@@ -329,8 +428,9 @@ export function resolvePalette(input: { brand: string; accent?: string; mode?: "
   const surface = deriveSurface(paper, brand, ink)
   const brandOnPaper = deriveBrandOnPaper(brand, paper, surface)
   const accentOnPaper = deriveAccentOnPaper(accent, paper, surface)
+  const mutedOnPaper = deriveMutedOnPaper(ink, paper, surface)
 
-  return { brand, brandInk, brandOnPaper, accent, accentInk, accentOnPaper, surface, ink, paper }
+  return { brand, brandInk, brandOnPaper, accent, accentInk, accentOnPaper, surface, ink, paper, mutedOnPaper }
 }
 
 // ---------------------------------------------------------------------------
