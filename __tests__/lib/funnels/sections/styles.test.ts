@@ -321,4 +321,34 @@ describe("shapes have a boundary against whatever is behind them", () => {
     const percent = `${Math.round(MUTED_PANEL_WASH * 100)}%`
     expect(THEME_CSS).toContain(`color-mix(in oklch, var(--foreground) ${percent}, transparent)`)
   })
+
+  // THIS HAS NOW BITTEN TWICE, WHICH IS WHY IT GETS A TEST RATHER THAN A NOTE.
+  //
+  // `box-shadow` does not merge across rules — a later declaration REPLACES the
+  // whole shadow. The pricing CSS has two rules that set a shadow on a plan
+  // card: `.djp-plan` (the guaranteed boundary) and
+  // `.djp-v-highlight .djp-plan-highlight` (the lift on a featured plan, at
+  // higher specificity). If the second one ever stops restating the ring, the
+  // featured card — the one a pricing section is usually built around — silently
+  // loses its guaranteed edge, and NOTHING else fails.
+  //
+  // The first version of this fix used `border-color` and was defeated the same
+  // way by `.djp-plan-highlight { border-color: var(--accent) }`. Measured on
+  // the real rendered page, that edge was 1.11:1 while the fix was supposedly
+  // in — which is how this test came to exist.
+  //
+  // Asserted over the pricing CSS as a WHOLE: every rule that shadows a plan
+  // must name the pair foreground. That is a property, not a list of the two
+  // rules that happen to exist today.
+  it("never lets a later box-shadow rule drop a plan card's guaranteed edge", () => {
+    const planShadowRules = SECTION_CSS.pricing
+      .split("}")
+      .filter((rule) => rule.includes("box-shadow") && rule.includes(".djp-plan"))
+
+    expect(planShadowRules.length, "expected at least the base and highlight rules").toBeGreaterThanOrEqual(2)
+    for (const rule of planShadowRules) {
+      const selector = rule.split("{")[0].trim().replace(/\s+/g, " ")
+      expect(rule, `box-shadow on "${selector}" must restate the pair-foreground ring`).toContain("--djp-pair-fg")
+    }
+  })
 })

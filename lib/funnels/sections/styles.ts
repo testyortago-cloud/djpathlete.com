@@ -485,6 +485,38 @@ ${ROOT} .djp-s[data-tone="dark"] .djp-faq-a,
 ${ROOT} .djp-s[data-tone="dark"] .djp-footer-line,
 ${ROOT} .djp-s[data-tone="dark"] .djp-footer-legal { color: inherit; opacity: 0.85; }
 
+/* THE QUIZ'S OWN MUTED COPY, and why it needs the djp-v-band qualifier.
+
+   Six more classes read --muted-foreground (step, help, back, consent, scale,
+   profile-body) and none was in the list above. Normally that is harmless and
+   must stay that way: .djp-quiz repaints itself var(--background), so those
+   six sit in the NEUTRAL pair whatever tone the section takes, and the neutral
+   muted token is exactly the right answer there. Forcing color: inherit on
+   them unqualified would paint an accent section's foreground onto a
+   --background card — a new bug, one pair over.
+
+   The band variant is the exception: it sets the quiz background transparent,
+   dropping all six straight onto the section's own band. There the section's
+   pair is the right one, so they follow it like every other class above.
+
+   Found by a reviewer enumerating grounds, and it matters because deriving the
+   token against paper made SEVEN of twenty-four preset x tone cells here WORSE
+   than the old fixed grey (plum on accent 3.41 -> 1.95, ember 2.33 -> 1.33).
+   Every cell was already far under 4.5 before and after — this ground has never
+   been guaranteed — but a fix is not allowed to move any of them backwards. */
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-step,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-help,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-back,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-consent,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-scale,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="accent"] .djp-quiz-profile-body,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-step,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-help,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-back,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-consent,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-scale,
+${ROOT} .djp-s-quiz.djp-v-band[data-tone="dark"] .djp-quiz-profile-body { color: inherit; opacity: 0.85; }
+
 /* Move 3: shapes painted in their own background's token. The second .djp-ic
    selector is not a duplicate — PRICING_CSS's .djp-plan-features .djp-ic ties
    on specificity and wins on source order, so the icon inside a plan needs
@@ -988,14 +1020,28 @@ ${ROOT} .djp-s-pricing .djp-pricing-grid {
    real render, called it "a barely-lighter tan, giving the card almost no
    visual separation from the band behind it".
 
-   The colour changes, the WIDTH DOES NOT. Narrowing to 1px would move every
-   pricing card's content by a pixel on both axes and buy no contrast. */
+   A RING, NOT border-color. The first attempt set this rule's border-color and
+   it was DEFEATED on the page that matters most: .djp-plan-highlight below sets
+   border-color: var(--accent) at equal specificity and later source order, so
+   the FEATURED plan — the one card a pricing section is usually built around —
+   kept an unguaranteed edge. Measured on the real rendered page, that border
+   was 1.11:1 against its band while the fix was supposedly in.
+
+   A box-shadow cannot be taken away by a border-color rule, so the guarantee
+   survives that override and every future one like it. The highlight keeps its
+   accent border as the brand signal; the ring underneath it keeps the boundary
+   findable whatever that accent turns out to be.
+
+   The 2px transparent border STAYS. It reserves the space .djp-plan-highlight
+   colours in, so removing it would shift every ordinary card by 2px the moment
+   one plan is featured. */
 ${ROOT} .djp-s-pricing .djp-plan {
   display: flex;
   flex-direction: column;
   gap: 1rem;
   background: var(--surface);
-  border: 2px solid var(--djp-pair-fg, var(--foreground));
+  border: 2px solid transparent;
+  box-shadow: 0 0 0 1px var(--djp-pair-fg, var(--foreground));
   border-radius: var(--djp-radius, 0.6rem);
   padding: 2rem;
 }
@@ -1057,10 +1103,20 @@ ${ROOT} .djp-s-pricing.djp-v-table .djp-plan {
 ${ROOT} .djp-s-pricing.djp-v-table .djp-plan:first-child { border-left: 0; }
 
 /* highlight — the featured plan is lifted and enlarged rather than merely
-   outlined, so it reads as the recommended choice at a glance. */
+   outlined, so it reads as the recommended choice at a glance.
+
+   THE RING IS REPEATED HERE ON PURPOSE. box-shadow does not merge across
+   rules — this declaration REPLACES .djp-plan's whole shadow, so writing only
+   the drop shadow here would silently delete the guaranteed boundary from the
+   one card most likely to carry it. That is the second time a later rule ate
+   this guarantee (the first was .djp-plan-highlight's border-color), which is
+   why the ring is a shadow rather than a border in the first place: it has to
+   be restated somewhere it can be seen, not inherited somewhere it cannot. */
 ${ROOT} .djp-s-pricing.djp-v-highlight .djp-plan-highlight {
   transform: scale(1.05);
-  box-shadow: 0 12px 32px -12px rgb(0 0 0 / 0.18);
+  box-shadow:
+    0 0 0 1px var(--djp-pair-fg, var(--foreground)),
+    0 12px 32px -12px rgb(0 0 0 / 0.18);
   position: relative;
   z-index: 1;
 }
@@ -1694,6 +1750,18 @@ ${ROOT} .djp-s-quiz .djp-quiz {
   margin-inline: auto;
   text-align: left;
   background: var(--background);
+  /* A CONTAINER THAT REPAINTS ITS OWN BACKGROUND LEAVES THE SECTION'S PAIR, so
+     it has to re-declare which pair its children are in. This card paints
+     var(--background) on every tone, so inside it the pair is the neutral one
+     no matter what the section around it is doing.
+
+     Without this line the CTA button inside the quiz draws its ring in the
+     SECTION's foreground while sitting on a --background card: measured over 12
+     presets x 4 tones the ring was 1.00-1.08:1 in 13 of 48 cells — on sand/dark
+     it was literally white-on-white — so the one guarantee the ring exists to
+     provide was absent exactly where the pair assumption broke. The same rule
+     applies to any future panel that repaints itself. */
+  --djp-pair-fg: var(--foreground);
   border: 1px solid var(--border);
   border-radius: calc(var(--djp-radius, 0.6rem) * 1.5);
   padding: clamp(1.5rem, 4vw, 3rem);
