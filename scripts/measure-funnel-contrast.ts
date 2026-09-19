@@ -204,6 +204,40 @@ function main(): void {
   }
   console.log(`\nMINIMUM ALPHA THAT PASSES EVERYWHERE: ${needed}% (binding case ${neededAt})`)
 
+  // ── THE GROUND THE FIRST ATTEMPT MISSED ───────────────────────────────────
+  //
+  // The first cut of `deriveMutedOnPaper` guaranteed its value against `paper`
+  // and `surface` — the two grounds it was obvious to think of — and the A/B
+  // critic immediately filed three NEW art/high findings on the very page the
+  // fix was meant to repair:
+  //
+  //   "The blurb ... renders in a mid-grey against the near-black muted
+  //    background, making it visibly harder to read than the surrounding white
+  //    feature list."
+  //
+  // `.djp-plan-blurb` and `.djp-footnote` are `--muted-foreground` consumers
+  // that sit inside `.djp-plan`. On a MUTED-toned section that card is not
+  // `surface` — styles.ts Move 1 paints it an 8% wash of `--foreground` into
+  // `--surface`, a third ground nothing measured. (On accent and dark tones
+  // these classes are switched to `color: inherit`, so they never read the token
+  // there; muted is precisely the tone that override list leaves out.)
+  //
+  // This row is kept permanently as the reminder: "the grounds I thought of" is
+  // not the same set as "the grounds it lands on", and only looking found the
+  // difference.
+  section("--muted-foreground on the MUTED-tone plan card — the missed third ground")
+  console.log("card = color-mix(--foreground 8%, transparent) over --surface (styles.ts Move 1)\n")
+  console.log("preset      surface   card      first cut   on card")
+  for (const name of PALETTE_PRESETS) {
+    const p = PALETTE_TABLE[name]
+    const card = planBackground(p, "muted")
+    const firstCut = deriveMutedCandidate(p.ink, p.paper, p.surface)
+    const onCard = contrastRatio(firstCut, card)
+    console.log(
+      `${name.padEnd(10)}  ${p.surface}   ${card}   ${firstCut}     ${f(onCard)} ${mark(onCard, AA_BODY)}`,
+    )
+  }
+
   // ── The exact document the A/B harness runs ───────────────────────────────
   section("The A/B document's own palette (brand #a8563a, accent #c99a6b, light)")
   const ab = resolvePalette({ brand: "#a8563a", accent: "#c99a6b", mode: "light" })

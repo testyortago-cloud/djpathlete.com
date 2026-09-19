@@ -335,17 +335,61 @@ function deriveAccentOnPaper(accent: string, paper: string, surface: string): st
 // both grounds. The result is the most subordinate colour that is still body
 // copy, which is what "muted" ought to mean.
 //
-// Termination and safety: step 0 is `ink` itself, which already clears both
-// grounds, so `best` is never unset and there is no throw path. Contrast falls
-// monotonically as the mix approaches paper, so the first failing step is the
+// THERE ARE THREE GROUNDS, NOT TWO, AND ONLY LOOKING FOUND THE THIRD.
+//
+// The first cut of this function checked `paper` and `surface` — the two
+// grounds it was obvious to think of — and the art-director critic, handed a
+// real render, immediately filed three fresh high-severity findings on the very
+// page the fix was for: "the blurb renders in a mid-grey against the near-black
+// muted background, making it visibly harder to read than the surrounding white
+// feature list."
+//
+// `.djp-plan-blurb`, `.djp-footnote` and `.djp-faq-a` are consumers of this
+// token that sit inside a PANEL. On a `muted`-toned section that panel is not
+// `surface`: styles.ts's Move 1 paints it an 8% wash of `--foreground` into
+// `--surface`, which on a dark palette is meaningfully darker again. (Accent and
+// dark tones switch these classes to `color: inherit`, so they never read this
+// token there — `muted` is exactly the tone that override list omits, which is
+// why this is the one ground that bites.)
+//
+// Measured against that third ground, the two-ground derivation scored 3.70-3.93
+// in ALL TWELVE presets, light and dark alike — so this was never the dark-mode
+// problem G16 described. It is simply a ground nobody had measured.
+//
+// The lesson is kept here deliberately: "the grounds I thought of" is not the
+// same set as "the grounds it lands on". A shorter list would still pass a
+// contrast table, because a table only measures the pairs it is handed.
+//
+// Termination and safety: step 0 is `ink` itself, which clears every ground
+// (`pickInk` proves it against `paper`, and the other two grounds are small
+// washes of `ink` and `paper` into each other, strictly between them). So `best`
+// is never unset and there is no throw path. Contrast against each ground falls
+// monotonically as the mix approaches `paper`, so the first failing step is the
 // boundary and stopping there cannot skip a passing value further along.
 // ---------------------------------------------------------------------------
 
+/**
+ * How far styles.ts's Move 1 washes `--foreground` into `--surface` for a panel
+ * on a `muted`-toned section.
+ *
+ * DUPLICATED FROM CSS ON PURPOSE, AND TIED TO IT BY A TEST. This module cannot
+ * import a stylesheet, so the number lives twice;
+ * `styles.test.ts`'s "the muted panel wash this palette derives against is the
+ * one the stylesheet actually paints" fails if the two ever drift apart. Without
+ * that tie, changing the CSS would silently invalidate the derivation and the
+ * only symptom would be unreadable body copy on a pricing card.
+ */
+export const MUTED_PANEL_WASH = 0.08
+
 function deriveMutedOnPaper(ink: string, paper: string, surface: string): string {
+  // Every ground a `--muted-foreground` consumer can actually be painted on.
+  const panel = mix(surface, ink, MUTED_PANEL_WASH)
+  const grounds = [paper, surface, panel]
+
   let best = ink
   for (let step = 1; step <= 100; step++) {
     const candidate = mix(ink, paper, step / 100)
-    if (contrastRatio(candidate, paper) < MIN_AA || contrastRatio(candidate, surface) < MIN_AA) break
+    if (grounds.some((ground) => contrastRatio(candidate, ground) < MIN_AA)) break
     best = candidate
   }
   return best

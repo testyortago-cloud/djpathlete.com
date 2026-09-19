@@ -1,7 +1,22 @@
 import { describe, it, expect } from "vitest"
 import {
-  PALETTE_PRESETS, PALETTE_TABLE, resolvePalette, contrastRatio,
+  PALETTE_PRESETS, PALETTE_TABLE, resolvePalette, contrastRatio, MUTED_PANEL_WASH,
 } from "@/lib/funnels/sections/palettes"
+
+/**
+ * An INDEPENDENT sRGB mix, written out here rather than imported from
+ * palettes.ts. The point of the muted-panel assertion below is to check the
+ * derivation against a ground computed a second way — reusing the module's own
+ * `mix` would let one bug satisfy both sides of the comparison.
+ */
+function mixHexForTest(a: string, b: string, t: number): string {
+  const channels = (v: string): number[] => [1, 3, 5].map((i) => parseInt(v.slice(i, i + 2), 16))
+  const [ar, ag, ab] = channels(a)
+  const [br, bg, bb] = channels(b)
+  return `#${[ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t]
+    .map((v) => Math.round(v).toString(16).padStart(2, "0"))
+    .join("")}`
+}
 
 describe("contrastRatio", () => {
   it("is 21 for black on white and 1 for a colour on itself", () => {
@@ -42,6 +57,20 @@ describe("PALETTE_TABLE", () => {
     for (const [name, p] of Object.entries(PALETTE_TABLE)) {
       expect(contrastRatio(p.mutedOnPaper, p.paper), `${name}: mutedOnPaper on paper`).toBeGreaterThanOrEqual(4.5)
       expect(contrastRatio(p.mutedOnPaper, p.surface), `${name}: mutedOnPaper on surface`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+  // THE THIRD GROUND, found by the A/B critic and not by any table. These
+  // classes sit inside `.djp-plan` / `.djp-faq-item`, and on a `muted`-toned
+  // section that panel is an 8% wash of --foreground into --surface, not
+  // --surface itself. The two-ground derivation scored 3.70-3.93 here in ALL
+  // TWELVE presets — so this is not the dark-mode-only defect G16 described, it
+  // is a ground nobody had measured.
+  it("guarantees mutedOnPaper on the muted-tone panel, not just on paper and surface", () => {
+    for (const [name, p] of Object.entries(PALETTE_TABLE)) {
+      const panel = mixHexForTest(p.surface, p.ink, MUTED_PANEL_WASH)
+      expect(contrastRatio(p.mutedOnPaper, panel), `${name}: mutedOnPaper on the muted panel`).toBeGreaterThanOrEqual(
+        4.5,
+      )
     }
   })
   // ...AND IS STILL MUTED. A token that merely cleared 4.5:1 could satisfy the

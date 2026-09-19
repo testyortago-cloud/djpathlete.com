@@ -19,6 +19,7 @@
 import { describe, it, expect } from "vitest"
 import { SECTION_REGISTRY, SECTION_KINDS } from "@/lib/funnels/sections/registry"
 import { SECTION_CSS, VARIANTS_STYLED_BY_BASE_RULE } from "@/lib/funnels/sections/styles"
+import { MUTED_PANEL_WASH } from "@/lib/funnels/sections/palettes"
 import { renderSection } from "@/lib/funnels/sections/render"
 import { FUNNEL_STEP_CSS_MAX_LENGTH } from "@/lib/validators/funnel"
 import { THEME_CSS } from "@/lib/funnels/sections/styles"
@@ -302,5 +303,22 @@ describe("shapes have a boundary against whatever is behind them", () => {
   // needed a name of its own.
   it("does not reach for currentColor, which the button overwrites with its label colour", () => {
     expect(THEME_CSS).not.toMatch(/\.djp-btn-primary \{[^}]*box-shadow:[^;]*currentColor/)
+  })
+
+  // THE TIE THAT STOPS THE DERIVATION DRIFTING AWAY FROM THE CSS.
+  //
+  // palettes.ts cannot import a stylesheet, so `MUTED_PANEL_WASH` restates the
+  // wash percentage that Move 1 paints for a panel on a muted section. That
+  // number is load-bearing: `deriveMutedOnPaper` guarantees body copy against
+  // the ground it describes, so if the CSS moved to (say) 14% and this constant
+  // did not, the derivation would be proving readability against a ground that
+  // no longer exists — and the only symptom would be hard-to-read body copy on
+  // a pricing card, which is exactly the bug this whole pass is about.
+  //
+  // Asserted against the CSS SOURCE, not a rendered value, because that is the
+  // thing that can change independently.
+  it("derives against the same muted panel wash the stylesheet actually paints", () => {
+    const percent = `${Math.round(MUTED_PANEL_WASH * 100)}%`
+    expect(THEME_CSS).toContain(`color-mix(in oklch, var(--foreground) ${percent}, transparent)`)
   })
 })
