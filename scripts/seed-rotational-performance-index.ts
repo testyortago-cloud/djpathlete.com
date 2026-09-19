@@ -95,15 +95,23 @@ async function main() {
 
   const supabase = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY ?? "")
   const businessId = platformBusinessId()
+  // GUARD ON THE NAME, NOT THE KEY, and the distinction is not cosmetic.
+  // `createQuizFrom` does not use `definition.key` at all — it mints one with
+  // `uniqueQuizKey(slugify(name))`, which is already collision-proof. Guarding
+  // on the seed's declared key therefore checked a value that would never be
+  // written, and on prod it collided with the unrelated clone quiz that happens
+  // to hold "rotational-reboot-score", refusing a seed that would have been
+  // perfectly safe. The real question is "have I already seeded this quiz",
+  // and the name is what answers it.
   const { data: existing } = await supabase
     .from("quizzes")
-    .select("id, key")
+    .select("id, key, name")
     .eq("business_id", businessId)
-    .eq("key", definition.key)
+    .eq("name", definition.name)
     .maybeSingle()
   if (existing) {
     throw new Error(
-      `A quiz with key "${definition.key}" already exists (${existing.id}). ` +
+      `A quiz named "${definition.name}" already exists (${existing.id}, key "${existing.key}"). ` +
         "This script refuses to overwrite an existing quiz — retire it in the editor first.",
     )
   }
