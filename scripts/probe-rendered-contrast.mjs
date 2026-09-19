@@ -106,8 +106,17 @@ async function main() {
       let bg = 'rgba(0, 0, 0, 0)'
       while (node) {
         const c = getComputedStyle(node).backgroundColor
-        const parts = (c.match(/[\\d.]+/g) || []).map(Number)
-        const alpha = parts.length === 4 ? parts[3] : 1
+        // ALPHA COMES IN TWO SYNTAXES AND ONLY ONE IS A FOURTH NUMBER.
+        // rgba(r, g, b, a) puts it last; the modern forms Chrome returns for a
+        // color-mix — oklch(0 0 none / 0.12) — put it after a slash, with a
+        // COUNT of three numbers. Reading "4 numbers means translucent" calls a
+        // 12% wash opaque, which made this probe report a plan card's own
+        // near-invisible wash as the ground behind its text and print 1.00 FAIL
+        // for black text that is in fact perfectly readable on the tan beneath.
+        const slash = c.indexOf('/')
+        const alpha = slash !== -1
+          ? parseFloat(c.slice(slash + 1))
+          : ((c.match(/[\\d.]+/g) || []).length === 4 ? Number((c.match(/[\\d.]+/g) || [])[3]) : 1)
         if (alpha > 0.5) { bg = c; break }
         node = node.parentElement
       }

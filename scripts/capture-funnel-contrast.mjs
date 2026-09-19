@@ -165,6 +165,26 @@ async function main() {
       throw new Error(`/preview/${subject.slug} did not render a page — now at ${page.url()}`)
     }
 
+    // WHAT THE SERVER IS SERVING, RECORDED IN THE LOG.
+    //
+    // A dev server can hold a stale compile of a deeply-imported module, and a
+    // `git checkout` of lib/ mid-session (which is how the BEFORE phase is
+    // produced) is exactly the way to cause one. A screenshot taken then is a
+    // picture of code that is not the code under test, and NOTHING about the
+    // image says so. During this build the light page was briefly observed
+    // serving a --muted-foreground that matched neither the before nor the
+    // after value, purely because the tree was mid-checkout.
+    //
+    // So the token is read off the page and printed next to the phase. It is
+    // not asserted against a fixed value — BEFORE and AFTER legitimately differ,
+    // which is the whole point — but it is on the record, so a shot can be
+    // matched to the code that produced it after the fact.
+    const servedTokens = await page.evaluate(
+      "(() => { const r = document.getElementById('djp-funnel-root'); if (!r) return null; const s = getComputedStyle(r); return s.getPropertyValue('--muted-foreground').trim() + ' / bg ' + s.getPropertyValue('--background').trim(); })()",
+    )
+    if (!servedTokens) throw new Error(`no #djp-funnel-root on /preview/${subject.slug} — the render failed`)
+    console.log(`  [${PHASE}] ${subject.slug} serving --muted-foreground: ${servedTokens}`)
+
     // The page must actually have a pricing section, or the two shapes this
     // pass is about are not on screen and the shot proves nothing.
     const planCount = await page.locator(".djp-plan").count()
