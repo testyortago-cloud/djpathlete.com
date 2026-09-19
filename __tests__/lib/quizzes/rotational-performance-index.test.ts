@@ -19,7 +19,7 @@ import type { QuizAnswer, QuizDefinition } from "@/lib/quizzes/types"
 const definition = toDefinition(SEED)
 
 /**
- * Answers every walked question by picking the option at `pick`, clamped.
+ * Answers every walked question with its best, worst or middling option BY WEIGHT.
  *
  * THE ROUTER IS THE EXCEPTION, and it has to be. `scoreQuiz` derives the branch
  * from the answers rather than from any caller-supplied value, so a helper that
@@ -28,12 +28,21 @@ const definition = toDefinition(SEED)
  * silently costing 3 points. The first draft of this file did exactly that and
  * two assertions caught it.
  */
-function answerAll(def: QuizDefinition, branchId: string, pick: (optionCount: number) => number): QuizAnswer[] {
+function answerAll(def: QuizDefinition, branchId: string, want: "best" | "worst" | "middling"): QuizAnswer[] {
   return walkedQuestions(def, branchId).map((question) => {
     const routed = question.options.find((option) => option.routesToBranchId === branchId)
     if (routed) return { questionId: question.id, optionId: routed.id }
-    const index = Math.min(Math.max(pick(question.options.length), 0), question.options.length - 1)
-    return { questionId: question.id, optionId: question.options[index].id }
+    // BY WEIGHT, NEVER BY INDEX. These assertions used to pick option [0] to
+    // mean "best", which silently encoded best-first ordering — the very
+    // property the ordering tests below now forbid. Four of them went red the
+    // moment Q1 and Q3 were flipped, for no reason connected to the behaviour
+    // they were meant to pin.
+    const byWeight = [...question.options].sort((a, b) => a.weight - b.weight)
+    const chosen =
+      want === "worst" ? byWeight[0]
+      : want === "best" ? byWeight[byWeight.length - 1]
+      : byWeight[Math.floor(byWeight.length / 2)]
+    return { questionId: question.id, optionId: chosen.id }
   })
 }
 
@@ -54,7 +63,7 @@ describe("the zero floor (correction 1)", () => {
   // squeezes `red` into three raw totals. The whole point of the correction is
   // that the bottom of the scale is reachable.
   it("scores 0 when every answer is the worst one", () => {
-    const answers = answerAll(definition, "racquet", (count) => count - 1)
+    const answers = answerAll(definition, "racquet", "worst")
     const result = scoreQuiz(definition, answers)
     expect(result.rawScore).toBe(0)
     expect(result.score).toBe(0)
@@ -62,14 +71,14 @@ describe("the zero floor (correction 1)", () => {
   })
 
   it("scores 100 when every answer is the best one", () => {
-    const answers = answerAll(definition, "racquet", () => 0)
+    const answers = answerAll(definition, "racquet", "best")
     const result = scoreQuiz(definition, answers)
     expect(result.score).toBe(100)
     expect(result.tierKey).toBe("green")
   })
 
   it("puts the maximum at 33 — nine movement tests plus Q1 plus Q3, at 3 each", () => {
-    const result = scoreQuiz(definition, answerAll(definition, "racquet", () => 0))
+    const result = scoreQuiz(definition, answerAll(definition, "racquet", "best"))
     expect(result.maxScore).toBe(33)
   })
 })
@@ -83,7 +92,7 @@ describe("Q2 is segmentation, not scored (correction 2)", () => {
   })
 
   it("cannot move the score — 'I feel fine' and 'Lower back' land identically", () => {
-    const base = answerAll(definition, "golf", () => 0).filter((a) => a.questionId !== "post_session_soreness")
+    const base = answerAll(definition, "golf", "best").filter((a) => a.questionId !== "post_session_soreness")
     const feelFine = scoreQuiz(definition, [
       ...base,
       { questionId: "post_session_soreness", optionId: "post_session_soreness:4" },
@@ -111,7 +120,7 @@ describe("per-side scoring (correction 3)", () => {
   })
 
   it("lets one side score differently from the other", () => {
-    const answers = answerAll(definition, "golf", () => 0).map((a) =>
+    const answers = answerAll(definition, "golf", "best").map((a) =>
       a.questionId === "copenhagen_right" ? { ...a, optionId: "copenhagen_right:3" } : a,
     )
     const result = scoreQuiz(definition, answers)
@@ -138,14 +147,53 @@ describe("the sport router (correction 4)", () => {
     const q1s = definition.questions.filter((q) => q.id.startsWith("q1_"))
     expect(q1s).toHaveLength(5)
     expect(new Set(q1s.map((q) => q.prompt)).size).toBe(5)
-    for (const q1 of q1s) expect(q1.options.map((o) => o.weight)).toEqual([3, 2, 1, 0])
+    for (const q1 of q1s) expect([...q1.options.map((o) => o.weight)].sort()).toEqual([0, 1, 2, 3])
   })
 
   it("scores a branch identically regardless of which sport was chosen", () => {
     const scores = definition.branches.map(
-      (b) => scoreQuiz(definition, answerAll(definition, b.id, () => 1)).score,
+      (b) => scoreQuiz(definition, answerAll(definition, b.id, "middling")).score,
     )
     expect(new Set(scores).size).toBe(1)
+  })
+})
+
+describe("option ordering, against satisficing", () => {
+  const scored = definition.questions.filter((q) => q.options.some((o) => o.weight > 0))
+  const bestFirst = (q: (typeof scored)[number]) =>
+    q.options[0].weight === Math.max(...q.options.map((o) => o.weight))
+
+  // THE ONE THAT WOULD HAVE CAUGHT IT ON THE ATHLETE QUIZ. All eleven of its
+  // scored questions run 3/2/1/0, so clicking the first button all the way
+  // down scores 21/21. Its only prod completion did exactly that. A respondent
+  // who satisfices is handed the most flattering result and the softest CTA,
+  // which is backwards commercially and worthless diagnostically.
+  it("does not put the best answer first on EVERY scored question", () => {
+    expect(scored.every(bestFirst)).toBe(false)
+  })
+
+  it("puts the worst answer first on both self-report questions", () => {
+    for (const q of scored.filter((x) => x.id.startsWith("q1_") || x.id === "rotational_training_frequency")) {
+      expect(q.options[0].weight).toBe(0)
+      expect(q.options[q.options.length - 1].weight).toBe(3)
+    }
+  })
+
+  // Kept best-first on purpose: they count down a checklist, and the person
+  // has to attempt the movement first, so there is no cost-free drift option.
+  it("keeps the movement tests counting down from all-three", () => {
+    for (const q of scored.filter((x) => x.mediaUrl !== null)) {
+      expect(q.options.map((o) => o.weight)).toEqual([3, 2, 1, 0])
+    }
+  })
+
+  it("still scores 100 only for a genuinely perfect walk", () => {
+    // Clicking the FIRST option on every question is no longer a perfect score.
+    const firstEverywhere = walkedQuestions(definition, "golf").map((q) => ({
+      questionId: q.id,
+      optionId: q.options[0].id,
+    }))
+    expect(scoreQuiz(definition, firstEverywhere).score).toBeLessThan(100)
   })
 })
 

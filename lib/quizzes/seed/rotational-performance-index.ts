@@ -184,6 +184,27 @@ const MOVEMENT_TESTS: MovementTest[] = [
  * of people cannot hold a Copenhagen — and a scale that cannot express it is
  * not measuring the people this quiz exists to find.
  */
+/**
+ * WHY THE MOVEMENT TESTS KEEP THE BEST OPTION FIRST, AND THE TWO OPINION
+ * QUESTIONS DO NOT.
+ *
+ * Listing the best answer first on every scored question means clicking
+ * straight down the first button scores 100. That is not only a testing
+ * artifact — it is how a real person satisfices, and it hands the least
+ * engaged respondent the most flattering result and the softest CTA. The
+ * athlete quiz has exactly this shape: all eleven of its scored questions run
+ * 3/2/1/0, and its only prod completion scored 21/21 by taking option one
+ * thirteen times in a row.
+ *
+ * So Q1 and Q3 — pure self-report, where the bias actually bites — list the
+ * WORST answer first. "Constantly / Frequently / Occasionally / Never" reads
+ * just as naturally in that direction.
+ *
+ * The nine movement tests keep best-first, for two reasons: they count down a
+ * checklist ("all three / two of the three / one of the three"), which reads
+ * backwards reversed; and the respondent has to physically attempt the
+ * movement before answering, so there is no cost-free option to drift toward.
+ */
 function movementOptions(): SeedOption[] {
   return [
     { label: "All three — clean, no compensation", weight: 3 },
@@ -282,11 +303,12 @@ function q1Questions(): SeedQuestion[] {
     branch: branch.key,
     position: 20,
     prompt: `${branch.q1Moment}, do you ever feel unstable, stiff, or like the power does not connect?`,
+    // WORST FIRST, DELIBERATELY — see the note above `movementOptions`.
     options: [
-      { label: "Never", weight: 3 },
-      { label: "Occasionally", weight: 2 },
-      { label: "Frequently", weight: 1 },
       { label: "Constantly", weight: 0 },
+      { label: "Frequently", weight: 1 },
+      { label: "Occasionally", weight: 2 },
+      { label: "Never", weight: 3 },
     ],
   }))
 }
@@ -402,11 +424,12 @@ export const ROTATIONAL_PERFORMANCE_INDEX: SeedQuiz = {
       branch: null,
       position: 120,
       prompt: "How often do you train rotational power specifically — not just playing your sport?",
+      // WORST FIRST, like Q1.
       options: [
-        { label: "More than 3 times a week", weight: 3 },
-        { label: "2 to 3 times a week", weight: 2 },
-        { label: "About once a week", weight: 1 },
         { label: "Never, not with any real intent", weight: 0 },
+        { label: "About once a week", weight: 1 },
+        { label: "2 to 3 times a week", weight: 2 },
+        { label: "More than 3 times a week", weight: 3 },
       ],
     },
 
