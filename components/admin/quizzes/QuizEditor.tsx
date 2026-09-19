@@ -238,6 +238,33 @@ export function QuizEditor({
     })
   }
 
+  /**
+   * Clears the "not reviewed" banner, and nothing else.
+   *
+   * A SEPARATE REQUEST FROM `save`, deliberately. Folding it into the main
+   * save would clear the flag every time the owner edited a headline, which
+   * is precisely the act the flag is supposed to outlast — the point is that
+   * somebody looked at the NUMBERS.
+   */
+  async function markReviewed() {
+    setBusy(true)
+    setMessage(null)
+    try {
+      const res = await fetch(`/api/admin/quizzes/${quiz.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ quiz: { seedMarker: null } }),
+      })
+      if (!res.ok) throw new Error("Could not mark it reviewed.")
+      setQuiz((q) => ({ ...q, seedMarker: null }))
+      setMessage("Scoring marked as reviewed.")
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not mark it reviewed.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function save(nextStatus?: QuizDefinition["status"]) {
     setBusy(true)
     setMessage(null)
@@ -442,11 +469,42 @@ export function QuizEditor({
         </div>
       </header>
 
+      {/* THE BANNER SAYS WHICH KIND OF UNREVIEWED IT IS, AND CAN BE DISMISSED.
+          Two bugs lived here. It hardcoded the GoHighLevel story, so a quiz
+          whose numbers were AUTHORED rather than reconstructed — the Rotational
+          Performance Index, written from the owner's own scoring document —
+          was told its weights came from field metadata, which is false. And
+          nothing cleared it: `seedMarker` is accepted by the PATCH route but
+          the save payload never sent it, so the doc comment claiming it clears
+          "the first time a human saves" was wrong and the warning was
+          permanent. A warning that cannot be dismissed stops being read. */}
       {quiz.seedMarker ? (
         <div className="rounded-lg border border-border bg-warning/10 px-4 py-3 text-sm">
-          <strong className="font-semibold">This quiz still carries reconstructed scoring.</strong> The weights and tier
-          cutoffs were rebuilt from GoHighLevel field metadata, not recovered — the original workflows exported without
-          them. Review them before trusting a result.
+          <div className="flex items-start justify-between gap-4">
+            <p>
+              {quiz.seedMarker.startsWith("reconstructed") ? (
+                <>
+                  <strong className="font-semibold">This quiz still carries reconstructed scoring.</strong> The weights
+                  and tier cutoffs were rebuilt from GoHighLevel field metadata, not recovered — the original workflows
+                  exported without them. Review them before trusting a result.
+                </>
+              ) : (
+                <>
+                  <strong className="font-semibold">This quiz&rsquo;s scoring has not been reviewed yet.</strong> The
+                  weights and tier cutoffs were drafted, not agreed. Check them against what you would score in person,
+                  then mark them reviewed.
+                </>
+              )}
+            </p>
+            <button
+              type="button"
+              className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface/50 disabled:opacity-50"
+              disabled={busy}
+              onClick={() => void markReviewed()}
+            >
+              Mark reviewed
+            </button>
+          </div>
         </div>
       ) : null}
 
