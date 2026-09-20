@@ -40,6 +40,12 @@ vi.mock("@/lib/db/contacts", () => ({
   findContactByIdentifiers: (...a: unknown[]) => findContactByIdentifiersMock(...a),
   findContactWithBusinessByIdentifiers: (...a: unknown[]) => findContactWithBusinessByIdentifiersMock(...a),
   getContactUserId: (...a: unknown[]) => getContactUserIdMock(...a),
+  // G06. A mock that omits a real export does not fail loudly — the
+  // call throws a TypeError inside the ingest's catch, and the tests
+  // that DO assert on the exit and the pipeline card go red for a
+  // reason that names neither. Kept a no-op: this file's subject is the
+  // card and the exit, not the timezone.
+  backfillContactTimezone: vi.fn(async () => false),
 }))
 vi.mock("@/lib/db/sequences", () => ({
   exitRunsForContact: (...a: unknown[]) => exitRunsForContactMock(...a),

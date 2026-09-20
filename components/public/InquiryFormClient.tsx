@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { browserTimezone } from "@/lib/browser-timezone"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
@@ -122,7 +123,8 @@ export function InquiryFormClient({
       const response = await fetch("/api/inquiry", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        // G06: the enquirer's own clock rides along with the form values.
+        body: JSON.stringify({ ...data, timezone: browserTimezone() }),
       })
 
       if (!response.ok) {

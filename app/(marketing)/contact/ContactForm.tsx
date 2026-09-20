@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { browserTimezone } from "@/lib/browser-timezone"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -53,7 +54,8 @@ export function ContactForm() {
       const response = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        // G06: the sender's own clock rides along with the form values.
+        body: JSON.stringify({ ...data, timezone: browserTimezone() }),
       })
 
       if (!response.ok) {

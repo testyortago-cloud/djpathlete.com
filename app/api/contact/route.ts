@@ -76,6 +76,7 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       name,
       businessId,
       attributionSessionId: parseAttrCookie(request.headers.get("cookie")),
+      timezone: result.data.timezone ?? null, // G06
     })
 
     // Find all admin users to notify

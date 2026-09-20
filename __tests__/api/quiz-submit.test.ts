@@ -186,6 +186,19 @@ describe("POST /api/quiz/submit", () => {
     )
   })
 
+  it("6. carries the submitted timezone onto the contact (G06)", async () => {
+    // Deletable with the suite green without this: a plain z.object STRIPS an
+    // unknown key, so removing the schema field discards the value silently.
+    await post({ timezone: "Pacific/Auckland" })
+    expect(recordContactEvent).toHaveBeenCalledWith(expect.objectContaining({ timezone: "Pacific/Auckland" }))
+  })
+
+  it("7. passes a null timezone when the quiz sent none", async () => {
+    await post()
+    const arg = recordContactEvent.mock.calls[0][0] as { timezone?: string | null }
+    expect(arg.timezone ?? null).toBeNull()
+  })
+
   it("5. records the contact event with source quiz and the metadata sequences filter on", async () => {
     await post()
     expect(recordContactEvent).toHaveBeenCalledWith(

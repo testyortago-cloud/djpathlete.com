@@ -36,6 +36,7 @@ import {
   Mail,
   MessageSquareText,
   Phone,
+  Clock,
   ShieldCheck,
   Workflow,
 } from "lucide-react"
@@ -182,6 +183,29 @@ export function ContactDetail({
             </a>
           ) : null}
           <span>Added {formatDay(contact.created_at)}</span>
+          {/*
+            G06. Their own timezone, which decides when the engine is allowed to
+            message them — quiet hours run on this, falling back to the
+            business clock when it is empty.
+
+            Shown because the value is written ONCE, from whatever device they
+            filled a form on, and never corrected afterwards. A lead on a
+            corporate VPN whose browser reports UTC is pinned to UTC for good,
+            and their 08:00-21:00 window becomes 04:00-17:00 where they
+            actually live. That is invisible unless it is on this screen — the
+            person just receives a message at 4am.
+          */}
+          {contact.timezone ? (
+            <span className="inline-flex items-center gap-1.5" title="Quiet hours follow this timezone">
+              <Clock className="size-3.5" aria-hidden />
+              {contact.timezone}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5" title="Quiet hours fall back to the business timezone">
+              <Clock className="size-3.5" aria-hidden />
+              Business timezone
+            </span>
+          )}
         </div>
 
         <div className="mt-4 border-t border-border pt-4">

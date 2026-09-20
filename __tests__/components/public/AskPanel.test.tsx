@@ -182,6 +182,10 @@ describe("AskPanel — the details card and its consent", () => {
       email: "",
       phone: "813-555-0117",
       marketingConsent: true,
+      // G06: the visitor's own timezone rides along, so their follow-up keeps
+      // their quiet hours. Whatever zone the test runner is in — asserting a
+      // literal here would pin the machine, not the behaviour.
+      timezone: expect.any(String),
     })
   })
 })

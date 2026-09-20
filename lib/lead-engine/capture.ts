@@ -64,6 +64,12 @@ export type CaptureLeadInput = {
    * fill-only, and falls back to an email match when it is absent.
    */
   userId?: string | null
+  /**
+   * The IANA zone the submitter's device reported (G06). Passed straight
+   * through to `RecordContactEventInput.timezone`; the DAL validates it and
+   * stores it fill-only.
+   */
+  timezone?: string | null
   attribution?: {
     gclid?: string | null
     gbraid?: string | null
@@ -98,6 +104,7 @@ export async function captureLead(input: CaptureLeadInput): Promise<string | nul
       businessId: input.businessId,
       attributionSessionId: input.attributionSessionId,
       userId: input.userId,
+      timezone: input.timezone,
       metadata: { ...(input.metadata ?? {}), ...(input.attribution ?? {}) },
     })
     return contactId

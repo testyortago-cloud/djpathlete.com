@@ -27,6 +27,23 @@ describe("funnel submit → contact spine", () => {
     )
   })
 
+  it("carries the submitted timezone through the bridge (G06)", async () => {
+    // Without this the bridge's `timezone` parameter and the submit route's
+    // schema field are both deletable with the suite green — a plain z.object
+    // STRIPS an unknown key rather than erroring, so the value just vanishes.
+    const { captureContactFromSubmission } = await import("@/lib/funnels/capture-contact")
+    await captureContactFromSubmission({
+      name: "Marissa",
+      email: "marissa@example.com",
+      phone: null,
+      attributionSessionId: null,
+      payload: {},
+      businessId: "platform-biz",
+      timezone: "Pacific/Auckland",
+    })
+    expect(recordContactEvent).toHaveBeenCalledWith(expect.objectContaining({ timezone: "Pacific/Auckland" }))
+  })
+
   it("never throws when the contact write fails — the submission still stands", async () => {
     recordContactEvent.mockRejectedValueOnce(new Error("PGRST204 column missing"))
     const { captureContactFromSubmission } = await import("@/lib/funnels/capture-contact")

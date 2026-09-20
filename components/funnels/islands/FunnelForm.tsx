@@ -28,6 +28,7 @@
 // semantic hooks and nothing about them changed.
 
 import { Fragment, useRef, useState, type FormEvent, type ReactNode } from "react"
+import { browserTimezone } from "@/lib/browser-timezone"
 import type { FunnelFormField } from "@/lib/funnels/islands"
 
 interface FunnelFormProps {
@@ -200,6 +201,9 @@ export function FunnelForm({
           website: String(formData.get("website") ?? ""),
           elapsedMs: Date.now() - mountedAt.current,
           sms_consent: smsConsent,
+          // G06: this visitor's own clock, so their follow-up respects their
+          // morning rather than the coach's.
+          timezone: browserTimezone(),
         }),
       })
 

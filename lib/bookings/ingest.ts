@@ -37,7 +37,7 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import { findAttributionForContact } from "@/lib/db/marketing-attribution"
 import { enqueueBookingConversion } from "@/lib/ads/conversions"
 import { recordAudit } from "@/lib/audit/record"
-import { findContactByIdentifiers, getContactUserId } from "@/lib/db/contacts"
+import { findContactByIdentifiers, getContactUserId, backfillContactTimezone } from "@/lib/db/contacts"
 import { exitRunsForContact } from "@/lib/db/sequences"
 import { applyPipelineEvent } from "@/lib/db/pipeline"
 import { routeToPipeline } from "@/lib/lead-engine/pipeline-route"
@@ -357,6 +357,25 @@ async function runContactConsequences(ctx: IngestCtx, input: BookingIngestInput)
   } catch (err) {
     console.error(`${ctx.log} sequence/pipeline hook failed`, (err as Error).message)
   }
+
+  // G06, and DELIBERATELY IN ITS OWN TRY, AFTER the two above. Calendly
+  // reports the invitee's OWN timezone and they picked a slot in it — a
+  // better signal than any form's, and a booking is the one entry point that
+  // reaches someone who never filled a form. But it is the least important
+  // thing on this path: inside the block above it would run BEFORE the
+  // sequence exit, so a fault here would cost a paying customer their exit
+  // and their pipeline card to save a scheduling nicety. Three webhook suites
+  // caught exactly that when this call was first written one line higher up.
+  //
+  // Fill-only, enforced in the update's WHERE — see `backfillContactTimezone`.
+  if (contactId && input.inviteeTimezone) {
+    try {
+      await backfillContactTimezone(contactId, input.inviteeTimezone, input.businessId)
+    } catch (err) {
+      console.error(`${ctx.log} contact timezone backfill failed`, (err as Error).message)
+    }
+  }
+
   return contactId
 }
 

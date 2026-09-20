@@ -9,6 +9,7 @@ const older: MatchCandidate = {
   created_at: "2026-01-01T00:00:00Z",
   first_touch_session_id: null,
   user_id: null,
+  timezone: null,
 }
 const newer: MatchCandidate = {
   id: "22222222-2222-2222-2222-222222222222",
@@ -17,6 +18,7 @@ const newer: MatchCandidate = {
   created_at: "2026-06-01T00:00:00Z",
   first_touch_session_id: null,
   user_id: null,
+  timezone: null,
 }
 
 describe("decideMerge", () => {
@@ -70,6 +72,7 @@ describe("decideMerge", () => {
       created_at: "2025-01-01T00:00:00Z",
       first_touch_session_id: null,
       user_id: null,
+      timezone: null,
     }
     expect(decideMerge([unrelated], "new@example.com", null)).toEqual({ kind: "create" })
   })
@@ -89,6 +92,7 @@ describe("decideMerge", () => {
       created_at: "2026-02-01T00:00:00Z",
       first_touch_session_id: null,
       user_id: null,
+      timezone: null,
     }
     expect(decideMerge([phoneOnly], null, "+16176504548")).toEqual({ kind: "create" })
   })
@@ -101,6 +105,7 @@ describe("decideMerge", () => {
       created_at: "2026-03-01T00:00:00Z",
       first_touch_session_id: null,
       user_id: null,
+      timezone: null,
     }
     const sameTime2: MatchCandidate = {
       id: "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz",
@@ -109,6 +114,7 @@ describe("decideMerge", () => {
       created_at: "2026-03-01T00:00:00Z",
       first_touch_session_id: null,
       user_id: null,
+      timezone: null,
     }
     expect(decideMerge([sameTime1, sameTime2], "test@example.com", "+11234567890")).toEqual({
       kind: "merge",
@@ -125,6 +131,7 @@ describe("decideMerge", () => {
       created_at: "2026-03-01T00:00:00Z",
       first_touch_session_id: null,
       user_id: null,
+      timezone: null,
     }
     const sameTime2: MatchCandidate = {
       id: "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz",
@@ -133,6 +140,7 @@ describe("decideMerge", () => {
       created_at: "2026-03-01T00:00:00Z",
       first_touch_session_id: null,
       user_id: null,
+      timezone: null,
     }
     expect(decideMerge([sameTime2, sameTime1], "test@example.com", "+11234567890")).toEqual({
       kind: "merge",

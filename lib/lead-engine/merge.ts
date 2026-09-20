@@ -36,6 +36,15 @@ export type MatchCandidate = {
    * same kind of test ("selects user_id in BOTH match queries").
    */
   user_id: string | null
+  /**
+   * Same contract as the two above, for the contact's own timezone (G06):
+   * carried so `upsertContactIdentity` can tell whether the row it is about
+   * to update already has one before filling it in. Unlike those two,
+   * `merge_contacts` does NOT move this column, so on the merge branch the
+   * survivor's value is simply its own — the candidate is read there to
+   * rescue the LOSER's zone before the row is destroyed.
+   */
+  timezone: string | null
 }
 
 export type MergeDecision =

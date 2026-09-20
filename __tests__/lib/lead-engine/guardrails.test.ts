@@ -7,8 +7,55 @@ import {
   dailyCapDefer,
   siblingRunDefer,
 } from "@/lib/lead-engine/guardrails"
+import { isUsableTimezone } from "@/lib/timezones"
 
 const QUIET = { startHour: 8, endHour: 21 }
+
+// G06 (ledger 2026-09-19, D8). `resolveTimezone` has always preferred the
+// contact's own zone — but nothing ever WROTE `contacts.timezone` (0 of 170 on
+// production), so the fallback was the only branch that ever ran and every
+// contact was quiet-houred on the coach's New York clock. This is the whole
+// point of giving the column a writer, stated as the behaviour a person feels.
+describe("quiet hours in the contact's own timezone (G06)", () => {
+  it("defers a 07:30 send for a contact in Auckland, while the business clock says mid-morning", () => {
+    // 2026-08-18T19:30Z is 07:30 the NEXT morning in Auckland (UTC+12) and
+    // 15:30 the same afternoon in New York.
+    const instant = new Date("2026-08-18T19:30:00Z")
+
+    const deferred = quietHoursDefer(instant, resolveTimezone("Pacific/Auckland", "America/New_York"), QUIET)
+    expect(deferred).not.toBeNull()
+    // It waits for THEIR 08:00, half an hour away — not a whole day.
+    expect(deferred!.toISOString()).toBe("2026-08-18T20:00:00.000Z")
+
+    // The control: the same instant, same business, for a contact with no
+    // timezone of their own. This is what every contact on production got
+    // before G06 — sent immediately, at 07:30 their time.
+    expect(quietHoursDefer(instant, resolveTimezone(null, "America/New_York"), QUIET)).toBeNull()
+  })
+})
+
+describe("isUsableTimezone", () => {
+  it("accepts a real IANA zone", () => {
+    expect(isUsableTimezone("Pacific/Auckland")).toBe(true)
+    expect(isUsableTimezone("America/New_York")).toBe(true)
+    expect(isUsableTimezone("UTC")).toBe(true)
+  })
+
+  it("rejects a zone Intl cannot parse, which is what would throw inside the tick", () => {
+    expect(isUsableTimezone("Mars/Olympus_Mons")).toBe(false)
+    expect(isUsableTimezone("Not A Zone")).toBe(false)
+    expect(isUsableTimezone("")).toBe(false)
+  })
+
+  it("agrees with what quietHoursDefer can actually consume", () => {
+    // The two must not disagree: anything this says is usable has to survive
+    // the reader, or the validation is theatre.
+    for (const tz of ["Pacific/Auckland", "America/New_York", "Europe/Lisbon", "UTC"]) {
+      expect(isUsableTimezone(tz)).toBe(true)
+      expect(() => quietHoursDefer(new Date("2026-08-18T19:30:00Z"), tz, QUIET)).not.toThrow()
+    }
+  })
+})
 
 describe("resolveTimezone", () => {
   it("prefers the contact's timezone", () => {

@@ -17,6 +17,7 @@
 // React's text escaping. A test asserts the source contains no such call.
 
 import { useCallback, useMemo, useState } from "react"
+import { browserTimezone } from "@/lib/browser-timezone"
 import type { PublicQuizDefinition, PublicQuizQuestion } from "@/lib/quizzes/public-definition"
 
 export interface QuizResultView {
@@ -185,6 +186,12 @@ export function QuizRunner({
                 smsConsent,
                 website,
                 elapsedMs: Date.now() - startedAt,
+                // G06. Deliberately NOT on the test-run branch above, which
+                // writes nothing. Its route would not complain either way — a
+                // plain z.object STRIPS unknown keys rather than rejecting
+                // them — so keeping it off that branch is the only thing that
+                // keeps the preview body honest about what it sends.
+                timezone: browserTimezone(),
               },
         ),
       })

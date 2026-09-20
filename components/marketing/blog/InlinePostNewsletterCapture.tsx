@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { browserTimezone } from "@/lib/browser-timezone"
 import { Loader2, Check, AlertCircle } from "lucide-react"
 
 type Status = "idle" | "submitting" | "success" | "error"
@@ -24,6 +25,7 @@ export function InlinePostNewsletterCapture() {
           consent_marketing: true,
           source: "blog_inline",
           consent_context: "inline",
+          timezone: browserTimezone(), // G06
         }),
       })
       if (!res.ok) {

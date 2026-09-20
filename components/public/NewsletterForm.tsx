@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { browserTimezone } from "@/lib/browser-timezone"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -24,7 +25,12 @@ export function NewsletterForm() {
       const response = await fetch("/api/newsletter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, consent_marketing: consent, consent_context: "checkbox" }),
+        body: JSON.stringify({
+          email,
+          consent_marketing: consent,
+          consent_context: "checkbox",
+          timezone: browserTimezone(), // G06
+        }),
       })
 
       if (!response.ok) {

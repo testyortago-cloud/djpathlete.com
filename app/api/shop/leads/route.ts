@@ -59,6 +59,7 @@ export async function POST(req: Request) {
     metadata: { product_id },
     businessId,
     attributionSessionId: parseAttrCookie(req.headers.get("cookie")),
+    timezone: parsed.data.timezone ?? null, // G06
   })
 
   try {

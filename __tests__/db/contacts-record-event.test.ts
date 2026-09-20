@@ -236,7 +236,7 @@ vi.mock("@/lib/lead-engine/merge", async (importOriginal) => {
   }
 })
 
-import { recordContactEvent, mergeContacts, linkContactsToUser } from "@/lib/db/contacts"
+import { recordContactEvent, mergeContacts, linkContactsToUser, backfillContactTimezone } from "@/lib/db/contacts"
 import { decideMerge } from "@/lib/lead-engine/merge"
 
 beforeEach(() => {
@@ -952,6 +952,279 @@ describe("recordContactEvent — linking the contact to the person's account (G0
     expect(contactSelects).toHaveLength(2)
     for (const sel of contactSelects) {
       expect(sel.columns).toContain("user_id")
+    }
+  })
+})
+
+// G06 (ledger 2026-09-19, D8): `contacts.timezone` has a READER and no writer.
+// `resolveTimezone` (lib/lead-engine/guardrails.ts) prefers the contact's own
+// zone and falls back to the business default — and on production 0 of 170
+// contacts had one, so quiet hours were New York time for a lead in Auckland.
+// Fill-only for the same reason as the account link: a person's timezone comes
+// from the device they filled a form on, and a later submission from a laptop
+// in an airport must not overwrite where they actually live.
+describe("recordContactEvent — storing the contact's own timezone (G06)", () => {
+  const BIZ = "00000000-0000-0000-0000-000000000001"
+
+  it("stores a submitted IANA timezone on a new contact", async () => {
+    await recordContactEvent({
+      email: "tz@example.com",
+      source: "funnel_form",
+      businessId: BIZ,
+      timezone: "Pacific/Auckland",
+    })
+
+    expect(state.rows[0].timezone).toBe("Pacific/Auckland")
+  })
+
+  it("leaves timezone null when the form sent none", async () => {
+    await recordContactEvent({ email: "notz@example.com", source: "funnel_form", businessId: BIZ })
+
+    expect(state.rows[0].timezone).toBeNull()
+  })
+
+  it("refuses a timezone that names no real zone, rather than storing junk", async () => {
+    // A reader passes this straight to Intl; an unparseable zone would throw
+    // inside the tick and FAIL the run (visible, but it costs the send). The
+    // contact is still captured — a bad timezone must never cost the lead.
+    await recordContactEvent({
+      email: "junk@example.com",
+      source: "funnel_form",
+      businessId: BIZ,
+      timezone: "Mars/Olympus_Mons",
+    })
+
+    expect(state.rows).toHaveLength(1)
+    expect(state.rows[0].timezone).toBeNull()
+  })
+
+  it("backfills a timezone onto an existing contact that has none (update branch)", async () => {
+    state.rows.push({
+      id: "existing-tz",
+      business_id: BIZ,
+      email: "fill@example.com",
+      phone_e164: null,
+      user_id: null,
+      timezone: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+
+    await recordContactEvent({
+      email: "fill@example.com",
+      source: "quiz",
+      businessId: BIZ,
+      timezone: "Europe/Lisbon",
+    })
+
+    expect(state.rows.find((r) => r.id === "existing-tz").timezone).toBe("Europe/Lisbon")
+  })
+
+  it("never overwrites a timezone already on file", async () => {
+    state.rows.push({
+      id: "settled-tz",
+      business_id: BIZ,
+      email: "settled@example.com",
+      phone_e164: null,
+      user_id: null,
+      timezone: "Pacific/Auckland",
+      created_at: "2020-01-01T00:00:00Z",
+    })
+
+    await recordContactEvent({
+      email: "settled@example.com",
+      source: "quiz",
+      businessId: BIZ,
+      timezone: "America/New_York",
+    })
+
+    expect(state.rows.find((r) => r.id === "settled-tz").timezone).toBe("Pacific/Auckland")
+  })
+
+  it("on a merge, the survivor keeps its own timezone — the loser's does not win", async () => {
+    // The merge rule had NO test: deleting the whole `timezonePatch` line from
+    // the merge branch left every suite green, because no existing fixture
+    // seeds a timezone on either row. `merge_contacts` does not move this
+    // column (unlike user_id), so the survivor's own value is simply its own.
+    state.rows.push({
+      id: "survivor-tz",
+      business_id: BIZ,
+      email: "survivor@example.com",
+      phone_e164: "+16176504548",
+      user_id: null,
+      timezone: "Pacific/Auckland",
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.rows.push({
+      id: "loser-tz",
+      business_id: BIZ,
+      email: "loser@example.com",
+      phone_e164: null,
+      user_id: null,
+      timezone: "Asia/Dubai",
+      created_at: "2021-01-01T00:00:00Z",
+    })
+
+    const out = await recordContactEvent({
+      email: "loser@example.com",
+      phone: "617-650-4548",
+      source: "inquiry",
+      businessId: BIZ,
+    })
+
+    expect(out.merged).toBe(true)
+    expect(state.rows.find((r) => r.id === "survivor-tz").timezone).toBe("Pacific/Auckland")
+  })
+
+  it("on a merge, rescues the LOSER's timezone when the survivor has none", async () => {
+    // The other half. `merge_contacts` does not carry this column, so the
+    // loser's zone is about to be destroyed with its row — it is the same kind
+    // of evidence as the submission (a real device on a real form), so it is
+    // worth keeping when the survivor has nothing and the submission brought
+    // nothing.
+    state.rows.push({
+      id: "survivor-blank",
+      business_id: BIZ,
+      email: "blank@example.com",
+      phone_e164: "+16176504548",
+      user_id: null,
+      timezone: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.rows.push({
+      id: "loser-lisbon",
+      business_id: BIZ,
+      email: "lisbon@example.com",
+      phone_e164: null,
+      user_id: null,
+      timezone: "Europe/Lisbon",
+      created_at: "2021-01-01T00:00:00Z",
+    })
+
+    const out = await recordContactEvent({
+      email: "lisbon@example.com",
+      phone: "617-650-4548",
+      source: "inquiry",
+      businessId: BIZ,
+    })
+
+    expect(out.merged).toBe(true)
+    expect(state.rows.find((r) => r.id === "survivor-blank").timezone).toBe("Europe/Lisbon")
+  })
+
+  it("on a merge, a JUNK submitted zone does not destroy the loser's good one", async () => {
+    // `??` on the submission would stop at a non-null junk value, which
+    // `timezonePatch` then rejects — losing the loser's real zone for nothing.
+    state.rows.push({
+      id: "survivor-junk",
+      business_id: BIZ,
+      email: "junksurv@example.com",
+      phone_e164: "+16176504548",
+      user_id: null,
+      timezone: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.rows.push({
+      id: "loser-good",
+      business_id: BIZ,
+      email: "goodtz@example.com",
+      phone_e164: null,
+      user_id: null,
+      timezone: "Europe/Lisbon",
+      created_at: "2021-01-01T00:00:00Z",
+    })
+
+    await recordContactEvent({
+      email: "goodtz@example.com",
+      phone: "617-650-4548",
+      source: "inquiry",
+      businessId: BIZ,
+      timezone: "Mars/Olympus_Mons",
+    })
+
+    expect(state.rows.find((r) => r.id === "survivor-junk").timezone).toBe("Europe/Lisbon")
+  })
+
+  it("backfillContactTimezone fills a contact from a booking, fill-only in the WHERE", async () => {
+    // The Calendly half. Fill-only is enforced by `.is("timezone", null)` in
+    // the update rather than by reading first, so what this pins is that the
+    // predicate is actually applied — an update that reached the row without
+    // it would overwrite a zone already on file.
+    state.rows.push({
+      id: "booked-contact",
+      business_id: BIZ,
+      email: "booked@example.com",
+      phone_e164: null,
+      user_id: null,
+      timezone: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+
+    const filled = await backfillContactTimezone("booked-contact", "Pacific/Auckland", BIZ)
+
+    expect(filled).toBe(true)
+    expect(state.rows.find((r) => r.id === "booked-contact").timezone).toBe("Pacific/Auckland")
+  })
+
+  it("backfillContactTimezone never overwrites a timezone already on file", async () => {
+    // The case that actually needs `.is("timezone", null)` in the WHERE. The
+    // fill test above passes with or without the predicate, because its row
+    // is null either way — mutation found exactly that gap. Someone who told
+    // a form they live in Auckland, then books a slot while travelling, must
+    // not be moved to the airport's timezone.
+    state.rows.push({
+      id: "already-tz",
+      business_id: BIZ,
+      email: "settledtz@example.com",
+      phone_e164: null,
+      user_id: null,
+      timezone: "Pacific/Auckland",
+      created_at: "2020-01-01T00:00:00Z",
+    })
+
+    const filled = await backfillContactTimezone("already-tz", "Asia/Dubai", BIZ)
+
+    expect(filled).toBe(false)
+    expect(state.rows.find((r) => r.id === "already-tz").timezone).toBe("Pacific/Auckland")
+  })
+
+  it("backfillContactTimezone refuses a zone Intl cannot parse, without touching the row", async () => {
+    state.rows.push({
+      id: "junk-tz-contact",
+      business_id: BIZ,
+      email: "junktz@example.com",
+      phone_e164: null,
+      user_id: null,
+      timezone: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+
+    const filled = await backfillContactTimezone("junk-tz-contact", "Mars/Olympus_Mons", BIZ)
+
+    expect(filled).toBe(false)
+    expect(state.rows.find((r) => r.id === "junk-tz-contact").timezone).toBeNull()
+  })
+
+  it("backfillContactTimezone does nothing when the booking carried no timezone", async () => {
+    const filled = await backfillContactTimezone("anything", null, BIZ)
+    expect(filled).toBe(false)
+  })
+
+  it("selects timezone in BOTH match queries, not just one", async () => {
+    // Same reasoning as the user_id and first_touch_session_id projection
+    // tests: a column missing from either projection reads as `undefined`,
+    // which the fill-only guard cannot tell from "no timezone on file", and
+    // the next submission would overwrite where this person really lives.
+    await recordContactEvent({
+      email: "tzprojection@example.com",
+      phone: "617-650-4548",
+      source: "newsletter",
+      businessId: BIZ,
+    })
+
+    const contactSelects = state.selects.filter((s) => s.table === "contacts")
+    expect(contactSelects).toHaveLength(2)
+    for (const sel of contactSelects) {
+      expect(sel.columns).toContain("timezone")
     }
   })
 })

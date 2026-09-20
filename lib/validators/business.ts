@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { isUsableTimezone } from "@/lib/timezones"
 import { permissionMapSchema } from "@/lib/validators/team-invite"
 
 /**
@@ -22,20 +23,12 @@ export function slugify(name: string): string {
     .slice(0, 63)
 }
 
-/**
- * A timezone is free text that reaches `toLocaleString` several layers away,
- * where an invalid IANA zone throws RangeError -- the exact fault phase 0's
- * timezone wrapper exists to contain. Validate it here, at the edge, by asking
- * Intl whether it accepts the zone.
- */
-function isValidTimezone(tz: string): boolean {
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: tz })
-    return true
-  } catch {
-    return false
-  }
-}
+// A timezone is free text that reaches `toLocaleString` several layers away,
+// where an invalid IANA zone throws RangeError. Validated here, at the edge:
+// an operator picking their own business timezone is CHOOSING, so a wrong one
+// is worth rejecting the payload over. (A lead's browser-reported zone is a
+// different question with a different answer — see lib/db/contacts.ts.)
+const isValidTimezone = isUsableTimezone
 
 export const businessCreateSchema = z.object({
   name: z.string().trim().min(1, "Give the business a name").max(120),
