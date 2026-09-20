@@ -45,6 +45,7 @@
 //   superseded_by_merged_run  supabase/migrations/00238_merge_contacts_carries_tags.sql
 //   sequence_edited           supabase/migrations/00256_sequence_management.sql
 //   manual                    scripts/exit-sequence-run.mjs (a human, by hand)
+//   superseded                lib/lead-engine/enroll.ts (G14, `supersedeRuns`)
 //
 // The three "stop contacting me" reasons (unsubscribed / sms_stop /
 // suppressed) get three different sentences, on purpose, even though the list
@@ -65,6 +66,12 @@ const KNOWN_REASONS: Record<string, string> = {
   superseded_by_merged_run: "They were already in this sequence under another record.",
   sequence_edited: "Stopped because the sequence was edited",
   manual: "Taken out by hand",
+  // G14. Distinct from `superseded_by_merged_run` above, which is about two
+  // records for one person being merged. This one is about the PERSON doing
+  // something newer — taking the quiz, sending an application, abandoning a
+  // checkout, signing up for a camp — which started a follow-up that fits
+  // them better than the one they were on.
+  superseded: "Stopped because they did something that started a better-matching follow-up",
 }
 
 /**

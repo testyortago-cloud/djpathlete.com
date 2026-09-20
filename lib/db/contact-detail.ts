@@ -46,7 +46,7 @@
 // provably this contact's, the same way a payment is skipped rather than
 // guessed at when `contact.user_id` is null just below.
 
-import { ENROLMENT_SKIPPED_TIMELINE_KIND } from "@/lib/lead-engine/enroll"
+import { ENROLMENT_SKIPPED_TIMELINE_KIND, ENROLMENT_SKIP_REASONS } from "@/lib/lead-engine/enroll"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { maskEmail, maskPhone } from "@/lib/lead-engine/mask"
 import { isMissingTagsTable } from "@/lib/db/contact-tags"
@@ -318,17 +318,56 @@ export function describeTimelineEvent(row: TimelineEventRow): {
       }
     }
 
-    // lib/lead-engine/enroll.ts writes this when a trigger fired for someone
-    // who finished the same sequence inside its cooldown (migration 00263).
+    // lib/lead-engine/enroll.ts writes this whenever a trigger fired and did
+    // NOT start a sequence. Three reasons reach here; they are three
+    // different things to a coach, so they get three different sentences.
+    // Keyed on `meta.reason` (ENROLMENT_SKIP_REASONS), not on which other
+    // fields happen to be present — the cooldown arm used to be the only one
+    // and read `cooldown_days` directly, so a row without it silently lost
+    // its explanation.
     case ENROLMENT_SKIPPED_TIMELINE_KIND: {
       const name = asString(meta.sequence_name)
-      const days = typeof meta.cooldown_days === "number" ? meta.cooldown_days : null
+      const reason = asString(meta.reason)
+
+      if (reason === ENROLMENT_SKIP_REASONS.alreadyInASequence) {
+        const blocking = asString(meta.blocking_sequence_name) ?? asString(meta.blocking_sequence_key)
+        return {
+          title: name ? `Not started on “${name}”` : "Not started on a sequence",
+          detail: blocking
+            ? `They were already partway through “${blocking}”, and only one follow-up runs at a time.`
+            : "They were already partway through another follow-up, and only one runs at a time.",
+          tone: "neutral",
+        }
+      }
+
+      if (reason === ENROLMENT_SKIP_REASONS.alreadyEnrolledThisEvent) {
+        return {
+          title: name ? `Not started on “${name}”` : "Not started on a sequence",
+          detail: "The same action had already started a different follow-up for them.",
+          tone: "neutral",
+        }
+      }
+
+      if (reason === ENROLMENT_SKIP_REASONS.cooldown) {
+        const days = typeof meta.cooldown_days === "number" ? meta.cooldown_days : null
+        return {
+          title: name ? `Not put back into “${name}”` : "Not put back into a sequence",
+          detail:
+            days !== null
+              ? `They finished it within the last ${days === 1 ? "day" : `${days} days`}, so this trigger did not start it again.`
+              : null,
+          tone: "neutral",
+        }
+      }
+
+      // A reason a later row invents, or a row written before reasons
+      // existed. Says only what is certainly true. It must NOT fall into
+      // the cooldown wording above: "Not put back into X" asserts they had
+      // been in it and finished it recently, and a coach reading that about
+      // some other refusal is being told something specific and wrong.
       return {
-        title: name ? `Not put back into “${name}”` : "Not put back into a sequence",
-        detail:
-          days !== null
-            ? `They finished it within the last ${days === 1 ? "day" : `${days} days`}, so this trigger did not start it again.`
-            : null,
+        title: name ? `Not started on “${name}”` : "Not started on a sequence",
+        detail: null,
         tone: "neutral",
       }
     }

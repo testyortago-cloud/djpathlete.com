@@ -113,6 +113,17 @@ export const OUTCOME_BUCKETS: readonly OutcomeBucket[] = [
  * branch for it no matter what this set contains; that separation is the
  * point, not an accident, because reporting an edited-away follow-up as one
  * that reached the end is the exact lie this whole feature exists to prevent.
+ *
+ * A FOURTH, added by G14 (2026-09-20), written by TypeScript:
+ *
+ *   superseded   lib/lead-engine/enroll.ts (`supersedeRuns`)
+ *
+ * Written when the person did something newer — took the quiz, sent an
+ * application, abandoned a checkout, signed up for a camp — and that started
+ * a follow-up which replaced the one they were on. It gets no bucket of its
+ * own for the same reason as the three above: the follow-up did not produce
+ * an outcome, it was interrupted. `other` is the honest answer, and reporting
+ * it as `finished` would inflate every completion rate on the screen.
  */
 const OPTED_OUT_REASONS = new Set(["unsubscribed", "sms_stop", "suppressed"])
 

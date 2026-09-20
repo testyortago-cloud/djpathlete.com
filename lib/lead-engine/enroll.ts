@@ -7,6 +7,7 @@
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { ContactEventSource } from "@/lib/db/contacts"
 import { pickEnrolmentMetadata, type EnrolmentMetadata } from "@/lib/lead-engine/enrolment-metadata"
+import { exitRun } from "@/lib/db/sequences"
 
 function getClient() {
   return createServiceRoleClient()
@@ -34,11 +35,94 @@ type CandidateSequence = {
 export const DEFAULT_REENROL_COOLDOWN_DAYS = 30
 
 /**
- * Timeline kind written when a trigger is refused by the cooldown, so the
- * refusal shows on the contact's record instead of vanishing. `source` is
- * `sequence_engine`, the same source the tick uses for `sequence_tag_applied`.
+ * Timeline kind written when a trigger fires and does NOT start a sequence,
+ * so the refusal shows on the contact's record instead of vanishing. Three
+ * reasons reach it (`ENROLMENT_SKIP_REASONS`), not just the cooldown it was
+ * introduced for. `source` is `sequence_engine`, the same source the tick
+ * uses for `sequence_tag_applied`.
  */
 export const ENROLMENT_SKIPPED_TIMELINE_KIND = "enrolment_skipped"
+
+/**
+ * Why a trigger did not start a sequence. Written to
+ * `contact_timeline_events.metadata.reason` on an
+ * `ENROLMENT_SKIPPED_TIMELINE_KIND` row, and switched on by
+ * `lib/db/contact-detail.ts` to choose the sentence a coach reads. Exported
+ * so the two cannot drift into a row the screen has no wording for.
+ */
+export const ENROLMENT_SKIP_REASONS = {
+  /** G01: they finished this same sequence inside its re-enrolment cooldown. */
+  cooldown: "cooldown",
+  /** G14: they are already partway through a different sequence. */
+  alreadyInASequence: "already_in_a_sequence",
+  /** G14: a second sequence matched the SAME event; one event, one sequence. */
+  alreadyEnrolledThisEvent: "already_enrolled_this_event",
+} as const
+
+export type EnrolmentSkipReason = (typeof ENROLMENT_SKIP_REASONS)[keyof typeof ENROLMENT_SKIP_REASONS]
+
+/**
+ * G14 — "nobody is in two sequences at once", option B, the owner's decision
+ * on 2026-09-20.
+ *
+ * THE SOURCES THAT MAY INTERRUPT A FOLLOW-UP ALREADY IN FLIGHT. Each one is
+ * a direct, deliberate act by the person in the last few seconds — they took
+ * the quiz, sent an application, abandoned a checkout, signed up for a camp
+ * — so what they just did is more relevant than whatever they were being
+ * sent before, and the older run is exited `superseded`.
+ *
+ * A trigger NOT on this list is refused instead: subscribing to the
+ * newsletter or filling a funnel form while already mid-sequence is not a
+ * reason to throw away the follow-up they are already receiving.
+ *
+ * `event_signup` is here on the owner's explicit call and is NOT in the
+ * ledger row's own list of three. Without it, someone already in
+ * `newsletter_welcome` who signs up for a camp is REFUSED
+ * `camp_clinic_deadline` — so they never receive "About the camp you asked
+ * about" or any of its deadline reminders, and keep getting newsletter copy
+ * instead. That is the one refusal case that leaves a person in the wrong
+ * sequence entirely rather than merely missing a nicety.
+ *
+ * Deliberately NOT here: `lead_magnet`. Its sequence opens with a wait and
+ * then "Did the guide answer what you were looking for?" — a follow-up, not
+ * the download itself, which is delivered elsewhere. Missing it costs a
+ * nudge, not the thing the person asked for. Checked against production
+ * rather than assumed.
+ *
+ * A RECORD OVER THE UNION, not a `Set<string>` — the same trick
+ * `IS_PURCHASE_SOURCE` (lib/db/contacts.ts) uses for the same reason. A
+ * `Set` catches neither a typo, which would silently never supersede, nor a
+ * source added to `ContactEventSource` later, which would quietly default to
+ * "refuses". Here, adding one without deciding is a compile error.
+ */
+export const IS_SUPERSEDING_SOURCE: Record<ContactEventSource, boolean> = {
+  quiz: true,
+  inquiry: true,
+  checkout_abandoned: true,
+  event_signup: true,
+
+  funnel_form: false,
+  funnel_checkout: false,
+  contact_form: false,
+  newsletter: false,
+  lead_magnet: false,
+  shop: false,
+  assessment: false,
+  questionnaire: false,
+  step_up: false,
+  ai_chat: false,
+  purchase: false,
+}
+
+/** The same decision as a set, for the places that only need membership. */
+export const SUPERSEDING_SOURCES: ReadonlySet<string> = new Set(
+  Object.entries(IS_SUPERSEDING_SOURCE)
+    .filter(([, supersedes]) => supersedes)
+    .map(([source]) => source),
+)
+
+/** `sequence_runs.exit_reason` written to the run this trigger replaced. */
+export const SUPERSEDED_EXIT_REASON = "superseded"
 
 /**
  * True when this contact has a run of this sequence that COMPLETED or EXITED
@@ -62,30 +146,58 @@ async function hasRunFinishedWithin(args: {
   sequenceId: string
   contactId: string
   days: number
+  /**
+   * G14. True when the trigger now firing is itself one that supersedes.
+   * Decides whether a `superseded` run is forgiven — see the check below.
+   */
+  triggerSupersedes: boolean
 }): Promise<boolean> {
   const { data, error } = await args.supabase
     .from("sequence_runs")
-    .select("id, status, updated_at, completed_at")
+    .select("id, status, exit_reason, updated_at, completed_at")
     .eq("business_id", args.businessId)
     .eq("sequence_id", args.sequenceId)
     .eq("contact_id", args.contactId)
   if (error) throw error
 
   const cutoff = Date.now() - args.days * 24 * 60 * 60 * 1000
-  return ((data ?? []) as Array<{ status: string; updated_at?: string | null; completed_at?: string | null }>).some(
-    (run) => {
-      if (run.status !== "completed" && run.status !== "exited") return false
-      // `completed_at` first: it is the moment the run ended. `updated_at`
-      // is the fallback because the merge RPC (migrations 00217/00220/00238)
-      // exits the lagging run with `updated_at = now()` and no
-      // `completed_at` at all — without the fallback a merged-away run would
-      // never count, and a plain `updated_at` alone would be wrong for a run
-      // touched again after it finished.
-      const finishedAt = run.completed_at ?? run.updated_at
-      if (!finishedAt) return false
-      return new Date(finishedAt).getTime() >= cutoff
-    },
-  )
+  return (
+    (data ?? []) as Array<{
+      status: string
+      exit_reason?: string | null
+      updated_at?: string | null
+      completed_at?: string | null
+    }>
+  ).some((run) => {
+    if (run.status !== "completed" && run.status !== "exited") return false
+    // G14, and the same reasoning the `failed` exclusion above already
+    // carries: a run that did not end of its OWN accord must not also lock
+    // the person out of the sequence. A `superseded` run was cut short by
+    // us, because they did something newer — so someone who subscribes,
+    // takes the quiz a day later, and subscribes again a week after that
+    // would otherwise have asked for the newsletter twice and been refused
+    // both times by a run they never opted out of.
+    //
+    // BUT ONLY FOR A TRIGGER THAT DOES NOT ITSELF SUPERSEDE, or the two
+    // rules cancel each other and this function stops braking anything.
+    // Without the second half: someone in `abandoned_checkout` takes the
+    // quiz (run superseded), abandons another checkout a week later, and is
+    // re-enrolled into `abandoned_checkout` from step 1 INSIDE its 30-day
+    // window — which is the incident this function was written for, back
+    // through a door G14 opened. The forgiving case is a person asking
+    // again for something ordinary (the newsletter); the dangerous case is
+    // a chaser re-arming itself.
+    if (run.exit_reason === SUPERSEDED_EXIT_REASON && !args.triggerSupersedes) return false
+    // `completed_at` first: it is the moment the run ended. `updated_at`
+    // is the fallback because the merge RPC (migrations 00217/00220/00238)
+    // exits the lagging run with `updated_at = now()` and no
+    // `completed_at` at all — without the fallback a merged-away run would
+    // never count, and a plain `updated_at` alone would be wrong for a run
+    // touched again after it finished.
+    const finishedAt = run.completed_at ?? run.updated_at
+    if (!finishedAt) return false
+    return new Date(finishedAt).getTime() >= cutoff
+  })
 }
 
 async function recordEnrolmentSkipped(args: {
@@ -93,7 +205,11 @@ async function recordEnrolmentSkipped(args: {
   businessId: string
   contactId: string
   sequence: CandidateSequence
-  cooldownDays: number
+  reason: EnrolmentSkipReason
+  /** Only for `cooldown`. */
+  cooldownDays?: number
+  /** Only for `already_in_a_sequence` — the run standing in the way. */
+  blocking?: { key: string | null; name: string | null }
 }): Promise<void> {
   const { error } = await args.supabase.from("contact_timeline_events").insert({
     business_id: args.businessId,
@@ -101,20 +217,25 @@ async function recordEnrolmentSkipped(args: {
     kind: ENROLMENT_SKIPPED_TIMELINE_KIND,
     source: "sequence_engine",
     // Key and name ride along so the contact record can say WHICH sequence in
-    // words (lib/db/contact-detail.ts) without a second lookup.
+    // words (lib/db/contact-detail.ts) without a second lookup. So does the
+    // BLOCKING sequence's, for the same reason: "not started because they are
+    // already in something" is only actionable if it says already in what.
     metadata: {
       sequence_id: args.sequence.id,
       sequence_key: args.sequence.key ?? null,
       sequence_name: args.sequence.name ?? null,
-      reason: "cooldown",
-      cooldown_days: args.cooldownDays,
+      reason: args.reason,
+      ...(args.cooldownDays === undefined ? {} : { cooldown_days: args.cooldownDays }),
+      ...(args.blocking === undefined
+        ? {}
+        : { blocking_sequence_key: args.blocking.key, blocking_sequence_name: args.blocking.name }),
     },
   })
   if (error) {
     // The refusal itself already happened; losing its note is a reporting
     // gap, not a reason to fail the caller's contact write.
     console.error(
-      `enrollIfTriggered: failed to record the cooldown refusal for contact ${args.contactId} (sequence ${args.sequence.id})`,
+      `enrollIfTriggered: failed to record the "${args.reason}" refusal for contact ${args.contactId} (sequence ${args.sequence.id})`,
       error,
     )
   }
@@ -144,6 +265,110 @@ function isMissingColumnError(err: unknown): boolean {
   if (typeof err !== "object" || err === null || !("code" in err)) return false
   const code = (err as { code?: string }).code
   return code === "PGRST204" || code === "42703"
+}
+
+type BlockingSequence = { key: string | null; name: string | null; manualOnly: boolean }
+
+/**
+ * G14. What the rule needs to know about the sequences a contact's active
+ * runs belong to: whether each may be superseded at all (`manualOnly`), and
+ * what to call it in a refusal note.
+ *
+ * ONE read for both, and the reason they share one is that they are needed
+ * at the same moment for the same rows. Reading `trigger_source` lazily on
+ * the refusal path would have left the manual-only exemption — which decides
+ * whether somebody's compliance ask survives — depending on a query that
+ * only runs when a refusal is being written.
+ *
+ * FAILS OPEN TOWARDS "DO NOT TOUCH IT". An empty map means every active run
+ * reads as `manualOnly: false`... which would be the dangerous direction, so
+ * a failed read returns a map marking every run manual-only instead: the
+ * rule then supersedes nothing and blocks nothing, and the enrolment goes
+ * ahead exactly as it did before G14. Losing the rule for one capture is a
+ * far smaller harm than exiting a run we could not identify.
+ */
+async function describeSequences(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  businessId: string,
+  sequenceIds: string[],
+): Promise<Map<string, BlockingSequence>> {
+  const unique = [...new Set(sequenceIds)]
+  const byId = new Map<string, BlockingSequence>()
+  if (unique.length === 0) return byId
+
+  try {
+    const { data, error } = await supabase
+      .from("sequences")
+      .select("id, key, name, trigger_source")
+      .eq("business_id", businessId)
+      .in("id", unique)
+    if (error) throw error
+    for (const row of (data ?? []) as Array<{
+      id: string
+      key?: string | null
+      name?: string | null
+      trigger_source?: string | null
+    }>) {
+      byId.set(row.id, {
+        key: row.key ?? null,
+        name: row.name ?? null,
+        // `!= null`, so an absent column (a shape this code has not seen)
+        // reads as manual-only and is left alone, not superseded.
+        manualOnly: row.trigger_source == null,
+      })
+    }
+    // A run whose sequence row did not come back is in the same position.
+    for (const id of unique) {
+      if (!byId.has(id)) byId.set(id, { key: null, name: null, manualOnly: true })
+    }
+    return byId
+  } catch (err) {
+    console.error("describeSequences: could not read the sequences behind this contact's active runs", err)
+    for (const id of unique) byId.set(id, { key: null, name: null, manualOnly: true })
+    return byId
+  }
+}
+
+/**
+ * G14. Ends the runs a new enrolment replaced, one at a time through
+ * `exitRun` — the SAME write every other exit in this codebase goes through,
+ * rather than a second copy of "set status, exit_reason, completed_at and
+ * release the claim" that could drift from it (the mistake
+ * lib/lead-engine/unsubscribe.ts's own header warns about).
+ *
+ * SWALLOWS AND LOGS, never throws. The new run has already been inserted by
+ * the time this runs, and propagating would turn a tidying failure into a
+ * lost enrolment: `recordContactEvent` treats a thrown enrolment as
+ * non-fatal, so the contact would keep their row and silently receive
+ * nothing new.
+ *
+ * WHAT A FAILURE ACTUALLY COSTS, stated exactly, because an earlier version
+ * of this comment had it backwards. The contact is left in two active runs,
+ * and `siblingRunDefer` keeps whichever has the EARLIEST `enrolled_at` —
+ * which is the old run, the one this rule just decided is no longer the
+ * relevant one. So the failure mode is not "the behaviour that shipped
+ * before this rule": before, the older run winning was the intended
+ * outcome. Here it is the inverse of the decision, and the new sequence the
+ * person just asked for is deferred five minutes a tick until the old one
+ * finishes. It self-heals when the old run completes; nothing is lost and
+ * nobody is sent anything they did not ask for, which is why one
+ * best-effort attempt is still the right trade against a lost enrolment.
+ */
+async function supersedeRuns(args: { runIds: string[]; contactId: string; replacedBy: string }): Promise<void> {
+  for (const runId of args.runIds) {
+    try {
+      await exitRun(runId, SUPERSEDED_EXIT_REASON)
+    } catch (err) {
+      const pgErr = err as { code?: unknown; message?: unknown } | null | undefined
+      console.error(
+        `supersedeRuns: could not exit run ${runId} for contact ${args.contactId} after enrolling into sequence ${args.replacedBy}; they are now in two sequences at once`,
+        {
+          code: typeof pgErr?.code === "string" ? pgErr.code : undefined,
+          message: typeof pgErr?.message === "string" ? pgErr.message : undefined,
+        },
+      )
+    }
+  }
 }
 
 /**
@@ -222,8 +447,14 @@ async function insertSequenceRun(args: {
 }
 
 /**
- * Enrols `contactId` into every active sequence whose `trigger_source`
+ * Enrols `contactId` into AT MOST ONE active sequence whose `trigger_source`
  * matches `source` and whose `trigger_filter` matches `metadata`.
+ *
+ * "AT MOST ONE" IS G14, and it used to read "every". Two rules make it so:
+ * one event never enrols twice (`createdHere`), and a contact already
+ * partway through another sequence either has that run superseded or is
+ * refused, depending on `IS_SUPERSEDING_SOURCE`. Manual-only sequences
+ * (`trigger_source IS NULL`) sit outside both — see `preExisting`.
  *
  * `trigger_source` is matched against whatever raw `ContactEventSource`
  * string the caller passes -- the same kind of "one source value decides
@@ -262,10 +493,80 @@ export async function enrollIfTriggered(args: {
     .eq("business_id", businessId)
     .eq("status", "active")
     .eq("trigger_source", args.source)
+    // G14. Arbitrary but STABLE. Nothing gives one sequence priority over
+    // another, and since one event now enrols into at most one sequence, the
+    // read order decides which — so two identical submissions must not get
+    // different follow-ups because Postgres returned the rows the other way
+    // round. A real priority column is what would make this meaningful;
+    // until there is one, reproducible beats undefined.
+    .order("key", { ascending: true })
   if (error) throw error
 
   const candidates = (data ?? []) as CandidateSequence[]
   const enrolled: string[] = []
+
+  // Nothing matched this source, so nothing below can change the outcome.
+  // Returning here keeps the two extra reads G14 adds off every lead capture
+  // whose source has no sequence at all (`shop`, `assessment`, `ai_chat`,
+  // `purchase`, …) — and, more than a round-trip, keeps their failure paths
+  // away from an enrolment that was never going to happen.
+  if (candidates.length === 0) return { enrolled: [] }
+
+  // G14. Every run this contact is partway through RIGHT NOW, read once
+  // before the loop rather than per candidate.
+  //
+  // BEST-EFFORT UNDER CONCURRENCY, and it cannot be otherwise here. Two
+  // captures for the same contact at the same instant both read this before
+  // either inserts, so both pass the blocking check and both enrol — two
+  // active runs, and the older one exited twice. No unique index can express
+  // "one active run per contact" (the existing partial index is per
+  // sequence), and there is no transaction around a contact event. The
+  // failure is the pre-G14 state, which `siblingRunDefer` serialises, so it
+  // is recorded rather than defended against.
+  const { data: activeData, error: activeErr } = await supabase
+    .from("sequence_runs")
+    .select("id, sequence_id")
+    .eq("business_id", businessId)
+    .eq("contact_id", args.contactId)
+    .eq("status", "active")
+  if (activeErr) throw activeErr
+
+  const activeRuns = (activeData ?? []) as Array<{ id: string; sequence_id: string }>
+
+  // The sequences those runs belong to — `trigger_source` to decide whether
+  // each may be superseded at all, `key`/`name` for the refusal note. ONE
+  // read for both, rather than a second lookup on the refusal path.
+  const blockingSequences = await describeSequences(
+    supabase,
+    businessId,
+    activeRuns.map((run) => run.sequence_id),
+  )
+
+  /**
+   * Runs in flight BEFORE this event that this rule is allowed to touch.
+   *
+   * A run of a MANUAL-ONLY sequence (`trigger_source IS NULL`) is excluded
+   * in BOTH directions: it is never superseded, and it never blocks. The
+   * exemption already granted to manual enrolment as a CREATOR is worthless
+   * without it — `sms_repermission` is "one ask, then stop" (migration
+   * 00223) and `enrolContactManually`'s `onePerContact` counts runs of ANY
+   * status, so a quiz submission an hour after a coach ran
+   * `scripts/enrol-repermission.ts` would exit the ask, never send it, and
+   * make it impossible to create again. Destroying a compliance ask is not
+   * something an automatic rule gets to do. The symmetry matters too: were
+   * they merely non-supersedable they would block every trigger instead,
+   * which is the same feature failing the other way.
+   *
+   * Two runs remain possible for such a contact; `siblingRunDefer` still
+   * serialises them, exactly as it did before this rule existed.
+   */
+  const preExisting = activeRuns.filter((run) => blockingSequences.get(run.sequence_id)?.manualOnly !== true)
+
+  /** Sequences THIS event matched — never superseded by this same event. */
+  const matchedHere = new Set<string>()
+  /** Sequences THIS event actually enrolled. */
+  const createdHere: string[] = []
+  const maySupersede = IS_SUPERSEDING_SOURCE[args.source] === true
 
   // G10. Narrowed ONCE, here, so no path below can reach `insertSequenceRun`
   // with the raw bag. On the funnel path that bag is the visitor's entire
@@ -277,6 +578,11 @@ export async function enrollIfTriggered(args: {
   for (const sequence of candidates) {
     if (!filterMatches(sequence.trigger_filter, metadata)) continue
 
+    // Recorded BEFORE any refusal: this event matched the sequence, so its
+    // run is this event's business even if nothing is enrolled into it —
+    // see the `blocking` filter below.
+    matchedHere.add(sequence.id)
+
     const cooldownDays = sequence.reenrol_cooldown_days ?? DEFAULT_REENROL_COOLDOWN_DAYS
     if (cooldownDays > 0) {
       const finishedRecently = await hasRunFinishedWithin({
@@ -285,6 +591,7 @@ export async function enrollIfTriggered(args: {
         sequenceId: sequence.id,
         contactId: args.contactId,
         days: cooldownDays,
+        triggerSupersedes: maySupersede,
       })
       if (finishedRecently) {
         await recordEnrolmentSkipped({
@@ -292,10 +599,65 @@ export async function enrollIfTriggered(args: {
           businessId,
           contactId: args.contactId,
           sequence,
+          reason: ENROLMENT_SKIP_REASONS.cooldown,
           cooldownDays,
         })
         continue
       }
+    }
+
+    // ---------------------------------------------------------------------
+    // G14 — one sequence at a time.
+    //
+    // AFTER the cooldown check, deliberately: exiting somebody's live
+    // follow-up to make room for a run the cooldown then refuses would leave
+    // them receiving nothing at all.
+    //
+    // A run of THIS sequence is not this rule's business — the partial unique
+    // index `sequence_runs_one_active_per_sequence` already refuses that, and
+    // superseding a run with another run of the very same sequence would be
+    // nonsense.
+    // ---------------------------------------------------------------------
+    if (createdHere.length > 0) {
+      // ONE EVENT ENROLS INTO AT MOST ONE SEQUENCE. The alternative is this
+      // event enrolling somebody and then immediately exiting its own
+      // enrolment, decided by whichever sequence the read returned first.
+      // Latent today (no two active sequences can match a single event on
+      // production) — decided here so it can never be decided by accident.
+      await recordEnrolmentSkipped({
+        supabase,
+        businessId,
+        contactId: args.contactId,
+        sequence,
+        reason: ENROLMENT_SKIP_REASONS.alreadyEnrolledThisEvent,
+      })
+      continue
+    }
+
+    // `matchedHere`, not just `sequence.id`: a sequence THIS event matched
+    // is never superseded by this same event, even when the enrolment into
+    // it was refused — by the unique index (they are already in it), by the
+    // cooldown, or by this rule. Without that, a duplicate on candidate one
+    // would let candidate two move the person OUT of a sequence the very
+    // same event put them in. Ordered by sequence id so the note below
+    // blames the same run every time when there is more than one.
+    const blocking = preExisting
+      .filter((run) => !matchedHere.has(run.sequence_id))
+      .sort((a, b) => (a.sequence_id < b.sequence_id ? -1 : a.sequence_id > b.sequence_id ? 1 : 0))
+
+    if (blocking.length > 0 && !maySupersede) {
+      await recordEnrolmentSkipped({
+        supabase,
+        businessId,
+        contactId: args.contactId,
+        sequence,
+        reason: ENROLMENT_SKIP_REASONS.alreadyInASequence,
+        // Named from the map read once above. A refusal that cannot say
+        // WHICH sequence is in the way gives a coach nothing to act on,
+        // which is the whole reason G01 made these refusals name theirs.
+        blocking: blockingSequences.get(blocking[0].sequence_id) ?? { key: null, name: null },
+      })
+      continue
     }
 
     const { enrolled: didEnrol } = await insertSequenceRun({
@@ -305,7 +667,23 @@ export async function enrollIfTriggered(args: {
       contactId: args.contactId,
       enrolmentMetadata,
     })
-    if (didEnrol) enrolled.push(sequence.id)
+    if (!didEnrol) continue
+
+    enrolled.push(sequence.id)
+    createdHere.push(sequence.id)
+
+    // INSERT FIRST, THEN EXIT — never the other way round. If the insert
+    // fails after the older run has already been exited, the person is left
+    // in nothing at all. This order's worst case is two active runs, which is
+    // exactly the behaviour that shipped before this rule and which
+    // `siblingRunDefer` still serialises so only one of them sends.
+    if (blocking.length > 0) {
+      await supersedeRuns({
+        runIds: blocking.map((run) => run.id),
+        contactId: args.contactId,
+        replacedBy: sequence.id,
+      })
+    }
   }
 
   return { enrolled }
