@@ -15,6 +15,7 @@ import {
   emailEnvPresent,
   renderSequenceEmail,
   sendSequenceEmail,
+  SMS_CONSENT_URL_PLACEHOLDER,
   UNSUBSCRIBE_FOOTER_SENTENCE,
 } from "@/lib/lead-engine/email"
 
@@ -533,5 +534,191 @@ describe("sendSequenceEmail for an internal notification", () => {
     expect(arg.headers?.["List-Unsubscribe"]).toBeUndefined()
     expect(arg.headers?.["List-Unsubscribe-Post"]).toBeUndefined()
     expect(arg.html).not.toContain(UNSUBSCRIBE_FOOTER_SENTENCE)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G16 — merge fields and the tenant's own colours.
+//
+// Before this, a sequence step could say `{{name}}` and nothing else. Every
+// other token a coach typed shipped to a real person as visible template
+// syntax: "Hi {{first_name}}," is not a slightly plain email, it is a broken
+// one, and it is the kind of thing a coach only finds out about from a reply.
+// ---------------------------------------------------------------------------
+
+function render(overrides: Parameters<typeof renderSequenceEmail>[0] extends infer T ? Partial<T> : never) {
+  return renderSequenceEmail({
+    settings: settingsA,
+    subject: "Subject",
+    body: "Body",
+    unsubscribeUrl: "https://example.test/u/tok",
+    contactName: "Sam Athlete",
+    ...(overrides as object),
+  } as Parameters<typeof renderSequenceEmail>[0])
+}
+
+describe("renderSequenceEmail merge fields", () => {
+  it("fills in the contact's first name, derived from the whole one", () => {
+    const out = render({ subject: "Hi {{first_name}}", body: "Hello {{first_name}}, welcome." })
+
+    expect(out.subject).toBe("Hi Sam")
+    expect(out.text).toContain("Hello Sam, welcome.")
+  })
+
+  it("gives a one-word name back whole rather than blank", () => {
+    expect(render({ subject: "Hi {{first_name}}", contactName: "Priya" }).subject).toBe("Hi Priya")
+  })
+
+  it("leaves nothing behind for a contact with no name at all", () => {
+    // The same answer `{{name}}` has always given, for the same reason: never a
+    // brand word, never a guessed name.
+    const out = render({ subject: "Hi {{first_name}}", body: "Hello {{name}}.", contactName: null })
+
+    // The brace is gone; the space around it is not. Trimming the whole
+    // subject would change every OTHER subject too, for a case that is
+    // already the minority.
+    expect(out.subject).toBe("Hi ")
+    expect(out.text).toContain("Hello .")
+  })
+
+  it("fills in what the enrolling event let the run remember", () => {
+    const out = render({
+      subject: "About your {{service}} enquiry",
+      body: "You asked about {{camp_name}}, and you told us you are a {{role}}.",
+      enrolmentMetadata: { service: "camp", camp_name: "Summer Camp 2026", role: "parent" },
+    })
+
+    expect(out.subject).toBe("About your camp enquiry")
+    expect(out.text).toContain("You asked about Summer Camp 2026, and you told us you are a parent.")
+  })
+
+  it("BLANKS a token nobody wrote rather than shipping template syntax to a person", () => {
+    // `{{sport}}` has no producer — see this gap's note in the header. The
+    // failure it replaces is a real person receiving the literal braces.
+    const out = render({ subject: "Your {{sport}} plan", body: "Ready, {{nonsense_token}}?" })
+
+    expect(out.subject).toBe("Your  plan")
+    expect(out.subject).not.toContain("{{")
+    expect(out.text).not.toContain("{{")
+  })
+
+  it("blanks a KNOWN token the run has no value for", () => {
+    // Indistinguishable from the unknown case on purpose: both mean "there is
+    // nothing to say here", and a coach cannot tell them apart anyway.
+    const out = render({ subject: "About {{camp_name}}", enrolmentMetadata: {} })
+
+    expect(out.subject).toBe("About ")
+  })
+
+  it("tolerates spacing inside the braces, which is what a person types", () => {
+    expect(render({ subject: "Hi {{ first_name }}" }).subject).toBe("Hi Sam")
+  })
+
+  it("does NOT blank the two link placeholders — that would delete the unsubscribe link", () => {
+    // PRESENCE CONTROL for the blanking rule above. A tidy-up that treated
+    // every unknown `{{token}}` as blank would silently strip the unsubscribe
+    // href, which is a CAN-SPAM violation produced by a cleanup.
+    const out = render({ body: `Say yes: ${SMS_CONSENT_URL_PLACEHOLDER}`, smsConsentUrl: "https://example.test/c/tok" })
+
+    expect(out.html).toContain("https://example.test/c/tok")
+    expect(out.html).toContain("https://example.test/u/tok")
+    expect(out.html).toContain(UNSUBSCRIBE_FOOTER_SENTENCE)
+  })
+
+  it("collapses newlines in a spliced value, so a subject cannot carry a header injection", () => {
+    const out = render({
+      subject: "About {{camp_name}}",
+      enrolmentMetadata: { camp_name: "Summer\r\nBcc: someone@evil.test" },
+    })
+
+    expect(out.subject).not.toContain("\n")
+    expect(out.subject).not.toContain("\r")
+    expect(out.subject).toBe("About Summer Bcc: someone@evil.test")
+  })
+})
+
+describe("renderSequenceEmail brand colours", () => {
+  const BRAND_FALLBACK = "#0E3F50"
+  const ACCENT_FALLBACK = "#C49B7A"
+
+  it("uses the layout's own colours when the tenant has chosen none", () => {
+    // NULL until a coach picks a palette, and never defaulted — so this is the
+    // answer for every tenant today, not a placeholder.
+    const out = render({})
+
+    expect(out.html).toContain(BRAND_FALLBACK)
+    expect(out.html).toContain(ACCENT_FALLBACK)
+  })
+
+  it("paints the header band and the strip in the tenant's own colours", () => {
+    const out = render({ settings: { ...settingsA, brand_color: "#123456", accent_color: "#abcdef" } })
+
+    expect(out.html).toContain("background-color:#123456")
+    expect(out.html).toContain("background:#abcdef")
+    // And the layout's defaults are gone, rather than both being present.
+    expect(out.html).not.toContain(BRAND_FALLBACK)
+    expect(out.html).not.toContain(ACCENT_FALLBACK)
+  })
+
+  it("DERIVES the accent from the brand when a coach picked one and left the accent blank", () => {
+    // That is the state the write route models explicitly, and the funnel side
+    // already answers it with `resolvePalette`. Falling back to the layout's
+    // own gold here would give a coach their brand band above the incumbent
+    // tenant's strip — the one combination nobody chose.
+    const out = render({ settings: { ...settingsA, brand_color: "#123456", accent_color: null } })
+
+    expect(out.html).toContain("background-color:#123456")
+    expect(out.html).not.toContain(ACCENT_FALLBACK)
+  })
+
+  it("prints the wordmark in an ink that can be READ on the chosen band", () => {
+    // A pale brand with the hardcoded white wordmark is a business name
+    // invisible in every sequence email. `resolvePalette` measures the contrast
+    // rather than thresholding, so the answer here is black.
+    const pale = render({ settings: { ...settingsA, brand_color: "#fff8e1" } })
+    expect(pale.html).toContain("color:#000000")
+
+    // The presence control: a dark brand still gets white.
+    const dark = render({ settings: { ...settingsA, brand_color: "#101820" } })
+    expect(dark.html).toContain("color:#ffffff")
+  })
+
+  it("REFUSES anything that is not a plain hex, rather than splicing it into a style attribute", () => {
+    // `escapeHtml` would stop a quote breaking out, but this needs no quote:
+    // a second declaration loads a remote image, which is a tracking pixel
+    // somebody else chose.
+    const out = render({
+      settings: {
+        ...settingsA,
+        brand_color: "red; background-image:url(https://tracker.example/x.png)",
+        accent_color: "javascript:alert(1)",
+      },
+    })
+
+    expect(out.html).not.toContain("tracker.example")
+    expect(out.html).not.toContain("javascript:")
+    expect(out.html).toContain(BRAND_FALLBACK)
+    expect(out.html).toContain(ACCENT_FALLBACK)
+  })
+
+  it("accepts ONLY #rrggbb — the exact shape three other places already enforce", () => {
+    // `paletteSchema`'s `hexColor`, POST /api/admin/businesses/brand and
+    // migration 00260's CHECK constraints all require six digits, so nothing
+    // else can be in the column. Accepting a short or long hex here would be
+    // this file disagreeing with the database about what a colour is, and
+    // `resolvePalette` throws on one.
+    expect(render({ settings: { ...settingsA, brand_color: "#AABBCC" } }).html).toContain("background-color:#aabbcc")
+    expect(render({ settings: { ...settingsA, brand_color: "#abc" } }).html).toContain("background-color:#0E3F50")
+    expect(render({ settings: { ...settingsA, brand_color: "#aabbccdd" } }).html).toContain("background-color:#0E3F50")
+  })
+
+  it("keeps the default strip a real gradient, and a chosen one flat", () => {
+    // Three stops of one colour is a no-op wearing a gradient's clothes, and
+    // there is no honest way to derive a lighter midpoint for an arbitrary
+    // brand — so the gradient belongs to the default palette only.
+    expect(render({}).html).toContain("linear-gradient(90deg, #C49B7A 0%, #d4b08e 50%, #C49B7A 100%)")
+    expect(render({ settings: { ...settingsA, brand_color: "#123456", accent_color: "#abcdef" } }).html).not.toContain(
+      "linear-gradient",
+    )
   })
 })
