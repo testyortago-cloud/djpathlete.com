@@ -62,6 +62,8 @@ const h = vi.hoisted(() => ({
     wantsCapture: false,
     wantsEscalate: false,
   } as ToolOutcome,
+  /** What `executor.consultHref()` resolves to. `/contact` is an unconfigured tenant's answer. */
+  consultHref: "/contact",
 }))
 
 vi.mock("@/lib/db/system-settings", () => ({ getSetting: h.getSetting }))
@@ -255,9 +257,15 @@ beforeEach(() => {
   h.recordAudit.mockResolvedValue(undefined)
 
   h.outcome = { facts: [], cards: [], wantsCapture: false, wantsEscalate: false }
+  h.consultHref = CONSULT_PATH
   h.createToolExecutor.mockImplementation(() => ({
     execute: h.execute,
     outcome: () => h.outcome,
+    // The way-forward link is a per-tenant lookup since G19b, so the executor
+    // answers it rather than carrying it on the outcome. `CONSULT_PATH` is
+    // what an unconfigured tenant resolves to, which is what these route
+    // tests assert on today.
+    consultHref: async () => h.consultHref,
   }))
 })
 
@@ -893,6 +901,39 @@ describe("POST /api/ask — the way forward", () => {
     const body = await res.json()
 
     expect(body.cards).toEqual([consult])
+  })
+
+  it("does not resolve the tenant's calendar on a turn that already has a way forward", async () => {
+    // `consultHref()` is two database reads and a possible OAuth refresh since
+    // G19b. `withWayForward` would discard the href on this turn anyway, so
+    // resolving it is pure cost on exactly the turns that did not need it —
+    // which is every turn where the model called a tool that puts a card up.
+    const consultHref = vi.fn(async () => CONSULT_PATH)
+    h.createToolExecutor.mockImplementation(() => ({ execute: h.execute, outcome: () => h.outcome, consultHref }))
+    h.outcome = {
+      facts: [],
+      cards: [{ kind: "capture", reason: "wants a callback" }],
+      wantsCapture: true,
+      wantsEscalate: false,
+    }
+    h.runWithTools.mockResolvedValue(toolResult({ text: "Leave your details and someone will get in touch." }))
+
+    await POST(req({ message: "can someone call me?" }))
+
+    expect(consultHref).not.toHaveBeenCalled()
+  })
+
+  it("DOES resolve it on a turn that produced no way forward — the control for the test above", async () => {
+    const consultHref = vi.fn(async () => CONSULT_PATH)
+    h.createToolExecutor.mockImplementation(() => ({ execute: h.execute, outcome: () => h.outcome, consultHref }))
+    h.outcome = { facts: [], cards: [], wantsCapture: false, wantsEscalate: false }
+    h.runWithTools.mockResolvedValue(toolResult({ text: "We train athletes of every level." }))
+
+    const res = await POST(req({ message: "what do you do?" }))
+    const body = await res.json()
+
+    expect(consultHref).toHaveBeenCalledTimes(1)
+    expect(body.cards).toEqual([{ kind: "consult", href: CONSULT_PATH }])
   })
 
   it("leaves a details form to stand as the way forward on its own", async () => {
