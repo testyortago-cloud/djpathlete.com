@@ -43,6 +43,14 @@ let insertRunError: { code: string; message: string } | null = null
  */
 let runInsertPayloads: Row[] = []
 
+/**
+ * How many times each table was READ. G14 adds two queries to a path that
+ * runs on every lead capture, and skips both when no sequence matches the
+ * source — a saving that is invisible in the resulting rows and visible
+ * only by counting.
+ */
+let readsByTable: Record<string, number> = {}
+
 // NOTE ON THE MOCK: the trap this project has hit before is a `.eq()` that
 // returns the query object without recording the filter, so every query
 // resolves to "everything in the table" and every assertion passes without
@@ -59,12 +67,44 @@ vi.mock("@/lib/supabase", () => ({
     from: (table: "sequences" | "sequence_runs" | "contact_timeline_events") => {
       const rows = store[table]
       const filters: Array<[string, any]> = []
-      let mode: "select" | "insert" = "select"
+      let mode: "select" | "insert" | "update" = "select"
       let payload: Row | null = null
+      let ordered: { column: string; ascending: boolean } | null = null
 
-      const passesFilters = (row: Row) => filters.every(([col, val]) => row[col] === val)
+      // `.in(col, values)` narrows for real, same as `.eq` — `describeSequences`
+      // reads the blocking runs' sequences this way, and a no-op `in` would
+      // hand every sequence back and make the manual-only exemption look
+      // like it worked when it had not been exercised at all.
+      const inFilters: Array<[string, any[]]> = []
 
-      const doSelect = () => ({ data: rows.filter(passesFilters), error: null })
+      const passesFilters = (row: Row) =>
+        filters.every(([col, val]) => row[col] === val) && inFilters.every(([col, vals]) => vals.includes(row[col]))
+
+      const doSelect = () => {
+        readsByTable[table] = (readsByTable[table] ?? 0) + 1
+        const matched = rows.filter(passesFilters)
+        if (ordered) {
+          const { column, ascending } = ordered
+          matched.sort((a, b) => {
+            const av = a[column] ?? ""
+            const bv = b[column] ?? ""
+            if (av === bv) return 0
+            return (av < bv ? -1 : 1) * (ascending ? 1 : -1)
+          })
+        }
+        return { data: matched, error: null }
+      }
+
+      // G14. `exitRun` (lib/db/sequences.ts) is `.update({...}).eq("id", …)`,
+      // so the supersede path is unreachable without this. Mutates the SAME
+      // row objects the store holds, exactly as the database would, which is
+      // what lets a later assertion read the status back off `store`.
+      const doUpdate = () => {
+        const p = payload as Row
+        const matched = rows.filter(passesFilters)
+        for (const row of matched) Object.assign(row, p)
+        return { data: matched, error: null }
+      }
 
       const doInsert = () => {
         const p = payload as Row
@@ -117,7 +157,7 @@ vi.mock("@/lib/supabase", () => ({
         return { data: row, error: null }
       }
 
-      const execute = () => (mode === "insert" ? doInsert() : doSelect())
+      const execute = () => (mode === "insert" ? doInsert() : mode === "update" ? doUpdate() : doSelect())
 
       const api: any = {
         select: () => api,
@@ -126,10 +166,26 @@ vi.mock("@/lib/supabase", () => ({
           appliedEqs.push([col, val])
           return api
         },
+        order: (column: string, opts?: { ascending?: boolean }) => {
+          ordered = { column, ascending: opts?.ascending !== false }
+          return api
+        },
+        in: (col: string, vals: any[]) => {
+          inFilters.push([col, vals])
+          return api
+        },
         insert: (p: Row) => {
           mode = "insert"
           payload = p
           return execute()
+        },
+        // Returns `api`, not the result: `exitRun` chains `.eq()` after the
+        // update and awaits the chain, so the write must not fire until the
+        // filters are in.
+        update: (p: Row) => {
+          mode = "update"
+          payload = p
+          return api
         },
         // Added for enrolContactManually's `.select(...).eq(...).eq(...).maybeSingle()`
         // lookup of a sequence by key — same pattern as
@@ -154,7 +210,7 @@ vi.mock("@/lib/supabase", () => ({
   }),
 }))
 
-import { enrollIfTriggered, enrolContactManually } from "@/lib/lead-engine/enroll"
+import { enrollIfTriggered, enrolContactManually, SUPERSEDING_SOURCES } from "@/lib/lead-engine/enroll"
 import { SINGLETON_BUSINESS_ID } from "@/lib/lead-engine/constants"
 
 function seedSequence(id: string, overrides: Partial<Row> = {}) {
@@ -179,6 +235,7 @@ beforeEach(() => {
   missingColumnOnInsert = null
   insertRunError = null
   runInsertPayloads = []
+  readsByTable = {}
 })
 
 // NOT the platform id, and not what `seedSequence` stamps. Every other call in
@@ -189,10 +246,16 @@ beforeEach(() => {
 const OTHER_BUSINESS_ID = "22222222-2222-4222-8222-222222222222"
 
 describe("enrollIfTriggered", () => {
-  it("enrols into every active sequence whose trigger matches the source", async () => {
-    seedSequence("seq-a", { trigger_source: "funnel_form" })
-    seedSequence("seq-b", { trigger_source: "funnel_form" })
-    seedSequence("seq-c", { trigger_source: "newsletter" })
+  // RETARGETED by G14, not deleted. This used to read "enrols into EVERY
+  // active sequence whose trigger matches", and that is precisely the
+  // behaviour the owner's option-B decision reverses: one event now enrols
+  // into at most one sequence. What is still worth pinning is everything
+  // else it pinned — that the right sequences are considered, that a
+  // different source is not, and the shape of the row that gets written.
+  it("enrols into ONE matching sequence and writes a complete run row", async () => {
+    seedSequence("seq-a", { trigger_source: "funnel_form", key: "aaa" })
+    seedSequence("seq-b", { trigger_source: "funnel_form", key: "bbb" })
+    seedSequence("seq-c", { trigger_source: "newsletter", key: "ccc" })
 
     const result = await enrollIfTriggered({
       contactId: "contact-1",
@@ -200,14 +263,16 @@ describe("enrollIfTriggered", () => {
       businessId: SINGLETON_BUSINESS_ID,
     })
 
-    expect(result.enrolled.sort()).toEqual(["seq-a", "seq-b"])
-    expect(store.sequence_runs).toHaveLength(2)
-    for (const run of store.sequence_runs) {
-      expect(run.contact_id).toBe("contact-1")
-      expect(run.business_id).toBe(SINGLETON_BUSINESS_ID)
-      expect(run.current_position).toBe(0)
-      expect(run.next_run_at).toBeTruthy()
-    }
+    // `seq-a` by key order, and `seq-c` never considered at all — a
+    // newsletter sequence must not be reachable from a funnel_form event.
+    expect(result.enrolled).toEqual(["seq-a"])
+    expect(store.sequence_runs).toHaveLength(1)
+    const run = store.sequence_runs[0]
+    expect(run.sequence_id).toBe("seq-a")
+    expect(run.contact_id).toBe("contact-1")
+    expect(run.business_id).toBe(SINGLETON_BUSINESS_ID)
+    expect(run.current_position).toBe(0)
+    expect(run.next_run_at).toBeTruthy()
   })
 
   it("ignores draft, paused and archived sequences", async () => {
@@ -263,9 +328,15 @@ describe("enrollIfTriggered", () => {
     expect(store.sequence_runs[0].id).toBe("existing-run")
   })
 
+  // RETARGETED by G14. The point — a 23505 on one candidate must not abort
+  // the loop — still stands, but the old setup used `funnel_form`, which no
+  // longer reaches a second candidate at all once the contact has an active
+  // run (that is the new rule working, not a regression). `quiz` supersedes,
+  // so the second candidate is legitimately reachable and the original
+  // assertion survives intact.
   it("continues to the next sequence after swallowing a 23505 on an earlier one", async () => {
-    seedSequence("seq-dup", { trigger_source: "funnel_form" })
-    seedSequence("seq-new", { trigger_source: "funnel_form" })
+    seedSequence("seq-dup", { trigger_source: "quiz", key: "aaa" })
+    seedSequence("seq-new", { trigger_source: "quiz", key: "bbb" })
     store.sequence_runs.push({
       id: "existing-run",
       business_id: SINGLETON_BUSINESS_ID,
@@ -277,12 +348,20 @@ describe("enrollIfTriggered", () => {
 
     const result = await enrollIfTriggered({
       contactId: "contact-1",
-      source: "funnel_form",
+      source: "quiz",
       businessId: SINGLETON_BUSINESS_ID,
     })
 
     expect(result.enrolled).toEqual(["seq-new"])
     expect(store.sequence_runs).toHaveLength(2)
+    // And `seq-dup`'s run is NOT superseded, even though `seq-new` enrolled
+    // afterwards. This same event matched `seq-dup` — it is only not
+    // enrolling because they are already in it — so moving them out of it
+    // would be one event both putting somebody in a sequence and taking
+    // them out of it. Review finding; the first cut asserted the opposite.
+    const dup = store.sequence_runs.find((r) => r.id === "existing-run")
+    expect(dup?.status).toBe("active")
+    expect(dup?.exit_reason).toBeUndefined()
   })
 
   it("applies trigger_filter against the event metadata", async () => {
@@ -846,5 +925,590 @@ describe("enrollIfTriggered — enrolment metadata on the run", () => {
 
     expect(outcome).toEqual({ outcome: "enrolled" })
     expect(store.sequence_runs[0].enrolment_metadata).toEqual({})
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G14 — one sequence at a time (option B, owner's decision 2026-09-20).
+//
+// Until now a contact was enrolled into EVERY matching sequence and the
+// younger run was deferred five minutes a tick so the oldest sent first
+// (`siblingRunDefer`). That is a send-ORDER rule, not the "nobody is in two
+// sequences at once" the quotation sells.
+//
+// The rule: when a trigger would enrol someone who already has an active run
+// of a DIFFERENT sequence, either
+//   - the new trigger is a direct response to something the person just did
+//     (`quiz`, `inquiry`, `checkout_abandoned`, `event_signup`) — the older
+//     run is exited `superseded` and the new one starts; or
+//   - it is not — the new enrolment is refused, and the refusal is written to
+//     the contact's timeline so it does not simply vanish.
+// ---------------------------------------------------------------------------
+
+/** An active run of some OTHER sequence, already in flight before this event. */
+function seedActiveRun(id: string, contactId: string, sequenceId: string, overrides: Partial<Row> = {}) {
+  store.sequence_runs.push({
+    id,
+    business_id: SINGLETON_BUSINESS_ID,
+    sequence_id: sequenceId,
+    contact_id: contactId,
+    status: "active",
+    current_position: 2,
+    enrolled_at: daysAgo(3),
+    ...overrides,
+  })
+}
+
+function skipRows() {
+  return store.contact_timeline_events.filter((e) => e.kind === "enrolment_skipped")
+}
+
+describe("enrollIfTriggered — one sequence at a time", () => {
+  describe("a responsive trigger supersedes the run already in flight", () => {
+    it("exits the older run with `superseded` and enrols the new one", async () => {
+      seedSequence("seq-newsletter", { trigger_source: "newsletter" })
+      seedSequence("seq-quiz", { trigger_source: "quiz" })
+      seedActiveRun("run-old", "contact-1", "seq-newsletter")
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "quiz",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual(["seq-quiz"])
+      const old = store.sequence_runs.find((r) => r.id === "run-old")
+      expect(old?.status).toBe("exited")
+      expect(old?.exit_reason).toBe("superseded")
+      expect(old?.completed_at).toBeTruthy()
+      // The claim is released too, or the tick would still see it held.
+      expect(old?.claimed_at).toBeNull()
+      // And the new run really exists — without this the assertions above are
+      // satisfied by "exited everything and enrolled nobody".
+      expect(store.sequence_runs.filter((r) => r.status === "active")).toHaveLength(1)
+    })
+
+    it("supersedes for every source the rule names, and for no other", async () => {
+      // Driven off the exported set rather than a list written here, so a
+      // source added to the rule without a test goes to the `refused` half
+      // and fails loudly.
+      for (const source of ["quiz", "inquiry", "checkout_abandoned", "event_signup"] as const) {
+        store.sequences = []
+        store.sequence_runs = []
+        store.contact_timeline_events = []
+        expect(SUPERSEDING_SOURCES.has(source), `${source} is not in SUPERSEDING_SOURCES`).toBe(true)
+
+        seedSequence("seq-other", { trigger_source: "newsletter" })
+        seedSequence("seq-new", { trigger_source: source })
+        seedActiveRun("run-old", "contact-1", "seq-other")
+
+        const result = await enrollIfTriggered({
+          contactId: "contact-1",
+          source,
+          businessId: SINGLETON_BUSINESS_ID,
+        })
+
+        expect(result.enrolled, `${source} did not enrol`).toEqual(["seq-new"])
+        expect(store.sequence_runs.find((r) => r.id === "run-old")?.exit_reason, source).toBe("superseded")
+      }
+    })
+
+    it("writes no skip note when it supersedes — the exited run is the record", async () => {
+      seedSequence("seq-newsletter", { trigger_source: "newsletter" })
+      seedSequence("seq-quiz", { trigger_source: "quiz" })
+      seedActiveRun("run-old", "contact-1", "seq-newsletter")
+
+      await enrollIfTriggered({ contactId: "contact-1", source: "quiz", businessId: SINGLETON_BUSINESS_ID })
+
+      expect(skipRows()).toHaveLength(0)
+    })
+
+    it("supersedes EVERY older run, not just the first", async () => {
+      // Two active runs is reachable today through manual enrolment, which
+      // this rule deliberately does not gate. Leaving one behind would put
+      // the person back in two sequences the moment the rule was supposed to
+      // guarantee they were in one.
+      seedSequence("seq-a", { trigger_source: "newsletter" })
+      seedSequence("seq-b", { trigger_source: "lead_magnet" })
+      seedSequence("seq-quiz", { trigger_source: "quiz" })
+      seedActiveRun("run-a", "contact-1", "seq-a")
+      seedActiveRun("run-b", "contact-1", "seq-b")
+
+      await enrollIfTriggered({ contactId: "contact-1", source: "quiz", businessId: SINGLETON_BUSINESS_ID })
+
+      expect(store.sequence_runs.find((r) => r.id === "run-a")?.status).toBe("exited")
+      expect(store.sequence_runs.find((r) => r.id === "run-b")?.status).toBe("exited")
+    })
+  })
+
+  describe("which sources supersede is a product decision, so it is pinned exactly", () => {
+    it("is exactly these four, and nothing has been added to it quietly", () => {
+      // Membership is the owner's call (2026-09-20), not an implementation
+      // detail: each entry decides whether a real person's live follow-up
+      // gets thrown away. Asserting the whole set — rather than only that
+      // the four are present — is what stops a fifth being added without
+      // that decision being made again.
+      expect([...SUPERSEDING_SOURCES].sort()).toEqual(
+        ["checkout_abandoned", "event_signup", "inquiry", "quiz"].sort(),
+      )
+    })
+
+    it("lead_magnet is NOT in it, and a lead-magnet trigger is therefore refused", async () => {
+      // Deliberately excluded, and checked against production rather than
+      // assumed: `lead_magnet_delivery` opens with a wait and then "Did the
+      // guide answer what you were looking for?" — the download itself is
+      // delivered elsewhere. Missing it costs a nudge, which is not worth
+      // throwing away a follow-up already in flight.
+      expect(SUPERSEDING_SOURCES.has("lead_magnet")).toBe(false)
+
+      seedSequence("seq-quiz", { trigger_source: "quiz" })
+      seedSequence("seq-magnet", { trigger_source: "lead_magnet" })
+      seedActiveRun("run-old", "contact-1", "seq-quiz")
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "lead_magnet",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual([])
+      expect(store.sequence_runs.find((r) => r.id === "run-old")?.status).toBe("active")
+    })
+  })
+
+  describe("a non-responsive trigger is refused", () => {
+    it("does not enrol, and leaves the run already in flight alone", async () => {
+      seedSequence("seq-quiz", { trigger_source: "quiz" })
+      seedSequence("seq-newsletter", { trigger_source: "newsletter" })
+      seedActiveRun("run-old", "contact-1", "seq-quiz")
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "newsletter",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual([])
+      expect(store.sequence_runs).toHaveLength(1)
+      const old = store.sequence_runs[0]
+      expect(old.status).toBe("active")
+      expect(old.exit_reason).toBeUndefined()
+    })
+
+    it("names the refusal on the contact's timeline, and says which sequence is in the way", async () => {
+      seedSequence("seq-quiz", { trigger_source: "quiz", key: "quiz_rebuilder", name: "Quiz — Rebuilder" })
+      seedSequence("seq-newsletter", { trigger_source: "newsletter", key: "newsletter_welcome" })
+      seedActiveRun("run-old", "contact-1", "seq-quiz")
+
+      await enrollIfTriggered({ contactId: "contact-1", source: "newsletter", businessId: SINGLETON_BUSINESS_ID })
+
+      expect(skipRows()).toHaveLength(1)
+      expect(skipRows()[0].metadata).toMatchObject({
+        reason: "already_in_a_sequence",
+        sequence_key: "newsletter_welcome",
+        blocking_sequence_key: "quiz_rebuilder",
+        blocking_sequence_name: "Quiz — Rebuilder",
+      })
+    })
+
+    it("blames the same one every time when more than one run is in the way", async () => {
+      // Reachable through manual enrolment, which this rule exempts. The
+      // read has no ORDER BY, so without sorting the note names whichever
+      // row Postgres happened to return first and two identical situations
+      // would explain themselves differently.
+      const blamed: Array<string | undefined> = []
+      for (const order of [
+        ["aaa-seq", "bbb-seq"],
+        ["bbb-seq", "aaa-seq"],
+      ]) {
+        store.sequences = []
+        store.sequence_runs = []
+        store.contact_timeline_events = []
+        order.forEach((id) => seedSequence(id, { trigger_source: "quiz", key: `key-${id}`, name: `Name ${id}` }))
+        seedSequence("seq-news", { trigger_source: "newsletter", key: "newsletter_welcome" })
+        order.forEach((id, i) => seedActiveRun(`run-${i}`, "contact-1", id))
+
+        await enrollIfTriggered({ contactId: "contact-1", source: "newsletter", businessId: SINGLETON_BUSINESS_ID })
+        blamed.push(skipRows()[0]?.metadata?.blocking_sequence_key)
+      }
+
+      expect(blamed[0]).toBe(blamed[1])
+      expect(blamed[0]).toBe("key-aaa-seq")
+    })
+  })
+
+  describe("the cost it adds to a lead capture", () => {
+    it("reads no runs at all when no sequence matches the source", async () => {
+      // `enrollIfTriggered` runs on EVERY lead capture, and most sources
+      // (`shop`, `assessment`, `ai_chat`, `purchase`, …) have no sequence at
+      // all. Two extra round-trips that cannot change the outcome is the
+      // small cost; the real one is that their failure paths would reach an
+      // enrolment that was never going to happen — `recordContactEvent`
+      // swallows a throw, so a transient read error would silently lose it.
+      seedSequence("seq-news", { trigger_source: "newsletter" })
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "shop",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual([])
+      expect(readsByTable.sequences).toBe(1) // the candidate lookup, and nothing else
+      expect(readsByTable.sequence_runs ?? 0).toBe(0)
+    })
+
+    it("does read them once when a sequence DOES match — the control", async () => {
+      seedSequence("seq-news", { trigger_source: "newsletter" })
+
+      await enrollIfTriggered({ contactId: "contact-1", source: "newsletter", businessId: SINGLETON_BUSINESS_ID })
+
+      expect(readsByTable.sequence_runs).toBeGreaterThan(0)
+    })
+  })
+
+  describe("what the rule does NOT change", () => {
+    it("enrols normally when the contact has no active run at all", async () => {
+      seedSequence("seq-newsletter", { trigger_source: "newsletter" })
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "newsletter",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual(["seq-newsletter"])
+      expect(skipRows()).toHaveLength(0)
+    })
+
+    it("ignores a COMPLETED or EXITED run of another sequence", async () => {
+      // Only an ACTIVE run means "they are in a sequence right now". A
+      // finished one is the cooldown's business, not this rule's.
+      seedSequence("seq-old", { trigger_source: "quiz" })
+      seedSequence("seq-newsletter", { trigger_source: "newsletter" })
+      seedActiveRun("run-done", "contact-1", "seq-old", { status: "completed" })
+      seedActiveRun("run-gone", "contact-1", "seq-old", { status: "exited", id: "run-gone" })
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "newsletter",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual(["seq-newsletter"])
+    })
+
+    it("ignores an active run belonging to a DIFFERENT contact", async () => {
+      seedSequence("seq-quiz", { trigger_source: "quiz" })
+      seedSequence("seq-newsletter", { trigger_source: "newsletter" })
+      seedActiveRun("run-someone-else", "contact-2", "seq-quiz")
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "newsletter",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual(["seq-newsletter"])
+      expect(store.sequence_runs.find((r) => r.id === "run-someone-else")?.status).toBe("active")
+    })
+
+    it("ignores an active run of the same contact under a DIFFERENT business", async () => {
+      seedSequence("seq-quiz", { trigger_source: "quiz" })
+      seedSequence("seq-newsletter", { trigger_source: "newsletter" })
+      seedActiveRun("run-other-tenant", "contact-1", "seq-quiz", { business_id: OTHER_BUSINESS_ID })
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "newsletter",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual(["seq-newsletter"])
+      expect(store.sequence_runs.find((r) => r.id === "run-other-tenant")?.status).toBe("active")
+    })
+
+    it("an active run of the SAME sequence is the unique index's job, not this rule's", async () => {
+      // The partial unique index already refuses this, and it must keep
+      // returning "already enrolled" rather than superseding a run with
+      // another run of the very same sequence.
+      seedSequence("seq-quiz", { trigger_source: "quiz" })
+      seedActiveRun("run-old", "contact-1", "seq-quiz")
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "quiz",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual([])
+      expect(store.sequence_runs).toHaveLength(1)
+      expect(store.sequence_runs[0].status).toBe("active")
+      expect(store.sequence_runs[0].exit_reason).toBeUndefined()
+      expect(skipRows()).toHaveLength(0)
+    })
+
+    it("the cooldown still wins, and nothing is superseded for an enrolment that was never going to happen", async () => {
+      // Order matters: exiting somebody's live follow-up to make room for a
+      // run the cooldown then refuses would leave them in nothing at all.
+      seedSequence("seq-newsletter", { trigger_source: "newsletter" })
+      seedSequence("seq-quiz", { trigger_source: "quiz", reenrol_cooldown_days: 30 })
+      seedActiveRun("run-old", "contact-1", "seq-newsletter")
+      store.sequence_runs.push({
+        id: "run-quiz-finished",
+        business_id: SINGLETON_BUSINESS_ID,
+        sequence_id: "seq-quiz",
+        contact_id: "contact-1",
+        status: "completed",
+        current_position: 5,
+        completed_at: daysAgo(2),
+      })
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "quiz",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual([])
+      expect(store.sequence_runs.find((r) => r.id === "run-old")?.status).toBe("active")
+      expect(skipRows()[0]?.metadata).toMatchObject({ reason: "cooldown" })
+    })
+  })
+
+  describe("one event enrols into at most one sequence", () => {
+    it("refuses the second match rather than superseding the run it just created", async () => {
+      // Latent today — no two active sequences can match one event on
+      // production — but the alternative is an event enrolling somebody and
+      // then immediately exiting its own enrolment, which is absurd and
+      // would depend on the order the sequences happened to be read in.
+      seedSequence("seq-a", { trigger_source: "quiz", key: "quiz_a" })
+      seedSequence("seq-b", { trigger_source: "quiz", key: "quiz_b" })
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "quiz",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toHaveLength(1)
+      expect(store.sequence_runs.filter((r) => r.status === "active")).toHaveLength(1)
+      expect(store.sequence_runs.every((r) => r.exit_reason === undefined)).toBe(true)
+      expect(skipRows()).toHaveLength(1)
+      expect(skipRows()[0].metadata).toMatchObject({ reason: "already_enrolled_this_event" })
+    })
+
+    it("picks the same one every time, rather than whichever the database returned first", async () => {
+      // `key` order is arbitrary but STABLE. Nondeterminism here would mean
+      // two identical submissions getting different follow-ups.
+      const winners: string[] = []
+      for (const order of [
+        ["quiz_b", "quiz_a"],
+        ["quiz_a", "quiz_b"],
+      ]) {
+        store.sequences = []
+        store.sequence_runs = []
+        store.contact_timeline_events = []
+        order.forEach((key) => seedSequence(`seq-${key}`, { trigger_source: "quiz", key }))
+
+        const result = await enrollIfTriggered({
+          contactId: "contact-1",
+          source: "quiz",
+          businessId: SINGLETON_BUSINESS_ID,
+        })
+        winners.push(result.enrolled[0])
+      }
+
+      expect(winners[0]).toBe(winners[1])
+      expect(winners[0]).toBe("seq-quiz_a")
+    })
+  })
+
+  describe("a run WE cut short must not also lock the person out of it", () => {
+    it("a superseded run does not count towards the cooldown", async () => {
+      // The interaction G14 creates with G01, and it is only visible by
+      // walking the two rules together:
+      //
+      //   day 0  they subscribe -> newsletter_welcome starts
+      //   day 1  they take the quiz -> newsletter run exited `superseded`
+      //   day 10 they subscribe AGAIN -> the cooldown sees an exited run
+      //          from nine days ago and refuses for another three weeks
+      //
+      // They asked for the newsletter twice and never got it, because of a
+      // run WE ended on their behalf. Exactly the reasoning already written
+      // for `failed`: a run that did not end of its own accord must not also
+      // lock somebody out of the sequence.
+      seedSequence("seq-news", { trigger_source: "newsletter", reenrol_cooldown_days: 30 })
+      store.sequence_runs.push({
+        id: "run-superseded",
+        business_id: SINGLETON_BUSINESS_ID,
+        sequence_id: "seq-news",
+        contact_id: "contact-1",
+        status: "exited",
+        exit_reason: "superseded",
+        current_position: 1,
+        completed_at: daysAgo(9),
+      })
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "newsletter",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual(["seq-news"])
+      expect(skipRows()).toHaveLength(0)
+    })
+
+    it("but a SUPERSEDING trigger is still held by the cooldown — or the two rules cancel", async () => {
+      // Review finding. Forgiving a `superseded` run for every trigger lets
+      // a chaser re-arm itself: somebody in `abandoned_checkout` takes the
+      // quiz (run superseded), abandons another checkout a week later, and
+      // is re-enrolled into `abandoned_checkout` from step 1 INSIDE its
+      // 30-day window — the incident the cooldown was written for, back
+      // through a door G14 opened. The forgiveness is for a person asking
+      // again for something ordinary, not for a chaser.
+      seedSequence("seq-abandoned", { trigger_source: "checkout_abandoned", reenrol_cooldown_days: 30 })
+      store.sequence_runs.push({
+        id: "run-superseded",
+        business_id: SINGLETON_BUSINESS_ID,
+        sequence_id: "seq-abandoned",
+        contact_id: "contact-1",
+        status: "exited",
+        exit_reason: "superseded",
+        current_position: 1,
+        completed_at: daysAgo(7),
+      })
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "checkout_abandoned",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual([])
+      expect(skipRows()[0]?.metadata).toMatchObject({ reason: "cooldown" })
+    })
+
+    it("but an ordinary exit inside the window still does — the control", async () => {
+      // Without this, the fix above could be "the cooldown no longer looks
+      // at exited runs at all", which would undo G01 for unsubscribes,
+      // bookings and purchases.
+      seedSequence("seq-news", { trigger_source: "newsletter", reenrol_cooldown_days: 30 })
+      store.sequence_runs.push({
+        id: "run-unsubscribed",
+        business_id: SINGLETON_BUSINESS_ID,
+        sequence_id: "seq-news",
+        contact_id: "contact-1",
+        status: "exited",
+        exit_reason: "unsubscribed",
+        current_position: 1,
+        completed_at: daysAgo(9),
+      })
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "newsletter",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual([])
+      expect(skipRows()[0]?.metadata).toMatchObject({ reason: "cooldown" })
+    })
+  })
+
+  describe("a manual-only sequence sits outside the rule in BOTH directions", () => {
+    it("is never superseded — a compliance ask must survive a quiz submission", async () => {
+      // Review finding, and the worst of the two Criticals. `sms_repermission`
+      // is "one ask, then stop" (migration 00223) and `enrolContactManually`'s
+      // `onePerContact` counts runs of ANY status. So superseding it would
+      // exit the ask, never send it, and make it impossible to create again —
+      // destroyed permanently, silently, with the exited run captioned
+      // "they did something that started a better-matching follow-up", which
+      // is simply false for a permission request.
+      seedSequence("seq-manual", { key: "sms_repermission", trigger_source: null })
+      seedSequence("seq-quiz", { trigger_source: "quiz" })
+      seedActiveRun("run-ask", "contact-1", "seq-manual")
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "quiz",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual(["seq-quiz"])
+      const ask = store.sequence_runs.find((r) => r.id === "run-ask")
+      expect(ask?.status).toBe("active")
+      expect(ask?.exit_reason).toBeUndefined()
+    })
+
+    it("and never blocks either — the symmetry, or the exemption fails the other way", async () => {
+      // Merely making it non-supersedable would turn it into a permanent
+      // blocker: every non-superseding trigger would be refused for as long
+      // as the ask sat unanswered.
+      seedSequence("seq-manual", { key: "sms_repermission", trigger_source: null })
+      seedSequence("seq-news", { trigger_source: "newsletter" })
+      seedActiveRun("run-ask", "contact-1", "seq-manual")
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "newsletter",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual(["seq-news"])
+      expect(skipRows()).toHaveLength(0)
+      expect(store.sequence_runs.find((r) => r.id === "run-ask")?.status).toBe("active")
+    })
+
+    it("a run whose sequence cannot be read is left alone, not superseded", async () => {
+      // Fails CLOSED. If `describeSequences` cannot identify the sequence
+      // behind an active run — the row is gone, the read failed — the rule
+      // must not exit it. Guessing "supersedable" is how a compliance ask
+      // gets destroyed by a query that happened to error.
+      seedSequence("seq-quiz", { trigger_source: "quiz" })
+      seedActiveRun("run-orphan", "contact-1", "seq-that-does-not-exist")
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "quiz",
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(result.enrolled).toEqual(["seq-quiz"])
+      const orphan = store.sequence_runs.find((r) => r.id === "run-orphan")
+      expect(orphan?.status).toBe("active")
+      expect(orphan?.exit_reason).toBeUndefined()
+    })
+
+    it("an ordinary triggered sequence IS still superseded — the control", async () => {
+      // Without this, "never supersedes anything" would pass both tests above.
+      seedSequence("seq-news", { trigger_source: "newsletter" })
+      seedSequence("seq-quiz", { trigger_source: "quiz" })
+      seedActiveRun("run-news", "contact-1", "seq-news")
+
+      await enrollIfTriggered({ contactId: "contact-1", source: "quiz", businessId: SINGLETON_BUSINESS_ID })
+
+      expect(store.sequence_runs.find((r) => r.id === "run-news")?.exit_reason).toBe("superseded")
+    })
+  })
+
+  describe("manual enrolment is deliberately exempt", () => {
+    it("a coach can still enrol somebody who is already in a sequence", async () => {
+      // A human's explicit instruction, not a trigger. Refusing it silently
+      // would be worse than the two runs, which `siblingRunDefer` still
+      // serialises so only one of them sends on any given tick.
+      seedSequence("seq-quiz", { trigger_source: "quiz" })
+      seedSequence("seq-manual", { key: "sms_repermission", trigger_source: null, status: "active" })
+      seedActiveRun("run-old", "contact-1", "seq-quiz")
+
+      const outcome = await enrolContactManually("contact-1", "sms_repermission", {
+        businessId: SINGLETON_BUSINESS_ID,
+      })
+
+      expect(outcome).toEqual({ outcome: "enrolled" })
+      expect(store.sequence_runs.find((r) => r.id === "run-old")?.status).toBe("active")
+      expect(store.sequence_runs.filter((r) => r.status === "active")).toHaveLength(2)
+    })
   })
 })
