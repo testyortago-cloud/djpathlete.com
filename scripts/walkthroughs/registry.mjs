@@ -37,6 +37,18 @@ export const SHOWS = {
     // Any zoom above 1/0.85 = 1.176 clips it.
     zoom: 1.15,
   },
+  "tiktok-demo": {
+    chapters: "./tiktok-demo.mjs",
+    dir: "walkthrough-tiktok",
+    composition: "TikTokDemo",
+    // Native 1080p, same reasoning as team-permissions: a 1920x1080 viewport is
+    // already 16:9, so the edit maps the take 1:1 with no scale and no crop.
+    viewport: { width: 1920, height: 1080 },
+    // Same 1.176 ceiling as team-permissions -- `vh` resolves against the
+    // UNZOOMED viewport and is then scaled, so anything above that clips a
+    // max-h-[85vh] dialog's footer off the bottom of the frame.
+    zoom: 1.15,
+  },
 }
 
 export const DEFAULT_SHOW = "bookkeeper"

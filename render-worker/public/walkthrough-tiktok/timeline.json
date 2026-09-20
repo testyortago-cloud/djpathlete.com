@@ -1,0 +1,118 @@
+{
+  "01-connection": {
+    "id": "01-connection",
+    "title": "The linked TikTok account",
+    "durationMs": 33196,
+    "leadInMs": 0,
+    "file": "01-connection.webm",
+    "beats": [
+      {
+        "text": "This is the Connections page on darrenjpaul.com. It is where a coach links the accounts they post to.",
+        "startMs": 0,
+        "endMs": 7629,
+        "audio": "01-connection/00.wav"
+      },
+      {
+        "text": "TikTok is linked here. We show the account name, \"darrenjpaul_\", so the coach can see exactly which account their videos will go to.",
+        "startMs": 7629,
+        "endMs": 17177,
+        "audio": "01-connection/01.wav"
+      },
+      {
+        "text": "That name is the only thing we read from the TikTok profile. We do not read followers, or videos, or anything else.",
+        "startMs": 17177,
+        "endMs": 26340,
+        "audio": "01-connection/02.wav"
+      },
+      {
+        "text": "The coach can unlink the account here whenever they want, and we stop posting to it.",
+        "startMs": 26340,
+        "endMs": 33196,
+        "audio": "01-connection/03.wav"
+      }
+    ],
+    "mediaMs": 33500,
+    "mediaFrames": 1005
+  },
+  "02-library": {
+    "id": "02-library",
+    "title": "The coach's own videos",
+    "durationMs": 11722,
+    "leadInMs": 0,
+    "file": "02-library.webm",
+    "beats": [
+      {
+        "text": "These are training videos the coach filmed and uploaded themselves. Nothing here comes from anyone else.",
+        "startMs": 0,
+        "endMs": 6856,
+        "audio": "02-library/00.wav"
+      },
+      {
+        "text": "The coach opens the one they want to post.",
+        "startMs": 6856,
+        "endMs": 11722,
+        "audio": "02-library/01.wav"
+      }
+    ],
+    "mediaMs": 12533,
+    "mediaFrames": 376
+  },
+  "03-caption": {
+    "id": "03-caption",
+    "title": "Reviewing the caption",
+    "durationMs": 22072,
+    "leadInMs": 0,
+    "file": "03-caption.webm",
+    "beats": [
+      {
+        "text": "This is the video itself, with the caption that will go out with it.",
+        "startMs": 0,
+        "endMs": 6087,
+        "audio": "03-caption/00.wav"
+      },
+      {
+        "text": "Each account the coach has linked gets its own caption. This is the one for TikTok.",
+        "startMs": 6087,
+        "endMs": 13645,
+        "audio": "03-caption/01.wav"
+      },
+      {
+        "text": "The coach can change any word of it before it goes anywhere. Nothing is posted automatically.",
+        "startMs": 13645,
+        "endMs": 22072,
+        "audio": "03-caption/02.wav"
+      }
+    ],
+    "mediaMs": 22766,
+    "mediaFrames": 683
+  },
+  "04-publish": {
+    "id": "04-publish",
+    "title": "Posting it to TikTok",
+    "durationMs": 23293,
+    "leadInMs": 0,
+    "file": "04-publish.webm",
+    "beats": [
+      {
+        "text": "When the coach is happy with it, they press \"Publish now\".",
+        "startMs": 0,
+        "endMs": 4934,
+        "audio": "04-publish/00.wav"
+      },
+      {
+        "text": "We now send the video file itself to TikTok, a piece at a time, and then create the post with that caption.",
+        "startMs": 4934,
+        "endMs": 15668,
+        "audio": "04-publish/01.wav"
+      },
+      {
+        "text": "That is the whole flow. The coach picks their own video, checks the caption, and presses one button.",
+        "startMs": 15668,
+        "endMs": 23293,
+        "audio": "04-publish/02.wav"
+      }
+    ],
+    "mediaMs": 24000,
+    "mediaFrames": 720
+  }
+}

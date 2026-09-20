@@ -5,6 +5,7 @@
 
 import bookkeeperTimeline from "../../../public/walkthrough/timeline.json"
 import teamTimeline from "../../../public/walkthrough-team/timeline.json"
+import tiktokTimeline from "../../../public/walkthrough-tiktok/timeline.json"
 import { fillCropGeometry, makeShow, nativeGeometry } from "./show.js"
 
 export { FPS, HEIGHT, WIDTH, msToFrames } from "./show.js"
@@ -44,6 +45,20 @@ export const TEAM_PERMISSIONS = makeShow({
   timeline: teamTimeline,
   geometry: nativeGeometry(),
   order: ["01-where", "02-inviting", "03-permissions", "04-clients", "05-changing"],
+})
+
+/**
+ * TikTok App Review demo — 4 chapters, captured natively at 1920x1080, so 1:1.
+ *
+ * Shot against PRODUCTION, not local dev: TikTok's app-review form requires the
+ * domain on screen to match the website URL on the submission, and production
+ * is also the only place a TikTok account is actually linked.
+ */
+export const TIKTOK_DEMO = makeShow({
+  dir: "walkthrough-tiktok",
+  timeline: tiktokTimeline,
+  geometry: nativeGeometry(),
+  order: ["01-connection", "02-library", "03-caption", "04-publish"],
 })
 
 /** Back-compat for callers that only ever knew about the bookkeeper. */

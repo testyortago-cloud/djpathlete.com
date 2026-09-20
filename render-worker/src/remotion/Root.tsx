@@ -17,11 +17,12 @@ import {
   FPS as CLIENT_FPS,
   TOTAL_FRAMES as CLIENT_FRAMES,
 } from "./client-promo/config.js"
-import { TeamPermissionsWalkthrough, Walkthrough } from "./walkthrough/Walkthrough.js"
+import { TeamPermissionsWalkthrough, TikTokDemo, Walkthrough } from "./walkthrough/Walkthrough.js"
 import {
   BOOKKEEPER,
   FPS as WALKTHROUGH_FPS,
   TEAM_PERMISSIONS,
+  TIKTOK_DEMO,
 } from "./walkthrough/config.js"
 
 const FPS = 30
@@ -163,6 +164,16 @@ export function RemotionRoot() {
         id="TeamPermissionsWalkthrough"
         component={TeamPermissionsWalkthrough}
         durationInFrames={TEAM_PERMISSIONS.totalFrames}
+        fps={WALKTHROUGH_FPS}
+        width={1920}
+        height={1080}
+      />
+      {/* TikTok App Review demo. Shot against production at a native
+          1920x1080, so it is drawn 1:1 with no scale and no crop. */}
+      <Composition
+        id="TikTokDemo"
+        component={TikTokDemo}
+        durationInFrames={TIKTOK_DEMO.totalFrames}
         fps={WALKTHROUGH_FPS}
         width={1920}
         height={1080}

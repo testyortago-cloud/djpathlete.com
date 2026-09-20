@@ -29,6 +29,33 @@ function resolveFfmpeg() {
 }
 const ffmpegPath = resolveFfmpeg()
 
+/**
+ * ffprobe is NOT the ffmpeg path with the name swapped.
+ *
+ * This used to derive it by rewriting "ffmpeg" to "ffprobe" in whatever
+ * resolveFfmpeg() returned. When that is the vendored ffmpeg-static binary the
+ * sibling simply does not exist — ffprobe ships as its own package — so every
+ * probe silently returned "" and staging died on "could not probe duration of
+ * <chapter>.mp4" AFTER spending the encode. Try the real packages first, then
+ * the sibling, then PATH.
+ */
+function resolveFfprobe() {
+  const req = createRequire(path.join(process.cwd(), "render-worker", "package.json"))
+  for (const pkg of ["ffprobe-static", "@ffprobe-installer/ffprobe"]) {
+    try {
+      const mod = req(pkg)
+      const p = typeof mod === "string" ? mod : mod?.path
+      if (p && fs.existsSync(p)) return p
+    } catch {
+      /* try the next one */
+    }
+  }
+  const sibling = ffmpegPath.replace(/ffmpeg(\.exe)?$/i, (m) => m.replace("ffmpeg", "ffprobe"))
+  if (sibling !== ffmpegPath && fs.existsSync(sibling)) return sibling
+  return "ffprobe"
+}
+const ffprobePath = resolveFfprobe()
+
 /** Duration in ms straight from the RIFF header — no probe needed for a format
  *  we wrote ourselves. Mirrors synth-walkthrough-narration.mjs. */
 function wavDurationMs(file) {
@@ -116,7 +143,7 @@ async function main() {
     // and the tail fraction does not survive encoding), which made the
     // composition ask the compositor for a frame past the end of the clip:
     // "No frame found at position ...". The edit clamps to this.
-    const { stdout } = await execFileP(ffmpegPath.replace(/ffmpeg(\.exe)?$/i, (m) => m.replace("ffmpeg", "ffprobe")), [
+    const { stdout } = await execFileP(ffprobePath, [
       "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", mp4,
     ]).catch(() => ({ stdout: "" }))
     const mediaMs = Math.floor(parseFloat(String(stdout).trim() || "0") * 1000)
@@ -127,7 +154,7 @@ async function main() {
     // reported 53.3s but died 35 frames early. Count the video frames instead —
     // that is the only number the compositor can be held to.
     const { stdout: fc } = await execFileP(
-      ffmpegPath.replace(/ffmpeg(\.exe)?$/i, (m) => m.replace("ffmpeg", "ffprobe")),
+      ffprobePath,
       ["-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", mp4],
     ).catch(() => ({ stdout: "" }))
     const mediaFrames = parseInt(String(fc).trim(), 10)

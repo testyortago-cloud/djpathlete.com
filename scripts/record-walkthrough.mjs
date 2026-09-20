@@ -22,10 +22,17 @@
  * Run: node scripts/record-walkthrough.mjs [--show <id>] [chapterId ...]
  */
 import { chromium } from "@playwright/test"
+import dotenv from "dotenv"
 import fs from "node:fs"
 import path from "node:path"
 import { resolveShow, showArg } from "./walkthroughs/registry.mjs"
 import { loadTiming } from "./walkthroughs/timing.mjs"
+
+// The admin credentials a deployment take signs in with live in .env.local, and
+// nothing else in this script's path loads it (playwright.config.ts does, but
+// this runs as a plain node script, not under the test runner). dotenv does NOT
+// override variables already set, so an inline BASE_URL=... still wins.
+dotenv.config({ path: ".env.local", quiet: true })
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3050"
 const argv = process.argv.slice(2)
@@ -184,6 +191,48 @@ async function runActions(page, beat) {
   }
 }
 
+/**
+ * Get the recorded page signed in and sitting on the chapter's URL.
+ *
+ * Local dev uses /api/dev/login, so no password is ever typed. That route is
+ * TRIPLE-GATED and 404s whenever VERCEL is set, so against a deployment it
+ * cannot be used at all — the first take against production died right here,
+ * leaving a 0-byte webm and no timeline, because waitForURL just timed out on
+ * a 404 page.
+ *
+ * A deployment therefore signs in through the real form. That is safe for the
+ * cut: it all happens before t0, the staging step trims everything before it
+ * using leadInMs, and the field renders as dots regardless. Signing in on THIS
+ * page rather than a throwaway one keeps one page per chapter, which is what
+ * makes page.video() the chapter's video.
+ */
+async function signIn(page, targetUrl) {
+  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(BASE)
+
+  if (isLocal) {
+    await page.goto(`${BASE}/api/dev/login?callbackUrl=${encodeURIComponent(targetUrl)}`, {
+      waitUntil: "domcontentloaded",
+    })
+    await page.waitForURL(/\/admin/, { timeout: 30_000 })
+    return
+  }
+
+  const email = process.env.ADMIN_TEST_EMAIL
+  const secret = process.env.ADMIN_TEST_PASSWORD
+  if (!email || !secret) {
+    throw new Error(
+      `recording against ${BASE} needs ADMIN_TEST_EMAIL and ADMIN_TEST_PASSWORD in the environment ` +
+        "(/api/dev/login 404s on a deployment)",
+    )
+  }
+  await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" })
+  await page.fill("input[name='email']", email)
+  await page.fill("input[name='password']", secret)
+  await page.click("button[type='submit']")
+  await page.waitForURL(/\/admin/, { timeout: 60_000 })
+  await page.goto(`${BASE}${targetUrl}`, { waitUntil: "domcontentloaded" })
+}
+
 async function main() {
   const show = await resolveShow(SHOW_ID)
   const timing = loadTiming(show.id)
@@ -203,7 +252,12 @@ async function main() {
       : "timing: reading-pace estimate — no narration synthesized yet",
   )
 
-  const browser = await chromium.launch({ headless: true })
+  // HEADED=1 opens a real window so a take can be watched as it happens. The
+  // capture is unaffected — recordVideo writes the same frames either way — but
+  // a headed run is at the mercy of the desktop: a screen lock, a Space switch
+  // or anything stealing focus lands in the footage. Headless stays the default
+  // for the take that actually ships.
+  const browser = await chromium.launch({ headless: process.env.HEADED !== "1" })
   try {
     for (const ch of list) {
       process.stdout.write(`recording ${ch.id} (${ch.title}) … `)
@@ -236,8 +290,7 @@ async function main() {
 
       const page = await context.newPage()
 
-      await page.goto(`${BASE}/api/dev/login?callbackUrl=${encodeURIComponent(ch.url)}`, { waitUntil: "domcontentloaded" })
-      await page.waitForURL(/\/admin/, { timeout: 30_000 })
+      await signIn(page, ch.url)
       await settle(page)
 
       // Untimed setup, so a chapter that needs a dialog already open can stand
