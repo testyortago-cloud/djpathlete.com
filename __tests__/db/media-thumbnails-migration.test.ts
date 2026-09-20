@@ -43,28 +43,16 @@ function addColumnClause(table: string, column: string): string {
   return match[0]
 }
 
-describe("00265 — video_uploads.thumbnail_source, team_video_versions.thumbnail_path", () => {
+describe("00265 — video_uploads.thumbnail_source", () => {
   it("adds thumbnail_source to video_uploads as text", () => {
     expect(addColumnClause("video_uploads", "thumbnail_source")).toMatch(/\btext\b/i)
-  })
-
-  it("adds thumbnail_path to team_video_versions as text", () => {
-    expect(addColumnClause("team_video_versions", "thumbnail_path")).toMatch(/\btext\b/i)
   })
 
   it("does not mark thumbnail_source NOT NULL", () => {
     expect(addColumnClause("video_uploads", "thumbnail_source")).not.toMatch(/NOT NULL/i)
   })
 
-  it("does not mark thumbnail_path NOT NULL", () => {
-    expect(addColumnClause("team_video_versions", "thumbnail_path")).not.toMatch(/NOT NULL/i)
-  })
-
   it("gives thumbnail_source no DEFAULT", () => {
     expect(addColumnClause("video_uploads", "thumbnail_source")).not.toMatch(/DEFAULT/i)
-  })
-
-  it("gives thumbnail_path no DEFAULT", () => {
-    expect(addColumnClause("team_video_versions", "thumbnail_path")).not.toMatch(/DEFAULT/i)
   })
 })

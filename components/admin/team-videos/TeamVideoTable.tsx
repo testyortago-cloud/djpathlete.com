@@ -11,7 +11,7 @@ import {
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { AlertTriangle, Film } from "lucide-react"
+import { AlertTriangle } from "lucide-react"
 import { unsentFeedback } from "@/lib/team-videos/workflow"
 import type { TeamVideoSubmission, TeamVideoSubmissionStatus } from "@/types/database"
 
@@ -43,11 +43,9 @@ interface Props {
    * feedback the editor was never told about.
    */
   openNotes?: Record<string, number>
-  /** Signed preview URL per submission, keyed by submission id (Task 6). */
-  thumbnails?: Record<string, string>
 }
 
-export function TeamVideoTable({ submissions, openNotes = {}, thumbnails = {} }: Props) {
+export function TeamVideoTable({ submissions, openNotes = {} }: Props) {
   const [filter, setFilter] = useState<TeamVideoSubmissionStatus | "all">("all")
   const filtered = filter === "all" ? submissions : submissions.filter((s) => s.status === filter)
 
@@ -112,7 +110,6 @@ export function TeamVideoTable({ submissions, openNotes = {}, thumbnails = {} }:
       <DataTableCard>
         <DataTable>
           <DataTableHeader>
-            <DataTableHead className="w-20">Preview</DataTableHead>
             <DataTableHead>Title</DataTableHead>
             <DataTableHead>Status</DataTableHead>
             <DataTableHead>Updated</DataTableHead>
@@ -120,28 +117,13 @@ export function TeamVideoTable({ submissions, openNotes = {}, thumbnails = {} }:
           <tbody>
             {filtered.length === 0 && (
               <DataTableRow>
-                <DataTableCell muted colSpan={4} className="py-6 text-center">
+                <DataTableCell muted colSpan={3} className="py-6 text-center">
                   No videos in this view.
                 </DataTableCell>
               </DataTableRow>
             )}
             {filtered.map((s) => (
               <DataTableRow key={s.id} className="hover:bg-muted/40">
-                <DataTableCell>
-                  {thumbnails[s.id] ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={thumbnails[s.id]}
-                      alt=""
-                      loading="lazy"
-                      className="h-10 w-16 rounded object-cover ring-1 ring-border bg-muted"
-                    />
-                  ) : (
-                    <span className="inline-flex h-10 w-16 items-center justify-center rounded bg-primary/10 ring-1 ring-border">
-                      <Film className="size-4 text-primary/70" strokeWidth={1.5} />
-                    </span>
-                  )}
-                </DataTableCell>
                 <DataTableCell>
                   <Link href={`/admin/team-media/${s.id}`} className="font-medium hover:underline">
                     {s.title}

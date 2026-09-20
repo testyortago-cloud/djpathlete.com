@@ -117,4 +117,52 @@ describe("PUT /api/admin/videos/[id]/thumbnail", () => {
   it("400s when source is absent", async () => {
     expect((await call("v1", {})).status).toBe(400)
   })
+
+  // The one-deploy window: this repo applies migrations on push to main via a
+  // workflow that is not sequenced against the Vercel deploy, so this write can
+  // reach production before video_uploads.thumbnail_source exists (00265).
+  // Both arms are pinned because the interesting mutant is the widened catch —
+  // swallowing every error as "still deploying" would hide a real fault behind
+  // a retry message the operator would obey forever.
+  describe("the deploy window where thumbnail_source does not exist yet", () => {
+    // PostgREST's schema cache answers a WRITE first, so PGRST204 is the shape
+    // production would actually see here; 42703 is Postgres' own code, covered
+    // because the helper matches both and the route must not care which.
+    it.each([
+      ["PGRST204", "Could not find the 'thumbnail_source' column of 'video_uploads' in the schema cache"],
+      ["42703", 'column "thumbnail_source" of relation "video_uploads" does not exist'],
+    ])("answers 503 with a retry message on %s", async (code, message) => {
+      updateMock.mockRejectedValue({ code, message })
+      const path = `${STORAGE}.thumb-custom-1.jpg`
+      const res = await call("v1", { source: "frame", thumbnailPath: path })
+
+      expect(res.status).toBe(503)
+      expect(await res.json()).toEqual({
+        error: "The app is still finishing an update. Try again in a few minutes.",
+      })
+      // Presence control: the 503 must come from the WRITE failing, not from a
+      // guard above it refusing the request before it ever reached the update.
+      expect(updateMock).toHaveBeenCalledWith("v1", {
+        thumbnail_path: path,
+        thumbnail_source: "frame",
+      })
+    })
+
+    it("still throws any other database error rather than calling it a deploy", async () => {
+      const real = Object.assign(new Error("permission denied for table video_uploads"), {
+        code: "42501",
+      })
+      updateMock.mockRejectedValue(real)
+      await expect(
+        call("v1", { source: "frame", thumbnailPath: `${STORAGE}.thumb-custom-1.jpg` }),
+      ).rejects.toThrow("permission denied for table video_uploads")
+    })
+
+    it("still throws an error carrying no code at all", async () => {
+      updateMock.mockRejectedValue(new Error("socket hang up"))
+      await expect(
+        call("v1", { source: "frame", thumbnailPath: `${STORAGE}.thumb-custom-1.jpg` }),
+      ).rejects.toThrow("socket hang up")
+    })
+  })
 })

@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth"
 import { getAdminStorage } from "@/lib/firebase-admin"
 import { getVideoUploadById, updateVideoUpload } from "@/lib/db/video-uploads"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
+import { isPgMissingColumn } from "@/lib/supabase-errors"
 import {
   commitThumbnailSchema,
   autoThumbnailPath,
@@ -113,10 +114,23 @@ export async function PUT(
     )
   }
 
-  await updateVideoUpload(id, {
-    thumbnail_path: targetPath,
-    thumbnail_source: parsed.data.source,
-  })
+  // This repo applies migrations on push to main via a workflow that is not
+  // sequenced against the Vercel deploy (see .github/workflows/apply-migrations.yml),
+  // so for one deploy window this write can land before video_uploads.thumbnail_source
+  // exists (migration 00265). Degrade to a 503 the client can retry instead of
+  // a raw 500 — a missing column is transient here, not a real failure.
+  try {
+    await updateVideoUpload(id, {
+      thumbnail_path: targetPath,
+      thumbnail_source: parsed.data.source,
+    })
+  } catch (err) {
+    if (!isPgMissingColumn(err)) throw err
+    return NextResponse.json(
+      { error: "The app is still finishing an update. Try again in a few minutes." },
+      { status: 503 },
+    )
+  }
 
   return NextResponse.json({ thumbnailPath: targetPath, thumbnailSource: parsed.data.source })
 }

@@ -201,8 +201,6 @@ export interface TeamVideoVersion {
   size_bytes: number | null
   mime_type: string | null
   image_count: number | null
-  /** Firebase Storage path of a small JPG thumbnail; null until generated lazily. */
-  thumbnail_path: string | null
   status: TeamVideoVersionStatus
   uploaded_at: string | null
   created_at: string

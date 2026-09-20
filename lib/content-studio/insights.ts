@@ -51,6 +51,10 @@ export interface StudioInsightsInput {
 }
 
 export interface StudioInsights {
+  /** The window every "last N days" / "N days before that" figure in this
+   *  object was computed over — carried through from the input so the UI
+   *  never has to hardcode the number it renders. */
+  periodDays: number
   production: {
     videosUploaded: number
     videosUploadedPrevious: number
@@ -223,6 +227,7 @@ export function computeStudioInsights(input: StudioInsightsInput): StudioInsight
   }
 
   return {
+    periodDays,
     production: {
       videosUploaded: videos.filter((v) => new Date(v.created_at) >= periodStart).length,
       videosUploadedPrevious: videos.filter((v) => {
