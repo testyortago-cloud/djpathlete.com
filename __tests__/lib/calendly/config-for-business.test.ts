@@ -8,6 +8,15 @@
 //
 // The platform's env vars are stubbed to values that are OBVIOUSLY not the
 // coach's, so the connected case cannot accidentally pass on the fallback.
+//
+// SINCE G19b THE FALLBACK IS THE PLATFORM'S ALONE, and that is why the
+// "falls back" cases below run against PLATFORM_BUSINESS while an identically
+// shaped OTHER_BUSINESS gets nothing. They used to run against a business that
+// was not the platform and assert it received the platform's calendar — which
+// is exactly the cross-tenant leak this row closed, written down as an
+// expectation. Each pair is kept together deliberately: the platform case is
+// the presence control for the refusal beside it, because "returns null" would
+// pass just as well for a function that had stopped resolving anything at all.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 import type { CoachCalendarConnection } from "@/types/database"
@@ -26,10 +35,15 @@ vi.mock("@/lib/calendly/credentials", () => ({
   accessTokenForConnection: (...args: unknown[]) => accessTokenForConnection(...args),
 }))
 
-import { calendlyConfigForBusiness } from "@/lib/calendly/config-for-business"
+import { calendlyBookingOfferForBusiness, calendlyConfigForBusiness } from "@/lib/calendly/config-for-business"
 
 const BUSINESS = "11111111-1111-1111-1111-111111111111"
 const HOST = "22222222-2222-2222-2222-222222222222"
+
+/** The one business the environment's single Calendly account legitimately describes. */
+const PLATFORM_BUSINESS = "00000000-0000-0000-0000-000000000001"
+/** Any other coach. Same shape, same reads — different answer, and that is the point. */
+const OTHER_BUSINESS = BUSINESS
 
 /** The platform's single account — what `readCalendlyConfig()` answers with. */
 const PLATFORM = {
@@ -114,10 +128,10 @@ describe("calendlyConfigForBusiness", () => {
     expect(config?.apiToken).toBe("refreshed-token")
   })
 
-  it("falls back to the platform's calendar when the business has no calendar row at all", async () => {
+  it("falls back to the environment for THE PLATFORM when it has no calendar row at all", async () => {
     getPrimaryBookingHostId.mockResolvedValue(null)
 
-    const config = await calendlyConfigForBusiness(BUSINESS)
+    const config = await calendlyConfigForBusiness(PLATFORM_BUSINESS)
 
     expect(config).toEqual({
       apiToken: PLATFORM.token,
@@ -129,38 +143,67 @@ describe("calendlyConfigForBusiness", () => {
     expect(accessTokenForConnection).not.toHaveBeenCalled()
   })
 
-  it("falls back to the platform's calendar when the business has connected no Calendly account", async () => {
+  it("gives ANOTHER coach with no calendar row nothing — never the platform's account", async () => {
+    getPrimaryBookingHostId.mockResolvedValue(null)
+
+    await expect(calendlyConfigForBusiness(OTHER_BUSINESS)).resolves.toBeNull()
+  })
+
+  it("falls back to the environment for THE PLATFORM when it has connected no Calendly account", async () => {
     getPrimaryBookingHostId.mockResolvedValue(HOST)
     getCoachCalendarConnection.mockResolvedValue(null)
 
-    const config = await calendlyConfigForBusiness(BUSINESS)
+    const config = await calendlyConfigForBusiness(PLATFORM_BUSINESS)
 
     expect(config?.apiToken).toBe(PLATFORM.token)
     expect(config?.eventTypeUri).toBe(PLATFORM.eventType)
     expect(accessTokenForConnection).not.toHaveBeenCalled()
   })
 
-  it("falls back to the platform's calendar for a disconnected row", async () => {
+  it("gives ANOTHER coach who has connected nothing nothing — never the platform's account", async () => {
+    getPrimaryBookingHostId.mockResolvedValue(HOST)
+    getCoachCalendarConnection.mockResolvedValue(null)
+
+    await expect(calendlyConfigForBusiness(OTHER_BUSINESS)).resolves.toBeNull()
+  })
+
+  it("falls back to the environment for THE PLATFORM on a disconnected row", async () => {
     getPrimaryBookingHostId.mockResolvedValue(HOST)
     getCoachCalendarConnection.mockResolvedValue(
       connectionRow({ status: "not_connected", event_type_uri: null, scheduling_url: null }),
     )
 
-    const config = await calendlyConfigForBusiness(BUSINESS)
+    const config = await calendlyConfigForBusiness(PLATFORM_BUSINESS)
 
     expect(config?.eventTypeUri).toBe(PLATFORM.eventType)
     expect(accessTokenForConnection).not.toHaveBeenCalled()
   })
 
-  it("falls back when the connection has not chosen its consult yet — it cannot answer an availability question", async () => {
+  it("gives ANOTHER coach who disconnected their account nothing — a removed calendar is not the platform's", async () => {
+    getPrimaryBookingHostId.mockResolvedValue(HOST)
+    getCoachCalendarConnection.mockResolvedValue(
+      connectionRow({ status: "not_connected", event_type_uri: null, scheduling_url: null }),
+    )
+
+    await expect(calendlyConfigForBusiness(OTHER_BUSINESS)).resolves.toBeNull()
+  })
+
+  it("falls back for THE PLATFORM when its connection has not chosen a consult yet", async () => {
     getPrimaryBookingHostId.mockResolvedValue(HOST)
     getCoachCalendarConnection.mockResolvedValue(connectionRow({ event_type_uri: null, scheduling_url: null }))
 
-    const config = await calendlyConfigForBusiness(BUSINESS)
+    const config = await calendlyConfigForBusiness(PLATFORM_BUSINESS)
 
     expect(config?.apiToken).toBe(PLATFORM.token)
     expect(config?.eventTypeUri).toBe(PLATFORM.eventType)
     expect(accessTokenForConnection).not.toHaveBeenCalled()
+  })
+
+  it("gives ANOTHER coach who has not chosen a consult nothing — it cannot answer an availability question", async () => {
+    getPrimaryBookingHostId.mockResolvedValue(HOST)
+    getCoachCalendarConnection.mockResolvedValue(connectionRow({ event_type_uri: null, scheduling_url: null }))
+
+    await expect(calendlyConfigForBusiness(OTHER_BUSINESS)).resolves.toBeNull()
   })
 
   it("returns null when the platform has no Calendly of its own either", async () => {
@@ -168,7 +211,7 @@ describe("calendlyConfigForBusiness", () => {
     getPrimaryBookingHostId.mockResolvedValue(HOST)
     getCoachCalendarConnection.mockResolvedValue(null)
 
-    await expect(calendlyConfigForBusiness(BUSINESS)).resolves.toBeNull()
+    await expect(calendlyConfigForBusiness(PLATFORM_BUSINESS)).resolves.toBeNull()
   })
 
   it("THROWS when the host read fails — it must not fall back to another calendar", async () => {
@@ -187,12 +230,22 @@ describe("calendlyConfigForBusiness", () => {
     await expect(calendlyConfigForBusiness(BUSINESS)).rejects.toThrow(/getCoachCalendarConnection failed/)
   })
 
-  it("THROWS when the connection's token cannot be renewed — a dead grant is not 'not configured'", async () => {
+  it("answers NO TIMES when the connection's token cannot be renewed — and still not from another calendar", async () => {
+    // This used to assert a throw. The property it was protecting is that a
+    // coach whose Calendly access has lapsed must not have their availability
+    // answered out of somebody else's diary, and that still holds exactly:
+    // `config` is null, so no times are read at all. What changed is that the
+    // failure no longer takes their own booking page down with it — see the
+    // token's own try/catch for why "whose calendar is this?" and "can I read
+    // their times?" are different failed reads.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     getPrimaryBookingHostId.mockResolvedValue(HOST)
     getCoachCalendarConnection.mockResolvedValue(connectionRow({ status: "needs_reconnect" }))
     accessTokenForConnection.mockRejectedValue(new Error("Calendly token refresh failed: invalid_grant"))
 
-    await expect(calendlyConfigForBusiness(BUSINESS)).rejects.toThrow(/invalid_grant/)
+    await expect(calendlyConfigForBusiness(BUSINESS)).resolves.toBeNull()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("invalid_grant"))
+    warn.mockRestore()
   })
 
   it("answers nothing for a connection that chose a meeting but recorded no public page", async () => {
@@ -216,5 +269,107 @@ describe("calendlyConfigForBusiness", () => {
     const config = await calendlyConfigForBusiness(BUSINESS)
 
     expect(config?.apiBase).toBe("http://127.0.0.1:4599")
+  })
+})
+
+// The offer is the two halves that fail independently: real times, and a page
+// to click. `calendlyConfigForBusiness` can only express the first, which is
+// why a half-configured install needed the wider shape — the owner pastes the
+// public booking page long before they paste an API token.
+describe("calendlyBookingOfferForBusiness", () => {
+  it("gives a connected coach both halves, both their own", async () => {
+    getPrimaryBookingHostId.mockResolvedValue(HOST)
+    getCoachCalendarConnection.mockResolvedValue(connectionRow())
+    accessTokenForConnection.mockResolvedValue("coach-token-fresh")
+
+    const offer = await calendlyBookingOfferForBusiness(OTHER_BUSINESS)
+
+    expect(offer.schedulingUrl).toBe("https://calendly.com/coach/consult")
+    expect(offer.config?.eventTypeUri).toBe("https://api.calendly.com/event_types/coach")
+    expect(offer.schedulingUrl).not.toBe(PLATFORM.schedulingUrl)
+  })
+
+  it("gives THE PLATFORM a page but no times when only the public page is set", async () => {
+    // readCalendlyConfig() needs all three; the page alone still buys a link.
+    vi.stubEnv("CALENDLY_API_TOKEN", "")
+    getPrimaryBookingHostId.mockResolvedValue(null)
+
+    const offer = await calendlyBookingOfferForBusiness(PLATFORM_BUSINESS)
+
+    expect(offer.config).toBeNull()
+    expect(offer.schedulingUrl).toBe(PLATFORM.schedulingUrl)
+  })
+
+  it("gives ANOTHER coach neither half from that same half-configured environment", async () => {
+    vi.stubEnv("CALENDLY_API_TOKEN", "")
+    getPrimaryBookingHostId.mockResolvedValue(null)
+
+    const offer = await calendlyBookingOfferForBusiness(OTHER_BUSINESS)
+
+    expect(offer).toEqual({ config: null, schedulingUrl: null })
+  })
+
+  it("warns whenever it hands over the environment, so the ramp's lifetime is visible in the logs", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    getPrimaryBookingHostId.mockResolvedValue(null)
+
+    await calendlyBookingOfferForBusiness(PLATFORM_BUSINESS)
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("CALENDLY_SCHEDULING_URL"))
+    warn.mockRestore()
+  })
+
+  it("does NOT warn when there is no environment to fall back to — that is unconfigured, not a ramp", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    vi.stubEnv("CALENDLY_API_TOKEN", "")
+    vi.stubEnv("CALENDLY_SCHEDULING_URL", "")
+    getPrimaryBookingHostId.mockResolvedValue(null)
+
+    await calendlyBookingOfferForBusiness(PLATFORM_BUSINESS)
+
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
+  it("keeps a connected coach's OWN booking page when only the token fails", async () => {
+    // The two halves fail independently, which is this type's whole reason for
+    // existing. A dead grant or one 503 from the token endpoint must not
+    // replace a perfectly good stored booking page with the generic path.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    getPrimaryBookingHostId.mockResolvedValue(HOST)
+    getCoachCalendarConnection.mockResolvedValue(connectionRow())
+    accessTokenForConnection.mockRejectedValue(new Error("Calendly token refresh failed: invalid_grant"))
+
+    const offer = await calendlyBookingOfferForBusiness(OTHER_BUSINESS)
+
+    expect(offer.config).toBeNull()
+    expect(offer.schedulingUrl).toBe("https://calendly.com/coach/consult")
+    // Theirs, not the platform's — the fallback must not fire here at all.
+    expect(offer.schedulingUrl).not.toBe(PLATFORM.schedulingUrl)
+    warn.mockRestore()
+  })
+
+  it("does the same for a TRANSIENT token failure, which is not a dead grant", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    getPrimaryBookingHostId.mockResolvedValue(HOST)
+    getCoachCalendarConnection.mockResolvedValue(connectionRow())
+    accessTokenForConnection.mockRejectedValue(new Error("Calendly is unreachable (network)"))
+
+    const offer = await calendlyBookingOfferForBusiness(OTHER_BUSINESS)
+
+    expect(offer).toEqual({ config: null, schedulingUrl: "https://calendly.com/coach/consult" })
+    warn.mockRestore()
+  })
+
+  it("answers neither half for a connection that chose a meeting but recorded no public page", async () => {
+    getPrimaryBookingHostId.mockResolvedValue(HOST)
+    getCoachCalendarConnection.mockResolvedValue(connectionRow({ scheduling_url: null }))
+
+    const offer = await calendlyBookingOfferForBusiness(PLATFORM_BUSINESS)
+
+    // Null even for the PLATFORM: a business with its own connection has
+    // demonstrably answered the "whose calendar" question, and a broken row is
+    // not licence to re-answer it from the environment.
+    expect(offer).toEqual({ config: null, schedulingUrl: null })
   })
 })

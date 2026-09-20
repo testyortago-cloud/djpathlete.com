@@ -22,6 +22,22 @@ vi.mock("@/lib/supabase", () => ({
   },
 }))
 
+// SINCE G19b THE CALENDAR IS RESOLVED PER TENANT, so these tests name one.
+// They are about book_consult's three honest SHAPES, not about whose calendar
+// answers — that property has its own file, chat-consult-tenant.test.ts. The
+// business here is the PLATFORM'S with no connection row, which is precisely
+// the install whose calendar still comes from the environment, so `configure()`
+// below goes on meaning what it meant.
+vi.mock("@/lib/db/booking-hosts", () => ({
+  getPrimaryBookingHostId: async () => null,
+}))
+vi.mock("@/lib/db/coach-calendar-connections", () => ({
+  getCoachCalendarConnection: async () => null,
+}))
+
+/** The one business the environment's single Calendly account describes. */
+const PLATFORM_BUSINESS = "00000000-0000-0000-0000-000000000001"
+
 const SETTINGS: BusinessSettings = {
   business_id: "00000000-0000-0000-0000-000000000001",
   display_name: "Acme Performance",
@@ -106,7 +122,7 @@ describe("book_consult with a provider configured", () => {
   it("puts the free times on screen as a slots card, each link prefilled and tracked", async () => {
     configure()
     const availability = vi.fn(async () => SLOTS)
-    const ex = createToolExecutor({ timezone: "America/New_York", visitor: VISITOR, tracking: TRACKING, availability, now: NOW })
+    const ex = createToolExecutor({ businessId: PLATFORM_BUSINESS, timezone: "America/New_York", visitor: VISITOR, tracking: TRACKING, availability, now: NOW })
 
     const result = JSON.parse(await ex.execute("book_consult", {}))
     expect(result.free_times).toEqual([
@@ -138,7 +154,9 @@ describe("book_consult with a provider configured", () => {
       expect(url.searchParams.get("month")).toBe("2026-09")
     }
     expect(new URL(card.href).searchParams.get("email")).toBe(VISITOR.email)
-    expect(out.consultHref).toBe(card.href)
+    // The server-added way forward lands on the same link the tool's own card
+    // did — one tenant resolution per turn, so they cannot disagree.
+    expect(await ex.consultHref()).toBe(card.href)
 
     // The slots are FACTS, so their times are grounded.
     expect(out.facts.filter((f) => f.kind === "slot")).toHaveLength(3)
@@ -151,7 +169,7 @@ describe("book_consult with a provider configured", () => {
       schedulingUrl: `${PAGE}/x${i}`,
       inviteesRemaining: 1,
     }))
-    const ex = createToolExecutor({ timezone: "America/New_York", availability: async () => many, now: NOW })
+    const ex = createToolExecutor({ businessId: PLATFORM_BUSINESS, timezone: "America/New_York", availability: async () => many, now: NOW })
     const result = JSON.parse(await ex.execute("book_consult", {}))
     expect(result.free_times).toHaveLength(MAX_SLOTS_SHOWN)
     const card = ex.outcome().cards.find((c) => c.kind === "slots")
@@ -161,7 +179,7 @@ describe("book_consult with a provider configured", () => {
 
   it("the validator accepts the first time named as written, and blocks a time nobody looked up", async () => {
     configure()
-    const ex = createToolExecutor({ timezone: "America/New_York", availability: async () => SLOTS, now: NOW })
+    const ex = createToolExecutor({ businessId: PLATFORM_BUSINESS, timezone: "America/New_York", availability: async () => SLOTS, now: NOW })
     await ex.execute("book_consult", {})
     const grounded = groundedValuesFor(ex.outcome().facts, SETTINGS)
 
@@ -182,7 +200,7 @@ describe("book_consult with a provider configured", () => {
 
   it("an empty week is a consult card and copy that says nothing is free", async () => {
     configure()
-    const ex = createToolExecutor({ timezone: "America/New_York", visitor: VISITOR, availability: async () => [], now: NOW })
+    const ex = createToolExecutor({ businessId: PLATFORM_BUSINESS, timezone: "America/New_York", visitor: VISITOR, availability: async () => [], now: NOW })
     const out = await ex.execute("book_consult", {})
     expect(out).toMatch(/no free consultation times in the next seven days/i)
     const cards = ex.outcome().cards
@@ -197,6 +215,7 @@ describe("book_consult with a provider configured", () => {
     configure()
     const err = vi.spyOn(console, "error").mockImplementation(() => {})
     const ex = createToolExecutor({
+      businessId: PLATFORM_BUSINESS,
       timezone: "America/New_York",
       visitor: VISITOR,
       availability: async () => {
@@ -218,6 +237,7 @@ describe("book_consult with a provider configured", () => {
   it("rethrows a fault that is NOT a provider fault, so the tool loop reports it as a failed lookup", async () => {
     configure()
     const ex = createToolExecutor({
+      businessId: PLATFORM_BUSINESS,
       availability: async () => {
         throw new TypeError("programmer error")
       },
@@ -229,7 +249,7 @@ describe("book_consult with a provider configured", () => {
   it("with only the public page configured, offers the prefilled link and no times", async () => {
     process.env.CALENDLY_SCHEDULING_URL = PAGE
     const availability = vi.fn(async () => SLOTS)
-    const ex = createToolExecutor({ visitor: VISITOR, availability, now: NOW })
+    const ex = createToolExecutor({ businessId: PLATFORM_BUSINESS, visitor: VISITOR, availability, now: NOW })
     const out = await ex.execute("book_consult", {})
     expect(availability).not.toHaveBeenCalled()
     expect(out).toMatch(/could not be checked/i)
@@ -240,17 +260,17 @@ describe("book_consult with a provider configured", () => {
 
   it("with nothing configured, behaves exactly as before: a link to /contact", async () => {
     const availability = vi.fn(async () => SLOTS)
-    const ex = createToolExecutor({ visitor: VISITOR, availability, now: NOW })
+    const ex = createToolExecutor({ businessId: PLATFORM_BUSINESS, visitor: VISITOR, availability, now: NOW })
     const out = await ex.execute("book_consult", {})
     expect(availability).not.toHaveBeenCalled()
     expect(out).toContain(CONSULT_PATH)
     expect(ex.outcome().cards).toEqual([{ kind: "consult", href: CONSULT_PATH }])
-    expect(ex.outcome().consultHref).toBe(CONSULT_PATH)
+    expect(await ex.consultHref()).toBe(CONSULT_PATH)
   })
 
   it("an un-captured visitor gets an un-prefilled link, never a guessed one", async () => {
     configure()
-    const ex = createToolExecutor({ timezone: "America/New_York", visitor: null, availability: async () => SLOTS, now: NOW })
+    const ex = createToolExecutor({ businessId: PLATFORM_BUSINESS, timezone: "America/New_York", visitor: null, availability: async () => SLOTS, now: NOW })
     await ex.execute("book_consult", {})
     const card = ex.outcome().cards.find((c) => c.kind === "slots")
     if (!card || card.kind !== "slots") throw new Error("no slots card")
@@ -262,7 +282,7 @@ describe("book_consult with a provider configured", () => {
 
   it("ignores identity a prompt injection tries to pass as tool input", async () => {
     configure()
-    const ex = createToolExecutor({ timezone: "America/New_York", visitor: VISITOR, availability: async () => SLOTS, now: NOW })
+    const ex = createToolExecutor({ businessId: PLATFORM_BUSINESS, timezone: "America/New_York", visitor: VISITOR, availability: async () => SLOTS, now: NOW })
     await ex.execute("book_consult", { email: "attacker@example.test", name: "Mallory" })
     const card = ex.outcome().cards.find((c) => c.kind === "slots")
     if (!card || card.kind !== "slots") throw new Error("no slots card")

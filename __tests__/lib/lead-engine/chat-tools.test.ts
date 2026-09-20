@@ -80,6 +80,27 @@ beforeEach(() => {
   delete process.env.CALENDLY_SCHEDULING_URL
 })
 
+// WHAT THESE THREE ASSERTIONS ACTUALLY GUARANTEE, stated exactly, because
+// since G19b they guarantee slightly less than their names suggest and a
+// grep-based guarantee that nobody has re-read is the kind that goes stale
+// silently.
+//
+// They are SOURCE-TEXT greps over tools.ts, so they are checks on what that
+// file names DIRECTLY — not on its transitive reach. `book_consult` now
+// resolves the tenant's own Calendly through `calendlyBookingOfferForBusiness`,
+// which reaches `accessTokenForConnection` and, through it, a service-role
+// client and two writers on `coach_calendar_connections`
+// (`storeRefreshedCalendarCredentials`, `setCoachCalendarError`). None of those
+// strings appears in tools.ts, so all three below still pass, and that is
+// correct rather than a hole: what they exist to protect is that no tool the
+// MODEL can call can write a contact, a consent row, a lead or a payment, and
+// the forbidden list is drawn from exactly those. A token refresh on the
+// business's own connection row is infrastructure, it takes no tool argument,
+// and the business is resolved server-side from the conversation.
+//
+// If a future change gives a tool a DAL import, these still catch it. If one
+// gives a tool a new transitive write, they will not — so the tools.ts header
+// carries the inventory of what is reachable, and it is the thing to update.
 describe("no tool the model can call has a write path", () => {
   const src = readFileSync("lib/lead-engine/chat/tools.ts", "utf8")
 

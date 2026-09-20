@@ -23,6 +23,18 @@
 //     booking-creation endpoint; it is deliberately not imported here, and the
 //     source test below would fail if it were.
 //
+//     ONE WRITE IS TRANSITIVELY REACHABLE FROM THIS TOOL, and it is named here
+//     rather than left for someone to find. Since G19b the calendar is
+//     resolved per tenant, so `book_consult` reaches
+//     `accessTokenForConnection`, which may refresh that coach's Calendly
+//     access token and record `last_error` on their own
+//     `coach_calendar_connections` row. That is an infrastructure side effect
+//     of USING the connection — identical to what every other caller of it
+//     does — and the model cannot steer it: `book_consult` takes no arguments,
+//     and the business is the conversation's own, resolved server-side. It
+//     touches no contact, no consent row, no lead and no money, which is what
+//     the forbidden-import list below actually guards.
+//
 //   * `escalate` is the ONE tool that leads to a write, and it does not do it
 //     here. It records an intent and a one-line summary; the route acts on that
 //     AFTER the reply has passed the output validator. A turn that gets blocked
@@ -42,7 +54,7 @@
 import type Anthropic from "@anthropic-ai/sdk"
 
 import { CalendlyUnavailable, listAvailableTimes, type Slot } from "@/lib/calendly/client"
-import { readCalendlyConfig, readCalendlySchedulingUrl } from "@/lib/calendly/env"
+import { calendlyBookingOfferForBusiness, type CalendlyBookingOffer } from "@/lib/calendly/config-for-business"
 import { schedulingLink } from "@/lib/calendly/links"
 import { encodeTracking, type ClickTracking } from "@/lib/calendly/tracking"
 import { NO_EVENTS_SCHEDULED } from "@/lib/lead-engine/chat/constants"
@@ -190,13 +202,6 @@ export type ToolOutcome = {
   wantsCapture: boolean
   wantsEscalate: boolean
   escalateSummary?: string
-  /**
-   * Where the server-added way forward should point when the turn produced
-   * none: the provider's booking page with prefill when one is configured,
-   * `CONSULT_PATH` otherwise. Optional so older callers (and their tests) keep
-   * the constant.
-   */
-  consultHref?: string
 }
 
 /**
@@ -225,6 +230,19 @@ export type ExecutorContext = {
 export type ToolExecutor = {
   execute(name: string, input: Record<string, unknown>): Promise<string>
   outcome(): ToolOutcome
+  /**
+   * Where the server-added way forward should point when the turn produced
+   * none: this tenant's own booking page with prefill when it has one,
+   * `CONSULT_PATH` otherwise.
+   *
+   * A METHOD RATHER THAN A FIELD ON `ToolOutcome`, because the answer is now a
+   * database read rather than four environment variables. The route awaits it
+   * only in the branch that actually adds the card — once per conversation —
+   * so a turn that never mentions booking never pays for the lookup. It shares
+   * `book_consult`'s single per-turn resolution, so the way-forward link and
+   * the tool's own cards cannot disagree about whose calendar this is.
+   */
+  consultHref(): Promise<string>
 }
 
 /**
@@ -415,19 +433,62 @@ export function createToolExecutor(ctx: ExecutorContext = {}): ToolExecutor {
   let wantsEscalate = false
   let escalateSummary: string | undefined
 
-  // Resolved once per turn, not per call: the same environment answers the
-  // same way for the whole turn, and a second `book_consult` call must land
-  // on the same link the first one did.
-  const providerConfig = readCalendlyConfig()
-  const providerPage = providerConfig?.schedulingUrl ?? readCalendlySchedulingUrl()
   const tracking = encodeTracking(ctx.tracking ?? {})
   const prefill = ctx.visitor ?? null
-  /** The link every consult card in this turn points at. */
-  const consultHref = providerPage ? schedulingLink(providerPage, { prefill, tracking }) : CONSULT_PATH
   const timezone = ctx.timezone?.trim() || "UTC"
   const now = ctx.now ?? (() => new Date())
   const availability = ctx.availability ?? listAvailableTimes
   const executorBusinessId = ctx.businessId
+
+  /**
+   * WHOSE CALENDAR THIS TURN OFFERS. Resolved from the conversation's own
+   * tenant, ONCE per turn — a second `book_consult` call must land on the same
+   * link the first one did, and two lookups for one person can disagree.
+   *
+   * LAZY ON PURPOSE, and it is not a micro-optimisation. Resolving eagerly
+   * would put two database reads and a possible OAuth token refresh in front
+   * of every chat turn, including "what do you charge?" — and
+   * `accessTokenForConnection` THROWS on a dead grant, so one coach's lapsed
+   * Calendly would 500 their whole assistant rather than degrading the one
+   * tool that needs it.
+   *
+   * A FAILED READ FALLS BACK TO `CONSULT_PATH`, NOT TO THE ENVIRONMENT. The
+   * rule `calendlyBookingOfferForBusiness` enforces is that a could-not-read
+   * must never become somebody else's calendar; it is free to become NOBODY's.
+   * So the throw is caught here, loudly, and the visitor still gets a page to
+   * go to — which is what this tool's "never throws for a provider fault"
+   * contract has always promised.
+   */
+  let offerPromise: Promise<CalendlyBookingOffer> | null = null
+  function resolveOffer(): Promise<CalendlyBookingOffer> {
+    offerPromise ??= (async (): Promise<CalendlyBookingOffer> => {
+      if (!executorBusinessId) {
+        // Fails CLOSED. A turn with no tenant cannot be shown to belong to
+        // anyone, and the one unsafe answer is the platform's calendar.
+        console.warn("[chat-tools] book_consult has no ctx.businessId — offering the plain consult path")
+        return { config: null, schedulingUrl: null }
+      }
+      try {
+        return await calendlyBookingOfferForBusiness(executorBusinessId)
+      } catch (err) {
+        console.error(
+          `[chat-tools] book_consult: could not resolve the calendar for business ${executorBusinessId} (${(err as Error).message})`,
+        )
+        return { config: null, schedulingUrl: null }
+      }
+    })()
+    return offerPromise
+  }
+
+  /** The link every consult card in this turn points at, prefilled and tracked. */
+  function linkFor(offer: CalendlyBookingOffer): string {
+    return offer.schedulingUrl ? schedulingLink(offer.schedulingUrl, { prefill, tracking }) : CONSULT_PATH
+  }
+
+  /** See `ToolExecutor.consultHref`. Shares `book_consult`'s one resolution for the turn. */
+  async function consultHref(): Promise<string> {
+    return linkFor(await resolveOffer())
+  }
 
   /**
    * The booking hand-over, in three honest shapes:
@@ -437,14 +498,20 @@ export function createToolExecutor(ctx: ExecutorContext = {}): ToolExecutor {
    * Never throws for a provider fault: the fallback link must still reach the screen.
    */
   async function bookConsult(): Promise<string> {
-    if (!providerPage) {
+    const offer = await resolveOffer()
+    // Named `href` rather than `consultHref` so it cannot be mistaken for — or
+    // shadow — the executor's own accessor of that name a few lines up.
+    const href = linkFor(offer)
+
+    if (!offer.schedulingUrl) {
       pushCard({ kind: "consult", href: CONSULT_PATH })
       return CONSULT_CARD_RESULT
     }
-    if (!providerConfig) {
-      pushCard({ kind: "consult", href: consultHref })
+    if (!offer.config) {
+      pushCard({ kind: "consult", href })
       return CONSULT_LINK_UNAVAILABLE_RESULT
     }
+    const providerConfig = offer.config
 
     const from = now()
     const to = new Date(from.getTime() + SLOT_WINDOW_DAYS * DAY_MS)
@@ -462,12 +529,12 @@ export function createToolExecutor(ctx: ExecutorContext = {}): ToolExecutor {
       // Logged loudly: a caught provider fault nobody prints is a silent
       // downgrade to "link only" that reads, from outside, like a design choice.
       console.error(`[chat-tools] book_consult: availability unreadable (${err.reason}${err.status ? ` ${err.status}` : ""})`)
-      pushCard({ kind: "consult", href: consultHref })
+      pushCard({ kind: "consult", href })
       return CONSULT_LINK_UNAVAILABLE_RESULT
     }
 
     if (slots.length === 0) {
-      pushCard({ kind: "consult", href: consultHref })
+      pushCard({ kind: "consult", href })
       return CONSULT_LINK_NO_SLOTS_RESULT
     }
 
@@ -478,7 +545,7 @@ export function createToolExecutor(ctx: ExecutorContext = {}): ToolExecutor {
     pushCard({
       kind: "slots",
       timezone,
-      href: consultHref,
+      href,
       slots: shown.map((slot) => ({ startAt: slot.startAt, href: schedulingLink(slot.schedulingUrl, { prefill, tracking }) })),
     })
     return JSON.stringify({
@@ -580,9 +647,8 @@ export function createToolExecutor(ctx: ExecutorContext = {}): ToolExecutor {
       wantsCapture,
       wantsEscalate,
       escalateSummary,
-      consultHref,
     }
   }
 
-  return { execute, outcome }
+  return { execute, outcome, consultHref }
 }

@@ -140,7 +140,12 @@ async function runOnce(prompt: string, n: number, category: string): Promise<Out
   // platform's own tenant is the seam — same as the live route this probe
   // is standing in for.
   const settings = await getBusinessSettings(platformBusinessId())
-  const executor = createToolExecutor()
+  // The SAME tenant the settings were read for. Since G19b `book_consult`
+  // resolves the calendar from `ctx.businessId` and offers the plain consult
+  // path when there is none — so an executor with no tenant would quietly stop
+  // probing the booking half altogether, which is the one thing a live probe
+  // must not do silently.
+  const executor = createToolExecutor({ businessId: platformBusinessId() })
   const result = await runWithTools({
     system: buildSystemPrompt(settings),
     messages: [{ role: "user", content: prompt }],

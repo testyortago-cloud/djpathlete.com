@@ -114,6 +114,20 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     the ORDINARY case today, since `sms_sender_phone` defaults to `''` and
  *     the platform's own number still lives in the environment, not in a
  *     per-coach row.
+ *   - the chat assistant's booking offer (lib/calendly/config-for-business.ts).
+ *     The OUTBOUND twin of the Calendly resolver below, and it reaches this
+ *     for the same reason: `CALENDLY_API_TOKEN`, `CALENDLY_EVENT_TYPE_URI` and
+ *     `CALENDLY_SCHEDULING_URL` name exactly one Calendly account, the
+ *     platform's own. It resolves the conversation's tenant first — a
+ *     `booking_hosts` row, then that host's `coach_calendar_connections` row —
+ *     and consults this ONLY to decide whether the business with no connection
+ *     is the one those environment variables legitimately describe. A
+ *     different business gets nothing rather than the platform's calendar,
+ *     because handing it over would show that coach's visitors the platform's
+ *     free times and book them into the platform's diary. Warned on every use,
+ *     like the inbound ramp. Until G19b (2026-09-20) the chat did not call
+ *     this at all: it read the three variables directly and had no tenant in
+ *     the question.
  *   - the Calendly webhook's tenant resolver (lib/bookings/calendly-tenant.ts)
  *     matches the delivery's event type against `coach_calendar_connections`
  *     first, and reaches this pair only for the single event type named by

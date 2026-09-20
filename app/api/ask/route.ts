@@ -543,8 +543,18 @@ export async function POST(request: Request) {
   // record of what earlier turns actually put on screen, so a visitor eight
   // questions in is not handed the same button eight times. A turn where the
   // model DID call the tool keeps its own card either way; this only ever adds.
+  //
+  // `executor.consultHref()` is a per-tenant database lookup since G19b, so it
+  // is awaited only when a card is genuinely about to be added. BOTH of
+  // `withWayForward`'s own no-op conditions are therefore checked here first:
+  // a conversation already offered a way forward, AND a turn whose own cards
+  // already contain one. Without the second, every turn where the model called
+  // `capture_lead` or `book_consult` itself would resolve an href that
+  // `withWayForward` then discards — paying for the lookup on exactly the
+  // turns that did not need it.
   const offeredAlready = prior.some((row) => cardsOfferWayForward(row.cards))
-  const shown: Card[] = offeredAlready ? outcome.cards : withWayForward(outcome.cards, outcome.consultHref)
+  const needsWayForward = !offeredAlready && !cardsOfferWayForward(outcome.cards)
+  const shown: Card[] = needsWayForward ? withWayForward(outcome.cards, await executor.consultHref()) : outcome.cards
 
   try {
     // `shown`, not `outcome.cards`: the row is what the visitor saw. A
