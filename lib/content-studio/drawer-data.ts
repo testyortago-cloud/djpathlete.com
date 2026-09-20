@@ -21,6 +21,7 @@ export interface DrawerData {
   mode: "video" | "post-only"
   video: VideoUpload | null
   previewUrl: string | null
+  thumbnailUrl: string | null
   transcript: VideoTranscript | null
   posts: SocialPost[]
   /** Attached image slides per post id (carousel/image/story), ordered by position. */
@@ -88,10 +89,11 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
   const video = await getVideoUploadById(videoId)
   if (!video) return null
 
-  const [transcript, posts, previewUrl, splitReelEnabled, reelEditorEnabled] = await Promise.all([
+  const [transcript, posts, previewUrl, thumbnailUrl, splitReelEnabled, reelEditorEnabled] = await Promise.all([
     getTranscriptForVideo(videoId),
     listSocialPostsBySourceVideo(videoId),
     signPreviewUrl(video.storage_path),
+    video.thumbnail_path ? signPreviewUrl(video.thumbnail_path) : Promise.resolve(null),
     getSetting<boolean>("feature_split_reel_enabled", false),
     getSetting<boolean>("feature_reel_editor_enabled", false),
   ])
@@ -102,6 +104,7 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
     mode: "video",
     video,
     previewUrl,
+    thumbnailUrl,
     transcript,
     posts,
     mediaByPost,
@@ -120,6 +123,7 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       mode: "post-only",
       video: null,
       previewUrl: null,
+      thumbnailUrl: null,
       transcript: null,
       posts: [post],
       mediaByPost: await signMediaByPost([post.id]),
@@ -135,6 +139,7 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       mode: "post-only",
       video: null,
       previewUrl: null,
+      thumbnailUrl: null,
       transcript: null,
       posts: [post],
       mediaByPost: await signMediaByPost([post.id]),

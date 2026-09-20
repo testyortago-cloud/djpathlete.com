@@ -41,6 +41,7 @@ export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: 
           <VideoDetailSidebar
             video={video}
             previewUrl={data.previewUrl}
+            thumbnailUrl={data.thumbnailUrl}
             hasTranscript={Boolean(data.transcript?.transcript_text)}
             splitReelEnabled={data.splitReelEnabled}
             reelEditorEnabled={data.reelEditorEnabled}

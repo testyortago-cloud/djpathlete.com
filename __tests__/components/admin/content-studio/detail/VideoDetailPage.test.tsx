@@ -42,6 +42,7 @@ const data: DrawerData = {
     updated_at: "2026-05-31T00:00:00Z",
   },
   previewUrl: "https://example/p.mp4",
+  thumbnailUrl: null,
   transcript: null,
   posts: [],
   mediaByPost: {},

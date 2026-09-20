@@ -19,6 +19,7 @@ const data: DrawerData = {
   mode: "post-only",
   video: null,
   previewUrl: null,
+  thumbnailUrl: null,
   transcript: null,
   posts: [
     {
