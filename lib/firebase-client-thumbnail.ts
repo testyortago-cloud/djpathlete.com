@@ -37,7 +37,10 @@ export function captureFrameFromElement(video: HTMLVideoElement): Promise<Blob |
   })
 }
 
-function captureFrame(source: ThumbnailSource): Promise<Blob | null> {
+// When set, the caller picked an exact time (offscreen "use this frame"
+// capture). When omitted, we fall back to the auto-thumbnail heuristic: seek
+// to 1s, or halfway through if the video is shorter than 2s.
+function captureFrame(source: ThumbnailSource, seekSeconds?: number): Promise<Blob | null> {
   return new Promise((resolve) => {
     const objectUrl = source.kind === "file" ? URL.createObjectURL(source.file) : null
     const video = document.createElement("video")
@@ -65,7 +68,12 @@ function captureFrame(source: ThumbnailSource): Promise<Blob | null> {
 
     video.addEventListener("loadedmetadata", () => {
       const duration = Number.isFinite(video.duration) ? video.duration : 0
-      const target = duration > 0 ? Math.min(SEEK_TARGET_SECONDS, duration / 2) : 0
+      const target =
+        duration <= 0
+          ? 0
+          : seekSeconds !== undefined
+            ? Math.max(0, Math.min(seekSeconds, duration))
+            : Math.min(SEEK_TARGET_SECONDS, duration / 2)
       try {
         video.currentTime = target
       } catch {
@@ -99,6 +107,21 @@ export function generateVideoThumbnail(file: File): Promise<Blob | null> {
  */
 export function generateVideoThumbnailFromUrl(url: string): Promise<Blob | null> {
   return captureFrame({ kind: "url", url })
+}
+
+/**
+ * Render the frame at a chosen timestamp from a remote video URL, via an
+ * offscreen <video> with crossOrigin set. This is how "Use this frame" reads
+ * the picture the operator is looking at: the ON-PAGE player is never given
+ * crossOrigin (that would break local dev, whose origin isn't in the bucket's
+ * CORS allow-list), so a direct canvas read of it is always tainted. Building
+ * a second element here, pointed at the same signed URL, sidesteps that
+ * without touching the visible player.
+ * Resolves null if the browser cannot load the video, the URL has no CORS
+ * headers, or canvas reads taint.
+ */
+export function captureFrameFromUrlAt(url: string, seconds: number): Promise<Blob | null> {
+  return captureFrame({ kind: "url", url }, seconds)
 }
 
 /**

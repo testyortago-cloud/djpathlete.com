@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { ImageIcon, Upload, RotateCcw } from "lucide-react"
 import type { ThumbnailSource } from "@/types/database"
-import { captureFrameFromElement, commitThumbnail, revertThumbnailToAuto } from "@/lib/firebase-client-thumbnail"
+import { captureFrameFromUrlAt, commitThumbnail, revertThumbnailToAuto } from "@/lib/firebase-client-thumbnail"
 
 interface ThumbnailPanelProps {
   videoUploadId: string
@@ -35,9 +35,16 @@ export function ThumbnailPanel({ videoUploadId, videoRef, thumbnailUrl, thumbnai
     }
     setBusy("frame")
     try {
-      const blob = await captureFrameFromElement(el)
+      // Read from an offscreen copy of the video, not the on-page element:
+      // the on-page <video> has no crossOrigin (it would break local dev, see
+      // lib/firebase-client-thumbnail.ts), so drawing it straight to canvas is
+      // always a tainted read. currentSrc is the resolved URL the element
+      // actually loaded (src may still hold a relative/unresolved value).
+      const blob = await captureFrameFromUrlAt(el.currentSrc, el.currentTime)
       if (!blob) {
-        toast.error("Couldn't read that frame. Try playing the video first, then pause on the picture you want.")
+        toast.error(
+          "Couldn't save that picture. This usually means the video store needs to allow this site — send this to whoever set up the app.",
+        )
         return
       }
       if (!(await commitThumbnail(videoUploadId, blob, "frame"))) {

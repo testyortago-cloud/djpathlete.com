@@ -10,7 +10,7 @@ const revertMock = vi.fn()
 const refreshMock = vi.fn()
 
 vi.mock("@/lib/firebase-client-thumbnail", () => ({
-  captureFrameFromElement: (...a: unknown[]) => captureMock(...a),
+  captureFrameFromUrlAt: (...a: unknown[]) => captureMock(...a),
   commitThumbnail: (...a: unknown[]) => commitMock(...a),
   revertThumbnailToAuto: (...a: unknown[]) => revertMock(...a),
 }))
@@ -24,7 +24,12 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof ThumbnailPan
   // createRef() returns a plain object whose `current` starts writable — a
   // direct assignment is simpler than Object.defineProperty and works the
   // same way a real ref attach would.
-  videoRef.current = { videoWidth: 1920, videoHeight: 1080, currentTime: 5 } as HTMLVideoElement
+  videoRef.current = {
+    videoWidth: 1920,
+    videoHeight: 1080,
+    currentTime: 5,
+    currentSrc: "https://storage.googleapis.com/bucket/video.mp4?sig=abc",
+  } as HTMLVideoElement
   return render(
     <ThumbnailPanel
       videoUploadId="v1"
@@ -49,9 +54,12 @@ describe("ThumbnailPanel", () => {
     expect(screen.getByAltText("Current video thumbnail")).toHaveAttribute("src", "https://signed/thumb.jpg")
   })
 
-  it("captures the displayed frame and commits it as source=frame", async () => {
+  it("captures the frame from an offscreen copy at the element's current time, then commits it as source=frame", async () => {
     renderPanel()
     await userEvent.click(screen.getByRole("button", { name: /use this frame/i }))
+    await waitFor(() =>
+      expect(captureMock).toHaveBeenCalledWith("https://storage.googleapis.com/bucket/video.mp4?sig=abc", 5),
+    )
     await waitFor(() => expect(commitMock).toHaveBeenCalledWith("v1", expect.any(Blob), "frame"))
     expect(refreshMock).toHaveBeenCalled()
   })
@@ -72,12 +80,18 @@ describe("ThumbnailPanel", () => {
     expect(screen.queryByRole("button", { name: /revert to auto/i })).not.toBeInTheDocument()
   })
 
-  it("says so instead of silently doing nothing when the frame cannot be read", async () => {
+  it("says so with an actionable, jargon-free message when the frame cannot be read", async () => {
     captureMock.mockResolvedValue(null)
     const { toast } = await import("sonner")
     renderPanel()
     await userEvent.click(screen.getByRole("button", { name: /use this frame/i }))
-    await waitFor(() => expect(toast.error).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Couldn't save that picture. This usually means the video store needs to allow this site — send this to whoever set up the app.",
+      ),
+    )
+    const message = (toast.error as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
+    expect(message.toLowerCase()).not.toMatch(/cors|canvas|taint|origin/)
     expect(commitMock).not.toHaveBeenCalled()
   })
 })
