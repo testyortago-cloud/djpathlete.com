@@ -15,8 +15,10 @@ vi.mock("@/lib/db/platform-connections", () => ({
 }))
 
 const guardMock = vi.fn()
+const releaseMock = vi.fn()
 vi.mock("@/lib/content-studio/edit-gate", () => ({
   assertSourceVideoPostable: (...a: unknown[]) => guardMock(...a),
+  releaseSourceVideoForSend: (...a: unknown[]) => releaseMock(...a),
 }))
 
 import { POST } from "@/app/api/admin/social/posts/[id]/publish-now/route"
@@ -137,7 +139,10 @@ describe("POST /api/admin/social/posts/:id/publish-now", () => {
     expect(args[1].rejection_notes).toBeNull()
   })
 
-  it("returns 409 when the source video still needs editing", async () => {
+  // Was: a 409 refusing until the video was marked ready. Publishing by hand IS
+  // that release, so the route now clears the gate and carries on -- one switch.
+  it("releases the edit gate instead of refusing, when the source video still needs editing", async () => {
+    withConnected(["instagram"])
     getSocialPostByIdMock.mockResolvedValue({
       id: "p1",
       approval_status: "draft",
@@ -145,13 +150,42 @@ describe("POST /api/admin/social/posts/:id/publish-now", () => {
       post_type: "video",
       source_video_id: "v1",
     })
-    guardMock.mockResolvedValue({ ok: false, reason: "needs editing" })
     const res = await call("p1")
+
+    expect(res.status).toBe(200)
+    expect(releaseMock).toHaveBeenCalledWith("v1")
+    expect(updateSocialPostMock).toHaveBeenCalled()
+  })
+
+  // Ordering invariant: the release is a WRITE, so it must sit after every
+  // refusal. A publish that bounces on a missing connection must not leave the
+  // video marked ready for a post that never went out.
+  it("does NOT release the gate when the publish is refused for a missing connection", async () => {
+    withConnected([])
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "p1",
+      approval_status: "draft",
+      platform: "instagram",
+      post_type: "video",
+      source_video_id: "v1",
+    })
+    const res = await call("p1")
+
     expect(res.status).toBe(409)
-    expect(await res.json()).toMatchObject({ error: "needs editing" })
-    // Gate must short-circuit BEFORE any platform/connection work.
-    expect(listPlatformConnectionsMock).not.toHaveBeenCalled()
-    expect(updateSocialPostMock).not.toHaveBeenCalled()
+    expect(releaseMock).not.toHaveBeenCalled()
+  })
+
+  it("does not try to release a gate for a post with no source video", async () => {
+    withConnected(["instagram"])
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "p1",
+      approval_status: "draft",
+      platform: "instagram",
+      post_type: "video",
+      source_video_id: null,
+    })
+    await call("p1")
+    expect(releaseMock).toHaveBeenCalledWith(null)
   })
 
   it("accepts draft Story posts without a connection check (lightweight pipeline)", async () => {

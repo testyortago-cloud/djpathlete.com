@@ -27,8 +27,10 @@ vi.mock("@/lib/social/publish-runner", () => ({
 }))
 
 const guardMock = vi.fn()
+const releaseMock = vi.fn()
 vi.mock("@/lib/content-studio/edit-gate", () => ({
   assertSourceVideoPostable: (...a: unknown[]) => guardMock(...a),
+  releaseSourceVideoForSend: (...a: unknown[]) => releaseMock(...a),
 }))
 
 import { POST } from "@/app/api/admin/social/posts/[id]/schedule/route"
@@ -243,20 +245,37 @@ describe("POST /api/admin/social/posts/:id/schedule", () => {
     expect(await res.text()).toMatch(/15 min/i)
   })
 
-  it("returns 409 when the source video still needs editing", async () => {
+  // Was: a 409 refusing until the video was marked ready. Scheduling by hand IS
+  // that release, so the route now clears the gate and carries on -- one switch.
+  it("releases the edit gate instead of refusing, when the source video still needs editing", async () => {
+    withConnected(["instagram"])
     getSocialPostByIdMock.mockResolvedValue({
       id: "p1",
       approval_status: "draft",
       platform: "instagram",
       source_video_id: "v1",
     })
-    guardMock.mockResolvedValue({ ok: false, reason: "needs editing" })
     const res = await callSchedule("p1", { scheduled_at: futureIso(60) })
+
+    expect(res.status).toBe(200)
+    expect(releaseMock).toHaveBeenCalledWith("v1")
+    expect(updateSocialPostMock).toHaveBeenCalled()
+  })
+
+  // Ordering invariant: the release is a WRITE, so it must sit after every
+  // refusal. A schedule that bounces must not leave the video marked ready.
+  it("does NOT release the gate when the schedule is refused for a missing connection", async () => {
+    withConnected([])
+    getSocialPostByIdMock.mockResolvedValue({
+      id: "p1",
+      approval_status: "draft",
+      platform: "instagram",
+      source_video_id: "v1",
+    })
+    const res = await callSchedule("p1", { scheduled_at: futureIso(60) })
+
     expect(res.status).toBe(409)
-    expect(await res.json()).toMatchObject({ error: "needs editing" })
-    // Gate must short-circuit BEFORE any platform/connection work.
-    expect(listPlatformConnectionsMock).not.toHaveBeenCalled()
-    expect(updateSocialPostMock).not.toHaveBeenCalled()
+    expect(releaseMock).not.toHaveBeenCalled()
   })
 
   it("native path: when rescheduling, cancels the previous platform schedule first", async () => {

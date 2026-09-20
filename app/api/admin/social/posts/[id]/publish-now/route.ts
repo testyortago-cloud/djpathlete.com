@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { getSocialPostById, updateSocialPost } from "@/lib/db/social-posts"
 import { listPlatformConnections } from "@/lib/db/platform-connections"
-import { assertSourceVideoPostable } from "@/lib/content-studio/edit-gate"
+import { releaseSourceVideoForSend } from "@/lib/content-studio/edit-gate"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const PUBLISHABLE_STATUSES = new Set([
@@ -43,11 +43,6 @@ export async function POST(
     )
   }
 
-  const guard = await assertSourceVideoPostable(post.source_video_id ?? null)
-  if (!guard.ok) {
-    return NextResponse.json({ error: guard.reason }, { status: 409 })
-  }
-
   // Stories skip the platform-connection check because the lightweight
   // story pipeline (draft → published) is exempt from the connection gate.
   if (post.post_type !== "story") {
@@ -62,6 +57,13 @@ export async function POST(
       )
     }
   }
+
+  // "Publish now" IS the operator releasing the edit gate, so clear it and carry
+  // on rather than refusing until a separate "Mark as ready" click. The gate
+  // still guards post creation, approve, and anything the cron publishes
+  // unattended. Released only AFTER every refusal above, so a send that bounces
+  // on a missing connection does not silently leave the video marked ready.
+  await releaseSourceVideoForSend(post.source_video_id ?? null)
 
   const scheduledAt = new Date(Date.now() - 1000).toISOString()
 

@@ -21,7 +21,7 @@ import { listPlatformConnections } from "@/lib/db/platform-connections"
 import { bootstrapPlugins } from "@/lib/social/bootstrap"
 import { pluginRegistry } from "@/lib/social/registry"
 import { buildPluginInput } from "@/lib/social/publish-runner"
-import { assertSourceVideoPostable } from "@/lib/content-studio/edit-gate"
+import { releaseSourceVideoForSend } from "@/lib/content-studio/edit-gate"
 import { canAccessAdminPath } from "@/lib/permissions/guard"
 
 const SCHEDULABLE_STATUSES = new Set([
@@ -74,11 +74,6 @@ export async function POST(
     )
   }
 
-  const guard = await assertSourceVideoPostable(post.source_video_id ?? null)
-  if (!guard.ok) {
-    return NextResponse.json({ error: guard.reason }, { status: 409 })
-  }
-
   const connections = await listPlatformConnections()
   const connected = new Set(
     connections.filter((c) => c.status === "connected").map((c) => c.plugin_name),
@@ -126,6 +121,14 @@ export async function POST(
         await plugin.unscheduleOnPlatform(post.platform_post_id).catch(() => null)
       }
 
+// "Schedule" IS the operator releasing the edit gate, so it is cleared here
+      // rather than refused until a separate "Mark as ready" click. Released at
+      // each WRITE site, after every refusal above (connection, the 15-minute
+      // native rule, a platform rejection), so a schedule that bounces never
+      // leaves the video silently marked ready. releaseSourceVideoForSend is a
+      // no-op when the video is already ready, so calling it twice is safe.
+      await releaseSourceVideoForSend(post.source_video_id ?? null)
+
       const updated = await updateSocialPost(id, {
         approval_status: "scheduled",
         scheduled_at: scheduledAt.toISOString(),
@@ -145,6 +148,9 @@ export async function POST(
 
   // DB-cron path: row sits with status="scheduled", publish-due cron picks
   // it up at scheduled_at and calls plugin.publish() then.
+  // Same release as the native path above (no-op if already ready).
+  await releaseSourceVideoForSend(post.source_video_id ?? null)
+
   const updated = await updateSocialPost(id, {
     approval_status: "scheduled",
     scheduled_at: scheduledAt.toISOString(),
