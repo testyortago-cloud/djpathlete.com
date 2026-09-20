@@ -19,6 +19,7 @@ const data: DrawerData = {
   mode: "post-only",
   video: null,
   previewUrl: null,
+  thumbnailUrl: null,
   transcript: null,
   posts: [
     {
@@ -42,6 +43,7 @@ const data: DrawerData = {
   highlightPostId: "p1",
   splitReelEnabled: false,
   reelEditorEnabled: false,
+  performance: null,
 }
 
 describe("<PostDetailPage>", () => {

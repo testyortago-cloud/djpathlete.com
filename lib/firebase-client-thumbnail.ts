@@ -11,7 +11,36 @@ type ThumbnailSource =
   | { kind: "file"; file: File }
   | { kind: "url"; url: string }
 
-function captureFrame(source: ThumbnailSource): Promise<Blob | null> {
+/**
+ * Encode the frame a <video> element is CURRENTLY showing to a JPEG Blob.
+ * Does not seek — the displayed frame is the operator's choice. Returns null
+ * if the element has no decoded dimensions, or the canvas is tainted (remote
+ * source without CORS).
+ */
+export function captureFrameFromElement(video: HTMLVideoElement): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    try {
+      if (!video.videoWidth || !video.videoHeight) return resolve(null)
+      const ratio = video.videoHeight / video.videoWidth
+      const width = Math.min(THUMB_MAX_WIDTH, video.videoWidth)
+      const height = Math.round(width * ratio)
+      const canvas = document.createElement("canvas")
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return resolve(null)
+      ctx.drawImage(video, 0, 0, width, height)
+      canvas.toBlob((blob) => resolve(blob), "image/jpeg", THUMB_JPEG_QUALITY)
+    } catch {
+      resolve(null)
+    }
+  })
+}
+
+// When set, the caller picked an exact time (offscreen "use this frame"
+// capture). When omitted, we fall back to the auto-thumbnail heuristic: seek
+// to 1s, or halfway through if the video is shorter than 2s.
+function captureFrame(source: ThumbnailSource, seekSeconds?: number): Promise<Blob | null> {
   return new Promise((resolve) => {
     const objectUrl = source.kind === "file" ? URL.createObjectURL(source.file) : null
     const video = document.createElement("video")
@@ -39,7 +68,12 @@ function captureFrame(source: ThumbnailSource): Promise<Blob | null> {
 
     video.addEventListener("loadedmetadata", () => {
       const duration = Number.isFinite(video.duration) ? video.duration : 0
-      const target = duration > 0 ? Math.min(SEEK_TARGET_SECONDS, duration / 2) : 0
+      const target =
+        duration <= 0
+          ? 0
+          : seekSeconds !== undefined
+            ? Math.max(0, Math.min(seekSeconds, duration))
+            : Math.min(SEEK_TARGET_SECONDS, duration / 2)
       try {
         video.currentTime = target
       } catch {
@@ -48,24 +82,7 @@ function captureFrame(source: ThumbnailSource): Promise<Blob | null> {
     })
 
     video.addEventListener("seeked", () => {
-      try {
-        const ratio = video.videoWidth > 0 ? video.videoHeight / video.videoWidth : 0.5625
-        const width = Math.min(THUMB_MAX_WIDTH, video.videoWidth || THUMB_MAX_WIDTH)
-        const height = Math.round(width * ratio)
-        const canvas = document.createElement("canvas")
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext("2d")
-        if (!ctx) return finish(null)
-        ctx.drawImage(video, 0, 0, width, height)
-        canvas.toBlob(
-          (blob) => finish(blob),
-          "image/jpeg",
-          THUMB_JPEG_QUALITY,
-        )
-      } catch {
-        finish(null)
-      }
+      void captureFrameFromElement(video).then(finish)
     })
 
     video.addEventListener("error", () => finish(null))
@@ -90,6 +107,21 @@ export function generateVideoThumbnail(file: File): Promise<Blob | null> {
  */
 export function generateVideoThumbnailFromUrl(url: string): Promise<Blob | null> {
   return captureFrame({ kind: "url", url })
+}
+
+/**
+ * Render the frame at a chosen timestamp from a remote video URL, via an
+ * offscreen <video> with crossOrigin set. This is how "Use this frame" reads
+ * the picture the operator is looking at: the ON-PAGE player is never given
+ * crossOrigin (that would break local dev, whose origin isn't in the bucket's
+ * CORS allow-list), so a direct canvas read of it is always tainted. Building
+ * a second element here, pointed at the same signed URL, sidesteps that
+ * without touching the visible player.
+ * Resolves null if the browser cannot load the video, the URL has no CORS
+ * headers, or canvas reads taint.
+ */
+export function captureFrameFromUrlAt(url: string, seconds: number): Promise<Blob | null> {
+  return captureFrame({ kind: "url", url }, seconds)
 }
 
 /**
@@ -129,4 +161,62 @@ export async function generateAndUploadThumbnail(
   const blob = await generateVideoThumbnail(file)
   if (!blob) return
   await uploadThumbnailFor(videoUploadId, blob)
+}
+
+/**
+ * Set a CUSTOM thumbnail: ask for a unique path, PUT the bytes, and only then
+ * ask the server to point the row at it. The row is never written before the
+ * bytes land — a failed PUT must not destroy a working thumbnail.
+ */
+export async function commitThumbnail(
+  videoUploadId: string,
+  blob: Blob,
+  source: "frame" | "upload",
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/admin/videos/${videoUploadId}/thumbnail/custom`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contentType: blob.type || "image/jpeg" }),
+    })
+    if (!res.ok) return false
+    const { uploadUrl, thumbnailPath } = (await res.json()) as {
+      uploadUrl: string
+      thumbnailPath: string
+    }
+
+    const put = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": blob.type || "image/jpeg" },
+      body: blob,
+    })
+    if (!put.ok) return false
+
+    const commit = await fetch(`/api/admin/videos/${videoUploadId}/thumbnail`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ thumbnailPath, source }),
+    })
+    return commit.ok
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Point the row back at the auto-captured thumbnail. Returns false when the
+ * server answers 409 — the original blob no longer exists, so there is nothing
+ * to revert to and the custom one is deliberately left in place.
+ */
+export async function revertThumbnailToAuto(videoUploadId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/admin/videos/${videoUploadId}/thumbnail`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: "auto" }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
 }

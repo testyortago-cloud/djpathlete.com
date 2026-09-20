@@ -1,0 +1,149 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Video thumbnails and Content Studio Insights</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; padding: 48px 32px 96px; background: #f6f7f8; color: #16303a;
+         font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  .lede { color: #5c6b70; margin: 0 0 36px; max-width: 74ch; }
+  section { background: #fff; border: 1px solid #e2e6e8; border-radius: 14px; padding: 24px; margin: 0 0 28px; }
+  h2 { font-size: 19px; margin: 0 0 4px; }
+  .meta { color: #5c6b70; font-size: 14px; margin: 0 0 16px; }
+  img { display: block; width: 100%; height: auto; border: 1px solid #e2e6e8; border-radius: 8px; }
+  code { background: #eef1f2; padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+  ul { margin: 10px 0 0; padding-left: 20px; }
+  li { margin: 4px 0; }
+  .note { background: #fff8e8; border: 1px solid #f0e0b8; border-radius: 10px; padding: 16px 20px; margin: 0 0 28px; }
+  .bad { background: #fdf0ee; border: 1px solid #f2cfc8; border-radius: 10px; padding: 16px 20px; margin: 0 0 28px; }
+</style>
+<main>
+  <h1>A thumbnail you can choose, and metrics that do not lie when empty</h1>
+  <p class="lede">
+    Darren asked for &ldquo;the ability to put a thumbnail on the video creation stuff as well as some
+    basic metrics of analysis&rdquo;, on the media management side. Every shot below is the real admin on
+    its real route, driven with Playwright against the development copy of the database. The
+    annotations are burned into each PNG, so the file explains itself on its own.
+  </p>
+
+  <div class="bad">
+    <strong>Read this one first.</strong> Shot 02 is a failure, on purpose. One of the two ways to set a
+    thumbnail &mdash; picking a frame out of the video &mdash; cannot be exercised from a developer
+    machine, because the video store only allows the live web address. It is expected to work on the
+    live site and is not provable here. The other way, uploading your own picture, has the same
+    constraint locally. See <em>What is not proven</em> at the bottom.
+  </div>
+
+  <section>
+    <h2>01 &mdash; The picker, on the real video page</h2>
+    <p class="meta">
+      <code>/admin/content/&lt;video&gt;</code> &middot; Chromium 1440&times;1200 @2&times;.
+      Before this work the picture was whatever the app grabbed one second in, there was no way to
+      change it, and the detail page did not show it at all.
+    </p>
+    <img src="01-thumbnail-picker.png" alt="The video detail page showing a Thumbnail panel with the current picture, the label 'Picked automatically', and buttons reading 'Use this frame' and 'Upload an image'.">
+  </section>
+
+  <section>
+    <h2>02 &mdash; What a blocked storage permission looks like</h2>
+    <p class="meta">
+      The same page after pressing &ldquo;Use this frame&rdquo; on a developer machine.
+      This message is itself part of the work: the first version said &ldquo;try playing the video
+      first&rdquo;, which could never have helped, because the cause is a permission rather than
+      anything the person did.
+    </p>
+    <img src="02-thumbnail-blocked-on-localhost.png" alt="The thumbnail panel showing a message saying the picture could not be saved and that the video store needs to allow this site.">
+  </section>
+
+  <section>
+    <h2>03 &mdash; Insights, exactly as it opens today</h2>
+    <p class="meta">
+      <code>/admin/content?tab=insights</code> &middot; nothing has ever been published, so the
+      lower half says so in words.
+    </p>
+    <img src="03-insights-nothing-published.png" alt="The Insights tab showing production counts and, below them, a panel reading 'Nothing has been published yet.'">
+    <ul>
+      <li>The counts above the line work today and do not wait on anything being published.</li>
+      <li>&ldquo;Drafts &mdash; the oldest one has been waiting 97 days&rdquo; is the number that
+          actually prompts action, and it is real.</li>
+      <li>A dashboard that printed &ldquo;0 views&rdquo; here would look identical to one whose
+          numbers had silently stopped arriving. That is the thing this design refuses to do.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>04 &mdash; Posts are live, the numbers have not arrived</h2>
+    <p class="meta">
+      The same tab with three posts published and no figures collected against them yet &mdash;
+      where a coach sits for the rest of the day after an afternoon publish.
+      Seeded on the development copy and deleted again immediately afterwards.
+    </p>
+    <img src="04-insights-live-no-numbers.png" alt="The Insights tab reading '3 posts have gone live' above a line saying two posts are waiting on the next nightly update and one is on LinkedIn, which is not connected.">
+    <ul>
+      <li><strong>This shot is here because the tab used to get it wrong.</strong> Until the final
+          review it printed &ldquo;Nothing has been published yet&rdquo; here &mdash; word for word
+          the sentence in shot 03 &mdash; while the band directly above it counted
+          &ldquo;Posts published &mdash; 3&rdquo;. One screen, two contradictory claims.</li>
+      <li>A post on a platform that is not connected read that way permanently, not just overnight.</li>
+      <li>Compare the lower panel with shot 03: same route, same code, and the two situations are
+          now told apart in words.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>05 &mdash; The same tab once the figures come back</h2>
+    <p class="meta">
+      Identical route and code; the only difference is that there is now something to count.
+      Seeded on the development copy and deleted again immediately afterwards.
+    </p>
+    <img src="05-insights-with-numbers.png" alt="The Insights tab with real view, like, comment and share figures, and beneath them a line naming the posts those figures do not cover.">
+    <ul>
+      <li>The line under the figures survives into this state on purpose: 4,120 views is the total
+          for the posts that <em>could</em> be measured, and the sentence beneath says which ones
+          are missing from it.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>06 &mdash; Four answers, told apart</h2>
+    <p class="meta">
+      The Performance section on a single video. This is the reason the second half of the work
+      exists.
+    </p>
+    <img src="06-video-performance-all-four-states.png" alt="A video's Performance section showing summary figures and a per-platform list distinguishing measured figures, a published post awaiting numbers, a platform that is not connected, and posts still in draft.">
+    <ul>
+      <li><strong>Measured</strong> &mdash; figures came back.</li>
+      <li><strong>Published, no numbers yet</strong> &mdash; live, but nothing collected.</li>
+      <li><strong>Not connected</strong> &mdash; we cannot read that account.</li>
+      <li><strong>Not published yet</strong> &mdash; still a draft.</li>
+    </ul>
+    <p style="margin-top:14px">
+      All four would read as <code>0</code> on an ordinary dashboard. Today the live site shows only
+      the last of them, on every video.
+    </p>
+  </section>
+
+  <div class="note">
+    <strong>What is not proven here, and why.</strong>
+    <ul>
+      <li><strong>Setting a thumbnail could not be completed from a developer machine.</strong> The
+          video store&rsquo;s permission list contains the live web address and not
+          <code>localhost</code> &mdash; measured directly, not assumed. Both buttons are therefore
+          expected to work on the live site and neither can be demonstrated here. Adding the
+          development address to that list is a one-off setting.</li>
+      <li><strong>Shot 05 and shot 06 used seeded rows</strong> on the development copy, because
+          nothing has ever genuinely been published. Three posts and one set of figures were inserted
+          directly and deleted afterwards. Nothing was sent to Instagram, YouTube or LinkedIn &mdash;
+          the publishing path was never invoked.</li>
+      <li><strong>Image-set submissions are not shown</strong> in shot 03. Every submission in both
+          the development and live databases is a video; there has never been an image set, so that
+          branch has no real example to photograph.</li>
+    </ul>
+  </div>
+
+  <p class="meta">
+    Captured by <code>scripts/capture-media-thumbnails-and-insights.ts</code>, which refuses to start
+    unless it is pointed at the development database.
+  </p>
+</main>

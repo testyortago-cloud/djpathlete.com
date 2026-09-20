@@ -4,7 +4,9 @@ import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { getSocialPostById, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
 import { listMediaForPosts } from "@/lib/db/social-post-media"
 import { getSetting } from "@/lib/db/system-settings"
+import { getVideoPerformance } from "@/lib/content-studio/insights-data"
 import type { VideoUpload, VideoTranscript, SocialPost } from "@/types/database"
+import type { VideoPerformanceSummary } from "@/lib/content-studio/insights"
 
 const PREVIEW_URL_EXPIRY_MS = 10 * 60 * 1000 // 10 minutes
 const SLIDE_URL_EXPIRY_MS = 60 * 60 * 1000 // 1 hour
@@ -21,6 +23,7 @@ export interface DrawerData {
   mode: "video" | "post-only"
   video: VideoUpload | null
   previewUrl: string | null
+  thumbnailUrl: string | null
   transcript: VideoTranscript | null
   posts: SocialPost[]
   /** Attached image slides per post id (carousel/image/story), ordered by position. */
@@ -31,6 +34,13 @@ export interface DrawerData {
   splitReelEnabled: boolean
   /** Whether the reel editor feature flag is on (gates the "Edit reel" Dialog). */
   reelEditorEnabled: boolean
+  /**
+   * Null in post-only mode (no video to summarize). "error" when
+   * getVideoPerformance itself failed (logged via console.error) — kept
+   * distinct from null so VideoPerformance can say so on screen instead of
+   * silently rendering nothing.
+   */
+  performance: VideoPerformanceSummary | null | "error"
 }
 
 /**
@@ -88,13 +98,31 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
   const video = await getVideoUploadById(videoId)
   if (!video) return null
 
-  const [transcript, posts, previewUrl, splitReelEnabled, reelEditorEnabled] = await Promise.all([
-    getTranscriptForVideo(videoId),
-    listSocialPostsBySourceVideo(videoId),
-    signPreviewUrl(video.storage_path),
-    getSetting<boolean>("feature_split_reel_enabled", false),
-    getSetting<boolean>("feature_reel_editor_enabled", false),
-  ])
+  // Shared with the getVideoPerformance call below so posts are fetched once,
+  // not twice — getVideoPerformance accepts pre-fetched posts precisely for this.
+  const postsPromise = listSocialPostsBySourceVideo(videoId)
+
+  const [transcript, posts, previewUrl, thumbnailUrl, splitReelEnabled, reelEditorEnabled, performance] =
+    await Promise.all([
+      getTranscriptForVideo(videoId),
+      postsPromise,
+      signPreviewUrl(video.storage_path),
+      video.thumbnail_path ? signPreviewUrl(video.thumbnail_path) : Promise.resolve(null),
+      getSetting<boolean>("feature_split_reel_enabled", false),
+      getSetting<boolean>("feature_reel_editor_enabled", false),
+      // Best-effort: a failure reading analytics/connections shouldn't 500 the
+      // whole page — this panel isn't required to view or edit the video.
+      // But nothing here is a transient, expiring condition (no migration in
+      // flight, no schema change to tolerate for one deploy), so a permanent
+      // failure must not go silent: log it, and hand the component "error" —
+      // not null — so it can say so on screen instead of rendering nothing.
+      postsPromise
+        .then((ownPosts) => getVideoPerformance(videoId, ownPosts))
+        .catch((error): "error" => {
+          console.error("[drawer-data] getVideoPerformance failed", { videoId, error })
+          return "error"
+        }),
+    ])
 
   const mediaByPost = await signMediaByPost(posts.map((p) => p.id))
 
@@ -102,12 +130,14 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
     mode: "video",
     video,
     previewUrl,
+    thumbnailUrl,
     transcript,
     posts,
     mediaByPost,
     highlightPostId: null,
     splitReelEnabled,
     reelEditorEnabled,
+    performance,
   }
 }
 
@@ -120,12 +150,14 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       mode: "post-only",
       video: null,
       previewUrl: null,
+      thumbnailUrl: null,
       transcript: null,
       posts: [post],
       mediaByPost: await signMediaByPost([post.id]),
       highlightPostId: post.id,
       splitReelEnabled: false,
       reelEditorEnabled: false,
+      performance: null,
     }
   }
 
@@ -135,12 +167,14 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       mode: "post-only",
       video: null,
       previewUrl: null,
+      thumbnailUrl: null,
       transcript: null,
       posts: [post],
       mediaByPost: await signMediaByPost([post.id]),
       highlightPostId: post.id,
       splitReelEnabled: false,
       reelEditorEnabled: false,
+      performance: null,
     }
   }
 

@@ -1,10 +1,15 @@
+"use client"
+
+import { useRef } from "react"
 import type { VideoUpload } from "@/types/database"
 import { GenerateQuoteCardsButton } from "@/components/admin/content-studio/drawer/GenerateQuoteCardsButton"
 import { SplitReelPanel } from "@/components/admin/content-studio/drawer/SplitReelPanel"
+import { ThumbnailPanel } from "./ThumbnailPanel"
 
 interface VideoDetailSidebarProps {
   video: VideoUpload
   previewUrl: string | null
+  thumbnailUrl?: string | null
   hasTranscript?: boolean
   splitReelEnabled?: boolean
   reelEditorEnabled?: boolean
@@ -28,15 +33,24 @@ function formatSize(bytes: number | null): string {
 export function VideoDetailSidebar({
   video,
   previewUrl,
+  thumbnailUrl,
   hasTranscript = false,
   splitReelEnabled = false,
   reelEditorEnabled = false,
 }: VideoDetailSidebarProps) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+
   return (
     <div className="space-y-4">
       <div className="overflow-hidden rounded-lg border border-border bg-black">
         {previewUrl ? (
-          <video src={previewUrl} controls preload="metadata" className="w-full aspect-video bg-black">
+          <video
+            ref={videoRef}
+            src={previewUrl}
+            controls
+            preload="metadata"
+            className="w-full aspect-video bg-black"
+          >
             Your browser does not support the video element.
           </video>
         ) : (
@@ -45,6 +59,13 @@ export function VideoDetailSidebar({
           </div>
         )}
       </div>
+
+      <ThumbnailPanel
+        videoUploadId={video.id}
+        videoRef={videoRef}
+        thumbnailUrl={thumbnailUrl ?? null}
+        thumbnailSource={video.thumbnail_source}
+      />
 
       <div>
         <p className="font-mono text-xs text-muted-foreground truncate" title={video.original_filename}>

@@ -1858,6 +1858,10 @@ export interface PlatformConnection {
   updated_at: string
 }
 
+/** How a video's current thumbnail was chosen. Null on rows that pre-date the picker. */
+export const THUMBNAIL_SOURCES = ["auto", "frame", "upload"] as const
+export type ThumbnailSource = (typeof THUMBNAIL_SOURCES)[number]
+
 export interface VideoUpload {
   id: string
   storage_path: string
@@ -1880,6 +1884,12 @@ export interface VideoUpload {
    * callers (and test fixtures) may omit it entirely.
    */
   thumbnail_path?: string | null
+  /**
+   * How `thumbnail_path` was chosen. Null means auto/unknown — the row pre-dates
+   * the picker — and the UI offers no "Revert to auto" for it. Optional on insert:
+   * nullable column, no default.
+   */
+  thumbnail_source?: ThumbnailSource | null
   /**
    * Set when this row was promoted from a team_video_submissions row (the
    * "Send to Content Studio" / captioned-cut promote-or-reuse path); null for

@@ -36,3 +36,22 @@ export async function listSocialAnalyticsInRange(from: Date, to: Date): Promise<
   if (error) throw error
   return (data ?? []) as SocialAnalytics[]
 }
+
+/**
+ * All snapshots for a specific set of posts (every recorded_at, not just the
+ * latest — callers that need "latest per post" reduce this themselves, same
+ * as summarizeVideoPerformance does). Used by the video detail page's
+ * performance panel, which must not pull the whole `social_analytics` table
+ * (listSocialAnalyticsInRange) to answer one video's worth of numbers.
+ */
+export async function listSocialAnalyticsForPosts(postIds: string[]): Promise<SocialAnalytics[]> {
+  if (postIds.length === 0) return []
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("social_analytics")
+    .select("*")
+    .in("social_post_id", postIds)
+    .order("recorded_at", { ascending: false })
+  if (error) throw error
+  return (data ?? []) as SocialAnalytics[]
+}
