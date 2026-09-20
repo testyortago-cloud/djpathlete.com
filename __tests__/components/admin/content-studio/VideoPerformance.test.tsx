@@ -98,9 +98,53 @@ describe("VideoPerformance", () => {
       />,
     )
     // The roll-up alone would look entirely healthy. The per-post list must
-    // still say LinkedIn couldn't be read.
-    expect(screen.getByText(/linkedin isn't connected/i)).toBeInTheDocument()
+    // still say the platform couldn't be read — but the row already has its
+    // own "LinkedIn" label, so the message itself must not repeat the name.
+    expect(screen.getByText(/can't read its numbers/i)).toBeInTheDocument()
     expect(screen.getByText("Instagram")).toBeInTheDocument()
+  })
+
+  it("does not repeat the platform name in a per-post not_connected row", () => {
+    // The row already opens with the platform label ("LinkedIn"), so the
+    // message beside it must say only "Not connected...", not repeat the
+    // name — otherwise the row reads "LinkedIn LinkedIn isn't connected...".
+    render(
+      <VideoPerformance
+        performance={{
+          videoId: "v1",
+          state: { kind: "not_published" },
+          perPost: [
+            {
+              postId: "post-blocked",
+              platform: "linkedin",
+              state: { kind: "not_connected", platform: "linkedin" },
+            },
+          ],
+        }}
+      />,
+    )
+    const row = screen.getByText("LinkedIn").closest("li")
+    expect(row).not.toBeNull()
+    const occurrences = row!.textContent!.match(/linkedin/gi) ?? []
+    expect(occurrences).toHaveLength(1)
+    expect(screen.getByText("Not connected, so we can't read its numbers.")).toBeInTheDocument()
+  })
+
+  it("still names the platform in the video-level not_connected roll-up", () => {
+    // At video scope there is no label beside the message (it's the only
+    // thing in the roll-up), so it must keep naming the platform.
+    render(
+      <VideoPerformance
+        performance={{
+          videoId: "v1",
+          state: { kind: "not_connected", platform: "linkedin" },
+          perPost: [],
+        }}
+      />,
+    )
+    expect(
+      screen.getByText("LinkedIn isn't connected, so we can't read its numbers."),
+    ).toBeInTheDocument()
   })
 
   it("capitalises a raw platform id for display instead of showing it verbatim", () => {

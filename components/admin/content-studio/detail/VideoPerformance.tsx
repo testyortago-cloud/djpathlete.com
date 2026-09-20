@@ -36,11 +36,16 @@ type StateDescriptor =
 /** The one place a PerformanceState becomes copy. Both the roll-up (scope
  *  "video") and each perPost line (scope "post") call this, so they can
  *  never drift out of sync with each other or with the four-state ladder in
- *  lib/content-studio/insights.ts. `not_published` reads differently per
- *  scope: production has 0 published posts today, so a video with only
- *  drafts must not repeat "This video isn't published yet" once per post —
- *  that reads as three copies of the video-level sentence, two of them
- *  wrongly attributed to a post. */
+ *  lib/content-studio/insights.ts. `not_published` and `not_connected` both
+ *  read differently per scope. `not_published`: production has 0 published
+ *  posts today, so a video with only drafts must not repeat "This video
+ *  isn't published yet" once per post — that reads as three copies of the
+ *  video-level sentence, two of them wrongly attributed to a post.
+ *  `not_connected`: each perPost row already leads with the platform label
+ *  (see the <li> below), so naming the platform again in the message reads
+ *  as "LinkedIn LinkedIn isn't connected..." — the post-scope message drops
+ *  the name; the video-scope roll-up has no label beside it, so it keeps
+ *  the name. */
 function describeState(state: PerformanceState, scope: "video" | "post"): StateDescriptor {
   switch (state.kind) {
     case "not_published":
@@ -59,7 +64,10 @@ function describeState(state: PerformanceState, scope: "video" | "post"): StateD
     case "not_connected":
       return {
         kind: "message",
-        text: `${PLATFORM_LABELS[state.platform]} isn't connected, so we can't read its numbers.`,
+        text:
+          scope === "video"
+            ? `${PLATFORM_LABELS[state.platform]} isn't connected, so we can't read its numbers.`
+            : "Not connected, so we can't read its numbers.",
       }
     case "measured":
       return {
