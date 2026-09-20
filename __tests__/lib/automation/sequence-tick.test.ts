@@ -39,6 +39,7 @@ function ctx(over: Partial<DecisionContext> = {}): DecisionContext {
     hasSmsConsent: false,
     isSuppressed: false,
     enrolledSource: "funnel_form",
+    lastEmail: null,
     ...over,
   }
 }
@@ -208,6 +209,60 @@ describe("evaluateBranch", () => {
     })
     expect(evaluateBranch({ kind: "source_is", value: "funnel_form" }, ctx())).toEqual({ ok: true, value: true })
     expect(evaluateBranch({ kind: "source_is", value: "newsletter" }, ctx())).toEqual({ ok: true, value: false })
+  })
+
+  // G09. The quotation sells "branch on whether they opened the last email".
+  // Until now `sequence_messages.opened_at` had no writer, so the predicate
+  // could not exist — the column it reads was always null.
+  //
+  // BOTH predicates ship, and they are NOT equally trustworthy. An open is a
+  // 1x1 tracking pixel: Apple Mail Privacy Protection pre-fetches it on every
+  // message whether or not a human ever looks, and Gmail proxies images too.
+  // So `opened_last_email` OVER-COUNTS, on the largest slice of a consumer
+  // list, and always will. A click is a real action on a real link.
+  it("resolves opened_last_email from the last email's opened_at", () => {
+    expect(
+      evaluateBranch(
+        { kind: "opened_last_email" },
+        ctx({ lastEmail: { openedAt: "2026-08-18T14:00:00Z", clickedAt: null } }),
+      ),
+    ).toEqual({ ok: true, value: true })
+
+    expect(
+      evaluateBranch({ kind: "opened_last_email" }, ctx({ lastEmail: { openedAt: null, clickedAt: null } })),
+    ).toEqual({ ok: true, value: false })
+  })
+
+  it("resolves clicked_last_email independently of opened", () => {
+    // A click without a recorded open is normal: an image-blocking client
+    // never fires the pixel, and Resend does not synthesise an open.
+    expect(
+      evaluateBranch(
+        { kind: "clicked_last_email" },
+        ctx({ lastEmail: { openedAt: null, clickedAt: "2026-08-18T14:05:00Z" } }),
+      ),
+    ).toEqual({ ok: true, value: true })
+
+    expect(
+      evaluateBranch(
+        { kind: "clicked_last_email" },
+        ctx({ lastEmail: { openedAt: "2026-08-18T14:00:00Z", clickedAt: null } }),
+      ),
+    ).toEqual({ ok: true, value: false })
+  })
+
+  it("is FALSE, not an error, when this run has sent no email yet", () => {
+    // A branch placed before any email step. False is the honest answer —
+    // they have not opened something that was never sent — and failing the run
+    // would punish an editor for an ordering choice that is merely odd.
+    expect(evaluateBranch({ kind: "opened_last_email" }, ctx({ lastEmail: null }))).toEqual({
+      ok: true,
+      value: false,
+    })
+    expect(evaluateBranch({ kind: "clicked_last_email" }, ctx({ lastEmail: null }))).toEqual({
+      ok: true,
+      value: false,
+    })
   })
 
   it("REFUSES an unknown predicate instead of defaulting to false", () => {

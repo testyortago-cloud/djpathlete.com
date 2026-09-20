@@ -20,6 +20,10 @@ const branchConditionSchema = z
     z.object({ kind: z.literal("has_user") }),
     z.object({ kind: z.literal("has_consent"), channel: z.enum(["email", "sms"]) }),
     z.object({ kind: z.literal("source_is"), value: z.string() }),
+    // G09. See the union in lib/automation/sequence-tick.ts for why
+    // `clicked` is the one to reach for and `opened` over-counts.
+    z.object({ kind: z.literal("opened_last_email") }),
+    z.object({ kind: z.literal("clicked_last_email") }),
   ])
   .nullable()
 

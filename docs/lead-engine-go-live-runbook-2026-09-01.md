@@ -164,3 +164,58 @@ failed, run step 5 again with the new error pattern.
 **The repair matched fewer than 73.** Some runs changed underneath. The script
 skips those rather than clobbering them and prints the count — read it, then
 decide.
+
+---
+
+## Resend engagement events (G09, added 2026-09-20)
+
+Until BOTH steps below are done, `POST /api/webhooks/resend` answers **500 to
+every delivery** and no open, click, delivery or bounce is ever recorded. That
+500 is deliberate — a missing secret is an operator fault, not an attack, and a
+5xx is retried where a 403 would make Svix give up — but it does mean the
+endpoint is inert, and Svix will eventually disable an endpoint that keeps
+failing. Do these together.
+
+**1. Create the endpoint in Resend.** Dashboard → Webhooks → Add Endpoint.
+
+- URL: `https://<production domain>/api/webhooks/resend`
+- Events: `email.delivered`, `email.opened`, `email.clicked`, `email.bounced`
+- Resend shows a signing secret starting `whsec_` **once**. Copy it.
+
+**2. Set `RESEND_WEBHOOK_SECRET`** to that value in the production environment,
+then redeploy. Nothing reads it until a deploy picks it up.
+
+**3. Turn on open and click tracking** in Resend's settings for the sending
+domain. Without it Resend never emits `email.opened` / `email.clicked` at all,
+and the two engagement predicates stay false forever with nothing in any log to
+say why.
+
+### What to expect, and what not to
+
+- **"Opened" over-counts, permanently.** An open is a 1×1 tracking pixel. Apple
+  Mail Privacy Protection pre-fetches it on every message whether or not a human
+  looks, and Gmail proxies images. On a consumer list that is a large share of
+  recipients. The step editor prints this under the predicate. Prefer
+  **"Clicked a link in the last email"** wherever the branch actually matters.
+- **A PERMANENT bounce suppresses the address; a transient one does not.** A
+  full mailbox or an autoresponder must not silence a live lead — `suppress` has
+  no expiry, an email suppression exits the *whole* run, and no admin screen can
+  undo it. Recovery today means a script.
+- **A spam complaint (`email.complained`) does nothing yet.** Deliberate, and
+  arguably backwards — a complaint is a stronger stop signal than a dead mailbox
+  — but it wants its own decision about revoking consent and exiting runs.
+
+### Checking it works
+
+After the first sequence email goes out:
+
+```sql
+select provider_message_id, status, delivered_at, opened_at, clicked_at
+from sequence_messages
+where channel = 'email' and sent_at is not null
+order by sent_at desc limit 5;
+```
+
+`delivered_at` should fill within a minute or two. If every column stays null,
+check Resend's webhook log for 500s (secret not set) or 403s (secret set to the
+wrong value).

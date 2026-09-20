@@ -100,7 +100,15 @@ export function reachableFrom(edges: number[][], start: number): Set<number> {
 export type StepProblem = { index: number | null; message: string }
 
 /** Exactly the four predicates `evaluateBranch` implements. Anything else fails a run. */
-const KNOWN_BRANCH_KINDS = new Set(["has_phone", "has_user", "has_consent", "source_is"])
+const KNOWN_BRANCH_KINDS = new Set([
+  "has_phone",
+  "has_user",
+  "has_consent",
+  "source_is",
+  // G09
+  "opened_last_email",
+  "clicked_last_email",
+])
 
 function branchConditionIsKnown(condition: BranchCondition | null): boolean {
   if (condition === null) return false

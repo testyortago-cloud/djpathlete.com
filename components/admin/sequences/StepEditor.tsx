@@ -62,14 +62,35 @@ const KIND_LABEL: Record<StepKind, string> = {
   stop: "End here",
 }
 
-const BRANCH_KIND_ORDER: BranchCondition["kind"][] = ["has_phone", "has_user", "has_consent", "source_is"]
+const BRANCH_KIND_ORDER: BranchCondition["kind"][] = [
+  "has_phone",
+  "has_user",
+  "has_consent",
+  "source_is",
+  "clicked_last_email",
+  "opened_last_email",
+]
 
-/** The only four predicates evaluateBranch implements. Nothing else can be offered here. */
+/**
+ * The only predicates evaluateBranch implements. Nothing else can be offered
+ * here — and because this is a Record over the union, adding a predicate
+ * without a label written for a non-programmer is a compile error.
+ */
 const BRANCH_KIND_LABEL: Record<BranchCondition["kind"], string> = {
   has_phone: "Has a phone number",
   has_user: "Has an account",
   has_consent: "Has agreed to be contacted",
   source_is: "Came from a particular place",
+  clicked_last_email: "Clicked a link in the last email",
+  opened_last_email: "Opened the last email (see note)",
+}
+
+/** Shown under the predicate when one needs a caveat a coach would want. */
+const BRANCH_KIND_NOTE: Partial<Record<BranchCondition["kind"], string>> = {
+  opened_last_email:
+    "Counts more people than really read it. Apple Mail and Gmail can open images automatically, " +
+    "which looks the same to us as a person opening the email. \u201CClicked a link\u201D is the one to " +
+    "trust when it matters.",
 }
 
 /**
@@ -598,6 +619,10 @@ function BranchFields({
           ))}
         </select>
       </div>
+
+      {condition && BRANCH_KIND_NOTE[condition.kind] ? (
+        <p className="text-xs text-muted-foreground">{BRANCH_KIND_NOTE[condition.kind]}</p>
+      ) : null}
 
       {condition?.kind === "has_consent" ? (
         <div>

@@ -17,6 +17,22 @@ export type BranchCondition =
   | { kind: "has_user" }
   | { kind: "has_consent"; channel: "email" | "sms" }
   | { kind: "source_is"; value: string }
+  /**
+   * G09. Engagement with the most recent email THIS RUN sent.
+   *
+   * `opened_last_email` is the predicate the quotation names, and it is
+   * the weaker of the two by a long way: an open is a 1x1 tracking pixel,
+   * Apple Mail Privacy Protection pre-fetches it on every message whether
+   * or not a human looks, and Gmail proxies images. On a consumer list
+   * that is typically half the recipients, so this predicate OVER-COUNTS
+   * and always will. It does not error and it is not "broken" — it is
+   * just measuring something softer than it sounds.
+   *
+   * `clicked_last_email` has no such problem: a click is a real action on
+   * a real link. Prefer it wherever the branch actually matters.
+   */
+  | { kind: "opened_last_email" }
+  | { kind: "clicked_last_email" }
 
 export type SequenceStepRow = {
   id: string
@@ -60,6 +76,12 @@ export type DecisionContext = {
   hasSmsConsent: boolean
   isSuppressed: boolean
   enrolledSource: string | null
+  /**
+   * The most recent email THIS run sent, and what Resend has since said
+   * about it (G09). `null` when the run has sent no email yet — which the
+   * engagement predicates read as false rather than as an error.
+   */
+  lastEmail: { openedAt: string | null; clickedAt: string | null } | null
 }
 
 export type StepAction =
@@ -89,6 +111,13 @@ export function evaluateBranch(
       }
     case "source_is":
       return { ok: true, value: ctx.enrolledSource === condition.value }
+    case "opened_last_email":
+      // No email sent yet reads as false, not as an error: the person has
+      // not opened something that was never sent, and failing the run
+      // would punish an editor for an odd but legal step order.
+      return { ok: true, value: ctx.lastEmail?.openedAt != null }
+    case "clicked_last_email":
+      return { ok: true, value: ctx.lastEmail?.clickedAt != null }
     default:
       // An unknown predicate must FAIL the run, never default to a boolean —
       // guessing which branch arm is correct can send the wrong message to a

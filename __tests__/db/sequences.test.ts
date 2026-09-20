@@ -62,6 +62,7 @@ vi.mock("@/lib/supabase", () => ({
       const filters: Array<[string, any]> = []
       const gteFilters: Array<[string, any]> = []
       const ltFilters: Array<[string, any]> = []
+      const notNullFields: string[] = []
       let orderCol: string | null = null
       let orderAscending = true
       let limitN: number | null = null
@@ -77,14 +78,28 @@ vi.mock("@/lib/supabase", () => ({
         inFilters.every(([col, vals]) => vals.includes(row[col]))
 
       const matched = (): Row[] => {
-        let result = rows.filter(passesFilters)
+        let result = rows
+          .filter(passesFilters)
+          .filter((row) => notNullFields.every((f) => row[f] !== null && row[f] !== undefined))
         if (orderCol) {
           const col = orderCol
+          // NULL ORDERING MATCHES POSTGRES, and getting this wrong is not
+          // cosmetic: Postgres sorts NULLS LAST ascending and therefore NULLS
+          // FIRST descending. A comparator that treats null as "smaller" puts
+          // it last on a descending sort — the opposite — so a test for
+          // "`order(x, desc)` picks the wrong row when x is null" would pass
+          // here while the real query failed. That is exactly the shape of the
+          // G09 lastEmail bug.
           result = [...result].sort((a, b) => {
+            const an = a[col] === null || a[col] === undefined
+            const bn = b[col] === null || b[col] === undefined
+            if (an && bn) return a._seq - b._seq
+            if (an) return 1 // nulls last ascending
+            if (bn) return -1
             if (a[col] === b[col]) return a._seq - b._seq
             return a[col] > b[col] ? 1 : -1
           })
-          if (!orderAscending) result.reverse()
+          if (!orderAscending) result.reverse() // ...and therefore nulls FIRST descending
         }
         if (limitN != null) result = result.slice(0, limitN)
         return result
@@ -156,6 +171,11 @@ vi.mock("@/lib/supabase", () => ({
           inFilters.push([col, vals])
           return api
         },
+        /** Only the `.not(col, "is", null)` shape the DAL actually uses. */
+        not: (col: string, op: string, value: any) => {
+          if (op === "is" && value === null) notNullFields.push(col)
+          return api
+        },
         order: (col: string, opts?: { ascending?: boolean }) => {
           orderCol = col
           orderAscending = opts?.ascending ?? true
@@ -202,6 +222,7 @@ import {
   claimDueRuns,
   loadSteps,
   loadRunContext,
+  applyResendEmailEvent,
   recordSend,
   markSent,
   markFailed,
@@ -522,6 +543,187 @@ describe("loadRunContext", () => {
     expect(ctx.contact.user_id).toBe("u-1")
   })
 
+  // G09's reading half. The predicate is worth nothing if the context never
+  // carries the engagement, and the store here is projection-blind, so this
+  // asserts the VALUE threads through and that the lookup is scoped to the run.
+  it("carries the last email's engagement into DecisionContext.lastEmail", async () => {
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
+    store.sequence_messages.push({
+      id: "m-1",
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_id: "c-1",
+      run_id: "run-1",
+      step_id: "s-1",
+      channel: "email",
+      status: "sent",
+      sent_at: "2026-08-18T13:00:00Z",
+      opened_at: "2026-08-18T13:30:00Z",
+      clicked_at: null,
+    })
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    expect(ctx.lastEmail).toEqual({ openedAt: "2026-08-18T13:30:00Z", clickedAt: null })
+  })
+
+  it("ignores a NEVER-SENT row, even though it sorts first on a descending sent_at", async () => {
+    // THE BUG THIS QUERY SHIPPED WITH. `markFailed` writes status `failed`
+    // without a `sent_at`, and Postgres orders `sent_at DESC` NULLS FIRST — so
+    // a run holding one pre-send failure read that row as "the last email" and
+    // both engagement predicates went false forever. On production 73 of the
+    // 77 email rows are exactly this shape.
+    //
+    // This test only means something because the store above orders nulls the
+    // way Postgres does; it used to put them last on a descending sort, which
+    // would have made this pass with or without the fix.
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
+    store.sequence_messages.push({
+      id: "m-never-sent",
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_id: "c-1",
+      run_id: "run-1",
+      step_id: "s-0",
+      channel: "email",
+      status: "failed",
+      sent_at: null,
+      opened_at: null,
+      clicked_at: null,
+    })
+    store.sequence_messages.push({
+      id: "m-real",
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_id: "c-1",
+      run_id: "run-1",
+      step_id: "s-1",
+      channel: "email",
+      status: "sent",
+      sent_at: "2026-08-18T13:00:00Z",
+      opened_at: "2026-08-18T13:30:00Z",
+      clicked_at: null,
+    })
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    expect(ctx.lastEmail).toEqual({ openedAt: "2026-08-18T13:30:00Z", clickedAt: null })
+  })
+
+  it("takes the LATEST sent email of several, not the first", async () => {
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
+    store.sequence_messages.push({
+      id: "m-old",
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_id: "c-1",
+      run_id: "run-1",
+      step_id: "s-1",
+      channel: "email",
+      status: "sent",
+      sent_at: "2026-08-10T13:00:00Z",
+      opened_at: "2026-08-10T14:00:00Z",
+      clicked_at: null,
+    })
+    store.sequence_messages.push({
+      id: "m-new",
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_id: "c-1",
+      run_id: "run-1",
+      step_id: "s-2",
+      channel: "email",
+      status: "sent",
+      sent_at: "2026-08-18T13:00:00Z",
+      opened_at: null,
+      clicked_at: null,
+    })
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    // The newest email is unopened — "did they open the LAST email" is false,
+    // even though an earlier one in the same run was opened.
+    expect(ctx.lastEmail).toEqual({ openedAt: null, clickedAt: null })
+  })
+
+  it("does not take an SMS row as the last EMAIL", async () => {
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com", phone_e164: "+15551234567" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
+    store.sequence_messages.push({
+      id: "m-email",
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_id: "c-1",
+      run_id: "run-1",
+      step_id: "s-1",
+      channel: "email",
+      status: "sent",
+      sent_at: "2026-08-10T13:00:00Z",
+      opened_at: "2026-08-10T14:00:00Z",
+      clicked_at: null,
+    })
+    store.sequence_messages.push({
+      id: "m-sms",
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_id: "c-1",
+      run_id: "run-1",
+      step_id: "s-2",
+      channel: "sms",
+      status: "sent",
+      sent_at: "2026-08-18T13:00:00Z",
+      opened_at: null,
+      clicked_at: null,
+    })
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    // The SMS is newer. Without the channel filter it would become "the last
+    // email" and report never-opened.
+    expect(ctx.lastEmail).toEqual({ openedAt: "2026-08-10T14:00:00Z", clickedAt: null })
+  })
+
+  it("reports lastEmail as null when this run has sent no email", async () => {
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    expect(ctx.lastEmail).toBeNull()
+  })
+
+  it("does not take another RUN's email as this run's last email", async () => {
+    // "Did they open the last email" means the last one from THIS sequence.
+    // Scoping to the contact would let a newsletter open satisfy a branch in
+    // an unrelated sequence.
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
+    store.sequence_messages.push({
+      id: "m-other",
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_id: "c-1",
+      run_id: "run-ELSEWHERE",
+      step_id: "s-1",
+      channel: "email",
+      status: "sent",
+      sent_at: "2026-08-18T13:00:00Z",
+      opened_at: "2026-08-18T13:30:00Z",
+      clicked_at: null,
+    })
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    expect(ctx.lastEmail).toBeNull()
+  })
+
   it("a contact with no name on file yields contact.name: null, not undefined", async () => {
     seedBusinessSettings()
     seedContact("c-1", { email: "lead@example.com", name: null })
@@ -802,5 +1004,107 @@ describe("write-back functions", () => {
     const msg = store.sequence_messages[0]
     expect(msg.status).toBe("failed")
     expect(msg.error).toBe("resend rejected the address")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G09: Resend's engagement events. The columns (delivered_at / opened_at /
+// clicked_at, migration 00216) have existed since the engine shipped and had
+// NO writer — so "branch on whether they opened the last email", which the
+// quotation sells, could never be true.
+// ---------------------------------------------------------------------------
+describe("applyResendEmailEvent", () => {
+  function seedMessage(over: Row = {}) {
+    store.sequence_messages.push({
+      id: "msg-1",
+      business_id: SINGLETON_BUSINESS_ID,
+      contact_id: "c-1",
+      run_id: "run-1",
+      step_id: "step-1",
+      channel: "email",
+      provider: "resend",
+      provider_message_id: "re_abc123",
+      status: "sent",
+      sent_at: "2026-08-18T13:00:00Z",
+      delivered_at: null,
+      opened_at: null,
+      clicked_at: null,
+      ...over,
+    })
+  }
+
+  const AT = new Date("2026-08-18T14:00:00Z")
+
+  it("records a delivery against the message Resend names", async () => {
+    seedMessage()
+    const outcome = await applyResendEmailEvent("re_abc123", "delivered", AT)
+    expect(outcome).toBe("updated")
+    const row = store.sequence_messages.find((m) => m.id === "msg-1")!
+    expect(row.delivered_at).toBe(AT.toISOString())
+    expect(row.status).toBe("delivered")
+  })
+
+  it("records an open and a click", async () => {
+    seedMessage()
+    await applyResendEmailEvent("re_abc123", "opened", AT)
+    await applyResendEmailEvent("re_abc123", "clicked", AT)
+    const row = store.sequence_messages.find((m) => m.id === "msg-1")!
+    expect(row.opened_at).toBe(AT.toISOString())
+    expect(row.clicked_at).toBe(AT.toISOString())
+  })
+
+  it("keeps the FIRST open, not the latest — these arrive repeatedly and out of order", async () => {
+    // Apple Mail Privacy Protection re-fetches the pixel, and a mail client
+    // re-opened weeks later fires again. The first open is the one that
+    // answers "did this message land"; a later one must not move it.
+    seedMessage({ opened_at: "2026-08-18T13:30:00Z" })
+    const outcome = await applyResendEmailEvent("re_abc123", "opened", AT)
+    expect(outcome).toBe("ignored")
+    expect(store.sequence_messages.find((m) => m.id === "msg-1")!.opened_at).toBe("2026-08-18T13:30:00Z")
+  })
+
+  it("does not let a stale delivery event un-deliver a message", async () => {
+    seedMessage({ status: "delivered", delivered_at: "2026-08-18T13:10:00Z" })
+    const outcome = await applyResendEmailEvent("re_abc123", "delivered", AT)
+    expect(outcome).toBe("ignored")
+    expect(store.sequence_messages.find((m) => m.id === "msg-1")!.delivered_at).toBe("2026-08-18T13:10:00Z")
+  })
+
+  it("a retried delivery records the timestamp but does NOT un-fail a bounced row", async () => {
+    // Svix retries. A `delivered` redelivered AFTER a `bounced` (or after
+    // markFailed) would otherwise flip the row back to delivered and un-say
+    // the bounce — the status would then disagree with the suppression that
+    // the bounce created.
+    seedMessage({ status: "failed", delivered_at: null })
+
+    const outcome = await applyResendEmailEvent("re_abc123", "delivered", AT)
+
+    expect(outcome).toBe("updated")
+    const row = store.sequence_messages.find((m) => m.id === "msg-1")!
+    expect(row.delivered_at).toBe(AT.toISOString())
+    expect(row.status).toBe("failed")
+  })
+
+  it("marks a bounce failed", async () => {
+    seedMessage()
+    const outcome = await applyResendEmailEvent("re_abc123", "bounced", AT)
+    expect(outcome).toBe("updated")
+    expect(store.sequence_messages.find((m) => m.id === "msg-1")!.status).toBe("failed")
+  })
+
+  it("reports an unknown message rather than writing nothing silently", async () => {
+    // Resend sends events for EVERY email the account sends, including all the
+    // transactional mail that has no sequence_messages row at all. That is the
+    // common case, not an error — but the route must tell it apart from a
+    // write that failed.
+    const outcome = await applyResendEmailEvent("re_not_ours", "opened", AT)
+    expect(outcome).toBe("unknown_message")
+  })
+
+  it("matches only a resend row — a twilio id that collides cannot be marked opened", async () => {
+    seedMessage({ id: "msg-sms", provider: "twilio", channel: "sms", provider_message_id: "re_abc123" })
+    const outcome = await applyResendEmailEvent("re_abc123", "opened", AT)
+    expect(outcome).toBe("unknown_message")
+    expect(store.sequence_messages.find((m) => m.id === "msg-sms")!.opened_at).toBeNull()
   })
 })

@@ -162,6 +162,7 @@ function smsSendableContext(overrides: Partial<DecisionContext> = {}): DecisionC
     hasSmsConsent: true,
     isSuppressed: false,
     enrolledSource: "funnel_form",
+    lastEmail: null,
     ...overrides,
   }
 }

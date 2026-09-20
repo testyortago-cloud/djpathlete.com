@@ -139,6 +139,34 @@ export async function loadRunContext(run: SequenceRunRow, now: Date, businessId:
     .lt("sent_at", end.toISOString())
   if (sentErr) throw sentErr
 
+  // G09: the most recent email THIS run sent, and what Resend has since said
+  // about it. Scoped to the run, not the contact — "did they open the last
+  // email" means the last one from this sequence, not the last one from any.
+  //
+  // `sent_at IS NOT NULL` IS THE LOAD-BEARING FILTER, not the status list.
+  // `markFailed` writes status `failed` WITHOUT a `sent_at` — a message that
+  // never left — and PostgREST's `order=sent_at.desc` is Postgres's
+  // `ORDER BY sent_at DESC`, which is NULLS **FIRST**. So a run holding one
+  // pre-send failure would read that row as "the last email" and both
+  // engagement predicates would be false forever. Not a corner case: on
+  // production 73 of the 77 email rows are exactly this shape (the stranded
+  // sms_repermission batch), 73 of 73 with a null `sent_at`.
+  const { data: lastEmailRows, error: lastEmailErr } = await supabase
+    .from("sequence_messages")
+    .select("opened_at, clicked_at, sent_at")
+    .eq("run_id", run.id)
+    .eq("business_id", businessId)
+    .eq("channel", "email")
+    .in("status", ["sent", "delivered", "undelivered", "failed"])
+    .not("sent_at", "is", null)
+    .order("sent_at", { ascending: false })
+    .limit(1)
+  if (lastEmailErr) throw lastEmailErr
+  const lastEmailRow = ((lastEmailRows ?? []) as Array<{ opened_at: string | null; clicked_at: string | null }>)[0]
+  const lastEmail = lastEmailRow
+    ? { openedAt: lastEmailRow.opened_at ?? null, clickedAt: lastEmailRow.clicked_at ?? null }
+    : null
+
   const { data: siblingRows, error: siblingErr } = await supabase
     .from("sequence_runs")
     .select("id, enrolled_at")
@@ -165,6 +193,7 @@ export async function loadRunContext(run: SequenceRunRow, now: Date, businessId:
     hasSmsConsent,
     isSuppressed: suppressed,
     enrolledSource: (sequenceRow.trigger_source as string | null) ?? null,
+    lastEmail,
   }
 }
 
@@ -284,6 +313,115 @@ const DELIVERY_STATUS_MAP: Record<string, "delivered" | "undelivered" | "failed"
   delivered: "delivered",
   undelivered: "undelivered",
   failed: "failed",
+}
+
+/**
+ * Who a sent email actually went to, and under which business (G09).
+ *
+ * Exists for exactly one caller: the bounce arm of the Resend webhook, which
+ * must suppress an address and therefore needs both. Suppression is keyed on
+ * the IDENTIFIER rather than the contact — so it survives a merge — which
+ * means nothing in the suppression itself carries a business, and the message
+ * row is the only honest source of one.
+ *
+ * BOTH come from the ROW rather than the webhook payload. The address in a
+ * bounce report is not always the address we sent to (a forwarder, or an
+ * `Undetermined` bounce naming the wrong mailbox), and suppressing the wrong
+ * one silences a lead who never bounced.
+ *
+ * `null` when no sequence message matches, and the caller must then suppress
+ * NOTHING. Guessing a tenant here would be a cross-tenant write driven by an
+ * unauthenticated endpoint.
+ */
+export async function sequenceMessageRecipient(
+  providerMessageId: string,
+): Promise<{ businessId: string; toIdentifier: string } | null> {
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("sequence_messages")
+    .select("business_id, to_identifier")
+    .eq("provider_message_id", providerMessageId)
+    .eq("provider", "resend")
+    .maybeSingle()
+  if (error) throw error
+  const row = data as { business_id: string; to_identifier: string } | null
+  return row ? { businessId: row.business_id, toIdentifier: row.to_identifier } : null
+}
+
+/**
+ * What Resend can tell us about an email after it left (G09).
+ *
+ * `delivered_at` / `opened_at` / `clicked_at` have existed since 00216 and had
+ * NO writer, which is why the quotation's "branch on whether they opened the
+ * last email" could never be true: the column it would read was always null.
+ *
+ * FIRST WINS on every timestamp, which is the opposite of `applyDeliveryStatus`
+ * above and deliberate. A Twilio status is a lifecycle that moves forward, so
+ * the LATEST report is the truth. An open is an event that repeats: a mail
+ * client re-opened weeks later fires again, and Apple Mail Privacy Protection
+ * re-fetches the pixel on its own schedule. The question worth answering is
+ * "did this message land", so the first occurrence is the answer and a later
+ * one must not move it.
+ *
+ * A BOUNCE marks the row `failed`. Suppressing the ADDRESS is the caller's
+ * job, not this function's — suppression is keyed on the identifier rather
+ * than the message (so it survives a merge), and the route has the contact in
+ * hand while this function deliberately knows only about one message row.
+ *
+ * `unknown_message` is the COMMON case, not an error: Resend sends an event
+ * for every email the account sends, and most of them are transactional mail
+ * with no `sequence_messages` row at all. The route answers 200 to those —
+ * a non-2xx would make Svix retry a delivery that can never match.
+ */
+export async function applyResendEmailEvent(
+  providerMessageId: string,
+  kind: "delivered" | "opened" | "clicked" | "bounced",
+  occurredAt: Date,
+): Promise<"updated" | "ignored" | "unknown_message"> {
+  const supabase = getClient()
+
+  const { data: existing, error: readErr } = await supabase
+    .from("sequence_messages")
+    .select("id, status, delivered_at, opened_at, clicked_at")
+    // `provider` as well as the id: a Twilio SID and a Resend id live in the
+    // same column, and nothing stops one colliding with the other.
+    .eq("provider_message_id", providerMessageId)
+    .eq("provider", "resend")
+    .maybeSingle()
+  if (readErr) throw readErr
+  if (!existing) return "unknown_message"
+
+  const row = existing as {
+    id: string
+    status: string
+    delivered_at: string | null
+    opened_at: string | null
+    clicked_at: string | null
+  }
+  const at = occurredAt.toISOString()
+
+  let patch: Record<string, unknown> | null = null
+  if (kind === "delivered") {
+    // The TIMESTAMP is first-wins; the STATUS is only advanced from `sent`.
+    // Svix retries, so a `delivered` redelivered after a `bounced` (or after
+    // markFailed) would otherwise flip a failed row back to delivered and
+    // un-say the bounce.
+    if (row.delivered_at === null) {
+      patch = { delivered_at: at, ...(row.status === "sent" ? { status: "delivered" } : {}) }
+    }
+  } else if (kind === "opened") {
+    if (row.opened_at === null) patch = { opened_at: at }
+  } else if (kind === "clicked") {
+    if (row.clicked_at === null) patch = { clicked_at: at }
+  } else {
+    if (row.status !== "failed") patch = { status: "failed" }
+  }
+
+  if (!patch) return "ignored"
+
+  const { error: updateErr } = await supabase.from("sequence_messages").update(patch).eq("id", row.id)
+  if (updateErr) throw updateErr
+  return "updated"
 }
 
 /**
