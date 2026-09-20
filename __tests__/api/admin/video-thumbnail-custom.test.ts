@@ -4,6 +4,13 @@ const authMock = vi.fn()
 const getVideoMock = vi.fn()
 const updateMock = vi.fn()
 const getSignedUrlMock = vi.fn()
+// A spy, not just an argument-blind factory: the route computes
+// thumbnailPath independently of the file() call and returns it in the
+// response body, so an argument-blind mock lets a mutant sign the URL for a
+// DIFFERENT object than the path the client is told to later commit — the
+// response would still look correct while the signed URL points elsewhere.
+// fileMock lets tests pin which path was actually signed.
+const fileMock = vi.fn((_path: string) => ({ getSignedUrl: getSignedUrlMock }))
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/permissions/guard", () => ({ canAccessAdminPath: async (u: { role?: string }) => u?.role === "admin" }))
@@ -12,7 +19,7 @@ vi.mock("@/lib/db/video-uploads", () => ({
   updateVideoUpload: (...a: unknown[]) => updateMock(...a),
 }))
 vi.mock("@/lib/firebase-admin", () => ({
-  getAdminStorage: () => ({ bucket: () => ({ file: () => ({ getSignedUrl: getSignedUrlMock }) }) }),
+  getAdminStorage: () => ({ bucket: () => ({ file: fileMock }) }),
 }))
 
 import { POST } from "@/app/api/admin/videos/[id]/thumbnail/custom/route"
@@ -54,6 +61,12 @@ describe("POST /api/admin/videos/[id]/thumbnail/custom", () => {
     const body = await res.json()
     expect(body.uploadUrl).toBe("https://signed/put")
     expect(body.thumbnailPath).toMatch(/^videos\/u\/clip\.mp4\.thumb-custom-\d+\.jpg$/)
+    // The signed URL must be for the SAME object the client is told to later
+    // commit. Comparing against body.thumbnailPath (the actual returned
+    // path), not a hardcoded string, is what pins that invariant: a mutant
+    // that signs a different-but-still-legal-shaped path would pass a
+    // hardcoded-string assertion by coincidence but not this one.
+    expect(fileMock).toHaveBeenCalledWith(body.thumbnailPath)
   })
 
   it("writes NOTHING to the row — the bytes have not landed yet", async () => {
