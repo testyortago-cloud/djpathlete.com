@@ -123,25 +123,6 @@ async function addContactToWorkflow(contactId: string, workflowId: string): Prom
 }
 
 /**
- * Fires a webhook with an arbitrary JSON payload.
- * Posts directly to the given URL rather than through the GHL API base.
- */
-async function triggerWebhook(webhookUrl: string, data: GHLWebhookData): Promise<boolean> {
-  const response = await fetch(webhookUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  })
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "unknown")
-    throw new Error(`Webhook error ${response.status} on ${webhookUrl}: ${body}`)
-  }
-
-  return true
-}
-
-/**
  * Looks up a contact by email address.
  */
 async function findContactByEmail(email: string): Promise<GHLContact | null> {
@@ -234,19 +215,6 @@ export async function ghlTriggerWorkflow(contactId: string, workflowId: string):
     return await withRetry(() => addContactToWorkflow(contactId, workflowId))
   } catch (error) {
     console.error("[GHL] Failed to trigger workflow:", error)
-    return false
-  }
-}
-
-/**
- * Sends a webhook payload to the given URL with automatic retry.
- * Returns true on success, false on any failure.
- */
-export async function ghlTriggerWebhook(webhookUrl: string, data: GHLWebhookData): Promise<boolean> {
-  try {
-    return await withRetry(() => triggerWebhook(webhookUrl, data))
-  } catch (error) {
-    console.error("[GHL] Failed to trigger webhook:", error)
     return false
   }
 }

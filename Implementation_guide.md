@@ -1021,8 +1021,6 @@ achievements (
    - Trigger custom webhook
    - Error handling with retry logic (exponential backoff)
 2. **API routes:**
-   - `POST /api/ghl/contact` — create/update GHL contact
-   - `POST /api/ghl/webhook` — outbound webhook trigger
 3. **Integration points** (update existing features):
    - Contact form submission -> create GHL contact + trigger "New Inquiry" workflow
    - Newsletter signup -> create GHL contact + add to newsletter list
