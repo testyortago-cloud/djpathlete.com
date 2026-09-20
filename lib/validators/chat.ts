@@ -84,6 +84,25 @@ export const askCaptureSchema = z
      * behalf.
      */
     marketingConsent: z.boolean(),
+    /**
+     * G18. The SECOND tick: may we TEXT you? A separate permission from the
+     * email one above, with its own sentence
+     * (`renderSmsConsentWording`) and its own `contact_consents` row —
+     * one tick standing for both would file a permission nobody gave.
+     *
+     * OPTIONAL, UNLIKE `marketingConsent`, AND THE REASON IS NOT
+     * CONSISTENCY BUT HISTORY. That field could be required from the day it
+     * shipped because no client had ever posted without it. This one is
+     * being added to a live endpoint: every chat panel already open in a
+     * visitor's browser is running the OLD script, which posts no such key,
+     * and making it required would 400 each of those captures — losing real
+     * leads for the length of the deploy window to enforce a rule about a
+     * field they cannot know about.
+     *
+     * Defaulting to FALSE is the safe direction and the only defensible one:
+     * absent means nobody was asked, and nobody asked has not consented.
+     */
+    smsConsent: z.boolean().optional().default(false),
     // G06: see lib/validators/timezone.ts.
     timezone: submittedTimezone,
   })

@@ -31,6 +31,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { AskPanel } from "@/components/public/AskPanel"
+import { renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { MAX_MESSAGES_PER_CONVERSATION } from "@/lib/lead-engine/chat/constants"
 import {
   hasChatConsentDisplayName,
@@ -182,11 +183,162 @@ describe("AskPanel — the details card and its consent", () => {
       email: "",
       phone: "813-555-0117",
       marketingConsent: true,
+      // G18: the texting answer rides along as its own field. FALSE here, and
+      // that is the point — this test ticks only the marketing box, and the
+      // two permissions must never be the same answer.
+      smsConsent: false,
       // G06: the visitor's own timezone rides along, so their follow-up keeps
       // their quiet hours. Whatever zone the test runner is in — asserting a
       // literal here would pin the machine, not the behaviour.
       timezone: expect.any(String),
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G18 — the texting tick.
+//
+// The chat asked one question ("can we email you?") and production carries 90
+// contacts with a phone number and ZERO sms consent rows, which is why every
+// text step in the product is unsendable. Email and texting are separate
+// permissions with separate sentences, so this is a second box — never the
+// same tick counted twice.
+// ---------------------------------------------------------------------------
+
+describe("AskPanel — the texting tick (G18)", () => {
+  async function openCaptureCard(displayName: string = DISPLAY_NAME) {
+    fetchMock.mockResolvedValue(
+      ok({ reply: "Leave your details.", cards: [{ kind: "capture", reason: null }] }),
+    )
+    render(<AskPanel displayName={displayName} />)
+    await ask("Can someone text me?")
+    await screen.findByLabelText("Your name")
+  }
+
+  const smsTick = () => screen.queryByRole("checkbox", { name: renderSmsConsentWording(DISPLAY_NAME) })
+
+  it("is hidden until a phone number is actually typed", async () => {
+    // Permission to text somebody whose number we do not have is a row that
+    // can never be acted on. The marketing tick IS present throughout, which
+    // is what stops this passing for the trivial reason that no tick renders.
+    await openCaptureCard()
+
+    expect(screen.getByRole("checkbox", { name: renderChatMarketingWording(DISPLAY_NAME) })).toBeInTheDocument()
+    expect(smsTick()).toBeNull()
+
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "813-555-0117" } })
+    expect(smsTick()).toBeInTheDocument()
+  })
+
+  it("disappears again when the phone field is cleared", async () => {
+    await openCaptureCard()
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "813-555-0117" } })
+    expect(smsTick()).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "   " } })
+    expect(smsTick()).toBeNull()
+  })
+
+  it("shows the sentence EXACTLY as the capture route re-renders it", async () => {
+    // `/api/ask/capture` files `renderSmsConsentWording(display_name)` as
+    // `wording_shown`. A paraphrase on screen makes that row evidence of a
+    // sentence nobody was shown.
+    await openCaptureCard()
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "813-555-0117" } })
+
+    expect(screen.getByText(renderSmsConsentWording(DISPLAY_NAME))).toBeInTheDocument()
+    expect(smsTick()).not.toBeChecked()
+  })
+
+  it("does not render when no business name is configured, even with a phone typed", async () => {
+    // `''` is production's actual state. A sentence that cannot name who is
+    // texting is not consent to anything, and the route refuses the row on the
+    // same gate.
+    await openCaptureCard("")
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "813-555-0117" } })
+
+    expect(screen.queryByRole("checkbox")).toBeNull()
+  })
+
+  it("un-ticks itself when the phone field is cleared, so a re-typed number starts fresh", async () => {
+    // Review finding. Without this the checkbox merely UNMOUNTS while its
+    // state stays true, so typing a DIFFERENT number brings it back already
+    // ticked — showing a consent act for a number the visitor never saw it
+    // beside. Nothing is misfiled (the server files against whatever was
+    // submitted); what would be wrong is the screen.
+    await openCaptureCard()
+
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "813-555-0117" } })
+    fireEvent.click(smsTick() as HTMLElement)
+    expect(smsTick()).toBeChecked()
+
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "" } })
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "813-555-0199" } })
+
+    expect(smsTick()).not.toBeChecked()
+  })
+
+  it("confirms the texting permission only when the server says it was filed", async () => {
+    // The route refuses the row for an unusable number, a blank business name
+    // or a prior STOP. Promising "we may text you" off the back of a tick that
+    // filed nothing is making the promise up — the same contract the marketing
+    // confirmation already keeps.
+    await openCaptureCard()
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, marketingConsentRecorded: false, smsConsentRecorded: false }),
+    } as Response)
+
+    fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Sam Okafor" } })
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "813-555-0117" } })
+    fireEvent.click(smsTick() as HTMLElement)
+    fireEvent.click(screen.getByRole("button", { name: "Send my details" }))
+
+    expect(await screen.findByText(/someone has your details now/i)).toBeInTheDocument()
+    expect(screen.queryByText(/we may also text you/i)).toBeNull()
+  })
+
+  it("does confirm it when the server says the row WAS filed", async () => {
+    // The control: without it the assertion above passes for a panel that
+    // never shows the line at all.
+    await openCaptureCard()
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, marketingConsentRecorded: false, smsConsentRecorded: true }),
+    } as Response)
+
+    fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Sam Okafor" } })
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "813-555-0117" } })
+    fireEvent.click(smsTick() as HTMLElement)
+    fireEvent.click(screen.getByRole("button", { name: "Send my details" }))
+
+    expect(await screen.findByText(/we may also text you/i)).toBeInTheDocument()
+  })
+
+  it("posts the texting answer separately from the emailing answer", async () => {
+    await openCaptureCard()
+
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, marketingConsentRecorded: false, smsConsentRecorded: true }),
+    } as Response)
+
+    fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Sam Okafor" } })
+    fireEvent.change(screen.getByLabelText("Phone number"), { target: { value: "813-555-0117" } })
+    // Only the TEXTING box. The marketing one stays untouched.
+    fireEvent.click(smsTick() as HTMLElement)
+    fireEvent.click(screen.getByRole("button", { name: "Send my details" }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/ask/capture", expect.anything()))
+
+    const body = lastBodyTo("/api/ask/capture") as Record<string, unknown>
+    expect(body.smsConsent).toBe(true)
+    expect(body.marketingConsent).toBe(false)
   })
 })
 
