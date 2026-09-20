@@ -417,3 +417,190 @@ describe("<StepEditor> — reports its own dirtiness (whole-branch review, Impor
     expect(setDirtySpy).toHaveBeenCalledWith(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Picking a split rule and getting back the condition you picked.
+//
+// The dropdown, the labels and the condition BUILDER are three separate
+// lists, and only the labels are compiler-checked (BRANCH_KIND_LABEL is a
+// Record over the union). So a predicate can be offered in the dropdown, have
+// a label written for it, and still fall through the builder's `else` to
+// `null` — which shows up as "This split does not say which people go down
+// each side" against a rule the coach just chose, with no way to get past it.
+// That is exactly what G09 shipped for its two new predicates; this block is
+// the guard.
+// ---------------------------------------------------------------------------
+
+describe("<StepEditor> — every offered split rule can actually be chosen", () => {
+  /** The saveable list `branchFixture` builds, but with the branch's rule left unset. */
+  function unsetBranchSteps(): StepDraft[] {
+    return [
+      step("branch", { id: "b1", branch_condition: null, on_true_position: 1, on_false_position: 2 }),
+      step("stop", { id: "s1" }),
+      step("stop", { id: "s2" }),
+    ]
+  }
+
+  function chooseRule(value: string) {
+    fireEvent.change(screen.getByLabelText(/step 1 split rule/i), { target: { value } })
+  }
+
+  it("offers exactly the rules the engine can evaluate, and no others", () => {
+    renderEditor({ initialSteps: unsetBranchSteps() })
+    const options = within(screen.getByLabelText(/step 1 split rule/i))
+      .getAllByRole("option")
+      .map((o) => (o as HTMLOptionElement).value)
+      .filter((v) => v.length > 0)
+
+    expect(options.sort()).toEqual(
+      [
+        "clicked_last_email",
+        "enrolled_metadata_is",
+        "has_consent",
+        "has_phone",
+        "has_user",
+        "opened_last_email",
+        "source_is",
+      ].sort(),
+    )
+  })
+
+  it("every rule in the dropdown produces a saveable condition — none of them silently clears the field", async () => {
+    // READ OFF THE RENDERED DROPDOWN, never a list written here. With a
+    // hand-written array this test could not catch the thing it exists for:
+    // someone adds an eighth predicate, tsc forces the label, they add it to
+    // BRANCH_KIND_ORDER and forget `setConditionKind`; the "offers exactly
+    // the rules the engine can evaluate" test above goes red about an
+    // unexpected OPTION, the natural fix is to add the string to THAT list,
+    // and the dead dropdown entry ships with the suite green. That is the
+    // G09 defect happening a second time.
+    const probe = renderEditor({ initialSteps: unsetBranchSteps() })
+    const offered = within(screen.getByLabelText(/step 1 split rule/i))
+      .getAllByRole("option")
+      .map((o) => (o as HTMLOptionElement).value)
+      .filter((v) => v.length > 0)
+    probe.unmount()
+
+    expect(offered.length).toBeGreaterThan(1) // the fixture really does offer rules
+    for (const value of offered) {
+      const view = renderEditor({ initialSteps: unsetBranchSteps() })
+      chooseRule(value)
+      expect(
+        (screen.getByLabelText(/step 1 split rule/i) as HTMLSelectElement).value,
+        `choosing ${value} did not stick`,
+      ).toBe(value)
+      view.unmount()
+    }
+  })
+
+  it("saves a clicked-a-link split, which before this shipped could be chosen and never saved", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, plan: { repoint: [], exit: [], unchanged: [] } }),
+    }) as unknown as typeof fetch
+
+    renderEditor({ initialSteps: unsetBranchSteps() })
+    chooseRule("clicked_last_email")
+
+    const saveButton = screen.getByRole("button", { name: /save changes/i })
+    expect(saveButton).not.toBeDisabled()
+    fireEvent.click(saveButton)
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string) as { steps: StepDraft[] }
+    expect(body.steps[0].branch_condition).toEqual({ kind: "clicked_last_email" })
+  })
+})
+
+describe("<StepEditor> — the enrolment-metadata split (G10)", () => {
+  function unsetBranchSteps(): StepDraft[] {
+    return [
+      step("branch", { id: "b1", branch_condition: null, on_true_position: 1, on_false_position: 2 }),
+      step("stop", { id: "s1" }),
+      step("stop", { id: "s2" }),
+    ]
+  }
+
+  it("round-trips the condition: pick the rule, pick what to check, type the answer, and that is what is saved", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, plan: { repoint: [], exit: [], unchanged: [] } }),
+    }) as unknown as typeof fetch
+
+    renderEditor({ initialSteps: unsetBranchSteps() })
+
+    fireEvent.change(screen.getByLabelText(/step 1 split rule/i), { target: { value: "enrolled_metadata_is" } })
+    fireEvent.change(screen.getByLabelText(/step 1 what to check/i), { target: { value: "event_kind" } })
+    fireEvent.change(screen.getByLabelText(/step 1 answer to look for/i), { target: { value: "camp" } })
+
+    const saveButton = screen.getByRole("button", { name: /save changes/i })
+    expect(saveButton).not.toBeDisabled()
+    fireEvent.click(saveButton)
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string) as { steps: StepDraft[] }
+    expect(body.steps[0].branch_condition).toEqual({
+      kind: "enrolled_metadata_is",
+      key: "event_kind",
+      value: "camp",
+    })
+  })
+
+  it("reads an already-saved condition back into both fields", () => {
+    renderEditor({
+      initialSteps: [
+        step("branch", {
+          id: "b1",
+          branch_condition: { kind: "enrolled_metadata_is", key: "service", value: "camp" },
+          on_true_position: 1,
+          on_false_position: 2,
+        }),
+        step("stop", { id: "s1" }),
+        step("stop", { id: "s2" }),
+      ],
+    })
+
+    expect((screen.getByLabelText(/step 1 what to check/i) as HTMLSelectElement).value).toBe("service")
+    expect((screen.getByLabelText(/step 1 answer to look for/i) as HTMLInputElement).value).toBe("camp")
+  })
+
+  it("will not let the coach save it with the answer left blank", () => {
+    // `evaluateBranch` answers false to a blank answer, so every single
+    // person would go down the "no" side — indistinguishable, on the
+    // reporting screen, from a rule nobody happens to match.
+    renderEditor({ initialSteps: unsetBranchSteps() })
+    fireEvent.change(screen.getByLabelText(/step 1 split rule/i), { target: { value: "enrolled_metadata_is" } })
+
+    // The rule really was chosen — otherwise Save would be disabled for the
+    // ordinary "no rule at all" reason and this would prove nothing.
+    expect((screen.getByLabelText(/step 1 split rule/i) as HTMLSelectElement).value).toBe("enrolled_metadata_is")
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled()
+
+    // And the control: typing an answer clears the problem.
+    fireEvent.change(screen.getByLabelText(/step 1 answer to look for/i), { target: { value: "camp" } })
+    expect(screen.getByRole("button", { name: /save changes/i })).not.toBeDisabled()
+  })
+
+  it("offers only what something actually writes, so a coach cannot build a rule that is false forever", () => {
+    renderEditor({ initialSteps: unsetBranchSteps() })
+    fireEvent.change(screen.getByLabelText(/step 1 split rule/i), { target: { value: "enrolled_metadata_is" } })
+
+    const keys = within(screen.getByLabelText(/step 1 what to check/i))
+      .getAllByRole("option")
+      .map((o) => (o as HTMLOptionElement).value)
+
+    expect(keys.sort()).toEqual(["branch", "camp_name", "event_kind", "quiz_key", "role", "service", "tier"].sort())
+  })
+
+  it("explains each rule in words a coach can act on, never the stored key", () => {
+    renderEditor({ initialSteps: unsetBranchSteps() })
+    fireEvent.change(screen.getByLabelText(/step 1 split rule/i), { target: { value: "enrolled_metadata_is" } })
+
+    const keyPicker = within(screen.getByLabelText(/step 1 what to check/i))
+    // The label a coach reads is English, not `event_kind`.
+    expect(keyPicker.getByRole("option", { name: /camp or a clinic/i })).toBeInTheDocument()
+    expect(keyPicker.queryByRole("option", { name: "event_kind" })).not.toBeInTheDocument()
+  })
+})

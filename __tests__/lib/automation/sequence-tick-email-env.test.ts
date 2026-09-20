@@ -149,6 +149,7 @@ function sendableContext(overrides: Partial<DecisionContext> = {}): DecisionCont
     isSuppressed: false,
     enrolledSource: "funnel_form",
     lastEmail: null,
+    enrolmentMetadata: {},
     ...overrides,
   }
 }

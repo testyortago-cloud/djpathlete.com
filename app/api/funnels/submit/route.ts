@@ -17,7 +17,7 @@ import { getSetting } from "@/lib/db/system-settings"
 import { getAttributionBySession } from "@/lib/db/marketing-attribution"
 import { createEventSignupCheckout } from "@/lib/events/checkout"
 import { FUNNEL_CHECKOUT_DEFAULT, FUNNEL_CHECKOUT_FLAG } from "@/lib/funnels/checkout/flag"
-import { labelForRole, signupInputFromRoles } from "@/lib/funnels/checkout/roles"
+import { labelForRole, signupInputFromRoles, submitterRole } from "@/lib/funnels/checkout/roles"
 import { createEventSignupSchema } from "@/lib/validators/event-signups"
 import { getBaseUrl } from "@/lib/url"
 import { sendNewFunnelLeadEmail } from "@/lib/email"
@@ -201,6 +201,14 @@ export async function POST(request: Request) {
     payload,
     businessId,
     timezone: parsedBody.timezone ?? null,
+    // G10. What the FORM declares about who filled it in, so a sequence can
+    // write to a parent differently from an athlete. Derived server-side
+    // from the published field list (`fields`, re-read from the published
+    // step above — never from the browser's body), and merged OVER the
+    // payload so an owner's own field happening to be named `role` cannot
+    // decide it. Reaches the run through `pickEnrolmentMetadata`'s
+    // allow-list, where `enrolled_metadata_is` reads it.
+    metadata: { role: submitterRole(fields) },
   })
 
   // ---------------------------------------------------------------------------

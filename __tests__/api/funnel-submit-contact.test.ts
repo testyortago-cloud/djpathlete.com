@@ -44,6 +44,56 @@ describe("funnel submit → contact spine", () => {
     expect(recordContactEvent).toHaveBeenCalledWith(expect.objectContaining({ timezone: "Pacific/Auckland" }))
   })
 
+  // G10. The bridge now carries two kinds of thing: what the VISITOR typed
+  // (`payload`) and what the SERVER worked out about the form (`metadata`).
+  it("merges the server-derived facts over the visitor's payload", async () => {
+    const { captureContactFromSubmission } = await import("@/lib/funnels/capture-contact")
+    await captureContactFromSubmission({
+      name: "Marissa",
+      email: "marissa@example.com",
+      phone: null,
+      attributionSessionId: null,
+      payload: { sport: "lacrosse" },
+      businessId: "platform-biz",
+      metadata: { role: "parent" },
+    })
+    expect(recordContactEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: { sport: "lacrosse", role: "parent" } }),
+    )
+  })
+
+  it("lets the server's answer WIN when an owner has named a form field after one of ours", async () => {
+    // A funnel field's name is owner-chosen and validated only as
+    // `^[a-z][a-z0-9_]{0,39}$`, so `role` is a legal field name and its
+    // value is whatever a stranger typed. What the form DECLARES about
+    // itself has to beat that — and `role` is one of the seven keys that
+    // reaches `sequence_runs.enrolment_metadata`.
+    const { captureContactFromSubmission } = await import("@/lib/funnels/capture-contact")
+    await captureContactFromSubmission({
+      name: "Marissa",
+      email: "marissa@example.com",
+      phone: null,
+      attributionSessionId: null,
+      payload: { role: "whatever the visitor typed" },
+      businessId: "platform-biz",
+      metadata: { role: "parent" },
+    })
+    expect(recordContactEvent).toHaveBeenCalledWith(expect.objectContaining({ metadata: { role: "parent" } }))
+  })
+
+  it("still passes the payload alone when there are no server-derived facts", async () => {
+    const { captureContactFromSubmission } = await import("@/lib/funnels/capture-contact")
+    await captureContactFromSubmission({
+      name: "Marissa",
+      email: "marissa@example.com",
+      phone: null,
+      attributionSessionId: null,
+      payload: { sport: "lacrosse" },
+      businessId: "platform-biz",
+    })
+    expect(recordContactEvent).toHaveBeenCalledWith(expect.objectContaining({ metadata: { sport: "lacrosse" } }))
+  })
+
   it("never throws when the contact write fails — the submission still stands", async () => {
     recordContactEvent.mockRejectedValueOnce(new Error("PGRST204 column missing"))
     const { captureContactFromSubmission } = await import("@/lib/funnels/capture-contact")

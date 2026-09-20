@@ -21,6 +21,28 @@ function nextId(prefix: string) {
 // different claim and the one the tenancy test needs.
 let appliedEqs: Array<[string, any]> = []
 
+/**
+ * When set, a `sequence_runs` insert whose payload names this column is
+ * refused the way PostgREST refuses a column it does not know about. Reset to
+ * null in `beforeEach`, so it is opt-in per test. See `doInsert`.
+ */
+let missingColumnOnInsert: string | null = null
+
+/**
+ * When set, EVERY `sequence_runs` insert is refused with this error. Used to
+ * pin that the deploy-race retry fires for a missing column and for nothing
+ * else — see `runInsertPayloads`.
+ */
+let insertRunError: { code: string; message: string } | null = null
+
+/**
+ * Every payload handed to a `sequence_runs` insert, in order, including the
+ * ones that were refused. The COUNT is the assertion that matters: a retry
+ * that fires for the wrong reason is invisible in the resulting rows (the
+ * second attempt fails the same way) and visible only here.
+ */
+let runInsertPayloads: Row[] = []
+
 // NOTE ON THE MOCK: the trap this project has hit before is a `.eq()` that
 // returns the query object without recording the filter, so every query
 // resolves to "everything in the table" and every assertion passes without
@@ -47,6 +69,25 @@ vi.mock("@/lib/supabase", () => ({
       const doInsert = () => {
         const p = payload as Row
         if (table === "sequence_runs") {
+          runInsertPayloads.push(p)
+          // G10 deploy race. Mirrors PostgREST's refusal when the payload
+          // names a column its schema cache has never seen — which is what
+          // this code meets for the minutes between the Vercel build going
+          // live and migration 00266 applying. Set by the test that pins the
+          // fallback; every other test leaves it null, so a column named on a
+          // schema that HAS it inserts normally.
+          if (missingColumnOnInsert !== null && Object.prototype.hasOwnProperty.call(p, missingColumnOnInsert)) {
+            const err: any = new Error(
+              `Could not find the '${missingColumnOnInsert}' column of 'sequence_runs' in the schema cache`,
+            )
+            err.code = "PGRST204"
+            return { data: null, error: err }
+          }
+          if (insertRunError !== null) {
+            const err: any = new Error(insertRunError.message)
+            err.code = insertRunError.code
+            return { data: null, error: err }
+          }
           const conflict = rows.find(
             (r) =>
               r.business_id === p.business_id &&
@@ -135,6 +176,9 @@ beforeEach(() => {
   store.contact_timeline_events = []
   seqCounter = 0
   appliedEqs = []
+  missingColumnOnInsert = null
+  insertRunError = null
+  runInsertPayloads = []
 })
 
 // NOT the platform id, and not what `seedSequence` stamps. Every other call in
@@ -645,5 +689,162 @@ describe("enrollIfTriggered — re-enrolment cooldown", () => {
     const result = await enrollIfTriggered({ contactId: "contact-1", source: "funnel_form", businessId: SINGLETON_BUSINESS_ID })
 
     expect(result.enrolled).toEqual(["seq-1"])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G10 — what the run remembers about the event that enrolled it.
+//
+// `enrolment_metadata` is written by `insertSequenceRun`, the ONE place a run
+// row is inserted, so the triggered and the manual paths cannot drift. The
+// allow-list itself is tested in isolation in enrolment-metadata.test.ts;
+// what is pinned HERE is that the run row actually carries the result, that
+// the raw bag never reaches it, and that an enrolment still happens when the
+// column does not exist yet.
+// ---------------------------------------------------------------------------
+
+describe("enrollIfTriggered — enrolment metadata on the run", () => {
+  it("records the allow-listed facts about the enrolling event on the run", async () => {
+    seedSequence("seq-a", { trigger_source: "inquiry" })
+
+    await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "inquiry",
+      metadata: { service: "camp" },
+      businessId: SINGLETON_BUSINESS_ID,
+    })
+
+    expect(store.sequence_runs).toHaveLength(1)
+    expect(store.sequence_runs[0].enrolment_metadata).toEqual({ service: "camp" })
+  })
+
+  it("NEVER stores an email or a phone number, though the funnel path hands it the visitor's whole payload", async () => {
+    // This is the row's own acceptance criterion, written as a POSITIVE
+    // control: the run is created, it carries the two facts worth keeping,
+    // and it carries nothing else. An implementation that stored the raw bag
+    // would keep `email` and `parent_phone`; one that stored nothing at all
+    // would fail the first assertion instead of passing the second by
+    // accident.
+    seedSequence("seq-a", { trigger_source: "funnel_form" })
+
+    await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "funnel_form",
+      metadata: {
+        role: "parent",
+        service: "camp",
+        email: "parent@example.com",
+        parent_email: "parent@example.com",
+        parent_phone: "+61 412 345 678",
+        notes: "reachable on 0412345678 after 6pm",
+        athlete_name: "A Real Child",
+      },
+      businessId: SINGLETON_BUSINESS_ID,
+    })
+
+    expect(store.sequence_runs).toHaveLength(1)
+    const stored = store.sequence_runs[0].enrolment_metadata
+    expect(stored).toEqual({ service: "camp", role: "parent" })
+    expect(JSON.stringify(stored)).not.toMatch(/@|\d{7}/)
+  })
+
+  it("records an empty object when the event carried nothing worth keeping", async () => {
+    seedSequence("seq-a", { trigger_source: "newsletter" })
+
+    await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "newsletter",
+      businessId: SINGLETON_BUSINESS_ID,
+    })
+
+    expect(store.sequence_runs[0].enrolment_metadata).toEqual({})
+  })
+
+  it("still enrols when the column does not exist yet — the one-deploy window", async () => {
+    // Migrations and the Vercel build race on merge to main. Unhandled, this
+    // window turns every lead capture's enrolment into a swallowed error:
+    // the contact is kept (recordContactEvent treats enrolment as non-fatal)
+    // and the sequence silently never starts.
+    seedSequence("seq-a", { trigger_source: "inquiry" })
+    missingColumnOnInsert = "enrolment_metadata"
+
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "inquiry",
+      metadata: { service: "camp" },
+      businessId: SINGLETON_BUSINESS_ID,
+    })
+
+    expect(result.enrolled).toEqual(["seq-a"])
+    expect(store.sequence_runs).toHaveLength(1)
+    expect(store.sequence_runs[0].enrolment_metadata).toBeUndefined()
+    // Everything else about the row still had to be written.
+    expect(store.sequence_runs[0].contact_id).toBe("contact-1")
+    expect(store.sequence_runs[0].current_position).toBe(0)
+    // Exactly two attempts, and the retry dropped EXACTLY the one key.
+    expect(runInsertPayloads).toHaveLength(2)
+    expect(runInsertPayloads[0]).toHaveProperty("enrolment_metadata")
+    expect(runInsertPayloads[1]).not.toHaveProperty("enrolment_metadata")
+    expect(runInsertPayloads[1].next_run_at).toBeTruthy()
+  })
+
+  it("retries a PGRST204 about some OTHER column too, and then throws — it cannot swallow a real fault", async () => {
+    // WHAT THE CODE ACTUALLY DOES, not what would be tidier.
+    // `isMissingColumnError` reads the code only, so this is retried as
+    // well; the second attempt drops only `enrolment_metadata`, still names
+    // `next_run_at`, fails identically and throws. Asserting only "it
+    // throws PGRST204 and wrote no row" would be true whether or not the
+    // retry fired at all — the attempt count is the only thing that can see
+    // it, which is why an earlier version of this test could not fail.
+    seedSequence("seq-a", { trigger_source: "inquiry" })
+    missingColumnOnInsert = "next_run_at"
+
+    await expect(
+      enrollIfTriggered({
+        contactId: "contact-1",
+        source: "inquiry",
+        metadata: { service: "camp" },
+        businessId: SINGLETON_BUSINESS_ID,
+      }),
+    ).rejects.toMatchObject({ code: "PGRST204" })
+    expect(store.sequence_runs).toHaveLength(0)
+    expect(runInsertPayloads).toHaveLength(2)
+    // The load-bearing half: the retry dropped ONLY the metadata key, so it
+    // could never have succeeded with a payload that was wrong elsewhere.
+    expect(runInsertPayloads[1]).not.toHaveProperty("enrolment_metadata")
+    expect(runInsertPayloads[1]).toHaveProperty("next_run_at")
+  })
+
+  it("retries for a MISSING COLUMN and for nothing else — one attempt on any other refusal", async () => {
+    // Without counting attempts this is untestable: a retry that fires for
+    // the wrong reason hits the same refusal again and throws the same
+    // error, so the rows, the return value and the thrown code are all
+    // identical either way. A tolerance widened to "any error" would be
+    // invisible right up until it swallowed something.
+    seedSequence("seq-a", { trigger_source: "inquiry" })
+    insertRunError = { code: "23502", message: 'null value in column "contact_id" violates not-null constraint' }
+
+    await expect(
+      enrollIfTriggered({
+        contactId: "contact-1",
+        source: "inquiry",
+        metadata: { service: "camp" },
+        businessId: SINGLETON_BUSINESS_ID,
+      }),
+    ).rejects.toMatchObject({ code: "23502" })
+    expect(runInsertPayloads).toHaveLength(1)
+  })
+
+  it("a manual enrolment carries no event, so it remembers nothing — and still writes the column", async () => {
+    // `enrolContactManually` shares `insertSequenceRun`. There is no event to
+    // read, so the honest answer is `{}` rather than a missing key.
+    seedSequence("seq-manual", { key: "sms_repermission", trigger_source: null, status: "active" })
+
+    const outcome = await enrolContactManually("contact-1", "sms_repermission", {
+      businessId: SINGLETON_BUSINESS_ID,
+    })
+
+    expect(outcome).toEqual({ outcome: "enrolled" })
+    expect(store.sequence_runs[0].enrolment_metadata).toEqual({})
   })
 })

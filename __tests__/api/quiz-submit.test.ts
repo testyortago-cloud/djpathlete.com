@@ -213,9 +213,91 @@ describe("POST /api/quiz/submit", () => {
           profile: "not_sure",
           score: 0,
           attempt_id: ATTEMPT_ID,
+          // G10 and NO `role`: this fixture quiz's only branch is
+          // `ceiling_breaker`, so it never asks who is filling it in. See
+          // the block below — recording `role: "athlete"` here would be a
+          // statement about a person that the quiz never collected.
         },
       }),
     )
+  })
+
+  // ---------------------------------------------------------------------
+  // G10 — who filled the quiz in, and the rule that it is recorded ONLY by
+  // a quiz that asks.
+  //
+  // `quiz_key`, `branch` and `tier` were already sent and now reach
+  // `sequence_runs.enrolment_metadata` as well as the trigger filter.
+  // `role` is the one new fact. There is more than one seeded quiz and only
+  // the Athlete Quiz has the parent-or-coach router — the Rotational
+  // Performance Index branches on SPORT — so "not the parent branch,
+  // therefore an athlete" is false for anyone taking that one.
+  // ---------------------------------------------------------------------
+
+  const PARENT_BRANCH_ID = "44444444-4444-4444-8444-444444444442"
+
+  /** The fixture quiz, given the parent-or-coach branch so that it DOES ask. */
+  function askingDefinition() {
+    const def = definition()
+    def.branches = [
+      ...def.branches,
+      {
+        id: PARENT_BRANCH_ID,
+        quizId: QUIZ_ID,
+        key: "parent_coach",
+        name: "Parent or Coach",
+        description: null,
+        position: 2,
+      },
+    ]
+    return def
+  }
+
+  it("5b. records role: parent when the taker said they are a parent or coach", async () => {
+    const def = askingDefinition()
+    // Re-point the router's only option at the parent branch, and move the
+    // follow-up question onto it, so scoring reaches the same tier by the
+    // same path — only the branch differs.
+    def.questions[0].options[0].routesToBranchId = PARENT_BRANCH_ID
+    def.questions[1].branchId = PARENT_BRANCH_ID
+    getQuizDefinition.mockResolvedValue(def)
+
+    await post()
+
+    expect(recordContactEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ branch: "parent_coach", role: "parent" }),
+      }),
+    )
+  })
+
+  it("5c. records role: athlete on the SAME quiz when the taker took another branch", async () => {
+    // The control for 5b. Without it, an implementation that always wrote
+    // "parent" once the branch existed would pass.
+    getQuizDefinition.mockResolvedValue(askingDefinition())
+
+    await post()
+
+    expect(recordContactEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ branch: "ceiling_breaker", role: "athlete" }),
+      }),
+    )
+  })
+
+  it("5d. records NO role at all for a quiz that never asks — it must not assert 'athlete'", async () => {
+    // The Critical case. The fixture quiz here has no parent-or-coach branch,
+    // exactly like the Rotational Performance Index. A coach's
+    // "write to the grown-up" branch must read this person as unknown, not
+    // as the athlete: a parent taking that quiz for their child would
+    // otherwise be sent the athlete-voiced email.
+    await post()
+
+    const arg = recordContactEvent.mock.calls[0][0] as { metadata: Record<string, unknown> }
+    expect(arg.metadata).not.toHaveProperty("role")
+    // Presence control: the rest of the bag is still recorded, so this is
+    // not passing because nothing was written.
+    expect(arg.metadata.branch).toBe("ceiling_breaker")
   })
 
   it("6. still returns the visitor's result when recordContactEvent throws", async () => {
