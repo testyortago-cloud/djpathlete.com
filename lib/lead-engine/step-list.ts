@@ -21,6 +21,7 @@
 
 import type { StepKind, BranchCondition } from "@/lib/automation/sequence-tick"
 import { parseTagConfig, parseStageConfig } from "@/lib/lead-engine/step-config"
+import { isEnrolmentMetadataKey, ENROLMENT_METADATA_MAX_VALUE_LENGTH } from "@/lib/lead-engine/enrolment-metadata"
 
 export type StepDraft = {
   /** `null` for a step that does not exist in the database yet. */
@@ -99,7 +100,7 @@ export function reachableFrom(edges: number[][], start: number): Set<number> {
 
 export type StepProblem = { index: number | null; message: string }
 
-/** Exactly the four predicates `evaluateBranch` implements. Anything else fails a run. */
+/** Exactly the predicates `evaluateBranch` implements. Anything else fails a run. */
 const KNOWN_BRANCH_KINDS = new Set([
   "has_phone",
   "has_user",
@@ -108,6 +109,8 @@ const KNOWN_BRANCH_KINDS = new Set([
   // G09
   "opened_last_email",
   "clicked_last_email",
+  // G10
+  "enrolled_metadata_is",
 ])
 
 function branchConditionIsKnown(condition: BranchCondition | null): boolean {
@@ -115,6 +118,20 @@ function branchConditionIsKnown(condition: BranchCondition | null): boolean {
   if (!KNOWN_BRANCH_KINDS.has(condition.kind)) return false
   if (condition.kind === "has_consent") return condition.channel === "email" || condition.channel === "sms"
   if (condition.kind === "source_is") return typeof condition.value === "string" && condition.value.trim().length > 0
+  if (condition.kind === "enrolled_metadata_is") {
+    // ALL THREE. A key nothing ever writes is a branch that is false
+    // forever; a blank answer is a branch nobody can reason about; and an
+    // over-long answer is refused by `branchConditionSchema` at the route,
+    // which answers a flat "Invalid request body." with no field named — so
+    // without the length check here the coach gets an unactionable 400 after
+    // an enabled Save button. `evaluateBranch` answers false to the first
+    // two, which looks identical to a person who simply does not match, so
+    // refusing the save is the only place any of this can be said out loud.
+    if (!isEnrolmentMetadataKey(condition.key)) return false
+    if (typeof condition.value !== "string") return false
+    const answer = condition.value.trim()
+    return answer.length > 0 && answer.length <= ENROLMENT_METADATA_MAX_VALUE_LENGTH
+  }
   return true
 }
 

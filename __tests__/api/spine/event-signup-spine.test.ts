@@ -188,6 +188,61 @@ describe("POST /api/events/[id]/signup — joins the contact spine", () => {
     )
   })
 
+  // G10. `camp_clinic_deadline` is one sequence serving both kinds of event,
+  // so without this the same wording goes to a week-long camp and a
+  // two-hour clinic. THE COLUMN IS `events.type`, not `events.kind`.
+  it("carries the event's kind and title, so a sequence can tell a camp from a clinic", async () => {
+    mocks.getEventById.mockResolvedValueOnce({ ...publishedEvent, type: "clinic", title: "Agility Clinic" })
+    mocks.createSignup.mockResolvedValueOnce({
+      id: "sig-1",
+      event_id: "evt-1",
+      parent_name: "Alex Parent",
+      parent_email: "alex@example.com",
+      parent_phone: "5551234567",
+    })
+
+    const { POST } = await import("@/app/api/events/[id]/signup/route")
+    await POST(signupReq(validBody), ctx)
+
+    expect(mocks.recordContactEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          signup_type: "interest",
+          event_kind: "clinic",
+          camp_name: "Agility Clinic",
+        }),
+      }),
+    )
+  })
+
+  it("reads the kind off the EVENT, not off a fixed value", async () => {
+    // The control for the test above. It also pins `signup_type`, which
+    // `camp_clinic_deadline`'s own trigger filter matches on — dropping it
+    // while adding the two new keys would stop every interest signup
+    // enrolling at all.
+    mocks.getEventById.mockResolvedValueOnce(publishedEvent) // type: "camp", title: "Summer Camp"
+    mocks.createSignup.mockResolvedValueOnce({
+      id: "sig-1",
+      event_id: "evt-1",
+      parent_name: "Alex Parent",
+      parent_email: "alex@example.com",
+      parent_phone: "5551234567",
+    })
+
+    const { POST } = await import("@/app/api/events/[id]/signup/route")
+    await POST(signupReq(validBody), ctx)
+
+    expect(mocks.recordContactEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          signup_type: "interest",
+          event_kind: "camp",
+          camp_name: "Summer Camp",
+        }),
+      }),
+    )
+  })
+
   it("never changes the route's response or existing writes when recordContactEvent throws", async () => {
     mocks.getEventById.mockResolvedValueOnce(publishedEvent)
     mocks.createSignup.mockResolvedValueOnce({
@@ -387,6 +442,26 @@ describe("POST /api/events/[id]/checkout — joins the contact spine", () => {
         source: "event_signup",
       }),
     )
+  })
+
+  // G10, and the one thing this route must NOT copy from its sibling.
+  it("carries the event's kind and title, but never signup_type — that would chase people who have already paid", async () => {
+    mocks.getEventById.mockResolvedValueOnce({ ...publishedEvent, type: "clinic", title: "Agility Clinic" })
+    mocks.createSignup.mockResolvedValueOnce({ id: "sig-1", event_id: "evt-1" })
+    mocks.createEventCheckoutSession.mockResolvedValueOnce({
+      id: "cs_test_xyz",
+      url: "https://checkout.stripe.com/cs_test_xyz",
+    })
+
+    const { POST } = await import("@/app/api/events/[id]/checkout/route")
+    await POST(checkoutReq(validBody), ctx)
+
+    const call = mocks.recordContactEvent.mock.calls[0][0] as { metadata?: Record<string, unknown> }
+    expect(call.metadata).toEqual({ event_kind: "clinic", camp_name: "Agility Clinic" })
+    // `camp_clinic_deadline`'s trigger filter is `{signup_type: "interest"}`.
+    // A paid registration matching it would enrol the buyer in the sequence
+    // that exists to nag people who have NOT registered.
+    expect(call.metadata).not.toHaveProperty("signup_type")
   })
 
   it("never changes the route's response when recordContactEvent throws", async () => {

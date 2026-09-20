@@ -44,6 +44,32 @@ export function labelForRole(fields: FunnelFormField[], role: string): string {
   return fields.find((field) => field.role === role)?.label ?? role
 }
 
+/**
+ * WHO IS FILLING THIS FORM IN — `parent` when the form asks for a parent's
+ * details separately from the athlete's, `athlete` otherwise (G10).
+ *
+ * Read from the form's DECLARED roles, never from a label or a field name,
+ * for the reason at the top of this file: an owner may write "Parent's name"
+ * on a field, or name a field `parent_name`, without tagging it — and prose
+ * is not a declaration. A form that asks only for the athlete's own name and
+ * age is the athlete's own form; only a `parent_*` role says someone else is
+ * filling it in on their behalf.
+ *
+ * `athlete` is the default rather than "unknown" on purpose. Every plain lead
+ * form — a name and an email, no roles at all — is a person writing in for
+ * themselves, which is what `athlete` means here; a third value would give
+ * the coach a branch arm with nothing useful to say on it.
+ *
+ * Reaches `sequence_runs.enrolment_metadata` under the key `role`, where the
+ * `enrolled_metadata_is` branch predicate reads it.
+ */
+export function submitterRole(fields: FunnelFormField[]): "parent" | "athlete" {
+  const asksAboutAParent = fields.some(
+    (field) => field.role === "parent_name" || field.role === "parent_email" || field.role === "parent_phone",
+  )
+  return asksAboutAParent ? "parent" : "athlete"
+}
+
 export function signupInputFromRoles(fields: FunnelFormField[], values: Record<string, string>): RoleMappedSignup {
   const get = (role: string): string => {
     const field = fields.find((candidate) => candidate.role === role)

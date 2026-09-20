@@ -9,6 +9,7 @@ import {
   type SavedStep,
   type RunPointer,
 } from "@/lib/lead-engine/step-list"
+import { ENROLMENT_METADATA_MAX_VALUE_LENGTH } from "@/lib/lead-engine/enrolment-metadata"
 
 /** The messages only, for terser assertions. */
 const messages = (steps: StepDraft[]) => validateStepList(steps).map((p) => p.message)
@@ -146,6 +147,62 @@ describe("validateStepList — the shapes the database would reject anyway", () 
     // unknown kind does, not be waved through because the kind matched.
     const bogus = { kind: "has_consent", channel: "fax" } as unknown as StepDraft["branch_condition"]
     expect(messages([step("branch", { branch_condition: bogus })])).toHaveLength(1)
+  })
+
+  // G10. Same shape of rule as the consent channel above, twice over: the
+  // KIND matching is not enough, because both of this predicate's arguments
+  // can be wrong in a way `evaluateBranch` answers "false" to. A branch that
+  // is false forever is indistinguishable, on the reporting screen, from a
+  // branch nobody happens to match.
+  it("accepts an enrolment-metadata split whose key is one something writes", () => {
+    expect(
+      validateStepList([
+        step("branch", { branch_condition: { kind: "enrolled_metadata_is", key: "service", value: "camp" } }),
+        step("stop"),
+        step("stop"),
+      ]),
+    ).toEqual([])
+  })
+
+  it("rejects an enrolment-metadata split whose key nothing ever writes", () => {
+    const bogus = {
+      kind: "enrolled_metadata_is",
+      key: "favourite_colour",
+      value: "blue",
+    } as unknown as StepDraft["branch_condition"]
+    expect(messages([step("branch", { branch_condition: bogus })])).toHaveLength(1)
+  })
+
+  it("rejects an enrolment-metadata split with a blank or whitespace answer", () => {
+    const blank = {
+      kind: "enrolled_metadata_is",
+      key: "service",
+      value: "   ",
+    } as unknown as StepDraft["branch_condition"]
+    expect(messages([step("branch", { branch_condition: blank })])).toHaveLength(1)
+  })
+
+  it("rejects an answer longer than the column's own cap, in English rather than as a 400", () => {
+    // `branchConditionSchema` caps this too, but the save route answers a
+    // flat "Invalid request body." naming no field — so without the rule
+    // HERE, Save stays enabled and the coach gets an unactionable error.
+    const over = {
+      kind: "enrolled_metadata_is",
+      key: "camp_name",
+      value: "c".repeat(ENROLMENT_METADATA_MAX_VALUE_LENGTH + 1),
+    } as unknown as StepDraft["branch_condition"]
+    expect(messages([step("branch", { branch_condition: over })])).toHaveLength(1)
+
+    // The control: one character shorter is fine, so this is a boundary and
+    // not a blanket refusal of long-ish answers.
+    const atLimit = {
+      kind: "enrolled_metadata_is",
+      key: "camp_name",
+      value: "c".repeat(ENROLMENT_METADATA_MAX_VALUE_LENGTH),
+    } as unknown as StepDraft["branch_condition"]
+    expect(
+      validateStepList([step("branch", { branch_condition: atLimit }), step("stop"), step("stop")]),
+    ).toEqual([])
   })
 
   it("rejects a label step with no label, using step-config's own wording", () => {

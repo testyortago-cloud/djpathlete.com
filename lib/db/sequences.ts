@@ -194,6 +194,16 @@ export async function loadRunContext(run: SequenceRunRow, now: Date, businessId:
     isSuppressed: suppressed,
     enrolledSource: (sequenceRow.trigger_source as string | null) ?? null,
     lastEmail,
+    // G10. No query: `claim_sequence_runs` is
+    // `RETURNS SETOF public.sequence_runs ... RETURNING r.*`, so the claimed
+    // row already carries the column that migration 00266 adds — verified
+    // against the database, not assumed.
+    //
+    // `?? {}`, deliberately, and NOT a `!== null` test: for the one deploy
+    // where the build is live and the migration is not, the key is ABSENT
+    // from the row rather than null, and `undefined !== null` is true. That
+    // exact confusion cost this repo a deploy once already (migration 00210).
+    enrolmentMetadata: run.enrolment_metadata ?? {},
   }
 }
 

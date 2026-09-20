@@ -45,6 +45,11 @@ import {
   type RunPointer,
 } from "@/lib/lead-engine/step-list"
 import type { StepKind, BranchCondition } from "@/lib/automation/sequence-tick"
+import {
+  ENROLMENT_METADATA_KEYS,
+  ENROLMENT_METADATA_MAX_VALUE_LENGTH,
+  type EnrolmentMetadataKey,
+} from "@/lib/lead-engine/enrolment-metadata"
 import { useStepEditorDirty } from "@/components/admin/sequences/StepEditorDirtyContext"
 
 /** Table order from the brief, kept as the one true order for every kind picker on this screen. */
@@ -63,6 +68,7 @@ const KIND_LABEL: Record<StepKind, string> = {
 }
 
 const BRANCH_KIND_ORDER: BranchCondition["kind"][] = [
+  "enrolled_metadata_is",
   "has_phone",
   "has_user",
   "has_consent",
@@ -77,6 +83,11 @@ const BRANCH_KIND_ORDER: BranchCondition["kind"][] = [
  * without a label written for a non-programmer is a compile error.
  */
 const BRANCH_KIND_LABEL: Record<BranchCondition["kind"], string> = {
+  // Spans all seven keys, not just `service`: the predicate also answers who
+  // filled the form in, which quiz they took and what they scored. "What they
+  // asked for" would hide the parent-versus-athlete split from the coach
+  // looking for it.
+  enrolled_metadata_is: "Something they told us when they signed up",
   has_phone: "Has a phone number",
   has_user: "Has an account",
   has_consent: "Has agreed to be contacted",
@@ -105,11 +116,16 @@ const BRANCH_KIND_LABEL: Record<BranchCondition["kind"], string> = {
  * fifth place, and `kind: string` is what kept the union from disciplining it.
  *
  * So: narrow to the union at the boundary, and make the exhaustiveness check
- * the compiler's job. A sixth predicate is now a build failure here rather than
- * a dead entry in a dropdown.
+ * the compiler's job. An eighth predicate is now a build failure here rather
+ * than a dead entry in a dropdown.
  */
 function conditionForKind(kind: BranchCondition["kind"]): BranchCondition {
   switch (kind) {
+    case "enrolled_metadata_is":
+      // Opens on `service`, the key the most front doors write, with the
+      // answer blank — which `validateStepList` refuses until it is filled
+      // in, so a half-configured rule can never be saved.
+      return { kind: "enrolled_metadata_is", key: "service", value: "" }
     case "has_phone":
       return { kind: "has_phone" }
     case "has_user":
@@ -129,8 +145,54 @@ function conditionForKind(kind: BranchCondition["kind"]): BranchCondition {
   }
 }
 
+/**
+ * What a coach reads instead of the stored key. A Record over
+ * `EnrolmentMetadataKey`, so a key added to the allow-list without a
+ * plain-language name is a compile error — the same trick
+ * `BRANCH_KIND_LABEL` uses.
+ */
+const ENROLMENT_METADATA_KEY_LABEL: Record<EnrolmentMetadataKey, string> = {
+  service: "Which service they asked about",
+  role: "Whether a parent or the athlete filled the form in",
+  event_kind: "Whether it was a camp or a clinic",
+  camp_name: "Which camp or clinic",
+  quiz_key: "Which quiz they took",
+  branch: "Which quiz result they got",
+  tier: "Which quiz level they scored",
+}
+
+/** The answers a coach will nearly always want, shown under the box. */
+const ENROLMENT_METADATA_KEY_HINT: Record<EnrolmentMetadataKey, string> = {
+  service: "Type one of these exactly: in_person, online, assessment, clinic, camp",
+  // Honest about what `parent` means here. The quiz asks "parent or coach" as
+  // one answer, so a coach is stored as `parent` — see
+  // RPI_QUIZ_NOT_THE_ATHLETE_BRANCH. What this really separates is the athlete
+  // themselves from anyone signing up on an athlete's behalf, and a coach
+  // reading "parent" needs to be told that before they write the email.
+  role: "Type parent or athlete. Anyone signing up on an athlete's behalf counts as parent, including a coach.",
+  event_kind: "Type camp or clinic",
+  camp_name: "The camp or clinic's name, exactly as you titled it",
+  quiz_key: "The short name of the quiz",
+  branch: "The result name, for example parent_coach or rebuilder",
+  tier: "The level name from the quiz",
+}
+
 /** Shown under the predicate when one needs a caveat a coach would want. */
 const BRANCH_KIND_NOTE: Partial<Record<BranchCondition["kind"], string>> = {
+  // The last sentence used to say "anyone who signed up before you added this
+  // goes down the no side", which is WRONG and would have had coaches
+  // rebuilding sequences for no reason: the answer is recorded when the
+  // person first comes in, not when the split is added, so an inquiry from
+  // last week matches perfectly. The three groups below are the ones that
+  // really cannot match — a run enrolled before this shipped, a contact the
+  // coach added by hand (nothing was recorded), and a front door that does
+  // not collect the thing being checked.
+  enrolled_metadata_is:
+    "Use this to send different messages to different people in the same sequence — the ones who " +
+    "asked about a camp and the ones who asked about one-to-one coaching, say. Pick what to check, " +
+    "then type the answer to look for. It only knows what we recorded when the person first came " +
+    "in, so anyone you added to this sequence by hand goes down the “no” side, and so does anyone " +
+    "who came in through a form that does not ask.",
   opened_last_email:
     "Counts more people than really read it. Apple Mail and Gmail can open images automatically, " +
     "which looks the same to us as a person opening the email. \u201CClicked a link\u201D is the one to " +
@@ -695,6 +757,55 @@ function BranchFields({
             onChange={(e) => onChange({ branch_condition: { kind: "source_is", value: e.target.value } })}
             className="mt-1"
           />
+        </div>
+      ) : null}
+
+      {condition?.kind === "enrolled_metadata_is" ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor={`${step._key}-meta-key`}>What to check</Label>
+            <select
+              id={`${step._key}-meta-key`}
+              aria-label={`Step ${index + 1} what to check`}
+              value={condition.key}
+              onChange={(e) =>
+                onChange({
+                  branch_condition: {
+                    kind: "enrolled_metadata_is",
+                    key: e.target.value as EnrolmentMetadataKey,
+                    value: condition.value,
+                  },
+                })
+              }
+              className="mt-1 h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-foreground"
+            >
+              {ENROLMENT_METADATA_KEYS.map((k) => (
+                <option key={k} value={k}>
+                  {ENROLMENT_METADATA_KEY_LABEL[k]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <Label htmlFor={`${step._key}-meta-value`}>Answer to look for</Label>
+            <Input
+              id={`${step._key}-meta-value`}
+              aria-label={`Step ${index + 1} answer to look for`}
+              // The save route answers a flat "Invalid request body." with no
+              // field named, so an over-long answer would reach the coach as
+              // an unactionable 400 after an enabled Save. `validateStepList`
+              // also refuses it in English; this stops it being typed.
+              maxLength={ENROLMENT_METADATA_MAX_VALUE_LENGTH}
+              value={condition.value}
+              onChange={(e) =>
+                onChange({
+                  branch_condition: { kind: "enrolled_metadata_is", key: condition.key, value: e.target.value },
+                })
+              }
+              className="mt-1"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">{ENROLMENT_METADATA_KEY_HINT[condition.key]}</p>
+          </div>
         </div>
       ) : null}
 

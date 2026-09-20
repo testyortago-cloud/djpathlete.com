@@ -163,6 +163,7 @@ function smsSendableContext(overrides: Partial<DecisionContext> = {}): DecisionC
     isSuppressed: false,
     enrolledSource: "funnel_form",
     lastEmail: null,
+    enrolmentMetadata: {},
     ...overrides,
   }
 }

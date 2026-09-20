@@ -6,6 +6,7 @@
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import type { ContactEventSource } from "@/lib/db/contacts"
+import { pickEnrolmentMetadata, type EnrolmentMetadata } from "@/lib/lead-engine/enrolment-metadata"
 
 function getClient() {
   return createServiceRoleClient()
@@ -129,31 +130,88 @@ function filterMatches(filter: Record<string, unknown> | null | undefined, metad
 }
 
 /**
+ * True when a write was refused because the database does not know a column
+ * the payload named. PGRST204 is PostgREST's schema-cache miss on a write;
+ * 42703 is Postgres' own `undefined_column` for the versions that surface it
+ * directly. Same pair, same reason, as `lib/db/pipeline.ts`'s local copy.
+ *
+ * Transitional, for ONE deploy: the Vercel build and the migration workflow
+ * race on merge to main, so this code runs briefly against a `sequence_runs`
+ * that predates 00266. Deliberately kept local rather than exported — a
+ * shared helper invites permanent reuse of a temporary tolerance.
+ */
+function isMissingColumnError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null || !("code" in err)) return false
+  const code = (err as { code?: string }).code
+  return code === "PGRST204" || code === "42703"
+}
+
+/**
  * THE run-creation logic, shared by every enrolment path in this file —
  * triggered (`enrollIfTriggered`, below) and manual (`enrolContactManually`).
  * There is exactly one place that inserts a `sequence_runs` row, so the
  * duplicate-run guard (the `23505` swallow) can never drift between the two
- * callers.
+ * callers — and so `enrolment_metadata` (G10) has exactly one writer.
  *
  * A `23505` on `sequence_runs_one_active_per_sequence` (migration 00216)
  * means this contact already has an ACTIVE run of this exact sequence —
  * the correct outcome of a double enrolment, not an error. Returns
  * `{ enrolled: false }` rather than throwing; every other insert error
  * propagates.
+ *
+ * `enrolmentMetadata` is what `evaluateBranch`'s `enrolled_metadata_is`
+ * predicate later reads. It is ALREADY allow-listed by the caller — this
+ * function does not see the raw event bag and must never be given it.
+ *
+ * THE RETRY IS THE DEPLOY RACE, NOT A GENERAL FALLBACK. On a schema that has
+ * no `enrolment_metadata` column yet, naming it would 500 the insert, and
+ * `recordContactEvent` treats a failed enrolment as non-fatal — so every
+ * lead captured in that window would keep its contact row and silently never
+ * start its sequence. Retrying once WITHOUT the key costs that window its
+ * metadata and nothing else.
+ *
+ * WHAT THE RETRY DOES AND DOES NOT PROMISE, stated exactly, because an
+ * earlier version of this comment overclaimed and its test could not tell:
+ * `isMissingColumnError` reads the CODE only, never which column the message
+ * names. So a PGRST204/42703 about some other column is also retried once —
+ * harmlessly, because the second insert drops only `enrolment_metadata` and
+ * therefore fails identically and throws. What it cannot do is swallow a
+ * different fault into a successful write: if the retry succeeds, the
+ * payload was right apart from that one key. Matching on the column name
+ * instead was considered and rejected — PostgREST's message text is not a
+ * stable contract, and keying a guard to it trades a harmless extra attempt
+ * for a guard that silently stops working on a PostgREST upgrade.
+ * `__tests__/lib/lead-engine/enroll.test.ts` pins the attempt COUNT in both
+ * directions, which is the only way this is visible at all.
  */
 async function insertSequenceRun(args: {
   supabase: ReturnType<typeof createServiceRoleClient>
   businessId: string
   sequenceId: string
   contactId: string
+  enrolmentMetadata: EnrolmentMetadata
 }): Promise<{ enrolled: boolean }> {
-  const { error } = await args.supabase.from("sequence_runs").insert({
+  const base = {
     business_id: args.businessId,
     sequence_id: args.sequenceId,
     contact_id: args.contactId,
     current_position: 0,
     next_run_at: new Date().toISOString(),
-  })
+  }
+
+  let { error } = await args.supabase
+    .from("sequence_runs")
+    .insert({ ...base, enrolment_metadata: args.enrolmentMetadata })
+
+  if (error && isMissingColumnError(error)) {
+    // `insertSequenceRun:`, not `enrollIfTriggered:` — this function is also
+    // the writer for `enrolContactManually`, and a line produced during a
+    // manual enrol would otherwise name a caller that was never involved.
+    console.warn(
+      "insertSequenceRun: sequence_runs has no enrolment_metadata column yet (migration 00266 pending); enrolling without it",
+    )
+    ;({ error } = await args.supabase.from("sequence_runs").insert(base))
+  }
 
   if (error) {
     if ((error as { code?: unknown }).code === "23505") return { enrolled: false }
@@ -209,6 +267,13 @@ export async function enrollIfTriggered(args: {
   const candidates = (data ?? []) as CandidateSequence[]
   const enrolled: string[] = []
 
+  // G10. Narrowed ONCE, here, so no path below can reach `insertSequenceRun`
+  // with the raw bag. On the funnel path that bag is the visitor's entire
+  // typed submission (lib/funnels/capture-contact.ts) — see
+  // lib/lead-engine/enrolment-metadata.ts for why the key allow-list is the
+  // first guard and not the only one.
+  const enrolmentMetadata = pickEnrolmentMetadata(metadata)
+
   for (const sequence of candidates) {
     if (!filterMatches(sequence.trigger_filter, metadata)) continue
 
@@ -238,6 +303,7 @@ export async function enrollIfTriggered(args: {
       businessId,
       sequenceId: sequence.id,
       contactId: args.contactId,
+      enrolmentMetadata,
     })
     if (didEnrol) enrolled.push(sequence.id)
   }
@@ -344,6 +410,11 @@ export async function enrolContactManually(
     businessId,
     sequenceId: sequence.id,
     contactId,
+    // A manual enrolment has no triggering event to remember. `{}` rather
+    // than a missing key, matching the column's own default: "this run
+    // remembers nothing" and "this run predates the column" must read the
+    // same to every branch, which is false.
+    enrolmentMetadata: {},
   })
 
   return enrolled ? { outcome: "enrolled" } : { outcome: "already_enrolled" }

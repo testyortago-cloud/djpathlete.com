@@ -89,7 +89,16 @@ export const POST = withAudit(
         // bag by exact key equality. Without signup_type, an interest signup
         // and a paid registration are indistinguishable, and a sequence that
         // chases people to sign up would chase the ones who already have.
-        metadata: { signup_type: "interest" },
+        //
+        // G10: `event_kind` and `camp_name` ride along into
+        // `sequence_runs.enrolment_metadata`, where the
+        // `enrolled_metadata_is` branch reads them — so one
+        // `camp_clinic_deadline` sequence can say "camp" to a camp signup and
+        // "clinic" to a clinic one. THE COLUMN IS `events.type`, NOT
+        // `events.kind`, and its only live values are `camp` and `clinic`
+        // (checked against production, and against `EventType` in
+        // types/database.ts).
+        metadata: { signup_type: "interest", event_kind: event.type, camp_name: event.title },
       })
 
       // SMS consent (Lead Engine Stage 4). FIRE AND FORGET, same reasoning as

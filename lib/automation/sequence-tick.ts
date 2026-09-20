@@ -9,6 +9,7 @@
 import { quietHoursDefer, dailyCapDefer, siblingRunDefer } from "@/lib/lead-engine/guardrails"
 import type { QuietHours } from "@/lib/lead-engine/guardrails"
 import { parseTagConfig, parseStageConfig } from "@/lib/lead-engine/step-config"
+import type { EnrolmentMetadata, EnrolmentMetadataKey } from "@/lib/lead-engine/enrolment-metadata"
 
 export type StepKind = "email" | "sms" | "wait" | "branch" | "tag" | "stage" | "alert" | "stop"
 
@@ -33,6 +34,19 @@ export type BranchCondition =
    */
   | { kind: "opened_last_email" }
   | { kind: "clicked_last_email" }
+  /**
+   * G10. A fact about the EVENT that enrolled this run, as opposed to
+   * `source_is`, which reads the sequence's own trigger and is therefore the
+   * same value for everybody in that sequence.
+   *
+   * This is what makes coaching-vs-camp and parent-vs-adult answerable:
+   * `{key:"service", value:"camp"}`, `{key:"role", value:"parent"}`,
+   * `{key:"event_kind", value:"clinic"}`. `key` is restricted to
+   * `ENROLMENT_METADATA_KEYS` because those are the only keys anything
+   * writes — a free-form key would let a coach build a branch that is false
+   * forever with nothing to tell them why.
+   */
+  | { kind: "enrolled_metadata_is"; key: EnrolmentMetadataKey; value: string }
 
 export type SequenceStepRow = {
   id: string
@@ -62,6 +76,19 @@ export type SequenceRunRow = {
    * read it; the runner uses it to decide retry vs. give up.
    */
   attempts: number
+  /**
+   * G10, migration 00266. The allow-listed facts about the event that
+   * enrolled this run, written once by `insertSequenceRun`
+   * (lib/lead-engine/enroll.ts) and never updated afterwards.
+   *
+   * OPTIONAL IN THE TYPE, not in the database: `claim_sequence_runs` is
+   * `RETURNS SETOF public.sequence_runs ... RETURNING r.*`, so it picks the
+   * column up with no function change — but for the one deploy where the
+   * Vercel build is live and the migration is not, the key is simply absent
+   * from the row. `loadRunContext` therefore reads it as `?? {}`, never
+   * against null: an absent key is `undefined`, and `undefined !== null`.
+   */
+  enrolment_metadata?: EnrolmentMetadata | null
 }
 
 export type DecisionContext = {
@@ -82,6 +109,14 @@ export type DecisionContext = {
    * engagement predicates read as false rather than as an error.
    */
   lastEmail: { openedAt: string | null; clickedAt: string | null } | null
+  /**
+   * G10. What the run remembers about the event that enrolled it — the
+   * allow-listed subset written at enrolment, read by
+   * `enrolled_metadata_is`. Always an object: `{}` both for a run that
+   * carried no such fact and for one enrolled before migration 00266, which
+   * are the same answer to a branch.
+   */
+  enrolmentMetadata: EnrolmentMetadata
 }
 
 export type StepAction =
@@ -118,6 +153,30 @@ export function evaluateBranch(
       return { ok: true, value: ctx.lastEmail?.openedAt != null }
     case "clicked_last_email":
       return { ok: true, value: ctx.lastEmail?.clickedAt != null }
+    case "enrolled_metadata_is": {
+      // A key the run does not carry is FALSE, not an error: every run
+      // enrolled before migration 00266 carries `{}`, and a front door with
+      // no such fact to offer is normal rather than broken. Failing here
+      // would kill those runs the moment a coach added this branch.
+      const remembered = ctx.enrolmentMetadata[condition.key]
+      if (typeof remembered !== "string") return { ok: true, value: false }
+      // Case- and space-insensitive. The stored side is machine-written
+      // (`camp`, `parent`, `in_person`); the compared side is typed by a
+      // coach into a text box, and a branch that silently never matches
+      // because of a capital letter is the worst way to learn that.
+      //
+      // NO SEPARATE "the coach left the box blank" CHECK. One was written
+      // here and removed: it could never change an answer, because a blank
+      // one is already false — `pickEnrolmentMetadata` never stores an empty
+      // or blank value, so nothing a run remembers can equal "". The two
+      // places that DO refuse a blank answer are `branchConditionIsKnown`
+      // (lib/lead-engine/step-list.ts) and `branchConditionSchema`
+      // (lib/validators/sequence-admin.ts), which stop it being saved at
+      // all. A third copy here was unreachable code shaped like a guard,
+      // which is how two guards end up masking each other.
+      const typed = condition.value.trim().toLowerCase()
+      return { ok: true, value: remembered.trim().toLowerCase() === typed }
+    }
     default:
       // An unknown predicate must FAIL the run, never default to a boolean —
       // guessing which branch arm is correct can send the wrong message to a

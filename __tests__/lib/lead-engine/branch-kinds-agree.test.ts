@@ -31,6 +31,7 @@ const EXAMPLES: Record<BranchCondition["kind"], BranchCondition> = {
   source_is: { kind: "source_is", value: "funnel_form" },
   opened_last_email: { kind: "opened_last_email" },
   clicked_last_email: { kind: "clicked_last_email" },
+  enrolled_metadata_is: { kind: "enrolled_metadata_is", key: "service", value: "camp" },
 }
 
 describe("every branch predicate is declared consistently in all four places", () => {
@@ -103,5 +104,21 @@ describe("every branch predicate is declared consistently in all four places", (
     // Without this, both assertions above would pass against a schema that
     // accepted anything at all.
     expect(stepDraftSchema.safeParse(draft({ kind: "phase_of_moon" })).success).toBe(false)
+  })
+
+  // G10. `enrolled_metadata_is` is the first predicate with arguments a coach
+  // types rather than picks, so it is also the first that can be declared in
+  // all four places and still be saveable in a shape nothing can act on.
+  it("rejects an enrolment-metadata key that nothing ever writes", () => {
+    const parsed = stepDraftSchema.safeParse(
+      draft({ kind: "enrolled_metadata_is", key: "favourite_colour", value: "blue" }),
+    )
+    expect(parsed.success).toBe(false)
+  })
+
+  it("rejects an enrolment-metadata branch with a blank answer", () => {
+    expect(stepDraftSchema.safeParse(draft({ kind: "enrolled_metadata_is", key: "service", value: "" })).success).toBe(
+      false,
+    )
   })
 })
