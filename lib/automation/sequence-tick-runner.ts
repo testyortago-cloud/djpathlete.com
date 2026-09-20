@@ -340,6 +340,10 @@ async function processRun(
         const rendered = renderSequenceSms({
           body: action.step.body ?? "",
           contactName: ctx.contact.name,
+          // The same value the email path and `evaluateBranch` read — a text
+          // and an email in one sequence must not fill `{{camp_name}}` in
+          // differently.
+          enrolmentMetadata: ctx.enrolmentMetadata,
         })
 
         const { claimed, messageId } = await recordSend({
@@ -489,6 +493,11 @@ async function processRun(
         unsubscribeUrl: unsubUrl,
         smsConsentUrl: consentUrl,
         contactName: ctx.contact.name,
+        // What the enrolling event let this run remember (G10) — the source of
+        // `{{service}}`, `{{camp_name}}` and the rest. Already loaded by
+        // `loadRunContext` for `evaluateBranch`, so this is the same value the
+        // branch conditions read, not a second lookup that could disagree.
+        enrolmentMetadata: ctx.enrolmentMetadata,
       })
 
       const { claimed, messageId } = await recordSend({

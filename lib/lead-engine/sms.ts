@@ -16,6 +16,8 @@
 // surface would look identical either way.
 
 import type { BusinessSettings } from "@/lib/db/businesses"
+import type { EnrolmentMetadata } from "@/lib/lead-engine/enrolment-metadata"
+import { substituteMergeFields } from "@/lib/lead-engine/merge-fields"
 import { isSuppressed } from "@/lib/db/contact-consents"
 import { insertSmsMessage, markSmsMessageOutcome } from "@/lib/db/sms-messages"
 import { normalisePhone } from "@/lib/lead-engine/identity"
@@ -102,25 +104,31 @@ export function assertSmsSendable(settings: BusinessSettings): void {
 }
 
 /**
- * `{{name}}` substitution. Falls back to an empty string — never a brand
- * word, never a guessed name — the same fallback contract as email.ts's
- * `substituteName`. Reimplemented locally rather than imported: that
- * function is not exported, and this file must not reach into email.ts's
- * internals to get it.
- */
-function substituteName(template: string, contactName: string | null): string {
-  const safeName = contactName?.replace(/[\r\n]+/g, " ").trim() ?? ""
-  return template.replaceAll("{{name}}", safeName)
-}
-
-/**
  * Renders a sequence step's body into the exact text handed to the
  * provider. Pure: no I/O, no environment reads, no database. The opt-out
  * sentence is appended exactly once, after a blank line, so it reads as a
  * separate line and never merges into the message copy.
+ *
+ * SHARES THE EMAIL'S MERGE FIELDS, and it has to. This file used to carry its
+ * own `substituteName`, duplicated because email.ts's was not exported — and
+ * that duplicate is exactly how a text came to understand `{{name}}` and
+ * nothing else. G16 gave the editor a warning listing every usable token
+ * UNDER THE TEXT BOX TOO, so a coach typing `{{first_name}}` into a text saw
+ * no warning and the handset got the literal braces: the precise failure the
+ * feature exists to prevent, reintroduced by two renderers disagreeing about
+ * one list. `lib/lead-engine/merge-fields.ts` is pure and exported, so there is
+ * no longer any reason for a second copy.
  */
-export function renderSequenceSms(args: { body: string; contactName: string | null }): { text: string } {
-  const body = substituteName(args.body, args.contactName)
+export function renderSequenceSms(args: {
+  body: string
+  contactName: string | null
+  /** What the enrolling event let this run remember (G10) — same source as the email's. */
+  enrolmentMetadata?: EnrolmentMetadata
+}): { text: string } {
+  const body = substituteMergeFields(args.body, {
+    contactName: args.contactName,
+    metadata: args.enrolmentMetadata,
+  })
   return { text: `${body}\n\n${SMS_OPT_OUT_SENTENCE}` }
 }
 

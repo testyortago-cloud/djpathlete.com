@@ -50,6 +50,7 @@ import {
   ENROLMENT_METADATA_MAX_VALUE_LENGTH,
   type EnrolmentMetadataKey,
 } from "@/lib/lead-engine/enrolment-metadata"
+import { MERGE_FIELD_KEYS, unknownMergeFields } from "@/lib/lead-engine/merge-fields"
 import { useStepEditorDirty } from "@/components/admin/sequences/StepEditorDirtyContext"
 // G11. The one ceiling, shared with `validateStepList` and the tick so the
 // number the box shows is the number the save enforces.
@@ -615,6 +616,7 @@ function StepCard({
                 onChange={(e) => onChange({ body: e.target.value })}
                 className="mt-1"
               />
+              <MergeFieldNote text={`${step.subject ?? ""}\n${step.body ?? ""}`} />
             </div>
           </>
         ) : null}
@@ -628,6 +630,7 @@ function StepCard({
               onChange={(e) => onChange({ body: e.target.value })}
               className="mt-1"
             />
+            <MergeFieldNote text={step.body ?? ""} />
           </div>
         ) : null}
 
@@ -726,6 +729,31 @@ const SEQUENCE_SOURCES_WITH_AN_ANCHOR = new Set(["event_signup"])
  * is the same shape the metadata branch uses for its blank answer: visible,
  * blocking, and impossible to save half-finished.
  */
+/**
+ * What the reader will actually see where a `{{token}}` sits.
+ *
+ * WRITTEN FOR A COACH, NOT A PROGRAMMER — no "merge field", no "placeholder",
+ * no "token". A person typing `{{sport}}` into a subject line has a perfectly
+ * reasonable expectation, and the only useful thing to tell them is that it
+ * will come out blank and which words do work.
+ *
+ * ADVISORY, NOT A SAVE GATE. A blank is already the safe outcome (the reader
+ * never sees braces), so refusing the save would block a coach whose sequence
+ * is otherwise finished, over something that costs a slightly plain sentence.
+ * It also updates as they type, which beats telling them at save time.
+ */
+function MergeFieldNote({ text }: { text: string }) {
+  const unknown = unknownMergeFields(text)
+  if (unknown.length === 0) return null
+  return (
+    <p className="mt-1 text-xs text-accent">
+      {unknown.map((name) => `"{{${name}}}"`).join(", ")} will come out blank — nothing fills{" "}
+      {unknown.length === 1 ? "it" : "them"} in. The words you can use are{" "}
+      {MERGE_FIELD_KEYS.map((key) => `{{${key}}}`).join(", ")}.
+    </p>
+  )
+}
+
 function WaitFields({
   step,
   index,

@@ -14,6 +14,9 @@
 // (below) and the general shape of a transactional HTML email.
 
 import { Resend } from "resend"
+import type { EnrolmentMetadata } from "@/lib/lead-engine/enrolment-metadata"
+import { substituteMergeFields } from "@/lib/lead-engine/merge-fields"
+import { resolvePalette } from "@/lib/funnels/sections/palettes"
 import type { BusinessSettings } from "@/lib/db/businesses"
 
 const _resendClient = new Resend(process.env.RESEND_API_KEY)
@@ -87,6 +90,17 @@ export const UNSUBSCRIBE_FOOTER_SENTENCE =
  * Migration 00226 puts this placeholder into the `sms_repermission` step body.
  */
 export const SMS_CONSENT_URL_PLACEHOLDER = "{{sms_consent_url}}"
+
+/**
+ * The same token, written the way a PERSON might type it — with or without
+ * spaces inside the braces, in any case.
+ *
+ * The merge-field rule (lib/lead-engine/merge-fields.ts) already tolerates all
+ * of those, so the step editor calls `{{ sms_consent_url }}` a working token.
+ * An exact-string match here would disagree with that: it would skip the guard
+ * below and the substitution, and ship the braces as visible text.
+ */
+const SMS_CONSENT_TOKEN = /\{\{\s*sms_consent_url\s*\}\}/gi
 
 /**
  * The link text shown in the HTML part where the placeholder sits.
@@ -224,19 +238,67 @@ function escapeHtml(s: string): string {
 }
 
 /**
- * `{{name}}` substitution. Falls back to an empty string — never a brand word,
- * never a guessed name.
+ * The palette this layout has always used, and the answer for every tenant who
+ * has not chosen one — which today is all of them
+ * (`business_settings.brand_color` is NULL until a coach picks it, and
+ * migration 00260 never defaults it).
  *
- * CR and LF are collapsed to a space before substitution. `contactName` is
- * funnel-submitted text, so it is attacker-controllable, and it lands in the
- * SUBJECT — a mail header. A bare newline there is header injection wherever
- * the transport passes it through, and a mangled subject in most clients even
- * where it does not. Stripping happens here, once, rather than at each
- * splice point, so a future caller cannot forget it.
+ * `strip` is the three-stop gradient on the top edge, and it exists only for
+ * this default: a gradient needs a lighter MIDPOINT, and there is no honest way
+ * to derive one for an arbitrary brand — so a tenant who has chosen a colour
+ * gets a flat strip in it rather than a "gradient" whose three stops are all
+ * the same value, which is a no-op wearing a gradient's clothes.
+ *
+ * Not brand NAMES, and they must not become any: this file is swept by
+ * `__tests__/lib/lead-engine/no-brand-literals.test.ts`. A hex is a colour.
  */
-function substituteName(template: string, contactName: string | null): string {
-  const safeName = contactName?.replace(/[\r\n]+/g, " ").trim() ?? ""
-  return template.replaceAll("{{name}}", safeName)
+const DEFAULT_PALETTE = {
+  brand: "#0E3F50",
+  /** What the wordmark is printed in ON the brand band. */
+  brandInk: "#ffffff",
+  accent: "#C49B7A",
+  strip: "linear-gradient(90deg, #C49B7A 0%, #d4b08e 50%, #C49B7A 100%)",
+} as const
+
+/**
+ * `#rrggbb` and nothing else — the EXACT shape three other places already
+ * enforce: `paletteSchema`'s `hexColor`, `POST /api/admin/businesses/brand`,
+ * and migration 00260's own CHECK constraints. Anything shorter or longer
+ * cannot be in the column, and accepting it here would be this file disagreeing
+ * with the database about what a colour is.
+ */
+const HEX_COLOUR = /^#[0-9a-fA-F]{6}$/
+
+/**
+ * The tenant's palette, or the default above.
+ *
+ * VALIDATION IS THE GUARD, not escaping. These land inside a `style`
+ * attribute, and `escapeHtml` would stop a quote breaking out — but
+ * `red; background-image:url(https://tracker.example/x.png)` needs no quote at
+ * all to add a second declaration, and an email that silently loads a remote
+ * image is a tracking pixel somebody else chose. Anything that is not a hex
+ * falls back to the whole default palette, which costs the wrong colours rather
+ * than an injected rule.
+ *
+ * DERIVED BY `resolvePalette`, not by arithmetic invented here. That function
+ * already owns two things this email needs and must not answer differently
+ * from the same business's funnel pages: the contrast-correct INK for a
+ * background (measured against both black and white, never thresholded — see
+ * its own header), and the accent to use when a coach picks a brand colour and
+ * leaves the accent NULL, which is the "derive it from the brand" state the
+ * write route models explicitly. Without the first, a coach who picks a pale
+ * brand gets their own name in white on near-white, invisible in every sequence
+ * email; without the second, they get their brand band above the incumbent
+ * tenant's gold strip.
+ */
+function paletteFor(settings: BusinessSettings): { brand: string; brandInk: string; accent: string; strip: string } {
+  const brand = settings.brand_color?.trim() ?? ""
+  if (!HEX_COLOUR.test(brand)) return DEFAULT_PALETTE
+
+  const storedAccent = settings.accent_color?.trim() ?? ""
+  const accent = HEX_COLOUR.test(storedAccent) ? storedAccent : undefined
+  const tokens = resolvePalette({ brand, accent })
+  return { brand: tokens.brand, brandInk: tokens.brandInk, accent: tokens.accent, strip: tokens.accent }
 }
 
 /**
@@ -259,6 +321,12 @@ export function renderSequenceEmail(args: {
   smsConsentUrl?: string
   contactName: string | null
   /**
+   * What the enrolling event let this run remember (G10). Optional and
+   * defaulted to `{}` so every existing caller renders byte-for-byte the same
+   * — a step whose copy uses no metadata token cannot tell the difference.
+   */
+  enrolmentMetadata?: EnrolmentMetadata
+  /**
    * Defaults to TRUE. Every message this engine sends to a CONTACT is a
    * commercial message and must carry the unsubscribe line, so opting out has
    * to be deliberate and explicit.
@@ -280,10 +348,32 @@ export function renderSequenceEmail(args: {
     // link goes nowhere.
     throw new Error("renderSequenceEmail: unsubscribeUrl is required unless includeUnsubscribeFooter is false")
   }
-  const subject = substituteName(args.subject, contactName)
-  const body = substituteName(args.body, contactName)
+  const merge = { contactName, metadata: args.enrolmentMetadata ?? {} }
+  const subject = substituteMergeFields(args.subject, merge)
+  const body = substituteMergeFields(args.body, merge)
 
-  const wantsSmsConsentUrl = body.includes(SMS_CONSENT_URL_PLACEHOLDER)
+  // THE TENANT'S OWN COLOURS, falling back to the ones this layout has always
+  // used. `business_settings.brand_color` / `.accent_color` are NULL until a
+  // coach picks a palette (migration 00260, and `resolveBrandKit`'s own note
+  // that NULL is never defaulted), so the fallbacks are not placeholders —
+  // they are the answer for every tenant who has not chosen, which today is
+  // all of them.
+  //
+  // VALIDATED, not interpolated blind. These land inside a `style` attribute,
+  // and although `escapeHtml` would neutralise a quote, a value like
+  // `red; background-image:url(...)` needs no quote at all to smuggle a second
+  // declaration in. A strict hex test is the whole guard: anything else falls
+  // back, which is a wrong colour rather than an injected rule.
+  const { brand, brandInk, accent, strip } = paletteFor(settings)
+
+  // MATCHED WITH THE SAME TOLERANCE THE EDITOR SHOWS. `{{ sms_consent_url }}`
+  // with spaces is a token the merge-field rule calls known and working, so
+  // the editor warns about nothing — while an exact `includes` would miss it,
+  // skip both the throw below AND the substitution, and mail the braces out as
+  // text on the one step whose entire purpose is that link. One regex, used for
+  // the test and for both substitutions.
+  const consentTokens = body.match(SMS_CONSENT_TOKEN) ?? []
+  const wantsSmsConsentUrl = consentTokens.length > 0
   if (wantsSmsConsentUrl && !smsConsentUrl) {
     // The two alternatives are shipping `{{sms_consent_url}}` to a real
     // person as visible template syntax, or rendering a link that points
@@ -301,9 +391,9 @@ export function renderSequenceEmail(args: {
   // BEFORE escaping would render it as visible text instead of a link.
   const withSmsConsentLink = (escaped: string): string =>
     wantsSmsConsentUrl
-      ? escaped.replaceAll(
-          SMS_CONSENT_URL_PLACEHOLDER,
-          `<a href="${escapeHtml(smsConsentUrl as string)}" style="color:#0E3F50; text-decoration:underline;">${SMS_CONSENT_LINK_LABEL}</a>`,
+      ? escaped.replace(
+          SMS_CONSENT_TOKEN,
+          `<a href="${escapeHtml(smsConsentUrl as string)}" style="color:${brand}; text-decoration:underline;">${SMS_CONSENT_LINK_LABEL}</a>`,
         )
       : escaped
 
@@ -321,7 +411,7 @@ export function renderSequenceEmail(args: {
   // the wordmark itself still comes only from `settings`.
   const headerHtml = settings.logo_url
     ? `<img src="${escapeHtml(settings.logo_url)}" alt="${escapeHtml(settings.display_name)}" style="max-height:48px; border:0; display:block; margin:0 auto;" />`
-    : `<h1 style="margin:0; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:#ffffff; letter-spacing:6px; text-transform:uppercase;">${escapeHtml(settings.display_name)}</h1>`
+    : `<h1 style="margin:0; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:22px; font-weight:400; color:${brandInk}; letter-spacing:6px; text-transform:uppercase;">${escapeHtml(settings.display_name)}</h1>`
 
   // The footer's identity + unsubscribe lines render unconditionally for a
   // commercial message — a missing postal address is a CAN-SPAM violation, so
@@ -330,10 +420,10 @@ export function renderSequenceEmail(args: {
   // it is not an optional input: it marks the message as an internal operator
   // notification rather than a message to a contact.
   const unsubscribeLineHtml = includeUnsubscribeFooter
-    ? `\n    <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:11px; color:#b5b0a8; line-height:1.6;">${escapeHtml(UNSUBSCRIBE_FOOTER_SENTENCE)} <a href="${escapeHtml(unsubscribeUrl as string)}" style="color:#0E3F50; text-decoration:underline;">Unsubscribe</a></p>`
+    ? `\n    <p style="margin:0; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:11px; color:#b5b0a8; line-height:1.6;">${escapeHtml(UNSUBSCRIBE_FOOTER_SENTENCE)} <a href="${escapeHtml(unsubscribeUrl as string)}" style="color:${brand}; text-decoration:underline;">Unsubscribe</a></p>`
     : ""
   const footerHtml = `
-    <p style="margin:0 0 6px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:10px; color:#C49B7A; letter-spacing:3px; text-transform:uppercase;">${escapeHtml(settings.display_name)}</p>
+    <p style="margin:0 0 6px; font-family:'Lexend Exa', Georgia, 'Times New Roman', serif; font-size:10px; color:${accent}; letter-spacing:3px; text-transform:uppercase;">${escapeHtml(settings.display_name)}</p>
     <p style="margin:0 0 8px; font-family:'Lexend Deca', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size:11px; color:#a09b94; letter-spacing:0.5px;">Sent by ${escapeHtml(settings.sender_name)} &middot; ${escapeHtml(settings.postal_address)}</p>${unsubscribeLineHtml}
   `.trim()
 
@@ -351,10 +441,10 @@ export function renderSequenceEmail(args: {
       <td align="center" style="padding:40px 16px;">
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%; background-color:#ffffff; border-radius:2px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.04), 0 20px 60px rgba(14,63,80,0.06);">
           <tr>
-            <td style="height:3px; background:#C49B7A; background-image:linear-gradient(90deg, #C49B7A 0%, #d4b08e 50%, #C49B7A 100%); font-size:0; line-height:0;">&nbsp;</td>
+            <td style="height:3px; background:${accent}; background-image:${strip}; font-size:0; line-height:0;">&nbsp;</td>
           </tr>
           <tr>
-            <td align="center" style="background-color:#0E3F50; padding:30px 48px;">
+            <td align="center" style="background-color:${brand}; padding:30px 48px;">
               ${headerHtml}
             </td>
           </tr>
@@ -379,7 +469,7 @@ export function renderSequenceEmail(args: {
   // The text/plain part gets the bare URL: there is nothing to click in a
   // plain-text reader, so the label would leave that reader with no way to
   // reach the page at all.
-  const bodyText = wantsSmsConsentUrl ? body.replaceAll(SMS_CONSENT_URL_PLACEHOLDER, smsConsentUrl as string) : body
+  const bodyText = wantsSmsConsentUrl ? body.replace(SMS_CONSENT_TOKEN, smsConsentUrl as string) : body
 
   const text = [
     bodyText,

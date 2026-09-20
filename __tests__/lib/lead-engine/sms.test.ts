@@ -68,6 +68,29 @@ describe("renderSequenceSms", () => {
     expect(text).toBe("Hey Priya, ready?\n\n" + SMS_OPT_OUT_SENTENCE)
   })
 
+  // G16. This renderer used to carry its OWN `substituteName`, which understood
+  // `{{name}}` and nothing else — while the step editor's warning, shown under
+  // the text box as well as the email one, listed every merge field as usable.
+  // A coach typing `{{first_name}}` into a text therefore saw no warning and
+  // the handset got the literal braces: the exact failure the feature exists to
+  // prevent, produced by two renderers disagreeing about one list.
+  it("fills in the SAME merge fields the email does, not just {{name}}", () => {
+    const { text } = renderSequenceSms({
+      body: "Hi {{first_name}}, {{camp_name}} starts soon.",
+      contactName: "Sam Athlete",
+      enrolmentMetadata: { camp_name: "Summer Camp 2026" },
+    })
+
+    expect(text).toBe("Hi Sam, Summer Camp 2026 starts soon.\n\n" + SMS_OPT_OUT_SENTENCE)
+  })
+
+  it("blanks a token nothing fills in, rather than texting braces to a handset", () => {
+    const { text } = renderSequenceSms({ body: "Your {{sport}} session", contactName: "Sam" })
+
+    expect(text).toBe("Your  session\n\n" + SMS_OPT_OUT_SENTENCE)
+    expect(text).not.toContain("{{")
+  })
+
   it("falls back to an empty string with no double-space artifact when there is no name", () => {
     const { text } = renderSequenceSms({ body: "Hey {{name}}, ready?", contactName: null })
     // "Hey {{name}}, ready?" -> "Hey , ready?" — the fallback is an empty
