@@ -1,4 +1,11 @@
 import { defineConfig, devices } from "@playwright/test"
+import dotenv from "dotenv"
+
+// Without this the specs that gate on ADMIN_TEST_EMAIL / ADMIN_TEST_PASSWORD
+// skipped their whole describe block even though .env.local defines both --
+// which is how the Content Studio shell suite sat green while still asserting
+// a drawer that had been replaced by a full page months earlier.
+dotenv.config({ path: ".env.local" })
 
 export default defineConfig({
   testDir: "./__tests__/e2e",

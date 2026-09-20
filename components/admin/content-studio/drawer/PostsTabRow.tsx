@@ -8,6 +8,7 @@ import type { PostSlide } from "@/lib/content-studio/drawer-data"
 import { cn } from "@/lib/utils"
 import { PLATFORM_ICONS, PLATFORM_LABELS } from "@/lib/social/platform-ui"
 import { SchedulePickerDialog } from "@/components/admin/social/SchedulePickerDialog"
+import { readApiError } from "@/lib/errors/humanize"
 
 const STATUS_PILL_CLASSES: Record<SocialApprovalStatus, string> = {
   draft: "bg-warning/10 text-warning",
@@ -58,7 +59,7 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate 
     setBusy("publishNow")
     try {
       const res = await fetch(`/api/admin/social/posts/${post.id}/publish-now`, { method: "POST" })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) throw new Error(await readApiError(res, "Publish now failed"))
       const data = (await res.json()) as Pick<SocialPost, "approval_status" | "scheduled_at">
       onMutate({ ...post, ...data, rejection_notes: null })
       toast.success(isFailed ? "Requeued for publishing" : "Queued for next publish cycle (≤5 min)")
@@ -73,7 +74,7 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate 
     setBusy("unschedule")
     try {
       const res = await fetch(`/api/admin/social/posts/${post.id}/unschedule`, { method: "POST" })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) throw new Error(await readApiError(res, "Unschedule failed"))
       const data = (await res.json()) as Pick<SocialPost, "approval_status" | "scheduled_at">
       onMutate({ ...post, ...data })
       toast.success("Unscheduled")
@@ -93,7 +94,7 @@ export function PostsTabRow({ post, slides = [], isExpanded, onToggle, onMutate 
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ caption_text: draft, hashtags: [] }),
       })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) throw new Error(await readApiError(res, "Save failed"))
       const data = (await res.json()) as {
         content: string
         approval_status: SocialApprovalStatus

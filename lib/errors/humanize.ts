@@ -215,3 +215,30 @@ export function summarizeApiError(
       : statusToFriendlyMessage(response.status, fallback)
   return { message, fieldErrors }
 }
+
+/**
+ * Read a failed fetch Response and produce a message fit to show a human.
+ *
+ * Prefer this over `throw new Error(await res.text())`: route handlers answer
+ * with `{ error: "..." }`, so the raw text puts the JSON punctuation on screen
+ * -- e.g. `{"error":"Source video still needs editing — mark it ready to
+ * post."}` in a toast. Falls back to the status-based wording when the body is
+ * empty or isn't the usual envelope.
+ */
+export async function readApiError(
+  response: { ok: boolean; status: number; text: () => Promise<string> },
+  fallback = "Something went wrong",
+): Promise<string> {
+  const text = await response.text().catch(() => "")
+  let payload: unknown = null
+  try {
+    payload = text ? JSON.parse(text) : null
+  } catch {
+    // Not JSON (an HTML error page, a proxy's plain text). Only trust a short
+    // one-liner; anything larger is a document, not a message for a toast.
+    const trimmed = text.trim()
+    if (trimmed && trimmed.length <= 200 && !trimmed.startsWith("<")) return trimmed
+    return statusToFriendlyMessage(response.status, fallback)
+  }
+  return summarizeApiError(response, payload, fallback).message
+}

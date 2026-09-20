@@ -10,13 +10,14 @@ vi.mock("next/navigation", () => ({
 }))
 
 describe("<TabSwitcher>", () => {
-  it("renders all five tab labels", () => {
+  it("renders all six tab labels", () => {
     render(<TabSwitcher />)
     expect(screen.getByRole("link", { name: /Pipeline/i })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Calendar/i })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Videos/i })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Posts/i })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Assets/i })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Insights/i })).toBeInTheDocument()
   })
 
   it("renders the Assets tab link", () => {
@@ -28,6 +29,23 @@ describe("<TabSwitcher>", () => {
     render(<TabSwitcher />)
     const calendarLink = screen.getByRole("link", { name: /Calendar/i })
     expect(calendarLink).toHaveAttribute("aria-current", "page")
+  })
+
+  // Regression: until this was fixed the tabs computed their href from the
+  // CURRENT path, so on a video detail page every tab linked to that same
+  // detail page with a new ?tab=. The underline moved and the URL changed
+  // while the video stayed on screen -- the tabs looked live but went nowhere.
+  it("links to the studio root from a video detail page, not back to itself", async () => {
+    vi.doMock("next/navigation", () => ({
+      useSearchParams: () => new URLSearchParams(""),
+      usePathname: () => "/admin/content/2c9bceb-c40d-43bf-a39f-df494057b4e5",
+    }))
+    vi.resetModules()
+    const { TabSwitcher: Fresh } = await import("@/components/admin/content-studio/TabSwitcher")
+    render(<Fresh />)
+    expect(screen.getByRole("link", { name: /Insights/i })).toHaveAttribute("href", "/admin/content?tab=insights")
+    expect(screen.getByRole("link", { name: /Calendar/i })).toHaveAttribute("href", "/admin/content?tab=calendar")
+    expect(screen.getByRole("link", { name: /Pipeline/i })).toHaveAttribute("href", "/admin/content")
   })
 
   it("defaults to Pipeline when no ?tab= is set", async () => {

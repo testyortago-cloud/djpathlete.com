@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { LayoutGrid, CalendarDays, Film, Megaphone, Images, BarChart3 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -24,12 +24,18 @@ function getActiveTab(searchParams: URLSearchParams): TabId {
 }
 
 export function TabSwitcher() {
-  const pathname = usePathname()
   const searchParams = useSearchParams()
   const active = getActiveTab(searchParams)
 
-  // Preserve the /admin/content/[videoId] drawer when switching tabs
-  const basePath = pathname.startsWith("/admin/content/") ? pathname : "/admin/content"
+  // These tabs are top-level Content Studio navigation, so they ALWAYS point at
+  // the studio root -- never at the current path. Until 140a9512 a video opened
+  // in a drawer layered over the tab content, so keeping the detail path here
+  // kept that drawer open while the tab behind it changed. Once the drawer
+  // became a full page at /admin/content/[videoId], that same line turned every
+  // tab into a no-op: it navigated the detail page to itself with a new ?tab=,
+  // which only moved the underline (getActiveTab reads the query) and re-aimed
+  // the Back link, while the video stayed on screen. Keep this constant.
+  const basePath = "/admin/content"
 
   return (
     <nav className="flex items-center gap-1 border-b border-border">
