@@ -86,6 +86,58 @@ describe("performance empty states — a zero and an absence are different answe
   })
 })
 
+describe("cross-post aggregation — the common case in production (9 videos × 6 platforms)", () => {
+  // Every "measured" fixture above has exactly one post. A video cross-posted
+  // to several platforms is the normal shape of this product, so this pins
+  // the untested path: video-level state SUMS every measured post (not just
+  // the first), measuredPostCount counts every measured post (not zero of
+  // them), and totals accumulates all four metrics (not just views) across
+  // all measured posts.
+  it("sums BOTH posts across all four metrics, using each post's own latest snapshot — not a sum of all snapshots", () => {
+    const posts = [
+      post({
+        id: "pA", platform: "instagram", approval_status: "published",
+        published_at: "2026-09-18T12:00:00Z", platform_post_id: "ig1",
+        source_video_id: "v-cross",
+      }),
+      post({
+        id: "pB", platform: "youtube", approval_status: "published",
+        published_at: "2026-09-18T13:00:00Z", platform_post_id: "yt1",
+        source_video_id: "v-cross",
+      }),
+    ]
+    const analytics = [
+      // Post A: two snapshots. The OLD one must be ignored — summing both
+      // would double-count A's contribution to the video-level total.
+      { id: "a1", social_post_id: "pA", platform: "instagram", platform_post_id: "ig1", impressions: null, engagement: null, views: 50, likes: 5, comments: 2, shares: 1, extra: null, recorded_at: "2026-09-19T00:00:00Z", created_at: "" },
+      { id: "a2", social_post_id: "pA", platform: "instagram", platform_post_id: "ig1", impressions: null, engagement: null, views: 300, likes: 30, comments: 7, shares: 4, extra: null, recorded_at: "2026-09-20T00:00:00Z", created_at: "" },
+      // Post B: single snapshot, distinct values on every metric so a
+      // transposed or dropped field is visible.
+      { id: "b1", social_post_id: "pB", platform: "youtube", platform_post_id: "yt1", impressions: null, engagement: null, views: 1000, likes: 9, comments: 60, shares: 11, extra: null, recorded_at: "2026-09-20T01:00:00Z", created_at: "" },
+    ] as SocialAnalytics[]
+
+    const out = computeStudioInsights(base({
+      videos: [video({ id: "v-cross", created_at: "2026-09-01T00:00:00Z" })],
+      posts,
+      analytics,
+    }))
+
+    // Per-post: each post reports its OWN latest snapshot.
+    expect(out.performance.videos[0].perPost).toEqual([
+      { postId: "pA", platform: "instagram", state: { kind: "measured", views: 300, likes: 30, comments: 7, shares: 4 } },
+      { postId: "pB", platform: "youtube", state: { kind: "measured", views: 1000, likes: 9, comments: 60, shares: 11 } },
+    ])
+
+    // Video-level: the SUM of both posts, all four metrics.
+    expect(out.performance.videos[0].state).toEqual({
+      kind: "measured", views: 1300, likes: 39, comments: 67, shares: 15,
+    })
+
+    expect(out.performance.measuredPostCount).toBe(2)
+    expect(out.performance.totals).toEqual({ views: 1300, likes: 39, comments: 67, shares: 15 })
+  })
+})
+
 describe("production band", () => {
   it("counts this period against the previous one", () => {
     const out = computeStudioInsights(base({

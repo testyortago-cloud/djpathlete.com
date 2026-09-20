@@ -71,6 +71,13 @@ export interface StudioInsights {
 function latestSnapshotByPost(analytics: SocialAnalytics[]): Map<string, SocialAnalytics> {
   // Snapshots are cumulative totals, not deltas — summing them would multiply
   // every view count by the number of sync runs. Keep only the newest per post.
+  //
+  // `>` is strict, so two rows with an identical recorded_at keep whichever
+  // one this loop saw first, and Postgres gives no ordering guarantee over
+  // ties. Separately, every comparison against NaN is false, so a row with an
+  // unparseable recorded_at would silently win or lose forever instead of
+  // raising — recorded_at is NOT NULL timestamptz, so this shouldn't arise in
+  // practice, but neither failure mode surfaces as an error if it ever does.
   const latest = new Map<string, SocialAnalytics>()
   for (const row of analytics) {
     const existing = latest.get(row.social_post_id)
@@ -137,6 +144,13 @@ export function summarizeVideoPerformance(
 
   let state: PerformanceState
   if (measured.length > 0) {
+    // Video-level state SUMS every measured post's own latest snapshot. That
+    // means a video with one measured post and one post on a disconnected
+    // platform still reports `measured` at the video level — the
+    // disconnected post's absence is invisible in `state` alone. `perPost` is
+    // where that truth lives: any consumer that needs to know WHICH platforms
+    // are measured, blocked, or awaiting sync — the video detail page, in
+    // particular — must render `perPost`, not just `state`.
     const agg = { views: 0, likes: 0, comments: 0, shares: 0 }
     for (const m of measured) {
       agg.views += m.state.views
