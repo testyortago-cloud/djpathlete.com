@@ -42,7 +42,10 @@ function makeBuilder(table: string, selectArgs: unknown[], result: unknown) {
   calls.push(record)
 
   const builder: Record<string, unknown> = { then: undefined }
-  for (const method of ["eq", "gte", "or", "not", "order", "range", "limit"]) {
+  // `in` is on this list because the real PostgREST builder has it, not because
+  // a test wanted it: a fake missing a method the DAL calls fails as a
+  // TypeError rather than as a wrong query, which is a worse way to find out.
+  for (const method of ["eq", "gte", "or", "not", "in", "order", "range", "limit"]) {
     builder[method] = (...args: unknown[]) => {
       record.ops.push([method, ...args])
       return builder
@@ -77,8 +80,12 @@ beforeEach(() => {
   countResult = { count: 0, error: null }
 })
 
+// The NARROWING operations, as opposed to `order`/`range`/`limit`, which shape
+// a page rather than choose who is on it. `in` joined the list with G13's
+// in-a-follow-up filter: leaving it out would have let that filter reach the
+// list and not the count while this helper reported the two as identical.
 const filterOps = (record: (typeof calls)[number]) =>
-  record.ops.filter(([method]) => ["eq", "gte", "or", "not"].includes(method))
+  record.ops.filter(([method]) => ["eq", "gte", "or", "not", "in"].includes(method))
 
 describe("contactSearchClause", () => {
   it("searches name, email and phone_e164 — the columns migration 00213 actually has", () => {
@@ -278,5 +285,71 @@ describe("listContacts and countContacts narrow identically", () => {
     // for a failed read tells the operator there are no contacts.
     listResult = { data: null, error: { message: "boom" } }
     await expect(listContacts({ businessId: BUSINESS })).rejects.toThrow(/listContacts: boom/)
+  })
+})
+
+// G13's "In a follow-up now" filter. The fact lives in `sequence_runs` and
+// PostgREST has no `EXISTS`, so the ids are resolved by a separate read and
+// handed in. What matters here is that they narrow BOTH readers the same way,
+// and that "matched nobody" is answered without a query rather than being sent
+// to PostgREST as an `in.()` with an empty list.
+describe("restrictToContactIds — the in-a-follow-up filter", () => {
+  it("narrows the list and the count identically", async () => {
+    const filters = { businessId: BUSINESS, restrictToContactIds: ["c1", "c2"] }
+
+    await listContacts(filters)
+    await countContacts(filters)
+
+    const [list, count] = calls
+    expect(filterOps(list)).toEqual(filterOps(count))
+    expect(filterOps(list)).toEqual([
+      ["eq", "business_id", BUSINESS],
+      ["in", "id", ["c1", "c2"]],
+    ])
+  })
+
+  it("stacks with the other filters rather than replacing them", async () => {
+    await listContacts({ businessId: BUSINESS, hasEmail: true, restrictToContactIds: ["c1"] })
+
+    expect(filterOps(calls[0])).toEqual([
+      ["eq", "business_id", BUSINESS],
+      ["not", "email", "is", null],
+      ["in", "id", ["c1"]],
+    ])
+  })
+
+  it("answers nobody WITHOUT a query when the filter matched no one", async () => {
+    // An empty array is a real answer — "nobody is in a follow-up" — and not
+    // the same as the filter being off. Sending `id=in.()` is a filter shape
+    // this repo has never issued, so it is short-circuited instead.
+    const filters = { businessId: BUSINESS, restrictToContactIds: [] }
+
+    await expect(listContacts(filters)).resolves.toEqual([])
+    await expect(countContacts(filters)).resolves.toBe(0)
+    expect(calls).toHaveLength(0)
+  })
+
+  it("does NOT narrow at all when the filter is off — the control for the test above", async () => {
+    await listContacts({ businessId: BUSINESS })
+
+    expect(filterOps(calls[0])).toEqual([["eq", "business_id", BUSINESS]])
+  })
+})
+
+describe("parseContactFilters reads the follow-up filter", () => {
+  it("accepts ?seq=in", () => {
+    expect(parseContactFilters({ seq: "in" }).inSequence).toBe(true)
+  })
+
+  it("ignores any other value rather than guessing", () => {
+    expect(parseContactFilters({ seq: "out" }).inSequence).toBeUndefined()
+    expect(parseContactFilters({ seq: "" }).inSequence).toBeUndefined()
+    expect(parseContactFilters({}).inSequence).toBeUndefined()
+  })
+
+  it("never sets restrictToContactIds itself — that needs a database read", () => {
+    // This function is pure and unit-tested without a client. Resolving ids
+    // here would make it one that cannot be.
+    expect(parseContactFilters({ seq: "in" }).restrictToContactIds).toBeUndefined()
   })
 })

@@ -80,7 +80,11 @@ describe("LeadsBoard column alignment", () => {
     const headCells = container.querySelectorAll("thead th")
     const bodyCells = container.querySelectorAll('tbody tr[data-slot="data-table-row"] td')
 
-    expect(headCells.length).toBe(6)
+    // Seven since G13 added Follow-up: expand, When, Page, Lead, Contact,
+    // Follow-up, Status. The literal is the part that has to be re-counted
+    // when a column is added; the line under it is the actual invariant, and
+    // it held through that change without edit.
+    expect(headCells.length).toBe(7)
     expect(bodyCells.length).toBe(headCells.length)
   })
 

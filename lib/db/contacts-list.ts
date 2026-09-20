@@ -53,6 +53,16 @@ export interface ContactFilters {
   hasPhone?: boolean
   /** ISO timestamp; contacts created at or after it. */
   since?: string
+  /**
+   * Narrow to exactly these contact ids, on top of every other filter.
+   *
+   * The "in a follow-up" filter is the only caller. It cannot be expressed as a
+   * PostgREST predicate on `contacts` — the fact lives in `sequence_runs`, and
+   * PostgREST has no `EXISTS` — so the ids are resolved first and handed in
+   * here. An EMPTY array means "nothing matched", which is a real answer and
+   * not the same as absent: see `listContacts`.
+   */
+  restrictToContactIds?: string[]
   limit?: number
   offset?: number
 }
@@ -84,6 +94,19 @@ interface Filterable {
   gte(column: string, value: unknown): Filterable
   or(filter: string): Filterable
   not(column: string, operator: string, value: unknown): Filterable
+  in(column: string, values: unknown[]): Filterable
+}
+
+/**
+ * Whether these filters can match anybody at all, before a query is sent.
+ *
+ * `restrictToContactIds: []` is "the follow-up filter matched nobody", and it
+ * has to be answered here rather than by PostgREST: an `in.()` with an empty
+ * list is a filter shape this repo has never sent, and the two readers below
+ * must agree about it or the footer counts people the list does not show.
+ */
+function matchesNobody(filters: ContactFilters): boolean {
+  return filters.restrictToContactIds !== undefined && filters.restrictToContactIds.length === 0
 }
 
 /**
@@ -106,6 +129,11 @@ function applyFilters<T>(query: T, filters: ContactFilters): T {
   if (filters.hasEmail) q = q.not("email", "is", null)
   if (filters.hasPhone) q = q.not("phone_e164", "is", null)
   if (filters.since) q = q.gte("created_at", filters.since)
+  // Never reached with an empty array — both readers short-circuit on
+  // `matchesNobody` before they get here.
+  if (filters.restrictToContactIds && filters.restrictToContactIds.length > 0) {
+    q = q.in("id", filters.restrictToContactIds)
+  }
   const search = contactSearchClause(filters.search)
   if (search) q = q.or(search)
   return q as T
@@ -159,7 +187,18 @@ const MAX_PAGE = 999
 export interface ContactPageFilters extends Omit<ContactFilters, "businessId"> {
   /** 1-based, already validated. */
   page: number
+  /**
+   * `?seq=in` — only people currently in a follow-up.
+   *
+   * Kept as a FLAG here rather than as the resolved id list, because turning it
+   * into ids needs a database read and this function is pure (it is unit-tested
+   * without a client). The page resolves it and sets `restrictToContactIds`.
+   */
+  inSequence?: boolean
 }
+
+/** The `seq` URL values this page understands. Anything else is ignored. */
+const SEQ_VALUES = new Set(["in"])
 
 /**
  * Turns raw URL strings into filters, DISCARDING anything that is not one of
@@ -184,8 +223,11 @@ export function parseContactFilters(raw: {
   has?: string
   days?: string
   page?: string
+  seq?: string
 }): ContactPageFilters {
   const filters: ContactPageFilters = { page: 1 }
+
+  if (SEQ_VALUES.has(raw.seq ?? "")) filters.inSequence = true
 
   const search = (raw.search ?? "").trim().slice(0, MAX_SEARCH_LENGTH)
   if (search.length > 0) filters.search = search
@@ -213,6 +255,7 @@ export function parseContactFilters(raw: {
 
 /** One page of contacts, newest first. */
 export async function listContacts(filters: ContactFilters): Promise<ContactListRow[]> {
+  if (matchesNobody(filters)) return []
   const supabase = getClient()
   const limit = Math.min(filters.limit ?? 100, PAGE)
   const offset = filters.offset ?? 0
@@ -233,6 +276,7 @@ export async function listContacts(filters: ContactFilters): Promise<ContactList
 
 /** How many contacts match, for the footer count and for pagination. */
 export async function countContacts(filters: ContactFilters): Promise<number> {
+  if (matchesNobody(filters)) return 0
   const supabase = getClient()
   const base = supabase.from("contacts").select("id", { count: "exact", head: true })
   const filtered = applyFilters(base, filters)
