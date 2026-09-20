@@ -7,6 +7,7 @@
 // missing blob must never blank the whole board.
 
 import { getAdminStorage } from "@/lib/firebase-admin"
+import { isPgMissingColumn } from "@/lib/supabase-errors"
 import {
   listCurrentVersionsForSubmissions,
   listFirstImageForSubmissions,
@@ -19,10 +20,29 @@ export async function signSubmissionThumbnails(
 ): Promise<Record<string, string>> {
   if (submissionIds.length === 0) return {}
 
-  const [versions, firstImages] = await Promise.all([
-    listCurrentVersionsForSubmissions(submissionIds),
-    listFirstImageForSubmissions(submissionIds),
-  ])
+  // listCurrentVersionsForSubmissions reads team_video_versions.thumbnail_path,
+  // a column migration 00265 adds. Vercel's build and the migration race on
+  // merge to main (see .github/workflows/apply-migrations.yml), so for one
+  // deploy this read can hit the pre-00265 schema and get back 42703. That is
+  // the ONLY thing tolerated here: previews are decoration and the board is
+  // the feature, so a missing column degrades to "no previews yet" instead of
+  // a 500. Anything else (permission denied, RLS, PostgREST down) is a real
+  // outage and must still surface as one.
+  let versions: Awaited<ReturnType<typeof listCurrentVersionsForSubmissions>>
+  let firstImages: Awaited<ReturnType<typeof listFirstImageForSubmissions>>
+  try {
+    ;[versions, firstImages] = await Promise.all([
+      listCurrentVersionsForSubmissions(submissionIds),
+      listFirstImageForSubmissions(submissionIds),
+    ])
+  } catch (err) {
+    if (!isPgMissingColumn(err)) throw err
+    console.warn(
+      "signSubmissionThumbnails: team_video_versions.thumbnail_path is missing (migration 00265 pending on this database) — rendering the Team Media board without previews",
+      err,
+    )
+    return {}
+  }
 
   const wanted: Array<readonly [string, string]> = []
   for (const [submissionId, version] of versions) {

@@ -57,4 +57,29 @@ describe("signSubmissionThumbnails", () => {
     expect(await signSubmissionThumbnails([])).toEqual({})
     expect(versionsMock).not.toHaveBeenCalled()
   })
+
+  // Deploy-window tolerance: Vercel's build and the migration that adds
+  // team_video_versions.thumbnail_path (00265) race on merge to main, so for
+  // one deploy this read can hit the old schema. That surfaces as Postgres
+  // 42703 (double-quoted column name) because listCurrentVersionsForSubmissions
+  // is a .select() — a READ — not PostgREST's PGRST204 (single-quoted), which
+  // only writes see. A fixture built from the PGRST204 shape would pass
+  // identically against a blanket catch, a code-keyed catch, or a
+  // text-matching catch, and would prove nothing about this code path.
+  it("degrades to {} on a missing-column error (42703) instead of throwing", async () => {
+    versionsMock.mockRejectedValue({
+      code: "42703",
+      message: 'column "thumbnail_path" of relation "team_video_versions" does not exist',
+    })
+    await expect(signSubmissionThumbnails(["sub1"])).resolves.toEqual({})
+  })
+
+  // This arm is what makes the arm above mean anything: without it, a
+  // blanket `catch { return {} }` would pass every test in this file. A real
+  // outage (permission denied, RLS misconfigured, PostgREST down) must still
+  // reach the caller as a throw, not silently render an empty board forever.
+  it("rethrows a non-missing-column error rather than swallowing it", async () => {
+    versionsMock.mockRejectedValue({ code: "42501", message: "permission denied" })
+    await expect(signSubmissionThumbnails(["sub1"])).rejects.toMatchObject({ code: "42501" })
+  })
 })
