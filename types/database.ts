@@ -1861,7 +1861,8 @@ export interface PlatformConnection {
 }
 
 /** How a video's current thumbnail was chosen. Null on rows that pre-date the picker. */
-export type ThumbnailSource = "auto" | "frame" | "upload"
+export const THUMBNAIL_SOURCES = ["auto", "frame", "upload"] as const
+export type ThumbnailSource = (typeof THUMBNAIL_SOURCES)[number]
 
 export interface VideoUpload {
   id: string

@@ -7,15 +7,15 @@ import {
   customThumbnailPath,
   isLegalCustomThumbnailPath,
 } from "@/lib/validators/video-thumbnail"
+import { THUMBNAIL_SOURCES } from "@/types/database"
 
-// The three members of ThumbnailSource ("auto" | "frame" | "upload") in
-// types/database.ts, kept here ONLY as the runtime cross-check's expected
-// answer — vitest transpiles via esbuild with no type-checking, so a
-// `satisfies ThumbnailSource` or `import type` assertion never runs and can
-// never fail. This list is the one place that copy is allowed to live; the
-// values under test are pulled from the schema object itself below, not
-// retyped by hand a second time.
-const THUMBNAIL_SOURCE_MEMBERS = ["auto", "frame", "upload"] as const
+// THUMBNAIL_SOURCES is the runtime form of ThumbnailSource — a `const` array
+// in types/database.ts, not a hand-typed mirror. Comparing the live schema
+// against THIS (imported, not retyped) is what makes the cross-check able to
+// fail in both directions: widen THUMBNAIL_SOURCES without touching the
+// schema, or widen the schema without touching THUMBNAIL_SOURCES, and one of
+// the two assertions below goes red. A hand-typed local copy could drift from
+// either side silently; this cannot, because there is only one copy.
 
 /**
  * Walk commitThumbnailSchema's discriminated-union options and read back the
@@ -54,8 +54,8 @@ describe("video-thumbnail validators", () => {
   describe("commitThumbnailSchema vs ThumbnailSource — runtime cross-check", () => {
     it("accepts exactly the members of ThumbnailSource, read off the schema at runtime", () => {
       const schemaValues = acceptedSourceValues(commitThumbnailSchema)
-      expect(new Set(schemaValues)).toEqual(new Set(THUMBNAIL_SOURCE_MEMBERS))
-      expect(schemaValues).toHaveLength(THUMBNAIL_SOURCE_MEMBERS.length)
+      expect(new Set(schemaValues)).toEqual(new Set(THUMBNAIL_SOURCES))
+      expect(schemaValues).toHaveLength(THUMBNAIL_SOURCES.length)
     })
 
     it("parses every ThumbnailSource member through the actual schema", () => {
