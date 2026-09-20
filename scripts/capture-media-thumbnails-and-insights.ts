@@ -14,10 +14,15 @@
 //                            re-renders the new image. The label flips to "A frame you
 //                            chose" and "Revert to auto" appears, both of which are
 //                            rendered from the DATABASE, not from client state.
-//   3. team-media-previews   /admin/team-media, which was text-only rows before this branch.
-//   4. insights-empty        The Insights tab as production will ACTUALLY open it: nothing
+//   3. insights-empty        The Insights tab as production will ACTUALLY open it: nothing
 //                            published, so it says so in words instead of showing "0 views".
-//   5. insights-measured     The same tab with numbers, so the two are comparable.
+//   4. insights-live-no-numbers  Posts ARE live but no figures have come back yet. The tab used
+//                            to call this "nothing has been published yet" — the same sentence
+//                            as shot 3 — while the band above it counted the posts. Those two
+//                            shots side by side are the proof the tab no longer contradicts
+//                            itself, and it is the reason this state got its own frame.
+//   5. insights-measured     The same tab with numbers, so the three are comparable — plus the
+//                            line that keeps saying what is NOT in those numbers.
 //   6. video-performance     All FOUR performance states in one frame — measured,
 //                            waiting-for-numbers, platform-not-connected, and not-published.
 //                            Distinguishing those four is the whole point of the feature,
@@ -166,8 +171,13 @@ interface Seeded {
  * screen at once. Dev has all eight connections set to 'not_connected', so two
  * are flipped to 'connected' and restored afterwards — without that, nothing can
  * ever render as measured and the shot would only prove one of the four states.
+ *
+ * Posts only: the figures are a SEPARATE step (`seedSnapshot`) so the tab can be
+ * photographed in between, live but with nothing measured. Both halves record
+ * their ids into the same `Seeded`, which the caller already holds, so a failure
+ * anywhere between the two still cleans up everything created so far.
  */
-async function seed(db: SupabaseClient, videoId: string): Promise<Seeded> {
+async function seedPosts(db: SupabaseClient, videoId: string): Promise<Seeded> {
   const seeded: Seeded = { postIds: [], analyticsIds: [], restoreConnections: [] }
 
   const { data: conns, error: connErr } = await db
@@ -229,6 +239,15 @@ async function seed(db: SupabaseClient, videoId: string): Promise<Seeded> {
     seeded.postIds.push((data as { id: string }).id)
   }
 
+  return seeded
+}
+
+/**
+ * The figures for the instagram post seeded above, which is what flips it from
+ * "waiting for numbers" to "measured". Kept apart from `seedPosts` so the state
+ * between the two can be photographed.
+ */
+async function seedSnapshot(db: SupabaseClient, seeded: Seeded): Promise<void> {
   const { data: snap, error: snapErr } = await db
     .from("social_analytics")
     .insert({
@@ -248,8 +267,6 @@ async function seed(db: SupabaseClient, videoId: string): Promise<Seeded> {
     .single()
   if (snapErr) throw snapErr
   seeded.analyticsIds.push((snap as { id: string }).id)
-
-  return seeded
 }
 
 async function cleanup(db: SupabaseClient, seeded: Seeded): Promise<void> {
@@ -386,26 +403,12 @@ async function main(): Promise<void> {
     }
 
     // ------------------------------------------------------------------- 3
-    await page.goto(`${APP}/admin/team-media`, { waitUntil: "networkidle" })
-    await page.waitForSelector("text=Team Media", { timeout: 15_000 })
-    await shoot(
-      page,
-      "03-team-media-previews",
-      "The Team Media board now shows what each clip is",
-      "This board was rows of text. You had to open a submission to see which video it was.",
-      [
-        await markerAt(page, "th:has-text('Preview')", "A new column."),
-        await markerAt(page, "table tbody tr:first-child td:first-child", "Each row shows its own clip."),
-      ],
-    )
-
-    // ------------------------------------------------------------------- 4
     await page.goto(`${APP}/admin/content?tab=insights`, { waitUntil: "networkidle" })
     await page.waitForSelector("text=Insights", { timeout: 15_000 })
     await page.waitForTimeout(600)
     await shoot(
       page,
-      "04-insights-nothing-published",
+      "03-insights-nothing-published",
       "Insights — and it is honest when there is nothing to show",
       "This is how the tab opens today, because nothing has ever been published. It says so in words. A dashboard that showed '0 views' here would look exactly the same as one whose numbers had silently broken.",
       [
@@ -414,19 +417,45 @@ async function main(): Promise<void> {
       ],
     )
 
-    // -------------------------------------------------------------- 5 + 6
-    seeded = await seed(db, videoId)
-    console.log(`  seeded ${seeded.postIds.length} published posts + 1 snapshot on the dev clone`)
+    // ------------------------------------------------------------------- 4
+    // Two seeding steps on purpose. Posts first, figures second, because the
+    // gap between them IS a state the coach will sit in for hours after every
+    // publish — and it is the state this tab used to describe as "nothing has
+    // been published yet". Photographing it needs the posts to exist with no
+    // snapshot against them, which only this order gives.
+    seeded = await seedPosts(db, videoId)
+    console.log(`  seeded ${seeded.postIds.length} published posts (no figures yet) on the dev clone`)
+
+    await page.goto(`${APP}/admin/content?tab=insights`, { waitUntil: "networkidle" })
+    await page.waitForTimeout(800)
+    await shoot(
+      page,
+      "04-insights-live-no-numbers",
+      "Posts are live, the numbers have not arrived",
+      "Every night the app collects the figures. Publish in the afternoon and you sit here until it runs. This used to read 'Nothing has been published yet' — the same words as the shot before — directly under a count saying three posts went out.",
+      [
+        await markerAt(page, "text=/posts have gone live/i", "It says how many went out."),
+        // Right-hand end for the second one. Both lines sit in the same centred
+        // panel about 28px apart, so two left-parked discs overlap each other —
+        // the first run of this shot stacked 1 on top of 2.
+        await markerAt(page, "text=/waiting on the next nightly update/i", "And when to expect the figures.", "right"),
+      ],
+    )
+
+    // ------------------------------------------------------------------- 5
+    await seedSnapshot(db, seeded)
+    console.log("  seeded 1 figures snapshot on the dev clone")
 
     await page.goto(`${APP}/admin/content?tab=insights`, { waitUntil: "networkidle" })
     await page.waitForTimeout(800)
     await shoot(
       page,
       "05-insights-with-numbers",
-      "The same tab once posts are live",
-      "Compare this with the shot before it. The empty state is replaced by real figures — nothing about the page changed except that there is now something to count.",
+      "The same tab once the figures come back",
+      "Compare this with the two shots before it. The message is replaced by real figures — nothing about the page changed except that there is now something to count.",
       [
         await markerAt(page, "text=How your posts are doing", "The same section, now with numbers in it."),
+        await markerAt(page, "text=/still waiting on the next nightly update|which (isn't|aren't) connected/i", "The figures never quietly stand in for the whole story: this line says which posts are NOT counted in them."),
       ],
     )
 
