@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { submittedTimezone } from "@/lib/validators/timezone"
 
 export const SERVICE_TYPES = ["in_person", "online", "assessment", "clinic", "camp"] as const
 
@@ -14,6 +15,9 @@ export const SERVICE_LABELS: Record<ServiceType, string> = {
 
 export const inquiryFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(100, "Name must be under 100 characters"),
+  // G06: see lib/validators/timezone.ts. Lenient on purpose — a strange
+  // timezone must never cost a service application.
+  timezone: submittedTimezone,
   email: z.string().email("Please enter a valid email address"),
   phone: z
     .string()

@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { submittedTimezone } from "@/lib/validators/timezone"
 
 export const createEventSignupSchema = z.object({
   parent_name: z.string().min(2).max(100),
@@ -21,6 +22,8 @@ export const createEventSignupSchema = z.object({
    * lib/db/event-signups.ts, which strips it the same way it strips
    * `waiver_accepted`. */
   sms_consent: z.boolean().optional().default(false),
+  // G06: see lib/validators/timezone.ts.
+  timezone: submittedTimezone,
 })
 
 export type CreateSignupInput = z.infer<typeof createEventSignupSchema>

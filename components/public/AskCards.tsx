@@ -31,6 +31,7 @@
 //       §4.1, §4.2, §5.1
 
 import Link from "next/link"
+import { browserTimezone } from "@/lib/browser-timezone"
 import { useId, useState } from "react"
 import { ArrowRight, CalendarDays, Clock, MapPin } from "lucide-react"
 
@@ -293,7 +294,7 @@ function CaptureCard({
       const response = await fetch("/api/ask/capture", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, name, email, phone, marketingConsent }),
+        body: JSON.stringify({ conversationId, name, email, phone, marketingConsent, timezone: browserTimezone() }),
       })
       const body = (await response.json()) as { error?: string; marketingConsentRecorded?: boolean }
 

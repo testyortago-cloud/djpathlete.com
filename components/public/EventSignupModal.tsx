@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { browserTimezone } from "@/lib/browser-timezone"
 import Link from "next/link"
 import { CheckCircle2, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -113,7 +114,8 @@ export function EventSignupModal({
       const res = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+        // G06: the sender's own clock rides along with the signup.
+        body: JSON.stringify({ ...body, timezone: browserTimezone() }),
       })
       const data = await res.json().catch(() => ({}))
 

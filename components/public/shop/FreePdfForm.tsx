@@ -1,5 +1,6 @@
 "use client"
 import { useState } from "react"
+import { browserTimezone } from "@/lib/browser-timezone"
 import { FormErrorBanner } from "@/components/shared/FormErrorBanner"
 import { summarizeApiError } from "@/lib/errors/humanize"
 
@@ -20,6 +21,7 @@ export function FreePdfForm({ productId }: { productId: string }) {
           email: String(f.get("email") ?? ""),
           product_id: productId,
           website: String(f.get("website") ?? ""),
+          timezone: browserTimezone(), // G06
         }),
       })
       setSubmitting(false)

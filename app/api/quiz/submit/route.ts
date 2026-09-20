@@ -36,6 +36,7 @@
 // Spec: docs/superpowers/specs/2026-08-23-athlete-quiz-funnel-design.md §4.3
 
 import { NextResponse } from "next/server"
+import { submittedTimezone } from "@/lib/validators/timezone"
 import { z } from "zod"
 import { completeAttempt, getAttempt, getQuizDefinition, setAttemptAlert } from "@/lib/db/quizzes"
 import { createSubmission, getFunnelById, getStep } from "@/lib/db/funnels"
@@ -89,6 +90,8 @@ const bodySchema = z.object({
   email: z.string().email().max(200),
   phone: z.string().max(40).optional(),
   smsConsent: z.boolean().optional().default(false),
+  // G06: see lib/validators/timezone.ts.
+  timezone: submittedTimezone,
   website: z.string().optional(),
   elapsedMs: z.number().optional(),
   attributionSessionId: z.string().max(120).nullish(),
@@ -376,6 +379,7 @@ async function handoff(input: {
       name: body.name,
       source: "quiz",
       attributionSessionId: sessionId,
+      timezone: body.timezone ?? null,
       // The shape four sequences filter on. `branch` is the contract — see
       // quiz_branches.key — so renaming it silently stops enrolment.
       metadata: {

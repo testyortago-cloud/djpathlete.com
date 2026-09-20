@@ -24,9 +24,14 @@ const enqueueBookingConversionMock = vi.fn(async (..._a: any[]) => null)
 const findAttributionForContactMock = vi.fn(async (..._a: any[]) => null as any)
 const recordAuditMock = vi.fn(async (..._a: any[]) => undefined)
 
+// G06: Calendly reports the invitee's own timezone; the ingest fills it onto
+// the contact, fill-only.
+const backfillContactTimezoneMock = vi.fn(async (..._a: any[]) => true)
+
 vi.mock("@/lib/db/contacts", () => ({
   findContactByIdentifiers: (...a: unknown[]) => findContactByIdentifiersMock(...a),
   getContactUserId: (...a: unknown[]) => getContactUserIdMock(...a),
+  backfillContactTimezone: (...a: unknown[]) => backfillContactTimezoneMock(...a),
 }))
 vi.mock("@/lib/db/sequences", () => ({ exitRunsForContact: (...a: unknown[]) => exitRunsForContactMock(...a) }))
 vi.mock("@/lib/db/pipeline", () => ({ applyPipelineEvent: (...a: unknown[]) => applyPipelineEventMock(...a) }))
@@ -158,6 +163,41 @@ describe("the 23505 race", () => {
   it("throws on a 23505 with no key to re-read by (nothing sensible to update)", async () => {
     insertSingle.mockResolvedValueOnce({ data: null, error: { code: "23505", message: "duplicate key" } })
     await expect(ingestBooking(input({ key: null }))).rejects.toMatchObject({ code: "23505" })
+  })
+})
+
+describe("the invitee's timezone reaching the contact (G06)", () => {
+  it("fills the contact's timezone from the invitee's, when the booking carries one", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-1")
+
+    await ingestBooking(input({ inviteeTimezone: "Pacific/Auckland" }))
+
+    expect(backfillContactTimezoneMock).toHaveBeenCalledWith("contact-1", "Pacific/Auckland", SINGLETON_BUSINESS_ID)
+  })
+
+  it("does not reach for the contact's timezone when the booking carried none", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-1")
+
+    await ingestBooking(input({ inviteeTimezone: null }))
+
+    expect(backfillContactTimezoneMock).not.toHaveBeenCalled()
+  })
+
+  it("does not reach for it when no contact resolved — there is nothing to fill", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce(null)
+
+    await ingestBooking(input({ inviteeTimezone: "Pacific/Auckland" }))
+
+    expect(backfillContactTimezoneMock).not.toHaveBeenCalled()
+  })
+
+  it("still books when the timezone fill throws — a booking outranks a nicety", async () => {
+    findContactByIdentifiersMock.mockResolvedValueOnce("contact-1")
+    backfillContactTimezoneMock.mockRejectedValueOnce(new Error("contacts unreachable"))
+
+    const result = await ingestBooking(input({ inviteeTimezone: "Pacific/Auckland" }))
+
+    expect(result.action).toBe("created")
   })
 })
 

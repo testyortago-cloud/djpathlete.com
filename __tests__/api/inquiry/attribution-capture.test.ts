@@ -215,6 +215,19 @@ describe("POST /api/inquiry — Google Ads attribution", () => {
     expect(createLeadInquiryMock).toHaveBeenCalled()
   })
 
+  it("carries the submitted timezone into the contact spine (G06)", async () => {
+    // Both the schema field and the passthrough are deletable with the suite
+    // green without this — a plain z.object STRIPS unknown keys.
+    await post({ ...VALID_BODY, timezone: "Pacific/Auckland" })
+    expect(captureLeadMock).toHaveBeenCalledWith(expect.objectContaining({ timezone: "Pacific/Auckland" }))
+  })
+
+  it("passes a null timezone when the form sent none", async () => {
+    await post(VALID_BODY)
+    const arg = captureLeadMock.mock.calls[0][0] as { timezone?: string | null }
+    expect(arg.timezone ?? null).toBeNull()
+  })
+
   it("carries the djp_attr session id into the contact spine", async () => {
     // MUTANT KILLED: dropping `attributionSessionId` from this route's
     // captureLead call. This route already parsed the cookie for its own

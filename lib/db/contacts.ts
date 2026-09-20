@@ -2,6 +2,7 @@
 
 import { createServiceRoleClient } from "@/lib/supabase"
 import { normaliseEmail, normalisePhone } from "@/lib/lead-engine/identity"
+import { isUsableTimezone } from "@/lib/timezones"
 import { decideMerge, type MatchCandidate } from "@/lib/lead-engine/merge"
 import { enrollIfTriggered } from "@/lib/lead-engine/enroll"
 
@@ -112,6 +113,8 @@ export type RecordContactEventInput = {
   attributionSessionId?: string | null
   /** See `UpsertContactIdentityInput.userId` — passed straight through. */
   userId?: string | null
+  /** See `UpsertContactIdentityInput.timezone` — passed straight through. */
+  timezone?: string | null
   metadata?: Record<string, unknown>
   businessId: string
 }
@@ -135,7 +138,7 @@ async function findMatchCandidates(
   if (email) {
     const { data, error } = await supabase
       .from("contacts")
-      .select("id,email,phone_e164,created_at,first_touch_session_id,user_id")
+      .select("id,email,phone_e164,created_at,first_touch_session_id,user_id,timezone")
       .eq("business_id", businessId)
       .eq("email", email)
     if (error) throw error
@@ -145,7 +148,7 @@ async function findMatchCandidates(
   if (phone) {
     const { data, error } = await supabase
       .from("contacts")
-      .select("id,email,phone_e164,created_at,first_touch_session_id,user_id")
+      .select("id,email,phone_e164,created_at,first_touch_session_id,user_id,timezone")
       .eq("business_id", businessId)
       .eq("phone_e164", phone)
     if (error) throw error
@@ -312,6 +315,37 @@ function firstTouchSessionPatch(
   return { first_touch_session_id: attributionSessionId }
 }
 
+/**
+ * The person's own timezone (G06), fill-only and validated — same shape as
+ * `firstTouchSessionPatch` above, for the same reason.
+ *
+ * Fill-only because a timezone describes where someone LIVES, and the value
+ * arrives from whatever device they happened to fill a form on: a client in
+ * Auckland filling a second form from an airport in Dubai must not be moved to
+ * Dubai for quiet-hours purposes. First answer wins; a real correction is a
+ * deliberate act, not a side effect of a form.
+ *
+ * Validated here rather than at the reader — see `isUsableTimezone`. A zone
+ * `Intl` cannot parse throws inside the tick, which fails the run and costs the
+ * send; storing null instead merely falls back to the business timezone, which
+ * is exactly what every contact does today.
+ */
+function timezonePatch(
+  existingTimezone: string | null | undefined,
+  submitted: string | null | undefined,
+): Record<string, unknown> {
+  if (existingTimezone != null) return {}
+  if (!submitted) return {}
+  if (!isUsableTimezone(submitted)) {
+    // Truncated: this value arrives on unauthenticated public endpoints and
+    // the field is deliberately uncapped, so the log drain is the one place
+    // an oversized string could still land in full.
+    console.warn(`[contacts] ignoring unusable timezone from a form: ${JSON.stringify(submitted).slice(0, 80)}`)
+    return {}
+  }
+  return { timezone: submitted }
+}
+
 export type IdentifierConflict = { field: "email" | "phone"; submitted: string; existing: string }
 
 // A public form must never let a submitted identifier silently overwrite a
@@ -360,6 +394,14 @@ export type UpsertContactIdentityInput = {
    * link is fill-only.
    */
   userId?: string | null
+  /**
+   * The IANA zone the submitter's own device reported
+   * (`Intl.DateTimeFormat().resolvedOptions().timeZone`). Fill-only and
+   * validated — see `timezonePatch`. Reader: `resolveTimezone`
+   * (lib/lead-engine/guardrails.ts), via `loadRunContext`, which is what puts
+   * quiet hours in this person's morning rather than the coach's.
+   */
+  timezone?: string | null
   businessId: string
 }
 
@@ -426,6 +468,10 @@ export async function upsertContactIdentity(input: UpsertContactIdentityInput): 
         name: input.name ?? null,
         first_touch_session_id: input.attributionSessionId ?? null,
         user_id: await resolveLink(email),
+        // Fill-only is trivially true on a create; the VALIDATION is not.
+        // `timezonePatch` returns {} for a zone Intl cannot parse, so `?? null`
+        // is what keeps junk out of the column on this branch too.
+        timezone: (timezonePatch(null, input.timezone).timezone as string | undefined) ?? null,
       })
       .select()
       .single()
@@ -440,6 +486,7 @@ export async function upsertContactIdentity(input: UpsertContactIdentityInput): 
     await updateContact(supabase, contactId, {
       ...built.patch,
       ...firstTouchSessionPatch(existing?.first_touch_session_id, input.attributionSessionId),
+      ...timezonePatch(existing?.timezone, input.timezone),
       ...(await userIdPatch(existing?.user_id, () => resolveLink(existing?.email ?? email))),
       name: input.name ?? undefined,
       updated_at: new Date().toISOString(),
@@ -467,6 +514,27 @@ export async function upsertContactIdentity(input: UpsertContactIdentityInput): 
       ...firstTouchSessionPatch(
         existing?.first_touch_session_id ?? mergedCandidate?.first_touch_session_id,
         input.attributionSessionId,
+      ),
+      // Timezone across a merge needs the OPPOSITE shape to the two rules
+      // around it, because `merge_contacts` behaves differently again. It
+      // moves `user_id` (00217:109-110) and `first_touch_session_id`, so for
+      // those a survivor's own null may mean "the RPC just filled it" — hence
+      // their both-rows reads. It does NOT touch `timezone` at all (verified:
+      // the string does not appear in 00217 or 00238), so the survivor's own
+      // pre-merge value is still its value here, exactly like `email`.
+      //
+      // The loser's value is therefore about to be destroyed with the row. It
+      // is the same kind of evidence as the submission — a zone a real device
+      // reported on a real form — so it is worth keeping when the survivor has
+      // none and this submission brought nothing. Survivor's own value still
+      // wins outright; fill-only is unchanged.
+      // `isUsableTimezone` rather than `??` on the submission: a junk value is
+      // not null, so `??` would stop at it, `timezonePatch` would then reject
+      // it, and the loser's perfectly good zone would be destroyed with the row
+      // for nothing.
+      ...timezonePatch(
+        existing?.timezone,
+        isUsableTimezone(input.timezone ?? "") ? input.timezone : mergedCandidate?.timezone,
       ),
       // Same both-rows rule for the account link — `merge_contacts` carries
       // the loser's user_id over too (00217), so either pre-merge link means
@@ -514,6 +582,47 @@ export async function linkContactsToUser(args: { email: string | null | undefine
   return (data ?? []).length
 }
 
+/**
+ * Fill a contact's timezone from a source that is not a form (G06).
+ *
+ * The one caller today is the booking ingest: Calendly reports the invitee's
+ * own timezone, and that is a better signal than anything a form gives us —
+ * the person picked a slot in it. A booking is also the one entry point that
+ * reaches people who never filled a lead form at all.
+ *
+ * FILL-ONLY, and enforced in the WHERE rather than by reading first: the
+ * `.is("timezone", null)` predicate makes the update a no-op against a row
+ * that already has one, atomically. The read-then-write shape used elsewhere
+ * in this file is fine inside `upsertContactIdentity`, which is already
+ * holding the row it just matched; here there is no such read, and adding one
+ * would open a window where two bookings could both see null.
+ *
+ * Returns whether a row was actually filled, so the caller can log honestly
+ * rather than assume. THROWS on a write error, deliberately: the decision that
+ * a timezone must never cost a booking belongs to the caller, which is why the
+ * booking ingest wraps this in its own try, after the sequence exit and the
+ * pipeline card. Do not remove that catch on the strength of this returning a
+ * boolean.
+ */
+export async function backfillContactTimezone(
+  contactId: string,
+  timezone: string | null | undefined,
+  businessId: string,
+): Promise<boolean> {
+  if (!timezone || !isUsableTimezone(timezone)) return false
+
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("contacts")
+    .update({ timezone, updated_at: new Date().toISOString() })
+    .eq("id", contactId)
+    .eq("business_id", businessId)
+    .is("timezone", null)
+    .select("id")
+  if (error) throw error
+  return ((data ?? []) as { id: string }[]).length > 0
+}
+
 export async function recordContactEvent(
   input: RecordContactEventInput,
 ): Promise<{ contactId: string; created: boolean; merged: boolean }> {
@@ -525,6 +634,7 @@ export async function recordContactEvent(
     name: input.name,
     attributionSessionId: input.attributionSessionId,
     userId: input.userId,
+    timezone: input.timezone,
     businessId,
   })
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { submittedTimezone } from "@/lib/validators/timezone"
 import { z } from "zod"
 import { addSubscriberWithAttribution } from "@/lib/db/newsletter"
 import { ghlCreateContact } from "@/lib/ghl"
@@ -15,6 +16,10 @@ import { resolvePublicTenant } from "@/lib/tenancy/public"
 
 const newsletterSchema = z.object({
   email: z.string().email("Invalid email address"),
+  // G06: the subscriber's own timezone, so their welcome sequence keeps
+  // their quiet hours rather than the coach's. Lenient by design — see
+  // lib/validators/timezone.ts.
+  timezone: submittedTimezone,
   consent_marketing: z.boolean().optional().default(false),
   source: z.string().max(60).optional(),
   // Which surface this submission came from: NewsletterForm.tsx's required
@@ -88,6 +93,7 @@ export const POST = withAudit({ action: "newsletter.subscribed", category: "mark
       // §3.5) — the newsletter row has always stored the session; the CONTACT
       // did not, so first_touch_session_id stayed null.
       attributionSessionId: sessionId ?? null,
+      timezone: result.data.timezone ?? null,
     })
 
     // A consent row is only ever filed for an actual consent act. Not

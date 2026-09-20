@@ -27,6 +27,8 @@ export async function captureContactFromSubmission(input: {
    * how a second coach's funnel lead would silently file under the platform.
    */
   businessId: string
+  /** G06: the submitter's own IANA zone, stored fill-only by the DAL. */
+  timezone?: string | null
 }): Promise<string | null> {
   if (!input.email && !input.phone) return null
   try {
@@ -36,6 +38,7 @@ export async function captureContactFromSubmission(input: {
       name: input.name,
       source: "funnel_form",
       attributionSessionId: input.attributionSessionId,
+      timezone: input.timezone ?? null,
       metadata: input.payload,
       businessId: input.businessId,
     })

@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { submittedTimezone } from "@/lib/validators/timezone"
 
 const AMAZON_HOST_REGEX = /^(?:www\.)?amazon\.[a-z.]{2,6}$/i
 
@@ -53,6 +54,8 @@ export const leadFormSchema = z.object({
   product_id: z.string().uuid(),
   // Honeypot — must be empty.
   website: z.string().max(0, "bot detected"),
+  // G06: see lib/validators/timezone.ts.
+  timezone: submittedTimezone,
 })
 
 export type LeadForm = z.infer<typeof leadFormSchema>

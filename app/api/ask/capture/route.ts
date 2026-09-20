@@ -271,6 +271,7 @@ export async function POST(request: Request) {
     // here would put the lead under the wrong coach the moment a second one
     // exists.
     businessId: conversation.business_id,
+    timezone: parsed.data.timezone ?? null,
     // The visitor's attribution session (audit §3.5). The cookie comes FIRST
     // because it is this request's own session — the one proxy.ts stamped or
     // re-read moments ago. The conversation row's `attribution_session_id` is

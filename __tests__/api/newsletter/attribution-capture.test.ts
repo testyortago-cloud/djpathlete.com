@@ -83,6 +83,24 @@ describe("POST /api/newsletter — attribution capture", () => {
     )
   })
 
+  it("carries the submitted timezone into the contact spine (G06)", async () => {
+    // Without this, both the schema field and the route's passthrough can be
+    // deleted with the suite green — a plain z.object STRIPS an unknown key
+    // rather than erroring, so the value would just vanish.
+    await POST(jsonRequest({ email: "a@b.com", consent_marketing: true, timezone: "Pacific/Auckland" }), {
+      params: Promise.resolve({}),
+    })
+    expect(mocks.captureLead).toHaveBeenCalledWith(
+      expect.objectContaining({ source: "newsletter", timezone: "Pacific/Auckland" }),
+    )
+  })
+
+  it("passes a null timezone when the form sent none, rather than omitting the field", async () => {
+    await POST(jsonRequest({ email: "a@b.com", consent_marketing: true }), { params: Promise.resolve({}) })
+    const arg = mocks.captureLead.mock.calls[0][0] as { timezone?: string | null }
+    expect(arg.timezone ?? null).toBeNull()
+  })
+
   it("carries the djp_attr session id into the contact spine", async () => {
     // MUTANT KILLED: dropping `attributionSessionId` from this route's
     // captureLead call. The newsletter row already stored the session

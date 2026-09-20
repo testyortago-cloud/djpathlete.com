@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { submittedTimezone } from "@/lib/validators/timezone"
 
 export const contactFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(100, "Name must be under 100 characters"),
@@ -8,6 +9,8 @@ export const contactFormSchema = z.object({
     .string()
     .min(10, "Message must be at least 10 characters")
     .max(5000, "Message must be under 5000 characters"),
+  // G06: see lib/validators/timezone.ts.
+  timezone: submittedTimezone,
 })
 
 export type ContactFormData = z.infer<typeof contactFormSchema>

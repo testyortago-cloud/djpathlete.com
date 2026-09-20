@@ -8,6 +8,7 @@
 // form key that was never published cannot submit at all.
 
 import { NextResponse } from "next/server"
+import { submittedTimezone } from "@/lib/validators/timezone"
 import { z } from "zod"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { createSubmission, getFunnelById, getPublishedFormConfig, getStep, listSteps } from "@/lib/db/funnels"
@@ -56,6 +57,8 @@ const bodySchema = z.object({
   // Wire name matches what the checkbox posts (FunnelForm) — see the funnel
   // form's `sms_consent` FormData field, not a `smsConsent`-style rename.
   sms_consent: z.boolean().optional().default(false),
+  // G06: see lib/validators/timezone.ts.
+  timezone: submittedTimezone,
 })
 
 export async function POST(request: Request) {
@@ -197,6 +200,7 @@ export async function POST(request: Request) {
     stepId: parsedBody.stepId,
     payload,
     businessId,
+    timezone: parsedBody.timezone ?? null,
   })
 
   // ---------------------------------------------------------------------------

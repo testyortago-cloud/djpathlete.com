@@ -4,6 +4,7 @@
 // anything.
 //
 import { z } from "zod"
+import { submittedTimezone } from "@/lib/validators/timezone"
 
 import { MAX_MESSAGE_CHARS } from "@/lib/lead-engine/chat/constants"
 
@@ -83,6 +84,8 @@ export const askCaptureSchema = z
      * behalf.
      */
     marketingConsent: z.boolean(),
+    // G06: see lib/validators/timezone.ts.
+    timezone: submittedTimezone,
   })
   .refine((value) => Boolean(value.email || value.phone), {
     message: "An email address or a phone number is required.",
