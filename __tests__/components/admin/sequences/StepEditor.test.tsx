@@ -701,3 +701,159 @@ describe("<StepEditor> — the enrolment-metadata split (G10)", () => {
     expect(keyPicker.queryByRole("option", { name: "event_kind" })).not.toBeInTheDocument()
   })
 })
+
+describe("<StepEditor> — a wait can count down to the event instead of up from now (G11)", () => {
+  /** A wait step plus the stop it needs to be a legal list. */
+  function waitSteps(over: Partial<StepDraft> = {}): StepDraft[] {
+    return [step("wait", { id: "w1", ...over }), step("stop", { id: "s1" })]
+  }
+
+  it("starts on the ordinary 'wait a length of time' mode, so nothing changes for existing sequences", () => {
+    renderEditor({ initialSteps: waitSteps() })
+    expect((screen.getByLabelText(/step 1 when to send/i) as HTMLSelectElement).value).toBe("after")
+    expect(screen.getByLabelText(/how many minutes to wait/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/how many days before the event/i)).not.toBeInTheDocument()
+  })
+
+  it("opens the countdown on 14 days, the first moment of the house shape", () => {
+    // The same class of hole as the metadata branch's default key: whatever
+    // this opens on is what a coach who does not retype it actually ships.
+    // Lower stakes here — 21 would still be a working countdown, not a rule
+    // that is false forever — but `camp_clinic_deadline` is seeded 14/7/3
+    // (migration 00269) and a new reminder step should start where the rest
+    // of the sequence starts. Mutating this to 21 survived every other test
+    // in this file.
+    renderEditor({ initialSteps: waitSteps() })
+    fireEvent.change(screen.getByLabelText(/step 1 when to send/i), { target: { value: "before_event" } })
+    expect((screen.getByLabelText(/how many days before the event/i) as HTMLInputElement).value).toBe("14")
+  })
+
+  it("shows the countdown mode for a stored wait_until of null, so the error names a field on screen", () => {
+    // Review finding. `parseWaitConfig` treats a PRESENT but unreadable
+    // `wait_until` as a fault (only an ABSENT one means "ordinary wait"), so
+    // an editor that rendered the minutes box here would block Save with a
+    // sentence about a field the coach cannot see — and re-selecting the mode
+    // it already shows fires no change event, so there would be no way out.
+    // Not reachable from this UI; reachable from a hand-edited row.
+    renderEditor({ initialSteps: waitSteps({ wait_minutes: null, config: { wait_until: null } }) })
+
+    expect((screen.getByLabelText(/step 1 when to send/i) as HTMLSelectElement).value).toBe("before_event")
+    expect(screen.getByLabelText(/how many days before the event/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled()
+
+    // And it is escapable: typing a number clears it without a mode switch.
+    fireEvent.change(screen.getByLabelText(/how many days before the event/i), { target: { value: "7" } })
+    expect(screen.getByRole("button", { name: /save changes/i })).not.toBeDisabled()
+  })
+
+  it("reads a saved anchored wait back into the countdown mode", () => {
+    renderEditor({ initialSteps: waitSteps({ wait_minutes: null, config: { wait_until: { days_before_anchor: 7 } } }) })
+    expect((screen.getByLabelText(/step 1 when to send/i) as HTMLSelectElement).value).toBe("before_event")
+    expect((screen.getByLabelText(/how many days before the event/i) as HTMLInputElement).value).toBe("7")
+  })
+
+  it("saves the countdown a coach builds, and clears the minutes it replaced", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, plan: { repoint: [], exit: [], unchanged: [] } }),
+    }) as unknown as typeof fetch
+
+    renderEditor({ initialSteps: waitSteps() })
+    fireEvent.change(screen.getByLabelText(/step 1 when to send/i), { target: { value: "before_event" } })
+    fireEvent.change(screen.getByLabelText(/how many days before the event/i), { target: { value: "14" } })
+
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }))
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1))
+
+    const [, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const body = JSON.parse((init as RequestInit).body as string) as { steps: StepDraft[] }
+    expect(body.steps[0].config).toEqual({ wait_until: { days_before_anchor: 14 } })
+    // The minutes MUST go. The tick ignores wait_minutes once wait_until is
+    // present, so leaving 60 behind would store a number that reads as the
+    // answer and is not — and migration 00268 only stops a wait having
+    // NEITHER, so the database would happily keep both.
+    expect(body.steps[0].wait_minutes).toBeNull()
+  })
+
+  it("switching back to a length of time clears the countdown, rather than leaving both stored", () => {
+    renderEditor({ initialSteps: waitSteps({ wait_minutes: null, config: { wait_until: { days_before_anchor: 7 } } }) })
+    fireEvent.change(screen.getByLabelText(/step 1 when to send/i), { target: { value: "after" } })
+
+    expect(screen.queryByLabelText(/how many days before the event/i)).not.toBeInTheDocument()
+    // And Save is reachable: switching back must restore a usable wait rather
+    // than leaving a step that is neither, which validateStepList refuses.
+    expect(screen.getByRole("button", { name: /save changes/i })).not.toBeDisabled()
+  })
+
+  it("will not let the coach save a countdown with the days left blank", () => {
+    renderEditor({ initialSteps: waitSteps() })
+    fireEvent.change(screen.getByLabelText(/step 1 when to send/i), { target: { value: "before_event" } })
+    fireEvent.change(screen.getByLabelText(/how many days before the event/i), { target: { value: "" } })
+
+    expect(screen.getByRole("button", { name: /save changes/i })).toBeDisabled()
+
+    // The control: a number clears the problem, so the assertion above is
+    // about the blank and not about some other permanent objection.
+    fireEvent.change(screen.getByLabelText(/how many days before the event/i), { target: { value: "3" } })
+    expect(screen.getByRole("button", { name: /save changes/i })).not.toBeDisabled()
+  })
+
+  it("warns when the sequence is not started by an event signup, because nobody in it has a date", () => {
+    // Review finding. Nothing stopped a coach putting "3 days before the
+    // event" into `newsletter_welcome` or `service_application_received`, and
+    // no run of those sequences ever carries an anchor — so every one of them
+    // would end at that step. A warning, not a refusal: the coach may be
+    // about to change what starts the sequence, and refusing would make that
+    // order of operations impossible.
+    render(
+      <StepEditor
+        sequenceKey="newsletter_welcome"
+        sequenceName="Newsletter welcome"
+        triggerSource="newsletter"
+        initialSteps={waitSteps()}
+        oldSteps={[]}
+        runs={[]}
+        sentCountByStepId={{}}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/step 1 when to send/i), { target: { value: "before_event" } })
+
+    expect(screen.getByText(/does not start from a camp or clinic signup/i)).toBeInTheDocument()
+    // It warns, it does not block — the coach can still save.
+    expect(screen.getByRole("button", { name: /save changes/i })).not.toBeDisabled()
+  })
+
+  it("does NOT warn on a sequence an event signup starts", () => {
+    // The control. Without it, a warning that rendered unconditionally would
+    // pass the test above and train coaches to ignore it.
+    render(
+      <StepEditor
+        sequenceKey="camp_clinic_deadline"
+        sequenceName="Camp or clinic deadline"
+        triggerSource="event_signup"
+        initialSteps={waitSteps()}
+        oldSteps={[]}
+        runs={[]}
+        sentCountByStepId={{}}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText(/step 1 when to send/i), { target: { value: "before_event" } })
+
+    expect(screen.queryByText(/does not start from a camp or clinic signup/i)).not.toBeInTheDocument()
+    // But it still says what happens to people already part-way through, who
+    // were enrolled before the anchor column existed.
+    expect(screen.getByText(/already part-way through/i)).toBeInTheDocument()
+  })
+
+  it("tells the coach in plain words what the countdown hangs off", () => {
+    // A coach picking "before the event" cannot be expected to know that it
+    // only works for camp and clinic signups, or that somebody added by hand
+    // has no event date. Saying so here is cheaper than a support message.
+    renderEditor({ initialSteps: waitSteps() })
+    fireEvent.change(screen.getByLabelText(/step 1 when to send/i), { target: { value: "before_event" } })
+    // Matched on the help text's own sentence, not a bare /camp or clinic/,
+    // which now also appears in the not-an-event-sequence warning.
+    expect(screen.getByText(/Counts back from the start of the camp or clinic/i)).toBeInTheDocument()
+    expect(screen.getByText(/added to this sequence by hand has no event date/i)).toBeInTheDocument()
+  })
+})

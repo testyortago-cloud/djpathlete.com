@@ -85,6 +85,9 @@ function sequenceFixture(overrides: Partial<SequenceForEdit> = {}): SequenceForE
     sentCountByStepId: {},
     reenrolCooldownDays: 30,
     activeRuns: [],
+    // G11. Read by the step editor to decide whether a countdown can work in
+    // this sequence; this route does not use it.
+    triggerSource: "funnel_form",
     ...overrides,
   }
 }

@@ -782,6 +782,110 @@ describe("enrollIfTriggered — re-enrolment cooldown", () => {
 // column does not exist yet.
 // ---------------------------------------------------------------------------
 
+describe("enrollIfTriggered — the anchor on the run (G11)", () => {
+  const CAMP_STARTS = "2026-07-01T09:00:00.000Z"
+
+  it("records the anchor it was given on the run", async () => {
+    seedSequence("seq-a", { trigger_source: "event_signup" })
+
+    await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "event_signup",
+      metadata: { signup_type: "interest" },
+      businessId: SINGLETON_BUSINESS_ID,
+      anchorAt: CAMP_STARTS,
+    })
+
+    expect(store.sequence_runs).toHaveLength(1)
+    expect(store.sequence_runs[0].anchor_at).toBe(CAMP_STARTS)
+  })
+
+  it("leaves the anchor OFF the payload entirely when there is none", async () => {
+    // Not `anchor_at: null`. Naming a column is what triggers the missing-
+    // column retry, and almost every enrolment in the product has no anchor —
+    // sending null would cost the deploy window an extra round trip on every
+    // single lead capture, for a value that means nothing.
+    seedSequence("seq-a", { trigger_source: "inquiry" })
+
+    await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "inquiry",
+      metadata: {},
+      businessId: SINGLETON_BUSINESS_ID,
+    })
+
+    expect(runInsertPayloads).toHaveLength(1)
+    expect(runInsertPayloads[0]).not.toHaveProperty("anchor_at")
+  })
+
+  it("IGNORES an anchor smuggled through the metadata bag", async () => {
+    // THE SECURITY CASE, and the reason this is a typed argument at all. On
+    // the funnel path `metadata` is the visitor's ENTIRE typed payload and
+    // funnel field names are owner-chosen (`^[a-z][a-z0-9_]{0,39}$`), so an
+    // owner can name a field `anchor_at` or `event_start_date` and a stranger
+    // then types the value. This one decides WHEN mail is sent.
+    seedSequence("seq-a", { trigger_source: "funnel_form" })
+
+    await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "funnel_form",
+      metadata: { anchor_at: "2030-01-01T00:00:00.000Z", event_start_date: "2030-01-01T00:00:00.000Z" },
+      businessId: SINGLETON_BUSINESS_ID,
+    })
+
+    expect(store.sequence_runs).toHaveLength(1)
+    expect(store.sequence_runs[0].anchor_at).toBeUndefined()
+    expect(runInsertPayloads[0]).not.toHaveProperty("anchor_at")
+    // Nor did it reach the metadata column: the allow-list has no such key.
+    expect(store.sequence_runs[0].enrolment_metadata).toEqual({})
+  })
+
+  it("prefers the typed argument even when the bag names the same key", async () => {
+    // Belt and braces on the case above: with BOTH present the typed one
+    // wins, so a visitor cannot override a real camp date either.
+    seedSequence("seq-a", { trigger_source: "event_signup" })
+
+    await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "event_signup",
+      metadata: { anchor_at: "2030-01-01T00:00:00.000Z" },
+      businessId: SINGLETON_BUSINESS_ID,
+      anchorAt: CAMP_STARTS,
+    })
+
+    expect(store.sequence_runs[0].anchor_at).toBe(CAMP_STARTS)
+  })
+
+  it("still enrols when anchor_at does not exist yet — the one-deploy window", async () => {
+    // 00266 and 00267 can reach a database SEPARATELY, so the retry drops
+    // BOTH new keys rather than the one the error named. Retrying with the
+    // other still present would fail again and throw, turning a tolerated
+    // window into lost enrolments.
+    seedSequence("seq-a", { trigger_source: "event_signup" })
+    missingColumnOnInsert = "anchor_at"
+
+    const result = await enrollIfTriggered({
+      contactId: "contact-1",
+      source: "event_signup",
+      metadata: { service: "camp" },
+      businessId: SINGLETON_BUSINESS_ID,
+      anchorAt: CAMP_STARTS,
+    })
+
+    expect(result.enrolled).toEqual(["seq-a"])
+    expect(store.sequence_runs).toHaveLength(1)
+    expect(store.sequence_runs[0].anchor_at).toBeUndefined()
+    // The run still exists and is usable — that is the whole point.
+    expect(store.sequence_runs[0].contact_id).toBe("contact-1")
+    expect(store.sequence_runs[0].current_position).toBe(0)
+    // Two attempts, and the retry dropped BOTH new keys.
+    expect(runInsertPayloads).toHaveLength(2)
+    expect(runInsertPayloads[0]).toHaveProperty("anchor_at")
+    expect(runInsertPayloads[1]).not.toHaveProperty("anchor_at")
+    expect(runInsertPayloads[1]).not.toHaveProperty("enrolment_metadata")
+  })
+})
+
 describe("enrollIfTriggered — enrolment metadata on the run", () => {
   it("records the allow-listed facts about the enrolling event on the run", async () => {
     seedSequence("seq-a", { trigger_source: "inquiry" })
@@ -1358,6 +1462,73 @@ describe("enrollIfTriggered — one sequence at a time", () => {
 
       expect(result.enrolled).toEqual(["seq-news"])
       expect(skipRows()).toHaveLength(0)
+    })
+
+    it("forgives a run that ended because it had no anchor (G11)", async () => {
+      // Review finding. The G11 interaction with G01, and it takes a real
+      // person's camp away:
+      //
+      //   1 June  a coach hand-enrols a parent into camp_clinic_deadline.
+      //           The run sends the acknowledgement, reaches the first
+      //           "14 days before the camp" wait, has no event date behind
+      //           it, and ends `not_anchored` the same day.
+      //   8 June  the parent ACTUALLY registers interest in a camp.
+      //           The 30-day cooldown sees a run that ended a week ago and
+      //           refuses — so they get no countdown for a camp they signed
+      //           up for, because of a run we ended ourselves.
+      //
+      // Same principle the `failed` exclusion already carries: a run that
+      // ended because it could not RUN must not also lock the person out of
+      // the repaired one.
+      seedSequence("seq-camp", { trigger_source: "event_signup", reenrol_cooldown_days: 30 })
+      store.sequence_runs.push({
+        id: "run-not-anchored",
+        business_id: SINGLETON_BUSINESS_ID,
+        sequence_id: "seq-camp",
+        contact_id: "contact-1",
+        status: "exited",
+        exit_reason: "not_anchored",
+        current_position: 1,
+        completed_at: daysAgo(7),
+      })
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "event_signup",
+        businessId: SINGLETON_BUSINESS_ID,
+        anchorAt: "2026-11-01T09:00:00.000Z",
+      })
+
+      expect(result.enrolled).toEqual(["seq-camp"])
+      expect(skipRows()).toHaveLength(0)
+    })
+
+    it("and the control: an ordinary completed run of the same sequence IS still held", async () => {
+      // Without this, the test above would pass just as well if the cooldown
+      // had stopped working altogether. `event_signup` is a superseding
+      // source, so it also proves the forgiveness above is not simply the
+      // superseding-trigger path in disguise.
+      seedSequence("seq-camp", { trigger_source: "event_signup", reenrol_cooldown_days: 30 })
+      store.sequence_runs.push({
+        id: "run-finished",
+        business_id: SINGLETON_BUSINESS_ID,
+        sequence_id: "seq-camp",
+        contact_id: "contact-1",
+        status: "completed",
+        exit_reason: null,
+        current_position: 7,
+        completed_at: daysAgo(7),
+      })
+
+      const result = await enrollIfTriggered({
+        contactId: "contact-1",
+        source: "event_signup",
+        businessId: SINGLETON_BUSINESS_ID,
+        anchorAt: "2026-11-01T09:00:00.000Z",
+      })
+
+      expect(result.enrolled).toEqual([])
+      expect(skipRows()).toHaveLength(1)
     })
 
     it("but a SUPERSEDING trigger is still held by the cooldown — or the two rules cancel", async () => {

@@ -129,6 +129,35 @@ describe("validateStepList — the shapes the database would reject anyway", () 
     expect(messages([step("wait", { wait_minutes: 0 })])).toHaveLength(1)
   })
 
+  it("accepts an anchored wait with no wait_minutes at all (G11)", () => {
+    // An anchored wait says WHEN, not HOW LONG, so demanding wait_minutes of
+    // it would make the countdown unsaveable through the editor — which is
+    // what the rule above did before G11. Migration 00268 widens the matching
+    // database CHECK in the same direction.
+    expect(
+      messages([step("wait", { wait_minutes: null, config: { wait_until: { days_before_anchor: 14 } } })]),
+    ).toEqual([])
+  })
+
+  it("still rejects an anchored wait whose offset cannot be read", () => {
+    // Saving it would put a step in the database that fails the run at 3am
+    // instead of failing the save now. The sentence is the parser's own, so
+    // the editor and the tick say the same thing.
+    expect(messages([step("wait", { wait_minutes: null, config: { wait_until: { days_before_anchor: -3 } } })])).toEqual(
+      ["This sequence's wait step counts days before the event, so it cannot be a negative number."],
+    )
+  })
+
+  it("rejects an anchored wait that is malformed even when wait_minutes IS set", () => {
+    // The trap: a half-converted step with a leftover wait_minutes must not
+    // have its broken anchor forgiven just because the old column is filled
+    // in. The tick ignores wait_minutes entirely once wait_until is present,
+    // so a save that passed here would send at a time nobody chose.
+    expect(messages([step("wait", { wait_minutes: 60, config: { wait_until: { days_before_anchor: 2.5 } } })])).toEqual([
+      "This sequence's wait step does not say how many days before the event to send.",
+    ])
+  })
+
   it("rejects a split with no question attached", () => {
     expect(messages([step("branch", { branch_condition: null })])).toEqual([expect.stringMatching(/which people|question/i)])
   })

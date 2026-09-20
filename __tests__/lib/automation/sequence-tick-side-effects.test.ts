@@ -188,6 +188,8 @@ function sendableContext(overrides: Partial<DecisionContext> = {}): DecisionCont
     enrolledSource: "funnel_form",
     lastEmail: null,
     enrolmentMetadata: {},
+    // G11. Not anchored — the normal case for every sequence here.
+    anchorAt: null,
     ...overrides,
   }
 }
@@ -607,6 +609,102 @@ describe("the one-write-back concurrency contract", () => {
     await runSequenceTick()
 
     expect(writeBackCount()).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G11 — anchored waits, driven through the RUNNER rather than `decideStep`.
+//
+// Every other anchored assertion in this repo is on the pure decision function
+// in isolation. That is where the arithmetic lives, but it is NOT where the
+// dangerous bug lived: the first cut's skip rule looked correct step by step
+// and still sent a stale reminder, because the runner performs a `tag` and
+// then advances one position — a fact no `decideStep` test can see.
+// ---------------------------------------------------------------------------
+
+describe("an anchored wait, through the runner", () => {
+  const CAMP_STARTS = "2026-09-01T09:00:00.000Z"
+
+  /** `days` before the camp, as an instant. */
+  const before = (days: number) => new Date(new Date(CAMP_STARTS).getTime() - days * 24 * 60 * 60 * 1000)
+
+  function anchoredWaitStep(position: number, days: number): SequenceStepRow {
+    return {
+      id: `step-wait-${days}`,
+      position,
+      kind: "wait",
+      wait_minutes: null,
+      subject: null,
+      body: null,
+      branch_condition: null,
+      on_true_position: null,
+      on_false_position: null,
+      config: { wait_until: { days_before_anchor: days } },
+    }
+  }
+
+  function emailStep(position: number, subject: string): SequenceStepRow {
+    return {
+      id: `step-email-${position}`,
+      position,
+      kind: "email",
+      wait_minutes: null,
+      subject,
+      body: "Body",
+      branch_condition: null,
+      on_true_position: null,
+      on_false_position: null,
+      config: {},
+    }
+  }
+
+  it("holds the run until the moment, without sending", async () => {
+    ;(loadSteps as Mock).mockResolvedValue([anchoredWaitStep(0, 14), emailStep(1, "Two weeks to go")])
+    ;(loadRunContext as Mock).mockResolvedValue(sendableContext({ now: before(20), anchorAt: CAMP_STARTS }))
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
+
+    await runSequenceTick()
+
+    expect(recordSend).not.toHaveBeenCalled()
+    expect(advanceRun).toHaveBeenCalledWith("run-1", 1, before(14))
+  })
+
+  it("does NOT send a reminder whose moment has gone, even with a tag between the wait and the email", async () => {
+    // THE REGRESSION THESE TESTS EXIST FOR. The first cut stopped the skip at
+    // the tag; the runner then applied it and advanced to the email, which
+    // sent "Two weeks to go" five days before the camp. Driving the runner is
+    // the only way that sequence of events is visible.
+    const TAG_BETWEEN: SequenceStepRow = { ...TAG_STEP, id: "step-tag-mid", position: 1 }
+    ;(loadSteps as Mock).mockResolvedValue([
+      anchoredWaitStep(0, 14),
+      TAG_BETWEEN,
+      emailStep(2, "Two weeks to go"),
+      anchoredWaitStep(3, 3),
+      emailStep(4, "Three days to go"),
+    ])
+    ;(loadRunContext as Mock).mockResolvedValue(sendableContext({ now: before(5), anchorAt: CAMP_STARTS }))
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
+
+    await runSequenceTick()
+
+    expect(recordSend).not.toHaveBeenCalled()
+    expect(addTag).not.toHaveBeenCalled()
+    // Straight to the 3-day wait, over the whole stale block.
+    expect(advanceRun).toHaveBeenCalledWith("run-1", 3, undefined)
+  })
+
+  it("EXITS a run that has no event date, rather than completing it", async () => {
+    // `completeRun` would arm the 30-day re-enrolment cooldown and lock the
+    // person out of the sequence their real signup would have started.
+    ;(loadSteps as Mock).mockResolvedValue([anchoredWaitStep(0, 14), emailStep(1, "Two weeks to go")])
+    ;(loadRunContext as Mock).mockResolvedValue(sendableContext({ now: before(20), anchorAt: null }))
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
+
+    await runSequenceTick()
+
+    expect(recordSend).not.toHaveBeenCalled()
+    expect(completeRun).not.toHaveBeenCalled()
+    expect(exitRun).toHaveBeenCalledWith("run-1", "not_anchored")
   })
 })
 

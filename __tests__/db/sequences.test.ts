@@ -545,6 +545,40 @@ describe("loadRunContext", () => {
     expect(ctx.enrolmentMetadata).toEqual({})
   })
 
+  it("carries the run's anchor_at into DecisionContext (G11)", async () => {
+    // Same no-query mapping as enrolment_metadata above, and the same reason
+    // it needs pinning: every anchored wait's arithmetic depends on it, and
+    // nothing else would notice this line being dropped — an un-anchored run
+    // COMPLETES rather than erroring, so losing the mapping would silently
+    // end every countdown instead of failing loudly.
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1", {
+      anchor_at: "2026-07-01T09:00:00.000Z",
+    }) as SequenceRunRow
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    expect(ctx.anchorAt).toBe("2026-07-01T09:00:00.000Z")
+  })
+
+  it("reads a run from before migration 00267 as null, not as undefined", async () => {
+    // The one-deploy window again. `undefined` would take neither the "no
+    // anchor" branch (which tests `=== null`) nor produce a usable date — it
+    // would build an Invalid Date and fail the run, turning a tolerated
+    // window into visibly broken sequences.
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
+    delete (run as unknown as Record<string, unknown>).anchor_at
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    expect(ctx.anchorAt).toBeNull()
+  })
+
   // Fix round (Important 1): DecisionContext.contact.name was never
   // selected, so the runner had no name to thread into {{name}} and every
   // sequence email rendered it empty.

@@ -99,6 +99,15 @@ export const POST = withAudit(
         // (checked against production, and against `EventType` in
         // types/database.ts).
         metadata: { signup_type: "interest", event_kind: event.type, camp_name: event.title },
+        // G11. The camp's own start date, which anchored `wait` steps count
+        // down to — so `camp_clinic_deadline` can mean "14 / 7 / 3 / 1 days
+        // before the camp" for everybody, instead of counting up from
+        // whenever each person happened to sign up.
+        //
+        // NOT a `metadata` key, deliberately: see `enrollIfTriggered`. It is
+        // read off the EVENT row, never off the submission, so nothing a
+        // visitor types can move it.
+        anchorAt: event.start_date,
       })
 
       // SMS consent (Lead Engine Stage 4). FIRE AND FORGET, same reasoning as

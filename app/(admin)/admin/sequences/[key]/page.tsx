@@ -176,6 +176,10 @@ export default async function SequenceDetailPage({
               oldSteps={forEdit.steps}
               runs={forEdit.activeRuns}
               sentCountByStepId={forEdit.sentCountByStepId}
+              // G11. Lets the wait step warn when a countdown ("N days before
+              // the event") cannot work here — only an event signup supplies
+              // the event date it counts back from.
+              triggerSource={forEdit.triggerSource}
             />
           ) : (
             // A read-write editor whose every save can only ever 403 is worse

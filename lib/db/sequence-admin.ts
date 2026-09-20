@@ -56,6 +56,17 @@ export type SequenceForEdit = {
    * the detail screen through `setSequenceReenrolCooldown` below.
    */
   reenrolCooldownDays: number
+  /**
+   * G11. `sequences.trigger_source` — what starts a run of this sequence, or
+   * `null` for a manual-only one.
+   *
+   * Read by the step editor for ONE purpose: deciding whether a countdown
+   * ("N days before the event") can ever work here. Only an event signup
+   * supplies `sequence_runs.anchor_at`, so an anchored wait anywhere else
+   * ends every run of that sequence at that step. The editor warns rather
+   * than refuses — see `SEQUENCE_SOURCES_WITH_AN_ANCHOR`.
+   */
+  triggerSource: string | null
 }
 
 type SequenceStepRow = {
@@ -99,6 +110,7 @@ export async function loadSequenceForEdit(businessId: string, key: string): Prom
     name: string
     status: string
     reenrol_cooldown_days: number | null
+    trigger_source: string | null
   }
 
   // Not paginated: a sequence is a handful of steps — eight is the longest in
@@ -173,6 +185,10 @@ export async function loadSequenceForEdit(businessId: string, key: string): Prom
     name: sequence.name,
     status: sequence.status,
     reenrolCooldownDays: sequence.reenrol_cooldown_days ?? DEFAULT_REENROL_COOLDOWN_DAYS,
+    // `?? null` rather than a bare read: `select("*")` returns the column,
+    // but a manual-only sequence has it NULL and an older schema would not
+    // have it at all. Both must read as "nothing triggers this".
+    triggerSource: sequence.trigger_source ?? null,
     steps: savedSteps,
     drafts,
     sentCountByStepId,

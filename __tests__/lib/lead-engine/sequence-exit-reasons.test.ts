@@ -149,3 +149,29 @@ describe("exitReasonSentence — superseded (G14)", () => {
     }
   })
 })
+
+// G11. `not_anchored` is written by lib/automation/sequence-tick.ts when a run
+// reaches a countdown step with no event date behind it. A coach meeting this
+// on the contact record has almost always done something fixable — added the
+// person by hand rather than through a signup — so the sentence has to say so.
+describe("exitReasonSentence — not_anchored (G11)", () => {
+  it("has a written sentence rather than the humanized slug", () => {
+    const sentence = exitReasonSentence("not_anchored")
+    expect(sentence).not.toBe("Not anchored")
+    expect(sentence).toContain("counts down to an event date")
+  })
+
+  it("tells the coach the likely cause, because this one is usually fixable", () => {
+    // Unlike every other reason on this list, this one is a MISCONFIGURATION
+    // rather than something the person did. A sentence that only said "this
+    // run stopped" would leave the coach with nothing to act on.
+    expect(exitReasonSentence("not_anchored")).toContain("added by hand")
+  })
+
+  it("uses no word a coach would not use", () => {
+    const sentence = (exitReasonSentence("not_anchored") as string).toLowerCase()
+    for (const word of ["anchor", "null", "enrol", "trigger", "metadata", "sequence_run"]) {
+      expect(sentence, `"${word}" leaked into the coach-facing sentence`).not.toContain(word)
+    }
+  })
+})

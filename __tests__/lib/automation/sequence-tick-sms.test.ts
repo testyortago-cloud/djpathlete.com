@@ -164,6 +164,8 @@ function smsSendableContext(overrides: Partial<DecisionContext> = {}): DecisionC
     enrolledSource: "funnel_form",
     lastEmail: null,
     enrolmentMetadata: {},
+    // G11. Not anchored — the normal case for every sequence here.
+    anchorAt: null,
     ...overrides,
   }
 }
