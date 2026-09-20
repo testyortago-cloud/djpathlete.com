@@ -122,4 +122,33 @@ describe("VideoPerformance", () => {
     expect(screen.getByText("YouTube Shorts")).toBeInTheDocument()
     expect(screen.queryByText("youtube_shorts")).not.toBeInTheDocument()
   })
+
+  it("gives a not_published post its own short line, not the video-scoped sentence", () => {
+    // Production has 0 published posts today, so a video with several drafts
+    // would otherwise repeat "This video isn't published yet..." once per
+    // post — the roll-up's sentence, wrongly attributed to a post.
+    render(
+      <VideoPerformance
+        performance={{
+          videoId: "v1",
+          state: { kind: "not_published" },
+          perPost: [
+            {
+              postId: "post-1",
+              platform: "instagram",
+              state: { kind: "not_published" },
+            },
+          ],
+        }}
+      />,
+    )
+    expect(screen.getByText("Not published yet.")).toBeInTheDocument()
+    // Only the roll-up (one copy) may use the video-scoped sentence.
+    expect(screen.getAllByText(/this video isn't published yet/i)).toHaveLength(1)
+  })
+
+  it("says the numbers couldn't be read when performance is 'error', instead of rendering nothing", () => {
+    render(<VideoPerformance performance="error" />)
+    expect(screen.getByText(/couldn't read the numbers/i)).toBeInTheDocument()
+  })
 })

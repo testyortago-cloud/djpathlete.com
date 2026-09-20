@@ -34,8 +34,13 @@ export interface DrawerData {
   splitReelEnabled: boolean
   /** Whether the reel editor feature flag is on (gates the "Edit reel" Dialog). */
   reelEditorEnabled: boolean
-  /** Null in post-only mode (no video to summarize) or if computing it fails. */
-  performance: VideoPerformanceSummary | null
+  /**
+   * Null in post-only mode (no video to summarize). "error" when
+   * getVideoPerformance itself failed (logged via console.error) — kept
+   * distinct from null so VideoPerformance can say so on screen instead of
+   * silently rendering nothing.
+   */
+  performance: VideoPerformanceSummary | null | "error"
 }
 
 /**
@@ -93,17 +98,30 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
   const video = await getVideoUploadById(videoId)
   if (!video) return null
 
+  // Shared with the getVideoPerformance call below so posts are fetched once,
+  // not twice — getVideoPerformance accepts pre-fetched posts precisely for this.
+  const postsPromise = listSocialPostsBySourceVideo(videoId)
+
   const [transcript, posts, previewUrl, thumbnailUrl, splitReelEnabled, reelEditorEnabled, performance] =
     await Promise.all([
       getTranscriptForVideo(videoId),
-      listSocialPostsBySourceVideo(videoId),
+      postsPromise,
       signPreviewUrl(video.storage_path),
       video.thumbnail_path ? signPreviewUrl(video.thumbnail_path) : Promise.resolve(null),
       getSetting<boolean>("feature_split_reel_enabled", false),
       getSetting<boolean>("feature_reel_editor_enabled", false),
       // Best-effort: a failure reading analytics/connections shouldn't 500 the
-      // whole page, same reasoning as the null-on-failure signed URLs above.
-      getVideoPerformance(videoId).catch(() => null),
+      // whole page — this panel isn't required to view or edit the video.
+      // But nothing here is a transient, expiring condition (no migration in
+      // flight, no schema change to tolerate for one deploy), so a permanent
+      // failure must not go silent: log it, and hand the component "error" —
+      // not null — so it can say so on screen instead of rendering nothing.
+      postsPromise
+        .then((ownPosts) => getVideoPerformance(videoId, ownPosts))
+        .catch((error): "error" => {
+          console.error("[drawer-data] getVideoPerformance failed", { videoId, error })
+          return "error"
+        }),
     ])
 
   const mediaByPost = await signMediaByPost(posts.map((p) => p.id))

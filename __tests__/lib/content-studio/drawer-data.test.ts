@@ -121,8 +121,30 @@ describe("getDrawerData", () => {
     }
     vi.mocked(getVideoPerformance).mockResolvedValueOnce(summary)
     const result = await getDrawerData("video-1")
-    expect(getVideoPerformance).toHaveBeenCalledWith("video-1")
+    // Passes the already-fetched posts through, rather than letting
+    // getVideoPerformance re-fetch them itself (that would be a second,
+    // identical listSocialPostsBySourceVideo query per page load).
+    expect(getVideoPerformance).toHaveBeenCalledWith("video-1", [fixturePost])
     expect(result!.performance).toEqual(summary)
+  })
+
+  it("logs and reports 'error' — not a silent null — when getVideoPerformance fails", async () => {
+    vi.mocked(getVideoUploadById).mockResolvedValueOnce(fixtureVideo)
+    vi.mocked(getTranscriptForVideo).mockResolvedValueOnce(fixtureTranscript)
+    vi.mocked(listSocialPostsBySourceVideo).mockResolvedValueOnce([fixturePost])
+    const boom = new Error("platform_connections RPC failed")
+    vi.mocked(getVideoPerformance).mockRejectedValueOnce(boom)
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+    try {
+      const result = await getDrawerData("video-1")
+      expect(result!.performance).toBe("error")
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[drawer-data] getVideoPerformance failed",
+        expect.objectContaining({ videoId: "video-1", error: boom }),
+      )
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 
   it("runs transcript and posts fetches in parallel", async () => {

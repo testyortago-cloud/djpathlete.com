@@ -14,28 +14,42 @@
 //
 // Copy is written for the coach, not a developer: no "sync", "metrics", or
 // platform ids on screen (PLATFORM_LABELS capitalises `youtube_shorts` etc.).
+//
+// `performance` is `null` in post-only mode (no video to summarize) and
+// `"error"` when the fetch itself failed (see lib/content-studio/drawer-data.ts).
+// Kept as two distinct values on purpose — "error" must say so on screen
+// instead of silently rendering nothing, which would just reintroduce the
+// ambiguous blank this whole feature exists to replace.
 
 import { StatTile } from "@/components/admin/content-studio/insights/StatTile"
 import { PLATFORM_LABELS } from "@/lib/social/platform-ui"
 import type { PerformanceState, VideoPerformanceSummary } from "@/lib/content-studio/insights"
 
 interface VideoPerformanceProps {
-  performance: VideoPerformanceSummary | null
+  performance: VideoPerformanceSummary | null | "error"
 }
 
 type StateDescriptor =
   | { kind: "message"; text: string }
   | { kind: "figures"; views: number; likes: number; comments: number; shares: number }
 
-/** The one place a PerformanceState becomes copy. Both the roll-up and each
- *  perPost line call this, so they can never drift out of sync with each
- *  other or with the four-state ladder in lib/content-studio/insights.ts. */
-function describeState(state: PerformanceState): StateDescriptor {
+/** The one place a PerformanceState becomes copy. Both the roll-up (scope
+ *  "video") and each perPost line (scope "post") call this, so they can
+ *  never drift out of sync with each other or with the four-state ladder in
+ *  lib/content-studio/insights.ts. `not_published` reads differently per
+ *  scope: production has 0 published posts today, so a video with only
+ *  drafts must not repeat "This video isn't published yet" once per post —
+ *  that reads as three copies of the video-level sentence, two of them
+ *  wrongly attributed to a post. */
+function describeState(state: PerformanceState, scope: "video" | "post"): StateDescriptor {
   switch (state.kind) {
     case "not_published":
       return {
         kind: "message",
-        text: "This video isn't published yet. Once its posts go live, you'll see how they did here.",
+        text:
+          scope === "video"
+            ? "This video isn't published yet. Once its posts go live, you'll see how they did here."
+            : "Not published yet.",
       }
     case "awaiting_sync":
       return {
@@ -94,9 +108,17 @@ function PerPostFigures({
 }
 
 export function VideoPerformance({ performance }: VideoPerformanceProps) {
-  if (!performance) return null
+  if (performance === null) return null
 
-  const rollup = describeState(performance.state)
+  if (performance === "error") {
+    return (
+      <p className="text-sm text-muted-foreground" data-testid="performance-error">
+        We couldn&apos;t read the numbers just now.
+      </p>
+    )
+  }
+
+  const rollup = describeState(performance.state, "video")
 
   return (
     <div className="space-y-4">
@@ -111,7 +133,7 @@ export function VideoPerformance({ performance }: VideoPerformanceProps) {
       {performance.perPost.length > 0 && (
         <ul className="space-y-1.5" data-testid="performance-per-post">
           {performance.perPost.map((post) => {
-            const d = describeState(post.state)
+            const d = describeState(post.state, "post")
             return (
               <li
                 key={post.postId}

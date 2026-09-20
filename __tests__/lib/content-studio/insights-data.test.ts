@@ -16,8 +16,11 @@ vi.mock("@/lib/db/media-assets", () => ({ listMediaAssets: vi.fn() }))
 vi.mock("@/lib/db/team-video-submissions", () => ({ listAllSubmissions: vi.fn() }))
 vi.mock("@/lib/db/platform-connections", () => ({ listPlatformConnections: vi.fn() }))
 
+import { listVideoUploads } from "@/lib/db/video-uploads"
 import { listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
-import { listSocialAnalyticsForPosts } from "@/lib/db/social-analytics"
+import { listSocialAnalyticsInRange, listSocialAnalyticsForPosts } from "@/lib/db/social-analytics"
+import { listMediaAssets } from "@/lib/db/media-assets"
+import { listAllSubmissions } from "@/lib/db/team-video-submissions"
 import { listPlatformConnections } from "@/lib/db/platform-connections"
 import { getVideoPerformance } from "@/lib/content-studio/insights-data"
 
@@ -48,11 +51,24 @@ describe("getVideoPerformance", () => {
     vi.mocked(listPlatformConnections).mockReset().mockResolvedValue([])
   })
 
-  it("fetches only this video's own posts, scoped by videoId", async () => {
+  it("fetches only this video's own posts, scoped by videoId — never the whole-database tables", async () => {
     vi.mocked(listSocialPostsBySourceVideo).mockResolvedValueOnce([fixturePost()])
     await getVideoPerformance("video-1")
     expect(listSocialPostsBySourceVideo).toHaveBeenCalledWith("video-1")
     expect(listSocialPostsBySourceVideo).toHaveBeenCalledTimes(1)
+    // The actual constraint this test exists to pin: computeStudioInsights's
+    // whole-database fetchers must never run just to answer one video's panel.
+    expect(listVideoUploads).not.toHaveBeenCalled()
+    expect(listMediaAssets).not.toHaveBeenCalled()
+    expect(listAllSubmissions).not.toHaveBeenCalled()
+    expect(listSocialAnalyticsInRange).not.toHaveBeenCalled()
+  })
+
+  it("reuses posts passed in instead of re-fetching them", async () => {
+    const posts = [fixturePost({ platform: "instagram" })]
+    await getVideoPerformance("video-1", posts as never)
+    expect(listSocialPostsBySourceVideo).not.toHaveBeenCalled()
+    expect(listSocialAnalyticsForPosts).toHaveBeenCalledWith(["post-1"])
   })
 
   it("treats only status 'connected' as connected — a 'paused' platform is not_connected", async () => {

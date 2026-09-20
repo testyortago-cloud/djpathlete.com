@@ -15,6 +15,7 @@ import {
   type StudioInsights,
   type VideoPerformanceSummary,
 } from "./insights"
+import type { SocialPost } from "@/types/database"
 
 const PERIOD_DAYS = 30
 
@@ -54,13 +55,21 @@ export async function getInsightsData(): Promise<StudioInsights> {
  * the same summarizeVideoPerformance ladder getInsightsData uses per video —
  * so the Insights tab and the video detail page can never disagree about the
  * same video's state.
+ *
+ * `posts` is optional: pass it when the caller already fetched this video's
+ * posts (getDrawerData does, via the same listSocialPostsBySourceVideo call)
+ * so this function doesn't issue a second, identical query. Any other caller
+ * can omit it and this fetches its own copy.
  */
-export async function getVideoPerformance(videoId: string): Promise<VideoPerformanceSummary | null> {
-  const posts = await listSocialPostsBySourceVideo(videoId)
-  const postIds = posts.map((p) => p.id)
+export async function getVideoPerformance(
+  videoId: string,
+  posts?: SocialPost[],
+): Promise<VideoPerformanceSummary | null> {
+  const ownPosts = posts ?? (await listSocialPostsBySourceVideo(videoId))
+  const postIds = ownPosts.map((p) => p.id)
   const [analytics, connections] = await Promise.all([listSocialAnalyticsForPosts(postIds), listPlatformConnections()])
 
   const connectedPlatforms = new Set(connections.filter((c) => c.status === "connected").map((c) => c.plugin_name))
 
-  return summarizeVideoPerformance(videoId, posts, analytics, connectedPlatforms)
+  return summarizeVideoPerformance(videoId, ownPosts, analytics, connectedPlatforms)
 }
