@@ -4,7 +4,9 @@ import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { getSocialPostById, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
 import { listMediaForPosts } from "@/lib/db/social-post-media"
 import { getSetting } from "@/lib/db/system-settings"
+import { getVideoPerformance } from "@/lib/content-studio/insights-data"
 import type { VideoUpload, VideoTranscript, SocialPost } from "@/types/database"
+import type { VideoPerformanceSummary } from "@/lib/content-studio/insights"
 
 const PREVIEW_URL_EXPIRY_MS = 10 * 60 * 1000 // 10 minutes
 const SLIDE_URL_EXPIRY_MS = 60 * 60 * 1000 // 1 hour
@@ -32,6 +34,8 @@ export interface DrawerData {
   splitReelEnabled: boolean
   /** Whether the reel editor feature flag is on (gates the "Edit reel" Dialog). */
   reelEditorEnabled: boolean
+  /** Null in post-only mode (no video to summarize) or if computing it fails. */
+  performance: VideoPerformanceSummary | null
 }
 
 /**
@@ -89,14 +93,18 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
   const video = await getVideoUploadById(videoId)
   if (!video) return null
 
-  const [transcript, posts, previewUrl, thumbnailUrl, splitReelEnabled, reelEditorEnabled] = await Promise.all([
-    getTranscriptForVideo(videoId),
-    listSocialPostsBySourceVideo(videoId),
-    signPreviewUrl(video.storage_path),
-    video.thumbnail_path ? signPreviewUrl(video.thumbnail_path) : Promise.resolve(null),
-    getSetting<boolean>("feature_split_reel_enabled", false),
-    getSetting<boolean>("feature_reel_editor_enabled", false),
-  ])
+  const [transcript, posts, previewUrl, thumbnailUrl, splitReelEnabled, reelEditorEnabled, performance] =
+    await Promise.all([
+      getTranscriptForVideo(videoId),
+      listSocialPostsBySourceVideo(videoId),
+      signPreviewUrl(video.storage_path),
+      video.thumbnail_path ? signPreviewUrl(video.thumbnail_path) : Promise.resolve(null),
+      getSetting<boolean>("feature_split_reel_enabled", false),
+      getSetting<boolean>("feature_reel_editor_enabled", false),
+      // Best-effort: a failure reading analytics/connections shouldn't 500 the
+      // whole page, same reasoning as the null-on-failure signed URLs above.
+      getVideoPerformance(videoId).catch(() => null),
+    ])
 
   const mediaByPost = await signMediaByPost(posts.map((p) => p.id))
 
@@ -111,6 +119,7 @@ export async function getDrawerData(videoId: string): Promise<DrawerData | null>
     highlightPostId: null,
     splitReelEnabled,
     reelEditorEnabled,
+    performance,
   }
 }
 
@@ -130,6 +139,7 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       highlightPostId: post.id,
       splitReelEnabled: false,
       reelEditorEnabled: false,
+      performance: null,
     }
   }
 
@@ -146,6 +156,7 @@ export async function getDrawerDataForPost(postId: string): Promise<DrawerData |
       highlightPostId: post.id,
       splitReelEnabled: false,
       reelEditorEnabled: false,
+      performance: null,
     }
   }
 

@@ -26,11 +26,18 @@ vi.mock("@/lib/firebase-admin", () => ({
 vi.mock("@/lib/db/system-settings", () => ({
   getSetting: vi.fn(async () => false),
 }))
+// getDrawerData calls this to build DrawerData.performance. It has its own
+// dedicated unit tests in insights-data.test.ts — here it's a black box so
+// posts-fetch mocks above aren't consumed a second time by its internal call.
+vi.mock("@/lib/content-studio/insights-data", () => ({
+  getVideoPerformance: vi.fn(async () => null),
+}))
 
 import { getVideoUploadById } from "@/lib/db/video-uploads"
 import { getTranscriptForVideo } from "@/lib/db/video-transcripts"
 import { getSocialPostById, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
 import { listMediaForPosts } from "@/lib/db/social-post-media"
+import { getVideoPerformance } from "@/lib/content-studio/insights-data"
 import { getDrawerData, getDrawerDataForPost } from "@/lib/content-studio/drawer-data"
 
 const fixtureVideo = {
@@ -103,6 +110,21 @@ describe("getDrawerData", () => {
     expect(result!.posts[0].id).toBe("post-1")
   })
 
+  it("wires DrawerData.performance from getVideoPerformance, scoped to this video", async () => {
+    vi.mocked(getVideoUploadById).mockResolvedValueOnce(fixtureVideo)
+    vi.mocked(getTranscriptForVideo).mockResolvedValueOnce(fixtureTranscript)
+    vi.mocked(listSocialPostsBySourceVideo).mockResolvedValueOnce([fixturePost])
+    const summary = {
+      videoId: "video-1",
+      state: { kind: "measured" as const, views: 10, likes: 1, comments: 0, shares: 0 },
+      perPost: [],
+    }
+    vi.mocked(getVideoPerformance).mockResolvedValueOnce(summary)
+    const result = await getDrawerData("video-1")
+    expect(getVideoPerformance).toHaveBeenCalledWith("video-1")
+    expect(result!.performance).toEqual(summary)
+  })
+
   it("runs transcript and posts fetches in parallel", async () => {
     const order: string[] = []
     vi.mocked(getVideoUploadById).mockResolvedValueOnce(fixtureVideo)
@@ -145,6 +167,7 @@ describe("getDrawerDataForPost", () => {
     expect(result!.mode).toBe("post-only")
     expect(result!.posts).toHaveLength(1)
     expect(result!.video).toBeNull()
+    expect(result!.performance).toBeNull()
   })
 
   it("signs attached carousel slides and keys them by post id", async () => {

@@ -5,6 +5,7 @@ import { TranscriptTab } from "@/components/admin/content-studio/drawer/Transcri
 import { PostsTab } from "@/components/admin/content-studio/drawer/PostsTab"
 import { MetaTab } from "@/components/admin/content-studio/drawer/MetaTab"
 import { MarkReadyButton } from "@/components/admin/content-studio/drawer/MarkReadyButton"
+import { VideoPerformance } from "@/components/admin/content-studio/detail/VideoPerformance"
 import { isVideoPostable } from "@/lib/content-studio/postable"
 
 interface VideoDetailPageProps {
@@ -66,6 +67,13 @@ export function VideoDetailPage({ data, backHref, backLabel, highlightPostId }: 
               initialExpandedPostId={highlightPostId}
               isReady={isReady}
             />
+          </section>
+
+          <section aria-labelledby="performance-heading">
+            <h2 id="performance-heading" className={SECTION_HEADING}>
+              Performance
+            </h2>
+            <VideoPerformance performance={data.performance} />
           </section>
 
           <section aria-labelledby="meta-heading">

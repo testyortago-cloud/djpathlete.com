@@ -22,6 +22,9 @@ vi.mock("@/components/admin/content-studio/drawer/MarkReadyButton", () => ({
   MarkReadyButton: ({ needsEdit }: { needsEdit: boolean }) =>
     needsEdit ? <button type="button">Mark as ready</button> : null,
 }))
+vi.mock("@/components/admin/content-studio/detail/VideoPerformance", () => ({
+  VideoPerformance: () => <div data-testid="performance" />,
+}))
 
 import { VideoDetailPage } from "@/components/admin/content-studio/detail/VideoDetailPage"
 
@@ -49,16 +52,20 @@ const data: DrawerData = {
   highlightPostId: null,
   splitReelEnabled: false,
   reelEditorEnabled: false,
+  performance: null,
 }
 
 describe("<VideoDetailPage>", () => {
-  it("renders the title, a back link, and all four sections", () => {
-    render(<VideoDetailPage data={data} backHref="/admin/content?tab=videos" backLabel="Videos" highlightPostId={null} />)
+  it("renders the title, a back link, and all five sections", () => {
+    render(
+      <VideoDetailPage data={data} backHref="/admin/content?tab=videos" backLabel="Videos" highlightPostId={null} />,
+    )
     expect(screen.getByRole("heading", { name: "My Clip" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Videos/ })).toHaveAttribute("href", "/admin/content?tab=videos")
     expect(screen.getByTestId("sidebar")).toBeInTheDocument()
     expect(screen.getByTestId("transcript")).toBeInTheDocument()
     expect(screen.getByTestId("posts")).toBeInTheDocument()
+    expect(screen.getByTestId("performance")).toBeInTheDocument()
     expect(screen.getByTestId("meta")).toBeInTheDocument()
   })
 

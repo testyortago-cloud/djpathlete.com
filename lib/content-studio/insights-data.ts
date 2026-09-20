@@ -4,12 +4,17 @@
 // time series, and with this library's size there is nothing to cache.
 
 import { listVideoUploads } from "@/lib/db/video-uploads"
-import { listSocialPostsForPipeline } from "@/lib/db/social-posts"
-import { listSocialAnalyticsInRange } from "@/lib/db/social-analytics"
+import { listSocialPostsForPipeline, listSocialPostsBySourceVideo } from "@/lib/db/social-posts"
+import { listSocialAnalyticsInRange, listSocialAnalyticsForPosts } from "@/lib/db/social-analytics"
 import { listMediaAssets } from "@/lib/db/media-assets"
 import { listAllSubmissions } from "@/lib/db/team-video-submissions"
 import { listPlatformConnections } from "@/lib/db/platform-connections"
-import { computeStudioInsights, type StudioInsights } from "./insights"
+import {
+  computeStudioInsights,
+  summarizeVideoPerformance,
+  type StudioInsights,
+  type VideoPerformanceSummary,
+} from "./insights"
 
 const PERIOD_DAYS = 30
 
@@ -26,9 +31,7 @@ export async function getInsightsData(): Promise<StudioInsights> {
     listPlatformConnections(),
   ])
 
-  const connectedPlatforms = new Set(
-    connections.filter((c) => c.status === "connected").map((c) => c.plugin_name),
-  )
+  const connectedPlatforms = new Set(connections.filter((c) => c.status === "connected").map((c) => c.plugin_name))
 
   return computeStudioInsights({
     now,
@@ -40,4 +43,24 @@ export async function getInsightsData(): Promise<StudioInsights> {
     connectedPlatforms,
     periodDays: PERIOD_DAYS,
   })
+}
+
+/**
+ * Performance for a single video, scoped to just that video's own posts —
+ * deliberately NOT computeStudioInsights(), which would pull every video,
+ * post, asset and submission in the database to answer one panel's worth of
+ * numbers for the video detail page. Fetches only this video's posts, their
+ * analytics snapshots, and the platform connections, then runs them through
+ * the same summarizeVideoPerformance ladder getInsightsData uses per video —
+ * so the Insights tab and the video detail page can never disagree about the
+ * same video's state.
+ */
+export async function getVideoPerformance(videoId: string): Promise<VideoPerformanceSummary | null> {
+  const posts = await listSocialPostsBySourceVideo(videoId)
+  const postIds = posts.map((p) => p.id)
+  const [analytics, connections] = await Promise.all([listSocialAnalyticsForPosts(postIds), listPlatformConnections()])
+
+  const connectedPlatforms = new Set(connections.filter((c) => c.status === "connected").map((c) => c.plugin_name))
+
+  return summarizeVideoPerformance(videoId, posts, analytics, connectedPlatforms)
 }
