@@ -168,6 +168,20 @@ export const POST = withAudit({ action: "contact.submitted", category: "marketin
       // sitting in a local variable the whole time (audit §3.5).
       attributionSessionId: attrSessionId,
       timezone: result.data.timezone ?? null,
+      // G10. This route passed no event metadata at all, so every applicant
+      // looked identical to the engine and `service_application_received`
+      // could not say a different thing to someone asking about a camp and
+      // someone asking about one-to-one coaching. `service` is one of
+      // SERVICE_TYPES (lib/validators/inquiry.ts) — a closed set the form
+      // itself constrains, never free text — and it is the same value the
+      // pipeline router above already branches on.
+      //
+      // It reaches `sequence_runs.enrolment_metadata` through
+      // `pickEnrolmentMetadata`'s allow-list, where the
+      // `enrolled_metadata_is` branch predicate reads it. It ALSO becomes
+      // matchable by a sequence's `trigger_filter`, which is how a
+      // camp-only sequence could be keyed later without new code.
+      metadata: { service },
     })
 
     // Lead Engine pipeline (gap #8 phase 1.5, spec

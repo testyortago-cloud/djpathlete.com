@@ -194,6 +194,25 @@ export async function loadRunContext(run: SequenceRunRow, now: Date, businessId:
     isSuppressed: suppressed,
     enrolledSource: (sequenceRow.trigger_source as string | null) ?? null,
     lastEmail,
+    // G10. No query: `claim_sequence_runs` is
+    // `RETURNS SETOF public.sequence_runs ... RETURNING r.*`, so the claimed
+    // row already carries the column that migration 00266 adds — verified
+    // against the database, not assumed.
+    //
+    // `?? {}`, deliberately, and NOT a `!== null` test: for the one deploy
+    // where the build is live and the migration is not, the key is ABSENT
+    // from the row rather than null, and `undefined !== null` is true. That
+    // exact confusion cost this repo a deploy once already (migration 00210).
+    enrolmentMetadata: run.enrolment_metadata ?? {},
+    // G11, and the same no-query reasoning as the line above: the claimed row
+    // already carries the column migration 00267 adds.
+    //
+    // `?? null` rather than a bare read, for the same one-deploy window: an
+    // absent key is `undefined`, and `undefined` is not `null`. A run that
+    // reached an anchored wait with `undefined` here would take neither the
+    // "no anchor" branch nor the arithmetic — it would build a Date from
+    // undefined, which is Invalid, and comparisons against it are all false.
+    anchorAt: run.anchor_at ?? null,
   }
 }
 

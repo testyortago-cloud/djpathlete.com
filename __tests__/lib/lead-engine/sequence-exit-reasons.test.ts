@@ -122,3 +122,56 @@ describe("exitReasonSentence — known reasons never fall through to the humaniz
     expect(sentence).toBe("Stopped because the sequence was edited")
   })
 })
+
+// G14. `superseded` joins the list, and it is one suffix away from an
+// existing reason that means something entirely different.
+describe("exitReasonSentence — superseded (G14)", () => {
+  it("has a written sentence rather than the humanized slug", () => {
+    const sentence = exitReasonSentence("superseded")
+    expect(sentence).not.toBe("Superseded")
+    expect(sentence).toBe("Stopped because they did something that started a better-matching follow-up")
+  })
+
+  it("does not collide with superseded_by_merged_run, which means something else entirely", () => {
+    // One is "the person did something newer"; the other is "two records for
+    // the same person were merged". A coach chasing why a follow-up stopped
+    // must not be shown the merge sentence for a supersede, or the reverse.
+    expect(exitReasonSentence("superseded")).not.toBe(exitReasonSentence("superseded_by_merged_run"))
+    expect(exitReasonSentence("superseded_by_merged_run")).toBe(
+      "They were already in this sequence under another record.",
+    )
+  })
+
+  it("uses no word a coach would not use", () => {
+    const sentence = (exitReasonSentence("superseded") as string).toLowerCase()
+    for (const word of ["superseded", "enrol", "trigger", "metadata", "sequence_run"]) {
+      expect(sentence, `"${word}" leaked into the coach-facing sentence`).not.toContain(word)
+    }
+  })
+})
+
+// G11. `not_anchored` is written by lib/automation/sequence-tick.ts when a run
+// reaches a countdown step with no event date behind it. A coach meeting this
+// on the contact record has almost always done something fixable — added the
+// person by hand rather than through a signup — so the sentence has to say so.
+describe("exitReasonSentence — not_anchored (G11)", () => {
+  it("has a written sentence rather than the humanized slug", () => {
+    const sentence = exitReasonSentence("not_anchored")
+    expect(sentence).not.toBe("Not anchored")
+    expect(sentence).toContain("counts down to an event date")
+  })
+
+  it("tells the coach the likely cause, because this one is usually fixable", () => {
+    // Unlike every other reason on this list, this one is a MISCONFIGURATION
+    // rather than something the person did. A sentence that only said "this
+    // run stopped" would leave the coach with nothing to act on.
+    expect(exitReasonSentence("not_anchored")).toContain("added by hand")
+  })
+
+  it("uses no word a coach would not use", () => {
+    const sentence = (exitReasonSentence("not_anchored") as string).toLowerCase()
+    for (const word of ["anchor", "null", "enrol", "trigger", "metadata", "sequence_run"]) {
+      expect(sentence, `"${word}" leaked into the coach-facing sentence`).not.toContain(word)
+    }
+  })
+})

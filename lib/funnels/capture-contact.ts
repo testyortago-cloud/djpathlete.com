@@ -29,6 +29,18 @@ export async function captureContactFromSubmission(input: {
   businessId: string
   /** G06: the submitter's own IANA zone, stored fill-only by the DAL. */
   timezone?: string | null
+  /**
+   * G10. Facts the SERVER derived about this submission — today just
+   * `role` — as opposed to `payload`, which is whatever the visitor typed.
+   *
+   * Merged OVER `payload`, deliberately. A funnel field's name is chosen by
+   * the owner and validated only as `^[a-z][a-z0-9_]{0,39}$`, so an owner
+   * CAN name a field `role`; when one does, what the form declares about
+   * itself must win over what a stranger typed into it. Nothing on
+   * production names such a field today (checked read-only), so this decides
+   * a collision that has not happened yet rather than changing one that has.
+   */
+  metadata?: Record<string, unknown>
 }): Promise<string | null> {
   if (!input.email && !input.phone) return null
   try {
@@ -39,7 +51,7 @@ export async function captureContactFromSubmission(input: {
       source: "funnel_form",
       attributionSessionId: input.attributionSessionId,
       timezone: input.timezone ?? null,
-      metadata: input.payload,
+      metadata: { ...input.payload, ...(input.metadata ?? {}) },
       businessId: input.businessId,
     })
     return contactId

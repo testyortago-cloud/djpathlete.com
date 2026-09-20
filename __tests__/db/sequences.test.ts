@@ -315,6 +315,9 @@ function seedRun(id: string, contactId: string, sequenceId: string, overrides: P
     last_error: null,
     enrolled_at: new Date().toISOString(),
     completed_at: null,
+    // G10, migration 00266. NOT NULL DEFAULT '{}' in the database, so a row
+    // read back always carries an object — the fixture default matches.
+    enrolment_metadata: {},
     ...overrides,
   }
   store.sequence_runs.push(run)
@@ -505,6 +508,75 @@ describe("loadRunContext", () => {
     expect(ctx.enrolledSource).toBe("funnel_form")
     expect(ctx.sentAtToday).toEqual([])
     expect(ctx.activeSiblings).toEqual([])
+    expect(ctx.enrolmentMetadata).toEqual({})
+  })
+
+  // G10. The claimed run row already carries the column
+  // (`claim_sequence_runs` is `RETURNS SETOF public.sequence_runs ...
+  // RETURNING r.*`, verified against the database), so this is a mapping,
+  // not a query — but it is the mapping the whole predicate depends on, and
+  // nothing else pins it.
+  it("carries the run's enrolment_metadata into DecisionContext", async () => {
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1", {
+      enrolment_metadata: { service: "camp", role: "parent" },
+    }) as SequenceRunRow
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    expect(ctx.enrolmentMetadata).toEqual({ service: "camp", role: "parent" })
+  })
+
+  it("reads a run from before migration 00266 as {}, not as a crash or a null", async () => {
+    // The one-deploy window: the Vercel build is live, the migration is not,
+    // and `RETURNING r.*` simply has no such key. `undefined !== null`, so a
+    // null check would let `undefined` straight through into
+    // `ctx.enrolmentMetadata[key]` and throw on the first branch evaluated.
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
+    delete (run as unknown as Record<string, unknown>).enrolment_metadata
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    expect(ctx.enrolmentMetadata).toEqual({})
+  })
+
+  it("carries the run's anchor_at into DecisionContext (G11)", async () => {
+    // Same no-query mapping as enrolment_metadata above, and the same reason
+    // it needs pinning: every anchored wait's arithmetic depends on it, and
+    // nothing else would notice this line being dropped — an un-anchored run
+    // COMPLETES rather than erroring, so losing the mapping would silently
+    // end every countdown instead of failing loudly.
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1", {
+      anchor_at: "2026-07-01T09:00:00.000Z",
+    }) as SequenceRunRow
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    expect(ctx.anchorAt).toBe("2026-07-01T09:00:00.000Z")
+  })
+
+  it("reads a run from before migration 00267 as null, not as undefined", async () => {
+    // The one-deploy window again. `undefined` would take neither the "no
+    // anchor" branch (which tests `=== null`) nor produce a usable date — it
+    // would build an Invalid Date and fail the run, turning a tolerated
+    // window into visibly broken sequences.
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
+    delete (run as unknown as Record<string, unknown>).anchor_at
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    expect(ctx.anchorAt).toBeNull()
   })
 
   // Fix round (Important 1): DecisionContext.contact.name was never

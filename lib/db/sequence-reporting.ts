@@ -113,6 +113,29 @@ export const OUTCOME_BUCKETS: readonly OutcomeBucket[] = [
  * branch for it no matter what this set contains; that separation is the
  * point, not an accident, because reporting an edited-away follow-up as one
  * that reached the end is the exact lie this whole feature exists to prevent.
+ *
+ * A FOURTH, added by G14 (2026-09-20), written by TypeScript:
+ *
+ *   superseded   lib/lead-engine/enroll.ts (`supersedeRuns`)
+ *
+ * Written when the person did something newer — took the quiz, sent an
+ * application, abandoned a checkout, signed up for a camp — and that started
+ * a follow-up which replaced the one they were on. It gets no bucket of its
+ * own for the same reason as the three above: the follow-up did not produce
+ * an outcome, it was interrupted. `other` is the honest answer, and reporting
+ * it as `finished` would inflate every completion rate on the screen.
+ *
+ * A FIFTH, added by G11 (2026-09-20), written by TypeScript:
+ *
+ *   not_anchored   lib/automation/sequence-tick.ts (the `wait` case)
+ *
+ * Written when a run reaches a wait that counts down to an event date and the
+ * run has no `anchor_at` — a hand-enrolled contact, a run from before
+ * migration 00267, or an anchored wait added to a sequence no event triggers.
+ * `other`, never `finished`, and the distinction matters more here than
+ * anywhere else on this list: these runs are the signature of a
+ * MISCONFIGURATION, and counting them as completed would hide exactly the
+ * thing a coach needs to notice.
  */
 const OPTED_OUT_REASONS = new Set(["unsubscribed", "sms_stop", "suppressed"])
 

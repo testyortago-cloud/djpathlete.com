@@ -51,6 +51,7 @@ import { recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import { sanitiseAnswers, scoreQuiz } from "@/lib/quizzes/score"
+import { quizSubmitterRole } from "@/lib/quizzes/submitter-role"
 import type { QuizDefinition } from "@/lib/quizzes/types"
 
 export const runtime = "nodejs"
@@ -370,6 +371,13 @@ async function handoff(input: {
     }
   }
 
+  // G10. Read from THIS quiz's own branch list, not from a constant assumed
+  // to apply to every quiz — see lib/quizzes/submitter-role.ts.
+  const submitterRole = quizSubmitterRole(
+    definition.branches.map((branch) => branch.key),
+    result.branchKey,
+  )
+
   let contactId: string | null = null
   try {
     const contact = await recordContactEvent({
@@ -389,6 +397,19 @@ async function handoff(input: {
         profile: result.profileKey,
         score: result.score,
         attempt_id: body.attemptId,
+        // G10. Who is filling this in — but ONLY FROM A QUIZ THAT ASKED, and
+        // the key is spread in rather than set, so a quiz that did not ask
+        // records nothing at all. `quizSubmitterRole` owns that judgement;
+        // its header explains why "not the parent branch, therefore an
+        // athlete" is false for the Rotational Performance Index, whose
+        // branches are sports.
+        //
+        // `quiz_key`, `branch` and `tier` above were already allow-listed
+        // keys before this row; they now reach
+        // `sequence_runs.enrolment_metadata` as well as the trigger filter,
+        // with no change here. `profile`, `score` and `attempt_id` are not
+        // on the allow-list and stay on the timeline row only.
+        ...(submitterRole === null ? {} : { role: submitterRole }),
       },
     })
     contactId = contact.contactId

@@ -70,6 +70,15 @@ export type CaptureLeadInput = {
    * stores it fill-only.
    */
   timezone?: string | null
+  /**
+   * G11. The fixed moment this lead's follow-up counts down to —
+   * `events.start_date`, supplied by the two event routes. Passed straight
+   * through to `RecordContactEventInput.anchorAt` and on to
+   * `enrollIfTriggered`, which records why it is a typed argument rather than
+   * a `metadata` key: `metadata` is the visitor's own payload on the funnel
+   * path, and this value decides when mail is sent.
+   */
+  anchorAt?: string | null
   attribution?: {
     gclid?: string | null
     gbraid?: string | null
@@ -105,6 +114,7 @@ export async function captureLead(input: CaptureLeadInput): Promise<string | nul
       attributionSessionId: input.attributionSessionId,
       userId: input.userId,
       timezone: input.timezone,
+      anchorAt: input.anchorAt,
       metadata: { ...(input.metadata ?? {}), ...(input.attribution ?? {}) },
     })
     return contactId

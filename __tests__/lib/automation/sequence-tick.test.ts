@@ -40,6 +40,9 @@ function ctx(over: Partial<DecisionContext> = {}): DecisionContext {
     isSuppressed: false,
     enrolledSource: "funnel_form",
     lastEmail: null,
+    enrolmentMetadata: {},
+    // G11. Not anchored — the normal case for every sequence here.
+    anchorAt: null,
     ...over,
   }
 }
@@ -268,6 +271,74 @@ describe("evaluateBranch", () => {
   it("REFUSES an unknown predicate instead of defaulting to false", () => {
     const result = evaluateBranch({ kind: "phase_of_moon" } as any, ctx())
     expect(result.ok).toBe(false)
+  })
+
+  // G10. `source_is` reads the SEQUENCE's trigger, which is the same value
+  // for everyone in that sequence — so until now nothing could tell a camp
+  // enquiry from a coaching one, or a parent filling a form in from an adult
+  // filling it in for themselves. Both are quoted behaviours.
+  describe("enrolled_metadata_is", () => {
+    const camp = ctx({ enrolmentMetadata: { service: "camp", role: "parent" } })
+
+    it("is true when the run remembers that key with that value", () => {
+      expect(evaluateBranch({ kind: "enrolled_metadata_is", key: "service", value: "camp" }, camp)).toEqual({
+        ok: true,
+        value: true,
+      })
+    })
+
+    it("is false when the run remembers that key with a DIFFERENT value", () => {
+      expect(evaluateBranch({ kind: "enrolled_metadata_is", key: "service", value: "in_person" }, camp)).toEqual({
+        ok: true,
+        value: false,
+      })
+    })
+
+    it("is false — not an error — when the run remembers nothing under that key", () => {
+      // A run enrolled before this shipped, or by a front door that has no
+      // such fact to offer. Failing would turn every pre-00266 run into a
+      // dead run the moment a coach added this branch.
+      expect(evaluateBranch({ kind: "enrolled_metadata_is", key: "event_kind", value: "camp" }, camp)).toEqual({
+        ok: true,
+        value: false,
+      })
+      expect(
+        evaluateBranch({ kind: "enrolled_metadata_is", key: "service", value: "camp" }, ctx({ enrolmentMetadata: {} })),
+      ).toEqual({ ok: true, value: false })
+    })
+
+    it("ignores case and surrounding spaces on both sides", () => {
+      // The stored side is machine-written (`camp`, `parent`, `in_person`);
+      // the compared side is TYPED BY A COACH into a text box. Two values
+      // differing only in case are never two different answers here, and a
+      // silently-never-matching branch is the worst way to find that out.
+      expect(evaluateBranch({ kind: "enrolled_metadata_is", key: "service", value: " Camp " }, camp)).toEqual({
+        ok: true,
+        value: true,
+      })
+      expect(
+        evaluateBranch(
+          { kind: "enrolled_metadata_is", key: "camp_name", value: "summer camp" },
+          ctx({ enrolmentMetadata: { camp_name: "Summer Camp" } }),
+        ),
+      ).toEqual({ ok: true, value: true })
+    })
+
+    it("a blank answer is false, whether or not the run carries that key", () => {
+      // A coach who picks the rule and leaves the box empty must not send
+      // everyone down the "yes" side. Nothing in `evaluateBranch` special-
+      // cases this — it falls out of the comparison, because
+      // `pickEnrolmentMetadata` never stores a blank value — so both halves
+      // are asserted: the key the run HAS and the key it does not.
+      expect(evaluateBranch({ kind: "enrolled_metadata_is", key: "service", value: "" }, camp)).toEqual({
+        ok: true,
+        value: false,
+      })
+      expect(evaluateBranch({ kind: "enrolled_metadata_is", key: "tier", value: "   " }, camp)).toEqual({
+        ok: true,
+        value: false,
+      })
+    })
   })
 })
 

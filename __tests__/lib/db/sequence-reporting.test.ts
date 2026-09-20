@@ -119,6 +119,23 @@ describe("bucketForRun", () => {
     expect(bucketForRun("exited", "sequence_edited")).toBe("other")
   })
 
+  // G14's reason, written by lib/lead-engine/enroll.ts when the person did
+  // something newer and that started a follow-up which replaced the one they
+  // were on. Same argument as the three above: the follow-up was
+  // INTERRUPTED, it did not produce an outcome. Counting it as `finished`
+  // would inflate the completion rate on the screen by exactly the number of
+  // people who were most engaged — the ones who went on to take the quiz or
+  // send an application.
+  it("puts 'superseded' (G14) in other, never in finished", () => {
+    expect(bucketForRun("exited", "superseded")).toBe("other")
+    expect(bucketForRun("exited", "superseded")).not.toBe("finished")
+  })
+
+  it("does not confuse 'superseded' with the opted-out reasons", () => {
+    // They did not ask to stop hearing from us — quite the opposite.
+    expect(bucketForRun("exited", "superseded")).not.toBe("opted_out")
+  })
+
   // Asserted SEPARATELY from the positive case above. A mapping that put
   // "sequence_edited" in "finished" would still make the positive assertion
   // above fail (since "finished" !== "other"), but a reviewer skimming only

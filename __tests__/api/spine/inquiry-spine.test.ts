@@ -201,6 +201,28 @@ describe("POST /api/inquiry — joins the contact spine", () => {
     )
   })
 
+  // G10. Until this shipped the route passed NO event metadata at all, so
+  // every applicant looked identical to the engine and
+  // `service_application_received` could not say one thing to someone asking
+  // about a camp and another to someone asking about coaching.
+  it("carries the service the applicant chose, so a sequence can branch on camp versus coaching", async () => {
+    await post({ ...VALID_BODY, service: "camp" })
+
+    expect(mocks.recordContactEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ service: "camp" }) }),
+    )
+  })
+
+  it("carries whichever service was chosen, not a fixed one", async () => {
+    // The control: an implementation that hard-coded "camp" would satisfy
+    // the test above.
+    await post({ ...VALID_BODY, service: "assessment" })
+
+    expect(mocks.recordContactEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ service: "assessment" }) }),
+    )
+  })
+
   it("passes null for every attribution field when there is nothing to resolve — never invents a value", async () => {
     mocks.getAttributionBySession.mockResolvedValue(null)
 

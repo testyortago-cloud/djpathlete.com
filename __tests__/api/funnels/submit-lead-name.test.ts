@@ -209,3 +209,49 @@ describe("POST /api/funnels/submit — lead name capture", () => {
     expect(createSubmission).toHaveBeenCalledWith(expect.objectContaining({ name: null }))
   })
 })
+
+// ---------------------------------------------------------------------------
+// G10 — who filled the form in.
+//
+// The same field list this suite already exercises answers a second
+// question: a form that asks for a parent's details separately from the
+// athlete's is being filled in by a parent. That reaches
+// `sequence_runs.enrolment_metadata` under `role`, where the
+// `enrolled_metadata_is` branch predicate can read it — so one sequence can
+// write to the person paying and the person training differently.
+// ---------------------------------------------------------------------------
+
+describe("POST /api/funnels/submit — who filled the form in (G10)", () => {
+  it("tells the spine 'parent' when the published form asks for a parent's details", async () => {
+    mockForm(ROLE_FIELDS)
+    await POST(request({ athlete_name: "Riley Audit", parent_name: "Aean Audit" }))
+    await flush()
+
+    expect(captureContactFromSubmission).toHaveBeenCalledWith(expect.objectContaining({ metadata: { role: "parent" } }))
+  })
+
+  it("tells the spine 'athlete' for a plain lead form — the control", async () => {
+    // Without this, an implementation that hard-coded "parent" would pass
+    // the test above.
+    mockForm(FALLBACK_FIELDS)
+    await POST(request({ your_name: "Casey Audit" }))
+    await flush()
+
+    expect(captureContactFromSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: { role: "athlete" } }),
+    )
+  })
+
+  it("reads the PUBLISHED field list, not anything the browser sent", async () => {
+    // The route re-reads the form config from the published step and
+    // discards anything not in it (this file's own header). A submitted
+    // `role` value must therefore change nothing at all.
+    mockForm(FALLBACK_FIELDS)
+    await POST(request({ your_name: "Casey Audit", role: "parent" }))
+    await flush()
+
+    expect(captureContactFromSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: { role: "athlete" } }),
+    )
+  })
+})

@@ -21,6 +21,7 @@
 // Spec: docs/superpowers/specs/2026-08-23-athlete-quiz-funnel-design.md §6
 
 import type { QuizDefinition, QuizOption, QuizProfile, QuizQuestion, QuizTier } from "@/lib/quizzes/types"
+import { QUIZ_NOT_THE_ATHLETE_BRANCH } from "@/lib/quizzes/submitter-role"
 
 /** Cleared the first time a human saves the quiz; drives the editor banner. */
 export const SEED_MARKER = "reconstructed-from-ghl-export-2026-08-23"
@@ -155,7 +156,14 @@ export const RPI_ATHLETE_QUIZ: SeedQuiz = {
     { key: "ceiling_breaker", name: "Ceiling Breaker", description: "Pushing performance to a higher level.", position: 1 },
     { key: "rebuilder", name: "Rebuilder", description: "Coming back from injury or recurring breakdown.", position: 2 },
     { key: "aspiring_pro", name: "Aspiring Pro", description: "Young athlete building toward something serious.", position: 3 },
-    { key: "parent_coach", name: "Parent or Coach", description: "Looking for the right system for an athlete.", position: 4 },
+    // G10: the key comes from lib/quizzes/submitter-role.ts, which is what
+    // reads it back to decide `role`. One definition, so the two cannot drift.
+    {
+      key: QUIZ_NOT_THE_ATHLETE_BRANCH,
+      name: "Parent or Coach",
+      description: "Looking for the right system for an athlete.",
+      position: 4,
+    },
   ],
 
   // `not_sure` sits at position 0 so it is the no-vote fallback — which is
@@ -189,7 +197,11 @@ export const RPI_ATHLETE_QUIZ: SeedQuiz = {
         { label: "I'm an athlete looking to push my performance to a higher level", weight: 0, routesToBranch: "ceiling_breaker" },
         { label: "I'm an athlete coming back from injury or recurring breakdown", weight: 0, routesToBranch: "rebuilder" },
         { label: "I'm a young athlete building toward something serious", weight: 0, routesToBranch: "aspiring_pro" },
-        { label: "I'm a parent or coach looking for the right system for an athlete", weight: 0, routesToBranch: "parent_coach" },
+        {
+          label: "I'm a parent or coach looking for the right system for an athlete",
+          weight: 0,
+          routesToBranch: QUIZ_NOT_THE_ATHLETE_BRANCH,
+        },
       ],
     },
 

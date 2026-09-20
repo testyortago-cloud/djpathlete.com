@@ -510,9 +510,110 @@ describe("timeline label for a cooldown refusal", () => {
   })
 
   it("still reads as a sentence when the metadata is missing", () => {
+    // RETARGETED by G14. This used to expect the cooldown wording ("Not put
+    // BACK into"), which asserts they had been in the sequence and finished
+    // it recently. With three reasons now reaching this kind, a row that
+    // names none of them cannot support that claim, so the fallback says
+    // only what is certainly true. Every row ever written carries a reason,
+    // so this is robustness rather than a path in use.
     const described = describeTimelineEvent(event({ id: "e", kind: "enrolment_skipped", metadata: {} }))
-    expect(described.title).toBe("Not put back into a sequence")
+    expect(described.title).toBe("Not started on a sequence")
     expect(described.detail).toBeNull()
+  })
+
+  it("does not claim a cooldown for a reason invented later", () => {
+    const described = describeTimelineEvent(
+      event({
+        id: "e",
+        kind: "enrolment_skipped",
+        metadata: { sequence_name: "Newsletter welcome", reason: "some_future_reason" },
+      }),
+    )
+    expect(described.title).toBe("Not started on “Newsletter welcome”")
+    expect(described.detail).toBeNull()
+    // The specific, wrong claim the old fallback would have made.
+    expect(described.title).not.toContain("put back")
+  })
+})
+
+// G14. The same timeline kind now carries three reasons, and they are three
+// different things to a coach: "we already sent them this recently", "they
+// are in the middle of something else", and "one action, one follow-up".
+describe("timeline label for the one-sequence-at-a-time refusals", () => {
+  it("says which sequence is in the way, by name", () => {
+    const described = describeTimelineEvent(
+      event({
+        id: "e",
+        kind: "enrolment_skipped",
+        metadata: {
+          sequence_name: "Newsletter welcome",
+          reason: "already_in_a_sequence",
+          blocking_sequence_name: "Quiz — Rebuilder",
+        },
+      }),
+    )
+    // "Not STARTED", not "not put BACK into": they were never in this one.
+    expect(described.title).toBe("Not started on “Newsletter welcome”")
+    expect(described.detail).toContain("Quiz — Rebuilder")
+    expect(described.detail).toContain("only one follow-up runs at a time")
+  })
+
+  it("falls back to the blocking sequence's key when it has no name", () => {
+    const described = describeTimelineEvent(
+      event({
+        id: "e",
+        kind: "enrolment_skipped",
+        metadata: {
+          sequence_name: "Newsletter welcome",
+          reason: "already_in_a_sequence",
+          blocking_sequence_name: null,
+          blocking_sequence_key: "quiz_rebuilder",
+        },
+      }),
+    )
+    expect(described.detail).toContain("quiz_rebuilder")
+  })
+
+  it("still says something useful when the blocking sequence could not be read at all", () => {
+    // `describeSequence` returns nulls rather than throwing, so this row is
+    // reachable — and "already in another follow-up" is still worth saying.
+    const described = describeTimelineEvent(
+      event({
+        id: "e",
+        kind: "enrolment_skipped",
+        metadata: { sequence_name: "Newsletter welcome", reason: "already_in_a_sequence" },
+      }),
+    )
+    expect(described.detail).toContain("another follow-up")
+    expect(described.detail).not.toContain("null")
+    expect(described.detail).not.toContain("undefined")
+  })
+
+  it("distinguishes a second sequence matching the SAME action", () => {
+    const described = describeTimelineEvent(
+      event({
+        id: "e",
+        kind: "enrolment_skipped",
+        metadata: { sequence_name: "Quiz — Aspiring Pro", reason: "already_enrolled_this_event" },
+      }),
+    )
+    expect(described.title).toBe("Not started on “Quiz — Aspiring Pro”")
+    expect(described.detail).toBe("The same action had already started a different follow-up for them.")
+  })
+
+  it("a cooldown row is unchanged by any of this — the control", () => {
+    // The three arms are keyed on `reason`, so the oldest one must not have
+    // been captured by a later branch.
+    const described = describeTimelineEvent(
+      event({
+        id: "e",
+        kind: "enrolment_skipped",
+        metadata: { sequence_name: "Abandoned checkout", reason: "cooldown", cooldown_days: 1 },
+      }),
+    )
+    expect(described.title).toBe("Not put back into “Abandoned checkout”")
+    // Singular: "within the last day", not "within the last 1 days".
+    expect(described.detail).toContain("within the last day")
   })
 })
 

@@ -82,3 +82,84 @@ export function parseStageConfig(config: Record<string, unknown>): ParseResult<S
   }
   return { ok: true, value: { stageKey, pipelineKey } }
 }
+
+/**
+ * G11. How long an ANCHORED wait holds: `N` days before the run's
+ * `anchor_at`, rather than N minutes after the run reached the step.
+ *
+ * `daysBeforeAnchor` counts BACKWARDS, so 14 means "fourteen days before the
+ * camp" and 0 means "the moment the camp starts". There is deliberately no way
+ * to say "after" — see `parseWaitConfig`.
+ */
+export type WaitAnchorConfig = { daysBeforeAnchor: number }
+
+/**
+ * The furthest ahead an anchored wait may be set.
+ *
+ * An anchored wait writes `next_run_at` DIRECTLY, so a mistyped 3650 would
+ * park a run until 2036 with no error on the run, nothing in the logs and no
+ * failed status — invisible until somebody wondered why a camp sequence never
+ * sent. A refusal at the decision is loud instead: it fails the run, and the
+ * sentence lands on `sequence_runs.last_error`, which the contact detail page
+ * renders beside the run.
+ *
+ * Two years, because a camp booked eighteen months out is a real thing and a
+ * reminder more than two years before one is not.
+ */
+export const WAIT_ANCHOR_MAX_DAYS_BEFORE = 730
+
+/**
+ * `{ "wait_until": { "days_before_anchor": 14 } }`, or `null` when this is an
+ * ordinary `wait_minutes` step.
+ *
+ * NULL IS NOT A REFUSAL, AND THAT DISTINCTION IS THE WHOLE SIGNATURE. Almost
+ * every `wait` step in the product has no `wait_until` at all, and returning
+ * `{ok:false}` for those would fail every existing sequence the moment this
+ * shipped. So: absent → `null` → the caller uses `wait_minutes` exactly as
+ * before. Present but malformed → `{ok:false}` → the run fails visibly,
+ * because a step that MEANT to be anchored and cannot be read must never
+ * quietly degrade into "wait zero minutes, so send now". That degrade is the
+ * dangerous direction: it fires a "3 days to go" email at an arbitrary moment.
+ *
+ * `config` is `jsonb` with no CHECK constraint behind it, so every shape
+ * rejected below is reachable from a hand-edited row, a migration, or an
+ * older client. None of them can be assumed away.
+ */
+export function parseWaitConfig(config: Record<string, unknown>): ParseResult<WaitAnchorConfig> | null {
+  const raw = config.wait_until
+  if (raw === undefined) return null
+
+  // Present-but-unusable is a fault, not an absence. `typeof null === "object"`
+  // and an array is an object too, so both are excluded explicitly rather than
+  // left to fall through into the property read below.
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { ok: false, error: "This sequence's wait step does not say when to send, in a way we can read." }
+  }
+
+  const days = (raw as { days_before_anchor?: unknown }).days_before_anchor
+  // `Number.isInteger` rather than `typeof === "number"`: it rejects NaN,
+  // Infinity and 2.5 in one check. A fraction is not a day, and NaN or
+  // Infinity would each produce an Invalid Date and park the run forever.
+  if (!Number.isInteger(days)) {
+    return { ok: false, error: "This sequence's wait step does not say how many days before the event to send." }
+  }
+
+  const value = days as number
+  if (value < 0) {
+    // A deadline chaser that fires AFTER the deadline is the one thing this
+    // row exists to stop. If "after the event" is ever wanted, it needs its
+    // own key, so that it is a decision somebody made rather than a sign error.
+    return {
+      ok: false,
+      error: "This sequence's wait step counts days before the event, so it cannot be a negative number.",
+    }
+  }
+  if (value > WAIT_ANCHOR_MAX_DAYS_BEFORE) {
+    return {
+      ok: false,
+      error: `This sequence's wait step says more than ${WAIT_ANCHOR_MAX_DAYS_BEFORE} days before the event, which is further ahead than we can plan for.`,
+    }
+  }
+
+  return { ok: true, value: { daysBeforeAnchor: value } }
+}

@@ -9,6 +9,7 @@ import {
   type SavedStep,
   type RunPointer,
 } from "@/lib/lead-engine/step-list"
+import { ENROLMENT_METADATA_MAX_VALUE_LENGTH } from "@/lib/lead-engine/enrolment-metadata"
 
 /** The messages only, for terser assertions. */
 const messages = (steps: StepDraft[]) => validateStepList(steps).map((p) => p.message)
@@ -128,6 +129,35 @@ describe("validateStepList — the shapes the database would reject anyway", () 
     expect(messages([step("wait", { wait_minutes: 0 })])).toHaveLength(1)
   })
 
+  it("accepts an anchored wait with no wait_minutes at all (G11)", () => {
+    // An anchored wait says WHEN, not HOW LONG, so demanding wait_minutes of
+    // it would make the countdown unsaveable through the editor — which is
+    // what the rule above did before G11. Migration 00268 widens the matching
+    // database CHECK in the same direction.
+    expect(
+      messages([step("wait", { wait_minutes: null, config: { wait_until: { days_before_anchor: 14 } } })]),
+    ).toEqual([])
+  })
+
+  it("still rejects an anchored wait whose offset cannot be read", () => {
+    // Saving it would put a step in the database that fails the run at 3am
+    // instead of failing the save now. The sentence is the parser's own, so
+    // the editor and the tick say the same thing.
+    expect(messages([step("wait", { wait_minutes: null, config: { wait_until: { days_before_anchor: -3 } } })])).toEqual(
+      ["This sequence's wait step counts days before the event, so it cannot be a negative number."],
+    )
+  })
+
+  it("rejects an anchored wait that is malformed even when wait_minutes IS set", () => {
+    // The trap: a half-converted step with a leftover wait_minutes must not
+    // have its broken anchor forgiven just because the old column is filled
+    // in. The tick ignores wait_minutes entirely once wait_until is present,
+    // so a save that passed here would send at a time nobody chose.
+    expect(messages([step("wait", { wait_minutes: 60, config: { wait_until: { days_before_anchor: 2.5 } } })])).toEqual([
+      "This sequence's wait step does not say how many days before the event to send.",
+    ])
+  })
+
   it("rejects a split with no question attached", () => {
     expect(messages([step("branch", { branch_condition: null })])).toEqual([expect.stringMatching(/which people|question/i)])
   })
@@ -146,6 +176,62 @@ describe("validateStepList — the shapes the database would reject anyway", () 
     // unknown kind does, not be waved through because the kind matched.
     const bogus = { kind: "has_consent", channel: "fax" } as unknown as StepDraft["branch_condition"]
     expect(messages([step("branch", { branch_condition: bogus })])).toHaveLength(1)
+  })
+
+  // G10. Same shape of rule as the consent channel above, twice over: the
+  // KIND matching is not enough, because both of this predicate's arguments
+  // can be wrong in a way `evaluateBranch` answers "false" to. A branch that
+  // is false forever is indistinguishable, on the reporting screen, from a
+  // branch nobody happens to match.
+  it("accepts an enrolment-metadata split whose key is one something writes", () => {
+    expect(
+      validateStepList([
+        step("branch", { branch_condition: { kind: "enrolled_metadata_is", key: "service", value: "camp" } }),
+        step("stop"),
+        step("stop"),
+      ]),
+    ).toEqual([])
+  })
+
+  it("rejects an enrolment-metadata split whose key nothing ever writes", () => {
+    const bogus = {
+      kind: "enrolled_metadata_is",
+      key: "favourite_colour",
+      value: "blue",
+    } as unknown as StepDraft["branch_condition"]
+    expect(messages([step("branch", { branch_condition: bogus })])).toHaveLength(1)
+  })
+
+  it("rejects an enrolment-metadata split with a blank or whitespace answer", () => {
+    const blank = {
+      kind: "enrolled_metadata_is",
+      key: "service",
+      value: "   ",
+    } as unknown as StepDraft["branch_condition"]
+    expect(messages([step("branch", { branch_condition: blank })])).toHaveLength(1)
+  })
+
+  it("rejects an answer longer than the column's own cap, in English rather than as a 400", () => {
+    // `branchConditionSchema` caps this too, but the save route answers a
+    // flat "Invalid request body." naming no field — so without the rule
+    // HERE, Save stays enabled and the coach gets an unactionable error.
+    const over = {
+      kind: "enrolled_metadata_is",
+      key: "camp_name",
+      value: "c".repeat(ENROLMENT_METADATA_MAX_VALUE_LENGTH + 1),
+    } as unknown as StepDraft["branch_condition"]
+    expect(messages([step("branch", { branch_condition: over })])).toHaveLength(1)
+
+    // The control: one character shorter is fine, so this is a boundary and
+    // not a blanket refusal of long-ish answers.
+    const atLimit = {
+      kind: "enrolled_metadata_is",
+      key: "camp_name",
+      value: "c".repeat(ENROLMENT_METADATA_MAX_VALUE_LENGTH),
+    } as unknown as StepDraft["branch_condition"]
+    expect(
+      validateStepList([step("branch", { branch_condition: atLimit }), step("stop"), step("stop")]),
+    ).toEqual([])
   })
 
   it("rejects a label step with no label, using step-config's own wording", () => {
