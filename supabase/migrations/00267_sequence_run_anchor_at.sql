@@ -1,0 +1,98 @@
+-- 00267 — sequence_runs.anchor_at (Lead Engine gap G11)
+--
+-- WHAT IS WRONG WITHOUT IT. Every wait in the engine is ENROLMENT-RELATIVE:
+-- `sequence_steps.wait_minutes` counts from the moment the run reached the
+-- step. That is right for a welcome sequence and wrong for a deadline. The
+-- quotation sells "14 / 7 / 3 / 1 days before the camp", and what
+-- `camp_clinic_deadline` actually does today is "now, then two days later,
+-- then five days after that" — so somebody who signs up four months out gets
+-- the whole countdown in the first fortnight and silence for the rest, while
+-- somebody who signs up the night before gets "two weeks to go" the next
+-- morning. The sequence cannot express the thing it is named after.
+--
+-- THE ANCHOR is the fixed moment the countdown hangs off: `events.start_date`
+-- for an `event_signup` enrolment. Stored ON THE RUN rather than looked up
+-- through the event, for two reasons. The run already knows nothing about
+-- which event enrolled it (there is no `sequence_runs.event_id`, and adding
+-- one would be a second reader of a table the tick has no business joining),
+-- and a camp whose date MOVES must not silently re-time a countdown that is
+-- already part-way sent. The anchor is what the countdown was promised
+-- against; re-anchoring is a decision, not a side effect.
+--
+-- THE WRITER is `insertSequenceRun` in lib/lead-engine/enroll.ts — the same
+-- single insert point 00266 names, shared by the triggered and manual paths.
+-- It takes `anchorAt` as an explicit typed argument threaded from the route
+-- (`captureLead` → `recordContactEvent` → `enrollIfTriggered`).
+--
+-- DELIBERATELY NOT THROUGH THE METADATA BAG, and this is the one design note
+-- worth reading twice. `enrollIfTriggered`'s `metadata` is, on the funnel
+-- path, the visitor's ENTIRE typed payload (lib/funnels/capture-contact.ts
+-- passes `payload` straight through), and funnel field names are owner-chosen
+-- and validated only as `^[a-z][a-z0-9_]{0,39}$`. An owner CAN name a field
+-- `event_start_date`, after which a stranger types the value. `anchor_at`
+-- decides WHEN mail is sent, so it travels as a typed parameter no visitor
+-- payload can reach. `pickEnrolmentMetadata`'s allow-list would have stopped
+-- it being STORED, but it would not have stopped it being USED.
+--
+-- THE READER is the `wait` case of `decideStep` (lib/automation/sequence-tick.ts),
+-- via `DecisionContext.anchorAt`, filled by `loadRunContext` (lib/db/sequences.ts)
+-- from the claimed run row. A `wait` step whose `config.wait_until` says
+-- `{days_before_anchor: N}` sets `next_run_at = anchor_at - N days`.
+--
+-- NULLABLE, unlike 00266's jsonb, because "this run has no anchor" is a real
+-- and common state with its own behaviour, not an empty version of a value.
+-- Almost every run in the product is not anchored to anything, and an
+-- anchored WAIT that meets a run with no anchor EXITS it with the reason
+-- `not_anchored` rather than sending: a countdown with nothing to count down
+-- to has no correct message. EXITED AND NOT COMPLETED, deliberately — a
+-- completed run counts towards the re-enrolment cooldown, so completing here
+-- would lock a hand-enrolled contact out of the sequence their real signup
+-- would otherwise have started.
+-- A sentinel date would have made "not anchored" indistinguishable from "the
+-- epoch", which is a moment in the past and would fire everything at once.
+--
+-- A CONSEQUENCE THAT IS NOT A BUG BUT IS NOT OBVIOUS EITHER: anchored runs
+-- LIVE MUCH LONGER. A `camp_clinic_deadline` run used to finish about ten days
+-- after enrolment; one enrolled five months before a camp now stays `active`
+-- for five months. Three existing rules were calibrated for short runs and now
+-- meet long ones:
+--   * `sequence_runs_one_active_per_sequence` (00216) means a SECOND camp
+--     signup while the first run is still counting down is refused by the
+--     unique index and superseded by nothing, so that person gets no follow-up
+--     for the second camp at all. Before this change the first run had long
+--     since completed.
+--   * G14's "one sequence at a time" refuses every non-superseding source
+--     (`funnel_form`, `newsletter`, `lead_magnet`, …) for as long as a run is
+--     live — now months rather than days.
+--   * `siblingRunDefer` re-defers a younger run five minutes at a time for the
+--     whole life of an older one.
+-- None of these is introduced here and none is silently wrong; they are the
+-- pre-existing rules meeting a much longer run. Recorded so the next person to
+-- see "why did this lead enrol into nothing" has the answer in one place.
+--
+-- NO INDEX. The only reader loads a run row already claimed by primary key;
+-- nothing queries BY this column. `claim_sequence_runs` orders on
+-- `next_run_at`, which is where the anchor has already been written to by the
+-- time claiming matters.
+--
+-- NO business_id: `sequence_runs` carries one since 00216, and the reader
+-- reaches this column through a row already scoped by it.
+--
+-- DEPLOY RACE, the same one 00266 documents and handled the same way. Vercel
+-- and the migration workflow race on merge to main, so the code alongside
+-- this runs for one deploy against a table WITHOUT the column:
+--   - the write: `insertSequenceRun` retries without the key on PGRST204 /
+--     42703, so an enrolment inside the window still creates its run. It is
+--     then un-anchored, and an anchored wait EXITS it (`not_anchored`) rather
+--     than sending at a guessed time — the fail-quiet direction. Exited and
+--     not completed, so the cooldown does not lock the person out afterwards.
+--   - the read: `claim_sequence_runs` (00217/00256) is
+--     `RETURNS SETOF public.sequence_runs ... RETURNING r.*`, so it picks the
+--     column up with no function change. Before the migration the key is
+--     simply absent, and `loadRunContext` reads it as `?? null`.
+
+ALTER TABLE public.sequence_runs
+  ADD COLUMN IF NOT EXISTS anchor_at timestamptz;
+
+COMMENT ON COLUMN public.sequence_runs.anchor_at IS
+  'G11. The fixed moment this run''s countdown hangs off — events.start_date for an event_signup enrolment. Written by lib/lead-engine/enroll.ts (insertSequenceRun) from an explicit typed argument, never from the event metadata bag. Read by decideStep''s wait case, where a step config of {wait_until:{days_before_anchor:N}} means next_run_at = anchor_at - N days. NULL means this run is not anchored, and an anchored wait EXITS such a run with reason not_anchored rather than sending — exited and not completed, so the re-enrolment cooldown forgives it.';

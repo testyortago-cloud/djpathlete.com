@@ -115,6 +115,13 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       // people who have already paid. What ships is only what a branch can
       // read once they are enrolled by some other trigger.
       metadata: { event_kind: event.type, camp_name: event.title },
+      // G11. Stamped even though this route's own trigger filter keeps a PAID
+      // registration out of `camp_clinic_deadline`. The anchor belongs to the
+      // run, not to one sequence: a paid registrant can still be enrolled
+      // into some other event sequence, and a run that arrives at an anchored
+      // wait with no anchor completes silently. Recording the camp's date
+      // here costs one column and removes that whole class of surprise.
+      anchorAt: event.start_date,
     })
 
     // SMS consent (Lead Engine Stage 4). AWAITED — NOT fire-and-forget like

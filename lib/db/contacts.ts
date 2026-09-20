@@ -116,6 +116,12 @@ export type RecordContactEventInput = {
   /** See `UpsertContactIdentityInput.timezone` — passed straight through. */
   timezone?: string | null
   metadata?: Record<string, unknown>
+  /**
+   * G11. `events.start_date` when this event is an event signup — the moment
+   * an anchored `wait` counts down to. Passed straight through to
+   * `enrollIfTriggered`, which explains why it is not a `metadata` key.
+   */
+  anchorAt?: string | null
   businessId: string
 }
 
@@ -684,7 +690,16 @@ export async function recordContactEvent(
   // thrown value: a unique-index violation on contacts embeds the literal
   // email address in `details`; `code` and `message` are safe.
   try {
-    await enrollIfTriggered({ contactId, source: input.source, metadata: input.metadata, businessId })
+    await enrollIfTriggered({
+      contactId,
+      source: input.source,
+      metadata: input.metadata,
+      businessId,
+      // G11. Typed and separate from `metadata` on purpose — see
+      // `enrollIfTriggered`'s own note. `metadata` is attacker-influenced on
+      // the funnel path; this decides when mail is sent.
+      anchorAt: input.anchorAt,
+    })
   } catch (err) {
     const pgErr = err as { code?: unknown; message?: unknown } | null | undefined
     console.error(`recordContactEvent: enrolment failed for contact ${contactId} (source: ${input.source})`, {

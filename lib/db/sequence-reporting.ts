@@ -124,6 +124,18 @@ export const OUTCOME_BUCKETS: readonly OutcomeBucket[] = [
  * own for the same reason as the three above: the follow-up did not produce
  * an outcome, it was interrupted. `other` is the honest answer, and reporting
  * it as `finished` would inflate every completion rate on the screen.
+ *
+ * A FIFTH, added by G11 (2026-09-20), written by TypeScript:
+ *
+ *   not_anchored   lib/automation/sequence-tick.ts (the `wait` case)
+ *
+ * Written when a run reaches a wait that counts down to an event date and the
+ * run has no `anchor_at` — a hand-enrolled contact, a run from before
+ * migration 00267, or an anchored wait added to a sequence no event triggers.
+ * `other`, never `finished`, and the distinction matters more here than
+ * anywhere else on this list: these runs are the signature of a
+ * MISCONFIGURATION, and counting them as completed would hide exactly the
+ * thing a coach needs to notice.
  */
 const OPTED_OUT_REASONS = new Set(["unsubscribed", "sms_stop", "suppressed"])
 

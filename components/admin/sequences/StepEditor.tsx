@@ -51,6 +51,9 @@ import {
   type EnrolmentMetadataKey,
 } from "@/lib/lead-engine/enrolment-metadata"
 import { useStepEditorDirty } from "@/components/admin/sequences/StepEditorDirtyContext"
+// G11. The one ceiling, shared with `validateStepList` and the tick so the
+// number the box shows is the number the save enforces.
+import { WAIT_ANCHOR_MAX_DAYS_BEFORE } from "@/lib/lead-engine/step-config"
 
 /** Table order from the brief, kept as the one true order for every kind picker on this screen. */
 const STEP_KIND_ORDER: StepKind[] = ["email", "sms", "wait", "branch", "tag", "stage", "alert", "stop"]
@@ -300,6 +303,13 @@ function removedSentSentence(n: number): string {
 interface StepEditorProps {
   sequenceKey: string
   sequenceName: string
+  /**
+   * G11. `sequences.trigger_source`, so the wait step can warn when a
+   * countdown cannot work in this sequence. Optional so that the many tests
+   * that render this editor without one keep compiling; absent reads as
+   * "nothing triggers it", which is the warning-on side.
+   */
+  triggerSource?: string | null
   /** Loaded from lib/db/sequence-admin.ts's loadSequenceForEdit — the editable shape, in position order. */
   initialSteps: StepDraft[]
   /** Same call's `.steps` — id + position only, the "old" side planStepSave needs. */
@@ -313,6 +323,7 @@ interface StepEditorProps {
 export function StepEditor({
   sequenceKey,
   sequenceName,
+  triggerSource = null,
   initialSteps,
   oldSteps,
   runs,
@@ -449,6 +460,7 @@ export function StepEditor({
             total={steps.length}
             allSteps={steps}
             sentCount={step.id ? (sentCountByStepId[step.id] ?? 0) : 0}
+            triggerSource={triggerSource}
             onChange={(patch) => updateStep(step._key, patch)}
             onChangeKind={(kind) => changeKind(step._key, kind)}
             onMoveUp={() => moveStep(index, -1)}
@@ -498,6 +510,7 @@ function StepCard({
   total,
   allSteps,
   sentCount,
+  triggerSource,
   onChange,
   onChangeKind,
   onMoveUp,
@@ -509,6 +522,8 @@ function StepCard({
   total: number
   allSteps: EditableStep[]
   sentCount: number
+  /** G11. What starts this sequence — decides whether a countdown can work here. */
+  triggerSource: string | null
   onChange: (patch: Partial<EditableStep>) => void
   onChangeKind: (kind: StepKind) => void
   onMoveUp: () => void
@@ -617,17 +632,7 @@ function StepCard({
         ) : null}
 
         {step.kind === "wait" ? (
-          <div>
-            <Label htmlFor={`${step._key}-wait`}>How many minutes to wait</Label>
-            <Input
-              id={`${step._key}-wait`}
-              type="number"
-              min={1}
-              value={step.wait_minutes ?? ""}
-              onChange={(e) => onChange({ wait_minutes: e.target.value === "" ? null : Number(e.target.value) })}
-              className="mt-1 w-32"
-            />
-          </div>
+          <WaitFields step={step} index={index} triggerSource={triggerSource} onChange={onChange} />
         ) : null}
 
         {step.kind === "branch" ? (
@@ -681,6 +686,161 @@ function StepCard({
           </>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+/** The default a countdown opens on — the first reminder in the 14/7/3 shape. */
+const DEFAULT_DAYS_BEFORE_ANCHOR = 14
+
+/**
+ * G11. The `sequences.trigger_source` values that actually supply an anchor.
+ *
+ * ONE ENTRY TODAY, and it is a fact about the CODE, not a preference: only
+ * `app/api/events/[id]/signup/route.ts` and `.../checkout/route.ts` pass
+ * `anchorAt` into `captureLead`, and they both do it from `events.start_date`.
+ * Every other front door leaves `sequence_runs.anchor_at` null, so an
+ * anchored wait in one of their sequences ends every run at that step with
+ * `not_anchored`.
+ *
+ * Add to this list ONLY when a route actually starts supplying an anchor —
+ * a source named here without a writer turns a true warning into a false
+ * reassurance, which is worse than no warning at all.
+ */
+const SEQUENCE_SOURCES_WITH_AN_ANCHOR = new Set(["event_signup"])
+
+/**
+ * G11. A wait says either HOW LONG or WHEN, and this is where a coach chooses.
+ *
+ * TWO MODES, ONE STORED SHAPE. "After the last step" is `wait_minutes` and an
+ * empty `config`; "Before the event" is `config.wait_until` and a NULL
+ * `wait_minutes`. Switching clears the other one rather than leaving it
+ * behind, because the tick ignores `wait_minutes` entirely once `wait_until`
+ * is present — a leftover 60 would sit in the row reading like the answer
+ * while changing nothing. Migration 00268 only stops a wait having NEITHER,
+ * so the database would happily keep both; this is the only thing that does
+ * not.
+ *
+ * The days box is allowed to be EMPTY while a coach is typing, which stores
+ * `{}` under `wait_until` and makes `validateStepList` refuse the save. That
+ * is the same shape the metadata branch uses for its blank answer: visible,
+ * blocking, and impossible to save half-finished.
+ */
+function WaitFields({
+  step,
+  index,
+  triggerSource,
+  onChange,
+}: {
+  step: EditableStep
+  index: number
+  triggerSource: string | null
+  onChange: (patch: Partial<EditableStep>) => void
+}) {
+  const waitUntil = step.config.wait_until
+  // `!== undefined` ONLY, matching `parseWaitConfig`'s own test exactly.
+  //
+  // An earlier version also excluded null, which put the two out of step: a
+  // stored `{"wait_until": null}` rendered the MINUTES box while the parser
+  // called it a malformed anchor, so Save was blocked by a sentence about a
+  // field that was not on screen, and selecting "after" while it already read
+  // "after" fires no change event — leaving no way out of the error. Not
+  // reachable from this UI, but reachable from a hand-edited row or an older
+  // client, and "the editor and the tick must reject exactly the same shapes"
+  // is the rule `step-config.ts`'s header is built on.
+  const isAnchored = waitUntil !== undefined
+  const days =
+    typeof (waitUntil as { days_before_anchor?: unknown } | undefined)?.days_before_anchor === "number"
+      ? String((waitUntil as { days_before_anchor: number }).days_before_anchor)
+      : ""
+
+  function setMode(mode: string) {
+    if (mode === "before_event") {
+      onChange({ wait_minutes: null, config: { wait_until: { days_before_anchor: DEFAULT_DAYS_BEFORE_ANCHOR } } })
+    } else {
+      // Back to a usable ordinary wait. Restoring the 60-minute default
+      // rather than null matters: a wait with neither is refused by
+      // validateStepList, so leaving it empty would trap the coach behind an
+      // error produced by the act of changing their mind.
+      onChange({ wait_minutes: 60, config: {} })
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <Label htmlFor={`${step._key}-wait-mode`}>When to send</Label>
+        <select
+          id={`${step._key}-wait-mode`}
+          aria-label={`Step ${index + 1} when to send`}
+          value={isAnchored ? "before_event" : "after"}
+          onChange={(e) => setMode(e.target.value)}
+          className="mt-1 h-9 w-full rounded-lg border border-border bg-white px-3 text-sm text-foreground sm:w-72"
+        >
+          <option value="after">Wait a length of time</option>
+          <option value="before_event">A set number of days before the event</option>
+        </select>
+      </div>
+
+      {isAnchored ? (
+        <div>
+          <Label htmlFor={`${step._key}-wait-days`}>How many days before the event</Label>
+          <Input
+            id={`${step._key}-wait-days`}
+            type="number"
+            min={0}
+            // The same ceiling `parseWaitConfig` enforces. Without it the
+            // field accepted 3650 and then Save was blocked by a sentence
+            // naming a limit the box had never mentioned — the browser now
+            // says so at the point of typing. `max` is a hint, not a
+            // guarantee (it does not stop a pasted value), so the parser
+            // remains the real check.
+            max={WAIT_ANCHOR_MAX_DAYS_BEFORE}
+            value={days}
+            onChange={(e) =>
+              onChange({
+                config:
+                  e.target.value === ""
+                    ? { wait_until: {} }
+                    : { wait_until: { days_before_anchor: Number(e.target.value) } },
+              })
+            }
+            className="mt-1 w-32"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Counts back from the start of the camp or clinic the person signed up for. Everybody gets this message at
+            the same moment, whenever they signed up. If someone signs up after this moment has already gone, they skip
+            it — and anything else waiting on it — and carry on from the next message that is still ahead. Anyone you
+            added to this sequence by hand has no event date, so their follow-up stops here.
+          </p>
+          {!SEQUENCE_SOURCES_WITH_AN_ANCHOR.has(triggerSource ?? "") ? (
+            <p className="mt-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground">
+              <strong>This follow-up does not start from a camp or clinic signup,</strong> so nobody in it has an event
+              date to count back from. If you save this, everyone in this follow-up will stop at this step and get
+              nothing after it. Use “Wait a length of time” here instead, unless you are about to change what starts
+              this follow-up.
+            </p>
+          ) : null}
+          {triggerSource !== null && SEQUENCE_SOURCES_WITH_AN_ANCHOR.has(triggerSource) ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              People already part-way through this follow-up who joined before today have no event date saved, so they
+              will stop here too.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div>
+          <Label htmlFor={`${step._key}-wait`}>How many minutes to wait</Label>
+          <Input
+            id={`${step._key}-wait`}
+            type="number"
+            min={1}
+            value={step.wait_minutes ?? ""}
+            onChange={(e) => onChange({ wait_minutes: e.target.value === "" ? null : Number(e.target.value) })}
+            className="mt-1 w-32"
+          />
+        </div>
+      )}
     </div>
   )
 }

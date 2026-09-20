@@ -20,7 +20,7 @@
 // sequence_steps_position_uniq.
 
 import type { StepKind, BranchCondition } from "@/lib/automation/sequence-tick"
-import { parseTagConfig, parseStageConfig } from "@/lib/lead-engine/step-config"
+import { parseTagConfig, parseStageConfig, parseWaitConfig } from "@/lib/lead-engine/step-config"
 import { isEnrolmentMetadataKey, ENROLMENT_METADATA_MAX_VALUE_LENGTH } from "@/lib/lead-engine/enrolment-metadata"
 
 export type StepDraft = {
@@ -165,11 +165,21 @@ export function validateStepList(steps: StepDraft[]): StepProblem[] {
           problems.push({ index, message: "This text has nothing written in it." })
         }
         break
-      case "wait":
-        if (step.wait_minutes === null || step.wait_minutes <= 0) {
+      case "wait": {
+        // G11. A wait says either HOW LONG (wait_minutes) or WHEN
+        // (config.wait_until, counting down to the run's anchor). The anchored
+        // form is checked FIRST and wins outright, because the tick ignores
+        // wait_minutes entirely once wait_until is present — so forgiving a
+        // broken anchor because a leftover wait_minutes happens to be filled
+        // in would save a step that sends at a time nobody chose.
+        const anchored = parseWaitConfig(step.config)
+        if (anchored !== null) {
+          if (!anchored.ok) problems.push({ index, message: anchored.error })
+        } else if (step.wait_minutes === null || step.wait_minutes <= 0) {
           problems.push({ index, message: "This wait does not say how long to wait for." })
         }
         break
+      }
       case "branch":
         if (!branchConditionIsKnown(step.branch_condition)) {
           problems.push({ index, message: "This split does not say which people go down each side." })

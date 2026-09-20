@@ -41,6 +41,8 @@ function ctx(over: Partial<DecisionContext> = {}): DecisionContext {
     enrolledSource: "funnel_form",
     lastEmail: null,
     enrolmentMetadata: {},
+    // G11. Not anchored — the normal case for every sequence here.
+    anchorAt: null,
     ...over,
   }
 }

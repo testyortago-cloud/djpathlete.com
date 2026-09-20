@@ -8,6 +8,14 @@ import { createServiceRoleClient } from "@/lib/supabase"
 import type { ContactEventSource } from "@/lib/db/contacts"
 import { pickEnrolmentMetadata, type EnrolmentMetadata } from "@/lib/lead-engine/enrolment-metadata"
 import { exitRun } from "@/lib/db/sequences"
+// G11. The constant only, from the module that WRITES this reason. Importing
+// it rather than re-typing the string is what stops the tick and the cooldown
+// drifting apart — they are 800 lines and two directories away from each
+// other, and a typo here would silently restore the lockout this forgiveness
+// exists to prevent. `sequence-tick.ts` is pure (its own header forbids it
+// from importing any IO), so this direction adds no cycle and pulls in
+// nothing.
+import { NOT_ANCHORED_EXIT_REASON } from "@/lib/automation/sequence-tick"
 
 function getClient() {
   return createServiceRoleClient()
@@ -188,6 +196,25 @@ async function hasRunFinishedWithin(args: {
     // again for something ordinary (the newsletter); the dangerous case is
     // a chaser re-arming itself.
     if (run.exit_reason === SUPERSEDED_EXIT_REASON && !args.triggerSupersedes) return false
+    // G11, and the same principle as `failed` above: a run that ended because
+    // it could not RUN must not also lock the person out of the repaired one.
+    // `not_anchored` means the run met a countdown with no event date behind
+    // it — a hand-enrolment, or a run from before migration 00267 — and sent
+    // nothing after the step it died on.
+    //
+    // WITHOUT THIS, the harm is concrete and lands on a real person: a coach
+    // hand-enrols a parent into `camp_clinic_deadline` on the 1st, the run
+    // ends `not_anchored` the same day, and the parent's ACTUAL camp signup a
+    // week later is refused by the 30-day cooldown. They asked for a camp and
+    // received no countdown for it, because of a run we ended ourselves.
+    //
+    // Unconditional, unlike the `superseded` case above, which had to be
+    // narrowed to non-superseding triggers so a chaser could not re-arm
+    // itself. There is no such loop here: a `not_anchored` run sent nothing
+    // and cannot be re-created by the same fault, because the only way to get
+    // a second one is a second enrolment that ALSO has no anchor — which
+    // ends the same way, harmlessly, having sent nothing.
+    if (run.exit_reason === NOT_ANCHORED_EXIT_REASON) return false
     // `completed_at` first: it is the moment the run ended. `updated_at`
     // is the fallback because the merge RPC (migrations 00217/00220/00238)
     // exits the lagging run with `updated_at = now()` and no
@@ -389,20 +416,22 @@ async function supersedeRuns(args: { runIds: string[]; contactId: string; replac
  * function does not see the raw event bag and must never be given it.
  *
  * THE RETRY IS THE DEPLOY RACE, NOT A GENERAL FALLBACK. On a schema that has
- * no `enrolment_metadata` column yet, naming it would 500 the insert, and
- * `recordContactEvent` treats a failed enrolment as non-fatal — so every
- * lead captured in that window would keep its contact row and silently never
- * start its sequence. Retrying once WITHOUT the key costs that window its
- * metadata and nothing else.
+ * no `enrolment_metadata` column (00266) or no `anchor_at` (00267) yet,
+ * naming either would 500 the insert, and `recordContactEvent` treats a
+ * failed enrolment as non-fatal — so every lead captured in that window would
+ * keep its contact row and silently never start its sequence. Retrying once
+ * WITHOUT those keys costs that window its metadata and its anchor, and
+ * nothing else. An un-anchored run that then meets an anchored wait completes
+ * rather than sending, which is the fail-quiet direction.
  *
  * WHAT THE RETRY DOES AND DOES NOT PROMISE, stated exactly, because an
  * earlier version of this comment overclaimed and its test could not tell:
  * `isMissingColumnError` reads the CODE only, never which column the message
  * names. So a PGRST204/42703 about some other column is also retried once —
- * harmlessly, because the second insert drops only `enrolment_metadata` and
- * therefore fails identically and throws. What it cannot do is swallow a
+ * harmlessly, because the second insert drops only the two keys named above
+ * and therefore fails identically and throws. What it cannot do is swallow a
  * different fault into a successful write: if the retry succeeds, the
- * payload was right apart from that one key. Matching on the column name
+ * payload was right apart from those keys. Matching on the column name
  * instead was considered and rejected — PostgREST's message text is not a
  * stable contract, and keying a guard to it trades a harmless extra attempt
  * for a guard that silently stops working on a PostgREST upgrade.
@@ -415,6 +444,12 @@ async function insertSequenceRun(args: {
   sequenceId: string
   contactId: string
   enrolmentMetadata: EnrolmentMetadata
+  /**
+   * G11. `events.start_date` for an event enrolment, which anchored `wait`
+   * steps count down to. Null for every sequence that is not a countdown,
+   * which is almost all of them.
+   */
+  anchorAt: string | null
 }): Promise<{ enrolled: boolean }> {
   const base = {
     business_id: args.businessId,
@@ -424,16 +459,31 @@ async function insertSequenceRun(args: {
     next_run_at: new Date().toISOString(),
   }
 
-  let { error } = await args.supabase
-    .from("sequence_runs")
-    .insert({ ...base, enrolment_metadata: args.enrolmentMetadata })
+  // The keys added by migrations the running schema may not have yet. Both
+  // are dropped together by the retry below — see the note there.
+  //
+  // `anchor_at` is OMITTED rather than sent as null when there is no anchor,
+  // so that an ordinary enrolment during the deploy window costs no extra
+  // round trip. Naming a column that does not exist is what triggers the
+  // retry, and the overwhelming majority of enrolments have no anchor.
+  const pending: Record<string, unknown> = { enrolment_metadata: args.enrolmentMetadata }
+  if (args.anchorAt !== null) pending.anchor_at = args.anchorAt
+
+  let { error } = await args.supabase.from("sequence_runs").insert({ ...base, ...pending })
 
   if (error && isMissingColumnError(error)) {
     // `insertSequenceRun:`, not `enrollIfTriggered:` — this function is also
     // the writer for `enrolContactManually`, and a line produced during a
     // manual enrol would otherwise name a caller that was never involved.
+    //
+    // BOTH new keys are dropped, not just the one the error named, and the
+    // reason is that 00266 and 00267 can reach a database SEPARATELY. A
+    // schema with `enrolment_metadata` but not `anchor_at` is a real
+    // intermediate state, and retrying with the other key still present
+    // would fail again and throw — turning a tolerated window into lost
+    // enrolments, which is the exact harm this retry exists to prevent.
     console.warn(
-      "insertSequenceRun: sequence_runs has no enrolment_metadata column yet (migration 00266 pending); enrolling without it",
+      "insertSequenceRun: sequence_runs is missing enrolment_metadata and/or anchor_at (migrations 00266/00267 pending); enrolling without them",
     )
     ;({ error } = await args.supabase.from("sequence_runs").insert(base))
   }
@@ -478,6 +528,23 @@ export async function enrollIfTriggered(args: {
   source: ContactEventSource
   metadata?: Record<string, unknown>
   businessId: string
+  /**
+   * G11. The fixed moment an anchored `wait` counts down to —
+   * `events.start_date` for an event signup. Absent for every other front
+   * door, and an un-anchored run simply never meets an anchored step.
+   *
+   * A SEPARATE TYPED ARGUMENT, NOT A KEY IN `metadata`, and that is a
+   * deliberate refusal rather than an oversight. On the funnel path
+   * `metadata` is the visitor's ENTIRE typed payload
+   * (lib/funnels/capture-contact.ts passes `payload` straight through), and
+   * funnel field names are owner-chosen, validated only as
+   * `^[a-z][a-z0-9_]{0,39}$`. An owner can name a field `event_start_date`,
+   * after which a stranger types the value. This value decides WHEN mail is
+   * sent, so it travels where no visitor payload can reach it.
+   * `pickEnrolmentMetadata`'s allow-list would have stopped such a key being
+   * STORED; it would not have stopped it being USED.
+   */
+  anchorAt?: string | null
 }): Promise<{ enrolled: string[] }> {
   const businessId = args.businessId
   const metadata = args.metadata ?? {}
@@ -666,6 +733,12 @@ export async function enrollIfTriggered(args: {
       sequenceId: sequence.id,
       contactId: args.contactId,
       enrolmentMetadata,
+      // G11. Stamped on EVERY run this capture creates, not only on a
+      // sequence that happens to use anchored waits. Nothing here knows which
+      // sequences contain one, and a sequence that grows a countdown step
+      // later would otherwise find every run enrolled before that edit
+      // un-anchored and silently completing.
+      anchorAt: args.anchorAt ?? null,
     })
     if (!didEnrol) continue
 
@@ -793,6 +866,14 @@ export async function enrolContactManually(
     // remembers nothing" and "this run predates the column" must read the
     // same to every branch, which is false.
     enrolmentMetadata: {},
+    // G11. A manual enrolment has no event behind it, so there is nothing to
+    // anchor to. If the coach picked a countdown sequence, its first anchored
+    // wait COMPLETES the run rather than sending — which is the right
+    // outcome: "three days to go" before nothing is worse than silence, and
+    // the completed run is visible on the contact record. Giving a coach a
+    // way to enrol somebody against a chosen event is a real feature, and it
+    // belongs with the manual-enrol screen rather than smuggled in here.
+    anchorAt: null,
   })
 
   return enrolled ? { outcome: "enrolled" } : { outcome: "already_enrolled" }
