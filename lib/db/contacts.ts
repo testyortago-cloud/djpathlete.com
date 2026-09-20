@@ -110,6 +110,8 @@ export type RecordContactEventInput = {
   name?: string | null
   source: ContactEventSource
   attributionSessionId?: string | null
+  /** See `UpsertContactIdentityInput.userId` — passed straight through. */
+  userId?: string | null
   metadata?: Record<string, unknown>
   businessId: string
 }
@@ -133,7 +135,7 @@ async function findMatchCandidates(
   if (email) {
     const { data, error } = await supabase
       .from("contacts")
-      .select("id,email,phone_e164,created_at,first_touch_session_id")
+      .select("id,email,phone_e164,created_at,first_touch_session_id,user_id")
       .eq("business_id", businessId)
       .eq("email", email)
     if (error) throw error
@@ -143,7 +145,7 @@ async function findMatchCandidates(
   if (phone) {
     const { data, error } = await supabase
       .from("contacts")
-      .select("id,email,phone_e164,created_at,first_touch_session_id")
+      .select("id,email,phone_e164,created_at,first_touch_session_id,user_id")
       .eq("business_id", businessId)
       .eq("phone_e164", phone)
     if (error) throw error
@@ -151,6 +153,125 @@ async function findMatchCandidates(
   }
 
   return Array.from(byId.values())
+}
+
+/**
+ * A `users` row a contact may be linked to. `status: "lead"` rows are NOT
+ * accounts: app/api/contact, app/api/inquiry and the funnel checkout mint one
+ * for a stranger with no password, and registration later upgrades that same
+ * row to `active`. Linking a contact to the placeholder would make
+ * `has_user` ("already a client", the quiz sequences' branch) true for
+ * someone who cannot log in. Production on 2026-09-20: of the 54 contacts
+ * matching a `users` row by email, 11 matched only a placeholder.
+ *
+ * `lead` is the ONLY excluded status, deliberately. `inactive` and
+ * `suspended` rows ARE linkable: a deactivated client is still a client, and
+ * "already a client" is the true answer for them. (Production has none of
+ * either today — this is here so the next reader does not relitigate it.)
+ */
+function isLinkableAccount(row: { id: string; status?: string | null }): boolean {
+  return row.status !== "lead"
+}
+
+function logAccountLookupFault(branch: "id" | "email", err: unknown): void {
+  // `code`/`message` only — `details` can embed the email address.
+  const pgErr = err as { code?: unknown; message?: unknown } | null | undefined
+  console.error(`resolveLinkableUserId: ${branch} lookup failed; contact written unlinked`, {
+    code: typeof pgErr?.code === "string" ? pgErr.code : undefined,
+    message: typeof pgErr?.message === "string" ? pgErr.message : undefined,
+  })
+}
+
+/**
+ * The account this contact belongs to, or null (most leads have none).
+ *
+ * `email` is THE EMAIL ON THE ROW being written — the submitted one on
+ * create, the row's own on update/merge (see `upsertContactIdentity`) —
+ * never an address `buildIdentifierPatch` just refused as a conflict. The
+ * identity rule and the link rule have to agree: two people sharing a phone
+ * (review finding C1) would otherwise have one person's contact linked to
+ * the other's account, permanently, because a link is fill-only.
+ *
+ * `userId` — from a session or from Stripe metadata this app wrote itself —
+ * is consulted first, but is honoured only when it names a real, linkable
+ * `users` row WHOSE EMAIL IS THIS ROW'S EMAIL (normalised), or when the row
+ * has no email at all (a phone-only contact). A checkout that pins no
+ * customer email lets a signed-in buyer type any receipt address (review
+ * finding I1): that address is not proof of who owns it, so the id must not
+ * win over it. What the id lookup still buys is the cohort an exact
+ * `.eq("email")` cannot reach — `users` stores the address as typed, and a
+ * mixed-case account email compares equal here after normalisation. The
+ * FK check is the other reason it is verified at all: `contacts.user_id`
+ * references `users(id)`, and a stale id (a user deleted between checkout
+ * and webhook delivery) would turn the whole contact insert into a 23503.
+ *
+ * Then the account whose `email` equals the row's email exactly
+ * (`users_email_key` is unique, so `.maybeSingle()` is safe); the one-time
+ * backfill in migration 00264 covers legacy mixed-case rows.
+ *
+ * The phone-only allowance rests on one invariant, so name it: NO CALLER MAY
+ * PASS A `userId` THE SUBMITTER CONTROLS. Today they cannot — the only
+ * producers are a server-side session and the Stripe metadata this app
+ * stamps at mint time. Accept a `userId` from a request body and the
+ * `args.email === null` branch becomes "link me to whoever I say".
+ *
+ * NEVER throws, and each branch fails on its own (review finding I2): a
+ * fault on the id lookup — a transient error, a non-UUID id — must still let
+ * the email match run. The contact write is the thing that matters and a
+ * link is recoverable (the next submission, the register route, or a
+ * backfill fills it); a lookup fault here must not cost the lead.
+ */
+async function resolveLinkableUserId(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  args: { userId?: string | null; email: string | null },
+): Promise<string | null> {
+  if (args.userId) {
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("id, status, email")
+        .eq("id", args.userId)
+        .maybeSingle()
+      if (error) throw error
+      const row = data as { id: string; status?: string | null; email?: string | null } | null
+      if (row && isLinkableAccount(row) && (args.email === null || normaliseEmail(row.email) === args.email)) {
+        return row.id
+      }
+    } catch (err) {
+      logAccountLookupFault("id", err)
+    }
+  }
+  if (args.email) {
+    try {
+      const { data, error } = await supabase.from("users").select("id, status").eq("email", args.email).maybeSingle()
+      if (error) throw error
+      const row = data as { id: string; status?: string | null } | null
+      if (row && isLinkableAccount(row)) return row.id
+    } catch (err) {
+      logAccountLookupFault("email", err)
+    }
+  }
+  return null
+}
+
+/**
+ * FILL-ONLY, like `firstTouchSessionPatch` below: a contact is one person,
+ * and the account it was first linked to is the account it stays linked to.
+ * The lookup is only made when the row has no link yet — an already-linked
+ * contact costs no `users` query at all. On the merge path
+ * `existingUserId` is EITHER pre-merge row's link (see the caller): the
+ * `merge_contacts` RPC copies the loser's user_id onto a survivor that has
+ * none, so a survivor whose own value was null may just have been linked,
+ * inside the RPC, to a truer account than the one this request resolves.
+ */
+async function userIdPatch(
+  existingUserId: string | null | undefined,
+  resolve: () => Promise<string | null>,
+): Promise<Record<string, unknown>> {
+  if (existingUserId != null) return {}
+  const userId = await resolve()
+  if (!userId) return {}
+  return { user_id: userId }
 }
 
 // Applies a patch to the contacts row and throws on failure. Used for both
@@ -231,6 +352,14 @@ export type UpsertContactIdentityInput = {
   phone?: string | null
   name?: string | null
   attributionSessionId?: string | null
+  /**
+   * The account behind this submission, when the caller KNOWS it — a
+   * session user, or the buyer id this app stamped into Stripe metadata.
+   * Verified against `users` before it is written (`resolveLinkableUserId`);
+   * when absent, the account is looked up by email instead. Either way the
+   * link is fill-only.
+   */
+  userId?: string | null
   businessId: string
 }
 
@@ -270,6 +399,18 @@ export async function upsertContactIdentity(input: UpsertContactIdentityInput): 
   const found = await findMatchCandidates(supabase, businessId, email, phone)
   const decision = decideMerge(found, email, phone)
 
+  // G04: the account this person has, if any. Deferred behind a closure so
+  // the update and merge branches only pay for the lookup when the row they
+  // are about to write is not linked already (`userIdPatch`). `linkEmail` is
+  // the email that will be ON the row — the submitted one on create, and on
+  // update/merge the row's own when it has one (a submitted email that
+  // differs is a recorded conflict, not this person's address; see
+  // resolveLinkableUserId). The merge RPC never moves an email, so the
+  // survivor's pre-merge value is still its value afterwards, and a null one
+  // is filled from the submission by buildIdentifierPatch.
+  const resolveLink = (linkEmail: string | null) =>
+    resolveLinkableUserId(supabase, { userId: input.userId, email: linkEmail })
+
   let contactId: string
   let created = false
   let merged = false
@@ -284,6 +425,7 @@ export async function upsertContactIdentity(input: UpsertContactIdentityInput): 
         phone_e164: phone,
         name: input.name ?? null,
         first_touch_session_id: input.attributionSessionId ?? null,
+        user_id: await resolveLink(email),
       })
       .select()
       .single()
@@ -298,6 +440,7 @@ export async function upsertContactIdentity(input: UpsertContactIdentityInput): 
     await updateContact(supabase, contactId, {
       ...built.patch,
       ...firstTouchSessionPatch(existing?.first_touch_session_id, input.attributionSessionId),
+      ...(await userIdPatch(existing?.user_id, () => resolveLink(existing?.email ?? email))),
       name: input.name ?? undefined,
       updated_at: new Date().toISOString(),
     })
@@ -325,12 +468,50 @@ export async function upsertContactIdentity(input: UpsertContactIdentityInput): 
         existing?.first_touch_session_id ?? mergedCandidate?.first_touch_session_id,
         input.attributionSessionId,
       ),
+      // Same both-rows rule for the account link — `merge_contacts` carries
+      // the loser's user_id over too (00217), so either pre-merge link means
+      // the survivor is spoken for.
+      ...(await userIdPatch(existing?.user_id ?? mergedCandidate?.user_id, () =>
+        resolveLink(existing?.email ?? email),
+      )),
       name: input.name ?? undefined,
       updated_at: new Date().toISOString(),
     })
   }
 
   return { contactId, created, merged, identifierConflicts }
+}
+
+/**
+ * Fills `contacts.user_id` on every UNLINKED contact carrying this email and
+ * returns how many it filled. The register route's half of G04: a person who
+ * came in as a lead — through a form, a quiz, a purchase — and then made an
+ * account, or whose `status: "lead"` placeholder row just became one.
+ *
+ * DELIBERATELY UNSCOPED, for the same reason `findContactWithBusinessByIdentifiers`
+ * is: the register route has no tenant, because a `users` row is
+ * platform-wide (one login serves every business). The predicate is the
+ * person's own email plus "not yet linked", and `contacts_business_email_uniq`
+ * holds at most one contact per email per business — so this touches one
+ * row per business that knows this person, every one of which IS this
+ * person. Fill-only: a contact already linked to a different account is left
+ * alone, never re-pointed.
+ *
+ * Throws on a write error. The caller (the register route) decides that an
+ * account link must never fail a registration and logs it.
+ */
+export async function linkContactsToUser(args: { email: string | null | undefined; userId: string }): Promise<number> {
+  const email = normaliseEmail(args.email)
+  if (!email) return 0
+  const supabase = getClient()
+  const { data, error } = await supabase
+    .from("contacts")
+    .update({ user_id: args.userId })
+    .eq("email", email)
+    .is("user_id", null)
+    .select("id")
+  if (error) throw error
+  return (data ?? []).length
 }
 
 export async function recordContactEvent(
@@ -343,6 +524,7 @@ export async function recordContactEvent(
     phone: input.phone,
     name: input.name,
     attributionSessionId: input.attributionSessionId,
+    userId: input.userId,
     businessId,
   })
 

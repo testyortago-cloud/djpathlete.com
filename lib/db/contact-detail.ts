@@ -614,6 +614,17 @@ export async function getContactDetail(contact: ContactRecord): Promise<ContactD
   // is null for most leads, and a null here means "no account", not "no money":
   // skipping the query entirely is correct, and querying `.eq("user_id", null)`
   // would be a filter on NULL that matches nothing anyway.
+  //
+  // WHITE-LABEL WATCH (G04, 2026-09-20). This branch was dead on production
+  // until G04 gave `contacts.user_id` a writer — 0 of 170 contacts were
+  // linked; 43 become linked the moment migration 00264 runs. The query below
+  // carries NO tenant predicate, and it cannot: `payments` has no
+  // `business_id` column. Harmless while there is one real tenant, but
+  // `linkContactsToUser` is deliberately UNSCOPED — it links a users row into
+  // every business that knows that email — so with two tenants sharing one
+  // address this read shows one coach the other's payment history. Fixing it
+  // means a tenant column on `payments`, not a predicate here. Do not describe
+  // this reader as safe; it is merely not yet reachable.
   let payments: PaymentRow[] = []
   if (contact.user_id) {
     const { data, error } = await supabase

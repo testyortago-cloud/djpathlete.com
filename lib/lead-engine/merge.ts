@@ -28,6 +28,14 @@ export type MatchCandidate = {
    * it would overwrite a genuine first touch on the next submission.
    */
   first_touch_session_id: string | null
+  /**
+   * Same contract as `first_touch_session_id`, for the account link (G04):
+   * not read by decideMerge, carried so `upsertContactIdentity` can tell
+   * whether the row it is about to update is ALREADY linked before it looks
+   * an account up. Required for the same documentary reason, held by the
+   * same kind of test ("selects user_id in BOTH match queries").
+   */
+  user_id: string | null
 }
 
 export type MergeDecision =

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { hash } from "bcryptjs"
 import { getInviteByToken, inviteStatus, markInviteUsed } from "@/lib/db/team-invites"
 import { getUserByEmail, createUser } from "@/lib/db/users"
+import { linkContactsToUser } from "@/lib/db/contacts"
 import { claimInviteSchema } from "@/lib/validators/team-invite"
 import { isPgUniqueViolation } from "@/lib/supabase-errors"
 import { roleForPermissions, sanitizePermissionMap } from "@/lib/permissions/registry"
@@ -105,6 +106,18 @@ export async function POST(
   if (membershipRole === "coach") await linkHostToUser(membershipBusinessId, user.id)
 
   await markInviteUsed(invite.id)
+
+  // Lead Engine (G04): the third and last door that mints a `users` row, so it
+  // gets the same link as /api/auth/register and /api/admin/clients. A
+  // teammate is less likely than a client to already be a contact, but the
+  // column drifts stale the same way if any door is left unwired, and the
+  // backfill in 00264 runs once. Non-blocking, and deliberately AFTER the
+  // membership writes: nothing above this line may be disturbed by it.
+  try {
+    await linkContactsToUser({ email: user.email, userId: user.id })
+  } catch (linkError) {
+    console.error("Failed to link the claimed invite account to its contact:", linkError)
+  }
 
   return NextResponse.json({ user: { id: user.id, email: user.email } }, { status: 201 })
 }

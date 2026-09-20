@@ -8,6 +8,7 @@ import { ghlCreateContact, ghlTriggerWorkflow } from "@/lib/ghl"
 import { getActiveDocument } from "@/lib/db/legal-documents"
 import { createConsent } from "@/lib/db/consents"
 import { recordAudit } from "@/lib/audit/record"
+import { linkContactsToUser } from "@/lib/db/contacts"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
 import {
   getAttributionBySession,
@@ -123,6 +124,18 @@ export async function POST(request: Request) {
     if (profileError) {
       console.error("Failed to create client profile:", profileError)
       // User was created but profile failed — don't block registration
+    }
+
+    // Lead Engine (G04): the person who just made an account may already be
+    // a contact — they took the quiz, filled a form, or bought something
+    // before registering, and `status: "lead"` placeholder rows are only ever
+    // upgraded here. Fill the link now so `has_user` ("already a client") and
+    // every user_id-keyed lookup stop lying about them. Non-blocking: an
+    // account link must never fail a registration.
+    try {
+      await linkContactsToUser({ email: typedUser.email, userId: typedUser.id })
+    } catch (linkError) {
+      console.error("Failed to link the new account to its contact:", linkError)
     }
 
     // Link this visitor's ad click to the account they just made (non-blocking).

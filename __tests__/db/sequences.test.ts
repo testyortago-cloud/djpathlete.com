@@ -40,6 +40,12 @@ let forceErrorOnTable: string | null = null
 let rpcCalls: Array<{ name: string; args: any }> = []
 let rpcResult: { data: any; error: any } = { data: [], error: null }
 
+// The row store is select-string-BLIND on purpose (it returns whole seeded
+// rows), so an assertion on a context field cannot tell a selected column
+// from one the fake handed back for free. Recording the projection is the
+// only way a test here can pin that a column is actually asked for.
+let selectCalls: Array<{ table: string; columns: string }> = []
+
 // NOTE ON THE MOCK: the trap this project has hit twice is a `.eq()` that
 // returns the query object without recording the filter, so every query
 // resolves to "everything in the table" and every assertion passes without
@@ -120,7 +126,10 @@ vi.mock("@/lib/supabase", () => ({
       }
 
       const api: any = {
-        select: () => api,
+        select: (columns?: string) => {
+          selectCalls.push({ table: String(table), columns: columns ?? "" })
+          return api
+        },
         insert: (p: Row) => {
           mode = "insert"
           payload = p
@@ -221,6 +230,7 @@ beforeEach(() => {
   forceErrorOnTable = null
   rpcCalls = []
   rpcResult = { data: [], error: null }
+  selectCalls = []
 })
 
 function seedBusinessSettings(overrides: Partial<Row> = {}) {
@@ -488,6 +498,28 @@ describe("loadRunContext", () => {
     const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
 
     expect(ctx.contact.name).toBe("Jane Doe")
+  })
+
+  // G04's reading half. Writing contacts.user_id is worth nothing if the
+  // tick never asks for the column: `evaluateBranch` resolves has_user as
+  // `user_id !== null`, so a projection that omits it hands over `undefined`,
+  // `?? null` turns that into null, and every has_user branch in the four
+  // quiz sequences silently takes the "not a client yet" arm again — the
+  // exact production symptom G04 exists to end, with the column now full.
+  // The store returns whole rows, so this asserts the PROJECTION; the
+  // mapping itself is pinned by the "assembles a DecisionContext" case above.
+  it("asks for user_id in the contact projection, so has_user can ever be true", async () => {
+    seedBusinessSettings()
+    seedContact("c-1", { email: "lead@example.com", user_id: "u-1" })
+    seedSequence("seq-1")
+    const run = seedRun("run-1", "c-1", "seq-1") as SequenceRunRow
+
+    const ctx = await loadRunContext(run, now, SINGLETON_BUSINESS_ID)
+
+    const contactSelects = selectCalls.filter((s) => s.table === "contacts")
+    expect(contactSelects).toHaveLength(1)
+    expect(contactSelects[0].columns).toContain("user_id")
+    expect(ctx.contact.user_id).toBe("u-1")
   })
 
   it("a contact with no name on file yields contact.name: null, not undefined", async () => {

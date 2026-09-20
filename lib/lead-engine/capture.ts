@@ -57,6 +57,13 @@ export type CaptureLeadInput = {
    * with no session at all (audit 2026-09-13 §3.5).
    */
   attributionSessionId?: string | null
+  /**
+   * The account behind this event when the caller knows it (a session user,
+   * or the buyer id this app stamped into Stripe metadata). Passed through
+   * to `RecordContactEventInput.userId`; the DAL verifies it and links
+   * fill-only, and falls back to an email match when it is absent.
+   */
+  userId?: string | null
   attribution?: {
     gclid?: string | null
     gbraid?: string | null
@@ -90,6 +97,7 @@ export async function captureLead(input: CaptureLeadInput): Promise<string | nul
       source: input.source,
       businessId: input.businessId,
       attributionSessionId: input.attributionSessionId,
+      userId: input.userId,
       metadata: { ...(input.metadata ?? {}), ...(input.attribution ?? {}) },
     })
     return contactId

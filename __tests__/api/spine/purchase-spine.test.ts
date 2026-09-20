@@ -26,6 +26,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const mocks = vi.hoisted(() => ({
   verifyWebhookSignature: vi.fn(),
   findContactByIdentifiers: vi.fn(),
+  // The completed-checkout hook resolves through this (the unscoped lookup
+  // that supplies the payer's business) — it was missing from this mock
+  // after that change landed, which 500'd the event_signup case below on a
+  // clean main. Inert (null) for the same reason findContactByIdentifiers is.
+  findContactWithBusinessByIdentifiers: vi.fn(),
   recordContactEvent: vi.fn(),
   handleShopOrderCheckout: vi.fn(),
   confirmSignup: vi.fn(),
@@ -47,6 +52,7 @@ vi.mock("@/lib/stripe", () => ({
 }))
 vi.mock("@/lib/db/contacts", () => ({
   findContactByIdentifiers: (...a: unknown[]) => mocks.findContactByIdentifiers(...a),
+  findContactWithBusinessByIdentifiers: (...a: unknown[]) => mocks.findContactWithBusinessByIdentifiers(...a),
   recordContactEvent: (...a: unknown[]) => mocks.recordContactEvent(...a),
 }))
 // Inert — this pre-existing hook is never reached (findContactByIdentifiers
@@ -100,6 +106,13 @@ vi.mock("@/lib/db/event-signups", () => ({
   cancelSignup: vi.fn(),
   getSignupById: vi.fn(),
   getEventSignupByPaymentIntent: vi.fn(),
+  // The event_signup handler resolves its tenant from the signup row by id
+  // before confirming. Missing here since that lookup landed, which made the
+  // route 500 on the event_signup case below on a clean main (the mock
+  // threw "no export defined"). null → the handler logs "no signup" and
+  // returns, which is all this suite needs: the capture it asserts on has
+  // already run by then.
+  getSignupTenantById: vi.fn(async () => null),
 }))
 vi.mock("@/lib/db/events", () => ({ getEventById: vi.fn() }))
 vi.mock("@/lib/shop/webhooks", () => ({
@@ -149,6 +162,7 @@ beforeEach(() => {
   // default this suite depends on is re-armed immediately below.
   vi.resetAllMocks()
   mocks.findContactByIdentifiers.mockResolvedValue(null)
+  mocks.findContactWithBusinessByIdentifiers.mockResolvedValue(null)
   mocks.recordContactEvent.mockResolvedValue({ contactId: "contact-1", created: true, merged: false })
   mocks.handleShopOrderCheckout.mockResolvedValue(undefined)
   mocks.confirmSignup.mockResolvedValue({ ok: false, reason: "not_pending" })
@@ -361,6 +375,71 @@ describe("POST /api/stripe/webhook — checkout.session.completed joins the cont
 
     expect(mocks.recordContactEvent).toHaveBeenCalledTimes(1)
     expect(mocks.recordContactEvent).toHaveBeenCalledWith(expect.objectContaining({ source: "purchase" }))
+  })
+
+  // G04 (ledger 2026-09-19): the capture now carries the buyer's account id
+  // so the contact row gets LINKED (`contacts.user_id` had no writer). The
+  // DAL verifies the id and links fill-only; this file pins only which
+  // metadata key the webhook reads for which checkout type.
+  describe("passes the account behind the checkout through to the capture (G04)", () => {
+    it("reads session.metadata.userId — the logged-in buyer on every account-holder checkout", async () => {
+      mocks.verifyWebhookSignature.mockReturnValueOnce(eventFor(session({ metadata: { userId: "user-9" } })))
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeReq())
+
+      expect(res.status).toBe(200)
+      expect(mocks.recordContactEvent).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-9" }))
+    })
+
+    it("for a session pack, links the PAYER (billingUserId), never the trainee (clientUserId)", async () => {
+      // A parent paying for a child: the captured contact is the parent's
+      // email. Linking it to the child's account would make the parent
+      // "already a client" with someone else's programme.
+      const { getPackageByStripeSession } = await import("@/lib/db/client-packages")
+      vi.mocked(getPackageByStripeSession).mockResolvedValueOnce({ payment_status: "paid" } as never)
+      mocks.verifyWebhookSignature.mockReturnValueOnce(
+        eventFor(
+          session({
+            metadata: { type: "session_pack", clientUserId: "user-child", billingUserId: "user-parent" },
+            customer_details: { email: "parent@example.com", name: "Sam Parent" },
+          }),
+        ),
+      )
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeReq())
+
+      expect(res.status).toBe(200)
+      expect(mocks.recordContactEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ email: "parent@example.com", userId: "user-parent" }),
+      )
+      expect(mocks.recordContactEvent).not.toHaveBeenCalledWith(expect.objectContaining({ userId: "user-child" }))
+    })
+
+    it('passes no account for a session pack whose payer was not resolved (billingUserId is ""), leaving the email match to the DAL', async () => {
+      const { getPackageByStripeSession } = await import("@/lib/db/client-packages")
+      vi.mocked(getPackageByStripeSession).mockResolvedValueOnce({ payment_status: "paid" } as never)
+      mocks.verifyWebhookSignature.mockReturnValueOnce(
+        eventFor(session({ metadata: { type: "session_pack", clientUserId: "user-child", billingUserId: "" } })),
+      )
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      const res = await POST(makeReq())
+
+      expect(res.status).toBe(200)
+      expect(mocks.recordContactEvent).toHaveBeenCalledTimes(1)
+      expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ userId: null })
+    })
+
+    it("passes no account for a checkout that carries none (funnel, Payment Link)", async () => {
+      mocks.verifyWebhookSignature.mockReturnValueOnce(eventFor(session({ metadata: {} })))
+
+      const { POST } = await import("@/app/api/stripe/webhook/route")
+      await POST(makeReq())
+
+      expect(mocks.recordContactEvent.mock.calls[0][0]).toMatchObject({ userId: null })
+    })
   })
 })
 

@@ -15,9 +15,14 @@ vi.mock("@/lib/db/business-members", () => ({
   linkHostToUser: vi.fn().mockResolvedValue(undefined),
 }))
 vi.mock("@/lib/tenancy/platform", () => ({ platformBusinessId: () => "platform-biz" }))
+// G04. Mocked for the assertion below, but also because the route's call is
+// wrapped in try/catch: unmocked, the real DAL reaches for a Supabase client,
+// the throw is swallowed, and this suite goes green having proved nothing.
+vi.mock("@/lib/db/contacts", () => ({ linkContactsToUser: vi.fn().mockResolvedValue(0) }))
 
 import { getInviteByToken, inviteStatus, markInviteUsed } from "@/lib/db/team-invites"
 import { getUserByEmail, createUser } from "@/lib/db/users"
+import { linkContactsToUser } from "@/lib/db/contacts"
 import { addBusinessMember, linkHostToUser } from "@/lib/db/business-members"
 import { POST } from "@/app/api/public/invite/[token]/claim/route"
 
@@ -85,6 +90,30 @@ describe("POST /api/public/invite/[token]/claim", () => {
     )
     expect(res.status).toBe(201)
     expect(createUser).toHaveBeenCalled()
+    expect(markInviteUsed).toHaveBeenCalledWith("i1")
+    // G04: the third door that mints a users row links the person's existing
+    // contacts, keyed on the id and email of the account actually created.
+    expect(linkContactsToUser).toHaveBeenCalledWith({ email: "k@example.com", userId: "newU" })
+  })
+
+  it("still answers 201 when the contact link fails — a link must not cost an account", async () => {
+    ;(getInviteByToken as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "i1", email: "k@example.com", role: "editor",
+      expires_at: "2099-01-01", used_at: null,
+    })
+    ;(inviteStatus as ReturnType<typeof vi.fn>).mockReturnValue("pending")
+    ;(getUserByEmail as ReturnType<typeof vi.fn>).mockResolvedValue(null)
+    ;(createUser as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "newU", email: "k@example.com", role: "editor",
+    })
+    ;(linkContactsToUser as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("contacts unreachable"))
+
+    const res = await POST(
+      ok({ firstName: "K", lastName: "D", password: "Strongpass1!" }),
+      { params },
+    )
+
+    expect(res.status).toBe(201)
     expect(markInviteUsed).toHaveBeenCalledWith("i1")
   })
 

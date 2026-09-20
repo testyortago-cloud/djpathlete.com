@@ -8,6 +8,7 @@ const older: MatchCandidate = {
   phone_e164: null,
   created_at: "2026-01-01T00:00:00Z",
   first_touch_session_id: null,
+  user_id: null,
 }
 const newer: MatchCandidate = {
   id: "22222222-2222-2222-2222-222222222222",
@@ -15,6 +16,7 @@ const newer: MatchCandidate = {
   phone_e164: "+16176504548",
   created_at: "2026-06-01T00:00:00Z",
   first_touch_session_id: null,
+  user_id: null,
 }
 
 describe("decideMerge", () => {
@@ -67,6 +69,7 @@ describe("decideMerge", () => {
       phone_e164: null,
       created_at: "2025-01-01T00:00:00Z",
       first_touch_session_id: null,
+      user_id: null,
     }
     expect(decideMerge([unrelated], "new@example.com", null)).toEqual({ kind: "create" })
   })
@@ -85,6 +88,7 @@ describe("decideMerge", () => {
       phone_e164: "+12025551234",
       created_at: "2026-02-01T00:00:00Z",
       first_touch_session_id: null,
+      user_id: null,
     }
     expect(decideMerge([phoneOnly], null, "+16176504548")).toEqual({ kind: "create" })
   })
@@ -96,6 +100,7 @@ describe("decideMerge", () => {
       phone_e164: null,
       created_at: "2026-03-01T00:00:00Z",
       first_touch_session_id: null,
+      user_id: null,
     }
     const sameTime2: MatchCandidate = {
       id: "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz",
@@ -103,6 +108,7 @@ describe("decideMerge", () => {
       phone_e164: "+11234567890",
       created_at: "2026-03-01T00:00:00Z",
       first_touch_session_id: null,
+      user_id: null,
     }
     expect(decideMerge([sameTime1, sameTime2], "test@example.com", "+11234567890")).toEqual({
       kind: "merge",
@@ -118,6 +124,7 @@ describe("decideMerge", () => {
       phone_e164: null,
       created_at: "2026-03-01T00:00:00Z",
       first_touch_session_id: null,
+      user_id: null,
     }
     const sameTime2: MatchCandidate = {
       id: "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz",
@@ -125,6 +132,7 @@ describe("decideMerge", () => {
       phone_e164: "+11234567890",
       created_at: "2026-03-01T00:00:00Z",
       first_touch_session_id: null,
+      user_id: null,
     }
     expect(decideMerge([sameTime2, sameTime1], "test@example.com", "+11234567890")).toEqual({
       kind: "merge",

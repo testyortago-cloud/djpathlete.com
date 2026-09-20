@@ -8,9 +8,21 @@ const state: {
   consents: any[]
   sequences: any[]
   sequenceRuns: any[]
+  // `users` rows the account link (G04) may resolve against. Seeded only by
+  // the tests that need one; every older test leaves it empty, which is the
+  // "this person has no account" case those tests always implicitly assumed.
+  users: any[]
   selects: Array<{ table: string; columns: string }>
   rpcCalls: Array<{ name: string; args: any }>
-  errors: { contactsUpdate?: any; timelineInsert?: any; sequencesSelect?: any; mergeContactsRpc?: any }
+  errors: {
+    contactsUpdate?: any
+    timelineInsert?: any
+    sequencesSelect?: any
+    mergeContactsRpc?: any
+    // Fails ONLY the `users` lookup keyed on `id`, so a test can prove the
+    // email fallback still runs when the id branch throws.
+    usersSelectById?: any
+  }
 } = {
   rows: [],
   merges: [],
@@ -18,6 +30,7 @@ const state: {
   consents: [],
   sequences: [],
   sequenceRuns: [],
+  users: [],
   selects: [],
   rpcCalls: [],
   errors: {},
@@ -30,6 +43,7 @@ function collectionFor(table: string): any[] {
   if (table === "contact_consents") return state.consents
   if (table === "sequences") return state.sequences
   if (table === "sequence_runs") return state.sequenceRuns
+  if (table === "users") return state.users
   return []
 }
 
@@ -73,6 +87,9 @@ function makeTable(table: string) {
       return api
     },
     async maybeSingle() {
+      if (table === "users" && filters.id !== undefined && state.errors.usersSelectById) {
+        return { data: null, error: state.errors.usersSelectById }
+      }
       const rows = filterRows()
       return { data: rows[0] ?? null, error: null }
     },
@@ -120,23 +137,51 @@ function makeTable(table: string) {
       return { data: null, error: null }
     },
     update(patch: any) {
-      return {
-        eq: async (field: string, value: any) => {
-          if (table === "contacts" && state.errors.contactsUpdate) {
-            return { data: null, error: state.errors.contactsUpdate }
+      // Chainable, like the real builder: `.eq()` / `.is()` narrow the rows,
+      // `.select()` is a no-op, and awaiting at any point applies the patch.
+      // Generic: applies the patch to every row in this table's backing
+      // collection matching every filter (AND). Real UPDATE...WHERE can
+      // affect more than one row, which matters for the re-point calls
+      // (`.update({ contact_id: survivorId }).eq("contact_id", mergedId)`)
+      // that move every timeline/consent row off the loser at once, and for
+      // `linkContactsToUser`, which fills every unlinked row for one email.
+      const updFilters: Array<{ field: string; value: any; op: "eq" | "is" }> = []
+      function applyPatch() {
+        if (table === "contacts" && state.errors.contactsUpdate) {
+          return { data: null, error: state.errors.contactsUpdate }
+        }
+        const rows = collectionFor(table)
+        const touched: any[] = []
+        for (let i = 0; i < rows.length; i++) {
+          const matches = updFilters.every((f) =>
+            // `.is(col, null)` matches a seeded row that never set the key at
+            // all, the same way SQL `IS NULL` does not care how the null arose.
+            f.op === "is" ? rows[i][f.field] == f.value : rows[i][f.field] === f.value,
+          )
+          if (matches) {
+            rows[i] = { ...rows[i], ...patch }
+            touched.push(rows[i])
           }
-          // Generic: applies the patch to every row in this table's backing
-          // collection matching `field === value`. Real UPDATE...WHERE can
-          // affect more than one row, which matters for the re-point calls
-          // (`.update({ contact_id: survivorId }).eq("contact_id", mergedId)`)
-          // that move every timeline/consent row off the loser at once.
-          const rows = collectionFor(table)
-          for (let i = 0; i < rows.length; i++) {
-            if (rows[i][field] === value) rows[i] = { ...rows[i], ...patch }
-          }
-          return { data: null, error: null }
+        }
+        return { data: touched, error: null }
+      }
+      const updApi: any = {
+        eq(field: string, value: any) {
+          updFilters.push({ field, value, op: "eq" })
+          return updApi
+        },
+        is(field: string, value: any) {
+          updFilters.push({ field, value, op: "is" })
+          return updApi
+        },
+        select() {
+          return updApi
+        },
+        then(res: any) {
+          return res(applyPatch())
         },
       }
+      return updApi
     },
     delete() {
       const delFilters: Record<string, any> = {}
@@ -191,7 +236,7 @@ vi.mock("@/lib/lead-engine/merge", async (importOriginal) => {
   }
 })
 
-import { recordContactEvent, mergeContacts } from "@/lib/db/contacts"
+import { recordContactEvent, mergeContacts, linkContactsToUser } from "@/lib/db/contacts"
 import { decideMerge } from "@/lib/lead-engine/merge"
 
 beforeEach(() => {
@@ -201,6 +246,7 @@ beforeEach(() => {
   state.consents = []
   state.sequences = []
   state.sequenceRuns = []
+  state.users = []
   state.selects = []
   state.rpcCalls = []
   state.errors = {}
@@ -539,6 +585,413 @@ describe("recordContactEvent", () => {
         businessId: "00000000-0000-0000-0000-000000000001",
       }),
     ).rejects.toThrow("update boom")
+  })
+})
+
+// G04 (ledger 2026-09-19): `contacts.user_id` had no writer. 0 of 170
+// production contacts were linked while 54 shared an email with a `users`
+// row, so the `has_user` ("already a client") branch in every quiz sequence
+// was permanently false. The link is FILL-ONLY, like first_touch_session_id:
+// written on create, backfilled on update/merge when the row has none, and
+// never replaced once set.
+describe("recordContactEvent — linking the contact to the person's account (G04)", () => {
+  const BIZ = "00000000-0000-0000-0000-000000000001"
+
+  it("links a new contact to the account whose email matches", async () => {
+    state.users.push({ id: "user-1", email: "new@example.com", status: "active" })
+
+    await recordContactEvent({ email: "New@Example.com", source: "funnel_form", businessId: BIZ })
+
+    expect(state.rows[0].user_id).toBe("user-1")
+  })
+
+  it("leaves a new contact unlinked when no account matches", async () => {
+    state.users.push({ id: "user-other", email: "someone@else.com", status: "active" })
+
+    await recordContactEvent({ email: "new@example.com", source: "funnel_form", businessId: BIZ })
+
+    expect(state.rows[0].user_id).toBeNull()
+  })
+
+  it("does not link to a lead-status placeholder — that row is not an account the person can use", async () => {
+    // app/api/contact, /api/inquiry and the funnel checkout all mint a
+    // `status: "lead"` users row for a stranger. It has no password and
+    // cannot log in; treating it as "already a client" would send a lead
+    // the wrong arm of every quiz sequence. Registration upgrades that
+    // same row to `active`, and the register route links the contact then.
+    state.users.push({ id: "user-lead", email: "new@example.com", status: "lead" })
+
+    await recordContactEvent({ email: "new@example.com", source: "funnel_form", businessId: BIZ })
+
+    expect(state.rows[0].user_id).toBeNull()
+  })
+
+  it("does not link by a caller's userId whose account email is not the row's email — a receipt address is not proof of identity", async () => {
+    // Review finding I1. The one-time program and week checkouts pin no
+    // customer email, so a logged-in buyer can type ANY address into Stripe:
+    // Dad buys while signed in and types mom@ for the receipt. The contact
+    // minted for mom@ is Mom, not Dad, and a link is permanent (fill-only).
+    state.users.push({ id: "user-2", email: "account@example.com", status: "active" })
+
+    await recordContactEvent({ email: "other@example.com", userId: "user-2", source: "purchase", businessId: BIZ })
+
+    expect(state.rows[0].user_id).toBeNull()
+  })
+
+  it("links by the caller's userId when its account email differs from the contact's only by case", async () => {
+    // The one cohort the exact-match email lookup cannot reach: `users`
+    // stores the address as typed (two legacy rows on production are
+    // mixed-case), `contacts.email` is always lower-cased. The id lookup plus
+    // a normalised compare is what makes `userId` worth passing at all.
+    state.users.push({ id: "user-mixed", email: "Client@Example.com", status: "active" })
+
+    await recordContactEvent({ email: "client@example.com", userId: "user-mixed", source: "purchase", businessId: BIZ })
+
+    expect(state.rows[0].user_id).toBe("user-mixed")
+  })
+
+  it("links by the caller's userId on a phone-only contact, which has no email to disagree with", async () => {
+    state.users.push({ id: "user-phone", email: "somebody@example.com", status: "active" })
+
+    await recordContactEvent({ phone: "617-650-4548", userId: "user-phone", source: "purchase", businessId: BIZ })
+
+    expect(state.rows[0].user_id).toBe("user-phone")
+  })
+
+  it("falls back to the email match when the id lookup itself fails", async () => {
+    // Review finding I2: the two lookups must not share one try — a fault on
+    // `.eq("id", …)` (a transient error, a non-UUID id) must still let the
+    // email branch run, or the doc comment's "recoverable" promise is hollow.
+    state.errors.usersSelectById = { code: "22P02", message: "invalid input syntax for type uuid" }
+    state.users.push({ id: "user-3", email: "new@example.com", status: "active" })
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    await recordContactEvent({ email: "new@example.com", userId: "not-a-uuid", source: "purchase", businessId: BIZ })
+
+    expect(state.rows[0].user_id).toBe("user-3")
+    consoleErrorSpy.mockRestore()
+  })
+
+  it("does not link a contact by an email it just refused to write (shared phone, different person)", async () => {
+    // Review finding C1. Alice's contact carries the household phone. Bob —
+    // who has an account — submits the inquiry form with his own email and
+    // that phone. The phone match selects Alice's row; buildIdentifierPatch
+    // refuses to overwrite her email with his and records a conflict. The
+    // link must follow the SAME rule: the account is resolved from the email
+    // ON the row, never from the one that was just rejected — or Alice's
+    // contact becomes Bob's, permanently.
+    state.rows.push({
+      id: "contact-alice",
+      business_id: BIZ,
+      email: "alice@example.com",
+      phone_e164: "+16176504548",
+      user_id: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.users.push({ id: "user-bob", email: "bob@example.com", status: "active" })
+
+    const out = await recordContactEvent({
+      email: "bob@example.com",
+      phone: "617-650-4548",
+      source: "inquiry",
+      businessId: BIZ,
+    })
+
+    expect(out.contactId).toBe("contact-alice")
+    const row = state.rows.find((r) => r.id === "contact-alice")
+    expect(row.user_id).toBeNull()
+    // The presence control: the conflict path really ran, so this did not
+    // pass by nothing happening.
+    const conflicts = state.timelineEvents.filter((e) => e.kind === "identifier_conflict")
+    expect(conflicts).toHaveLength(1)
+    expect(conflicts[0].metadata).toMatchObject({ field: "email", submitted: "bob@example.com" })
+  })
+
+  it("links a phone-only contact by the email it is learning for the FIRST time", async () => {
+    // The other half of `existing?.email ?? email`, and the one a conflict
+    // test cannot reach. This row has no email, so there is nothing to
+    // conflict with: buildIdentifierPatch WRITES the submitted address, which
+    // makes it the email on the row, which makes it the right thing to
+    // resolve the account from — in this same request. Resolving from the
+    // row's own (null) email instead would leave the link waiting for a
+    // later submission that may never come.
+    state.rows.push({
+      id: "contact-phone-only",
+      business_id: BIZ,
+      email: null,
+      phone_e164: "+16176504548",
+      user_id: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.users.push({ id: "user-dana", email: "dana@example.com", status: "active" })
+
+    const out = await recordContactEvent({
+      email: "dana@example.com",
+      phone: "617-650-4548",
+      source: "inquiry",
+      businessId: BIZ,
+    })
+
+    expect(out.contactId).toBe("contact-phone-only")
+    const row = state.rows.find((r) => r.id === "contact-phone-only")
+    // Presence control: the email really was filled, so the link below is
+    // being resolved from an address that is now ON the row.
+    expect(row.email).toBe("dana@example.com")
+    expect(row.user_id).toBe("user-dana")
+  })
+
+  it("links the row to ITS OWN person's account when the submitted email conflicts", async () => {
+    // Same shape as above, but Alice has an account: the row is hers, so
+    // that is the account it links to — fill-only and true, whoever
+    // triggered the write.
+    state.rows.push({
+      id: "contact-alice",
+      business_id: BIZ,
+      email: "alice@example.com",
+      phone_e164: "+16176504548",
+      user_id: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.users.push({ id: "user-bob", email: "bob@example.com", status: "active" })
+    state.users.push({ id: "user-alice", email: "alice@example.com", status: "active" })
+
+    await recordContactEvent({ email: "bob@example.com", phone: "617-650-4548", source: "inquiry", businessId: BIZ })
+
+    expect(state.rows.find((r) => r.id === "contact-alice").user_id).toBe("user-alice")
+  })
+
+  it("on a merge, links by the survivor's own email, never a conflicting submitted one", async () => {
+    // Carol's older row holds the phone; Bob's newer row holds his email. Bob
+    // submits both, the two rows merge into Carol's (older survives), and
+    // Carol's email wins the conflict. The link must not hand Carol's
+    // surviving row to Bob's account.
+    state.rows.push({
+      id: "survivor-carol",
+      business_id: BIZ,
+      email: "carol@example.com",
+      phone_e164: "+16176504548",
+      user_id: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.rows.push({
+      id: "loser-bob",
+      business_id: BIZ,
+      email: "bob@example.com",
+      phone_e164: null,
+      user_id: null,
+      created_at: "2021-01-01T00:00:00Z",
+    })
+    state.users.push({ id: "user-bob", email: "bob@example.com", status: "active" })
+
+    const out = await recordContactEvent({
+      email: "bob@example.com",
+      phone: "617-650-4548",
+      source: "inquiry",
+      businessId: BIZ,
+    })
+
+    expect(out.merged).toBe(true)
+    expect(out.contactId).toBe("survivor-carol")
+    expect(state.rows.find((r) => r.id === "survivor-carol").user_id).toBeNull()
+    expect(state.timelineEvents.some((e) => e.kind === "identifier_conflict")).toBe(true)
+  })
+
+  it("on a merge into a phone-only survivor, links by the email the merge fills in", async () => {
+    // The merge-branch twin of the phone-only case above, and the one the
+    // conflict test cannot reach: here the survivor has NO email, so there is
+    // no conflict — buildIdentifierPatch writes the submitted address onto
+    // the survivor, and that address is therefore the row's own. Resolving
+    // from the survivor's pre-merge (null) email would leave the merged row
+    // unlinked even though its person plainly has an account.
+    state.rows.push({
+      id: "survivor-phone",
+      business_id: BIZ,
+      email: null,
+      phone_e164: "+16176504548",
+      user_id: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.rows.push({
+      id: "loser-erin",
+      business_id: BIZ,
+      email: "erin@example.com",
+      phone_e164: null,
+      user_id: null,
+      created_at: "2021-01-01T00:00:00Z",
+    })
+    state.users.push({ id: "user-erin", email: "erin@example.com", status: "active" })
+
+    const out = await recordContactEvent({
+      email: "erin@example.com",
+      phone: "617-650-4548",
+      source: "inquiry",
+      businessId: BIZ,
+    })
+
+    expect(out.merged).toBe(true)
+    expect(out.contactId).toBe("survivor-phone")
+    const row = state.rows.find((r) => r.id === "survivor-phone")
+    // Presence control: no conflict happened, the email really was filled.
+    expect(row.email).toBe("erin@example.com")
+    expect(row.user_id).toBe("user-erin")
+  })
+
+  it("ignores a userId that names no users row, so the FK can never fail the contact write", async () => {
+    // contacts.user_id REFERENCES users(id). A stale id (a user deleted
+    // between checkout and webhook delivery) would otherwise turn the whole
+    // insert into a 23503 and lose the lead.
+    await recordContactEvent({ email: "new@example.com", userId: "ghost", source: "purchase", businessId: BIZ })
+
+    expect(state.rows[0].user_id).toBeNull()
+  })
+
+  it("ignores a userId that names a lead-status placeholder", async () => {
+    state.users.push({ id: "user-lead", email: "new@example.com", status: "lead" })
+
+    await recordContactEvent({ email: "new@example.com", userId: "user-lead", source: "purchase", businessId: BIZ })
+
+    expect(state.rows[0].user_id).toBeNull()
+  })
+
+  it("fills user_id on an existing contact that has none (update branch)", async () => {
+    // MUTANT KILLED: writing the link on the CREATE branch only. Every one
+    // of the 54 unlinked production contacts takes the update branch on its
+    // next submission; a create-only writer would leave all of them
+    // unlinked forever, exactly as first_touch_session_id once was.
+    state.rows.push({
+      id: "contact-unlinked",
+      business_id: BIZ,
+      email: "client@example.com",
+      phone_e164: null,
+      user_id: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.users.push({ id: "user-3", email: "client@example.com", status: "active" })
+
+    await recordContactEvent({ email: "client@example.com", source: "quiz", businessId: BIZ })
+
+    const row = state.rows.find((r) => r.id === "contact-unlinked")
+    expect(row.user_id).toBe("user-3")
+  })
+
+  it("never overwrites a link already on file, and does not even look one up", async () => {
+    // MUTANT KILLED: dropping the `existing.user_id == null` guard. The
+    // caller's userId and a matching account BOTH disagree with the stored
+    // link here (and would each be accepted on an unlinked row — the
+    // account's email IS the row's email), and neither may win: a contact is
+    // one person, and the person it was first linked to is who it stays.
+    state.rows.push({
+      id: "contact-linked",
+      business_id: BIZ,
+      email: "client@example.com",
+      phone_e164: null,
+      user_id: "user-original",
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.users.push({ id: "user-newer", email: "client@example.com", status: "active" })
+
+    await recordContactEvent({ email: "client@example.com", userId: "user-newer", source: "quiz", businessId: BIZ })
+
+    const row = state.rows.find((r) => r.id === "contact-linked")
+    expect(row.user_id).toBe("user-original")
+    expect(state.selects.filter((s) => s.table === "users")).toHaveLength(0)
+  })
+
+  it("does not write user_id over a merge where the LOSER carried the link", async () => {
+    // Same shape as the first-touch merge rule: `merge_contacts` (00217)
+    // copies the loser's user_id onto a survivor that has none, inside the
+    // RPC. A survivor whose pre-merge value is null may therefore have just
+    // been linked by the RPC to a truer account than the one in front of us.
+    // Our patch must write nothing when EITHER pre-merge row was linked.
+    state.rows.push({
+      id: "survivor-older",
+      business_id: BIZ,
+      email: "merge@example.com",
+      phone_e164: null,
+      user_id: null,
+      created_at: "2020-01-01T00:00:00Z",
+    })
+    state.rows.push({
+      id: "loser-newer",
+      business_id: BIZ,
+      email: null,
+      phone_e164: "+16176504548",
+      user_id: "user-from-loser",
+      created_at: "2021-01-01T00:00:00Z",
+    })
+    state.users.push({ id: "user-now", email: "merge@example.com", status: "active" })
+
+    const out = await recordContactEvent({
+      email: "merge@example.com",
+      phone: "617-650-4548",
+      source: "newsletter",
+      businessId: BIZ,
+    })
+
+    expect(out.merged).toBe(true)
+    // The RPC is stubbed, so the survivor is still null — what this pins is
+    // that OUR patch did not write to it.
+    const row = state.rows.find((r) => r.id === "survivor-older")
+    expect(row.user_id).toBeNull()
+    expect(state.selects.filter((s) => s.table === "users")).toHaveLength(0)
+  })
+
+  it("selects user_id in BOTH match queries, not just one", async () => {
+    // Same reasoning as the first_touch_session_id projection test above: a
+    // column missing from either projection reads as `undefined`, which the
+    // fill-only guard cannot tell from "unlinked", and the next submission
+    // would overwrite a real link.
+    await recordContactEvent({
+      email: "projection@example.com",
+      phone: "617-650-4548",
+      source: "newsletter",
+      businessId: BIZ,
+    })
+
+    const contactSelects = state.selects.filter((s) => s.table === "contacts")
+    expect(contactSelects).toHaveLength(2)
+    for (const sel of contactSelects) {
+      expect(sel.columns).toContain("user_id")
+    }
+  })
+})
+
+// The register route's half of G04: a person who already exists as a lead
+// (or as several leads, one per business) and then makes an account.
+describe("linkContactsToUser", () => {
+  it("fills user_id on every unlinked contact carrying that email and reports how many", async () => {
+    state.rows.push({ id: "c-biz-a", business_id: "biz-a", email: "jordan@example.com", user_id: null })
+    state.rows.push({ id: "c-biz-b", business_id: "biz-b", email: "jordan@example.com", user_id: null })
+    state.rows.push({ id: "c-other", business_id: "biz-a", email: "someone@else.com", user_id: null })
+
+    const linked = await linkContactsToUser({ email: "Jordan@Example.com", userId: "user-j" })
+
+    expect(linked).toBe(2)
+    expect(state.rows.find((r) => r.id === "c-biz-a").user_id).toBe("user-j")
+    expect(state.rows.find((r) => r.id === "c-biz-b").user_id).toBe("user-j")
+    expect(state.rows.find((r) => r.id === "c-other").user_id).toBeNull()
+  })
+
+  it("leaves a contact already linked to someone else alone", async () => {
+    state.rows.push({ id: "c-taken", business_id: "biz-a", email: "jordan@example.com", user_id: "user-first" })
+
+    const linked = await linkContactsToUser({ email: "jordan@example.com", userId: "user-j" })
+
+    expect(linked).toBe(0)
+    expect(state.rows.find((r) => r.id === "c-taken").user_id).toBe("user-first")
+  })
+
+  it("does nothing without a usable email", async () => {
+    state.rows.push({ id: "c-x", business_id: "biz-a", email: null, phone_e164: "+16176504548", user_id: null })
+
+    expect(await linkContactsToUser({ email: "   ", userId: "user-j" })).toBe(0)
+    expect(state.rows[0].user_id).toBeNull()
+  })
+
+  it("throws when the update fails — the register route decides what to do with that", async () => {
+    state.errors.contactsUpdate = new Error("link boom")
+
+    await expect(linkContactsToUser({ email: "jordan@example.com", userId: "user-j" })).rejects.toThrow("link boom")
   })
 })
 

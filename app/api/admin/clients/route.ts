@@ -4,6 +4,7 @@ import { hash } from "bcryptjs"
 import { auth } from "@/lib/auth"
 import { addClientSchema } from "@/lib/validators/add-client"
 import { getUserByEmail, createUser } from "@/lib/db/users"
+import { linkContactsToUser } from "@/lib/db/contacts"
 import { createServiceRoleClient } from "@/lib/supabase"
 import { createEmailVerificationToken } from "@/lib/db/email-verification-tokens"
 import { sendAccountCreatedEmail, sendVerificationEmail } from "@/lib/email"
@@ -86,6 +87,18 @@ export const POST = withAudit(
     // Update phone if provided
     if (phone) {
       await supabase.from("users").update({ phone }).eq("id", typedUser.id)
+    }
+
+    // Lead Engine (G04): same link the register route makes, because this is
+    // the OTHER door a real client comes through — the coach onboards them by
+    // hand, often someone who took the quiz or filled a form first. Without
+    // this their contact stays unlinked, `has_user` ("already a client")
+    // keeps saying no, and migration 00264 is one-time so nothing repairs it.
+    // Non-blocking: a link must never fail the account creation.
+    try {
+      await linkContactsToUser({ email: typedUser.email, userId: typedUser.id })
+    } catch (linkError) {
+      console.error("Failed to link the new client account to its contact:", linkError)
     }
 
     const baseUrl = process.env.NEXTAUTH_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"

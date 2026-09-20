@@ -235,6 +235,38 @@ function checkoutContactSource(session: Stripe.Checkout.Session): ContactEventSo
   }
 }
 
+/**
+ * The account behind a checkout this webhook captures a contact from, for the
+ * contact link (G04, ledger 2026-09-19: `contacts.user_id` had no writer).
+ * Read from the metadata THIS app stamps at mint time (lib/stripe.ts), never
+ * from anything Stripe infers.
+ *
+ * BOTH capture paths reach this, not just the completed one: its only caller
+ * is `tryCaptureLeadFromCheckout`, which the completed handler and the
+ * `checkout_abandoned` handler each call. That is safe rather than merely
+ * harmless — the DAL honours this id only when it names an account whose
+ * email IS the email being written (`resolveLinkableUserId`), and the expired
+ * capture is keyed on the same session's email. Anyone auditing that check
+ * should walk both call sites, not one.
+ *
+ *   - `userId`: the logged-in buyer on every checkout minted for an account
+ *     holder — a program, week access, a card-on-file setup, a membership.
+ *   - `billingUserId`: a session pack is minted FOR a trainee (`clientUserId`)
+ *     but PAID by the household payer, and `createPackCheckoutSession` stamps
+ *     the resolved payer here — `""` when it could not resolve one. The
+ *     contact captured below is keyed on the PAYER's email, so only the
+ *     payer's id may be linked to it. `clientUserId` is deliberately never
+ *     read: a parent paying for a child would otherwise link the parent's
+ *     contact to the child's account.
+ *
+ * Null means "let the DAL match by email", which is also what happens for a
+ * funnel or Payment Link checkout that carries no account at all.
+ */
+function checkoutAccountUserId(session: Stripe.Checkout.Session): string | null {
+  const meta = session.metadata ?? {}
+  return meta.userId || meta.billingUserId || null
+}
+
 async function tryCaptureLeadFromCheckout(
   session: Stripe.Checkout.Session,
   businessId: string,
@@ -245,6 +277,7 @@ async function tryCaptureLeadFromCheckout(
       source,
       email: session.customer_details?.email ?? session.customer_email ?? null,
       name: session.customer_details?.name ?? null,
+      userId: checkoutAccountUserId(session),
       businessId,
       metadata: { stripe_session_id: session.id },
     })
