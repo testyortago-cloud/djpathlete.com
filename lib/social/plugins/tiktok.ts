@@ -2,8 +2,16 @@
 // TikTok Content Posting API — Direct Post flow.
 // Docs: https://developers.tiktok.com/doc/content-posting-api-get-started
 //
-// Videos are pulled by TikTok from the provided mediaUrl (PULL_FROM_URL),
-// so no chunked upload is needed — the URL must be publicly reachable.
+// Videos are pushed to TikTok with FILE_UPLOAD, NOT pulled with PULL_FROM_URL.
+//
+// PULL_FROM_URL only accepts URLs on a domain verified as yours in the TikTok
+// developer portal, and every video URL here is a Firebase Storage v4 signed
+// URL on storage.googleapis.com (see lib/social/resolve-media-url.ts). That is
+// Google's domain: it can never be verified, so PULL_FROM_URL answered
+//   403 {"error":{"code":"url_ownership_unverified", ...}}
+// on every single video post. FILE_UPLOAD has no domain rule at all, because
+// TikTok never fetches from us -- init returns an upload_url and we PUT the
+// bytes to it. Do not "simplify" this back to PULL_FROM_URL.
 //
 // Privacy: without App Review, posts are forced to SELF_ONLY. After review,
 // set TIKTOK_PRIVACY_LEVEL=PUBLIC_TO_EVERYONE in env to go live.
@@ -42,6 +50,93 @@ function defaultPrivacy(): PrivacyLevel {
     return env
   }
   return "SELF_ONLY"
+}
+
+// TikTok's media-transfer rules for FILE_UPLOAD:
+//   - a chunk is at least 5MB and at most 64MB
+//   - total_chunk_count is FLOOR(video_size / chunk_size), so the FINAL chunk
+//     absorbs the remainder and may be larger than chunk_size
+//   - a video of 64MB or less goes up whole, as a single chunk
+// https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide/
+const MAX_CHUNK_BYTES = 64 * 1024 * 1024
+
+export interface UploadPlan {
+  chunkSize: number
+  totalChunkCount: number
+}
+
+/** Chunk sizing for a video of `videoSize` bytes. Exported for testing. */
+export function planUpload(videoSize: number): UploadPlan {
+  if (videoSize <= MAX_CHUNK_BYTES) {
+    return { chunkSize: videoSize, totalChunkCount: 1 }
+  }
+  return { chunkSize: MAX_CHUNK_BYTES, totalChunkCount: Math.floor(videoSize / MAX_CHUNK_BYTES) }
+}
+
+/**
+ * Byte range for chunk `index`, inclusive at both ends. The last chunk runs to
+ * the end of the file rather than to its own chunk boundary, which is what
+ * makes FLOOR above correct instead of off by one.
+ */
+export function chunkRange(
+  index: number,
+  plan: UploadPlan,
+  videoSize: number,
+): { start: number; end: number } {
+  const start = index * plan.chunkSize
+  const isLast = index === plan.totalChunkCount - 1
+  return { start, end: isLast ? videoSize - 1 : start + plan.chunkSize - 1 }
+}
+
+interface VideoSource {
+  size: number
+  contentType: string
+  read(start: number, end: number): Promise<ArrayBuffer>
+}
+
+/**
+ * Resolve the video behind `url` into something we can read by byte range.
+ *
+ * Prefers HEAD + ranged GETs so only one chunk is ever held in memory. When the
+ * host will not answer HEAD with a Content-Length we fall back to downloading
+ * once and slicing that buffer — correct either way, just heavier.
+ */
+async function loadVideoSource(url: string): Promise<VideoSource | { error: string }> {
+  let size = 0
+  let contentType = ""
+  try {
+    const head = await fetch(url, { method: "HEAD" })
+    if (head.ok) {
+      size = Number(head.headers.get("content-length") ?? 0)
+      contentType = head.headers.get("content-type") ?? ""
+    }
+  } catch {
+    /* fall through to the download-once path */
+  }
+
+  if (size > 0) {
+    return {
+      size,
+      contentType: contentType || "video/mp4",
+      async read(start, end) {
+        const resp = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } })
+        if (!resp.ok) throw new Error(`media range fetch failed (${resp.status})`)
+        return await resp.arrayBuffer()
+      },
+    }
+  }
+
+  const resp = await fetch(url)
+  if (!resp.ok) return { error: `Could not read the video to upload (${resp.status})` }
+  const buffer = await resp.arrayBuffer()
+  if (buffer.byteLength === 0) return { error: "The video to upload is empty" }
+  return {
+    size: buffer.byteLength,
+    contentType: resp.headers.get("content-type") || "video/mp4",
+    async read(start, end) {
+      return buffer.slice(start, end + 1)
+    },
+  }
 }
 
 export function createTikTokPlugin(credentials: TikTokCredentials): PublishPlugin {
@@ -108,6 +203,12 @@ export function createTikTokPlugin(credentials: TikTokCredentials): PublishPlugi
         return { success: false, error: "TikTok requires a video URL" }
       }
 
+      const source = await loadVideoSource(input.mediaUrl)
+      if ("error" in source) {
+        return { success: false, error: `TikTok: ${source.error}` }
+      }
+      const plan = planUpload(source.size)
+
       const initBody = {
         post_info: {
           title: input.content.slice(0, 2200),
@@ -118,8 +219,10 @@ export function createTikTokPlugin(credentials: TikTokCredentials): PublishPlugi
           video_cover_timestamp_ms: 1000,
         },
         source_info: {
-          source: "PULL_FROM_URL",
-          video_url: input.mediaUrl,
+          source: "FILE_UPLOAD",
+          video_size: source.size,
+          chunk_size: plan.chunkSize,
+          total_chunk_count: plan.totalChunkCount,
         },
       }
 
@@ -137,7 +240,7 @@ export function createTikTokPlugin(credentials: TikTokCredentials): PublishPlugi
       }
 
       const initData = (await initResp.json()) as {
-        data?: { publish_id?: string }
+        data?: { publish_id?: string; upload_url?: string }
         error?: { code?: string; message?: string }
       }
       if (initData.error?.code && initData.error.code !== "ok") {
@@ -146,6 +249,37 @@ export function createTikTokPlugin(credentials: TikTokCredentials): PublishPlugi
       const publishId = initData.data?.publish_id
       if (!publishId) {
         return { success: false, error: "TikTok init returned no publish_id" }
+      }
+      const uploadUrl = initData.data?.upload_url
+      if (!uploadUrl) {
+        return { success: false, error: "TikTok init returned no upload_url" }
+      }
+
+      // Plain fetch, NOT authedFetch: upload_url is already a pre-signed TikTok
+      // URL, and attaching our bearer token would leak it to their CDN host.
+      for (let i = 0; i < plan.totalChunkCount; i++) {
+        const { start, end } = chunkRange(i, plan, source.size)
+        let body: ArrayBuffer
+        try {
+          body = await source.read(start, end)
+        } catch (err) {
+          return { success: false, error: `TikTok: ${(err as Error).message}` }
+        }
+        const putResp = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": source.contentType,
+            "Content-Range": `bytes ${start}-${end}/${source.size}`,
+          },
+          body,
+        })
+        if (!putResp.ok) {
+          const text = await putResp.text().catch(() => "")
+          return {
+            success: false,
+            error: `TikTok chunk ${i + 1}/${plan.totalChunkCount} upload failed (${putResp.status}): ${text.slice(0, 200)}`,
+          }
+        }
       }
 
       // TikTok ingests the video asynchronously. We return the publish_id;
