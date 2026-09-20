@@ -11,6 +11,32 @@ type ThumbnailSource =
   | { kind: "file"; file: File }
   | { kind: "url"; url: string }
 
+/**
+ * Encode the frame a <video> element is CURRENTLY showing to a JPEG Blob.
+ * Does not seek — the displayed frame is the operator's choice. Returns null
+ * if the element has no decoded dimensions, or the canvas is tainted (remote
+ * source without CORS).
+ */
+export function captureFrameFromElement(video: HTMLVideoElement): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    try {
+      if (!video.videoWidth || !video.videoHeight) return resolve(null)
+      const ratio = video.videoHeight / video.videoWidth
+      const width = Math.min(THUMB_MAX_WIDTH, video.videoWidth)
+      const height = Math.round(width * ratio)
+      const canvas = document.createElement("canvas")
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext("2d")
+      if (!ctx) return resolve(null)
+      ctx.drawImage(video, 0, 0, width, height)
+      canvas.toBlob((blob) => resolve(blob), "image/jpeg", THUMB_JPEG_QUALITY)
+    } catch {
+      resolve(null)
+    }
+  })
+}
+
 function captureFrame(source: ThumbnailSource): Promise<Blob | null> {
   return new Promise((resolve) => {
     const objectUrl = source.kind === "file" ? URL.createObjectURL(source.file) : null
@@ -48,24 +74,7 @@ function captureFrame(source: ThumbnailSource): Promise<Blob | null> {
     })
 
     video.addEventListener("seeked", () => {
-      try {
-        const ratio = video.videoWidth > 0 ? video.videoHeight / video.videoWidth : 0.5625
-        const width = Math.min(THUMB_MAX_WIDTH, video.videoWidth || THUMB_MAX_WIDTH)
-        const height = Math.round(width * ratio)
-        const canvas = document.createElement("canvas")
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext("2d")
-        if (!ctx) return finish(null)
-        ctx.drawImage(video, 0, 0, width, height)
-        canvas.toBlob(
-          (blob) => finish(blob),
-          "image/jpeg",
-          THUMB_JPEG_QUALITY,
-        )
-      } catch {
-        finish(null)
-      }
+      void captureFrameFromElement(video).then(finish)
     })
 
     video.addEventListener("error", () => finish(null))
@@ -129,4 +138,62 @@ export async function generateAndUploadThumbnail(
   const blob = await generateVideoThumbnail(file)
   if (!blob) return
   await uploadThumbnailFor(videoUploadId, blob)
+}
+
+/**
+ * Set a CUSTOM thumbnail: ask for a unique path, PUT the bytes, and only then
+ * ask the server to point the row at it. The row is never written before the
+ * bytes land — a failed PUT must not destroy a working thumbnail.
+ */
+export async function commitThumbnail(
+  videoUploadId: string,
+  blob: Blob,
+  source: "frame" | "upload",
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/admin/videos/${videoUploadId}/thumbnail/custom`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contentType: blob.type || "image/jpeg" }),
+    })
+    if (!res.ok) return false
+    const { uploadUrl, thumbnailPath } = (await res.json()) as {
+      uploadUrl: string
+      thumbnailPath: string
+    }
+
+    const put = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": blob.type || "image/jpeg" },
+      body: blob,
+    })
+    if (!put.ok) return false
+
+    const commit = await fetch(`/api/admin/videos/${videoUploadId}/thumbnail`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ thumbnailPath, source }),
+    })
+    return commit.ok
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Point the row back at the auto-captured thumbnail. Returns false when the
+ * server answers 409 — the original blob no longer exists, so there is nothing
+ * to revert to and the custom one is deliberately left in place.
+ */
+export async function revertThumbnailToAuto(videoUploadId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/admin/videos/${videoUploadId}/thumbnail`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: "auto" }),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
 }
