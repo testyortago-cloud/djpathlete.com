@@ -201,6 +201,8 @@ export interface TeamVideoVersion {
   size_bytes: number | null
   mime_type: string | null
   image_count: number | null
+  /** Firebase Storage path of a small JPG thumbnail; null until generated lazily. */
+  thumbnail_path: string | null
   status: TeamVideoVersionStatus
   uploaded_at: string | null
   created_at: string
@@ -1858,6 +1860,9 @@ export interface PlatformConnection {
   updated_at: string
 }
 
+/** How a video's current thumbnail was chosen. Null on rows that pre-date the picker. */
+export type ThumbnailSource = "auto" | "frame" | "upload"
+
 export interface VideoUpload {
   id: string
   storage_path: string
@@ -1880,6 +1885,12 @@ export interface VideoUpload {
    * callers (and test fixtures) may omit it entirely.
    */
   thumbnail_path?: string | null
+  /**
+   * How `thumbnail_path` was chosen. Null means auto/unknown — the row pre-dates
+   * the picker — and the UI offers no "Revert to auto" for it. Optional on insert:
+   * nullable column, no default.
+   */
+  thumbnail_source?: ThumbnailSource | null
   /**
    * Set when this row was promoted from a team_video_submissions row (the
    * "Send to Content Studio" / captioned-cut promote-or-reuse path); null for
