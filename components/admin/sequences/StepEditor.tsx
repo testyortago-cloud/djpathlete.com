@@ -85,6 +85,50 @@ const BRANCH_KIND_LABEL: Record<BranchCondition["kind"], string> = {
   opened_last_email: "Opened the last email (see note)",
 }
 
+/**
+ * The condition a freshly-picked rule starts as — one arm per predicate, and
+ * the `never` is the point of the whole function.
+ *
+ * WHY THIS IS A SWITCH AND NOT AN IF-CHAIN. It used to be an if-chain over
+ * `kind: string` with an `else` that set `branch_condition: null`. G09 added
+ * two predicates to `BRANCH_KIND_ORDER` and `BRANCH_KIND_LABEL` and not to that
+ * chain, so both rendered in the dropdown, labelled correctly, and set NULL
+ * when chosen — after which `validateStepList` refused the save with "This
+ * split does not say which people go down each side", against the rule the
+ * coach had just picked. It was live on production.
+ *
+ * FOUR GUARDS MISSED IT, and it is worth being precise about why, because the
+ * obvious reading is that the guards were weak. They were not: the union, the
+ * Zod schema, `KNOWN_BRANCH_KINDS` and `branch-kinds-agree.test.ts` all check
+ * that a predicate is DECLARED consistently. A `Record` over the union proves a
+ * LABEL exists; none of them proves the condition can be BUILT. That was a
+ * fifth place, and `kind: string` is what kept the union from disciplining it.
+ *
+ * So: narrow to the union at the boundary, and make the exhaustiveness check
+ * the compiler's job. A sixth predicate is now a build failure here rather than
+ * a dead entry in a dropdown.
+ */
+function conditionForKind(kind: BranchCondition["kind"]): BranchCondition {
+  switch (kind) {
+    case "has_phone":
+      return { kind: "has_phone" }
+    case "has_user":
+      return { kind: "has_user" }
+    case "has_consent":
+      return { kind: "has_consent", channel: "email" }
+    case "source_is":
+      return { kind: "source_is", value: "" }
+    case "opened_last_email":
+      return { kind: "opened_last_email" }
+    case "clicked_last_email":
+      return { kind: "clicked_last_email" }
+    default: {
+      const unhandled: never = kind
+      throw new Error(`no starting condition for branch predicate: ${String(unhandled)}`)
+    }
+  }
+}
+
 /** Shown under the predicate when one needs a caveat a coach would want. */
 const BRANCH_KIND_NOTE: Partial<Record<BranchCondition["kind"], string>> = {
   opened_last_email:
@@ -592,12 +636,12 @@ function BranchFields({
 }) {
   const condition = step.branch_condition
 
-  function setConditionKind(kind: string) {
-    if (kind === "has_phone") onChange({ branch_condition: { kind: "has_phone" } })
-    else if (kind === "has_user") onChange({ branch_condition: { kind: "has_user" } })
-    else if (kind === "has_consent") onChange({ branch_condition: { kind: "has_consent", channel: "email" } })
-    else if (kind === "source_is") onChange({ branch_condition: { kind: "source_is", value: "" } })
-    else onChange({ branch_condition: null })
+  function setConditionKind(raw: string) {
+    // `raw` is a DOM value, so it is `string` and could be anything. Narrow it
+    // against the list actually offered, THEN build exhaustively: the empty
+    // "Choose one…" option is the only legitimate way to reach null.
+    const known = BRANCH_KIND_ORDER.find((k) => k === raw)
+    onChange({ branch_condition: known ? conditionForKind(known) : null })
   }
 
   return (

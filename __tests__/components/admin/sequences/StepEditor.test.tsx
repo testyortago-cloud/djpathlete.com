@@ -106,6 +106,90 @@ describe("<StepEditor> — every kind has a plain-language name", () => {
   })
 })
 
+describe("<StepEditor> — every offered split rule can actually be CHOSEN", () => {
+  // THE BUG THIS EXISTS FOR (live on production from 816892cf until this fix):
+  // G09 added `opened_last_email` and `clicked_last_email` to BRANCH_KIND_ORDER
+  // and BRANCH_KIND_LABEL, so both rendered in the dropdown and read correctly —
+  // but `setConditionKind` was an if-chain over the ORIGINAL four kinds with an
+  // `else` that set `branch_condition: null`. Picking either new rule silently
+  // cleared the condition, and `validateStepList` then refused the save with
+  // "This split does not say which people go down each side" — against the rule
+  // the coach had just picked.
+  //
+  // Four separate guards passed: the union, the Zod schema, KNOWN_BRANCH_KINDS
+  // and branch-kinds-agree.test.ts. None of them could catch it, because a
+  // Record over the union proves a LABEL exists, not that the condition can be
+  // BUILT. This test walks what a human can actually click.
+
+  function optionValues(select: HTMLSelectElement): string[] {
+    return Array.from(select.querySelectorAll("option"))
+      .map((o) => (o as HTMLOptionElement).value)
+      .filter((v) => v !== "")
+  }
+
+  it("keeps the selection for every rule offered, rather than falling back to none", () => {
+    renderEditor({ initialSteps: [step("branch", { id: "b1" }), step("stop", { id: "b2" })] })
+
+    const select = screen.getByLabelText("Step 1 split rule") as HTMLSelectElement
+    const offered = optionValues(select)
+
+    // A presence control: if the dropdown ever renders no options, the loop
+    // below would pass by doing nothing at all.
+    expect(offered.length).toBeGreaterThanOrEqual(4)
+    expect(offered).toContain("clicked_last_email")
+    expect(offered).toContain("opened_last_email")
+
+    for (const value of offered) {
+      fireEvent.change(select, { target: { value } })
+      // The component is controlled from `branch_condition.kind`. If the
+      // condition came back null the select reverts to "" — which is exactly
+      // how the bug presented, and is invisible to any assertion that only
+      // checks the option exists.
+      expect(
+        (screen.getByLabelText("Step 1 split rule") as HTMLSelectElement).value,
+        `picking "${value}" did not stick — setConditionKind has no arm for it`,
+      ).toBe(value)
+    }
+  })
+
+  it("clears the condition when the coach picks \u201CChoose one\u2026\u201D, rather than throwing", () => {
+    // The empty option is the ONLY legitimate route to a null condition, and it
+    // is why the raw DOM value is narrowed against BRANCH_KIND_ORDER before the
+    // exhaustive switch sees it. Feed "" straight to that switch and it reaches
+    // the `never` arm and throws — taking the whole editor down instead of
+    // clearing one field.
+    renderEditor({ initialSteps: [step("branch", { id: "b1" }), step("stop", { id: "b2" })] })
+
+    const select = screen.getByLabelText("Step 1 split rule") as HTMLSelectElement
+    fireEvent.change(select, { target: { value: "clicked_last_email" } })
+    expect((screen.getByLabelText("Step 1 split rule") as HTMLSelectElement).value).toBe("clicked_last_email")
+
+    expect(() => fireEvent.change(select, { target: { value: "" } })).not.toThrow()
+    expect((screen.getByLabelText("Step 1 split rule") as HTMLSelectElement).value).toBe("")
+  })
+
+  it("saves a clicked_last_email split through the real PUT body", async () => {
+    // Selection sticking in the DOM is necessary but not sufficient: the
+    // condition still has to survive validation and reach the request.
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) })
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderEditor({ initialSteps: [step("branch", { id: "b1" }), step("stop", { id: "b2" })] })
+
+    fireEvent.change(screen.getByLabelText("Step 1 split rule"), {
+      target: { value: "clicked_last_email" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: /save/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body)
+    const branchStep = (body.steps as Array<Record<string, unknown>>).find((st) => st.kind === "branch")
+    expect(branchStep?.branch_condition).toEqual({ kind: "clicked_last_email" })
+
+    vi.unstubAllGlobals()
+  })
+})
+
 describe("<StepEditor> — adding a tag step and saving", () => {
   it("sends config: { tag } for a newly added label step", async () => {
     global.fetch = vi.fn().mockResolvedValue({
