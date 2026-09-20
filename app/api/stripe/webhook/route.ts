@@ -267,13 +267,22 @@ function checkoutAccountUserId(session: Stripe.Checkout.Session): string | null 
   return meta.userId || meta.billingUserId || null
 }
 
+/**
+ * Returns the captured contact's id, or null when no contact was resolved.
+ *
+ * G05 (ledger 2026-09-19, D3): this return value is not decoration. For a
+ * FIRST-TIME buyer this call is what creates the contact row, so it is the
+ * only thing in the request that knows their contact id — the lookup before
+ * it found nobody, by definition. The completed-checkout handler wins their
+ * pipeline card off the back of it.
+ */
 async function tryCaptureLeadFromCheckout(
   session: Stripe.Checkout.Session,
   businessId: string,
   source: ContactEventSource,
-): Promise<void> {
+): Promise<string | null> {
   try {
-    await captureLead({
+    return await captureLead({
       source,
       email: session.customer_details?.email ?? session.customer_email ?? null,
       name: session.customer_details?.name ?? null,
@@ -283,6 +292,7 @@ async function tryCaptureLeadFromCheckout(
     })
   } catch (err) {
     console.error("[stripe-webhook] lead capture failed", (err as Error).message)
+    return null
   }
 }
 
@@ -327,23 +337,93 @@ export async function POST(request: Request) {
         // routeToPipeline below like any other. Do not "simplify" these into
         // one shared condition — the two consumers legitimately fire on
         // different subsets of the same resolved contact's checkout.
-        // The payer's business, when they already have a contact row. Declared
-        // OUTSIDE the try below so a throw inside it (which must never fail a
-        // payment webhook) cannot leave the capture without a tenant.
-        let payerBusinessId: string | null = null
+
+        // STEP 1 of 3 — who is paying, and whose business is this?
+        //
+        // The webhook itself has no tenant: one Stripe account serves every
+        // business. The payer's existing contact row supplies it, resolved
+        // ONCE here and threaded through every consequence below, so the
+        // capture, exitRunsForContact and applyPipelineEvent never disagree
+        // about which business this sale belongs to. Declared OUTSIDE the try
+        // so a throw inside it (which must never fail a payment webhook)
+        // cannot leave the steps below without a tenant.
+        let knownContact: { id: string; businessId: string } | null = null
         try {
           const userId = session.metadata?.userId ?? null
           const email = session.customer_details?.email ?? session.customer_email ?? null
-          // The webhook itself has no tenant -- one Stripe account serves
-          // every business. The payer's contact row supplies it: resolved
-          // ONCE here and threaded through every consequence below, so
-          // exitRunsForContact and applyPipelineEvent never disagree about
-          // which business this sale belongs to.
-          const contact = await findContactWithBusinessByIdentifiers({ userId, email })
-          if (contact) {
-            const { id: contactId, businessId } = contact
-            payerBusinessId = businessId
-            await exitRunsForContact(contactId, "payment", businessId)
+          knownContact = await findContactWithBusinessByIdentifiers({ userId, email })
+        } catch (err) {
+          console.error("[stripe-webhook] payer contact lookup failed", (err as Error).message)
+        }
+
+        // A NARROWER VARIANT of the lib/tenancy/platform.ts seam: the payer's own
+        // contact row first — a repeat buyer's capture lands on their coach's
+        // business — and platformBusinessId() for a first-time payer, for whom
+        // one Stripe account serving every business genuinely carries no tenant,
+        // AND for a payer whose contact lookup THREW: the capture must not be
+        // lost, and pre-branch it always filed here. Listed under that shelf in
+        // the inventory.
+        const payerBusinessId = knownContact?.businessId ?? platformBusinessId()
+
+        // STEP 2 of 3 — CAPTURE BEFORE THE HOOKS. This is G05 (ledger
+        // 2026-09-19, D3) and the order is the entire fix. It used to run
+        // after the block below, which meant the pipeline hook only ever fired
+        // for a contact that ALREADY existed: a first-time buyer got a contact
+        // and no Won card. Production proof — the 28 Aug purchase created its
+        // contact and no card, and that buyer's card only appeared on their
+        // second purchase on 17 Sept.
+        //
+        // Safe to run before the exit, but not unconditionally so: exiting
+        // AFTER the capture would kill a run the capture itself had just
+        // enrolled. It cannot today — `checkoutContactSource` yields only
+        // "purchase", "shop" or "funnel_checkout", and no sequence triggers on
+        // any of the three (measured on production 2026-09-20). Add a sequence
+        // that DOES trigger on a completed checkout and this ordering has to be
+        // revisited, because the payment that enrols them would also exit them.
+        const capturedContactId = await tryCaptureLeadFromCheckout(
+          session,
+          payerBusinessId,
+          checkoutContactSource(session),
+        )
+
+        // STEP 3 of 3 — the two consumers, on whichever contact id exists now.
+        //
+        // The capture's id wins, because it names the row this payment
+        // actually produced: for a first-time buyer it is the row the capture
+        // just created, and for a repeat buyer it is the same row the lookup
+        // found. The looked-up id is the fallback, and covers three different
+        // things, not one: a session carrying no identifier the capture could
+        // key on, a capture whose write FAILED (captureLead swallows and
+        // returns null), and a lookup that succeeded where the capture found
+        // nothing. Pre-G05 the hooks ran for a contact the LOOKUP found, and
+        // they must keep doing so in all three.
+        const contactId = capturedContactId ?? knownContact?.id ?? null
+        try {
+          if (contactId) {
+            await exitRunsForContact(contactId, "payment", payerBusinessId)
+
+            // THE TWO CAN NAME DIFFERENT ROWS, and then one exit is not
+            // enough. The lookup matches `user_id` first (lib/db/contacts.ts,
+            // findContactWithBusinessByIdentifiers); the capture matches
+            // email/phone. They diverge when someone changes their account
+            // email: Stripe carries the new address, while their contact row
+            // still holds the old one — `buildIdentifierPatch` records an
+            // identifier conflict rather than overwriting it. The lookup then
+            // finds their established contact and the capture creates a new
+            // row for the new address.
+            //
+            // The card belongs on the captured row, but the ESTABLISHED one is
+            // the row carrying their running nurture sequence. Exiting only
+            // the new one leaves a paying customer being told they have not
+            // signed up yet — the same failure class as the abandoned-checkout
+            // incident this ledger's G01 fixed. Exiting an id with no active
+            // runs is a no-op, so this costs one query in a case that is
+            // measurably unreachable today (0 of 43 linked contacts on
+            // production have an email differing from their account's) and
+            // correct the day it is not.
+            if (knownContact && knownContact.id !== contactId) {
+              await exitRunsForContact(knownContact.id, "payment", knownContact.businessId)
+            }
             if (!NO_PIPELINE_CARD_CHECKOUT_TYPES.has(session.metadata?.type ?? "")) {
               // Final review, Important 3: the checkout session id is the
               // source-id idempotency key for the create-with-outcome
@@ -370,7 +450,7 @@ export async function POST(request: Request) {
                   currency: session.currency ?? "usd",
                   occurredAt: new Date(),
                 },
-                businessId,
+                businessId: payerBusinessId,
                 pipelineKey: routing.kind === "routed" ? routing.pipelineKey : undefined,
                 metadata: { stripe_session_id: session.id },
               })
@@ -379,20 +459,6 @@ export async function POST(request: Request) {
         } catch (err) {
           console.error("[stripe-webhook] sequence/pipeline hook failed", (err as Error).message)
         }
-
-        // A NARROWER VARIANT of the lib/tenancy/platform.ts seam: the payer's own
-        // contact row first — a repeat buyer's capture lands on their coach's
-        // business — and platformBusinessId() for a first-time payer, for whom
-        // one Stripe account serving every business genuinely carries no tenant,
-        // AND for a payer whose contact lookup THREW: the capture must not be
-        // lost, and pre-branch it always filed here, which is why
-        // `payerBusinessId` is declared outside the try block above. Listed
-        // under that shelf in the inventory.
-        await tryCaptureLeadFromCheckout(
-          session,
-          payerBusinessId ?? platformBusinessId(),
-          checkoutContactSource(session),
-        )
 
         if (session.metadata?.type === "shop_order") {
           await handleShopOrderCheckout(session)

@@ -44,6 +44,15 @@ vi.mock("@/lib/db/contacts", () => ({
 vi.mock("@/lib/db/sequences", () => ({
   exitRunsForContact: (...a: unknown[]) => exitRunsForContactMock(...a),
 }))
+// G05: the capture is the ONLY thing that knows a first-time buyer's contact
+// id, because it is what creates the row. Mocked at this boundary — what
+// `captureLead` itself writes is proven in
+// __tests__/db/contacts-record-event.test.ts; what this file needs is the id
+// it hands back. Default null = "no contact resolved", the pre-G05 shape.
+const captureLeadMock = vi.fn(async (..._a: any[]) => null as string | null)
+vi.mock("@/lib/lead-engine/capture", () => ({
+  captureLead: (...a: unknown[]) => captureLeadMock(...a),
+}))
 vi.mock("@/lib/db/pipeline", () => ({
   applyPipelineEvent: (...a: unknown[]) => applyPipelineEventMock(...a),
 }))
@@ -227,6 +236,7 @@ describe("Stripe webhook — pipeline", () => {
     findContactByIdentifiersMock.mockReset().mockResolvedValue(null)
     getContactUserIdMock.mockReset().mockResolvedValue(null)
     findContactWithBusinessByIdentifiersMock.mockReset().mockResolvedValue(null)
+    captureLeadMock.mockReset().mockResolvedValue(null)
     exitRunsForContactMock.mockReset().mockResolvedValue(0)
     applyPipelineEventMock
       .mockReset()
@@ -251,6 +261,142 @@ describe("Stripe webhook — pipeline", () => {
       pipelineKey: "coaching",
       metadata: { stripe_session_id: "cs_test_1" },
     })
+  })
+
+  // G05 (ledger 2026-09-19, D3). The 28 Aug purchase on production created a
+  // contact and NO card: the pipeline hook ran first and only for a contact
+  // that already existed, and the capture that creates one ran after it. That
+  // buyer's card only appeared on their SECOND purchase, three weeks later.
+  it("wins a card for a FIRST-TIME buyer, whose contact only exists because this checkout created it", async () => {
+    // Nobody on file: this is the lookup that returned null on 28 Aug.
+    findContactWithBusinessByIdentifiersMock.mockResolvedValue(null)
+    captureLeadMock.mockResolvedValueOnce("contact-first-time")
+    verifyMock.mockReturnValueOnce(stripeEvent({ amount_total: 9900 }))
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(makeStripeReq())
+
+    expect(res.status).toBe(200)
+    expect(applyPipelineEventMock).toHaveBeenCalledWith({
+      contactId: "contact-first-time",
+      event: { kind: "payment", amountCents: 9900, currency: "usd", occurredAt: expect.any(Date) },
+      // A first-time payer genuinely has no tenant of their own — one Stripe
+      // account serves every business — so the capture and the card both file
+      // under the platform shelf. Same seam as before, same answer.
+      businessId: SINGLETON_BUSINESS_ID,
+      pipelineKey: "coaching",
+      metadata: { stripe_session_id: "cs_test_1" },
+    })
+  })
+
+  it("captures BEFORE it wins the card — the ordering is the whole fix", async () => {
+    // An ordering assertion, not just a presence one: with the calls the other
+    // way round the contact id does not exist yet, which is exactly how the
+    // 28 Aug purchase lost its card. `invocationCallOrder` is a global
+    // monotonic counter, so these are comparable across the two mocks.
+    findContactWithBusinessByIdentifiersMock.mockResolvedValue(null)
+    captureLeadMock.mockResolvedValueOnce("contact-order")
+    verifyMock.mockReturnValueOnce(stripeEvent({ amount_total: 1500 }))
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    await POST(makeStripeReq())
+
+    expect(captureLeadMock).toHaveBeenCalled()
+    expect(applyPipelineEventMock).toHaveBeenCalled()
+    expect(captureLeadMock.mock.invocationCallOrder[0]).toBeLessThan(applyPipelineEventMock.mock.invocationCallOrder[0])
+  })
+
+  it("still stops the nurture sequence for a first-time buyer's brand-new contact", async () => {
+    findContactWithBusinessByIdentifiersMock.mockResolvedValue(null)
+    captureLeadMock.mockResolvedValueOnce("contact-exit-new")
+    verifyMock.mockReturnValueOnce(stripeEvent({ amount_total: 2500 }))
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    await POST(makeStripeReq())
+
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("contact-exit-new", "payment", SINGLETON_BUSINESS_ID)
+  })
+
+  it("a repeat buyer: the lookup and the capture agree, and the card lands on that one contact", async () => {
+    // The realistic repeat-buyer shape, which no test covered before: the
+    // capture RESOLVES the same existing row rather than returning null, so
+    // the primary branch of the `??` chain is the one exercised. Every other
+    // Stripe test in this file leaves captureLeadMock at its null default and
+    // therefore rides the fallback — in production that is the rare path.
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "c-repeat", businessId: "bbb" })
+    captureLeadMock.mockResolvedValueOnce("c-repeat")
+    verifyMock.mockReturnValueOnce(stripeEvent({ amount_total: 6400 }))
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    await POST(makeStripeReq())
+
+    expect(exitRunsForContactMock).toHaveBeenCalledTimes(1)
+    expect(exitRunsForContactMock).toHaveBeenCalledWith("c-repeat", "payment", "bbb")
+    expect(applyPipelineEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ contactId: "c-repeat", businessId: "bbb" }),
+    )
+  })
+
+  it("exits BOTH contacts when the lookup and the capture disagree about who is paying", async () => {
+    // Review finding: the lookup matches `user_id` FIRST (contacts.ts:764),
+    // the capture matches email/phone. They diverge when someone changes
+    // their account email — Stripe then carries the new address while the
+    // contact row still holds the old one, because buildIdentifierPatch
+    // records a conflict rather than overwriting. The lookup finds the
+    // established contact A; the capture finds no row for the new address and
+    // creates B.
+    //
+    // The card belongs on B (the row this payment actually produced), but A is
+    // the one with the running nurture sequence. Exiting only B would leave a
+    // paying customer receiving "you haven't signed up yet" emails — the same
+    // failure class as the abandoned-checkout incident. Exit both.
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "c-established", businessId: "bbb" })
+    captureLeadMock.mockResolvedValueOnce("c-new-row")
+    verifyMock.mockReturnValueOnce(stripeEvent({ amount_total: 8800 }))
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    await POST(makeStripeReq())
+
+    const exited = exitRunsForContactMock.mock.calls.map((c) => c[0])
+    expect(exited).toContain("c-new-row")
+    expect(exited).toContain("c-established")
+    expect(applyPipelineEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ contactId: "c-new-row", businessId: "bbb" }),
+    )
+  })
+
+  it("wins the card under the platform shelf when the payer lookup THROWS", async () => {
+    // Pre-G05 a thrown lookup meant no card at all, because the hook lived
+    // inside the same try. Now the capture still runs, files under
+    // platformBusinessId(), and the card follows it onto that same tenant —
+    // self-consistent, and pinned here because it is a behaviour change.
+    findContactWithBusinessByIdentifiersMock.mockRejectedValueOnce(new Error("contacts unreachable"))
+    captureLeadMock.mockResolvedValueOnce("c-after-throw")
+    verifyMock.mockReturnValueOnce(stripeEvent({ amount_total: 3300 }))
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    const res = await POST(makeStripeReq())
+
+    expect(res.status).toBe(200)
+    expect(applyPipelineEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ contactId: "c-after-throw", businessId: SINGLETON_BUSINESS_ID }),
+    )
+  })
+
+  it("falls back to the looked-up contact when the capture resolves nobody", async () => {
+    // The capture returns null for a session carrying no usable identifier.
+    // Pre-G05 the hook still ran for a contact the LOOKUP found, and it must
+    // keep doing so — this is the regression the reorder could have caused.
+    findContactWithBusinessByIdentifiersMock.mockResolvedValueOnce({ id: "contact-known", businessId: "bbb" })
+    captureLeadMock.mockResolvedValueOnce(null)
+    verifyMock.mockReturnValueOnce(stripeEvent({ amount_total: 4200 }))
+
+    const { POST } = await import("@/app/api/stripe/webhook/route")
+    await POST(makeStripeReq())
+
+    expect(applyPipelineEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ contactId: "contact-known", businessId: "bbb" }),
+    )
   })
 
   // The contact's resolved business, not the singleton -- the whole point of

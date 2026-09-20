@@ -131,8 +131,11 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     lib/db/contacts.ts). A FIRST-TIME payer, who has no contact row
  *     anywhere, falls to this — and so does a payer whose lookup FAILED,
  *     because the capture must not be lost and pre-branch it always filed
- *     here. The route declares `payerBusinessId` outside its own try block
- *     for exactly that reason, and the throw path is pinned by
+ *     here. The route declares `knownContact` outside its own try block for
+ *     exactly that reason — `payerBusinessId` is then derived from it, once,
+ *     and the capture that follows (G05: it now runs BEFORE the pipeline hook,
+ *     because it is what creates a first-time buyer's contact) reads that one
+ *     value. The throw path is pinned by
  *     __tests__/api/stripe/webhook-capture-tenant.test.ts ("a contact lookup
  *     that THROWS still leaves the capture with the platform tenant").
  *
