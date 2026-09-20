@@ -193,6 +193,23 @@ describe("lib/db/social-post-media", () => {
     await attachMedia(postId, a.id, 0)
     await attachMedia(postId, b.id, 1)
 
+    // POST_TYPE IS RE-STATED AFTER THE MEDIA EXISTS, and that is not belt and
+    // braces — it closes a real race this assertion lost twice in four runs.
+    //
+    // `backfill_social_post_media()` (migration 00093) sets `post_type = 'text'`
+    // for every post with no media at position 0, no `media_url` and no
+    // `source_video_id`. It is not a trigger: it runs when MIGRATIONS ARE
+    // APPLIED. These tests hit the shared dev clone, so any session applying a
+    // migration while this file is mid-flight executes it — and between
+    // `newPost` above and the first `attachMedia` this fixture is exactly the
+    // media-less, url-less post that function is written to correct.
+    //
+    // The backfill is right and the fixture was transiently wrong, so this
+    // fixes the ORDER rather than muting the check: once media exists at
+    // position 0 the backfill's own WHERE clause can no longer select this row,
+    // and the window is gone rather than narrowed.
+    await supabase.from("social_posts").update({ post_type: "carousel" }).eq("id", postId)
+
     const result = await getSocialPostWithMedia(postId)
     expect(result?.id).toBe(postId)
     expect(result?.post_type).toBe("carousel")
