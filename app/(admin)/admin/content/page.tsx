@@ -11,6 +11,8 @@ import { CalendarContainer } from "@/components/admin/content-studio/calendar/Ca
 import { readPreferences } from "@/lib/content-studio/preferences"
 import { coerceStoredFilters } from "@/lib/content-studio/pipeline-filters"
 import { isContentStudioMultimediaEnabled } from "@/lib/content-studio/feature-flag"
+import { getInsightsData } from "@/lib/content-studio/insights-data"
+import { InsightsTab } from "@/components/admin/content-studio/insights/InsightsTab"
 
 interface PageProps {
   searchParams: Promise<{ tab?: string; view?: string; anchor?: string }>
@@ -40,6 +42,11 @@ export default async function ContentStudioPage({ searchParams }: PageProps) {
         multimediaEnabled={isContentStudioMultimediaEnabled()}
       />
     )
+  }
+
+  if (tab === "insights") {
+    const insights = await getInsightsData()
+    return <InsightsTab data={insights} />
   }
 
   const data = await getPipelineData()
