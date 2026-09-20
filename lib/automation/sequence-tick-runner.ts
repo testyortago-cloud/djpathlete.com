@@ -615,7 +615,21 @@ async function processRun(
           to: settings.reply_to,
           subject: action.step.subject ?? "Sequence alert",
           body: action.step.body ?? "",
-          contactName: null,
+          // G12. The LEAD's name, though the recipient is the coach — and the
+          // two are not in conflict. In an alert, `{{name}}` means the person
+          // the alert is ABOUT, which is the only name it could usefully
+          // carry; the coach already knows their own.
+          //
+          // This used to be `null`, and `substituteName` replaces `{{name}}`
+          // with the empty string, so "No reply yet to {{name}}'s
+          // application" — the wording the row itself proposes — arrived as
+          // "No reply yet to 's application". An alert that cannot say who it
+          // concerns sends the coach hunting through the contacts list, which
+          // is most of the point gone.
+          //
+          // Still never guessed: a contact with no name renders empty, the
+          // same as every other send path. Ugly beats invented.
+          contactName: ctx.contact.name,
           settings,
           includeUnsubscribeFooter: false,
         })

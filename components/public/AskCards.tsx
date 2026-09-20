@@ -42,6 +42,10 @@ import {
   renderChatContactWording,
   renderChatMarketingWording,
 } from "@/lib/lead-engine/chat/consent-wording"
+// G18. The texting permission's sentence and its blank-name gate. The SAME
+// pair `/api/ask/capture` re-renders server-side, so what a visitor reads and
+// what is filed as evidence cannot disagree.
+import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
 import type { Card } from "@/lib/lead-engine/chat/tools"
 import type { EventType } from "@/types/database"
 
@@ -274,15 +278,40 @@ function CaptureCard({
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [marketingConsent, setMarketingConsent] = useState(false)
+  // G18. The texting permission — a SEPARATE answer from the email one, never
+  // a second use of the same tick.
+  const [smsConsent, setSmsConsent] = useState(false)
   const [state, setState] = useState<CaptureState>("idle")
   const [notice, setNotice] = useState<string | null>(null)
   const [marketingRecorded, setMarketingRecorded] = useState(false)
+  const [smsRecorded, setSmsRecorded] = useState(false)
   // Unique per card instance: a conversation can in principle carry more than
   // one details card, and two inputs sharing an id makes the second label
   // point at the first checkbox.
   const consentId = useId()
+  const smsConsentId = useId()
 
   const named = hasChatConsentDisplayName(displayName)
+  // G18. Shown only beside a phone number that has actually been typed:
+  // permission to text somebody whose number we do not have is a row that can
+  // never be acted on. `/api/ask/capture` re-checks this rather than trusting
+  // it — a checkbox is a courtesy, not a guarantee.
+  const smsNamed = hasSmsConsentDisplayName(displayName)
+  const showSmsConsent = smsNamed && phone.trim().length > 0
+
+  /**
+   * Clearing the phone field also clears the tick.
+   *
+   * Without this the checkbox merely UNMOUNTS while its state stays `true`, so
+   * typing a different number brings it back already ticked — affirmed for a
+   * number the visitor never saw it beside. The stored row would still match
+   * whatever was submitted, so nothing is misfiled; what would be wrong is the
+   * screen, which would show a consent act that did not happen.
+   */
+  function onPhoneChange(value: string) {
+    setPhone(value)
+    if (value.trim().length === 0) setSmsConsent(false)
+  }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -294,9 +323,21 @@ function CaptureCard({
       const response = await fetch("/api/ask/capture", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, name, email, phone, marketingConsent, timezone: browserTimezone() }),
+        body: JSON.stringify({
+          conversationId,
+          name,
+          email,
+          phone,
+          marketingConsent,
+          smsConsent,
+          timezone: browserTimezone(),
+        }),
       })
-      const body = (await response.json()) as { error?: string; marketingConsentRecorded?: boolean }
+      const body = (await response.json()) as {
+        error?: string
+        marketingConsentRecorded?: boolean
+        smsConsentRecorded?: boolean
+      }
 
       if (!response.ok) {
         // The route's own copy, written for someone who has just typed their
@@ -309,6 +350,11 @@ function CaptureCard({
       // What ACTUALLY happened, not what was asked for. A tick that filed no
       // row must not turn into a promise of email.
       setMarketingRecorded(body.marketingConsentRecorded === true)
+      // What actually happened, not what was asked for. The server refuses the
+      // row for an unusable number, a blank business name or a prior STOP, and
+      // promising "we'll text you" off the back of a tick that filed nothing
+      // would be making the promise up.
+      setSmsRecorded(body.smsConsentRecorded === true)
       setState("saved")
     } catch {
       setNotice("I couldn't send that just then. Try again in a moment.")
@@ -323,6 +369,11 @@ function CaptureCard({
         {marketingRecorded ? (
           <p className="mt-1 text-sm text-muted-foreground">
             You&apos;ll also hear about coaching, camps and clinics. You can unsubscribe at any time.
+          </p>
+        ) : null}
+        {smsRecorded ? (
+          <p className="mt-1 text-sm text-muted-foreground">
+            We may also text you. Reply STOP to any message to stop them.
           </p>
         ) : null}
       </div>
@@ -370,7 +421,7 @@ function CaptureCard({
           <input
             type="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => onPhoneChange(e.target.value)}
             maxLength={40}
             autoComplete="tel"
             className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
@@ -400,6 +451,27 @@ function CaptureCard({
             className="mt-0.5 size-4 shrink-0 accent-primary"
           />
           <span>{renderChatMarketingWording(displayName)}</span>
+        </label>
+      ) : null}
+
+      {/* G18. The second permission. Its own sentence, its own box, its own
+          row — one tick standing for both would file a permission nobody
+          gave. It appears as soon as a phone number is typed and vanishes
+          again if the field is cleared. */}
+      {showSmsConsent ? (
+        <label
+          htmlFor={smsConsentId}
+          className="mt-2 flex cursor-pointer items-start gap-2 text-xs leading-relaxed text-muted-foreground"
+        >
+          <input
+            id={smsConsentId}
+            name="ask-sms-consent"
+            type="checkbox"
+            checked={smsConsent}
+            onChange={(e) => setSmsConsent(e.target.checked)}
+            className="mt-0.5 size-4 shrink-0 accent-primary"
+          />
+          <span>{renderSmsConsentWording(displayName)}</span>
         </label>
       ) : null}
 

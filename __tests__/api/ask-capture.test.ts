@@ -39,6 +39,7 @@ const h = vi.hoisted(() => ({
   markCaptured: vi.fn(),
   captureLead: vi.fn(),
   recordConsent: vi.fn(),
+  isSuppressed: vi.fn(),
   getBusinessSettings: vi.fn(),
   recordAudit: vi.fn(),
 }))
@@ -50,7 +51,7 @@ vi.mock("@/lib/db/chat", () => ({
   markCaptured: h.markCaptured,
 }))
 vi.mock("@/lib/lead-engine/capture", () => ({ captureLead: h.captureLead }))
-vi.mock("@/lib/db/contact-consents", () => ({ recordConsent: h.recordConsent }))
+vi.mock("@/lib/db/contact-consents", () => ({ recordConsent: h.recordConsent, isSuppressed: h.isSuppressed }))
 vi.mock("@/lib/db/businesses", () => ({ getBusinessSettings: h.getBusinessSettings }))
 vi.mock("@/lib/audit/record", () => ({ recordAudit: h.recordAudit }))
 
@@ -136,7 +137,7 @@ function submission(over: Record<string, unknown> = {}): Record<string, unknown>
     conversationId: CONVERSATION_ID,
     name: "Jordan Vale",
     email: "jordan.vale@example.com",
-    phone: "555-0142",
+    phone: "813-555-0142",
     marketingConsent: false,
     ...over,
   }
@@ -156,6 +157,7 @@ beforeEach(() => {
   h.markCaptured.mockResolvedValue(undefined)
   h.captureLead.mockResolvedValue("contact-1")
   h.recordConsent.mockResolvedValue(undefined)
+  h.isSuppressed.mockResolvedValue(false)
   h.getBusinessSettings.mockResolvedValue(SETTINGS)
   h.recordAudit.mockResolvedValue(undefined)
 })
@@ -190,7 +192,7 @@ describe("POST /api/ask/capture — the only contact-write path", () => {
         source: "ai_chat",
         name: "Jordan Vale",
         email: "jordan.vale@example.com",
-        phone: "555-0142",
+        phone: "813-555-0142",
       }),
     )
     expect(h.markCaptured).toHaveBeenCalledWith(CONVERSATION_ID, "contact-1")
@@ -349,10 +351,10 @@ describe("POST /api/ask/capture — the only contact-write path", () => {
     // The details card renders both inputs; the one the visitor leaves alone
     // posts "". Rejecting that as an invalid email would refuse a perfectly
     // good phone-only submission.
-    const res = await POST(req(submission({ email: "", phone: "555-0142" })))
+    const res = await POST(req(submission({ email: "", phone: "813-555-0142" })))
 
     expect(res.status).toBe(200)
-    expect(h.captureLead).toHaveBeenCalledWith(expect.objectContaining({ phone: "555-0142" }))
+    expect(h.captureLead).toHaveBeenCalledWith(expect.objectContaining({ phone: "813-555-0142" }))
     expect(JSON.stringify(h.captureLead.mock.calls[0])).not.toContain('"email":""')
   })
 
@@ -409,7 +411,7 @@ describe("POST /api/ask/capture — the only contact-write path", () => {
     const serialised = JSON.stringify(h.recordAudit.mock.calls)
     expect(serialised).not.toContain("jordan.vale@example.com")
     expect(serialised).not.toContain("Jordan Vale")
-    expect(serialised).not.toContain("555-0142")
+    expect(serialised).not.toContain("813-555-0142")
     expect(serialised).not.toContain(currentIp)
   })
 })
@@ -511,5 +513,215 @@ describe("POST /api/ask/capture — the throttle in front of the contact spine",
     const res = await POST(req(submission()))
 
     expect(res.status).toBe(404)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// G18 — texting consent, which this route did not collect at all.
+//
+// The chat asked one question ("can we email you?") and filed one row,
+// `channel: "email"`. A visitor who typed a phone number was never asked
+// whether we could TEXT them, so production carries 90 contacts with a phone
+// and ZERO sms consent rows of any kind — which is why every text step in the
+// product is currently unsendable.
+//
+// Email and SMS are separate permissions with separate wording, so this is a
+// SECOND tick and a SECOND row, never one tick standing for both.
+// ---------------------------------------------------------------------------
+
+const SMS_WORDING = "I agree to receive text messages from Test Business about my inquiry. Message and data rates may apply. Reply STOP to opt out, HELP for help."
+
+describe("POST /api/ask/capture — texting consent (G18)", () => {
+  function smsRows() {
+    return h.recordConsent.mock.calls.map((c: unknown[]) => c[0] as { channel?: string }).filter((a) => a.channel === "sms")
+  }
+  function emailRows() {
+    return h.recordConsent.mock.calls.map((c: unknown[]) => c[0] as { channel?: string }).filter((a) => a.channel === "email")
+  }
+
+  it("files an sms consent row, with the wording re-rendered server-side", async () => {
+    const res = await POST(req(submission({ smsConsent: true, marketingConsent: false })))
+
+    expect(res.status).toBe(200)
+    expect(smsRows()).toHaveLength(1)
+    expect(smsRows()[0]).toEqual(
+      expect.objectContaining({
+        channel: "sms",
+        granted: true,
+        contactId: "contact-1",
+        wordingShown: SMS_WORDING,
+      }),
+    )
+    expect(await res.json()).toEqual(expect.objectContaining({ smsConsentRecorded: true }))
+  })
+
+  it("NEVER trusts wording sent by the client", async () => {
+    // Same rule the email row already keeps: the sentence filed as evidence is
+    // re-rendered from business_settings, never relayed from the browser. A
+    // consent row is only evidence if we know what was on screen.
+    await POST(req(submission({ smsConsent: true, wordingShown: "I agree to absolutely anything at all" })))
+
+    expect(JSON.stringify(h.recordConsent.mock.calls)).not.toContain("absolutely anything at all")
+  })
+
+  it("files NOTHING when the box is not ticked", async () => {
+    await POST(req(submission({ smsConsent: false })))
+    expect(smsRows()).toHaveLength(0)
+  })
+
+  it("files nothing when no phone number was given, however the box arrives", async () => {
+    // A texting permission with no number to text is not a permission, it is a
+    // row that can never be acted on. The checkbox is only shown beside a
+    // filled-in phone field, so this is the server refusing to trust that.
+    const res = await POST(req(submission({ smsConsent: true, phone: "" })))
+
+    expect(smsRows()).toHaveLength(0)
+    expect(await res.json()).toEqual(expect.objectContaining({ smsConsentRecorded: false }))
+  })
+
+  it("files nothing when display_name is blank, even with the box ticked", async () => {
+    // "I agree to receive text messages from  about my inquiry" names nobody,
+    // and consent to a business the sentence cannot name is consent to
+    // nothing. Same gate the email row already applies.
+    h.getBusinessSettings.mockResolvedValue({ ...SETTINGS, display_name: "" })
+
+    const res = await POST(req(submission({ smsConsent: true })))
+
+    expect(smsRows()).toHaveLength(0)
+    expect(await res.json()).toEqual(expect.objectContaining({ smsConsentRecorded: false }))
+  })
+
+  it("is INDEPENDENT of the email tick, in both directions", async () => {
+    // The whole point of two ticks. Ticking one must never file the other —
+    // that would be a consent row nobody actually gave.
+    await POST(req(submission({ marketingConsent: true, smsConsent: false })))
+    expect(emailRows()).toHaveLength(1)
+    expect(smsRows()).toHaveLength(0)
+
+    h.recordConsent.mockClear()
+
+    await POST(req(submission({ marketingConsent: false, smsConsent: true })))
+    expect(emailRows()).toHaveLength(0)
+    expect(smsRows()).toHaveLength(1)
+  })
+
+  it("files both when both are ticked, as two separate rows", async () => {
+    await POST(req(submission({ marketingConsent: true, smsConsent: true })))
+
+    expect(emailRows()).toHaveLength(1)
+    expect(smsRows()).toHaveLength(1)
+    // Different sentences, because they are different permissions.
+    expect(emailRows()[0]).not.toEqual(expect.objectContaining({ wordingShown: SMS_WORDING }))
+  })
+
+  it("treats an ABSENT smsConsent as no consent, so an older browser tab is safe", async () => {
+    // The deploy window: a tab loaded before this shipped posts no such key.
+    // Absent must read as false, never as a default-true.
+    const body = submission()
+    delete body.smsConsent
+    const res = await POST(req(body))
+
+    expect(res.status).toBe(200)
+    expect(smsRows()).toHaveLength(0)
+    expect(await res.json()).toEqual(expect.objectContaining({ smsConsentRecorded: false }))
+  })
+
+  it("records both consent answers on the audit row", async () => {
+    await POST(req(submission({ smsConsent: true })))
+
+    expect(h.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ sms_consent: true, sms_consent_recorded: true }),
+      }),
+    )
+  })
+
+  it("a failed sms consent write never fails the capture", async () => {
+    // The lead is already saved. Losing a consent row is a gap; losing the
+    // lead is not recoverable. Same contract the email row keeps.
+    h.recordConsent.mockRejectedValue(new Error("contact_consents unreachable"))
+
+    const res = await POST(req(submission({ smsConsent: true })))
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(expect.objectContaining({ smsConsentRecorded: false }))
+  })
+})
+
+describe("POST /api/ask/capture — the two gates the review round added (G18)", () => {
+  function smsRows() {
+    return h.recordConsent.mock.calls
+      .map((c: unknown[]) => c[0] as { channel?: string })
+      .filter((a) => a.channel === "sms")
+  }
+
+  it("files nothing for a phone field that is not a phone number", async () => {
+    // `askCaptureSchema` validates phone as `string().max(40)` and nothing
+    // more, so "call me" is a perfectly valid submission. A non-empty-string
+    // gate would file granted:true while `normalisePhone` stores the contact
+    // with phone_e164 NULL — the row `fileSmsConsent`'s own docblock says
+    // cannot exist, which then reads as consent forever afterwards.
+    const res = await POST(req(submission({ smsConsent: true, phone: "call me" })))
+
+    expect(res.status).toBe(200)
+    expect(smsRows()).toHaveLength(0)
+    expect(await res.json()).toEqual(expect.objectContaining({ smsConsentRecorded: false }))
+  })
+
+  it("still files for a real number written the way a person writes one", async () => {
+    // The control. Without it the test above passes for a gate that refuses
+    // everything, which would be worse than the bug it fixes.
+    await POST(req(submission({ smsConsent: true, phone: "(813) 555-0147" })))
+    expect(smsRows()).toHaveLength(1)
+  })
+
+  it("refuses over a suppressed PHONE — a STOP is not undone by a checkbox", async () => {
+    // `confirmSmsConsent` already refuses on this exact test, and argues it:
+    // a tick on an unauthenticated public panel is a weaker signal than the
+    // emailed link it guards. No text would go out either way, so what this
+    // prevents is a granted:true row dated after a STOP, in the one table
+    // whose whole purpose is defensible evidence.
+    h.isSuppressed.mockImplementation(async (identifier: string) => identifier.startsWith("+"))
+
+    const res = await POST(req(submission({ smsConsent: true })))
+
+    expect(smsRows()).toHaveLength(0)
+    expect(await res.json()).toEqual(expect.objectContaining({ smsConsentRecorded: false }))
+  })
+
+  it("refuses over a suppressed EMAIL too, because either identifier suppresses the run", async () => {
+    // contact_suppressions is keyed by IDENTIFIER, and loadRunContext treats
+    // either hit as suppressing the whole run. A gate asking only about the
+    // phone would file consent for somebody the engine will never text.
+    h.isSuppressed.mockImplementation(async (identifier: string) => identifier.includes("@"))
+
+    await POST(req(submission({ smsConsent: true })))
+
+    expect(smsRows()).toHaveLength(0)
+  })
+
+  it("files normally when neither identifier is suppressed", async () => {
+    // The control for both suppression tests above.
+    h.isSuppressed.mockResolvedValue(false)
+    await POST(req(submission({ smsConsent: true })))
+    expect(smsRows()).toHaveLength(1)
+  })
+
+  it("files the row against the conversation's OWN tenant, from its own source", async () => {
+    // What `fileMarketingConsent`'s docblock says matters most: a defaulted
+    // businessId is what let this call read the platform's settings for every
+    // coach's conversation.
+    //
+    // A DISTINCT id, for the reason this file already states above the
+    // marketing version of this test: SETTINGS.business_id IS the platform id
+    // `00000000-…-0001`, so asserting against it passes just as happily for
+    // code that hard-codes the default. Mutating the row's businessId to that
+    // literal survived the first version of this test.
+    const OTHER_BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
+    h.getConversation.mockResolvedValue(conversation({ business_id: OTHER_BUSINESS_ID }))
+
+    await POST(req(submission({ smsConsent: true })))
+
+    expect(smsRows()[0]).toEqual(expect.objectContaining({ businessId: OTHER_BUSINESS_ID, source: "ai_chat" }))
   })
 })

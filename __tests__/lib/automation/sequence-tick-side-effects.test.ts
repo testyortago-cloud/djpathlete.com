@@ -622,6 +622,131 @@ describe("the one-write-back concurrency contract", () => {
 // then advances one position — a fact no `decideStep` test can see.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// G12 — the coach alert two days after a service application.
+//
+// The `alert` step already existed; what it did NOT do was name the person it
+// is about. The runner passed `contactName: null`, and `substituteName`
+// replaces `{{name}}` with the empty string — so the wording the ledger row
+// itself proposes, "No reply yet to {{name}}'s application", rendered as
+// "No reply yet to 's application". An alert that cannot say who it concerns
+// makes the coach go looking, which is most of the value gone.
+//
+// The cap questions are the row's other half, and they run in OPPOSITE
+// directions: an alert must not WAIT for the contact's daily cap (it is a
+// message to the coach, not to the lead), and it must not CONSUME it either
+// (or one alert silently eats the lead's own message for that day).
+// ---------------------------------------------------------------------------
+
+describe("an alert step, through the runner (G12)", () => {
+  const ALERT_STEP: SequenceStepRow = {
+    id: "step-alert-1",
+    position: 0,
+    kind: "alert",
+    wait_minutes: null,
+    subject: "No reply yet to {{name}}'s application",
+    body: "{{name}} applied two days ago and has not heard back from you.",
+    branch_condition: null,
+    on_true_position: null,
+    on_false_position: null,
+    config: {},
+  }
+
+  beforeEach(() => {
+    ;(loadSteps as Mock).mockResolvedValue([ALERT_STEP])
+  })
+
+  it("emails the coach's reply_to, not the lead", async () => {
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
+
+    await runSequenceTick()
+
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    const payload = sendMock.mock.calls[0][0] as { to?: unknown; subject?: string }
+    expect(payload.to).toBe("reply@example.com")
+    // And the control that makes the claim mean something: NOT the lead.
+    expect(payload.to).not.toBe("lead@example.com")
+  })
+
+  it("names the lead the alert is ABOUT, so the subject is actionable in an inbox", async () => {
+    // The mutant this kills: `contactName: null`, which is what the code did
+    // before G12 and which renders "No reply yet to 's application".
+    ;(loadRunContext as Mock).mockResolvedValue(
+      sendableContext({ contact: { email: "lead@example.com", phone_e164: null, user_id: null, name: "Sarah Chen" } }),
+    )
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
+
+    await runSequenceTick()
+
+    const payload = sendMock.mock.calls[0][0] as { subject?: string; html?: string }
+    expect(payload.subject).toBe("No reply yet to Sarah Chen's application")
+    expect(payload.subject).not.toContain("{{name}}")
+    expect(payload.html).toContain("Sarah Chen")
+  })
+
+  it("leaves {{name}} empty rather than inventing one when the contact has no name", async () => {
+    // `substituteName` never guesses, and an alert must not either. Ugly beats
+    // wrong: a fabricated name in an operator's inbox is a fact nobody wrote.
+    ;(loadRunContext as Mock).mockResolvedValue(
+      sendableContext({ contact: { email: "lead@example.com", phone_e164: null, user_id: null, name: null } }),
+    )
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
+
+    await runSequenceTick()
+
+    const payload = sendMock.mock.calls[0][0] as { subject?: string }
+    expect(payload.subject).not.toContain("{{name}}")
+    expect(payload.subject).toContain("application")
+  })
+
+  it("is NOT held back by the contact's daily cap", async () => {
+    // The cap protects the LEAD from being messaged too often. An alert goes
+    // to the coach, so a lead who has already had their one message today must
+    // not silence the coach's reminder about them.
+    // The timestamp must fall inside `ctx.now`'s LOCAL DAY, which is the
+    // helper default 2026-08-18. An earlier version used `new Date()` — the
+    // real wall clock, a month later — so `dailyCapDefer` counted zero sends
+    // and returned null for every step kind. The test passed whether or not
+    // the alert arm consulted the cap at all, which is no test.
+    ;(loadRunContext as Mock).mockResolvedValue(
+      sendableContext({ dailyCap: 1, sentAtToday: ["2026-08-18T12:00:00Z"] }),
+    )
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
+
+    await runSequenceTick()
+
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    expect(deferRun).not.toHaveBeenCalled()
+    expect(advanceRun).toHaveBeenCalledWith("run-1", 1)
+  })
+
+  it("does not CONSUME the cap either — it writes no sequence_messages row", async () => {
+    // The other direction, and the one a reader would assume rather than
+    // check. `sentAtToday` is built from sequence_messages; the alert calls
+    // sendSequenceEmail directly and never records one, so it cannot eat the
+    // lead's own allowance for that day.
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
+
+    await runSequenceTick()
+
+    expect(recordSend).not.toHaveBeenCalled()
+    expect(markSent).not.toHaveBeenCalled()
+  })
+
+  it("is not held by quiet hours either", async () => {
+    // Same reasoning: quiet hours are the LEAD's night, not the coach's.
+    ;(loadRunContext as Mock).mockResolvedValue(
+      sendableContext({ quiet: { startHour: 8, endHour: 9 }, timezone: "UTC", now: new Date("2026-08-18T23:00:00Z") }),
+    )
+    ;(claimDueRuns as Mock).mockResolvedValue([makeRun("run-1")])
+
+    await runSequenceTick()
+
+    expect(sendMock).toHaveBeenCalledTimes(1)
+    expect(deferRun).not.toHaveBeenCalled()
+  })
+})
+
 describe("an anchored wait, through the runner", () => {
   const CAMP_STARTS = "2026-09-01T09:00:00.000Z"
 
