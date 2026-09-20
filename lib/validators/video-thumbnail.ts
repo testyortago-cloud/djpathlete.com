@@ -10,7 +10,10 @@ export const commitThumbnailSchema = z.discriminatedUnion("source", [
   z.object({ source: z.literal("auto") }),
   z.object({
     source: z.enum(["frame", "upload"]),
-    thumbnailPath: z.string().min(1, "thumbnailPath is required"),
+    // GCS caps object names at 1024 bytes. Without this cap a shape-legal but
+    // oversized candidate reaches bucket.file(...).exists() and risks an
+    // unhandled 500 instead of a clean 400.
+    thumbnailPath: z.string().min(1, "thumbnailPath is required").max(1024, "thumbnailPath is too long"),
   }),
 ])
 
@@ -43,6 +46,6 @@ export function customThumbnailPath(storagePath: string, now: number): string {
  * bucket.
  */
 export function isLegalCustomThumbnailPath(storagePath: string, candidate: string): boolean {
-  return /^\d+\.jpg$/.test(candidate.slice(`${storagePath}.thumb-custom-`.length))
-    && candidate.startsWith(`${storagePath}.thumb-custom-`)
+  return candidate.startsWith(`${storagePath}.thumb-custom-`)
+    && /^\d+\.jpg$/.test(candidate.slice(`${storagePath}.thumb-custom-`.length))
 }

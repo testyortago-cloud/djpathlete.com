@@ -4,6 +4,15 @@ const authMock = vi.fn()
 const getVideoMock = vi.fn()
 const updateMock = vi.fn()
 const existsMock = vi.fn()
+// A spy, not just an argument-blind factory: `existsMock` alone would answer
+// the same regardless of which path bucket.file() was called with, so a
+// mutant that probes the WRONG blob (e.g. always the auto path) would sail
+// through every status-code assertion below unnoticed. fileMock lets tests
+// pin the SUBJECT of the exists() check, not just its answer.
+const fileMock = vi.fn((_path: string) => ({
+  exists: existsMock,
+  getSignedUrl: vi.fn().mockResolvedValue(["https://signed/put"]),
+}))
 
 vi.mock("@/lib/auth", () => ({ auth: () => authMock() }))
 vi.mock("@/lib/permissions/guard", () => ({ canAccessAdminPath: async (u: { role?: string }) => u?.role === "admin" }))
@@ -13,7 +22,7 @@ vi.mock("@/lib/db/video-uploads", () => ({
 }))
 vi.mock("@/lib/firebase-admin", () => ({
   getAdminStorage: () => ({
-    bucket: () => ({ file: () => ({ exists: existsMock, getSignedUrl: vi.fn().mockResolvedValue(["https://signed/put"]) }) }),
+    bucket: () => ({ file: fileMock }),
   }),
 }))
 
@@ -48,13 +57,28 @@ describe("PUT /api/admin/videos/[id]/thumbnail", () => {
     const path = `${STORAGE}.thumb-custom-1700000000000.jpg`
     const res = await call("v1", { source: "frame", thumbnailPath: path })
     expect(res.status).toBe(200)
+    // Pin the SUBJECT of the exists() check, not just its answer: the route
+    // must probe the CUSTOM path the client sent, not some other blob.
+    expect(fileMock).toHaveBeenCalledWith(path)
     expect(updateMock).toHaveBeenCalledWith("v1", { thumbnail_path: path, thumbnail_source: "frame" })
   })
 
   it("409s and writes NOTHING when the blob is missing", async () => {
     existsMock.mockResolvedValue([false])
-    const res = await call("v1", { source: "frame", thumbnailPath: `${STORAGE}.thumb-custom-1.jpg` })
+    const path = `${STORAGE}.thumb-custom-1.jpg`
+    const res = await call("v1", { source: "frame", thumbnailPath: path })
     expect(res.status).toBe(409)
+    // The 409 must come from checking THIS path, not a coincidentally-false
+    // answer about some other blob (e.g. the auto thumbnail).
+    expect(fileMock).toHaveBeenCalledWith(path)
+    expect(updateMock).not.toHaveBeenCalled()
+  })
+
+  it("400s when thumbnailPath exceeds the 1024-byte GCS object-name cap", async () => {
+    const path = `${STORAGE}.thumb-custom-${"1".repeat(1025)}.jpg`
+    const res = await call("v1", { source: "upload", thumbnailPath: path })
+    expect(res.status).toBe(400)
+    expect(fileMock).not.toHaveBeenCalled()
     expect(updateMock).not.toHaveBeenCalled()
   })
 
@@ -73,6 +97,10 @@ describe("PUT /api/admin/videos/[id]/thumbnail", () => {
   it("reverts to the auto path, deriving it server-side", async () => {
     const res = await call("v1", { source: "auto" })
     expect(res.status).toBe(200)
+    // The revert must probe the AUTO blob specifically — pinning this is what
+    // separates a correct server-derived revert from a mutant that (say)
+    // checks the wrong path and gets lucky on the status code alone.
+    expect(fileMock).toHaveBeenCalledWith(`${STORAGE}.thumb.jpg`)
     expect(updateMock).toHaveBeenCalledWith("v1", {
       thumbnail_path: `${STORAGE}.thumb.jpg`,
       thumbnail_source: "auto",
