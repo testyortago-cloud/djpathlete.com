@@ -72,7 +72,7 @@ import { getSetting } from "@/lib/db/system-settings"
 import { countRecentConversationsByIp, getConversation, markCaptured } from "@/lib/db/chat"
 import { captureLead } from "@/lib/lead-engine/capture"
 import { parseAttrCookie } from "@/lib/marketing/cookies"
-import { recordConsent } from "@/lib/db/contact-consents"
+import { isSuppressed, recordConsent } from "@/lib/db/contact-consents"
 import { getBusinessSettings } from "@/lib/db/businesses"
 import { recordAudit } from "@/lib/audit/record"
 import { rateLimit } from "@/lib/shop/rate-limit"
@@ -84,6 +84,12 @@ import {
   MAX_CONVERSATIONS_PER_IP_PER_HOUR,
 } from "@/lib/lead-engine/chat/constants"
 import { hasChatConsentDisplayName, renderChatMarketingWording } from "@/lib/lead-engine/chat/consent-wording"
+// G18. The texting permission's own sentence and its own blank-name gate —
+// the same pair the funnel form island and its submit route already share.
+import { hasSmsConsentDisplayName, renderSmsConsentWording } from "@/lib/lead-engine/sms-consent-wording"
+// G18. The same normaliser the contact spine uses, so "is there a number?" has
+// one answer; and the suppression test `confirmSmsConsent` already applies.
+import { normalisePhone } from "@/lib/lead-engine/identity"
 
 // Type-only, so the closed audit taxonomy is checked at compile time rather
 // than at write time: a slug that is not a row in `AUDIT_ACTIONS` stops the
@@ -175,7 +181,7 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: COPY.invalid }, { status: 400 })
   }
-  const { conversationId, name, email, phone, marketingConsent } = parsed.data
+  const { conversationId, name, email, phone, marketingConsent, smsConsent } = parsed.data
 
   // 3. The origin, as a SALTED hash and never an address. Only the limiter
   //    sees the hash; the raw address below it is for the consent row alone.
@@ -312,6 +318,33 @@ export async function POST(request: Request) {
       ? await fileMarketingConsent({ businessId: conversation.business_id, contactId, ip, userAgent })
       : false
 
+  // G18. The texting permission, gated on a phone number we could actually
+  // DIAL — not merely on a non-empty string.
+  //
+  // `askCaptureSchema` validates `phone` as `z.string().max(40)` and nothing
+  // more, so "call me" reaches here as a perfectly valid submission. A
+  // `Boolean(phone)` gate would file `granted: true, channel: "sms"` for it,
+  // while `captureLead` → `normalisePhone` stores the contact with
+  // `phone_e164 = NULL` — producing exactly the row `fileSmsConsent`'s own
+  // docblock says must not exist, and one that reads as consent forever
+  // afterwards. Worse, `buildIdentifierPatch` fills null identifiers later, so
+  // the day any other surface supplies a number, every text step becomes
+  // sendable to a number nobody ticked a box for.
+  //
+  // The SAME normaliser the contact spine uses, so the gate and the stored
+  // column can never disagree about whether there is a number.
+  const smsConsentRecorded =
+    smsConsent === true && normalisePhone(phone) !== null
+      ? await fileSmsConsent({
+          businessId: conversation.business_id,
+          contactId,
+          phoneE164: normalisePhone(phone),
+          email: email ?? null,
+          ip,
+          userAgent,
+        })
+      : false
+
   // The trail records what happened, never who it happened to: no name, no
   // email, no phone, no IP. `chat_conversations.ip_hash` is the only origin
   // identifier this subsystem keeps, and the contact spine already holds the
@@ -332,6 +365,10 @@ export async function POST(request: Request) {
       contact_id: contactId,
       marketing_consent: marketingConsent,
       marketing_consent_recorded: marketingConsentRecorded,
+      // Both answers, and both outcomes. "Asked for" and "actually filed"
+      // come apart whenever a gate refuses, and the trail has to show which.
+      sms_consent: smsConsent,
+      sms_consent_recorded: smsConsentRecorded,
     },
   })
 
@@ -339,7 +376,7 @@ export async function POST(request: Request) {
   // actually happened rather than what was asked for. It is false whenever no
   // row was filed, and a surface that promises "you'll hear about camps" off
   // the back of a tick that filed nothing is making the promise up.
-  return NextResponse.json({ ok: true, marketingConsentRecorded })
+  return NextResponse.json({ ok: true, marketingConsentRecorded, smsConsentRecorded })
 }
 
 /**
@@ -409,6 +446,96 @@ async function fileMarketingConsent(input: {
     // can embed the submitted email inside a constraint violation's details.
     const e = err as { code?: unknown; message?: unknown } | null | undefined
     console.error(`[ask/capture] marketing consent row failed for contact ${input.contactId} (the lead was saved)`, {
+      code: typeof e?.code === "string" ? e.code : undefined,
+      message: typeof e?.message === "string" ? e.message : undefined,
+    })
+    return false
+  }
+}
+
+/**
+ * G18. The texting permission, filed as its own row.
+ *
+ * A SECOND FUNCTION RATHER THAN A FLAG ON THE ONE ABOVE, because the two
+ * permissions differ in every part that matters: a different sentence
+ * (`renderSmsConsentWording` vs `renderChatMarketingWording`), a different
+ * channel, a different gate — and, for this one, a requirement the email row
+ * has no equivalent of.
+ *
+ * THAT EXTRA GATE IS THE PHONE NUMBER. Permission to text somebody whose
+ * number we do not have is not a permission; it is a row that can never be
+ * acted on, sitting in the one table whose entire purpose is defensible
+ * evidence of what a person agreed to. The checkbox is only rendered beside a
+ * filled-in phone field, but a route may not trust its own client about that:
+ * anything can POST here.
+ *
+ * Fails the same way `fileMarketingConsent` does — returns false, never
+ * throws. The lead is already saved by the time this runs, and losing a
+ * consent row is a gap, whereas turning "we have your details" into an error
+ * for somebody who has just handed them over is not recoverable.
+ */
+async function fileSmsConsent(input: {
+  businessId: string
+  contactId: string
+  /** E.164, already normalised by the caller — the identifier a STOP is filed against. */
+  phoneE164: string | null
+  /** The submitted address, if any: a suppressed EMAIL blocks texts too. */
+  email: string | null
+  ip: string | null
+  userAgent: string | null
+}): Promise<boolean> {
+  try {
+    const settings = await getBusinessSettings(input.businessId)
+
+    // The identical gate the funnel form island and its submit route share:
+    // "I agree to receive text messages from  about my inquiry" names nobody,
+    // and a sentence that cannot say who is texting is not consent to
+    // anything. `business_settings.display_name` is seeded `''` (00212), so
+    // this is the state of production today, not a hypothetical.
+    if (!hasSmsConsentDisplayName(settings.display_name)) {
+      console.warn("[ask/capture] sms consent skipped: business_settings.display_name is blank")
+      return false
+    }
+
+    // A PRIOR "STOP" IS NOT UNDONE FROM A CHECKBOX ON A PUBLIC CHAT PANEL.
+    // `confirmSmsConsent` (lib/lead-engine/sms-consent.ts) already refuses on
+    // this exact test and argues it at length: a link tapped in an email is a
+    // weaker signal than a message sent from the phone in question, and an
+    // unauthenticated tick on a page anyone can open is weaker still.
+    //
+    // `contact_suppressions` is keyed by IDENTIFIER, not by contact, and
+    // `loadRunContext` treats EITHER a suppressed phone or a suppressed email
+    // as suppressing the whole run — so this asks the same question, both
+    // ways, rather than a narrower one.
+    //
+    // No text would go out regardless (`decideStep` exits on `isSuppressed`
+    // before anything sends), so what this prevents is LEDGER damage: a
+    // `granted: true` row dated after a STOP, in the one table whose entire
+    // purpose is defensible evidence of what somebody agreed to.
+    const suppressedIdentifier =
+      (input.phoneE164 && (await isSuppressed(input.phoneE164, input.businessId))) ||
+      (input.email && (await isSuppressed(input.email, input.businessId)))
+    if (suppressedIdentifier) {
+      console.warn(`[ask/capture] sms consent skipped for contact ${input.contactId}: identifier is suppressed`)
+      return false
+    }
+
+    await recordConsent({
+      businessId: input.businessId,
+      contactId: input.contactId,
+      channel: "sms",
+      granted: true,
+      source: CHAT_LEAD_SOURCE,
+      // Re-rendered server-side, never relayed from the client — the same
+      // rule, and for the same reason, as the email row above.
+      wordingShown: renderSmsConsentWording(settings.display_name),
+      ip: input.ip,
+      userAgent: input.userAgent,
+    })
+    return true
+  } catch (err) {
+    const e = err as { code?: unknown; message?: unknown } | null | undefined
+    console.error(`[ask/capture] sms consent row failed for contact ${input.contactId} (the lead was saved)`, {
       code: typeof e?.code === "string" ? e.code : undefined,
       message: typeof e?.message === "string" ? e.message : undefined,
     })
