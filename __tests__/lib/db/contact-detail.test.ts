@@ -325,6 +325,27 @@ describe("describeTimelineEvent", () => {
   // clean and falls through to the `Came in through ${humanise(...)}`
   // default, showing the coach a raw slug instead of a sentence. Pin it so
   // that fallback can never happen for this source silently.
+  it("says WHICH surface an unsubscribe came from, rather than asserting one (G07)", () => {
+    // This arm used to hardcode "They used the link at the bottom of an
+    // email" for every unsubscribe. The newsletter form now writes these rows
+    // too, and this is the screen a coach reads when answering a complaint —
+    // so a wrong provenance here is a wrong answer to a regulator.
+    expect(describeTimelineEvent(event({ id: "e", kind: "unsubscribed", source: "unsubscribe_link" })).detail).toBe(
+      "They used the link at the bottom of an email.",
+    )
+    expect(describeTimelineEvent(event({ id: "e", kind: "unsubscribed", source: "newsletter_form" })).detail).toBe(
+      "They typed their email address into the unsubscribe page.",
+    )
+  })
+
+  it("says NOTHING about an unsubscribe whose surface it has not been taught", () => {
+    // The default arm. Guessing here is exactly the failure being fixed —
+    // silence is the only honest answer for a source this function does not know.
+    expect(
+      describeTimelineEvent(event({ id: "e", kind: "unsubscribed", source: "some_future_surface" })).detail,
+    ).toBeNull()
+  })
+
   it("names an abandoned checkout, not a raw slug", () => {
     expect(
       describeTimelineEvent(event({ id: "e", kind: "entry_point", source: "checkout_abandoned" })).title,

@@ -64,6 +64,12 @@ import { recordAudit } from "@/lib/audit/record"
  *     app/api/contact/route.ts
  *     app/api/shop/leads/route.ts
  *     app/api/newsletter/route.ts
+ *     app/api/newsletter/unsubscribe/route.ts — the mirror of the line above,
+ *       and the ONE entry here that resolves a tenant in order to REVOKE
+ *       rather than capture (G07). The subscriber row it also writes is
+ *       global — `newsletter_subscribers` has no business_id at all — so the
+ *       Host boundary is what decides whose contact gets suppressed and whose
+ *       sequence runs are exited.
  *     app/api/inquiry/route.ts
  *     app/api/events/[id]/signup/route.ts
  *     app/api/events/[id]/checkout/route.ts

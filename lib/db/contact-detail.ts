@@ -244,9 +244,21 @@ export function describeTimelineEvent(row: TimelineEventRow): {
       }
 
     case "unsubscribed":
+      // WHICH surface they used, read from the row rather than asserted. This
+      // arm used to say "They used the link at the bottom of an email" for
+      // every unsubscribe — which became false the moment the newsletter form
+      // started writing these rows too (G07), on the one screen a coach reads
+      // when answering a complaint. That is the whole reason the row carries a
+      // source. The `default` matters as much as the cases: a source this
+      // function has not been taught must say nothing rather than guess.
       return {
         title: "Unsubscribed from emails",
-        detail: "They used the link at the bottom of an email.",
+        detail:
+          row.source === "unsubscribe_link"
+            ? "They used the link at the bottom of an email."
+            : row.source === "newsletter_form"
+              ? "They typed their email address into the unsubscribe page."
+              : null,
         tone: "danger",
       }
 
