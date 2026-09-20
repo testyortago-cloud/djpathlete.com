@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/data-table"
 import type { ContactListRow } from "@/lib/db/contacts-list"
 import type { SequenceSummary } from "@/lib/db/sequences"
+import { describeSequenceStatus, type LatestSequenceRun } from "@/lib/lead-engine/sequence-status"
 import {
   MAX_ENROL_BATCH,
   describeEnrolResult,
@@ -66,6 +67,18 @@ export interface ContactsTableProps {
   contacts: ContactListRow[]
   /** Tags per contact id. A plain object, not a Map — this crosses the server boundary. */
   tagsByContact?: Record<string, string[]>
+  /**
+   * The one sequence run the Follow-up column speaks for, per contact id.
+   *
+   * OPTIONAL, and absent means "—" rather than an error: a caller that has not
+   * read it yet renders a table with an empty column, not a broken one. A
+   * contact simply missing from the object is somebody in no follow-up —
+   * `latestRunsForContacts` omits them rather than storing a null, and
+   * `describeSequenceStatus` turns both into the same marker.
+   *
+   * A plain object, not a Map, because this crosses the server boundary.
+   */
+  sequenceByContact?: Record<string, LatestSequenceRun>
   /** Every contact matching the filters, not just the ones on this page. */
   total: number
   /** 1-based, already validated by `parseContactFilters`. */
@@ -85,7 +98,7 @@ export interface ContactsTableProps {
    * in here would survive a narrowing search and leave the operator on page 2
    * of a one-page result.
    */
-  filters: { search: string; has: string; days: string }
+  filters: { search: string; has: string; days: string; seq: string }
 }
 
 /** Status pill tones. `active` is the only one that will actually send. */
@@ -286,7 +299,8 @@ export function ContactsTable(props: ContactsTableProps) {
     }
   }, [chosen, onePerContact, router, selectedIds, sending])
 
-  const hasFilter = props.filters.search !== "" || props.filters.has !== "" || props.filters.days !== ""
+  const hasFilter =
+    props.filters.search !== "" || props.filters.has !== "" || props.filters.days !== "" || props.filters.seq !== ""
 
   return (
     <DataTableCard>
@@ -331,8 +345,21 @@ export function ContactsTable(props: ContactsTableProps) {
           <option value="90">Added in the last 90 days</option>
         </select>
 
+        <select
+          aria-label="Filter by whether they are in a follow-up"
+          value={props.filters.seq || "all"}
+          onChange={(event) => setParam({ seq: event.target.value === "all" ? "" : event.target.value })}
+          className="rounded-lg border border-border bg-white px-3 py-2 text-sm"
+        >
+          <option value="all">In a follow-up or not</option>
+          {/* "In one NOW" rather than "has ever been in one": a run that ended
+              is not a follow-up somebody is in, and a filter that counted those
+              would return most of the table while claiming to narrow it. */}
+          <option value="in">In a follow-up now</option>
+        </select>
+
         {hasFilter ? (
-          <Button variant="ghost" size="sm" onClick={() => setParam({ search: "", has: "", days: "" })}>
+          <Button variant="ghost" size="sm" onClick={() => setParam({ search: "", has: "", days: "", seq: "" })}>
             <X className="size-4" aria-hidden />
             Clear
           </Button>
@@ -442,11 +469,19 @@ export function ContactsTable(props: ContactsTableProps) {
           <DataTableHead>Name</DataTableHead>
           <DataTableHead>Email</DataTableHead>
           <DataTableHead>Phone</DataTableHead>
+          {/* A SIXTH COLUMN, and the note under the name cell explains why tags
+              were NOT given one. The trade is different here: an operator about
+              to tick a hundred boxes and enrol the lot needs to see which of
+              them are already being messaged and which have opted out, and
+              "open each record one at a time" is not a way to find that out.
+              Placed after the identity columns and before Added so Name / Email
+              / Phone stay together. */}
+          <DataTableHead>Follow-up</DataTableHead>
           <DataTableHead>Added</DataTableHead>
         </DataTableHeader>
         <tbody>
           {props.contacts.length === 0 ? (
-            <DataTableEmpty colSpan={5}>
+            <DataTableEmpty colSpan={6}>
               {/* A page past the end is its own answer, and it has a next step.
                   Without this it read as "no contacts match these filters",
                   which is the opposite of true when the footer above it is
@@ -506,10 +541,12 @@ export function ContactsTable(props: ContactsTableProps) {
                       {contact.name ?? "View record"}
                       <span className="sr-only"> — open contact record</span>
                     </Link>
-                    {/* Tags live under the name rather than in their own column:
-                        a sixth column would push the phone and date off a laptop
-                        screen, and the empty-state colSpan={5} would have to
-                        change with it. */}
+                    {/* Tags live under the name rather than in their own column.
+                        The reason was that a sixth column costs width and forces
+                        the empty-state colSpan to change with it — G13 has since
+                        spent both on Follow-up, which is a status an operator
+                        acts on rather than a label they filter by. A SEVENTH for
+                        tags would still be the wrong trade. */}
                     {(props.tagsByContact?.[contact.id] ?? []).length > 0 ? (
                       <span className="mt-1 flex flex-wrap gap-1">
                         {(props.tagsByContact?.[contact.id] ?? []).map((tag) => (
@@ -548,6 +585,22 @@ export function ContactsTable(props: ContactsTableProps) {
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
+                  </DataTableCell>
+                  <DataTableCell>
+                    {/* Keyed on THIS contact's id, never on the row index: the
+                        map is built from the page's ids and a contact with no
+                        run is absent from it, so an index would quietly slide
+                        every status one row down the moment anyone is missing. */}
+                    {(() => {
+                      const status = describeSequenceStatus(props.sequenceByContact?.[contact.id] ?? null)
+                      return status.detail ? (
+                        <DataTableBadge tone={status.tone}>
+                          <span title={status.detail}>{status.label}</span>
+                        </DataTableBadge>
+                      ) : (
+                        <DataTableBadge tone={status.tone}>{status.label}</DataTableBadge>
+                      )
+                    })()}
                   </DataTableCell>
                   <DataTableCell muted>
                     <time dateTime={contact.created_at}>{formatAdded(contact.created_at)}</time>

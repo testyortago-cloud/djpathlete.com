@@ -8,6 +8,8 @@ import {
   listLeads,
   type LeadFilters,
 } from "@/lib/db/funnel-leads"
+import { latestRunsForEmails } from "@/lib/db/contact-sequence-status"
+import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { LeadsBoard } from "@/components/admin/funnels/LeadsBoard"
 import type { FunnelLeadStatus } from "@/types/database"
 
@@ -78,6 +80,33 @@ export default async function FunnelLeadsPage({
     .filter((id): id is string => typeof id === "string" && id.length > 0)
   const quizOutcomes = attemptIds.length > 0 ? await getQuizOutcomesForLeads(attemptIds).catch(() => ({})) : {}
 
+  // THE FOLLOW-UP EACH LEAD'S PERSON IS ON.
+  //
+  // SCOPED WHILE ITS NEIGHBOURS ON THIS PAGE ARE NOT, and that is worth saying
+  // out loud rather than leaving to be discovered. `funnel_submissions` carries
+  // no `business_id` at all (gap G31), so the lead reads above are unscoped;
+  // this read touches `contacts` and `sequence_runs`, which both have one, and
+  // an unscoped read there would put another coach's follow-up on this coach's
+  // board. So it resolves a real tenant.
+  //
+  // What that mixed scope costs, stated exactly: a lead captured by ANOTHER
+  // tenant's funnel shows "—" here, because their contact is not in this
+  // business. That is under-reporting, which is the safe direction — it never
+  // shows the wrong person's status. The fix is G31, not a wider read here.
+  //
+  // Fails soft for the same reason the quiz outcomes above do: a missing badge
+  // is not worth taking the whole inbox down for.
+  const { businessId } = await resolveAdminTenant()
+  const sequenceByEmail = Object.fromEntries(
+    await latestRunsForEmails(
+      leads.map((lead) => lead.email),
+      businessId,
+    ).catch((err: unknown) => {
+      console.error("[leads] follow-up statuses unavailable", (err as Error).message)
+      return new Map()
+    }),
+  )
+
   const exportParams = new URLSearchParams()
   for (const [key, value] of Object.entries({ funnelId, status: statusParam, days, search })) {
     if (value) exportParams.set(key, value)
@@ -109,6 +138,7 @@ export default async function FunnelLeadsPage({
         filters={{ funnelId, status: statusParam, days, search }}
         exportHref={`/api/admin/funnels/leads/export?${exportParams.toString()}`}
         quizOutcomes={quizOutcomes}
+        sequenceByEmail={sequenceByEmail}
       />
     </div>
   )

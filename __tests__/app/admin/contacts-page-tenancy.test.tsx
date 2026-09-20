@@ -37,6 +37,14 @@ vi.mock("@/lib/db/contacts-list", () => ({
 }))
 vi.mock("@/lib/db/sequences", () => ({ listSequences: vi.fn() }))
 vi.mock("@/lib/db/contact-tags", () => ({ tagsForContacts: vi.fn() }))
+// G13 added a THIRD per-page read alongside those two, and it is scoped the
+// same way. Mocked for the same reason: unmocked it escapes to a real
+// PostgREST endpoint with these fixture ids, which is both a failing suite and
+// a live network call from a unit test.
+vi.mock("@/lib/db/contact-sequence-status", () => ({
+  latestRunsForContacts: vi.fn(),
+  contactIdsInSequence: vi.fn(),
+}))
 vi.mock("@/components/admin/contacts/ContactsTable", () => ({ ContactsTable: () => null }))
 
 import { currentActor, requirePermission } from "@/lib/permissions/guard"
@@ -44,6 +52,7 @@ import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { listContacts, countContacts } from "@/lib/db/contacts-list"
 import { listSequences } from "@/lib/db/sequences"
 import { tagsForContacts } from "@/lib/db/contact-tags"
+import { contactIdsInSequence, latestRunsForContacts } from "@/lib/db/contact-sequence-status"
 import AdminContactsPage from "@/app/(admin)/admin/contacts/page"
 
 const BUSINESS_ID = "22222222-2222-2222-2222-222222222222"
@@ -65,6 +74,8 @@ beforeEach(() => {
   ;(countContacts as ReturnType<typeof vi.fn>).mockResolvedValue(2)
   ;(listSequences as ReturnType<typeof vi.fn>).mockResolvedValue([])
   ;(tagsForContacts as ReturnType<typeof vi.fn>).mockResolvedValue(new Map())
+  ;(latestRunsForContacts as ReturnType<typeof vi.fn>).mockResolvedValue(new Map())
+  ;(contactIdsInSequence as ReturnType<typeof vi.fn>).mockResolvedValue([])
 })
 
 describe("AdminContactsPage — tenancy scoping", () => {
@@ -92,6 +103,14 @@ describe("AdminContactsPage — tenancy scoping", () => {
     // silently empty for any non-singleton business.
     await renderPage()
     expect(tagsForContacts).toHaveBeenCalledWith(["c1", "c2"], BUSINESS_ID)
+  })
+
+  it("passes the resolved businessId to latestRunsForContacts, not the SINGLETON default", async () => {
+    // The Follow-up column's read (G13), held to the same standard as its two
+    // neighbours above. Unscoped, it would render another coach's follow-up
+    // against this coach's contacts.
+    await renderPage()
+    expect(latestRunsForContacts).toHaveBeenCalledWith(["c1", "c2"], BUSINESS_ID)
   })
 
   it("still scopes listContacts and countContacts to the resolved businessId", async () => {

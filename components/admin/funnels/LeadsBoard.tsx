@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/data-table"
 import type { FunnelLead, QuizLeadOutcome } from "@/lib/db/funnel-leads"
 import type { FunnelLeadStatus } from "@/types/database"
+import { describeSequenceStatus, type LatestSequenceRun } from "@/lib/lead-engine/sequence-status"
 
 const STATUS_LABEL: Record<FunnelLeadStatus, string> = {
   new: "New",
@@ -88,6 +89,15 @@ export interface LeadsBoardProps {
    * and an absent entry renders as "could not be read" rather than as a zero.
    */
   quizOutcomes?: Record<string, QuizLeadOutcome>
+  /**
+   * The follow-up each lead's person is on, keyed by LOWERCASED EMAIL.
+   *
+   * Not by contact id: `funnel_submissions` has no such column (read off
+   * production, not off a migration), so the DAL matches on the address
+   * instead — see `latestRunsForEmails` for what that match can and cannot do.
+   * Optional, and an absent entry renders the empty marker rather than an error.
+   */
+  sequenceByEmail?: Record<string, LatestSequenceRun>
 }
 
 export function LeadsBoard(props: LeadsBoardProps) {
@@ -241,11 +251,17 @@ export function LeadsBoard(props: LeadsBoardProps) {
           <DataTableHead>Page</DataTableHead>
           <DataTableHead>Lead</DataTableHead>
           <DataTableHead>Contact</DataTableHead>
+          {/* TWO DIFFERENT FACTS, AND BOTH BELONG HERE. "Status" beside this is
+              what a coach set by hand on this submission (new / contacted /
+              signed up). "Follow-up" is what the engine is doing with the
+              person automatically. A board that showed only the first said
+              nothing about whether anybody had actually been messaged. */}
+          <DataTableHead>Follow-up</DataTableHead>
           <DataTableHead>Status</DataTableHead>
         </DataTableHeader>
         <tbody>
           {leads.length === 0 ? (
-            <DataTableEmpty colSpan={6}>
+            <DataTableEmpty colSpan={7}>
               {hasFilter
                 ? "No leads match these filters."
                 : "No leads yet. They appear here the moment someone submits a form or finishes a quiz on a published page."}
@@ -261,6 +277,7 @@ export function LeadsBoard(props: LeadsBoardProps) {
                   onToggle={() => setExpanded(isOpen ? null : lead.id)}
                   onPatch={patch}
                   outcome={lead.quiz_attempt_id ? props.quizOutcomes?.[lead.quiz_attempt_id] : undefined}
+                  sequenceByEmail={props.sequenceByEmail}
                 />
               )
             })
@@ -285,6 +302,7 @@ function LeadRows({
   onToggle,
   onPatch,
   outcome,
+  sequenceByEmail,
 }: {
   lead: FunnelLead
   isOpen: boolean
@@ -296,6 +314,8 @@ function LeadRows({
   ) => Promise<void>
   /** Present only for a quiz lead whose attempt could be read. */
   outcome?: QuizLeadOutcome
+  /** See `LeadsBoardProps.sequenceByEmail`. */
+  sequenceByEmail?: Record<string, LatestSequenceRun>
 }) {
   const [notes, setNotes] = useState(lead.notes ?? "")
 
@@ -349,6 +369,24 @@ function LeadRows({
           </div>
         </DataTableCell>
         <DataTableCell>
+          {/* KEYED ON THE LOWERCASED EMAIL, because `funnel_submissions` has no
+              contact_id to key on — see `latestRunsForEmails`. A phone-only
+              submission has nothing to match and shows the empty marker, which
+              is the right answer: the one thing it must never do is pick up
+              somebody else's status. */}
+          {(() => {
+            const email = lead.email?.trim().toLowerCase() ?? ""
+            const status = describeSequenceStatus((email ? sequenceByEmail?.[email] : null) ?? null)
+            return status.detail ? (
+              <DataTableBadge tone={status.tone}>
+                <span title={status.detail}>{status.label}</span>
+              </DataTableBadge>
+            ) : (
+              <DataTableBadge tone={status.tone}>{status.label}</DataTableBadge>
+            )
+          })()}
+        </DataTableCell>
+        <DataTableCell>
           <label className="sr-only" htmlFor={`status-${lead.id}`}>
             Status for {lead.name ?? lead.email ?? "this lead"}
           </label>
@@ -371,7 +409,7 @@ function LeadRows({
 
       {isOpen ? (
         <tr className="border-b border-border bg-surface/30 last:border-b-0">
-          <td colSpan={6} className="px-4 py-4">
+          <td colSpan={7} className="px-4 py-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

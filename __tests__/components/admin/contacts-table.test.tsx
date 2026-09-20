@@ -63,7 +63,7 @@ function renderTable(over: Partial<React.ComponentProps<typeof ContactsTable>> =
       page={1}
       pageSize={100}
       sequences={SEQUENCES}
-      filters={{ search: "", has: "", days: "" }}
+      filters={{ search: "", has: "", days: "", seq: "" }}
       {...over}
     />,
   )
@@ -159,7 +159,7 @@ describe("ContactsTable — picking people", () => {
         page={1}
         pageSize={100}
         sequences={SEQUENCES}
-        filters={{ search: "sam", has: "", days: "" }}
+        filters={{ search: "sam", has: "", days: "", seq: "" }}
       />,
     )
     expect(screen.queryByLabelText("Select Jo Tan")).not.toBeInTheDocument()
@@ -208,7 +208,7 @@ describe("ContactsTable — reaching past the first page", () => {
   })
 
   it("next puts the page in the URL and keeps the filters that are already there", () => {
-    renderTable({ total: 166, pageSize: 100, page: 1, filters: { search: "sam", has: "email", days: "" } })
+    renderTable({ total: 166, pageSize: 100, page: 1, filters: { search: "sam", has: "email", days: "", seq: "" } })
     fireEvent.click(screen.getByRole("button", { name: /next page/i }))
 
     expect(pushMock).toHaveBeenCalled()
@@ -252,7 +252,7 @@ describe("ContactsTable — reaching past the first page", () => {
         page={2}
         pageSize={100}
         sequences={SEQUENCES}
-        filters={{ search: "", has: "", days: "" }}
+        filters={{ search: "", has: "", days: "", seq: "" }}
       />,
     )
     expect(screen.getByText("No contacts ticked")).toBeInTheDocument()

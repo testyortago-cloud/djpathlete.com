@@ -30,6 +30,7 @@ import { countContacts, listContacts, parseContactFilters } from "@/lib/db/conta
 import { resolveAdminTenant } from "@/lib/tenancy/resolve"
 import { listSequences } from "@/lib/db/sequences"
 import { tagsForContacts } from "@/lib/db/contact-tags"
+import { contactIdsInSequence, latestRunsForContacts } from "@/lib/db/contact-sequence-status"
 import { ContactsTable } from "@/components/admin/contacts/ContactsTable"
 
 export const metadata = { title: "Contacts" }
@@ -85,7 +86,7 @@ export default async function AdminContactsPage({
     return (Array.isArray(value) ? value[0] : value) ?? ""
   }
 
-  const raw = { search: read("search"), has: read("has"), days: read("days"), page: read("page") }
+  const raw = { search: read("search"), has: read("has"), days: read("days"), page: read("page"), seq: read("seq") }
 
   // EVERY searchParam is validated before it reaches the DAL — `has` against a
   // fixed set, `days` and `page` against digit patterns. `parseContactFilters`
@@ -95,11 +96,25 @@ export default async function AdminContactsPage({
   // `businessId` — that comes from the resolved tenant, not the URL bar.
   const filters = parseContactFilters(raw)
 
+  // RESOLVED BEFORE THE LIST, because "in a follow-up" is a fact about
+  // `sequence_runs` and PostgREST has no `EXISTS` to express it as a predicate
+  // on `contacts`. The ids narrow the list AND the count through the same
+  // `applyFilters`, so the footer cannot count people the table does not show.
+  // Left undefined when the filter is off — an empty array means "matched
+  // nobody", which is a different answer.
+  const restrictToContactIds = filters.inSequence ? await contactIdsInSequence(businessId) : undefined
+
   const [contacts, total, sequences] = await Promise.all([
     // The page number is turned into an offset HERE and not in the DAL, because
     // this is the only file that knows the page size — see PAGE_SIZE above.
-    listContacts({ ...filters, businessId, limit: PAGE_SIZE, offset: (filters.page - 1) * PAGE_SIZE }),
-    countContacts({ ...filters, businessId }),
+    listContacts({
+      ...filters,
+      restrictToContactIds,
+      businessId,
+      limit: PAGE_SIZE,
+      offset: (filters.page - 1) * PAGE_SIZE,
+    }),
+    countContacts({ ...filters, restrictToContactIds, businessId }),
     // SCOPED, like every read on this page. Offering another business's
     // sequences here would let a coach enrol this business's contacts into
     // one of them — a cross-tenant WRITE, not a display bug.
@@ -109,11 +124,17 @@ export default async function AdminContactsPage({
   // ONE round trip for every row's tags, not one per row. Read AFTER the list
   // because it is keyed on the ids that came back — and a Map cannot cross the
   // server/client boundary, so it is handed over as a plain object.
-  const tagMap = await tagsForContacts(
-    contacts.map((contact) => contact.id),
-    businessId,
-  )
+  //
+  // The Follow-up column's runs are read the same way and for the same reason,
+  // in the same pass: both are keyed on the ids this page is about to render,
+  // so neither can read a row nobody is looking at.
+  const contactIds = contacts.map((contact) => contact.id)
+  const [tagMap, runMap] = await Promise.all([
+    tagsForContacts(contactIds, businessId),
+    latestRunsForContacts(contactIds, businessId),
+  ])
   const tagsByContact = Object.fromEntries(tagMap)
+  const sequenceByContact = Object.fromEntries(runMap)
 
   return (
     <div>
@@ -146,6 +167,7 @@ export default async function AdminContactsPage({
         canEnrol={canEnrol}
         contacts={contacts}
         tagsByContact={tagsByContact}
+        sequenceByContact={sequenceByContact}
         total={total}
         page={filters.page}
         pageSize={PAGE_SIZE}
@@ -155,7 +177,7 @@ export default async function AdminContactsPage({
         // changes, so anything in here survives that change. A page number that
         // survived a narrowing search would leave the operator on page 2 of a
         // one-page result, looking at an empty table.
-        filters={{ search: raw.search, has: raw.has, days: raw.days }}
+        filters={{ search: raw.search, has: raw.has, days: raw.days, seq: raw.seq }}
       />
     </div>
   )
