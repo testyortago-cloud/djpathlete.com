@@ -71,18 +71,27 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     four still platform-wide -- which reads more authoritative about "this
  *     business's income" than it is. Reconciling that belongs to the
  *     bookkeeping phase, not this one.
- *   - the assessment submission's contact lookup
- *     (app/api/assessment/submit/route.ts, gap #14). The route DOES have a
- *     session -- it 401s without one -- but the session carries a userId
- *     only. `users` has no `business_id` column and there is no per-coach
- *     relationship to resolve a client's own tenant from today. The lookup
- *     this enables (`findContactByIdentifiers({ userId, businessId })`,
- *     written onto a contact ONLY when one already exists -- see that
- *     gap's design doc §2.3 for why the route must never mint one) needs
- *     some businessId to scope its `.eq()`, and every client's contact row
- *     was itself filed under this same seam already (a first-time payer's
- *     Stripe checkout capture, above), so this agrees with how that row was
- *     filed rather than guessing a second tenant for it.
+ *   - the assessment submission's lead capture
+ *     (app/api/assessment/submit/route.ts, gap #14 then G21). The route DOES
+ *     have a session -- it 401s without one -- but the session carries a
+ *     userId only. `users` has no `business_id` column and there is no
+ *     per-coach relationship to resolve a client's own tenant from today.
+ *     The capture this enables needs some businessId, and every client's
+ *     contact row was itself filed under this same seam already (a
+ *     first-time payer's Stripe checkout capture, above), so this agrees
+ *     with how that row was filed rather than guessing a second tenant.
+ *
+ *     CHANGED 2026-09-21 (G21). This route used to ATTACH only --
+ *     `findContactByIdentifiers` plus `recordEventForExistingContact`,
+ *     never minting -- under the 8 Sept ruling, and this comment described
+ *     it that way while pointing at that gap's design doc §2.3 "for why the
+ *     route must never mint one". The owner reversed that ruling: the route
+ *     now calls `captureLead` and mints, exactly like the questionnaire
+ *     below. The ruling's own rationale had expired -- it argued from
+ *     "`contacts.user_id` has no originating writer … 0 of 170", and G04
+ *     gave the column a writer and backfilled it to 43 of 170. Do not
+ *     restore the attach-only shape from that design doc; it is superseded,
+ *     and the doc has not been rewritten.
  *   - the questionnaire submission's lead capture
  *     (app/api/questionnaire/route.ts, gap G20). The SAME situation as the
  *     assessment route directly above, for the same reason: it 401s without a
@@ -90,12 +99,12 @@ import { createServiceRoleClient } from "@/lib/supabase"
  *     `business_id`, and there is no per-coach relationship to resolve a
  *     client's own tenant from today.
  *
- *     It differs from that route in ONE way, which is a product decision and
- *     not a tenancy one: this route MINTS a contact when none matches
- *     (`captureLead`), where the assessment route attaches only to one that
- *     already exists. G20 asks for the mint; G21 is the open decision on
- *     whether the assessment route should match it. Either way the tenant
- *     question is identical, and both file here.
+ *     It USED to differ from that route in one way, which was a product
+ *     decision and not a tenancy one: this route minted a contact when none
+ *     matched, where the assessment route attached only to one that already
+ *     existed. G21 closed that gap on 2026-09-21 -- the assessment route
+ *     mints too, through the same `captureLead`. The two are now identical
+ *     in both respects, and both file here.
  *
  * CORRECT BY CONSTRUCTION -- the caller could be asked to resolve a tenant
  * and the answer would still be the platform's own. Not a placeholder

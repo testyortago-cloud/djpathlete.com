@@ -798,18 +798,24 @@ export async function recordContactEvent(
  * creates, merges or otherwise touches identity — the opposite contract to
  * `recordContactEvent` above, which upserts identity unconditionally.
  *
- * Exists for gap #14's ruling on `assessment` (see the design doc, §2.3):
- * the only assessment surface 401s without a session, so everyone who
- * submits is already a registered client, not a lead. Minting a contact row
- * for them the way `recordContactEvent` would is a product decision this
- * task does not make — the caller is expected to have already resolved a
- * contact id (e.g. via `findContactByIdentifiers`) and to call this ONLY
- * when one came back, doing nothing at all otherwise.
+ * THE RULING THIS WAS BUILT FOR NO LONGER HOLDS. It was written for gap
+ * #14's decision on `assessment` (design doc §2.3) — that route 401s
+ * without a session, so everyone submitting is a registered client rather
+ * than a lead, and minting a contact for them was a product decision that
+ * task would not make. **G21 reversed that on 2026-09-21**: the assessment
+ * route calls `captureLead` and mints, and no longer calls this function at
+ * all. Do not restore the attach-only shape from that design doc, and do
+ * not treat §2.3 as current.
+ *
+ * The CONTRACT is still sound and still used. Its one remaining caller is
+ * `lib/bookings/ingest.ts` (G22), where the distinction is real: an ingest
+ * that already resolved a contact should append to it, not re-run identity
+ * resolution. A caller is expected to have resolved a contact id itself and
+ * to call this ONLY when one came back, doing nothing at all otherwise.
  *
  * A timeline write failure is logged, never thrown — same discipline as the
- * timeline insert inside `recordContactEvent`: the caller's own action
- * (an assessment submission) has already succeeded and must not be failed
- * to fix a history row.
+ * timeline insert inside `recordContactEvent`: the caller's own action has
+ * already succeeded and must not be failed to fix a history row.
  */
 export async function recordEventForExistingContact(input: {
   contactId: string
