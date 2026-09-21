@@ -10,6 +10,8 @@ type Store = {
   opportunity_stage_events: Row[]
   contacts: Row[]
   audit_logs: Row[]
+  // G27: the board reads this to answer "have they gone quiet?".
+  contact_timeline_events: Row[]
 }
 
 const store: Store = {
@@ -19,6 +21,7 @@ const store: Store = {
   opportunity_stage_events: [],
   contacts: [],
   audit_logs: [],
+  contact_timeline_events: [],
 }
 
 let seqCounter = 0
@@ -172,6 +175,12 @@ vi.mock("@/lib/supabase", () => ({
       const gteFilters: Array<[string, any]> = []
       const ltFilters: Array<[string, any]> = []
       const isFilters: Array<[string, any]> = []
+      const inFilters: Array<[string, any[]]> = []
+      let rangeWindow: [number, number] | null = null
+      /** PostgREST's own per-request ceiling, enforced rather than assumed. */
+      const ROW_CAP = 1000
+      /** Columns this query asked for; null means "*". See `matched()`. */
+      let projection: string[] | null = null
       // CHAINED `.order()` CALLS ACCUMULATE, first one primary — the real
       // PostgREST contract (`.order("a").order("b")` is `ORDER BY a, b`).
       // Held as a list rather than a single column because `listPipelines`
@@ -189,7 +198,8 @@ vi.mock("@/lib/supabase", () => ({
         // `IS NULL` / `IS NOT NULL`. A column the fixture simply omitted reads
         // as `undefined`, which `== null` treats as null — matching Postgres,
         // where an unset column IS null rather than a third thing.
-        isFilters.every(([col, val]) => (val === null ? row[col] == null : row[col] === val))
+        isFilters.every(([col, val]) => (val === null ? row[col] == null : row[col] === val)) &&
+        inFilters.every(([col, vals]) => vals.includes(row[col]))
 
       const matched = (): Row[] => {
         let result = rows.filter(passesFilters)
@@ -207,6 +217,25 @@ vi.mock("@/lib/supabase", () => ({
           })
         }
         if (limitN != null) result = result.slice(0, limitN)
+        if (rangeWindow) result = result.slice(rangeWindow[0], rangeWindow[1] + 1)
+        // PostgREST truncates at its own ceiling and does NOT error, which is
+        // precisely what makes an unpaged read fail silently in production.
+        result = result.slice(0, ROW_CAP)
+        // G27: PROJECTS for the one table whose readers depend on it. This
+        // harness is otherwise projection-blind by design (`select()` above
+        // only records the string, and 140-odd tests rely on whole rows coming
+        // back), but `contact_timeline_events` has BOTH `occurred_at` and
+        // `created_at` — so a reader that selects the wrong one still reads
+        // the right value off a whole row, and the mistake is invisible. This
+        // is the same trap `user_id` and `first_touch_session_id` already have
+        // projection tests for in contacts-record-event.test.ts.
+        if (table === "contact_timeline_events" && projection) {
+          result = result.map((row) => {
+            const out: Row = {}
+            for (const col of projection!) out[col] = row[col]
+            return out
+          })
+        }
         return result
       }
 
@@ -271,7 +300,15 @@ vi.mock("@/lib/supabase", () => ({
       }
 
       const api: any = {
-        select: () => api,
+        select: (columns?: string) => {
+          if (columns && columns !== "*") {
+            projection = columns
+              .split(",")
+              .map((c) => c.trim())
+              .filter(Boolean)
+          }
+          return api
+        },
         insert: (p: Row) => {
           mode = "insert"
           payload = p
@@ -294,6 +331,23 @@ vi.mock("@/lib/supabase", () => ({
         // missing method and the effect became a silent no-op.
         is: (col: string, val: any) => {
           isFilters.push([col, val])
+          return api
+        },
+        // G27's board read filters timeline kinds server-side. Like `.is()`
+        // above, a fake missing this does not fail loudly — the reader throws
+        // a TypeError that a caller's own catch can swallow into a silent
+        // no-op.
+        in: (col: string, vals: any[]) => {
+          inFilters.push([col, vals])
+          return api
+        },
+        // SLICES, and TRUNCATES at the same 1000-row cap PostgREST enforces —
+        // it does not merely record the call. A fake that accepted `.range()`
+        // and returned everything would make a paging loop look correct while
+        // never exercising a second page, which is exactly how an unbounded
+        // read ships and then silently truncates in production.
+        range: (from: number, to: number) => {
+          rangeWindow = [from, to]
           return api
         },
         gte: (col: string, val: any) => {
@@ -390,6 +444,7 @@ beforeEach(() => {
   store.opportunity_stage_events = []
   store.contacts = []
   store.audit_logs = []
+  store.contact_timeline_events = []
   seqCounter = 0
   opportunitiesHasSourceEventId = true
   updateCalls.length = 0
@@ -2954,6 +3009,211 @@ describe("readBoard", () => {
     expect(column.cards[0].staleness).toBe("red")
     // Nothing was written back to the row to persist that verdict.
     expect(store.opportunities[0].staleness).toBeUndefined()
+  })
+
+  // G27. The board is where the silence anchor actually has to be fetched and
+  // threaded; the rule itself is pinned in pipeline-move.test.ts. These prove
+  // the wiring — that `readBoard` reads the timeline at all, filters it to
+  // real activity, and hands the right contact's moment to the right card.
+  describe("red measures silence, not stage age (G27)", () => {
+    // `occurred_at` and `created_at` are seeded to DIFFERENT moments on
+    // purpose. The table carries both — `occurred_at` is when the thing
+    // happened, `created_at` is when the row was written — and they differ on
+    // only 2 of production's 271 rows, which is exactly what makes reading the
+    // wrong one easy to ship and impossible to notice. Here `created_at` is
+    // always "now", so a reader keying on it reports every contact as active
+    // today and every test in this block fails.
+    function seedTimelineEvent(contactId: string, kind: string, daysAgo: number, overrides: Row = {}) {
+      store.contact_timeline_events.push({
+        id: `evt-${store.contact_timeline_events.length + 1}`,
+        business_id: SINGLETON_BUSINESS_ID,
+        contact_id: contactId,
+        kind,
+        source: "test",
+        metadata: {},
+        occurred_at: new Date(Date.now() - daysAgo * DAY_MS).toISOString(),
+        created_at: new Date().toISOString(),
+        _seq: store.contact_timeline_events.length,
+        ...overrides,
+      })
+    }
+
+    function cardFor(board: Awaited<ReturnType<typeof readBoard>>, contactId: string) {
+      return board.flatMap((c) => c.cards).find((card) => card.contactId === contactId)
+    }
+
+    it("keeps a long-sitting card out of red when the person replied recently", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-consult-booked",
+        entered_stage_at: new Date(Date.now() - 40 * DAY_MS).toISOString(),
+      })
+      seedTimelineEvent("c-1", "sms_inbound", 1)
+
+      const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
+
+      expect(cardFor(board, "c-1")?.staleness).toBe("amber")
+    })
+
+    it("turns a freshly-moved card red when the person has gone quiet", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-consult-booked",
+        entered_stage_at: new Date().toISOString(),
+      })
+      seedTimelineEvent("c-1", "entry_point", 30)
+
+      const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
+
+      expect(cardFor(board, "c-1")?.staleness).toBe("red")
+    })
+
+    // The allow-list doing its job. An import and an engine marker are not the
+    // person speaking, and on production they are 256 of 271 timeline rows —
+    // if they counted, almost every card would look permanently fresh.
+    it.each([
+      ["ghl_import", "an import"],
+      ["sms_repermission_candidate", "an engine marker"],
+      ["sequence_tag_applied", "a sequence tag"],
+      ["sequence_stage_moved", "a sequence stage move"],
+    ])("does not treat %s (%s) as the person speaking", async (kind) => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-consult-booked",
+        entered_stage_at: new Date(Date.now() - 30 * DAY_MS).toISOString(),
+      })
+      seedTimelineEvent("c-1", kind, 0) // today, but not them
+
+      const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
+
+      expect(cardFor(board, "c-1")?.staleness).toBe("red")
+    })
+
+    it("uses the MOST RECENT activity, not whichever row came back first", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-consult-booked",
+        entered_stage_at: new Date(Date.now() - 40 * DAY_MS).toISOString(),
+      })
+      seedTimelineEvent("c-1", "entry_point", 30) // old
+      seedTimelineEvent("c-1", "sms_inbound", 1) // recent
+      seedTimelineEvent("c-1", "entry_point", 20) // middling, seeded LAST
+
+      const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
+
+      expect(cardFor(board, "c-1")?.staleness).toBe("amber")
+    })
+
+    // One person's reply must not refresh somebody else's card.
+    it("does not let one contact's activity quieten another contact's card", async () => {
+      seedBoard()
+      seedContact("c-chatty")
+      seedContact("c-silent")
+      seedOpportunity("opp-chatty", "c-chatty", {
+        stage_id: "stage-consult-booked",
+        entered_stage_at: new Date(Date.now() - 40 * DAY_MS).toISOString(),
+      })
+      seedOpportunity("opp-silent", "c-silent", {
+        stage_id: "stage-consulted",
+        entered_stage_at: new Date(Date.now() - 40 * DAY_MS).toISOString(),
+      })
+      seedTimelineEvent("c-chatty", "sms_inbound", 1)
+
+      const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
+
+      expect(cardFor(board, "c-chatty")?.staleness).toBe("amber")
+      expect(cardFor(board, "c-silent")?.staleness).toBe("red")
+    })
+
+    it("does not read another tenant's timeline rows", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-consult-booked",
+        entered_stage_at: new Date(Date.now() - 40 * DAY_MS).toISOString(),
+      })
+      seedTimelineEvent("c-1", "sms_inbound", 1, { business_id: OTHER_BUSINESS_ID })
+
+      const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
+
+      expect(cardFor(board, "c-1")?.staleness).toBe("red")
+    })
+
+    // THE PAGING LOOP, exercised rather than assumed. PostgREST returns at
+    // most 1000 rows per request and TRUNCATES silently rather than erroring,
+    // so an unpaged read would quietly compute its maximum over an arbitrary
+    // page — and an actively-replying contact would flip to red for no reason
+    // anyone could see. `contact_timeline_events` is append-only and grows per
+    // inbound text, so this is a matter of when, not whether.
+    //
+    // Contact A holds a full page of rows; contact B's single row can only be
+    // reached by asking for a second page.
+    it("reads past the first page to find a contact whose only row is on page two", async () => {
+      seedBoard()
+      seedContact("c-busy")
+      seedContact("c-quiet-ish")
+      seedOpportunity("opp-busy", "c-busy", {
+        stage_id: "stage-consult-booked",
+        entered_stage_at: new Date(Date.now() - 40 * DAY_MS).toISOString(),
+      })
+      seedOpportunity("opp-quiet-ish", "c-quiet-ish", {
+        stage_id: "stage-consulted",
+        entered_stage_at: new Date(Date.now() - 40 * DAY_MS).toISOString(),
+      })
+      // A full page of very recent activity for one contact...
+      for (let i = 0; i < 1000; i++) seedTimelineEvent("c-busy", "sms_inbound", 0)
+      // ...and one older row for the other, which sorts after all of them.
+      seedTimelineEvent("c-quiet-ish", "sms_inbound", 2)
+
+      const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
+
+      expect(cardFor(board, "c-busy")?.staleness).toBe("amber")
+      // Only reachable on page two. A single-page read leaves this contact
+      // with no activity at all and the card reads red.
+      expect(cardFor(board, "c-quiet-ish")?.staleness).toBe("amber")
+    })
+
+    // The two bounding guards on that loop — scoping the read to this board's
+    // contacts, and counting only the contacts actually ASKED ABOUT when
+    // deciding to stop early — mask each other: drop either alone and nothing
+    // changes, because the other still holds. Dropping BOTH is a real defect,
+    // so it is pinned here as the combined case rather than left to two
+    // mutants that each look harmless.
+    it("does not stop early on a pageful of contacts who are not on this board", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-consult-booked",
+        entered_stage_at: new Date(Date.now() - 40 * DAY_MS).toISOString(),
+      })
+      seedTimelineEvent("c-1", "sms_inbound", 2)
+      // A full page of NEWER activity belonging to people with no card here.
+      for (let i = 0; i < 1000; i++) {
+        seedContact(`c-other-${i}`)
+        seedTimelineEvent(`c-other-${i}`, "sms_inbound", 0)
+      }
+
+      const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
+
+      expect(cardFor(board, "c-1")?.staleness).toBe("amber")
+    })
+
+    it("falls back to stage entry for a contact with no timeline rows at all", async () => {
+      seedBoard()
+      seedContact("c-1")
+      seedOpportunity("opp-1", "c-1", {
+        stage_id: "stage-consult-booked",
+        entered_stage_at: new Date(Date.now() - 8 * DAY_MS).toISOString(),
+      })
+
+      const board = await readBoard(undefined, SINGLETON_BUSINESS_ID)
+
+      expect(cardFor(board, "c-1")?.staleness).toBe("red")
+    })
   })
 
   it("omits closed cards from open columns", async () => {

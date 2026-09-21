@@ -349,13 +349,102 @@ export function decideMove(ctx: MoveContext, event: PipelineEvent): MoveDecision
 }
 
 /**
+ * The `contact_timeline_events.kind` values that mean THE PERSON DID
+ * SOMETHING, as opposed to the engine or an admin recording something about
+ * them. Read by `stalenessOf` (G27) to answer "have they gone quiet?".
+ *
+ * AN ALLOW-LIST, NOT A DENY-LIST, and the direction is the whole safety
+ * argument. `contact_timeline_events.kind` is plain `text` with NO check
+ * constraint (00214), so a new kind starts being written with no migration and
+ * nothing to announce it. With a deny-list, a new ENGINE kind would silently
+ * count as the person speaking and hold a genuinely stale card green for ever
+ * — reintroducing exactly the bug this measures. With an allow-list, a new
+ * PERSON kind is merely not counted yet, so a card goes red while they are in
+ * fact talking to us: the coach chases someone who did reply, which is visible
+ * and harmless. False red is recoverable; false green is the bug.
+ *
+ * Production's own row counts show why the split matters rather than being
+ * theoretical: of 271 timeline rows, 166 are `ghl_import` and 90 are
+ * `sms_repermission_candidate` — 256 rows of bookkeeping that say nothing
+ * about whether anyone spoke. Only 12 are real activity.
+ *
+ * NEGATIVE ACTIONS COUNT. `unsubscribed` and `sms_stop_received` are a person
+ * telling us to go away, which is emphatically not silence — this dot measures
+ * whether they are RESPONDING, not whether they are keen. A card whose person
+ * just texted STOP should not read "stalled for 30 days"; it should read as
+ * recent, and go quiet on its own schedule afterwards. Whether a board ought
+ * to show "said no" as its own state is a different feature (G29's editor),
+ * not something to smuggle in through a staleness dot.
+ *
+ * A BOOKING IS NOT ON THIS LIST, AND CANNOT BE YET. It is the one obvious
+ * piece of contact activity missing, and the reason is that no booking writes
+ * a `contact_timeline_events` row at all: neither the Calendly nor the GHL
+ * webhook does, which lib/db/contact-detail.ts's own header says outright.
+ * So somebody who books a consult today, whose last form was 30 days ago,
+ * shows red on the stage called "Consult Booked". **G22 is the gap that adds
+ * `booking_scheduled` / `booking_cancelled` timeline rows — add
+ * `"booking_scheduled"` here in that same change** and this closes itself.
+ *
+ * It is deliberately NOT patched around by also anchoring on the card's
+ * `entered_stage_at` (a booking advances the card, so the card moving would
+ * look like contact). That would reintroduce the exact bug this measurement
+ * exists to remove: a coach dragging a card would make a silent person look
+ * fresh again, which is where "gone quiet measured stage age" came from in the
+ * first place. Payments are already covered — the Stripe capture writes
+ * `entry_point`, which is on the list.
+ */
+export const CONTACT_ACTIVITY_KINDS: readonly string[] = [
+  // They submitted a form, bought, abandoned a checkout, took the quiz.
+  "entry_point",
+  // They texted us — a reply, or one of the keywords.
+  "sms_inbound",
+  "sms_stop_received",
+  "sms_start_received",
+  "sms_help_received",
+  "sms_consent_confirmed",
+  // They asked the chat assistant for a human.
+  "chat_escalated",
+  // They clicked the unsubscribe link, or the newsletter form's own opt-out.
+  "unsubscribed",
+]
+
+/**
  * Staleness is computed at read time and NEVER stored (spec §8) — a stored flag
  * is wrong the moment the clock moves and needs a job to keep true.
+ *
+ * THE TWO COLOURS ANSWER DIFFERENT QUESTIONS, and that is G27's whole change:
+ *
+ *   - AMBER is stage age: "this step is taking a while". Unchanged.
+ *   - RED is silence: "we have not heard from this person". It used to be
+ *     stage age too, just a bigger number of it — so a person who replied
+ *     yesterday sat in a red card because nobody had dragged it across, and a
+ *     person who had said nothing for six weeks looked fine because the card
+ *     was moved last Tuesday. The dot is the one thing on the board telling a
+ *     coach who to chase, and it was answering a question nobody asked.
+ *
+ * `lastActivityAt` is the most recent `CONTACT_ACTIVITY_KINDS` timeline row
+ * for this contact, or null when there is none. Null falls back to
+ * `enteredStageAt` — the card's own arrival is then the only moment on record,
+ * and measuring silence from it is exactly the previous behaviour, which is
+ * why every pre-G27 test still passes unchanged.
+ *
+ * The parameter is OPTIONAL so the many callers that have no timeline to hand
+ * (and the pure state-machine tests) keep working; supplying nothing is the
+ * same as supplying null.
  */
-export function stalenessOf(stage: StageRow, enteredStageAt: string, now: Date): Staleness {
+export function stalenessOf(
+  stage: StageRow,
+  enteredStageAt: string,
+  now: Date,
+  lastActivityAt?: string | null,
+): Staleness {
   if (stage.kind !== "open") return "fresh"
-  const days = Math.floor((now.getTime() - new Date(enteredStageAt).getTime()) / DAY_MS)
-  if (stage.red_after_days != null && days >= stage.red_after_days) return "red"
-  if (stage.amber_after_days != null && days >= stage.amber_after_days) return "amber"
+  const daysSince = (iso: string) => Math.floor((now.getTime() - new Date(iso).getTime()) / DAY_MS)
+
+  const stageDays = daysSince(enteredStageAt)
+  const silenceDays = daysSince(lastActivityAt ?? enteredStageAt)
+
+  if (stage.red_after_days != null && silenceDays >= stage.red_after_days) return "red"
+  if (stage.amber_after_days != null && stageDays >= stage.amber_after_days) return "amber"
   return "fresh"
 }

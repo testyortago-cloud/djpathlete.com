@@ -25,6 +25,7 @@ import { isPgUniqueViolation } from "@/lib/supabase-errors"
 import {
   decideMove,
   stalenessOf,
+  CONTACT_ACTIVITY_KINDS,
   DEFAULT_PIPELINE_KEY,
   type StageRow,
   type OpportunityState,
@@ -1734,6 +1735,86 @@ async function readContactNames(
   return map
 }
 
+/** PostgREST returns at most this many rows per request; see the paging loop below. */
+const TIMELINE_PAGE = 1000
+
+/**
+ * G27. The last moment each contact DID something, for the board's red dot.
+ *
+ * ONE batched read for the whole board, in the same spirit as
+ * `readContactNames` above — not one per card. A board is tens of cards, and a
+ * per-card read would turn opening the page into tens of round trips for a
+ * coloured dot.
+ *
+ * `occurred_at`, NOT `created_at`. The table carries both: `occurred_at` is
+ * WHEN THE THING HAPPENED and `created_at` is when the row was written. They
+ * differ on only 2 of production's 271 rows today, which is exactly what makes
+ * reading the wrong one so easy to ship — and `contact_timeline_contact_idx`
+ * is `(contact_id, occurred_at DESC)`, so `created_at` would also have walked
+ * straight past the index that exists for this query.
+ *
+ * Filtered on `CONTACT_ACTIVITY_KINDS` (lib/lead-engine/pipeline-move.ts),
+ * which is where the allow-list and the reason it is an allow-list live. The
+ * `.in()` is server-side rather than a JS filter afterwards because the
+ * bookkeeping kinds are the bulk of the table — 256 of production's 271 rows
+ * are `ghl_import` or `sms_repermission_candidate`.
+ *
+ * SCOPED TO THIS BOARD'S CONTACTS AND PAGED, because an unbounded read of an
+ * append-only table silently TRUNCATES at PostgREST's 1000-row cap rather than
+ * erroring: past that, the JS maximum below would run over an arbitrary page
+ * and an actively-replying contact would flip to red for no reason anyone
+ * could see. Ordered newest-first so the first row seen for a contact IS its
+ * maximum, which also lets the loop stop as soon as every contact asked about
+ * has been found.
+ *
+ * Returns the maximum per contact computed in JS: PostgREST has no GROUP BY,
+ * and a view or RPC would be a migration for a read this small.
+ */
+async function readLastContactActivity(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  businessId: string,
+  contactIds: string[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  if (contactIds.length === 0) return map
+
+  const wanted = new Set(contactIds)
+  // Counted separately from `map.size` on purpose. The early break must not
+  // depend on the `.in("contact_id", …)` filter below actually being there:
+  // if it were ever dropped, a `map.size` break could be satisfied by
+  // contacts who are not on this board at all, and the loop would stop before
+  // reaching a board contact's newest row. The scoping filter is then a
+  // BOUNDING optimisation — which is all it should be — rather than a
+  // correctness guard standing behind a condition that cannot see it.
+  let foundWanted = 0
+  for (let from = 0; ; from += TIMELINE_PAGE) {
+    const { data, error } = await supabase
+      .from("contact_timeline_events")
+      .select("contact_id, occurred_at")
+      .eq("business_id", businessId)
+      .in("kind", CONTACT_ACTIVITY_KINDS as string[])
+      .in("contact_id", contactIds)
+      .order("occurred_at", { ascending: false })
+      .range(from, from + TIMELINE_PAGE - 1)
+    if (error) throw error
+
+    const rows = (data ?? []) as Row[]
+    for (const row of rows) {
+      const contactId = row.contact_id as string
+      // Newest-first, so the FIRST sighting is the maximum. Never overwritten.
+      if (!map.has(contactId)) {
+        map.set(contactId, row.occurred_at as string)
+        if (wanted.has(contactId)) foundWanted += 1
+      }
+    }
+
+    // Every contact we were asked about is accounted for, or this was the last
+    // page — either way there is nothing left that could be newer.
+    if (foundWanted >= wanted.size || rows.length < TIMELINE_PAGE) break
+  }
+  return map
+}
+
 /**
  * Every board this tenant can actually look at, for the board switcher on
  * /admin/pipeline (Task 8, audit §4 #7).
@@ -1822,7 +1903,17 @@ export async function readBoard(pipelineKey: string | undefined, businessId: str
   if (oppErr) throw oppErr
   const opportunities = (oppData ?? []) as Row[]
 
-  const nameByContact = await readContactNames(supabase, businessId)
+  // Independent reads, so they go together rather than one after the other —
+  // this is a page render, and the second was pure added latency serialised
+  // behind the first.
+  const [nameByContact, lastActivityByContact] = await Promise.all([
+    readContactNames(supabase, businessId),
+    // G27. One batched read for the whole board, scoped to the contacts that
+    // are actually on it — see `readLastContactActivity`.
+    readLastContactActivity(supabase, businessId, [
+      ...new Set(opportunities.map((row) => row.contact_id as string)),
+    ]),
+  ])
 
   const now = new Date()
   const orderedStages = [...stages].sort((a, b) => a.position - b.position)
@@ -1836,7 +1927,7 @@ export async function readBoard(pipelineKey: string | undefined, businessId: str
         contactId: row.contact_id,
         contactName: nameByContact.get(row.contact_id) ?? null,
         enteredStageAt: row.entered_stage_at,
-        staleness: stalenessOf(stage, row.entered_stage_at, now),
+        staleness: stalenessOf(stage, row.entered_stage_at, now, lastActivityByContact.get(row.contact_id) ?? null),
         valueCents: row.value_cents ?? null,
       }))
     return { stage, cards }

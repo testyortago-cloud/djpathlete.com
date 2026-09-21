@@ -64,10 +64,16 @@ function stageLabel(key: string): string {
     .join(" ")
 }
 
+// G27: the two colours answer DIFFERENT questions now, so they have to say so.
+// Amber is still stage age ("this step is taking a while"); red is silence
+// ("we have not heard from this person"). The card's only number underneath is
+// days in stage, so a red dot labelled "Stalled" sat directly above "Entered
+// today" and read as a contradiction — the label now names what it actually
+// measured. Written for a coach, not for whoever built the board.
 const STALENESS_LABEL: Record<Staleness, string> = {
   fresh: "On track",
-  amber: "Slowing down",
-  red: "Stalled",
+  amber: "Slowing down — a while in this step",
+  red: "No reply from them lately",
 }
 
 // Semantic tokens only (CLAUDE.md) — no hardcoded hex, ever.

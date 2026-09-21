@@ -281,6 +281,64 @@ describe("stalenessOf", () => {
     const noThresh = { ...stage, amber_after_days: null, red_after_days: null }
     expect(stalenessOf(noThresh, "2020-01-01T00:00:00Z", NOW)).toBe("fresh")
   })
+
+  // G27. "Gone quiet" used to measure how long the card had sat in its stage,
+  // which is not the same question. A person who replied yesterday sat in a
+  // red card because nobody had dragged it; a person who has said nothing for
+  // six weeks looked fine because the card was moved last Tuesday. The dot is
+  // the one thing on the board telling a coach WHO TO CHASE, and it was
+  // answering a different question from the one it appears to answer.
+  //
+  // Amber is unchanged — stage age is a real and useful signal ("this step is
+  // taking a while"). Only RED changes, to mean silence.
+  describe("red measures SILENCE, amber still measures stage age (G27)", () => {
+    it("stays out of red when they spoke recently, however long the card has sat", () => {
+      // 40 days in stage, but they replied yesterday.
+      expect(stalenessOf(stage, "2026-07-10T12:00:00Z", NOW, "2026-08-18T12:00:00Z")).toBe("amber")
+    })
+
+    it("goes red on silence even when the card entered its stage today", () => {
+      // Moved today, but nothing has been heard from them for 30 days.
+      expect(stalenessOf(stage, "2026-08-19T12:00:00Z", NOW, "2026-07-20T12:00:00Z")).toBe("red")
+    })
+
+    it("turns red exactly ON the red threshold, counted from the last activity", () => {
+      expect(stalenessOf(stage, "2026-08-19T12:00:00Z", NOW, "2026-08-12T12:00:00Z")).toBe("red") // 7 days
+    })
+
+    it("is still not red one day short of the threshold", () => {
+      expect(stalenessOf(stage, "2026-08-19T12:00:00Z", NOW, "2026-08-13T12:00:00Z")).toBe("fresh") // 6 days
+    })
+
+    // A contact with no timeline rows at all — every card before the engine
+    // started writing them, and any card whose person has genuinely never
+    // done anything since. The card's own arrival is the only moment on
+    // record, so silence is measured from there. That is exactly today's
+    // behaviour, which is why every test above this block still passes
+    // unchanged.
+    it("falls back to the card's stage entry when there is no activity on record", () => {
+      expect(stalenessOf(stage, "2026-08-12T12:00:00Z", NOW, null)).toBe("red")
+      expect(stalenessOf(stage, "2026-08-17T12:00:00Z", NOW, null)).toBe("fresh")
+    })
+
+    // Amber is NOT re-anchored. Without this, moving the red anchor and
+    // leaving amber alone could not be told apart from moving both.
+    it("keeps amber on stage age even when the last activity is recent", () => {
+      // In stage 5 days (amber), spoke today (not red).
+      expect(stalenessOf(stage, "2026-08-14T12:00:00Z", NOW, "2026-08-19T12:00:00Z")).toBe("amber")
+    })
+
+    // Activity in the FUTURE, or after the card moved, must not read as a
+    // negative silence and wrap into something odd — it is simply not stale.
+    it("treats activity newer than the card's own arrival as fresh", () => {
+      expect(stalenessOf(stage, "2026-07-10T12:00:00Z", NOW, "2026-08-19T00:00:00Z")).toBe("amber")
+    })
+
+    it("never marks a closed card stale, whatever the activity says", () => {
+      const lostWithThresholds = { ...STAGES[3], amber_after_days: 3, red_after_days: 7 }
+      expect(stalenessOf(lostWithThresholds, "2020-01-01T00:00:00Z", NOW, "2020-01-01T00:00:00Z")).toBe("fresh")
+    })
+  })
 })
 
 // ---------------------------------------------------------------------------
